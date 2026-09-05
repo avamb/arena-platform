@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -24,27 +25,39 @@ import (
 // Bil24 request fields used:
 //   - orderId: platform checkout session UUID
 //
-// Response:
+// Response (spec §7.8 / §9.3, feature #476 W1-A2b slice 20):
 //
 //	{
 //	  "resultCode": 0,
 //	  "command": "GET_ORDER_INFO",
-//	  "orderInfo": {
-//	    "orderId":      "<uuid>",
-//	    "state":        "...",
-//	    "sum":          <cents>,
-//	    "discount":     <cents>,
-//	    "charge":       <cents>,
-//	    "totalSum":     <cents>,
-//	    "currency":     "USD",
-//	    "ticketCount":  <int>
+//	  "order": {
+//	    "id":              "<uuid|int64>",
+//	    "status":          "...",
+//	    "sum":             <cents>,
+//	    "discount":        <cents>,
+//	    "charge":          <cents>,
+//	    "totalSum":        <cents>,
+//	    "currency":        "USD",
+//	    "ticketQuantity": <int>
 //	  }
 //	}
 //
 // Note: Bil24's GET_ORDER_INFO historically did not return ticketList.
-// For strict compatibility we include ticketCount but omit the full list.
+// For strict compatibility we include ticketQuantity but omit the full list.
 // Clients migrated to the new platform can request the full list via
 // GET /v1/checkout/{id}/tickets.
+//
+// Deferred to later slices (not yet implemented, intentionally omitted from
+// the response so absence is honest rather than fabricated):
+//   - `id` as int64 wire form: needs a compatibility_id_map KindOrder
+//     migration + compatOrderID helper. Until then the field carries the
+//     UUID string via TranslatePlatformID.
+//   - `expiration` (RFC3339 hold expiry): needs a reservation join to read
+//     reservations.expires_at — checkout_sessions itself carries only a
+//     terminal ExpiredAt.
+//   - `status` value mapping to Bil24 sentinels (NEW / PAID / CANCELLED /
+//     REFUNDED): the wire key is renamed to "status" per spec §9.3 in this
+//     slice, but the value is still checkout_sessions.state verbatim.
 func (h *Handler) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request, req bil24Request) {
 	if h.checkoutQueries == nil {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
@@ -103,8 +116,43 @@ func (h *Handler) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Build Bil24 financial field representation.
-	// Bil24 semantics: sum=subtotal, discount=discount, charge=platform+provider fee, totalSum=total.
+	// Get ticket count if ticketQueries is available.
+	ticketQuantity := 0
+	if h.ticketQueries != nil {
+		tickets, err := h.ticketQueries.ListTicketsByCheckoutSession(r.Context(), orderID)
+		if err == nil {
+			ticketQuantity = len(tickets)
+		}
+	}
+
+	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
+		"order": buildGetOrderInfoBody(cs, ticketQuantity),
+	}))
+}
+
+// buildGetOrderInfoBody projects a checkout_sessions row + ticket count into
+// the spec §7.8 / §9.3 `order` object body (feature #476 W1-A2b slice 20).
+// Pure over the row — no DB round-trip — so the wire-shape contract can be
+// unit-tested without a live pool. Kept as a package-level helper (rather
+// than a *Handler method) because it is purely a value projection: it takes
+// no ctx, no queries, no logger.
+//
+// Bil24 semantics for the financial keys (unchanged from the pre-slice
+// projection):
+//   - sum = checkout_sessions.subtotal (0 when nil)
+//   - discount = checkout_sessions.discount (0 when nil)
+//   - charge = checkout_sessions.platform_fee + checkout_sessions.provider_fee
+//     (each 0 when nil)
+//   - totalSum = checkout_sessions.total (0 when nil)
+//   - currency omitted when nil (pre-pricing_confirmed sessions)
+//
+// Spec §9.3 key renames landed by this slice (§7.8 wire shape):
+//   - `orderId` → `id`
+//   - `state` → `status`
+//   - `ticketCount` → `ticketQuantity`
+//
+// The outer envelope key changes from `orderInfo` to `order` at the callsite.
+func buildGetOrderInfoBody(cs gen.CheckoutSessionRow, ticketQuantity int) map[string]any {
 	var (
 		sum      int64
 		discount int64
@@ -131,31 +179,23 @@ func (h *Handler) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request
 		currency = *cs.Currency
 	}
 
-	// Get ticket count if ticketQueries is available.
-	ticketCount := 0
-	if h.ticketQueries != nil {
-		tickets, err := h.ticketQueries.ListTicketsByCheckoutSession(r.Context(), orderID)
-		if err == nil {
-			ticketCount = len(tickets)
-		}
-	}
-
-	orderInfo := map[string]any{
-		"orderId":     TranslatePlatformID(cs.ID),
-		"state":       cs.State,
-		"sum":         sum,
-		"discount":    discount,
-		"charge":      charge,
-		"totalSum":    totalSum,
-		"ticketCount": ticketCount,
+	order := map[string]any{
+		// Spec §9.3: `id` is the order identifier. Wave-1 wire form is
+		// int64 (compatibility_id_map KindOrder) but that migration is
+		// deferred to a later slice; today we emit the UUID string via
+		// TranslatePlatformID for continuity with pre-slice callers.
+		"id":             TranslatePlatformID(cs.ID),
+		"status":         cs.State,
+		"sum":            sum,
+		"discount":       discount,
+		"charge":         charge,
+		"totalSum":       totalSum,
+		"ticketQuantity": ticketQuantity,
 	}
 	if currency != "" {
-		orderInfo["currency"] = currency
+		order["currency"] = currency
 	}
-
-	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
-		"orderInfo": orderInfo,
-	}))
+	return order
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
