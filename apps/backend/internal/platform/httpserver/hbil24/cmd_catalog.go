@@ -149,9 +149,15 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 //   - age            — e.AgeRating with the "NR" sentinel normalised to
 //     "" (spec §7.1: age string, "NR" → ""). Omitted when the column is
 //     nil OR when the normalised value is empty (omit rather than empty).
-//   - bigPosterUrl / smallPosterUrl — e.ImageURL (both fall back to the
-//     legacy events.image_url in this slice; a follow-up slice will side-
-//     load poster_media_id from media_objects and use it in preference).
+//   - bigPosterUrl / smallPosterUrl — resolved cover URL. Preference
+//     order (spec §7.1, feature #476 slice 18):
+//     1. events.poster_media_id → /v1/media-files/{uuid} (AB-47b/c;
+//     same URL shape hfeed's mediaFileURL emits so the WP plugin
+//     and public feed agree on the artwork host).
+//     2. legacy events.image_url — literal URL passthrough for events
+//     migrated before AB-47 landed the poster_media_id column.
+//     Both keys carry the same URL in this wave — sizing (thumb vs
+//     hero) is deferred until media_objects grows a variants surface.
 //   - description    — e.Description raw HTML.
 //
 // Fields deferred to later slices (still missing from the spec §7.1
@@ -198,14 +204,41 @@ func (h *Handler) buildActionEntry(ctx context.Context, e gen.EventRow) map[stri
 			action["age"] = age
 		}
 	}
-	if e.ImageURL != nil && *e.ImageURL != "" {
-		action["bigPosterUrl"] = *e.ImageURL
-		action["smallPosterUrl"] = *e.ImageURL
+	// Spec §7.1 (slice 18): prefer the AB-47b poster_media_id when set —
+	// artwork uploaded through the media surface is authoritative over the
+	// pre-AB-47 events.image_url free-form column. The URL shape mirrors
+	// hfeed.mediaFileURL so the WP plugin and public feed agree on the
+	// canonical /v1/media-files/{uuid} host.
+	if url := posterURL(e); url != "" {
+		action["bigPosterUrl"] = url
+		action["smallPosterUrl"] = url
 	}
 	if e.Description != nil {
 		action["description"] = *e.Description
 	}
 	return action
+}
+
+// posterURL resolves the poster URL for a catalog event per spec §7.1
+// (feature #476 slice 18). Preference: poster_media_id (AB-47b) rendered
+// as /v1/media-files/{uuid} — the canonical media host used by hfeed's
+// public feed and the widget so the WP plugin sees the same artwork
+// as the browser. Fallback: legacy events.image_url (free-form URL from
+// the pre-AB-47 CMS). Returns "" when neither is set so the caller can
+// omit the JSON keys (matches the pre-slice behaviour: cover keys are
+// absent, not empty, when the event has no artwork).
+//
+// Pure over gen.EventRow — no DB round-trip. The media_objects row does
+// not need to be resolved here because /v1/media-files/{id} streams the
+// bytes on demand and the WP plugin already follows that URL.
+func posterURL(e gen.EventRow) string {
+	if e.PosterMediaID != nil {
+		return "/v1/media-files/" + e.PosterMediaID.String()
+	}
+	if e.ImageURL != nil && *e.ImageURL != "" {
+		return *e.ImageURL
+	}
+	return ""
 }
 
 // buildCountryCityLists projects a ListActionVenuesByOrg result set into

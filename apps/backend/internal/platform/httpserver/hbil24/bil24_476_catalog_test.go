@@ -284,6 +284,78 @@ func TestBil24_476_BuildActionEntry_LastEventDateAndAge(t *testing.T) {
 	}
 }
 
+// TestBil24_476_BuildActionEntry_PosterPreference pins the slice-18
+// spec §7.1 poster preference contract: when events.poster_media_id is
+// set the wire URL is /v1/media-files/{uuid} (AB-47b canonical media
+// host, matching hfeed.mediaFileURL); when only the legacy image_url is
+// set the value passes through verbatim; when neither is set both
+// bigPosterUrl and smallPosterUrl keys are OMITTED (not empty strings).
+func TestBil24_476_BuildActionEntry_PosterPreference(t *testing.T) {
+	h := &Handler{}
+	ctx := context.Background()
+
+	posterID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
+	legacy := "https://legacy.example.com/poster.jpg"
+
+	// Preference path: poster_media_id present overrides image_url.
+	both := gen.EventRow{
+		ID:            uuid.New(),
+		Name:          "Both",
+		Status:        "published",
+		PosterMediaID: &posterID,
+		ImageURL:      &legacy,
+	}
+	entry := h.buildActionEntry(ctx, both)
+	wantMedia := "/v1/media-files/" + posterID.String()
+	if got := entry["bigPosterUrl"]; got != wantMedia {
+		t.Errorf("bigPosterUrl = %v, want %q (poster_media_id must win over image_url)", got, wantMedia)
+	}
+	if got := entry["smallPosterUrl"]; got != wantMedia {
+		t.Errorf("smallPosterUrl = %v, want %q", got, wantMedia)
+	}
+
+	// Fallback path: legacy image_url only.
+	legacyOnly := gen.EventRow{
+		ID:       uuid.New(),
+		Name:     "Legacy",
+		Status:   "published",
+		ImageURL: &legacy,
+	}
+	entry = h.buildActionEntry(ctx, legacyOnly)
+	if got := entry["bigPosterUrl"]; got != legacy {
+		t.Errorf("bigPosterUrl = %v, want %q (legacy image_url passthrough)", got, legacy)
+	}
+	if got := entry["smallPosterUrl"]; got != legacy {
+		t.Errorf("smallPosterUrl = %v, want %q", got, legacy)
+	}
+
+	// Empty legacy URL is treated as absent — no keys emitted.
+	empty := ""
+	emptyRow := gen.EventRow{
+		ID:       uuid.New(),
+		Name:     "Empty",
+		Status:   "published",
+		ImageURL: &empty,
+	}
+	entry = h.buildActionEntry(ctx, emptyRow)
+	if _, has := entry["bigPosterUrl"]; has {
+		t.Errorf("bigPosterUrl MUST be absent when image_url is empty and poster_media_id nil, got %v", entry["bigPosterUrl"])
+	}
+	if _, has := entry["smallPosterUrl"]; has {
+		t.Errorf("smallPosterUrl MUST be absent when image_url is empty and poster_media_id nil, got %v", entry["smallPosterUrl"])
+	}
+
+	// Bare row: no artwork at all → both keys absent.
+	bare := gen.EventRow{ID: uuid.New(), Name: "Bare", Status: "published"}
+	entry = h.buildActionEntry(ctx, bare)
+	if _, has := entry["bigPosterUrl"]; has {
+		t.Errorf("bigPosterUrl MUST be absent when no poster source set, got %v", entry["bigPosterUrl"])
+	}
+	if _, has := entry["smallPosterUrl"]; has {
+		t.Errorf("smallPosterUrl MUST be absent when no poster source set, got %v", entry["smallPosterUrl"])
+	}
+}
+
 // TestBil24_476_BuildCountryCityLists_EmptyInput pins the empty-input
 // contract: no rows → both lists are empty but non-nil so the JSON
 // envelope emits `[]` not `null`.
