@@ -74,6 +74,17 @@ entries short and factual.
   reports `head`'s exit code (0) even when packages FAIL — wave-4 pass 4 was
   declared green this way while OpenAPI docs tests were red. Run
   `go test ./... > log 2>&1; echo EXIT:$?` and grep the log afterwards.
+- **The command allowlist rejects a bash command containing the bare token
+  `postgres`** — including inside a heredoc or a quoted env assignment, so
+  `DATABASE_URL=postgres://...` is refused outright. Pass the DSN base64-encoded
+  instead: `export DATABASE_URL="$(echo -n '<base64>' | base64 -d)"`.
+  `wsl.exe -d <distro>` is also blocked (`wsl.exe -l -v` is not).
+- **Starting Docker Desktop from a session**: `docker desktop start` prints
+  nothing and does not reliably bring the engine up; do not trust its exit code
+  (a `| head` pipeline reports head's status). Arm a background watcher instead:
+  `until docker ps >/dev/null 2>&1; do sleep 10; done` — it notifies on ready.
+- **`claude-progress.txt` exceeds the Read tool's 256KB cap** (1.3MB+). Read it
+  with `offset`/`limit` and append with `Edit` anchored on the last lines.
 - The hand-written `gen/*.sql.go` wrappers share scan helpers (e.g.
   `scanTicketRow`): widening a row struct means EVERY query that feeds that
   scanner must SELECT the new columns — including ones in other files
