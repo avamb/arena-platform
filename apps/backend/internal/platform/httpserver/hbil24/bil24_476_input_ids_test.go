@@ -226,6 +226,48 @@ func TestBil24_476_ResolveSeatToRow_NilCompatDB_FallbackParsesUUID(t *testing.T)
 	}
 }
 
+// TestBil24_476_CompatVenueID_NilCompatDB_FallbackReturnsUUIDString pins
+// the fallback contract for the GET_ALL_ACTIONS aggregation helpers
+// (spec §7.1) added ahead of the deferred countryList/cityList/venueList
+// projection slice: with compatDB nil (unit-test constructor path), the
+// helper returns the UUID string via TranslatePlatformID so any early
+// callsite lands on the pre-W1 wire shape without a DB round-trip. The
+// panicDBTX-wired production path is exercised by the integration
+// harness once the aggregation lands.
+func TestBil24_476_CompatVenueID_NilCompatDB_FallbackReturnsUUIDString(t *testing.T) {
+	h := newMinimalHandler() // no WithCompatDB — compatDB stays nil
+	id := uuid.New()
+	got := h.compatVenueID(context.Background(), id)
+	want := TranslatePlatformID(id)
+	if got != want {
+		t.Fatalf("compatVenueID(nil compatDB): got %v, want %v", got, want)
+	}
+}
+
+// TestBil24_476_CompatCityID_NilCompatDB_FallbackReturnsUUIDString mirrors
+// the venue helper contract for the city projection.
+func TestBil24_476_CompatCityID_NilCompatDB_FallbackReturnsUUIDString(t *testing.T) {
+	h := newMinimalHandler()
+	id := uuid.New()
+	got := h.compatCityID(context.Background(), id)
+	want := TranslatePlatformID(id)
+	if got != want {
+		t.Fatalf("compatCityID(nil compatDB): got %v, want %v", got, want)
+	}
+}
+
+// TestBil24_476_CompatCountryID_NilCompatDB_FallbackReturnsUUIDString
+// mirrors the venue helper contract for the country projection.
+func TestBil24_476_CompatCountryID_NilCompatDB_FallbackReturnsUUIDString(t *testing.T) {
+	h := newMinimalHandler()
+	id := uuid.New()
+	got := h.compatCountryID(context.Background(), id)
+	want := TranslatePlatformID(id)
+	if got != want {
+		t.Fatalf("compatCountryID(nil compatDB): got %v, want %v", got, want)
+	}
+}
+
 // TestBil24_476_ResolveCategoryPriceID_NilCompatDB_FallbackAcceptsUUID pins
 // the fallback contract: unit-test Handlers that omit the pool keep the
 // pre-W1 UUID passthrough so seat_d1_312 / seat_d2_313 / bil24_374 fixtures

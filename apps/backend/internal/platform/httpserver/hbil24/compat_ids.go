@@ -64,6 +64,29 @@ func (h *Handler) compatActionEventID(ctx context.Context, sessionID uuid.UUID) 
 	return h.compatEnsure(ctx, compatids.KindActionEvent, sessionID, "action_event")
 }
 
+// compatVenueID returns the spec-§4 / §7.1 int64 wire form for a venue UUID
+// (compatibility_id_map kind = venue). Fallback semantics match
+// compatCategoryPriceID. Prepared for the deferred GET_ALL_ACTIONS
+// countryList/cityList/venueList aggregation slice (spec §7.1) so the
+// response projection can call one uniform helper per entity kind.
+func (h *Handler) compatVenueID(ctx context.Context, venueID uuid.UUID) any {
+	return h.compatEnsure(ctx, compatids.KindVenue, venueID, "venue")
+}
+
+// compatCityID returns the spec-§4 / §7.1 int64 wire form for a city UUID
+// (compatibility_id_map kind = city). Fallback semantics match
+// compatCategoryPriceID.
+func (h *Handler) compatCityID(ctx context.Context, cityID uuid.UUID) any {
+	return h.compatEnsure(ctx, compatids.KindCity, cityID, "city")
+}
+
+// compatCountryID returns the spec-§4 / §7.1 int64 wire form for a country
+// UUID (compatibility_id_map kind = country). Fallback semantics match
+// compatCategoryPriceID.
+func (h *Handler) compatCountryID(ctx context.Context, countryID uuid.UUID) any {
+	return h.compatEnsure(ctx, compatids.KindCountry, countryID, "country")
+}
+
 // resolveCategoryPriceID converts a wire categoryPriceId (a Bil24 ticket-
 // tier identifier — spec §7.4) to the platform tier UUID used by downstream
 // queries.
