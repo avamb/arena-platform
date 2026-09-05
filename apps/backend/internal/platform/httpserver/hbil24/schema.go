@@ -71,7 +71,13 @@ func (h *Handler) handleBil24GetSchema(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 
-	sessionID, err := TranslateLegacyID(req.ActionEventID)
+	ctx := r.Context()
+
+	// Spec §4 / §7.15 (feature #476, W1-A2b): actionEventId is int64 on the
+	// wire; resolveActionEventID rejects UUID input with -2 when compatDB is
+	// wired and falls back to TranslateLegacyID for unit tests that omit the
+	// pool.
+	sessionID, err := h.resolveActionEventID(ctx, req.ActionEventID)
 	if err != nil {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInvalidRequest,
@@ -79,8 +85,6 @@ func (h *Handler) handleBil24GetSchema(w http.ResponseWriter, r *http.Request, r
 		))
 		return
 	}
-
-	ctx := r.Context()
 
 	// Feature #471 (spec §5, §7.2): fid+token auth and org-scope check.
 	channel, authed := h.authenticateCommand(ctx, w, req)

@@ -22,6 +22,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 )
 
@@ -50,6 +51,29 @@ func (h *Handler) compatActionID(ctx context.Context, eventID uuid.UUID) any {
 // compatCategoryPriceID.
 func (h *Handler) compatActionEventID(ctx context.Context, sessionID uuid.UUID) any {
 	return h.compatEnsure(ctx, compatids.KindActionEvent, sessionID, "action_event")
+}
+
+// resolveActionEventID converts a wire actionEventId (a Bil24 session
+// identifier — spec §7.2 / §7.4 / §7.15) to the platform session UUID used
+// by downstream queries.
+//
+// Spec §4 (feature #476, W1-A2b) makes int64 the sole wire form: when
+// h.compatDB is wired the raw is parsed as a positive int64 via
+// bil24compat.ParseLegacyIntID and reverse-mapped through
+// compatids.Resolve(KindActionEvent, n) so a UUID in the request field is
+// rejected with ErrLegacyIDUUIDRejected. When h.compatDB is nil (unit
+// tests that construct a Handler without a *pgxpool.Pool) the helper falls
+// back to TranslateLegacyID (UUID passthrough) so the pre-W1 unit-test
+// harness keeps passing during the step-by-step migration.
+//
+// Callers map any returned error to Bil24 result code -2 (invalid request);
+// the message attached at the callsite carries the field name so operators
+// can grep the log.
+func (h *Handler) resolveActionEventID(ctx context.Context, raw string) (uuid.UUID, error) {
+	if h.compatDB == nil {
+		return TranslateLegacyID(raw)
+	}
+	return bil24compat.ResolveLegacyIntID(ctx, h.compatDB, compatids.KindActionEvent, raw)
 }
 
 // compatEnsure is the shared body of the per-kind helpers. Kept private so
