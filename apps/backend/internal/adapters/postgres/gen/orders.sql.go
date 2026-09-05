@@ -480,3 +480,75 @@ func (q *Queries) ListOrderEventsByOrder(ctx context.Context, orderID uuid.UUID)
 	}
 	return events, rows.Err()
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListExpirableOrders
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listExpirableOrders = `-- name: ListExpirableOrders :many
+SELECT o.id, o.system_id, o.org_id, o.channel_id, o.event_id, o.session_id,
+       o.customer_id, o.checkout_session_id, o.reservation_id, o.external_ref,
+       o.source, o.status, o.currency, o.subtotal, o.discount, o.charge,
+       o.total, o.charge_percent_bp, o.promo_code_id, o.buyer_name,
+       o.buyer_email, o.buyer_phone, o.payment_method, o.paid_at,
+       o.cancelled_at, o.expires_at, o.metadata, o.created_at, o.updated_at
+FROM   orders o
+WHERE  o.status = 'pending_payment'
+  AND  o.expires_at IS NOT NULL
+  AND  o.expires_at < $1
+  AND  NOT EXISTS (
+           SELECT 1 FROM payment_intents pi
+           WHERE  pi.checkout_session_id = o.checkout_session_id
+             AND  pi.state = 'succeeded'
+       )
+ORDER  BY o.expires_at ASC
+LIMIT  $2`
+
+// ListExpirableOrders returns the candidate set of the order.expire_sweep
+// worker job (W1-A6b, spec §14.1): pending_payment orders past their
+// expires_at deadline whose checkout session never produced a succeeded
+// payment intent. Orders that DID get paid in the window between expires_at
+// and the sweep tick are deliberately excluded so the sweep can never expire
+// a paid purchase.
+func (q *Queries) ListExpirableOrders(ctx context.Context, before time.Time, limit int32) ([]OrderRow, error) {
+	rows, err := q.db.Query(ctx, listExpirableOrders, before, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []OrderRow
+	for rows.Next() {
+		o, err := scanOrderRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		orders = append(orders, o)
+	}
+	return orders, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ExpireOrderIfStillPending
+// ─────────────────────────────────────────────────────────────────────────────
+
+const expireOrderIfStillPending = `-- name: ExpireOrderIfStillPending :one
+UPDATE orders
+SET    status     = 'expired',
+       updated_at = now()
+WHERE  id     = $1
+  AND  status = 'pending_payment'
+RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
+          checkout_session_id, reservation_id, external_ref, source, status,
+          currency, subtotal, discount, charge, total, charge_percent_bp,
+          promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
+          paid_at, cancelled_at, expires_at, metadata, created_at, updated_at`
+
+// ExpireOrderIfStillPending flips one order to 'expired' only while it is
+// still pending_payment. The status guard is what makes the sweep safe to run
+// concurrently with a payment webhook: whichever transaction commits second
+// matches zero rows and gets pgx.ErrNoRows instead of clobbering a paid order.
+func (q *Queries) ExpireOrderIfStillPending(ctx context.Context, id uuid.UUID) (OrderRow, error) {
+	row := q.db.QueryRow(ctx, expireOrderIfStillPending, id)
+	return scanOrderRow(row)
+}

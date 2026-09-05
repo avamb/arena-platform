@@ -162,3 +162,45 @@ SELECT id, order_id, type, actor, payload, created_at
 FROM   order_events
 WHERE  order_id = $1
 ORDER  BY created_at ASC;
+
+-- name: ListExpirableOrders :many
+-- W1-A6b (feature #487): the order.expire_sweep worker job's candidate set —
+-- pending_payment orders whose hold deadline has passed and whose checkout
+-- session never produced a succeeded payment intent (spec §14.1). The
+-- NOT EXISTS guard is what keeps a payment that landed in the gap between
+-- expires_at and the sweep tick from being expired underneath the buyer:
+-- those orders are left alone for MarkPaid to pick up.
+SELECT o.id, o.system_id, o.org_id, o.channel_id, o.event_id, o.session_id,
+       o.customer_id, o.checkout_session_id, o.reservation_id, o.external_ref,
+       o.source, o.status, o.currency, o.subtotal, o.discount, o.charge,
+       o.total, o.charge_percent_bp, o.promo_code_id, o.buyer_name,
+       o.buyer_email, o.buyer_phone, o.payment_method, o.paid_at,
+       o.cancelled_at, o.expires_at, o.metadata, o.created_at, o.updated_at
+FROM   orders o
+WHERE  o.status = 'pending_payment'
+  AND  o.expires_at IS NOT NULL
+  AND  o.expires_at < $1
+  AND  NOT EXISTS (
+           SELECT 1 FROM payment_intents pi
+           WHERE  pi.checkout_session_id = o.checkout_session_id
+             AND  pi.state = 'succeeded'
+       )
+ORDER  BY o.expires_at ASC
+LIMIT  $2;
+
+-- name: ExpireOrderIfStillPending :one
+-- Flips one order to 'expired', but only while it is still pending_payment.
+-- The status guard makes the sweep safe to run next to a payment webhook:
+-- whichever transaction commits second sees zero rows and backs off rather
+-- than clobbering a paid order. Returns pgx.ErrNoRows when the order moved
+-- on already.
+UPDATE orders
+SET    status     = 'expired',
+       updated_at = now()
+WHERE  id     = $1
+  AND  status = 'pending_payment'
+RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
+          checkout_session_id, reservation_id, external_ref, source, status,
+          currency, subtotal, discount, charge, total, charge_percent_bp,
+          promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
+          paid_at, cancelled_at, expires_at, metadata, created_at, updated_at;

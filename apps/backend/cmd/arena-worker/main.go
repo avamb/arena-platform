@@ -59,6 +59,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/macs"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
@@ -217,6 +218,18 @@ func run() error {
 		logger.Info("idempotency cleanup job scheduled at startup")
 	}
 
+	// 7c. Order expire-sweep startup scheduling (feature #487) ---------------
+	// Same cron-like pattern as the idempotency cleanup above: seed the queue
+	// once, and every subsequent run is enqueued by the handler itself.
+	if err := ordering.ScheduleInitialExpireSweepJob(rootCtx, pool.Pool); err != nil {
+		// Non-fatal: a delayed first sweep only means an already-dead order
+		// lingers in pending_payment a little longer. Inventory is released
+		// by the reservation TTL worker regardless.
+		logger.Warn("could not schedule initial order expire sweep job", "error", err.Error())
+	} else {
+		logger.Info("order expire sweep job scheduled at startup")
+	}
+
 	// 8. Metrics + healthz HTTP server (feature #109, step 6) ----------------
 	// A lightweight sidecar HTTP server exposes:
 	//   GET /healthz  — liveness probe (always 200 while the process is up)
@@ -360,6 +373,16 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		Cleaner:        idempotency.NewPGCleaner(pool),
 		DeletedCounter: metrics.IdempotencyCleanupDeletedTotal,
 		Scheduler:      idempotency.NewPGCleanupScheduler(pool),
+	}))
+
+	// order.expire_sweep flips pending_payment orders whose hold deadline
+	// passed (and whose checkout never produced a succeeded payment intent)
+	// to 'expired', then self-schedules the next run a minute later.
+	// W1-A6b, feature #487, spec §14.1.
+	reg.Register(ordering.ExpireSweepJobType, ordering.NewExpireSweepHandler(ordering.ExpireSweepOptions{
+		Store:     gen.New(pool),
+		Logger:    logger,
+		Scheduler: ordering.NewPGSweepScheduler(pool),
 	}))
 
 	// ticket.deliver sends transactional emails with PDF attachments for
