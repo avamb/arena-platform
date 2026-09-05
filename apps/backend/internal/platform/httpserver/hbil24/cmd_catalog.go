@@ -89,7 +89,10 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 			continue
 		}
 		action := map[string]any{
-			"actionId":   TranslatePlatformID(e.ID),
+			// Spec §4 / §7.1 (feature #476): int64 wire form via compat map.
+			// Fallback (nil compatDB) returns the legacy UUID string so pre-W1
+			// unit-test Handlers stay green.
+			"actionId":   h.compatActionID(ctx, e.ID),
 			"actionName": e.Name,
 		}
 		// firstEventDate is the earliest session of the action (AB-37):

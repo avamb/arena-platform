@@ -182,7 +182,10 @@ func (h *Handler) reservationSeated(w http.ResponseWriter, ctx context.Context, 
 
 	extra := map[string]any{
 		"reservationId": TranslatePlatformID(result.Reservation.ID),
-		"sessionId":     TranslatePlatformID(sessionID),
+		// Spec §4 / §7.4 (feature #476): sessionId on the wire is the
+		// int64 action_event compat id. Fallback (nil compatDB) returns the
+		// legacy UUID string so pre-W1 unit-test Handlers stay green.
+		"sessionId":     h.compatActionEventID(ctx, sessionID),
 		"seatCount":     len(result.Seats),
 		"seatList":      heldSeatIDs,
 		"admissionMode": responseAdmission,
@@ -353,7 +356,10 @@ func (h *Handler) reservationGA(w http.ResponseWriter, ctx context.Context, req 
 
 	extra := map[string]any{
 		"reservationId": TranslatePlatformID(res.ID),
-		"sessionId":     TranslatePlatformID(sessionID),
+		// Spec §4 / §7.4 (feature #476): sessionId on the wire is the
+		// int64 action_event compat id. Fallback (nil compatDB) returns the
+		// legacy UUID string so pre-W1 unit-test Handlers stay green.
+		"sessionId":     h.compatActionEventID(ctx, sessionID),
 		"categoryList":  echoed,
 		"totalQuantity": total,
 		"admissionMode": responseAdmission,
