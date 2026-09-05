@@ -2,6 +2,77 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-09-05 - #476 W1-A2b STEP 3 landed (Step 2 remains deferred)
+
+Delivered ONLY the Step 3 no-UUID wire guardrail this session. Step 2
+(handler rewire + file split + golden regeneration) is still open with
+the exact callsite list from the 2026-09-05 Step-1 note below. #476
+remains claimed — NOT marked passing.
+
+Rationale: Step 2 realistic size (per the previous session's audit — ~60
+callsite edits across a 2044-line file, tx plumbing audit, split into
+four <=700-line files, and golden regeneration against the rewired
+handlers) exceeded the safe budget for one session. Shipping Step 3 in
+isolation is still net-positive: it pins the wave-1 invariant so any
+future golden regeneration or fixture addition can never re-introduce a
+UUID on the wire — a regression the previous state had no guard for.
+
+Files touched this session:
+  apps/backend/tests/compat/bil24/no_uuid_in_wire_test.go   (new)
+
+What the guardrail does:
+  - Walks every *.json under
+    apps/backend/tests/compat/bil24/testdata/wp/{golden,requests,wp_receiver}/
+    and asserts no string value (nor JSON key) matches the canonical
+    8-4-4-4-12 UUID regex.
+  - Prints offending file + JSON path + value on failure so the operator
+    can immediately identify a bad golden or fixture.
+  - Deliberately EXCLUDES testdata/vinoandco_fixtures.json (that file
+    pins the legacy #157/#158 UUID-passthrough contract for
+    regression_158_test.go and is not part of the wave-1 wire) and
+    testdata/wp/bil24_orders_pseudonymized.json (Bil24-side dump for
+    feature #520 customer-import, not a wire contract fixture).
+  - Runs as a plain unit test (no `integration` tag) — pure FS walk,
+    no DB/network dependencies.
+
+Gates run this session — all EXIT:0:
+  - go.exe vet ./apps/backend/...
+  - gofmt -l apps/backend/tests/compat/bil24/no_uuid_in_wire_test.go
+  - go.exe test ./apps/backend/tests/compat/bil24/... \
+      ./apps/backend/tests/staticanalysis/... \
+      ./apps/backend/internal/platform/httpserver/hbil24/... \
+      ./apps/backend/internal/adapters/bil24compat/...
+  - go.exe test ./apps/backend/... (full unit suite, log
+    /tmp/gotest_476_full.txt, no FAIL/PANIC lines)
+
+Sentinels preserved:
+  - bil24compat_layout_188_test.go AdapterOwnsWireSymbols + NoHTTPImports
+  - bil24_compat_157_test.go legacy behaviours
+  - snake_case_json_test.go bil24compat exemption (from Step 1)
+  - All existing SEAT-D1/#312 and SEAT-D2/#313 tests
+
+REMAINING WORK FOR #476 (unchanged from the 2026-09-05 Step-1 note
+below — verbatim callsite list still applies):
+  STEP 2 - handler rewire + file split. The 2026-09-05 Step-1 note
+  enumerates every callsite (GET_ALL_ACTIONS line 298, GET_SEAT_LIST
+  lines 426/540/613, getSeatListGA line 508, getSeatListUnits line 563,
+  schema.go, RESERVATION lines 1635/1772-1773/1792/1920, UN_RESERVE
+  line 1968, SCAN_TICKET line 885) plus the tx plumbing audit and the
+  four-file split (cmd_catalog / cmd_cart / cmd_order / cmd_tickets,
+  each <=700 lines). Golden regeneration under
+  testdata/wp/golden/ must follow — the new no-UUID guardrail will
+  reject any regenerated golden that contains a UUID substring, which
+  is by design (spec §4).
+
+  When Step 2 lands, extend no_uuid_in_wire_test.go to also cover live
+  handler responses captured by the SEAT-D1/#312 and SEAT-D2/#313
+  tests (currently the guardrail only covers wire fixtures on disk;
+  the sub-feature spec asks for both).
+
+feature_mark_passing NOT called — #476 remains claimed / in-progress
+per the sub-feature contract ("DO NOT call feature_mark_passing unless
+everything is genuinely done and all gates are green").
+
 ## 2026-09-04 W1 loop stopped by the owner session (sessions #2-#45 consolidated)
 
 Sessions #2-#45 (37 progress commits, no source changes) each claimed batch
