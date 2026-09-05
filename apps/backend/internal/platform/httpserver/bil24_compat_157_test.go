@@ -208,6 +208,11 @@ func TestBil24_157_EmptyCommand_Returns_ResultCodeInvalidRequest(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestBil24_157_UnknownCommand_Returns_ResultCodeUnknownCommand(t *testing.T) {
+	// Feature #477 / spec section 6: unknown command names map to
+	// ResultCodeInvalidRequest (-2). The pre-#477 "unknown command" slot
+	// (-1) is now ResultCodeTransient (DB/pool). ResultCodeUnknownCommand
+	// is kept as a deprecated alias equal to ResultCodeInvalidRequest so
+	// this assertion continues to hold with the new value.
 	s := buildBil24Server(t)
 	w := postBil24(s, `{"command":"FIRE_MISSILES"}`)
 	if w.Code != http.StatusOK {
@@ -215,8 +220,9 @@ func TestBil24_157_UnknownCommand_Returns_ResultCodeUnknownCommand(t *testing.T)
 	}
 	m := decodeBil24Response(t, w)
 	rc := int(m["resultCode"].(float64))
-	if rc != ResultCodeUnknownCommand {
-		t.Errorf("expected resultCode %d (unknown command), got %d", ResultCodeUnknownCommand, rc)
+	if rc != ResultCodeInvalidRequest {
+		t.Errorf("expected resultCode %d (invalid request / unknown command), got %d",
+			ResultCodeInvalidRequest, rc)
 	}
 	cmd, _ := m["command"].(string)
 	if cmd != "FIRE_MISSILES" {
@@ -232,10 +238,14 @@ func TestBil24_157_CommandIsCaseInsensitive(t *testing.T) {
 		t.Fatalf("expected HTTP 200, got %d", w.Code)
 	}
 	m := decodeBil24Response(t, w)
-	// Should NOT return unknown command
-	rc := int(m["resultCode"].(float64))
-	if rc == ResultCodeUnknownCommand {
-		t.Errorf("command dispatch should be case-insensitive: got resultCode=%d", rc)
+	// If dispatch dropped the command through to the default branch we'd
+	// see resultCode=-2 (ResultCodeInvalidRequest, feature #477) with the
+	// canned "unknown command" description. Match on the description
+	// substring so an unrelated validation error is not mis-diagnosed as
+	// a dispatch regression.
+	desc, _ := m["description"].(string)
+	if strings.Contains(strings.ToLower(desc), "unknown command") {
+		t.Errorf("command dispatch should be case-insensitive: got %v", m)
 	}
 }
 
@@ -645,7 +655,12 @@ func TestBil24_157_ResultCodeConstants(t *testing.T) {
 		expected int
 	}{
 		{"ResultCodeOK", ResultCodeOK, 0},
-		{"ResultCodeUnknownCommand", ResultCodeUnknownCommand, -1},
+		{"ResultCodeSessionExpired", ResultCodeSessionExpired, 1},
+		{"ResultCodeUserVisible", ResultCodeUserVisible, 101},
+		{"ResultCodeTransient", ResultCodeTransient, -1},
+		// Feature #477: ResultCodeUnknownCommand is a deprecated alias
+		// whose value moved from -1 to -2 (ResultCodeInvalidRequest).
+		{"ResultCodeUnknownCommand", ResultCodeUnknownCommand, -2},
 		{"ResultCodeInvalidRequest", ResultCodeInvalidRequest, -2},
 		{"ResultCodeNotFound", ResultCodeNotFound, -3},
 		{"ResultCodeInternalError", ResultCodeInternalError, -99},
@@ -680,10 +695,15 @@ func TestBil24_157_AllSixCommandsAreDispatched(t *testing.T) {
 				t.Fatalf("%s: expected HTTP 200, got %d", cmd, w.Code)
 			}
 			m := decodeBil24Response(t, w)
-			rc := int(m["resultCode"].(float64))
-			// All 6 commands should NOT return "unknown command" (-1)
-			if rc == ResultCodeUnknownCommand {
-				t.Errorf("%s: command was not dispatched (got unknown command result code)", cmd)
+			// All 6 commands must dispatch — the default (unknown-command)
+			// branch appends `"unknown command:"` to the description, so
+			// match on that substring rather than the raw code (feature
+			// #477 collapsed ResultCodeUnknownCommand onto
+			// ResultCodeInvalidRequest, which is also emitted for
+			// missing/malformed fields).
+			desc, _ := m["description"].(string)
+			if strings.Contains(strings.ToLower(desc), "unknown command") {
+				t.Errorf("%s: command was not dispatched (default branch fired: %s)", cmd, desc)
 			}
 			// Command field in response must match
 			gotCmd, _ := m["command"].(string)

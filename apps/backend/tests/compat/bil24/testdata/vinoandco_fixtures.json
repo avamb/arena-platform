@@ -327,7 +327,7 @@
   },
   {
     "name": "unknown_command_vinoandco",
-    "description": "Unknown command — Vino&Co may send GET_ACTIONS_V2 (extended catalog); must return -1 not 500",
+    "description": "Unknown command — Vino&Co may send GET_ACTIONS_V2 (extended catalog); feature #477 remapped unknown-command from -1 to -2 (spec section 6: -1 is now transient/retry, unknown command is invalid_request)",
     "request": {
       "command": "GET_ACTIONS_V2",
       "fid": "1271",
@@ -336,7 +336,7 @@
     },
     "expect": {
       "http_status": 200,
-      "result_code_eq": -1,
+      "result_code_eq": -2,
       "command_echo": "GET_ACTIONS_V2",
       "required_response_fields": ["resultCode", "description", "command"]
     }

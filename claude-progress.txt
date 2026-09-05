@@ -25448,3 +25448,55 @@ envelope level). Small: reuse the same tier loop, project to
 {categoryPriceId, categoryPriceName, price, placement:false, ...}.
 Alternative: KindOrder compat migration (0091) - heavier, needs
 migration head bump + Docker PG smoke test.
+
+## 2026-09-05 #476 CLOSE - owner SCOPE STOP honored
+
+Scope-stop honored (owner 2026-09-05 09:15). No code changes this session. Verified no_uuid_in_wire_test.go present and passing. Gates green: go build/vet ./apps/backend/... and go test of hbil24 + bil24compat + tests/compat/bil24 + staticanalysis + migrations (test_476_final.log, EXIT:0). Marked #476 PASSING. Follow-ups belong to #493 (GET_ORDER_INFO int64+status), #497/#498 (actionList nested), #499 (GET_SEAT_LIST categoryList+placement) - do NOT touch under #476.
+
+## 2026-09-05 #477 W1-A3a - result codes 1/101/-1, unknown command -> -2
+
+Spec section 6 realignment. Adapter package now defines the three
+missing constants and remaps the -1 slot:
+
+  ResultCodeSessionExpired = 1     (was absent)
+  ResultCodeUserVisible    = 101   (was absent)
+  ResultCodeTransient      = -1    (was ResultCodeUnknownCommand)
+  ResultCodeUnknownCommand = -2    (deprecated alias -> ResultCodeInvalidRequest)
+
+Files touched:
+  apps/backend/internal/adapters/bil24compat/result_codes.go        (M) header + spec-section-6 constants
+  apps/backend/internal/adapters/bil24compat/error_mapping.go       (A) MapDB/Validation/Scope/Business/Session helpers, English fallbacks (localisation lands in #478)
+  apps/backend/internal/adapters/bil24compat/error_mapping_test.go  (A) 5 tests pinning constants + helper contract
+  apps/backend/internal/platform/httpserver/bil24_shims.go          (M) re-export new constants
+  apps/backend/internal/platform/httpserver/hbil24/bil24_compat.go  (M) re-export + default case uses ResultCodeInvalidRequest for unknown command
+  apps/backend/internal/platform/httpserver/bil24_compat_157_test.go (M) unknown-command test + AllSixCommandsAreDispatched now match on "unknown command" description substring
+  apps/backend/internal/platform/httpserver/hbil24/bil24_374_test.go (M) ADD_PROMO_CODES test uses description substring; collision map reflects -1=Transient
+  apps/backend/tests/compat/bil24/regression_158_test.go            (M) CommandDispatchIsNotUnknown matches on description substring
+  apps/backend/tests/compat/bil24/testdata/vinoandco_fixtures.json  (M) unknown_command_vinoandco expects result_code_eq=-2
+  apps/backend/tests/compat/bil24/BEHAVIOR_DIFFERENCES.md           (M) section 6 rewritten (-1 now transient/retry)
+
+Mapping helpers (English fallbacks, spec section 6):
+  MapDBError         -> (-1, "temporary service error, please retry")
+  MapValidationError -> (-2, msg | "invalid request")
+  MapScopeError      -> (-3, msg | "resource not found in this channel")
+  MapBusinessError   -> (101, english | descKey | "operation refused")
+  MapSessionError    -> (1,  "session expired")
+  ErrSessionExpired  sentinel for handlers to errors.Is against.
+
+Note: existing hbil24 call-sites that emit ResultCodeInternalError for
+DB failures were NOT migrated in this slice - policy surface (the
+Map* helpers) is now in place so a follow-up wave can move callers
+over one command at a time. #477 spec text ("Constants + mapping +
+tests updated") is delivered.
+
+Gates - all GREEN:
+- go build ./apps/backend/...                              EXIT:0
+- go vet   ./apps/backend/...                              EXIT:0
+- go test  ./apps/backend/internal/adapters/bil24compat    EXIT:0
+- go test  ./apps/backend/internal/platform/httpserver/... EXIT:0
+- go test  ./apps/backend/tests/compat/bil24/...           EXIT:0
+- go test  ./apps/backend/tests/staticanalysis/...         EXIT:0 (bil24compat_layout_188 still green - ResultCodeUnknownCommand symbol retained as alias)
+- go test  ./apps/backend/...                              EXIT:0 full suite (test_477_full.log)
+- gofmt -l on 8 changed files clean
+
+No openapi.yaml touched, no migration added.

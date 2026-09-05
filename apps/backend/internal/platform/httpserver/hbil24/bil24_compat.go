@@ -85,11 +85,23 @@ import (
 const (
 	// ResultCodeOK signals a successful command execution (Bil24 wire: 0).
 	ResultCodeOK = bil24compat.ResultCodeOK
-	// ResultCodeUnknownCommand is returned when the gateway receives a command
-	// name it does not recognise (Bil24 wire: -1).
+	// ResultCodeSessionExpired signals expired gateway session (feature #477).
+	ResultCodeSessionExpired = bil24compat.ResultCodeSessionExpired
+	// ResultCodeUserVisible signals a user-visible business failure whose
+	// description is shown to the buyer verbatim (feature #477).
+	ResultCodeUserVisible = bil24compat.ResultCodeUserVisible
+	// ResultCodeTransient signals a transient/retry-able failure — DB/pool
+	// errors, deadlocks, timeouts (Bil24 wire: -1, feature #477).
+	ResultCodeTransient = bil24compat.ResultCodeTransient
+	// ResultCodeUnknownCommand is a deprecated alias for
+	// ResultCodeInvalidRequest; its value moved from -1 to -2 in feature
+	// #477 (unknown command names are now -2, per spec section 6).
+	//
+	// Deprecated: use ResultCodeInvalidRequest.
 	ResultCodeUnknownCommand = bil24compat.ResultCodeUnknownCommand
-	// ResultCodeInvalidRequest is returned when a required request field is
-	// missing or malformed (Bil24 wire: -2).
+	// ResultCodeInvalidRequest is returned when the request is malformed:
+	// missing/malformed field, JSON parse failure, unknown command name
+	// (Bil24 wire: -2).
 	ResultCodeInvalidRequest = bil24compat.ResultCodeInvalidRequest
 	// ResultCodeNotFound is returned when the requested resource does not
 	// exist in the platform (Bil24 wire: -3).
@@ -101,7 +113,7 @@ const (
 	// not yet wired to platform functionality (feature #374).
 	ResultCodeNotImplemented = bil24compat.ResultCodeNotImplemented
 	// ResultCodeInternalError is returned when an unexpected error prevents
-	// command execution (Bil24 wire: -99).
+	// command execution (Bil24 wire: -99). Reserved for panic-recovery.
 	ResultCodeInternalError = bil24compat.ResultCodeInternalError
 )
 
@@ -245,12 +257,17 @@ func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 			"ADD_PROMO_CODES is not implemented; apply promo codes via POST /v1/checkout/{id}/promos",
 		))
 	default:
+		// Feature #477 / spec section 6: unknown command name is a
+		// malformed-request condition and maps to ResultCodeInvalidRequest
+		// (-2), not the pre-#477 ResultCodeUnknownCommand (which used to
+		// occupy -1; that slot is now ResultCodeTransient for DB/pool
+		// failures).
 		h.logger.Warn("bil24_compat: unknown command",
 			slog.String("command", command),
 			slog.String("fid", req.FID),
 		)
 		writeBil24JSON(w, http.StatusOK, bil24Error(
-			command, ResultCodeUnknownCommand,
+			command, ResultCodeInvalidRequest,
 			fmt.Sprintf("unknown command: %q", command),
 		))
 	}

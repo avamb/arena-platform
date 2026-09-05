@@ -425,9 +425,11 @@ func TestCompatBil24_158_MalformedJSONReturnsResultCode_Neg2(t *testing.T) {
 }
 
 // TestCompatBil24_158_CommandDispatchIsNotUnknown verifies that each supported
-// Bil24 command is actually dispatched (does not return resultCode=-1 "unknown
-// command"). This catches the case where a new command mapping is accidentally
-// removed.
+// Bil24 command is actually dispatched (does not fall through to the
+// default "unknown command" branch). Feature #477 collapsed the unknown-
+// command result code onto ResultCodeInvalidRequest (-2), which is also
+// emitted for genuine validation failures, so the check now matches the
+// description substring rather than the raw code.
 func TestCompatBil24_158_CommandDispatchIsNotUnknown(t *testing.T) {
 	srv := buildCompatServer(t)
 	type testcase struct {
@@ -464,9 +466,9 @@ func TestCompatBil24_158_CommandDispatchIsNotUnknown(t *testing.T) {
 			}
 			var resp map[string]any
 			_ = json.Unmarshal(w.Body.Bytes(), &resp)
-			rc := int(resp["resultCode"].(float64))
-			if rc == -1 {
-				t.Errorf("%s: resultCode=-1 means command is not dispatched — check switch statement", tc.cmd)
+			desc, _ := resp["description"].(string)
+			if strings.Contains(strings.ToLower(desc), "unknown command") {
+				t.Errorf("%s: dispatch fell through to default branch: %s — check switch statement", tc.cmd, desc)
 			}
 		})
 	}

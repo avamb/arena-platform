@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -449,17 +450,17 @@ func TestBil24_374_TokenValidation_RequireTokenFalse_NoValidation(t *testing.T) 
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestBil24_374_AddPromoCodes_NotUnknownCommand(t *testing.T) {
-	// ADD_PROMO_CODES must NOT return ResultCodeUnknownCommand (-1).
-	// It is a recognized command that is explicitly not implemented, so it
-	// should return ResultCodeNotImplemented (-5). This lets callers
-	// distinguish "the gateway doesn't know this command" from "this command
-	// is not available in this gateway version".
+	// ADD_PROMO_CODES must not fall through to the default (unknown-
+	// command) switch branch. Feature #477 collapsed
+	// ResultCodeUnknownCommand onto ResultCodeInvalidRequest (-2), so the
+	// discriminator is the description's "unknown command" prefix, not
+	// the raw code — the recognised-but-unimplemented branch returns
+	// ResultCodeNotImplemented (-5) with a specific description.
 	h := newMinimalHandler()
 	resp := postJSON(t, h, `{"command":"ADD_PROMO_CODES","fid":"1271"}`)
-	rc := mustResultCode(t, resp)
-	if rc == ResultCodeUnknownCommand {
-		t.Errorf("Step 4: ADD_PROMO_CODES must not return %d (unknown command); got %d",
-			ResultCodeUnknownCommand, rc)
+	desc, _ := resp["description"].(string)
+	if strings.Contains(strings.ToLower(desc), "unknown command") {
+		t.Errorf("Step 4: ADD_PROMO_CODES fell through to the unknown-command branch: %s", desc)
 	}
 }
 
@@ -496,10 +497,16 @@ func TestBil24_374_ResultCodeConstants(t *testing.T) {
 	if ResultCodeNotImplemented != -5 {
 		t.Errorf("ResultCodeNotImplemented: expected -5, got %d", ResultCodeNotImplemented)
 	}
-	// Verify they don't collide with existing codes.
+	// Verify they don't collide with existing codes. Feature #477
+	// renamed the -1 slot to ResultCodeTransient (was ResultCodeUnknownCommand),
+	// added the 1 (SessionExpired) and 101 (UserVisible) slots, and made
+	// ResultCodeUnknownCommand a deprecated alias for
+	// ResultCodeInvalidRequest (-2).
 	existing := map[int]string{
 		0:   "ResultCodeOK",
-		-1:  "ResultCodeUnknownCommand",
+		1:   "ResultCodeSessionExpired",
+		101: "ResultCodeUserVisible",
+		-1:  "ResultCodeTransient",
 		-2:  "ResultCodeInvalidRequest",
 		-3:  "ResultCodeNotFound",
 		-99: "ResultCodeInternalError",

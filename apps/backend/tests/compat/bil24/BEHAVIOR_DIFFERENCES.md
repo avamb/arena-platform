@@ -73,11 +73,18 @@ unsupported HTTP methods therefore return `HTTP 200` with `resultCode=-2`
 in the JSON envelope. `HTTP 404` is reserved for "compat gateway disabled"
 (feature toggle off).
 
-### 6. `resultCode = -1` means "unknown command"
+### 6. `resultCode = -1` means "transient failure, retry"
 
-Regression `TestCompatBil24_158_CommandDispatchIsNotUnknown` guards this —
-any of the 15 documented commands returning `-1` is a switch-statement
-regression.
+Feature #477 realigned the code map to spec section 6: `-1` now denotes a
+retry-able transient failure (DB/pool errors, statement timeouts, worker
+deadlocks). Unknown command names moved to `-2` (invalid request); the
+`ResultCodeUnknownCommand` symbol is retained as a deprecated alias for
+`ResultCodeInvalidRequest`.
+
+Regression `TestCompatBil24_158_CommandDispatchIsNotUnknown` still guards
+against dispatch drops but now matches on the `"unknown command"`
+description substring rather than the raw code, since `-2` is also
+emitted for genuine validation failures.
 
 ### 7. `fid` is an **integer** on the wire
 

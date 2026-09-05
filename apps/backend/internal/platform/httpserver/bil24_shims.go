@@ -135,11 +135,22 @@ func (s *Server) bil24ReservationDeps() hbil24.ReservationDeps {
 const (
 	// ResultCodeOK signals a successful command execution (Bil24 wire: 0).
 	ResultCodeOK = bil24compat.ResultCodeOK
-	// ResultCodeUnknownCommand is returned when the gateway receives a command
-	// name it does not recognise (Bil24 wire: -1).
+	// ResultCodeSessionExpired signals expired gateway session (feature #477).
+	ResultCodeSessionExpired = bil24compat.ResultCodeSessionExpired
+	// ResultCodeUserVisible signals a user-visible business failure
+	// whose description is shown to the buyer verbatim (feature #477).
+	ResultCodeUserVisible = bil24compat.ResultCodeUserVisible
+	// ResultCodeTransient signals a transient/retry-able failure — DB/pool
+	// errors, deadlocks, timeouts (Bil24 wire: -1, feature #477).
+	ResultCodeTransient = bil24compat.ResultCodeTransient
+	// ResultCodeUnknownCommand is a deprecated alias for
+	// ResultCodeInvalidRequest kept for backward compatibility with the
+	// #157 tests; its value moved from -1 to -2 in feature #477.
+	//
+	// Deprecated: use ResultCodeInvalidRequest.
 	ResultCodeUnknownCommand = bil24compat.ResultCodeUnknownCommand
-	// ResultCodeInvalidRequest is returned when a required request field is
-	// missing or malformed (Bil24 wire: -2).
+	// ResultCodeInvalidRequest is returned when the request is malformed
+	// (missing/malformed field, unknown command name) (Bil24 wire: -2).
 	ResultCodeInvalidRequest = bil24compat.ResultCodeInvalidRequest
 	// ResultCodeNotFound is returned when the requested resource does not
 	// exist in the platform (Bil24 wire: -3).
@@ -151,7 +162,7 @@ const (
 	// gateway but not yet wired to platform functionality (feature #374).
 	ResultCodeNotImplemented = bil24compat.ResultCodeNotImplemented
 	// ResultCodeInternalError is returned when an unexpected error prevents
-	// command execution (Bil24 wire: -99).
+	// command execution (Bil24 wire: -99). Reserved for panic-recovery.
 	ResultCodeInternalError = bil24compat.ResultCodeInternalError
 )
 
