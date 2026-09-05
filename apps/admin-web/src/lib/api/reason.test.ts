@@ -92,6 +92,12 @@ describe("requiresAdminReason()", () => {
     ["/v1/auth/login", false],
     ["/v1/admin", false],
     ["/", false],
+    // W1-A1e (#474): the gateway-credential path is gated regardless of
+    // method, including a bare no-method check.
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/channels/22222222-2222-2222-2222-222222222222/gateway-credential",
+      true,
+    ],
   ])("path %s -> %s", (path, expected) => {
     expect(requiresAdminReason(path)).toBe(expected);
   });
@@ -244,6 +250,33 @@ describe("requiresAdminReason()", () => {
       "/v1/organizations/11111111-1111-1111-1111-111111111111/venues?limit=20",
       "POST",
       true,
+    ],
+    // W1-A1e (#474): unlike the channels-prefix mutation-only gate above,
+    // the gateway-credential sub-resource requires X-Admin-Reason on
+    // EVERY verb, including GET -- the summary read exposes rotation
+    // metadata and is treated as a sensitive admin action per spec.
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/channels/22222222-2222-2222-2222-222222222222/gateway-credential",
+      "GET",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/channels/22222222-2222-2222-2222-222222222222/gateway-credential",
+      "PUT",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/channels/22222222-2222-2222-2222-222222222222/gateway-credential",
+      "DELETE",
+      true,
+    ],
+    // The plain channel list/detail path stays mutation-gated only, so a
+    // sibling sub-resource under the same channel does not accidentally
+    // widen to require a reason on GET.
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/channels/22222222-2222-2222-2222-222222222222",
+      "GET",
+      false,
     ],
   ])("path %s + method %s -> %s", (path, method, expected) => {
     expect(requiresAdminReason(path, method)).toBe(expected);

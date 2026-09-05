@@ -1286,8 +1286,222 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             </button>
           </div>
         </form>
+        {isEdit ? (
+          <GatewayCredentialSection
+            orgId={mode.channel.org_id}
+            channelId={mode.channel.id}
+          />
+        ) : null}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bil24-compatible gateway credential section (feature #474, epic #451,
+// spec §5 item 4).
+//
+// Surfaces the WordPress-plugin-facing gateway credential for a sales
+// channel: GET/PUT/DELETE
+//   /v1/organizations/{org_id}/channels/{id}/gateway-credential
+// All three verbs require `channel.update` + `X-Admin-Reason`; the header
+// is injected automatically by authedFetch() (see lib/api/reason.ts —
+// the gateway-credential path is gated on every method, not just
+// mutations, because even the GET exposes rotation metadata). The
+// plaintext token is only ever present in the PUT response body and is
+// shown exactly once with a copy affordance; it is never persisted in
+// component state beyond this session and never sent back to the server.
+// ---------------------------------------------------------------------------
+
+interface GatewayCredentialSummary {
+  readonly fid: number;
+  readonly enabled: boolean;
+  readonly rotated_at: string;
+}
+
+interface GatewayCredentialRotated extends GatewayCredentialSummary {
+  readonly token: string;
+  readonly base_url: string;
+  readonly image_url: string;
+}
+
+function GatewayCredentialSection({
+  orgId,
+  channelId,
+}: {
+  orgId: string;
+  channelId: string;
+}) {
+  const queryClient = useQueryClient();
+  const [justRotated, setJustRotated] = useState<GatewayCredentialRotated | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const queryKey = ["gateway-credential", orgId, channelId];
+
+  const { data: summary, isLoading, error } = useQuery<GatewayCredentialSummary, ApiError>({
+    queryKey,
+    queryFn: () =>
+      authedFetch<GatewayCredentialSummary>({
+        method: "GET",
+        path: `/v1/organizations/${orgId}/channels/${channelId}/gateway-credential`,
+      }),
+  });
+
+  const rotateMut = useMutation<GatewayCredentialRotated, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<GatewayCredentialRotated>({
+        method: "PUT",
+        path: `/v1/organizations/${orgId}/channels/${channelId}/gateway-credential`,
+      }),
+    onSuccess: (data) => {
+      setJustRotated(data);
+      setCopied(false);
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err) => {
+      setActionError(err.message || "Failed to issue/rotate the gateway token.");
+    },
+  });
+
+  const disableMut = useMutation<GatewayCredentialSummary, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<GatewayCredentialSummary>({
+        method: "DELETE",
+        path: `/v1/organizations/${orgId}/channels/${channelId}/gateway-credential`,
+      }),
+    onSuccess: () => {
+      setJustRotated(null);
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err) => {
+      setActionError(err.message || "Failed to disable the gateway.");
+    },
+  });
+
+  async function copyToken(): Promise<void> {
+    if (justRotated === null) return;
+    try {
+      await navigator.clipboard.writeText(justRotated.token);
+      setCopied(true);
+    } catch {
+      // Clipboard API unavailable (insecure context / permissions) — the
+      // token is still visible in the box for manual copy.
+      setCopied(false);
+    }
+  }
+
+  return (
+    <section style={gatewaySectionStyle} data-testid="channels-gateway-section">
+      <h3 style={gatewayTitleStyle}>Bil24-compatible gateway</h3>
+      <p style={fieldHintStyle}>
+        Credential used by the WordPress Bil24-compat plugin to call{" "}
+        <code style={monoStyle}>/compat/bil24/*</code> on behalf of this
+        channel.
+      </p>
+
+      {isLoading && (
+        <p style={fieldHintStyle} data-testid="channels-gateway-loading">
+          Loading…
+        </p>
+      )}
+      {error && !isLoading && (
+        <p style={fieldErrorStyle} data-testid="channels-gateway-load-error">
+          Failed to load gateway status: {error.message}
+        </p>
+      )}
+
+      {justRotated !== null && (
+        <div style={gatewaySecretBoxStyle} data-testid="channels-gateway-token-box">
+          <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 600, color: "#065f46" }}>
+            ✓ Token issued. Copy it now — it will not be shown again.
+          </p>
+          <div style={monoBoxStyle} data-testid="channels-gateway-token-value">
+            {justRotated.token}
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+            <button
+              type="button"
+              style={secondaryButtonStyle}
+              onClick={copyToken}
+              data-testid="channels-gateway-token-copy"
+            >
+              {copied ? "Copied!" : "Copy"}
+            </button>
+            <button
+              type="button"
+              style={secondaryButtonStyle}
+              onClick={() => setJustRotated(null)}
+              data-testid="channels-gateway-token-dismiss"
+            >
+              Dismiss
+            </button>
+          </div>
+          <dl style={{ margin: "8px 0 0", fontSize: 11, color: "#334155" }}>
+            <dt style={{ fontWeight: 600 }}>fid</dt>
+            <dd style={{ margin: "0 0 4px" }}>{justRotated.fid}</dd>
+            <dt style={{ fontWeight: 600 }}>Base URL</dt>
+            <dd style={{ margin: "0 0 4px" }}>{justRotated.base_url || "—"}</dd>
+            <dt style={{ fontWeight: 600 }}>Image URL</dt>
+            <dd style={{ margin: 0 }}>{justRotated.image_url || "—"}</dd>
+          </dl>
+        </div>
+      )}
+
+      {!isLoading && summary !== undefined && justRotated === null ? (
+        <dl style={{ margin: "8px 0", fontSize: 12, color: "#334155" }}>
+          <dt style={{ fontWeight: 600, marginBottom: 2 }}>fid</dt>
+          <dd style={{ margin: "0 0 6px" }} data-testid="channels-gateway-fid">
+            {summary.fid}
+          </dd>
+          <dt style={{ fontWeight: 600, marginBottom: 2 }}>Status</dt>
+          <dd style={{ margin: "0 0 6px" }} data-testid="channels-gateway-status">
+            {summary.enabled ? "Enabled" : "Disabled"}
+          </dd>
+          <dt style={{ fontWeight: 600, marginBottom: 2 }}>Last rotated</dt>
+          <dd style={{ margin: 0 }} data-testid="channels-gateway-rotated-at">
+            {summary.rotated_at === "" ? "Never" : formatGatewayTimestamp(summary.rotated_at)}
+          </dd>
+        </dl>
+      ) : null}
+
+      {actionError !== null && (
+        <p style={fieldErrorStyle} data-testid="channels-gateway-action-error">
+          {actionError}
+        </p>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button
+          type="button"
+          style={secondaryButtonStyle}
+          disabled={rotateMut.isPending}
+          onClick={() => {
+            setActionError(null);
+            rotateMut.mutate();
+          }}
+          data-testid="channels-gateway-rotate"
+        >
+          {rotateMut.isPending ? "Issuing…" : gatewayRotateButtonLabel(summary?.enabled)}
+        </button>
+        {summary?.enabled === true ? (
+          <button
+            type="button"
+            style={dangerButtonStyle}
+            disabled={disableMut.isPending}
+            onClick={() => {
+              setActionError(null);
+              disableMut.mutate();
+            }}
+            data-testid="channels-gateway-disable"
+          >
+            {disableMut.isPending ? "Disabling…" : "Disable"}
+          </button>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -1503,6 +1717,25 @@ function formatDate(iso: string): string {
     return iso;
   }
   return d.toISOString().slice(0, 10);
+}
+
+/** Full date + time (UTC) for gateway-credential rotation timestamps. */
+export function formatGatewayTimestamp(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return iso;
+  }
+  return d.toISOString().replace("T", " ").slice(0, 19) + " UTC";
+}
+
+/**
+ * Label for the issue/rotate button. `undefined` enabled (summary not
+ * loaded yet, or the gateway was never provisioned) reads as "Issue
+ * token"; an explicitly enabled gateway reads as "Rotate token" since
+ * a credential already exists.
+ */
+export function gatewayRotateButtonLabel(enabled: boolean | undefined): string {
+  return enabled === true ? "Rotate token" : "Issue token";
 }
 
 // ---------------------------------------------------------------------------
@@ -1816,4 +2049,34 @@ const advancedToggleStyle: CSSProperties = {
   fontSize: 12,
   padding: "4px 0",
   fontWeight: 500,
+};
+
+const gatewaySectionStyle: CSSProperties = {
+  margin: "0 16px 16px",
+  padding: 12,
+  background: "#f8fafc",
+  border: "1px solid #e2e8f0",
+  borderRadius: 6,
+};
+
+const gatewayTitleStyle: CSSProperties = {
+  margin: "0 0 6px",
+  fontSize: 13,
+  fontWeight: 600,
+  color: "#334155",
+};
+
+const gatewaySecretBoxStyle: CSSProperties = {
+  margin: "8px 0",
+  padding: "8px 10px",
+  background: "#fefce8",
+  border: "1px solid #fde68a",
+  borderRadius: 4,
+};
+
+const monoBoxStyle: CSSProperties = {
+  fontSize: 12,
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  wordBreak: "break-all",
+  color: "#92400e",
 };

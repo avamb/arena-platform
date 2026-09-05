@@ -24,6 +24,8 @@ import {
   providerFieldsFromSettings,
   settingsFromProviderFields,
   validateStatementDescriptor,
+  formatGatewayTimestamp,
+  gatewayRotateButtonLabel,
 } from "./channels";
 
 // ---------------------------------------------------------------------------
@@ -385,5 +387,37 @@ describe("validateStatementDescriptor", () => {
   });
   it("rejects descriptor with forbidden characters", () => {
     expect(validateStatementDescriptor("Arena <test>")).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bil24-compatible gateway credential section (feature #474)
+// ---------------------------------------------------------------------------
+describe("formatGatewayTimestamp", () => {
+  it("renders a full UTC date+time for a valid RFC3339 timestamp", () => {
+    expect(formatGatewayTimestamp("2026-09-05T12:34:56Z")).toBe(
+      "2026-09-05 12:34:56 UTC",
+    );
+  });
+  it("normalises a non-UTC offset to UTC", () => {
+    expect(formatGatewayTimestamp("2026-09-05T14:34:56+02:00")).toBe(
+      "2026-09-05 12:34:56 UTC",
+    );
+  });
+  it("returns the raw string unchanged for an invalid/empty timestamp", () => {
+    expect(formatGatewayTimestamp("not-a-date")).toBe("not-a-date");
+    expect(formatGatewayTimestamp("")).toBe("");
+  });
+});
+
+describe("gatewayRotateButtonLabel", () => {
+  it("reads 'Issue token' when the gateway was never provisioned", () => {
+    expect(gatewayRotateButtonLabel(false)).toBe("Issue token");
+  });
+  it("reads 'Issue token' while the summary is still loading (undefined)", () => {
+    expect(gatewayRotateButtonLabel(undefined)).toBe("Issue token");
+  });
+  it("reads 'Rotate token' once a credential already exists", () => {
+    expect(gatewayRotateButtonLabel(true)).toBe("Rotate token");
   });
 });

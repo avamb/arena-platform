@@ -85,6 +85,19 @@ const REASON_REQUIRED_MUTATION_REGEX: readonly RegExp[] = [
   /^\/v1\/organizations\/[^/]+\/bank-accounts(?:\/.*)?$/,
 ];
 
+/**
+ * Regex patterns that require X-Admin-Reason on EVERY method, including
+ * GET. Added by W1-A1e (#474): the Bil24-compat gateway-credential
+ * endpoints (`GET`/`PUT`/`DELETE .../channels/{id}/gateway-credential`)
+ * mandate the header on all three verbs per the OpenAPI contract (the
+ * GET summary is a sensitive admin read, not a routine list/detail
+ * fetch) — unlike the channel CRUD prefix above, which only gates
+ * mutations so operators can browse without a prompt.
+ */
+const REASON_REQUIRED_REGEX: readonly RegExp[] = [
+  /^\/v1\/organizations\/[^/]+\/channels\/[^/]+\/gateway-credential$/,
+];
+
 /** HTTP methods treated as mutations for the SAUI-09 gate. */
 const MUTATION_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 
@@ -116,6 +129,11 @@ export function requiresAdminReason(path: string, method?: string): boolean {
   const bare = stripQuery(path);
   for (const prefix of REASON_REQUIRED_PREFIXES) {
     if (matchesPrefix(bare, prefix)) {
+      return true;
+    }
+  }
+  for (const re of REASON_REQUIRED_REGEX) {
+    if (re.test(bare)) {
       return true;
     }
   }
