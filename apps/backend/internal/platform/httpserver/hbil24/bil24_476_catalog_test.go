@@ -233,7 +233,7 @@ func TestBil24_476_BuildActionEntry_LastEventDateAndAge(t *testing.T) {
 		LastSessionAt:  &last,
 		AgeRating:      &age,
 	}
-	entry := h.buildActionEntry(ctx, full)
+	entry := h.buildActionEntry(ctx, full, 0, "")
 	if got, want := entry["lastEventDate"], last.Format(time.RFC3339); got != want {
 		t.Errorf("lastEventDate = %v, want %q", got, want)
 	}
@@ -252,7 +252,7 @@ func TestBil24_476_BuildActionEntry_LastEventDateAndAge(t *testing.T) {
 		Status:    "published",
 		AgeRating: &nrAge,
 	}
-	entry = h.buildActionEntry(ctx, nr)
+	entry = h.buildActionEntry(ctx, nr, 0, "")
 	if _, has := entry["age"]; has {
 		t.Errorf("age MUST be absent when AgeRating='NR' (normalised to empty), got %v", entry["age"])
 	}
@@ -264,7 +264,7 @@ func TestBil24_476_BuildActionEntry_LastEventDateAndAge(t *testing.T) {
 		Name:   "Bare",
 		Status: "published",
 	}
-	entry = h.buildActionEntry(ctx, bare)
+	entry = h.buildActionEntry(ctx, bare, 0, "")
 	if _, has := entry["lastEventDate"]; has {
 		t.Errorf("lastEventDate MUST be absent when LastSessionAt is nil, got %v", entry["lastEventDate"])
 	}
@@ -305,7 +305,7 @@ func TestBil24_476_BuildActionEntry_PosterPreference(t *testing.T) {
 		PosterMediaID: &posterID,
 		ImageURL:      &legacy,
 	}
-	entry := h.buildActionEntry(ctx, both)
+	entry := h.buildActionEntry(ctx, both, 0, "")
 	wantMedia := "/v1/media-files/" + posterID.String()
 	if got := entry["bigPosterUrl"]; got != wantMedia {
 		t.Errorf("bigPosterUrl = %v, want %q (poster_media_id must win over image_url)", got, wantMedia)
@@ -321,7 +321,7 @@ func TestBil24_476_BuildActionEntry_PosterPreference(t *testing.T) {
 		Status:   "published",
 		ImageURL: &legacy,
 	}
-	entry = h.buildActionEntry(ctx, legacyOnly)
+	entry = h.buildActionEntry(ctx, legacyOnly, 0, "")
 	if got := entry["bigPosterUrl"]; got != legacy {
 		t.Errorf("bigPosterUrl = %v, want %q (legacy image_url passthrough)", got, legacy)
 	}
@@ -337,7 +337,7 @@ func TestBil24_476_BuildActionEntry_PosterPreference(t *testing.T) {
 		Status:   "published",
 		ImageURL: &empty,
 	}
-	entry = h.buildActionEntry(ctx, emptyRow)
+	entry = h.buildActionEntry(ctx, emptyRow, 0, "")
 	if _, has := entry["bigPosterUrl"]; has {
 		t.Errorf("bigPosterUrl MUST be absent when image_url is empty and poster_media_id nil, got %v", entry["bigPosterUrl"])
 	}
@@ -347,12 +347,67 @@ func TestBil24_476_BuildActionEntry_PosterPreference(t *testing.T) {
 
 	// Bare row: no artwork at all → both keys absent.
 	bare := gen.EventRow{ID: uuid.New(), Name: "Bare", Status: "published"}
-	entry = h.buildActionEntry(ctx, bare)
+	entry = h.buildActionEntry(ctx, bare, 0, "")
 	if _, has := entry["bigPosterUrl"]; has {
 		t.Errorf("bigPosterUrl MUST be absent when no poster source set, got %v", entry["bigPosterUrl"])
 	}
 	if _, has := entry["smallPosterUrl"]; has {
 		t.Errorf("smallPosterUrl MUST be absent when no poster source set, got %v", entry["smallPosterUrl"])
+	}
+}
+
+// TestBil24_476_BuildActionEntry_Organizer pins the slice-19 spec §7.1
+// additions on the actionList entry body: organizerId is projected from
+// organizations.display_number (int64, migration 0072) and organizerName
+// from organizations.name. Both keys are OMITTED when the pair is not
+// available (organizerID == 0 / empty organizerName) — the WP plugin
+// treats an absent key as an unset organizer chip and 0 is not a valid
+// display_number so this cannot mask real data.
+func TestBil24_476_BuildActionEntry_Organizer(t *testing.T) {
+	h := &Handler{}
+	ctx := context.Background()
+
+	row := gen.EventRow{
+		ID:     uuid.New(),
+		Name:   "With Organizer",
+		Status: "published",
+	}
+
+	// Full organizer context → both keys emitted with the exact values.
+	entry := h.buildActionEntry(ctx, row, 7, "Lampyris Events s.r.o.")
+	if got, want := entry["organizerId"], int64(7); got != want {
+		t.Errorf("organizerId = %v (%T), want %d (int64)", got, got, want)
+	}
+	if got, want := entry["organizerName"], "Lampyris Events s.r.o."; got != want {
+		t.Errorf("organizerName = %v, want %q", got, want)
+	}
+
+	// No organizer context (unauthed / lookup error) → both keys absent.
+	entry = h.buildActionEntry(ctx, row, 0, "")
+	if _, has := entry["organizerId"]; has {
+		t.Errorf("organizerId MUST be absent when organizerID=0, got %v", entry["organizerId"])
+	}
+	if _, has := entry["organizerName"]; has {
+		t.Errorf("organizerName MUST be absent when organizerName='', got %v", entry["organizerName"])
+	}
+
+	// Partial: numeric id present but name blank → id present, name absent.
+	// Same guard the other direction: name present but id 0 → name present,
+	// id absent. Both defensive against a rare partial fetch that leaves
+	// half the pair populated.
+	entry = h.buildActionEntry(ctx, row, 7, "")
+	if entry["organizerId"] != int64(7) {
+		t.Errorf("organizerId = %v, want 7 (id must survive blank name)", entry["organizerId"])
+	}
+	if _, has := entry["organizerName"]; has {
+		t.Errorf("organizerName MUST be absent when name is blank, got %v", entry["organizerName"])
+	}
+	entry = h.buildActionEntry(ctx, row, 0, "OnlyName")
+	if _, has := entry["organizerId"]; has {
+		t.Errorf("organizerId MUST be absent when id=0, got %v", entry["organizerId"])
+	}
+	if entry["organizerName"] != "OnlyName" {
+		t.Errorf("organizerName = %v, want %q (name must survive zero id)", entry["organizerName"], "OnlyName")
 	}
 }
 

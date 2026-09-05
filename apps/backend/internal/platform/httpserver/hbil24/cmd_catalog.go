@@ -112,6 +112,30 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 		countryList, cityList = h.buildCountryCityLists(ctx, venueRows)
 	}
 
+	// Spec §7.1 (feature #476 slice 19): organizerId +
+	// organizerName. The catalog is org-scoped in the authed branch, so
+	// every actionList entry carries the SAME organizer — we look it up
+	// once here and pass it into buildActionEntry rather than joining it
+	// per row. A lookup failure logs and degrades gracefully to the
+	// pre-slice shape (both organizer keys omitted); the response is
+	// still useful without the organizer chip.
+	var (
+		organizerID   int64
+		organizerName string
+	)
+	if authed {
+		org, oerr := h.eventQueries.GetOrganizationByID(ctx, channel.OrgID)
+		if oerr != nil {
+			h.logger.Warn("bil24_compat: GET_ALL_ACTIONS: org lookup failed; omitting organizerId/organizerName",
+				slog.String("org_id", channel.OrgID.String()),
+				slog.String("error", oerr.Error()),
+			)
+		} else {
+			organizerID = org.DisplayNumber
+			organizerName = org.Name
+		}
+	}
+
 	actionList := make([]map[string]any, 0, len(events))
 	for _, e := range events {
 		// Spec §7.1: only status='published' events appear in the catalog.
@@ -120,7 +144,7 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 		if authed && e.Status != "published" {
 			continue
 		}
-		actionList = append(actionList, h.buildActionEntry(ctx, e))
+		actionList = append(actionList, h.buildActionEntry(ctx, e, organizerID, organizerName))
 	}
 
 	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
@@ -162,12 +186,19 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 //
 // Fields deferred to later slices (still missing from the spec §7.1
 // entry body): fullActionName (needs a source column), minPrice /
-// maxPrice / organizerId / organizerName (need a tier + org join),
-// actionEventList (whole subtree).
+// maxPrice (need a tier join), actionEventList (whole subtree).
+//
+// Organizer identity is passed in (organizerID, organizerName) because
+// the catalog is org-scoped in the authed branch — every entry carries
+// the SAME organizer, so handleBil24GetAllActions resolves it once and
+// threads the pair into this helper (feature #476 slice 19, spec §7.1
+// "`organizerId` — `organizations.display_number`"). Passing 0 for
+// organizerID (or empty organizerName) suppresses the respective key;
+// the unauthed fallback branch does this since it has no org context.
 //
 // This helper is pure over EventRow; it does not touch the DB itself,
 // so unit tests can pass a hand-built EventRow value.
-func (h *Handler) buildActionEntry(ctx context.Context, e gen.EventRow) map[string]any {
+func (h *Handler) buildActionEntry(ctx context.Context, e gen.EventRow, organizerID int64, organizerName string) map[string]any {
 	action := map[string]any{
 		// Spec §4 / §7.1 (feature #476): int64 wire form via compat map.
 		// Fallback (nil compatDB) returns the legacy UUID string so pre-W1
@@ -215,6 +246,23 @@ func (h *Handler) buildActionEntry(ctx context.Context, e gen.EventRow) map[stri
 	}
 	if e.Description != nil {
 		action["description"] = *e.Description
+	}
+	// Spec §7.1 (slice 19): organizerId is organizations.display_number
+	// (bigint, migration 0072) for the event's owning org. Passed in
+	// because the catalog is org-scoped and the lookup happens once in
+	// the handler; 0 signals "no organizer context" (unauthed branch or
+	// a lookup error) and the key is OMITTED — WP consumers treat an
+	// absent key the same as a nil chip and 0 is not a valid
+	// display_number (the sequence starts at 1).
+	if organizerID > 0 {
+		action["organizerId"] = organizerID
+	}
+	// organizerName mirrors organizations.name. Emitted only when
+	// non-empty so a rare partial fetch (organizerID present, name
+	// blank) does not surface an empty string; WP treats an empty
+	// string as an unset organizer chip so absence is the safer default.
+	if organizerName != "" {
+		action["organizerName"] = organizerName
 	}
 	return action
 }
