@@ -435,7 +435,10 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		nil, // publishTicketIssuedEvents — scanner events not required in worker context
 		nil, // publishTicketRevokedV1Events — revocation events not required here
 		nil, // publishTicketCancelledEvent — AB-49 cancellation is an admin-API action, not a worker one
-	)
+		// v1.order.paid is written on the issuance transaction itself
+		// (feature #488), so the worker — which is where issuance actually
+		// runs in production — must carry the outbox writer.
+	).WithOutboxWriter(outbox.NewPGWriter(pool))
 	reg.Register(issuejob.JobType, issuejob.NewHandler(issuejob.HandlerOptions{
 		Queries:      queries,
 		IssueTickets: ticketIssueHandler.IssueTicketsForCheckout,

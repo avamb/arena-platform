@@ -54,6 +54,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -62,9 +63,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -303,6 +306,14 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 				slog.String("error", flagsErr.Error()),
 			)
 		}
+	}
+
+	// Snapshotted onto the order below regardless of the flags: if the buyer
+	// volunteered a name or phone we keep it, we just do not demand it.
+	var buyerName, buyerPhone *string
+	if req.Buyer != nil {
+		buyerName = ptrOrNil(strings.TrimSpace(derefOr(req.Buyer.Name)))
+		buyerPhone = ptrOrNil(strings.TrimSpace(derefOr(req.Buyer.Phone)))
 	}
 
 	if collectName {
@@ -701,7 +712,19 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			slog.String("currency", bd.Currency),
 		)
 
-		h.confirmPublicCheckout(ctx, w, r, checkCtx, res.ID, checkoutToken, bd, promoCodeID, expiresAt)
+		// Seated units are priced from the per-tier map: reservation_ga_items
+		// carries the price lock, but the seats are the units (see
+		// ordering.collectUnits), so the order needs tier → unit price here.
+		seatTierPrices := make(map[uuid.UUID]int64, len(lines))
+		for _, l := range lines {
+			tid, parseErr := uuid.Parse(l.TierID)
+			if parseErr != nil {
+				continue
+			}
+			seatTierPrices[tid] = l.UnitPrice
+		}
+		h.confirmPublicCheckout(ctx, w, r, checkCtx, res.ID, checkoutToken, bd, promoCodeID, expiresAt,
+			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone}, seatTierPrices)
 		return
 	}
 
@@ -851,7 +874,10 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		slog.String("currency", bd.Currency),
 	)
 
-	h.confirmPublicCheckout(ctx, w, r, checkCtx, reservation.ID, checkoutToken, bd, promoCodeID, expiresAt)
+	// Pure GA: reservation_ga_items.unit_price is authoritative for every unit,
+	// so no tier price map is needed.
+	h.confirmPublicCheckout(ctx, w, r, checkCtx, reservation.ID, checkoutToken, bd, promoCodeID, expiresAt,
+		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone}, nil)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -976,12 +1002,51 @@ func (h *Handler) applyPromoDiscount(promoRow *gen.PromoCodeRow, lines []hchecko
 	return d, &promoRow.ID, ""
 }
 
+// publicOrderBuyer is the buyer identity the public feed collected on this
+// request. Email is always present (the endpoint rejects an empty one at step
+// 4); name and phone are only filled when the channel's collect_name /
+// collect_phone flags are on.
+type publicOrderBuyer struct {
+	Email string
+	Name  *string
+	Phone *string
+}
+
+// ptrOrNil turns a possibly-empty string into the *string the order columns
+// want: an empty buyer field must land as NULL, not as ”.
+func ptrOrNil(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// derefOr reads an optional JSON string field, yielding "" for absent.
+func derefOr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 // confirmPublicCheckout inserts the checkout session with the pre-minted
 // token, stores the platform-computed pricing snapshot (created →
-// pricing_confirmed), and writes the 201 response. The response includes
-// the full pricing breakdown (subtotal / fees / total / currency plus the
-// per-line tier groups) so the widget can display totals without doing any
-// money arithmetic client-side (guardrail #15).
+// pricing_confirmed), mints the order aggregate, and writes the 201 response.
+// The response includes the full pricing breakdown (subtotal / fees / total /
+// currency plus the per-line tier groups) so the widget can display totals
+// without doing any money arithmetic client-side (guardrail #15).
+//
+// W1-A6c (feature #488; spec §14.1) made this ONE transaction. Before, the
+// insert and the confirm were two independent statements, so a crash between
+// them left a 'created' session nobody would ever confirm. Now the insert, the
+// confirm, the §12.2 customer resolution and the orders/order_items/
+// order_events triple either all land or none do — an order without its
+// checkout snapshot is a reconciliation bug no later step can repair.
+//
+// Customer resolution is best-effort: a public buyer who cannot be resolved
+// into a customer row still gets their tickets, with orders.customer_id NULL
+// and the buyer columns carrying the identity. Losing a sale over a CRM
+// rollup would be the wrong trade.
 func (h *Handler) confirmPublicCheckout(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -992,8 +1057,25 @@ func (h *Handler) confirmPublicCheckout(
 	bd hcheckout.PricingBreakdown,
 	promoCodeID *uuid.UUID,
 	expiresAt time.Time,
+	buyer publicOrderBuyer,
+	tierUnitPrices map[uuid.UUID]int64,
 ) {
-	cs, err := h.checkoutQueries.InsertCheckoutSessionWithToken(
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		h.logger.Error("public_feed_checkout: begin checkout tx failed",
+			slog.String("reservation_id", reservationID.String()),
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"checkout.start_failed", "failed to create checkout session", r,
+		))
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	txq := gen.New(tx)
+
+	cs, err := txq.InsertCheckoutSessionWithToken(
 		ctx, checkCtx.OrgID, checkCtx.SalesChannelID, reservationID, nil, checkoutToken,
 	)
 	if err != nil {
@@ -1007,13 +1089,35 @@ func (h *Handler) confirmPublicCheckout(
 		return
 	}
 
-	cs, err = h.checkoutQueries.ConfirmCheckoutSession(
+	cs, err = txq.ConfirmCheckoutSession(
 		ctx, cs.ID,
 		bd.Subtotal, bd.Discount, bd.PlatformFee, bd.ProviderFee, bd.Tax, bd.Total,
 		bd.Currency, promoCodeID,
 	)
 	if err != nil {
 		h.logger.Error("public_feed_checkout: confirm checkout session failed",
+			slog.String("checkout_session_id", cs.ID.String()),
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"checkout.confirm_failed", "failed to confirm checkout session", r,
+		))
+		return
+	}
+
+	if err := h.createPublicOrder(ctx, txq, checkCtx, cs, buyer, tierUnitPrices); err != nil {
+		h.logger.Error("public_feed_checkout: create order failed",
+			slog.String("checkout_session_id", cs.ID.String()),
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"checkout.confirm_failed", "failed to confirm checkout session", r,
+		))
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		h.logger.Error("public_feed_checkout: commit checkout tx failed",
 			slog.String("checkout_session_id", cs.ID.String()),
 			slog.String("error", err.Error()),
 		)
@@ -1035,4 +1139,77 @@ func (h *Handler) confirmPublicCheckout(
 		"expires_at":       expiresAt.Format(time.RFC3339),
 		"pricing":          bd,
 	})
+}
+
+// createPublicOrder mints the order aggregate for a just-confirmed public
+// checkout session, on the caller's transaction.
+//
+// It resolves (or creates) the customer behind the buyer's email first, so
+// the org's CRM rollup sees the sale, then hands the money snapshot to
+// ordering.CreateOrderFromCheckout. Only a genuine order-write failure is
+// returned: identity resolution and the fee-percent audit snapshot both
+// degrade quietly, because neither is worth failing a paid-for cart over.
+func (h *Handler) createPublicOrder(
+	ctx context.Context,
+	txq *gen.Queries,
+	checkCtx gen.PublicCheckoutContextRow,
+	cs gen.CheckoutSessionRow,
+	buyer publicOrderBuyer,
+	tierUnitPrices map[uuid.UUID]int64,
+) error {
+	var customerID *uuid.UUID
+	if buyer.Email != "" {
+		store := customers.NewStoreFromQueries(txq)
+		name := ""
+		if buyer.Name != nil {
+			name = *buyer.Name
+		}
+		phone := ""
+		if buyer.Phone != nil {
+			phone = *buyer.Phone
+		}
+		res, resErr := customers.Resolve(ctx, store, customers.ResolveInput{
+			Email:     buyer.Email,
+			Phone:     phone,
+			Name:      name,
+			ChannelID: checkCtx.SalesChannelID,
+			Now:       time.Now().UTC(),
+		})
+		if resErr != nil {
+			h.logger.Warn("public_feed_checkout: customer resolve failed (non-fatal)",
+				slog.String("checkout_session_id", cs.ID.String()),
+				slog.String("error", resErr.Error()),
+			)
+		} else {
+			id := res.Customer.ID
+			customerID = &id
+			if linkErr := customers.LinkOrg(ctx, store, id, checkCtx.OrgID, "order"); linkErr != nil {
+				h.logger.Warn("public_feed_checkout: customer org link failed (non-fatal)",
+					slog.String("customer_id", id.String()),
+					slog.String("error", linkErr.Error()),
+				)
+			}
+		}
+	}
+
+	// The channel fee percentage is an audit snapshot only; the exact charge
+	// travels in orders.charge, so a lookup failure degrades to 0.
+	var chargePercentBP int32
+	if ch, chErr := txq.GetSalesChannelByID(ctx, checkCtx.SalesChannelID, checkCtx.OrgID); chErr == nil {
+		chargePercentBP = ordering.ChargePercentBP(ch.FeePercent)
+	}
+
+	_, err := ordering.CreateOrderFromCheckout(ctx, txq, ordering.CreateInput{
+		CheckoutSessionID: cs.ID,
+		EventID:           checkCtx.EventID,
+		CustomerID:        customerID,
+		Source:            ordering.SourcePublicFeed,
+		Actor:             ordering.ActorSystem,
+		ChargePercentBP:   chargePercentBP,
+		BuyerName:         buyer.Name,
+		BuyerEmail:        ptrOrNil(buyer.Email),
+		BuyerPhone:        buyer.Phone,
+		TierUnitPrices:    tierUnitPrices,
+	})
+	return err
 }

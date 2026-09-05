@@ -401,3 +401,25 @@ func (q *Queries) GetSessionCurrency(ctx context.Context, id uuid.UUID) (string,
 	err := row.Scan(&currency)
 	return currency, err
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetSessionEventID
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getSessionEventID = `-- name: GetSessionEventID :one
+SELECT event_id
+FROM   sessions
+WHERE  id = $1
+  AND  deleted_at IS NULL`
+
+// GetSessionEventID returns the owning event of a session. Order creation
+// needs orders.event_id but reservations only carry session_id, so the
+// checkout confirm and public-feed paths resolve it through this one-column
+// lookup (W1-A6c, feature #488). Returns pgx.ErrNoRows when the session does
+// not exist or is soft-deleted.
+func (q *Queries) GetSessionEventID(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getSessionEventID, id)
+	var eventID uuid.UUID
+	err := row.Scan(&eventID)
+	return eventID, err
+}

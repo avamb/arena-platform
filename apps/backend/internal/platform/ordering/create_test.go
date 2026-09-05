@@ -189,10 +189,10 @@ func TestCreateOrderFromCheckout_WritesAggregateWithProratedItems(t *testing.T) 
 }
 
 // Seats have no price column of their own, so the caller-supplied maps decide.
-// Seat units come after GA units and keep their session_seat_id.
+// Seat units are emitted in seat_key order and keep their session_seat_id.
 func TestCreateOrderFromCheckout_SeatsPricedFromCallerMaps(t *testing.T) {
-	f, gaTier := storeWithGACart(t)
-	f.gaItems[0].Quantity = 1
+	f, _ := storeWithGACart(t)
+	f.gaItems = nil
 	seatTier := uuid.New()
 	seatA := uuid.New()
 	seatB := uuid.New()
@@ -201,9 +201,9 @@ func TestCreateOrderFromCheckout_SeatsPricedFromCallerMaps(t *testing.T) {
 		{ID: seatA, SeatKey: "A-1", TierID: &seatTier},
 	}
 	// Subtotal must line up with the units for the sums to be meaningful.
-	f.checkout.Subtotal = ptr(int64(2000 + 1500 + 3000))
+	f.checkout.Subtotal = ptr(int64(1500 + 3000))
 	f.checkout.Discount = ptr(int64(0))
-	f.checkout.Total = ptr(int64(2000 + 1500 + 3000 + 175))
+	f.checkout.Total = ptr(int64(1500 + 3000 + 175))
 
 	res, err := CreateOrderFromCheckout(context.Background(), f, CreateInput{
 		CheckoutSessionID: f.checkout.ID,
@@ -215,19 +215,58 @@ func TestCreateOrderFromCheckout_SeatsPricedFromCallerMaps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateOrderFromCheckout: %v", err)
 	}
-	if len(res.Items) != 3 {
-		t.Fatalf("got %d items, want 3", len(res.Items))
+	if len(res.Items) != 2 {
+		t.Fatalf("got %d items, want 2", len(res.Items))
 	}
-	// GA first, then seats in seat_key order (A-1 before B-2).
-	if res.Items[0].TierID != gaTier || res.Items[0].SessionSeatID != nil {
-		t.Fatalf("item 1 = %+v, want the GA unit", res.Items[0])
-	}
-	if res.Items[1].SessionSeatID == nil || *res.Items[1].SessionSeatID != seatA || res.Items[1].UnitPrice != 1500 {
-		t.Fatalf("item 2 = %+v, want seat A-1 at the tier price 1500", res.Items[1])
+	// Seats in seat_key order (A-1 before B-2).
+	if res.Items[0].SessionSeatID == nil || *res.Items[0].SessionSeatID != seatA || res.Items[0].UnitPrice != 1500 {
+		t.Fatalf("item 1 = %+v, want seat A-1 at the tier price 1500", res.Items[0])
 	}
 	// The per-seat override beats the tier price.
-	if res.Items[2].SessionSeatID == nil || *res.Items[2].SessionSeatID != seatB || res.Items[2].UnitPrice != 3000 {
-		t.Fatalf("item 3 = %+v, want seat B-2 at the per-seat override 3000", res.Items[2])
+	if res.Items[1].SessionSeatID == nil || *res.Items[1].SessionSeatID != seatB || res.Items[1].UnitPrice != 3000 {
+		t.Fatalf("item 2 = %+v, want seat B-2 at the per-seat override 3000", res.Items[1])
+	}
+}
+
+// AB-48 made reservation_ga_items the price-lock record for SEATED holds too:
+// two seats in tier T also produce a GA line (tier=T, quantity=2). Those lines
+// must not be enumerated as units on top of the seats — that would double every
+// seated order — and they are the price of last resort for a seat the caller
+// did not price.
+func TestCreateOrderFromCheckout_SeatedGALinesArePriceLocksNotUnits(t *testing.T) {
+	f, _ := storeWithGACart(t)
+	seatTier := uuid.New()
+	seatA := uuid.New()
+	seatB := uuid.New()
+	f.gaItems = []gen.ReservationGAItemRow{
+		{ReservationID: f.reservation.ID, TierID: seatTier, Quantity: 2, UnitPrice: 2500},
+	}
+	f.seats = []gen.SessionSeatRow{
+		{ID: seatA, SeatKey: "A-1", TierID: &seatTier},
+		{ID: seatB, SeatKey: "B-2", TierID: &seatTier},
+	}
+	f.checkout.Subtotal = ptr(int64(5000))
+	f.checkout.Discount = ptr(int64(0))
+	f.checkout.Total = ptr(int64(5000 + 175))
+
+	res, err := CreateOrderFromCheckout(context.Background(), f, CreateInput{
+		CheckoutSessionID: f.checkout.ID,
+		EventID:           uuid.New(),
+		Source:            SourceCheckoutAPI,
+	})
+	if err != nil {
+		t.Fatalf("CreateOrderFromCheckout: %v", err)
+	}
+	if len(res.Items) != 2 {
+		t.Fatalf("got %d items, want 2 (one per seat, not 2 seats + 2 GA lock lines)", len(res.Items))
+	}
+	for i, it := range res.Items {
+		if it.SessionSeatID == nil {
+			t.Fatalf("item %d = %+v, want a seated unit", i, it)
+		}
+		if it.UnitPrice != 2500 {
+			t.Fatalf("item %d unit_price = %d, want the locked 2500", i, it.UnitPrice)
+		}
 	}
 }
 

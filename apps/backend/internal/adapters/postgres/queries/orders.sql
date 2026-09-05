@@ -63,6 +63,21 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
 FROM   orders
 WHERE  system_id = $1;
 
+-- name: GetOrderByCheckoutSession :one
+-- Loads the order minted from a checkout session (orders is 1:1 with
+-- checkout_sessions). This is the lookup both ticket issuance and the
+-- payment webhook need: they hold a checkout_session_id, not an order id
+-- (W1-A6c, feature #488, spec §7.9 step 5 / §14.1). Returns pgx.ErrNoRows
+-- for checkout sessions that never produced an order — a legitimate state
+-- for pre-#488 sessions, so callers degrade instead of failing.
+SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
+       checkout_session_id, reservation_id, external_ref, source, status,
+       currency, subtotal, discount, charge, total, charge_percent_bp,
+       promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+FROM   orders
+WHERE  checkout_session_id = $1;
+
 -- name: FindOpenOrderByCustomerSession :one
 -- Resolves the single pending_payment order for a (customer, event
 -- session) pair, mirroring the partial unique index

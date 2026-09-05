@@ -41,6 +41,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/convertjob"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/issuejob"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -829,6 +830,48 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 				"webhook.enqueue_failed", "failed to enqueue ticket issuance job", r,
 			))
 			return
+		}
+	}
+
+	// Step 3b (W1-A6c, feature #488; spec §14.1): move the order aggregate to
+	// 'paid' in the SAME transaction as the state change, so money state and
+	// order state can never disagree.
+	//
+	// Two degradations are deliberate and non-fatal:
+	//
+	//   - pgx.ErrNoRows means the checkout session predates the order aggregate
+	//     (confirmed before this feature landed). Those sessions still issue
+	//     tickets; they simply have no order to mark.
+	//   - ordering.MarkPaid on an already-paid order is a no-op by design, so a
+	//     replayed webhook does not double-write the audit event.
+	//
+	// Anything else is logged and swallowed: refusing to issue tickets for a
+	// payment the provider has already captured would be strictly worse than an
+	// order row lagging behind, which the paid-order reconciliation can repair.
+	if updated.State == "succeeded" && updated.CheckoutSessionID != nil {
+		if ord, ordErr := txQ.GetOrderByCheckoutSession(ctx, *updated.CheckoutSessionID); ordErr != nil {
+			if !errors.Is(ordErr, pgx.ErrNoRows) {
+				h.logger.Warn("webhook: order lookup for mark-paid failed (non-fatal)",
+					slog.String("payment_intent_id", pi.ID.String()),
+					slog.String("checkout_session_id", updated.CheckoutSessionID.String()),
+					slog.String("error", ordErr.Error()),
+				)
+			}
+		} else if _, paidErr := ordering.MarkPaid(ctx, txQ, ordering.PaidInput{
+			OrderID: ord.ID,
+			OrgID:   ord.OrgID,
+			Actor:   ordering.ActorSystem,
+			Payload: map[string]any{
+				"payment_intent_id":   pi.ID.String(),
+				"provider_payment_id": req.ProviderPaymentID,
+				"event_type":          req.EventType,
+			},
+		}); paidErr != nil {
+			h.logger.Warn("webhook: order mark-paid failed (non-fatal)",
+				slog.String("payment_intent_id", pi.ID.String()),
+				slog.String("order_id", ord.ID.String()),
+				slog.String("error", paidErr.Error()),
+			)
 		}
 	}
 

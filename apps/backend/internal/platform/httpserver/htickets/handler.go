@@ -13,7 +13,20 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 )
+
+// OutboxWriter is the narrow append contract htickets needs. Unlike the
+// ticket.issued publishers — which are injected callbacks that open their own
+// short-lived transaction after the fact — v1.order.paid is written on the
+// ISSUANCE transaction itself (W1-A6c, feature #488). That is what makes it
+// exactly-once: the advisory lock plus UNIQUE (checkout_session_id, ordinal)
+// already guarantee a single caller completes the last ordinal, and putting
+// the outbox row in the same commit means the event cannot be emitted for
+// tickets that were rolled back, nor lost for tickets that were kept.
+type OutboxWriter interface {
+	Append(ctx context.Context, tx pgx.Tx, event outbox.Event) error
+}
 
 // TxStarter is the narrow subset of PoolDB that htickets requires.
 // PoolDB satisfies this by structural typing.
@@ -44,6 +57,21 @@ type Handler struct {
 	publishTicketIssuedEvents    func(ctx context.Context, tickets []gen.TicketRow)
 	publishTicketRevokedV1Events func(ctx context.Context, ticketIDs []string, complimentaryIssuanceID, reason string)
 	publishTicketCancelledEvent  func(ctx context.Context, ticket gen.TicketRow, reason, refundMode string)
+
+	// outboxWriter is optional: when nil, issuance still links tickets to
+	// their order but publishes no v1.order.paid. Attached via
+	// WithOutboxWriter rather than a New parameter so the existing callers
+	// (tickets_shims.go, arena-worker, the MACS integration test) opt in
+	// individually.
+	outboxWriter OutboxWriter
+}
+
+// WithOutboxWriter attaches the transactional outbox writer used to publish
+// v1.order.paid from IssueTicketsForCheckout. Returns h so it can be chained
+// onto a New(...) call.
+func (h *Handler) WithOutboxWriter(w OutboxWriter) *Handler {
+	h.outboxWriter = w
+	return h
 }
 
 // New constructs a Handler from the caller's dependencies. Nil queries are

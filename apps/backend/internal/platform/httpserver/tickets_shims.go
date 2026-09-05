@@ -40,7 +40,7 @@ func (s *Server) ticketsHandler() *htickets.Handler {
 		s.publishTicketIssuedEvents,
 		s.publishTicketRevokedV1Events,
 		s.publishTicketCancelledEvent,
-	)
+	).WithOutboxWriter(s.outboxWriter)
 }
 
 // ─── AB-49 ticket cancellation shim ──────────────────────────────────────────

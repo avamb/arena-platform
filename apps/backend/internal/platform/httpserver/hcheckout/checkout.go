@@ -548,12 +548,21 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 
 		bd := ComputePricingLines(lines, discount, currency, h.pricingRules)
 
-		cs, err := h.checkoutQueries.ConfirmCheckoutSession(ctx, id,
-			bd.Subtotal, bd.Discount, bd.PlatformFee, bd.ProviderFee, bd.Tax, bd.Total,
-			bd.Currency, promoCodeID,
-		)
+		// The seated units are priced from the very map ComputePricingLines
+		// just consumed, so order_items and the checkout snapshot can never
+		// disagree about what a seat cost.
+		seatTierPrices := make(map[uuid.UUID]int64, len(tierPriceMap))
+		for tid, price := range tierPriceMap {
+			parsed, parseErr := uuid.Parse(tid)
+			if parseErr != nil {
+				continue
+			}
+			seatTierPrices[parsed] = price
+		}
+
+		cs, err := h.confirmAndCreateOrder(ctx, id, reservation, bd, promoCodeID, seatTierPrices, orderBuyer{})
 		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
+			if isCheckoutStateConflict(err) {
 				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 					"checkout.invalid_transition", "checkout session is not in 'created' state", r,
 				))
@@ -622,12 +631,9 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 
 		bd := ComputePricingLines(lines, discount, currency, h.pricingRules)
 
-		cs, err := h.checkoutQueries.ConfirmCheckoutSession(ctx, id,
-			bd.Subtotal, bd.Discount, bd.PlatformFee, bd.ProviderFee, bd.Tax, bd.Total,
-			bd.Currency, promoCodeID,
-		)
+		cs, err := h.confirmAndCreateOrder(ctx, id, reservation, bd, promoCodeID, nil, orderBuyer{})
 		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
+			if isCheckoutStateConflict(err) {
 				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 					"checkout.invalid_transition", "checkout session is not in 'created' state", r,
 				))
@@ -739,12 +745,13 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 
 	// ── Persist pricing_confirmed transition ─────────────────────────────────
 
-	cs, err := h.checkoutQueries.ConfirmCheckoutSession(ctx, id,
-		bd.Subtotal, bd.Discount, bd.PlatformFee, bd.ProviderFee, bd.Tax, bd.Total,
-		bd.Currency, promoCodeID,
-	)
+	// The single-tier GA cart is priced off reservation_ga_items, which
+	// ordering reads itself; the tier map is a fallback for legacy holds that
+	// carry no price line.
+	cs, err := h.confirmAndCreateOrder(ctx, id, reservation, bd, promoCodeID,
+		map[uuid.UUID]int64{tierID: unitPrice}, orderBuyer{})
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if isCheckoutStateConflict(err) {
 			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"checkout.invalid_transition",
 				"checkout session is not in 'created' state",

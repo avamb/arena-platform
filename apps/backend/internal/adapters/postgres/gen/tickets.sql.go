@@ -328,6 +328,23 @@ func (q *Queries) ClearTicketReviewHold(ctx context.Context, id uuid.UUID) (Tick
 	return scanTicketRow(row)
 }
 
+const setTicketOrder = `-- name: SetTicketOrder :exec
+UPDATE tickets
+SET    order_id   = $2,
+       updated_at = now()
+WHERE  id = $1`
+
+// SetTicketOrder links a freshly issued ticket to the order that paid for it
+// (tickets.order_id, added by migration 0092; W1-A6c, feature #488, spec §7.9
+// step 5). It is a narrow :exec on purpose: order_id is not a member of
+// TicketRow, and widening that struct would force every SELECT feeding
+// scanTicketRow — including the ones in superadmin.sql.go and refunds.sql.go —
+// to grow a column.
+func (q *Queries) SetTicketOrder(ctx context.Context, id, orderID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, setTicketOrder, id, orderID)
+	return err
+}
+
 const countActiveTicketsForSeat = `-- name: CountActiveTicketsForSeat :one
 SELECT COUNT(*)::bigint AS count
 FROM   tickets

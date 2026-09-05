@@ -128,6 +128,18 @@ RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
           cancelled_at, cancellation_reason, refund_mode, refund_id,
           refund_date, refund_price, review_hold, review_hold_reason;
 
+-- name: SetTicketOrder :exec
+-- Links a freshly issued ticket to the order it belongs to (column added
+-- by migration 0092; W1-A6c, feature #488, spec §7.9 step 5 / §14.3
+-- invariant "tickets.order_id filled at issuance for every source that
+-- has an order"). Deliberately a narrow :exec rather than a RETURNING
+-- query: order_id is not part of TicketRow, so widening the shared
+-- scanTicketRow would ripple through every SELECT that feeds it.
+UPDATE tickets
+SET    order_id   = $2,
+       updated_at = now()
+WHERE  id = $1;
+
 -- name: CountActiveTicketsForSeat :one
 -- Guard for ReleaseSoldSessionSeat: how many ACTIVE tickets still
 -- reference (session_id, seat_key). Uses tickets_active_seat_idx.

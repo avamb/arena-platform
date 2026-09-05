@@ -152,3 +152,13 @@ SELECT trim(currency)::text AS currency
 FROM   sessions
 WHERE  id = $1
   AND  deleted_at IS NULL;
+
+-- name: GetSessionEventID :one
+-- GetSessionEventID returns the owning event of a session. Order creation
+-- needs orders.event_id, but reservations only carry session_id, so the
+-- checkout confirm and public-feed paths resolve the event through this
+-- one-column lookup rather than a full session SELECT (W1-A6c, #488).
+SELECT event_id
+FROM   sessions
+WHERE  id = $1
+  AND  deleted_at IS NULL;

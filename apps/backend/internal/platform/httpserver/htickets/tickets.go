@@ -44,6 +44,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/ean13"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 )
 
 // ean13PlatformPrefix is the GS1 "internal use" prefix minted onto every
@@ -214,6 +215,27 @@ func (h *Handler) IssueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSe
 
 	txQ := gen.New(tx)
 
+	// ── Order aggregate (W1-A6c, feature #488; spec §7.9 step 5) ─────────────
+	// Load before minting anything: orders.buyer_email is the source of truth
+	// for tickets.holder_email, which used to be left NULL here ("not known at
+	// issuance time"). Since the order aggregate exists it IS known, and the
+	// delivery job no longer has to re-derive an address.
+	//
+	// pgx.ErrNoRows is legitimate: checkout sessions confirmed before this
+	// feature landed have no order. They still issue tickets — just without
+	// the order links or the v1.order.paid event.
+	var order *gen.OrderRow
+	if o, ordErr := txQ.GetOrderByCheckoutSession(ctx, cs.ID); ordErr == nil {
+		order = &o
+	} else if !errors.Is(ordErr, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("IssueTicketsForCheckout: get order for %s: %w", cs.ID.String(), ordErr)
+	}
+
+	var holderEmail *string
+	if order != nil {
+		holderEmail = order.BuyerEmail
+	}
+
 	// ── Quantity-aware idempotency check ─────────────────────────────────────
 	// Compare existing ticket count to the expected total.
 	// A non-zero count < expected means a previous attempt was interrupted
@@ -265,7 +287,7 @@ func (h *Handler) IssueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSe
 				cs.ID,
 				reservation.SessionID,
 				tierID,
-				nil, // holderEmail — not known at issuance time
+				holderEmail, // orders.buyer_email (feature #488); nil pre-order
 				&seatKey,
 				&seatSector,
 				&seatRow,
@@ -292,11 +314,11 @@ func (h *Handler) IssueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSe
 				cs.ID,
 				reservation.SessionID,
 				reservation.TierID,
-				nil, // holderEmail — not known at issuance time
-				nil, // seatKey — GA ticket
-				nil, // seatSector — GA ticket
-				nil, // seatRow — GA ticket
-				nil, // seatNumber — GA ticket
+				holderEmail, // orders.buyer_email (feature #488); nil pre-order
+				nil,         // seatKey — GA ticket
+				nil,         // seatSector — GA ticket
+				nil,         // seatRow — GA ticket
+				nil,         // seatNumber — GA ticket
 				i,
 			)
 			if err != nil {
@@ -327,6 +349,23 @@ func (h *Handler) IssueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSe
 			if _, err := txQ.InsertBarcode(ctx, platformAuthority.ID, code, &ticketID); err != nil {
 				return nil, fmt.Errorf("IssueTicketsForCheckout: insert ean13 barcode for ticket %s: %w",
 					t.ID.String(), err)
+			}
+		}
+	}
+
+	// ── Order links + v1.order.paid (W1-A6c, feature #488) ───────────────────
+	// Both happen on THIS transaction, so the aggregate is never half-linked
+	// and the event never describes tickets that were rolled back.
+	if order != nil {
+		if err := h.linkTicketsToOrder(ctx, txQ, *order, newTickets); err != nil {
+			return nil, err
+		}
+		// "After the last ordinal": only the caller that completes the cart
+		// publishes. A gap-fill run that still leaves ordinals missing stays
+		// silent, and a replay never reaches here at all (it returned above).
+		if len(existing)+len(newTickets) >= expectedCount {
+			if err := h.publishOrderPaid(ctx, tx, *order, len(existing)+len(newTickets)); err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -364,6 +403,131 @@ func (h *Handler) IssueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSe
 	}
 
 	return allTickets, nil
+}
+
+// OrderPaidEventType is the outbox event emitted once per order when its last
+// ticket is issued (W1-A6c, feature #488; spec §9.1). Subscribers use it as
+// the "the sale is complete and materialised" signal — v1.scanner.ticket.issued
+// fires per ticket and cannot tell a partial issuance from a finished one.
+const OrderPaidEventType = "v1.order.paid"
+
+// OrderAggregateType is the outbox aggregate_type for order-scoped events.
+const OrderAggregateType = "order"
+
+// linkTicketsToOrder writes the two directions of the ticket↔order link for
+// freshly minted tickets: tickets.order_id and order_items.ticket_id.
+//
+// Items are matched by session_seat_id when the order carries one, and by
+// ticket ordinal otherwise. The fallback is necessary rather than lazy:
+// ordering.collectUnits sorts seats by seat_key while issuance iterates them
+// in ListReservationSeats order, so item ordinal N and ticket ordinal N are
+// NOT guaranteed to be the same seat. For GA units, where no seat identity
+// exists on either side, position is the only correspondence there is.
+func (h *Handler) linkTicketsToOrder(
+	ctx context.Context,
+	txQ *gen.Queries,
+	order gen.OrderRow,
+	newTickets []gen.TicketRow,
+) error {
+	if len(newTickets) == 0 {
+		return nil
+	}
+
+	items, err := txQ.ListOrderItemsByOrder(ctx, order.ID)
+	if err != nil {
+		return fmt.Errorf("IssueTicketsForCheckout: list order items for %s: %w", order.ID.String(), err)
+	}
+
+	// Seat-keyed index plus a queue of the still-unlinked items in ordinal
+	// order, which is what the positional fallback consumes.
+	bySeatKey := make(map[string]gen.OrderItemRow, len(items))
+	var unlinked []gen.OrderItemRow
+	for _, it := range items {
+		if it.TicketID != nil {
+			continue // already backfilled by an earlier partial run
+		}
+		unlinked = append(unlinked, it)
+	}
+	// Resolve seat keys for the items that have a session_seat_id.
+	seatKeyByItemID := make(map[uuid.UUID]string, len(unlinked))
+	for _, it := range unlinked {
+		if it.SessionSeatID == nil {
+			continue
+		}
+		seat, seatErr := txQ.GetSessionSeatByID(ctx, *it.SessionSeatID, order.SessionID)
+		if seatErr != nil {
+			continue // fall through to the positional match
+		}
+		seatKeyByItemID[it.ID] = seat.SeatKey
+		bySeatKey[seat.SeatKey] = it
+	}
+
+	consumed := make(map[uuid.UUID]struct{}, len(unlinked))
+	next := 0
+	for _, t := range newTickets {
+		if err := txQ.SetTicketOrder(ctx, t.ID, order.ID); err != nil {
+			return fmt.Errorf("IssueTicketsForCheckout: link ticket %s to order %s: %w",
+				t.ID.String(), order.ID.String(), err)
+		}
+
+		var item *gen.OrderItemRow
+		if t.SeatKey != nil {
+			if it, ok := bySeatKey[*t.SeatKey]; ok {
+				if _, done := consumed[it.ID]; !done {
+					item = &it
+				}
+			}
+		}
+		for item == nil && next < len(unlinked) {
+			cand := unlinked[next]
+			next++
+			if _, done := consumed[cand.ID]; done {
+				continue
+			}
+			item = &cand
+		}
+		if item == nil {
+			continue // more tickets than items: leave the extras unlinked
+		}
+		consumed[item.ID] = struct{}{}
+		if err := txQ.UpdateOrderItemTicket(ctx, item.ID, t.ID); err != nil {
+			return fmt.Errorf("IssueTicketsForCheckout: backfill order item %s with ticket %s: %w",
+				item.ID.String(), t.ID.String(), err)
+		}
+	}
+	return nil
+}
+
+// publishOrderPaid appends the single v1.order.paid outbox row for an order
+// whose last ordinal has just been issued, on the issuance transaction.
+//
+// A nil writer is a silent no-op: unit tests and the worker binaries that do
+// not wire the outbox still issue tickets normally.
+func (h *Handler) publishOrderPaid(
+	ctx context.Context,
+	tx pgx.Tx,
+	order gen.OrderRow,
+	ticketCount int,
+) error {
+	if h.outboxWriter == nil {
+		return nil
+	}
+	if err := h.outboxWriter.Append(ctx, tx, outbox.Event{
+		AggregateType: OrderAggregateType,
+		AggregateID:   order.ID.String(),
+		EventType:     OrderPaidEventType,
+		Payload: map[string]any{
+			"order_id":     order.ID.String(),
+			"org_id":       order.OrgID.String(),
+			"channel_id":   order.ChannelID.String(),
+			"session_id":   order.SessionID.String(),
+			"ticket_count": ticketCount,
+		},
+	}); err != nil {
+		return fmt.Errorf("IssueTicketsForCheckout: append %s for order %s: %w",
+			OrderPaidEventType, order.ID.String(), err)
+	}
+	return nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -212,11 +212,22 @@ func CreateOrderFromCheckout(ctx context.Context, q CreateStore, in CreateInput)
 // Unit enumeration
 // ─────────────────────────────────────────────────────────────────────────────
 
-// collectUnits expands the reservation into one entry per purchasable unit:
-// GA lines are repeated `quantity` times at their locked unit_price, and each
-// held seat contributes one entry priced from the caller's maps. The order is
-// deterministic (GA lines first, in ListReservationGAItems' tier-name order,
-// then seats by seat_key) so ordinals are stable across retries of the same
+// collectUnits expands the reservation into one entry per purchasable unit.
+//
+// A reservation is either seated or GA — never both — and the branch below is
+// what keeps that true in the face of AB-48: since that change
+// reservation_ga_items is the PRICE-LOCK record for every reservation shape,
+// so a seated hold of two seats in tier T also carries a GA line
+// (tier=T, quantity=2). Enumerating both would mint four units for a two-seat
+// order. When seats exist they are the unit truth and the GA lines degrade to
+// what they are for that shape: locked per-tier prices, used as the last
+// fallback when the caller supplies no map entry for a seat.
+//
+// For a pure GA reservation the GA lines ARE the units, repeated `quantity`
+// times at their locked unit_price.
+//
+// The order is deterministic — GA lines in ListReservationGAItems' tier-name
+// order, seats by seat_key — so ordinals are stable across retries of the same
 // checkout.
 func collectUnits(ctx context.Context, q CreateStore, reservationID uuid.UUID, in CreateInput) ([]unit, error) {
 	gaItems, err := q.ListReservationGAItems(ctx, reservationID)
@@ -228,11 +239,20 @@ func collectUnits(ctx context.Context, q CreateStore, reservationID uuid.UUID, i
 		return nil, fmt.Errorf("ordering: list reservation seats: %w", err)
 	}
 
-	units := make([]unit, 0, len(seats))
-	for _, gi := range gaItems {
-		for n := int32(0); n < gi.Quantity; n++ {
-			units = append(units, unit{tierID: gi.TierID, unitPrice: gi.UnitPrice})
+	if len(seats) == 0 {
+		units := make([]unit, 0, len(gaItems))
+		for _, gi := range gaItems {
+			for n := int32(0); n < gi.Quantity; n++ {
+				units = append(units, unit{tierID: gi.TierID, unitPrice: gi.UnitPrice})
+			}
 		}
+		return units, nil
+	}
+
+	// Seated: GA lines are price locks only.
+	lockedByTier := make(map[uuid.UUID]int64, len(gaItems))
+	for _, gi := range gaItems {
+		lockedByTier[gi.TierID] = gi.UnitPrice
 	}
 
 	sort.Slice(seats, func(i, j int) bool {
@@ -241,13 +261,14 @@ func collectUnits(ctx context.Context, q CreateStore, reservationID uuid.UUID, i
 		}
 		return seats[i].ID.String() < seats[j].ID.String()
 	})
+	units := make([]unit, 0, len(seats))
 	for _, s := range seats {
-		price, ok := seatPrice(s, in)
-		if !ok {
-			return nil, fmt.Errorf("%w (seat_key=%s)", ErrMissingUnitPrice, s.SeatKey)
-		}
 		if s.TierID == nil {
 			return nil, fmt.Errorf("ordering: seat %s has no tier", s.SeatKey)
+		}
+		price, ok := seatPrice(s, in, lockedByTier)
+		if !ok {
+			return nil, fmt.Errorf("%w (seat_key=%s)", ErrMissingUnitPrice, s.SeatKey)
 		}
 		seatID := s.ID
 		units = append(units, unit{tierID: *s.TierID, sessionSeatID: &seatID, unitPrice: price})
@@ -256,14 +277,18 @@ func collectUnits(ctx context.Context, q CreateStore, reservationID uuid.UUID, i
 }
 
 // seatPrice resolves one seat's unit price: the per-seat override first, then
-// the tier map. A zero price is legitimate (comps), so presence is reported
-// separately from the value.
-func seatPrice(s gen.SessionSeatRow, in CreateInput) (int64, bool) {
+// the caller's tier map, then the price locked on reservation_ga_items at hold
+// time. A zero price is legitimate (comps), so presence is reported separately
+// from the value.
+func seatPrice(s gen.SessionSeatRow, in CreateInput, lockedByTier map[uuid.UUID]int64) (int64, bool) {
 	if p, ok := in.SeatUnitPrices[s.ID]; ok {
 		return p, true
 	}
 	if s.TierID != nil {
 		if p, ok := in.TierUnitPrices[*s.TierID]; ok {
+			return p, true
+		}
+		if p, ok := lockedByTier[*s.TierID]; ok {
 			return p, true
 		}
 	}

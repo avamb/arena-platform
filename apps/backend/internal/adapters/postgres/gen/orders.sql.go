@@ -190,6 +190,30 @@ func (q *Queries) GetOrderBySystemID(ctx context.Context, systemID int64) (Order
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetOrderByCheckoutSession
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getOrderByCheckoutSession = `-- name: GetOrderByCheckoutSession :one
+SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
+       checkout_session_id, reservation_id, external_ref, source, status,
+       currency, subtotal, discount, charge, total, charge_percent_bp,
+       promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+FROM   orders
+WHERE  checkout_session_id = $1`
+
+// GetOrderByCheckoutSession loads the order minted from a checkout session
+// (orders is 1:1 with checkout_sessions). Ticket issuance and the payment
+// webhook both hold a checkout_session_id rather than an order id, so this is
+// their entry point (W1-A6c, feature #488, spec §7.9 step 5 / §14.1). Returns
+// pgx.ErrNoRows for a checkout session that never produced an order, which is
+// a legitimate state for sessions created before the order aggregate existed.
+func (q *Queries) GetOrderByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) (OrderRow, error) {
+	row := q.db.QueryRow(ctx, getOrderByCheckoutSession, checkoutSessionID)
+	return scanOrderRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // FindOpenOrderByCustomerSession
 // ─────────────────────────────────────────────────────────────────────────────
 

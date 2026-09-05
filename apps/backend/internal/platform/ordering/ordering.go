@@ -28,6 +28,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -180,6 +183,35 @@ type SweepStore interface {
 // ─────────────────────────────────────────────────────────────────────────────
 // Small helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ChargePercentBP converts sales_channels.fee_percent — a numeric(5,2) that
+// pgx hands back as a string like "2.50" — into the basis points stored on
+// orders.charge_percent_bp ("2.50" → 250).
+//
+// It is deliberately total: an unparseable or empty value yields 0 rather
+// than an error, because the percentage is a SNAPSHOT FOR AUDIT and the exact
+// charge amount is carried separately in orders.charge. Refusing to create an
+// order over a malformed audit field would trade money for cosmetics.
+func ChargePercentBP(feePercent string) int32 {
+	s := strings.TrimSpace(feePercent)
+	if s == "" {
+		return 0
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0
+	}
+	// math.Round before the int32 conversion so "2.505" does not truncate to
+	// 250 through float noise.
+	bp := math.Round(f * 100)
+	if bp > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if bp < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(bp)
+}
 
 // emptyJSON is the payload written when a caller supplies nothing; the column
 // is NOT NULL DEFAULT '{}' but the driver still needs a concrete value.
