@@ -23898,3 +23898,44 @@ Schema drift discovered along the way:
 - countries.currency became NOT NULL as of 0081; CZ seeded with CZK.
 - sessions requires venue_id + currency + currency_source NOT NULL.
 
+## 2026-09-05 - #471 W1-A1b settings.gateway + fid=display_number + org-scoped reads - PASSING
+
+Commit e65b1f2 pushed to origin/master.
+
+Deliverables:
+- hbil24/auth.go (new): gateway-settings parser honours the nested
+  settings.gateway shape with a legacy top-level token-hash fallback
+  (treated as enabled=true, LegacyOnly=true); the int64 fid parser accepts
+  number/string int64 and rejects zero/negative/UUID; a UUID fid fallback
+  is preserved for pre-W1 fixtures; the channel resolver tries the
+  display_number path first, UUID fallback second; the per-command auth
+  helper runs the full spec section 5 gate returning resultCode=-4 on any
+  failure; a session-org enforcer blocks cross-tenant reads on the
+  session-owning read commands.
+- gen query GetSalesChannelByDisplayNumber added (queries/channels.sql
+  source, gen/channels.sql.go impl, gen/querier.go interface); the
+  handler now exposes WithChannelLookup(); production shims inject the
+  queries pool when non-nil.
+- Catalog read: auth helper + ListEventsByOrg + published status filter.
+- Seat-list, schema, order-info reads: auth helper + session-org
+  enforcement / order-org cross-tenant guard.
+- Reservation context: prefers int64 display_number, keeps UUID fallback.
+- Scan-ticket: display_number path first, UUID fallback second.
+- Golden fixtures added under GET_ALL_ACTIONS requests/isolation.json
+  and golden/isolation.json (paired with the feature #497 harness
+  scenario, still skipped until #497 lands).
+- Unit tests: auth_471_test.go covers fid parsing, gateway-settings
+  precedence, legacy fallback, unknown fid, disabled channel, no hash,
+  wrong token.
+
+Gates all green:
+- go build on the whole backend
+- go vet on the whole backend
+- go test on the whole backend (57 packages, unit)
+- go test on tests/compat/bil24, tests/staticanalysis, internal/migrations
+- gofmt -l on all changed files: clean
+- golangci-lint on changed packages: 0 issues
+
+No openapi.yaml changes, no migration additions, no ts-client regen
+needed.
+
