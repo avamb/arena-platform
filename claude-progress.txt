@@ -24664,3 +24664,65 @@ Recommended next slice: swap input validation in cmd_catalog.go
 handleBil24GetSeatList and schema.go handleBil24GetSchema to
 ParseLegacyIntID. Both take a single actionEventId int64 per spec 7.2/7.15.
 
+
+## 2026-09-05 - #476 W1-A2b slice 8 - GET_SEAT_LIST + GET_SCHEMA int64 input
+
+Commit 2a4fa1d, pushed to origin/master. Feature #476 STAYS in_progress
+(sub-feature rule: NEVER release the claim as too large).
+
+Delivered this session:
+- compat_ids.go: new h.resolveActionEventID(ctx, raw) helper.  When
+  compatDB is wired -> bil24compat.ResolveLegacyIntID (int64 required,
+  UUID rejected with -2, non-numeric rejected with -2, then reverse-map
+  via compatids.Resolve(KindActionEvent)).  When compatDB is nil ->
+  fall through to TranslateLegacyID (UUID passthrough) so the ~30
+  seat_d1_312/seat_d2_313/bil24_374 unit tests that pass UUID actionEventId
+  stay green.
+- cmd_catalog.go handleBil24GetSeatList: TranslateLegacyID call site swapped
+  for h.resolveActionEventID.  Spec s4 / s7.2.
+- schema.go handleBil24GetSchema: same swap for actionEventId.  Spec s7.15.
+- bil24_476_input_ids_test.go: new file pins the wire invariant with a
+  panicDBTX stub (any DB call is a regression - ParseLegacyIntID must
+  short-circuit before compatids.Resolve).  Three test cases:
+    * GET_SEAT_LIST + UUID -> -2 without DB touch.
+    * GET_SCHEMA    + UUID -> -2 without DB touch.
+    * GET_SEAT_LIST + non-numeric ("not-an-id") -> -2 without DB touch.
+
+Gates - all GREEN:
+- go build ./apps/backend/... (EXIT:0)
+- go vet   ./apps/backend/... (EXIT:0)
+- go test  ./apps/backend/... full suite (EXIT:0)
+- gofmt -l on 4 changed files: clean.
+
+Files touched:
+  apps/backend/internal/platform/httpserver/hbil24/cmd_catalog.go       (M)
+  apps/backend/internal/platform/httpserver/hbil24/compat_ids.go        (M)
+  apps/backend/internal/platform/httpserver/hbil24/schema.go            (M)
+  apps/backend/internal/platform/httpserver/hbil24/bil24_476_input_ids_test.go (A)
+
+STILL DEFERRED for #476:
+
+Step 2 REMAINING (bottom-up, one slice per session):
+  cmd_catalog.go handleBil24GetAllActions: full 7.1 aggregation
+    (countryList/cityList/venueList) still missing.
+  cmd_cart.go handleBil24Reservation input parsing (spec s7.4):
+    actionEventId / sessionId / categoryPriceId / seatId all must move
+    to ParseLegacyIntID + Resolve helpers on the request side (currently
+    still TranslateLegacyID with UUID passthrough).
+  cmd_cart.go handleBil24UnReserve reservationId + full response reshape
+    to ReservationResponse form (spec s7.4 - the current
+    {reservationId, status:"cancelled"} envelope diverges from spec).
+  cmd_order.go handleBil24GetOrderInfo / handleBil24CancelOrder orderId
+    -> spec s7.5/s7.6 review pending (orders likely stay UUID for W1).
+
+Step 3 - No-UUID guardrail test in tests/compat/bil24/no_uuid_in_wire_test.go
+already lands (commit 99a1159) and is currently GREEN (walks testdata/wp/*).
+Confirmed passing this session.  Not blocked by remaining slices because
+those slices are on the REQUEST-side, not the response goldens.
+
+Recommended next slice: RESERVATION request-side int64 rewrite
+(cmd_cart.go handleBil24Reservation).  Pattern is identical to the one
+landed here: swap TranslateLegacyID for h.resolveActionEventID (session)
+and add analogous h.resolveCategoryPriceID / h.resolveSeatID helpers for
+the categoryList/seatList branches.  Fallback contract preserves unit
+tests until every request-side call site is migrated.
