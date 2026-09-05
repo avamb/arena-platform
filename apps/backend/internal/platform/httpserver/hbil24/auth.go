@@ -8,9 +8,8 @@
 //     class-bil24-client.php:12, which would silently zero a UUID). This
 //     package therefore parses `fid` as int64 (either a JSON number or a
 //     string that contains a number) and resolves it via
-//     GetSalesChannelByDisplayNumber. A UUID-shaped `fid` is still accepted
-//     as a legacy fallback for the pre-W1 unit-test fixtures (bil24_374/390);
-//     feature #476 (full split) will remove the UUID fallback.
+//     GetSalesChannelByDisplayNumber. The pre-W1 UUID fallback was removed
+//     by feature #472 (spec §5.2) together with GetSalesChannelByIDGlobal.
 //
 //   - Per-channel enablement lives under `settings.gateway`:
 //
@@ -167,48 +166,24 @@ func parseFIDInt64(raw string) (int64, bool) {
 	return n, true
 }
 
-// parseFIDUUID is the legacy pre-W1 form: the fid was the channel's UUID PK
-// (bil24_374_test.go / bil24_390_test.go). Preserved as a fallback so the
-// existing unit tests keep passing during the #471 → #476 transition.
-// Callers try parseFIDInt64 first; only when both parses fail is the fid
-// truly unresolvable.
-func parseFIDUUID(raw string) (uuid.UUID, bool) {
-	id, err := uuid.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return uuid.Nil, false
-	}
-	return id, true
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // channel resolver (spec §5.2 / §7.1 / §7.2)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ChannelLookupQuerier is the narrow read surface used by the auth path to
-// resolve a wire `fid` to a sales_channels row. The primary path
-// (GetSalesChannelByDisplayNumber, feature #471) supersedes the legacy
-// GetSalesChannelByIDGlobal (feature #390); the latter stays on the
-// interface so pre-W1 tests that inject a UUID fid keep resolving until
-// #476 sunsets it. *gen.Queries satisfies this interface.
+// resolve a wire `fid` (int64 display_number) to a sales_channels row.
+// Feature #472 (W1-A1c) removed the legacy UUID fallback and its
+// GetSalesChannelByIDGlobal query — the wire is now display_number-only,
+// per spec §5.2. *gen.Queries satisfies this interface.
 type ChannelLookupQuerier interface {
 	GetSalesChannelByDisplayNumber(ctx context.Context, displayNumber int64) (gen.SalesChannelRow, error)
-	GetSalesChannelByIDGlobal(ctx context.Context, id uuid.UUID) (gen.SalesChannelRow, error)
 }
 
-// resolveChannelByFID resolves the wire `fid` to a sales_channels row.
-// Returns (channel, ok, wireErr) — when ok=false the caller must NOT touch
-// the response writer (writeErr=false) OR the Bil24 error envelope has
-// already been written (writeErr=true).
-//
-// The resolution order is (spec §5.2):
-//  1. int64 parse → GetSalesChannelByDisplayNumber (target shape).
-//  2. UUID parse → GetSalesChannelByIDGlobal (legacy fallback; #476 removes).
-//
-// A deleted/missing channel yields resultCode=-4 (Unauthorized) per spec §5.2
-// ("канал удалён / не включён / нет хэша → -4"). The upstream `-3` used by
-// the pre-#471 code path was reserved for "not found in catalog" — the fid
-// credential is authentication surface, so we surface a `-4` for both the
-// wrong-fid and disabled-channel branches.
+// resolveChannelByFID resolves the wire `fid` (int64 display_number) to a
+// sales_channels row. Returns ok=false when the fid is missing, non-numeric,
+// or does not match an active channel; the caller must respond with
+// resultCode=-4 (Unauthorized) per spec §5.2 ("канал удалён / не включён /
+// нет хэша → -4"). Feature #472 removed the pre-W1 UUID fallback.
 func (h *Handler) resolveChannelByFID(
 	ctx context.Context,
 	req bil24Request,
@@ -216,34 +191,21 @@ func (h *Handler) resolveChannelByFID(
 	if h.channelQ == nil {
 		return gen.SalesChannelRow{}, false
 	}
-	if dn, dnOK := parseFIDInt64(req.FID); dnOK {
-		ch, err := h.channelQ.GetSalesChannelByDisplayNumber(ctx, dn)
-		if err == nil {
-			return ch, true
-		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			h.logger.Error("bil24_compat: channel lookup by display_number failed",
-				slog.String("command", req.Command),
-				slog.String("fid", req.FID),
-				slog.Int64("display_number", dn),
-				slog.String("error", err.Error()),
-			)
-		}
-		// Fall through and try UUID legacy path so the pre-W1 fixtures
-		// (bil24_374/390) that pass a UUID fid still resolve.
+	dn, dnOK := parseFIDInt64(req.FID)
+	if !dnOK {
+		return gen.SalesChannelRow{}, false
 	}
-	if legacyID, uuOK := parseFIDUUID(req.FID); uuOK {
-		ch, err := h.channelQ.GetSalesChannelByIDGlobal(ctx, legacyID)
-		if err == nil {
-			return ch, true
-		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			h.logger.Error("bil24_compat: channel lookup by legacy UUID fid failed",
-				slog.String("command", req.Command),
-				slog.String("fid", req.FID),
-				slog.String("error", err.Error()),
-			)
-		}
+	ch, err := h.channelQ.GetSalesChannelByDisplayNumber(ctx, dn)
+	if err == nil {
+		return ch, true
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		h.logger.Error("bil24_compat: channel lookup by display_number failed",
+			slog.String("command", req.Command),
+			slog.String("fid", req.FID),
+			slog.Int64("display_number", dn),
+			slog.String("error", err.Error()),
+		)
 	}
 	return gen.SalesChannelRow{}, false
 }
@@ -526,87 +488,6 @@ func (h *Handler) validateUnReserveToken(
 		h.logger.Error("bil24_compat: UN_RESERVE: channel lookup for auth failed",
 			slog.String("reservation_id", reservationID.String()),
 			slog.String("channel_id", res.ChannelID.String()),
-			slog.String("error", err.Error()),
-		)
-		writeBil24JSON(w, http.StatusOK, bil24Error(
-			req.Command, ResultCodeInternalError, "failed to resolve sales channel",
-		))
-		return false
-	}
-
-	return h.validateGatewayToken(w, req, channel.Settings)
-}
-
-// validateScanTicketToken performs the full SCAN_TICKET credential check
-// (feature #390, PR2-32): the fid identifies the sales channel whose
-// gateway_token_hash authenticates the caller. Unlike RESERVATION, a scan
-// carries no session to derive the org from, so the channel is resolved by
-// primary key alone (GetSalesChannelByIDGlobal). On failure the Bil24 error
-// envelope has already been written and false is returned.
-func (h *Handler) validateScanTicketToken(
-	ctx context.Context,
-	w http.ResponseWriter,
-	req bil24Request,
-) bool {
-	// Fail closed: cannot validate without the context querier.
-	if h.resDeps.CtxQ == nil {
-		h.logger.Warn("bil24_compat: SCAN_TICKET: requireToken=true but CtxQ is nil; rejecting",
-			slog.String("fid", req.FID),
-		)
-		writeBil24JSON(w, http.StatusOK, bil24Error(
-			req.Command, ResultCodeInternalError,
-			"authentication service unavailable",
-		))
-		return false
-	}
-
-	if strings.TrimSpace(req.FID) == "" {
-		writeBil24JSON(w, http.StatusOK, bil24Error(
-			req.Command, ResultCodeUnauthorized,
-			"fid is required for SCAN_TICKET (sales channel credential)",
-		))
-		return false
-	}
-	// Feature #471 (W1-A1b, spec §5.2): prefer the int64 display_number
-	// path via the channel-lookup surface; fall back to the legacy UUID
-	// resolution so pre-W1 SCAN_TICKET fixtures keep resolving.
-	var (
-		channel gen.SalesChannelRow
-		err     error
-	)
-	if dn, dnOK := parseFIDInt64(req.FID); dnOK && h.channelQ != nil {
-		ch, lookupErr := h.channelQ.GetSalesChannelByDisplayNumber(ctx, dn)
-		if lookupErr == nil {
-			return h.validateGatewayToken(w, req, ch.Settings)
-		}
-		if !errors.Is(lookupErr, pgx.ErrNoRows) {
-			h.logger.Error("bil24_compat: SCAN_TICKET: display_number lookup failed",
-				slog.String("fid", req.FID),
-				slog.Int64("display_number", dn),
-				slog.String("error", lookupErr.Error()),
-			)
-		}
-	}
-	chID, err := TranslateLegacyID(req.FID)
-	if err != nil {
-		writeBil24JSON(w, http.StatusOK, bil24Error(
-			req.Command, ResultCodeUnauthorized,
-			"fid must be a valid sales channel identifier",
-		))
-		return false
-	}
-
-	channel, err = h.resDeps.CtxQ.GetSalesChannelByIDGlobal(ctx, chID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			writeBil24JSON(w, http.StatusOK, bil24Error(
-				req.Command, ResultCodeUnauthorized,
-				"sales channel not found for fid",
-			))
-			return false
-		}
-		h.logger.Error("bil24_compat: SCAN_TICKET: channel lookup for auth failed",
-			slog.String("fid", req.FID),
 			slog.String("error", err.Error()),
 		)
 		writeBil24JSON(w, http.StatusOK, bil24Error(

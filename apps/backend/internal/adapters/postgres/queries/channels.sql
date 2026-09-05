@@ -14,15 +14,6 @@ WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL;
 
--- name: GetSalesChannelByIDGlobal :one
--- Cross-org lookup by primary key only. Used by the Bil24 gateway's
--- SCAN_TICKET credential validation (PR2-32, feature #390): scans carry a
--- fid but no session/reservation from which to derive the org first.
-SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
-FROM   sales_channels
-WHERE  id = $1
-  AND  deleted_at IS NULL;
-
 -- name: GetSalesChannelByDisplayNumber :one
 -- Bil24 gateway (feature #471, W1-A1b): resolve the WordPress-side `fid`
 -- credential — which the plugins cast to int and cannot carry as a UUID —

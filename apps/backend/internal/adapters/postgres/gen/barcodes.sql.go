@@ -191,6 +191,27 @@ func (q *Queries) GetBarcodeByRef(ctx context.Context, authorityID uuid.UUID, ex
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetBarcodeByExternalRefAny
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getBarcodeByExternalRefAny = `-- name: GetBarcodeByExternalRefAny :one
+SELECT id, authority_id, external_ref, ticket_id, status, scanned_at, created_at, updated_at
+FROM   barcodes
+WHERE  external_ref = $1
+LIMIT  1`
+
+// GetBarcodeByExternalRefAny looks up a barcode by external reference across
+// ALL authorities. Used by the Bil24-compat SCAN_TICKET flow (spec §7.14,
+// feature #472): the WordPress plugins send only the barcode string and
+// do not know which authority (platform EAN-13 vs legacy_bil24 imported
+// batches) issued it, so the gateway searches every authority in one
+// round-trip. Returns pgx.ErrNoRows when no barcode matches.
+func (q *Queries) GetBarcodeByExternalRefAny(ctx context.Context, externalRef string) (BarcodeRow, error) {
+	row := q.db.QueryRow(ctx, getBarcodeByExternalRefAny, externalRef)
+	return scanBarcodeRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GetBarcodeByID
 // ─────────────────────────────────────────────────────────────────────────────
 

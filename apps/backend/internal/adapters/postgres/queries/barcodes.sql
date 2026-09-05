@@ -37,6 +37,21 @@ FROM   barcodes
 WHERE  authority_id = $1
   AND  external_ref = $2;
 
+-- name: GetBarcodeByExternalRefAny :one
+-- Look up a single barcode by external reference across ALL authorities.
+-- Used by the Bil24-compat SCAN_TICKET flow (spec §7.14, feature #472):
+-- WordPress-side clients send only the barcode string and do not know which
+-- authority (platform EAN-13 vs legacy_bil24 imports) minted it, so the
+-- gateway must search every authority. Returns pgx.ErrNoRows when no
+-- barcode matches. LIMIT 1 defends against the (extremely unlikely)
+-- collision of the same external_ref across two authorities; the org
+-- check downstream (tickets → sessions → events.org_id vs the fid's
+-- channel org) rejects any cross-tenant match with resultCode=-3.
+SELECT id, authority_id, external_ref, ticket_id, status, scanned_at, created_at, updated_at
+FROM   barcodes
+WHERE  external_ref = $1
+LIMIT  1;
+
 -- name: GetBarcodeByID :one
 SELECT id, authority_id, external_ref, ticket_id, status, scanned_at, created_at, updated_at
 FROM   barcodes

@@ -75,11 +75,6 @@ type ReservationContextQuerier interface {
 	// the owning sales channel for fid/token credential validation.
 	// Feature #381, PR2-25 variant A.
 	GetReservationByID(ctx context.Context, id uuid.UUID) (gen.ReservationRow, error)
-	// GetSalesChannelByIDGlobal fetches a sales channel by primary key without
-	// an org filter so SCAN_TICKET — which carries a fid but no session or
-	// reservation to derive the org from — can validate its fid/token
-	// credential. Feature #390, PR2-32.
-	GetSalesChannelByIDGlobal(ctx context.Context, id uuid.UUID) (gen.SalesChannelRow, error)
 }
 
 // TierPriceQuerier resolves ticket-tier unit prices for the RESERVATION
@@ -120,6 +115,20 @@ type ReservationDeps struct {
 	GAReserve     GAReserveFunc
 	Release       ReleaseHoldFunc
 	PricingRules  hcheckout.PricingRules
+}
+
+// ScanQuerier is the narrow contract handleBil24ScanTicket uses to look
+// up a barcode across every authority (feature #472, spec §7.14) and to
+// resolve its owning ticket for the org-scope enforcement + platformTicketId
+// emission. Kept behind an interface so unit tests can substitute an
+// in-memory fake without a live PostgreSQL pool. *gen.Queries satisfies
+// this interface. Optional — when nil the handler falls back to the
+// concrete barcodeQueries/ticketQueries fields for backward compatibility
+// with the pre-#472 unit tests.
+type ScanQuerier interface {
+	GetBarcodeByExternalRefAny(ctx context.Context, externalRef string) (gen.BarcodeRow, error)
+	MarkBarcodeScanned(ctx context.Context, id uuid.UUID) (gen.BarcodeRow, error)
+	GetTicketByID(ctx context.Context, id uuid.UUID) (gen.TicketRow, error)
 }
 
 // SchemaQuerier is the narrow contract handleBil24GetSchema uses to load
@@ -177,6 +186,13 @@ type Handler struct {
 	// guardrail (tests/compat/bil24/no_uuid_in_wire_test.go) ensures the
 	// production path never regresses.
 	compatDB gen.DBTX
+
+	// scanQ (feature #472, W1-A1c) is the optional narrow interface used
+	// by the SCAN_TICKET handler for barcode + ticket lookups. When nil,
+	// the handler falls back to the concrete barcodeQueries/ticketQueries
+	// so pre-#472 unit tests keep passing. Production wiring passes
+	// *gen.Queries via WithScanQuerier.
+	scanQ ScanQuerier
 
 	// bundle (feature #478, W1-A3b) is the platform i18n bundle used to
 	// translate bil24.* description keys into the locale negotiated per
@@ -264,6 +280,19 @@ func (h *Handler) WithChannelLookup(q ChannelLookupQuerier) *Handler {
 // path). Returns the receiver for chaining.
 func (h *Handler) WithCompatDB(db gen.DBTX) *Handler {
 	h.compatDB = db
+	return h
+}
+
+// WithScanQuerier wires the narrow ScanQuerier used by the SCAN_TICKET
+// handler for the cross-authority barcode lookup and its downstream
+// ticket lookup (feature #472, spec §7.14). Optional: when omitted the
+// handler falls back to the concrete barcodeQueries/ticketQueries so
+// pre-#472 unit tests that supply *gen.Queries via New() keep working.
+// Production wiring should always call this with the *gen.Queries value
+// so unit tests can substitute deterministic fakes. Returns the receiver
+// for chaining.
+func (h *Handler) WithScanQuerier(q ScanQuerier) *Handler {
+	h.scanQ = q
 	return h
 }
 
