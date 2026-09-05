@@ -338,6 +338,36 @@ WHERE  session_id = $1
 SELECT COUNT(*) FROM session_seats
 WHERE  session_id = $1 AND kind = 'ga_unit';
 
+-- name: ReleaseGAUnitsForReservationTier :many
+-- W1-A5a (feature #483): the inverse of AllocateGAUnitsForHold — returns
+-- up to $5 GA units currently held by reservation $2 for tier $3 back to
+-- 'available'. Used by ShrinkHold when a cart drops GA quantity. The inner
+-- SELECT takes FOR UPDATE (no SKIP LOCKED: these rows belong to the caller's
+-- own reservation, which is already row-locked, so no other transaction may
+-- legitimately be mutating them). Plan-less pools additionally need
+-- ResetAvailableGAPoolTierStamps afterwards so units rejoin the NULL pool.
+UPDATE session_seats ss
+SET    status         = 'available',
+       reservation_id = NULL,
+       status_version = $4,
+       updated_at     = now()
+FROM (
+    SELECT id
+    FROM   session_seats
+    WHERE  session_id = $1
+      AND  kind = 'ga_unit'
+      AND  status = 'held'
+      AND  reservation_id = $2
+      AND  tier_id IS NOT DISTINCT FROM $3::uuid
+    ORDER  BY seat_key DESC
+    LIMIT  $5
+    FOR UPDATE
+) picked
+WHERE ss.id = picked.id
+RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
+          ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
+          ss.status_version, ss.updated_at, ss.system_seat_id;
+
 -- name: DeleteAvailableGAPoolUnits :execrows
 -- Shrinks a plan-less GA session's pool by removing the highest-
 -- numbered AVAILABLE units. Held/sold units are never touched — the

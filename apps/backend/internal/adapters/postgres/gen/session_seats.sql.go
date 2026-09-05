@@ -746,6 +746,61 @@ func (q *Queries) ResetAvailableGAPoolTierStamps(
 	return tag.RowsAffected(), nil
 }
 
+const releaseGAUnitsForReservationTier = `-- name: ReleaseGAUnitsForReservationTier :many
+UPDATE session_seats ss
+SET    status         = 'available',
+       reservation_id = NULL,
+       status_version = $4,
+       updated_at     = now()
+FROM (
+    SELECT id
+    FROM   session_seats
+    WHERE  session_id = $1
+      AND  kind = 'ga_unit'
+      AND  status = 'held'
+      AND  reservation_id = $2
+      AND  tier_id IS NOT DISTINCT FROM $3::uuid
+    ORDER  BY seat_key DESC
+    LIMIT  $5
+    FOR UPDATE
+) picked
+WHERE ss.id = picked.id
+RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
+          ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
+          ss.status_version, ss.updated_at, ss.system_seat_id`
+
+// ReleaseGAUnitsForReservationTier is the inverse of AllocateGAUnitsForHold:
+// it returns up to limit GA units currently held by reservationID for tierID
+// back to 'available'. Used by ShrinkHold (W1-A5a, feature #483) when a cart
+// drops GA quantity. Fewer rows than limit means the reservation held fewer
+// units than requested — the caller clamps. Plan-less sessions must call
+// ResetAvailableGAPoolTierStamps afterwards so the units rejoin the NULL-tier
+// pool. statusVersion comes from IncrementSessionSeatStatusVersion in the same
+// transaction.
+func (q *Queries) ReleaseGAUnitsForReservationTier(
+	ctx context.Context,
+	sessionID, reservationID uuid.UUID,
+	tierID *uuid.UUID,
+	statusVersion int64,
+	limit int32,
+) ([]SessionSeatRow, error) {
+	rows, err := q.db.Query(ctx, releaseGAUnitsForReservationTier,
+		sessionID, reservationID, tierID, statusVersion, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SessionSeatRow
+	for rows.Next() {
+		s, err := scanSessionSeatRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 const countGAUnits = `-- name: CountGAUnits :one
 SELECT COUNT(*) FROM session_seats
 WHERE  session_id = $1 AND kind = 'ga_unit'`

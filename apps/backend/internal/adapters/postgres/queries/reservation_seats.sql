@@ -35,6 +35,14 @@ ORDER  BY ss.seat_key ASC, ss.id ASC;
 DELETE FROM reservation_seats
 WHERE  reservation_id = $1;
 
+-- name: DeleteReservationSeat :execrows
+-- W1-A5a (feature #483): removes ONE seat link, used by ShrinkHold when a
+-- cart drops a single seat / GA unit while keeping the rest of the hold.
+-- Returns the number of rows deleted (0 = the link was already gone).
+DELETE FROM reservation_seats
+WHERE  reservation_id = $1
+  AND  session_seat_id = $2;
+
 -- name: DeleteReservationSeatsBySession :execrows
 -- Removes every reservation_seats link whose seat belongs to the given
 -- session. Called on the SEAT-B2 rebind path (after the

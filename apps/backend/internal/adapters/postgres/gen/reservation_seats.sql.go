@@ -79,6 +79,26 @@ func (q *Queries) DeleteReservationSeats(ctx context.Context, reservationID uuid
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DeleteReservationSeat
+// ─────────────────────────────────────────────────────────────────────────────
+
+const deleteReservationSeat = `-- name: DeleteReservationSeat :execrows
+DELETE FROM reservation_seats
+WHERE  reservation_id = $1
+  AND  session_seat_id = $2`
+
+// DeleteReservationSeat removes ONE seat link, used by ShrinkHold (W1-A5a,
+// feature #483) when a cart drops a single seat / GA unit while keeping the
+// rest of the hold. Returns the number of rows deleted (0 = already gone).
+func (q *Queries) DeleteReservationSeat(ctx context.Context, reservationID, sessionSeatID uuid.UUID) (int64, error) {
+	tag, err := q.db.Exec(ctx, deleteReservationSeat, reservationID, sessionSeatID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DeleteReservationSeatsBySession
 // ─────────────────────────────────────────────────────────────────────────────
 

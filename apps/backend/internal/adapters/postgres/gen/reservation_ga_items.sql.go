@@ -85,6 +85,63 @@ func (q *Queries) ListReservationGAItems(ctx context.Context, reservationID uuid
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// UpsertReservationGAItemQuantity
+// ─────────────────────────────────────────────────────────────────────────────
+
+const upsertReservationGAItemQuantity = `-- name: UpsertReservationGAItemQuantity :exec
+INSERT INTO reservation_ga_items (reservation_id, tier_id, quantity, unit_price)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (reservation_id, tier_id) DO UPDATE
+SET quantity = reservation_ga_items.quantity + EXCLUDED.quantity`
+
+// UpsertReservationGAItemQuantity adds quantity tickets to the reservation's
+// line for tierID, creating the line at unitPrice when it does not exist yet.
+// An existing line keeps its locked unit_price (AB-48: the quoted price
+// survives a cart extension) — only the quantity grows. W1-A5a, feature #483.
+func (q *Queries) UpsertReservationGAItemQuantity(ctx context.Context, reservationID, tierID uuid.UUID, quantity int32, unitPrice int64) error {
+	_, err := q.db.Exec(ctx, upsertReservationGAItemQuantity, reservationID, tierID, quantity, unitPrice)
+	return err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DecrementReservationGAItemQuantity
+// ─────────────────────────────────────────────────────────────────────────────
+
+const decrementReservationGAItemQuantity = `-- name: DecrementReservationGAItemQuantity :one
+WITH depleted AS (
+    DELETE FROM reservation_ga_items
+    WHERE  reservation_id = $1
+      AND  tier_id = $2
+      AND  quantity <= $3
+    RETURNING 0::integer AS quantity
+), reduced AS (
+    UPDATE reservation_ga_items
+    SET    quantity = quantity - $3
+    WHERE  reservation_id = $1
+      AND  tier_id = $2
+      AND  quantity > $3
+    RETURNING quantity
+)
+SELECT quantity FROM depleted
+UNION ALL
+SELECT quantity FROM reduced`
+
+// DecrementReservationGAItemQuantity removes quantity tickets from the
+// reservation's line for tierID and returns the remaining quantity (0 = the
+// line was consumed and deleted). Returns pgx.ErrNoRows when the line does not
+// exist, which callers treat as "nothing to shrink".
+//
+// A consumed line is DELETED rather than zeroed because migration 0063
+// constrains reservation_ga_items.quantity > 0; an UPDATE to 0 would raise
+// 23514. Both CTEs read the same snapshot, so exactly one of them fires.
+func (q *Queries) DecrementReservationGAItemQuantity(ctx context.Context, reservationID, tierID uuid.UUID, quantity int32) (int32, error) {
+	row := q.db.QueryRow(ctx, decrementReservationGAItemQuantity, reservationID, tierID, quantity)
+	var remaining int32
+	err := row.Scan(&remaining)
+	return remaining, err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DeleteReservationGAItems
 // ─────────────────────────────────────────────────────────────────────────────
 

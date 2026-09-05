@@ -30,6 +30,44 @@ JOIN   ticket_tiers t ON t.id = gi.tier_id
 WHERE  gi.reservation_id = $1
 ORDER  BY t.name ASC, gi.tier_id ASC;
 
+-- name: UpsertReservationGAItemQuantity :exec
+-- W1-A5a (feature #483): adds $3 tickets to the reservation's line for tier
+-- $2, creating the line at unit_price $4 when it does not exist yet. An
+-- existing line keeps its locked unit_price (AB-48: the quoted price survives
+-- a cart extension) — only the quantity grows.
+INSERT INTO reservation_ga_items (reservation_id, tier_id, quantity, unit_price)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (reservation_id, tier_id) DO UPDATE
+SET quantity = reservation_ga_items.quantity + EXCLUDED.quantity;
+
+-- name: DecrementReservationGAItemQuantity :one
+-- W1-A5a: removes $3 tickets from the reservation's line for tier $2 and
+-- returns the remaining quantity (0 = the line was consumed and deleted).
+-- pgx.ErrNoRows means the line did not exist, which the caller treats as
+-- "nothing to shrink".
+--
+-- The line is DELETED rather than zeroed when the request consumes it,
+-- because migration 0063 constrains reservation_ga_items.quantity > 0 —
+-- an UPDATE to 0 would raise 23514. Both CTEs read the same snapshot, so
+-- their WHERE clauses are mutually exclusive and exactly one fires.
+WITH depleted AS (
+    DELETE FROM reservation_ga_items
+    WHERE  reservation_id = $1
+      AND  tier_id = $2
+      AND  quantity <= $3
+    RETURNING 0::integer AS quantity
+), reduced AS (
+    UPDATE reservation_ga_items
+    SET    quantity = quantity - $3
+    WHERE  reservation_id = $1
+      AND  tier_id = $2
+      AND  quantity > $3
+    RETURNING quantity
+)
+SELECT quantity FROM depleted
+UNION ALL
+SELECT quantity FROM reduced;
+
 -- name: DeleteReservationGAItems :exec
 -- Removes every GA line for a reservation. The FK already cascades on
 -- reservation deletion; this exists for explicit cleanup paths that keep

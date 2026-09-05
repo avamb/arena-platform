@@ -92,3 +92,39 @@ SELECT id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,
 FROM   reservations
 WHERE  user_id = $1
 ORDER BY created_at DESC, id DESC;
+
+-- name: LockReservationForUpdate :one
+-- W1-A5a (feature #483): takes a row-level lock on the reservation so that
+-- concurrent cart mutations (ExtendHold / ShrinkHold / ReacquireHold) of the
+-- same gateway cart serialize on it before touching session_seats. MUST be
+-- called inside a transaction; the lock is held until commit/rollback.
+-- Returns pgx.ErrNoRows when the reservation does not exist.
+SELECT id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,
+       expires_at, created_at, updated_at, cancelled_at, converted_at, expired_at
+FROM   reservations
+WHERE  id = $1
+FOR UPDATE;
+
+-- name: UpdateReservationQuantity :one
+-- W1-A5a: rewrites the reservation's aggregate quantity after an
+-- extend/shrink. Only open reservations (draft/active) may be resized;
+-- pgx.ErrNoRows signals the reservation is closed and the caller must abort.
+UPDATE reservations
+SET    quantity   = $2,
+       updated_at = now()
+WHERE  id = $1
+  AND  state IN ('draft', 'active')
+RETURNING id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,
+          expires_at, created_at, updated_at, cancelled_at, converted_at, expired_at;
+
+-- name: RefreshReservationsExpiry :many
+-- W1-A5a: slides the TTL of the given open reservations to $2. Closed
+-- reservations are silently skipped (not returned), which lets the caller
+-- detect a swept cart by comparing the returned count with len(ids).
+UPDATE reservations
+SET    expires_at = $2,
+       updated_at = now()
+WHERE  id = ANY($1::uuid[])
+  AND  state IN ('draft', 'active')
+RETURNING id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,
+          expires_at, created_at, updated_at, cancelled_at, converted_at, expired_at;

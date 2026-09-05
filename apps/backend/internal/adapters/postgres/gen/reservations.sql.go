@@ -258,6 +258,82 @@ func (q *Queries) ListReservationsByUser(ctx context.Context, userID uuid.UUID) 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// LockReservationForUpdate
+// ─────────────────────────────────────────────────────────────────────────────
+
+const lockReservationForUpdate = `-- name: LockReservationForUpdate :one
+SELECT id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,
+       expires_at, created_at, updated_at, cancelled_at, converted_at, expired_at
+FROM   reservations
+WHERE  id = $1
+FOR UPDATE`
+
+// LockReservationForUpdate takes a row-level lock on the reservation so that
+// concurrent cart mutations (ExtendHold / ShrinkHold / ReacquireHold) of the
+// same cart serialize on it before touching session_seats. MUST be called
+// inside a transaction. Returns pgx.ErrNoRows when the row does not exist.
+// W1-A5a, feature #483.
+func (q *Queries) LockReservationForUpdate(ctx context.Context, id uuid.UUID) (ReservationRow, error) {
+	row := q.db.QueryRow(ctx, lockReservationForUpdate, id)
+	return scanReservationRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UpdateReservationQuantity
+// ─────────────────────────────────────────────────────────────────────────────
+
+const updateReservationQuantity = `-- name: UpdateReservationQuantity :one
+UPDATE reservations
+SET    quantity   = $2,
+       updated_at = now()
+WHERE  id = $1
+  AND  state IN ('draft', 'active')
+RETURNING id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,
+          expires_at, created_at, updated_at, cancelled_at, converted_at, expired_at`
+
+// UpdateReservationQuantity rewrites the reservation's aggregate quantity after
+// an extend/shrink. Only open reservations (draft/active) may be resized;
+// pgx.ErrNoRows means the reservation is closed and the caller must abort.
+func (q *Queries) UpdateReservationQuantity(ctx context.Context, id uuid.UUID, quantity int32) (ReservationRow, error) {
+	row := q.db.QueryRow(ctx, updateReservationQuantity, id, quantity)
+	return scanReservationRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RefreshReservationsExpiry
+// ─────────────────────────────────────────────────────────────────────────────
+
+const refreshReservationsExpiry = `-- name: RefreshReservationsExpiry :many
+UPDATE reservations
+SET    expires_at = $2,
+       updated_at = now()
+WHERE  id = ANY($1::uuid[])
+  AND  state IN ('draft', 'active')
+RETURNING id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,
+          expires_at, created_at, updated_at, cancelled_at, converted_at, expired_at`
+
+// RefreshReservationsExpiry slides the TTL of the given open reservations to
+// expiresAt. Closed reservations are silently skipped and therefore absent from
+// the result, which lets callers detect a swept cart by comparing counts.
+func (q *Queries) RefreshReservationsExpiry(ctx context.Context, ids []uuid.UUID, expiresAt time.Time) ([]ReservationRow, error) {
+	rows, err := q.db.Query(ctx, refreshReservationsExpiry, ids, expiresAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var reservations []ReservationRow
+	for rows.Next() {
+		r, err := scanReservationRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		reservations = append(reservations, r)
+	}
+	return reservations, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CountReservationsBySession
 // ─────────────────────────────────────────────────────────────────────────────
 
