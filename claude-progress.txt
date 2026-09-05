@@ -2,6 +2,65 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-09-05 - #476 W1-A2b slice 12 - compat helpers for venue/city/country
+
+Commit 2481674, pushed to origin/master. Feature #476 STAYS in_progress
+(sub-feature rule: NEVER release the claim as too large).
+
+Delivered this session:
+- hbil24/compat_ids.go: three new response-side helpers
+  h.compatVenueID / h.compatCityID / h.compatCountryID, each a thin
+  wrapper over compatEnsure(KindVenue|City|Country). Fallback contract
+  mirrors compatCategoryPriceID / compatActionID: nil compatDB ->
+  TranslatePlatformID(uuid) so unit-test Handlers keep the pre-W1 wire
+  shape.  These are groundwork for the deferred GET_ALL_ACTIONS full
+  aggregation (spec s7.1 countryList / cityList / venueList) so the
+  response projection can call one uniform helper per entity kind
+  without duplicating nil-safe fallback logic.
+- bil24_476_input_ids_test.go: three new fallback-path unit tests
+  (newMinimalHandler + TranslatePlatformID assertion) pin the nil
+  compatDB contract for all three helpers.  The panicDBTX-wired
+  production path is exercised by the integration harness once the
+  aggregation lands (the wire-fixture guardrail walks the goldens).
+
+Gates - all GREEN:
+- go build ./apps/backend/... EXIT:0
+- go vet   ./apps/backend/... EXIT:0
+- go test  ./apps/backend/... full suite EXIT:0 (test_476_slice12.log)
+- gofmt -l on 2 changed files clean
+
+Files touched:
+  apps/backend/internal/platform/httpserver/hbil24/compat_ids.go             (M)
+  apps/backend/internal/platform/httpserver/hbil24/bil24_476_input_ids_test.go (M)
+
+STILL DEFERRED for #476 (Step 2 remaining + Step 3):
+
+Step 2 REMAINING (bottom-up, one slice per session):
+  cmd_catalog.go handleBil24GetAllActions: full 7.1 aggregation
+    (countryList/cityList/venueList) still missing.  Compat helpers for
+    venue/city/country are now in place - the next slice can focus on
+    the SQL side (new queries for country/city/venue rows scoped to the
+    channel org and the returned sessions).
+  cmd_cart.go handleBil24UnReserve reservationId + full response reshape
+    to ReservationResponse form (spec s7.5).  Note: UN_RESERVE per spec
+    s7.4 actually takes seatList / categoryList / UN_RESERVE_ALL, not a
+    reservationId.  Reshape is bigger than one slice - split it.
+  cmd_order.go handleBil24GetOrderInfo / handleBil24CancelOrder orderId
+    -> spec review: no KindOrder in compatids yet, so orders likely stay
+    UUID for W1.  Confirm with owner before touching.
+
+Step 3 - No-uuid guardrail (tests/compat/bil24/no_uuid_in_wire_test.go)
+already GREEN; today's response-side helpers do not change the goldens
+until they are wired into a handler.
+
+Recommended next slice: SQL-side prep for the GET_ALL_ACTIONS
+aggregation.  Add a query ListVenuesForOrgSessions(ctx, orgID,
+sessionIDs) returning venue rows joined to city + country, so
+handleBil24GetAllActions can group them into the countryList / cityList
+/ venueList blocks per spec s7.1.  Keep it a read-only query - no new
+migrations needed if venues/cities/countries tables already carry the
+needed columns.
+
 ## 2026-09-05 - #476 W1-A2b STEP 2 partial (6th slice) - SCAN_TICKET platformTicketId int64
 
 Feature #476 STAYS in_progress (sub-feature rule: NEVER release the claim
