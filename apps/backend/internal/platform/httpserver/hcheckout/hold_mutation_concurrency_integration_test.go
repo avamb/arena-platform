@@ -75,7 +75,7 @@ func TestW1A5a_ConcurrentExtendShrink_GA_LiveDB(t *testing.T) {
 	q := gen.New(pool)
 	reservations := make([]uuid.UUID, holdRacers)
 	for i := range reservations {
-		reservations[i] = f.newCart(ctx, q, 1)
+		reservations[i] = f.newGACart(ctx, q, 1)
 	}
 
 	var extends, shrinks, conflicts atomic.Int64
@@ -96,13 +96,15 @@ func TestW1A5a_ConcurrentExtendShrink_GA_LiveDB(t *testing.T) {
 					var capErr *hcheckout.CapacityError
 					if errors.As(err, &capErr) {
 						conflicts.Add(1)
-					} else {
-						t.Errorf("racer extend: %v", err)
-						return
+						continue
 					}
-				} else {
-					extends.Add(1)
+					t.Errorf("racer extend: %v", err)
+					return
 				}
+				extends.Add(1)
+				// Only give back what this round actually took. Shrinking
+				// after a rejected extend would eat the cart's baseline
+				// unit, empty it, and (correctly) cancel it.
 				if _, err := hcheckout.ShrinkHold(ctx, pool, q, in); err != nil {
 					t.Errorf("racer shrink: %v", err)
 					return
@@ -309,6 +311,13 @@ func TestW1A5a_RefreshHoldExpiry_LiveDB(t *testing.T) {
 
 const holdTierPrice int64 = 2500
 
+// step is one ordered fixture INSERT; the slice is built conditionally
+// because a seated session needs seating-plan rows a GA session must not have.
+type step struct {
+	sql  string
+	args []any
+}
+
 type holdFixture struct {
 	t         *testing.T
 	pool      *pgxpool.Pool
@@ -318,6 +327,11 @@ type holdFixture struct {
 	channelID uuid.UUID
 	sessionID uuid.UUID
 	tierID    uuid.UUID
+	// Non-nil only for seated sessions: migration 0058's
+	// sessions_seated_requires_plan CHECK refuses an assigned_seats session
+	// that is not bound to a seating_plan_versions row.
+	planID        *uuid.UUID
+	planVersionID *uuid.UUID
 }
 
 // newHoldFixture builds an isolated org/venue/event/channel/session with a
@@ -335,10 +349,14 @@ func newHoldFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool, admis
 		tierID:    uuid.New(),
 	}
 	suffix := f.orgID.String()[:8]
-	steps := []struct {
-		sql  string
-		args []any
-	}{
+	// A seated session must be bound to a locked plan version; a pure GA
+	// session must NOT be, or the plan-less-pool branch of the primitives
+	// (tier stamping / ResetAvailableGAPoolTierStamps) is never exercised.
+	if admission != "general_admission" {
+		planID, versionID := uuid.New(), uuid.New()
+		f.planID, f.planVersionID = &planID, &versionID
+	}
+	steps := []step{
 		{`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
 			[]any{f.orgID, "W1A5a Org " + suffix, "w1a5a-" + suffix}},
 		{`INSERT INTO venues (id, org_id, name) VALUES ($1, $2, $3)`,
@@ -349,23 +367,34 @@ func newHoldFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool, admis
 		{`INSERT INTO sales_channels (id, org_id, name, provider, payment_mode)
 		  VALUES ($1, $2, $3, 'stripe', 'direct_merchant')`,
 			[]any{f.channelID, f.orgID, "W1A5a Channel " + suffix}},
-		{`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at,
-		    capacity_total, status, admission_mode, currency, currency_source)
+	}
+	if f.planID != nil {
+		steps = append(steps,
+			step{`INSERT INTO seating_plans (id, venue_id, owner_org_id, name, plan_type, status)
+			  VALUES ($1, $2, $3, $4, 'assigned_seats', 'active')`,
+				[]any{*f.planID, f.venueID, f.orgID, "W1A5a Plan " + suffix}},
+			step{`INSERT INTO seating_plan_versions (id, seating_plan_id, version_number,
+			    geometry, geometry_checksum, capacity_seated, locked_at)
+			  VALUES ($1, $2, 1, '{}'::jsonb, $3, $4, now())`,
+				[]any{*f.planVersionID, *f.planID, "w1a5a-" + suffix, seatRows}},
+		)
+	}
+	steps = append(steps,
+		step{`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at,
+		    capacity_total, status, admission_mode, seating_plan_version_id,
+		    currency, currency_source)
 		  VALUES ($1, $2, $3, now() + interval '30 days',
-		    now() + interval '30 days 3 hours', $4, 'scheduled', $5, 'EUR', 'override')`,
-			[]any{f.sessionID, f.eventID, f.venueID, capacity, admission}},
-		{`INSERT INTO ticket_tiers (id, session_id, name, pricing_mode, price_amount, currency)
+		    now() + interval '30 days 3 hours', $4, 'scheduled', $5, $6, 'EUR', 'override')`,
+			[]any{f.sessionID, f.eventID, f.venueID, capacity, admission, f.planVersionID}},
+		step{`INSERT INTO ticket_tiers (id, session_id, name, pricing_mode, price_amount, currency)
 		  VALUES ($1, $2, 'W1A5a Tier', 'fixed', $3, 'EUR')`,
 			[]any{f.tierID, f.sessionID, holdTierPrice}},
-		{`INSERT INTO inventory_ledger (session_id, tier_id, capacity_total)
+		step{`INSERT INTO inventory_ledger (session_id, tier_id, capacity_total)
 		  VALUES ($1, NULL, $2)`,
 			[]any{f.sessionID, capacity}},
-	}
+	)
 	if seatRows > 0 {
-		steps = append(steps, struct {
-			sql  string
-			args []any
-		}{`INSERT INTO session_seats
+		steps = append(steps, step{`INSERT INTO session_seats
 		     (session_id, seat_key, sector_name, row_name, seat_number,
 		      tier_id, status, kind)
 		   SELECT $1, 'Parter|A|' || gs::text, 'Parter', 'A', gs::text,
@@ -373,10 +402,7 @@ func newHoldFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool, admis
 		   FROM generate_series(1, $2::int) gs`,
 			[]any{f.sessionID, seatRows, f.tierID}})
 	} else {
-		steps = append(steps, struct {
-			sql  string
-			args []any
-		}{`INSERT INTO session_seats
+		steps = append(steps, step{`INSERT INTO session_seats
 		     (session_id, seat_key, sector_name, row_name, seat_number,
 		      tier_id, status, kind)
 		   SELECT $1, 'ga|pool|' || lpad(gs::text, 6, '0'), '', '', '',
@@ -405,6 +431,36 @@ func (f *holdFixture) newCart(ctx context.Context, q *gen.Queries, qty int32) uu
 		nil, nil, qty, time.Now().Add(20*time.Minute))
 	if err != nil {
 		f.t.Fatalf("seed cart: %v", err)
+	}
+	return res.ID
+}
+
+// newGACart creates a cart that genuinely HOLDS qty GA units, unlike
+// newCart's session-level-only seed. reservations.quantity is CHECK > 0 so
+// an empty cart cannot be inserted and then filled; instead the row is
+// created, the production ExtendHold primitive allocates the units, and the
+// quantity is corrected down to exactly what the cart holds.
+//
+// The GA race needs this baseline: with an honest cart, an extend(+n) /
+// shrink(-n) cycle returns to the baseline instead of emptying the cart —
+// and an emptied cart is (correctly) cancelled and can no longer be extended.
+func (f *holdFixture) newGACart(ctx context.Context, q *gen.Queries, qty int32) uuid.UUID {
+	f.t.Helper()
+	res, err := q.InsertReservation(ctx, f.orgID, f.channelID, f.sessionID,
+		nil, nil, qty, time.Now().Add(20*time.Minute))
+	if err != nil {
+		f.t.Fatalf("seed GA cart: %v", err)
+	}
+	if _, err := hcheckout.ExtendHold(ctx, f.pool, q, hcheckout.HoldMutationInput{
+		ReservationID: res.ID,
+		GATiers:       []hcheckout.HoldTierQuantity{{TierID: f.tierID, Quantity: qty}},
+		TTL:           30 * time.Minute,
+	}); err != nil {
+		f.t.Fatalf("seed GA cart units: %v", err)
+	}
+	// ExtendHold added qty to the placeholder quantity; the cart holds qty.
+	if _, err := q.UpdateReservationQuantity(ctx, res.ID, qty); err != nil {
+		f.t.Fatalf("correct seeded cart quantity: %v", err)
 	}
 	return res.ID
 }
@@ -490,8 +546,9 @@ func (f *holdFixture) assertLedgerMatchesRows(ctx context.Context) {
 }
 
 // assertQuantitiesMatchLinks checks that every open cart's quantity equals
-// the seeded 1 plus the number of units it actually holds, and that its GA
-// lines sum to the same number of units.
+// the number of units it actually holds, and that its GA lines sum to the
+// same number of units. Carts here are seeded through the production
+// primitive (newGACart), so quantity, links and GA lines must agree exactly.
 func (f *holdFixture) assertQuantitiesMatchLinks(ctx context.Context) {
 	f.t.Helper()
 	rows, err := f.pool.Query(ctx,
@@ -512,9 +569,8 @@ func (f *holdFixture) assertQuantitiesMatchLinks(ctx context.Context) {
 		if err := rows.Scan(&id, &quantity, &links, &gaQty); err != nil {
 			f.t.Fatalf("quantity scan: %v", err)
 		}
-		if int64(quantity) != links+1 { // +1 = the seeded session-level unit
-			f.t.Errorf("cart %s: quantity=%d but holds %d units (expected %d)",
-				id, quantity, links, links+1)
+		if int64(quantity) != links {
+			f.t.Errorf("cart %s: quantity=%d but holds %d units", id, quantity, links)
 		}
 		if gaQty != links {
 			f.t.Errorf("cart %s: ga_items sum=%d but holds %d units", id, gaQty, links)
@@ -545,6 +601,19 @@ func (f *holdFixture) cleanup() {
 	} {
 		if _, err := f.pool.Exec(ctx, sql, f.sessionID); err != nil {
 			f.t.Logf("cleanup: %v (sql: %.40s...)", err, sql)
+		}
+	}
+	if f.planVersionID != nil {
+		for _, s := range []struct {
+			sql string
+			arg uuid.UUID
+		}{
+			{`DELETE FROM seating_plan_versions WHERE id = $1`, *f.planVersionID},
+			{`DELETE FROM seating_plans WHERE id = $1`, *f.planID},
+		} {
+			if _, err := f.pool.Exec(ctx, s.sql, s.arg); err != nil {
+				f.t.Logf("cleanup: %v", err)
+			}
 		}
 	}
 	for _, step := range []struct {

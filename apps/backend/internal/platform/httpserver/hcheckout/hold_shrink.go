@@ -100,16 +100,30 @@ func ShrinkHoldTx(ctx context.Context, txq *gen.Queries, in HoldMutationInput) (
 	}
 
 	removed := int32(len(freed)) //nolint:gosec // bounded by the reservation's own seat count
-	if removed > 0 {
-		if _, err := txq.ReleaseCapacity(ctx, res.SessionID, nil, removed); err != nil {
+
+	// Emptiness is decided by what the cart still HOLDS, not by subtracting
+	// from reservations.quantity. A cart whose quantity ever ran ahead of its
+	// rows — a legacy pre-AB-51 GA hold, or one left behind by a partially
+	// failed mutation — would otherwise never reach zero and would linger for
+	// ever as an un-shrinkable open hold that owns nothing.
+	remaining, err := remainingHoldSizeTx(ctx, txq, res.ID)
+	if err != nil {
+		return HoldMutationResult{}, err
+	}
+
+	// Hand back everything the cart no longer claims. Normally that is exactly
+	// the rows just freed; when quantity ran ahead of the rows the surplus goes
+	// back too, so cancelling cannot leak the phantom into the ledger.
+	release := res.Quantity - remaining
+	if release < removed {
+		release = removed
+	}
+	if release > 0 {
+		if _, err := txq.ReleaseCapacity(ctx, res.SessionID, nil, release); err != nil {
 			return HoldMutationResult{}, fmt.Errorf("hcheckout: release shrunk capacity: %w", err)
 		}
 	}
 
-	remaining := res.Quantity - removed
-	if remaining < 0 {
-		remaining = 0
-	}
 	// A cart emptied by UN_RESERVE is cancelled outright: everything it
 	// held is already back in inventory, so an open hold would be a lie.
 	if remaining == 0 {
@@ -147,6 +161,32 @@ func ShrinkHoldTx(ctx context.Context, txq *gen.Queries, in HoldMutationInput) (
 		return HoldMutationResult{}, fmt.Errorf("hcheckout: read locked prices: %w", err)
 	}
 	return HoldMutationResult{Reservation: updated, Seats: freed, LockedPrices: prices}, nil
+}
+
+// remainingHoldSizeTx reports how many tickets a reservation still holds:
+// the number of session_seats rows linked to it, or — for a legacy
+// pre-AB-51 GA hold that owns no rows at all — the sum of its GA lines.
+// Taking the larger of the two keeps mixed carts correct (there every
+// ticket, seat or GA unit, has a row, so the link count dominates) while
+// still seeing a row-less legacy hold as non-empty.
+func remainingHoldSizeTx(ctx context.Context, txq *gen.Queries, reservationID uuid.UUID) (int32, error) {
+	linked, err := txq.ListReservationSeats(ctx, reservationID)
+	if err != nil {
+		return 0, fmt.Errorf("hcheckout: count remaining seats: %w", err)
+	}
+	items, err := txq.ListReservationGAItems(ctx, reservationID)
+	if err != nil {
+		return 0, fmt.Errorf("hcheckout: count remaining GA lines: %w", err)
+	}
+	var gaTotal int32
+	for _, it := range items {
+		gaTotal += it.Quantity
+	}
+	rows := int32(len(linked)) //nolint:gosec // bounded by the reservation's seat count
+	if gaTotal > rows {
+		return gaTotal, nil
+	}
+	return rows, nil
 }
 
 // releaseSeatKeysTx flips the named seats of THIS reservation back to
