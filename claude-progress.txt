@@ -2,6 +2,93 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-09-05 - #476 W1-A2b slice 14 - ListActionVenuesByOrg SQL prep
+
+Feature #476 STAYS in_progress (sub-feature rule: NEVER release claim as
+too large).
+
+Delivered this session:
+- queries/venues.sql: new ListActionVenuesByOrg(orgID, locale) :many
+  query returning the distinct set of venues owned by orgID that host at
+  least one non-deleted session of a published event, joined to city +
+  country reference rows with the standard requested → 'en' → key
+  i18n_text locale fallback. Country is resolved via cities.country_id
+  first (city-scoped venues), then falls back to venues.country ISO2 via
+  a second LEFT JOIN so venues without a city_id still surface country
+  fields. Ordered by country_iso2 NULLS LAST, city_slug NULLS LAST,
+  venue.display_number so the compat handler groups deterministically.
+- gen/venues.sql.go: hand-written wrapper + ActionVenueRow struct
+  (VenueID / DisplayNumber / VenueName plus nil-able CityID / CitySlug /
+  CityName / CountryID / CountryIso2 / CountryIso3 / CountrySlug /
+  CountryName). All city/country fields are pointers so venues with no
+  city AND no venues.country still project cleanly.
+- gen/querier.go: interface entry with the same signature so future
+  handler callsites can depend on the interface.
+- gen/action_venues_by_org_integration_test.go
+  (//go:build integration): TestListActionVenuesByOrg_LiveDB fixture +
+  test pinning the SQL contract:
+    1. Published-event venue projects with city (HU/Budapest) + country
+       via the cities.country_id chain and ru-localized names.
+    2. Venue attached only via venues.country CZ projects country via
+       the co_vn fallback join and falls back to 'en' when the requested
+       locale has no i18n row.
+    3. Draft-event-only venue is filtered out (published-only rule).
+    4. Cross-org isolation: other-org venue never surfaces.
+
+No handler callsite yet — this is pure SQL prep for the deferred
+GET_ALL_ACTIONS full aggregation (spec §7.1 countryList / cityList /
+venueList blocks). Both the request-side resolvers (slice 13) and the
+response-side compat helpers (slice 12) plus this SQL projection are
+now in place; the next slice can wire cmd_catalog.go
+handleBil24GetAllActions to project the three blocks off ActionVenueRow.
+
+Gates - all GREEN:
+- go build ./apps/backend/... EXIT:0
+- go vet   ./apps/backend/... EXIT:0
+- go test  ./apps/backend/... full suite EXIT:0 (test_476_slice14.log)
+- integration test executed against Docker PG (localhost:55432)
+    DATABASE_URL=postgres://arena:arena@localhost:55432/arena?sslmode=disable
+    JWT_SIGNING_SECRET=test
+    go test -tags integration -run TestListActionVenuesByOrg_LiveDB
+      ./apps/backend/internal/adapters/postgres/gen/... → ok 0.398s
+- gofmt -l on 3 changed .go files clean
+
+Files touched:
+  apps/backend/internal/adapters/postgres/queries/venues.sql            (M)
+  apps/backend/internal/adapters/postgres/gen/venues.sql.go             (M)
+  apps/backend/internal/adapters/postgres/gen/querier.go                (M)
+  apps/backend/internal/adapters/postgres/gen/action_venues_by_org_integration_test.go (A)
+
+STILL DEFERRED for #476 (Step 2 remaining + Step 3):
+
+Step 2 REMAINING (bottom-up, one slice per session):
+  cmd_catalog.go handleBil24GetAllActions full s7.1 aggregation
+    (countryList/cityList/venueList).  Wiring is now unblocked — response
+    helpers (slice 12), request helpers (slice 13) and the venue+geo
+    projection (slice 14) are all in place; the next slice groups
+    ActionVenueRow rows by (CountryID, CityID) and emits the three
+    blocks alongside the existing actionList.
+  cmd_cart.go handleBil24UnReserve response reshape to ReservationResponse
+    (spec §7.4/§7.5).  Spec s7.4 UN_RESERVE actually takes
+    seatList / categoryList / UN_RESERVE_ALL, not a reservationId.
+    Reshape is bigger than one slice - split it.
+  cmd_order.go handleBil24GetOrderInfo / handleBil24CancelOrder orderId:
+    no KindOrder in compatids yet; likely stays UUID for W1, confirm with
+    owner.
+
+Step 3 - No-uuid guardrail (tests/compat/bil24/no_uuid_in_wire_test.go)
+already GREEN; slice 14 adds no wire fixtures.
+
+Recommended next slice: wire handleBil24GetAllActions to
+ListActionVenuesByOrg.  Load the venue+geo rows once when authed=true;
+group by (CountryID, CityID) into three ordered blocks using the
+compatVenueID / compatCityID / compatCountryID response helpers (slice
+12) so wire ids are int64. Existing actionList stays; the three new
+blocks add alongside per spec §7.1 exact order (countryList before
+cityList before venueList before actionList).  Update golden(s) in
+apps/backend/tests/compat/bil24/testdata/wp only to match spec §7.1
+text, and re-run the no-uuid guardrail.
+
 ## 2026-09-05 - #476 W1-A2b slice 13 - request-side venue/city/country resolvers
 
 Commit 324c06e, pushed to origin/master. Feature #476 STAYS in_progress
