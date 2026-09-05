@@ -23982,3 +23982,130 @@ Gates all green:
 
 No openapi.yaml changes, no ts-client regen needed.
 
+## 2026-09-05 - #476 W1-A2b STEP 1 partial - named structs + int-id translate helpers
+
+Sub-feature #476 W1-A2b spans three Steps per the epic entry:
+  1. Named structs + int ids.
+  2. Handlers rewired + file split.
+  3. No-UUID test + existing tests green.
+
+This session delivered Step 1 in full and stopped, per the sub-feature
+fallback rule ("If the sub-feature still does not fit: implement the first
+Steps items, commit by path, push, and write a progress note naming exactly
+which step remains - NEVER release the claim as too large, NEVER fabricate.").
+
+Delivered:
+- apps/backend/internal/adapters/bil24compat/responses.go (new): named Go
+  structs for every response documented in spec 18_bil24_compat_wave1_
+  specification_ru.md section 7. Every ID field is int64 (never UUID
+  string), money fields are float64, omitempty applied only where the spec
+  text says a key is optional. Structs added: GetAllActionsResponse (+
+  Country/City/Venue/Action/ActionEvent/CategoryLimitEntry/Category),
+  GetSeatListResponse (+ Category/Seat/Location), CreateUserResponse,
+  ReservationResponse (+ SeatListItem), GetCartResponse (+ ActionEvent/
+  SeatListItem), AddPromoCodesResponse, CreateOrderResponse,
+  GetTicketsByOrderResponse (+ Ticket), RefundTicketResponse,
+  GetSchemaResponse (+ Seat). TariffPlanID uses *int64 with no omitempty
+  because the spec mandates explicit null in the wire; category Placement
+  uses *bool with omitempty for the tristate rule (nil = key absent for
+  pure-GA sessions).
+- apps/backend/internal/adapters/bil24compat/translate.go (rewritten):
+  kept legacy TranslateLegacyID / TranslatePlatformID intact for the
+  #157/#188 sentinels and not-yet-migrated forwarders, added:
+    * ParseLegacyIntID(raw string) (int64, error) - pure parser: rejects
+      empty, rejects UUID (new sentinel ErrLegacyIDUUIDRejected), rejects
+      zero/negative/float/overflow/non-numeric (new sentinel
+      ErrLegacyIDInvalid), returns positive int64 otherwise.
+    * ResolveLegacyIntID(ctx, db, kind, raw) (uuid.UUID, error) - spec
+      section 4 wave-1 wire-compliant entry: ParseLegacyIntID then
+      compatids.Resolve; unknown mapping wraps into ErrLegacyIDNotFound
+      (maps to -3/101 per spec section 6); parse errors surface (map to -2).
+  Two new sentinels: ErrLegacyIDUUIDRejected and ErrLegacyIDInvalid.
+- apps/backend/internal/adapters/bil24compat/translate_int_test.go (new):
+  10 unit tests covering ParseLegacyIntID - valid positive, minimum (1),
+  empty, valid UUID rejection, uuid.Nil rejection, non-numeric, zero,
+  negative, float, overflow. All pass.
+- apps/backend/internal/platform/httpserver/snake_case_json_test.go:
+  added internal/adapters/bil24compat/ to the exempted third-party-wire
+  adapter list alongside brevo/ and macs/. Bil24 is a frozen legacy wire
+  genuinely in camelCase per spec section 7.
+
+Gates run this session - all GREEN:
+- go build ./apps/backend/...
+- go vet ./apps/backend/...
+- go test ./apps/backend/... (full unit suite, EXIT:0)
+- gofmt -l on the 4 changed files
+
+Sentinels preserved:
+- bil24compat_layout_188_test.go AdapterOwnsWireSymbols: the 8 required
+  symbols still live in the adapter package.
+- bil24compat_layout_188_test.go AdapterHasNoHTTPImports: adapter package
+  new imports are context/errors/fmt/strconv/uuid/gen/compatids - no
+  httpserver import.
+- bil24_compat_157_test.go: legacy TranslateLegacyID UUID passthrough
+  and non-UUID ErrLegacyIDNotFound behaviours preserved.
+
+Remaining work for #476 (deferred - Steps 2 and 3 exceeded one session budget):
+
+STEP 2 - Handlers rewired + file split. Requires:
+- Migrate every callsite in hbil24/bil24_compat.go (78 KB / ~2044 lines)
+  and schema.go from TranslateLegacyID/TranslatePlatformID (UUID strings)
+  to ResolveLegacyIntID (request side) + compatids.Ensure inside the same
+  tx (response side). Handler outputs needing conversion:
+    * handleBil24GetAllActions (line 298): actionId currently emits
+      TranslatePlatformID(e.ID) as string; must emit int64 via
+      compatids.Ensure(KindAction, e.ID). Also needs full countryList/
+      cityList/venueList aggregation per spec 7.1 (currently absent - the
+      handler returns only actionList with three keys, spec requires the
+      catalog tree).
+    * handleBil24GetSeatList (line 426): categoryPriceId (lines 540, 613)
+      -> compatids.Ensure(KindCategoryPrice, tierID); seatId currently
+      emits session_seats.id UUID string per ADR-005 -> must emit
+      session_seats.system_seat_id int64 per spec section 4 (migration
+      0088 added the column, harness #470 materialises it).
+    * getSeatListGA (line 508) and getSeatListUnits (line 563): same.
+    * handleBil24GetSchema (schema.go): verify JSON path emits system_seat_id.
+    * handleBil24Reservation + reservationSeated (line 1635) +
+      reservationGA (line 1792): seatList items need actionEventId,
+      categoryPriceId, seatId all as int64. reservationSeated emits
+      reservationId/sessionId as UUIDs today (lines 1772-1773, sessionId
+      is wrong per spec 7.4 - should be per-item actionEventId).
+      reservationGA emits categoryPriceId as UUID (line 1920).
+    * handleBil24UnReserve (line 1968): spec 7.4 UN_RESERVE_ALL returns
+      empty seatList + cartTimeout=0; current handler emits reservationId
+      not in spec - consider removing.
+    * handleBil24ScanTicket (line 885): platformTicketId emits
+      TranslatePlatformID; migrate to ticketId int64 via
+      tickets.system_ticket_id per spec 7.14.
+- Split bil24_compat.go into cmd_catalog.go (GET_ALL_ACTIONS,
+  GET_SEAT_LIST, GET_SCHEMA re-export), cmd_cart.go (RESERVATION,
+  UN_RESERVE + helpers), cmd_order.go (GET_ORDER_INFO, CREATE_ORDER_EXT,
+  CANCEL_ORDER stubs), cmd_tickets.go (SCAN_TICKET). Target: no file
+  >700 lines. Keep dispatcher, envelope aliases, and result-code re-exports
+  in bil24_compat.go (or move to handler.go).
+- Ensure tx-scoped compatids.Ensure calls run inside the same hcheckout
+  tx performing the seat/GA read; requires either passing gen.DBTX down
+  or wrapping the handler in a tx (production handlers already open one
+  via hcheckout - audit the call chain).
+
+STEP 3 - No-UUID guardrail test. Walk every golden JSON under
+tests/compat/bil24/testdata/wp/{golden,requests}/ and every handler response
+captured by the existing #157 / #312 / #313 tests, assert with a UUID regex
+that NO uuid appears in any wire-side value. Must run BEFORE marking #476
+passing; goldens under wp/golden/ currently contain UUID strings (see
+GET_ALL_ACTIONS/basic.json actionId etc.) and need regeneration against
+the rewired handlers.
+
+Owner note: the epic sizing (#476 as one session, complexity 3) assumed the
+handlers already emitted int64 IDs and only needed struct renaming. In
+practice Step 2 alone is ~60 callsite edits across a 78 KB file plus a tx
+plumbing audit - closer to 6-8 hours of careful work. This split into
+Step 1 (delivered) + Step 2/3 (deferred) preserves the invariant that CI
+stays green while making measurable progress.
+
+Files touched this session:
+  apps/backend/internal/adapters/bil24compat/responses.go            (new)
+  apps/backend/internal/adapters/bil24compat/translate.go            (rewritten)
+  apps/backend/internal/adapters/bil24compat/translate_int_test.go   (new)
+  apps/backend/internal/platform/httpserver/snake_case_json_test.go  (exception)
+
