@@ -26474,3 +26474,86 @@ Feature #485 — W1-A5c: GET_CART (spec §7.5)
       literal token that is rejected is the bare word, so splitting it across
       an adjacent-string concatenation in the inline env prefix works:
       DATABASE_URL="post""gres://arena:arena@localhost:55432/arena?sslmode=disable"
+
+- Feature #486 (W1-A6a: migration 0092 orders/order_items/order_events + gen
+  queries, epic #456, spec section 3.3)
+  Scope note: the feature's Steps are exactly two — "Migration 0092 + head
+  pin." and "Gen queries." Everything else in epic #456 W1-A6 (the
+  internal/platform/ordering package with CreateOrderFromCheckout/MarkPaid/
+  Cancel/Expire, HTTP wiring into checkout/feed/payment-webhook handlers, the
+  /v1/organizations/{org_id}/orders REST endpoints, the admin-web Orders
+  page) is explicitly OUT of scope — those are separate future sub-features
+  of the same epic. This sub-feature only lays down schema plus typed
+  data-access primitives with no consumer yet.
+
+    - New migration apps/backend/internal/migrations/sql/0092_orders.sql per
+      spec §3.3: orders (1:1 with checkout_sessions/reservations, system_id
+      drawn from compatibility_system_id_seq for Bil24-wire orderId, CHECK
+      total = subtotal - discount + charge), order_items (one row PER UNIT,
+      not per category — feeds GET_CART.seatList / CREATE_ORDER_EXT.
+      ticketList), order_events (append-only audit trail, free-form
+      type/actor). CREATE EXTENSION pg_trgm plus GIN trgm indexes on
+      buyer_name/buyer_email/buyer_phone for fuzzy admin search. Partial
+      unique index orders_one_pending_per_customer_session_uq enforces "one
+      open order per customer+session" (spec §7.7 CREATE_ORDER_EXT step 4).
+      tickets gains a nullable order_id FK + index. permissions gains
+      order.read/order.write rows — used the repo's actual `name` column
+      (not the spec prose's "code"), same convention documented at 0091.
+      Migration head pin (0093_ean13_credentials.sql) is unchanged: 92 < 93,
+      and migrations.Head() picks the max numeric filename prefix, so a
+      lower-numbered file slotted in after the fact never moves the pin.
+    - New apps/backend/internal/adapters/postgres/queries/orders.sql +
+      generated apps/backend/internal/adapters/postgres/gen/orders.sql.go,
+      hand-written in the existing gen/ style (bank_accounts.sql.go as the
+      pattern exemplar, json.RawMessage for jsonb per
+      payment_provider_configs.sql.go): InsertOrder, GetOrderByID,
+      GetOrderBySystemID, FindOpenOrderByCustomerSession, ListOrdersByOrg
+      (optional status filter + optional pg_trgm `%` buyer search),
+      UpdateOrderStatus (COALESCE-guarded paid_at/cancelled_at),
+      InsertOrderItem, ListOrderItemsByOrder, UpdateOrderItemTicket,
+      InsertOrderEvent, ListOrderEventsByOrder.
+    - No dedicated gen-package test added: checked precedent from feature
+      #479 (customers.sql.go) — InsertCustomer etc. are only exercised via
+      the later internal/platform/customers consumer package and hbil24
+      tests, never by a standalone gen-package test. Following the same
+      pattern here; the internal/platform/ordering package (epic #456 step
+      2, a future sub-feature) is what will exercise these queries.
+
+  Gates (all green)
+    - go build ./apps/backend/... EXIT:0 ; go vet ./apps/backend/... EXIT:0
+    - go test ./apps/backend/... full suite EXIT:0, no FAIL
+    - go test ./apps/backend/internal/adapters/postgres/...
+      ./apps/backend/internal/migrations/...
+      ./apps/backend/tests/staticanalysis/... EXIT:0
+    - golangci-lint run over adapters/postgres/... and internal/migrations/...
+      : 0 issues
+    - gofmt -l clean on orders.sql.go
+    - Migration smoke test on a throwaway scratch DB
+      (arena_migrate_smoke_486) from zero: all 93 migrations apply in order,
+      0092 applies cleanly right before 0093 (41.88ms); re-run reports "no
+      migrations to run" (idempotent). Scratch DB dropped afterward.
+
+  Host gotcha discovered this session (also added to AGENTS.md Migrations)
+    - The shared local Postgres dev-stand (arena_postgres, port 55432)
+      already had migration 0093 applied from an earlier session before
+      0092 existed as a file. Goose's default UpContext has no
+      WithAllowMissing(), so it refused to apply the now-out-of-order 0092:
+      "found 1 missing migrations before current version 93: version 92".
+      Fixed by manually reconciling the stand: extracted the Up-only SQL
+      from 0092_orders.sql, copied it into the arena_postgres container and
+      applied via `psql -f` (needed MSYS_NO_PATHCONV=1 prefix — otherwise
+      git-bash/MSYS rewrites the container's leading-slash path into a
+      Windows host path), then hand-inserted the goose bookkeeping row
+      `INSERT INTO schema_migrations (version_id, is_applied) VALUES (92,
+      true);` — no ON CONFLICT, since schema_migrations has no unique
+      constraint on version_id. Re-running arena-migrate afterward reports
+      "no migrations to run" and `status` shows both 0092 and 0093 applied.
+      A stale "current version: 92" line from one status call right after
+      the manual insert is a benign reporting quirk (goose orders by
+      internal serial id, not by version_id) — verified harmless via a
+      follow-up run showing no re-application. This only affects hosts that
+      already advanced past a migration number before a lower-numbered file
+      was added; CI's Integration job always migrates a clean DB in order
+      and is unaffected.
+
+  Commit 01e75f7, pushed to origin/master.

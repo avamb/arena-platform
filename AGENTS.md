@@ -54,6 +54,26 @@ entries short and factual.
 
 - When adding a migration, update the migration-head pin in tests (a test
   asserts the latest migration number; it was left at 0074 when 0075 landed).
+  Note that adding a LOWER-numbered file than the current head (e.g. filling
+  in a gap like 0092 after 0093 already exists) does NOT change the pin —
+  `Head()` just picks the max numeric filename prefix.
+- Goose's default `UpContext` has no `WithAllowMissing()`, so it refuses to
+  apply an out-of-order "missing" migration once a later-numbered one is
+  already marked applied in `schema_migrations`. This bit the shared local
+  Postgres dev-stand (`arena_postgres`, port 55432) when migration 0092 was
+  added after 0093 had already landed there in an earlier session. Fix: (1)
+  prove the migration is correct in proper order against a throwaway scratch
+  DB first; (2) on the stand itself, extract just the Up-block SQL, copy it
+  into the container and apply directly with `psql -f` (prefix the `docker
+  exec ... -f /path.sql` call with `MSYS_NO_PATHCONV=1` on git-bash/MSYS, or
+  the leading-slash path gets rewritten into a Windows host path); (3) insert
+  the bookkeeping row by hand: `INSERT INTO schema_migrations (version_id,
+  is_applied) VALUES (92, true);` — there is no unique constraint on
+  `version_id`, so `ON CONFLICT` fails; omit it. Afterward `arena-migrate`
+  reports "no migrations to run" as expected; a stale "current version: N-1"
+  log line from `status` right after the manual insert is a benign reporting
+  quirk (goose orders by internal serial id, not by version_id), not a sign
+  of a broken state.
 - Enum-like values enforced by a CHECK constraint have Go-side mirrors that
   drift silently. `media_objects.owner_type` is the known case: widening
   `mediastore.AllowedOwnerTypes` without a migration makes POST /v1/media
