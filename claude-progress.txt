@@ -26557,3 +26557,113 @@ Feature #485 — W1-A5c: GET_CART (spec §7.5)
       and is unaffected.
 
   Commit 01e75f7, pushed to origin/master.
+
+═══════════════════════════════════════════════════════════════════════════
+2026-09-05 — Feature #487 (W1-A6b): ordering package + order.expire_sweep
+═══════════════════════════════════════════════════════════════════════════
+
+  Both Steps of the feature are DONE and pushed. Nothing remains.
+
+  Context. #486 shipped the order aggregate as tables only — no code wrote
+  to it. This feature adds the behaviour layer, internal/platform/ordering,
+  which epic step 3 (hcheckout) will call into.
+
+  Step 1 — "ordering package API + tests."
+    - ordering.go: statuses/sources/event kinds, error sentinels
+      (ErrCheckoutNotPriced, ErrReservationNotHeld, ErrNoUnits,
+      ErrMissingUnitPrice, ErrNoOpenOrder, ErrInvalidTransition), and the
+      narrow store interfaces (CreateStore / LifecycleStore / LookupStore /
+      ReconcileStore / SweepStore) each satisfied by *gen.Queries, so every
+      entry point takes the caller's transaction-bound Queries.
+    - create.go: CreateOrderFromCheckout builds the order + one order_item
+      PER UNIT from a pricing_confirmed checkout session. GA unit prices
+      come from reservation_ga_items.unit_price (authoritative); seat prices
+      are supplied by the caller via SeatUnitPrices/TierUnitPrices, because
+      session_seats carries no price column and the pricing authority stays
+      in hcheckout.ComputePricingLines. Ordering never prices anything — it
+      only *distributes* the already-computed order totals. Distribution is
+      largest-remainder proration by unit price, so item sums equal order
+      sums exactly and the schema CHECK total = subtotal - discount + charge
+      cannot be violated by rounding.
+    - lifecycle.go: MarkPaid / Cancel / Expire. All three are idempotent on
+      the "already there" case (a retried webhook must not fail nor write a
+      second audit row) and return ErrInvalidTransition otherwise — a late
+      payment for a cancelled order is a human decision. FindOpenOrder maps
+      pgx.ErrNoRows to ErrNoOpenOrder so callers branch on a sentinel rather
+      than on a leaked driver error.
+    - reconcile.go: ReconcileLines (spec §7.7 step 3). Shrinks BEFORE it
+      extends, which keeps the peak hold at max(old, new) instead of
+      old+new — otherwise swapping one category for another self-deadlocks
+      on capacity the same cart is still holding. An extend failure is
+      wrapped as ErrCapacityUnavailable so the gateway can answer result
+      code 101 instead of a generic error.
+
+  Import-cycle decision worth remembering
+    hcheckout will import ordering in the next epic step, so ordering must
+    never import hcheckout. The hold primitives are therefore injected as
+    function values (HoldMutators{Extend, Shrink}) rather than called
+    directly. Any future need for hcheckout behaviour inside ordering should
+    follow the same shape.
+
+  Step 2 — "Expire sweep job registered in arena-worker."
+    - Two new queries (queries/orders.sql + hand-written gen wrappers, the
+      repo's sqlc-style convention): ListExpirableOrders (pending_payment,
+      expires_at < $1, and NOT EXISTS a succeeded payment_intent for the
+      checkout session) and ExpireOrderIfStillPending (status-guarded
+      UPDATE ... WHERE status = 'pending_payment').
+    - expire_sweep.go: job_type order.expire_sweep, self-scheduling in the
+      same style as idempotency.cleanup (each run enqueues the next, so the
+      worker needs no extra ticker goroutine and a restart resumes the
+      cadence from ScheduleInitialExpireSweepJob). Default cadence 1 minute,
+      batch cap 500.
+    - Race safety is the whole point of the guarded UPDATE: if a payment
+      webhook lands between the candidate query and the flip, the guard
+      matches zero rows, RunExpireSweep treats pgx.ErrNoRows as "lost the
+      race", skips the order and writes no audit row. Only a genuine DB
+      failure aborts the job so the worker retries.
+    - cmd/arena-worker/main.go registers the handler and calls
+      ScheduleInitialExpireSweepJob at startup (non-fatal warn on failure).
+
+  Tests
+    - create_test.go: proration invariants (shares always sum to the amount,
+      weighting by price, zero/empty cases, all-free units split evenly)
+      plus the full aggregate write and every rejection path.
+    - reconcile_test.go: extend/shrink deltas, dropped categories, duplicate
+      lines summed, the shrink-before-extend ordering, no-op carts writing
+      no audit row, ErrCapacityUnavailable wrapping.
+    - lifecycle_test.go: each transition's happy path, idempotent replay and
+      illegal-move refusal, plus FindOpenOrder's sentinel mapping.
+    - expire_sweep_test.go: sweep over a fake store including the lost-race
+      skip, real-failure propagation, batch cap, and the handler's
+      self-scheduling contract.
+    - expire_sweep_integration_test.go (//go:build integration): live-DB
+      proof of the parts the fakes cannot see — the NOT EXISTS clause and
+      the status guard are pure SQL. Seeds four orders (past-due unpaid /
+      past-due with a succeeded intent / not yet due / already paid) and
+      asserts only the first is a candidate, that a second sweep tick is a
+      no-op, and that exactly one hold_expired event exists.
+
+  Gates run
+    - go build ./apps/backend/... EXIT:0
+    - go vet ./apps/backend/... EXIT:0 and
+      go vet -tags integration ./apps/backend/internal/platform/ordering/...
+      EXIT:0
+    - Full go test ./apps/backend/... EXIT:0, 98 packages, no FAIL
+      (redirected to a file and grepped afterwards — never judged through a
+      pipeline).
+    - Integration test against the Docker stand (localhost:55432):
+      TestExpireSweep_LiveDB PASS, verified with -v that it actually ran
+      rather than skipping on a missing DATABASE_URL.
+    - golangci-lint over ordering/, cmd/arena-worker/ and gen/: 0 issues,
+      after fixing one real finding — CreateOrderFromCheckout took a clock
+      it never used (SA4006). The CreateInput.Now field was removed rather
+      than papered over: created_at/updated_at come from column defaults and
+      expires_at is inherited from the reservation, so the function has no
+      business owning a clock.
+    - gofmt -l clean on every changed file including the integration-tagged
+      one (golangci-lint skips build-tagged files by default).
+
+  No migration and no openapi.yaml change in this feature, so neither the
+  head pin nor codegen needed touching.
+
+  Commit 8f08679, pushed to origin/master.
