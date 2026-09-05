@@ -129,6 +129,85 @@ func TestCancel_IsIdempotent(t *testing.T) {
 	}
 }
 
+// W1-B7c (#506): a migrated WordPress shop was told about this order at
+// order.paid, so it has to be told to void it. The notification fires only
+// after the transition is actually recorded.
+func TestCancel_NotifiesSubscribersOfARealTransition(t *testing.T) {
+	f, row := storeWithOrder(StatusPendingPayment)
+	row.SystemID = 4400123
+	row.ChannelID = uuid.New()
+	f.orders[row.ID] = row
+
+	var published []gen.OrderRow
+	got, err := Cancel(context.Background(), f, CancelInput{
+		OrderID: row.ID,
+		OrgID:   row.OrgID,
+		Reason:  "operator_cancelled",
+		Publish: func(_ context.Context, o gen.OrderRow) { published = append(published, o) },
+	})
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if len(published) != 1 {
+		t.Fatalf("published %d notifications, want exactly 1", len(published))
+	}
+	// The publisher must see the POST-transition row: a site that re-reads on
+	// notification would otherwise be handed a still-pending order.
+	if published[0].Status != StatusCancelled {
+		t.Fatalf("published status = %s, want %s", published[0].Status, StatusCancelled)
+	}
+	if published[0].ID != got.ID {
+		t.Fatalf("published order %s, want the cancelled one %s", published[0].ID, got.ID)
+	}
+
+	payload := BuildOrderCancelledPayload(published[0], "operator_cancelled")
+	for key, want := range map[string]any{
+		"order_id":   row.ID.String(),
+		"org_id":     row.OrgID.String(),
+		"channel_id": row.ChannelID.String(),
+		"system_id":  int64(4400123),
+		"reason":     "operator_cancelled",
+	} {
+		if payload[key] != want {
+			t.Errorf("payload[%q] = %v, want %v", key, payload[key], want)
+		}
+	}
+}
+
+// A retried CANCEL_ORDER must not void the order at the site twice — the
+// idempotent no-op returns before the publisher is reached.
+func TestCancel_DoesNotNotifyOnAReplay(t *testing.T) {
+	f, row := storeWithOrder(StatusCancelled)
+	calls := 0
+	if _, err := Cancel(context.Background(), f, CancelInput{
+		OrderID: row.ID,
+		OrgID:   row.OrgID,
+		Publish: func(context.Context, gen.OrderRow) { calls++ },
+	}); err != nil {
+		t.Fatalf("re-cancel: %v", err)
+	}
+	if calls != 0 {
+		t.Fatalf("notified %d times replaying a cancellation, want 0", calls)
+	}
+}
+
+// A refused transition must not notify either: nothing changed.
+func TestCancel_DoesNotNotifyWhenTheTransitionIsRefused(t *testing.T) {
+	f, row := storeWithOrder(StatusPaid)
+	calls := 0
+	_, err := Cancel(context.Background(), f, CancelInput{
+		OrderID: row.ID,
+		OrgID:   row.OrgID,
+		Publish: func(context.Context, gen.OrderRow) { calls++ },
+	})
+	if !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("err = %v, want ErrInvalidTransition", err)
+	}
+	if calls != 0 {
+		t.Fatalf("notified %d times on a refused transition, want 0", calls)
+	}
+}
+
 // 'expired' is the reason and cancelled_at is the "stopped being live at"
 // timestamp the admin list sorts on, so Expire stamps both.
 func TestExpire_StampsCancelledAtAndEmitsHoldExpired(t *testing.T) {

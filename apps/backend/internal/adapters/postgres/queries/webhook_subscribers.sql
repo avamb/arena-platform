@@ -54,6 +54,38 @@ SET    event_types = $2,
 WHERE  id = $1
 RETURNING *;
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- W1-B7c (feature #506, spec §9.2) — bil24_wp subscriber routing.
+--
+-- The WordPress sites subscribe PER SALES CHANNEL (migration 0094), so the
+-- dispatcher routes an order/ticket event by the order's channel and a catalog
+-- event by every channel the event is published to.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- name: GetWPSubscriberByChannel :one
+-- The single active bil24_wp subscriber of one sales channel
+-- (uq_webhook_subscribers_bil24_wp_per_channel guarantees at most one).
+SELECT id, channel_id, callback_url, signing_secret
+FROM   webhook_subscribers
+WHERE  channel_id = $1
+  AND  kind       = 'bil24_wp'
+  AND  active     = TRUE;
+
+-- name: ListWPSubscribersForEvent :many
+-- Every active bil24_wp subscriber whose sales channel carries a publication
+-- of the given event: event_publications -> agent_feed_tokens -> channel.
+-- Revoked feed tokens do not carry a live site and are excluded.
+SELECT DISTINCT ws.id, ws.channel_id, ws.callback_url, ws.signing_secret
+FROM   webhook_subscribers ws
+JOIN   agent_feed_tokens   aft ON aft.sales_channel_id = ws.channel_id
+JOIN   event_publications  ep  ON ep.feed_token_id     = aft.id
+WHERE  ep.event_id  = $1
+  AND  ws.kind      = 'bil24_wp'
+  AND  ws.active    = TRUE
+  AND  aft.is_active = TRUE
+  AND  aft.revoked_at IS NULL
+ORDER  BY ws.id;
+
 -- name: SetWebhookSubscriberActive :one
 -- Toggle the active flag for an existing subscriber.
 -- Used by the SuperAdmin webhooks UI (Feature #294 S-3) to re-activate

@@ -35,6 +35,7 @@ func (s *Server) catalogHandler() *hcatalog.Handler {
 		s.publishSessionCancelledEvent,
 	).WithMembershipQueries(s.membershipQueries).
 		WithSeatingBinder(s.bindSeatingForSessionCreate).
+		WithCatalogEventPublisher(s.publishCatalogEvent).
 		WithPublicBaseURL(s.appPublicURL())
 }
 

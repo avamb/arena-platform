@@ -26967,3 +26967,101 @@ a13389f, pushed to master)
   Gates: go build ./apps/backend/... EXIT 0; go vet EXIT 0; FULL
   go test ./apps/backend/... EXIT 0 (redirected to a log, not a pipeline);
   golangci-lint@latest on the touched packages 0 issues; gofmt clean.
+
+================================================================================
+Feature #506 - W1-B7c: bil24_wp dispatcher + the outbox producers that feed it
+================================================================================
+
+  The delivery half of the migration. #505 taught us to SPEAK Bil24; this makes
+  the platform actually TALK to the two WordPress sites, over the existing
+  transactional outbox, in their own webhook vocabulary.
+
+  Shape of the change - the dispatcher:
+    - bil24wire.Dispatcher is now the THIRD member of the worker's
+      multiDispatcher (cmd/arena-worker/main.go), beside the base outbox
+      dispatcher and MACS. Same at-least-once contract: non-2xx returns an
+      error and the outbox retries (MaxAttempts 30, ~24h).
+    - The package doc forbade DB access, and the dispatcher needs Postgres to
+      resolve subscribers. Resolved by splitting along a Loader interface:
+      dispatcher.go stays pure (mapping, envelope, signing, HTTP - no pgx
+      import at all) and loader.go is the ONLY file that touches the database.
+      The package doc in bil24wire.go now states that rule explicitly; keep new
+      DB access in loader.go.
+    - Envelope {id, created, type, data}: id derived from the outbox UUID the
+      same way MACS does it, created RFC3339 UTC. Headers Content-Type,
+      X-Arena-Event-Type, and X-Arena-Signature: sha256=<hex> HMAC when the
+      subscriber row carries a signing_secret.
+
+  Mapping (siteEventType, plus the exported SiteEventTypeFor for cross-package
+  guard tests). Two collapses are deliberate:
+    - Every terminal ticket state - v1.ticket.cancelled / .refunded / .revoked
+      - becomes ticket.refunded, because Bil24's vocabulary has exactly one
+      word for "this ticket no longer admits".
+    - A session change becomes event.changed, because a Bil24 client models the
+      session (actionEvent), not the arena event, as the sellable thing.
+    v1.order.paid -> order.paid (full 36-key Order with ticketList);
+    v1.order.cancelled -> order.cancelled ({id, status:"CANCELLED"} - exactly
+    two keys, asserted); v1.event.published -> event.created;
+    v1.session.cancelled -> event.deleted.
+
+  Routing:
+    - order/ticket events by orders.channel_id (a ticket reaches its order via
+      order_id OR checkout_session_id).
+    - catalog events FAN OUT: event_publications -> agent_feed_tokens
+      .sales_channel_id -> webhook_subscribers.channel_id, so an event
+      published to two sites notifies both. One failing site does not stop the
+      others (test: CatalogFanOut_OneFailingSiteStillDeliversTheOthers).
+    - No migration needed - 0094 from sibling #504 already added
+      webhook_subscribers.channel_id and its partial unique index.
+
+  Order-id CONTINUITY was the one real design decision. order.paid carries the
+  projection's Order.ID (= min system_ticket_id), but a cancelled pending order
+  has no tickets at all. So OrderRef uses
+  COALESCE(MIN(t.system_ticket_id), o.system_id): the cancellation repeats the
+  id the site already saw when tickets exist, and falls back to the aggregate's
+  system_id when they never did.
+
+  The producers:
+    - v1.order.cancelled from ordering.Cancel. Cancel holds no transaction (it
+      works through LifecycleStore), so the producer is an optional Publish
+      callback on CancelInput plus a canonical BuildOrderCancelledPayload -
+      the CALLER decides in-band vs best-effort. It fires only on a real
+      transition: the idempotent re-cancel returns before reaching it, so a
+      retried CANCEL_ORDER cannot void the order at the site twice.
+    - v1.event.published / .updated / v1.session.updated from hcatalog's write
+      handlers, payload {event_id, org_id, session_ids[]} and NO catalog
+      content - the mirror re-reads through the gateway, so a payload that sat
+      in the outbox through a retry backoff can never deliver a stale price.
+      An empty session_ids means "every session", which is the right answer for
+      a newly published event.
+    - Status handler: a move INTO published is event.published, every other
+      transition (including un-publishing) is event.updated. The session PATCH
+      emits session.updated for everything EXCEPT cancellation, which already
+      had its own v1.session.cancelled from S-1 and must not be doubled.
+
+  Two packages, one seam, no import: hcatalog cannot import hscanner, so the
+  publisher is injected as a callback the same three-hop way the older
+  SessionCancelledPublisher is - catalog_shims.go passes
+  s.publishCatalogEvent -> scanner_shims.go forwards to the hscanner Handler.
+  Wired chainably (WithCatalogEventPublisher) rather than as an eighth
+  parameter to hcatalog.New, which has dozens of test call sites.
+  That seam duplicates three event-type STRINGS, so
+  httpserver/catalog_event_types_test.go - the one package that legitimately
+  imports both halves - asserts the two sets are identical AND that every
+  produced type maps to a non-empty site event type. An unmapped producer would
+  otherwise fail silently in production.
+
+  Gotcha worth remembering: NewDispatcher(nil) returns a typed nil that is a
+  NON-nil outbox.Dispatcher once it is in the interface slice, so the nil guard
+  has to live inside Dispatch, not at the call site.
+
+  Tests: 15 dispatcher tests against an httptest receiver (every mapping,
+  signing/no-signing, channel fallback, skip-when-no-subscriber, skip unknown
+  type / malformed payload, non-2xx is retryable, fan-out partial failure),
+  3 producer tests on ordering.Cancel (notifies once, silent on replay, silent
+  on a refused transition), 4 on the catalog payload shape.
+
+  Gates: go build EXIT 0; go vet EXIT 0; FULL go test ./apps/backend/... EXIT 0
+  (redirected to a log, never judged through a pipeline);
+  golangci-lint@latest ./apps/backend/... 0 issues; gofmt clean on all 17
+  staged files.

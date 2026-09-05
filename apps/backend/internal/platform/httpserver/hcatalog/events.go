@@ -701,6 +701,11 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// W1-B7c (#506): a subscribed mirror re-reads the event on notification, so
+	// the edit only has to say WHICH event moved. Sessions are left empty —
+	// an event-level edit can change how every one of them renders.
+	h.notifyCatalogChange(ctx, EventUpdatedEventType, updated.ID.String(), orgID.String(), nil)
+
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"event": eventFromRow(updated),
 	})
@@ -868,6 +873,17 @@ func (h *Handler) HandleUpdateEventStatus(w http.ResponseWriter, r *http.Request
 		))
 		return
 	}
+
+	// W1-B7c (#506). Becoming published is the moment a mirror may first
+	// materialise the event as a product, so it gets its own event type;
+	// every other transition — including un-publishing back to draft, or
+	// cancelling — is an update the mirror re-reads and reacts to. The
+	// equal-status no-op returned earlier, so this only fires on real moves.
+	catalogType := EventUpdatedEventType
+	if req.Status == "published" {
+		catalogType = EventPublishedEventType
+	}
+	h.notifyCatalogChange(ctx, catalogType, updated.ID.String(), orgID.String(), nil)
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"event": eventFromRow(updated),

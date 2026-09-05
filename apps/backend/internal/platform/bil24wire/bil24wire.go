@@ -16,11 +16,24 @@
 // renaming or dropping a key here breaks the WordPress receiver and must land
 // as a spec change first — `tests/compat/bil24` fails on drift.
 //
-// This package must not import the HTTP layer, must not touch the database
-// and must not know about channels or organizations: everything the
-// projection cannot carry (integer catalog ids, the agent/frontend identity
-// of the selling channel, buyer contact details) is supplied by the caller
-// through EncodeContext.
+// The ENCODING half of this package must not import the HTTP layer, must not
+// touch the database and must not know about channels or organizations:
+// everything the projection cannot carry (integer catalog ids, the
+// agent/frontend identity of the selling channel, buyer contact details) is
+// supplied by the caller through EncodeContext.
+//
+// W1-B7c (#506) added an outbox dispatcher that has to live next to the
+// encoder — it delivers exactly this vocabulary — but obviously does need
+// Postgres to resolve subscribers and orders. The rule above is preserved by
+// splitting the two along a `Loader` interface:
+//
+//	bil24wire.go, encode.go — the wire types and the pure encoder
+//	dispatcher.go           — mapping, envelope, signing, HTTP; no pgx import
+//	loader.go               — the ONLY file that touches the database
+//
+// So the encoder remains unit-testable with no database, and the dispatcher
+// with nothing but a fake Loader and an httptest receiver. Keep new DB access
+// in loader.go.
 package bil24wire
 
 // Order is the Bil24 order object (spec §9.3, 36 keys).

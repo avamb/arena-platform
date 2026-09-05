@@ -1062,6 +1062,14 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		if h.publishSessionCancelled != nil {
 			h.publishSessionCancelled(ctx, updated.ID.String(), eventID.String(), current.Status)
 		}
+	} else {
+		// W1-B7c (#506): every other session edit — time, venue, capacity,
+		// status — is a v1.session.updated scoped to THIS session, so a mirror
+		// re-reads one session instead of the whole event. The cancellation
+		// branch above is deliberately not doubled up: the dispatcher already
+		// turns v1.session.cancelled into the site's delete.
+		h.notifyCatalogChange(ctx, SessionUpdatedEventType, eventID.String(), orgID.String(),
+			[]string{updated.ID.String()})
 	}
 
 	// Check overlap with siblings (excluding this session itself).

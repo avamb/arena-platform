@@ -219,6 +219,14 @@ func (s *Server) publishSessionCancelledEvent(ctx context.Context, sessionID, ev
 	s.scannerHandler().PublishSessionCancelledEvent(ctx, sessionID, eventID, previousStatus)
 }
 
+// publishCatalogEvent forwards to hscanner.PublishCatalogEvent (W1-B7c, #506).
+// Same shape and same reason as publishSessionCancelledEvent above: the
+// catalog write handlers in hcatalog need it, and it is handed to them as a
+// func value so hcatalog never imports hscanner.
+func (s *Server) publishCatalogEvent(ctx context.Context, eventType, eventID, orgID string, sessionIDs []string) {
+	s.scannerHandler().PublishCatalogEvent(ctx, eventType, eventID, orgID, sessionIDs)
+}
+
 // ─── scanner-endpoint handler shims ──────────────────────────────────────────
 
 func (s *Server) handleScannerSnapshot(w http.ResponseWriter, r *http.Request) {

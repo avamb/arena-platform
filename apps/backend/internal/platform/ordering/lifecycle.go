@@ -68,6 +68,39 @@ func MarkPaid(ctx context.Context, q LifecycleStore, in PaidInput) (gen.OrderRow
 	return updated, nil
 }
 
+// OrderCancelledEventType is the platform outbox event a cancellation emits
+// (W1-B7c, #506). The bil24_wp dispatcher turns it into Bil24's
+// `order.cancelled` so a migrated WordPress shop voids the order it was told
+// about at order.paid.
+const OrderCancelledEventType = "v1.order.cancelled"
+
+// OrderAggregateType is the outbox aggregate the cancellation event belongs to.
+const OrderAggregateType = "order"
+
+// OrderCancelledPublisher is the optional outbox hook Cancel calls once the
+// transition has actually been recorded.
+//
+// It is a callback rather than an outbox writer because this package owns no
+// transaction: Cancel operates through LifecycleStore, and the caller — which
+// does hold the tx — decides whether the event is appended in-band or
+// best-effort afterwards. Publishing is deliberately BEST EFFORT: a webhook
+// that failed to be enqueued must never roll back a cancellation the operator
+// already saw succeed.
+type OrderCancelledPublisher func(ctx context.Context, order gen.OrderRow)
+
+// BuildOrderCancelledPayload is the canonical v1.order.cancelled payload. The
+// channel travels with the event because that is the dispatcher's routing key:
+// which WordPress site, if any, sold this order.
+func BuildOrderCancelledPayload(order gen.OrderRow, reason string) map[string]any {
+	return map[string]any{
+		"order_id":   order.ID.String(),
+		"org_id":     order.OrgID.String(),
+		"channel_id": order.ChannelID.String(),
+		"system_id":  order.SystemID,
+		"reason":     reason,
+	}
+}
+
 // CancelInput describes a deliberate cancellation (buyer abandonment, an
 // operator cancelling from the admin, a gateway CANCEL_ORDER).
 type CancelInput struct {
@@ -76,6 +109,9 @@ type CancelInput struct {
 	Actor   string
 	Reason  string
 	Now     time.Time
+	// Publish, when set, receives the cancelled order so the caller can
+	// append v1.order.cancelled to the outbox. Nil disables the notification.
+	Publish OrderCancelledPublisher
 }
 
 // Cancel moves a pending_payment order to cancelled and stamps cancelled_at.
@@ -106,6 +142,11 @@ func Cancel(ctx context.Context, q LifecycleStore, in CancelInput) (gen.OrderRow
 	payload := map[string]any{"reason": in.Reason}
 	if _, err := q.InsertOrderEvent(ctx, updated.ID, EventCancelled, actorOrSystem(in.Actor), marshalPayload(payload)); err != nil {
 		return gen.OrderRow{}, fmt.Errorf("ordering: insert cancelled event: %w", err)
+	}
+	// Only a real transition notifies: the no-op re-cancel above returned
+	// early, so a retried CANCEL_ORDER cannot void the order at the site twice.
+	if in.Publish != nil {
+		in.Publish(ctx, updated)
 	}
 	return updated, nil
 }

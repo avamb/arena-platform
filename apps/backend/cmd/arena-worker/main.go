@@ -46,6 +46,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/bil24wire"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/brevo"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/convertjob"
@@ -171,9 +172,19 @@ func run() error {
 	// AB-50c: MACS dispatcher is added to the fan-out. It delivers MACS-shaped
 	// payloads to per-org MACS webhook subscribers for ticket lifecycle events.
 	// Delivery failure returns an error so the outbox row retries (at-least-once).
+	//
+	// W1-B7c (#506): the bil24_wp dispatcher is the third member. It delivers
+	// order/ticket/catalog events to the migrated WordPress sites in Bil24's
+	// own webhook vocabulary, routed by the sales channel each site subscribed
+	// to. It shares the same at-least-once contract: non-2xx retries.
 	baseOutboxDispatcher := buildOutboxDispatcher(cfg, logger)
 	macsDispatcher := macs.NewDispatcher(pool.Pool)
-	outboxDispatcher := &multiDispatcher{dispatchers: []outbox.Dispatcher{baseOutboxDispatcher, macsDispatcher}}
+	bil24WPDispatcher := bil24wire.NewDispatcher(pool.Pool)
+	outboxDispatcher := &multiDispatcher{dispatchers: []outbox.Dispatcher{
+		baseOutboxDispatcher,
+		macsDispatcher,
+		bil24WPDispatcher,
+	}}
 	outboxStore := outbox.NewPGOutboxEventStore(pool.Pool)
 	outboxEventsDisp, outboxDispErr := outbox.NewOutboxEventsDispatcher(outbox.OutboxEventsDispatcherOptions{
 		Store:           outboxStore,
