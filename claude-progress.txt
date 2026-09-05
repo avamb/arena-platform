@@ -25119,3 +25119,62 @@ Recommended next slice: handleBil24GetAllActions full aggregation
 (countryList/cityList/venueList per spec 7.1).  It is response-side, not
 request-side, so it does not overlap with the input-validation helpers
 this slice landed, and it moves the goldens closer to spec-final.
+
+
+## 2026-09-05 - #476 W1-A2b slice 15 - GET_ALL_ACTIONS countryList/cityList
+
+Commit 484f652, pushed to origin/master. Feature #476 STAYS in_progress
+(sub-feature rule: NEVER release claim as too large).
+
+Delivered this session:
+- cmd_catalog.go handleBil24GetAllActions: authed branch now calls
+  h.eventQueries.ListActionVenuesByOrg (slice 14 SQL) and projects the
+  spec s7.1 countryList and cityList blocks (nested venueList with
+  venueId+venueName). Unauthed fallback still emits countryList=[]
+  cityList=[] so wire shape is stable.
+- cmd_catalog.go buildCountryCityLists: new pure helper walks the
+  ActionVenueRow set, tracks distinct country/city UUIDs in first-seen
+  (SQL ORDER BY) sequence, groups venue rows into the correct city entry.
+  IDs go through compatCountryID/compatCityID/compatVenueID so wire form
+  is int64 in production and UUID string in nil-compatDB fallback.
+- bil24_476_catalog_test.go: three new unit tests pin invariants:
+    * TestBil24_476_BuildCountryCityLists_GroupsByCountryAndCity
+    * TestBil24_476_BuildCountryCityLists_SkipsNilCityAndCountry
+    * TestBil24_476_BuildCountryCityLists_EmptyInput
+
+Gates - all GREEN:
+- go build ./apps/backend/... EXIT:0
+- go vet   ./apps/backend/... EXIT:0
+- go test  ./apps/backend/... full suite EXIT:0 (test_476_slice15_full.log)
+- gofmt -l on 2 changed files clean
+
+Files touched:
+  apps/backend/internal/platform/httpserver/hbil24/cmd_catalog.go            (M)
+  apps/backend/internal/platform/httpserver/hbil24/bil24_476_catalog_test.go (A)
+
+STILL DEFERRED for #476 (Step 2 remaining + Step 3):
+
+Step 2 REMAINING (bottom-up, one slice per session):
+  cmd_catalog.go handleBil24GetAllActions: venueList entries still miss
+    address/geoLat/geoLon; ListActionVenuesByOrg needs a widen slice to
+    project those columns (already exist on venues per migration 0050).
+  cmd_catalog.go handleBil24GetAllActions: actionList body still flat
+    (map[string]any with actionId/actionName only). Spec s7.1 expects
+    fullActionName, minPrice, maxPrice, organizerId, actionEventList
+    with day/time/currency/sellEndTime/seatingPlanId/categoryLimitList.
+    Multi-slice work (needs session listing with TZ, tier price windows).
+  cmd_cart.go handleBil24UnReserve reservationId + full response reshape
+    to ReservationResponse form (spec s7.5).
+  cmd_order.go handleBil24GetOrderInfo/handleBil24CancelOrder orderId
+    -> spec s7.5/s7.6 review pending (orders likely stay uuid for W1).
+
+Step 3 - No-uuid guardrail (tests/compat/bil24/no_uuid_in_wire_test.go)
+already GREEN; response-side slice 15 does not risk regression because
+compatCountryID/compatCityID/compatVenueID emit compat ints when the
+pool is wired.
+
+Recommended next slice: widen ListActionVenuesByOrg to project
+address/geo_lat/geo_lng from venues (columns exist per migration 0050),
+extend ActionVenueRow, then plumb through buildCountryCityLists so
+venueList entries carry the spec s7.1 keys. Small, self-contained;
+does not touch actionList body.
