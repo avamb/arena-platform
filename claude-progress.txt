@@ -26901,3 +26901,69 @@ Feature #504 - W1-B7a: migration 0094 + orderexport extraction (MACS unchanged)
   and their goldens can be tested without a database. bil24wire (spec 9.3)
   should be built as a SECOND encoder over orderexport.Order - do not extend
   the MACS types to carry Bil24 fields.
+
+================================================================================
+FEATURE #505 - W1-B7b: bil24wire encoder with BINDING key-set test (commit
+a13389f, pushed to master)
+================================================================================
+
+  Delivered the second encoder over orderexport (the first being MACS), so the
+  spec 9.3 order object now has exactly ONE producer.
+
+  New: internal/platform/bil24wire
+    - bil24wire.go: the wire types. Order (36 keys; ticketList is the ONLY
+      omitempty key), Ticket (17), ActionEvent (14), RefundedTicket (9 per
+      spec 9.2), plus User/Agent/Frontend/PaymentMethod/Acquiring/
+      SeatLocation/BarcodeFormat/ActionKind/Gateway.
+    - encode.go: EncodeOrder, EncodeOrderHeader (= order minus ticketList),
+      EncodeTicketRefunded. Pure - everything the neutral projection cannot
+      know arrives in an EncodeContext (agent/frontend identity, the compat
+      bigint id maps, the service Charge, payment-bank fields).
+    - Wire vocabulary reminders: money is float MAJOR units (DB is minor);
+      totalPrice = price - discount + charge; charge is an ADDITIVE SERVICE
+      FEE, NOT the MACS "net"; filtered* twins mirror their unfiltered values;
+      holderStatus is the STRING "NEVER_USE"/"REFUND"; showTime is naive local;
+      refundDate is RFC3339 WITH offset; discountReason is "Промокод <code>"
+      or null; charge is prorated by price with the remainder on the LAST
+      ticket (AB-50i).
+
+  The BINDING test: tests/compat/bil24/encoder_binding_test.go
+    - Reads testdata/wp/bil24_orders_pseudonymized.json (68 real exports),
+      unions the order/ticket/actionEvent key sets, cross-checks them against
+      the spec93*Keys constants already in binding_test.go, THEN diffs the
+      encoder's actual JSON output against them at all three levels.
+    - Proven to fail on drift: a temporary `driftProbe` field added to
+      bil24wire.Order made both order-level tests fail with extra=[driftProbe].
+      The probe was reverted.
+
+  GET_ORDER_INFO (#493) switched to the encoder:
+    - hbil24.OrderProjector func type + WithOrderExport setter (same nilable
+      closure pattern as SeatedReserveFunc - hbil24 still imports neither
+      pgxpool nor package httpserver).
+    - cmd_order_wire.go builds the EncodeContext: Frontend.ID is the channel
+      display_number, Agent.ID stays 0 (compatibility_id_map has no org/channel
+      kind - spec 3.1 covers action/action_event/category_price/venue/city/
+      country only), Charge = checkout_sessions.platform_fee + provider_fee.
+      Every compat-id lookup degrades to nil (encoder emits 0) rather than
+      failing the command.
+    - Fallback preserved: no projector wired, projection error, or a session
+      with no issued tickets -> the pre-505 hand-built body. A pending cart is
+      not a Bil24 order, and all pre-505 unit tests stay green untouched.
+
+  New DB entry point: orderexport.QueryCheckoutSession - the gateway addresses
+  orders by CHECKOUT SESSION id (spec 7.8), which predates the orders
+  aggregate, so the projection needed its own strings.Replace variant next to
+  QueryOrder/QueryTicket/QuerySession.
+
+  Two host/repo gotchas hit on the way:
+    - bil24_shims.go wires from s.pgxPool, NOT s.pool. s.pool is the PoolDB
+      INTERFACE; orderexport speaks raw *pgxpool.Pool. Using s.pool costs a
+      compile error ("need type assertion").
+    - The snake_case guardrail (httpserver/snake_case_json_test.go) has a
+      hard-coded adapter allowlist; internal/platform/bil24wire had to be
+      added next to brevo/macs/bil24compat or 57 camelCase tags fail two
+      tests. Any NEW wire-adapter package needs the same entry.
+
+  Gates: go build ./apps/backend/... EXIT 0; go vet EXIT 0; FULL
+  go test ./apps/backend/... EXIT 0 (redirected to a log, not a pipeline);
+  golangci-lint@latest on the touched packages 0 issues; gofmt clean.

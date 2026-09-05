@@ -117,6 +117,19 @@ entries short and factual.
   `s.pool`, which is the nil-guard `bil24_shims.go` checks before wiring the
   gateway-session store, the customer store and the Bil24 cart deps. With
   `PgxPool` alone, CREATE_USER self-gates and answers `-99`.
+- **`s.pool` is the `PoolDB` INTERFACE; `s.pgxPool` is the raw
+  `*pgxpool.Pool`.** Anything wiring a helper that takes a `*pgxpool.Pool`
+  (`orderexport.Query*`, the MACS export) must read `s.pgxPool` — passing
+  `s.pool` fails to compile with "need type assertion".
+- **A new wire-adapter package needs an entry in the snake_case guardrail
+  allowlist** in `httpserver/snake_case_json_test.go` (next to brevo / macs /
+  bil24compat / bil24wire), or its camelCase JSON tags fail both
+  `TestSnakeCase_StaticScan_NoCamelCaseJSONTags` and
+  `TestSnakeCase_FullVerification/Step6`. Dedicated adapter packages only —
+  never handler code.
+- **Test-run logs must go to a repo-relative path.** The Read tool cannot open
+  a bash-written `/tmp/foo.log` on this Windows host (it reports "File does not
+  exist"). Redirect to `./x.log` in the repo root and delete it before staging.
 - **Starting Docker Desktop from a session**: `docker desktop start` prints
   nothing and does not reliably bring the engine up; do not trust its exit code
   (a `| head` pipeline reports head's status). Arm a background watcher instead:
