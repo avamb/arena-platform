@@ -24726,3 +24726,54 @@ landed here: swap TranslateLegacyID for h.resolveActionEventID (session)
 and add analogous h.resolveCategoryPriceID / h.resolveSeatID helpers for
 the categoryList/seatList branches.  Fallback contract preserves unit
 tests until every request-side call site is migrated.
+
+
+## 2026-09-05 - #476 W1-A2b slice 9 - RESERVATION actionEventId int64 input
+
+Commit a3c89f0, pushed to origin/master. Feature #476 STAYS in_progress
+(sub-feature rule: NEVER release the claim as too large).
+
+Delivered this session:
+- cmd_cart.go handleBil24Reservation: TranslateLegacyID call site swapped
+  for h.resolveActionEventID (spec s4 / s7.4).  When compatDB is wired,
+  bil24compat.ParseLegacyIntID rejects a uuid actionEventId with -2 before
+  compatids.Resolve touches the pool; the fallback path (compatDB unset)
+  preserves the pre-W1 uuid-string passthrough so seat_d1_312 /
+  seat_d2_313 / bil24_374 unit tests stay green.
+- bil24_476_input_ids_test.go: two new tests pin the invariant with the
+  panicDBTX stub (any DB call is a regression):
+    * TestBil24_476_Reservation_UUIDInput_RejectedWithCompatDB
+    * TestBil24_476_Reservation_NonNumericInput_RejectedWithCompatDB
+
+Gates - all GREEN:
+- go build ./apps/backend/... EXIT:0
+- go vet   ./apps/backend/... EXIT:0
+- go test  ./apps/backend/... full suite EXIT:0 (test_476_slice9.log)
+- gofmt -l on 2 changed files clean
+
+Files touched:
+  apps/backend/internal/platform/httpserver/hbil24/cmd_cart.go            (M)
+  apps/backend/internal/platform/httpserver/hbil24/bil24_476_input_ids_test.go (M)
+
+STILL DEFERRED for #476 (Step 2 remaining + Step 3):
+
+Step 2 REMAINING (bottom-up, one slice per session):
+  cmd_catalog.go handleBil24GetAllActions: full 7.1 aggregation
+    (countryList/cityList/venueList) still missing.
+  cmd_cart.go handleBil24Reservation: categoryList/seatList sub-field
+    input parsing (categoryPriceId/seatId) still uses uuid passthrough;
+    needs resolveCategoryPriceID / resolveSeatID helpers per spec s7.4.
+  cmd_cart.go handleBil24UnReserve reservationId + full response reshape
+    to ReservationResponse form (spec s7.5).
+  cmd_order.go handleBil24GetOrderInfo / handleBil24CancelOrder orderId
+    -> spec s7.5/s7.6 review pending (orders likely stay uuid for W1).
+
+Step 3 - No-uuid guardrail (tests/compat/bil24/no_uuid_in_wire_test.go)
+already GREEN; the remaining request-side slices do not affect the
+response goldens it walks.
+
+Recommended next slice: RESERVATION categoryList sub-field input parsing.
+Add h.resolveCategoryPriceID(ctx, raw) helper that calls
+bil24compat.ResolveLegacyIntID(KindCategoryPrice) when compatDB is
+wired and falls back to TranslateLegacyID otherwise; rewire
+reservationGA request parse and add corresponding panicDBTX tests.
