@@ -2,6 +2,58 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-09-05 - #476 W1-A2b STEP 2 partial (6th slice) - SCAN_TICKET platformTicketId int64
+
+Feature #476 STAYS in_progress (sub-feature rule: NEVER release the claim
+as too large).
+
+Delivered this session (Step 2 - SCAN_TICKET wire form):
+- cmd_tickets.go handleBil24ScanTicket: platformTicketId now emits
+  tickets.system_ticket_id (int64, migration 0088) via
+  h.ticketQueries.GetTicketByID instead of TranslatePlatformID(UUID).
+  Spec section 4 / 7.14.
+- Fallback: when h.ticketQueries is nil (unit-test constructors omit it)
+  or the ticket-row load fails, keep emitting the UUID string so a rare
+  DB hiccup never black-holes an otherwise successful scan; failure path
+  is logged at Warn. This preserves every existing hbil24 test assertion
+  (SCAN_TICKET tests currently construct Handler with ticketQueries=nil).
+
+Gates - all GREEN:
+- go build ./apps/backend/... (EXIT:0)
+- go vet   ./apps/backend/... (EXIT:0)
+- gofmt -l apps/backend/internal/platform/httpserver/hbil24/cmd_tickets.go (clean)
+- go test ./apps/backend/internal/platform/httpserver/hbil24/...
+         ./apps/backend/tests/compat/bil24/...
+         ./apps/backend/tests/staticanalysis/... (EXIT:0)
+- go test ./apps/backend/... full suite (EXIT:0, 0 FAIL lines)
+
+Files touched:
+  apps/backend/internal/platform/httpserver/hbil24/cmd_tickets.go (M)
+
+STILL DEFERRED for #476 (Step 2 remaining + Step 3):
+
+Step 2 REMAINING (bottom-up, one slice per session):
+  cmd_catalog.go handleBil24GetAllActions: full spec §7.1 aggregation
+    (countryList/cityList/venueList) still missing.
+  cmd_order.go handleBil24CreateOrderExt actionEventId/categoryPriceId
+    - the stub already ResolveLegacyIntID-parses inputs; no output IDs
+      because the command still returns NOT_IMPLEMENTED (-5).
+  cmd_order.go handleBil24GetOrderInfo / handleBil24CancelOrder orderId
+    - spec 7.5/7.6 review pending (orders likely stay UUID for W1).
+  cmd_cart.go handleBil24UnReserve reservationId in/out
+    - spec 7.5 review pending.
+  cmd_cart_reserve.go reservationSeated/GA reservationId output
+    - spec 7.4 review pending (reservations likely stay UUID for W1).
+  Any residual TranslatePlatformID call for an ID whose spec §7 mandates
+    int64 wire form.
+
+Step 3 - No-UUID guardrail test in tests/staticanalysis remains blocked
+until every remaining wire callsite is migrated AND goldens regenerated.
+
+Recommended next slice: cmd_catalog.go handleBil24GetAllActions §7.1
+aggregation (countryList/cityList/venueList) - independent of ID work,
+unblocks WP CountryList / CityList / VenueList consumers.
+
 ## 2026-09-05 - #476 W1-A2b Step 2 (4th slice) - compatDB plumbing + first callsites
 
 Commit 3f2ca3b, pushed to origin/master. Feature #476 STAYS in_progress

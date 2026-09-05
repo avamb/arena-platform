@@ -151,7 +151,27 @@ func (h *Handler) handleBil24ScanTicket(w http.ResponseWriter, r *http.Request, 
 		"ticketId":   req.TicketID,
 	}
 	if scanned.TicketID != nil {
-		scanResult["platformTicketId"] = TranslatePlatformID(*scanned.TicketID)
+		// Spec §4 / §7.14: platformTicketId on the wire is the int64
+		// tickets.system_ticket_id (migration 0088), not the internal UUID.
+		// Load the ticket row so we can emit the stable bigint identity that
+		// legacy Bil24 clients expect. Fall back to the UUID string when the
+		// ticket queries handle is absent (unit tests) or the row cannot be
+		// read (rare — the barcode.TicketID FK guarantees it exists on the
+		// production path) so a hiccup never black-holes an otherwise
+		// successful scan.
+		if h.ticketQueries != nil {
+			if trow, terr := h.ticketQueries.GetTicketByID(ctx, *scanned.TicketID); terr == nil {
+				scanResult["platformTicketId"] = trow.SystemTicketID
+			} else {
+				h.logger.Warn("bil24_compat: SCAN_TICKET: ticket lookup for platformTicketId failed; falling back to UUID string",
+					slog.String("ticket_id", scanned.TicketID.String()),
+					slog.String("error", terr.Error()),
+				)
+				scanResult["platformTicketId"] = TranslatePlatformID(*scanned.TicketID)
+			}
+		} else {
+			scanResult["platformTicketId"] = TranslatePlatformID(*scanned.TicketID)
+		}
 	}
 	if scanned.ScannedAt != nil {
 		scanResult["scannedAt"] = scanned.ScannedAt.UTC().Format(time.RFC3339)
