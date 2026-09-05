@@ -80,6 +80,38 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Spec §7.1 (feature #476, W1-A2b slice 15): emit the countryList /
+	// cityList / venueList tree when the caller is authenticated and the
+	// SQL prep from slice 14 (ListActionVenuesByOrg) is wired. The tree
+	// walks distinct (country → city → venue) triples for venues that host
+	// at least one non-deleted session of a published event owned by the
+	// caller's org. The nested venue entries carry venueId + venueName
+	// only in this slice — spec-final address / geoLat / geoLon fields
+	// will land in a follow-up slice that widens ListActionVenuesByOrg to
+	// project them.
+	//
+	// The unauthed fallback (nil authed channel) keeps countryList /
+	// cityList as empty arrays: the pre-W1 catalog is org-agnostic and
+	// there is no venue-tree source for it. Emitting empty arrays keeps
+	// the wire shape stable across the two branches so downstream JSON
+	// consumers do not need to key-guard.
+	countryList := make([]map[string]any, 0)
+	cityList := make([]map[string]any, 0)
+	if authed {
+		venueRows, verr := h.eventQueries.ListActionVenuesByOrg(ctx, channel.OrgID, locale)
+		if verr != nil {
+			h.logger.Error("bil24_compat: GET_ALL_ACTIONS: list action venues failed",
+				slog.String("org_id", channel.OrgID.String()),
+				slog.String("error", verr.Error()),
+			)
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInternalError, "failed to retrieve action list",
+			))
+			return
+		}
+		countryList, cityList = h.buildCountryCityLists(ctx, venueRows)
+	}
+
 	actionList := make([]map[string]any, 0, len(events))
 	for _, e := range events {
 		// Spec §7.1: only status='published' events appear in the catalog.
@@ -113,8 +145,84 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
-		"actionList": actionList,
+		"countryList": countryList,
+		"cityList":    cityList,
+		"actionList":  actionList,
 	}))
+}
+
+// buildCountryCityLists projects a ListActionVenuesByOrg result set into
+// the spec §7.1 countryList and cityList blocks. The country tier is a
+// distinct set of {countryId, countryName} pairs; the city tier is a
+// distinct set of {cityId, cityName, countryId} triples with a nested
+// venueList of {venueId, venueName} entries. Rows whose country_id is
+// nil are skipped from countryList (no reference to attach), and rows
+// whose city_id is nil are skipped from cityList — the site's plugin
+// treats absent geography exactly the same way (bil24-acf-sync.php).
+//
+// IDs are emitted through compatCountryID / compatCityID / compatVenueID
+// so the wire form is int64 on production (compatDB wired) and UUID
+// strings on the fallback path (unit tests without a pool). Output
+// slices preserve the SQL ORDER BY (country_iso2, city_slug,
+// v.display_number) so downstream JSON is stable.
+//
+// Feature #476 W1-A2b slice 15 (spec §7.1).
+func (h *Handler) buildCountryCityLists(ctx context.Context, rows []gen.ActionVenueRow) ([]map[string]any, []map[string]any) {
+	countryList := make([]map[string]any, 0)
+	cityList := make([]map[string]any, 0)
+
+	// Track distinct countries and cities in first-seen order so the SQL
+	// ORDER BY is honored end-to-end. Keys are UUIDs from the source rows.
+	seenCountry := make(map[uuid.UUID]bool)
+	// cityIdx maps city UUID to its index inside cityList so successive
+	// rows for the same city append to the same venueList.
+	cityIdx := make(map[uuid.UUID]int)
+
+	for _, r := range rows {
+		// countryList entry — one per distinct country_id.
+		if r.CountryID != nil && !seenCountry[*r.CountryID] {
+			seenCountry[*r.CountryID] = true
+			name := ""
+			if r.CountryName != nil {
+				name = *r.CountryName
+			}
+			countryList = append(countryList, map[string]any{
+				"countryId":   h.compatCountryID(ctx, *r.CountryID),
+				"countryName": name,
+			})
+		}
+
+		// cityList entry — one per distinct city_id, with a nested
+		// venueList that accumulates every venue row hitting that city.
+		if r.CityID == nil {
+			continue
+		}
+		venue := map[string]any{
+			"venueId":   h.compatVenueID(ctx, r.VenueID),
+			"venueName": r.VenueName,
+		}
+		if idx, ok := cityIdx[*r.CityID]; ok {
+			existing := cityList[idx]["venueList"].([]map[string]any)
+			cityList[idx]["venueList"] = append(existing, venue)
+			continue
+		}
+		cityName := ""
+		if r.CityName != nil {
+			cityName = *r.CityName
+		}
+		entry := map[string]any{
+			"cityId":    h.compatCityID(ctx, *r.CityID),
+			"cityName":  cityName,
+			"venueList": []map[string]any{venue},
+		}
+		if r.CountryID != nil {
+			entry["countryId"] = h.compatCountryID(ctx, *r.CountryID)
+		}
+		cityIdx[*r.CityID] = len(cityList)
+		cityList = append(cityList, entry)
+	}
+
+	return countryList, cityList
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
