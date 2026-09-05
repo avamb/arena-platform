@@ -24836,3 +24836,69 @@ add corresponding panicDBTX tests for UUID / non-int / fallback paths.
 This is bigger than categoryPriceId slice because it needs a new SQL
 query, so consider tackling handleBil24GetAllActions aggregation first
 if migration head is not yet at a stable point.
+
+## 2026-09-05 - #476 W1-A2b slice 11 - RESERVATION seatId int64 input
+
+Commit 9e59f76, pushed to origin/master. Feature #476 STAYS in_progress
+(sub-feature rule: NEVER release the claim as too large).
+
+Delivered this session:
+- queries/session_seats.sql + gen/session_seats.sql.go: new
+  GetSessionSeatBySystemSeatID query (WHERE session_id=$1 AND
+  system_seat_id=$2), one-shot reverse-map of the wave-1 wire form to a
+  SessionSeatRow.  querier.go interface picks up the method.
+- hbil24/handler.go SeatQuerier interface widened with the same method;
+  the seat-branch stub gains a matching iteration-based implementation
+  so all seated-branch unit fixtures satisfy the interface without a
+  live pool.
+- hbil24/compat_ids.go adds two new helpers guarded by a public sentinel
+  ErrSeatIDInvalid:
+    * resolveSeatToRow(ctx, raw, sessionID) - compatDB wired parses
+      int64 via ParseLegacyIntID (reject UUID with -2 pre-DB) then
+      queries by system_seat_id; nil-compatDB path calls uuid.Parse plus
+      GetSessionSeatByID.
+    * validateSeatIDFormat(raw) - format-only check used up-front by the
+      dispatcher so the -2 invalid-request code keeps priority over the
+      -99 seatQ self-gate.
+- hbil24/cmd_cart_reserve.go reservationSeated rewired: input loop keeps
+  empty/dup checks, adds validateSeatIDFormat, aggregates raw seat
+  strings, then loops via resolveSeatToRow inside the DB step so the
+  -3 not-found envelope still echoes the raw seatId back verbatim.
+- hbil24/bil24_476_input_ids_test.go adds three panicDBTX cases:
+    * TestBil24_476_ResolveSeatToRow_UUIDInput_RejectedWithCompatDB
+    * TestBil24_476_ResolveSeatToRow_NonNumericInput_RejectedWithCompatDB
+    * TestBil24_476_ResolveSeatToRow_NilCompatDB_FallbackParsesUUID
+
+Gates - all GREEN:
+- go build ./apps/backend/... EXIT:0
+- go vet   ./apps/backend/... EXIT:0
+- go check ./apps/backend/... EXIT:0 (test_476_slice11.log)
+- gofmt -l on 7 changed .go files clean
+
+Files touched:
+  apps/backend/internal/adapters/postgres/gen/querier.go
+  apps/backend/internal/adapters/postgres/gen/session_seats.sql.go
+  apps/backend/internal/adapters/postgres/queries/session_seats.sql
+  apps/backend/internal/platform/httpserver/hbil24/bil24_476_input_ids_test.go
+  apps/backend/internal/platform/httpserver/hbil24/cmd_cart_reserve.go
+  apps/backend/internal/platform/httpserver/hbil24/compat_ids.go
+  apps/backend/internal/platform/httpserver/hbil24/handler.go
+  apps/backend/internal/platform/httpserver/hbil24/seat_d1 SEAT-D1 harness file
+
+STILL DEFERRED for #476 (Step 2 remaining + Step 3):
+
+Step 2 REMAINING (bottom-up, one slice per session):
+  cmd_catalog.go handleBil24GetAllActions: full 7.1 aggregation
+    (countryList/cityList/venueList) still missing.
+  cmd_cart.go handleBil24UnReserve reservationId + full response reshape
+    to ReservationResponse form (spec s7.5).
+  cmd_order.go handleBil24GetOrderInfo / handleBil24CancelOrder orderId
+    -> spec s7.5/s7.6 review pending (orders likely stay uuid for W1).
+
+Step 3 - No-uuid guardrail (tests/compat/bil24/no_uuid_in_wire_test.go)
+already GREEN.
+
+Recommended next slice: handleBil24GetAllActions full aggregation
+(countryList/cityList/venueList per spec 7.1).  It is response-side, not
+request-side, so it does not overlap with the input-validation helpers
+this slice landed, and it moves the goldens closer to spec-final.
