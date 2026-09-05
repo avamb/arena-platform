@@ -25895,3 +25895,83 @@ separately as aa42694 by another process on the same host during the
 session.
 
 Feature #473 marked PASSING.
+
+================================================================================
+Feature #481 — W1-A4c: CREATE_USER and gateway session lookup (result code 1)
+Wave: WP Bil24 Compat W1 (epic #454, spec §7.3 / §7.4 / §12.2)
+Commit 6e00c79 on origin/master. Status: PASSING.
+================================================================================
+
+Step 1 — CREATE_USER + shared session helper
+- NEW apps/backend/internal/platform/httpserver/hbil24/cmd_user.go (333 lines):
+  * handleBil24CreateUser: authenticateCommand (an unresolved fid is -4 even
+    with requireToken=false, because gateway_sessions.org_id/channel_id are
+    NOT NULL) -> customers.Resolve(ResolveInput{Email, Phone, Name=firstName+
+    " "+lastName, ChannelID, Source=live}) -> NegotiateBil24Locale ->
+    InsertGatewaySession(token, customer, org, channel, locale, [], now+30d)
+    with a 3-attempt retry on SQLSTATE 23505 -> {userId: customers.system_id,
+    sessionId: 43-char unpadded base64url of 32 crypto/rand bytes}.
+  * requireGatewaySession(ctx, w, req, channel, defaultLocale) bool: rejects
+    with resultCode=1 (bil24.session_expired) on missing sessionId/userId,
+    unknown token, expired row, cross-org session, or a userId that does not
+    own the session; real DB errors map to -1 instead. On success it slides
+    expires_at forward by a full TTL. Pass-through when h.sessionQ == nil
+    (the repo's nil-dependency self-gating convention keeps every pre-#481
+    unit suite green).
+  * DefaultGatewaySessionTTL = 30d, overridable via WithSessionTTL.
+- handler.go: new GatewaySessionQuerier interface (InsertGatewaySession,
+  GetGatewaySessionByToken, ExtendGatewaySessionExpiry, GetCustomerBySystemID)
+  plus WithGatewaySessions / WithCustomerStore / WithSessionTTL setters.
+- bil24_compat.go: dispatcher case "CREATE_USER".
+- cmd_cart.go: RESERVATION and UN_RESERVE now run requireGatewaySession first
+  (via the silent resolveChannelByFID so their existing auth surfaces are
+  untouched). Other commands adopt it as they land.
+- bil24_shims.go (300 lines, under the 400 limit): production wiring
+  h.WithGatewaySessions(q).WithCustomerStore(customers.NewStoreFromQueries(q)).
+- bil24compat/wire.go: Request gained FirstName/LastName/Phone/SessionID/UserID
+  and a custom UnmarshalJSON that accepts fid and userId as EITHER a JSON
+  number or a string — the WP client serialises them inconsistently, and
+  without this the CREATE_USER fixtures would decode as -2.
+
+Step 2 — goldens + tests
+- testdata/wp/requests/CREATE_USER/same_email_new_session.json: byte-identical
+  payload to basic.json (that is the point of the case).
+- testdata/wp/golden/CREATE_USER/same_email_new_session.json: same userId
+  10001 as basic.json, sessionId placeholder {{sessionId2}}. basic.json was
+  already spec-correct and was left untouched.
+- tests/compat/bil24/create_user_goldens_481_test.go: strict key-set envelope
+  guard {resultCode, description, command, userId, sessionId} — missing AND
+  extra keys fail; userId must be a JSON number, never a UUID string; the two
+  goldens must share userId and differ in sessionId; both request fixtures
+  must carry the same non-empty email.
+- hbil24/cmd_user_481_test.go: in-memory customers.Store + session querier
+  fakes. Covers the happy path (43-char token, userId >= 1e9, session scoped
+  to the right org/channel, locale negotiated to "ru", expires_at ~ now+30d,
+  display_name "Anna Novak"), same-email-same-user-new-session, keyless
+  anonymous CREATE_USER minting a fresh buyer each call, bad token -4,
+  unknown fid -4 with the token gate off, missing deps -99, insert failure -1,
+  token uniqueness/alphabet, bil24DisplayName, and eight requireGatewaySession
+  rejection cases all asserting resultCode=1 plus "no expiry refresh on
+  rejection", the DB-error -1 path and the unwired pass-through.
+- bil24compat/wire_481_test.go: number/string/null/garbage decode matrix for
+  fid and userId, full CREATE_USER field round-trip, a regression guard that
+  the legacy id fields still decode, and that malformed JSON still errors.
+
+No migration and no openapi.yaml change, so no head bump and no codegen.
+No DB-backed test was added, so no integration-tagged run was required.
+
+Gates — all GREEN:
+- go build ./...                                                  EXIT:0
+- go vet   ./...                                                  EXIT:0
+- go test  ./apps/backend/internal/platform/httpserver/...        EXIT:0
+- go test  ./apps/backend/internal/adapters/bil24compat/...       EXIT:0
+- go test  ./apps/backend/internal/platform/customers/...         EXIT:0
+- go test  ./apps/backend/tests/compat/bil24/...                  EXIT:0
+- go test  ./apps/backend/tests/staticanalysis/...                EXIT:0
+- go test  ./apps/backend/internal/migrations/...                 EXIT:0
+- go test  ./...  full suite                                      EXIT:0
+- golangci-lint run ./apps/backend/...                            0 issues
+- gofmt -l on all 9 changed/new .go files                          CLEAN
+
+Staged by path only (never git add . / -A); features.db and an unrelated
+.autoforge/prompts/coding_prompt.md edit were deliberately left unstaged.
