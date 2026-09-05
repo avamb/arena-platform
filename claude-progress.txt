@@ -27065,3 +27065,57 @@ Feature #506 - W1-B7c: bil24_wp dispatcher + the outbox producers that feed it
   (redirected to a log, never judged through a pipeline);
   golangci-lint@latest ./apps/backend/... 0 issues; gofmt clean on all 17
   staged files.
+
+---
+
+Feature #453 (W1-A3 [EPIC-VERIFY]: result codes 1/101/-1 and localized
+descriptions ru/en/he/cs, K5) - VERIFICATION-ONLY epic for sub-features
+#477/#478, both already passing. No new code needed; result_codes.go already
+defines ResultCodeSessionExpired=1, ResultCodeUserVisible=101,
+ResultCodeTransient=-1, ResultCodeInvalidRequest=-2 (unknown command),
+ResultCodeUnknownCommand kept as deprecated alias for source compat; locales
+ru.toml/he.toml/cs.toml exist alongside en.toml under
+internal/platform/i18n/locales/; goldens
+tests/compat/bil24/testdata/wp/golden/RESERVATION/seat_taken_ru.json and
+seat_taken_he.json exist.
+
+Ran the full gate suite from repo root (go.mod lives at repo root, not
+apps/backend/ - `go.exe build ./...` / `go.exe test ./...` from root resolve
+the whole apps/backend module correctly):
+  - go.exe build ./... -> EXIT 0
+  - go.exe vet ./... -> EXIT 0
+  - go.exe test ./internal/platform/httpserver/hbil24/... \
+    ./internal/adapters/bil24compat/... ./tests/compat/bil24/... \
+    ./tests/staticanalysis/... ./internal/migrations/... \
+    ./internal/platform/i18n/... -> all ok (cached + staticanalysis 3.7s)
+  - go.exe test ./... (full suite, judged via `> full.log 2>&1; echo EXIT:$?`,
+    never through a pipeline) -> 65 "ok" packages, zero FAIL lines, EXIT 0
+  - GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe run
+    github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run
+    ./apps/backend/... -> "0 issues.", EXIT 0
+  - gofmt -l apps/backend, filtered for non-vendor hits (grep -v gomodcache)
+    -> empty, EXIT 0 (the raw list is all apps/backend/.gomodcache/* third-
+    party deps, not project files - false trail, ignore)
+  - npm --prefix apps/admin-web run type-check -> EXIT 0
+  - npm run admin:test (root script wraps `npm --prefix apps/admin-web run
+    test`) -> 43 files / 1114 tests passed, EXIT 0
+  - npm --prefix apps/admin-web run build -> EXIT 0 (only a routine >500kB
+    chunk-size warning, not an error)
+  - Codegen/migration drift: internal/migrations/migrations_head_test.go
+    expectedHead = "0094_wp_webhook_subscribers.sql" matches the actual
+    highest-numbered file in internal/migrations/sql/; openapi_drift_test.go
+    (package httpserver) is part of the full `go test ./...` run above and
+    passed, so no separate re-run needed.
+  - `gh run view` for the latest CI run could NOT be executed: `gh` is
+    blocked by this sandbox's command allowlist (org-level block, not
+    project-configurable). This is the one epic step not performed; all
+    other steps (1)-(3) from the epic description are done and green.
+
+No code changes were required - genuinely a clean verification pass, so no
+commit for source. git status --short only shows a pre-existing unrelated
+diff in .autoforge/prompts/coding_prompt.md and an untracked features.db,
+neither touched by this session. Marked feature #453 passing.
+
+Next: none for this epic. If a future session has `gh` available, it should
+run `gh run view` on the latest CI run for #453/#452/#477/#478 to close the
+one skipped verification step.
