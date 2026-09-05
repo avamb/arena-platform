@@ -26716,3 +26716,93 @@ gh CLI remains blocked in this sandbox (org-level restriction, consistent
 with earlier verification sessions), so CI could not be independently
 re-watched here; every locally reproducible CI-equivalent gate matches
 green.
+
+================================================================================
+#488 W1-A6c - ordering wired into the three write paths (2026-09-06)
+================================================================================
+
+Feature #488 (spec 14.1 / 9.1) is DONE and marked passing; commit 4054c91
+pushed to origin/master. #487 built the ordering package; nothing on a live
+path called it. This session wired it in.
+
+  Call sites
+    - hcheckout: new checkout_order.go holds confirmAndCreateOrder, which
+      runs ConfirmCheckoutSession + CreateOrderFromCheckout in ONE tx. All
+      three pricing branches of HandleConfirmCheckout now go through it, so
+      an order without its checkout snapshot (or vice versa) cannot exist.
+      The 409 contract is preserved via isCheckoutStateConflict - the state
+      guard is still ConfirmCheckoutSession returning pgx.ErrNoRows, which
+      is also why a retried confirm never reaches the ordering call.
+    - hfeed.confirmPublicCheckout: was two independent statements (insert
+      then confirm); now one tx that also resolves/creates the customer
+      (12.2) and mints the aggregate. Buyer name/phone are snapshotted
+      whenever the buyer volunteered them, independent of the channel's
+      collect_* flags. Customer resolution and the fee-percent snapshot
+      degrade with a warn - neither is worth failing a paid cart over.
+    - payment_intents.go webhook: on state 'succeeded' looks up the order
+      by checkout_session_id and calls ordering.MarkPaid on the SAME tx as
+      the payment state change. Non-fatal by design: ErrNoRows = pre-#488
+      session, and MarkPaid is a no-op on an already-paid order, so an
+      at-least-once webhook cannot double-audit.
+
+  Issuance (htickets)
+    - IssueTicketsForCheckout loads the order first and uses
+      orders.buyer_email as tickets.holder_email (it used to pass nil with
+      the comment "not known at issuance time" - since the aggregate exists
+      it IS known).
+    - linkTicketsToOrder writes both directions (tickets.order_id via the
+      new narrow :exec SetTicketOrder, order_items.ticket_id via
+      UpdateOrderItemTicket). Matching is by session_seat_id where the item
+      has one, positional otherwise: ordering.collectUnits sorts seats by
+      seat_key while issuance iterates ListReservationSeats order, so
+      ordinal N on each side is NOT the same seat.
+    - v1.order.paid is appended on the ISSUANCE transaction (new
+      Handler.WithOutboxWriter, wired in tickets_shims.go and
+      arena-worker/main.go). Exactly-once falls out of the existing
+      advisory lock + UNIQUE checkout_session_id/ordinal: only the caller
+      that completes the last ordinal publishes, a replay returns early,
+      and the event can never describe rolled-back tickets.
+
+  Defect found and fixed in ordering itself, not just wiring
+    - collectUnits double-counted every seated hold. Since AB-48
+      reservation_ga_items is the price-LOCK record for all reservation
+      shapes, so a 2-seat hold also carries a GA line of quantity 2 -
+      enumerating both minted 4 units for a 2-seat order. Seats are now the
+      unit truth when present, and the GA lines become the last-resort
+      per-tier price fallback behind SeatUnitPrices/TierUnitPrices.
+    - ChargePercentBP moved into ordering.go (fee_percent numeric string to
+      basis points, total by design: it is an audit snapshot, the exact
+      charge travels in orders.charge).
+
+  New SQL (hand-written gen wrappers, canonical .sql updated)
+    GetOrderByCheckoutSession, GetSessionEventID, SetTicketOrder.
+    SetTicketOrder is deliberately :exec - order_id is not on TicketRow and
+    widening the shared scanTicketRow would ripple through every SELECT
+    that feeds it.
+
+  Gates (from the repo root, never judged through a pipeline)
+    - go.exe build ./...                                       EXIT:0
+    - go.exe vet ./... and vet -tags integration on httpserver EXIT:0
+    - go.exe test ./... full suite, redirected to a log        EXIT:0,
+      63 packages ok, 0 FAIL (includes tests/compat/bil24, staticanalysis,
+      internal/migrations)
+    - golangci-lint@latest ./apps/backend/...                  0 issues
+    - gofmt -l over cmd/ internal/ tests/                      clean
+    - Live DB (Docker stand localhost:55432, head 0093):
+      TestW1A6c_PublicFeedPurchase_OrderItemsAndOrderPaid PASS. It drives
+      the REAL POST /v1/public/feeds/{token}/checkout/start through the
+      mounted router (no stubbed handler) and asserts: one order with
+      buyer_email/name/phone plus non-null customer_id, source public_feed
+      and charge_percent_bp 125; one order_item per ticket linked in both
+      directions with no ticket claimed twice; every ticket carrying
+      order_id and holder_email; exactly one v1.order.paid row with the 9.1
+      payload; and that a replayed issuance mints no ticket and emits no
+      second event.
+
+  No migration and no openapi.yaml change, so neither the head pin nor
+  codegen needed touching.
+
+  Next in the epic #456: the sibling sub-features - order list endpoints
+  (spec 14.2) and the bil24wire dispatcher for v1.order.paid /
+  v1.order.cancelled (spec 9.2) - are NOT part of #488 and were not
+  started.
