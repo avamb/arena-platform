@@ -24307,3 +24307,89 @@ Plan-agent pass first to sequence the migrations bottom-up (deepest
 helpers first: writeHoldError, then GA branch, then seated branch, then
 read commands, finally dispatcher).
 
+## 2026-09-05 - #476 W1-A2b STEP 2 partial (3rd slice) - seatId int64 migration
+
+Commit 99fb13e, pushed to origin/master. Feature #476 STAYS in_progress
+(sub-feature rule: NEVER release the claim as too large).
+
+Delivered this session (Step 2 middle slice - seatId int64 emission):
+- cmd_catalog.go (getSeatListUnits): entry seatId now emits s.SystemSeatID
+  (int64) instead of s.ID.String() (UUID). Spec section 4 / 7.2,
+  migration 0088.
+- schema.go (handleBil24GetSchema): entry seatId now emits s.SystemSeatID
+  (int64). Spec section 4 / 7.15. Join contract with GET_SEAT_LIST
+  preserved because both projections read the same column.
+- cmd_cart_reserve.go (reservationSeated): heldSeatIDs is now []int64
+  sourced from result.Seats[i].SystemSeatID; the RESERVATION seated echo
+  emits seatList as JSON numbers. Spec section 4 / 7.4.
+- Test fixtures updated to populate SessionSeatRow.SystemSeatID
+  (mirroring migration 0088 arena_system_seat_id sequence, >= 1e9):
+    seat_d1_312_test.go: 2 fixtures.
+    seat_d2_313_test.go: 3 fixtures.
+- Test assertions decode the wire seatId as float64 (Go JSON default
+  numeric type) and cast to int64 for comparison.
+
+Gates this session - all GREEN:
+- go build ./apps/backend/... (EXIT:0)
+- go vet   ./apps/backend/... (EXIT:0)
+- go test  ./apps/backend/... full suite (EXIT:0)
+- gofmt -l on 5 changed files: clean
+
+Files touched this session:
+  apps/backend/internal/platform/httpserver/hbil24/cmd_catalog.go       (M)
+  apps/backend/internal/platform/httpserver/hbil24/schema.go            (M)
+  apps/backend/internal/platform/httpserver/hbil24/cmd_cart_reserve.go  (M)
+  apps/backend/internal/platform/httpserver/hbil24/seat_d1_312_test.go  (M)
+  apps/backend/internal/platform/httpserver/hbil24/seat_d2_313_test.go  (M)
+
+STILL DEFERRED for #476 (Step 2 remaining ID migrations + Step 3 test):
+
+Step 2 REMAINING - non-seatId wire IDs still emit UUID strings via
+TranslatePlatformID. Callsite map (line numbers reference post-slice state):
+
+  cmd_catalog.go:92   handleBil24GetAllActions   actionId
+    -> compatids.Ensure(KindAction, e.ID) int64 + full
+       countryList/cityList/venueList aggregation per spec 7.1
+  cmd_catalog.go:283  getSeatListGA              categoryPriceId
+    -> compatids.Ensure(KindCategoryPrice, t.ID) int64
+  cmd_catalog.go:356  getSeatListUnits           categoryPriceId
+    -> compatids.Ensure int64  (seatId slice already done)
+  cmd_order.go:*      handleBil24GetOrderInfo    orderId in/out (spec review)
+  cmd_order.go:*      handleBil24CreateOrderExt  actionEventId, categoryPriceId
+  cmd_order.go:*      handleBil24CancelOrder     orderId input parse
+  cmd_tickets.go:154  handleBil24ScanTicket      platformTicketId
+    -> tickets.system_ticket_id int64 per spec 7.14 (also reshape
+       response - loads ticket row via new query)
+  cmd_cart.go:365     writeHoldError             categoryPriceId
+    -> compatids.Ensure int64
+  cmd_cart_reserve.go:265,329 reservationGA      categoryPriceId
+    -> compatids.Ensure int64 (input+output)
+  cmd_cart_reserve.go:181,182 reservationSeated  reservationId, sessionId
+    (spec 7.4 review)
+  cmd_cart_reserve.go:347,348 reservationGA      reservationId, sessionId
+  cmd_cart.go:402/468 handleBil24UnReserve       reservationId
+    (spec 7.5 review)
+
+Required plumbing for compatids.Ensure calls (option (b) recommended by
+prior session): change compatids.Ensure signature to accept an ambient
+gen.Queries handle so read commands (GET_ALL_ACTIONS, GET_SEAT_LIST,
+GET_SCHEMA, GET_ORDER_INFO) can mint without opening a tx - the SQL is
+INSERT ... ON CONFLICT DO NOTHING RETURNING, atomic per row.
+
+Step 3 - No-UUID guardrail test. Add
+apps/backend/tests/staticanalysis/bil24_no_uuid_wire_test.go that walks
+every golden JSON under apps/backend/tests/compat/bil24/testdata/wp/
+with a UUID regex and fails on any hit. Cannot land before Step 2
+second-half completes (goldens will still carry non-seatId UUIDs).
+
+Sentinels still preserved:
+- bil24compat_layout_188_test.go: unchanged, adapter package untouched.
+- bil24_compat_157_test.go: TranslateLegacyID/TranslatePlatformID still
+  present in the adapter; the 3 handler call sites migrated this pass do
+  not affect the legacy string forwarders.
+
+Sizing note: the remaining 60+ callsite edits plus goldens regeneration
+plus the guardrail test still need ~4-6 hours across future sessions.
+Recommend continuing bottom-up (categoryPriceId in writeHoldError, then
+GA branch, then read commands, then order/tickets, finally goldens).
+

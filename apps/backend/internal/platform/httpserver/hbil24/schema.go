@@ -147,9 +147,11 @@ func (h *Handler) handleBil24GetSchema(w http.ResponseWriter, r *http.Request, r
 	seatSchema := make([]map[string]any, 0, len(seats))
 	for _, s := range seats {
 		entry := map[string]any{
-			// ADR-005: seatId on the wire is the platform session_seats.id
-			// serialised as a plain UUID string. Matches GET_SEAT_LIST.
-			"seatId":  s.ID.String(),
+			// Spec §4 / §7.15 (W1-A2b feature #476): seatId on the wire is
+			// session_seats.system_seat_id (bigint, migration 0088). Same
+			// projection as GET_SEAT_LIST so callers can zip the two
+			// responses by seatId.
+			"seatId":  s.SystemSeatID,
 			"seatKey": s.SeatKey,
 		}
 		if coord, ok := seatCoordsByKey[s.SeatKey]; ok {

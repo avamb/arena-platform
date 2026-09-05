@@ -234,9 +234,11 @@ func newReserveFixture(admissionMode string) *reserveFixture {
 		tierID:    uuid.New(),
 		seatIDs:   []uuid.UUID{uuid.New(), uuid.New()},
 	}
+	// SystemSeatID mirrors migration 0088 (>=1e9) — the reservation echo
+	// (W1-A2b feature #476, spec §4/§7.4) emits these on the wire.
 	seatRows := []gen.SessionSeatRow{
-		{ID: f.seatIDs[0], SessionID: f.sessionID, SeatKey: "A-1-1", SectorName: "A", RowName: "1", SeatNumber: "1", TierID: &f.tierID, Status: "available"},
-		{ID: f.seatIDs[1], SessionID: f.sessionID, SeatKey: "A-1-2", SectorName: "A", RowName: "1", SeatNumber: "2", TierID: &f.tierID, Status: "available"},
+		{ID: f.seatIDs[0], SessionID: f.sessionID, SeatKey: "A-1-1", SectorName: "A", RowName: "1", SeatNumber: "1", TierID: &f.tierID, Status: "available", SystemSeatID: 1_000_000_101},
+		{ID: f.seatIDs[1], SessionID: f.sessionID, SeatKey: "A-1-2", SectorName: "A", RowName: "1", SeatNumber: "2", TierID: &f.tierID, Status: "available", SystemSeatID: 1_000_000_102},
 	}
 	f.seats = &fakeSeats{seats: map[uuid.UUID][]gen.SessionSeatRow{f.sessionID: seatRows}}
 	f.adm = &fakeAdmission{sessions: map[uuid.UUID]gen.SessionAdmissionRow{
@@ -317,11 +319,13 @@ func TestBil24_312_GetSeatList_AssignedSeats_ProjectsRealSeats(t *testing.T) {
 	sessionID := uuid.New()
 	tierID := uuid.New()
 	seatIDs := []uuid.UUID{uuid.New(), uuid.New(), uuid.New(), uuid.New()}
+	// SystemSeatID mirrors migration 0088 (>=1e9); GET_SEAT_LIST emits
+	// these on the wire per spec §4/§7.2 (W1-A2b feature #476).
 	seats := []gen.SessionSeatRow{
-		{ID: seatIDs[0], SessionID: sessionID, SeatKey: "A-1-1", SectorName: "A", RowName: "1", SeatNumber: "1", TierID: &tierID, Status: "available"},
-		{ID: seatIDs[1], SessionID: sessionID, SeatKey: "A-1-2", SectorName: "A", RowName: "1", SeatNumber: "2", TierID: &tierID, Status: "held"},
-		{ID: seatIDs[2], SessionID: sessionID, SeatKey: "A-1-3", SectorName: "A", RowName: "1", SeatNumber: "3", TierID: &tierID, Status: "sold"},
-		{ID: seatIDs[3], SessionID: sessionID, SeatKey: "A-1-4", SectorName: "A", RowName: "1", SeatNumber: "4", TierID: nil, Status: "unavailable"},
+		{ID: seatIDs[0], SessionID: sessionID, SeatKey: "A-1-1", SectorName: "A", RowName: "1", SeatNumber: "1", TierID: &tierID, Status: "available", SystemSeatID: 1_000_000_201},
+		{ID: seatIDs[1], SessionID: sessionID, SeatKey: "A-1-2", SectorName: "A", RowName: "1", SeatNumber: "2", TierID: &tierID, Status: "held", SystemSeatID: 1_000_000_202},
+		{ID: seatIDs[2], SessionID: sessionID, SeatKey: "A-1-3", SectorName: "A", RowName: "1", SeatNumber: "3", TierID: &tierID, Status: "sold", SystemSeatID: 1_000_000_203},
+		{ID: seatIDs[3], SessionID: sessionID, SeatKey: "A-1-4", SectorName: "A", RowName: "1", SeatNumber: "4", TierID: nil, Status: "unavailable", SystemSeatID: 1_000_000_204},
 	}
 	adm := &fakeAdmission{sessions: map[uuid.UUID]gen.SessionAdmissionRow{
 		sessionID: {ID: sessionID, AdmissionMode: "assigned_seats", CapacityTotal: 4},
@@ -344,12 +348,15 @@ func TestBil24_312_GetSeatList_AssignedSeats_ProjectsRealSeats(t *testing.T) {
 		t.Fatalf("seatList: want 4 entries, got %d", len(list))
 	}
 
-	// Order and BSS codes.
+	// Order and BSS codes. seatId is session_seats.system_seat_id (int64)
+	// per W1-A2b feature #476 (spec §4/§7.2); JSON numbers decode as
+	// float64 in map[string]any.
 	wantStatusCodes := []int{1, 3, 4, 0}
+	wantSeatIDs := []int64{1_000_000_201, 1_000_000_202, 1_000_000_203, 1_000_000_204}
 	for i, entry := range list {
 		m := entry.(map[string]any)
-		if m["seatId"] != seatIDs[i].String() {
-			t.Errorf("seat[%d].seatId: want %s, got %v", i, seatIDs[i], m["seatId"])
+		if got := int64(m["seatId"].(float64)); got != wantSeatIDs[i] {
+			t.Errorf("seat[%d].seatId: want %d, got %v", i, wantSeatIDs[i], m["seatId"])
 		}
 		if m["sector"] != "A" {
 			t.Errorf("seat[%d].sector: want A, got %v", i, m["sector"])
@@ -660,13 +667,14 @@ func TestBil24_312_Reservation_Seated_RealHold(t *testing.T) {
 		t.Errorf("currency: want CZK, got %v", resp["currency"])
 	}
 
-	// Held seats echoed as ADR-005 id strings.
+	// Held seats echoed as session_seats.system_seat_id (int64) per
+	// W1-A2b feature #476 (spec §4/§7.4). JSON numbers decode as float64.
 	seatList, ok := resp["seatList"].([]any)
 	if !ok || len(seatList) != 2 {
 		t.Fatalf("seatList projection wrong: %v", resp["seatList"])
 	}
-	if seatList[0] != f.seatIDs[0].String() {
-		t.Errorf("seatList[0]: want %s, got %v", f.seatIDs[0], seatList[0])
+	if got := int64(seatList[0].(float64)); got != 1_000_000_101 {
+		t.Errorf("seatList[0]: want %d, got %v", int64(1_000_000_101), seatList[0])
 	}
 }
 

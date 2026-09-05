@@ -121,11 +121,13 @@ func TestBil24_313_GetSchema_ProjectsCoordinatesBySeatID(t *testing.T) {
 	sessionID := uuid.New()
 	planVersionID := uuid.New()
 	seatIDs := []uuid.UUID{uuid.New(), uuid.New(), uuid.New(), uuid.New()}
+	// SystemSeatID mirrors migration 0088; GET_SCHEMA emits these on the
+	// wire per spec §4/§7.15 (W1-A2b feature #476).
 	seats := []gen.SessionSeatRow{
-		{ID: seatIDs[0], SessionID: sessionID, SeatKey: "A|1|1", SectorName: "A", RowName: "1", SeatNumber: "1", Status: "available"},
-		{ID: seatIDs[1], SessionID: sessionID, SeatKey: "A|1|2", SectorName: "A", RowName: "1", SeatNumber: "2", Status: "available"},
-		{ID: seatIDs[2], SessionID: sessionID, SeatKey: "A|1|3", SectorName: "A", RowName: "1", SeatNumber: "3", Status: "held"},
-		{ID: seatIDs[3], SessionID: sessionID, SeatKey: "A|1|4", SectorName: "A", RowName: "1", SeatNumber: "4", Status: "sold"},
+		{ID: seatIDs[0], SessionID: sessionID, SeatKey: "A|1|1", SectorName: "A", RowName: "1", SeatNumber: "1", Status: "available", SystemSeatID: 1_000_000_301},
+		{ID: seatIDs[1], SessionID: sessionID, SeatKey: "A|1|2", SectorName: "A", RowName: "1", SeatNumber: "2", Status: "available", SystemSeatID: 1_000_000_302},
+		{ID: seatIDs[2], SessionID: sessionID, SeatKey: "A|1|3", SectorName: "A", RowName: "1", SeatNumber: "3", Status: "held", SystemSeatID: 1_000_000_303},
+		{ID: seatIDs[3], SessionID: sessionID, SeatKey: "A|1|4", SectorName: "A", RowName: "1", SeatNumber: "4", Status: "sold", SystemSeatID: 1_000_000_304},
 	}
 
 	_, geomRaw, checksum := canonicalGeometry()
@@ -178,10 +180,13 @@ func TestBil24_313_GetSchema_ProjectsCoordinatesBySeatID(t *testing.T) {
 
 	wantX := []float64{100, 110, 120, 130}
 	wantCat := []int{1, 1, 2, 2}
+	// seatId is session_seats.system_seat_id (int64) per W1-A2b
+	// feature #476 (spec §4/§7.15); JSON numbers decode as float64.
+	wantSeatIDs := []int64{1_000_000_301, 1_000_000_302, 1_000_000_303, 1_000_000_304}
 	for i, entry := range list {
 		m := entry.(map[string]any)
-		if m["seatId"] != seatIDs[i].String() {
-			t.Errorf("seat[%d].seatId: want %s, got %v", i, seatIDs[i], m["seatId"])
+		if got := int64(m["seatId"].(float64)); got != wantSeatIDs[i] {
+			t.Errorf("seat[%d].seatId: want %d, got %v", i, wantSeatIDs[i], m["seatId"])
 		}
 		if m["x"].(float64) != wantX[i] {
 			t.Errorf("seat[%d].x: want %v, got %v", i, wantX[i], m["x"])
@@ -208,11 +213,15 @@ func TestBil24_313_GetSchema_JoinsGetSeatListBySeatID(t *testing.T) {
 	sessionID := uuid.New()
 	planVersionID := uuid.New()
 	seatIDs := []uuid.UUID{uuid.New(), uuid.New(), uuid.New(), uuid.New()}
+	// SystemSeatID mirrors migration 0088; GET_SEAT_LIST and GET_SCHEMA
+	// both emit these on the wire per W1-A2b feature #476 so the two
+	// responses can be joined by seatId.
+	systemIDs := []int64{1_000_000_401, 1_000_000_402, 1_000_000_403, 1_000_000_404}
 	seats := []gen.SessionSeatRow{
-		{ID: seatIDs[0], SessionID: sessionID, SeatKey: "A|1|1", SectorName: "A", RowName: "1", SeatNumber: "1", Status: "available"},
-		{ID: seatIDs[1], SessionID: sessionID, SeatKey: "A|1|2", SectorName: "A", RowName: "1", SeatNumber: "2", Status: "held"},
-		{ID: seatIDs[2], SessionID: sessionID, SeatKey: "A|1|3", SectorName: "A", RowName: "1", SeatNumber: "3", Status: "sold"},
-		{ID: seatIDs[3], SessionID: sessionID, SeatKey: "A|1|4", SectorName: "A", RowName: "1", SeatNumber: "4", Status: "unavailable"},
+		{ID: seatIDs[0], SessionID: sessionID, SeatKey: "A|1|1", SectorName: "A", RowName: "1", SeatNumber: "1", Status: "available", SystemSeatID: systemIDs[0]},
+		{ID: seatIDs[1], SessionID: sessionID, SeatKey: "A|1|2", SectorName: "A", RowName: "1", SeatNumber: "2", Status: "held", SystemSeatID: systemIDs[1]},
+		{ID: seatIDs[2], SessionID: sessionID, SeatKey: "A|1|3", SectorName: "A", RowName: "1", SeatNumber: "3", Status: "sold", SystemSeatID: systemIDs[2]},
+		{ID: seatIDs[3], SessionID: sessionID, SeatKey: "A|1|4", SectorName: "A", RowName: "1", SeatNumber: "4", Status: "unavailable", SystemSeatID: systemIDs[3]},
 	}
 	_, geomRaw, checksum := canonicalGeometry()
 
@@ -254,36 +263,37 @@ func TestBil24_313_GetSchema_JoinsGetSeatListBySeatID(t *testing.T) {
 			len(seatListEntries), len(schemaEntries))
 	}
 
-	// Build seatId â†’ coord from GET_SCHEMA and seatId â†’ status from
-	// GET_SEAT_LIST; every seatId MUST appear in both maps.
-	coords := make(map[string][2]float64, len(schemaEntries))
+	// Build seatId → coord from GET_SCHEMA and seatId → status from
+	// GET_SEAT_LIST; every seatId MUST appear in both maps. seatId is
+	// session_seats.system_seat_id (int64) per W1-A2b feature #476 —
+	// JSON numbers decode as float64 in map[string]any.
+	coords := make(map[int64][2]float64, len(schemaEntries))
 	for _, e := range schemaEntries {
 		m := e.(map[string]any)
-		coords[m["seatId"].(string)] = [2]float64{m["x"].(float64), m["y"].(float64)}
+		coords[int64(m["seatId"].(float64))] = [2]float64{m["x"].(float64), m["y"].(float64)}
 	}
-	statuses := make(map[string]int, len(seatListEntries))
+	statuses := make(map[int64]int, len(seatListEntries))
 	for _, e := range seatListEntries {
 		m := e.(map[string]any)
-		statuses[m["seatId"].(string)] = int(m["status"].(float64))
+		statuses[int64(m["seatId"].(float64))] = int(m["status"].(float64))
 	}
 
-	for _, id := range seatIDs {
-		key := id.String()
+	for _, key := range systemIDs {
 		coord, hasCoord := coords[key]
 		if !hasCoord {
-			t.Errorf("seatId %s missing from GET_SCHEMA", key)
+			t.Errorf("seatId %d missing from GET_SCHEMA", key)
 			continue
 		}
 		status, hasStatus := statuses[key]
 		if !hasStatus {
-			t.Errorf("seatId %s missing from GET_SEAT_LIST", key)
+			t.Errorf("seatId %d missing from GET_SEAT_LIST", key)
 			continue
 		}
 		if coord[0] < 100 || coord[0] > 130 {
-			t.Errorf("seatId %s coord.x out of range: %v", key, coord[0])
+			t.Errorf("seatId %d coord.x out of range: %v", key, coord[0])
 		}
 		if status < 0 || status > 4 {
-			t.Errorf("seatId %s status out of BSS range: %d", key, status)
+			t.Errorf("seatId %d status out of BSS range: %d", key, status)
 		}
 	}
 }
@@ -359,7 +369,7 @@ func TestBil24_313_GetSchema_SeatMissingInGeometry_ZeroFallback(t *testing.T) {
 			},
 		},
 		seats: map[uuid.UUID][]gen.SessionSeatRow{sessionID: {
-			{ID: seatID, SessionID: sessionID, SeatKey: "Z|99|999", Status: "available"},
+			{ID: seatID, SessionID: sessionID, SeatKey: "Z|99|999", Status: "available", SystemSeatID: 1_000_000_501},
 		}},
 	})
 	resp := postJSON(t, h, `{"command":"GET_SCHEMA","actionEventId":"`+sessionID.String()+`"}`)
@@ -371,8 +381,10 @@ func TestBil24_313_GetSchema_SeatMissingInGeometry_ZeroFallback(t *testing.T) {
 		t.Fatalf("seatSchema: want 1 entry, got %d", len(list))
 	}
 	entry := list[0].(map[string]any)
-	if entry["seatId"] != seatID.String() {
-		t.Errorf("seatId: want %s, got %v", seatID, entry["seatId"])
+	// seatId is session_seats.system_seat_id (int64) per W1-A2b
+	// feature #476; JSON numbers decode as float64.
+	if got := int64(entry["seatId"].(float64)); got != 1_000_000_501 {
+		t.Errorf("seatId: want %d, got %v", int64(1_000_000_501), entry["seatId"])
 	}
 	if entry["x"].(float64) != 0 || entry["y"].(float64) != 0 {
 		t.Errorf("orphan seat should fall back to 0,0 coords; got x=%v y=%v",

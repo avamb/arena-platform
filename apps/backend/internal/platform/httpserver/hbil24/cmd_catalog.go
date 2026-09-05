@@ -344,9 +344,12 @@ func (h *Handler) getSeatListUnits(w http.ResponseWriter, ctx context.Context, r
 	seatList := make([]map[string]any, 0, len(seats))
 	for _, s := range seats {
 		entry := map[string]any{
-			// ADR-005: seatId on the wire is the platform session_seats.id
-			// serialised as a plain UUID string.
-			"seatId": s.ID.String(),
+			// Spec §4 / §7.2 (W1-A2b feature #476): seatId on the wire is
+			// session_seats.system_seat_id (bigint, migration 0088 /
+			// AB-50a). Legacy ADR-005 UUID projection has been retired —
+			// callers that need the platform UUID resolve it via
+			// compatids on the way back in.
+			"seatId": s.SystemSeatID,
 			"sector": s.SectorName,
 			"row":    s.RowName,
 			"number": s.SeatNumber,

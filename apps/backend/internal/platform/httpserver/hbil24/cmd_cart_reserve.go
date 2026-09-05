@@ -160,9 +160,12 @@ func (h *Handler) reservationSeated(w http.ResponseWriter, ctx context.Context, 
 		0, currency, h.resDeps.PricingRules,
 	)
 
-	heldSeatIDs := make([]string, 0, len(result.Seats))
+	// Spec §4 / §7.4 (W1-A2b feature #476): held seatList entries echo
+	// session_seats.system_seat_id (bigint, migration 0088). The legacy
+	// ADR-005 UUID projection has been retired in wave-1.
+	heldSeatIDs := make([]int64, 0, len(result.Seats))
 	for _, s := range result.Seats {
-		heldSeatIDs = append(heldSeatIDs, s.ID.String())
+		heldSeatIDs = append(heldSeatIDs, s.SystemSeatID)
 	}
 
 	responseAdmission := admissionMode
