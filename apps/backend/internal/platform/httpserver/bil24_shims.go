@@ -80,6 +80,14 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 	if s.channelQueries != nil {
 		h = h.WithChannelLookup(s.channelQueries)
 	}
+	// Feature #476 (W1-A2b): wire the compatibility_id_map DBTX handle so
+	// per-command handlers can resolve/mint bigint ids via package compatids
+	// (spec §3.1, §4). PoolDB is a superset of gen.DBTX (Exec/Query/QueryRow),
+	// so *pgxpool.Pool satisfies it. Nil-safe: a Server built without a pool
+	// (many unit tests) leaves the pre-W1 UUID-string wire form in place.
+	if s.pool != nil {
+		h = h.WithCompatDB(s.pool)
+	}
 	return h
 }
 

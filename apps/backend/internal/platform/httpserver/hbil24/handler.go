@@ -157,6 +157,17 @@ type Handler struct {
 	// A nil channelQ falls through to the pre-W1 unit-test behaviour where
 	// individual commands self-gate. Production wiring passes *gen.Queries.
 	channelQ ChannelLookupQuerier
+
+	// compatDB (feature #476, W1-A2b) is the DBTX handle the per-command
+	// handlers use to resolve/mint bigint compatibility ids via package
+	// compatids (spec §3.1, §4). Production wiring passes the *pgxpool.Pool
+	// so lazy mint-on-read runs as a single ON CONFLICT DO NOTHING round-trip
+	// without opening an ambient transaction. A nil compatDB preserves the
+	// pre-W1 wire behaviour (UUID strings via TranslatePlatformID) so unit
+	// tests that build a Handler without a pool keep passing; the wire-fixture
+	// guardrail (tests/compat/bil24/no_uuid_in_wire_test.go) ensures the
+	// production path never regresses.
+	compatDB gen.DBTX
 }
 
 // New constructs a Handler from the caller's dependencies.
@@ -222,5 +233,19 @@ func (h *Handler) WithRequireToken(v bool) *Handler {
 // chaining.
 func (h *Handler) WithChannelLookup(q ChannelLookupQuerier) *Handler {
 	h.channelQ = q
+	return h
+}
+
+// WithCompatDB wires the DBTX handle used by per-command handlers to
+// resolve/mint bigint compatibility ids via package compatids (feature #476,
+// W1-A2b, spec §3.1 / §4). Production wiring passes the *pgxpool.Pool so the
+// mint-on-read call (ON CONFLICT DO NOTHING) runs as a single round-trip
+// without an ambient transaction. Callers that omit this setter retain the
+// pre-W1 wire behaviour where wire IDs are emitted as UUID strings via
+// TranslatePlatformID (safe for unit tests that build a Handler without a
+// pool; the wire-fixture guardrail catches any regression on the production
+// path). Returns the receiver for chaining.
+func (h *Handler) WithCompatDB(db gen.DBTX) *Handler {
+	h.compatDB = db
 	return h
 }

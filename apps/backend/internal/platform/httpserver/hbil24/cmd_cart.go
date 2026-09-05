@@ -336,7 +336,12 @@ func cartTimeoutSeconds(expiresAt time.Time) int64 {
 // Bil24 envelopes. Seat conflicts and over-capacity carry structured detail
 // alongside the description so migrated clients can highlight the exact
 // seats / zones.
-func (h *Handler) writeHoldError(w http.ResponseWriter, command string, err error) {
+//
+// The categoryPriceId carried on capacity errors follows the spec §4
+// int64-wire contract (feature #476) when h.compatDB is wired; unit tests
+// that omit the pool fall back to the pre-W1 UUID-string form via
+// compatCategoryPriceID.
+func (h *Handler) writeHoldError(ctx context.Context, w http.ResponseWriter, command string, err error) {
 	var conflicts *hcheckout.SeatConflictsError
 	var capErr *hcheckout.CapacityError
 	switch {
@@ -362,7 +367,7 @@ func (h *Handler) writeHoldError(w http.ResponseWriter, command string, err erro
 		resp := bil24Error(command, ResultCodeInvalidRequest, "insufficient capacity for this reservation")
 		detail := map[string]any{"requested": capErr.Requested}
 		if capErr.TierID != nil {
-			detail["categoryPriceId"] = TranslatePlatformID(*capErr.TierID)
+			detail["categoryPriceId"] = h.compatCategoryPriceID(ctx, *capErr.TierID)
 		}
 		resp.Data = map[string]any{"capacity": detail}
 		writeBil24JSON(w, http.StatusOK, resp)

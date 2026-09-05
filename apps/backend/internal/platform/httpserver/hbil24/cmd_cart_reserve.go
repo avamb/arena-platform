@@ -120,7 +120,7 @@ func (h *Handler) reservationSeated(w http.ResponseWriter, ctx context.Context, 
 		ExpiresAt: expiresAt,
 	})
 	if err != nil {
-		h.writeHoldError(w, req.Command, err)
+		h.writeHoldError(ctx, w, req.Command, err)
 		return
 	}
 
@@ -265,7 +265,10 @@ func (h *Handler) reservationGA(w http.ResponseWriter, ctx context.Context, req 
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				resp := bil24Error(req.Command, ResultCodeNotFound, "categoryPriceId not found in this session")
-				resp.Data = map[string]any{"categoryPriceId": TranslatePlatformID(tierID)}
+				// Feature #476 (W1-A2b) spec §4: emit int64 wire form when
+				// compatDB is wired; fall back to UUID string for unit tests
+				// that build the Handler without a pool.
+				resp.Data = map[string]any{"categoryPriceId": h.compatCategoryPriceID(ctx, tierID)}
 				writeBil24JSON(w, http.StatusOK, resp)
 				return
 			}
@@ -318,7 +321,7 @@ func (h *Handler) reservationGA(w http.ResponseWriter, ctx context.Context, req 
 		ExpiresAt: expiresAt,
 	})
 	if err != nil {
-		h.writeHoldError(w, req.Command, err)
+		h.writeHoldError(ctx, w, req.Command, err)
 		return
 	}
 
