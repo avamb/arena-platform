@@ -47,6 +47,13 @@ import (
 // Clients migrated to the new platform can request the full list via
 // GET /v1/checkout/{id}/tickets.
 //
+// Feature #505 (W1-B7b) upgraded the answer: when the order projection is
+// wired (WithOrderExport) and the session has issued tickets, the `order`
+// object is the FULL spec §9.3 36-key object produced by
+// bil24wire.EncodeOrderHeader — the exact object the order.paid webhook
+// carries, minus ticketList. The legacy body below is the fallback for an
+// unwired handler (unit tests) and for sessions with nothing issued yet.
+//
 // Deferred to later slices (not yet implemented, intentionally omitted from
 // the response so absence is honest rather than fabricated):
 //   - `id` as int64 wire form: needs a compatibility_id_map KindOrder
@@ -113,6 +120,17 @@ func (h *Handler) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request
 			req.Command, ResultCodeNotFound,
 			"order not found in this channel's organization",
 		))
+		return
+	}
+
+	// Feature #505 (W1-B7b, spec §7.8/§9.3): when the order projection is
+	// wired and the session actually has issued tickets, answer with the
+	// SAME order object the `order.paid` webhook carries, minus ticketList.
+	// One encoder, one key set — see internal/platform/bil24wire.
+	if order, ok := h.encodeOrderHeaderForWire(r.Context(), cs, channel); ok {
+		writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
+			"order": order,
+		}))
 		return
 	}
 

@@ -27,6 +27,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbil24"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/orderexport"
 )
 
 // bil24Handler constructs an hbil24.Handler from the server's dependencies.
@@ -111,6 +112,17 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 		// mutable hold per (gateway session, event session). Without this the
 		// handler keeps the pre-#484 immutable-hold behaviour.
 		h = h.WithGatewayCart(s.bil24CartDeps(q))
+	}
+	// Feature #505 (W1-B7b, spec §7.8/§9.3): wire the neutral order projection
+	// so GET_ORDER_INFO answers with the bil24wire order object (36 keys minus
+	// ticketList) instead of the hand-built body. The projection speaks raw
+	// pgx, so it rides pgxPool rather than the PoolDB interface; without it the
+	// handler keeps the pre-#505 fallback body.
+	if s.pgxPool != nil {
+		pool := s.pgxPool
+		h = h.WithOrderExport(func(ctx context.Context, csID uuid.UUID) (*orderexport.Order, error) {
+			return orderexport.QueryCheckoutSession(ctx, pool, csID)
+		})
 	}
 	return h
 }

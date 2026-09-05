@@ -77,7 +77,11 @@ type Ticket struct {
 
 // Event is the denormalized event/session context of a ticket.
 type Event struct {
-	EventID   uuid.UUID
+	EventID uuid.UUID
+	// SessionID is the event SESSION the ticket belongs to. Both wire
+	// adapters key their integer `actionEventId` off the session (spec §9.3
+	// and MACS М3), not off the event, so the projection has to carry it.
+	SessionID uuid.UUID
 	EventName string
 	// OrgLegalName is organizations.legal_name with a fallback to name.
 	OrgLegalName string

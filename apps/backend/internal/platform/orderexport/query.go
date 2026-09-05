@@ -41,6 +41,7 @@ type Row struct {
 	OrderCompletedAt  time.Time
 	OrderUserID       *uuid.UUID
 	SessionStartAt    time.Time
+	SessionID         uuid.UUID
 	EventID           uuid.UUID
 	EventName         string
 	OrgLegalName      string
@@ -83,6 +84,7 @@ SELECT
     COALESCE(cs.completed_at, cs.created_at) AS order_completed_at,
     cs.user_id AS order_user_id,
     s.start_at AS session_start_at,
+    s.id AS session_id,
     e.id AS event_id,
     e.name AS event_name,
     COALESCE(o.legal_name, o.name) AS org_legal_name,
@@ -133,6 +135,11 @@ var ticketQuery = strings.Replace(sessionQuery, "WHERE t.session_id = $1", "WHER
 // migration 0092). Tickets are linked to their order by tickets.order_id.
 var orderQuery = strings.Replace(sessionQuery, "WHERE t.session_id = $1", "WHERE t.order_id = $1", 1)
 
+// checkoutQuery is sessionQuery scoped to ONE checkout session. The Bil24
+// gateway addresses orders by checkout session id (spec §7.8 GET_ORDER_INFO),
+// which predates the orders aggregate, so it needs its own entry point.
+var checkoutQuery = strings.Replace(sessionQuery, "WHERE t.session_id = $1", "WHERE t.checkout_session_id = $1", 1)
+
 // QuerySession projects every exportable ticket of one event session,
 // grouped into orders. Returns an empty (non-nil) slice when the session
 // has no completed tickets.
@@ -157,6 +164,24 @@ func QueryOrder(ctx context.Context, pool *pgxpool.Pool, orderID uuid.UUID) (*Or
 	}
 	// One orders row belongs to exactly one checkout session (#488), so
 	// Build can only have produced a single group here.
+	return &orders[0], nil
+}
+
+// QueryCheckoutSession projects ONE checkout session as an order. Returns nil
+// when the session has no exportable tickets (unknown id, not completed, or
+// nothing issued yet) — the caller decides whether that is a 404 or a
+// degraded answer.
+func QueryCheckoutSession(ctx context.Context, pool *pgxpool.Pool, checkoutSessionID uuid.UUID) (*Order, error) {
+	rows, err := query(ctx, pool, checkoutQuery, checkoutSessionID)
+	if err != nil {
+		return nil, err
+	}
+	orders := Build(rows)
+	if len(orders) == 0 {
+		return nil, nil
+	}
+	// Every row was selected BY checkout session, so Build grouped them into
+	// exactly one order.
 	return &orders[0], nil
 }
 
@@ -211,6 +236,7 @@ func query(ctx context.Context, pool *pgxpool.Pool, sql string, id uuid.UUID) ([
 			&r.OrderCompletedAt,
 			&r.OrderUserID,
 			&r.SessionStartAt,
+			&r.SessionID,
 			&r.EventID,
 			&r.EventName,
 			&r.OrgLegalName,

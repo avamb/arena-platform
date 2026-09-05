@@ -129,6 +129,7 @@ func newTicket(row Row, orderID int64) Ticket {
 		RefundPrice:    row.RefundPrice,
 		Event: Event{
 			EventID:        row.EventID,
+			SessionID:      row.SessionID,
 			EventName:      row.EventName,
 			OrgLegalName:   row.OrgLegalName,
 			OrgName:        row.OrgName,

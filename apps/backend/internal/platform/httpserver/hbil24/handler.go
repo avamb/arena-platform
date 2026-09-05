@@ -31,6 +31,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/orderexport"
 )
 
 // AdmissionQuerier is the narrow contract handleBil24GetSeatList and
@@ -217,6 +218,15 @@ type GatewaySessionQuerier interface {
 	GetCustomerBySystemID(ctx context.Context, systemID int64) (gen.CustomerRow, error)
 }
 
+// OrderProjector reads ONE checkout session out of the database as the
+// NEUTRAL order projection (internal/platform/orderexport). It returns
+// (nil, nil) when the session has no exportable tickets. Production wiring
+// (bil24_shims.go) injects a closure over orderexport.QueryCheckoutSession;
+// tests inject in-memory fakes. Declared as a func type rather than an
+// interface because there is exactly one method and the callback direction
+// mirrors SeatedReserveFunc.
+type OrderProjector func(ctx context.Context, checkoutSessionID uuid.UUID) (*orderexport.Order, error)
+
 // Handler holds the shared dependencies for all Bil24-gateway command
 // handlers. Every query handle is nilable; individual commands self-gate
 // with a Bil24 envelope resultCode=-99 ("service unavailable") response,
@@ -297,6 +307,14 @@ type Handler struct {
 	// freshly minted — or refreshed — gateway session expires. Zero means
 	// the spec default of 30 days; the field exists so tests can shorten it.
 	sessionTTL time.Duration
+
+	// orderExport (feature #505, W1-B7b, spec §7.8/§9.3) projects a checkout
+	// session into the neutral orderexport.Order that bil24wire encodes into
+	// the 36-key Bil24 order object. Nil ⇒ GET_ORDER_INFO falls back to the
+	// pre-#505 hand-built body, which is what every unit test that builds a
+	// Handler without a pool asserts. Production wiring passes a closure over
+	// orderexport.QueryCheckoutSession.
+	orderExport OrderProjector
 
 	// cartDeps (feature #484, W1-A5b, spec §7.4) carries the session-cart
 	// surface: ONE mutable reservation per (gateway session, event session)
@@ -448,6 +466,15 @@ func (h *Handler) WithSessionTTL(d time.Duration) *Handler {
 // Returns the receiver for chaining.
 func (h *Handler) WithGatewayCart(d CartDeps) *Handler {
 	h.cartDeps = d
+	return h
+}
+
+// WithOrderExport wires the neutral order projection used by GET_ORDER_INFO
+// to answer with the spec §9.3 Bil24 order object minus ticketList (feature
+// #505, W1-B7b). Callers that omit this setter keep the pre-#505 hand-built
+// body. Returns the receiver for chaining.
+func (h *Handler) WithOrderExport(p OrderProjector) *Handler {
+	h.orderExport = p
 	return h
 }
 

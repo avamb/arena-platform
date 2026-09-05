@@ -524,8 +524,10 @@ func scanGoFilesForCamelCaseJSONTags(t *testing.T, root string) []string {
 		// etc., feature AB-50b/#438). The Bil24 wire-compat adapter mirrors
 		// the frozen legacy Bil24 wire (actionEventId, seatList, cartTimeout
 		// etc., spec 18_bil24_compat_wave1_specification_ru.md §7,
-		// feature #476). Keep this list to dedicated adapter packages only —
-		// never exempt handler code.
+		// feature #476), and internal/platform/bil24wire is that same frozen
+		// vocabulary expressed as an encoder over the neutral order projection
+		// (spec §9.3, feature #505). Keep this list to dedicated adapter
+		// packages only — never exempt handler code.
 		normalized := filepath.ToSlash(path)
 		if strings.Contains(normalized, "internal/platform/brevo/") {
 			return nil
@@ -534,6 +536,9 @@ func scanGoFilesForCamelCaseJSONTags(t *testing.T, root string) []string {
 			return nil
 		}
 		if strings.Contains(normalized, "internal/adapters/bil24compat/") {
+			return nil
+		}
+		if strings.Contains(normalized, "internal/platform/bil24wire/") {
 			return nil
 		}
 		// oapi-codegen output mirrors external wire format schemas (including
