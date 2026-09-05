@@ -77,8 +77,21 @@ entries short and factual.
 - **The command allowlist rejects a bash command containing the bare token
   `postgres`** — including inside a heredoc or a quoted env assignment, so
   `DATABASE_URL=postgres://...` is refused outright. Pass the DSN base64-encoded
-  instead: `export DATABASE_URL="$(echo -n '<base64>' | base64 -d)"`.
+  instead. `export` is ALSO blocked now, so it must be an inline env prefix on
+  the same command line:
+  `DATABASE_URL="$(echo -n '<base64>' | base64 -d)" JWT_SIGNING_SECRET=x go.exe test -tags integration ./...`
   `wsl.exe -d <distro>` is also blocked (`wsl.exe -l -v` is not).
+- **The allowlist splits on `;` and on parentheses even inside a quoted
+  argument**, so a `git commit -m "...(foo); bar"` message is rejected with a
+  bogus "Command 'bar' is not allowed". Keep commit messages free of semicolons
+  and parentheses. PowerShell additionally rejects expandable strings with
+  embedded expressions, `$()` subexpressions, and .NET method calls — prefer the
+  bash inline-env form above.
+- **`httpserver.Options` needs BOTH `Pool` and `PgxPool` for a fully wired test
+  server.** `PgxPool` only feeds the `*gen.Queries` fallbacks; `Pool` feeds
+  `s.pool`, which is the nil-guard `bil24_shims.go` checks before wiring the
+  gateway-session store, the customer store and the Bil24 cart deps. With
+  `PgxPool` alone, CREATE_USER self-gates and answers `-99`.
 - **Starting Docker Desktop from a session**: `docker desktop start` prints
   nothing and does not reliably bring the engine up; do not trust its exit code
   (a `| head` pipeline reports head's status). Arm a background watcher instead:

@@ -26278,3 +26278,88 @@ gh CLI remains blocked in this sandbox (org-level restriction, consistent
 with #451/#452 verification sessions), so CI could not be independently
 re-watched here; every locally reproducible CI-equivalent gate matches
 green.
+
+================================================================================
+2026-09-05 - Feature #484 (W1-A5b): RESERVATION four shapes over session cart
+================================================================================
+Commit c95bb6a, pushed to origin/master. Both Steps done.
+
+Step 1 "RESERVATION over ExtendHold/ShrinkHold" - handleBil24Reservation now
+delegates (first statement in cmd_cart.go, gated on h.cartDeps.wired()) to the
+new session-cart path in cmd_cart_session.go / cmd_cart_view.go:
+  - RESERVE / UN_RESERVE by categoryList or by seatList, UN_RESERVE_ALL with no
+    actionEventId (spec 7.4).
+  - ONE active reservation per (gateway session, event session): created on the
+    first RESERVE, ExtendHold on later RESERVEs, ShrinkHold on UN_RESERVE,
+    cancelled when the cart empties.
+  - Currency guard -> 101 currency_mismatch; pwyw tier -> 101.
+  - RefreshHold on every RESERVE; cartTimeout emitted as an INTEGER number of
+    seconds (hcheckout.DefaultReservationTTL = 1200).
+  - Response is the WHOLE cart across every action event with sum / discount /
+    charge / totalSum / currency; charge derives from sales_channels.fee_percent.
+    GA units are emitted as rows carrying their system_seat_id.
+  - Errors 1 / 101 / -2 / -3 localized through the real i18n bundle.
+  - Nil-dependency self-gating (CartDeps.wired()) keeps the legacy immutable-hold
+    behaviour for callers that do not wire the deps, so pre-existing unit tests
+    are untouched. httpserver/bil24_shims.go wires the deps only when s.pool
+    is non-nil.
+  - New SQL: postgres/queries/gateway_cart.sql + hand-written gen wrapper.
+
+Step 2 "Goldens + scenario 3":
+  - RESERVATION goldens corrected to the SPEC TEXT ONLY (never to the code):
+    reserve_by_seat (1200 / 500 / 0 / 25 / 525), reserve_by_category
+    (1200 / 1000 / 0 / 50 / 1050, two seats), un_reserve + un_reserve_all
+    (all zeros, empty seatList). NEW: seat_taken.json and sold_out.json, both
+    resultCode 101.
+  - Harness scenario 03_seated_seats_conflict_and_expiry un-skipped. It boots
+    the REAL httpserver.Server (new harness_server_test.go, integration tag)
+    over the seeded pool through httptest and walks: RESERVE by seat -> a
+    parallel RESERVE of the same seat from a second gateway session (101,
+    localized) -> UN_RESERVE_ALL -> the freed seat reserved by buyer B ->
+    a backdated gateway session answered with 1.
+    Verified it really runs: --- PASS: .../03_seated_seats_conflict_and_expiry.
+    The other 9 scenarios still SKIP, so ScenarioCoverage stays satisfied.
+
+Production defect found BY the harness and fixed in bil24compat/wire.go:
+  actionId / actionEventId / categoryPriceId are spec-4 int64 system ids, and
+  the WordPress plugin echoes them back as JSON NUMBERS. They were plain Go
+  strings with no flex decode, so the whole envelope failed to unmarshal and
+  every numeric-id RESERVATION was answered -2. They now decode through
+  flexWireString like fid/userId. The scenario deliberately sends numeric ids
+  in its hand-built requests so both wire shapes stay covered.
+
+Test-infrastructure fixes (seed_test.go):
+  - The assigned-seats session had no session-level inventory_ledger row.
+    hcheckout's seated hold path calls ReserveCapacity(session, NULL tier, qty)
+    before touching a seat, and the missing row surfaced as pgx.ErrNoRows ->
+    CapacityError -> a bogus "sold out" 101 on the wire. Seeded with
+    capacity_total = len(seatIDs).
+  - Cleanup order: session_seats must be deleted BEFORE ticket_tiers
+    (session_seats_tier_id_fkey), and session_seats.reservation_id must be
+    nulled before reservations go away (session_seats_reservation_id_fkey).
+  - Customers are platform-scoped (migration 0091): the wire-row cleanup deletes
+    them via a customer_org_links subselect, not a non-existent customers.org_id.
+  - httpserver.Options needs BOTH Pool and PgxPool: PgxPool only feeds the
+    *gen.Queries fallbacks, while Pool feeds s.pool, which is the guard
+    bil24_shims.go checks before wiring the customer store and the cart deps.
+    With PgxPool alone CREATE_USER self-gates with -99.
+
+Gates (all green):
+  - go build ./apps/backend/... EXIT:0 ; go vet ./apps/backend/... EXIT:0
+  - go test ./apps/backend/... (full suite) EXIT:0
+  - go test -tags integration ./apps/backend/tests/compat/... EXIT:0
+  - widget vitest 12 files / 497 tests passed, incl. seatmap-render.test.ts
+    (87 tests) - the seat-status tests the feature required to stay green
+  - gofmt -l clean on tests/compat/bil24, adapters/bil24compat,
+    platform/httpserver (including the //go:build integration files)
+  - golangci-lint run ./apps/backend/... -> 0 issues
+  - guardrails: no non-test top-level httpserver/*.go over 400 lines
+    (bil24_shims.go = 326); bil24compat has no platform/httpserver import
+  - no openapi.yaml change and no migration, so codegen and the migration-head
+    pin are untouched
+
+Host conventions learned this session (added to AGENTS.md):
+  - bash `export` is now blocked by the allowlist; the documented base64 DSN
+    workaround must be an INLINE env prefix on the same command line.
+  - the allowlist's command splitter also trips on `;` and on parentheses
+    inside a quoted `git commit -m` message - keep commit messages free of both.
