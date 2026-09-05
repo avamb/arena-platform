@@ -26096,3 +26096,61 @@ DB-touching test was added (matching the repo's Unit-vs-Integration split).
 
 Feature #451 marked PASSING (verification-only; no files changed, no
 commit needed this session).
+
+## Feature #452 - W1-A2 [EPIC-VERIFY]: verification pass (2026-09-05)
+
+Wave: WP Bil24 Compat W1. VERIFICATION-ONLY epic; dependency features 475
+(migration 0090 plus compatids package) and 476 (named structs, int ids,
+GET_SEAT_LIST/GET_SCHEMA/RESERVATION file split) both already passing per
+feature tracker. No code changes were needed this session.
+
+Golden fixtures / sentinels named in the epic's "Done when" clause,
+re-confirmed green:
+- TestCompatBil24_476_NoUUIDInWireFixtures (strict: no UUID in any golden
+  wire fixture) - PASS.
+- bil24compat_layout_188_test.go sentinels (tests/staticanalysis) - PASS,
+  no drift.
+- TestBil24_476_ family (UUID/non-numeric input rejected with compatDB,
+  nil-compatDB fallback paths, GetSeatList/GetSchema/Reservation/
+  ResolveCategoryPriceID/ResolveSeatToRow/ResolveVenueID/ResolveCityID/
+  ResolveCountryID) - all PASS (34 tests in this family alone).
+- TestParseLegacyIntID_UUIDRejected and _UUIDNilRejected - PASS.
+- TestBil24_476_CreateOrderExt_UUIDInput_Rejected - PASS.
+- Migration head pin: TestHead_KnownCurrentHead - PASS (0090 accounted
+  for, no new migration added this session so pin unchanged).
+
+Full gate suite run this session (go.exe used directly, no cd; -C flag
+or npm --prefix used for subdirectory commands per repo convention):
+- go.exe -C apps/backend build ./...                          EXIT:0
+- go.exe -C apps/backend vet ./...                             EXIT:0
+- go.exe -C apps/backend test ./... (full suite, no pipeline,
+  logged to file then grepped)                                 EXIT:0, no FAIL
+- go.exe -C apps/backend test of compatids, bil24compat,
+  hbil24, tests/compat/bil24, tests/staticanalysis,
+  internal/migrations -v                                       EXIT:0,
+  286 PASS / 0 FAIL
+- GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe -C apps/backend run
+  golangci-lint@latest run ./...                                0 issues
+- gofmt -l apps/backend (excluding .gomodcache)                  CLEAN
+- npm --prefix apps/admin-web run type-check                     EXIT:0
+- npm --prefix apps/admin-web run test (vitest)                  EXIT:0,
+  1114/1114, 43 files
+- npm --prefix apps/admin-web run build                          EXIT:0
+
+Codegen drift: no openapi.yaml change pending this session; the
+openapi_drift_test.go assertion runs inside the full go test ./... pass
+above and was green, so no separate codegen run was needed.
+
+gh CLI is blocked in this sandbox (org-level restriction, same as the
+#451 verification session), so the latest CI run could not be
+independently re-checked here; every locally reproducible CI-equivalent
+gate (Unit-job go test, lint, gofmt, migration head, admin-web
+type-check/test/build) is green, matching the state already proven by
+the dependency feature sessions.
+
+git status showed only the pre-existing unrelated
+.autoforge/prompts/coding_prompt.md diff and untracked features.db, both
+left alone per convention - no files staged or committed this session.
+
+Feature #452 marked PASSING (verification-only; no files changed, no
+commit needed this session).
