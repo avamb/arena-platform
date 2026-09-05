@@ -26239,3 +26239,42 @@ primitive (newGACart) so it really holds its baseline, and the shrink only
 runs when that round's extend actually succeeded - shrinking after a rejected
 extend would eat the baseline unit. assertQuantitiesMatchLinks accordingly
 asserts quantity == links exactly (no more "+1 seeded unit" allowance).
+
+================================================================================
+Integration gate - wave check after #483 (2026-09-05)
+================================================================================
+
+Ran all repo-wide gates from a clean tree (features 465/522 passing, 89.1%).
+No feature work done this session - pure gatekeeping. All green, nothing to
+fix, no fix-features filed:
+
+- go.exe -C apps/backend build ./...                              EXIT:0
+- go.exe -C apps/backend vet ./...                                EXIT:0
+- go.exe -C apps/backend test ./... (full suite, untruncated log)  EXIT:0, 0 FAIL
+- GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe -C apps/backend
+  run golangci-lint@latest run ./...                               0 issues
+- gofmt -l apps/backend (excluding .gomodcache)                    clean
+- npm --prefix apps/admin-web run type-check                       EXIT:0
+- npm --prefix apps/admin-web run test (vitest)                    EXIT:0,
+  1114/1114, 43 files
+- npm --prefix apps/admin-web run build                            EXIT:0
+- Migration head pin (TestHead_KnownCurrentHead, 0091_customers.sql)
+  confirmed current as part of the full go test pass.
+- Codegen drift check: regenerated all three generated artifacts from the
+  committed openapi.yaml and diffed against HEAD - zero diff on all three:
+  - go.exe run ./tools/openapi30gen openapi/openapi.yaml <tmp compat file>
+  - go.exe run oapi-codegen@v2.4.1 --config=apps/backend/openapi/oapi-codegen.yaml
+    -> apps/backend/internal/adapters/http/openapi/types_gen.go (no diff)
+  - node scripts/gen-ts-client.mjs
+    -> apps/backend/openapi/clients/ts/index.d.ts (no diff)
+
+git status showed only the pre-existing unrelated .autoforge/prompts/
+coding_prompt.md CRLF/LF diff and untracked features.db, both left alone
+per convention (documented in earlier sessions too - not touched here).
+Nothing was staged or committed; nothing to push (branch already matched
+origin/master, no local gate needed a fix).
+
+gh CLI remains blocked in this sandbox (org-level restriction, consistent
+with #451/#452 verification sessions), so CI could not be independently
+re-watched here; every locally reproducible CI-equivalent gate matches
+green.
