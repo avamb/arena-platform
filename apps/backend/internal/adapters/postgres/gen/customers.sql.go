@@ -317,3 +317,84 @@ func (q *Queries) GetCustomerOrgLink(ctx context.Context, customerID uuid.UUID, 
 	row := q.db.QueryRow(ctx, getCustomerOrgLink, customerID, orgID)
 	return scanCustomerOrgLinkRow(row)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// W1-A4b (feature #480): the resolver needs three small extra queries on top
+// of the #479 gen wrappers — MarkCustomerIdentityVerified (PAY_ORDER sets
+// verified_at on a strong identity), UpdateCustomerDisplayName (spec §12.2
+// display_name rules) and InsertCustomerMergeCandidate (strong-key conflict
+// never auto-merges — a candidate row is queued instead).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const markCustomerIdentityVerified = `-- name: MarkCustomerIdentityVerified :exec
+UPDATE customer_identities
+SET    verified_at  = COALESCE(verified_at, $2),
+       last_seen_at = $2
+WHERE  id = $1`
+
+// MarkCustomerIdentityVerified promotes an identity to verified status.
+// verified_at is set only if currently NULL (idempotent — an identity
+// stays verified once proven). last_seen_at is refreshed to the same
+// timestamp so verification counts as a touch.
+func (q *Queries) MarkCustomerIdentityVerified(ctx context.Context, id uuid.UUID, at time.Time) error {
+	_, err := q.db.Exec(ctx, markCustomerIdentityVerified, id, at)
+	return err
+}
+
+const updateCustomerDisplayName = `-- name: UpdateCustomerDisplayName :exec
+UPDATE customers
+SET    display_name = $2,
+       updated_at   = now()
+WHERE  id = $1`
+
+// UpdateCustomerDisplayName overwrites display_name only. Locale and other
+// profile fields are left untouched — spec §12.2 "не перезаписывать
+// непустое имя пустым; новое непустое — обновить".
+func (q *Queries) UpdateCustomerDisplayName(ctx context.Context, id uuid.UUID, displayName string) error {
+	_, err := q.db.Exec(ctx, updateCustomerDisplayName, id, displayName)
+	return err
+}
+
+// CustomerMergeCandidateRow mirrors the customer_merge_candidates table.
+// The resolver only writes rows; the admin UI consumes them (resolved_at,
+// resolution are set by operator action).
+type CustomerMergeCandidateRow struct {
+	ID         uuid.UUID  `json:"id"`
+	CustomerA  uuid.UUID  `json:"customer_a"`
+	CustomerB  uuid.UUID  `json:"customer_b"`
+	Reason     string     `json:"reason"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ResolvedAt *time.Time `json:"resolved_at"`
+	Resolution *string    `json:"resolution"`
+}
+
+const insertCustomerMergeCandidate = `-- name: InsertCustomerMergeCandidate :one
+INSERT INTO customer_merge_candidates (customer_a, customer_b, reason)
+VALUES ($1, $2, $3)
+RETURNING id, customer_a, customer_b, reason, created_at, resolved_at, resolution`
+
+// InsertCustomerMergeCandidate queues a suspected duplicate for operator
+// review. The gateway NEVER auto-merges strong-key conflicts (spec §12.2
+// + ADR-036); it emits one of these rows and returns the winning customer.
+func (q *Queries) InsertCustomerMergeCandidate(ctx context.Context, customerA uuid.UUID, customerB uuid.UUID, reason string) (CustomerMergeCandidateRow, error) {
+	row := q.db.QueryRow(ctx, insertCustomerMergeCandidate, customerA, customerB, reason)
+	var r CustomerMergeCandidateRow
+	err := row.Scan(&r.ID, &r.CustomerA, &r.CustomerB, &r.Reason, &r.CreatedAt, &r.ResolvedAt, &r.Resolution)
+	return r, err
+}
+
+const insertCustomerAttribute = `-- name: InsertCustomerAttribute :exec
+INSERT INTO customer_attributes (customer_id, org_id, key, value, source)
+VALUES ($1, $2, $3, $4::jsonb, $5)
+ON CONFLICT (customer_id, org_id, key) DO UPDATE
+SET value = EXCLUDED.value, source = EXCLUDED.source`
+
+// InsertCustomerAttribute writes (or overwrites) a platform-scoped or org-
+// scoped free-form attribute. Used by the resolver to stash an invalid raw
+// phone as an attribute rather than an identity (spec §3.2 last paragraph:
+// "невалидный телефон — не идентичность, а атрибут"). value is a JSON
+// document supplied as a string; the query casts it to jsonb.
+func (q *Queries) InsertCustomerAttribute(ctx context.Context, customerID uuid.UUID, orgID *uuid.UUID, key string, valueJSON string, source string) error {
+	_, err := q.db.Exec(ctx, insertCustomerAttribute, customerID, orgID, key, valueJSON, source)
+	return err
+}

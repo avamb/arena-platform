@@ -25666,3 +25666,80 @@ Gates - all GREEN:
 
 Commit 6067bc9 pushed to origin/master. No openapi.yaml touched, no TS
 codegen needed. Feature #479 marked PASSING.
+
+## 2026-09-05 #480 W1-A4b - customers package (normalize + Resolve + helpers)
+
+Spec section 12.2 delivered. New platform-side package
+`internal/platform/customers` implements the buyer-resolution helpers
+for the Bil24 compat gateway:
+
+  NormalizeEmail(raw)                     -> lower(trim), IDN kept verbatim
+  NormalizePhone(raw, region)             -> E.164 via nyaruka/phonenumbers,
+                                             invalid -> ErrInvalidPhone
+  Resolve(ctx, Store, ResolveInput)       -> full spec 12.2 state machine
+  Touch(ctx, s, identityID)               -> bumps last_seen_at
+  MarkVerified(ctx, s, identityID, at)    -> idempotent (COALESCE)
+  LinkOrg(ctx, s, customerID, orgID, src) -> upsert customer_org_links
+
+Store is a narrow interface so the resolver is unit-testable with an
+in-memory fake. NewStoreFromQueries(*gen.Queries) is the pg adapter and
+is the ONLY file that imports gen. The resolver walks strong keys
+(email/phone) first; on strong-key conflict (email and phone found on
+DIFFERENT customers) it queues a customer_merge_candidates row and
+returns the email owner, never re-assigning the phone (spec 12.2 +
+ADR-036). Weak-key fallback (device/wc_customer) is scoped to
+channel_id. Invalid raw phones are stashed as a customer_attributes
+row with key=invalid_phone_raw and platform scope (org_id=NULL) per
+spec 3.2 last paragraph.
+
+Extra gen wrappers added (customers.sql.go + queries/customers.sql):
+  MarkCustomerIdentityVerified (COALESCE verified_at)
+  UpdateCustomerDisplayName    (locale untouched)
+  InsertCustomerMergeCandidate (returns row)
+  InsertCustomerAttribute      (ON CONFLICT DO UPDATE)
+
+Dependency: github.com/nyaruka/phonenumbers v1.5.0 (pinned to keep
+indirect testify at 1.10.0). Compatible with existing go.mod.
+
+Unit tests (fakeStore, no DB):
+  NormalizeEmail: 5 cases (lower_trim, already_normal, IDN, 2x empty)
+  NormalizePhone: 7 cases (IL/CZ local, +E164, case-insensitive region,
+                            invalid letters, empty, too short)
+  Resolve: 12 cases including the family-with-one-phone case called out
+           in feature #480 (sharing phone attaches new email to dad;
+           follow-up flow lives in later features).
+  Touch / MarkVerified (idempotency) / LinkOrg (default source).
+
+Integration test (//go:build integration, Docker PG 55432):
+  - Round-trip Resolve creates + reuses a customer with SystemID >= 1e9.
+  - Strong-uniqueness contract: duplicate InsertCustomerIdentity for
+    the same (email,value) returns 23505.
+  - Weak-uniqueness contract: same (device,value,channelA) -> 23505;
+    same (device,value,channelB) -> success (cross-channel OK).
+  - LinkOrg is idempotent; MarkVerified is idempotent.
+
+Files touched:
+  apps/backend/internal/platform/customers/customers.go                       (A)
+  apps/backend/internal/platform/customers/resolve.go                         (A)
+  apps/backend/internal/platform/customers/postgres_store.go                  (A)
+  apps/backend/internal/platform/customers/customers_test.go                  (A)
+  apps/backend/internal/platform/customers/postgres_store_integration_test.go (A)
+  apps/backend/internal/adapters/postgres/gen/customers.sql.go                (M) +4 wrappers
+  apps/backend/internal/adapters/postgres/queries/customers.sql               (M) +4 queries
+  go.mod / go.sum                                                             (M) +phonenumbers v1.5.0
+
+Gates - all GREEN:
+- go build ./apps/backend/...                                     EXIT:0
+- go vet   ./apps/backend/...                                     EXIT:0
+- go test  ./apps/backend/internal/platform/customers/...         EXIT:0
+- go test  ./apps/backend/internal/adapters/postgres/gen/...      EXIT:0 (cached)
+- go test  ./apps/backend/internal/migrations/...                 EXIT:0 (head 0091)
+- go test  ./apps/backend/tests/staticanalysis/...                EXIT:0
+- go test  ./apps/backend/tests/compat/bil24/...                  EXIT:0
+- go test  ./apps/backend/...  full suite                         EXIT:0 (test480_full.log, 61 pkgs)
+- gofmt -l on 5 changed files                                     CLEAN
+- Docker PG integration test (DATABASE_URL=... -tags=integration) EXIT:0
+
+No openapi.yaml touched, no migration added.
+
+Feature #480 marked PASSING.

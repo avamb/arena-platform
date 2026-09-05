@@ -104,3 +104,42 @@ SELECT customer_id, org_id, first_order_at, last_order_at,
 FROM   customer_org_links
 WHERE  customer_id = $1
   AND  org_id = $2;
+
+-- ─── W1-A4b (feature #480): resolver extras ─────────────────────────────────
+-- The four queries below back the platform/customers.Resolve helper. They
+-- are hand-added rather than sqlc-generated for symmetry with the other
+-- wrappers in gen/customers.sql.go.
+
+-- name: MarkCustomerIdentityVerified :exec
+-- Promotes an identity to verified. verified_at is only set when currently
+-- NULL (idempotent — the first verifier wins). last_seen_at is bumped so
+-- verification counts as a fresh touch.
+UPDATE customer_identities
+SET    verified_at  = COALESCE(verified_at, $2),
+       last_seen_at = $2
+WHERE  id = $1;
+
+-- name: UpdateCustomerDisplayName :exec
+-- Overwrites display_name only. Locale is untouched. Callers implement the
+-- §12.2 rules (never overwrite non-empty with empty).
+UPDATE customers
+SET    display_name = $2,
+       updated_at   = now()
+WHERE  id = $1;
+
+-- name: InsertCustomerMergeCandidate :one
+-- Queues a suspected duplicate for operator review. Strong-key conflicts
+-- (spec §12.2, ADR-036) are NEVER auto-merged; the gateway keeps both
+-- customers and emits this row instead.
+INSERT INTO customer_merge_candidates (customer_a, customer_b, reason)
+VALUES ($1, $2, $3)
+RETURNING id, customer_a, customer_b, reason, created_at, resolved_at, resolution;
+
+-- name: InsertCustomerAttribute :exec
+-- Writes a customer attribute (platform-scoped when org_id IS NULL). The
+-- resolver uses this path to stash an invalid raw phone number so the data
+-- is not lost even though it cannot become an identity (spec §3.2).
+INSERT INTO customer_attributes (customer_id, org_id, key, value, source)
+VALUES ($1, $2, $3, $4::jsonb, $5)
+ON CONFLICT (customer_id, org_id, key) DO UPDATE
+SET value = EXCLUDED.value, source = EXCLUDED.source;
