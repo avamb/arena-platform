@@ -149,13 +149,13 @@
   },
   {
     "name": "create_order_ext_full_request",
-    "description": "CREATE_ORDER_EXT as sent by Vino&Co widget — must return NOT_IMPLEMENTED (-5), never success (feature #374 security fix: stub must not report resultCode=0)",
+    "description": "CREATE_ORDER_EXT as sent by Vino&Co widget — must return NOT_IMPLEMENTED (-5), never success (feature #374 security fix: stub must not report resultCode=0). Feature #476 W1-A2b (spec §4): actionEventId/categoryPriceId are int64 on the Bil24 wire.",
     "request": {
       "command": "CREATE_ORDER_EXT",
       "fid": "1271",
       "token": "7c696b4af364928202dd",
-      "actionEventId": "018f1e2a-3c4d-7e5f-a6b7-c8d9e0f1a2b5",
-      "categoryPriceId": "018f1e2a-3c4d-7e5f-a6b7-c8d9e0f1a2b6",
+      "actionEventId": "2593277",
+      "categoryPriceId": "5731",
       "quantity": 2,
       "email": "customer@vinoandco.ru",
       "locale": "ru-RU"
@@ -169,13 +169,13 @@
   },
   {
     "name": "create_order_ext_quantity_one_default",
-    "description": "CREATE_ORDER_EXT with quantity=0 — must return NOT_IMPLEMENTED (-5); Vino&Co callers must migrate to POST /v1/checkout/reservations (feature #374)",
+    "description": "CREATE_ORDER_EXT with quantity=0 — must return NOT_IMPLEMENTED (-5); Vino&Co callers must migrate to POST /v1/checkout/reservations (feature #374). Feature #476 W1-A2b (spec §4): int64 wire ids.",
     "request": {
       "command": "CREATE_ORDER_EXT",
       "fid": "1271",
       "token": "7c696b4af364928202dd",
-      "actionEventId": "018f1e2a-3c4d-7e5f-a6b7-c8d9e0f1a2b5",
-      "categoryPriceId": "018f1e2a-3c4d-7e5f-a6b7-c8d9e0f1a2b6",
+      "actionEventId": "2593277",
+      "categoryPriceId": "5731",
       "quantity": 0,
       "email": "solo@vinoandco.ru",
       "locale": "ru-RU"

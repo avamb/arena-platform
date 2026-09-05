@@ -179,11 +179,12 @@ func TestBil24_374_CreateOrderExt_ValidInput_NeverReturnsSuccess(t *testing.T) {
 	// Feature #374: the scaffold stub must return a non-zero result code.
 	// Returning resultCode=0 from an unimplemented handler gives the caller a
 	// false success signal (they believe an order was created when it wasn't).
+	//
+	// Feature #476 W1-A2b (spec §4/§7.3): valid ids on the Bil24 wire are
+	// int64 compatibility ids, not UUIDs.
 	h := newMinimalHandler()
-	sessionID := uuid.New().String()
-	tierID := uuid.New().String()
-	body := `{"command":"CREATE_ORDER_EXT","actionEventId":"` + sessionID +
-		`","categoryPriceId":"` + tierID + `","quantity":1,"email":"x@y.com"}`
+	body := `{"command":"CREATE_ORDER_EXT","actionEventId":"2001",` +
+		`"categoryPriceId":"3001","quantity":1,"email":"x@y.com"}`
 	resp := postJSON(t, h, body)
 	rc := mustResultCode(t, resp)
 	if rc == ResultCodeOK {
@@ -194,11 +195,10 @@ func TestBil24_374_CreateOrderExt_ValidInput_NeverReturnsSuccess(t *testing.T) {
 func TestBil24_374_CreateOrderExt_ReturnsNotImplemented(t *testing.T) {
 	// Step 1 specific: must return ResultCodeNotImplemented (-5), not some
 	// other error that might be confused with a validation failure.
+	// Feature #476 W1-A2b: use int64 wire ids (spec §4).
 	h := newMinimalHandler()
-	sessionID := uuid.New().String()
-	tierID := uuid.New().String()
-	body := `{"command":"CREATE_ORDER_EXT","actionEventId":"` + sessionID +
-		`","categoryPriceId":"` + tierID + `"}`
+	body := `{"command":"CREATE_ORDER_EXT","actionEventId":"2001",` +
+		`"categoryPriceId":"3001"}`
 	resp := postJSON(t, h, body)
 	rc := mustResultCode(t, resp)
 	if rc != ResultCodeNotImplemented {
@@ -209,10 +209,25 @@ func TestBil24_374_CreateOrderExt_ReturnsNotImplemented(t *testing.T) {
 func TestBil24_374_CreateOrderExt_MissingSessionID_StillRejectsBeforeStub(t *testing.T) {
 	// Validation errors (missing fields) should still return -2, not -5.
 	h := newMinimalHandler()
-	resp := postJSON(t, h, `{"command":"CREATE_ORDER_EXT","categoryPriceId":"`+uuid.New().String()+`"}`)
+	resp := postJSON(t, h, `{"command":"CREATE_ORDER_EXT","categoryPriceId":"3001"}`)
 	rc := mustResultCode(t, resp)
 	if rc != ResultCodeInvalidRequest {
 		t.Errorf("Step 1: missing actionEventId should return %d, got %d", ResultCodeInvalidRequest, rc)
+	}
+}
+
+// Feature #476 W1-A2b: UUID input on the Bil24 wire must be rejected with -2
+// (spec §4 forbids UUIDs on the compatibility gateway wire).
+func TestBil24_476_CreateOrderExt_UUIDInput_Rejected(t *testing.T) {
+	h := newMinimalHandler()
+	sessionID := uuid.New().String()
+	tierID := uuid.New().String()
+	body := `{"command":"CREATE_ORDER_EXT","actionEventId":"` + sessionID +
+		`","categoryPriceId":"` + tierID + `"}`
+	resp := postJSON(t, h, body)
+	rc := mustResultCode(t, resp)
+	if rc != ResultCodeInvalidRequest {
+		t.Errorf("expected UUID input to be rejected with %d, got %d", ResultCodeInvalidRequest, rc)
 	}
 }
 

@@ -10,6 +10,8 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -196,17 +198,20 @@ func (h *Handler) handleBil24CreateOrderExt(w http.ResponseWriter, _ *http.Reque
 		))
 		return
 	}
-	if _, err := TranslateLegacyID(req.ActionEventID); err != nil {
+	// Spec §4 / §7.3: Bil24 wire is int64-only for actionEventId and
+	// categoryPriceId. Reject UUID strings with -2 so callers cannot slip a
+	// platform UUID onto a legacy endpoint. Feature #476 W1-A2b.
+	if _, err := bil24compat.ParseLegacyIntID(req.ActionEventID); err != nil {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInvalidRequest,
-			"actionEventId must be a valid session identifier",
+			"actionEventId must be a positive int64 session identifier",
 		))
 		return
 	}
-	if _, err := TranslateLegacyID(req.CategoryPriceID); err != nil {
+	if _, err := bil24compat.ParseLegacyIntID(req.CategoryPriceID); err != nil {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInvalidRequest,
-			"categoryPriceId must be a valid tier identifier",
+			"categoryPriceId must be a positive int64 tier identifier",
 		))
 		return
 	}

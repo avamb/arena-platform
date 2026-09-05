@@ -455,11 +455,12 @@ func TestBil24_157_CreateOrderExt_ValidInput_Returns_NotImplemented(t *testing.T
 	// an unimplemented stub (would give callers a false success signal).
 	// It must return resultCode=-5 (NOT_IMPLEMENTED) so legacy clients
 	// know to migrate to POST /v1/checkout/reservations.
+	//
+	// Feature #476 W1-A2b (spec §4/§7.3): valid Bil24-wire ids are int64
+	// compatibility ids, not UUID strings.
 	s := buildBil24Server(t)
-	sessionID := uuid.New().String()
-	tierID := uuid.New().String()
-	body := `{"command":"CREATE_ORDER_EXT","actionEventId":"` + sessionID +
-		`","categoryPriceId":"` + tierID + `","quantity":2,"email":"test@example.com"}`
+	body := `{"command":"CREATE_ORDER_EXT","actionEventId":"2593277",` +
+		`"categoryPriceId":"5731","quantity":2,"email":"test@example.com"}`
 	w := postBil24(s, body)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected HTTP 200, got %d", w.Code)
