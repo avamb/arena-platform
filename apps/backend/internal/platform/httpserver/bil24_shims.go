@@ -148,7 +148,7 @@ const (
 	// #157 tests; its value moved from -1 to -2 in feature #477.
 	//
 	// Deprecated: use ResultCodeInvalidRequest.
-	ResultCodeUnknownCommand = bil24compat.ResultCodeUnknownCommand
+	ResultCodeUnknownCommand = bil24compat.ResultCodeUnknownCommand //nolint:staticcheck // intentional re-export of deprecated alias
 	// ResultCodeInvalidRequest is returned when the request is malformed
 	// (missing/malformed field, unknown command name) (Bil24 wire: -2).
 	ResultCodeInvalidRequest = bil24compat.ResultCodeInvalidRequest

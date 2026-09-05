@@ -98,7 +98,7 @@ const (
 	// #477 (unknown command names are now -2, per spec section 6).
 	//
 	// Deprecated: use ResultCodeInvalidRequest.
-	ResultCodeUnknownCommand = bil24compat.ResultCodeUnknownCommand
+	ResultCodeUnknownCommand = bil24compat.ResultCodeUnknownCommand //nolint:staticcheck // intentional re-export of deprecated alias
 	// ResultCodeInvalidRequest is returned when the request is malformed:
 	// missing/malformed field, JSON parse failure, unknown command name
 	// (Bil24 wire: -2).
