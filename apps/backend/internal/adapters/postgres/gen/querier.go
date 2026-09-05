@@ -523,6 +523,12 @@ type Querier interface {
 
 	// Widget funnel events — telemetry sink (feature #322 WID-0e)
 	InsertWidgetFunnelEvent(ctx context.Context, feedToken, eventType string, checkoutToken *string, sessionID *uuid.UUID, occurredAt time.Time) error
+
+	// W1-A2a (feature #475): Bil24-compat integer identity map (migration 0090)
+	EnsureCompatibilityID(ctx context.Context, kind string, platformID uuid.UUID) (CompatibilityIDRow, error)
+	GetCompatibilityIDByPlatformID(ctx context.Context, kind string, platformID uuid.UUID) (CompatibilityIDRow, error)
+	GetCompatibilityIDBySystemID(ctx context.Context, kind string, systemID int64) (CompatibilityIDRow, error)
+	RegisterExternalCompatibilityID(ctx context.Context, kind string, platformID uuid.UUID, systemID int64) (CompatibilityIDRow, error)
 }
 
 // Compile-time assertion: *Queries must implement Querier.
