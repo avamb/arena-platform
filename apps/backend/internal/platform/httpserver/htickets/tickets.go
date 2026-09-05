@@ -42,8 +42,16 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/ean13"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
+
+// ean13PlatformPrefix is the GS1 "internal use" prefix minted onto every
+// platform-issued EAN-13 ticket credential (feature #502, W1-B6a; spec §11).
+// GS1 reserves 20-29 for internal use; "21" keeps platform-minted codes from
+// ever colliding with a real Bil24 barcode (which the spec documents as
+// starting with "24…").
+const ean13PlatformPrefix = "21"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Response type
@@ -296,6 +304,30 @@ func (h *Handler) IssueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSe
 					i, err)
 			}
 			newTickets = append(newTickets, t)
+		}
+	}
+
+	// ── EAN-13 credential + barcode (feature #502, W1-B6a) ───────────────────
+	// Every newly issued ticket gets a platform-minted EAN-13 barcode: a
+	// ticket_credentials row (type='ean13', 13-digit payload) plus a
+	// barcodes row (authority='platform') so SCAN_TICKET / /v1/scanner/*
+	// can resolve it the same way as any other barcode authority (spec §11).
+	if len(newTickets) > 0 {
+		platformAuthority, err := txQ.GetBarcodeAuthorityByType(ctx, "platform")
+		if err != nil {
+			return nil, fmt.Errorf("IssueTicketsForCheckout: get platform barcode authority: %w", err)
+		}
+		for _, t := range newTickets {
+			code := ean13.Encode(ean13PlatformPrefix, t.SystemTicketID)
+			if _, err := txQ.InsertTicketCredential(ctx, t.ID, "ean13", code); err != nil {
+				return nil, fmt.Errorf("IssueTicketsForCheckout: insert ean13 credential for ticket %s: %w",
+					t.ID.String(), err)
+			}
+			ticketID := t.ID
+			if _, err := txQ.InsertBarcode(ctx, platformAuthority.ID, code, &ticketID); err != nil {
+				return nil, fmt.Errorf("IssueTicketsForCheckout: insert ean13 barcode for ticket %s: %w",
+					t.ID.String(), err)
+			}
 		}
 	}
 
