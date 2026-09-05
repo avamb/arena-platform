@@ -9,6 +9,7 @@ package hbil24
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -204,6 +205,82 @@ func TestBil24_476_BuildCountryCityLists_VenueAddressAndGeo(t *testing.T) {
 	}
 	if _, has := venues[2]["geoLon"]; has {
 		t.Errorf("venues[2].geoLon MUST be absent when GeoLng is nil, got %v", venues[2]["geoLon"])
+	}
+}
+
+// TestBil24_476_BuildActionEntry_LastEventDateAndAge pins the slice-17
+// spec §7.1 additions on the actionList entry body: lastEventDate is
+// projected from EventRow.LastSessionAt (RFC3339 UTC), and age is
+// projected from EventRow.AgeRating with the "NR" sentinel normalised
+// to the empty string per spec (`age` — `events.age_rating` (`NR` → `""`)).
+// Both keys are OMITTED (not emitted as empty) when the underlying
+// column is nil / empty — the WP plugin treats an absent key the same
+// as an empty value and omitempty wire-bytes are cheaper.
+func TestBil24_476_BuildActionEntry_LastEventDateAndAge(t *testing.T) {
+	h := &Handler{}
+	ctx := context.Background()
+	last := time.Date(2026, 4, 27, 19, 0, 0, 0, time.UTC)
+	first := time.Date(2026, 4, 26, 19, 0, 0, 0, time.UTC)
+	age := "12+"
+	nrAge := "NR"
+
+	// Full row: both dates present, age populated → all keys emitted.
+	full := gen.EventRow{
+		ID:             uuid.New(),
+		Name:           "Full",
+		Status:         "published",
+		FirstSessionAt: &first,
+		LastSessionAt:  &last,
+		AgeRating:      &age,
+	}
+	entry := h.buildActionEntry(ctx, full)
+	if got, want := entry["lastEventDate"], last.Format(time.RFC3339); got != want {
+		t.Errorf("lastEventDate = %v, want %q", got, want)
+	}
+	if got, want := entry["firstEventDate"], first.Format(time.RFC3339); got != want {
+		t.Errorf("firstEventDate = %v, want %q", got, want)
+	}
+	if got, want := entry["age"], "12+"; got != want {
+		t.Errorf("age = %v, want %q", got, want)
+	}
+
+	// NR age must be normalised to "" and then OMITTED (empty string is
+	// not the same as an absent key — spec expects the latter).
+	nr := gen.EventRow{
+		ID:        uuid.New(),
+		Name:      "NR Event",
+		Status:    "published",
+		AgeRating: &nrAge,
+	}
+	entry = h.buildActionEntry(ctx, nr)
+	if _, has := entry["age"]; has {
+		t.Errorf("age MUST be absent when AgeRating='NR' (normalised to empty), got %v", entry["age"])
+	}
+
+	// Bare row: no sessions, no rating → keys absent for lastEventDate,
+	// firstEventDate, age (omit rather than empty).
+	bare := gen.EventRow{
+		ID:     uuid.New(),
+		Name:   "Bare",
+		Status: "published",
+	}
+	entry = h.buildActionEntry(ctx, bare)
+	if _, has := entry["lastEventDate"]; has {
+		t.Errorf("lastEventDate MUST be absent when LastSessionAt is nil, got %v", entry["lastEventDate"])
+	}
+	if _, has := entry["firstEventDate"]; has {
+		t.Errorf("firstEventDate MUST be absent when FirstSessionAt is nil, got %v", entry["firstEventDate"])
+	}
+	if _, has := entry["age"]; has {
+		t.Errorf("age MUST be absent when AgeRating is nil, got %v", entry["age"])
+	}
+	// Baseline invariants for the bare row: actionId + actionName always
+	// present regardless of optional column state.
+	if entry["actionName"] != "Bare" {
+		t.Errorf("actionName = %v, want %q", entry["actionName"], "Bare")
+	}
+	if entry["actionId"] != bare.ID.String() {
+		t.Errorf("actionId (nil-compatDB fallback) = %v, want %q", entry["actionId"], bare.ID.String())
 	}
 }
 

@@ -120,28 +120,7 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 		if authed && e.Status != "published" {
 			continue
 		}
-		action := map[string]any{
-			// Spec §4 / §7.1 (feature #476): int64 wire form via compat map.
-			// Fallback (nil compatDB) returns the legacy UUID string so pre-W1
-			// unit-test Handlers stay green.
-			"actionId":   h.compatActionID(ctx, e.ID),
-			"actionName": e.Name,
-		}
-		// firstEventDate is the earliest session of the action (AB-37):
-		// events carry no own dates; the trigger-maintained cache
-		// first_session_at is the Bil24-correct source. Omitted entirely
-		// for an event with no sessions.
-		if e.FirstSessionAt != nil {
-			action["firstEventDate"] = e.FirstSessionAt.UTC().Format(time.RFC3339)
-		}
-		if e.ImageURL != nil && *e.ImageURL != "" {
-			action["bigPosterUrl"] = *e.ImageURL
-			action["smallPosterUrl"] = *e.ImageURL
-		}
-		if e.Description != nil {
-			action["description"] = *e.Description
-		}
-		actionList = append(actionList, action)
+		actionList = append(actionList, h.buildActionEntry(ctx, e))
 	}
 
 	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
@@ -149,6 +128,84 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 		"cityList":    cityList,
 		"actionList":  actionList,
 	}))
+}
+
+// buildActionEntry projects one gen.EventRow into a single spec §7.1
+// actionList entry. Extracted from handleBil24GetAllActions in slice 17
+// so the field-by-field expansion of the entry body (per spec §7.1) can
+// be unit-tested without spinning up the full handler with mock query
+// services.
+//
+// Fields emitted from EventRow columns (all directly present on the row
+// projected by ListEventsByOrg — no extra SQL round-trip):
+//
+//   - actionId       — int64 via compatActionID (UUID fallback for
+//     nil-compatDB unit tests).
+//   - actionName     — e.Name.
+//   - firstEventDate — e.FirstSessionAt (earliest scheduled session,
+//     RFC3339 UTC). Omitted when nil.
+//   - lastEventDate  — e.LastSessionAt (latest scheduled session,
+//     RFC3339 UTC). Omitted when nil. Spec §7.1 (feature #476 slice 17).
+//   - age            — e.AgeRating with the "NR" sentinel normalised to
+//     "" (spec §7.1: age string, "NR" → ""). Omitted when the column is
+//     nil OR when the normalised value is empty (omit rather than empty).
+//   - bigPosterUrl / smallPosterUrl — e.ImageURL (both fall back to the
+//     legacy events.image_url in this slice; a follow-up slice will side-
+//     load poster_media_id from media_objects and use it in preference).
+//   - description    — e.Description raw HTML.
+//
+// Fields deferred to later slices (still missing from the spec §7.1
+// entry body): fullActionName (needs a source column), minPrice /
+// maxPrice / organizerId / organizerName (need a tier + org join),
+// actionEventList (whole subtree).
+//
+// This helper is pure over EventRow; it does not touch the DB itself,
+// so unit tests can pass a hand-built EventRow value.
+func (h *Handler) buildActionEntry(ctx context.Context, e gen.EventRow) map[string]any {
+	action := map[string]any{
+		// Spec §4 / §7.1 (feature #476): int64 wire form via compat map.
+		// Fallback (nil compatDB) returns the legacy UUID string so pre-W1
+		// unit-test Handlers stay green.
+		"actionId":   h.compatActionID(ctx, e.ID),
+		"actionName": e.Name,
+	}
+	// firstEventDate is the earliest session of the action (AB-37):
+	// events carry no own dates; the trigger-maintained cache
+	// first_session_at is the Bil24-correct source. Omitted entirely
+	// for an event with no sessions.
+	if e.FirstSessionAt != nil {
+		action["firstEventDate"] = e.FirstSessionAt.UTC().Format(time.RFC3339)
+	}
+	// Spec §7.1 (slice 17): lastEventDate mirrors firstEventDate against
+	// the trigger-maintained last_session_at cache. Same nil-handling
+	// contract — an event without sessions omits the key.
+	if e.LastSessionAt != nil {
+		action["lastEventDate"] = e.LastSessionAt.UTC().Format(time.RFC3339)
+	}
+	// Spec §7.1 (slice 17): age is the events.age_rating column with the
+	// documented "NR" ("not rated") sentinel normalised to "" per spec
+	// section 7.1 remark ("`age` — `events.age_rating` (`NR` → `""`)").
+	// The key is omitted entirely when the column is nil OR the
+	// normalised value is empty — the WP plugin treats an absent key
+	// the same as "" but emitting an empty string wastes wire bytes on
+	// the majority of events that have no rating set.
+	if e.AgeRating != nil {
+		age := *e.AgeRating
+		if age == "NR" {
+			age = ""
+		}
+		if age != "" {
+			action["age"] = age
+		}
+	}
+	if e.ImageURL != nil && *e.ImageURL != "" {
+		action["bigPosterUrl"] = *e.ImageURL
+		action["smallPosterUrl"] = *e.ImageURL
+	}
+	if e.Description != nil {
+		action["description"] = *e.Description
+	}
+	return action
 }
 
 // buildCountryCityLists projects a ListActionVenuesByOrg result set into
