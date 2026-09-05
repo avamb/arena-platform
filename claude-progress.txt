@@ -25178,3 +25178,63 @@ address/geo_lat/geo_lng from venues (columns exist per migration 0050),
 extend ActionVenueRow, then plumb through buildCountryCityLists so
 venueList entries carry the spec s7.1 keys. Small, self-contained;
 does not touch actionList body.
+
+
+## 2026-09-05 - #476 W1-A2b slice 16 - GET_ALL_ACTIONS venueList address+geo
+
+Commit 7aa0762, pushed to origin/master. Feature #476 STAYS in_progress
+(sub-feature rule: NEVER release claim as too large).
+
+Delivered this session:
+- queries/venues.sql + gen/venues.sql.go ListActionVenuesByOrg widened
+  with three columns per spec s7.1 venueList shape:
+    * address = COALESCE(NULLIF(concat_ws(", ", line1, line2), ""), legacy)
+    * geo_lat = v.geo_lat::float8 (nullable *float64)
+    * geo_lng = v.geo_lng::float8 (nullable *float64)
+  Cast to float8 avoids the pgtype.Numeric dependency and gives a
+  direct *float64 scan. ActionVenueRow gains Address/GeoLat/GeoLng
+  pointer fields; row scanner picks them up in the new column order.
+- cmd_catalog.go buildCountryCityLists venueList entry now emits:
+    * address key ONLY when Address is non-nil AND non-empty
+    * geoLat + geoLon keys ONLY when BOTH GeoLat AND GeoLng are non-nil
+      (half a coordinate cannot render a pin on the site map)
+- bil24_476_catalog_test.go: TestBil24_476_BuildCountryCityLists_
+  VenueAddressAndGeo pins three cases in one city:
+    * full row (address + both coords) -> all keys present
+    * partial row (address + only lat) -> address present, geo pair suppressed
+    * bare row (nothing extra) -> keys absent (omit rather than empty)
+
+Gates - all GREEN:
+- go build ./apps/backend/... EXIT:0
+- go vet   ./apps/backend/... EXIT:0
+- go test  ./apps/backend/... full suite EXIT:0 (test_476_slice16_full.log)
+- gofmt -l on 3 changed .go files clean
+
+Files touched:
+  apps/backend/internal/adapters/postgres/queries/venues.sql             (M)
+  apps/backend/internal/adapters/postgres/gen/venues.sql.go              (M)
+  apps/backend/internal/platform/httpserver/hbil24/cmd_catalog.go        (M)
+  apps/backend/internal/platform/httpserver/hbil24/bil24_476_catalog_test.go (M)
+
+STILL DEFERRED for #476 (Step 2 remaining + Step 3):
+
+Step 2 REMAINING (bottom-up, one slice per session):
+  cmd_catalog.go handleBil24GetAllActions: actionList body still flat
+    (map with actionId/actionName only). Spec s7.1 expects
+    fullActionName, minPrice, maxPrice, organizerId, actionEventList
+    with day/time/currency/sellEndTime/seatingPlanId/categoryLimitList.
+  cmd_cart.go handleBil24UnReserve reservationId + full response reshape
+    to ReservationResponse form (spec s7.5).
+  cmd_order.go handleBil24GetOrderInfo/handleBil24CancelOrder orderId
+    -> spec s7.5/s7.6 review pending (orders likely stay uuid for W1).
+
+Step 3 - No-uuid guardrail (tests/compat/bil24/no_uuid_in_wire_test.go)
+already GREEN; slice 16 only adds address/geo strings and float64s,
+never surfaces a UUID.
+
+Recommended next slice: begin actionList body expansion - start with
+the smallest self-contained field group (fullActionName + description
++ posterUrls) sourced from events row already available in handler.
+Defer price/actionEventList sub-structure to their own slice because
+they need a session listing query and tier price resolution which is
+a whole new SQL query.
