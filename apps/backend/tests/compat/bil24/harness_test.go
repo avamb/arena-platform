@@ -32,8 +32,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,8 +55,17 @@ type harnessState struct {
 	VenueTimezone  string // e.g. "Europe/Prague"
 	EventID        string
 	AssignedSessID string
+	// AssignedTierID is the CZK 500 tier stamped on every seat of the
+	// assigned-seats session (feature #484) — it is what gives a §7.4
+	// RESERVATION response a non-zero sum / charge / totalSum.
+	AssignedTierID string
 	GAsessID       string
 	SeatIDs        map[string]string // "Parter-3-12" → system_seat_id
+	// Pool is the seeded connection pool. Scenarios that boot the real
+	// server (harness_server_test.go) hand it to httpserver.Options.PgxPool
+	// and use it for the few out-of-band assertions (expiring a gateway
+	// session, minting a compatibility id) that have no wire command.
+	Pool *pgxpool.Pool
 }
 
 // setupHarness reads DATABASE_URL, opens a pgxpool, seeds the fixture via
@@ -105,13 +117,45 @@ func mustReadJSON(t *testing.T, path string) map[string]interface{} {
 	return m
 }
 
+// harnessTTLSeconds mirrors hcheckout.DefaultReservationTTL (1200s) so a
+// golden may carry the symbolic {{now+ttl}} form for cartTimeout. Spec §7.4
+// requires cartTimeout to be an integer on the wire, so the RESERVATION
+// goldens spell the number out; the placeholder stays supported for goldens
+// that prefer the symbolic form.
+const harnessTTLSeconds = 1200
+
 // resolveGolden replaces the documented placeholders in a golden object with
-// values from the harness state. Used by scenarios once they un-skip.
-func resolveGolden(g map[string]interface{}, st *harnessState) map[string]interface{} {
+// values from the harness state. Placeholders that only exist at request time
+// ({{sessionId}} is the gateway session token minted by CREATE_USER,
+// {{actionEventId}} / {{categoryPriceId}} are compatibility_id_map bigints
+// minted on first projection) are supplied by the calling scenario through
+// `runtime`; anything it does not override falls back to a seed value.
+func resolveGolden(g map[string]interface{}, st *harnessState, runtime ...map[string]string) map[string]interface{} {
+	over := map[string]string{}
+	for _, m := range runtime {
+		for k, v := range m {
+			over[k] = v
+		}
+	}
+	subst := func(v, key, fallback string) string {
+		repl := fallback
+		if o, ok := over[key]; ok {
+			repl = o
+		}
+		return strings.ReplaceAll(v, "{{"+key+"}}", repl)
+	}
 	return walk(g, func(v string) string {
-		v = strings.ReplaceAll(v, "{{actionEventId}}", st.EventID)
-		v = strings.ReplaceAll(v, "{{sessionId}}", st.AssignedSessID)
-		v = strings.ReplaceAll(v, "{{token}}", st.ChannelToken)
+		// Spec §4: actionEventId travels as the int64 compatibility id of the
+		// SESSION (not the event, and not a UUID). The seeded session uuid is
+		// only a fallback for scenarios that have not minted the id yet.
+		v = subst(v, "actionEventId", st.AssignedSessID)
+		v = subst(v, "categoryPriceId", st.AssignedTierID)
+		// Spec §7.3: sessionId is the gateway session token, not a platform
+		// session uuid.
+		v = subst(v, "sessionId", "")
+		v = subst(v, "token", st.ChannelToken)
+		v = subst(v, "orderId", "")
+		v = subst(v, "now+ttl", strconv.Itoa(harnessTTLSeconds))
 		for label, seat := range st.SeatIDs {
 			v = strings.ReplaceAll(v, "{{seatId:"+label+"}}", seat)
 		}
@@ -215,8 +259,174 @@ func TestCompatBil24_450_Harness_Scenarios(t *testing.T) {
 		t.Skip("feature #495: CREATE_USER→RESERVE×2→GET_CART→ADD_PROMO_CODES→CREATE_ORDER_EXT→PAY_ORDER→GET_TICKETS_BY_ORDER end-to-end")
 	})
 
+	// Scenario 3 (feature #484, spec §7.4) is the first scenario to boot the
+	// real server — the bootstrap lives in harness_server_test.go. It walks
+	// the four RESERVATION shapes over one session cart: RESERVE by seat,
+	// a parallel RESERVE of the same seat from a second gateway session
+	// (resultCode 101), UN_RESERVE_ALL, and finally a command on a
+	// backdated gateway session (resultCode 1).
 	t.Run("03_seated_seats_conflict_and_expiry", func(t *testing.T) {
-		t.Skip("feature #484: assigned seats: reserve → parallel conflict resultCode 101 → UN_RESERVE_ALL → expired session resultCode 1")
+		base := startHarnessServer(t, st)
+
+		// The wire speaks int64 (spec §4): actionEventId is the compat id of
+		// the platform session UUID, never the UUID itself.
+		actionEventID := mustActionEventID(t, st, st.AssignedSessID)
+		labels := sortedSeatLabels(st)
+		if len(labels) == 0 {
+			t.Fatal("seed produced no seats for the assigned-seats session")
+		}
+		seatLabel := labels[0]
+		seatID := st.SeatIDs[seatLabel]
+
+		// ── step 1: buyer A opens a gateway session ──────────────────────
+		sessA, userA := createGatewayUser(t, base, st, "harness-484-a@example.test")
+
+		runtime := map[string]string{
+			"actionEventId": strconv.FormatInt(actionEventID, 10),
+			"sessionId":     sessA,
+		}
+
+		// ── step 2: RESERVE the seat over the checked-in wire fixture ────
+		reqReserve, gldReserve := loadWPFixture(t, "RESERVATION", "reserve_by_seat")
+		reqReserve = resolveGolden(reqReserve, st, runtime)
+		reqReserve["fid"] = st.ChannelFID
+		reqReserve["token"] = st.ChannelToken
+		reqReserve["userId"] = userA
+		// The fixture spells the seat as {{seatId:Parter-3-12}}; the seed's
+		// first sorted seat is what actually exists, so retarget both the
+		// request and the golden onto it.
+		reqReserve["seatList"] = []any{map[string]any{"seatId": seatID}}
+
+		resp := postBil24(t, base, reqReserve)
+		if code := numberField(t, resp, "resultCode"); code != 0 {
+			t.Fatalf("RESERVE resultCode = %v, want 0 (description %v)", code, resp["description"])
+		}
+		gldReserve = resolveGolden(gldReserve, st, runtime)
+		assertGoldenKeySet(t, resp, gldReserve)
+
+		// Spec §7.4 values: one CZK 500 seat, 5% channel fee.
+		if got, want := resp["currency"], "CZK"; got != want {
+			t.Errorf("RESERVE currency = %v, want %v", got, want)
+		}
+		if got := numberField(t, resp, "sum"); got != 500 {
+			t.Errorf("RESERVE sum = %v, want 500", got)
+		}
+		if got := numberField(t, resp, "discount"); got != 0 {
+			t.Errorf("RESERVE discount = %v, want 0", got)
+		}
+		if got := numberField(t, resp, "charge"); got != 25 {
+			t.Errorf("RESERVE charge = %v, want 25 (5%% of 500)", got)
+		}
+		if got := numberField(t, resp, "totalSum"); got != 525 {
+			t.Errorf("RESERVE totalSum = %v, want 525", got)
+		}
+		// cartTimeout is an integer number of seconds (spec §7.4), never a
+		// timestamp and never a string.
+		ct := numberField(t, resp, "cartTimeout")
+		if ct <= 0 || ct > harnessTTLSeconds {
+			t.Errorf("RESERVE cartTimeout = %v, want 0 < n <= %d", ct, harnessTTLSeconds)
+		}
+		if ct != float64(int64(ct)) {
+			t.Errorf("RESERVE cartTimeout = %v, want an integer", ct)
+		}
+		seats, ok := resp["seatList"].([]interface{})
+		if !ok || len(seats) != 1 {
+			t.Fatalf("RESERVE seatList = %#v, want exactly one row", resp["seatList"])
+		}
+		row, _ := seats[0].(map[string]interface{})
+		wantSeat, err := strconv.ParseFloat(seatID, 64)
+		if err != nil {
+			t.Fatalf("seed seat id %q is not an int64 literal: %v", seatID, err)
+		}
+		if got := numberField(t, row, "seatId"); got != wantSeat {
+			t.Errorf("RESERVE seatList[0].seatId = %v, want %v", got, wantSeat)
+		}
+
+		// ── step 3: buyer B races for the same seat → 101, localized ─────
+		sessB, userB := createGatewayUser(t, base, st, "harness-484-b@example.test")
+		conflict := postBil24(t, base, map[string]any{
+			"command":       "RESERVATION",
+			"fid":           st.ChannelFID,
+			"token":         st.ChannelToken,
+			"locale":        "en-US",
+			"type":          "RESERVE",
+			"userId":        userB,
+			"sessionId":     sessB,
+			"actionEventId": actionEventID,
+			"seatList":      []any{map[string]any{"seatId": seatID}},
+		})
+		if code := numberField(t, conflict, "resultCode"); code != 101 {
+			t.Fatalf("parallel RESERVE resultCode = %v, want 101 (description %v)",
+				code, conflict["description"])
+		}
+		assertGoldenKeySet(t, conflict,
+			resolveGolden(mustReadJSON(t,
+				filepath.Join("testdata", "wp", "golden", "RESERVATION", "seat_taken.json")), st, runtime))
+		if desc, _ := conflict["description"].(string); desc == "" {
+			t.Error("parallel RESERVE: description must carry the localized user-visible reason")
+		}
+
+		// ── step 4: buyer A empties the cart with UN_RESERVE_ALL ─────────
+		reqAll, gldAll := loadWPFixture(t, "RESERVATION", "un_reserve_all")
+		reqAll = resolveGolden(reqAll, st, runtime)
+		reqAll["fid"] = st.ChannelFID
+		reqAll["token"] = st.ChannelToken
+		reqAll["userId"] = userA
+		delete(reqAll, "actionEventId") // §7.4: UN_RESERVE_ALL carries none
+
+		cleared := postBil24(t, base, reqAll)
+		if code := numberField(t, cleared, "resultCode"); code != 0 {
+			t.Fatalf("UN_RESERVE_ALL resultCode = %v, want 0 (description %v)",
+				code, cleared["description"])
+		}
+		assertGoldenKeySet(t, cleared, resolveGolden(gldAll, st, runtime))
+		if got := numberField(t, cleared, "sum"); got != 0 {
+			t.Errorf("UN_RESERVE_ALL sum = %v, want 0", got)
+		}
+		if got := numberField(t, cleared, "totalSum"); got != 0 {
+			t.Errorf("UN_RESERVE_ALL totalSum = %v, want 0", got)
+		}
+		if got := numberField(t, cleared, "cartTimeout"); got != 0 {
+			t.Errorf("UN_RESERVE_ALL cartTimeout = %v, want 0 on an empty cart", got)
+		}
+		if left, _ := cleared["seatList"].([]interface{}); len(left) != 0 {
+			t.Errorf("UN_RESERVE_ALL seatList = %#v, want empty", cleared["seatList"])
+		}
+
+		// ── step 5: the released seat is free again for buyer B ──────────
+		regained := postBil24(t, base, map[string]any{
+			"command":       "RESERVATION",
+			"fid":           st.ChannelFID,
+			"token":         st.ChannelToken,
+			"locale":        "en-US",
+			"type":          "RESERVE",
+			"userId":        userB,
+			"sessionId":     sessB,
+			"actionEventId": actionEventID,
+			"seatList":      []any{map[string]any{"seatId": seatID}},
+		})
+		if code := numberField(t, regained, "resultCode"); code != 0 {
+			t.Fatalf("RESERVE after UN_RESERVE_ALL resultCode = %v, want 0 (description %v)",
+				code, regained["description"])
+		}
+
+		// ── step 6: a stale gateway session is rejected with 1 ───────────
+		expireGatewaySession(t, st, sessA)
+		stale := postBil24(t, base, map[string]any{
+			"command":       "RESERVATION",
+			"fid":           st.ChannelFID,
+			"token":         st.ChannelToken,
+			"locale":        "en-US",
+			"type":          "RESERVE",
+			"userId":        userA,
+			"sessionId":     sessA,
+			"actionEventId": actionEventID,
+			"seatList":      []any{map[string]any{"seatId": st.SeatIDs[labels[len(labels)-1]]}},
+		})
+		if code := numberField(t, stale, "resultCode"); code != 1 {
+			t.Fatalf("RESERVE on expired session resultCode = %v, want 1 (description %v)",
+				code, stale["description"])
+		}
 	})
 
 	t.Run("04_refund_dedup", func(t *testing.T) {

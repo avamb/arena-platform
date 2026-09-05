@@ -35,6 +35,11 @@ type Request struct {
 	Token string `json:"token"`
 	// Locale controls the language of localised content in the response.
 	Locale string `json:"locale"`
+	// Type is the RESERVATION sub-command selector introduced by spec §7.4
+	// (feature #484): "RESERVE" adds to the session cart, "UN_RESERVE"
+	// removes from it and "UN_RESERVE_ALL" empties it. An empty value means
+	// the legacy shape (RESERVATION == add) and is treated as "RESERVE".
+	Type string `json:"type"`
 
 	// Command-specific fields (present in the same flat JSON object).
 
@@ -63,17 +68,16 @@ type Request struct {
 	ReservationID string
 
 	// SeatList is the seated-mode RESERVATION payload (feature #312,
-	// Wave SEAT-D1). Each entry is a session_seat.id string (ADR-005 —
-	// the platform's session_seats.id, serialised as a plain UUID
-	// string). Present for RESERVATION on sessions whose admission_mode
-	// is assigned_seats (or hybrid with seats). Mutually exclusive with
-	// CategoryList.
+	// Wave SEAT-D1). Each entry is a seat identifier: the platform's
+	// session_seats.id (legacy UUID string) or, per spec §4, the int64
+	// system_seat_id rendered as its decimal literal.
 	//
-	// No JSON tag: Go's encoding/json decoder matches the "seatList"
-	// wire key case-insensitively against the PascalCase field name,
-	// matching the rest of Request. This also keeps the platform's
-	// snake_case JSON tag policy intact — the Bil24 gateway is a
-	// legacy wire-compat layer, not a first-party API surface.
+	// Three wire shapes decode into this one slice (see flexSeatList):
+	// a bare scalar array ["a","b"] / [11,12] and the spec §7.4 object
+	// array [{"seatId": 11}, …]. Normalising here keeps every RESERVATION
+	// branch working against a plain []string.
+	//
+	// Mutually exclusive with CategoryList.
 	SeatList []string
 	// CategoryList is the general-admission RESERVATION payload used by
 	// legacy Bil24 clients on general_admission (tier-facade) sessions.
@@ -113,15 +117,24 @@ type requestAlias Request
 //     string so every call site keeps working; both wire shapes land in it.
 //   - `userId`: always a JSON number in the wave-1 fixtures, but strings are
 //     accepted for the same reason.
+//   - `actionId` / `actionEventId` / `categoryPriceId`: spec §4 makes these
+//     int64 system ids, and the WordPress plugin echoes back whatever the
+//     catalog commands emitted — a JSON number. Without the flex decode the
+//     whole envelope fails to unmarshal and every RESERVATION carrying a
+//     numeric actionEventId is answered with -2 (feature #484).
 //
 // Every other field decodes exactly as before (the embedded alias performs
-// the default, case-insensitive walk); the two outer fields shadow their
-// embedded namesakes because encoding/json prefers the shallower field.
+// the default, case-insensitive walk); the outer fields shadow their embedded
+// namesakes because encoding/json prefers the shallower field.
 func (r *Request) UnmarshalJSON(data []byte) error {
 	var aux struct {
 		requestAlias
-		FID    json.RawMessage `json:"fid"`
-		UserID json.RawMessage `json:"userId"`
+		FID             json.RawMessage `json:"fid"`
+		UserID          json.RawMessage `json:"userId"`
+		SeatList        json.RawMessage `json:"seatList"`
+		ActionID        json.RawMessage `json:"actionId"`
+		ActionEventID   json.RawMessage `json:"actionEventId"`
+		CategoryPriceID json.RawMessage `json:"categoryPriceId"`
 	}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -129,7 +142,56 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	*r = Request(aux.requestAlias)
 	r.FID = flexWireString(aux.FID)
 	r.UserID = flexWireInt64(aux.UserID)
+	r.SeatList = flexSeatList(aux.SeatList)
+	r.ActionID = flexWireString(aux.ActionID)
+	r.ActionEventID = flexWireString(aux.ActionEventID)
+	r.CategoryPriceID = flexWireString(aux.CategoryPriceID)
 	return nil
+}
+
+// flexSeatList normalises the three seatList wire shapes into []string:
+//
+//	["<uuid>", …]        legacy SEAT-D1 clients
+//	[11, 12]             spec §4 int64 system_seat_id, bare
+//	[{"seatId": 11}, …]  spec §7.4 RESERVE / UN_RESERVE payload
+//
+// Object entries also accept the "id" key, which some legacy WordPress
+// builds emit. Entries that carry neither are skipped rather than failing
+// the whole envelope — the reservation branch then reports the resulting
+// empty/short list through the ordinary -2 invalid-request path.
+func flexSeatList(raw json.RawMessage) []string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var entries []json.RawMessage
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if s := flexWireString(e); s != "" {
+			out = append(out, s)
+			continue
+		}
+		var obj struct {
+			SeatID json.RawMessage `json:"seatId"`
+			ID     json.RawMessage `json:"id"`
+		}
+		if err := json.Unmarshal(e, &obj); err != nil {
+			continue
+		}
+		if s := flexWireString(obj.SeatID); s != "" {
+			out = append(out, s)
+			continue
+		}
+		if s := flexWireString(obj.ID); s != "" {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // flexWireString renders a raw JSON scalar as a Go string: a JSON string is
@@ -183,6 +245,22 @@ type CategoryQty struct {
 	CategoryPriceID string
 	// Quantity is the requested ticket count for the tier (>= 1).
 	Quantity int
+}
+
+// UnmarshalJSON accepts categoryPriceId as either a JSON string (legacy
+// tier UUID) or a JSON number (spec §4 int64 catalog id), mirroring the
+// tolerance Request.UnmarshalJSON applies to fid.
+func (c *CategoryQty) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		CategoryPriceID json.RawMessage `json:"categoryPriceId"`
+		Quantity        int             `json:"quantity"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	c.CategoryPriceID = flexWireString(aux.CategoryPriceID)
+	c.Quantity = aux.Quantity
+	return nil
 }
 
 // Response is the Bil24-compatible response envelope. ResultCode=0

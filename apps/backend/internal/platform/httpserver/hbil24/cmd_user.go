@@ -245,8 +245,28 @@ func (h *Handler) requireGatewaySession(
 	channel gen.SalesChannelRow,
 	channelDefaultLocale string,
 ) bool {
+	_, ok := h.resolveGatewaySession(ctx, w, req, channel, channelDefaultLocale)
+	return ok
+}
+
+// resolveGatewaySession is requireGatewaySession's row-returning variant.
+// The session-cart commands (feature #484, spec §7.4) need the resolved
+// gateway_sessions row itself — its id keys the cart
+// (reservations.gateway_session_id) and its customer_id is stamped onto every
+// hold the cart creates.
+//
+// When the session surface is not wired (h.sessionQ == nil) the guard is a
+// pass-through and the zero row is returned with ok=true; callers that
+// genuinely need the id must check for uuid.Nil.
+func (h *Handler) resolveGatewaySession(
+	ctx context.Context,
+	w http.ResponseWriter,
+	req bil24Request,
+	channel gen.SalesChannelRow,
+	channelDefaultLocale string,
+) (gen.GatewaySessionRow, bool) {
 	if h.sessionQ == nil {
-		return true
+		return gen.GatewaySessionRow{}, true
 	}
 
 	reject := func(reason string) bool {
@@ -264,15 +284,17 @@ func (h *Handler) requireGatewaySession(
 		return false
 	}
 
+	none := gen.GatewaySessionRow{}
+
 	token := strings.TrimSpace(req.SessionID)
 	if token == "" || req.UserID <= 0 {
-		return reject("sessionId or userId missing")
+		return none, reject("sessionId or userId missing")
 	}
 
 	row, err := h.sessionQ.GetGatewaySessionByToken(ctx, token)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return reject("unknown sessionId")
+			return none, reject("unknown sessionId")
 		}
 		h.logger.Error("bil24_compat: gateway session lookup failed",
 			slog.String("command", req.Command),
@@ -283,25 +305,25 @@ func (h *Handler) requireGatewaySession(
 			h.localizeDesc(req.Locale, channelDefaultLocale, "", // no dedicated bil24.* key: transient failures use the English text
 				"failed to resolve session", nil),
 		))
-		return false
+		return none, false
 	}
 
 	now := time.Now().UTC()
 	if !row.ExpiresAt.After(now) {
-		return reject("session expired")
+		return none, reject("session expired")
 	}
 
 	// Cross-org replay guard: the session is bound to the (org, channel)
 	// that minted it. Only compare when the caller resolved a channel —
 	// the unauthenticated fallback passes the zero row.
 	if channel.OrgID != uuid.Nil && row.OrgID != channel.OrgID {
-		return reject("session belongs to another organization")
+		return none, reject("session belongs to another organization")
 	}
 
 	cust, err := h.sessionQ.GetCustomerBySystemID(ctx, req.UserID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return reject("unknown userId")
+			return none, reject("unknown userId")
 		}
 		h.logger.Error("bil24_compat: gateway session customer lookup failed",
 			slog.String("command", req.Command),
@@ -312,10 +334,10 @@ func (h *Handler) requireGatewaySession(
 			h.localizeDesc(req.Locale, channelDefaultLocale, "", // no dedicated bil24.* key: transient failures use the English text
 				"failed to resolve session", nil),
 		))
-		return false
+		return none, false
 	}
 	if cust.ID != row.CustomerID {
-		return reject("userId does not own this session")
+		return none, reject("userId does not own this session")
 	}
 
 	// Sliding expiry (spec §7.3). A failure here is not fatal to the
@@ -329,5 +351,5 @@ func (h *Handler) requireGatewaySession(
 			slog.String("error", err.Error()),
 		)
 	}
-	return true
+	return row, true
 }

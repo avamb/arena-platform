@@ -249,6 +249,21 @@ func seedHarness(t *testing.T) *harnessState {
 		t.Fatalf("seed assigned session: %v", err)
 	}
 
+	// Feature #484 (spec §7.4): the assigned-seats session needs a priced
+	// tier so a RESERVATION response carries a real sum / charge / totalSum.
+	// Every session_seat below is stamped with it, which is what hbil24's
+	// cart projection reads to price a seat row.
+	var assignedTierID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO ticket_tiers (session_id, name, pricing_mode,
+		     price_amount, currency, sort_order)
+		 VALUES ($1,'Parter','fixed',500,'CZK',0)
+		 RETURNING id`,
+		assignedSessID,
+	).Scan(&assignedTierID); err != nil {
+		t.Fatalf("seed assigned ticket_tier: %v", err)
+	}
+
 	// Materialise session_seats from the geometry and capture the
 	// generated system_seat_id per canonical "Section-Row-Number" label
 	// (harnessState.SeatIDs key style per feature #470 description).
@@ -261,10 +276,11 @@ func seedHarness(t *testing.T) *harnessState {
 				if err := pool.QueryRow(ctx,
 					`INSERT INTO session_seats
 					     (session_id, seat_key, sector_name, row_name,
-					      seat_number, status, kind)
-					 VALUES ($1, $2, $3, $4, $5, 'available', 'seat')
+					      seat_number, tier_id, status, kind)
+					 VALUES ($1, $2, $3, $4, $5, $6, 'available', 'seat')
 					 RETURNING system_seat_id`,
 					assignedSessID, seatKey, sec.Name, row.Name, s.Number,
+					assignedTierID,
 				).Scan(&systemSeatID); err != nil {
 					t.Fatalf("materialise session_seat %s: %v", seatKey, err)
 				}
@@ -272,6 +288,19 @@ func seedHarness(t *testing.T) *harnessState {
 				seatIDs[label] = strconv.FormatInt(systemSeatID, 10)
 			}
 		}
+	}
+
+	// The seated session needs the same session-level inventory_ledger row a
+	// platform-created session gets: hcheckout's seated hold path calls
+	// ReserveCapacity(session, NULL tier, qty) before touching a seat, and a
+	// missing ledger row surfaces as pgx.ErrNoRows → CapacityError → a
+	// bogus "sold out" 101 on the Bil24 wire (feature #484).
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO inventory_ledger (session_id, tier_id, capacity_total)
+		 VALUES ($1, NULL, $2)`,
+		assignedSessID, len(seatIDs),
+	); err != nil {
+		t.Fatalf("seed assigned inventory_ledger: %v", err)
 	}
 
 	// ── 8. GA session (AB-51 path, 50 units) + tiers ────────────────────
@@ -336,9 +365,12 @@ func seedHarness(t *testing.T) *harnessState {
 			arg any
 		}{
 			{`DELETE FROM promo_codes WHERE org_id=$1`, orgID},
-			{`DELETE FROM ticket_tiers WHERE session_id IN
-			      (SELECT id FROM sessions WHERE event_id=$1)`, eventID},
+			// session_seats before ticket_tiers: feature #484 stamps
+			// session_seats.tier_id on the assigned-seats session, and
+			// session_seats_tier_id_fkey blocks the reverse order.
 			{`DELETE FROM session_seats WHERE session_id IN
+			      (SELECT id FROM sessions WHERE event_id=$1)`, eventID},
+			{`DELETE FROM ticket_tiers WHERE session_id IN
 			      (SELECT id FROM sessions WHERE event_id=$1)`, eventID},
 			{`DELETE FROM inventory_ledger WHERE session_id IN
 			      (SELECT id FROM sessions WHERE event_id=$1)`, eventID},
@@ -366,8 +398,10 @@ func seedHarness(t *testing.T) *harnessState {
 		VenueTimezone:  venueTZ,
 		EventID:        eventID.String(),
 		AssignedSessID: assignedSessID.String(),
+		AssignedTierID: assignedTierID.String(),
 		GAsessID:       gaSessID.String(),
 		SeatIDs:        seatIDs,
+		Pool:           pool,
 	}
 }
 

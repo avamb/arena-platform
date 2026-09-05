@@ -69,6 +69,17 @@ import (
 // platform-computed financial fields (sum / discount / charge /
 // totalSum; totalSum = sum - discount + charge, guardrail #15).
 func (h *Handler) handleBil24Reservation(w http.ResponseWriter, r *http.Request, req bil24Request) {
+	// Feature #484 / spec §7.4: when the whole session-cart surface is wired,
+	// RESERVATION is the four-shape cart protocol (RESERVE / UN_RESERVE /
+	// UN_RESERVE_ALL over one mutable hold per event session). The delegation
+	// must precede the actionEventId gate below because UN_RESERVE_ALL carries
+	// no action event. A Handler built without CartDeps keeps the pre-#484
+	// immutable-hold behaviour that the earlier unit tests assert.
+	if h.cartDeps.wired() {
+		h.handleBil24ReservationCart(w, r, req)
+		return
+	}
+
 	if strings.TrimSpace(req.ActionEventID) == "" {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInvalidRequest,

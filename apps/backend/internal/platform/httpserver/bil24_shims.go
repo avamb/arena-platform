@@ -17,6 +17,7 @@ package httpserver
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -105,8 +106,33 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 	if s.pool != nil {
 		q := gen.New(s.pool)
 		h = h.WithGatewaySessions(q).WithCustomerStore(customers.NewStoreFromQueries(q))
+		// Feature #484 (W1-A5b, spec §7.4): wire the session-cart surface so
+		// RESERVATION becomes RESERVE / UN_RESERVE / UN_RESERVE_ALL over ONE
+		// mutable hold per (gateway session, event session). Without this the
+		// handler keeps the pre-#484 immutable-hold behaviour.
+		h = h.WithGatewayCart(s.bil24CartDeps(q))
 	}
 	return h
+}
+
+// bil24CartDeps wires the feature-#483 hold-mutation primitives (ExtendHold /
+// ShrinkHold / RefreshHoldExpiry) plus the gateway_cart query surface into
+// hbil24 as callbacks, following the same cross-domain closure precedent as
+// bil24ReservationDeps — hbil24 never imports package httpserver.
+func (s *Server) bil24CartDeps(q *gen.Queries) hbil24.CartDeps {
+	pool := s.pool
+	return hbil24.CartDeps{
+		Q: q,
+		Extend: func(ctx context.Context, in hcheckout.HoldMutationInput) (hcheckout.HoldMutationResult, error) {
+			return hcheckout.ExtendHold(ctx, pool, q, in)
+		},
+		Shrink: func(ctx context.Context, in hcheckout.HoldMutationInput) (hcheckout.HoldMutationResult, error) {
+			return hcheckout.ShrinkHold(ctx, pool, q, in)
+		},
+		Refresh: func(ctx context.Context, ids []uuid.UUID, ttl time.Duration) ([]gen.ReservationRow, error) {
+			return hcheckout.RefreshHoldExpiry(ctx, pool, q, ids, ttl)
+		},
+	}
 }
 
 // bil24ReservationDeps wires the REAL RESERVATION / UN_RESERVE machinery

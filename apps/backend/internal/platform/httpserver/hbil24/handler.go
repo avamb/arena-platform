@@ -119,6 +119,54 @@ type ReservationDeps struct {
 	PricingRules  hcheckout.PricingRules
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Session-cart surface (feature #484, W1-A5b, spec §7.4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GatewayCartQuerier is the narrow read/write contract the RESERVATION
+// session-cart implementation uses to find, bind and project the ONE mutable
+// hold a gateway session owns per event session (spec §7.4). Kept behind an
+// interface so unit tests can inject an in-memory fake; *gen.Queries
+// satisfies it (see gen/gateway_cart.sql.go, gen/reservation_seats.sql.go
+// and gen/reservation_ga_items.sql.go).
+type GatewayCartQuerier interface {
+	BindReservationToGatewaySession(ctx context.Context, reservationID, gatewaySessionID uuid.UUID, customerID *uuid.UUID) error
+	GetActiveGatewayCartReservation(ctx context.Context, gatewaySessionID, sessionID uuid.UUID) (gen.ReservationRow, error)
+	ListActiveGatewayCartReservations(ctx context.Context, gatewaySessionID uuid.UUID) ([]gen.ReservationRow, error)
+	ListReservationSeats(ctx context.Context, reservationID uuid.UUID) ([]gen.SessionSeatRow, error)
+	ListReservationGAItems(ctx context.Context, reservationID uuid.UUID) ([]gen.ReservationGAItemRow, error)
+}
+
+// MutateHoldFunc extends or shrinks an existing hold. Production wiring
+// injects closures over hcheckout.ExtendHold / hcheckout.ShrinkHold
+// (feature #483, W1-A5a).
+type MutateHoldFunc func(ctx context.Context, in hcheckout.HoldMutationInput) (hcheckout.HoldMutationResult, error)
+
+// RefreshHoldFunc pushes the TTL of every named hold to now()+ttl. Production
+// wiring injects a closure over hcheckout.RefreshHoldExpiry. Spec §7.4
+// requires this on EVERY successful RESERVE so the whole cart ages together.
+type RefreshHoldFunc func(ctx context.Context, ids []uuid.UUID, ttl time.Duration) ([]gen.ReservationRow, error)
+
+// CartDeps bundles the session-cart dependencies of the spec §7.4
+// RESERVATION rewrite (feature #484). It is entirely optional: a Handler
+// built without it keeps the pre-W1 immutable-hold RESERVATION behaviour
+// (one fresh reservation per command), which is what every pre-#484 unit
+// test asserts. Production wiring passes all four fields, which switches
+// handleBil24Reservation onto the session-cart contract.
+type CartDeps struct {
+	Q       GatewayCartQuerier
+	Extend  MutateHoldFunc
+	Shrink  MutateHoldFunc
+	Refresh RefreshHoldFunc
+}
+
+// wired reports whether the whole session-cart surface is available. Partial
+// wiring is treated as "not wired" so a half-configured server degrades to
+// the legacy path instead of failing mid-command.
+func (d CartDeps) wired() bool {
+	return d.Q != nil && d.Extend != nil && d.Shrink != nil && d.Refresh != nil
+}
+
 // ScanQuerier is the narrow contract handleBil24ScanTicket uses to look
 // up a barcode across every authority (feature #472, spec §7.14) and to
 // resolve its owning ticket for the org-scope enforcement + platformTicketId
@@ -249,6 +297,14 @@ type Handler struct {
 	// freshly minted — or refreshed — gateway session expires. Zero means
 	// the spec default of 30 days; the field exists so tests can shorten it.
 	sessionTTL time.Duration
+
+	// cartDeps (feature #484, W1-A5b, spec §7.4) carries the session-cart
+	// surface: ONE mutable reservation per (gateway session, event session)
+	// created on the first RESERVE and extended / shrunk afterwards. When
+	// the bundle is not fully wired, handleBil24Reservation falls back to
+	// the pre-W1 immutable-hold path so every pre-#484 unit test that builds
+	// a Handler without a pool keeps passing.
+	cartDeps CartDeps
 }
 
 // New constructs a Handler from the caller's dependencies.
@@ -379,6 +435,19 @@ func (h *Handler) WithCustomerStore(s customers.Store) *Handler {
 // receiver for chaining.
 func (h *Handler) WithSessionTTL(d time.Duration) *Handler {
 	h.sessionTTL = d
+	return h
+}
+
+// WithGatewayCart wires the spec §7.4 session-cart surface (feature #484,
+// W1-A5b): the gateway-cart queries plus the ExtendHold / ShrinkHold /
+// RefreshHoldExpiry callbacks from feature #483. When all four are present
+// RESERVATION switches from "create a fresh immutable hold per command" to
+// "one mutable reservation per (gateway session, event session)" and answers
+// with the whole cart across action events. Callers that omit this setter —
+// or pass a partially populated struct — retain the pre-#484 behaviour.
+// Returns the receiver for chaining.
+func (h *Handler) WithGatewayCart(d CartDeps) *Handler {
+	h.cartDeps = d
 	return h
 }
 
