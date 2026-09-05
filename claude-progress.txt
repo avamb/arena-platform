@@ -25616,3 +25616,53 @@ Constraint checks (spec + AGENTS.md):
   target-language text).
 
 Feature #478 marked PASSING.
+
+## 2026-09-05 #479 W1-A4a - migration 0091 customers/gateway_sessions + gen queries
+
+Spec section 3.2 delivered. Migration 0091 creates the customers aggregate
+(customers, customer_identities with strong/weak partial UNIQUE indexes,
+customer_consents, customer_org_links, customer_attributes,
+customer_merge_candidates), gateway_sessions, extends reservations with
+gateway_session_id + customer_id + partial idx on state='active', and
+seeds permissions customer.read / customer.import.
+
+Files added:
+  apps/backend/internal/migrations/sql/0091_customers.sql              (A)
+  apps/backend/internal/adapters/postgres/queries/customers.sql        (A)
+  apps/backend/internal/adapters/postgres/queries/gateway_sessions.sql (A)
+  apps/backend/internal/adapters/postgres/gen/customers.sql.go         (A) hand-written wrapper
+  apps/backend/internal/adapters/postgres/gen/gateway_sessions.sql.go  (A) hand-written wrapper
+  apps/backend/internal/migrations/migrations_head_test.go             (M) head pin -> 0091
+
+Note: spec text names permissions.code, but the schema (0008_rbac.sql)
+uses permissions.name -- inline comment in 0091 documents the divergence;
+seed uses name and Down matches. ON CONFLICT DO NOTHING keeps repeated
+migrates safe on shared test databases.
+
+Gen wrappers exposed on gen.Queries:
+  Customers:  InsertCustomer, GetCustomerByID, GetCustomerBySystemID,
+              UpdateCustomerProfile
+  Identities: InsertCustomerIdentity, GetCustomerIdentityByStrongKey,
+              GetCustomerIdentityByWeakKey, ListCustomerIdentities,
+              TouchCustomerIdentityLastSeen
+  OrgLinks:   UpsertCustomerOrgLink, GetCustomerOrgLink
+  Sessions:   InsertGatewaySession, GetGatewaySessionByToken,
+              GetGatewaySessionByID, TouchGatewaySession,
+              ExtendGatewaySessionExpiry, AppendGatewaySessionPromoCode,
+              DeleteExpiredGatewaySessions
+
+Gates - all GREEN:
+- go build ./apps/backend/...                              EXIT:0
+- go vet   ./apps/backend/...                              EXIT:0
+- go test  ./apps/backend/internal/migrations/...          EXIT:0 (head pin ok)
+- go test  ./apps/backend/internal/adapters/postgres/gen/  EXIT:0
+- go test  ./apps/backend/tests/staticanalysis/...         EXIT:0
+- go test  ./apps/backend/tests/compat/bil24/...           EXIT:0
+- go test  ./apps/backend/...   full suite                 EXIT:0
+- gofmt -l on 3 changed .go files clean
+- Local migrate smoke (Docker PG 55432): applied 0091 in 155ms; second
+  run "no migrations to run" -- idempotent. All 7 new tables +
+  reservations FKs + partial idx verified via psql \d output.
+
+Commit 6067bc9 pushed to origin/master. No openapi.yaml touched, no TS
+codegen needed. Feature #479 marked PASSING.
