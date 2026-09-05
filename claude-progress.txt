@@ -24532,3 +24532,54 @@ via h.compatCategoryPriceID (pre-existing from an earlier slice).
 Step 3 - No-UUID guardrail test in tests/staticanalysis remains blocked
 until every remaining callsite is migrated and goldens regenerated.
 
+
+## 2026-09-05 - #476 W1-A2b STEP 2 partial (5th slice) - actionId + RESERVATION sessionId int64
+
+Commit 289f764, pushed to origin/master. Feature #476 STAYS in_progress
+(sub-feature rule: NEVER release the claim as too large).
+
+Delivered this session:
+- cmd_catalog.go handleBil24GetAllActions: actionId now emits
+  h.compatActionID(ctx, e.ID) (int64 via compat map, KindAction) instead
+  of TranslatePlatformID(UUID). Spec section 4 / 7.1.
+- cmd_cart_reserve.go reservationSeated + reservationGA: sessionId now
+  emits h.compatActionEventID(ctx, sessionID) (int64, KindActionEvent)
+  per spec section 7.4. Both branches previously emitted the UUID string.
+
+Handler.compatDB is nil in every existing hbil24 unit test, so the
+nil-compatDB fallback keeps every existing assertion (UUID-string equality)
+green without test edits.
+
+Gates - all GREEN:
+- go build ./apps/backend/... (EXIT:0)
+- go vet   ./apps/backend/... (EXIT:0)
+- gofmt -l on changed files (clean after gofmt -w)
+- go test ./apps/backend/internal/platform/httpserver/... (EXIT:0)
+- go test ./apps/backend/tests/compat/bil24/... ./apps/backend/tests/staticanalysis/... (EXIT:0)
+
+Files touched:
+  apps/backend/internal/platform/httpserver/hbil24/cmd_catalog.go       (M)
+  apps/backend/internal/platform/httpserver/hbil24/cmd_cart_reserve.go  (M)
+
+STILL DEFERRED for #476 (Step 2 remaining + Step 3):
+
+Step 2 REMAINING (bottom-up, one slice per session):
+  cmd_catalog.go handleBil24GetAllActions: full 7.1 aggregation
+    (countryList/cityList/venueList) still missing.
+  cmd_order.go handleBil24CreateOrderExt actionEventId/categoryPriceId
+    -> ResolveLegacyIntID (input) + compat helpers (output).
+  cmd_order.go handleBil24GetOrderInfo / handleBil24CancelOrder orderId
+    -> spec 7.5/7.6 review pending (orders likely stay UUID for W1).
+  cmd_tickets.go:154 handleBil24ScanTicket platformTicketId
+    -> tickets.system_ticket_id int64 per spec 7.14 (needs new query to
+       load ticket row and read system_ticket_id).
+  cmd_cart.go handleBil24UnReserve reservationId in/out
+    -> spec 7.5 review pending.
+
+Step 3 - No-UUID guardrail test in tests/staticanalysis remains blocked
+until every remaining wire callsite is migrated and goldens regenerated.
+
+Recommended next slice: cmd_order.go handleBil24CreateOrderExt
+(actionEventId input via ResolveLegacyIntID, categoryPriceId output via
+compatCategoryPriceID). Small, self-contained, unblocks CREATE_ORDER_EXT
+smoke tests.
