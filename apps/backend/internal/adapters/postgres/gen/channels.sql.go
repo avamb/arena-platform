@@ -120,6 +120,26 @@ func (q *Queries) GetSalesChannelByIDGlobal(ctx context.Context, id uuid.UUID) (
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetSalesChannelByDisplayNumber
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getSalesChannelByDisplayNumber = `-- name: GetSalesChannelByDisplayNumber :one
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+FROM   sales_channels
+WHERE  display_number = $1
+  AND  deleted_at IS NULL`
+
+// GetSalesChannelByDisplayNumber fetches an active sales channel by its
+// human-facing display_number (0072). Used by the Bil24-compatibility gateway
+// (feature #471, W1-A1b) to resolve the wire-format `fid` — the WordPress
+// plugins cast `fid` to int and cannot carry a UUID — to the platform channel
+// row. Returns pgx.ErrNoRows when no row matches or the row is soft-deleted.
+func (q *Queries) GetSalesChannelByDisplayNumber(ctx context.Context, displayNumber int64) (SalesChannelRow, error) {
+	row := q.db.QueryRow(ctx, getSalesChannelByDisplayNumber, displayNumber)
+	return scanSalesChannelRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ListSalesChannelsByOrg
 // ─────────────────────────────────────────────────────────────────────────────
 

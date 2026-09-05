@@ -78,6 +78,7 @@ type Querier interface {
 	// Sales channels — per-org payment configuration (feature #121)
 	InsertSalesChannel(ctx context.Context, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent string, reservationTTLOverride *int32, settings json.RawMessage) (SalesChannelRow, error)
 	GetSalesChannelByID(ctx context.Context, id, orgID uuid.UUID) (SalesChannelRow, error)
+	GetSalesChannelByDisplayNumber(ctx context.Context, displayNumber int64) (SalesChannelRow, error)
 	ListSalesChannelsByOrg(ctx context.Context, orgID uuid.UUID) ([]SalesChannelRow, error)
 	UpdateSalesChannel(ctx context.Context, id, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent *string, reservationTTLOverride *int32, settings json.RawMessage) (SalesChannelRow, error)
 	SoftDeleteSalesChannel(ctx context.Context, id, orgID uuid.UUID) (SalesChannelRow, error)

@@ -23,6 +23,16 @@ FROM   sales_channels
 WHERE  id = $1
   AND  deleted_at IS NULL;
 
+-- name: GetSalesChannelByDisplayNumber :one
+-- Bil24 gateway (feature #471, W1-A1b): resolve the WordPress-side `fid`
+-- credential — which the plugins cast to int and cannot carry as a UUID —
+-- to the sales_channels row. display_number is a per-tenant human-facing
+-- identifier assigned in migration 0072.
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+FROM   sales_channels
+WHERE  display_number = $1
+  AND  deleted_at IS NULL;
+
 -- name: ListSalesChannelsByOrg :many
 SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
 FROM   sales_channels

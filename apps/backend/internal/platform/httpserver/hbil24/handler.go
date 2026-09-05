@@ -150,6 +150,13 @@ type Handler struct {
 	resDeps         ReservationDeps
 	logger          *slog.Logger
 	requireToken    bool // feature #374: enforce fid/token auth on mutating commands
+
+	// channelQ (feature #471, W1-A1b) is the read surface for resolving the
+	// wire `fid` to a sales_channels row. When non-nil, per-command auth
+	// (spec §5) runs against it: fid → display_number → channel → org_id.
+	// A nil channelQ falls through to the pre-W1 unit-test behaviour where
+	// individual commands self-gate. Production wiring passes *gen.Queries.
+	channelQ ChannelLookupQuerier
 }
 
 // New constructs a Handler from the caller's dependencies.
@@ -204,5 +211,16 @@ func New(
 // BIL24_REQUIRE_TOKEN environment variable (feature #374).
 func (h *Handler) WithRequireToken(v bool) *Handler {
 	h.requireToken = v
+	return h
+}
+
+// WithChannelLookup wires the ChannelLookupQuerier used by the W1 auth path
+// (feature #471) to resolve the wire `fid` (int64 display_number) to a
+// sales_channels row before any read/hold command runs. Callers that omit
+// this call retain the pre-W1 unit-test behaviour where individual commands
+// self-gate on the ReservationContextQuerier. Returns the receiver for
+// chaining.
+func (h *Handler) WithChannelLookup(q ChannelLookupQuerier) *Handler {
+	h.channelQ = q
 	return h
 }

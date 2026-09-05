@@ -61,7 +61,7 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 	// helper — controls whether fid/token validation is active.
 	// BIL24_REQUIRE_TOKEN defaults to true in config; it is false only when
 	// explicitly overridden (e.g. in a test that has not set the field).
-	return hbil24.New(
+	h := hbil24.New(
 		s.eventQueries,
 		s.tierQueries,
 		s.checkoutQueries,
@@ -73,6 +73,14 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 		s.bil24ReservationDeps(),
 		s.logger,
 	).WithRequireToken(s.bil24RequireToken)
+	// Feature #471 (W1-A1b): wire the channel-lookup surface so the auth
+	// path can resolve wire `fid` (display_number int64) → sales_channels
+	// row → org_id before any read/hold command runs. The org_id gates
+	// per-tenant catalog / seat-list / order visibility (spec §5.2, §7).
+	if s.channelQueries != nil {
+		h = h.WithChannelLookup(s.channelQueries)
+	}
+	return h
 }
 
 // bil24ReservationDeps wires the REAL RESERVATION / UN_RESERVE machinery

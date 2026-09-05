@@ -303,12 +303,30 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Feature #471 (W1-A1b, spec §5 / §7.1): resolve the fid → channel row
+	// and enforce fid+token when requireToken=true. GET_ALL_ACTIONS returns
+	// only the caller's own organization's published events; without a
+	// resolved channel we cannot filter, so an unresolved fid under
+	// requireToken=true is a hard -4. When requireToken=false and no fid
+	// resolves, we fall back to the pre-W1 catalog for legacy compatibility.
+	ctx := r.Context()
+	channel, authed := h.authenticateCommand(ctx, w, req)
+	if h.requireToken && !authed {
+		return // envelope already written
+	}
+
 	locale := req.Locale
 	if locale == "" {
 		locale = "en"
 	}
 
-	events, err := h.eventQueries.ListEvents(r.Context(), locale, "public")
+	var events []gen.EventRow
+	var err error
+	if authed {
+		events, err = h.eventQueries.ListEventsByOrg(ctx, channel.OrgID, locale)
+	} else {
+		events, err = h.eventQueries.ListEvents(ctx, locale, "public")
+	}
 	if err != nil {
 		h.logger.Error("bil24_compat: GET_ALL_ACTIONS: list events failed",
 			slog.String("error", err.Error()),
@@ -321,6 +339,12 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 
 	actionList := make([]map[string]any, 0, len(events))
 	for _, e := range events {
+		// Spec §7.1: only status='published' events appear in the catalog.
+		// The org-scoped list query is not visibility/status-filtered so we
+		// filter here — the extra field is already on the row.
+		if authed && e.Status != "published" {
+			continue
+		}
 		action := map[string]any{
 			"actionId":   TranslatePlatformID(e.ID),
 			"actionName": e.Name,
@@ -420,6 +444,20 @@ func (h *Handler) handleBil24GetSeatList(w http.ResponseWriter, r *http.Request,
 	}
 
 	ctx := r.Context()
+
+	// Feature #471 (spec §5, §7.2): validate fid+token and enforce that the
+	// requested session belongs to the channel's org. Cross-tenant reads
+	// through the compat surface are rejected as "not found in this
+	// channel's organization" (-3).
+	channel, authed := h.authenticateCommand(ctx, w, req)
+	if h.requireToken && !authed {
+		return
+	}
+	if authed {
+		if !h.enforceSessionOrg(ctx, w, req, sessionID, channel.OrgID) {
+			return
+		}
+	}
 
 	// Resolve admission_mode when the seating dependencies are wired.
 	// Missing dependencies / lookup failures silently fall back to the
@@ -664,6 +702,13 @@ func (h *Handler) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Feature #471 (spec §5, §7.6): auth + org-scope. GET_ORDER_INFO must
+	// not leak orders from one org to another via crafted orderId values.
+	channel, authed := h.authenticateCommand(r.Context(), w, req)
+	if h.requireToken && !authed {
+		return
+	}
+
 	cs, err := h.checkoutQueries.GetCheckoutSessionByID(r.Context(), orderID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -678,6 +723,22 @@ func (h *Handler) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request
 		)
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInternalError, "failed to retrieve order",
+		))
+		return
+	}
+
+	// Cross-tenant guard: once we know both the caller's org (from fid)
+	// and the order's org, reject mismatches with a "not found" — the
+	// caller must never learn that an order exists in another tenant.
+	if authed && cs.OrgID != channel.OrgID {
+		h.logger.Warn("bil24_compat: GET_ORDER_INFO: cross-tenant order access rejected",
+			slog.String("order_id", orderID.String()),
+			slog.String("channel_org", channel.OrgID.String()),
+			slog.String("order_org", cs.OrgID.String()),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeNotFound,
+			"order not found in this channel's organization",
 		))
 		return
 	}
@@ -1194,15 +1255,58 @@ func (h *Handler) reservationContext(
 		))
 		return uuid.Nil, uuid.Nil, time.Time{}, false
 	}
-	chID, err := TranslateLegacyID(req.FID)
-	if err != nil {
-		writeBil24JSON(w, http.StatusOK, bil24Error(
-			req.Command, ResultCodeInvalidRequest,
-			"fid must be a valid sales channel identifier",
-		))
-		return uuid.Nil, uuid.Nil, time.Time{}, false
+	// Feature #471 (W1-A1b, spec §5.2): prefer the display_number path.
+	// A legacy UUID fid still resolves via GetSalesChannelByID scoped to
+	// the session's org — the pre-W1 fixtures depend on this and #476 will
+	// finish removing the UUID form once every deployed channel migrates.
+	var (
+		channel gen.SalesChannelRow
+		chID    uuid.UUID
+	)
+	if dn, dnOK := parseFIDInt64(req.FID); dnOK && h.channelQ != nil {
+		ch, lookupErr := h.channelQ.GetSalesChannelByDisplayNumber(ctx, dn)
+		if lookupErr == nil {
+			channel = ch
+			chID = ch.ID
+			// Cross-tenant guard: the channel must belong to the session's
+			// org (spec §5.3 / §7.4). A crafted display_number cannot be
+			// used to hold seats in a different tenant.
+			if channel.OrgID != orgCtx.OrgID {
+				h.logger.Warn("bil24_compat: RESERVATION: cross-tenant channel access rejected",
+					slog.String("channel_id", channel.ID.String()),
+					slog.String("channel_org", channel.OrgID.String()),
+					slog.String("session_org", orgCtx.OrgID.String()),
+				)
+				writeBil24JSON(w, http.StatusOK, bil24Error(
+					req.Command, ResultCodeNotFound,
+					"sales channel not found in this session's organization",
+				))
+				return uuid.Nil, uuid.Nil, time.Time{}, false
+			}
+		} else if !errors.Is(lookupErr, pgx.ErrNoRows) {
+			h.logger.Error("bil24_compat: RESERVATION: display_number lookup failed",
+				slog.String("fid", req.FID),
+				slog.Int64("display_number", dn),
+				slog.String("error", lookupErr.Error()),
+			)
+		}
 	}
-	channel, err := h.resDeps.CtxQ.GetSalesChannelByID(ctx, chID, orgCtx.OrgID)
+	if chID == uuid.Nil {
+		legacyID, terr := TranslateLegacyID(req.FID)
+		if terr != nil {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInvalidRequest,
+				"fid must be a valid sales channel identifier",
+			))
+			return uuid.Nil, uuid.Nil, time.Time{}, false
+		}
+		chID = legacyID
+	}
+	if channel.ID == uuid.Nil {
+		var lookupErr error
+		channel, lookupErr = h.resDeps.CtxQ.GetSalesChannelByID(ctx, chID, orgCtx.OrgID)
+		err = lookupErr
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeBil24JSON(w, http.StatusOK, bil24Error(
@@ -1387,6 +1491,26 @@ func (h *Handler) validateScanTicketToken(
 		))
 		return false
 	}
+	// Feature #471 (W1-A1b, spec §5.2): prefer the int64 display_number
+	// path via the channel-lookup surface; fall back to the legacy UUID
+	// resolution so pre-W1 SCAN_TICKET fixtures keep resolving.
+	var (
+		channel gen.SalesChannelRow
+		err     error
+	)
+	if dn, dnOK := parseFIDInt64(req.FID); dnOK && h.channelQ != nil {
+		ch, lookupErr := h.channelQ.GetSalesChannelByDisplayNumber(ctx, dn)
+		if lookupErr == nil {
+			return h.validateGatewayToken(w, req, ch.Settings)
+		}
+		if !errors.Is(lookupErr, pgx.ErrNoRows) {
+			h.logger.Error("bil24_compat: SCAN_TICKET: display_number lookup failed",
+				slog.String("fid", req.FID),
+				slog.Int64("display_number", dn),
+				slog.String("error", lookupErr.Error()),
+			)
+		}
+	}
 	chID, err := TranslateLegacyID(req.FID)
 	if err != nil {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
@@ -1396,7 +1520,7 @@ func (h *Handler) validateScanTicketToken(
 		return false
 	}
 
-	channel, err := h.resDeps.CtxQ.GetSalesChannelByIDGlobal(ctx, chID)
+	channel, err = h.resDeps.CtxQ.GetSalesChannelByIDGlobal(ctx, chID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeBil24JSON(w, http.StatusOK, bil24Error(

@@ -82,6 +82,17 @@ func (h *Handler) handleBil24GetSchema(w http.ResponseWriter, r *http.Request, r
 
 	ctx := r.Context()
 
+	// Feature #471 (spec §5, §7.2): fid+token auth and org-scope check.
+	channel, authed := h.authenticateCommand(ctx, w, req)
+	if h.requireToken && !authed {
+		return
+	}
+	if authed {
+		if !h.enforceSessionOrg(ctx, w, req, sessionID, channel.OrgID) {
+			return
+		}
+	}
+
 	schemaRow, err := h.schemaQ.GetPublicSessionSchema(ctx, sessionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
