@@ -23939,3 +23939,46 @@ Gates all green:
 No openapi.yaml changes, no migration additions, no ts-client regen
 needed.
 
+## 2026-09-05 - #475 W1-A2a migration 0090 compatibility_id_map + compatids - PASSING
+
+Commit 6f2b028, pushed to origin/master.
+
+Deliverables (spec 08_architecture/18_bil24_compat_wave1_specification_ru.md
+sections 3.1 and 4):
+- Migration 0090_compatibility_ids.sql: sequence compatibility_system_id_seq
+  START WITH 1000000000; compatibility_id_map (kind CHECK enum
+  action/action_event/category_price/venue/city/country, system_id bigint,
+  platform_id uuid, source CHECK arena/bil24, PK on (kind, system_id),
+  UNIQUE on (kind, platform_id)); session_seats.system_seat_id_source
+  NOT NULL DEFAULT 'arena' CHECK (arena/bil24). Down block reverses cleanly.
+- migrations_head_test.go bumped from 0089 to 0090.
+- queries/compat_ids.sql: EnsureCompatibilityID (INSERT ON CONFLICT DO
+  NOTHING RETURNING), GetCompatibilityIDByPlatformID,
+  GetCompatibilityIDBySystemID, RegisterExternalCompatibilityID.
+- gen/compat_ids.sql.go: hand-written wrapper in bank_accounts.sql.go style
+  with shared CompatibilityIDRow + scanCompatibilityIDRow.
+- gen/querier.go: 4 new methods appended.
+- internal/platform/compatids: Ensure, EnsureMany, Resolve, plus the
+  bil24-side register helper; all take gen.DBTX so callers stay
+  transactional; the 1e9 ceiling is enforced with a typed sentinel error
+  (compat.external_id_out_of_range); NotFound / collision / conflict
+  sentinels included for spec section 6 result-code mapping.
+- Unit tests: in-memory fake DBTX covers mint idempotency, EnsureMany
+  dedup, Resolve, ceiling rejection, non-positive rejection, idempotent
+  re-register, cross-platform collision, same-platform conflict,
+  Ensure-after-register returns the pre-existing bil24 id.
+- Integration tests behind //go:build integration verified against Docker
+  PG (localhost:55432, migration 0090 applied cleanly in 187ms).
+
+Gates all green:
+- go build on the whole backend
+- go vet on the whole backend
+- go test on compatids, migrations, gen, tests/compat/bil24,
+  tests/staticanalysis
+- gofmt -l on all changed files: clean
+- golangci-lint on the 3 touched package trees: 0 issues
+- arena-migrate against Docker PG: 0090 applied; round-trip integration
+  test passes.
+
+No openapi.yaml changes, no ts-client regen needed.
+
