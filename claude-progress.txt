@@ -24635,3 +24635,32 @@ Recommended next slice: cmd_order.go handleBil24CreateOrderExt
 (actionEventId input via ResolveLegacyIntID, categoryPriceId output via
 compatCategoryPriceID). Small, self-contained, unblocks CREATE_ORDER_EXT
 smoke tests.
+
+## 2026-09-05 - #476 W1-A2b slice 7 - CREATE_ORDER_EXT int64 input
+
+Commit b4f8215, pushed. Feature #476 STAYS in_progress.
+
+Delivered:
+- cmd_order.go handleBil24CreateOrderExt: input validation swapped from
+  TranslateLegacyID (accepts UUID) to bil24compat.ParseLegacyIntID
+  (rejects UUID with -2, requires positive int64). Spec section 4/7.3.
+  CREATE_ORDER_EXT still returns -5 (NOT_IMPLEMENTED) when both ids parse.
+- bil24_374_test.go: Step 1 tests now send int64 ids; added
+  TestBil24_476_CreateOrderExt_UUIDInput_Rejected pinning -2-on-UUID.
+- bil24_compat_157_test.go: ValidInput test now sends int64 ids.
+- vinoandco_fixtures.json: create_order_ext_full_request +
+  create_order_ext_quantity_one_default retargeted to int64 ids.
+
+Gates GREEN: go build/vet ./apps/backend/... EXIT:0; go test
+./apps/backend/... EXIT:0; gofmt -l on 3 changed .go files clean.
+
+Files touched:
+  apps/backend/internal/platform/httpserver/hbil24/cmd_order.go
+  apps/backend/internal/platform/httpserver/hbil24/bil24_374_test.go
+  apps/backend/internal/platform/httpserver/bil24_compat_157_test.go
+  apps/backend/tests/compat/bil24/testdata/vinoandco_fixtures.json
+
+Recommended next slice: swap input validation in cmd_catalog.go
+handleBil24GetSeatList and schema.go handleBil24GetSchema to
+ParseLegacyIntID. Both take a single actionEventId int64 per spec 7.2/7.15.
+
