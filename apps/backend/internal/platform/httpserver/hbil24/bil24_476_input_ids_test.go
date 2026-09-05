@@ -268,6 +268,98 @@ func TestBil24_476_CompatCountryID_NilCompatDB_FallbackReturnsUUIDString(t *test
 	}
 }
 
+// TestBil24_476_ResolveVenueID_UUIDInput_RejectedWithCompatDB pins the
+// wave-1 request-side invariant for the deferred GET_ALL_ACTIONS catalog
+// filter (spec §4 / §7.1): with compatDB wired the helper refuses a UUID
+// venueId with bil24compat.ErrLegacyIDUUIDRejected before any DB
+// round-trip. The panicDBTX stub guarantees ParseLegacyIntID
+// short-circuits inside resolveVenueID before compatids.Resolve can touch
+// the pool. No production callsite yet — this pins the helper contract so
+// the eventual §7.1 aggregation slice can wire it in without regressing.
+func TestBil24_476_ResolveVenueID_UUIDInput_RejectedWithCompatDB(t *testing.T) {
+	h := newMinimalHandler().WithCompatDB(panicDBTX{})
+	_, err := h.resolveVenueID(context.Background(), uuid.New().String())
+	if !errors.Is(err, bil24compat.ErrLegacyIDUUIDRejected) {
+		t.Fatalf("resolveVenueID(uuid): want ErrLegacyIDUUIDRejected, got %v", err)
+	}
+}
+
+// TestBil24_476_ResolveVenueID_NonNumericInput_RejectedWithCompatDB proves
+// that garbage on the venueId field also short-circuits before any DB
+// round-trip.
+func TestBil24_476_ResolveVenueID_NonNumericInput_RejectedWithCompatDB(t *testing.T) {
+	h := newMinimalHandler().WithCompatDB(panicDBTX{})
+	_, err := h.resolveVenueID(context.Background(), "not-an-id")
+	if !errors.Is(err, bil24compat.ErrLegacyIDInvalid) {
+		t.Fatalf("resolveVenueID(non-numeric): want ErrLegacyIDInvalid, got %v", err)
+	}
+}
+
+// TestBil24_476_ResolveVenueID_NilCompatDB_FallbackAcceptsUUID pins the
+// fallback contract for unit-test Handlers that omit the pool: the
+// helper delegates to TranslateLegacyID (UUID passthrough) so pre-W1
+// harnesses stay green during the step-by-step migration.
+func TestBil24_476_ResolveVenueID_NilCompatDB_FallbackAcceptsUUID(t *testing.T) {
+	h := newMinimalHandler() // no WithCompatDB — compatDB stays nil
+	want := uuid.New()
+	got, err := h.resolveVenueID(context.Background(), want.String())
+	if err != nil {
+		t.Fatalf("resolveVenueID(uuid, nil compatDB): unexpected error: %v", err)
+	}
+	if got != want {
+		t.Fatalf("resolveVenueID(uuid, nil compatDB): got %s, want %s", got, want)
+	}
+}
+
+// TestBil24_476_ResolveCityID_UUIDInput_RejectedWithCompatDB mirrors the
+// venue helper contract for the deferred cityId catalog filter (spec §7.1).
+func TestBil24_476_ResolveCityID_UUIDInput_RejectedWithCompatDB(t *testing.T) {
+	h := newMinimalHandler().WithCompatDB(panicDBTX{})
+	_, err := h.resolveCityID(context.Background(), uuid.New().String())
+	if !errors.Is(err, bil24compat.ErrLegacyIDUUIDRejected) {
+		t.Fatalf("resolveCityID(uuid): want ErrLegacyIDUUIDRejected, got %v", err)
+	}
+}
+
+// TestBil24_476_ResolveCityID_NilCompatDB_FallbackAcceptsUUID pins the
+// fallback contract for the city helper.
+func TestBil24_476_ResolveCityID_NilCompatDB_FallbackAcceptsUUID(t *testing.T) {
+	h := newMinimalHandler()
+	want := uuid.New()
+	got, err := h.resolveCityID(context.Background(), want.String())
+	if err != nil {
+		t.Fatalf("resolveCityID(uuid, nil compatDB): unexpected error: %v", err)
+	}
+	if got != want {
+		t.Fatalf("resolveCityID(uuid, nil compatDB): got %s, want %s", got, want)
+	}
+}
+
+// TestBil24_476_ResolveCountryID_UUIDInput_RejectedWithCompatDB mirrors
+// the venue helper contract for the deferred countryId catalog filter
+// (spec §7.1).
+func TestBil24_476_ResolveCountryID_UUIDInput_RejectedWithCompatDB(t *testing.T) {
+	h := newMinimalHandler().WithCompatDB(panicDBTX{})
+	_, err := h.resolveCountryID(context.Background(), uuid.New().String())
+	if !errors.Is(err, bil24compat.ErrLegacyIDUUIDRejected) {
+		t.Fatalf("resolveCountryID(uuid): want ErrLegacyIDUUIDRejected, got %v", err)
+	}
+}
+
+// TestBil24_476_ResolveCountryID_NilCompatDB_FallbackAcceptsUUID pins
+// the fallback contract for the country helper.
+func TestBil24_476_ResolveCountryID_NilCompatDB_FallbackAcceptsUUID(t *testing.T) {
+	h := newMinimalHandler()
+	want := uuid.New()
+	got, err := h.resolveCountryID(context.Background(), want.String())
+	if err != nil {
+		t.Fatalf("resolveCountryID(uuid, nil compatDB): unexpected error: %v", err)
+	}
+	if got != want {
+		t.Fatalf("resolveCountryID(uuid, nil compatDB): got %s, want %s", got, want)
+	}
+}
+
 // TestBil24_476_ResolveCategoryPriceID_NilCompatDB_FallbackAcceptsUUID pins
 // the fallback contract: unit-test Handlers that omit the pool keep the
 // pre-W1 UUID passthrough so seat_d1_312 / seat_d2_313 / bil24_374 fixtures

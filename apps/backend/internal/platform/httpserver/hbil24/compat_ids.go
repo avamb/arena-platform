@@ -111,6 +111,50 @@ func (h *Handler) resolveCategoryPriceID(ctx context.Context, raw string) (uuid.
 	return bil24compat.ResolveLegacyIntID(ctx, h.compatDB, compatids.KindCategoryPrice, raw)
 }
 
+// resolveVenueID converts a wire venueId (a Bil24 venue identifier —
+// spec §7.1 catalog filters) to the platform venue UUID used by downstream
+// queries.
+//
+// Spec §4 (feature #476, W1-A2b) makes int64 the sole wire form: when
+// h.compatDB is wired the raw is parsed as a positive int64 via
+// bil24compat.ParseLegacyIntID and reverse-mapped through
+// compatids.Resolve(KindVenue, n) so a UUID in the request field is
+// rejected with ErrLegacyIDUUIDRejected before any DB round-trip. When
+// h.compatDB is nil (unit tests that construct a Handler without a
+// *pgxpool.Pool) the helper falls back to TranslateLegacyID (UUID
+// passthrough) so the pre-W1 unit-test harness keeps passing during the
+// step-by-step migration.
+//
+// Prepared ahead of the deferred GET_ALL_ACTIONS catalog-filter slice
+// (spec §7.1) — no production callsite yet. Callers map any returned
+// error to Bil24 result code -2 (invalid request).
+func (h *Handler) resolveVenueID(ctx context.Context, raw string) (uuid.UUID, error) {
+	if h.compatDB == nil {
+		return TranslateLegacyID(raw)
+	}
+	return bil24compat.ResolveLegacyIntID(ctx, h.compatDB, compatids.KindVenue, raw)
+}
+
+// resolveCityID converts a wire cityId (a Bil24 city identifier — spec
+// §7.1 catalog filters) to the platform city UUID. Fallback semantics
+// match resolveVenueID.
+func (h *Handler) resolveCityID(ctx context.Context, raw string) (uuid.UUID, error) {
+	if h.compatDB == nil {
+		return TranslateLegacyID(raw)
+	}
+	return bil24compat.ResolveLegacyIntID(ctx, h.compatDB, compatids.KindCity, raw)
+}
+
+// resolveCountryID converts a wire countryId (a Bil24 country identifier
+// — spec §7.1 catalog filters) to the platform country UUID. Fallback
+// semantics match resolveVenueID.
+func (h *Handler) resolveCountryID(ctx context.Context, raw string) (uuid.UUID, error) {
+	if h.compatDB == nil {
+		return TranslateLegacyID(raw)
+	}
+	return bil24compat.ResolveLegacyIntID(ctx, h.compatDB, compatids.KindCountry, raw)
+}
+
 // resolveActionEventID converts a wire actionEventId (a Bil24 session
 // identifier — spec §7.2 / §7.4 / §7.15) to the platform session UUID used
 // by downstream queries.
