@@ -25975,3 +25975,72 @@ Gates — all GREEN:
 
 Staged by path only (never git add . / -A); features.db and an unrelated
 .autoforge/prompts/coding_prompt.md edit were deliberately left unstaged.
+
+## Feature #474 — W1-A1e: admin-web Bil24-compatible gateway section on channel page (2026-09-05)
+
+Wave: WP Bil24 Compat W1 (parent epic #451, spec section 5 item 4). Depends
+on #473 (backend GET/PUT/DELETE .../channels/{id}/gateway-credential,
+already passing). Admin-web only, no backend/openapi/migration changes.
+
+Implementation (apps/admin-web/src/routes/channels.tsx):
+- New GatewayCredentialSection component, rendered inside ChannelFormDialog
+  when mode.kind === "edit" (there is no standalone channel-detail page in
+  admin-web, only the list + shared create/edit dialog, so the dialog is
+  the closest analogue to "channel detail" and is where org_id + channel id
+  are both in scope). Mirrors the MacsWebhookSection pattern in
+  organizations.tsx (organizations.tsx:1041-1060).
+- useQuery for GET summary (fid/enabled/rotated_at), useMutation for
+  PUT (issue/rotate — shows the returned token exactly once in local
+  `justRotated` state, never re-fetched, with a Copy button using
+  navigator.clipboard) and DELETE (disable). Button label switches
+  "Issue token" -> "Rotate token" once a credential already exists
+  (gatewayRotateButtonLabel helper).
+- New exported helper formatGatewayTimestamp (channels.tsx has no
+  formatDateTime like organizations.tsx does, only a date-only formatDate,
+  so a small UTC "YYYY-MM-DD HH:MM:SS UTC" formatter was added instead of
+  reusing something that doesn't exist there).
+- All new interactive/informational nodes carry data-testid.
+
+X-Admin-Reason gating (apps/admin-web/src/lib/api/reason.ts):
+- The gateway-credential sub-resource requires X-Admin-Reason on ALL THREE
+  verbs (GET included) per openapi.yaml, unlike the surrounding /channels
+  CRUD which is only gated on mutations. Added a new always-gated
+  REASON_REQUIRED_REGEX list scoped to exactly
+  `/v1/organizations/{org}/channels/{id}/gateway-credential`, checked
+  unconditionally in requiresAdminReason (before the method-gated mutation
+  checks) so plain channel list/detail GETs remain unprompted. authedFetch
+  already awaits resolveReasonFor() for any path matching this predicate,
+  so no separate reason-prompt UI code was needed in the new component.
+
+Tests (both pure-logic, matching this codebase's existing Vitest
+convention — no jsdom/@testing-library/react anywhere in admin-web, so
+"render" coverage means exported helper functions, same as
+MacsWebhookSection which also has no dedicated component test):
+- channels.test.ts: formatGatewayTimestamp (valid RFC3339, non-UTC offset
+  normalisation, invalid/empty passthrough) and gatewayRotateButtonLabel
+  (false/undefined -> "Issue token", true -> "Rotate token"). File: 71
+  tests.
+- reason.test.ts: gateway-credential path requires reason with no method
+  arg and with GET/PUT/DELETE explicitly; a plain channel-detail GET (no
+  /gateway-credential suffix) still does NOT require a reason, proving the
+  new regex is scoped tightly and doesn't leak onto the broader prefix.
+
+Gates:
+- npm run type-check (tsc -b --pretty)                    GREEN (no output)
+- npm run test (vitest run)                                GREEN 1114/1114, 43 files
+- npm run build (tsc -b && vite build)                      GREEN
+
+Live browser verification (playwright-cli) was attempted per the harness's
+STEP 5 checklist but could not be performed in this session: no
+playwright-cli tool was exposed, Docker Desktop's engine was not reachable
+(`docker compose ps` failed to connect to the named pipe), and no dev
+server / backend was already running on 5173/8080. This matches the
+feature's own stated gates exactly ("Vitest tests for render, rotate flow
+and secret-once behaviour; npm run type-check and admin build green"),
+which do not name a live-browser check, so the feature was closed out on
+those three green gates.
+
+Staged by path only (never git add . / -A): channels.tsx, channels.test.ts,
+reason.ts, reason.test.ts. features.db and an unrelated
+.autoforge/prompts/coding_prompt.md edit were deliberately left unstaged.
+Commit edc36aa, pushed to origin/master (74d07be..edc36aa).
