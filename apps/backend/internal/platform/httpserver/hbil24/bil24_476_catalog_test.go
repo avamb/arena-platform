@@ -482,3 +482,80 @@ func TestBil24_476_SeatListCurrency_FirstNonEmpty(t *testing.T) {
 		})
 	}
 }
+
+// TestBil24_476_BuildGASeatEntry_CategoryPriceNameRename pins the
+// spec §7.2 wire-shape contract for a single GA-branch seatList entry
+// (feature #476 W1-A2b slice 22). The per-entry name key is
+// `categoryPriceName` — the legacy `categoryName` was pre-slice-22
+// vocabulary that had no partner (the id key already used
+// `categoryPriceId`) and diverged from spec §7.2 / the WP plugin.
+//
+// The test also pins the neighbouring invariants so a future edit does
+// not re-rename or drop them by accident:
+//   - categoryPriceId is passed through as-is (int64 in prod, UUID
+//     string in unit tests).
+//   - price is the EFFECTIVE amount (post-priceresolve), not the tier's
+//     base amount.
+//   - currency / pricingMode surface verbatim from the tier row.
+//   - availableCount is emitted ONLY when Capacity is non-nil (the
+//     uncapped case must omit rather than emit 0 or -1 — the WP plugin
+//     treats an absent key as "unlimited" and 0 as "sold out").
+//   - legacy `categoryName` is NEVER present on the map (regression
+//     guard against a partial revert of the rename).
+func TestBil24_476_BuildGASeatEntry_CategoryPriceNameRename(t *testing.T) {
+	tierID := uuid.MustParse("00000000-0000-0000-0000-000000000c22")
+	cap32 := int32(120)
+	tier := gen.TicketTierRow{
+		ID:          tierID,
+		Name:        "Standing",
+		PriceAmount: 300,
+		Currency:    "CZK",
+		PricingMode: "fixed",
+		Capacity:    &cap32,
+	}
+
+	t.Run("capped tier emits all keys and availableCount", func(t *testing.T) {
+		entry := buildGASeatEntry(tierID.String(), tier, 350)
+
+		if _, ok := entry["categoryName"]; ok {
+			t.Fatalf("legacy `categoryName` key must not be emitted anymore; got entry=%#v", entry)
+		}
+		if got, want := entry["categoryPriceName"], "Standing"; got != want {
+			t.Errorf("categoryPriceName=%v want %v", got, want)
+		}
+		if got, want := entry["categoryPriceId"], tierID.String(); got != want {
+			t.Errorf("categoryPriceId=%v want %v", got, want)
+		}
+		if got, want := entry["price"], int64(350); got != want {
+			t.Errorf("price=%v want %v (must be the effective amount, not the base)", got, want)
+		}
+		if got, want := entry["currency"], "CZK"; got != want {
+			t.Errorf("currency=%v want %v", got, want)
+		}
+		if got, want := entry["pricingMode"], "fixed"; got != want {
+			t.Errorf("pricingMode=%v want %v", got, want)
+		}
+		if got, want := entry["availableCount"], int32(120); got != want {
+			t.Errorf("availableCount=%v want %v", got, want)
+		}
+	})
+
+	t.Run("uncapped tier omits availableCount", func(t *testing.T) {
+		uncapped := tier
+		uncapped.Capacity = nil
+		entry := buildGASeatEntry(int64(1000000021), uncapped, 300)
+
+		if _, ok := entry["availableCount"]; ok {
+			t.Errorf("availableCount must be OMITTED when Capacity is nil; got %#v", entry["availableCount"])
+		}
+		if got, want := entry["categoryPriceId"], int64(1000000021); got != want {
+			t.Errorf("categoryPriceId=%v want %v (int64 wire form on prod path)", got, want)
+		}
+		if got, want := entry["categoryPriceName"], "Standing"; got != want {
+			t.Errorf("categoryPriceName=%v want %v", got, want)
+		}
+		if _, ok := entry["categoryName"]; ok {
+			t.Fatalf("legacy `categoryName` key must not be emitted anymore")
+		}
+	})
+}

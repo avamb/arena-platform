@@ -25383,3 +25383,68 @@ and a Docker PG smoke test - self-contained but heavier than slice 21.
 Alternatively: begin minPrice/maxPrice tier scan for actionList in
 GET_ALL_ACTIONS (small SQL query returning per-event min+max, plumbed
 through buildActionEntry).
+
+## 2026-09-05 #476 W1-A2b slice 22 - GET_SEAT_LIST out of cmd_catalog.go + categoryPriceName rename
+
+Extracted handleBil24GetSeatList / getSeatListGA / getSeatListUnits /
+seatListCurrency / bssStatusCode from cmd_catalog.go into a new
+cmd_seat_list.go so the spec-mandated ceiling ("no file over 700
+lines") is honored again - cmd_catalog.go had grown to 710 lines as
+the actionList body caught up to spec section 7.1 (slices 15-20). Post-slice:
+
+  cmd_catalog.go   379 lines  (was 710)
+  cmd_seat_list.go 383 lines  (new)
+
+Wire-shape change (spec section 7.2): the GA-branch per-entry `categoryName`
+key is renamed to `categoryPriceName`. `categoryPriceId` was already
+the id key so `categoryPriceName` is the spec-canonical pairing and
+what the WP plugin reads. Extracted a small pure helper
+`buildGASeatEntry(categoryPriceID any, tier, effectivePrice) map[string]any`
+so the wire-shape contract (rename + neighbouring invariants) can be
+unit-tested without spinning up a live pool.
+
+Two subtests pin the contract:
+  - capped tier: all keys present, availableCount = Capacity value,
+    legacy `categoryName` NOT present.
+  - uncapped tier: availableCount OMITTED, categoryPriceId passes
+    through as int64 (production wire form), categoryPriceName present.
+
+Gates - all GREEN:
+- go build ./apps/backend/...  EXIT:0
+- go vet   ./apps/backend/...  EXIT:0
+- go test  ./apps/backend/internal/platform/httpserver/hbil24/...
+           ./apps/backend/tests/compat/bil24/...
+           ./apps/backend/tests/staticanalysis/...  EXIT:0
+- go test  ./apps/backend/...  full suite EXIT:0 (test_476_slice22_full.log)
+- gofmt -l on 3 changed files clean
+
+Files touched:
+  apps/backend/internal/platform/httpserver/hbil24/cmd_catalog.go            (M, trimmed)
+  apps/backend/internal/platform/httpserver/hbil24/cmd_seat_list.go          (A)
+  apps/backend/internal/platform/httpserver/hbil24/bil24_476_catalog_test.go (M)
+
+Grep verified NO other callsite referenced the wire key `categoryName`
+before the rename (only cmd_catalog.go itself and a docstring in it);
+tests under tests/compat/bil24/testdata/wp/ did not pin it, so
+this slice is safe as a pure wire-shape rename with no fixture edits.
+
+Feature #476 STAYS in_progress (sub-feature rule: NEVER release claim as too large).
+
+STILL DEFERRED for #476 (Step 2 remaining + Step 3):
+  cmd_catalog.go actionList entry (spec section 7.1) still missing:
+    fullActionName, minPrice, maxPrice, actionEventList subtree.
+  cmd_seat_list.go top-level categoryList key on GA branch (spec
+    section 7.2 example includes both categoryList AND seatList; slice
+    22 only renamed the seatList entry key).
+  cmd_cart.go handleBil24UnReserve reservationId + response reshape.
+  cmd_order.go GET_ORDER_INFO int64 id (needs KindOrder migration).
+
+Step 3 - No-uuid guardrail (tests/compat/bil24/no_uuid_in_wire_test.go)
+already GREEN; slice 22 only renames an existing string key.
+
+Recommended next slice: add top-level `categoryList` to cmd_seat_list.go
+GA branch (spec section 7.2 shows both categoryList AND seatList at the
+envelope level). Small: reuse the same tier loop, project to
+{categoryPriceId, categoryPriceName, price, placement:false, ...}.
+Alternative: KindOrder compat migration (0091) - heavier, needs
+migration head bump + Docker PG smoke test.
