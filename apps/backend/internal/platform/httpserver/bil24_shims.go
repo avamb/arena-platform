@@ -23,6 +23,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbil24"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 )
@@ -95,6 +96,15 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 	// substring expectations.
 	if s.bundle != nil {
 		h = h.WithBundle(s.bundle)
+	}
+	// Feature #481 (W1-A4c): wire CREATE_USER's customer resolver and the
+	// gateway_sessions surface behind requireGatewaySession (spec §7.3).
+	// Both ride the same *gen.Queries over the pool; a Server built without
+	// a pool leaves them nil, which makes CREATE_USER self-gate with -99 and
+	// turns the session guard into a pass-through.
+	if s.pool != nil {
+		q := gen.New(s.pool)
+		h = h.WithGatewaySessions(q).WithCustomerStore(customers.NewStoreFromQueries(q))
 	}
 	return h
 }

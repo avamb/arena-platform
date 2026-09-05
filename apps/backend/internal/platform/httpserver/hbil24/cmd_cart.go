@@ -108,6 +108,19 @@ func (h *Handler) handleBil24Reservation(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
+	// Feature #481 / spec §7.4: the (userId, sessionId) pair the site got
+	// from CREATE_USER must still be alive and belong to this channel's
+	// organization, otherwise the hold is refused with resultCode=1 so the
+	// plugin re-runs CREATE_USER and retries. resolveChannelByFID is the
+	// silent variant — an unresolvable fid was already handled (or
+	// deliberately tolerated) by the requireToken gate above, and the
+	// session guard degrades to skipping only the cross-org comparison.
+	sessChannel, _ := h.resolveChannelByFID(r.Context(), req)
+	if !h.requireGatewaySession(r.Context(), w, req, sessChannel,
+		parseGatewaySettings(sessChannel.Settings).DefaultLocale) {
+		return
+	}
+
 	hasSeats := len(req.SeatList) > 0
 	hasCats := len(req.CategoryList) > 0
 
@@ -437,6 +450,15 @@ func (h *Handler) handleBil24UnReserve(w http.ResponseWriter, r *http.Request, r
 		if !h.validateUnReserveToken(r.Context(), w, req, reservationID) {
 			return
 		}
+	}
+
+	// Feature #481 / spec §7.4: UN_RESERVE carries the same (userId,
+	// sessionId) pair as RESERVATION and is guarded identically — a stale
+	// session releases nothing and answers resultCode=1.
+	unresChannel, _ := h.resolveChannelByFID(r.Context(), req)
+	if !h.requireGatewaySession(r.Context(), w, req, unresChannel,
+		parseGatewaySettings(unresChannel.Settings).DefaultLocale) {
+		return
 	}
 
 	if h.resDeps.Release == nil {

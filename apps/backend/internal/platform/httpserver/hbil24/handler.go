@@ -22,11 +22,13 @@ package hbil24
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 )
@@ -141,6 +143,32 @@ type SchemaQuerier interface {
 	ListSessionSeats(ctx context.Context, sessionID uuid.UUID) ([]gen.SessionSeatRow, error)
 }
 
+// GatewaySessionQuerier is the narrow contract the CREATE_USER handler and
+// the shared requireGatewaySession helper use to mint / resolve / refresh a
+// gateway_sessions row (feature #481, W1-A4c, spec §7.3). Keeping it behind
+// an interface lets the unit tests inject an in-memory fake instead of a
+// live PostgreSQL pool. *gen.Queries satisfies this interface.
+//
+// GetCustomerBySystemID is part of the same surface because the session
+// check must verify that the wire `userId` (customers.system_id) actually
+// belongs to the session's customer — otherwise a leaked sessionId could be
+// replayed under any userId.
+type GatewaySessionQuerier interface {
+	InsertGatewaySession(
+		ctx context.Context,
+		sessionToken string,
+		customerID uuid.UUID,
+		orgID uuid.UUID,
+		channelID uuid.UUID,
+		locale string,
+		promoCodes []string,
+		expiresAt time.Time,
+	) (gen.GatewaySessionRow, error)
+	GetGatewaySessionByToken(ctx context.Context, sessionToken string) (gen.GatewaySessionRow, error)
+	ExtendGatewaySessionExpiry(ctx context.Context, id uuid.UUID, expiresAt time.Time) error
+	GetCustomerBySystemID(ctx context.Context, systemID int64) (gen.CustomerRow, error)
+}
+
 // Handler holds the shared dependencies for all Bil24-gateway command
 // handlers. Every query handle is nilable; individual commands self-gate
 // with a Bil24 envelope resultCode=-99 ("service unavailable") response,
@@ -201,6 +229,26 @@ type Handler struct {
 	// Error / MapBusinessError etc. survive verbatim. Production wiring
 	// passes the *i18n.Bundle constructed at server startup.
 	bundle *i18n.Bundle
+
+	// sessionQ (feature #481, W1-A4c) is the gateway_sessions read/write
+	// surface used by CREATE_USER and by requireGatewaySession. A nil
+	// sessionQ makes CREATE_USER self-gate with resultCode=-99 and turns
+	// requireGatewaySession into a pass-through, which preserves every
+	// pre-#481 unit test that builds a Handler without a pool. Production
+	// wiring passes *gen.Queries via WithGatewaySessions.
+	sessionQ GatewaySessionQuerier
+
+	// customerStore (feature #481) is the spec §12.2 identity resolver's
+	// persistence port. CREATE_USER needs it to turn the optional
+	// email/phone/name payload into a customers row. Nil ⇒ CREATE_USER
+	// self-gates with resultCode=-99. Production wiring passes
+	// customers.NewStoreFromQueries(queries).
+	customerStore customers.Store
+
+	// sessionTTL (feature #481, spec §7.3) is how far into the future a
+	// freshly minted — or refreshed — gateway session expires. Zero means
+	// the spec default of 30 days; the field exists so tests can shorten it.
+	sessionTTL time.Duration
 }
 
 // New constructs a Handler from the caller's dependencies.
@@ -303,6 +351,34 @@ func (h *Handler) WithScanQuerier(q ScanQuerier) *Handler {
 // English wire byte surface. Returns the receiver for chaining.
 func (h *Handler) WithBundle(b *i18n.Bundle) *Handler {
 	h.bundle = b
+	return h
+}
+
+// WithGatewaySessions wires the gateway_sessions read/write surface used by
+// CREATE_USER and the shared requireGatewaySession helper (feature #481,
+// spec §7.3). Callers that omit this setter get the pre-#481 behaviour:
+// CREATE_USER answers resultCode=-99 and requireGatewaySession is a
+// pass-through, so existing unit tests keep passing unchanged. Returns the
+// receiver for chaining.
+func (h *Handler) WithGatewaySessions(q GatewaySessionQuerier) *Handler {
+	h.sessionQ = q
+	return h
+}
+
+// WithCustomerStore wires the spec §12.2 customer resolver's persistence
+// port used by CREATE_USER to turn the optional email/phone/name payload
+// into a customers row (feature #481). Returns the receiver for chaining.
+func (h *Handler) WithCustomerStore(s customers.Store) *Handler {
+	h.customerStore = s
+	return h
+}
+
+// WithSessionTTL overrides how long a gateway session stays valid. The
+// spec §7.3 default (DefaultGatewaySessionTTL, 30 days) applies when this
+// setter is not called or receives a non-positive duration. Returns the
+// receiver for chaining.
+func (h *Handler) WithSessionTTL(d time.Duration) *Handler {
+	h.sessionTTL = d
 	return h
 }
 

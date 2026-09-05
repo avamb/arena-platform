@@ -43,6 +43,7 @@
 //	GET_SCHEMA       → schema.go
 //	RESERVATION      → cmd_cart.go   (seated + GA branches)
 //	UN_RESERVE       → cmd_cart.go
+//	CREATE_USER      → cmd_user.go   (customer resolve + gateway session)
 //	GET_ORDER_INFO   → cmd_order.go
 //	CREATE_ORDER_EXT → cmd_order.go  (NOT_IMPLEMENTED scaffold)
 //	SCAN_TICKET      → cmd_tickets.go
@@ -241,6 +242,8 @@ func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 		h.handleBil24GetSeatList(w, r, req)
 	case "GET_SCHEMA":
 		h.handleBil24GetSchema(w, r, req)
+	case "CREATE_USER":
+		h.handleBil24CreateUser(w, r, req)
 	case "RESERVATION":
 		h.handleBil24Reservation(w, r, req)
 	case "UN_RESERVE":

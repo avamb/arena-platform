@@ -12,6 +12,8 @@ package bil24compat
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
 // Request is the top-level request envelope for POST /compat/bil24/json.
@@ -78,6 +80,95 @@ type Request struct {
 	// Each entry names a categoryPriceId (platform tier UUID) and a
 	// quantity. Mutually exclusive with SeatList.
 	CategoryList []CategoryQty
+
+	// ── CREATE_USER / gateway-session fields (feature #481, spec §7.3) ──
+
+	// FirstName / LastName are the optional buyer name parts sent by
+	// CREATE_USER. Spec §7.3: display_name = firstName + " " + lastName.
+	FirstName string
+	LastName  string
+	// Phone is the optional buyer phone (a strong identity key per
+	// spec §12.2). Shared with CREATE_USER and future order commands.
+	Phone string
+	// SessionID is the gateway session token minted by CREATE_USER and
+	// echoed back by every subsequent command (spec §7.3 / §7.4). The wire
+	// key is "sessionId"; an unknown/expired value maps to resultCode=1.
+	SessionID string
+	// UserID is the buyer's compatibility id (customers.system_id) that
+	// CREATE_USER returned. It travels as a JSON number on the wire, so
+	// it is normalised through Request.UnmarshalJSON (number-or-string).
+	UserID int64
+}
+
+// requestAlias exists solely to give Request.UnmarshalJSON a recursion-free
+// view of the struct: json.Unmarshal on the alias uses the default field
+// walk instead of calling back into the custom unmarshaler.
+type requestAlias Request
+
+// UnmarshalJSON decodes the flat Bil24 envelope, tolerating the two fields
+// legacy clients serialise inconsistently:
+//
+//   - `fid`: the WordPress plugin sends `(int)$o['fid']` (a JSON number)
+//     while older integrations send a quoted string. Request.FID stays a Go
+//     string so every call site keeps working; both wire shapes land in it.
+//   - `userId`: always a JSON number in the wave-1 fixtures, but strings are
+//     accepted for the same reason.
+//
+// Every other field decodes exactly as before (the embedded alias performs
+// the default, case-insensitive walk); the two outer fields shadow their
+// embedded namesakes because encoding/json prefers the shallower field.
+func (r *Request) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		requestAlias
+		FID    json.RawMessage `json:"fid"`
+		UserID json.RawMessage `json:"userId"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	*r = Request(aux.requestAlias)
+	r.FID = flexWireString(aux.FID)
+	r.UserID = flexWireInt64(aux.UserID)
+	return nil
+}
+
+// flexWireString renders a raw JSON scalar as a Go string: a JSON string is
+// unquoted, a JSON number keeps its literal text, and null / absent / any
+// other shape yields "".
+func flexWireString(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	var n json.Number
+	if err := json.Unmarshal(raw, &n); err == nil {
+		return n.String()
+	}
+	return ""
+}
+
+// flexWireInt64 renders a raw JSON scalar as an int64: JSON numbers decode
+// directly, quoted numbers are parsed, and null / absent / non-numeric input
+// yields 0 (which callers treat as "not supplied").
+func flexWireInt64(raw json.RawMessage) int64 {
+	if len(raw) == 0 || string(raw) == "null" {
+		return 0
+	}
+	var n int64
+	if err := json.Unmarshal(raw, &n); err == nil {
+		return n
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		v, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+		if err == nil {
+			return v
+		}
+	}
+	return 0
 }
 
 // CategoryQty is one row of the legacy Bil24 categoryList payload used by
