@@ -561,9 +561,21 @@ func (h *Handler) getSeatListGA(w http.ResponseWriter, ctx context.Context, req 
 		seatList = append(seatList, seat)
 	}
 
-	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
+	// Spec §7.2 (feature #476 slice 21): the response envelope carries the
+	// session-level currency at the top level. Bil24 goldens under
+	// testdata/wp/golden/GET_SEAT_LIST/basic.json expect this key; every
+	// tier of a session shares one currency (a mixed-currency session is
+	// rejected at ticket_tier admission time), so the first non-empty tier
+	// currency is the correct source. Omitted entirely when there is no
+	// tier at all — the pre-slice callers see no wire regression because
+	// the empty-tier path never emitted a currency to begin with.
+	body := map[string]any{
 		"seatList": seatList,
-	}))
+	}
+	if cur := seatListCurrency(tiers); cur != "" {
+		body["currency"] = cur
+	}
+	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, body))
 }
 
 // getSeatListUnits is the per-unit GET_SEAT_LIST branch (SEAT-D1,
@@ -639,10 +651,37 @@ func (h *Handler) getSeatListUnits(w http.ResponseWriter, ctx context.Context, r
 		seatList = append(seatList, entry)
 	}
 
-	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
+	// Spec §7.2 (feature #476 slice 21): top-level currency mirrors the GA
+	// branch. The tier snapshot is best-effort here (a stale/failed load
+	// leaves `tiers` empty and we simply omit the key rather than emit an
+	// empty string), so pre-slice callers on the unit branch that had no
+	// tier snapshot at all still see the same admissionMode+seatList shape.
+	body := map[string]any{
 		"seatList":      seatList,
 		"admissionMode": admissionMode,
-	}))
+	}
+	if cur := seatListCurrency(tiers); cur != "" {
+		body["currency"] = cur
+	}
+	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, body))
+}
+
+// seatListCurrency projects a session's ticket-tier snapshot onto the
+// spec §7.2 top-level `currency` key. Every tier of one session shares a
+// currency (mixed-currency inserts are rejected at ticket_tier admission)
+// so the first non-empty tier currency is the correct value; empty input
+// returns "" so callers can OMIT the key rather than emit an empty
+// string. Pure over the tier slice — no DB round-trip — so the wire-shape
+// contract can be unit-tested without spinning up a live pool.
+//
+// Feature #476 W1-A2b slice 21 (spec §7.2).
+func seatListCurrency(tiers []gen.TicketTierRow) string {
+	for _, t := range tiers {
+		if t.Currency != "" {
+			return t.Currency
+		}
+	}
+	return ""
 }
 
 // bssStatusCode maps an internal session_seats.status string to the Bil24

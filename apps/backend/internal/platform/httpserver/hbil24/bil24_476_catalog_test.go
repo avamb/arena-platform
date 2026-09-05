@@ -429,3 +429,56 @@ func TestBil24_476_BuildCountryCityLists_EmptyInput(t *testing.T) {
 		t.Errorf("expected both lists empty, got countries=%+v cities=%+v", countries, cities)
 	}
 }
+
+// TestBil24_476_SeatListCurrency_FirstNonEmpty pins the spec §7.2
+// top-level currency projection (feature #476 slice 21): the helper
+// returns the first tier's currency; multiple tiers all sharing one
+// currency yield that currency; an empty tier slice yields "" so the
+// caller can OMIT the key rather than emit an empty string; a leading
+// tier with an empty currency (should never happen in production but
+// defensive against a partial scan) is skipped in favor of the next
+// non-empty entry.
+func TestBil24_476_SeatListCurrency_FirstNonEmpty(t *testing.T) {
+	cases := []struct {
+		name  string
+		tiers []gen.TicketTierRow
+		want  string
+	}{
+		{
+			name:  "empty slice",
+			tiers: nil,
+			want:  "",
+		},
+		{
+			name: "single tier",
+			tiers: []gen.TicketTierRow{
+				{Currency: "CZK"},
+			},
+			want: "CZK",
+		},
+		{
+			name: "multiple tiers share currency",
+			tiers: []gen.TicketTierRow{
+				{Currency: "EUR"},
+				{Currency: "EUR"},
+				{Currency: "EUR"},
+			},
+			want: "EUR",
+		},
+		{
+			name: "leading empty skipped",
+			tiers: []gen.TicketTierRow{
+				{Currency: ""},
+				{Currency: "USD"},
+			},
+			want: "USD",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := seatListCurrency(tc.tiers); got != tc.want {
+				t.Errorf("seatListCurrency=%q want %q", got, tc.want)
+			}
+		})
+	}
+}
