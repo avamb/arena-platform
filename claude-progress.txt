@@ -2,6 +2,96 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-09-05 - #476 W1-A2b Step 2 (4th slice) - compatDB plumbing + first callsites
+
+Commit 3f2ca3b, pushed to origin/master. Feature #476 STAYS in_progress
+(sub-feature rule: NEVER release the claim as too large).
+
+Delivered this session (Step 2 middle slice - compatibility-id-map wiring
+so future migrations only need a compatCategoryPriceID/... call at each
+wire callsite, no per-file plumbing churn):
+
+- hbil24/handler.go: new Handler.compatDB (gen.DBTX) field + WithCompatDB
+  setter. Nil-safe: unit tests that build a Handler without a pool skip
+  compatids and keep the pre-W1 UUID-string wire form.
+- httpserver/bil24_shims.go: wires s.pool as the compatDB when non-nil.
+  PoolDB is a superset of gen.DBTX (Exec/Query/QueryRow), so *pgxpool.Pool
+  satisfies it via implicit interface conversion.
+- hbil24/compat_ids.go (new): three helpers - compatCategoryPriceID,
+  compatActionID, compatActionEventID - all with the same "compatDB nil →
+  UUID string fallback, non-nil → compatids.Ensure(kind, uuid) int64,
+  Ensure error → log + UUID fallback" contract. Returns `any` because the
+  scalar shape differs between production (int64) and fallback (string).
+- hbil24/cmd_cart.go: writeHoldError signature extended with ctx; capacity
+  error routes categoryPriceId through compatCategoryPriceID.
+- hbil24/cmd_cart_reserve.go: both RESERVATION callers pass ctx into
+  writeHoldError; the ErrNoRows tier-not-found response routes
+  categoryPriceId through compatCategoryPriceID.
+
+Gates this session - all GREEN:
+- go build ./apps/backend/... EXIT:0
+- go vet ./apps/backend/... EXIT:0
+- go test ./apps/backend/... EXIT:0 (full backend suite)
+- gofmt -l on 5 touched files: clean
+
+Files touched this session:
+  apps/backend/internal/platform/httpserver/bil24_shims.go            (M)
+  apps/backend/internal/platform/httpserver/hbil24/handler.go         (M)
+  apps/backend/internal/platform/httpserver/hbil24/cmd_cart.go        (M)
+  apps/backend/internal/platform/httpserver/hbil24/cmd_cart_reserve.go(M)
+  apps/backend/internal/platform/httpserver/hbil24/compat_ids.go      (A)
+
+STILL DEFERRED for #476 (Step 2 remaining wire-ID migrations + goldens):
+
+Remaining wire callsites still emit UUID strings via TranslatePlatformID
+and can now be migrated by replacing that call with the appropriate
+compat* helper (categoryPriceId, actionId, actionEventId - a helper for
+KindVenue/KindCity/KindCountry can be added the same way when the
+GET_ALL_ACTIONS aggregate lands):
+
+  cmd_catalog.go:92    handleBil24GetAllActions   actionId
+    -> h.compatActionID(ctx, e.ID) + full countryList/cityList/venueList
+       aggregation per spec 7.1
+  cmd_catalog.go:283   getSeatListGA              categoryPriceId
+    -> h.compatCategoryPriceID(ctx, t.ID)
+  cmd_catalog.go:359   getSeatListUnits           entry categoryPriceId
+    -> h.compatCategoryPriceID(ctx, *s.TierID)  (seatId slice already int64)
+  cmd_cart_reserve.go:332 reservationGA           echoed categoryPriceId
+    -> h.compatCategoryPriceID(ctx, it.TierID)
+  cmd_cart_reserve.go:181-182 reservationSeated   reservationId, sessionId
+    (spec 7.4 review; may keep UUID for internal ids per spec)
+  cmd_cart_reserve.go:347-348 reservationGA       reservationId, sessionId
+  cmd_cart.go:468      handleBil24UnReserve       reservationId
+    (spec 7.5 review)
+  cmd_order.go:*       handleBil24GetOrderInfo    orderId in/out (spec review)
+  cmd_order.go:*       handleBil24CreateOrderExt  actionEventId, categoryPriceId
+  cmd_order.go:*       handleBil24CancelOrder     orderId input parse
+  cmd_tickets.go:154   handleBil24ScanTicket      platformTicketId
+    -> tickets.system_ticket_id int64 per spec 7.14 (also reshape response -
+       loads ticket row via new query)
+
+Golden fixtures (apps/backend/tests/compat/bil24/testdata/wp/**) still
+carry UUID actionId/categoryPriceId placeholders and MUST be regenerated
+once the corresponding handler is migrated. The no-UUID guardrail
+(tests/compat/bil24/no_uuid_in_wire_test.go, committed 99a1159) already
+walks them, but currently passes because it excludes the legacy #157/#158
+vinoandco fixtures - once golden regeneration lands the guardrail is the
+long-term regression watchdog.
+
+Sentinels still preserved:
+- bil24compat_layout_188_test.go: unchanged, adapter package untouched.
+- bil24_compat_157_test.go: TranslateLegacyID/TranslatePlatformID still
+  present in the adapter; the compatids helpers ADD an int64 emission
+  path without removing the legacy forwarders.
+
+Sizing note: ~10 wire callsites + goldens regeneration remain. Each
+callsite is now a mechanical one-line change (TranslatePlatformID ->
+compat<Kind>ID with ctx). The goldens regeneration is the expensive
+piece because every test that asserts UUID-string equality must switch
+to int64 comparison. Recommend continuing bottom-up (writeHoldError-style
+error paths first because they have no golden coverage, then read
+commands, then order/tickets, finally seat_d1_312_test.go / goldens).
+
 ## 2026-09-05 - #476 W1-A2b STEP 3 landed (Step 2 remains deferred)
 
 Delivered ONLY the Step 3 no-UUID wire guardrail this session. Step 2
