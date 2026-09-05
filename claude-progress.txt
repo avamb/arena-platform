@@ -25346,3 +25346,40 @@ Feature #476 STAYS in_progress (sub-feature rule: NEVER release claim as too lar
 Recommended next slice: KindOrder compat migration + compatOrderID helper
 so buildGetOrderInfoBody can emit int64 id. Alternatively: begin minPrice /
 maxPrice tier scan for actionList body in GET_ALL_ACTIONS.
+
+
+## 2026-09-05 #476 W1-A2b slice 21 - GET_SEAT_LIST top-level currency (commit 9700706)
+
+GET_SEAT_LIST response body now carries the spec s7.2 top-level "currency"
+key on both branches (getSeatListGA + getSeatListUnits), matching the
+testdata/wp/golden/GET_SEAT_LIST/basic.json golden. Extracted a package-
+level pure helper seatListCurrency(tiers []gen.TicketTierRow) string that
+returns the first tier's currency (mixed-currency sessions are rejected
+at ticket_tier admission time so any tier is authoritative). The key is
+OMITTED when the tier snapshot is nil / has only blank currencies so the
+pre-slice unit-branch fallback path (tier load failure) sees zero wire
+regression.
+
+Files touched:
+  apps/backend/internal/platform/httpserver/hbil24/cmd_catalog.go            (M)
+  apps/backend/internal/platform/httpserver/hbil24/bil24_476_catalog_test.go (M)
+
+Unit test TestBil24_476_SeatListCurrency_FirstNonEmpty (subtests: nil,
+single, multi-share, leading-blank) pins the projection contract.
+
+Gates - all GREEN:
+- go build ./apps/backend/... EXIT:0
+- go vet   ./apps/backend/... EXIT:0
+- go test  ./apps/backend/... full suite EXIT:0 (test_476_slice21_full.log)
+- gofmt -l on 2 changed files clean
+
+Feature #476 STAYS in_progress (sub-feature rule: NEVER release claim as too large).
+
+Recommended next slice: KindOrder compat migration (0091) - adds "order"
+to the compatibility_id_map CHECK constraint, extends compatids.Kind /
+AllKinds, adds compatOrderID helper, wires buildGetOrderInfoBody to
+emit int64 id. Requires migration head bump (migrations_head_test.go)
+and a Docker PG smoke test - self-contained but heavier than slice 21.
+Alternatively: begin minPrice/maxPrice tier scan for actionList in
+GET_ALL_ACTIONS (small SQL query returning per-event min+max, plumbed
+through buildActionEntry).
