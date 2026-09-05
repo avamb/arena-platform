@@ -1,0 +1,8 @@
+{
+  "command": "GET_CART",
+  "fid": 1271,
+  "token": "{{token}}",
+  "locale": "ru-RU",
+  "userId": 10001,
+  "sessionId": "{{sessionId}}"
+}

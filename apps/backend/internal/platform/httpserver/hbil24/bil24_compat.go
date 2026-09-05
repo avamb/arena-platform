@@ -248,6 +248,8 @@ func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 		h.handleBil24Reservation(w, r, req)
 	case "UN_RESERVE":
 		h.handleBil24UnReserve(w, r, req)
+	case "GET_CART":
+		h.handleBil24GetCart(w, r, req)
 	case "GET_ORDER_INFO":
 		h.handleBil24GetOrderInfo(w, r, req)
 	case "CREATE_ORDER_EXT":

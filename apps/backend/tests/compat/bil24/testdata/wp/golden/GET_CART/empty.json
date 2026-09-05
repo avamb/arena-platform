@@ -1,0 +1,12 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "GET_CART",
+  "cartTimeout": 0,
+  "currency": "",
+  "sum": 0,
+  "discountAmount": 0,
+  "chargeAmount": 0,
+  "totalSum": 0,
+  "actionEventList": []
+}

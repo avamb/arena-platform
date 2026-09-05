@@ -270,42 +270,68 @@ func (h *Handler) cartCategoryPayload(
 // Whole-cart response projection
 // ─────────────────────────────────────────────────────────────────────────────
 
-// writeCartResponse emits the spec §7.4 success envelope describing the WHOLE
-// cart: one seatList row per held ticket across every action event, the money
-// fields, and cartTimeout — whole seconds until the nearest reservation expiry,
-// 0 when the cart is empty.
-func (h *Handler) writeCartResponse(ctx context.Context, w http.ResponseWriter, req bil24Request, cc cartCtx) {
+// cartLine is one held unit of the cart — one assigned seat, or one AB-51
+// materialised general-admission unit — already priced and already carrying
+// the spec §4 wire identifiers of its action event and category price.
+type cartLine struct {
+	seatID          int64
+	actionEventID   any
+	categoryPriceID any
+	price           int64
+}
+
+// cartSnapshot is the whole cart of one gateway session, read once and shared
+// by the two projections that exist for it: the flat spec §7.4 RESERVATION
+// seatList and the spec §7.5 GET_CART grouping by action event.
+type cartSnapshot struct {
+	lines    []cartLine
+	events   []any // action event wire ids, in first-seen order
+	sum      int64 // net sum of every line, before discount and charge
+	currency string
+	nearest  time.Time // earliest reservation expiry; zero when the cart is empty
+}
+
+// timeout is the spec §7.4 / §7.5 cartTimeout: whole seconds until the nearest
+// reservation expiry, and 0 for an empty cart.
+func (s cartSnapshot) timeout() int64 {
+	if s.nearest.IsZero() || len(s.lines) == 0 {
+		return 0
+	}
+	return cartTimeoutSeconds(s.nearest)
+}
+
+// collectCart reads every open reservation the gateway session owns and prices
+// it into a cartSnapshot. GA lines keep the AB-48 unit price locked at hold
+// time; assigned seats fall back to the current effective tier price. An error
+// return means the caller must answer with a transient envelope — every
+// underlying failure is already logged here.
+func (h *Handler) collectCart(ctx context.Context, cc cartCtx) (cartSnapshot, error) {
+	snap := cartSnapshot{lines: make([]cartLine, 0, 8), events: make([]any, 0, 2)}
+
 	rows, err := h.cartDeps.Q.ListActiveGatewayCartReservations(ctx, cc.gw.ID)
 	if err != nil {
-		h.logger.Error("bil24_compat: RESERVATION: cart listing failed",
+		h.logger.Error("bil24_compat: cart listing failed",
 			slog.String("gateway_session_id", cc.gw.ID.String()),
 			slog.String("error", err.Error()),
 		)
-		h.writeCartTransient(w, req, cc)
-		return
+		return snap, err
 	}
 
-	var (
-		seatList  = make([]map[string]any, 0, 8)
-		sum       int64
-		currency  string
-		nearest   time.Time
-		pricingBy = map[uuid.UUID]cartPricing{}
-	)
+	pricingBy := map[uuid.UUID]cartPricing{}
+	seenEvent := map[any]struct{}{}
 
 	for _, res := range rows {
 		pricing, cached := pricingBy[res.SessionID]
 		if !cached {
 			p, pErr := h.cartSessionPricing(ctx, res.SessionID)
 			if pErr != nil {
-				h.writeCartTransient(w, req, cc)
-				return
+				return snap, pErr
 			}
 			pricing = p
 			pricingBy[res.SessionID] = p
 		}
-		if currency == "" {
-			currency = pricing.currency
+		if snap.currency == "" {
+			snap.currency = pricing.currency
 		}
 
 		// AB-48 locked snapshot: GA lines carry the unit price that was in
@@ -313,19 +339,18 @@ func (h *Handler) writeCartResponse(ctx context.Context, w http.ResponseWriter, 
 		// seat row without a tier stamp be attributed to its tier.
 		items, iErr := h.cartDeps.Q.ListReservationGAItems(ctx, res.ID)
 		if iErr != nil {
-			h.logger.Error("bil24_compat: RESERVATION: GA line listing failed",
+			h.logger.Error("bil24_compat: cart GA line listing failed",
 				slog.String("reservation_id", res.ID.String()),
 				slog.String("error", iErr.Error()),
 			)
-			h.writeCartTransient(w, req, cc)
-			return
+			return snap, iErr
 		}
 		locked := make(map[uuid.UUID]int64, len(items))
 		queue := make([]uuid.UUID, 0, 8)
 		for _, it := range items {
 			locked[it.TierID] = it.UnitPrice
-			if currency == "" {
-				currency = it.Currency
+			if snap.currency == "" {
+				snap.currency = it.Currency
 			}
 			for n := int32(0); n < it.Quantity; n++ {
 				queue = append(queue, it.TierID)
@@ -334,12 +359,11 @@ func (h *Handler) writeCartResponse(ctx context.Context, w http.ResponseWriter, 
 
 		seats, sErr := h.cartDeps.Q.ListReservationSeats(ctx, res.ID)
 		if sErr != nil {
-			h.logger.Error("bil24_compat: RESERVATION: seat listing failed",
+			h.logger.Error("bil24_compat: cart seat listing failed",
 				slog.String("reservation_id", res.ID.String()),
 				slog.String("error", sErr.Error()),
 			)
-			h.writeCartTransient(w, req, cc)
-			return
+			return snap, sErr
 		}
 
 		actionEventID := h.compatActionEventID(ctx, res.SessionID)
@@ -359,31 +383,57 @@ func (h *Handler) writeCartResponse(ctx context.Context, w http.ResponseWriter, 
 			} else if p, ok := pricing.price[tierID]; ok {
 				price = p
 			}
-			sum += price
+			snap.sum += price
 
 			var categoryPriceID any
 			if tierID != uuid.Nil {
 				categoryPriceID = h.compatCategoryPriceID(ctx, tierID)
 			}
-			seatList = append(seatList, map[string]any{
-				"seatId":          s.SystemSeatID,
-				"actionEventId":   actionEventID,
-				"categoryPriceId": categoryPriceID,
-				"tariffPlanId":    nil,
-				"price":           price,
-				"discount":        0,
+			if _, seen := seenEvent[actionEventID]; !seen {
+				seenEvent[actionEventID] = struct{}{}
+				snap.events = append(snap.events, actionEventID)
+			}
+			snap.lines = append(snap.lines, cartLine{
+				seatID:          s.SystemSeatID,
+				actionEventID:   actionEventID,
+				categoryPriceID: categoryPriceID,
+				price:           price,
 			})
 		}
 
-		if nearest.IsZero() || res.ExpiresAt.Before(nearest) {
-			nearest = res.ExpiresAt
+		if snap.nearest.IsZero() || res.ExpiresAt.Before(snap.nearest) {
+			snap.nearest = res.ExpiresAt
 		}
 	}
 
-	cartTimeout := int64(0)
-	if !nearest.IsZero() && len(seatList) > 0 {
-		cartTimeout = cartTimeoutSeconds(nearest)
+	return snap, nil
+}
+
+// writeCartResponse emits the spec §7.4 success envelope describing the WHOLE
+// cart: one seatList row per held ticket across every action event, the money
+// fields, and cartTimeout — whole seconds until the nearest reservation expiry,
+// 0 when the cart is empty.
+func (h *Handler) writeCartResponse(ctx context.Context, w http.ResponseWriter, req bil24Request, cc cartCtx) {
+	snap, err := h.collectCart(ctx, cc)
+	if err != nil {
+		h.writeCartTransient(w, req, cc)
+		return
 	}
+
+	seatList := make([]map[string]any, 0, len(snap.lines))
+	for _, l := range snap.lines {
+		seatList = append(seatList, map[string]any{
+			"seatId":          l.seatID,
+			"actionEventId":   l.actionEventID,
+			"categoryPriceId": l.categoryPriceID,
+			"tariffPlanId":    nil,
+			"price":           l.price,
+			"discount":        0,
+		})
+	}
+	sum := snap.sum
+	currency := snap.currency
+	cartTimeout := snap.timeout()
 
 	// Spec §7.4: charge is the channel service fee applied to the net sum;
 	// totalSum = sum - discount + charge. fee_percent is numeric(5,2), so the

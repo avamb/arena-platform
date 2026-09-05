@@ -2,16 +2,16 @@
   "resultCode": 0,
   "description": "OK",
   "command": "GET_CART",
-  "cartTimeout": "{{now+ttl}}",
+  "cartTimeout": 1200,
   "currency": "CZK",
   "sum": 500,
   "discountAmount": 0,
-  "chargeAmount": 0,
-  "totalSum": 500,
+  "chargeAmount": 25,
+  "totalSum": 525,
   "actionEventList": [
-    {"actionEventId": "{{actionEventId}}", "chargePercent": 0,
+    {"actionEventId": "{{actionEventId}}", "chargePercent": 5,
      "seatList": [
-       {"seatId": "{{seatId:Parter-3-12}}", "categoryPriceId": 1,
+       {"seatId": "{{seatId:Parter-3-12}}", "categoryPriceId": "{{categoryPriceId}}",
         "tariffPlanId": null, "price": 500, "discount": 0}
      ]}
   ]
