@@ -26154,3 +26154,54 @@ left alone per convention - no files staged or committed this session.
 
 Feature #452 marked PASSING (verification-only; no files changed, no
 commit needed this session).
+
+================================================================================
+Feature #483 - W1-A5a: mutable hold primitives (Extend/Shrink/Refresh/Reacquire)
+Commit 92767f4 (pushed to master)
+================================================================================
+
+Implemented in hcheckout: ExtendHold/ExtendHoldTx, ShrinkHold/ShrinkHoldTx,
+RefreshHoldExpiry/RefreshHoldExpiryTx, ReacquireHold/ReacquireHoldTx, reusing
+LockSessionSeatsForHold + AllocateGAUnitsForHold + IncrementSessionSeatStatus-
+Version and pricing GA lines through priceresolve (AB-48 price lock survives a
+cart extension). A reservation emptied by Shrink is cancelled.
+
+Files (12): hcheckout/hold_mutation.go, hold_shrink.go, hold_mutation_test.go,
+hold_mutation_concurrency_integration_test.go; postgres gen+queries pairs for
+reservation_ga_items, reservation_seats, reservations, session_seats.
+
+Two migration-0063 CHECK constraints drove SQL changes:
+- reservation_ga_items.quantity > 0: DecrementReservationGAItemQuantity is now
+  a writable CTE (DELETE the consumed line / UPDATE otherwise) instead of
+  clamping with GREATEST(..., 0), which would have raised 23514 at runtime.
+  DeleteEmptyReservationGAItems became unreachable and was removed from the
+  .sql, the .sql.go and its call site in shrinkGALinesTx.
+- reservations.quantity > 0: ReacquireHoldTx now returns *NotMutableError when
+  every linked seat vanished from session_seats, instead of UPDATE ... 0.
+
+Mutability gate extracted as holdStateMutable(state) and pinned by unit test
+against inventory.ValidReservationTransitions, so a state-machine change breaks
+the test rather than silently allowing a closed cart to be mutated.
+
+Gates run this session:
+- go build ./...                                                  EXIT:0
+- go vet ./...                                                    EXIT:0
+- go vet -tags integration ./internal/platform/httpserver/hcheckout/...  EXIT:0
+- go test ./... (full backend suite)                              EXIT:0, 0 FAIL
+- golangci-lint run ./apps/backend/...                            0 issues
+- gofmt -l (hcheckout/ + postgres/gen/), incl. integration-tagged  clean
+
+NOT RUN - BLOCKER: the live-DB gate, i.e. go test -tags integration -count=1
+-run 'W1A5a' ./internal/platform/httpserver/hcheckout/... with DATABASE_URL
+pointed at the local Docker PG (port 55432, user/pass/db arena) and
+JWT_SIGNING_SECRET set.
+
+The Docker daemon is down on this host (npipe dockerDesktopLinuxEngine absent;
+the docker-desktop WSL distro is Stopped). "docker desktop start" hangs with no
+output; launching Docker Desktop.exe and "wsl.exe -d docker-desktop" are both
+refused by .autoforge/allowed_commands.yaml. Feature #483 is therefore left
+IN PROGRESS, not marked passing: the four W1A5a integration tests compile and
+vet under the integration tag but have never executed against a real schema.
+
+Next session: start Docker Desktop, confirm arena_postgres is listening on
+55432, run the command above, then mark #483 passing.
