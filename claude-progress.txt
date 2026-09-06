@@ -29179,4 +29179,134 @@ Gates (all EXIT 0):
 
 Marked feature #489 passing via `feature_mark_passing` after this full
 verification pass.
+
+Feature #490 (W1-A6e, org-scoped admin-web Orders page), 2026-09-06:
+Added `apps/admin-web/src/routes/orgOrders.tsx` -- a permission-gated
+`/org-orders` route consuming the `horders` endpoints landed in #489: a
+table (number/buyer/session/status/total/created) with a search box and
+status filter, a detail drawer (items/tickets/timeline), and a cancel
+action with a required reason, gated client-side by `isCancellable()`
+mirroring the backend's allowed-transition set
+(`pending_payment`/`manual_review`). Hand-written local interfaces
+(`OrderSummary`/`OrderDetail`/`OrderItem`/`OrderTicket`/`OrderEvent`) per
+repo convention (no generated client import in route files). Wired into
+`navConfig.ts` (`order.read`-gated nav entry, all four scope kinds) and
+`routeTree.ts`. Added `orgOrders.test.ts` (22 unit tests: query/org-id
+validators, `isCancellable`, and `mapServerError` for every
+`orders.*`/`dependency.*`/`permissions.denied` error code the handler can
+emit).
+
+Adding the new nav entry shifted `navConfig.test.ts`'s hardcoded
+"platform_superadmin sees every entry" fixture/expectation (needed
+`order.read` added to the fixture's permission set and `"org-orders"`
+inserted into the expected-id order) and `saui14_smoke.test.ts`'s
+`ROUTE_REGISTRY` (needed the `/org-orders` entry, which unblocked 3
+smoke assertions that all derive from that map). Not new bugs -- routine
+fallout from adding a registered nav surface.
+
+Live verification used curl against the real `arena_api` container
+(no Playwright/browser-automation tool available in this environment)
+because the running image predated the #489 backend commit --
+`docker inspect arena_new/arena-api:dev --format '{{.Created}}'` was
+~12h older than `56eb0a8`. Rebuilt with `docker compose build api &&
+docker compose up -d api worker`; confirmed the named Postgres volume
+survived (`organizations` count unchanged at 35). Discovered along the
+way that migration 0092 only inserts the `order.read`/`order.write`
+`permissions` rows and never wires them into any role's
+`role_permissions` -- a real seed-data gap, out of scope for this
+feature but worth a follow-up. Verified via the AGENTS.md-sanctioned
+temporary-grant-then-revert pattern: granted both permissions to the
+`admin` role (reachable by `super@test.arena.local`'s NULL-org_id
+`user_roles` row) and added a matching `memberships` row (role
+`organizer`, per the `memberships_role_check` constraint) for the org
+under test, then reverted both afterward (`DELETE` counts 2 and 1).
+Inserted two real `orders` rows by direct SQL (a real login-issued JWT
+can't create orders without the checkout flow, and the known org-scoped
+`user_roles` JWT gap blocks that path) to exercise: list with `q=`/
+`status=` filters, detail with `items[]`/`tickets[]`/`events[]`, cancel
+on a `pending_payment` order (sets `status=cancelled`, appends a
+`cancelled` order_event with the submitted reason), a rejected cancel on
+an already-`paid` order (`409 orders.invalid_transition`, matching
+`mapServerError`'s "This order can no longer be cancelled." copy), and
+cross-org access returning `403 org.access_denied` (membership gate) --
+confirmed no cross-tenant leakage. Deleted both QA order rows (and their
+`order_items`/`order_events`/`checkout_sessions`) after verification;
+`orders` count is back to 0 and `organizations` count unchanged at 35.
+
+Gates (all EXIT 0):
+- `npm run type-check` (admin-web) clean.
+- `npm run test -- --run` (admin-web): 45 files, 1166/1166 tests passed.
+- No `openapi.yaml`/codegen changes needed -- #489 already landed the
+  backend schema/types/TS client; this feature is frontend-only.
+
+Staged by path only (`orgOrders.tsx`, `orgOrders.test.ts`, `navConfig.ts`,
+`navConfig.test.ts`, `routeTree.ts`, `saui14_smoke.test.ts`); left the
+unrelated working-tree changes (`.autoforge/prompts/coding_prompt.md`,
+deleted `.claude/scheduled_tasks.lock`, untracked `features.db`) out of
+the commit. Committed (925122a) and pushed to `origin/master`.
+
+Marked feature #490 passing via `feature_mark_passing` after this full
+verification pass.
+
+## Feature #456 — W1-A6 [EPIC-VERIFY]: Order aggregate full gate re-run (2026-09-07)
+
+Verification-only epic; all listed dependencies (455, 486, 487, 488, 489,
+490) already `passes: true`. No code changes made — this session only
+re-ran the full gate suite and confirmed everything green:
+
+- `go.exe build ./apps/backend/...` — EXIT:0
+- `go.exe vet ./apps/backend/...` — EXIT:0
+- `go.exe test ./apps/backend/...` (untagged, full repo, no pipeline —
+  redirected to file, `echo EXIT:$?` after) — EXIT:0, zero FAIL lines,
+  includes `tests/compat/bil24`, `tests/staticanalysis`, `tests/integration`.
+- `DATABASE_URL=post""gres://arena:arena@localhost:55432/arena?sslmode=disable
+  JWT_SIGNING_SECRET=x go.exe test -tags integration ./apps/backend/...` —
+  EXIT:0, 74 `ok` package results, zero FAIL. Confirmed `internal/platform/
+  ordering`, `internal/platform/httpserver` (incl. `horders`, `hbil24`,
+  `hcheckout`, `hfeed`), and `internal/platform/macs` all `ok`.
+- `GOLANGCI_LINT_CACHE=/tmp/golangci-cache456 go.exe run .../golangci-lint@latest
+  run ./apps/backend/...` — "0 issues.", EXIT:0.
+- `gofmt -l apps/backend/{cmd,internal,tests,tools}` — empty output (clean).
+- `npm --prefix apps/admin-web run type-check` — EXIT:0 (tsc -b --pretty clean).
+- `npm --prefix apps/admin-web run test -- --run` — 45 files / 1166 tests
+  passed, EXIT:0.
+- `npm --prefix apps/admin-web run build` — tsc -b && vite build, EXIT:0
+  (only a routine >500kB chunk-size advisory, not an error).
+- Migration head pin: `migrations_head_test.go` expects
+  `0097_api_key_role_grants.sql`; `ls .../migrations/sql | tail` confirms
+  0097 is the actual latest file — matches.
+- Local migrate smoke test against the shared `arena_postgres` dev-stand
+  (port 55432): `arena-migrate` reported "no migrations to run. current
+  version: 97" — stand already fully migrated, no drift.
+- Codegen drift check: regenerated `.compat30.gen.yaml` via
+  `openapi30gen`, ran `oapi-codegen@v2.4.1` against it, and ran
+  `node scripts/gen-ts-client.mjs` — `git status --short` on the generated
+  Go files and `apps/backend/openapi/clients/ts` showed **no diff**, i.e.
+  zero drift versus what's committed. Deleted the scratch
+  `.compat30.gen.yaml` afterward per convention.
+- Confirmed via a dedicated research pass that real (non-stub) tests exist
+  and pass for every "Done when" criterion: buyer-field order creation from
+  a public-feed checkout and per-ticket `order_items` linkage
+  (`order_wiring_w1a6c_488_integration_test.go`,
+  `internal/platform/ordering/create_test.go`); exactly-once
+  `v1.order.paid` in `outbox_events` including replay idempotency (same
+  file, lines ~331-390, plus `macs_orderpaid_integration_test.go`); the
+  one-open-order-per-(customer,session) partial unique index and its
+  supersede behavior (`order_wiring_w1a6c_488_supersede_integration_test.go`,
+  migration `0092_orders.sql` lines 94-99); and the `order.expire_sweep`
+  job, unit + live-DB (`internal/platform/ordering/expire_sweep_test.go`,
+  `expire_sweep_integration_test.go`).
+- **Could not run `gh run view`** — the `gh` CLI is blocked by this
+  sandbox's command allowlist (documented AGENTS.md gotcha, still true).
+  Everything else this session ran locally substitutes for that check;
+  no other way to inspect the latest GitHub Actions run from here.
+- No drift found anywhere; no fix commits were needed. All temporary log
+  files (`build456.log`, `vet456.log`, `test456.log`, `integ456.log`,
+  `lint456.log`, `typecheck456.log`, `admintest456.log`,
+  `adminbuild456.log`, `gofmt456.log`, `ghrun456.log`, `migrate456.log`,
+  `codegen456_*.log`) were deleted before finishing, per the repo's
+  scratch-file hygiene convention.
+
+Marked feature #456 passing via `feature_mark_passing` after this
+verification-only gate re-run — full suite green, no code changes needed.
 - Staged by path only; `git status --short` verified before committing.
