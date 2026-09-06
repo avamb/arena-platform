@@ -29309,4 +29309,35 @@ re-ran the full gate suite and confirmed everything green:
 
 Marked feature #456 passing via `feature_mark_passing` after this
 verification-only gate re-run — full suite green, no code changes needed.
+
+================================================================================
+Integrator gate pass, 2026-09-07 (post-#456/#489/#490/#492), no code changes
+================================================================================
+
+Ran as the wave-gate agent (505/522 features passing, 0 in_progress). All
+repo-wide gates green, no drift found, nothing to fix:
+- `go.exe build ./apps/backend/...`, `go.exe vet ./apps/backend/...` — EXIT 0.
+- `go.exe test ./apps/backend/...` (untagged) — EXIT 0, 73 ok packages, zero
+  FAIL (verified via `> file; echo EXIT:$?`, never through a pipeline).
+- `DATABASE_URL=post""gres://... JWT_SIGNING_SECRET=x go.exe test -tags
+  integration -count=1 -p 1 ./apps/backend/...` against the `arena_postgres`
+  stand (55432) — EXIT 0, 74 ok, zero FAIL.
+- `golangci-lint@latest` (absolute `GOLANGCI_LINT_CACHE`) — "0 issues."
+- `gofmt -l` over `apps/backend/{cmd,internal,tests,tools}` — clean.
+- `npm --prefix apps/admin-web run type-check` — EXIT 0.
+- `npm --prefix apps/admin-web run test -- --run` — 45 files / 1166 tests
+  passed.
+- Migration head pin: `migrations_head_test.go` expects
+  `0097_api_key_role_grants.sql`, matches actual latest file.
+- Codegen drift: regenerated `.compat30.gen.yaml` via `openapi30gen`, ran
+  `oapi-codegen@v2.4.1`, ran `scripts/gen-ts-client.mjs` — `git status
+  --short` showed zero diff on any generated file. Deleted the scratch
+  compat file afterward.
+- Working tree: only pre-existing, out-of-scope AutoForge harness artifacts
+  present (`.autoforge/prompts/coding_prompt.md` modified, `.claude/
+  scheduled_tasks.lock` deleted, untracked `features.db`) — left uncommitted,
+  consistent with how prior sessions (e.g. #489/#490) treated them.
+- No fix-features filed; no AGENTS.md changes needed (no new conventions
+  discovered). Nothing to push — no commits were made this pass since there
+  was no drift to fix. All scratch log files deleted before finishing.
 - Staged by path only; `git status --short` verified before committing.
