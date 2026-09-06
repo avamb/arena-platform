@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -53,7 +54,12 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 	// resolved channel we cannot filter, so an unresolved fid under
 	// requireToken=true is a hard -4. When requireToken=false and no fid
 	// resolves, we fall back to the pre-W1 catalog for legacy compatibility.
-	ctx := r.Context()
+	// Feature #498 (W1-B3b): a request-scoped compat-id cache so the
+	// per-entity compatXxxID calls below become map lookups once the
+	// venue/city/country and action/session/tier ids are batch-resolved
+	// (prewarmCompatIDs) instead of one DB round trip per entity — see
+	// compat_ids.go's cache doc comment for the perf story.
+	ctx := withCompatCache(r.Context())
 	channel, authed := h.authenticateCommand(ctx, w, req)
 	if h.requireToken && !authed {
 		return // envelope already written
@@ -110,6 +116,7 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 			))
 			return
 		}
+		h.prewarmVenueTreeCompatIDs(ctx, venueRows)
 		countryList, cityList = h.buildCountryCityLists(ctx, venueRows)
 	}
 
@@ -160,6 +167,15 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	// Feature #498: batch-resolve every action id up front (one EnsureMany
+	// round-trip pair for the whole catalog) instead of one compatEnsure
+	// call per event inside the loop below.
+	actionIDs := make([]uuid.UUID, 0, len(events))
+	for _, e := range events {
+		actionIDs = append(actionIDs, e.ID)
+	}
+	h.prewarmCompatIDs(ctx, compatids.KindAction, actionIDs)
+
 	actionList := make([]map[string]any, 0, len(events))
 	for _, e := range events {
 		// Spec §7.1: only status='published' events appear in the catalog.
@@ -199,11 +215,13 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 //     "" (spec §7.1: age string, "NR" → ""). Omitted when the column is
 //     nil OR when the normalised value is empty (omit rather than empty).
 //   - bigPosterUrl / smallPosterUrl — resolved cover URL. Preference
-//     order (spec §7.1, feature #476 slice 18):
-//     1. events.poster_media_id → /v1/media-files/{uuid} (AB-47b/c;
+//     order (spec §7.1, feature #476 slice 18, widened by feature #498):
+//     1. the action's first projected session's OWN poster override
+//     (sessions.poster_media_id, migration 0082) → /v1/media-files/{uuid}.
+//     2. events.poster_media_id → /v1/media-files/{uuid} (AB-47b/c;
 //     same URL shape hfeed's mediaFileURL emits so the WP plugin
 //     and public feed agree on the artwork host).
-//     2. legacy events.image_url — literal URL passthrough for events
+//     3. legacy events.image_url — literal URL passthrough for events
 //     migrated before AB-47 landed the poster_media_id column.
 //     Both keys carry the same URL in this wave — sizing (thumb vs
 //     hero) is deferred until media_objects grows a variants surface.
@@ -213,7 +231,12 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 // pre-built in `ae` (feature #497, cmd_catalog_events.go) — this helper
 // stays pure over EventRow and does not go looking for sessions itself.
 //
-// Still deferred: fullActionName (needs a source column on events).
+//   - fullActionName — spec §7.1 example shows it alongside actionName with
+//     no separate semantics documented and no dedicated source column on
+//     events (feature #498). Mirroring actionName keeps the wire contract
+//     satisfied without a schema change out of scope for this sub-feature;
+//     a future slice can widen this once a distinct long-form title column
+//     exists.
 //
 // Organizer identity is passed in (organizerID, organizerName) because
 // the catalog is org-scoped in the authed branch — every entry carries
@@ -241,6 +264,7 @@ func (h *Handler) buildActionEntry(
 		// unit-test Handlers stay green.
 		"actionId":        h.compatActionID(ctx, e.ID),
 		"actionName":      e.Name,
+		"fullActionName":  e.Name,
 		"actionEventList": events,
 		// Spec §7.1: the price envelope over the action's live tiers, in DB
 		// minor units like every other money field on this gateway. An action
@@ -291,7 +315,7 @@ func (h *Handler) buildActionEntry(
 	// pre-AB-47 events.image_url free-form column. The URL shape mirrors
 	// hfeed.mediaFileURL so the WP plugin and public feed agree on the
 	// canonical /v1/media-files/{uuid} host.
-	if url := posterURL(e); url != "" {
+	if url := posterURL(e, ae.posterMediaID); url != "" {
 		action["bigPosterUrl"] = url
 		action["smallPosterUrl"] = url
 	}
@@ -319,18 +343,29 @@ func (h *Handler) buildActionEntry(
 }
 
 // posterURL resolves the poster URL for a catalog event per spec §7.1
-// (feature #476 slice 18). Preference: poster_media_id (AB-47b) rendered
-// as /v1/media-files/{uuid} — the canonical media host used by hfeed's
-// public feed and the widget so the WP plugin sees the same artwork
-// as the browser. Fallback: legacy events.image_url (free-form URL from
-// the pre-AB-47 CMS). Returns "" when neither is set so the caller can
-// omit the JSON keys (matches the pre-slice behaviour: cover keys are
-// absent, not empty, when the event has no artwork).
+// (feature #476 slice 18, widened by feature #498). Preference order:
 //
-// Pure over gen.EventRow — no DB round-trip. The media_objects row does
-// not need to be resolved here because /v1/media-files/{id} streams the
-// bytes on demand and the WP plugin already follows that URL.
-func posterURL(e gen.EventRow) string {
+//  1. sessionPosterMediaID — the FIRST projected session's own poster
+//     override (migration 0082, spec §7.1 "постера сеанса"). This is the
+//     `posterMediaID` field of the loadActionEvents result, threaded in by
+//     buildActionEntry's caller; nil when that session has no override or
+//     the action has no projectable session at all.
+//  2. e.PosterMediaID — the event-level cover (AB-47b), unchanged from the
+//     pre-#498 behaviour so events without a per-session override keep
+//     working exactly as before.
+//  3. e.ImageURL — legacy free-form URL from the pre-AB-47 CMS.
+//
+// All three render through the canonical /v1/media-files/{uuid} host except
+// the legacy passthrough, matching hfeed.mediaFileURL so the WP plugin and
+// the public feed always agree on the artwork host. Returns "" when none of
+// the three is set so the caller can omit the JSON keys.
+//
+// Pure over gen.EventRow plus the optional session override — no DB
+// round-trip of its own.
+func posterURL(e gen.EventRow, sessionPosterMediaID *uuid.UUID) string {
+	if sessionPosterMediaID != nil {
+		return "/v1/media-files/" + sessionPosterMediaID.String()
+	}
 	if e.PosterMediaID != nil {
 		return "/v1/media-files/" + e.PosterMediaID.String()
 	}
@@ -338,6 +373,29 @@ func posterURL(e gen.EventRow) string {
 		return *e.ImageURL
 	}
 	return ""
+}
+
+// prewarmVenueTreeCompatIDs batch-resolves every country/city/venue id that
+// buildCountryCityLists is about to look up individually, via three
+// EnsureMany round-trip pairs (one per kind) instead of one compatEnsure
+// call per row of the venue tree. Feature #498 (W1-B3b) — see compat_ids.go's
+// cache doc comment.
+func (h *Handler) prewarmVenueTreeCompatIDs(ctx context.Context, rows []gen.ActionVenueRow) {
+	countryIDs := make([]uuid.UUID, 0, len(rows))
+	cityIDs := make([]uuid.UUID, 0, len(rows))
+	venueIDs := make([]uuid.UUID, 0, len(rows))
+	for _, r := range rows {
+		if r.CountryID != nil {
+			countryIDs = append(countryIDs, *r.CountryID)
+		}
+		if r.CityID != nil {
+			cityIDs = append(cityIDs, *r.CityID)
+		}
+		venueIDs = append(venueIDs, r.VenueID)
+	}
+	h.prewarmCompatIDs(ctx, compatids.KindCountry, countryIDs)
+	h.prewarmCompatIDs(ctx, compatids.KindCity, cityIDs)
+	h.prewarmCompatIDs(ctx, compatids.KindVenue, venueIDs)
 }
 
 // buildCountryCityLists projects a ListActionVenuesByOrg result set into

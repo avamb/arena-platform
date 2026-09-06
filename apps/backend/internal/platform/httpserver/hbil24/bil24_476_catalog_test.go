@@ -359,6 +359,48 @@ func TestBil24_476_BuildActionEntry_PosterPreference(t *testing.T) {
 	}
 }
 
+// TestBil24_498_BuildActionEntry_SessionPosterPreference pins the feature
+// #498 widening of the cover resolution: the action's first projected
+// session's OWN poster override (ae.posterMediaID, sessions.poster_media_id
+// per migration 0082) wins over BOTH the event's poster_media_id and its
+// legacy image_url. This is a strict superset of
+// TestBil24_476_BuildActionEntry_PosterPreference, which only covers the
+// two event-level sources.
+func TestBil24_498_BuildActionEntry_SessionPosterPreference(t *testing.T) {
+	h := &Handler{}
+	ctx := context.Background()
+
+	sessionPosterID := uuid.MustParse("22222222-2222-4222-8222-222222222222")
+	eventPosterID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
+	legacy := "https://legacy.example.com/poster.jpg"
+
+	// Session override present alongside BOTH event-level sources: session
+	// wins.
+	row := gen.EventRow{
+		ID:            uuid.New(),
+		Name:          "Session wins",
+		Status:        "published",
+		PosterMediaID: &eventPosterID,
+		ImageURL:      &legacy,
+	}
+	entry := h.buildActionEntry(ctx, row, 0, "", catalogAction{posterMediaID: &sessionPosterID})
+	wantMedia := "/v1/media-files/" + sessionPosterID.String()
+	if got := entry["bigPosterUrl"]; got != wantMedia {
+		t.Errorf("bigPosterUrl = %v, want %q (session poster must win over event poster/image_url)", got, wantMedia)
+	}
+	if got := entry["smallPosterUrl"]; got != wantMedia {
+		t.Errorf("smallPosterUrl = %v, want %q", got, wantMedia)
+	}
+
+	// No session override: falls through to the event-level chain exactly
+	// as feature #476 pinned it (event poster_media_id wins over image_url).
+	entry = h.buildActionEntry(ctx, row, 0, "", catalogAction{})
+	wantEventMedia := "/v1/media-files/" + eventPosterID.String()
+	if got := entry["bigPosterUrl"]; got != wantEventMedia {
+		t.Errorf("bigPosterUrl = %v, want %q (fallback to event poster_media_id)", got, wantEventMedia)
+	}
+}
+
 // TestBil24_476_BuildActionEntry_Organizer pins the slice-19 spec §7.1
 // additions on the actionList entry body: organizerId is projected from
 // organizations.display_number (int64, migration 0072) and organizerName

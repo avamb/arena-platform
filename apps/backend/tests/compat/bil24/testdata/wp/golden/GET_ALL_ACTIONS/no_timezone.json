@@ -8,6 +8,7 @@
     {
       "actionId": "{{noTZActionId}}",
       "actionName": "{{noTZActionName}}",
+      "fullActionName": "{{noTZActionName}}",
       "organizerId": "{{organizerId}}",
       "organizerName": "{{organizerName}}",
       "firstEventDate": "{{utcDay}}",

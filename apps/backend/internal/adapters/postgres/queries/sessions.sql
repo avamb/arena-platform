@@ -192,6 +192,12 @@ WHERE  id = $1
 -- to be dropped from the response with a warn log in that case, so the column
 -- is projected rather than filtered in SQL — the handler needs the venue name
 -- for the log line.
+--
+-- poster_media_id / event_poster_media_id / event_image_url (feature #498,
+-- spec §7.1 "Постеры — публичный URL media_objects постера сеанса с fallback
+-- на events.image_url"): the three-tier cover resolution the handler applies
+-- is session override > event poster > legacy free-form URL, projected here
+-- so buildActionEntry needs no extra round-trip.
 SELECT s.id                                        AS session_id,
        s.event_id,
        s.venue_id,
@@ -202,6 +208,9 @@ SELECT s.id                                        AS session_id,
        trim(s.currency)::text                      AS currency,
        s.admission_mode,
        sp.name                                     AS seating_plan_name,
+       s.poster_media_id,
+       e.poster_media_id                           AS event_poster_media_id,
+       e.image_url                                 AS event_image_url,
        (SELECT min(tt.sale_window_end)
           FROM   ticket_tiers tt
           WHERE  tt.session_id = s.id

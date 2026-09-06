@@ -243,6 +243,83 @@ func runScenario01Catalog(t *testing.T, st *harnessState) {
 		sc1WantNumber(t, hCats[0], "availability", 10)
 	})
 
+	// ── DST boundary venue (golden: dst_jerusalem.json) ─────────────────────
+	//
+	// spec §7.1 / feature #498: day/time/sellEndTime must use the offset that
+	// is ACTUALLY in effect at each session's own start_at, not a single
+	// offset cached for the venue. Asia/Jerusalem is the venue: two sessions
+	// of the same event straddle the next winter/summer transition so one
+	// renders at +02:00 (IST) and the other at +03:00 (IDT) — a bug that
+	// hardcodes the venue's "current" offset would render both alike.
+	t.Run("dst_jerusalem", func(t *testing.T) {
+		beforeUTC, afterUTC := sc1JerusalemDSTStraddle(t)
+		_, beforeSessID, afterSessID := sc1SeedDSTJerusalemEvent(t, st, beforeUTC, afterUTC)
+		beforeEventID := mustActionEventID(t, st, beforeSessID)
+		afterEventID := mustActionEventID(t, st, afterSessID)
+
+		jLoc, err := time.LoadLocation("Asia/Jerusalem")
+		if err != nil {
+			t.Fatalf("load Asia/Jerusalem: %v", err)
+		}
+		beforeLocal := beforeUTC.In(jLoc)
+		afterLocal := afterUTC.In(jLoc)
+		_, beforeZoneOff := beforeLocal.Zone()
+		_, afterZoneOff := afterLocal.Zone()
+		if beforeZoneOff == afterZoneOff {
+			t.Fatalf("test fixture bug: chosen instants %v / %v do not straddle a DST change (both offset %ds)", beforeUTC, afterUTC, beforeZoneOff)
+		}
+
+		dReq, dGolden := loadWPFixture(t, "GET_ALL_ACTIONS", "dst_jerusalem")
+		dReq["fid"] = st.ChannelFID
+		dReq["token"] = st.ChannelToken
+		dResp := postBil24(t, base, dReq)
+		if code := numberField(t, dResp, "resultCode"); code != 0 {
+			t.Fatalf("dst_jerusalem GET_ALL_ACTIONS resultCode = %v, want 0", code)
+		}
+
+		dAction := sc1FindActionByEvent(t, dResp, float64(beforeEventID))
+		dGoldenAction := sc1Objects(t, resolveGolden(dGolden, st), "actionList")[0]
+		compareKeys(t, "dst_jerusalem actionList entry", dAction, dGoldenAction)
+
+		dEvents := sc1Objects(t, dAction, "actionEventList")
+		if len(dEvents) != 2 {
+			t.Fatalf("dst_jerusalem actionEventList has %d entries, want 2 (one each side of the DST change)", len(dEvents))
+		}
+		beforeEvent := sc1FindEvent(t, dEvents, float64(beforeEventID))
+		afterEvent := sc1FindEvent(t, dEvents, float64(afterEventID))
+		dGoldenEvent := sc1Objects(t, dGoldenAction, "actionEventList")[0]
+		compareKeys(t, "dst_jerusalem actionEvent (before)", beforeEvent, dGoldenEvent)
+		compareKeys(t, "dst_jerusalem actionEvent (after)", afterEvent, dGoldenEvent)
+
+		sc1WantString(t, beforeEvent, "day", beforeLocal.Format("02.01.2006")) // allow:timeformat: spec §7.1 DD.MM.YYYY
+		sc1WantString(t, beforeEvent, "time", beforeLocal.Format("15:04"))     // allow:timeformat: spec §7.1 HH:MM local
+		sc1WantString(t, afterEvent, "day", afterLocal.Format("02.01.2006"))   // allow:timeformat: spec §7.1 DD.MM.YYYY
+		sc1WantString(t, afterEvent, "time", afterLocal.Format("15:04"))       // allow:timeformat: spec §7.1 HH:MM local
+
+		wantBeforeSellEnd := beforeLocal.Format(time.RFC3339)
+		wantAfterSellEnd := afterLocal.Format(time.RFC3339)
+		sc1WantString(t, beforeEvent, "sellEndTime", wantBeforeSellEnd)
+		sc1WantString(t, afterEvent, "sellEndTime", wantAfterSellEnd)
+
+		// The offsets must differ — this is the assertion the whole sub-test
+		// exists for. A handler that caches "the" venue offset once would make
+		// these equal and every value assertion above would still coincidentally
+		// pass for whichever session it got right.
+		beforeParsed, err := time.Parse(time.RFC3339, wantBeforeSellEnd)
+		if err != nil {
+			t.Fatalf("before sellEndTime %q does not parse: %v", wantBeforeSellEnd, err)
+		}
+		afterParsed, err := time.Parse(time.RFC3339, wantAfterSellEnd)
+		if err != nil {
+			t.Fatalf("after sellEndTime %q does not parse: %v", wantAfterSellEnd, err)
+		}
+		_, beforeOff := beforeParsed.Zone()
+		_, afterOff := afterParsed.Zone()
+		if beforeOff == afterOff {
+			t.Errorf("before/after sellEndTime carry the same UTC offset (%ds); expected them to differ across the DST change", beforeOff)
+		}
+	})
+
 	// ── venue without a timezone (golden: no_timezone.json) ─────────────────
 	t.Run("no_timezone", func(t *testing.T) {
 		noTZEventUUID := sc1SeedNoTimezoneEvent(t, st, startAt, endAt)
@@ -432,6 +509,101 @@ func sc1SeedNoTimezoneEvent(t *testing.T, st *harnessState, start, end time.Time
 		t.Fatalf("seed no-timezone session: %v", err)
 	}
 	return eventID
+}
+
+// sc1JerusalemDSTStraddle scans forward from now, day by day, for the next
+// Asia/Jerusalem UTC-offset change and returns one instant 20 days before it
+// and one 20 days after — both guaranteed to be in the future (so the
+// GET_ALL_ACTIONS "sellable" window admits them) and on opposite sides of the
+// transition, without hardcoding Israel's DST calendar rule (which the IANA
+// database can revise). Bounded to one year out; Israel changes DST at least
+// twice a year, so this always finds one well inside that horizon.
+func sc1JerusalemDSTStraddle(t *testing.T) (before, after time.Time) {
+	t.Helper()
+	loc, err := time.LoadLocation("Asia/Jerusalem")
+	if err != nil {
+		t.Fatalf("load Asia/Jerusalem: %v", err)
+	}
+	start := time.Now().UTC().Add(21 * 24 * time.Hour)
+	_, startOff := start.In(loc).Zone()
+	for d := 1; d <= 365; d++ {
+		cur := start.Add(time.Duration(d) * 24 * time.Hour)
+		_, off := cur.In(loc).Zone()
+		if off != startOff {
+			return start, cur.Add(20 * 24 * time.Hour)
+		}
+	}
+	t.Fatal("no Asia/Jerusalem DST transition found within a year of now — IANA tzdata missing/stale?")
+	return time.Time{}, time.Time{}
+}
+
+// sc1SeedDSTJerusalemEvent creates a venue on Asia/Jerusalem and one published
+// event with two general-admission sessions at the given UTC instants (one
+// each side of a DST change), each with its own priced tier and five ga_unit
+// rows. Registers full teardown.
+func sc1SeedDSTJerusalemEvent(t *testing.T, st *harnessState, beforeUTC, afterUTC time.Time) (eventID uuid.UUID, beforeSessID, afterSessID string) {
+	t.Helper()
+	ctx := context.Background()
+
+	venueID := uuid.New()
+	if _, err := st.Pool.Exec(ctx,
+		`INSERT INTO venues (id, org_id, city_id, name, country, timezone)
+		 SELECT $1, $2, v.city_id, $3, 'IL', 'Asia/Jerusalem'
+		   FROM venues v WHERE v.id = $4`,
+		venueID, st.OrgID, "W1 Harness Jerusalem venue "+venueID.String()[:8], st.VenueID,
+	); err != nil {
+		t.Fatalf("seed Asia/Jerusalem venue: %v", err)
+	}
+
+	eventID = uuid.New()
+	if _, err := st.Pool.Exec(ctx,
+		`INSERT INTO events (id, org_id, name, status, visibility)
+		 VALUES ($1, $2, $3, 'published', 'public')`,
+		eventID, st.OrgID, "W1 Harness DST "+eventID.String()[:8],
+	); err != nil {
+		t.Fatalf("seed DST event: %v", err)
+	}
+	sc1RegisterEventCleanup(t, st, eventID, venueID)
+
+	seedSession := func(startAt time.Time) uuid.UUID {
+		sessID := uuid.New()
+		endAt := startAt.Add(2 * time.Hour)
+		if _, err := st.Pool.Exec(ctx,
+			`INSERT INTO sessions
+			     (id, event_id, venue_id, start_at, end_at, capacity_total,
+			      status, admission_mode, currency, currency_source)
+			 VALUES ($1, $2, $3, $4, $5, 5, 'scheduled', 'general_admission',
+			         'ILS', 'override')`,
+			sessID, eventID, venueID, startAt, endAt,
+		); err != nil {
+			t.Fatalf("seed DST session: %v", err)
+		}
+		var tierID uuid.UUID
+		if err := st.Pool.QueryRow(ctx,
+			`INSERT INTO ticket_tiers (session_id, name, pricing_mode,
+			     price_amount, currency, sort_order)
+			 VALUES ($1, 'Standard', 'fixed', 1000, 'ILS', 0)
+			 RETURNING id`, sessID,
+		).Scan(&tierID); err != nil {
+			t.Fatalf("seed DST tier: %v", err)
+		}
+		if _, err := st.Pool.Exec(ctx,
+			`INSERT INTO session_seats
+			     (session_id, seat_key, sector_name, row_name, seat_number,
+			      tier_id, status, kind)
+			 SELECT $1, 'dst|pool|' || lpad(gs::text, 6, '0'), '', '', '',
+			        $2, 'available', 'ga_unit'
+			 FROM generate_series(1, 5) gs`,
+			sessID, tierID,
+		); err != nil {
+			t.Fatalf("seed DST ga_units: %v", err)
+		}
+		return sessID
+	}
+
+	beforeSessID = seedSession(beforeUTC).String()
+	afterSessID = seedSession(afterUTC).String()
+	return eventID, beforeSessID, afterSessID
 }
 
 // sc1RegisterEventCleanup tears down one scenario-local event (and optionally

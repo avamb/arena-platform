@@ -116,3 +116,54 @@ func (q *Queries) RegisterExternalCompatibilityID(ctx context.Context, kind stri
 	row := q.db.QueryRow(ctx, registerExternalCompatibilityID, kind, platformID, systemID)
 	return scanCompatibilityIDRow(row)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BulkInsertCompatibilityIDs / ListCompatibilityIDsByPlatformIDs — feature
+// #498 (W1-B3b): the genuinely-batched pair behind compatids.EnsureMany,
+// two round trips regardless of N. See doc comment on EnsureMany.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const bulkInsertCompatibilityIDs = `-- name: BulkInsertCompatibilityIDs :exec
+INSERT INTO compatibility_id_map (kind, platform_id, system_id, source)
+SELECT $1, pid, nextval('compatibility_system_id_seq'), 'arena'
+FROM   unnest($2::uuid[]) AS pid
+ON CONFLICT (kind, platform_id) DO NOTHING`
+
+// BulkInsertCompatibilityIDs mints an arena-owned system_id for every
+// platformID of kind that does not already have one, in a single round
+// trip. Rows that already exist are silently skipped by ON CONFLICT DO
+// NOTHING — callers MUST follow up with ListCompatibilityIDsByPlatformIDs to
+// read back the full (pre-existing + freshly minted) id set.
+func (q *Queries) BulkInsertCompatibilityIDs(ctx context.Context, kind string, platformIDs []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, bulkInsertCompatibilityIDs, kind, platformIDs)
+	return err
+}
+
+const listCompatibilityIDsByPlatformIDs = `-- name: ListCompatibilityIDsByPlatformIDs :many
+SELECT kind, system_id, platform_id, source, created_at
+FROM   compatibility_id_map
+WHERE  kind = $1
+  AND  platform_id = ANY($2::uuid[])`
+
+// ListCompatibilityIDsByPlatformIDs resolves every (kind, platform_id) pair
+// in platformIDs to its compat row in a single round trip. Platform ids with
+// no matching row are simply absent from the result (never an error) —
+// callers that require every input to resolve check the returned slice
+// length against len(platformIDs) themselves.
+func (q *Queries) ListCompatibilityIDsByPlatformIDs(ctx context.Context, kind string, platformIDs []uuid.UUID) ([]CompatibilityIDRow, error) {
+	rows, err := q.db.Query(ctx, listCompatibilityIDsByPlatformIDs, kind, platformIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []CompatibilityIDRow
+	for rows.Next() {
+		r, err := scanCompatibilityIDRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

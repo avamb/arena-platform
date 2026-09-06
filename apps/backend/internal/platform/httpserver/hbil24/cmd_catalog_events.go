@@ -25,6 +25,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 )
 
@@ -44,6 +45,13 @@ type catalogAction struct {
 	minPrice int64
 	maxPrice int64
 	hasPrice bool
+	// posterMediaID is the poster override of the action's FIRST projected
+	// (earliest, venue-local) session, spec §7.1 feature #498: "Постеры —
+	// публичный URL media_objects постера сеанса с fallback на
+	// events.image_url". Sessions arrive ordered by start_at ASC, so the
+	// first entry appended to `events` fixes this value; later sessions of
+	// the same action never override it — one action, one cover.
+	posterMediaID *uuid.UUID
 }
 
 // loadActionEvents builds the whole actionEventList subtree for orgID, keyed
@@ -64,6 +72,31 @@ func (h *Handler) loadActionEvents(
 	if err != nil {
 		return nil, err
 	}
+
+	// Feature #498 (W1-B3b): batch-resolve every action_event / venue / city /
+	// category_price id up front — one EnsureMany round-trip pair per kind for
+	// the WHOLE catalog — instead of the per-session / per-tier compatEnsure
+	// calls inside projectActionEvents / projectCategories each doing their
+	// own single-row Ensure. See compat_ids.go's cache doc comment for the
+	// N+1 story this fixes (100 events x 3 sessions took 1.3s before this).
+	sessionIDs := make([]uuid.UUID, 0, len(sessions))
+	venueIDs := make([]uuid.UUID, 0, len(sessions))
+	cityIDs := make([]uuid.UUID, 0, len(sessions))
+	for _, s := range sessions {
+		sessionIDs = append(sessionIDs, s.SessionID)
+		venueIDs = append(venueIDs, s.VenueID)
+		if s.CityID != nil {
+			cityIDs = append(cityIDs, *s.CityID)
+		}
+	}
+	tierIDs := make([]uuid.UUID, 0, len(tiers))
+	for _, t := range tiers {
+		tierIDs = append(tierIDs, t.Tier.ID)
+	}
+	h.prewarmCompatIDs(ctx, compatids.KindActionEvent, sessionIDs)
+	h.prewarmCompatIDs(ctx, compatids.KindVenue, venueIDs)
+	h.prewarmCompatIDs(ctx, compatids.KindCity, cityIDs)
+	h.prewarmCompatIDs(ctx, compatids.KindCategoryPrice, tierIDs)
 
 	// One batched resolve for every tier in the catalog. priceresolve is the
 	// single authority on scheduled price windows (AB-48); reading
@@ -194,6 +227,13 @@ func (h *Handler) projectActionEvents(
 		entry["minPrice"] = minPrice
 
 		acc := out[s.EventID]
+		if len(acc.events) == 0 {
+			// First (earliest) session of this action: fixes the action's
+			// cover per spec §7.1. s.PosterMediaID is the session's OWN
+			// override; buildActionEntry falls further back to the event's
+			// poster / image_url when it is nil.
+			acc.posterMediaID = s.PosterMediaID
+		}
 		acc.events = append(acc.events, entry)
 		if hasPrice {
 			if !acc.hasPrice || minPrice < acc.minPrice {

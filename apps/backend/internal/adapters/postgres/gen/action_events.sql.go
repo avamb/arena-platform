@@ -44,20 +44,23 @@ import (
 // tier bounds its sale window — the handler then falls back to StartAt as the
 // spec requires.
 type ActionEventRow struct {
-	SessionID       uuid.UUID  `json:"session_id"`
-	EventID         uuid.UUID  `json:"event_id"`
-	VenueID         uuid.UUID  `json:"venue_id"`
-	CityID          *uuid.UUID `json:"city_id"`
-	VenueName       string     `json:"venue_name"`
-	Timezone        *string    `json:"timezone"`
-	StartAt         time.Time  `json:"start_at"`
-	Currency        string     `json:"currency"`
-	AdmissionMode   string     `json:"admission_mode"`
-	SeatingPlanName *string    `json:"seating_plan_name"`
-	SellEndAt       *time.Time `json:"sell_end_at"`
-	SeatsTotal      int32      `json:"seats_total"`
-	SeatsAvailable  int32      `json:"seats_available"`
-	LedgerAvailable int32      `json:"ledger_available"`
+	SessionID          uuid.UUID  `json:"session_id"`
+	EventID            uuid.UUID  `json:"event_id"`
+	VenueID            uuid.UUID  `json:"venue_id"`
+	CityID             *uuid.UUID `json:"city_id"`
+	VenueName          string     `json:"venue_name"`
+	Timezone           *string    `json:"timezone"`
+	StartAt            time.Time  `json:"start_at"`
+	Currency           string     `json:"currency"`
+	AdmissionMode      string     `json:"admission_mode"`
+	SeatingPlanName    *string    `json:"seating_plan_name"`
+	PosterMediaID      *uuid.UUID `json:"poster_media_id"`
+	EventPosterMediaID *uuid.UUID `json:"event_poster_media_id"`
+	EventImageURL      *string    `json:"event_image_url"`
+	SellEndAt          *time.Time `json:"sell_end_at"`
+	SeatsTotal         int32      `json:"seats_total"`
+	SeatsAvailable     int32      `json:"seats_available"`
+	LedgerAvailable    int32      `json:"ledger_available"`
 }
 
 const listActionEventsByOrg = `-- name: ListActionEventsByOrg :many
@@ -71,6 +74,9 @@ SELECT s.id                                        AS session_id,
        trim(s.currency)::text                      AS currency,
        s.admission_mode,
        sp.name                                     AS seating_plan_name,
+       s.poster_media_id,
+       e.poster_media_id                           AS event_poster_media_id,
+       e.image_url                                 AS event_image_url,
        (SELECT min(tt.sale_window_end)
           FROM   ticket_tiers tt
           WHERE  tt.session_id = s.id
@@ -130,6 +136,9 @@ func (q *Queries) ListActionEventsByOrg(ctx context.Context, orgID uuid.UUID) ([
 			&r.Currency,
 			&r.AdmissionMode,
 			&r.SeatingPlanName,
+			&r.PosterMediaID,
+			&r.EventPosterMediaID,
+			&r.EventImageURL,
 			&r.SellEndAt,
 			&r.SeatsTotal,
 			&r.SeatsAvailable,

@@ -125,29 +125,58 @@ func Ensure(ctx context.Context, db gen.DBTX, kind Kind, platformID uuid.UUID) (
 	return existing.SystemID, nil
 }
 
-// EnsureMany batches Ensure for a slice of platform ids of the same kind.
-// The returned map preserves the input order semantics: caller can index by
-// platformID to get the system_id. Duplicate platformIDs in the input are
-// deduplicated silently.
+// EnsureMany batches Ensure for a slice of platform ids of the same kind in
+// exactly two round trips regardless of N: one bulk INSERT ... ON CONFLICT
+// DO NOTHING (unnest'd from the slice), then one bulk SELECT ... WHERE
+// platform_id = ANY(...) to read back the full id set (pre-existing rows the
+// insert skipped plus the ones it just minted). The returned map preserves
+// the input order semantics: caller can index by platformID to get the
+// system_id. Duplicate and uuid.Nil platformIDs in the input are
+// deduplicated / dropped silently; an empty (or all-Nil) input is a no-op
+// that returns an empty map without touching the database.
 //
-// The current implementation calls Ensure sequentially because
-// compatibility_id_map is a very small hot table and each ON CONFLICT DO
-// NOTHING is a single round trip. Batching to a single VALUES () statement
-// is a future optimisation guarded by a benchmark, not a correctness need.
+// This is the fix for feature #498 (W1-B3b): GET_ALL_ACTIONS over a
+// 100-event/300-session catalog was doing 700+ sequential single-row
+// Ensure round trips (one per event, session and tier) before this
+// function existed in genuinely-batched form — see
+// scenario01_catalog_perf_test.go's 200ms budget. Handler callers must
+// collect every platform id of a kind up front and call this once per kind
+// instead of calling Ensure per entity while building the response.
 func EnsureMany(ctx context.Context, db gen.DBTX, kind Kind, platformIDs []uuid.UUID) (map[uuid.UUID]int64, error) {
 	if err := ValidateKind(kind); err != nil {
 		return nil, err
 	}
-	out := make(map[uuid.UUID]int64, len(platformIDs))
+
+	dedup := make([]uuid.UUID, 0, len(platformIDs))
+	seen := make(map[uuid.UUID]struct{}, len(platformIDs))
 	for _, pid := range platformIDs {
-		if _, ok := out[pid]; ok {
+		if pid == uuid.Nil {
 			continue
 		}
-		id, err := Ensure(ctx, db, kind, pid)
-		if err != nil {
-			return nil, err
+		if _, ok := seen[pid]; ok {
+			continue
 		}
-		out[pid] = id
+		seen[pid] = struct{}{}
+		dedup = append(dedup, pid)
+	}
+	out := make(map[uuid.UUID]int64, len(dedup))
+	if len(dedup) == 0 {
+		return out, nil
+	}
+
+	q := gen.New(db)
+	if err := q.BulkInsertCompatibilityIDs(ctx, string(kind), dedup); err != nil {
+		return nil, fmt.Errorf("compatids.EnsureMany: bulk insert (%s, n=%d): %w", kind, len(dedup), err)
+	}
+	rows, err := q.ListCompatibilityIDsByPlatformIDs(ctx, string(kind), dedup)
+	if err != nil {
+		return nil, fmt.Errorf("compatids.EnsureMany: bulk read-back (%s, n=%d): %w", kind, len(dedup), err)
+	}
+	for _, r := range rows {
+		out[r.PlatformID] = r.SystemID
+	}
+	if len(out) != len(dedup) {
+		return nil, fmt.Errorf("compatids.EnsureMany: (%s) requested %d distinct platform ids, resolved only %d — a concurrent delete or a schema invariant violation", kind, len(dedup), len(out))
 	}
 	return out, nil
 }

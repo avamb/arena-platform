@@ -34,13 +34,78 @@ func newFake() *fakeDBTX {
 	}
 }
 
-func (f *fakeDBTX) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
-	panic("fakeDBTX: Exec not implemented")
+// Exec implements the BulkInsertCompatibilityIDs branch: mint a fresh
+// arena-owned row (via execEnsure's same insert semantics) for every
+// platform id that does not already exist, silently skipping ones that do —
+// mirroring the real query's ON CONFLICT DO NOTHING.
+func (f *fakeDBTX) Exec(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	if !containsTag(sql, "BulkInsertCompatibilityIDs") {
+		panic("fakeDBTX: unrecognised exec: " + sql)
+	}
+	kind := args[0].(string)
+	pids := args[1].([]uuid.UUID)
+	for _, pid := range pids {
+		if _, ok := f.byPlatform[kind+":"+pid.String()]; ok {
+			continue
+		}
+		row := gen.CompatibilityIDRow{
+			Kind:       kind,
+			SystemID:   f.nextSeq,
+			PlatformID: pid,
+			Source:     "arena",
+		}
+		f.nextSeq++
+		f.byPlatform[kind+":"+pid.String()] = row
+		f.bySystem[kind+":"+itoa(row.SystemID)] = row
+	}
+	return pgconn.CommandTag{}, nil
 }
 
-func (f *fakeDBTX) Query(context.Context, string, ...any) (pgx.Rows, error) {
-	panic("fakeDBTX: Query not implemented")
+// Query implements the ListCompatibilityIDsByPlatformIDs branch: return
+// every already-registered row (kind, platform_id) pair matching the
+// requested ids, in an arbitrary order — mirroring the real query's lack of
+// an ORDER BY.
+func (f *fakeDBTX) Query(_ context.Context, sql string, args ...any) (pgx.Rows, error) {
+	if !containsTag(sql, "ListCompatibilityIDsByPlatformIDs") {
+		panic("fakeDBTX: unrecognised query: " + sql)
+	}
+	kind := args[0].(string)
+	pids := args[1].([]uuid.UUID)
+	var rows []gen.CompatibilityIDRow
+	for _, pid := range pids {
+		if row, ok := f.byPlatform[kind+":"+pid.String()]; ok {
+			rows = append(rows, row)
+		}
+	}
+	return &fakeRows{rows: rows, idx: -1}, nil
 }
+
+// fakeRows is a minimal pgx.Rows implementation over an in-memory slice,
+// backing fakeDBTX.Query above.
+type fakeRows struct {
+	rows []gen.CompatibilityIDRow
+	idx  int
+}
+
+func (r *fakeRows) Close()                                       {}
+func (r *fakeRows) Err() error                                   { return nil }
+func (r *fakeRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
+func (r *fakeRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
+func (r *fakeRows) Next() bool {
+	r.idx++
+	return r.idx < len(r.rows)
+}
+func (r *fakeRows) Scan(dest ...any) error {
+	row := r.rows[r.idx]
+	*(dest[0].(*string)) = row.Kind
+	*(dest[1].(*int64)) = row.SystemID
+	*(dest[2].(*uuid.UUID)) = row.PlatformID
+	*(dest[3].(*string)) = row.Source
+	return nil
+}
+func (r *fakeRows) Values() ([]any, error) { panic("fakeRows: Values not implemented") }
+func (r *fakeRows) RawValues() [][]byte    { panic("fakeRows: RawValues not implemented") }
+func (r *fakeRows) Conn() *pgx.Conn        { return nil }
 
 // QueryRow parses the query SQL text by prefix (the first line of the query
 // carries the sqlc `-- name: X :one` tag) and dispatches to the right

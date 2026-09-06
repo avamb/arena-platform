@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"github.com/google/uuid"
 
@@ -28,6 +29,107 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 )
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Request-scoped compat-id cache (feature #498, W1-B3b)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// GET_ALL_ACTIONS was calling compatids.Ensure once per event, per session and
+// per ticket tier while building the response — with a catalog of 100 events
+// x 3 sessions that is 700+ sequential DB round trips (~1.3s), blowing the
+// spec §7.1 "no N+1" budget by an order of magnitude
+// (scenario01_catalog_perf_test.go). The fix is a request-scoped cache
+// carried on the context: a handler that knows all the platform ids it will
+// need up front (loadActionEvents, buildCountryCityLists) calls
+// prewarmCompatIDs once per kind — a genuine 2-round-trip
+// compatids.EnsureMany — and every subsequent per-entity compatEnsure call
+// for an id already in the cache becomes a pure map lookup. A cache miss
+// (an id nothing prewarmed) still falls back to the old single-entity
+// compatids.Ensure path so correctness never depends on prewarming being
+// exhaustive — only performance does.
+
+type compatCacheCtxKey struct{}
+
+// compatCache is a mutex-guarded id map keyed first by compatids.Kind, then
+// by platform uuid. Safe for concurrent use, though in practice a single
+// gateway command handles one request on one goroutine.
+type compatCache struct {
+	mu sync.Mutex
+	m  map[compatids.Kind]map[uuid.UUID]int64
+}
+
+// withCompatCache attaches a fresh, empty compatCache to ctx. Handlers that
+// intend to prewarm call this once at the top of the command before any
+// compatEnsure / prewarmCompatIDs call.
+func withCompatCache(ctx context.Context) context.Context {
+	return context.WithValue(ctx, compatCacheCtxKey{}, &compatCache{
+		m: make(map[compatids.Kind]map[uuid.UUID]int64),
+	})
+}
+
+func compatCacheFromContext(ctx context.Context) *compatCache {
+	c, _ := ctx.Value(compatCacheCtxKey{}).(*compatCache)
+	return c
+}
+
+func (c *compatCache) get(kind compatids.Kind, id uuid.UUID) (int64, bool) {
+	if c == nil {
+		return 0, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok := c.m[kind][id]
+	return v, ok
+}
+
+func (c *compatCache) put(kind compatids.Kind, resolved map[uuid.UUID]int64) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	dst := c.m[kind]
+	if dst == nil {
+		dst = make(map[uuid.UUID]int64, len(resolved))
+		c.m[kind] = dst
+	}
+	for k, v := range resolved {
+		dst[k] = v
+	}
+}
+
+// prewarmCompatIDs batch-resolves every id in ids (of the same kind) through
+// compatids.EnsureMany — two round trips regardless of len(ids) — and stores
+// the result in ctx's compatCache so the per-entity compatEnsure calls that
+// follow become map lookups instead of individual DB round trips.
+//
+// A no-op when h.compatDB is nil (fallback/unit-test mode — nothing to
+// prewarm), ids is empty, or ctx carries no compatCache (withCompatCache was
+// not called — compatEnsure still works, just without the speed-up). A
+// prewarm failure is logged and swallowed rather than failing the command:
+// the per-entity compatEnsure fallback path still produces a correct (if
+// slower) response.
+func (h *Handler) prewarmCompatIDs(ctx context.Context, kind compatids.Kind, ids []uuid.UUID) {
+	if h.compatDB == nil || len(ids) == 0 {
+		return
+	}
+	cache := compatCacheFromContext(ctx)
+	if cache == nil {
+		return
+	}
+	resolved, err := compatids.EnsureMany(ctx, h.compatDB, kind, ids)
+	if err != nil {
+		if h.logger != nil {
+			h.logger.Error("bil24_compat: compatids.EnsureMany prewarm failed; falling back to per-entity Ensure",
+				slog.String("kind", string(kind)),
+				slog.Int("count", len(ids)),
+				slog.String("error", err.Error()),
+			)
+		}
+		return
+	}
+	cache.put(kind, resolved)
+}
 
 // ErrSeatIDInvalid is returned by resolveSeatToRow when the raw wire
 // value cannot be parsed as a legal seat identifier (int64 on the
@@ -240,6 +342,11 @@ func (h *Handler) validateSeatIDFormat(raw string) error {
 func (h *Handler) compatEnsure(ctx context.Context, kind compatids.Kind, platformID uuid.UUID, kindLabel string) any {
 	if h.compatDB == nil {
 		return TranslatePlatformID(platformID)
+	}
+	if cache := compatCacheFromContext(ctx); cache != nil {
+		if id, ok := cache.get(kind, platformID); ok {
+			return id
+		}
 	}
 	id, err := compatids.Ensure(ctx, h.compatDB, kind, platformID)
 	if err != nil {
