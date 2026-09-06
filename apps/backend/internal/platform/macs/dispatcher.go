@@ -470,7 +470,8 @@ func envelopeID(ev outbox.Event, fallback int64) int64 {
 // actionEventId) comes from compatibility_id_map via compatids (spec §10 M3),
 // never from a hash.
 func uuidInt63(id uuid.UUID) int64 {
-	return int64(binary.BigEndian.Uint64(id[:8]) &^ (1 << 63))
+	v := binary.BigEndian.Uint64(id[:8]) &^ (1 << 63)
+	return int64(v) // #nosec G115 -- sign bit cleared above, so v <= math.MaxInt64
 }
 
 // Compile-time interface guard.
