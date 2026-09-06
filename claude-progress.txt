@@ -27400,3 +27400,55 @@ Feature #501 - W1-B5b: GET /compat/bil24/image (sbt/1.0 seating plan)
   - go test -tags integration -run TestCompatBil24_508
     ./apps/backend/tests/compat/bil24/ against arena_postgres (port 55432)
     -> EXIT 0, PASS. No openapi change, no migration.
+
+=== Feature #497 - W1-B3a: GET_ALL_ACTIONS nested catalog (commit 5b53cf0) ===
+  Scope: nested actionEventList for the Bil24 compat catalog - dates in the
+  venue timezone, availability, GA-only categoryLimitList, seatingPlanId.
+  Step 1 - query + projection
+  - queries/sessions.sql: added ListActionEventsByOrg and
+    ListActionEventTiersByOrg. Both are org-scoped and filter published events
+    with scheduled sessions where start_at > now() - interval '6 hours'.
+  - gen/action_events.sql.go NEW: ActionEventRow / ActionEventTierRow plus the
+    two wrappers. is_ga is a PROJECTED boolean, not a filter, so seated tiers
+    still contribute to action minPrice/maxPrice. querier.go extended.
+  - hbil24/cmd_catalog_events.go NEW: loadActionEvents does exactly three
+    round-trips - sessions, tiers, priceresolve.ForTiers - so the catalog has
+    no N+1 regardless of how many events the org has.
+  - venueLocation warns bil24.venue_timezone_missing and returns nil when
+    venues.timezone IS NULL - the session is then SKIPPED, never rendered in
+    UTC. day is DD.MM.YYYY, time is HH:MM, both local wall clock, both marked
+    with // allow:timeformat:. sellEndTime is RFC3339 rendered .In(loc) so the
+    offset is the venue's, not Z.
+  - Category availability prefers the GA unit count and falls back to the
+    session-level number - seats when the session has seats, ledger otherwise.
+  Step 2 - goldens + harness scenario 1
+  - The #450 skeleton goldens used id/name/legalOwner. Corrected to spec 7.1
+    actionId/actionName/... and added seated, ga, hybrid and no_timezone
+    goldens plus their request fixtures. Goldens were written from the SPEC
+    TEXT and the code was made to match, never the other way round.
+  - scenario01_catalog_test.go NEW. It lives in its own file because it seeds
+    its own hybrid event and its own NULL-timezone venue - the shared harness
+    fixture cannot express either, and a golden that describes a shape the
+    server never returns is worthless.
+  - harness_test.go scenario 1 un-skipped - it now delegates in one line, so
+    the t.Run literal that TestCompatBil24_450_Harness_ScenarioCoverage greps
+    for stays in harness_test.go.
+  Trap worth remembering
+  - compareKeys in harness_test.go recurses into nested OBJECTS but NOT into
+    nested ARRAYS, so assertGoldenKeySet validates only the six top-level keys
+    of GET_ALL_ACTIONS. Any scenario asserting on actionList, actionEventList
+    or categoryList must walk the arrays itself and call compareKeys per
+    element - otherwise a completely wrong nested shape passes silently.
+  - Both seeded sessions share start_at, so ORDER BY start_at, id is
+    effectively random. Events are located by actionEventId, never by index.
+  - Sub-test t.Cleanup runs before the harness-level wire-row cleanup, so
+    sc1RegisterEventCleanup deletes its own compatibility_id_map rows first.
+  Gates - all green
+  - gofmt -l on all changed files incl. the integration-tagged ones -> empty
+  - go build ./... , go vet ./... -> EXIT 0
+  - go test ./... -> EXIT 0, no FAIL lines (log redirected, not piped)
+  - golangci-lint on hbil24 + gen -> 0 issues
+  - go test -tags integration ./apps/backend/tests/compat/bil24/... against
+    arena_postgres (55432) -> EXIT 0. Scenario 1 PASS with all three
+    sub-tests - org_isolation, hybrid, no_timezone.
+  No openapi change, no migration.
