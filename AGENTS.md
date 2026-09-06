@@ -248,6 +248,13 @@ entries short and factual.
   approval). An Integrator gate run that pushes to `master` cannot watch CI
   status afterward from this environment — check the GitHub Actions run
   manually (or via a session where `gh` is allowlisted) after pushing.
+- **`apps/backend/.gomodcache` is a gitignored local module cache that lives
+  INSIDE the repo tree on this host.** A repo-wide `gofmt -l .` (or any other
+  recursive source scan) run from the repo root walks into it and reports
+  hundreds of "violations" in third-party dependency source — none of it is
+  our code and none of it should be fixed. Scope `gofmt -l`/similar sweeps to
+  the real source dirs (`apps/backend/{cmd,internal,tests,tools}`) instead of
+  the bare repo root.
 - **Stale `.claude/worktrees/*` directories accumulate** from old isolated
   agent runs and pollute repo-wide sweeps (e.g. `gofmt -l .` reports hits
   inside them). During an Integrator gate pass, check `git worktree list` for

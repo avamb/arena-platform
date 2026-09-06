@@ -28549,3 +28549,44 @@ Gates: `go build`/`go vet` (plain and `-tags integration`) clean, full
 `go test ./apps/backend/...` EXIT:0 judged from a log file rather than a
 pipeline, golangci-lint clean on the touched packages, gofmt applied to every
 changed file including the integration-tagged one.
+
+================================================================================
+Integration gate re-run 2026-09-06 (post #513/#514/#515/#516/#517) — GREEN,
+no drift found
+================================================================================
+
+Stats: 495/522 passing, 0 in-progress, 0 needs-human-input at gate time.
+
+Gates run, all clean:
+- `go.exe build ./...`, `go.exe vet ./apps/backend/...` (plain and
+  `-tags integration`) — EXIT 0.
+- Full `go.exe test ./...` judged from a log file, never a pipeline —
+  EXIT 0, zero FAIL lines, 71 `ok` package lines.
+- `gofmt -l` on `apps/backend/{cmd,internal,tests,tools}` (excluding the
+  gitignored `apps/backend/.gomodcache` vendor cache, which is NOT source
+  and gofmt-dirty by nature from third-party deps) — silent.
+- `golangci-lint@latest run ./apps/backend/...` — "0 issues."
+- Codegen drift: regenerated `openapi30gen` + `oapi-codegen@v2.4.1` +
+  `gen-ts-client.mjs` against the live spec; `git status` on
+  `apps/backend/openapi` came back clean both times — no drift.
+- Migration-head pin: `TestHead_KnownCurrentHead` expects
+  `0097_api_key_role_grants.sql`; that IS the actual max-numbered file in
+  `internal/migrations/sql/` — pin correct, no update needed.
+- Integration suite (`-tags integration`, live `arena_postgres` stand,
+  DSN split around the `postgres` token per the AGENTS.md convention) —
+  green overall (EXIT 0), with the ALREADY-DOCUMENTED transient flake
+  reproduced again: `TestDelivery_SMTPSuccess` and
+  `TestWorkerIntegration109_SubmitAndConsume` failed with "rootless Docker
+  is not supported on Windows" under full-suite parallel testcontainers
+  load, then passed cleanly (`ok`, no retries) when the two packages were
+  re-run in isolation. Not a code defect, not CI-parity-relevant (CI is
+  Linux) — matches the same flake logged after the #503 gate.
+- Frontend: admin-web `npm run type-check` (tsc -b) and `npm run test --
+  --run` (44 files / 1144 tests) both green. Widget `npm run type-check`
+  and `npm run test` (10 files) both green.
+
+No mechanical drift to fix, no fix-features to file. Working tree was clean
+before and after (only the perennial scratch artifacts untouched:
+`features.db`, `.autoforge/prompts/coding_prompt.md`,
+`.claude/scheduled_tasks.lock` deletion — left alone as documented in prior
+gate notes). Nothing to push beyond what was already at HEAD (10a10aa).
