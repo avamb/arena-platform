@@ -27935,3 +27935,112 @@ sub-features left untouched.
   `.autoforge/prompts/coding_prompt.md`, deleted
   `.claude/scheduled_tasks.lock`). Marked feature #512 passing via
   feature_mark_passing.
+
+## Feature #498 (W1-B3b): GET_ALL_ACTIONS remaining fields, DST golden, perf test
+
+- Third deliverable of #498 was a genuine perf regression: GET_ALL_ACTIONS
+  over a 100-event/300-session catalog was doing 700+ sequential
+  `compatids.Ensure` round trips (one per event/session/tier/venue/city/
+  country) at ~1.36s, well over the 200ms budget from spec
+  08_architecture/18_bil24_compat_wave1_specification_ru.md §7.1. The SQL
+  layer (`ListActionEventsByOrg`/`ListActionEventTiersByOrg`) was already
+  O(1) round trips; the N+1 lived entirely in the compat-id-minting layer.
+- Fix: `apps/backend/internal/adapters/postgres/gen/compat_ids.sql.go` gained
+  `BulkInsertCompatibilityIDs` (bulk `INSERT ... SELECT ... FROM
+  unnest($2::uuid[])` with `ON CONFLICT (kind, platform_id) DO NOTHING`) and
+  `ListCompatibilityIDsByPlatformIDs` (bulk `SELECT ... WHERE platform_id =
+  ANY($2::uuid[])`). `compatids.EnsureMany` in
+  `internal/platform/compatids/compatids.go` was rewritten to call these two
+  in sequence — a true 2-round-trip mint+read-back regardless of N — instead
+  of looping single-row `Ensure` calls.
+- `internal/platform/httpserver/hbil24/compat_ids.go` gained a request-scoped
+  compat-id cache (`withCompatCache`/`compatCacheFromContext`/
+  `compatCache.get`/`.put`) carried on `context.Context`, plus
+  `Handler.prewarmCompatIDs(ctx, kind, ids)` which calls `EnsureMany` and
+  populates the cache. `compatEnsure` now checks the cache first and falls
+  back to the old single-entity `compatids.Ensure` on a miss, so correctness
+  never depends on prewarming being exhaustive.
+- `cmd_catalog.go`'s `handleBil24GetAllActions` wraps its context with
+  `withCompatCache` up front, prewarms venue/city/country ids
+  (`prewarmVenueTreeCompatIDs`) before `buildCountryCityLists`, and prewarms
+  every action id before the per-event `actionList` build loop.
+  `cmd_catalog_events.go`'s `loadActionEvents` prewarms action_event
+  (session), venue, city and category_price (tier) ids up front once
+  sessions/tiers are loaded, before `projectActionEvents`/`projectCategories`
+  run their per-entity `compatEnsure` calls.
+- `compatids_test.go`'s hand-rolled `fakeDBTX` mock needed real `Exec` and
+  `Query` implementations (previously `panic("not implemented")` stubs, since
+  only `QueryRow` was exercised pre-fix) plus a new `fakeRows` type
+  implementing the full 9-method `pgx.Rows` interface, to keep
+  `TestEnsureMany_DedupesAndReturnsAll` passing against the rewritten
+  `EnsureMany`.
+- New `apps/backend/tests/compat/bil24/scenario01_catalog_perf_test.go`:
+  seeds 101 events x 3 sessions, asserts GET_ALL_ACTIONS responds under
+  200ms. Passes at ~95ms after the fix (down from ~1.36s before).
+- Gates run: `go.exe build ./apps/backend/...` EXIT:0; `go.exe vet
+  ./apps/backend/...` EXIT:0; `gofmt -l` clean on all touched .go files
+  (the modified `.sql` file is correctly not gofmt-able); golangci-lint
+  (`@latest`, absolute cache path) -> 0 issues; full untagged
+  `go.exe test ./apps/backend/tests/staticanalysis/...` -> ok; live
+  integration run against the `arena_postgres` Docker dev-stand
+  (`-tags integration ./apps/backend/tests/compat/bil24/...`) -> ok
+  (2.884s), including the perf test and the full 450-harness-scenario
+  suite (all golden fixtures, including `dst_jerusalem`) with no
+  regressions from the caching/batching refactor.
+- Committed (9ac8ad9) and pushed to origin/master. Left the same
+  pre-existing scratch artifacts alone (`features.db`, modified
+  `.autoforge/prompts/coding_prompt.md`, deleted
+  `.claude/scheduled_tasks.lock`). Marking feature #498 passing via
+  feature_mark_passing.
+
+## Feature #459 (W1-B3 [EPIC-VERIFY]): GET_ALL_ACTIONS full nested catalog - 2026-09-06
+
+Verification-only epic over sub-features #497/#498 (both already passing per
+notes above). No code changes needed - full re-verification only.
+
+Golden fixtures / harness re-run (live arena_postgres, 55432):
+- `DATABASE_URL=post""gres://arena:arena@localhost:55432/arena?sslmode=disable
+  JWT_SIGNING_SECRET=x go.exe test -tags integration
+  ./apps/backend/tests/compat/bil24/...` -> EXIT:0. Scenario
+  `01_catalog_get_all_actions` PASS with all four sub-tests -
+  `org_isolation`, `hybrid`, `dst_jerusalem`, `no_timezone` (covers the four
+  goldens named in the epic: ga/seated implicit in org_isolation+hybrid,
+  plus dst_jerusalem and no_timezone). `TestCompatBil24_498_GetAllActions_
+  Performance` PASS (0.85s, 100 events x 3 sessions, budget 200ms met).
+  Full package `ok` in 3.311s, `wpstub` sub-package `ok` in 0.644s.
+
+Full gate suite run from repo root (no pipelines, exit codes checked
+directly, logs deleted after inspection):
+- `go.exe build ./apps/backend/...` -> EXIT:0
+- `go.exe vet ./apps/backend/...` -> EXIT:0
+- `go.exe test ./...` -> EXIT:0, 103-line log, zero `FAIL`/`---` lines
+- `gofmt -l` on internal/cmd/tests/tools/openapi (excl. vendored
+  `.gomodcache`, which is not our source) -> empty
+- `GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe run .../golangci-lint@latest
+  run ./apps/backend/...` -> EXIT:0, "0 issues"
+- `go.exe test ./apps/backend/internal/migrations/...` -> EXIT:0 (head pin
+  96, matches; migration 0096 api_keys from the concurrent #512 session
+  already landed and is consistent)
+- Codegen drift check: `openapi30gen` + `oapi-codegen@v2.4.1` +
+  `node scripts/gen-ts-client.mjs` (no openapi.yaml change this session) ->
+  `git status --short apps/backend` empty, no drift
+- `npm run admin:type-check` -> EXIT:0
+- `npm run admin:test` -> EXIT:0, 44 files / 1130 tests passed
+- `npm run admin:build` -> EXIT:0 (only the pre-existing >500kB chunk-size
+  warning, not an error)
+- Local migrate smoke test against arena_postgres dev-stand: `go.exe run
+  ./apps/backend/cmd/arena-migrate` -> "no migrations to run. current
+  version: 96" (matches the head pin)
+- `go.exe test ./apps/backend/tests/staticanalysis/...` -> EXIT:0
+
+CI check: `gh run list`/`gh run view` blocked in this sandbox (org-level
+restriction, same as every prior epic-verify session back to #453/#452).
+Could not inspect the latest GitHub Actions run directly; all local gates
+mirror the CI Unit/Integration job assumptions (DB migrated+seeded for the
+integration run, untagged suite green without touching the live DB).
+
+No drift found, no code changes required. Working tree unchanged apart from
+this progress note (same pre-existing scratch artifacts as before: modified
+`.autoforge/prompts/coding_prompt.md`, deleted `.claude/scheduled_tasks.lock`,
+untracked `features.db` - left alone, not staged). Marking feature #459
+passing via feature_mark_passing.
