@@ -87,10 +87,6 @@ func (h *Handler) HandleBil24Session(w http.ResponseWriter, r *http.Request) {
 	}
 
 	warnings := newWarningSink()
-	if req.SVG != "" || len(req.SeatList) > 0 {
-		warnings.add(WarnSeatingNotImported,
-			"seating plan and seat list are not imported by this endpoint yet; the session was created as general admission")
-	}
 
 	// The day/time literals are validated against a fixed zone FIRST: their
 	// syntax does not depend on the venue timezone, and rejecting a malformed
@@ -180,8 +176,8 @@ func (h *Handler) HandleBil24Session(w http.ResponseWriter, r *http.Request) {
 		EventID:              result.EventID,
 		SessionID:            result.SessionID,
 		TierIDs:              result.TierIDs,
-		SeatingPlanVersionID: nil,
-		SeatsMaterialized:    0,
+		SeatingPlanVersionID: result.Seating.PlanVersionID,
+		SeatsMaterialized:    result.Seating.SeatsMaterialized,
 		Warnings:             warnings.list(),
 		Created:              result.Created,
 	})

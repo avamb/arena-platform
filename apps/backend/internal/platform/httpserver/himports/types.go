@@ -8,10 +8,19 @@ import "github.com/google/uuid"
 // tell the operator which parts of the payload could not be applied verbatim
 // so the site side can decide whether to follow up.
 const (
-	// WarnSeatingNotImported — the payload carried an svg / seatList block.
-	// Seating-plan import (spec §13.2 step 6) is not part of the
-	// general-admission slice, so the geometry was ignored.
+	// WarnSeatingNotImported — the payload carried a seatList but no svg, so
+	// there is no geometry to hang the seats on and the session stays
+	// general admission (spec §13.2 step 6).
 	WarnSeatingNotImported = "import.seating_not_imported"
+	// WarnSeatsBlocked — seatList entries with available:false were imported
+	// as blocked ('unavailable') seats and are not on sale.
+	WarnSeatsBlocked = "import.seats_blocked"
+	// WarnSeatNotInPlan — a seatList entry referenced a seat id the svg
+	// seating plan does not contain; the entry was ignored.
+	WarnSeatNotInPlan = "import.seat_not_in_plan"
+	// WarnCategoryUnmapped — the seating plan references a category that
+	// categoryList does not declare, so those seats carry no ticket tier.
+	WarnCategoryUnmapped = "import.category_unmapped"
 	// WarnPosterSkipped — action.bigPosterUrl could not be side-loaded.
 	WarnPosterSkipped = "import.poster_skipped"
 	// WarnCountryUnresolved — venue.countryName did not match any known
@@ -49,9 +58,11 @@ type Warning struct {
 // TierIDs maps the Bil24 categoryPriceId (as a decimal string, because JSON
 // object keys are always strings) to the arena ticket-tier UUID.
 //
-// SeatingPlanVersionID and SeatsMaterialized are always null / 0 in this
-// general-admission slice; the fields exist so the contract does not change
-// when the seating slice lands.
+// SeatingPlanVersionID and SeatsMaterialized describe the seated half of the
+// import (spec §13.2 step 6): the plan version the session was bound to and
+// the number of session_seats rows (assigned seats plus GA units) the session
+// carries. Both stay null / 0 for a payload without an svg block, which is
+// imported as a pure general-admission session.
 type ImportSessionResponse struct {
 	EventID              uuid.UUID            `json:"event_id"`
 	SessionID            uuid.UUID            `json:"session_id"`

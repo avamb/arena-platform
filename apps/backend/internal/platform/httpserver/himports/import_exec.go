@@ -51,6 +51,9 @@ type importResult struct {
 	SessionID uuid.UUID
 	TierIDs   map[string]uuid.UUID
 	Created   bool
+	// Seating is the zero value for a general-admission import (no svg in
+	// the payload): seating_plan_version_id:null, seats_materialized:0.
+	Seating seatingOutcome
 }
 
 // executeImport runs spec §13.2 steps 2-5 and 7-8 inside tx.
@@ -76,6 +79,22 @@ func (h *Handler) executeImport(ctx context.Context, q *gen.Queries, tx pgx.Tx, 
 		return importResult{}, err
 	}
 
+	// Step 6 — seating plan, version, binding and seat materialization. A
+	// payload without an svg block leaves the session general-admission.
+	seatingOut, err := h.importSeating(ctx, q, plan, eventID, sessionID, venueID, tierIDs, warnings)
+	if err != nil {
+		return importResult{}, err
+	}
+
+	// The inventory ledger is what every hold path checks before it touches a
+	// seat, and no row means "no capacity" — an imported session that never got
+	// one cannot sell a single ticket. Seeding it is deferred until here because
+	// the seated path is what settles the final capacity_total (a hybrid session
+	// ends up with seated + standing, not the raw payload availability).
+	if err := h.syncInventoryLedger(ctx, q, eventID, sessionID); err != nil {
+		return importResult{}, err
+	}
+
 	// Step 7 — the sales channel is NEVER modified by an import. A declared
 	// chargePercent is surfaced as a warning so the operator can reconcile it
 	// deliberately.
@@ -96,6 +115,7 @@ func (h *Handler) executeImport(ctx context.Context, q *gen.Queries, tx pgx.Tx, 
 		SessionID: sessionID,
 		TierIDs:   tierIDs,
 		Created:   created,
+		Seating:   seatingOut,
 	}, nil
 }
 
@@ -359,6 +379,42 @@ func (h *Handler) resolveSession(
 		return uuid.Nil, false, fmt.Errorf("update session: %w", err)
 	}
 	return sessionID, false, nil
+}
+
+// syncInventoryLedger brings the session-level inventory_ledger row (tier_id IS
+// NULL) in line with the session's settled capacity_total, creating it on the
+// first import. It mirrors what hcatalog's session-create does for a
+// hand-authored session; without it hcheckout's ReserveCapacity finds no row,
+// reports pgx.ErrNoRows, and every hold on an imported session is refused as
+// "sold out".
+//
+// A capacity the session already committed (held + sold) is never undercut:
+// UpdateCapacityTotal refuses such a shrink with ErrNoRows, which is treated as
+// a no-op here rather than as an import failure — the import must not be able
+// to invalidate outstanding holds.
+func (h *Handler) syncInventoryLedger(ctx context.Context, q *gen.Queries, eventID, sessionID uuid.UUID) error {
+	sess, err := q.GetSessionByID(ctx, sessionID, eventID)
+	if err != nil {
+		return fmt.Errorf("read session for inventory ledger: %w", err)
+	}
+	capacity := sess.CapacityTotal
+	if sess.CapacityOverride != nil {
+		capacity = *sess.CapacityOverride
+	}
+
+	if _, err := q.GetInventoryLedger(ctx, sessionID, nil); err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("read inventory ledger: %w", err)
+		}
+		if _, insErr := q.InsertInventoryLedger(ctx, sessionID, nil, &capacity); insErr != nil {
+			return fmt.Errorf("create inventory ledger: %w", insErr)
+		}
+		return nil
+	}
+	if _, err := q.UpdateCapacityTotal(ctx, sessionID, nil, &capacity); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("update inventory ledger capacity: %w", err)
+	}
+	return nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

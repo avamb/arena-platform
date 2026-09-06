@@ -591,7 +591,7 @@ func TestCompatBil24_450_Harness_Scenarios(t *testing.T) {
 	})
 
 	t.Run("08_bil24_session_import_idempotent", func(t *testing.T) {
-		t.Skip("feature #518: POST /v1/organizations/{org}/imports/bil24-session twice with same payload → created:false on 2nd; GET_SEAT_LIST preserves Bil24 seatIds")
+		runScenario08Import(t, st)
 	})
 
 	t.Run("09_api_keys_service_scope", func(t *testing.T) {
