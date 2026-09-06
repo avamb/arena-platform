@@ -28414,3 +28414,70 @@ gates (all previously confirmed), correct RBAC behavior observed live
 correct route existence once the stale image was rebuilt), and the
 integration test's own use of a real permission-check code path proving the
 feature's logic is sound independent of the unrelated login/JWT gap.
+
+================================================================================
+2026-09-06 — Feature #516 (W1-C3b): materialization keeps external seat ids
+(system_seat_id) across rebind. Commit 803ef51, pushed to master.
+================================================================================
+
+Goal (epic #467, spec 18_bil24_compat_wave1 §3.1 and §13.2 step 6): when a
+seating plan geometry carries Bil24 `external_id` values on its seats, session
+seat materialization must persist them into `session_seats.system_seat_id` with
+`system_seat_id_source = 'bil24'`, re-apply them on every rebind, and never let
+an explicit id collide with the arena sequence.
+
+What changed (7 files):
+ - `queries/session_seats.sql` + `gen/session_seats.sql.go`: `InsertSessionSeats`
+   gained two params — a `[]*int64` of per-seat system ids and a source string.
+   The INSERT now does per-row
+   `COALESCE(u.system_seat_id, nextval('session_seats_system_id_seq'))` and
+   `CASE WHEN u.system_seat_id IS NULL THEN 'arena' ELSE $8::text END`, so a
+   MIXED plan works and arena-only plans are byte-for-byte behaviour-compatible
+   with the old query. Nullable bigint array travels as `[]*int64` (mirrors the
+   existing `[]*string` tier-id precedent). Short/nil id slices are padded to
+   the seat count and an empty source defaults to `arena`, so old-shaped calls
+   are safe. Added constants `gen.SeatIDSourceArena` / `gen.SeatIDSourceBil24`.
+ - New query/method `AdvanceSessionSeatSystemIDSeq(ctx, minValue)`:
+   `SELECT setval(...) WHERE $1 > (SELECT last_value FROM ...)` — monotone and
+   idempotent, so it can never rewind the sequence. This is the collision guard:
+   Bil24 ids are ~2.5e9 while the arena sequence starts at 1, and
+   `session_seats.system_seat_id` carries a GLOBAL unique index.
+ - `gen/querier.go`: both signatures mirrored on the interface.
+ - `hseating/bind.go` (`bindSessionSeatingCore`): builds a parallel
+   `systemSeatIDs []*int64` while walking the geometry, tracks `maxExternalID`,
+   and BEFORE the insert — inside the same bind transaction — calls
+   `AdvanceSessionSeatSystemIDSeq(maxExternalID)` when any external id was seen,
+   then passes the ids + `bil24` source through. Rebind already wipes
+   `reservation_seats` + `session_seats` and re-materializes from the IMMUTABLE
+   locked version geometry, so re-deriving the ids each time is exactly what
+   makes them stable across rebinds.
+ - Call-site fixups (`nil, ""`): `gen/session_seats_category_integration_test.go`,
+   `httpserver/ticket_cancel_ab49_integration_test.go`.
+ - NEW `hseating/bind_external_ids_516_integration_test.go` (`//go:build
+   integration`): binds a 4-seat bil24 geometry, asserts
+   `system_seat_id == seat.ExternalID` and source `bil24`; rebinds TWICE and
+   asserts ids/sources are unchanged; then binds a second fixture whose geometry
+   has NO external ids and asserts source `arena`, every id `> maxExternal`, and
+   no duplicates — i.e. the setval guard actually took.
+
+No migration needed: `0090_compatibility_ids.sql` already adds
+`system_seat_id_source` with the `('arena','bil24')` CHECK, and 0088 adds
+`system_seat_id` + the sequence. Migration-head pin unmoved.
+
+Downstream readers needed NO change and pick the imported ids up automatically:
+`hbil24/cmd_seat_list.go` (GET_SEAT_LIST → `"seatId": s.SystemSeatID`) and
+`hseating/sbt10_svg.go` (GET_SCHEMA image → `live.SystemSeatID`) already read
+the column off the row.
+
+Gates: `go build ./...` EXIT 0; `go vet ./apps/backend/...` clean, also with
+`-tags integration`; `gofmt -l` silent on all 6 changed Go files (including the
+integration-tagged ones, which golangci-lint skips); package tests green for
+httpserver, adapters/postgres, domain/seating, ./tests/compat/bil24/...,
+./tests/staticanalysis/..., ./internal/migrations/... The new integration test
+was run against the live Docker `arena_postgres` stand and verified with `-v`
+to be actually RUNNING rather than skipping:
+`--- PASS: TestW1C3b_MaterializationKeepsExternalSeatIDsAcrossRebind (0.14s)`.
+
+CAUTION for future work: `InsertSessionSeats` now takes 8 args. Any new call
+site must pass `systemSeatIDs, source` — pass `nil, ""` to get the previous
+pure-sequence behaviour.
