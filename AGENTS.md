@@ -56,6 +56,10 @@ entries short and factual.
   including admin grant/revoke and sender-dns style additions), regenerate Go
   types (`types_gen.go`) AND the TypeScript client. Commit regenerated files
   with the change. Codegen drift is a known recurring defect.
+- **A `$ref`-valued schema property still needs its own `description`** —
+  `TestOpenAPIDocs_SchemaPropertiesDescription` inspects the property node
+  itself, so a bare `foo: {$ref: ...}` fails. Use the house idiom:
+  `allOf: [- $ref: "..."]` with a sibling `description:`.
 - **openapi.yaml must use block-style YAML for error responses** — the repo's
   custom line-by-line YAML parser (`TestErrorResponses_AllErrorsUseErrorEnvelopeRef`)
   cannot expand flow-style `{application/json: {schema: {$ref: "..."}}}` inline
@@ -148,6 +152,11 @@ entries short and factual.
 - **`cd` is rejected by the bash allowlist** ("Command 'cd' is not allowed"),
   and a rejected call also cancels the sibling calls issued in the same
   parallel batch. Always run from the repo root with repo-relative paths.
+- **`sessions` has no `capacity` column** — it is `capacity_total` (migration
+  0016) plus the nullable `capacity_override` (0079). Likewise
+  `memberships_role_check` does NOT allow `org_admin`; use `organizer` (0011,
+  widened by 0042). Both bite integration-test fixtures that guess the column
+  or enum value from the Go side.
 - **`sessions.status` allows only `draft`/`scheduled`/`cancelled`/`completed`**
   (`sessions_status_check`). `published` is an *events* status, not a sessions
   one — seeding a session with it fails with SQLSTATE 23514.

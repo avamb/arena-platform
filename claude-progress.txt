@@ -28481,3 +28481,71 @@ to be actually RUNNING rather than skipping:
 CAUTION for future work: `InsertSessionSeats` now takes 8 args. Any new call
 site must pass `systemSeatIDs, source` — pass `nil, ""` to get the previous
 pure-sequence behaviour.
+
+================================================================================
+Feature #517 — W1-C3c: POST /v1/organizations/{org_id}/imports/bil24-session
+(commit efa344e, pushed to master 2026-09-06)
+================================================================================
+
+DONE — both Steps items ("Endpoint for GA sessions with idempotent upserts",
+"OpenAPI + tests") are complete. Nothing deferred.
+
+New package `internal/platform/httpserver/himports` holds the endpoint:
+handler.go (deps + option wiring), types.go, orgauth.go (membership/service-
+actor gate), bil24_session.go (pre-transaction validation ladder), import_exec.go
+(the transactional venue -> event -> session -> tiers upsert plus publish).
+`imports_shims.go` + one line in `mount_v1.go` mount it under permission
+`import.bil24_session`; the route self-gates to 503 when `s.pool`/`s.eventQueries`
+are nil, so a partially wired server never half-answers.
+Wire structs live in `internal/adapters/bil24compat/import_wire.go` (camelCase is
+correct there — Bil24 speaks camelCase and that package is allowlisted by the
+snake_case guardrail).
+
+Scope as specified: GENERAL ADMISSION only. `seatList` is decoded and its ids are
+deliberately exempt from the 1e9 external-id ceiling (real Bil24 seat ids exceed
+it), but nothing is materialised — a non-empty list yields the
+`import.seating_not_imported` warning and `seats_materialized: 0`,
+`seating_plan_version_id: null`.
+
+TWO PRODUCTION DEFECTS were found and fixed while writing the unit tests; both
+are worth remembering because the tests, not review, caught them:
+  1. `writeTimezoneError` mapped ANY error from the venue lookup — including a
+     database fault — onto 422 `venue.timezone_required`. An infra outage would
+     have sent the operator hunting a payload problem that did not exist. It now
+     only answers 422 for an explicit `*importError` and logs + returns 500
+     `import.failed` otherwise.
+  2. Day/time and sell-end literals were parsed only AFTER the timezone lookup,
+     so a malformed payload cost a database round-trip. Their syntax does not
+     depend on the venue zone, so they are now validated against UTC first and
+     the payload is rejected before anything is touched.
+
+TEST-DOUBLE LESSON: a DBTX double that fails EVERY call cannot exercise a ladder
+containing one benign lookup — the venue lookup became an infra error and the
+timezone branches were unreachable. The right abstraction is a *reachable but
+empty* database: `QueryRow` returns a row whose `Scan` answers `pgx.ErrNoRows`,
+while `Exec`/`Query` still fail, which additionally proves nothing is written
+before `BeginTx`.
+
+Integration test (`bil24_session_517_integration_test.go`, `//go:build
+integration`) ran green against the live Docker `arena_postgres` stand: create
+(capacity 140, EUR, draft, `general_admission`, 17:00 Madrid stored as
+15:00Z, tier prices 2500/1250 minor units), idempotent repeat (created:false,
+identical ids, row counts unchanged), publish (event `published` / session
+`scheduled`), and a non-member 403 that writes nothing. Every Bil24 id in the
+fixture is randomized per run because `compatibility_id_map` is GLOBALLY unique
+on `(kind, system_id)` — a fixed literal collides with leftovers from an
+interrupted earlier run on the shared stand.
+
+Two schema facts that cost a debug round each: `sessions` has NO `capacity`
+column (it is `capacity_total`, plus `capacity_override` from 0079), and
+`memberships_role_check` does NOT allow `org_admin` (use `organizer`).
+
+OpenAPI: the path plus 9 component schemas. A `$ref`-valued property needs the
+repo's `allOf: [$ref]` + sibling `description` idiom — a bare `$ref` fails
+`TestOpenAPIDocs_SchemaPropertiesDescription`, which reads the property node
+directly. `types_gen.go` and `clients/ts/index.d.ts` regenerated and committed.
+
+Gates: `go build`/`go vet` (plain and `-tags integration`) clean, full
+`go test ./apps/backend/...` EXIT:0 judged from a log file rather than a
+pipeline, golangci-lint clean on the touched packages, gofmt applied to every
+changed file including the integration-tagged one.
