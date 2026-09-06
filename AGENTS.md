@@ -16,6 +16,18 @@ entries short and factual.
   "command not found" — and note that a bash `cmd | head` pipeline can mask
   the failure behind a `0` exit code.
 - Admin-web type-check script is `npm run type-check` (not `check-ts`).
+- **The local dev stand runs via `docker compose`, not a bare `go run`
+  process** — `docker compose ps` shows `arena_api`/`arena_worker`
+  (image `arena_new/arena-api:dev`, port 8080), `arena_admin_web`
+  (node:20-alpine, port 5174), `arena_postgres` (port 55432),
+  `arena_redis` (port 56379). The API/worker image is NOT auto-rebuilt on
+  code changes: a newly-added route can silently 404 in the live stand
+  while the source is correct, because the running container is stale.
+  Symptom seen during feature #514 verification: `mount_iam.go` had the new
+  route, but the container's image predated it by a month. Fix: `docker
+  compose build api && docker compose up -d api worker` (this also recreates
+  the postgres/redis containers, but named volumes preserve data — verify
+  with a row count before/after, e.g. `select count(*) from organizations`).
 
 ## Tests
 
@@ -84,6 +96,27 @@ entries short and factual.
 
 ## Gotchas
 
+- **Org-scoped `user_roles` role assignments never reach a real logged-in
+  user's permission checks** (pre-existing, feature #211 territory, found
+  during #514 verification 2026-09-06). `POST /v1/auth/login` and
+  `/refresh` (`hauth/login.go`) call `auth.IssueJWT(..., nil /*orgID*/, nil
+  /*roles*/, ...)` — issued JWTs always have an empty `Roles` claim. The
+  DB fallback `GetActiveRolesForUser`
+  (`internal/adapters/postgres/gen/memberships.sql.go`) only unions
+  `user_roles WHERE ur.org_id IS NULL`, so a role scoped to a specific org
+  (e.g. `cmd/arena-seed`'s `admin@test.arena.local` seeded as `org_admin` on
+  one org) is invisible to it too — `/v1/me` returns zero roles/permissions
+  for that account, and any org-scoped-permission-gated endpoint 403s for a
+  real login-issued token. `GetActiveRolesForUserInOrg` has the identical
+  bug and isn't wired into production. Workaround for manual/UI testing
+  only: grant the permission to a role reachable via a NULL-org_id
+  `user_roles` row or a `memberships` row instead (and revert after).
+  Integration tests correctly route around this by minting JWTs directly
+  with the desired `Roles` claim (see
+  `tests/compat/bil24/scenario09_api_keys_test.go`) rather than going
+  through real login. Needs a real fix (JWT issuance and/or the DB query)
+  before any feature can rely on org-scoped `user_roles` roles working for
+  actual end users.
 - Guardrail enforces snake_case in JSON payloads; `internal/platform/brevo/`
   has a documented exception because the Brevo API genuinely returns camelCase
   (e.g. `dkimRecord`).

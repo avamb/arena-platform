@@ -28262,3 +28262,97 @@ No API surface change, so no openapi.yaml or codegen work was required.
 Scratch artifacts left alone as usual (`features.db`, modified
 `.autoforge/prompts/coding_prompt.md`, deleted
 `.claude/scheduled_tasks.lock`).
+
+## Feature #514 — W1-C1c: api-keys endpoints, OpenAPI, admin-web tab, no-seats
+## event flow under a key — VERIFIED 2026-09-06
+
+Implementation (backend endpoints, OpenAPI+codegen, admin-web "API keys" tab,
+integration scenario 9) was already complete and pushed under commit 8a54a5b
+by a prior session. This session did pure verification, no code changes to
+the feature itself:
+
+- `go.exe build ./...`, `go.exe vet ./apps/backend/...`, full `go.exe test
+  ./...` (redirected to a log and grepped afterward, never judged through a
+  pipeline), `gofmt -l` on touched files, `-tags integration` run including
+  `TestMACS`-style scenario 9 (`apps/backend/tests/compat/bil24/scenario09_api_keys_test.go`)
+  — all green, all re-confirmed from the pre-compaction portion of this
+  session.
+- admin-web `npm run type-check` and the Vitest suite — green.
+- Codegen drift check (`make gen-openapi` / `make gen-ts-client` equivalents)
+  — clean, no diff.
+- Live browser verification (playwright-cli) against the local docker-compose
+  stand: superadmin correctly gets `Forbidden (permissions.denied)` on the
+  API keys tab (superadmin's `admin`/`platform_superadmin` roles do not carry
+  `api_key.manage`, which migration 0097 grants only to `org_admin` — correct
+  RBAC, not a bug).
+
+Two pre-existing, out-of-scope issues were discovered and diagnosed during
+verification (neither is a #514 defect; neither was fixed as part of #514):
+
+1. **Dev-stand runs via Docker, not a bare Go process, and the image is not
+   auto-rebuilt on code changes.** `docker compose ps` shows `arena_api` /
+   `arena_worker` running image `arena_new/arena-api:dev`. This image was
+   stale (built 2026-08-05, predating #514's `mount_iam.go` changes from
+   2026-09-06), so the API keys tab 404'd on GET even though the route
+   existed in source. Fixed for this session with `docker compose build api
+   && docker compose up -d api worker` (also recreates postgres/redis
+   containers, but named volumes preserve data — verified organizations
+   count unchanged at 28 rows across the restart). Added as a new AGENTS.md
+   gotcha so the next session doesn't re-diagnose this from scratch.
+
+2. **Org-scoped `user_roles` role assignments are invisible to both JWT
+   issuance and the DB permission fallback — a platform-wide RBAC gap, not
+   specific to api-keys.** Traced end-to-end:
+   - `POST /v1/auth/login` and `POST /v1/auth/refresh`
+     (`apps/backend/internal/platform/httpserver/hauth/login.go`) call
+     `auth.IssueJWT(..., nil /*orgID*/, nil /*roles*/, ...)` — every issued
+     JWT has an EMPTY `Roles` claim; login never reads `user_roles` or
+     `memberships` to populate the token.
+   - The per-request DB fallback, `GetActiveRolesForUser`
+     (`apps/backend/internal/adapters/postgres/gen/memberships.sql.go`),
+     unions active `memberships` rows with `user_roles WHERE ur.org_id IS
+     NULL` only — so a `user_roles` row scoped to a specific `org_id` (e.g.
+     `org_admin` granted for one organization, which is exactly how
+     `cmd/arena-seed/main.go` seeds `admin@test.arena.local` for OrgA) is
+     invisible to it too. A second query, `GetActiveRolesForUserInOrg`, has
+     the identical `ur.org_id IS NULL` bug in its `user_roles` branch and
+     isn't wired into production anyway.
+   - Net effect: the seeded `admin@test.arena.local` (org_admin on OrgA, the
+     intended actor for `api_key.manage` per migration 0097) gets ZERO roles
+     back from `/v1/me`, shows "no scopes assigned" in the UI, and a real
+     `GET /v1/organizations/{OrgA}/api-keys` call with its login-issued JWT
+     returns `permissions.denied` — confirmed by direct curl with a real
+     token, not just a UI artifact.
+   - Confirmed this is pre-existing (feature #211 territory) and NOT
+     introduced by #514: #514's own integration test
+     (`scenario09_api_keys_test.go`) correctly works around it by minting the
+     test JWT directly with `Roles: []string{"org_admin"}` plus a genuine
+     `memberships` row (see the test's own comment: "no user_roles row is
+     required to reach api_key.manage; the genuine memberships row above
+     satisfies hapikeys/orgauth.go's separate [check]") — proving #514's
+     permission-check logic itself is correct and was validated against a
+     real code path, it's only the *login-time JWT issuance* and the
+     *DB-fallback query* that are broken for org-scoped `user_roles`
+     assignments. This is a platform-wide gap (would block ANY feature that
+     relies on an org-scoped `user_roles` role reaching a real logged-in
+     user's permission checks), worth a dedicated backlog item — flagged
+     here, not fixed as part of #514.
+   - UI-verification workaround used (reverted before concluding): granted
+     `api_key.manage` to the global `admin` role directly in
+     `role_permissions` (superadmin holds `admin` via a NULL-org_id
+     `user_roles` row, which IS visible to the buggy query) to click through
+     the "Issue key" UI as superadmin instead of the blocked org_admin
+     account. Confirmed the tab then correctly returns `Forbidden
+     (org.access_denied): caller is not a member of this organization` —
+     i.e. `hapikeys/orgauth.go` layers a genuine org-membership check on top
+     of the permission check, which is a second, independent, and correct
+     defense (superadmin has the permission but isn't a member of that org).
+     Grant reverted after verification: `role_permissions` now shows exactly
+     one row for `api_key.manage` → `org_admin`, matching migration 0097.
+
+No feature-code changes were made. Marking #514 passing based on: green
+gates (all previously confirmed), correct RBAC behavior observed live
+(permission denial for superadmin, org-membership denial for superadmin,
+correct route existence once the stale image was rebuilt), and the
+integration test's own use of a real permission-check code path proving the
+feature's logic is sound independent of the unrelated login/JWT gap.
