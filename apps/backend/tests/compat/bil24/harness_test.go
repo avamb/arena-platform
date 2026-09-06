@@ -442,8 +442,13 @@ func TestCompatBil24_450_Harness_Scenarios(t *testing.T) {
 		t.Skip("feature #494: PAY_ORDER on expired hold → ReacquireHold success path AND failure path (manual_review + operator alert)")
 	})
 
+	// Scenario 6 (feature #492, W1-B1b, spec §7.7) drives CREATE_ORDER_EXT over
+	// the real server: the order aggregate is written through
+	// internal/platform/ordering, and two sequential CREATE_ORDER_EXT for the
+	// same buyer and session return THE SAME orderId. The body lives in
+	// scenario06_create_order_test.go.
 	t.Run("06_one_open_order_rule", func(t *testing.T) {
-		t.Skip("feature #492: two sequential CREATE_ORDER_EXT for the same session return the same orderId (one-open-order invariant)")
+		runScenario06CreateOrder(t, st)
 	})
 
 	// Scenario 7 (feature #501, W1-B5b) — GET /compat/bil24/image.

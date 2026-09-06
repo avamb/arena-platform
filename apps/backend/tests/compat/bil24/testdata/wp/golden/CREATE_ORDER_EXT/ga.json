@@ -3,11 +3,11 @@
   "description": "OK",
   "command": "CREATE_ORDER_EXT",
   "orderId": "{{orderId}}",
-  "externalOrderId": "wc_string_2002",
-  "sum": 500,
+  "externalOrderId": "wc_ga_2005",
+  "sum": 1800,
   "discount": 0,
-  "charge": 25,
-  "totalSum": 525,
-  "currency": "CZK",
+  "charge": 90,
+  "totalSum": 1890,
+  "currency": "EUR",
   "expiration": "{{now+ttl}}"
 }

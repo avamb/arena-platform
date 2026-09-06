@@ -3,7 +3,7 @@
   "fid": 1271,
   "token": "{{token}}",
   "locale": "ru-RU",
-  "orderId": 1001,
+  "orderId": "wc_repeat_2006",
   "userId": 10001,
   "sessionId": "{{sessionId}}",
   "currency": "CZK",
@@ -14,6 +14,6 @@
   "email": "buyer@example.com",
   "phone": "+420123456789",
   "fullName": "Anna Novak",
-  "chargePercent": 0,
+  "chargePercent": 5,
   "promoCodes": []
 }

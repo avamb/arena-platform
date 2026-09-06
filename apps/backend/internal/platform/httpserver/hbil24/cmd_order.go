@@ -240,8 +240,19 @@ func buildGetOrderInfoBody(cs gen.CheckoutSessionRow, ticketQuantity int) map[st
 // fact no inventory hold, no payment intent, and no checkout session were
 // created. This was fixed in feature #374.
 //
-// Response: { "resultCode": -5, "command": "CREATE_ORDER_EXT", ... }
-func (h *Handler) handleBil24CreateOrderExt(w http.ResponseWriter, _ *http.Request, req bil24Request) {
+// Feature #492 (W1-B1b) supersedes the stub: when the order dependencies are
+// wired (pool + session querier + pool-bound queries), the command is served
+// for real by handleBil24CreateOrderExtSession per spec §7.7. The -5 path below
+// survives for deployments/tests that construct a Handler without those deps —
+// answering 0 from an unwired handler would be the exact security hole #374
+// closed.
+//
+// Response (unwired): { "resultCode": -5, "command": "CREATE_ORDER_EXT", ... }
+func (h *Handler) handleBil24CreateOrderExt(w http.ResponseWriter, r *http.Request, req bil24Request) {
+	if h.orderDeps.wired() {
+		h.handleBil24CreateOrderExtSession(w, r, req)
+		return
+	}
 	if req.ActionEventID == "" {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInvalidRequest,

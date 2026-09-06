@@ -101,31 +101,9 @@ func CreateOrderFromCheckout(ctx context.Context, q CreateStore, in CreateInput)
 	// No clock is taken here on purpose: created_at/updated_at come from the
 	// column defaults (one authority for "when"), and expires_at is copied
 	// from the reservation whose hold the order inherits.
-	cs, err := q.GetCheckoutSessionByID(ctx, in.CheckoutSessionID)
-	if err != nil {
-		return CreateResult{}, fmt.Errorf("ordering: load checkout session: %w", err)
-	}
-	if cs.State != checkoutStatePricingConfirmed {
-		return CreateResult{}, fmt.Errorf("%w (state=%s)", ErrCheckoutNotPriced, cs.State)
-	}
-	if cs.Subtotal == nil || cs.Discount == nil || cs.Total == nil || cs.Currency == nil {
-		return CreateResult{}, fmt.Errorf("%w (money columns are null)", ErrCheckoutNotPriced)
-	}
-
-	res, err := q.GetReservationByID(ctx, cs.ReservationID)
-	if err != nil {
-		return CreateResult{}, fmt.Errorf("ordering: load reservation: %w", err)
-	}
-	if res.State != "active" && res.State != "draft" {
-		return CreateResult{}, fmt.Errorf("%w (state=%s)", ErrReservationNotHeld, res.State)
-	}
-
-	units, err := collectUnits(ctx, q, res.ID, in)
+	cs, res, units, err := loadPricedAggregate(ctx, q, in)
 	if err != nil {
 		return CreateResult{}, err
-	}
-	if len(units) == 0 {
-		return CreateResult{}, ErrNoUnits
 	}
 
 	subtotal := *cs.Subtotal
@@ -158,35 +136,9 @@ func CreateOrderFromCheckout(ctx context.Context, q CreateStore, in CreateInput)
 		return CreateResult{}, fmt.Errorf("ordering: insert order: %w", err)
 	}
 
-	prices := make([]int64, len(units))
-	for i, u := range units {
-		prices[i] = u.unitPrice
-	}
-	discShares := prorate(discount, prices)
-	chargeShares := prorate(charge, prices)
-
-	items := make([]gen.OrderItemRow, 0, len(units))
-	var ordinal int32 // 1-based and dense per order; int32 all the way to
-	// avoid an int→int32 narrowing conversion
-	for i, u := range units {
-		ordinal++
-		item, err := q.InsertOrderItem(
-			ctx,
-			order.ID,
-			ordinal,
-			"ticket",
-			u.tierID,
-			u.sessionSeatID,
-			nil, // ticket_id is backfilled by IssueTicketsForCheckout
-			u.unitPrice,
-			discShares[i],
-			chargeShares[i],
-			u.unitPrice-discShares[i]+chargeShares[i],
-		)
-		if err != nil {
-			return CreateResult{}, fmt.Errorf("ordering: insert order item %d: %w", i+1, err)
-		}
-		items = append(items, item)
+	items, err := writeOrderItems(ctx, q, order.ID, units, discount, charge)
+	if err != nil {
+		return CreateResult{}, err
 	}
 
 	payload := map[string]any{
@@ -206,6 +158,85 @@ func CreateOrderFromCheckout(ctx context.Context, q CreateStore, in CreateInput)
 	}
 
 	return CreateResult{Order: order, Items: items}, nil
+}
+
+// loadPricedAggregate is the shared preamble of CreateOrderFromCheckout and
+// UpdateOrderFromCheckout: the checkout session must be pricing-confirmed with
+// non-null money, the reservation it points at must still be held, and the
+// reservation must expand to at least one purchasable unit. Splitting it out
+// keeps the create and the "same orderId, new numbers" repeat path (spec §7.7
+// step 5) from drifting apart on validation.
+func loadPricedAggregate(ctx context.Context, q CreateStore, in CreateInput) (gen.CheckoutSessionRow, gen.ReservationRow, []unit, error) {
+	cs, err := q.GetCheckoutSessionByID(ctx, in.CheckoutSessionID)
+	if err != nil {
+		return gen.CheckoutSessionRow{}, gen.ReservationRow{}, nil, fmt.Errorf("ordering: load checkout session: %w", err)
+	}
+	if cs.State != checkoutStatePricingConfirmed {
+		return gen.CheckoutSessionRow{}, gen.ReservationRow{}, nil, fmt.Errorf("%w (state=%s)", ErrCheckoutNotPriced, cs.State)
+	}
+	if cs.Subtotal == nil || cs.Discount == nil || cs.Total == nil || cs.Currency == nil {
+		return gen.CheckoutSessionRow{}, gen.ReservationRow{}, nil, fmt.Errorf("%w (money columns are null)", ErrCheckoutNotPriced)
+	}
+
+	res, err := q.GetReservationByID(ctx, cs.ReservationID)
+	if err != nil {
+		return gen.CheckoutSessionRow{}, gen.ReservationRow{}, nil, fmt.Errorf("ordering: load reservation: %w", err)
+	}
+	if res.State != "active" && res.State != "draft" {
+		return gen.CheckoutSessionRow{}, gen.ReservationRow{}, nil, fmt.Errorf("%w (state=%s)", ErrReservationNotHeld, res.State)
+	}
+
+	units, err := collectUnits(ctx, q, res.ID, in)
+	if err != nil {
+		return gen.CheckoutSessionRow{}, gen.ReservationRow{}, nil, err
+	}
+	if len(units) == 0 {
+		return gen.CheckoutSessionRow{}, gen.ReservationRow{}, nil, ErrNoUnits
+	}
+	return cs, res, units, nil
+}
+
+// writeOrderItems materialises one order_items row per unit, spreading the
+// order-level discount and charge across them by unit-price weight so the item
+// sums reconcile with the order sums to the cent.
+func writeOrderItems(
+	ctx context.Context,
+	q CreateStore,
+	orderID uuid.UUID,
+	units []unit,
+	discount, charge int64,
+) ([]gen.OrderItemRow, error) {
+	prices := make([]int64, len(units))
+	for i, u := range units {
+		prices[i] = u.unitPrice
+	}
+	discShares := prorate(discount, prices)
+	chargeShares := prorate(charge, prices)
+
+	items := make([]gen.OrderItemRow, 0, len(units))
+	var ordinal int32 // 1-based and dense per order; int32 all the way to
+	// avoid an int→int32 narrowing conversion
+	for i, u := range units {
+		ordinal++
+		item, err := q.InsertOrderItem(
+			ctx,
+			orderID,
+			ordinal,
+			"ticket",
+			u.tierID,
+			u.sessionSeatID,
+			nil, // ticket_id is backfilled by IssueTicketsForCheckout
+			u.unitPrice,
+			discShares[i],
+			chargeShares[i],
+			u.unitPrice-discShares[i]+chargeShares[i],
+		)
+		if err != nil {
+			return nil, fmt.Errorf("ordering: insert order item %d: %w", i+1, err)
+		}
+		items = append(items, item)
+	}
+	return items, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

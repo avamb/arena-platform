@@ -168,6 +168,50 @@ func (d CartDeps) wired() bool {
 	return d.Q != nil && d.Extend != nil && d.Shrink != nil && d.Refresh != nil
 }
 
+// OrderSessionQuerier resolves the event session behind an actionEventId so
+// CREATE_ORDER_EXT can enforce the spec §7.7 "sales open" gate: a session that
+// is not `scheduled`, or whose end has already passed, answers resultCode=101
+// with the bil24.sales_closed description instead of minting an order.
+// *gen.Queries satisfies this interface (GetSessionByID is keyed by
+// (id, event_id), hence the companion GetSessionEventID lookup).
+type OrderSessionQuerier interface {
+	GetSessionEventID(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	GetSessionByID(ctx context.Context, id, eventID uuid.UUID) (gen.SessionRow, error)
+}
+
+// OrderDeps bundles the spec §7.7 CREATE_ORDER_EXT dependencies (feature
+// #492, W1-B1b). Unlike the read-only commands, this one owns a database
+// transaction end to end — reconcile the cart, resolve the customer, price a
+// checkout session and write the order aggregate all commit or roll back
+// together — so it needs a transaction starter rather than a bound
+// *gen.Queries. Pool is used only to open that transaction; every query
+// inside runs through gen.New(tx).
+//
+// The bundle is optional: a Handler built without it keeps the pre-#492
+// behaviour where CREATE_ORDER_EXT answers resultCode=-5 (not implemented),
+// which is what every earlier unit test asserts.
+type OrderDeps struct {
+	// Pool opens the per-command transaction. httpserver's PoolDB satisfies
+	// hcheckout.TxStarter by structural typing.
+	Pool hcheckout.TxStarter
+	// SessionQ backs the sales-open gate. Read outside the transaction —
+	// it is a pure lookup with no effect on the order aggregate.
+	SessionQ OrderSessionQuerier
+	// Q is the pool-bound query surface used for the pre-order cart work:
+	// ordering.ReconcileLines runs BEFORE the order transaction opens,
+	// because the hold mutators (h.cartDeps.Extend/Shrink) each commit their
+	// own transaction and the pricing/promo readers that follow would not
+	// otherwise observe the reconciled cart.
+	Q *gen.Queries
+}
+
+// wired reports whether the CREATE_ORDER_EXT surface is available. Partial
+// wiring counts as unwired so a half-configured server degrades to the
+// explicit "not implemented" answer instead of panicking mid-command.
+func (d OrderDeps) wired() bool {
+	return d.Pool != nil && d.SessionQ != nil && d.Q != nil
+}
+
 // ScanQuerier is the narrow contract handleBil24ScanTicket uses to look
 // up a barcode across every authority (feature #472, spec §7.14) and to
 // resolve its owning ticket for the org-scope enforcement + platformTicketId
@@ -377,6 +421,12 @@ type Handler struct {
 	// surface and keeping pre-#509 unit tests passing.
 	refundQ      RefundTicketQuerier
 	refundTicket RefundTicketFunc
+
+	// orderDeps (feature #492, W1-B1b, spec §7.7) backs CREATE_ORDER_EXT:
+	// the transaction starter the whole command runs inside plus the session
+	// lookup its sales-open gate needs. Not wired ⇒ the command self-gates
+	// with resultCode=-5, which is the pre-#492 stub behaviour.
+	orderDeps OrderDeps
 }
 
 // New constructs a Handler from the caller's dependencies.
@@ -541,6 +591,17 @@ func (h *Handler) WithOrderExport(p OrderProjector) *Handler {
 func (h *Handler) WithRefundTicket(q RefundTicketQuerier, f RefundTicketFunc) *Handler {
 	h.refundQ = q
 	h.refundTicket = f
+	return h
+}
+
+// WithOrderCreate wires the CREATE_ORDER_EXT surface (feature #492, W1-B1b,
+// spec §7.7): the transaction starter the command's reconcile → resolve →
+// price → order-write sequence runs inside, and the session lookup backing its
+// sales-open gate. Callers that omit this setter keep the pre-#492 behaviour
+// where CREATE_ORDER_EXT answers resultCode=-5. Returns the receiver for
+// chaining.
+func (h *Handler) WithOrderCreate(d OrderDeps) *Handler {
+	h.orderDeps = d
 	return h
 }
 

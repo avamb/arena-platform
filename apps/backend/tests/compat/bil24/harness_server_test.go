@@ -128,6 +128,13 @@ func cleanupHarnessWireRows(t *testing.T, st *harnessState) {
 		     (SELECT id FROM reservations WHERE org_id = $1::uuid)`,
 		`DELETE FROM reservation_ga_items WHERE reservation_id IN
 		     (SELECT id FROM reservations WHERE org_id = $1::uuid)`,
+		// Feature #492: CREATE_ORDER_EXT writes real order aggregates through
+		// internal/platform/ordering, and orders FK both checkout_sessions and
+		// reservations. order_items/order_events cascade from orders, but the
+		// two parents do not — so the orders sweep has to precede the
+		// checkout_sessions sweep, which in turn has to precede reservations.
+		`DELETE FROM orders WHERE org_id = $1::uuid`,
+		`DELETE FROM checkout_sessions WHERE org_id = $1::uuid`,
 		`DELETE FROM reservations WHERE org_id = $1::uuid`,
 		`DELETE FROM gateway_sessions WHERE org_id = $1::uuid`,
 		// Customers are platform-scoped (migration 0091): the org link lives

@@ -114,6 +114,38 @@ type Request struct {
 	// PromoCode is the SINGULAR code CHECK_KDP validates without storing.
 	PromoCode string
 
+	// ── CREATE_ORDER_EXT fields (feature #492, spec §7.7) ────────────────
+
+	// Lines is the order composition the WordPress site submits: one entry
+	// per (categoryPriceId, quantity) pair. Spec §7.7 makes it the
+	// authoritative statement of what the buyer wants — the gateway
+	// reconciles the session cart against it — so an empty Lines is -2.
+	Lines []OrderLine
+	// Total is the price the CLIENT believes the order comes to, in major
+	// currency units. Spec §7.7 is explicit that the gateway never trusts
+	// it: it is recorded verbatim under order_events.created.payload
+	// .client_reported and plays no part in pricing.
+	Total *float64
+	// ChargePercent is the service-fee percentage the client believes
+	// applies. Like Total it is advisory only and lands in client_reported;
+	// the authoritative rate is the sales channel's fee_percent.
+	ChargePercent *float64
+	// ExpectedPrice is the per-ticket price the client expects. Advisory
+	// only; recorded in client_reported alongside Total/ChargePercent.
+	ExpectedPrice *float64
+	// Currency is the ISO-4217 code the client submitted. The gateway
+	// answers with the session's own currency; this is echoed into
+	// client_reported so a mismatch is diagnosable after the fact.
+	Currency string
+	// FullName is the single-field buyer name CREATE_ORDER_EXT sends where
+	// CREATE_USER sends FirstName/LastName. It feeds customers.Resolve.
+	FullName string
+	// LongReservation asks for the extended hold window some Bil24
+	// deployments grant bank-transfer buyers. The gateway currently honours
+	// the channel's configured TTL either way; the flag is decoded so the
+	// envelope does not surprise us later.
+	LongReservation bool
+
 	// ── REFUND_TICKET fields (feature #509, spec §7.13) ──────────────────
 
 	// Reason is the optional operator-supplied refund reason. When empty
@@ -162,6 +194,10 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 		CategoryPriceID json.RawMessage `json:"categoryPriceId"`
 		TicketID        json.RawMessage `json:"ticketId"`
 		RefundPrice     json.RawMessage `json:"refundPrice"`
+		OrderID         json.RawMessage `json:"orderId"`
+		Total           json.RawMessage `json:"total"`
+		ChargePercent   json.RawMessage `json:"chargePercent"`
+		ExpectedPrice   json.RawMessage `json:"expectedPrice"`
 	}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -179,6 +215,16 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	// Without the flex decode a numeric ticketId fails the WHOLE envelope and
 	// REFUND_TICKET / SCAN_TICKET answer -2 instead of doing their job.
 	r.TicketID = flexWireString(aux.TicketID)
+	// Spec §7.7: the WordPress site's own order number arrives as a JSON
+	// number in the wave-1 fixtures and as a quoted string from shops whose
+	// order numbering carries a prefix. Both become orders.external_ref.
+	r.OrderID = flexWireString(aux.OrderID)
+	// Client-reported money: advisory only, but decoded with the same
+	// number-or-quoted-number tolerance as refundPrice so a quoted total
+	// does not fail the whole envelope.
+	r.Total = flexWireFloatPtr(aux.Total)
+	r.ChargePercent = flexWireFloatPtr(aux.ChargePercent)
+	r.ExpectedPrice = flexWireFloatPtr(aux.ExpectedPrice)
 	return nil
 }
 
@@ -318,6 +364,46 @@ func (c *CategoryQty) UnmarshalJSON(data []byte) error {
 	}
 	c.CategoryPriceID = flexWireString(aux.CategoryPriceID)
 	c.Quantity = aux.Quantity
+	return nil
+}
+
+// OrderLine is one row of the CREATE_ORDER_EXT `lines` payload (spec §7.7):
+// a categoryPriceId naming a platform ticket_tier and the quantity wanted
+// against it. It is shaped like CategoryQty but kept separate because the
+// order payload also carries tariffPlanId, which the gateway accepts and
+// ignores (arena has no tariff-plan concept; rejecting it would break every
+// WordPress site that sends the field as null).
+//
+// Like CategoryQty the struct declares no JSON tags on its exported fields so
+// the snake_case policy scan stays quiet; the case-insensitive default walk
+// covers the legacy camelCase wire keys.
+type OrderLine struct {
+	// CategoryPriceID is the ticket_tier identifier (platform UUID or the
+	// spec §4 int64 catalog id).
+	CategoryPriceID string
+	// Quantity is the requested ticket count for the tier (>= 1).
+	Quantity int
+	// TariffPlanID is accepted and ignored; kept so the decoded envelope
+	// round-trips what the site sent.
+	TariffPlanID string
+}
+
+// UnmarshalJSON accepts categoryPriceId and tariffPlanId as either a JSON
+// string or a JSON number, mirroring CategoryQty.UnmarshalJSON. A null
+// tariffPlanId — what the WordPress plugin emits for every line — decodes to
+// the empty string rather than failing the envelope.
+func (l *OrderLine) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		CategoryPriceID json.RawMessage `json:"categoryPriceId"`
+		Quantity        int             `json:"quantity"`
+		TariffPlanID    json.RawMessage `json:"tariffPlanId"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	l.CategoryPriceID = flexWireString(aux.CategoryPriceID)
+	l.Quantity = aux.Quantity
+	l.TariffPlanID = flexWireString(aux.TariffPlanID)
 	return nil
 }
 

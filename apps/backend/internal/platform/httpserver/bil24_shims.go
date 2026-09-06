@@ -118,6 +118,12 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 		// and GET_CART can apply the session's accepted code. Without it both
 		// commands self-gate with -99 and GET_CART reports discountAmount=0.
 		h = h.WithPromoCodes(q)
+		// Feature #492 (W1-B1b, spec §7.7): wire CREATE_ORDER_EXT so it creates a
+		// real order aggregate through internal/platform/ordering instead of
+		// answering -5. Pool opens the per-command transaction; SessionQ backs the
+		// sales-open gate; Q is the pool-bound surface ordering.ReconcileLines uses
+		// BEFORE that transaction opens (the hold mutators commit their own).
+		h = h.WithOrderCreate(hbil24.OrderDeps{Pool: s.pool, SessionQ: q, Q: q})
 	}
 	// Feature #505 (W1-B7b, spec §7.8/§9.3): wire the neutral order projection
 	// so GET_ORDER_INFO answers with the bil24wire order object (36 keys minus

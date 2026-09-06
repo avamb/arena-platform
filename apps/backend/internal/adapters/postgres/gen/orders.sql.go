@@ -359,6 +359,64 @@ func (q *Queries) UpdateOrderStatus(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// UpdateOrderCheckout
+// ─────────────────────────────────────────────────────────────────────────────
+
+const updateOrderCheckout = `-- name: UpdateOrderCheckout :one
+UPDATE orders
+SET    external_ref       = $3,
+       checkout_session_id = $4,
+       reservation_id     = $5,
+       currency           = $6,
+       subtotal           = $7,
+       discount           = $8,
+       charge             = $9,
+       total              = $10,
+       charge_percent_bp  = $11,
+       promo_code_id      = $12,
+       buyer_name         = COALESCE($13, buyer_name),
+       buyer_email        = COALESCE($14, buyer_email),
+       buyer_phone        = COALESCE($15, buyer_phone),
+       expires_at         = $16,
+       updated_at         = now()
+WHERE  id = $1
+  AND  org_id = $2
+  AND  status = 'pending_payment'
+RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
+          checkout_session_id, reservation_id, external_ref, source, status,
+          currency, subtotal, discount, charge, total, charge_percent_bp,
+          promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
+          paid_at, cancelled_at, expires_at, metadata, created_at, updated_at`
+
+// UpdateOrderCheckout re-points a still-open order at a freshly priced
+// checkout session and rewrites its money columns (spec §7.7 step 5: a repeat
+// CREATE_ORDER_EXT for the same customer+session returns the SAME orderId with
+// updated external_ref, lines and sums). Buyer fields are only overwritten
+// when non-nil, so a later request that omits e.g. fullName does not erase it.
+//
+// The status guard makes the update a no-op (pgx.ErrNoRows) once the order has
+// been paid, cancelled or expired — a racing payment webhook must win.
+func (q *Queries) UpdateOrderCheckout(
+	ctx context.Context,
+	id, orgID uuid.UUID,
+	externalRef *string,
+	checkoutSessionID, reservationID uuid.UUID,
+	currency string,
+	subtotal, discount, charge, total int64,
+	chargePercentBP int32,
+	promoCodeID *uuid.UUID,
+	buyerName, buyerEmail, buyerPhone *string,
+	expiresAt *time.Time,
+) (OrderRow, error) {
+	row := q.db.QueryRow(ctx, updateOrderCheckout,
+		id, orgID, externalRef, checkoutSessionID, reservationID,
+		currency, subtotal, discount, charge, total, chargePercentBP,
+		promoCodeID, buyerName, buyerEmail, buyerPhone, expiresAt,
+	)
+	return scanOrderRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // OrderItemRow — shared result type for all order_items queries
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -467,6 +525,21 @@ WHERE  id = $1`
 // IssueTicketsForCheckout mints the ticket row for that unit.
 func (q *Queries) UpdateOrderItemTicket(ctx context.Context, id, ticketID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, updateOrderItemTicket, id, ticketID)
+	return err
+}
+
+const deleteOrderItemsByOrder = `-- name: DeleteOrderItemsByOrder :exec
+DELETE FROM order_items
+WHERE  order_id = $1
+  AND  ticket_id IS NULL`
+
+// DeleteOrderItemsByOrder clears the per-unit lines of a still-unticketed
+// order so they can be rewritten from the reconciled cart (spec §7.7 step 5).
+// Items that already carry a ticket_id are deliberately NOT deleted: a ticket
+// is issued only after payment, and an order with issued tickets is never a
+// candidate for line rewriting.
+func (q *Queries) DeleteOrderItemsByOrder(ctx context.Context, orderID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteOrderItemsByOrder, orderID)
 	return err
 }
 

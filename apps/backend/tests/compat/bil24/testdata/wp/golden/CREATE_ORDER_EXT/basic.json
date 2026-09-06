@@ -6,8 +6,8 @@
   "externalOrderId": "1001",
   "sum": 500,
   "discount": 0,
-  "charge": 0,
-  "totalSum": 500,
+  "charge": 25,
+  "totalSum": 525,
   "currency": "CZK",
   "expiration": "{{now+ttl}}"
 }

@@ -10,7 +10,7 @@
   "total": 500,
   "actionEventId": "{{actionEventId}}",
   "longReservation": true,
-  "lines": [{"categoryPriceId": 1, "quantity": 1, "tariffPlanId": null}],
+  "lines": [{"categoryPriceId": "{{categoryPriceId}}", "quantity": 1, "tariffPlanId": null}],
   "email": "buyer@example.com",
   "phone": "+420123456789",
   "fullName": "Anna Novak",

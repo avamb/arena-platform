@@ -3,7 +3,7 @@
   "description": "OK",
   "command": "CREATE_ORDER_EXT",
   "orderId": "{{orderId}}",
-  "externalOrderId": "wc_string_2002",
+  "externalOrderId": "wc_repeat_2006",
   "sum": 500,
   "discount": 0,
   "charge": 25,
