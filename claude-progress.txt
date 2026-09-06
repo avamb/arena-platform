@@ -29131,4 +29131,52 @@ Gates (all EXIT 0):
   `cmd_order_create.go` needed reformatting and got it before staging. Note
   the scoped dirs: a bare `gofmt -l .` walks into `apps/backend/.gomodcache`.
 - No openapi.yaml change, so no codegen; no migration, so no head bump.
+
+## Feature #489 — W1-A6d org-scoped orders endpoints, admin list switch, OpenAPI (2026-09-06)
+
+Added the org-scoped orders surface (spec §14.2, parent epic #456):
+`GET /v1/organizations/{org_id}/orders` (list, filters q/status/session_id/
+from/to + paging, `order.read`), `GET .../orders/{id}` (detail with items/
+tickets/events, `order.read`), `POST .../orders/{id}/cancel`
+(pending_payment→cancelled only, releases the hold via `ordering.Cancel` +
+`hcheckout.ReleaseHold`, `order.write`). New package
+`httpserver/horders/handler.go` (List/Get/Cancel), thin
+`orders_shims.go`/`mount_orders.go` mirroring the hcustomers pattern, wired
+into `mount_v1.go`. `order.read`/`order.write` permissions were already
+seeded by migration 0092 — no new migration needed.
+
+Tenant isolation is enforced two ways: `enforceOrgMembership(w, r, "org_id")`
+in the shim, plus every query (`GetOrderByID`, `UpdateOrderStatus`) carrying
+an `org_id`-qualified WHERE clause, so a cross-org id lookup 404s rather than
+leaking a 200 — covered by `TestHandleGet_CrossOrgOrder_Returns404` and
+`TestHandleCancel_CrossOrgOrder_Returns404` in the new
+`horders/handler_test.go` (11 test cases total, fake-pgx-row pattern
+mirrored from `hcustomers/handler_test.go`).
+
+`GET /v1/admin/orders` (superadmin) was switched from reading
+`checkout_sessions` to the `orders` table, keeping the JSON response keys
+backward compatible (inherited from the prior session, verified again this
+session).
+
+openapi.yaml: added `OrderSummary`/`OrderItemSummary`/`OrderTicketSummary`/
+`OrderEventSummary`/`OrderDetail` schemas and the three new paths; ran the
+full codegen pipeline manually (Makefile's real compat-file path is
+`apps/backend/openapi/.openapi.compat30.gen.yaml`, not the repo-root path
+AGENTS.md's paraphrase implies — read the Makefile directly next time).
+Regenerated `types_gen.go` and the TS client. `buildDriftTestServer` needed
+NO wiring changes — it already provides `CustomerQueries`+`Pool`, which
+`mountOrderRoutes`'s nil-guard reuses; both drift tests passed unchanged.
+
+Gates (all EXIT 0):
+- `go.exe build ./...` and `go.exe vet ./...` clean.
+- `go.exe test` green on: `httpserver` (+ all its `h*` subpackages incl. the
+  new `horders`, 11/11), `hbil24`, `bil24compat`, `tests/compat/bil24`
+  (+`wpstub`), `tests/staticanalysis`, `internal/migrations`.
+- `gofmt -l` clean on every touched/new file.
+- Committed (56eb0a8) and pushed to `origin/master`. Stray
+  `apps/backend/openapi/.compat30.gen.yaml` codegen leftover and the
+  untracked local `features.db` were left out of the commit deliberately.
+
+Marked feature #489 passing via `feature_mark_passing` after this full
+verification pass.
 - Staged by path only; `git status --short` verified before committing.
