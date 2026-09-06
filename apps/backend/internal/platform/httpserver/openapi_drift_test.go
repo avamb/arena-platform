@@ -401,6 +401,10 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// routes (feature #255) under
 		// /v1/organizations/{org_id}/bank-accounts are mounted.
 		BankAccountQueries: gen.New(nil),
+		// Wire APIKeyQueries so the organization API-key management routes
+		// (feature #514, W1-C1c) under /v1/organizations/{org_id}/api-keys[/{id}]
+		// are mounted for the drift check.
+		APIKeyQueries: gen.New(nil),
 		// Wire SeatingQueries so the seating-plan CRUD + versions + fork
 		// routes (feature #304, Wave SEAT-A3) under
 		// /v1/venues/{venue_id}/seating-plans and

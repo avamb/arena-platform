@@ -96,6 +96,11 @@ const REASON_REQUIRED_MUTATION_REGEX: readonly RegExp[] = [
  */
 const REASON_REQUIRED_REGEX: readonly RegExp[] = [
   /^\/v1\/organizations\/[^/]+\/channels\/[^/]+\/gateway-credential$/,
+  // W1-C1c (#514): GET/POST/DELETE .../api-keys all require the header —
+  // this surface mints and destroys server-to-server credentials, so even
+  // the list read is treated as a sensitive admin action, not routine
+  // browsing.
+  /^\/v1\/organizations\/[^/]+\/api-keys(?:\/.*)?$/,
 ];
 
 /** HTTP methods treated as mutations for the SAUI-09 gate. */

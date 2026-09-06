@@ -2019,6 +2019,176 @@ components:
             demotes the previous primary). Setting false while no other
             primary exists is rejected with 409.
 
+    # Organization API-key schemas — feature #514, W1-C1c, spec §13.1
+    ApiKeyItem:
+      type: object
+      required:
+        - id
+        - org_id
+        - name
+        - key_prefix
+        - scopes
+        - created_by
+        - created_at
+      description: |
+        A single organization API key row. Never includes the secret or
+        its hash — only the non-secret `key_prefix` used to identify
+        the key in logs and audit events. The full secret is returned
+        exactly once, on creation, inside `CreateApiKeyResponse.api_key`.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the api_keys row.
+          example: "01929d0e-0e47-7000-8000-000000000401"
+        org_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the owning organization (tenant boundary).
+        channel_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            Optional sales-channel scope. Null means the key is not
+            restricted to a single channel.
+        name:
+          type: string
+          minLength: 1
+          description: Human-readable label for the key (e.g. "Vino&Co WP plugin").
+          example: "Vino&Co WordPress plugin"
+        key_prefix:
+          type: string
+          description: |
+            Non-secret prefix of the wire token (`ak_<prefix>_...`), safe
+            to display and log for key identification.
+          example: "ak_3f9a2b1c7e0d"
+        scopes:
+          type: array
+          items:
+            type: string
+          description: |
+            Permission scopes granted to this key, validated against the
+            service-actor scope allowlist (spec §13.1). Never includes
+            `platform.*`/`admin.*`-prefixed scopes or `api_key.manage`.
+          example: ["event.create", "event.read", "session.create"]
+        created_by:
+          type: string
+          format: uuid
+          description: UUIDv7 of the user who issued this key.
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of row creation.
+          example: "2024-01-01T00:00:00Z"
+        last_used_at:
+          type: [string, "null"]
+          format: date-time
+          description: Timestamp of the most recent successful authentication with this key.
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: Optional expiry; a key stops authenticating once past this time.
+        revoked_at:
+          type: [string, "null"]
+          format: date-time
+          description: Set once the key has been revoked via DELETE; null while active.
+
+    CreateApiKeyRequest:
+      type: object
+      required: [name, scopes]
+      additionalProperties: false
+      description: |
+        Request body for POST /v1/organizations/{org_id}/api-keys.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Human-readable label for the key.
+          example: "Vino&Co WordPress plugin"
+        scopes:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          description: |
+            Permission scopes to grant. Rejected with 422 if empty, if
+            any scope has a `platform.`/`admin.` prefix, or if any scope
+            is the exact string `api_key.manage`.
+          example: ["event.create", "event.read", "session.create"]
+        channel_id:
+          type: [string, "null"]
+          format: uuid
+          description: Optional sales-channel scope for the key.
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: Optional expiry timestamp.
+
+    CreateApiKeyResponse:
+      type: object
+      required:
+        - id
+        - org_id
+        - name
+        - key_prefix
+        - scopes
+        - created_by
+        - created_at
+        - api_key
+      description: |
+        Response body returned only once, at creation time. `api_key` is
+        the full secret wire token (`ak_<prefix>_<secret>`) and is never
+        retrievable again — the caller MUST persist it immediately.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the api_keys row.
+        org_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the owning organization (tenant boundary).
+        channel_id:
+          type: [string, "null"]
+          format: uuid
+          description: Optional sales-channel scope, or null.
+        name:
+          type: string
+          description: Human-readable label for the key.
+        key_prefix:
+          type: string
+          description: Non-secret prefix of the wire token, safe to display and log.
+        scopes:
+          type: array
+          items:
+            type: string
+          description: Permission scopes granted to this key.
+        created_by:
+          type: string
+          format: uuid
+          description: UUIDv7 of the user who issued this key.
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 / RFC 3339 timestamp of row creation.
+        last_used_at:
+          type: [string, "null"]
+          format: date-time
+          description: Always null at creation time.
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: Optional expiry timestamp, or null.
+        revoked_at:
+          type: [string, "null"]
+          format: date-time
+          description: Always null at creation time.
+        api_key:
+          type: string
+          description: |
+            Full secret wire token, shown once. Format `ak_<prefix>_<secret>`.
+          example: "ak_3f9a2b1c7e0d_9Q7h2fW1x0aK5m8pR3sT6vY4zC8bD1eF2gH5jK7"
+
     # Seating plan schemas — feature #304, Wave SEAT-A3
     SeatingPlan:
       type: object
@@ -11150,6 +11320,249 @@ paths:
           description: |
             Attempt to delete the only primary account without
             designating a replacement primary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not wired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Organization API keys (feature #514, W1-C1c; spec §13.1)
+  # ─────────────────────────────────────────────────────────────────────────
+  # Service-actor credentials scoped to a single organization and used to
+  # authenticate the Bil24-compat gateway (and other machine callers) via
+  # `Authorization: Bearer ak_<prefix>_<secret>`. All three operations are
+  # gated on `api_key.manage` and additionally require the `X-Admin-Reason`
+  # header (superadmin-audit convention shared with the gateway-credential
+  # and wp-webhook admin surfaces). `api_key.manage` is on the forbidden
+  # exact-scope list, so a service actor (an API key) can never itself
+  # manage other API keys — this surface is reachable only via a user JWT.
+
+  /v1/organizations/{org_id}/api-keys:
+    get:
+      operationId: listOrganizationApiKeys
+      summary: List API keys for an organization
+      description: |
+        Returns every api_keys row (active and revoked) belonging to the
+        org in the path. Never includes the secret or its hash. Requires
+        `api_key.manage` and an `X-Admin-Reason` header.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the admin read (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [api_keys]
+                properties:
+                  api_keys:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ApiKeyItem"
+        "400":
+          description: org_id path parameter is not a valid UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `api_key.manage`, or missing X-Admin-Reason
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not wired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: createOrganizationApiKey
+      summary: Issue a new API key for an organization
+      description: |
+        Generates a new `ak_<prefix>_<secret>` service-actor credential
+        scoped to the org in the path. The full secret is returned only
+        in this response (`api_key` field) and cannot be retrieved again.
+        Scopes are validated against the service-actor allowlist: empty
+        scopes, `platform.`/`admin.`-prefixed scopes, and the exact
+        scope `api_key.manage` are all rejected. Requires `api_key.manage`
+        and an `X-Admin-Reason` header.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the admin write (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateApiKeyRequest"
+      responses:
+        "201":
+          description: API key created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [api_key]
+                properties:
+                  api_key:
+                    $ref: "#/components/schemas/CreateApiKeyResponse"
+        "400":
+          description: Invalid body, missing name, or invalid path parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `api_key.manage`, or missing X-Admin-Reason
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            Empty scopes list, or a scope is forbidden (`platform.`/
+            `admin.` prefix, or the exact scope `api_key.manage`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not wired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/api-keys/{id}:
+    delete:
+      operationId: revokeOrganizationApiKey
+      summary: Revoke an API key
+      description: |
+        Sets `revoked_at = now()` on the key, immediately invalidating
+        future authentication attempts with it. Idempotent: revoking an
+        already-revoked key still returns 200 with the current row
+        (no additional audit event is written for a no-op revoke).
+        Requires `api_key.manage` and an `X-Admin-Reason` header.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the owning organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the api_keys row.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the admin write (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: API key revoked (or already revoked)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [api_key]
+                properties:
+                  api_key:
+                    $ref: "#/components/schemas/ApiKeyItem"
+        "400":
+          description: Invalid path parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `api_key.manage`, or missing X-Admin-Reason
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: API key not found or owned by another org
           content:
             application/json:
               schema:

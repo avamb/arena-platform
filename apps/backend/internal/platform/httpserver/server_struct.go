@@ -67,9 +67,13 @@ type Server struct {
 	// customerQueries backs the customer read surface (feature #482, spec
 	// §12.3). It serves customers.sql / orders.sql / reservations.sql methods
 	// alike since they are all defined on the same *gen.Queries type.
-	customerQueries       *gen.Queries
-	paymentConfigQueries  *gen.Queries
-	bankAccountQueries    *gen.Queries
+	customerQueries      *gen.Queries
+	paymentConfigQueries *gen.Queries
+	bankAccountQueries   *gen.Queries
+	// apiKeyQueries backs the /v1/organizations/{org_id}/api-keys CRUD
+	// surface (feature #514, spec §13.1). Distinct from apiKeyStore above:
+	// that field is the narrow 3-method Store used only for authentication.
+	apiKeyQueries         *gen.Queries
 	membershipQueries     *gen.Queries
 	venueQueries          *gen.Queries
 	feedTokenQueries      *gen.Queries

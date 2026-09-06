@@ -811,6 +811,62 @@ export interface paths {
         patch: operations["updateOrganizationBankAccount"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List API keys for an organization
+         * @description Returns every api_keys row (active and revoked) belonging to the
+         *     org in the path. Never includes the secret or its hash. Requires
+         *     `api_key.manage` and an `X-Admin-Reason` header.
+         */
+        get: operations["listOrganizationApiKeys"];
+        put?: never;
+        /**
+         * Issue a new API key for an organization
+         * @description Generates a new `ak_<prefix>_<secret>` service-actor credential
+         *     scoped to the org in the path. The full secret is returned only
+         *     in this response (`api_key` field) and cannot be retrieved again.
+         *     Scopes are validated against the service-actor allowlist: empty
+         *     scopes, `platform.`/`admin.`-prefixed scopes, and the exact
+         *     scope `api_key.manage` are all rejected. Requires `api_key.manage`
+         *     and an `X-Admin-Reason` header.
+         */
+        post: operations["createOrganizationApiKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/api-keys/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke an API key
+         * @description Sets `revoked_at = now()` on the key, immediately invalidating
+         *     future authentication attempts with it. Idempotent: revoking an
+         *     already-revoked key still returns 200 with the current row
+         *     (no additional audit event is written for a no-op revoke).
+         *     Requires `api_key.manage` and an `X-Admin-Reason` header.
+         */
+        delete: operations["revokeOrganizationApiKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/members": {
         parameters: {
             query?: never;
@@ -6982,6 +7038,166 @@ export interface components {
              *     primary exists is rejected with 409.
              */
             is_primary?: boolean;
+        };
+        /**
+         * @description A single organization API key row. Never includes the secret or
+         *     its hash — only the non-secret `key_prefix` used to identify
+         *     the key in logs and audit events. The full secret is returned
+         *     exactly once, on creation, inside `CreateApiKeyResponse.api_key`.
+         */
+        ApiKeyItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the api_keys row.
+             * @example 01929d0e-0e47-7000-8000-000000000401
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the owning organization (tenant boundary).
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Optional sales-channel scope. Null means the key is not
+             *     restricted to a single channel.
+             */
+            channel_id?: string | null;
+            /**
+             * @description Human-readable label for the key (e.g. "Vino&Co WP plugin").
+             * @example Vino&Co WordPress plugin
+             */
+            name: string;
+            /**
+             * @description Non-secret prefix of the wire token (`ak_<prefix>_...`), safe
+             *     to display and log for key identification.
+             * @example ak_3f9a2b1c7e0d
+             */
+            key_prefix: string;
+            /**
+             * @description Permission scopes granted to this key, validated against the
+             *     service-actor scope allowlist (spec §13.1). Never includes
+             *     `platform.*`/`admin.*`-prefixed scopes or `api_key.manage`.
+             * @example [
+             *       "event.create",
+             *       "event.read",
+             *       "session.create"
+             *     ]
+             */
+            scopes: string[];
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the user who issued this key.
+             */
+            created_by: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of row creation.
+             * @example 2024-01-01T00:00:00Z
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Timestamp of the most recent successful authentication with this key.
+             */
+            last_used_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Optional expiry; a key stops authenticating once past this time.
+             */
+            expires_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Set once the key has been revoked via DELETE; null while active.
+             */
+            revoked_at?: string | null;
+        };
+        /** @description Request body for POST /v1/organizations/{org_id}/api-keys. */
+        CreateApiKeyRequest: {
+            /**
+             * @description Human-readable label for the key.
+             * @example Vino&Co WordPress plugin
+             */
+            name: string;
+            /**
+             * @description Permission scopes to grant. Rejected with 422 if empty, if
+             *     any scope has a `platform.`/`admin.` prefix, or if any scope
+             *     is the exact string `api_key.manage`.
+             * @example [
+             *       "event.create",
+             *       "event.read",
+             *       "session.create"
+             *     ]
+             */
+            scopes: string[];
+            /**
+             * Format: uuid
+             * @description Optional sales-channel scope for the key.
+             */
+            channel_id?: string | null;
+            /**
+             * Format: date-time
+             * @description Optional expiry timestamp.
+             */
+            expires_at?: string | null;
+        };
+        /**
+         * @description Response body returned only once, at creation time. `api_key` is
+         *     the full secret wire token (`ak_<prefix>_<secret>`) and is never
+         *     retrievable again — the caller MUST persist it immediately.
+         */
+        CreateApiKeyResponse: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the api_keys row.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the owning organization (tenant boundary).
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Optional sales-channel scope, or null.
+             */
+            channel_id?: string | null;
+            /** @description Human-readable label for the key. */
+            name: string;
+            /** @description Non-secret prefix of the wire token, safe to display and log. */
+            key_prefix: string;
+            /** @description Permission scopes granted to this key. */
+            scopes: string[];
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the user who issued this key.
+             */
+            created_by: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 / RFC 3339 timestamp of row creation.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Always null at creation time.
+             */
+            last_used_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Optional expiry timestamp, or null.
+             */
+            expires_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Always null at creation time.
+             */
+            revoked_at?: string | null;
+            /**
+             * @description Full secret wire token, shown once. Format `ak_<prefix>_<secret>`.
+             * @example ak_3f9a2b1c7e0d_9Q7h2fW1x0aK5m8pR3sT6vY4zC8bD1eF2gH5jK7
+             */
+            api_key: string;
         };
         /**
          * @description A logical seating plan owned by one organization and attached to a
@@ -15379,6 +15595,243 @@ export interface operations {
              *     to demote the only primary account.
              */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listOrganizationApiKeys: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the admin read (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUIDv7 primary key of the owning organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of API keys */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        api_keys: components["schemas"]["ApiKeyItem"][];
+                    };
+                };
+            };
+            /** @description org_id path parameter is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `api_key.manage`, or missing X-Admin-Reason */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createOrganizationApiKey: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the admin write (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUIDv7 primary key of the owning organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateApiKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description API key created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        api_key: components["schemas"]["CreateApiKeyResponse"];
+                    };
+                };
+            };
+            /** @description Invalid body, missing name, or invalid path parameter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `api_key.manage`, or missing X-Admin-Reason */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Empty scopes list, or a scope is forbidden (`platform.`/
+             *     `admin.` prefix, or the exact scope `api_key.manage`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    revokeOrganizationApiKey: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the admin write (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUIDv7 primary key of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 primary key of the api_keys row. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API key revoked (or already revoked) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        api_key: components["schemas"]["ApiKeyItem"];
+                    };
+                };
+            };
+            /** @description Invalid path parameter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `api_key.manage`, or missing X-Admin-Reason */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description API key not found or owned by another org */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -595,7 +595,7 @@ func TestCompatBil24_450_Harness_Scenarios(t *testing.T) {
 	})
 
 	t.Run("09_api_keys_service_scope", func(t *testing.T) {
-		t.Skip("feature #514: service API keys with scope limits: cross-org → 403; revoked → 401")
+		runScenario09APIKeys(t, st)
 	})
 
 	t.Run("10_customer_import_c7_dry_run_then_apply", func(t *testing.T) {

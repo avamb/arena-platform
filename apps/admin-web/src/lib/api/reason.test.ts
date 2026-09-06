@@ -98,6 +98,16 @@ describe("requiresAdminReason()", () => {
       "/v1/organizations/11111111-1111-1111-1111-111111111111/channels/22222222-2222-2222-2222-222222222222/gateway-credential",
       true,
     ],
+    // W1-C1c (#514): the api-keys sub-resource is gated regardless of
+    // method, including a bare no-method check and a sub-path (revoke).
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/api-keys",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/api-keys/33333333-3333-3333-3333-333333333333",
+      true,
+    ],
   ])("path %s -> %s", (path, expected) => {
     expect(requiresAdminReason(path)).toBe(expected);
   });
@@ -277,6 +287,23 @@ describe("requiresAdminReason()", () => {
       "/v1/organizations/11111111-1111-1111-1111-111111111111/channels/22222222-2222-2222-2222-222222222222",
       "GET",
       false,
+    ],
+    // W1-C1c (#514): api-keys requires X-Admin-Reason on every verb,
+    // including the list GET.
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/api-keys",
+      "GET",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/api-keys",
+      "POST",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/api-keys/33333333-3333-3333-3333-333333333333",
+      "DELETE",
+      true,
     ],
   ])("path %s + method %s -> %s", (path, method, expected) => {
     expect(requiresAdminReason(path, method)).toBe(expected);

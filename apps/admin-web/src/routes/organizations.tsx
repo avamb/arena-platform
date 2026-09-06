@@ -681,6 +681,7 @@ export const DRAWER_TAB_KEYS = [
   "venues",
   "channels",
   "payments",
+  "api_keys",
 ] as const;
 
 export type DrawerTabKey = (typeof DRAWER_TAB_KEYS)[number];
@@ -692,6 +693,7 @@ const DRAWER_TAB_LABELS: Record<DrawerTabKey, string> = {
   venues: "Venues",
   channels: "Channels",
   payments: "Payments",
+  api_keys: "API keys",
 };
 
 /**
@@ -842,6 +844,7 @@ function OrganizationDrawer({
         {activeTab === "venues" ? <VenuesTab org={org} /> : null}
         {activeTab === "channels" ? <ChannelsTab org={org} /> : null}
         {activeTab === "payments" ? <PaymentsTab org={org} /> : null}
+        {activeTab === "api_keys" ? <ApiKeysTab org={org} /> : null}
       </section>
     </aside>
   );
@@ -3358,6 +3361,445 @@ function PaymentsTab({ org }: { org: AdminOrganization }) {
     </>
   );
 }
+
+// ---------------------------------------------------------------------------
+// API keys tab (feature #514, W1-C1c)
+//
+// GET/POST /v1/organizations/{org_id}/api-keys and
+// DELETE /v1/organizations/{org_id}/api-keys/{id} — service credentials used
+// by server-to-server integrations (e.g. a WordPress site's Bil24-compat
+// gateway client). All three verbs require `api_key.manage` and an
+// `X-Admin-Reason` header (see lib/api/reason.ts's REASON_REQUIRED_REGEX
+// entry) -- authedFetch prompts for the reason automatically.
+//
+// The raw secret (`api_key` field) is returned exactly once, at creation
+// time, inside CreateApiKeyResponse -- it is never retrievable again, so the
+// UI surfaces a dedicated "copy this now" banner immediately after a
+// successful issue and never re-fetches or displays it afterward.
+// ---------------------------------------------------------------------------
+
+interface ApiKeyItem {
+  readonly id: string;
+  readonly org_id: string;
+  readonly channel_id?: string | null;
+  readonly name: string;
+  readonly key_prefix: string;
+  readonly scopes: readonly string[];
+  readonly created_by: string;
+  readonly created_at: string;
+  readonly last_used_at?: string | null;
+  readonly expires_at?: string | null;
+  readonly revoked_at?: string | null;
+}
+interface ApiKeysEnvelope {
+  readonly api_keys: readonly ApiKeyItem[];
+}
+interface ApiKeyEnvelope {
+  readonly api_key: ApiKeyItem;
+}
+interface CreateApiKeyEnvelope {
+  readonly api_key: ApiKeyItem & { readonly api_key: string };
+}
+
+// SC9_SCOPE_CATALOG is the spec §13.1 "event center for a site" scope set —
+// the canonical service-key checklist for a WordPress/Bil24-compat gateway
+// client. apikeys.ValidateScopes accepts any permission code that isn't
+// `platform.`/`admin.`-prefixed or the exact string `api_key.manage`, but
+// this fixed catalog is the only combination the backend's harness and the
+// wave's spec text actually exercise, so it is what the issue form offers.
+export const API_KEY_SCOPE_CATALOG = [
+  "event.create",
+  "event.read",
+  "event.update",
+  "event.publish",
+  "session.create",
+  "session.read",
+  "session.update",
+  "tier.create",
+  "tier.read",
+  "tier.update",
+  "venue.read",
+  "seating_plan.create",
+  "seating_plan.read",
+  "seating_plan.update.own",
+  "event_session.assign_seating_plan",
+  "media.write",
+  "media.read",
+  "import.bil24_session",
+] as const;
+
+export function validateApiKeyName(raw: string): string | null {
+  return raw.trim() === "" ? "Name is required" : null;
+}
+
+export function validateApiKeyScopes(scopes: readonly string[]): string | null {
+  return scopes.length === 0 ? "Select at least one scope" : null;
+}
+
+export interface ApiKeyFormErrors {
+  name?: string;
+  scopes?: string;
+  form?: string;
+}
+
+export function mapApiKeyServerError(err: ApiError): ApiKeyFormErrors {
+  switch (err.code) {
+    case "api_key.name_required":
+      return { name: err.message };
+    case "api_key.invalid_scopes":
+    case "api_key.forbidden_scope":
+      return { scopes: err.message };
+    case "superadmin.missing_reason":
+      return {
+        form:
+          "An audit reason (X-Admin-Reason) is required. Submit a reason and retry.",
+      };
+    default:
+      return { form: `${err.message} (${err.code})` };
+  }
+}
+
+function ApiKeysTab({ org }: { org: AdminOrganization }) {
+  const { permissions } = useAuth();
+  const canManage =
+    permissions.has("api_key.manage") || permissions.has("superadmin.read");
+  const queryClient = useQueryClient();
+  const [issuing, setIssuing] = useState(false);
+  const [justIssued, setJustIssued] = useState<
+    (ApiKeyItem & { api_key: string }) | null
+  >(null);
+  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(
+    null,
+  );
+
+  const query = useQuery<ApiKeysEnvelope, ApiError>({
+    queryKey: ["admin", "organizations", org.id, "api-keys"],
+    queryFn: () =>
+      authedFetch<ApiKeysEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${encodeURIComponent(org.id)}/api-keys`,
+      }),
+    enabled: canManage,
+    retry: (count, err) =>
+      err instanceof ApiError && (err.status === 401 || err.status === 403)
+        ? false
+        : count < 2,
+    refetchOnWindowFocus: false,
+  });
+
+  const revokeMutation = useMutation<ApiKeyEnvelope, ApiError, string>({
+    mutationFn: (id) =>
+      authedFetch<ApiKeyEnvelope>({
+        method: "DELETE",
+        path: `/v1/organizations/${encodeURIComponent(org.id)}/api-keys/${encodeURIComponent(id)}`,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "organizations", org.id, "api-keys"],
+      });
+    },
+    onError: (err, id) => {
+      setRowError({ id, message: `${err.message} (${err.code})` });
+    },
+  });
+
+  if (!canManage) {
+    return (
+      <TabForbidden missing="api_key.manage" testid="orgs-drawer-api-keys-forbidden" />
+    );
+  }
+
+  const rows = query.data?.api_keys ?? [];
+
+  return (
+    <section data-testid="orgs-drawer-api-keys">
+      <div style={tabHeaderStyle}>
+        <h3 style={drawerSectionTitleStyle}>API keys</h3>
+        <button
+          type="button"
+          style={smallPrimaryButtonStyle}
+          onClick={() => setIssuing((v) => !v)}
+          data-testid="api-key-issue-toggle"
+        >
+          {issuing ? "Cancel" : "Issue key"}
+        </button>
+      </div>
+      <p style={drawerHelpStyle}>
+        <code>GET/POST/DELETE /v1/organizations/{org.id}/api-keys</code> —
+        server-to-server service credentials (spec §13.1). The full secret is
+        shown exactly once, immediately after issue.
+      </p>
+
+      {justIssued !== null ? (
+        <div style={apiKeySecretBannerStyle} role="alert" data-testid="api-key-secret-banner">
+          <strong>Copy this key now — it will never be shown again.</strong>
+          <div style={apiKeySecretRowStyle}>
+            <code data-testid="api-key-secret-value">{justIssued.api_key}</code>
+            <button
+              type="button"
+              style={tabRowButtonStyle}
+              onClick={() => {
+                if (
+                  typeof navigator !== "undefined" &&
+                  navigator.clipboard?.writeText
+                ) {
+                  void navigator.clipboard.writeText(justIssued.api_key);
+                }
+              }}
+              data-testid="api-key-secret-copy"
+            >
+              Copy
+            </button>
+          </div>
+          <button
+            type="button"
+            style={tabRowButtonStyle}
+            onClick={() => setJustIssued(null)}
+            data-testid="api-key-secret-dismiss"
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+
+      {issuing ? (
+        <ApiKeyIssueForm
+          orgId={org.id}
+          onIssued={(created) => {
+            setJustIssued(created);
+            setIssuing(false);
+          }}
+          onClose={() => setIssuing(false)}
+        />
+      ) : null}
+
+      {query.isPending ? (
+        <div style={tabStatusStyle} role="status">
+          Loading api keys…
+        </div>
+      ) : query.isError ? (
+        <TabError error={query.error} retry={() => query.refetch()} testid="api-key-error" />
+      ) : rows.length === 0 ? (
+        <div style={tabStatusStyle} data-testid="api-key-empty">
+          No api keys issued for this organization.
+        </div>
+      ) : (
+        <div style={tabTableWrapStyle} data-testid="api-key-table">
+          <table style={tabTableStyle}>
+            <thead>
+              <tr>
+                <th scope="col" style={tabThStyle}>Name</th>
+                <th scope="col" style={tabThStyle}>Prefix</th>
+                <th scope="col" style={tabThStyle}>Scopes</th>
+                <th scope="col" style={tabThStyle}>Status</th>
+                <th scope="col" style={tabThStyle}>Last used</th>
+                <th scope="col" style={tabThStyle} aria-label="Actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} data-testid={`api-key-row-${r.id}`}>
+                  <td style={tabTdStyle}>{r.name}</td>
+                  <td style={tabTdMonoStyle}>{r.key_prefix}</td>
+                  <td style={tabTdStyle}>{r.scopes.join(", ")}</td>
+                  <td style={tabTdStyle}>
+                    {r.revoked_at !== null && r.revoked_at !== undefined ? (
+                      <span data-testid={`api-key-revoked-${r.id}`}>revoked</span>
+                    ) : (
+                      <span data-testid={`api-key-active-${r.id}`}>active</span>
+                    )}
+                  </td>
+                  <td style={tabTdMonoStyle}>{r.last_used_at ?? "—"}</td>
+                  <td style={tabTdStyle}>
+                    {r.revoked_at === null || r.revoked_at === undefined ? (
+                      <button
+                        type="button"
+                        style={tabRowDangerStyle}
+                        disabled={revokeMutation.isPending}
+                        onClick={() => {
+                          if (
+                            typeof window !== "undefined" &&
+                            !window.confirm(`Revoke api key "${r.name}"?`)
+                          ) {
+                            return;
+                          }
+                          setRowError(null);
+                          revokeMutation.mutate(r.id);
+                        }}
+                        data-testid={`api-key-revoke-${r.id}`}
+                      >
+                        Revoke
+                      </button>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {rowError !== null ? (
+        <div style={formErrorStyle} role="alert" data-testid="api-key-row-error">
+          {rowError.message}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ApiKeyIssueForm({
+  orgId,
+  onIssued,
+  onClose,
+}: {
+  orgId: string;
+  onIssued: (created: ApiKeyItem & { api_key: string }) => void;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState("");
+  const [scopes, setScopes] = useState<readonly string[]>([]);
+  const [serverErrors, setServerErrors] = useState<ApiKeyFormErrors>({});
+
+  const localErrors: ApiKeyFormErrors = {
+    name: validateApiKeyName(name) ?? undefined,
+    scopes: validateApiKeyScopes(scopes) ?? undefined,
+  };
+  const localValid = Object.values(localErrors).every((v) => v === undefined);
+
+  const mutation = useMutation<CreateApiKeyEnvelope, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<CreateApiKeyEnvelope>({
+        method: "POST",
+        path: `/v1/organizations/${encodeURIComponent(orgId)}/api-keys`,
+        body: { name: name.trim(), scopes },
+      }),
+    onSuccess: (resp) => {
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "organizations", orgId, "api-keys"],
+      });
+      onIssued(resp.api_key);
+    },
+    onError: (err) => {
+      setServerErrors(mapApiKeyServerError(err));
+    },
+  });
+
+  function toggleScope(scope: string) {
+    setScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
+    );
+  }
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setServerErrors({});
+    if (!localValid) return;
+    mutation.mutate();
+  }
+
+  return (
+    <form
+      onSubmit={onSubmit}
+      style={legalFormStyle}
+      noValidate
+      data-testid="api-key-issue-form"
+    >
+      <FieldRow
+        label="Name"
+        htmlFor="api-key-name"
+        error={serverErrors.name ?? null}
+        localError={localErrors.name ?? null}
+        hint="Human-readable label, e.g. the WordPress site's name."
+      >
+        <input
+          id="api-key-name"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          style={inputStyle}
+          maxLength={200}
+          data-testid="api-key-name"
+        />
+      </FieldRow>
+
+      <fieldset style={apiKeyScopeFieldsetStyle}>
+        <legend>Scopes</legend>
+        {serverErrors.scopes ?? localErrors.scopes ? (
+          <div style={formErrorStyle} role="alert">
+            {serverErrors.scopes ?? localErrors.scopes}
+          </div>
+        ) : null}
+        <div style={apiKeyScopeGridStyle}>
+          {API_KEY_SCOPE_CATALOG.map((scope) => (
+            <label key={scope} style={apiKeyScopeLabelStyle}>
+              <input
+                type="checkbox"
+                checked={scopes.includes(scope)}
+                onChange={() => toggleScope(scope)}
+                data-testid={`api-key-scope-${scope}`}
+              />
+              <code>{scope}</code>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      {serverErrors.form !== undefined ? (
+        <div style={formErrorStyle} role="alert" data-testid="api-key-form-error">
+          {serverErrors.form}
+        </div>
+      ) : null}
+
+      <div style={rowActionsStyle}>
+        <button
+          type="submit"
+          style={smallPrimaryButtonStyle}
+          disabled={mutation.isPending}
+          data-testid="api-key-submit"
+        >
+          {mutation.isPending ? "Issuing…" : "Issue key"}
+        </button>
+        <button type="button" style={tabRowButtonStyle} onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+const apiKeySecretBannerStyle: CSSProperties = {
+  border: "1px solid #b45309",
+  background: "#fffbeb",
+  borderRadius: 6,
+  padding: "12px 16px",
+  margin: "12px 0",
+};
+const apiKeySecretRowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  margin: "8px 0",
+  wordBreak: "break-all",
+};
+const apiKeyScopeFieldsetStyle: CSSProperties = {
+  border: "1px solid #d1d5db",
+  borderRadius: 6,
+  padding: "8px 12px",
+  margin: "8px 0",
+};
+const apiKeyScopeGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+  gap: 4,
+};
+const apiKeyScopeLabelStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  fontSize: "0.9em",
+};
 
 function TabForbidden({ missing, testid }: { missing: string; testid: string }) {
   return (

@@ -109,7 +109,13 @@ type Options struct {
 	// BankAccountQueries backs the /v1/organizations/{org_id}/bank-accounts
 	// CRUD surface (feature #255). When nil and PgxPool is non-nil, the
 	// constructor falls back to gen.New(PgxPool).
-	BankAccountQueries   *gen.Queries
+	BankAccountQueries *gen.Queries
+	// APIKeyQueries backs the /v1/organizations/{org_id}/api-keys CRUD
+	// surface (feature #514, spec §13.1). Distinct from APIKeyStore above:
+	// that field is the narrow 3-method Store used only for authentication.
+	// When nil and PgxPool is non-nil, the constructor falls back to
+	// gen.New(PgxPool).
+	APIKeyQueries        *gen.Queries
 	MembershipQueries    *gen.Queries
 	VenueQueries         *gen.Queries
 	FeedTokenQueries     *gen.Queries
@@ -285,6 +291,7 @@ func New(opts Options) *Server {
 		customerQueries:       pickQueries(opts.CustomerQueries, opts.PgxPool),
 		paymentConfigQueries:  pickQueries(opts.PaymentConfigQueries, opts.PgxPool),
 		bankAccountQueries:    pickQueries(opts.BankAccountQueries, opts.PgxPool),
+		apiKeyQueries:         pickQueries(opts.APIKeyQueries, opts.PgxPool),
 		membershipQueries:     pickQueries(opts.MembershipQueries, opts.PgxPool),
 		venueQueries:          pickQueries(opts.VenueQueries, opts.PgxPool),
 		feedTokenQueries:      pickQueries(opts.FeedTokenQueries, opts.PgxPool),

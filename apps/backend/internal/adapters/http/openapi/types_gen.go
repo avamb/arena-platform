@@ -1017,6 +1017,49 @@ type AdminUserDirectoryResponse struct {
 	Users []AdminUserDirectoryItem `json:"users"`
 }
 
+// ApiKeyItem A single organization API key row. Never includes the secret or
+// its hash — only the non-secret `key_prefix` used to identify
+// the key in logs and audit events. The full secret is returned
+// exactly once, on creation, inside `CreateApiKeyResponse.api_key`.
+type ApiKeyItem struct {
+	// ChannelId Optional sales-channel scope. Null means the key is not
+	// restricted to a single channel.
+	ChannelId *openapi_types.UUID `json:"channel_id"`
+
+	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy UUIDv7 of the user who issued this key.
+	CreatedBy openapi_types.UUID `json:"created_by"`
+
+	// ExpiresAt Optional expiry; a key stops authenticating once past this time.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// Id UUIDv7 primary key of the api_keys row.
+	Id openapi_types.UUID `json:"id"`
+
+	// KeyPrefix Non-secret prefix of the wire token (`ak_<prefix>_...`), safe
+	// to display and log for key identification.
+	KeyPrefix string `json:"key_prefix"`
+
+	// LastUsedAt Timestamp of the most recent successful authentication with this key.
+	LastUsedAt *time.Time `json:"last_used_at"`
+
+	// Name Human-readable label for the key (e.g. "Vino&Co WP plugin").
+	Name string `json:"name"`
+
+	// OrgId UUIDv7 of the owning organization (tenant boundary).
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// RevokedAt Set once the key has been revoked via DELETE; null while active.
+	RevokedAt *time.Time `json:"revoked_at"`
+
+	// Scopes Permission scopes granted to this key, validated against the
+	// service-actor scope allowlist (spec §13.1). Never includes
+	// `platform.*`/`admin.*`-prefixed scopes or `api_key.manage`.
+	Scopes []string `json:"scopes"`
+}
+
 // ApproveRefundRequest Request body for `POST /v1/refunds/{id}/approve` and
 // `POST /v1/refunds/{id}/reject`. The body is optional; if
 // present the handler parses it but currently only the `notes`
@@ -1982,6 +2025,64 @@ type ConfirmCheckoutRequest struct {
 	// `tier_id` if supplied. Returns `422 checkout.pricing_mismatch`
 	// on disagreement.
 	TierId *openapi_types.UUID `json:"tier_id"`
+}
+
+// CreateApiKeyRequest Request body for POST /v1/organizations/{org_id}/api-keys.
+type CreateApiKeyRequest struct {
+	// ChannelId Optional sales-channel scope for the key.
+	ChannelId *openapi_types.UUID `json:"channel_id"`
+
+	// ExpiresAt Optional expiry timestamp.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// Name Human-readable label for the key.
+	Name string `json:"name"`
+
+	// Scopes Permission scopes to grant. Rejected with 422 if empty, if
+	// any scope has a `platform.`/`admin.` prefix, or if any scope
+	// is the exact string `api_key.manage`.
+	Scopes []string `json:"scopes"`
+}
+
+// CreateApiKeyResponse Response body returned only once, at creation time. `api_key` is
+// the full secret wire token (`ak_<prefix>_<secret>`) and is never
+// retrievable again — the caller MUST persist it immediately.
+type CreateApiKeyResponse struct {
+	// ApiKey Full secret wire token, shown once. Format `ak_<prefix>_<secret>`.
+	ApiKey string `json:"api_key"`
+
+	// ChannelId Optional sales-channel scope, or null.
+	ChannelId *openapi_types.UUID `json:"channel_id"`
+
+	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy UUIDv7 of the user who issued this key.
+	CreatedBy openapi_types.UUID `json:"created_by"`
+
+	// ExpiresAt Optional expiry timestamp, or null.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// Id UUIDv7 primary key of the api_keys row.
+	Id openapi_types.UUID `json:"id"`
+
+	// KeyPrefix Non-secret prefix of the wire token, safe to display and log.
+	KeyPrefix string `json:"key_prefix"`
+
+	// LastUsedAt Always null at creation time.
+	LastUsedAt *time.Time `json:"last_used_at"`
+
+	// Name Human-readable label for the key.
+	Name string `json:"name"`
+
+	// OrgId UUIDv7 of the owning organization (tenant boundary).
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// RevokedAt Always null at creation time.
+	RevokedAt *time.Time `json:"revoked_at"`
+
+	// Scopes Permission scopes granted to this key.
+	Scopes []string `json:"scopes"`
 }
 
 // CreateBankAccountRequest Request body for POST /v1/organizations/{org_id}/bank-accounts.
@@ -7768,6 +7869,24 @@ type ArchiveOperatorNetworkParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// ListOrganizationApiKeysParams defines parameters for ListOrganizationApiKeys.
+type ListOrganizationApiKeysParams struct {
+	// XAdminReason Human-readable business reason for the admin read (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// CreateOrganizationApiKeyParams defines parameters for CreateOrganizationApiKey.
+type CreateOrganizationApiKeyParams struct {
+	// XAdminReason Human-readable business reason for the admin write (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// RevokeOrganizationApiKeyParams defines parameters for RevokeOrganizationApiKey.
+type RevokeOrganizationApiKeyParams struct {
+	// XAdminReason Human-readable business reason for the admin write (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // GetOrgBillingUsageParams defines parameters for GetOrgBillingUsage.
 type GetOrgBillingUsageParams struct {
 	// PeriodStart Inclusive RFC 3339 start of the reporting period.
@@ -8152,6 +8271,9 @@ type PostV1OrganizationsJSONRequestBody = CreateOrganizationRequest
 
 // PatchV1OrganizationsIdJSONRequestBody defines body for PatchV1OrganizationsId for application/json ContentType.
 type PatchV1OrganizationsIdJSONRequestBody = UpdateOrganizationRequest
+
+// CreateOrganizationApiKeyJSONRequestBody defines body for CreateOrganizationApiKey for application/json ContentType.
+type CreateOrganizationApiKeyJSONRequestBody = CreateApiKeyRequest
 
 // CreateOrganizationBankAccountJSONRequestBody defines body for CreateOrganizationBankAccount for application/json ContentType.
 type CreateOrganizationBankAccountJSONRequestBody = CreateBankAccountRequest

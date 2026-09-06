@@ -138,6 +138,24 @@ func (s *Server) mountBankAccountRoutes(r chi.Router) {
 	})
 }
 
+// mountAPIKeyRoutes mounts organization API-key management endpoints
+// (feature #514, W1-C1c; spec §13.1).
+//
+// All three operations are gated on `api_key.manage`; each handler also
+// requires the `X-Admin-Reason` header (superadmin-audit convention shared
+// with the gateway-credential and wp-webhook admin surfaces).
+func (s *Server) mountAPIKeyRoutes(r chi.Router) {
+	if !s.authEnabled() || s.apiKeyQueries == nil || s.pool == nil {
+		return
+	}
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "api_key.manage", "api_keys")
+		pr.Get("/organizations/{org_id}/api-keys", s.handleListAPIKeys)
+		pr.Post("/organizations/{org_id}/api-keys", s.handleCreateAPIKey)
+		pr.Delete("/organizations/{org_id}/api-keys/{id}", s.handleRevokeAPIKey)
+	})
+}
+
 // mountMembershipRoutes mounts membership grant/revoke/list endpoints (feature #120).
 func (s *Server) mountMembershipRoutes(r chi.Router) {
 	if !s.authEnabled() || s.membershipQueries == nil || s.pool == nil {

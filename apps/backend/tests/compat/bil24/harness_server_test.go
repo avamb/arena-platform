@@ -32,10 +32,16 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver"
 )
+
+// harnessJWTStubSecret is the stub HS256 secret used to mint JWTs for
+// scenarios (e.g. scenario 9, feature #514) that must drive the real v1 REST
+// surface as a user actor rather than the Bil24 gateway wire protocol.
+const harnessJWTStubSecret = "harness-jwt-stub-secret-long-enough-for-hs256"
 
 // harnessServerConfig is the minimal *config.Config httpserver.New consults.
 // ActiveLocales carries the four spec §6 gateway locales so localized
@@ -54,7 +60,25 @@ func harnessServerConfig() *config.Config {
 		ActiveLocales:   []string{"en", "ru", "cs", "he"},
 		LogLevel:        "error",
 		LogFormat:       "json",
+		JWTSecretStub:   harnessJWTStubSecret,
+		EnableStubAuth:  true,
 	}
+}
+
+// harnessStubAuth builds the StubProvider matching harnessServerConfig's
+// JWTSecretStub, so scenarios can mint bearer tokens for the v1 REST surface
+// (feature #514, scenario 9) via stub.IssueToken.
+func harnessStubAuth(t *testing.T) *auth.StubProvider {
+	t.Helper()
+	stub, err := auth.NewStubProvider(auth.StubConfig{
+		Secret:  harnessJWTStubSecret,
+		Issuer:  "arena-bil24-harness",
+		Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("harnessStubAuth: NewStubProvider: %v", err)
+	}
+	return stub
 }
 
 // startHarnessServer boots the real server over the seeded pool and returns the
@@ -77,6 +101,7 @@ func startHarnessServer(t *testing.T, st *harnessState) string {
 		Logger:             slog.New(slog.NewJSONHandler(io.Discard, nil)),
 		Pool:               st.Pool,
 		PgxPool:            st.Pool,
+		Auth:               harnessStubAuth(t),
 		Bil24CompatEnabled: true,
 		Bil24RequireToken:  true,
 	})
@@ -296,6 +321,60 @@ func expireGatewaySession(t *testing.T, st *harnessState, token string) {
 		 WHERE session_token = $1`, token); err != nil {
 		t.Fatalf("expire gateway session: %v", err)
 	}
+}
+
+// restJSON sends one request to the real v1 REST surface (as opposed to the
+// Bil24 wire protocol postBil24 speaks) with an optional bearer token and
+// extra headers, and returns the raw status plus the decoded JSON body.
+// Feature #514 scenario 9 is the first consumer: it drives the org-admin
+// api-keys CRUD surface and the §13.4 no-seats catalog flow as a real user
+// (JWT) and then as a real service actor (api key), so unlike postBil24 a
+// non-2xx status is not fatal — the caller asserts on it directly (e.g. the
+// cross-org 403 and the revoked-key 401).
+func restJSON(
+	t *testing.T,
+	base, method, path, bearer string,
+	headers map[string]string,
+	body any,
+) (int, map[string]interface{}) {
+	t.Helper()
+	var reader io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal request: %v", err)
+		}
+		reader = bytes.NewReader(raw)
+	}
+	req, err := http.NewRequest(method, base+path, reader)
+	if err != nil {
+		t.Fatalf("build %s %s: %v", method, path, err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, path, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	payload, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body for %s %s: %v", method, path, err)
+	}
+	var out map[string]interface{}
+	if len(payload) > 0 {
+		if err := json.Unmarshal(payload, &out); err != nil {
+			t.Fatalf("parse response %s %s = %s: %v", method, path, payload, err)
+		}
+	}
+	return resp.StatusCode, out
 }
 
 // numberField reads a JSON number out of a decoded response, failing the test

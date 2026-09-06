@@ -33,6 +33,7 @@ func (s *Server) mountV1Routes() {
 		s.mountCustomerRoutes(r)
 		s.mountPaymentConfigRoutes(r)
 		s.mountBankAccountRoutes(r)
+		s.mountAPIKeyRoutes(r)
 		s.mountMembershipRoutes(r)
 		s.mountVenueRoutes(r)
 		s.mountFeedTokenRoutes(r)

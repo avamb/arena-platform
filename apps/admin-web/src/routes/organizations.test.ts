@@ -13,6 +13,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  API_KEY_SCOPE_CATALOG,
   DRAWER_TAB_KEYS,
   MEMBERSHIP_ROLES,
   buildOrgScopedHref,
@@ -53,6 +54,10 @@ import {
   validateLegalEmail,
   validateLegalUrl,
   validateTaxId,
+  // Feature #514 — W1-C1c API keys tab helpers.
+  mapApiKeyServerError,
+  validateApiKeyName,
+  validateApiKeyScopes,
   type AdminOrganization,
   type MembershipRole,
 } from "./organizations";
@@ -376,6 +381,7 @@ describe("Drawer tab model (feature #240)", () => {
       "venues",
       "channels",
       "payments",
+      "api_keys",
     ]);
   });
 
@@ -822,6 +828,78 @@ describe("Legal & billing tab helpers (feature #256)", () => {
     it("emits trimmed values for changed fields", () => {
       const next = { ...base, holder_name: "  Y  ", is_primary: true };
       expect(buildUpdateBankBody(next, base)).toEqual({ holder_name: "Y", is_primary: true });
+    });
+  });
+});
+
+describe("API keys tab helpers (feature #514, W1-C1c)", () => {
+  function makeErr(code: string, message = "boom"): ApiError {
+    return new ApiError(400, { code, message });
+  }
+
+  it("API_KEY_SCOPE_CATALOG mirrors the spec §13.1 scope set", () => {
+    expect(API_KEY_SCOPE_CATALOG).toEqual([
+      "event.create",
+      "event.read",
+      "event.update",
+      "event.publish",
+      "session.create",
+      "session.read",
+      "session.update",
+      "tier.create",
+      "tier.read",
+      "tier.update",
+      "venue.read",
+      "seating_plan.create",
+      "seating_plan.read",
+      "seating_plan.update.own",
+      "event_session.assign_seating_plan",
+      "media.write",
+      "media.read",
+      "import.bil24_session",
+    ]);
+  });
+
+  describe("validateApiKeyName", () => {
+    it("rejects empty / whitespace-only", () => {
+      expect(validateApiKeyName("")).not.toBeNull();
+      expect(validateApiKeyName("   ")).not.toBeNull();
+    });
+    it("accepts a trimmed non-empty name", () => {
+      expect(validateApiKeyName("WP gateway key")).toBeNull();
+    });
+  });
+
+  describe("validateApiKeyScopes", () => {
+    it("rejects an empty scope list", () => {
+      expect(validateApiKeyScopes([])).not.toBeNull();
+    });
+    it("accepts at least one scope", () => {
+      expect(validateApiKeyScopes(["event.read"])).toBeNull();
+    });
+  });
+
+  describe("mapApiKeyServerError", () => {
+    it("maps api_key.name_required to the name field", () => {
+      expect(mapApiKeyServerError(makeErr("api_key.name_required", "need a name")).name).toBe(
+        "need a name",
+      );
+    });
+    it("maps api_key.invalid_scopes and api_key.forbidden_scope to the scopes field", () => {
+      expect(
+        mapApiKeyServerError(makeErr("api_key.invalid_scopes", "bad scopes")).scopes,
+      ).toBe("bad scopes");
+      expect(
+        mapApiKeyServerError(makeErr("api_key.forbidden_scope", "forbidden")).scopes,
+      ).toBe("forbidden");
+    });
+    it("maps superadmin.missing_reason to a form-level audit-reason prompt", () => {
+      expect(mapApiKeyServerError(makeErr("superadmin.missing_reason")).form).toMatch(
+        /audit reason/i,
+      );
+    });
+    it("falls back to a generic form-level message with the code suffix", () => {
+      expect(mapApiKeyServerError(makeErr("weird.code", "boom")).form).toBe("boom (weird.code)");
     });
   });
 });
