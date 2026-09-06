@@ -121,6 +121,23 @@ entries short and factual.
   through real login. Needs a real fix (JWT issuance and/or the DB query)
   before any feature can rely on org-scoped `user_roles` roles working for
   actual end users.
+- **Two outbox tables exist and only one is dispatched.** Legacy `outbox`
+  (migration 0002: `aggregate_id uuid`, `dispatched_at`) is what
+  `outbox.PGWriter` writes to and what the backlog/lag monitors count.
+  `outbox_events` (migration 0001: `aggregate_id text`, `processed_at`,
+  `last_error`) is what EVERY dispatcher reads — `PGOutboxEventStore`,
+  `macs.Dispatcher`, `bil24wire.Dispatcher`, `cmd/arena-worker`. Events
+  appended through `PGWriter` are therefore never delivered, silently and
+  without an error log. Feature #509 added `outbox.PGEventsWriter` and made it
+  the default in `httpserver/wire.go` and `cmd/arena-worker/main.go`; use it
+  for any new wiring. Tests asserting that an event was published must query
+  `outbox_events` and cast the id (`aggregate_id = $1::text`).
+- **`audit_events.actor_id` is a nullable `uuid` column** and `audit.insertSQL`
+  casts it with `NULLIF($3,'')::uuid`, so `audit.Event.ActorID` accepts only a
+  UUID string or `""`. A non-UUID principal label (the Bil24 gateway's
+  `gateway:<fid>`) aborts the whole enclosing transaction with SQLSTATE 22P02
+  — which surfaces as a generic gateway `-99`. Pass such labels as audit
+  metadata instead; see `htickets.CancelTicketParams.ActorLabel`.
 - Guardrail enforces snake_case in JSON payloads; `internal/platform/brevo/`
   has a documented exception because the Brevo API genuinely returns camelCase
   (e.g. `dkimRecord`).

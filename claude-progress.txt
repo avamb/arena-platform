@@ -28789,3 +28789,75 @@ Working tree left exactly as found: only the perennial untouched scratch
 deleted, `features.db` untracked). All ad-hoc gate log files created during
 this session (`gate_*.log`) were deleted before finishing. No commit was
 made — nothing to stage. Feature #467 marked passing.
+
+================================================================================
+Feature #509 — W1-B8: REFUND_TICKET gateway command (2026-09-06, commit dad8c02)
+================================================================================
+
+Spec §7.13. The Bil24-compatible gateway now accepts
+`REFUND_TICKET {ticketId, reason?, refundPrice?}` and answers the standard
+envelope plus `{ticketId, refundDate}`.
+
+What landed:
+- `htickets/cancel_tx.go` (new): the AB-49 cancellation TRANSACTION extracted
+  verbatim out of `HandleCancelTicket` into the exported `CancelTicketTx`, so
+  the gateway runs byte-for-byte the same status transition → inventory
+  release → ledger `RestoreSoldCapacity` → barcode/credential revocation →
+  audit → commit → `v1.ticket.cancelled` publish. It returns a
+  `*CancelTicketError` carrying the HTTP status + error code of each step, so
+  `HandleCancelTicket` keeps its exact per-step response mapping and no HTTP
+  concern leaks into the core. `cancel.go` shrank by ~127 lines.
+- `RefundTicketForGateway` in the same file: cancel with
+  `refund_mode=manual`, default reason `"REFUND_TICKET via gateway fid=<fid>"`,
+  audit actor `gateway:<fid>`, `tickets.refund_price` from `refundPrice`,
+  and the projection onto the ORDER aggregate — `orders.status` →
+  `refunded` / `partially_refunded` plus an `order_events.ticket_refunded`
+  row. Ticket outside the channel's org → `-3`; already cancelled → `0`.
+- `hbil24/cmd_refund.go` + a `WithRefundTicket` callback wired in
+  `httpserver/bil24_shims.go`, keeping the rule that `hbil24` never imports
+  package `httpserver`. Wire decoding of the flexible `refundPrice` shape in
+  `bil24compat/wire.go`.
+- Goldens `REFUND_TICKET/{ok,repeat,other_org}.json` (request + golden) and
+  harness scenario 4 (`04_refund_dedup`) un-skipped: the refund reaches the
+  wpstub AND the MACS stub exactly once and a replay is deduped.
+
+Two platform defects were found and fixed on the way — both are now
+documented in AGENTS.md § Gotchas:
+
+1. `audit_events.actor_id` is a nullable `uuid` column and `audit.insertSQL`
+   casts `NULLIF($3,'')::uuid`, so writing the spec's `gateway:<fid>` actor
+   into `ActorID` aborted the entire cancel transaction with SQLSTATE 22P02,
+   surfacing as an opaque `-99`. Fixed by adding
+   `CancelTicketParams.ActorLabel`: the label is recorded as audit metadata
+   `"actor"`, `actor_id` stays NULL, and `order_events.actor` keeps the
+   spec-required `gateway:<fid>` unchanged.
+2. THE BIG ONE — domain events were being written to a table nobody reads.
+   `outbox.PGWriter` INSERTs into the legacy `outbox` table (migration 0002),
+   while `PGOutboxEventStore`, `macs.Dispatcher`, `bil24wire.Dispatcher` and
+   `cmd/arena-worker` all poll `outbox_events` (migration 0001). Every event
+   published through `s.outboxWriter` — `v1.ticket.cancelled`,
+   `v1.order.paid`, the scanner events — was silently undelivered, with no
+   error log. It had never surfaced because the one prior round-trip test
+   (`wp_roundtrip_508_integration_test.go`) INSERTs its `outbox_events` rows
+   by hand instead of relying on the server's publisher. Fixed by adding
+   `outbox.PGEventsWriter` (`INSERT INTO outbox_events …`; `aggregate_id` is
+   `text` there, so no `::uuid` cast) and making it the default in
+   `httpserver/wire.go` and `cmd/arena-worker/main.go`. Legacy `PGWriter`,
+   the `outbox` table and the backlog/lag monitors are untouched, so
+   `outbox_integration_test.go` still passes as written. The one test that
+   asserted delivery against the wrong table
+   (`order_wiring_w1a6c_488_integration_test.go`, feature #488's
+   `v1.order.paid` assertion) was repointed at `outbox_events`.
+
+Gates: `go build ./...` EXIT 0; `go vet ./...` EXIT 0; full untagged
+`go test ./...` EXIT 0; `-tags integration ./apps/backend/...` against the
+migrated dev stand (port 55432) green except the pre-existing
+`TestDelivery_SMTPSuccess`, which panics with "rootless Docker is not
+supported on Windows" (testcontainers, host limitation, unrelated);
+`./tests/compat/bil24/...` both packages ok; staticanalysis and migrations
+packages ok; golangci-lint "0 issues"; gofmt run on every changed file
+including the integration-tagged ones. All debug instrumentation added while
+chasing defect 2 was removed and the scratch logs deleted before staging.
+
+Staged by path (never `git add .`); `features.db` and the perennial
+`.autoforge`/`.claude` scratch left untouched. Pushed to master as dad8c02.
