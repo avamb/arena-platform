@@ -464,14 +464,18 @@ func TestBil24_374_AddPromoCodes_NotUnknownCommand(t *testing.T) {
 	}
 }
 
-func TestBil24_374_AddPromoCodes_ReturnsNotImplemented(t *testing.T) {
-	// ADD_PROMO_CODES should return ResultCodeNotImplemented (-5) explicitly.
+func TestBil24_374_AddPromoCodes_SelfGatesWithoutPromoSurface(t *testing.T) {
+	// Feature #491 (spec §7.6) replaced the -5 NOT_IMPLEMENTED stub with a
+	// real handler. On a Handler built without the cart / promo surfaces the
+	// command self-gates with ResultCodeInternalError (-99), the same way
+	// every other cart command does — never -5, and never the unknown-command
+	// fallthrough (asserted separately above).
 	h := newMinimalHandler()
 	resp := postJSON(t, h, `{"command":"ADD_PROMO_CODES","fid":"1271"}`)
 	rc := mustResultCode(t, resp)
-	if rc != ResultCodeNotImplemented {
-		t.Errorf("Step 4: expected ADD_PROMO_CODES to return %d (NOT_IMPLEMENTED), got %d",
-			ResultCodeNotImplemented, rc)
+	if rc != ResultCodeInternalError {
+		t.Errorf("Step 4: expected ADD_PROMO_CODES to self-gate with %d, got %d",
+			ResultCodeInternalError, rc)
 	}
 }
 

@@ -1,0 +1,18 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "GET_CART",
+  "cartTimeout": 1200,
+  "currency": "CZK",
+  "sum": 500,
+  "discountAmount": 50,
+  "chargeAmount": 22.5,
+  "totalSum": 472.5,
+  "actionEventList": [
+    {"actionEventId": "{{actionEventId}}", "chargePercent": 5,
+     "seatList": [
+       {"seatId": "{{seatId:Parter-3-12}}", "categoryPriceId": "{{categoryPriceId}}",
+        "tariffPlanId": null, "price": 500, "discount": 50}
+     ]}
+  ]
+}

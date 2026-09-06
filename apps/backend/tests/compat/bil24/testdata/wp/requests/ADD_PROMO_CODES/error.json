@@ -2,9 +2,9 @@
   "command": "ADD_PROMO_CODES",
   "fid": 1271,
   "token": "{{token}}",
-  "locale": "ru-RU",
+  "locale": "en-US",
   "userId": 10001,
   "sessionId": "{{sessionId}}",
-  "promoCodeList": ["WAVE1"],
-  "promoCodes": ["wave1"]
+  "promoCodeList": ["NO-SUCH-CODE"],
+  "promoCodes": ["NO-SUCH-CODE"]
 }

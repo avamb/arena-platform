@@ -23,6 +23,17 @@ SELECT id, org_id, code, discount_type, discount_value, applies_to_tier_ids,
 FROM promo_codes
 WHERE org_id = $1 AND code = $2 AND deleted_at IS NULL;
 
+-- name: GetPromoCodeByCodeCI :one
+-- Fetch by org_id + code matched case-insensitively (Bil24 gateway, spec §7.6:
+-- buyers type the code by hand in the WordPress checkout).
+SELECT id, org_id, code, discount_type, discount_value, applies_to_tier_ids,
+       max_uses, max_uses_per_customer, valid_from, valid_until, min_order_amount,
+       status, created_at, updated_at, deleted_at
+FROM promo_codes
+WHERE org_id = $1 AND lower(code) = lower($2) AND deleted_at IS NULL
+ORDER BY created_at
+LIMIT 1;
+
 -- name: ListPromoCodesByOrg :many
 SELECT id, org_id, code, discount_type, discount_value, applies_to_tier_ids,
        max_uses, max_uses_per_customer, valid_from, valid_until, min_order_amount,

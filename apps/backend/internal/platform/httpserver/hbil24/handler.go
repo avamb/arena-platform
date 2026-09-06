@@ -323,6 +323,14 @@ type Handler struct {
 	// the pre-W1 immutable-hold path so every pre-#484 unit test that builds
 	// a Handler without a pool keeps passing.
 	cartDeps CartDeps
+
+	// promoQ (feature #491, W1-B1a, spec §7.6) is the promo-code surface
+	// ADD_PROMO_CODES / CHECK_KDP validate against and that GET_CART reads
+	// the session's accepted codes back through. Nil ⇒ both commands
+	// self-gate with resultCode=-99 and GET_CART reports no discount, which
+	// is exactly the pre-#491 behaviour every earlier unit test asserts.
+	// Its interface and setter live in cmd_promo.go.
+	promoQ PromoQuerier
 }
 
 // New constructs a Handler from the caller's dependencies.

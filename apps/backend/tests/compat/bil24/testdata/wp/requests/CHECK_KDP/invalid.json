@@ -2,8 +2,8 @@
   "command": "CHECK_KDP",
   "fid": 1271,
   "token": "{{token}}",
-  "locale": "ru-RU",
+  "locale": "en-US",
   "userId": 10001,
   "sessionId": "{{sessionId}}",
-  "promoCode": "WELCOME10"
+  "promoCode": "NO-SUCH-CODE"
 }

@@ -1,10 +1,9 @@
 {
-  "command": "ADD_PROMO_CODES",
+  "command": "CHECK_KDP",
   "fid": 1271,
   "token": "{{token}}",
   "locale": "ru-RU",
   "userId": 10001,
   "sessionId": "{{sessionId}}",
-  "promoCodeList": ["WAVE1"],
-  "promoCodes": ["wave1"]
+  "promoCode": "wave1"
 }

@@ -175,6 +175,31 @@ func (q *Queries) GetPromoCodeByCode(ctx context.Context, orgID uuid.UUID, code 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetPromoCodeByCodeCI
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getPromoCodeByCodeCI = `-- name: GetPromoCodeByCodeCI :one
+SELECT id, org_id, code, discount_type, discount_value, applies_to_tier_ids,
+       max_uses, max_uses_per_customer, valid_from, valid_until, min_order_amount,
+       status, created_at, updated_at, deleted_at
+FROM promo_codes
+WHERE org_id = $1 AND lower(code) = lower($2) AND deleted_at IS NULL
+ORDER BY created_at
+LIMIT 1`
+
+// GetPromoCodeByCodeCI fetches an active promo code by org_id + code, matching
+// the code CASE-INSENSITIVELY. The Bil24 gateway needs this shape: spec §7.6
+// mandates a case-insensitive match on promo_codes.code because the WordPress
+// checkout lets buyers type the code by hand. The admin CRUD keeps using the
+// exact-match GetPromoCodeByCode.
+//
+// Returns pgx.ErrNoRows when nothing matches or the row is soft-deleted.
+func (q *Queries) GetPromoCodeByCodeCI(ctx context.Context, orgID uuid.UUID, code string) (PromoCodeRow, error) {
+	row := q.db.QueryRow(ctx, getPromoCodeByCodeCI, orgID, code)
+	return scanPromoCodeRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ListPromoCodesByOrg
 // ─────────────────────────────────────────────────────────────────────────────
 

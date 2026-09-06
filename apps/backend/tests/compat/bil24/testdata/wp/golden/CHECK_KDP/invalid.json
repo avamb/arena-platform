@@ -1,0 +1,5 @@
+{
+  "resultCode": 101,
+  "description": "promo code was not found",
+  "command": "CHECK_KDP"
+}

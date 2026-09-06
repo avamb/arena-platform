@@ -112,6 +112,11 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 		// mutable hold per (gateway session, event session). Without this the
 		// handler keeps the pre-#484 immutable-hold behaviour.
 		h = h.WithGatewayCart(s.bil24CartDeps(q))
+		// Feature #491 (W1-B1a, spec §7.6): wire the promo-code surface so
+		// ADD_PROMO_CODES / CHECK_KDP can validate codes against the cart's org
+		// and GET_CART can apply the session's accepted code. Without it both
+		// commands self-gate with -99 and GET_CART reports discountAmount=0.
+		h = h.WithPromoCodes(q)
 	}
 	// Feature #505 (W1-B7b, spec §7.8/§9.3): wire the neutral order projection
 	// so GET_ORDER_INFO answers with the bil24wire order object (36 keys minus

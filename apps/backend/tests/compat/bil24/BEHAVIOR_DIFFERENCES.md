@@ -108,11 +108,51 @@ timezone. Everything TTL-bound (`sellEndTime`, `expiration`,
 `cartTimeout`, `refundDate`, `processing`) is RFC3339 with an offset,
 `+01:00` for Prague, `+03:00` for Jerusalem (DST-aware).
 
-### 10. One active promo code per session
+### 10. Only ONE promo code is ever applied to money (spec §7.6)
 
-`ADD_PROMO_CODES` enforces one active promo per `sessionId` at platform
-level. Attempts to add a second are rejected via `errorPromoCodeList`;
-`existPromoCodeList` reports codes that were already active.
+Legacy Bil24 stacks every accepted code onto the cart. Arena's checkout
+aggregate carries a SINGULAR `checkout_sessions.promo_code_id`, so a cart can
+only ever carry one discount into an order.
+
+Feature #491 keeps the wire contract intact and localises the limitation in
+the pricing step:
+
+- `ADD_PROMO_CODES` accepts and stores **every** valid code on
+  `gateway_sessions.promo_codes` (the union of `promoCodeList` and
+  `promoCodes`, deduplicated case-insensitively, capped at 10 per request —
+  extra entries past the cap are dropped silently because the plugin resends
+  its whole accumulated list on every checkout render).
+- Classification is per code, never per envelope: `resultCode` stays `0`
+  whenever the request itself was well-formed. A code already on the session
+  goes to `existPromoCodeList` without re-validation; an unknown / inactive /
+  expired / not-yet-valid / tier-inapplicable / below-minimum code goes to
+  `errorPromoCodeList`; the rest go to `newPromoCodeList`. `description`
+  names the FIRST refusal in the caller's locale (`bil24.promo_not_found`,
+  `bil24.promo_expired`, `bil24.promo_not_yet_valid`,
+  `bil24.promo_not_applicable`, `bil24.promo_min_order`) because the
+  WordPress checkout renders it verbatim next to the promo input.
+- `GET_CART` applies the **first stored code that yields a non-zero
+  discount** and ignores the rest. The discount is prorated across the cart
+  rows in proportion to their price, with the rounding remainder placed on
+  the last row, so the per-seat `discount` values always sum back to
+  `discountAmount`. `chargeAmount` and `totalSum` are computed on the NET sum
+  (`sum − discount`), so the service fee follows the discount.
+- Matching on `promo_codes.code` is **case-insensitive** — buyers type the
+  code by hand — but the CANONICAL database spelling is what gets persisted,
+  while the response lists echo the spelling the caller sent.
+- `CHECK_KDP` validates the SINGULAR `promoCode` and persists nothing, so the
+  plugin may call it on every keystroke. It answers `0` when the code would
+  be accepted for this cart and `101` with a localised reason when it would
+  not.
+- On an EMPTY cart both commands apply the code-intrinsic checks only
+  (status + validity window). The tier-applicability and minimum-order checks
+  are meaningless before the buyer has picked seats: with no lines a
+  restricted code would report `promo.tier_not_applicable` and an
+  unrestricted one would trip `min_order_amount`, and neither is a statement
+  about the code.
+
+Redemption (`promo_code_redemptions`) is still written at `PAY_ORDER`, not
+here — `ADD_PROMO_CODES` reserves nothing.
 
 ### 11. One open order per session
 

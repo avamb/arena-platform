@@ -1,0 +1,8 @@
+{
+  "resultCode": 0,
+  "description": "promo code was not found",
+  "command": "ADD_PROMO_CODES",
+  "newPromoCodeList": [],
+  "existPromoCodeList": [],
+  "errorPromoCodeList": ["NO-SUCH-CODE"]
+}

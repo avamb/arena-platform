@@ -101,7 +101,7 @@ func TestCompatBil24_485_GetCart_WireContract(t *testing.T) {
 		t.Errorf("GET_CART sum = %v, want 500", got)
 	}
 	if got := numberField(t, cart, "discountAmount"); got != 0 {
-		t.Errorf("GET_CART discountAmount = %v, want 0 until promo codes land", got)
+		t.Errorf("GET_CART discountAmount = %v, want 0 for a session with no accepted promo code", got)
 	}
 	if got := numberField(t, cart, "chargeAmount"); got != 25 {
 		t.Errorf("GET_CART chargeAmount = %v, want 25 (5%% of 500)", got)

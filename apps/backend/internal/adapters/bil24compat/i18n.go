@@ -122,6 +122,14 @@ var Bil24DescriptionKeys = []string{
 	"bil24.session_expired",
 	"bil24.sales_closed",
 	"bil24.promo_invalid",
+	// Spec §7.6 (feature #491): ADD_PROMO_CODES / CHECK_KDP name the exact
+	// reason a code was refused, because the WordPress checkout renders the
+	// description verbatim next to the promo input.
+	"bil24.promo_not_found",
+	"bil24.promo_expired",
+	"bil24.promo_not_yet_valid",
+	"bil24.promo_not_applicable",
+	"bil24.promo_min_order",
 	"bil24.hold_expired",
 	"bil24.order_not_found",
 	"bil24.currency_mismatch",

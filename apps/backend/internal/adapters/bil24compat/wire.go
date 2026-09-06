@@ -102,6 +102,17 @@ type Request struct {
 	// CREATE_USER returned. It travels as a JSON number on the wire, so
 	// it is normalised through Request.UnmarshalJSON (number-or-string).
 	UserID int64
+
+	// ── ADD_PROMO_CODES / CHECK_KDP fields (feature #491, spec §7.6) ──
+
+	// PromoCodeList and PromoCodes are the two spellings ADD_PROMO_CODES
+	// arrives with in the wild: the documented "promoCodeList" and the
+	// "promoCodes" the WordPress plugin actually emits. Spec §7.6 takes
+	// their UNION, so both are decoded and merged by the handler.
+	PromoCodeList []string
+	PromoCodes    []string
+	// PromoCode is the SINGULAR code CHECK_KDP validates without storing.
+	PromoCode string
 }
 
 // requestAlias exists solely to give Request.UnmarshalJSON a recursion-free

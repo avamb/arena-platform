@@ -2,7 +2,7 @@
   "resultCode": 0,
   "description": "OK",
   "command": "ADD_PROMO_CODES",
-  "newPromoCodeList": ["WAVE1"],
-  "existPromoCodeList": [],
+  "newPromoCodeList": [],
+  "existPromoCodeList": ["WAVE1"],
   "errorPromoCodeList": []
 }

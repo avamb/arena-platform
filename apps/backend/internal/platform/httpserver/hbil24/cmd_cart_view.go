@@ -278,6 +278,11 @@ type cartLine struct {
 	actionEventID   any
 	categoryPriceID any
 	price           int64
+	// tierID is the PLATFORM ticket tier this unit belongs to. It never
+	// reaches the wire; the §7.6 promo evaluation needs it to build the
+	// hcheckout.TierLine set that decides whether a tier-restricted code
+	// applies to this cart (feature #491).
+	tierID uuid.UUID
 }
 
 // cartSnapshot is the whole cart of one gateway session, read once and shared
@@ -398,6 +403,7 @@ func (h *Handler) collectCart(ctx context.Context, cc cartCtx) (cartSnapshot, er
 				actionEventID:   actionEventID,
 				categoryPriceID: categoryPriceID,
 				price:           price,
+				tierID:          tierID,
 			})
 		}
 

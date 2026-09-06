@@ -60,6 +60,21 @@ other = "продажи на этот сеанс закрыты"
 ["bil24.promo_invalid"]
 other = "промокод недействителен"
 
+["bil24.promo_not_found"]
+other = "промокод не найден"
+
+["bil24.promo_expired"]
+other = "срок действия промокода истёк"
+
+["bil24.promo_not_yet_valid"]
+other = "промокод ещё не действует"
+
+["bil24.promo_not_applicable"]
+other = "промокод не применим к билетам в корзине"
+
+["bil24.promo_min_order"]
+other = "сумма заказа меньше минимальной для этого промокода"
+
 ["bil24.hold_expired"]
 other = "бронь истекла, повторите резервирование"
 

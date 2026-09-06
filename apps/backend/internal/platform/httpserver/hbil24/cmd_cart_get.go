@@ -14,8 +14,10 @@
 //   - an empty cart is a success, not an error: actionEventList is [], every
 //     money field is 0, cartTimeout is 0 and resultCode is 0.
 //
-// discountAmount is 0 until promo codes land (feature #491): the gateway has
-// no discount source yet, and the spec pins the key's presence, not a value.
+// discountAmount carries the promo discount of the gateway session's accepted
+// codes (feature #491, spec §7.6), prorated onto the per-seat `discount` rows
+// with the rounding remainder on the last row. It is 0 for a session with no
+// accepted code, or when no accepted code yields a non-zero discount.
 package hbil24
 
 import (
@@ -85,21 +87,34 @@ func (h *Handler) handleBil24GetCart(w http.ResponseWriter, r *http.Request, req
 		h.writeCartTransient(w, req, cc)
 		return
 	}
-	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, getCartExtra(snap, cartFeePercent(channel))))
+
+	// Feature #491 / spec §7.6: apply the gateway session's accepted promo
+	// codes. Only the first code that yields a non-zero discount is applied —
+	// see cmd_promo.go and BEHAVIOR_DIFFERENCES.md.
+	disc := h.sessionCartDiscount(ctx, promoCtx{cc: cc, snap: snap})
+
+	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command,
+		getCartExtra(snap, cartFeePercent(channel), disc)))
 }
 
 // getCartExtra is the pure §7.5 projection of a cart snapshot: the money block
 // plus actionEventList grouped by action event, in first-seen order so the
 // response is stable across calls.
-func getCartExtra(snap cartSnapshot, feePercent float64) map[string]any {
+func getCartExtra(snap cartSnapshot, feePercent float64, disc cartDiscount) map[string]any {
 	byEvent := make(map[any][]map[string]any, len(snap.events))
-	for _, l := range snap.lines {
+	for i, l := range snap.lines {
+		// Per-row discount: the prorated share of the applied promo code,
+		// 0 when no code applies (feature #491, spec §7.6).
+		var rowDiscount int64
+		if i < len(disc.perLine) {
+			rowDiscount = disc.perLine[i]
+		}
 		byEvent[l.actionEventID] = append(byEvent[l.actionEventID], map[string]any{
 			"seatId":          l.seatID,
 			"categoryPriceId": l.categoryPriceID,
 			"tariffPlanId":    nil,
 			"price":           l.price,
-			"discount":        0,
+			"discount":        rowDiscount,
 		})
 	}
 
@@ -118,8 +133,10 @@ func getCartExtra(snap cartSnapshot, feePercent float64) map[string]any {
 		})
 	}
 
-	// discountAmount is 0 until feature #491 introduces promo codes.
-	var discount int64
+	// discountAmount is the promo discount actually applied to this cart
+	// (feature #491); chargeAmount and totalSum are computed on the NET sum,
+	// so the fee follows the discount rather than the list price.
+	discount := disc.total
 	sum := snap.sum
 	charge := float64(sum-discount) * feePercent / 100
 	total := float64(sum-discount) + charge

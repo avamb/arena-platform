@@ -57,6 +57,21 @@ other = "המכירה לאירוע זה סגורה"
 ["bil24.promo_invalid"]
 other = "קוד ההטבה אינו תקף"
 
+["bil24.promo_not_found"]
+other = "קוד ההטבה לא נמצא"
+
+["bil24.promo_expired"]
+other = "תוקף קוד ההטבה פג"
+
+["bil24.promo_not_yet_valid"]
+other = "קוד ההטבה עדיין אינו בתוקף"
+
+["bil24.promo_not_applicable"]
+other = "קוד ההטבה אינו חל על הכרטיסים שבסל"
+
+["bil24.promo_min_order"]
+other = "סכום ההזמנה נמוך מהמינימום הנדרש לקוד ההטבה"
+
 ["bil24.hold_expired"]
 other = "השמירה פגה, יש לבצע הזמנה מחדש"
 

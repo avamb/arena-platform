@@ -256,6 +256,7 @@ type Querier interface {
 	InsertPromoCode(ctx context.Context, orgID uuid.UUID, code, discountType string, discountValue int64, appliesToTierIDs []string, maxUses, maxUsesPerCustomer *int32, validFrom, validUntil *time.Time, minOrderAmount int64, status string) (PromoCodeRow, error)
 	GetPromoCodeByID(ctx context.Context, id, orgID uuid.UUID) (PromoCodeRow, error)
 	GetPromoCodeByCode(ctx context.Context, orgID uuid.UUID, code string) (PromoCodeRow, error)
+	GetPromoCodeByCodeCI(ctx context.Context, orgID uuid.UUID, code string) (PromoCodeRow, error)
 	ListPromoCodesByOrg(ctx context.Context, orgID uuid.UUID) ([]PromoCodeRow, error)
 	UpdatePromoCode(ctx context.Context, id, orgID uuid.UUID, discountType string, discountValue *int64, appliesToTierIDs []string, maxUses, maxUsesPerCustomer *int32, validFrom, validUntil *time.Time, minOrderAmount *int64, status string) (PromoCodeRow, error)
 	SoftDeletePromoCode(ctx context.Context, id, orgID uuid.UUID) (PromoCodeRow, error)

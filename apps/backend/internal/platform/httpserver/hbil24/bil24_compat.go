@@ -259,20 +259,12 @@ func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 	case "CANCEL_ORDER":
 		h.handleBil24CancelOrder(w, r, req)
 	case "ADD_PROMO_CODES":
-		// ADD_PROMO_CODES is recognized but explicitly not implemented in
-		// this gateway version. Returning resultCode=-5 (NOT_IMPLEMENTED)
-		// rather than -1 (unknown command) so legacy clients that inspect
-		// the description can distinguish "command unknown" from "command
-		// exists but not available here" (feature #374).
-		h.logger.Warn("bil24_compat: ADD_PROMO_CODES is not implemented in this gateway version",
-			slog.String("fid", req.FID),
-		)
-		writeBil24JSON(w, http.StatusOK, bil24Error(
-			command, ResultCodeNotImplemented,
-			h.localizeDesc(req.Locale, "", "bil24.not_implemented",
-				"ADD_PROMO_CODES is not implemented; apply promo codes via POST /v1/checkout/{id}/promos",
-				nil),
-		))
+		// Feature #491 / spec §7.6: promo codes are now applied on the
+		// gateway session itself, so this command is no longer the -5
+		// NOT_IMPLEMENTED stub feature #374 shipped.
+		h.handleBil24AddPromoCodes(w, r, req)
+	case "CHECK_KDP":
+		h.handleBil24CheckKDP(w, r, req)
 	default:
 		// Feature #477 / spec section 6: unknown command name is a
 		// malformed-request condition and maps to ResultCodeInvalidRequest
