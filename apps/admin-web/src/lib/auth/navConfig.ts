@@ -55,6 +55,7 @@ export type NavRoutePath =
   | "/channels"
   | "/payments"
   | "/customers"
+  | "/org-orders"
   | "/reports"
   | "/content"
   | "/pos"
@@ -248,6 +249,15 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
       "Org-scoped customer directory and card (identities, orders, attributes, consents). Requires customer.read.",
+  },
+  {
+    id: "org-orders",
+    label: "Orders",
+    to: "/org-orders",
+    permission: { anyOf: ["order.read"] },
+    scopeKinds: ["global", "platform", "network", "organization"],
+    purpose:
+      "Org-scoped order list (number, buyer, session, status, total) with a detail drawer (items, timeline) and cancel action. Requires order.read; cancel requires order.write.",
   },
   {
     id: "reports",

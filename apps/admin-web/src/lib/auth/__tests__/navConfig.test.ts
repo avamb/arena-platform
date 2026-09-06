@@ -68,6 +68,8 @@ const platformSuperadmin = fixture(
     "webhook.subscriber.manage",
     // Feature #482, W1-A4d part 3 — org-scoped Customers directory/card.
     "customer.read",
+    // Feature #490, W1-A6e — org-scoped Orders list/detail/cancel.
+    "order.read",
   ],
   ["global", "network:0193f01a-0001-7000-8000-000000000001"],
 );
@@ -160,6 +162,7 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
       "channels",
       "payments",
       "customers",
+      "org-orders",
       "reports",
       "notifications_content",
       "pos",

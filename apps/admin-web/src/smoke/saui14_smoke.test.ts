@@ -214,6 +214,7 @@ const ROUTE_REGISTRY: Readonly<
   "/channels": { routeId: "ChannelsRoute", file: "legacyPlaceholders.tsx" },
   "/payments": { routeId: "PaymentsRoute", file: "legacyPlaceholders.tsx" },
   "/customers": { routeId: "CustomersRoute", file: "customers.tsx" },
+  "/org-orders": { routeId: "OrgOrdersRoute", file: "orgOrders.tsx" },
   "/reports": { routeId: "ReportsRoute", file: "legacyPlaceholders.tsx" },
   "/content": { routeId: "ContentRoute", file: "legacyPlaceholders.tsx" },
   "/pos": { routeId: "PosRoute", file: "legacyPlaceholders.tsx" },
