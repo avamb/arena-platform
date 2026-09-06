@@ -27452,3 +27452,49 @@ Feature #501 - W1-B5b: GET /compat/bil24/image (sbt/1.0 seating plan)
     arena_postgres (55432) -> EXIT 0. Scenario 1 PASS with all three
     sub-tests - org_isolation, hybrid, no_timezone.
   No openapi change, no migration.
+
+================================================================================
+Integration gate after #497 (2026-09-06) - one real defect found and fixed
+================================================================================
+Ran the full repo-wide gate set (480/522 features passing at start):
+gofmt, go build/vet, full untagged go test ./... (green), golangci-lint
+(0 issues), openapi30gen + oapi-codegen + gen-ts-client.mjs (no drift),
+migration head pin (0094, matches), admin-web type-check + vitest
+(43 files / 1114 tests green), then -tags integration against arena_postgres
+(55432).
+
+Found and fixed
+  - apps/backend/internal/platform/customers/postgres_store_integration_test.go
+    (TestPostgresStore_ResolveAndUniqueIndexes_LiveDB) failed with "expected
+    Created=true on first resolve". Root cause: the test randomises email
+    per run via an orgID-derived suffix but used a FIXED phone number
+    ("054-812-3456"). customer_identities_strong_uq is a GLOBAL unique index
+    (kind, value_normalized), so a leftover +972548123456 identity row from
+    some earlier interrupted run of this same test (found still present in
+    the shared arena_postgres dev-stand, customer display_name "Integration
+    Buyer" - unmistakably this test) permanently collided with every future
+    run. No code defect in customers.Resolve. Fix: derive the last 4 phone
+    digits from orgID bytes too, so phone is unique per run like email.
+    Deleted the one leaked customers row (cascades to its identity) to
+    restore the stand. Re-ran the test twice in a row plus the full
+    integration suite - all green.
+  - Also found and removed a stale orphan git worktree
+    .claude/worktrees/agent-a03e9d6253e551a79 (branch
+    worktree-agent-a03e9d6253e551a79, HEAD 5e7b66e) left over from the old
+    AB-50/AB-45 refusal-loop sessions (feature #431/#432 era, long since
+    split into #437-440 and marked passing). Diffed its migration 0088 file
+    byte-for-byte against master's - identical, confirming the work had
+    already landed through a different path and the worktree was pure
+    clutter. Removed via `git worktree remove --force` + `git branch -D`.
+  - One transient flake observed and NOT filed: TestAB1_FreshTenantRoleMatrix
+    (permissions package, testcontainers-go ephemeral PG) failed once under
+    full-suite parallel load with "rootless Docker is not supported on
+    Windows" - passed cleanly in isolation immediately after. Docker
+    Desktop's Windows backend intermittently rejects a NEW container request
+    when many packages spin up testcontainers concurrently; not a code or
+    CI-parity issue since CI runs on Linux.
+
+No codegen/spec drift, no migration-pin drift. Working tree clean before and
+after (only the customers test file changed + the worktree removal).
+Commit: see git log for "integration: fix flaky-by-design phone literal in
+customers live-DB test + remove stale AB-50 worktree".

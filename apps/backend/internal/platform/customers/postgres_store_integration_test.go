@@ -18,7 +18,9 @@ package customers_test
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 
@@ -82,8 +84,15 @@ func TestPostgresStore_ResolveAndUniqueIndexes_LiveDB(t *testing.T) {
 	store := customers.NewStoreFromQueries(q)
 
 	// Unique per-run values so re-runs against a shared DB do not collide.
+	// Both email AND phone must vary: customer_identities_strong_uq is a
+	// GLOBAL unique index (kind, value_normalized), so a fixed phone number
+	// collides with a leftover row from any prior interrupted run of this
+	// test against the same persistent dev-stand DB (that happened once and
+	// produced a spurious "expected Created=true" failure with no code
+	// defect behind it - see AGENTS.md).
 	email := "buyer+" + suffix + "@example.com"
-	phoneLocal := "054-812-3456" // → +972548123456
+	phoneSeq := binary.BigEndian.Uint32(orgID[12:16]) % 10000
+	phoneLocal := fmt.Sprintf("054-812-%04d", phoneSeq) // → +97254812XXXX
 	deviceTok := "dev-token-" + suffix
 
 	// ── Round 1: fresh Resolve creates the customer + attaches email/phone/device.
