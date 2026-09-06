@@ -398,3 +398,119 @@ func (q *Queries) InsertCustomerAttribute(ctx context.Context, customerID uuid.U
 	_, err := q.db.Exec(ctx, insertCustomerAttribute, customerID, orgID, key, valueJSON, source)
 	return err
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// W1-A4d (feature #482): org-scoped read endpoints — SearchCustomersByOrg,
+// ListCustomerAttributesForOrg, ListCustomerConsentsForOrg.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const searchCustomersByOrg = `-- name: SearchCustomersByOrg :many
+SELECT DISTINCT c.id, c.system_id, c.display_name, c.locale, c.merged_into,
+       c.anonymized_at, c.created_at, c.updated_at
+FROM   customers c
+JOIN   customer_org_links l ON l.customer_id = c.id
+LEFT JOIN customer_identities i ON i.customer_id = c.id
+WHERE  l.org_id = $1
+  AND  ($2 = ''
+        OR i.value_normalized = $2
+        OR c.display_name ILIKE '%' || $2 || '%')
+ORDER  BY c.created_at DESC, c.id DESC
+LIMIT  $3 OFFSET $4`
+
+// SearchCustomersByOrg is the org-scoped customer search backing
+// GET /v1/organizations/{org_id}/customers?q= (spec §12.3). Only customers
+// linked to this org (customer_org_links) are visible. q matches an exact
+// normalized email/phone or an ILIKE substring of display_name; pass "" to
+// list every customer linked to the org.
+func (q *Queries) SearchCustomersByOrg(ctx context.Context, orgID uuid.UUID, q2 string, limit, offset int32) ([]CustomerRow, error) {
+	rows, err := q.db.Query(ctx, searchCustomersByOrg, orgID, q2, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]CustomerRow, 0)
+	for rows.Next() {
+		c, err := scanCustomerRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// CustomerAttributeRow mirrors the customer_attributes table. OrgID is nil
+// for platform-scoped attributes.
+type CustomerAttributeRow struct {
+	ID         uuid.UUID  `json:"id"`
+	CustomerID uuid.UUID  `json:"customer_id"`
+	OrgID      *uuid.UUID `json:"org_id"`
+	Key        string     `json:"key"`
+	Value      []byte     `json:"value"`
+	Source     string     `json:"source"`
+	ImportedAt *time.Time `json:"imported_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+const listCustomerAttributesForOrg = `-- name: ListCustomerAttributesForOrg :many
+SELECT id, customer_id, org_id, key, value, source, imported_at, created_at
+FROM   customer_attributes
+WHERE  customer_id = $1
+  AND  (org_id IS NULL OR org_id = $2)
+ORDER  BY created_at DESC, id`
+
+// ListCustomerAttributesForOrg lists a customer's attributes visible from
+// one org: platform-scoped rows (org_id IS NULL) plus this org's own rows
+// (spec §12.3 card: "org + platform attributes").
+func (q *Queries) ListCustomerAttributesForOrg(ctx context.Context, customerID uuid.UUID, orgID uuid.UUID) ([]CustomerAttributeRow, error) {
+	rows, err := q.db.Query(ctx, listCustomerAttributesForOrg, customerID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]CustomerAttributeRow, 0)
+	for rows.Next() {
+		var a CustomerAttributeRow
+		if err := rows.Scan(&a.ID, &a.CustomerID, &a.OrgID, &a.Key, &a.Value, &a.Source, &a.ImportedAt, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// CustomerConsentRow mirrors the customer_consents table.
+type CustomerConsentRow struct {
+	CustomerID  uuid.UUID  `json:"customer_id"`
+	OrgID       uuid.UUID  `json:"org_id"`
+	Kind        string     `json:"kind"`
+	GivenAt     time.Time  `json:"given_at"`
+	WithdrawnAt *time.Time `json:"withdrawn_at"`
+	Source      string     `json:"source"`
+}
+
+const listCustomerConsentsForOrg = `-- name: ListCustomerConsentsForOrg :many
+SELECT customer_id, org_id, kind, given_at, withdrawn_at, source
+FROM   customer_consents
+WHERE  customer_id = $1
+  AND  org_id = $2
+ORDER  BY kind`
+
+// ListCustomerConsentsForOrg lists a customer's consent records within one
+// org (spec §12.3 card: "org consents").
+func (q *Queries) ListCustomerConsentsForOrg(ctx context.Context, customerID uuid.UUID, orgID uuid.UUID) ([]CustomerConsentRow, error) {
+	rows, err := q.db.Query(ctx, listCustomerConsentsForOrg, customerID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]CustomerConsentRow, 0)
+	for rows.Next() {
+		var c CustomerConsentRow
+		if err := rows.Scan(&c.CustomerID, &c.OrgID, &c.Kind, &c.GivenAt, &c.WithdrawnAt, &c.Source); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}

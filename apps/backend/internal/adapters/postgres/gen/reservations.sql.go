@@ -334,6 +334,25 @@ func (q *Queries) RefreshReservationsExpiry(ctx context.Context, ids []uuid.UUID
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// UpdateReservationCustomer
+// ─────────────────────────────────────────────────────────────────────────────
+
+const updateReservationCustomer = `-- name: UpdateReservationCustomer :exec
+UPDATE reservations
+SET    customer_id = $2,
+       updated_at  = now()
+WHERE  id = $1`
+
+// UpdateReservationCustomer attaches the resolved customer to a reservation
+// (W1-A4d, feature #482). Deliberately :exec and outside ReservationRow — see
+// the SQL source comment in queries/reservations.sql for why the shared
+// scanner is not widened.
+func (q *Queries) UpdateReservationCustomer(ctx context.Context, id uuid.UUID, customerID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, updateReservationCustomer, id, customerID)
+	return err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CountReservationsBySession
 // ─────────────────────────────────────────────────────────────────────────────
 

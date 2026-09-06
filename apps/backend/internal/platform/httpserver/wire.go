@@ -91,6 +91,10 @@ type Options struct {
 	GeoQueries     *gen.Queries
 	OrgQueries     *gen.Queries
 	ChannelQueries *gen.Queries
+	// CustomerQueries backs the /v1/organizations/{org_id}/customers read
+	// surface (feature #482, spec §12.3). When nil and PgxPool is non-nil the
+	// constructor falls back to gen.New(PgxPool).
+	CustomerQueries *gen.Queries
 	// PaymentConfigQueries backs the /v1/organizations/{org_id}/payment-configs
 	// CRUD surface (feature #237). When nil and PgxPool is non-nil, the
 	// constructor falls back to gen.New(PgxPool).
@@ -257,6 +261,7 @@ func New(opts Options) *Server {
 		geoQueries:            pickQueries(opts.GeoQueries, opts.PgxPool),
 		orgQueries:            pickQueries(opts.OrgQueries, opts.PgxPool),
 		channelQueries:        pickQueries(opts.ChannelQueries, opts.PgxPool),
+		customerQueries:       pickQueries(opts.CustomerQueries, opts.PgxPool),
 		paymentConfigQueries:  pickQueries(opts.PaymentConfigQueries, opts.PgxPool),
 		bankAccountQueries:    pickQueries(opts.BankAccountQueries, opts.PgxPool),
 		membershipQueries:     pickQueries(opts.MembershipQueries, opts.PgxPool),

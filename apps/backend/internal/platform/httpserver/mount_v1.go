@@ -30,6 +30,7 @@ func (s *Server) mountV1Routes() {
 		s.mountGeoRoutes(r)
 		s.mountOrgRoutes(r)
 		s.mountChannelRoutes(r)
+		s.mountCustomerRoutes(r)
 		s.mountPaymentConfigRoutes(r)
 		s.mountBankAccountRoutes(r)
 		s.mountMembershipRoutes(r)

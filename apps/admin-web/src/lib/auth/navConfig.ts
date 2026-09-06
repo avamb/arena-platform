@@ -54,6 +54,7 @@ export type NavRoutePath =
   | "/refunds"
   | "/channels"
   | "/payments"
+  | "/customers"
   | "/reports"
   | "/content"
   | "/pos"
@@ -238,6 +239,15 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
       "Payment provider configurations per organization (provider, mode, provider_account_id, status, masked secrets). Requires payment_config.read, payment_config.write, or superadmin.read. Fiscal/POS settings remain deferred.",
+  },
+  {
+    id: "customers",
+    label: "Customers",
+    to: "/customers",
+    permission: { anyOf: ["customer.read"] },
+    scopeKinds: ["global", "platform", "network", "organization"],
+    purpose:
+      "Org-scoped customer directory and card (identities, orders, attributes, consents). Requires customer.read.",
   },
   {
     id: "reports",

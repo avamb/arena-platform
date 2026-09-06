@@ -50,10 +50,14 @@ type Server struct {
 
 	// Per-domain sqlc Queries handles. All are nilable; the corresponding
 	// route mounts guard against missing handles. See mount_*.go.
-	siQueries             *gen.Queries
-	geoQueries            *gen.Queries
-	orgQueries            *gen.Queries
-	channelQueries        *gen.Queries
+	siQueries      *gen.Queries
+	geoQueries     *gen.Queries
+	orgQueries     *gen.Queries
+	channelQueries *gen.Queries
+	// customerQueries backs the customer read surface (feature #482, spec
+	// §12.3). It serves customers.sql / orders.sql / reservations.sql methods
+	// alike since they are all defined on the same *gen.Queries type.
+	customerQueries       *gen.Queries
 	paymentConfigQueries  *gen.Queries
 	bankAccountQueries    *gen.Queries
 	membershipQueries     *gen.Queries

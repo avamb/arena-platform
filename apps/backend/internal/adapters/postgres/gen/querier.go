@@ -250,6 +250,7 @@ type Querier interface {
 	ListReservationsBySession(ctx context.Context, sessionID uuid.UUID) ([]ReservationRow, error)
 	ListReservationsByUser(ctx context.Context, userID uuid.UUID) ([]ReservationRow, error)
 	CountReservationsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error)
+	UpdateReservationCustomer(ctx context.Context, id uuid.UUID, customerID uuid.UUID) error
 
 	// Promo codes — discount codes for checkout (feature #128)
 	InsertPromoCode(ctx context.Context, orgID uuid.UUID, code, discountType string, discountValue int64, appliesToTierIDs []string, maxUses, maxUsesPerCustomer *int32, validFrom, validUntil *time.Time, minOrderAmount int64, status string) (PromoCodeRow, error)

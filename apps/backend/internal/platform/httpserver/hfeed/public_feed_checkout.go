@@ -1189,6 +1189,18 @@ func (h *Handler) createPublicOrder(
 					slog.String("error", linkErr.Error()),
 				)
 			}
+			// spec §12.2 call sites: attach the resolved buyer to the
+			// reservation itself, not just the order, so a cancelled/
+			// expired cart that never reaches an order still records who
+			// held it. Non-fatal — losing this rollup must never fail a
+			// paid-for cart.
+			if resvErr := txq.UpdateReservationCustomer(ctx, cs.ReservationID, id); resvErr != nil {
+				h.logger.Warn("public_feed_checkout: reservation customer link failed (non-fatal)",
+					slog.String("reservation_id", cs.ReservationID.String()),
+					slog.String("customer_id", id.String()),
+					slog.String("error", resvErr.Error()),
+				)
+			}
 		}
 	}
 

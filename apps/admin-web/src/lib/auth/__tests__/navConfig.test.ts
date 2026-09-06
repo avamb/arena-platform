@@ -66,6 +66,8 @@ const platformSuperadmin = fixture(
     // requires `webhook.subscriber.manage` (matches the backend RBAC
     // seed in 0040_webhook_subscribers.sql).
     "webhook.subscriber.manage",
+    // Feature #482, W1-A4d part 3 — org-scoped Customers directory/card.
+    "customer.read",
   ],
   ["global", "network:0193f01a-0001-7000-8000-000000000001"],
 );
@@ -157,6 +159,7 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
       "refunds",
       "channels",
       "payments",
+      "customers",
       "reports",
       "notifications_content",
       "pos",

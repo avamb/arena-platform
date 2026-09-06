@@ -13,6 +13,8 @@ import { Route as ObservabilityRoute } from "@/routes/observability";
 import { Route as VenuesRoute } from "@/routes/venues";
 import { Route as ChannelsRoute } from "@/routes/channels";
 import { Route as PaymentsRoute } from "@/routes/payments";
+import { Route as CustomersRoute } from "@/routes/customers";
+import { Route as CustomerDetailRoute } from "@/routes/customerDetail";
 import { Route as EventsRoute } from "@/routes/events";
 import {
   ReportsRoute,
@@ -53,6 +55,8 @@ export const routeTree = RootRoute.addChildren([
   RefundsRoute,
   ChannelsRoute,
   PaymentsRoute,
+  CustomersRoute,
+  CustomerDetailRoute,
   ReportsRoute,
   ContentRoute,
   PosRoute,

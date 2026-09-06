@@ -5161,6 +5161,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search / list customers linked to an organization
+         * @description Org-scoped customer search (feature #482, spec §12.3). Only
+         *     customers with a customer_org_links row for this org are visible.
+         *     The optional `q` parameter matches an exact normalized email/phone
+         *     identity OR an ILIKE substring against display_name; omit it to
+         *     list every customer linked to the org. Requires the
+         *     `customer.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdCustomers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/customers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the customer card for one customer within an organization
+         * @description Returns the customer card (feature #482, spec §12.3): base profile,
+         *     identities (strong ones — email/phone/telegram — masked unless
+         *     verified), this org's orders, org+platform attributes and this
+         *     org's consents. The customer must be linked to this org via
+         *     customer_org_links — a customer never linked to the caller's org
+         *     is invisible, even by direct id lookup. Requires the
+         *     `customer.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdCustomersId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/tickets/{id}/scans": {
         parameters: {
             query?: never;
@@ -7171,6 +7222,149 @@ export interface components {
              *     value is ignored.
              */
             capacity_standing?: number;
+        };
+        /**
+         * @description Base customer fields returned by both the org-scoped customer
+         *     search/list endpoint and the customer card (feature #482, spec
+         *     §12.3).
+         */
+        CustomerSummary: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the customer row (platform-global).
+             */
+            id: string;
+            /**
+             * Format: int64
+             * @description Bigint id surfaced to Bil24-compat clients as userId.
+             */
+            system_id: number;
+            /** @description Human-readable name, if known. Null when never captured. */
+            display_name: string | null;
+            /** @description Preferred locale (BCP-47), if known. Null when never captured. */
+            locale: string | null;
+            /**
+             * Format: date-time
+             * @description When the customer row was first created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the customer row was last updated.
+             */
+            updated_at: string;
+        };
+        /**
+         * @description One identity attached to the customer. Strong identities
+         *     (email/phone/telegram) are masked (e.g. "j***@x.com", "***1234")
+         *     unless `verified` is true (spec §12.3). Weak identities
+         *     (device/wc_customer/bil24_user) are never masked.
+         */
+        CustomerIdentityItem: {
+            /**
+             * @description Identity kind. Strong kinds are email/phone/telegram; the rest are weak (channel-scoped).
+             * @enum {string}
+             */
+            kind: "email" | "phone" | "telegram" | "device" | "wc_customer" | "bil24_user";
+            /** @description The identity value, masked for unverified strong identities. */
+            value: string;
+            /** @description Whether this identity has been verified (controls masking for strong kinds). */
+            verified: boolean;
+        };
+        /** @description One order this customer placed within the requesting org. */
+        CustomerOrgOrderItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the order row.
+             */
+            id: string;
+            /**
+             * Format: int64
+             * @description Bigint id surfaced to Bil24-compat clients.
+             */
+            system_id: number;
+            /** @description Order lifecycle status. */
+            status: string;
+            /** @description ISO 4217 currency code. */
+            currency: string;
+            /** @description Order total, in minor currency units. */
+            total: number;
+            /**
+             * Format: date-time
+             * @description When the order was created.
+             */
+            created_at: string;
+        };
+        /**
+         * @description A customer attribute visible from the requesting org: platform-scoped
+         *     rows (org_scoped=false) plus this org's own rows (org_scoped=true).
+         */
+        CustomerAttributeItem: {
+            /** @description Attribute key. */
+            key: string;
+            /** @description Raw JSON value serialized as a string. */
+            value: string;
+            /** @description True when this attribute row belongs to the requesting org rather than being platform-scoped. */
+            org_scoped: boolean;
+            /** @description Where this attribute value came from (e.g. import, resolver). */
+            source: string;
+        };
+        /** @description A consent record for this customer within the requesting org. */
+        CustomerConsentItem: {
+            /**
+             * @description Consent kind.
+             * @enum {string}
+             */
+            kind: "terms" | "marketing";
+            /**
+             * Format: date-time
+             * @description When consent was given.
+             */
+            given_at: string;
+            /**
+             * Format: date-time
+             * @description When consent was withdrawn, if it was.
+             */
+            withdrawn_at: string | null;
+        };
+        /**
+         * @description The full customer card returned by GET
+         *     /v1/organizations/{org_id}/customers/{id} (feature #482, spec
+         *     §12.3).
+         */
+        CustomerCard: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the customer row (platform-global).
+             */
+            id: string;
+            /**
+             * Format: int64
+             * @description Bigint id surfaced to Bil24-compat clients as userId.
+             */
+            system_id: number;
+            /** @description Human-readable name, if known. Null when never captured. */
+            display_name: string | null;
+            /** @description Preferred locale (BCP-47), if known. Null when never captured. */
+            locale: string | null;
+            /**
+             * Format: date-time
+             * @description When the customer row was first created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the customer row was last updated.
+             */
+            updated_at: string;
+            /** @description Every identity attached to the customer, with strong ones masked unless verified. */
+            identities: components["schemas"]["CustomerIdentityItem"][];
+            /** @description Orders this customer placed within the requesting org. */
+            orders: components["schemas"]["CustomerOrgOrderItem"][];
+            /** @description Attributes visible from the requesting org (platform-scoped plus this org's own). */
+            attributes: components["schemas"]["CustomerAttributeItem"][];
+            /** @description Consent records for this customer within the requesting org. */
+            consents: components["schemas"]["CustomerConsentItem"][];
         };
         /**
          * @description A single active venue (physical event location owned by one organization).
@@ -31169,6 +31363,164 @@ export interface operations {
                 };
             };
             /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdCustomers: {
+        parameters: {
+            query?: {
+                /** @description Search text (exact identity match or ILIKE substring on display_name), max 200 chars. */
+                q?: string;
+                /** @description Page size, 1-200 (default 50). */
+                limit?: number;
+                /** @description Pagination offset (default 0). */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of customers linked to the organization. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        customers: components["schemas"]["CustomerSummary"][];
+                        limit: number;
+                        offset: number;
+                    };
+                };
+            };
+            /** @description org_id path parameter, q, limit or offset invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`customer.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Customer queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdCustomersId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the customer */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The customer card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerCard"];
+                };
+            };
+            /** @description org_id or id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`customer.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Customer not found, or not linked to this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Customer queries unavailable (database not wired). */
             503: {
                 headers: {
                     [name: string]: unknown;

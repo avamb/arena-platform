@@ -128,3 +128,17 @@ WHERE  id = ANY($1::uuid[])
   AND  state IN ('draft', 'active')
 RETURNING id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,
           expires_at, created_at, updated_at, cancelled_at, converted_at, expired_at;
+
+-- name: UpdateReservationCustomer :exec
+-- W1-A4d (feature #482): attaches the resolved customers.Resolve() result to
+-- the reservation once the public feed checkout (or any other buyer-
+-- collecting surface) has identified the buyer. Deliberately :exec (not
+-- :one) and NOT part of the shared ReservationRow projection — widening that
+-- scanner would require updating every other reservations query per the
+-- repo convention, and no caller needs customer_id back on the same
+-- round-trip. Safe to call unconditionally; a closed reservation still
+-- records who it was for.
+UPDATE reservations
+SET    customer_id = $2,
+       updated_at  = now()
+WHERE  id = $1;

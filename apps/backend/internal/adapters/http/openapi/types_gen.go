@@ -241,6 +241,22 @@ const (
 	CreateVenueRequestStatusDraft    CreateVenueRequestStatus = "draft"
 )
 
+// Defines values for CustomerConsentItemKind.
+const (
+	Marketing CustomerConsentItemKind = "marketing"
+	Terms     CustomerConsentItemKind = "terms"
+)
+
+// Defines values for CustomerIdentityItemKind.
+const (
+	Bil24User  CustomerIdentityItemKind = "bil24_user"
+	Device     CustomerIdentityItemKind = "device"
+	Email      CustomerIdentityItemKind = "email"
+	Phone      CustomerIdentityItemKind = "phone"
+	Telegram   CustomerIdentityItemKind = "telegram"
+	WcCustomer CustomerIdentityItemKind = "wc_customer"
+)
+
 // Defines values for DeliveryJobStatus.
 const (
 	DeliveryJobStatusFailed     DeliveryJobStatus = "failed"
@@ -2549,6 +2565,134 @@ type CreateVenueRequest struct {
 // CreateVenueRequestStatus Initial lifecycle status (V-1 field). Defaults to
 // `active` when omitted.
 type CreateVenueRequestStatus string
+
+// CustomerAttributeItem A customer attribute visible from the requesting org: platform-scoped
+// rows (org_scoped=false) plus this org's own rows (org_scoped=true).
+type CustomerAttributeItem struct {
+	// Key Attribute key.
+	Key string `json:"key"`
+
+	// OrgScoped True when this attribute row belongs to the requesting org rather than being platform-scoped.
+	OrgScoped bool `json:"org_scoped"`
+
+	// Source Where this attribute value came from (e.g. import, resolver).
+	Source string `json:"source"`
+
+	// Value Raw JSON value serialized as a string.
+	Value string `json:"value"`
+}
+
+// CustomerCard The full customer card returned by GET
+// /v1/organizations/{org_id}/customers/{id} (feature #482, spec
+// §12.3).
+type CustomerCard struct {
+	// Attributes Attributes visible from the requesting org (platform-scoped plus this org's own).
+	Attributes []CustomerAttributeItem `json:"attributes"`
+
+	// Consents Consent records for this customer within the requesting org.
+	Consents []CustomerConsentItem `json:"consents"`
+
+	// CreatedAt When the customer row was first created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// DisplayName Human-readable name, if known. Null when never captured.
+	DisplayName *string `json:"display_name"`
+
+	// Id UUIDv7 primary key of the customer row (platform-global).
+	Id openapi_types.UUID `json:"id"`
+
+	// Identities Every identity attached to the customer, with strong ones masked unless verified.
+	Identities []CustomerIdentityItem `json:"identities"`
+
+	// Locale Preferred locale (BCP-47), if known. Null when never captured.
+	Locale *string `json:"locale"`
+
+	// Orders Orders this customer placed within the requesting org.
+	Orders []CustomerOrgOrderItem `json:"orders"`
+
+	// SystemId Bigint id surfaced to Bil24-compat clients as userId.
+	SystemId int64 `json:"system_id"`
+
+	// UpdatedAt When the customer row was last updated.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// CustomerConsentItem A consent record for this customer within the requesting org.
+type CustomerConsentItem struct {
+	// GivenAt When consent was given.
+	GivenAt time.Time `json:"given_at"`
+
+	// Kind Consent kind.
+	Kind CustomerConsentItemKind `json:"kind"`
+
+	// WithdrawnAt When consent was withdrawn, if it was.
+	WithdrawnAt *time.Time `json:"withdrawn_at"`
+}
+
+// CustomerConsentItemKind Consent kind.
+type CustomerConsentItemKind string
+
+// CustomerIdentityItem One identity attached to the customer. Strong identities
+// (email/phone/telegram) are masked (e.g. "j***@x.com", "***1234")
+// unless `verified` is true (spec §12.3). Weak identities
+// (device/wc_customer/bil24_user) are never masked.
+type CustomerIdentityItem struct {
+	// Kind Identity kind. Strong kinds are email/phone/telegram; the rest are weak (channel-scoped).
+	Kind CustomerIdentityItemKind `json:"kind"`
+
+	// Value The identity value, masked for unverified strong identities.
+	Value string `json:"value"`
+
+	// Verified Whether this identity has been verified (controls masking for strong kinds).
+	Verified bool `json:"verified"`
+}
+
+// CustomerIdentityItemKind Identity kind. Strong kinds are email/phone/telegram; the rest are weak (channel-scoped).
+type CustomerIdentityItemKind string
+
+// CustomerOrgOrderItem One order this customer placed within the requesting org.
+type CustomerOrgOrderItem struct {
+	// CreatedAt When the order was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency code.
+	Currency string `json:"currency"`
+
+	// Id UUIDv7 primary key of the order row.
+	Id openapi_types.UUID `json:"id"`
+
+	// Status Order lifecycle status.
+	Status string `json:"status"`
+
+	// SystemId Bigint id surfaced to Bil24-compat clients.
+	SystemId int64 `json:"system_id"`
+
+	// Total Order total, in minor currency units.
+	Total int `json:"total"`
+}
+
+// CustomerSummary Base customer fields returned by both the org-scoped customer
+// search/list endpoint and the customer card (feature #482, spec
+// §12.3).
+type CustomerSummary struct {
+	// CreatedAt When the customer row was first created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// DisplayName Human-readable name, if known. Null when never captured.
+	DisplayName *string `json:"display_name"`
+
+	// Id UUIDv7 primary key of the customer row (platform-global).
+	Id openapi_types.UUID `json:"id"`
+
+	// Locale Preferred locale (BCP-47), if known. Null when never captured.
+	Locale *string `json:"locale"`
+
+	// SystemId Bigint id surfaced to Bil24-compat clients as userId.
+	SystemId int64 `json:"system_id"`
+
+	// UpdatedAt When the customer row was last updated.
+	UpdatedAt time.Time `json:"updated_at"`
+}
 
 // DeactivateWebhookSubscriberResponse Acknowledgement envelope returned by
 // `DELETE /v1/webhooks/subscribers/{id}` on success. The
@@ -7703,6 +7847,18 @@ type CreateComplimentaryIssuanceJSONBody struct {
 	RecipientName  *string             `json:"recipient_name,omitempty"`
 	SessionId      openapi_types.UUID  `json:"session_id"`
 	TierId         openapi_types.UUID  `json:"tier_id"`
+}
+
+// GetV1OrganizationsOrgIdCustomersParams defines parameters for GetV1OrganizationsOrgIdCustomers.
+type GetV1OrganizationsOrgIdCustomersParams struct {
+	// Q Search text (exact identity match or ILIKE substring on display_name), max 200 chars.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Page size, 1-200 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Pagination offset (default 0).
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListOrgEventsParams defines parameters for ListOrgEvents.

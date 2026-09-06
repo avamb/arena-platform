@@ -213,6 +213,7 @@ const ROUTE_REGISTRY: Readonly<
   "/venues": { routeId: "VenuesRoute", file: "legacyPlaceholders.tsx" },
   "/channels": { routeId: "ChannelsRoute", file: "legacyPlaceholders.tsx" },
   "/payments": { routeId: "PaymentsRoute", file: "legacyPlaceholders.tsx" },
+  "/customers": { routeId: "CustomersRoute", file: "customers.tsx" },
   "/reports": { routeId: "ReportsRoute", file: "legacyPlaceholders.tsx" },
   "/content": { routeId: "ContentRoute", file: "legacyPlaceholders.tsx" },
   "/pos": { routeId: "PosRoute", file: "legacyPlaceholders.tsx" },
@@ -230,6 +231,10 @@ const NON_NAV_ROUTE_IDS: ReadonlySet<string> = new Set([
   "IndexRoute",
   "LoginRoute",
   "NetworkDetailRoute",
+  // Feature #482, W1-A4d part 3: customer card detail route. Inherits its
+  // permission gate (customer.read) from the backend hcustomers handlers;
+  // direct URLs 403 with the standard envelope when the operator lacks it.
+  "CustomerDetailRoute",
   // Wave M-3, feature #296: public auth flows (no permission gate; the
   // backend endpoints enforce token validity).
   "PasswordResetRoute",

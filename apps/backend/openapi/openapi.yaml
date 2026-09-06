@@ -2305,6 +2305,183 @@ components:
             value is ignored.
 
     # Venue schemas — feature #124 / extended for admin UI consumption (#235)
+    CustomerSummary:
+      type: object
+      required: [id, system_id, display_name, locale, created_at, updated_at]
+      description: |
+        Base customer fields returned by both the org-scoped customer
+        search/list endpoint and the customer card (feature #482, spec
+        §12.3).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the customer row (platform-global).
+        system_id:
+          type: integer
+          format: int64
+          description: Bigint id surfaced to Bil24-compat clients as userId.
+        display_name:
+          type: [string, "null"]
+          description: Human-readable name, if known. Null when never captured.
+        locale:
+          type: [string, "null"]
+          description: Preferred locale (BCP-47), if known. Null when never captured.
+        created_at:
+          type: string
+          format: date-time
+          description: When the customer row was first created.
+        updated_at:
+          type: string
+          format: date-time
+          description: When the customer row was last updated.
+
+    CustomerIdentityItem:
+      type: object
+      required: [kind, value, verified]
+      description: |
+        One identity attached to the customer. Strong identities
+        (email/phone/telegram) are masked (e.g. "j***@x.com", "***1234")
+        unless `verified` is true (spec §12.3). Weak identities
+        (device/wc_customer/bil24_user) are never masked.
+      properties:
+        kind:
+          type: string
+          enum: [email, phone, telegram, device, wc_customer, bil24_user]
+          description: Identity kind. Strong kinds are email/phone/telegram; the rest are weak (channel-scoped).
+        value:
+          type: string
+          description: The identity value, masked for unverified strong identities.
+        verified:
+          type: boolean
+          description: Whether this identity has been verified (controls masking for strong kinds).
+
+    CustomerOrgOrderItem:
+      type: object
+      required: [id, system_id, status, currency, total, created_at]
+      description: One order this customer placed within the requesting org.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the order row.
+        system_id:
+          type: integer
+          format: int64
+          description: Bigint id surfaced to Bil24-compat clients.
+        status:
+          type: string
+          description: Order lifecycle status.
+        currency:
+          type: string
+          description: ISO 4217 currency code.
+        total:
+          type: integer
+          description: Order total, in minor currency units.
+        created_at:
+          type: string
+          format: date-time
+          description: When the order was created.
+
+    CustomerAttributeItem:
+      type: object
+      required: [key, value, org_scoped, source]
+      description: |
+        A customer attribute visible from the requesting org: platform-scoped
+        rows (org_scoped=false) plus this org's own rows (org_scoped=true).
+      properties:
+        key:
+          type: string
+          description: Attribute key.
+        value:
+          type: string
+          description: Raw JSON value serialized as a string.
+        org_scoped:
+          type: boolean
+          description: True when this attribute row belongs to the requesting org rather than being platform-scoped.
+        source:
+          type: string
+          description: Where this attribute value came from (e.g. import, resolver).
+
+    CustomerConsentItem:
+      type: object
+      required: [kind, given_at, withdrawn_at]
+      description: A consent record for this customer within the requesting org.
+      properties:
+        kind:
+          type: string
+          enum: [terms, marketing]
+          description: Consent kind.
+        given_at:
+          type: string
+          format: date-time
+          description: When consent was given.
+        withdrawn_at:
+          type: [string, "null"]
+          format: date-time
+          description: When consent was withdrawn, if it was.
+
+    CustomerCard:
+      type: object
+      required:
+        - id
+        - system_id
+        - display_name
+        - locale
+        - created_at
+        - updated_at
+        - identities
+        - orders
+        - attributes
+        - consents
+      description: |
+        The full customer card returned by GET
+        /v1/organizations/{org_id}/customers/{id} (feature #482, spec
+        §12.3).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the customer row (platform-global).
+        system_id:
+          type: integer
+          format: int64
+          description: Bigint id surfaced to Bil24-compat clients as userId.
+        display_name:
+          type: [string, "null"]
+          description: Human-readable name, if known. Null when never captured.
+        locale:
+          type: [string, "null"]
+          description: Preferred locale (BCP-47), if known. Null when never captured.
+        created_at:
+          type: string
+          format: date-time
+          description: When the customer row was first created.
+        updated_at:
+          type: string
+          format: date-time
+          description: When the customer row was last updated.
+        identities:
+          type: array
+          description: Every identity attached to the customer, with strong ones masked unless verified.
+          items:
+            $ref: "#/components/schemas/CustomerIdentityItem"
+        orders:
+          type: array
+          description: Orders this customer placed within the requesting org.
+          items:
+            $ref: "#/components/schemas/CustomerOrgOrderItem"
+        attributes:
+          type: array
+          description: Attributes visible from the requesting org (platform-scoped plus this org's own).
+          items:
+            $ref: "#/components/schemas/CustomerAttributeItem"
+        consents:
+          type: array
+          description: Consent records for this customer within the requesting org.
+          items:
+            $ref: "#/components/schemas/CustomerConsentItem"
+
     VenueItem:
       type: object
       required: [id, org_id, name, status, created_at, updated_at]
@@ -26792,6 +26969,157 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/customers:
+    get:
+      operationId: getV1OrganizationsOrgIdCustomers
+      summary: Search / list customers linked to an organization
+      description: |
+        Org-scoped customer search (feature #482, spec §12.3). Only
+        customers with a customer_org_links row for this org are visible.
+        The optional `q` parameter matches an exact normalized email/phone
+        identity OR an ILIKE substring against display_name; omit it to
+        list every customer linked to the org. Requires the
+        `customer.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: q
+          in: query
+          required: false
+          description: Search text (exact identity match or ILIKE substring on display_name), max 200 chars.
+          schema: { type: string, maxLength: 200 }
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1-200 (default 50).
+          schema: { type: integer, minimum: 1, maximum: 200 }
+        - name: offset
+          in: query
+          required: false
+          description: Pagination offset (default 0).
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: Page of customers linked to the organization.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [customers, limit, offset]
+                properties:
+                  customers:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CustomerSummary"
+                  limit: { type: integer }
+                  offset: { type: integer }
+        "400":
+          description: org_id path parameter, q, limit or offset invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`customer.read`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Customer queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/customers/{id}:
+    get:
+      operationId: getV1OrganizationsOrgIdCustomersId
+      summary: Get the customer card for one customer within an organization
+      description: |
+        Returns the customer card (feature #482, spec §12.3): base profile,
+        identities (strong ones — email/phone/telegram — masked unless
+        verified), this org's orders, org+platform attributes and this
+        org's consents. The customer must be linked to this org via
+        customer_org_links — a customer never linked to the caller's org
+        is invisible, even by direct id lookup. Requires the
+        `customer.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the customer
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The customer card.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerCard"
+        "400":
+          description: org_id or id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`customer.read`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Customer not found, or not linked to this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Customer queries unavailable (database not wired).
           content:
             application/json:
               schema:

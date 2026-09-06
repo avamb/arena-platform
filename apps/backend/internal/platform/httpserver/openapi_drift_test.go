@@ -418,6 +418,10 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// #121/#236) under /v1/organizations/{org_id}/channels[/{id}] are
 		// mounted for the drift check.
 		ChannelQueries: gen.New(nil),
+		// Wire CustomerQueries so the org-scoped customer read routes
+		// (feature #482) under /v1/organizations/{org_id}/customers[/{id}]
+		// are mounted for the drift check.
+		CustomerQueries: gen.New(nil),
 		// Wire FeedTokenQueries so the feed-token management routes
 		// (feature #122) under /v1/organizations/{org_id}/channels/
 		// {channel_id}/feed-tokens[/{id}], the public GET /v1/feeds/{token}

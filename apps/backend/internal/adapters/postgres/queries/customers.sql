@@ -143,3 +143,43 @@ INSERT INTO customer_attributes (customer_id, org_id, key, value, source)
 VALUES ($1, $2, $3, $4::jsonb, $5)
 ON CONFLICT (customer_id, org_id, key) DO UPDATE
 SET value = EXCLUDED.value, source = EXCLUDED.source;
+
+-- ─── W1-A4d (feature #482): org-scoped read endpoints ───────────────────────
+-- Backs GET /v1/organizations/{org_id}/customers?q= and the customer card
+-- (spec §12.3). None of these existed before this feature.
+
+-- name: SearchCustomersByOrg :many
+-- Org-scoped customer search: only customers with a customer_org_links row
+-- for this org are visible. Matches an exact normalized email/phone
+-- (customer_identities.value_normalized) OR an ILIKE substring against
+-- display_name. Pass '' for q to list every customer linked to the org.
+SELECT DISTINCT c.id, c.system_id, c.display_name, c.locale, c.merged_into,
+       c.anonymized_at, c.created_at, c.updated_at
+FROM   customers c
+JOIN   customer_org_links l ON l.customer_id = c.id
+LEFT JOIN customer_identities i ON i.customer_id = c.id
+WHERE  l.org_id = $1
+  AND  ($2 = ''
+        OR i.value_normalized = $2
+        OR c.display_name ILIKE '%' || $2 || '%')
+ORDER  BY c.created_at DESC, c.id DESC
+LIMIT  $3 OFFSET $4;
+
+-- name: ListCustomerAttributesForOrg :many
+-- Lists a customer's attributes visible from one org: platform-scoped rows
+-- (org_id IS NULL) plus this org's own rows (spec §12.3 card: "org +
+-- platform attributes").
+SELECT id, customer_id, org_id, key, value, source, imported_at, created_at
+FROM   customer_attributes
+WHERE  customer_id = $1
+  AND  (org_id IS NULL OR org_id = $2)
+ORDER  BY created_at DESC, id;
+
+-- name: ListCustomerConsentsForOrg :many
+-- Lists a customer's consent records within one org (spec §12.3 card: "org
+-- consents"). First use of customer_consents in the codebase.
+SELECT customer_id, org_id, kind, given_at, withdrawn_at, source
+FROM   customer_consents
+WHERE  customer_id = $1
+  AND  org_id = $2
+ORDER  BY kind;

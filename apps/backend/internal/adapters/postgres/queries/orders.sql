@@ -203,6 +203,21 @@ WHERE  o.status = 'pending_payment'
 ORDER  BY o.expires_at ASC
 LIMIT  $2;
 
+-- name: ListOrdersByCustomerAndOrg :many
+-- W1-A4d (feature #482): the customer card's "org orders" tab — every order
+-- this customer placed within one org, most recent first. Unlike
+-- ListOrdersByOrg this is an exact customer_id match, not a trgm search.
+SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
+       checkout_session_id, reservation_id, external_ref, source, status,
+       currency, subtotal, discount, charge, total, charge_percent_bp,
+       promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+FROM   orders
+WHERE  org_id = $1
+  AND  customer_id = $2
+ORDER  BY created_at DESC, id DESC
+LIMIT  $3 OFFSET $4;
+
 -- name: ExpireOrderIfStillPending :one
 -- Flips one order to 'expired', but only while it is still pending_payment.
 -- The status guard makes the sweep safe to run next to a payment webhook:

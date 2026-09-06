@@ -284,6 +284,48 @@ func (q *Queries) ListOrdersByOrg(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ListOrdersByCustomerAndOrg
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listOrdersByCustomerAndOrg = `-- name: ListOrdersByCustomerAndOrg :many
+SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
+       checkout_session_id, reservation_id, external_ref, source, status,
+       currency, subtotal, discount, charge, total, charge_percent_bp,
+       promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+FROM   orders
+WHERE  org_id = $1
+  AND  customer_id = $2
+ORDER  BY created_at DESC, id DESC
+LIMIT  $3 OFFSET $4`
+
+// ListOrdersByCustomerAndOrg lists every order a customer placed within one
+// org, most recent first (W1-A4d, feature #482: the customer card's "org
+// orders" tab, spec §12.3). Unlike ListOrdersByOrg this is an exact
+// customer_id match, not a trgm search.
+func (q *Queries) ListOrdersByCustomerAndOrg(
+	ctx context.Context,
+	orgID, customerID uuid.UUID,
+	limit, offset int32,
+) ([]OrderRow, error) {
+	rows, err := q.db.Query(ctx, listOrdersByCustomerAndOrg, orgID, customerID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []OrderRow
+	for rows.Next() {
+		o, err := scanOrderRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		orders = append(orders, o)
+	}
+	return orders, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // UpdateOrderStatus
 // ─────────────────────────────────────────────────────────────────────────────
 
