@@ -27298,3 +27298,57 @@ Feature #507 (W1-B7d): wp-webhook PUT/GET/DELETE + admin-web section
   - admin-web: npm run type-check -> EXIT 0
   - admin-web: vitest run --run -> 43 files, 1114 tests passed
   No openapi.yaml change, so no codegen. No migration, so no head pin.
+
+Feature #501 - W1-B5b: GET /compat/bil24/image (sbt/1.0 seating plan)
+  Commit 8e0eec0. Spec section 8; parent epic #461; depends on #500 (encoder).
+  What landed
+  - hbil24/image.go (new): the only GET on the compat gateway. Check order is
+    load-bearing - the syntactic type check runs before any DB work, and the
+    ETag comparison runs before the geometry/seat/tier reads, so a
+    revalidating picker costs one indexed row fetch instead of a full render.
+  - Auth is fid -> channel -> org with NO token: the URL rides an <img> tag
+    and a browser cannot hold a secret. That makes the error surface the real
+    boundary, so every rejection reason (wrong type, unknown/malformed
+    actionEventId, unknown fid, cross-org session, unpublished, GA) exits
+    through one imageNotFound helper and is byte-identical. GA / unpublished /
+    soft-deleted / no-plan-bound all fall out of GetPublicSessionSchema
+    returning pgx.ErrNoRows - no extra query. imageFailed (500) is kept
+    separate so an alert can tell an outage from routine 404 traffic.
+  - Rendering reuses the #500 encoder through helpers newly exported from
+    hseating (SBT10ETag, SBT10MatchesETag, SBT10CacheControl, SBT10ContentType,
+    SBT10CategoryTierIDs), so ETag/304/content-type semantics are literally
+    the same code as /v1/event-sessions/{id}/layout.svg. SBT10CategoryTierIDs
+    wraps the same private resolveCategoryTiers the renderer uses for
+    sbt:price, so sbt:id and sbt:price can never describe different tiers.
+  - ETag = "<geometry_checksum>:<seat_status_version>". Both halves required:
+    geometry alone would serve a stale free/taken bitmap after a reservation.
+  - bil24_shims.go: handleBil24Image shim + r.Get("/image") mount (349 lines,
+    under the 400 cap).
+  - openapi.yaml: documented BOTH /compat/bil24/json and /compat/bil24/image.
+    Documenting only the new route was not an option - the drift check needed
+    Bil24CompatEnabled:true in buildDriftTestServer to mount the subtree, and
+    that exposes /json to the code->YAML direction too. Free-form object
+    bodies for /json (deliberately not enumerating the camelCase keys); /json
+    documents only a 200 because Bil24 always answers HTTP 200 with the real
+    status in resultCode.
+  - Tests: harness scenario 7 un-skipped (shape, sbt:cat resolves to a
+    declared sbt:index, state alphabet 1/4, 304 + no body + repeated
+    validator, GA -> 404, type=poster -> 404, unknown fid -> 404) plus
+    bil24_501_image_test.go, the pool-free half (rejection ladder is
+    indistinguishable by error code, stale validator re-downloads, no
+    schemaQ -> 503 not 404).
+  Gotcha worth remembering
+  - gosec G705 (XSS taint) fires on w.Write of any body in a handler that
+    touched r.URL.Query(), even when the query value was parsed into a UUID
+    and never reaches the body. layout_svg.go escapes it only because its id
+    comes from chi.URLParam. Resolved with a justified //nolint:gosec.
+  Gates - all green
+  - gofmt -l on all 10 changed files -> empty
+  - go build ./... , go vet ./... -> EXIT 0
+  - go test ./... (full untagged suite) -> EXIT 0
+  - go test -tags integration -run Harness ./apps/backend/tests/compat/bil24/
+    against arena_postgres (port 55432) -> EXIT 0, scenario 07 PASS
+  - golangci-lint run ./apps/backend/... -> 0 issues
+  - Codegen re-run after the openapi.yaml change (openapi30gen +
+    oapi-codegen@v2.4.1 + gen-ts-client.mjs); types_gen.go and the TS client
+    are committed, .compat30.gen.yaml deleted. No migration, so no head pin.
