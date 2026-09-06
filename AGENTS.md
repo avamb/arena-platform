@@ -191,3 +191,25 @@ entries short and factual.
   in those files slip through lint and are only caught by CI's format check.
   Run `gofmt -l -w <file>` on every new or modified Go file before committing,
   regardless of build tag.
+- **Global unique-index literals in integration tests must be randomized too,
+  not just org-scoped values**: `customer_identities_strong_uq` is a GLOBAL
+  unique index on `(kind, value_normalized)`, unscoped by org/channel. A
+  fixed phone literal in `postgres_store_integration_test.go` (email and
+  device token were already randomized, phone was not) collided with a
+  leftover row from a prior interrupted run against the shared persistent
+  `arena_postgres` dev-stand and produced a spurious "expected Created=true"
+  failure with no code defect behind it. Fix: derive every value feeding a
+  global-unique column from a per-run random/derived source, not just the
+  values that happen to be org- or channel-scoped.
+- **`gh` CLI is blocked in the AutoForge sandbox** (`Command 'gh' is not
+  allowed`, needs an entry in `.autoforge/allowed_commands.yaml` or mid-session
+  approval). An Integrator gate run that pushes to `master` cannot watch CI
+  status afterward from this environment — check the GitHub Actions run
+  manually (or via a session where `gh` is allowlisted) after pushing.
+- **Stale `.claude/worktrees/*` directories accumulate** from old isolated
+  agent runs and pollute repo-wide sweeps (e.g. `gofmt -l .` reports hits
+  inside them). During an Integrator gate pass, check `git worktree list` for
+  worktrees whose branch is fully superseded/merged, verify with
+  `git -C <path> log --oneline -5` and a content diff of a sample file
+  against HEAD, then remove with `git worktree remove <path> --force` and
+  `git branch -D <branch>`.
