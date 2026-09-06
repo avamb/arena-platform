@@ -28590,3 +28590,63 @@ before and after (only the perennial scratch artifacts untouched:
 `features.db`, `.autoforge/prompts/coding_prompt.md`,
 `.claude/scheduled_tasks.lock` deletion — left alone as documented in prior
 gate notes). Nothing to push beyond what was already at HEAD (10a10aa).
+
+================================================================================
+Feature #466 — W1-C1 [EPIC-VERIFY]: organization API keys and service
+principal (verification only, no code changes, 2026-09-06)
+================================================================================
+
+Dependencies [459, 512, 513, 514] were all already `passes: true` at claim
+time. Ran the full epic gate suite from HEAD 399c78b, no drift found, no
+commits needed:
+
+- `go.exe build ./...` — EXIT 0.
+- `go.exe vet ./apps/backend/...` plain and `-tags integration` — EXIT 0 both.
+- `go.exe test ./...` (log file, never a pipeline) — EXIT 0, zero FAIL lines,
+  71 `ok` package lines.
+- `gofmt -l` on `apps/backend/{cmd,internal,tests,tools}` — silent.
+- `GOLANGCI_LINT_CACHE=/tmp/golangci-cache golangci-lint@latest run
+  ./apps/backend/...` — "0 issues."
+- Codegen drift check: regenerated via `openapi30gen` +
+  `oapi-codegen@v2.4.1 --config=apps/backend/openapi/oapi-codegen.yaml` +
+  `node scripts/gen-ts-client.mjs`, deleted the scratch `.compat30.gen.yaml`;
+  `git status --short` showed no changes to `types_gen.go` or
+  `clients/ts/index.d.ts` — spec and generated code already in sync.
+- Migration head pin: `expectedHead` in `migrations_head_test.go` is
+  `0097_api_key_role_grants.sql`, matches the actual max-numbered file
+  (note: the spec-cited migration number in the epic description, 0095, is
+  stale — the real migration landed as `0096_api_keys.sql` with `0097` a
+  follow-up role-grants migration; the test pin tracks the real files, so
+  this is not a defect).
+- Local migrate against the live `arena_postgres` stand (port 55432):
+  `arena-migrate` reported "no migrations to run, current version: 97" —
+  fully up to date.
+- Full integration suite (`-tags integration`, live Postgres, DSN split
+  around the `postgres` token per convention) — EXIT 0, zero FAIL lines.
+  Specifically re-ran and confirmed green:
+  `TestCompatBil24_450_Harness_Scenarios/09_api_keys_service_scope` (the
+  spec §13.4 no-seats flow under a service API key, cross-org 403, revoked
+  key 401) and `TestCompatBil24_450_Harness_ScenarioCoverage`. The five
+  org-auth-twin table-driven service-actor tests
+  (`hcatalog/hiam/hpayments/hbankaccounts/hseating` +
+  `internal/platform/httpserver/server_apikey_auth_test.go`,
+  `internal/platform/auth/service_actor_test.go`,
+  `internal/platform/permissions/rbac_service_actor_test.go`,
+  `internal/platform/audit/service_actor_writer_test.go`) all ran as part
+  of the same green suite.
+- admin-web: `npm run type-check` (tsc -b) EXIT 0; `npm run test -- --run`
+  44 files / 1144 tests EXIT 0; `npm run build` EXIT 0 (only a chunk-size
+  advisory warning, not an error).
+- widget: `npm run type-check` EXIT 0; `npm run test` 12 files / 497 tests
+  EXIT 0.
+- CI check: `gh` is blocked in this sandbox (documented AGENTS.md
+  limitation) — could not run `gh run view` this session. All local gates
+  that mirror CI (Unit-equivalent full `go test ./...`, Integration-equivalent
+  `-tags integration` run against a migrated+seeded stand, lint, frontend
+  suites) are green, so no CI-parity risk is expected, but the actual GitHub
+  Actions run was not inspected.
+
+Working tree left exactly as found (only the perennial untouched scratch:
+`.autoforge/prompts/coding_prompt.md` modified, `.claude/scheduled_tasks.lock`
+deleted, `features.db` untracked). No commit was made — nothing to stage.
+Feature #466 marked passing.
