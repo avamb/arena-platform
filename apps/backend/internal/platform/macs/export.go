@@ -225,6 +225,19 @@ func QueryAndBuildExport(ctx context.Context, pool *pgxpool.Pool, sessionID uuid
 	return encodeExport(orders), nil
 }
 
+// QueryAndBuildOrder returns the MACS Order for ONE order aggregate
+// (orders.id, migration 0092) — the `data` object of the order.paid webhook
+// (spec §10 M1: {id, status:"PAID", ticketList:[…]}). Returns nil when the
+// order has nothing exportable (unknown id, unpaid, or no tickets issued).
+func QueryAndBuildOrder(ctx context.Context, pool *pgxpool.Pool, orderID uuid.UUID) (*Order, error) {
+	order, err := orderexport.QueryOrder(ctx, pool, orderID)
+	if err != nil || order == nil {
+		return nil, err
+	}
+	encoded := encodeOrder(*order)
+	return &encoded, nil
+}
+
 // QueryAndBuildTicket returns the MACS Ticket for one platform ticket id
 // (plus the owning Order header) — used by the webhook dispatcher so the
 // `data` object satisfies MACS's required Ticket fields (id, seatId,

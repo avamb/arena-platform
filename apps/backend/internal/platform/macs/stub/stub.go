@@ -110,6 +110,10 @@ type Receiver struct {
 	deliveryCount map[string]int
 	// onceFailPaths is a set of paths that should return 503 exactly once.
 	onceFailPaths map[string]bool
+	// onceErrorPaths is a set of paths that should answer 200 {"status":"Error"}
+	// exactly once (spec §10 M2: a body-level rejection must still make the
+	// dispatcher retry, even though the transport succeeded).
+	onceErrorPaths map[string]bool
 }
 
 // New starts a new stub Receiver. Call Close() to release the server.
@@ -126,10 +130,11 @@ func NewWithSecret(signingSecret string) *Receiver {
 
 func newReceiver(secret string) *Receiver {
 	r := &Receiver{
-		tickets:       make(map[int64]*Ticket),
-		signingSecret: secret,
-		deliveryCount: make(map[string]int),
-		onceFailPaths: make(map[string]bool),
+		tickets:        make(map[int64]*Ticket),
+		signingSecret:  secret,
+		deliveryCount:  make(map[string]int),
+		onceFailPaths:  make(map[string]bool),
+		onceErrorPaths: make(map[string]bool),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/_wh/tickets", r.handleWebhook)
@@ -204,6 +209,17 @@ func (r *Receiver) SetOnceFailPath(path string) {
 	r.onceFailPaths[path] = true
 }
 
+// SetOnceErrorPath configures path to answer HTTP 200 with the body
+// {"status":"Error"} on the very next request (once only). This is the
+// body-level rejection MACS uses when it accepted the HTTP call but refused
+// the payload (spec §10 M2) — the dispatcher must treat it as a failure and
+// let the outbox retry. Subsequent requests to the same path succeed normally.
+func (r *Receiver) SetOnceErrorPath(path string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.onceErrorPaths[path] = true
+}
+
 // Reset clears all recorded envelopes and resets delivery counters.
 // The imported ticket store and onceFailPaths are NOT cleared — tickets survive
 // a Reset so holderStatus transitions are visible across event boundaries.
@@ -224,16 +240,27 @@ func (r *Receiver) Close() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // handleWebhook accepts every POST to /_wh/tickets, parses the JSON body,
-// stores the envelope, and returns 200 OK.
+// stores the envelope, and answers 200 with a MACS ack body.
+//
+// The ack body is the contract (spec §10 M2, mirroring the WordPress plugin's
+// class-lops-macs.php:134-137): {"status":"OK"} means accepted,
+// {"status":"Error"} means the call arrived but the payload was refused. A
+// refusal is NOT an HTTP error — the dispatcher is required to notice it in
+// the body and let the outbox retry.
+//
+// An "order.paid" envelope is refused (spec §10 M5) when its data carries no
+// non-empty ticketList, or when data.status is anything other than "PAID".
 //
 // When a signing secret is configured, the X-MACS-Signature header must
 // match sha256=HMAC(secret, body); mismatched signatures return 401.
 //
 // When the path is in onceFailPaths, the first request returns 503 (simulating
-// a transient delivery failure for retry testing).
+// a transient transport failure for retry testing); onceErrorPaths does the
+// same at the body level.
 //
-// After a successful delivery, if the envelope is "ticket.refunded" or
-// "order.paid", the ticket store is updated to reflect the new holderStatus.
+// After an accepted delivery the ticket store is updated to reflect the new
+// holderStatus: from every entry of data.ticketList for "order.paid", and from
+// data.id/data.holderStatus for "ticket.refunded".
 func (r *Receiver) handleWebhook(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -254,6 +281,13 @@ func (r *Receiver) handleWebhook(w http.ResponseWriter, req *http.Request) {
 		delete(r.onceFailPaths, path)
 		r.mu.Unlock()
 		http.Error(w, "transient error (retry test)", http.StatusServiceUnavailable)
+		return
+	}
+	// Once-error guard: accept the transport but refuse the payload once.
+	if r.onceErrorPaths[path] {
+		delete(r.onceErrorPaths, path)
+		r.mu.Unlock()
+		writeAck(w, false)
 		return
 	}
 	r.mu.Unlock()
@@ -278,26 +312,104 @@ func (r *Receiver) handleWebhook(w http.ResponseWriter, req *http.Request) {
 
 	r.mu.Lock()
 	r.evs = append(r.evs, env)
+
+	// Payload validation (spec §10 M5): an order.paid envelope must carry the
+	// whole order — a non-empty ticketList and status "PAID". A refusal is
+	// recorded (the call did arrive) but changes no ticket state.
+	if env.Type == "order.paid" {
+		if verr := validateOrderPaid(env.Data); verr != "" {
+			r.mu.Unlock()
+			writeAck(w, false)
+			return
+		}
+	}
+
 	// Update ticket store holderStatus based on envelope data.
-	if env.Type == "ticket.refunded" || env.Type == "order.paid" {
-		if idF, ok := env.Data["id"].(float64); ok {
-			ticketID := int64(idF)
-			if hs, ok2 := env.Data["holderStatus"].(float64); ok2 {
-				if tk, exists := r.tickets[ticketID]; exists {
-					tk.HolderStatus = int(hs)
-				} else {
-					// Ticket not imported via /import/tickets but still track it.
-					r.tickets[ticketID] = &Ticket{
-						HolderStatus: int(hs),
-						ImportedAt:   time.Now().UTC(),
-					}
-				}
+	switch env.Type {
+	case "order.paid":
+		// Since W1-Ma (spec §10 M1) the order.paid data object is the ORDER;
+		// the per-ticket state lives in its ticketList.
+		for _, item := range ticketList(env.Data) {
+			id, hs, ok := ticketIDAndStatus(item)
+			if !ok {
+				continue
 			}
+			r.applyHolderStatusLocked(id, hs)
+		}
+	case "ticket.refunded":
+		id, hs, ok := ticketIDAndStatus(env.Data)
+		if ok {
+			r.applyHolderStatusLocked(id, hs)
 		}
 	}
 	r.mu.Unlock()
 
+	writeAck(w, true)
+}
+
+// applyHolderStatusLocked records the ticket's holderStatus. The caller holds
+// r.mu. A ticket never seen through /import/tickets is still tracked so tests
+// that skip the import step can assert on it.
+func (r *Receiver) applyHolderStatusLocked(ticketID int64, holderStatus int) {
+	if tk, exists := r.tickets[ticketID]; exists {
+		tk.HolderStatus = holderStatus
+		return
+	}
+	r.tickets[ticketID] = &Ticket{
+		HolderStatus: holderStatus,
+		ImportedAt:   time.Now().UTC(),
+	}
+}
+
+// writeAck writes the MACS ack body. ok=false is the body-level refusal that
+// must drive the sender into a retry (spec §10 M2).
+func writeAck(w http.ResponseWriter, ok bool) {
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	if ok {
+		_, _ = io.WriteString(w, `{"status":"OK"}`)
+		return
+	}
+	_, _ = io.WriteString(w, `{"status":"Error"}`)
+}
+
+// validateOrderPaid returns a non-empty reason when an order.paid data object
+// is not a complete paid order (spec §10 M5).
+func validateOrderPaid(data map[string]any) string {
+	if status, _ := data["status"].(string); status != "PAID" {
+		return fmt.Sprintf("order.paid: data.status must be %q, got %q", "PAID", status)
+	}
+	if len(ticketList(data)) == 0 {
+		return "order.paid: data.ticketList is required and must be non-empty"
+	}
+	return ""
+}
+
+// ticketList extracts data.ticketList as a slice of JSON objects. A missing,
+// null or non-array ticketList yields nil.
+func ticketList(data map[string]any) []map[string]any {
+	raw, _ := data["ticketList"].([]any)
+	out := make([]map[string]any, 0, len(raw))
+	for _, item := range raw {
+		if m, ok := item.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// ticketIDAndStatus reads the (id, holderStatus) pair out of a MACS ticket
+// object. ok is false when either field is missing or not a number.
+func ticketIDAndStatus(t map[string]any) (id int64, holderStatus int, ok bool) {
+	idF, okID := t["id"].(float64)
+	hsF, okHS := t["holderStatus"].(float64)
+	if !okID || !okHS {
+		return 0, 0, false
+	}
+	return int64(idF), int(hsF), true
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

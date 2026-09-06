@@ -16,7 +16,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,6 +31,11 @@ import (
 // MACS outbox event type constants — must match the values written by the
 // scanner/ticket domain when appending events to outbox_events.
 const (
+	// EventOrderPaid is the order-aggregate "the sale is complete" event
+	// (spec §9.1, feature #488). Since W1-Ma (spec §10 M1) it is the
+	// PRIMARY source of the MACS `order.paid` webhook: one envelope per
+	// order carrying the whole ticketList.
+	EventOrderPaid       = "v1.order.paid"
 	EventTicketIssued    = "v1.scanner.ticket.issued"
 	EventTicketRefunded  = "v1.ticket.refunded"
 	EventTicketCancelled = "v1.ticket.cancelled"
@@ -37,9 +44,13 @@ const (
 
 // macsEventType maps a platform event type to the corresponding MACS webhook
 // event type. Returns ("", false) for event types MACS does not handle.
+//
+// v1.scanner.ticket.issued still maps to order.paid, but only tickets issued
+// WITHOUT an order aggregate (complimentary) are actually delivered through
+// it — see Dispatch.
 func macsEventType(platformEventType string) (string, bool) {
 	switch platformEventType {
-	case EventTicketIssued:
+	case EventOrderPaid, EventTicketIssued:
 		return "order.paid", true
 	case EventTicketRefunded, EventTicketCancelled, EventTicketRevoked:
 		return "ticket.refunded", true
@@ -87,23 +98,130 @@ func NewDispatcher(pool *pgxpool.Pool) *Dispatcher {
 
 // Dispatch implements outbox.Dispatcher.
 //
-// For non-MACS event types, returns nil immediately (skip without retry).
-// For MACS event types:
-//  1. Parses ticket_id and session_id from the payload.
-//  2. Resolves the org from the session.
-//  3. Looks up the active MACS subscriber for the org.
-//  4. Looks up the system_ticket_id for the ticket.
-//  5. Builds and POSTs the MACS envelope with HMAC signing.
+// Routing (spec §10 M1):
+//   - v1.order.paid          → order.paid with the WHOLE order (ticketList).
+//   - v1.scanner.ticket.issued → order.paid with a synthetic single-ticket
+//     order, but ONLY for tickets that carry no order aggregate
+//     (complimentary); ordinary sales are covered by v1.order.paid and are
+//     skipped here so MACS never sees the same sale twice.
+//   - v1.ticket.{refunded,cancelled,revoked} → ticket.refunded (unchanged).
+//   - anything else → nil (skip without retry).
 //
 // Returns a non-nil error only for delivery failures (so the outbox retries).
 // Missing subscribers, missing system IDs, or malformed payloads return nil
 // (no subscriber = nothing to deliver; malformed = cannot be retried anyway).
 func (d *Dispatcher) Dispatch(ctx context.Context, ev outbox.Event) error {
-	macsType, ok := macsEventType(ev.EventType)
-	if !ok {
+	switch ev.EventType {
+	case EventOrderPaid:
+		return d.dispatchOrderPaid(ctx, ev)
+	case EventTicketIssued:
+		return d.dispatchComplimentaryPaid(ctx, ev)
+	case EventTicketRefunded, EventTicketCancelled, EventTicketRevoked:
+		return d.dispatchTicketRefunded(ctx, ev)
+	default:
 		// Not a MACS event — let the outbox mark it processed.
 		return nil
 	}
+}
+
+// dispatchOrderPaid delivers one order.paid envelope for a whole order
+// aggregate: data = the MACS Order {id, status:"PAID", ticketList:[…]}
+// projected by orderexport (spec §10 M1).
+func (d *Dispatcher) dispatchOrderPaid(ctx context.Context, ev outbox.Event) error {
+	orderIDStr, _ := ev.Payload["order_id"].(string)
+	if orderIDStr == "" {
+		return nil // malformed payload — retrying will not help
+	}
+	orderID, err := uuid.Parse(orderIDStr)
+	if err != nil {
+		return nil
+	}
+
+	orgID, err := d.resolveOrgID(ctx, ev.Payload)
+	if err != nil {
+		return nil // cannot route
+	}
+	sub, err := d.getMACSSubscriber(ctx, orgID)
+	if err != nil {
+		return nil // no subscriber registered for this org
+	}
+
+	order, err := QueryAndBuildOrder(ctx, d.pool, orderID)
+	if err != nil {
+		return fmt.Errorf("macs dispatcher: build order %s: %w", orderID, err)
+	}
+	if order == nil {
+		// Nothing exportable (unpaid, or no tickets issued) — nothing MACS
+		// could store.
+		return nil
+	}
+
+	return d.post(ctx, sub.CallbackURL, sub.SigningSecret, macsEnvelope{
+		ID:      envelopeID(ev, order.ID),
+		Created: ev.OccurredAt.UTC().Format(time.RFC3339),
+		Type:    "order.paid",
+		Data:    *order,
+	})
+}
+
+// dispatchComplimentaryPaid delivers order.paid for a ticket issued WITHOUT an
+// order aggregate (complimentary): a synthetic order of exactly one ticket.
+// Tickets that do belong to an order are skipped — v1.order.paid covers them.
+func (d *Dispatcher) dispatchComplimentaryPaid(ctx context.Context, ev outbox.Event) error {
+	ticketIDStr, _ := ev.Payload["ticket_id"].(string)
+	if ticketIDStr == "" {
+		return nil
+	}
+	ticketID, err := uuid.Parse(ticketIDStr)
+	if err != nil {
+		return nil
+	}
+
+	hasOrder, err := d.ticketHasOrder(ctx, ticketID)
+	if err != nil {
+		return nil // ticket unknown; nothing to route
+	}
+	if hasOrder {
+		// The order aggregate publishes v1.order.paid for this sale.
+		return nil
+	}
+
+	sessionID, err := d.resolveSessionID(ctx, ev.Payload, ticketID)
+	if err != nil {
+		return nil
+	}
+	orgID, err := d.getOrgIDForSession(ctx, sessionID)
+	if err != nil {
+		return nil
+	}
+	sub, err := d.getMACSSubscriber(ctx, orgID)
+	if err != nil {
+		return nil
+	}
+
+	// QueryAndBuildTicket returns the ticket together with its order header,
+	// and — because the projection is scoped to this one ticket — that order
+	// already carries exactly this ticket in ticketList.
+	ticket, order, err := QueryAndBuildTicket(ctx, d.pool, ticketID)
+	if err != nil {
+		return fmt.Errorf("macs dispatcher: build ticket %s: %w", ticketID, err)
+	}
+	if ticket == nil || order == nil {
+		return nil
+	}
+
+	return d.post(ctx, sub.CallbackURL, sub.SigningSecret, macsEnvelope{
+		ID:      envelopeID(ev, order.ID),
+		Created: ev.OccurredAt.UTC().Format(time.RFC3339),
+		Type:    "order.paid",
+		Data:    *order,
+	})
+}
+
+// dispatchTicketRefunded delivers ticket.refunded — the per-ticket envelope
+// whose data is the MACS Ticket shape. Unchanged by M1.
+func (d *Dispatcher) dispatchTicketRefunded(ctx context.Context, ev outbox.Event) error {
+	const macsType = "ticket.refunded"
 
 	ticketIDStr, _ := ev.Payload["ticket_id"].(string)
 	if ticketIDStr == "" {
@@ -154,12 +272,10 @@ func (d *Dispatcher) Dispatch(ctx context.Context, ev outbox.Event) error {
 		return nil
 	}
 	data := macsEventData{Ticket: *ticket, OrderID: order.ID}
-	if macsType == "ticket.refunded" {
-		// Whatever the platform's terminal state, at the door it is refunded.
-		data.HolderStatus = StatusRefunded
-		if reason, ok := ev.Payload["reason"].(string); ok {
-			data.Reason = reason
-		}
+	// Whatever the platform's terminal state, at the door it is refunded.
+	data.HolderStatus = StatusRefunded
+	if reason, ok := ev.Payload["reason"].(string); ok {
+		data.Reason = reason
 	}
 
 	// Build the MACS envelope. id must be unique per EVENT (MACS exposes
@@ -174,6 +290,34 @@ func (d *Dispatcher) Dispatch(ctx context.Context, ev outbox.Event) error {
 
 	// Deliver with HMAC signing.
 	return d.post(ctx, sub.CallbackURL, sub.SigningSecret, env)
+}
+
+// resolveOrgID routes an order-scoped event to its organization: the payload's
+// own org_id when present (spec §9.1 always carries it), otherwise the org of
+// the event session.
+func (d *Dispatcher) resolveOrgID(ctx context.Context, payload map[string]any) (uuid.UUID, error) {
+	if s, _ := payload["org_id"].(string); s != "" {
+		if id, err := uuid.Parse(s); err == nil {
+			return id, nil
+		}
+	}
+	if s, _ := payload["session_id"].(string); s != "" {
+		if id, err := uuid.Parse(s); err == nil {
+			return d.getOrgIDForSession(ctx, id)
+		}
+	}
+	return uuid.UUID{}, fmt.Errorf("macs dispatcher: payload carries no routable org")
+}
+
+// ticketHasOrder reports whether the ticket is linked to an order aggregate
+// (tickets.order_id, migration 0092). Complimentary tickets have none.
+func (d *Dispatcher) ticketHasOrder(ctx context.Context, ticketID uuid.UUID) (bool, error) {
+	const q = `SELECT order_id IS NOT NULL FROM tickets WHERE id = $1`
+	var hasOrder bool
+	if err := d.pool.QueryRow(ctx, q, ticketID).Scan(&hasOrder); err != nil {
+		return false, err
+	}
+	return hasOrder, nil
 }
 
 // getOrgIDForSession resolves the organization UUID from a session UUID
@@ -246,7 +390,46 @@ func (d *Dispatcher) post(ctx context.Context, callbackURL string, signingSecret
 		// Contract: success is HTTP 200 (2xx); a redirect is not a delivery.
 		return fmt.Errorf("macs dispatcher: server returned %d for %s", resp.StatusCode, callbackURL)
 	}
+	// Spec §10 M2: 2xx alone is NOT a delivery. MACS answers 200 with a body
+	// {"status":"OK"} on success and {"status":"Error"} when it refused the
+	// payload (class-lops-macs.php:134-137); the latter must surface as an
+	// error so the outbox retries instead of silently dropping the event.
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxAckBodyBytes))
+	if err != nil {
+		return fmt.Errorf("macs dispatcher: read ack body from %s: %w", callbackURL, err)
+	}
+	return checkAck(callbackURL, respBody)
+}
+
+// maxAckBodyBytes caps how much of the receiver's answer is read before the
+// {"status":"OK"} check — the ack is a few dozen bytes.
+const maxAckBodyBytes = 64 << 10
+
+// checkAck enforces the body-level success contract (spec §10 M2). Anything
+// that is not a JSON object with status "OK" is a delivery failure.
+func checkAck(callbackURL string, body []byte) error {
+	var ack struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(body, &ack); err != nil {
+		return fmt.Errorf("macs dispatcher: %s answered 2xx with a non-JSON body %q; want {\"status\":\"OK\"}",
+			callbackURL, truncateForError(body))
+	}
+	if !strings.EqualFold(ack.Status, "OK") {
+		return fmt.Errorf("macs dispatcher: %s answered 2xx with body %q; want {\"status\":\"OK\"}",
+			callbackURL, truncateForError(body))
+	}
 	return nil
+}
+
+// truncateForError keeps error messages (and therefore outbox last_error
+// rows) bounded.
+func truncateForError(body []byte) string {
+	const limit = 256
+	if len(body) <= limit {
+		return string(body)
+	}
+	return string(body[:limit]) + "…"
 }
 
 // resolveSessionID returns payload.session_id when present, else the

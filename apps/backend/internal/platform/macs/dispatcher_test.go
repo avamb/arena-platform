@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 )
 
@@ -48,54 +50,78 @@ func TestMACSDispatcher_NonMACSEventSkipped(t *testing.T) {
 	}
 }
 
-// TestMACSDispatcher_EnvelopeShape verifies the exact JSON shape of a MACS
-// envelope for an order.paid event. The test uses a mock httptest server to
-// capture the POST body and validate the envelope fields.
-func TestMACSDispatcher_EnvelopeShape(t *testing.T) {
-	var captured []byte
+// okAckServer starts a receiver that captures the POST body and answers the
+// MACS success ack (spec §10 M2: 200 plus {"status":"OK"}).
+func okAckServer(t *testing.T, captured *[]byte) *httptest.Server {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var err error
-		captured, err = io.ReadAll(r.Body)
+		b, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, "read error", http.StatusInternalServerError)
 			return
 		}
+		if captured != nil {
+			*captured = b
+		}
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"status":"OK"}`)
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
+	return srv
+}
 
-	// Build the envelope directly (bypassing DB) to test the shape: the
-	// data object is the export Ticket (MACS's required fields id, seatId,
-	// barcode, actionEvent{...}) — a bare {ticketId} would be rejected by
-	// the receiver's Pydantic model with 422.
-	var capturedSig string
+// sampleOrder is the order.paid data object: one MACS Order carrying the whole
+// ticketList (spec §10 M1).
+func sampleOrder() Order {
+	return Order{
+		ID:             42,
+		Date:           "2026-08-22T10:00:00Z",
+		Status:         "PAID",
+		Currency:       "CZK",
+		Sum:            50000,
+		Charge:         50000,
+		TotalSum:       50000,
+		TicketQuantity: 1,
+		TicketList: []Ticket{{
+			ID:      42,
+			SeatID:  7,
+			OrderID: 42,
+			Barcode: "2000000000421",
+			ActionEvent: ActionEvent{
+				ID:               99,
+				CityName:         "Prague",
+				VenueName:        "Palac Akropolis",
+				ActionName:       "Gig",
+				ActionLegalOwner: "Org s.r.o.",
+				ShowTime:         "2026-09-01T19:00:00",
+			},
+		}},
+		SeatList:         []interface{}{},
+		GatewayOrderList: []interface{}{},
+	}
+}
+
+// TestMACSDispatcher_EnvelopeShape verifies the exact JSON shape of a MACS
+// envelope for an order.paid event. Since W1-Ma (spec §10 M1) the data object
+// is the whole ORDER — {id, status:"PAID", ticketList:[…]} — and MACS's
+// required Ticket fields (id, seatId, barcode, actionEvent{…}) live inside
+// each ticketList entry.
+func TestMACSDispatcher_EnvelopeShape(t *testing.T) {
+	var captured []byte
+	srv := okAckServer(t, &captured)
+
 	env := macsEnvelope{
 		ID:      42,
 		Created: "2026-08-22T10:00:00Z",
 		Type:    "order.paid",
-		Data: macsEventData{
-			Ticket: Ticket{
-				ID:      42,
-				SeatID:  7,
-				Barcode: "2000000000421",
-				ActionEvent: ActionEvent{
-					ID:               99,
-					CityName:         "Prague",
-					VenueName:        "Palac Akropolis",
-					ActionName:       "Gig",
-					ActionLegalOwner: "Org s.r.o.",
-					ShowTime:         "2026-09-01T19:00:00",
-				},
-			},
-			OrderID: 42,
-		},
+		Data:    sampleOrder(),
 	}
 
 	d := &Dispatcher{
 		pool:   nil,
 		client: srv.Client(),
 	}
-	_ = capturedSig
 
 	err := d.post(context.Background(), srv.URL, "test-secret", env)
 	if err != nil {
@@ -121,24 +147,113 @@ func TestMACSDispatcher_EnvelopeShape(t *testing.T) {
 		t.Errorf("created = %q; want RFC3339 UTC", got["created"])
 	}
 
-	// Validate the MACS-required Ticket fields are present in data.
 	data, ok := got["data"].(map[string]any)
 	if !ok {
 		t.Fatalf("data is not an object: %T", got["data"])
 	}
+	if data["status"] != "PAID" {
+		t.Errorf("data.status = %v; want PAID", data["status"])
+	}
+	if data["id"] != float64(42) {
+		t.Errorf("data.id = %v; want 42", data["id"])
+	}
+	list, ok := data["ticketList"].([]any)
+	if !ok || len(list) != 1 {
+		t.Fatalf("data.ticketList = %#v; want one ticket", data["ticketList"])
+	}
+	tk, ok := list[0].(map[string]any)
+	if !ok {
+		t.Fatalf("data.ticketList[0] is not an object: %T", list[0])
+	}
+	// Validate the MACS-required Ticket fields are present.
 	for _, key := range []string{"id", "seatId", "barcode", "actionEvent", "orderId"} {
-		if _, present := data[key]; !present {
-			t.Errorf("data.%s missing — MACS rejects the envelope without it", key)
+		if _, present := tk[key]; !present {
+			t.Errorf("data.ticketList[0].%s missing — MACS rejects the envelope without it", key)
 		}
 	}
-	ae, ok := data["actionEvent"].(map[string]any)
+	ae, ok := tk["actionEvent"].(map[string]any)
 	if !ok {
-		t.Fatalf("data.actionEvent is not an object: %T", data["actionEvent"])
+		t.Fatalf("data.ticketList[0].actionEvent is not an object: %T", tk["actionEvent"])
 	}
 	for _, key := range []string{"id", "cityName", "venueName", "actionName", "actionLegalOwner", "showTime"} {
 		if _, present := ae[key]; !present {
-			t.Errorf("data.actionEvent.%s missing", key)
+			t.Errorf("data.ticketList[0].actionEvent.%s missing", key)
 		}
+	}
+}
+
+// TestMACSDispatcher_RefundedEnvelopeShape pins the ticket.refunded data
+// object, which M1 left unchanged: the flat MACS Ticket shape.
+func TestMACSDispatcher_RefundedEnvelopeShape(t *testing.T) {
+	var captured []byte
+	srv := okAckServer(t, &captured)
+
+	order := sampleOrder()
+	data := macsEventData{Ticket: order.TicketList[0], OrderID: order.ID}
+	data.HolderStatus = StatusRefunded
+	d := &Dispatcher{client: srv.Client()}
+	if err := d.post(context.Background(), srv.URL, "", macsEnvelope{
+		ID: 7, Created: "2026-08-22T10:00:00Z", Type: "ticket.refunded", Data: data,
+	}); err != nil {
+		t.Fatalf("post: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(captured, &got); err != nil {
+		t.Fatalf("body is not valid JSON: %v", err)
+	}
+	body, ok := got["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("data is not an object: %T", got["data"])
+	}
+	for _, key := range []string{"id", "seatId", "barcode", "actionEvent", "orderId", "holderStatus"} {
+		if _, present := body[key]; !present {
+			t.Errorf("data.%s missing from ticket.refunded", key)
+		}
+	}
+	if body["holderStatus"] != float64(StatusRefunded) {
+		t.Errorf("data.holderStatus = %v; want %d", body["holderStatus"], StatusRefunded)
+	}
+}
+
+// TestMACSDispatcher_AckBodyDecidesSuccess is the M2 contract: HTTP 2xx alone
+// is not a delivery. Only a JSON body with status "OK" counts; every other
+// answer must surface as an error so the outbox retries.
+func TestMACSDispatcher_AckBodyDecidesSuccess(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    string
+		wantErr bool
+	}{
+		{"ok", `{"status":"OK"}`, false},
+		{"ok lowercase", `{"status":"ok"}`, false},
+		{"ok with extra fields", `{"status":"OK","imported":3}`, false},
+		{"error", `{"status":"Error"}`, true},
+		{"error with message", `{"status":"Error","message":"bad payload"}`, true},
+		{"empty status", `{"status":""}`, true},
+		{"no status field", `{"imported":3}`, true},
+		{"empty body", ``, true},
+		{"non-JSON body", `<html>oops</html>`, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := tc.body
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = io.WriteString(w, body)
+			}))
+			defer srv.Close()
+
+			d := &Dispatcher{client: srv.Client()}
+			err := d.post(context.Background(), srv.URL, "", macsEnvelope{ID: 1, Type: "order.paid", Data: sampleOrder()})
+			if tc.wantErr && err == nil {
+				t.Fatalf("body %q: post returned nil, want error so the outbox retries", tc.body)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("body %q: post returned %v, want nil", tc.body, err)
+			}
+		})
 	}
 }
 
@@ -151,6 +266,7 @@ func TestMACSDispatcher_HMACSignature(t *testing.T) {
 		body, _ = io.ReadAll(r.Body)
 		sig = r.Header.Get("X-MACS-Signature")
 		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"status":"OK"}`)
 	}))
 	defer srv.Close()
 	d := &Dispatcher{client: srv.Client()}
@@ -209,6 +325,42 @@ func TestMACSDispatcher_MissingPayloadFieldsSkipped(t *testing.T) {
 	}
 }
 
+// TestMACSDispatcher_OrderPaidMalformedPayloadSkipped covers the M1 entry
+// point: a v1.order.paid event whose payload carries no usable order_id is
+// skipped without touching the database (pool is nil — a DB call would panic).
+func TestMACSDispatcher_OrderPaidMalformedPayloadSkipped(t *testing.T) {
+	payloads := []map[string]any{
+		{},                              // no order_id at all
+		{"order_id": ""},                // empty
+		{"order_id": "not-a-uuid"},      // unparseable
+		{"order_id": 42},                // wrong type
+		{"ticket_id": uuid.NewString()}, // ticket-shaped payload on an order event
+	}
+	d := &Dispatcher{pool: nil, client: &http.Client{}}
+	for _, p := range payloads {
+		ev := outbox.Event{EventType: EventOrderPaid, Payload: p, OccurredAt: time.Now()}
+		if err := d.Dispatch(context.Background(), ev); err != nil {
+			t.Fatalf("payload %v: Dispatch returned %v, want nil", p, err)
+		}
+	}
+}
+
+// TestMACSDispatcher_OrderPaidWithoutRoutableOrgSkipped proves that an order
+// event that carries a valid order_id but no org_id/session_id is skipped
+// before any subscriber lookup — resolveOrgID fails first, so the nil pool is
+// never touched.
+func TestMACSDispatcher_OrderPaidWithoutRoutableOrgSkipped(t *testing.T) {
+	d := &Dispatcher{pool: nil, client: &http.Client{}}
+	ev := outbox.Event{
+		EventType:  EventOrderPaid,
+		Payload:    map[string]any{"order_id": uuid.NewString()},
+		OccurredAt: time.Now(),
+	}
+	if err := d.Dispatch(context.Background(), ev); err != nil {
+		t.Fatalf("Dispatch returned %v, want nil", err)
+	}
+}
+
 // TestMACSEventTypeMapping tests the macsEventType helper for known and unknown types.
 func TestMACSEventTypeMapping(t *testing.T) {
 	cases := []struct {
@@ -216,6 +368,7 @@ func TestMACSEventTypeMapping(t *testing.T) {
 		wantType string
 		wantOK   bool
 	}{
+		{EventOrderPaid, "order.paid", true},
 		{EventTicketIssued, "order.paid", true},
 		{EventTicketRefunded, "ticket.refunded", true},
 		{EventTicketCancelled, "ticket.refunded", true},

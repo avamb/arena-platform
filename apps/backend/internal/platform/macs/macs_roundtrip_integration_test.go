@@ -231,18 +231,40 @@ func TestMACS_RoundTrip(t *testing.T) {
 	if paidEnv.ID != sysID {
 		t.Errorf("order.paid envelope id = %d; want %d (system_ticket_id)", paidEnv.ID, sysID)
 	}
-	// data is the MACS Ticket shape: id/seatId/barcode/actionEvent are the
-	// receiver's REQUIRED fields; holderStatus 0 = not used.
+	// Since W1-Ma (spec §10 M1) data is the ORDER. This ticket carries no
+	// order aggregate (complimentary), so the dispatcher synthesises a
+	// single-ticket order whose id is the ticket's system id.
 	if paidEnv.Data["id"] != float64(sysID) {
 		t.Errorf("order.paid data.id = %v; want %d", paidEnv.Data["id"], sysID)
 	}
+	if paidEnv.Data["status"] != "PAID" {
+		t.Errorf("order.paid data.status = %v; want PAID", paidEnv.Data["status"])
+	}
+	list, ok := paidEnv.Data["ticketList"].([]any)
+	if !ok || len(list) != 1 {
+		t.Fatalf("order.paid data.ticketList = %#v; want exactly one ticket", paidEnv.Data["ticketList"])
+	}
+	tk, ok := list[0].(map[string]any)
+	if !ok {
+		t.Fatalf("order.paid data.ticketList[0] is not an object: %T", list[0])
+	}
+	// id/seatId/barcode/actionEvent are the receiver's REQUIRED per-ticket
+	// fields; holderStatus 0 = not used.
+	if tk["id"] != float64(sysID) {
+		t.Errorf("order.paid ticketList[0].id = %v; want %d", tk["id"], sysID)
+	}
 	for _, key := range []string{"seatId", "barcode", "actionEvent", "orderId"} {
-		if _, ok := paidEnv.Data[key]; !ok {
-			t.Errorf("order.paid data.%s missing — MACS would reject the envelope", key)
+		if _, ok := tk[key]; !ok {
+			t.Errorf("order.paid ticketList[0].%s missing — MACS would reject the envelope", key)
 		}
 	}
-	if paidEnv.Data["holderStatus"] != float64(0) {
-		t.Errorf("order.paid holderStatus = %v; want 0 (not used)", paidEnv.Data["holderStatus"])
+	if tk["holderStatus"] != float64(0) {
+		t.Errorf("order.paid holderStatus = %v; want 0 (not used)", tk["holderStatus"])
+	}
+	// The stub only answers {"status":"OK"} for a complete paid order, so a
+	// nil Dispatch above already proves the M2/M5 ack contract held.
+	if got := recv.TicketByID(sysID); got == nil || got.HolderStatus != 0 {
+		t.Errorf("stub ticket store after order.paid = %#v; want holderStatus 0", got)
 	}
 
 	// ── Step 2: Cancel the ticket and dispatch ticket.refunded ───────────────
