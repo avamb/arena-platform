@@ -27544,3 +27544,55 @@ customers live-DB test + remove stale AB-50 worktree".
 - Full `go test ./apps/backend/...` (no build tag) green across all
   packages, no regressions. Staged by explicit path only (never git add
   -A); pushed to origin master.
+
+## Feature #462 (W1-B6 EPIC-VERIFY): EAN-13 credentials full gate re-run — 2026-09-06
+
+Verification-only epic for sub-features #502 (migration 0093 + ean13
+package + issuance) and #503 (revoke fix + SCAN_TICKET/scanner EAN-13 +
+PDF line + backfill job), both already landed and documented above. No new
+code was written; this pass re-ran the full gate suite and confirmed no
+drift.
+
+Commands run, all green (repo root, arena_postgres dev-stand on
+localhost:55432):
+- `go.exe build ./apps/backend/...` -> EXIT:0
+- `go.exe vet ./apps/backend/...` -> EXIT:0
+- `go.exe test ./apps/backend/...` (untagged, log redirected not piped) ->
+  EXIT:0, zero FAIL lines, 66 `ok` packages
+- `gofmt -l` on apps/backend/internal, tests, cmd, tools (excluding the
+  vendored `.gomodcache` tree, which is third-party and out of scope) ->
+  empty
+- `GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe run
+  github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run
+  ./apps/backend/...` -> "0 issues.", EXIT:0
+- `internal/migrations/migrations_head_test.go` expectedHead =
+  "0094_wp_webhook_subscribers.sql", matches
+  `internal/migrations/sql/` directory listing (0093_ean13_credentials.sql
+  is present, one below head) -> no pin drift
+- No openapi.yaml change in #502/#503 (git log confirms), so no codegen
+  drift check needed; skipped per "touched openapi.yaml" gate condition
+- `npm run --prefix apps/admin-web type-check` -> EXIT:0
+- `npm run --prefix apps/admin-web test` (the actual script name is
+  `test`, not `admin:test` as the generic briefing template says) -> 43
+  files / 1114 tests passed, EXIT:0
+- `DATABASE_URL=postgres://arena:arena@localhost:55432/arena?sslmode=disable
+  JWT_SIGNING_SECRET=x go.exe run ./apps/backend/cmd/arena-migrate` ->
+  "no migrations to run. current version: 94" -> stand already at head,
+  no drift
+- `go.exe test -tags integration ./apps/backend/...` (full repo,
+  arena_postgres up via existing docker containers) -> EXIT:0, all
+  packages ok including barcodes/backfill, barcodes/ean13, htickets,
+  delivery, delivery/pdf, hbil24, hscanner, tests/compat/bil24
+- Named epic-deliverable tests individually re-run with -v to confirm the
+  exact assertions the epic cares about, all PASS:
+  `TestEAN13Issuance502Integration_WritesCredentialAndBarcode`,
+  `TestRevokeTicketArtifacts503Integration_RevokesAllCredentialTypesAndBarcodes`,
+  `TestBil24_503_ScanTicket_ResolvesByEAN13`,
+  `TestHandleScannerValidate_ResolvesByEAN13`
+- `gh run view` / `gh run list` blocked in this sandbox (`Command 'gh' is
+  not allowed`, documented pre-existing limitation in AGENTS.md) — could
+  not check the latest CI run status from this session; local gates are
+  the full signal available here.
+
+No drift found, nothing to fix. Marked feature #462 passing. No files
+changed this session (verification-only), so nothing to commit/push.
