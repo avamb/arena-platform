@@ -29463,3 +29463,66 @@ goldens/scenario and the full gate suite:
 Marked feature #464 passing via `feature_mark_passing` after this
 verification-only gate re-run — full suite green (isolated-flake
 confirmed benign), no code changes needed.
+
+## Feature #465 — W1-M [EPIC-VERIFY]: MACS envelope fixes M1-M5 gate re-run (2026-09-07)
+
+Verification-only epic; both listed sub-features (510 order.paid from the
+order aggregate, 511 compat ids/EAN-13/callback-URL validation) already
+`passes: true` per `git log` (commits 6d88d22, 25ed030). No code changes
+made this session — only re-ran the epic's targeted suites and the full
+gate suite:
+
+- `go.exe build ./apps/backend/...`, `go.exe vet ./apps/backend/...` — EXIT 0.
+- `go.exe test ./apps/backend/...` (untagged) — EXIT 0, 73 ok packages,
+  zero FAIL (checked via `> file; echo EXIT:$?`, never through a pipeline).
+- Targeted `-v` run of `internal/platform/macs/...`,
+  `internal/adapters/bil24compat/...`, `tests/compat/bil24/...`,
+  `tests/staticanalysis/...`, `internal/migrations/...` — EXIT 0, no
+  `--- FAIL`/`FAIL` lines; covers the M1-M5 goldens (AB-50g/h/i shape,
+  actionEvent.id from compatids, EAN-13 barcode, callback-URL validation).
+- `DATABASE_URL=post""gres://arena:arena@localhost:55432/arena?sslmode=disable
+  JWT_SIGNING_SECRET=x go.exe test -tags integration -count=1 -p 1
+  ./apps/backend/...` against the `arena_postgres` dev-stand (55432) — the
+  compound shell line's reported background-task exit code was 1, but that
+  was a false alarm from the trailing `grep -E "^--- FAIL|^FAIL"` finding
+  nothing (grep exits 1 on no match) and being the last command in the
+  chain; the actual `go test` exit code (captured via `echo EXIT:$?`
+  immediately after the test invocation, before any grep) was 0, with 74 ok
+  packages and zero FAIL/panic lines in the full log. Includes
+  `TestMACS_W1Ma_OrderPaidRoundTrip` and the AB-50g/h/i round-trip goldens
+  green. Note for future sessions: don't chain a `grep` after `echo
+  EXIT:$?` in the same `;`-joined command when running in background — the
+  background-task notification reports the LAST command's exit code, not
+  the test's.
+- `GOLANGCI_LINT_CACHE=/tmp/golangci-cache465 go.exe run
+  .../golangci-lint@latest run ./apps/backend/...` — "0 issues.", EXIT 0.
+- `gofmt -l apps/backend/{cmd,internal,tests,tools}` — empty (clean).
+- `npm --prefix apps/admin-web run type-check` — EXIT 0.
+- `npm --prefix apps/admin-web run test -- --run` — 45 files / 1166 tests
+  passed, EXIT 0.
+- `npm --prefix apps/admin-web run build` — EXIT 0 (only the routine
+  >500kB chunk-size advisory).
+- Migration head pin: `migrations_head_test.go` expects
+  `0097_api_key_role_grants.sql`; matches actual latest file.
+- Local migrate smoke test against `arena_postgres` (55432): "no migrations
+  to run. current version: 97" — no drift.
+- Codegen drift check: regenerated `.compat30.gen.yaml` via `openapi30gen`,
+  ran `oapi-codegen@v2.4.1`, ran `scripts/gen-ts-client.mjs` — `git status
+  --short` showed zero diff on any generated Go or TS client file. Deleted
+  the scratch compat file afterward.
+- **Could not run `gh run view`** — `gh` CLI still blocked by the sandbox
+  command allowlist (same documented AGENTS.md gotcha). All other gates
+  above substitute for that check.
+- Working tree: only the pre-existing out-of-scope AutoForge harness
+  artifacts present (`.autoforge/prompts/coding_prompt.md` modified,
+  `.claude/scheduled_tasks.lock` modified, untracked `features.db`) — left
+  uncommitted, consistent with prior epic-verify sessions.
+- No drift found anywhere; no fix-features filed; no AGENTS.md changes
+  needed. No code commit needed — only this progress note. All scratch log
+  files (`build465.log`, `vet465.log`, `test465.log`, `macs465.log`,
+  `integ465.log`, `lint465.log`, `gofmt465.log`, `typecheck465.log`,
+  `admintest465.log`, `adminbuild465.log`, `codegen465_*.log`) deleted
+  before finishing.
+
+Marked feature #465 passing via `feature_mark_passing` after this
+verification-only gate re-run — full suite green, no code changes needed.
