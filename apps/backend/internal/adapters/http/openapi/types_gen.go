@@ -719,6 +719,11 @@ const (
 	SeatSelected   WidgetFunnelEventInputEventType = "seat_selected"
 )
 
+// Defines values for GetBil24SeatingPlanImageParamsType.
+const (
+	GetBil24SeatingPlanImageParamsTypeSeatingPlan GetBil24SeatingPlanImageParamsType = "seatingPlan"
+)
+
 // Defines values for ListEventsParamsVisibility.
 const (
 	All      ListEventsParamsVisibility = "all"
@@ -7166,6 +7171,39 @@ type WidgetFunnelEventsBatch struct {
 	Events []WidgetFunnelEventInput `json:"events"`
 }
 
+// GetBil24SeatingPlanImageParams defines parameters for GetBil24SeatingPlanImage.
+type GetBil24SeatingPlanImageParams struct {
+	// Type Artefact kind. Only `seatingPlan` is served; any other value
+	// answers 404 rather than pretending the kind is supported.
+	Type GetBil24SeatingPlanImageParamsType `form:"type" json:"type"`
+
+	// ActionEventId Bil24 wire id of the session (`compatibility_id_map`,
+	// kind `action_event`).
+	ActionEventId int64 `form:"actionEventId" json:"actionEventId"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Resolves the organization the session must belong to.
+	Fid int64 `form:"fid" json:"fid"`
+
+	// UserId Accepted and ignored — the legacy client always sends it. The
+	// plan is identical for every visitor.
+	UserId *int64 `form:"userId,omitempty" json:"userId,omitempty"`
+
+	// Locale Accepted and ignored — the plan carries no translatable
+	// strings beyond the operator-authored section and row names.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+
+	// IfNoneMatch Standard conditional-request header. When it matches the
+	// current composite ETag the server responds 304 with no body.
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
+}
+
+// GetBil24SeatingPlanImageParamsType defines parameters for GetBil24SeatingPlanImage.
+type GetBil24SeatingPlanImageParamsType string
+
+// PostBil24CommandJSONBody defines parameters for PostBil24Command.
+type PostBil24CommandJSONBody map[string]interface{}
+
 // AttachNetworkAgentParams defines parameters for AttachNetworkAgent.
 type AttachNetworkAgentParams struct {
 	// XAdminReason SAUI-09 audit-reason header. The trimmed value is stamped
@@ -7823,6 +7861,9 @@ type UpdateWebhookSubscriberJSONBody struct {
 	// the subscriber back to wildcard (receives every event).
 	EventTypes *[]string `json:"event_types,omitempty"`
 }
+
+// PostBil24CommandJSONRequestBody defines body for PostBil24Command for application/json ContentType.
+type PostBil24CommandJSONRequestBody PostBil24CommandJSONBody
 
 // PostV1AdminGeoCitiesJSONRequestBody defines body for PostV1AdminGeoCities for application/json ContentType.
 type PostV1AdminGeoCitiesJSONRequestBody = GeoCreateCityRequest

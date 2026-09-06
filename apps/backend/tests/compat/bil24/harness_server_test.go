@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -153,6 +154,84 @@ func postBil24(t *testing.T, base string, body map[string]any) map[string]interf
 		t.Fatalf("parse response %s: %v", payload, err)
 	}
 	return out
+}
+
+// getBil24Image performs the scenario-7 GET against /compat/bil24/image
+// (feature #501, spec §8) and returns the raw status, headers and body.
+//
+// Unlike postBil24 this helper never fails on a non-200: the route's whole
+// contract is expressed in status codes (200 / 304 / 404), so the caller must
+// see them. ifNoneMatch is sent only when non-empty, and redirects are left at
+// the default because the route never issues one.
+func getBil24Image(
+	t *testing.T,
+	base string,
+	query map[string]string,
+	ifNoneMatch string,
+) (int, http.Header, []byte) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, base+"/compat/bil24/image", nil)
+	if err != nil {
+		t.Fatalf("build image request: %v", err)
+	}
+	q := req.URL.Query()
+	for k, v := range query {
+		q.Set(k, v)
+	}
+	req.URL.RawQuery = q.Encode()
+	if ifNoneMatch != "" {
+		req.Header.Set("If-None-Match", ifNoneMatch)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /compat/bil24/image: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read image body: %v", err)
+	}
+	return resp.StatusCode, resp.Header, body
+}
+
+// attrValues collects the value of one XML attribute across every occurrence
+// of an element prefix — e.g. attrValues(svg, "<circle ", `sbt:cat="`) returns
+// the category index of every seat.
+//
+// A regex-free scan is deliberate: the assertion is about which literal
+// attribute strings the encoder emitted, and a parser that normalises
+// namespaces would hide exactly the drift this scenario exists to catch.
+func attrValues(doc, elementPrefix, attrPrefix string) []string {
+	var out []string
+	rest := doc
+	for {
+		i := strings.Index(rest, elementPrefix)
+		if i < 0 {
+			return out
+		}
+		rest = rest[i+len(elementPrefix):]
+		end := strings.Index(rest, ">")
+		if end < 0 {
+			return out
+		}
+		tag := rest[:end]
+		if j := strings.Index(tag, attrPrefix); j >= 0 {
+			val := tag[j+len(attrPrefix):]
+			if k := strings.Index(val, `"`); k >= 0 {
+				out = append(out, val[:k])
+			}
+		}
+	}
+}
+
+// truncateSVG keeps a failure message readable: a full seating plan is tens of
+// kilobytes and would bury the assertion that actually failed.
+func truncateSVG(svg string) string {
+	const max = 2000
+	if len(svg) <= max {
+		return svg
+	}
+	return svg[:max] + "\n…(truncated)"
 }
 
 // createGatewayUser runs CREATE_USER (spec §7.3) and returns the minted

@@ -459,6 +459,13 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// are mounted.
 		StripeConnect: driftFakeStripeConnect{},
 		StripeBilling: &mockStripeBillingAdapter{},
+		// Mount the Bil24 compatibility gateway so both documented compat
+		// routes take part in the bidirectional drift check (feature #501,
+		// W1-B5b): POST /compat/bil24/json and GET /compat/bil24/image.
+		// The subtree is gated on this flag in production (default false),
+		// so without it the two spec paths would be reported as phantom
+		// routes by TestOpenAPIDriftCheck_CodeCoversAllSpecRoutes.
+		Bil24CompatEnabled: true,
 	})
 }
 

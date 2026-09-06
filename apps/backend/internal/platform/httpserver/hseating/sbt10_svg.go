@@ -56,6 +56,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
 )
@@ -264,3 +266,64 @@ func gaZonePolygons(cats []seating.Category) string {
 func formatMajor(minor int64) string {
 	return strconv.FormatFloat(float64(minor)/100, 'f', -1, 64)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Exported helpers for the Bil24-gateway image route (feature #501, spec §8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// SBT10CategoryTierIDs projects the geometry's seated categories onto the
+// ticket-tier UUID that backs each one, keyed by category INDEX.
+//
+// The Bil24 image route needs this to mint the `sbt:id` attribute of every
+// <sbt:category> element: the wire id is the compatibility_id_map id of the
+// bound tier (kind = category_price), not the geometry category index. The
+// mapping itself is exactly the one RenderSBT10SVG uses internally to pick
+// `sbt:price`, so exporting it here keeps the two attributes derived from a
+// single source of truth — a category can never advertise the price of one
+// tier under the id of another.
+//
+// Categories with no resolvable tier are simply absent from the map; the
+// caller emits sbt:id="0" for them (see RenderSBT10SVG's categoryIDs
+// contract) so the attribute surface never varies by row.
+func SBT10CategoryTierIDs(
+	g seating.Geometry,
+	seats []gen.SessionSeatRow,
+	tiers []gen.TicketTierRow,
+) map[int]uuid.UUID {
+	byCat := resolveCategoryTiers(g, seats, tiers, seatKeyIndex(g))
+	out := make(map[int]uuid.UUID, len(byCat))
+	for idx, tier := range byCat {
+		out[idx] = tier.ID
+	}
+	return out
+}
+
+// SBT10ETag builds the strong composite validator the Bil24 image route and
+// the BSS layout.svg export share: `"<geometry_checksum>:<seat_status_version>"`.
+//
+// Both halves are needed. geometry_checksum alone would not change when a
+// seat is sold (same plan, different availability); seat_status_version alone
+// would not change when the plan is re-bound to a session whose seat statuses
+// happen to be untouched.
+func SBT10ETag(geometryChecksum string, seatStatusVersion int64) string {
+	return layoutSVGETag(geometryChecksum, seatStatusVersion)
+}
+
+// SBT10MatchesETag reports whether an If-None-Match header selects the given
+// strong ETag, per RFC 7232 (comma list, `*` wildcard, weak validators
+// ignored). Exported so the Bil24 gateway route answers 304 with exactly the
+// same comparison semantics as the platform's own SVG endpoints.
+func SBT10MatchesETag(ifNoneMatch, strongETag string) bool {
+	return matchesETag(ifNoneMatch, strongETag)
+}
+
+// SBT10CacheControl is the Cache-Control value spec §8 mandates for the
+// seating-plan image: `no-cache` means "you may store it, but you MUST
+// revalidate", which is what makes the If-None-Match → 304 round-trip the
+// normal path rather than an optimisation.
+const SBT10CacheControl = layoutSVGCacheControl
+
+// SBT10ContentType is the media type the seating plan is served with. The
+// charset is explicit because the plan carries section / row names in UTF-8
+// and some proxies otherwise guess latin-1.
+const SBT10ContentType = "image/svg+xml; charset=utf-8"

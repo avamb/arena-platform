@@ -295,6 +295,12 @@ func (s *Server) handleBil24Command(w http.ResponseWriter, r *http.Request) {
 	s.bil24Handler().HandleBil24Command(w, r)
 }
 
+// handleBil24Image delegates to hbil24.(*Handler).HandleBil24Image, the
+// sbt/1.0 seating-plan export (feature #501, spec §8).
+func (s *Server) handleBil24Image(w http.ResponseWriter, r *http.Request) {
+	s.bil24Handler().HandleBil24Image(w, r)
+}
+
 // ─── router mounting ──────────────────────────────────────────────────────────
 
 // mountCompatRoutes mounts the Bil24-compatible API gateway under /compat/bil24/*.
@@ -334,5 +340,10 @@ func (s *Server) mountCompatRoutes() {
 		// and dispatches to the appropriate domain adapter.
 		// No JWT auth — the gateway uses fid/token credentials from the request body.
 		r.Post("/json", s.handleBil24Command)
+		// GET /compat/bil24/image?type=seatingPlan&actionEventId=…&fid=…
+		// — the sbt/1.0 seating plan (spec §8). GET, not a command, because
+		// the WP picker fetches it as a plain cacheable asset; auth is
+		// fid → channel → org only (no token: it rides a browser URL).
+		r.Get("/image", s.handleBil24Image)
 	})
 }

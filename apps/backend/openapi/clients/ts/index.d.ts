@@ -73,6 +73,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/compat/bil24/json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bil24-compatible command gateway
+         * @description Single RPC entry point of the Bil24 compatibility gateway
+         *     (`08_architecture/18_bil24_compat_wave1_specification_ru.md`).
+         *     The body carries `{ "command": "...", "fid": "...", "token": "...", ... }`
+         *     and is dispatched to the matching domain adapter.
+         *
+         *     This endpoint deliberately does NOT use the platform's REST
+         *     conventions: it reproduces a legacy third-party wire format so
+         *     existing WordPress sites keep working unchanged. Consequences:
+         *
+         *       * Authentication is the `fid` + `token` pair inside the body,
+         *         NOT a bearer JWT. The subtree is only mounted when
+         *         `BIL24_COMPAT_ENABLED=true`.
+         *       * Every outcome — including errors — answers HTTP 200. The real
+         *         status lives in the body's `resultCode` field (0 = OK,
+         *         1 = stale session, 101 = user-visible business error,
+         *         -1 transient, -2 invalid request, -3 not found,
+         *         -4 unauthorized, -99 dependency unavailable).
+         *
+         *     The request and response payloads are intentionally left
+         *     free-form here: the shape varies per command and the normative
+         *     definition is the specification document above, not this file.
+         */
+        post: operations["postBil24Command"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/compat/bil24/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bil24-compatible sbt/1.0 seating-plan SVG
+         * @description Renders the seating plan of one session in the `sbt/1.0`
+         *     projection the WordPress Bil24 seat picker consumes
+         *     (namespace `http://www.w3.org/2015/sbt/1.0`, spec §8). It is the
+         *     only GET route of the compatibility gateway: the site drops the
+         *     URL straight into the page and needs ordinary HTTP caching, which
+         *     the `resultCode` command envelope cannot express.
+         *
+         *     Element contract:
+         *
+         *       * `<metadata>` holds one `<sbt:category>` per seated category
+         *         with `sbt:id` (the wire id of the bound ticket tier),
+         *         `sbt:index`, `sbt:name`, `sbt:color`, `sbt:price` (major
+         *         units) and `sbt:class`.
+         *       * seats are `<circle sbt:id sbt:state sbt:cat sbt:seat>` nested
+         *         in `<g sbt:row>` inside `<g sbt:sect>`. `sbt:id` is
+         *         `session_seats.system_seat_id`; `sbt:cat` is the category
+         *         INDEX, matching `sbt:index` in the metadata block.
+         *       * `sbt:state` is a two-value alphabet: `1` free, `4` taken
+         *         (held, sold and unavailable all collapse to `4`).
+         *       * general-admission zones render inside `<g id="Decor">`
+         *         without an `sbt:id`, so the picker never treats them as
+         *         reservable seats.
+         *
+         *     Authentication is `fid` → sales channel → organization only. No
+         *     bearer JWT and no gateway token: the URL is fetched by a browser
+         *     and cannot carry a secret. This is acceptable because the
+         *     response contains nothing the site does not already publish — and
+         *     is exactly why nothing else may be added to it.
+         *
+         *     Every rejection answers 404 with an identical body, whatever the
+         *     reason (unsupported `type`, unknown `fid`, session in another
+         *     organization, unpublished session, general-admission session,
+         *     malformed `actionEventId`). The endpoint is unauthenticated, so a
+         *     distinguishable error surface would let anyone enumerate which
+         *     session ids exist and who owns them.
+         *
+         *     Responses carry the composite strong ETag
+         *     `"<geometry_checksum>:<seat_status_version>"` and
+         *     `Cache-Control: no-cache`: the seat map turns over on every
+         *     reservation, so caches MUST revalidate. A matching
+         *     `If-None-Match` short-circuits with 304.
+         */
+        get: operations["getBil24SeatingPlanImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/info": {
         parameters: {
             query?: never;
@@ -13073,6 +13173,137 @@ export interface operations {
                      *     arena_http_request_duration_seconds_bucket{method="GET",route="/v1/info",status="200",le="0.005"} 1
                      */
                     "text/plain": string;
+                };
+            };
+        };
+    };
+    postBil24Command: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /**
+             * @description Bil24 command envelope. Carries `resultCode` — check it, not
+             *     the HTTP status, to determine success.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    getBil24SeatingPlanImage: {
+        parameters: {
+            query: {
+                /**
+                 * @description Artefact kind. Only `seatingPlan` is served; any other value
+                 *     answers 404 rather than pretending the kind is supported.
+                 */
+                type: "seatingPlan";
+                /**
+                 * @description Bil24 wire id of the session (`compatibility_id_map`,
+                 *     kind `action_event`).
+                 */
+                actionEventId: number;
+                /**
+                 * @description Sales-channel credential (`sales_channels.display_number`).
+                 *     Resolves the organization the session must belong to.
+                 */
+                fid: number;
+                /**
+                 * @description Accepted and ignored — the legacy client always sends it. The
+                 *     plan is identical for every visitor.
+                 */
+                userId?: number;
+                /**
+                 * @description Accepted and ignored — the plan carries no translatable
+                 *     strings beyond the operator-authored section and row names.
+                 */
+                locale?: string;
+            };
+            header?: {
+                /**
+                 * @description Standard conditional-request header. When it matches the
+                 *     current composite ETag the server responds 304 with no body.
+                 */
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description sbt/1.0 seating-plan SVG document. */
+            200: {
+                headers: {
+                    /** @description Composite strong tag `"<geometry_checksum>:<seat_status_version>"`. */
+                    ETag?: string;
+                    /** @description Always `no-cache`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/svg+xml": string;
+                };
+            };
+            /** @description Client's `If-None-Match` matches the current composite ETag; body omitted. */
+            304: {
+                headers: {
+                    /** @description Composite strong tag `"<geometry_checksum>:<seat_status_version>"`. */
+                    ETag?: string;
+                    /** @description Always `no-cache`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description The plan is not available for this request. Deliberately
+             *     indistinguishable across every cause: unsupported `type`,
+             *     malformed or unknown `actionEventId`, unknown `fid`, session
+             *     owned by another organization, unpublished session, or a
+             *     general-admission session (`bil24_compat.image_not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Seating plan could not be rendered (`bil24_compat.image_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Seating queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

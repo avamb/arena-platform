@@ -441,11 +441,152 @@ func TestCompatBil24_450_Harness_Scenarios(t *testing.T) {
 		t.Skip("feature #492: two sequential CREATE_ORDER_EXT for the same session return the same orderId (one-open-order invariant)")
 	})
 
+	// Scenario 7 (feature #501, W1-B5b) — GET /compat/bil24/image.
+	//
+	// The seat picker downloads the plan as a plain cacheable asset before it
+	// can draw anything, so this scenario asserts the three things the picker
+	// actually depends on: the sbt/1.0 element shape of spec §8, the composite
+	// ETag revalidating to 304, and every <circle sbt:cat> pointing at a
+	// category index that <metadata> really declares (a dangling index makes
+	// the picker render seats it cannot price). The GA and wrong-`type` 404s
+	// are asserted too: they must be byte-identical to "does not exist", which
+	// is what keeps the unauthenticated route non-enumerable.
 	t.Run("07_svg_image_and_etag", func(t *testing.T) {
-		t.Skip("feature #501: GET /compat/bil24/image sbt/1.0 shape §8 + ETag 304 caching + sbt:cat matches <metadata>")
 		// Sanity: the SVG skeleton is checked in.
 		if _, err := os.Stat(filepath.Join("testdata", "wp", "svg", "palac_akropolis.sbt.svg")); err != nil {
 			t.Fatalf("SVG skeleton missing: %v", err)
+		}
+
+		st := setupHarness(t)
+		base := startHarnessServer(t, st)
+		actionEventID := mustActionEventID(t, st, st.AssignedSessID)
+
+		// ── step 1: the plan downloads with sbt/1.0 shape and caching ────
+		status, hdr, body := getBil24Image(t, base, map[string]string{
+			"type":          "seatingPlan",
+			"actionEventId": strconv.FormatInt(actionEventID, 10),
+			"userId":        "0",
+			"fid":           strconv.FormatInt(st.ChannelFID, 10),
+			"locale":        "en-US",
+		}, "")
+		if status != 200 {
+			t.Fatalf("GET image status = %d, want 200 (body %s)", status, body)
+		}
+		if ct := hdr.Get("Content-Type"); !strings.HasPrefix(ct, "image/svg+xml") {
+			t.Errorf("Content-Type = %q, want image/svg+xml…", ct)
+		}
+		if cc := hdr.Get("Cache-Control"); cc != "no-cache" {
+			t.Errorf("Cache-Control = %q, want no-cache", cc)
+		}
+		etag := hdr.Get("ETag")
+		if etag == "" {
+			t.Fatal("response carries no ETag; the picker cannot revalidate")
+		}
+		// Spec §8: ETag = "<geometry_checksum>:<seat_status_version>" — both
+		// halves are required, geometry alone would serve a stale free/taken
+		// bitmap after every reservation.
+		if !strings.HasPrefix(etag, `"`) || !strings.HasSuffix(etag, `"`) ||
+			!strings.Contains(etag, ":") {
+			t.Errorf("ETag = %s, want a strong \"checksum:version\" validator", etag)
+		}
+
+		svg := string(body)
+		for _, want := range []string{
+			`xmlns:sbt="http://www.w3.org/2015/sbt/1.0"`,
+			`sbt:statusVersion="`,
+			`<metadata>`,
+			`<sbt:category `,
+			`sbt:sect=`,
+			`sbt:row=`,
+			`<circle sbt:id=`,
+			`sbt:state=`,
+			`sbt:cat=`,
+		} {
+			if !strings.Contains(svg, want) {
+				t.Errorf("sbt/1.0 body is missing %q\n---\n%s", want, truncateSVG(svg))
+			}
+		}
+
+		// ── step 2: every sbt:cat resolves to a declared sbt:index ───────
+		declared := attrValues(svg, `<sbt:category `, `sbt:index="`)
+		if len(declared) == 0 {
+			t.Fatalf("no <sbt:category sbt:index> in <metadata>\n---\n%s", truncateSVG(svg))
+		}
+		known := make(map[string]bool, len(declared))
+		for _, idx := range declared {
+			known[idx] = true
+		}
+		used := attrValues(svg, `<circle `, `sbt:cat="`)
+		if len(used) == 0 {
+			t.Fatalf("no <circle sbt:cat> in the plan\n---\n%s", truncateSVG(svg))
+		}
+		for _, cat := range used {
+			if !known[cat] {
+				t.Errorf("circle sbt:cat=%q has no matching <sbt:category sbt:index>; declared %v",
+					cat, declared)
+			}
+		}
+		// Seat states use the two-value spec §8 alphabet only.
+		for _, state := range attrValues(svg, `<circle `, `sbt:state="`) {
+			if state != "1" && state != "4" {
+				t.Errorf("circle sbt:state=%q, want 1 (free) or 4 (taken)", state)
+			}
+		}
+
+		// ── step 3: If-None-Match revalidates to 304 with no body ────────
+		status304, hdr304, body304 := getBil24Image(t, base, map[string]string{
+			"type":          "seatingPlan",
+			"actionEventId": strconv.FormatInt(actionEventID, 10),
+			"userId":        "0",
+			"fid":           strconv.FormatInt(st.ChannelFID, 10),
+			"locale":        "en-US",
+		}, etag)
+		if status304 != 304 {
+			t.Fatalf("If-None-Match status = %d, want 304 (body %s)", status304, body304)
+		}
+		if len(body304) != 0 {
+			t.Errorf("304 body = %q, want empty", body304)
+		}
+		if got := hdr304.Get("ETag"); got != etag {
+			t.Errorf("304 ETag = %s, want %s — a cache needs it to refresh its entry", got, etag)
+		}
+
+		// ── step 4: a GA session must be indistinguishable from missing ──
+		gaActionEventID := mustActionEventID(t, st, st.GAsessID)
+		gaStatus, _, _ := getBil24Image(t, base, map[string]string{
+			"type":          "seatingPlan",
+			"actionEventId": strconv.FormatInt(gaActionEventID, 10),
+			"userId":        "0",
+			"fid":           strconv.FormatInt(st.ChannelFID, 10),
+			"locale":        "en-US",
+		}, "")
+		if gaStatus != 404 {
+			t.Errorf("GA session image status = %d, want 404 — a GA session has no plan "+
+				"and must not be distinguishable from an unknown id", gaStatus)
+		}
+
+		// ── step 5: an unsupported artefact kind is a 404, not a 400 ─────
+		badType, _, _ := getBil24Image(t, base, map[string]string{
+			"type":          "poster",
+			"actionEventId": strconv.FormatInt(actionEventID, 10),
+			"userId":        "0",
+			"fid":           strconv.FormatInt(st.ChannelFID, 10),
+			"locale":        "en-US",
+		}, "")
+		if badType != 404 {
+			t.Errorf("type=poster status = %d, want 404", badType)
+		}
+
+		// ── step 6: an unknown fid may not read another org's plan ───────
+		badFID, _, _ := getBil24Image(t, base, map[string]string{
+			"type":          "seatingPlan",
+			"actionEventId": strconv.FormatInt(actionEventID, 10),
+			"userId":        "0",
+			"fid":           strconv.FormatInt(st.ChannelFID+7777, 10),
+			"locale":        "en-US",
+		}, "")
+		if badFID != 404 {
+			t.Errorf("unknown fid status = %d, want 404", badFID)
 		}
 	})
 

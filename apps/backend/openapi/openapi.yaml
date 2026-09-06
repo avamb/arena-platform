@@ -9112,6 +9112,210 @@ paths:
                 # TYPE arena_http_request_duration_seconds histogram
                 arena_http_request_duration_seconds_bucket{method="GET",route="/v1/info",status="200",le="0.005"} 1
 
+  /compat/bil24/json:
+    post:
+      operationId: postBil24Command
+      summary: Bil24-compatible command gateway
+      description: |
+        Single RPC entry point of the Bil24 compatibility gateway
+        (`08_architecture/18_bil24_compat_wave1_specification_ru.md`).
+        The body carries `{ "command": "...", "fid": "...", "token": "...", ... }`
+        and is dispatched to the matching domain adapter.
+
+        This endpoint deliberately does NOT use the platform's REST
+        conventions: it reproduces a legacy third-party wire format so
+        existing WordPress sites keep working unchanged. Consequences:
+
+          * Authentication is the `fid` + `token` pair inside the body,
+            NOT a bearer JWT. The subtree is only mounted when
+            `BIL24_COMPAT_ENABLED=true`.
+          * Every outcome — including errors — answers HTTP 200. The real
+            status lives in the body's `resultCode` field (0 = OK,
+            1 = stale session, 101 = user-visible business error,
+            -1 transient, -2 invalid request, -3 not found,
+            -4 unauthorized, -99 dependency unavailable).
+
+        The request and response payloads are intentionally left
+        free-form here: the shape varies per command and the normative
+        definition is the specification document above, not this file.
+      tags: [compat]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: |
+                Bil24 command envelope. Always carries `command`; the
+                remaining keys depend on the command (see spec §7).
+              additionalProperties: true
+      responses:
+        "200":
+          description: |
+            Bil24 command envelope. Carries `resultCode` — check it, not
+            the HTTP status, to determine success.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: |
+                  Bil24 response envelope (`resultCode`, `command`,
+                  `description` plus per-command payload keys).
+                additionalProperties: true
+
+  /compat/bil24/image:
+    get:
+      operationId: getBil24SeatingPlanImage
+      summary: Bil24-compatible sbt/1.0 seating-plan SVG
+      description: |
+        Renders the seating plan of one session in the `sbt/1.0`
+        projection the WordPress Bil24 seat picker consumes
+        (namespace `http://www.w3.org/2015/sbt/1.0`, spec §8). It is the
+        only GET route of the compatibility gateway: the site drops the
+        URL straight into the page and needs ordinary HTTP caching, which
+        the `resultCode` command envelope cannot express.
+
+        Element contract:
+
+          * `<metadata>` holds one `<sbt:category>` per seated category
+            with `sbt:id` (the wire id of the bound ticket tier),
+            `sbt:index`, `sbt:name`, `sbt:color`, `sbt:price` (major
+            units) and `sbt:class`.
+          * seats are `<circle sbt:id sbt:state sbt:cat sbt:seat>` nested
+            in `<g sbt:row>` inside `<g sbt:sect>`. `sbt:id` is
+            `session_seats.system_seat_id`; `sbt:cat` is the category
+            INDEX, matching `sbt:index` in the metadata block.
+          * `sbt:state` is a two-value alphabet: `1` free, `4` taken
+            (held, sold and unavailable all collapse to `4`).
+          * general-admission zones render inside `<g id="Decor">`
+            without an `sbt:id`, so the picker never treats them as
+            reservable seats.
+
+        Authentication is `fid` → sales channel → organization only. No
+        bearer JWT and no gateway token: the URL is fetched by a browser
+        and cannot carry a secret. This is acceptable because the
+        response contains nothing the site does not already publish — and
+        is exactly why nothing else may be added to it.
+
+        Every rejection answers 404 with an identical body, whatever the
+        reason (unsupported `type`, unknown `fid`, session in another
+        organization, unpublished session, general-admission session,
+        malformed `actionEventId`). The endpoint is unauthenticated, so a
+        distinguishable error surface would let anyone enumerate which
+        session ids exist and who owns them.
+
+        Responses carry the composite strong ETag
+        `"<geometry_checksum>:<seat_status_version>"` and
+        `Cache-Control: no-cache`: the seat map turns over on every
+        reservation, so caches MUST revalidate. A matching
+        `If-None-Match` short-circuits with 304.
+      tags: [compat]
+      parameters:
+        - name: type
+          in: query
+          required: true
+          description: |
+            Artefact kind. Only `seatingPlan` is served; any other value
+            answers 404 rather than pretending the kind is supported.
+          schema:
+            type: string
+            enum: [seatingPlan]
+        - name: actionEventId
+          in: query
+          required: true
+          description: |
+            Bil24 wire id of the session (`compatibility_id_map`,
+            kind `action_event`).
+          schema:
+            type: integer
+            format: int64
+        - name: fid
+          in: query
+          required: true
+          description: |
+            Sales-channel credential (`sales_channels.display_number`).
+            Resolves the organization the session must belong to.
+          schema:
+            type: integer
+            format: int64
+        - name: userId
+          in: query
+          required: false
+          description: |
+            Accepted and ignored — the legacy client always sends it. The
+            plan is identical for every visitor.
+          schema:
+            type: integer
+            format: int64
+        - name: locale
+          in: query
+          required: false
+          description: |
+            Accepted and ignored — the plan carries no translatable
+            strings beyond the operator-authored section and row names.
+          schema:
+            type: string
+        - name: If-None-Match
+          in: header
+          required: false
+          description: |
+            Standard conditional-request header. When it matches the
+            current composite ETag the server responds 304 with no body.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: sbt/1.0 seating-plan SVG document.
+          headers:
+            ETag:
+              description: Composite strong tag `"<geometry_checksum>:<seat_status_version>"`.
+              schema:
+                type: string
+            Cache-Control:
+              description: Always `no-cache`.
+              schema:
+                type: string
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+                description: SVG document with `sbt:*` attributes per spec §8.
+        "304":
+          description: Client's `If-None-Match` matches the current composite ETag; body omitted.
+          headers:
+            ETag:
+              description: Composite strong tag `"<geometry_checksum>:<seat_status_version>"`.
+              schema:
+                type: string
+            Cache-Control:
+              description: Always `no-cache`.
+              schema:
+                type: string
+        "404":
+          description: |
+            The plan is not available for this request. Deliberately
+            indistinguishable across every cause: unsupported `type`,
+            malformed or unknown `actionEventId`, unknown `fid`, session
+            owned by another organization, unpublished session, or a
+            general-admission session (`bil24_compat.image_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Seating plan could not be rendered (`bil24_compat.image_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Seating queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/info:
     get:
       operationId: getV1Info
