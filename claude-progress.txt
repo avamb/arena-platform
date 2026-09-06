@@ -27662,3 +27662,58 @@ Known follow-up (NOT fixed, out of scope for #482): `order.read`/
 `order.write` permissions appear to have the same missing-role-grant gap
 that customer.read had before migration 0095 — worth a dedicated feature to
 audit all `permissions` rows against `role_permissions` for orphaned grants.
+
+## Feature #454 (W1-A4 EPIC-VERIFY): customers/identity/CREATE_USER/gateway
+sessions full gate re-run — 2026-09-06
+
+Verification-only epic for sub-features #479, #480, #481, #482 (all already
+landed and marked passing, most recently #482 in the session immediately
+above, commit ae9fa02 + follow-up lint fix 1106268, both already pushed to
+origin/master before this session started). No new code written this
+session; confirmed `git rev-parse HEAD` == `git rev-parse origin/master`
+(1106268) at the start, i.e. nothing to push from prior sessions either.
+
+Commands run this session, repo root, arena_postgres dev-stand on
+localhost:55432, all green:
+- `go.exe build ./apps/backend/...` -> EXIT:0
+- `go.exe vet ./apps/backend/...` -> EXIT:0
+- `go.exe test ./apps/backend/...` (untagged, redirected to a log file, never
+  piped through head) -> EXIT:0, 67 `ok` packages, zero FAIL lines
+- `gofmt -l` over apps/backend/internal, cmd, tools, tests -> empty
+- `GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe run
+  github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run
+  ./apps/backend/...` -> "0 issues.", EXIT:0
+- Migration head pin: `migrations_head_test.go` expectedHead =
+  "0095_customer_read_role_grants.sql", matches the actual max file in
+  `internal/migrations/sql/` -> no drift
+- No openapi.yaml touched since #482 landed it (confirmed via git log) ->
+  codegen drift check skipped per gate condition; re-ran the drift test
+  anyway (`go.exe test ./apps/backend/internal/platform/httpserver/... -run
+  OpenAPI`) -> EXIT:0, ok
+- `npm run --prefix apps/admin-web type-check` -> EXIT:0, clean
+- `npm run --prefix apps/admin-web test` -> 44 files / 1130 tests passed,
+  EXIT:0
+- Local migrate against the shared dev-stand:
+  `DATABASE_URL=postgres://arena:arena@localhost:55432/arena?sslmode=disable
+  JWT_SIGNING_SECRET=x go.exe run ./apps/backend/cmd/arena-migrate` ->
+  "no migrations to run. current version: 95" -> stand already at head
+- `go.exe test -tags integration ./apps/backend/...` (full repo) -> EXIT:0,
+  68 `ok` packages, zero FAIL lines
+- Epic-specific goldens re-run individually with `-v`:
+  `TestBil24_481_CreateUserGoldens_EnvelopeShape` (both `basic.json` and
+  `same_email_new_session.json` cases) and
+  `TestBil24_481_CreateUserGoldens_SameEmailSameUserNewSession` -> all PASS,
+  confirming the epic's own "done when" bar: a second CREATE_USER with the
+  same email returns a new sessionId but the same userId.
+- `gh run list` / `gh run view` -> blocked in this sandbox ("Command 'gh' is
+  not allowed"), same documented pre-existing limitation as feature #462;
+  local gates (build/vet/test/lint/fmt/migration-pin/admin-web/integration)
+  are the full signal available from this environment.
+
+No drift found anywhere; nothing to fix. Untracked scratch files present in
+the working tree (`features.db`, `scratch_check.js`, `scratch_runs.json`,
+`scratch_watch.sh`) and a modified `.autoforge/prompts/coding_prompt.md` /
+deleted `.claude/scheduled_tasks.lock` are pre-existing orchestrator/session
+artifacts, not touched by this session, and were left alone. No code files
+changed this session (verification-only), so nothing to commit or push.
+Marked feature #454 passing via feature_mark_passing.
