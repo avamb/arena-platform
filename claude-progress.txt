@@ -29341,3 +29341,65 @@ repo-wide gates green, no drift found, nothing to fix:
   discovered). Nothing to push — no commits were made this pass since there
   was no drift to fix. All scratch log files deleted before finishing.
 - Staged by path only; `git status --short` verified before committing.
+
+## Feature #463 — W1-B7 [EPIC-VERIFY]: orderexport/bil24wire/webhook subscriber+dispatcher gate re-run (2026-09-07)
+
+Verification-only epic; all listed sub-features (504 orderexport extraction,
+505 bil24wire encoder, 506 dispatcher + new producers, 507 wp-webhook
+PUT/GET/DELETE with sync test delivery, 508 WP receiver round-trip
+integration test) already landed and `passes: true` per `git log` (commits
+454176f, a13389f, 5c6e265-adjacent, a136888, e5f4025). No code changes made
+this session — only re-ran the full gate suite and confirmed everything
+green:
+
+- `go.exe build ./apps/backend/...`, `go.exe vet ./apps/backend/...` — EXIT 0.
+- `go.exe test ./apps/backend/...` (untagged, redirected to file, checked
+  `echo EXIT:$?` after, never through a pipeline) — EXIT 0, 73 ok packages,
+  zero FAIL.
+- Targeted re-run of `tests/compat/bil24/...` with `-v`: confirmed the
+  epic's binding goldens are green, incl.
+  `TestCompatBil24_505_Encoder_KeySetsMatchRealExports`,
+  `TestCompatBil24_505_EncoderHeader_IsOrderMinusTicketList`,
+  `TestCompatBil24_505_RefundedTicket_IsTicketSubset` (bil24wire key-set vs
+  `bil24_orders_pseudonymized.json`), plus the `wpstub` dedup/reject/replay
+  scenarios (`TestWpstub_TicketRefundedIsDeduplicatedByDataID`, etc.).
+- `DATABASE_URL=post""gres://arena:arena@localhost:55432/arena?sslmode=disable
+  JWT_SIGNING_SECRET=x go.exe test -tags integration -count=1 -p 1
+  ./apps/backend/...` against the `arena_postgres` dev-stand (55432) —
+  EXIT 0, 74 ok packages, zero FAIL (includes the #508 WP receiver
+  round-trip and `internal/platform/ordering`/`macs` suites).
+- `GOLANGCI_LINT_CACHE=/tmp/golangci-cache463 go.exe run
+  .../golangci-lint@latest run ./apps/backend/...` — "0 issues.", EXIT 0.
+- `gofmt -l apps/backend/{cmd,internal,tests,tools}` — empty (clean).
+- `npm --prefix apps/admin-web run type-check` — EXIT 0.
+- `npm --prefix apps/admin-web run test -- --run` — 45 files / 1166 tests
+  passed, EXIT 0.
+- `npm --prefix apps/admin-web run build` — EXIT 0 (only the routine
+  >500kB chunk-size advisory).
+- Migration head pin: `migrations_head_test.go` expects
+  `0097_api_key_role_grants.sql`; confirmed `0094_wp_webhook_subscribers.sql`
+  (this epic's migration, spec §3.5) is present and 0097 is still the actual
+  latest file.
+- Local migrate smoke test against `arena_postgres` (55432): "no migrations
+  to run. current version: 97" — stand already fully migrated, no drift.
+- Codegen drift check: regenerated `.compat30.gen.yaml` via `openapi30gen`,
+  ran `oapi-codegen@v2.4.1`, ran `scripts/gen-ts-client.mjs` — `git status
+  --short` on the generated Go files and TS client showed zero diff.
+  Deleted the scratch compat file afterward.
+- **Could not run `gh run view`** — `gh` CLI is blocked by the sandbox
+  command allowlist (confirmed again this session, same documented
+  AGENTS.md gotcha). All other gates above substitute for that check.
+- Working tree: only the pre-existing out-of-scope AutoForge harness
+  artifacts present (`.autoforge/prompts/coding_prompt.md` modified,
+  `.claude/scheduled_tasks.lock` modified, untracked `features.db`) — left
+  uncommitted, consistent with how prior epic-verify sessions (#456, the
+  post-#456 integrator pass) treated them.
+- No drift found anywhere; no fix-features filed; no AGENTS.md changes
+  needed. Nothing to push — no commits made this pass. All scratch log
+  files (`build463.log`, `vet463.log`, `test463.log`, `bil24harness463.log`,
+  `integ463.log`, `lint463.log`, `gofmt463.log`, `typecheck463.log`,
+  `admintest463.log`, `adminbuild463.log`, `codegen463_*.log`,
+  `migrate463.log`) deleted before finishing.
+
+Marked feature #463 passing via `feature_mark_passing` after this
+verification-only gate re-run — full suite green, no code changes needed.
