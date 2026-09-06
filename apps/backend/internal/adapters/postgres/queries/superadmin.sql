@@ -37,6 +37,22 @@ WHERE  ($1::uuid IS NULL OR cs.org_id = $1)
 ORDER BY t.issued_at DESC, t.id DESC
 LIMIT  $3 OFFSET $4;
 
+-- name: ListAllOrders :many
+-- Returns orders across all organizations (W1-A6d, feature #489, spec §14.2:
+-- GET /v1/admin/orders now reads the `orders` aggregate table instead of
+-- checkout_sessions). Pass NULL for orgID to return orders from all orgs.
+-- Pass NULL for stateFilter to return orders in any status.
+SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
+       checkout_session_id, reservation_id, external_ref, source, status,
+       currency, subtotal, discount, charge, total, charge_percent_bp,
+       promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+FROM   orders
+WHERE  ($1::uuid IS NULL OR org_id = $1)
+  AND  ($2::text  IS NULL OR status = $2)
+ORDER BY created_at DESC, id DESC
+LIMIT  $3 OFFSET $4;
+
 -- name: ListAllRefunds :many
 -- Returns refunds across all organizations.
 -- Pass NULL for orgID to return refunds from all orgs.

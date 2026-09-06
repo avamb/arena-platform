@@ -100,6 +100,52 @@ func (q *Queries) ListAllTickets(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ListAllOrders
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listAllOrders = `-- name: ListAllOrders :many
+SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
+       checkout_session_id, reservation_id, external_ref, source, status,
+       currency, subtotal, discount, charge, total, charge_percent_bp,
+       promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+FROM   orders
+WHERE  ($1::uuid IS NULL OR org_id = $1)
+  AND  ($2::text  IS NULL OR status = $2)
+ORDER BY created_at DESC, id DESC
+LIMIT  $3 OFFSET $4`
+
+// ListAllOrders returns orders across all organizations (W1-A6d, feature
+// #489, spec §14.2 — GET /v1/admin/orders reads the `orders` aggregate table
+// instead of checkout_sessions).
+// Pass nil for orgID to return orders from all orgs.
+// Pass nil for stateFilter to return orders in any status.
+// Use limit and offset for pagination (e.g. limit=50 offset=0).
+func (q *Queries) ListAllOrders(
+	ctx context.Context,
+	orgID *uuid.UUID,
+	stateFilter *string,
+	limit int32,
+	offset int32,
+) ([]OrderRow, error) {
+	rows, err := q.db.Query(ctx, listAllOrders, orgID, stateFilter, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []OrderRow
+	for rows.Next() {
+		o, err := scanOrderRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		orders = append(orders, o)
+	}
+	return orders, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ListAllRefunds
 // ─────────────────────────────────────────────────────────────────────────────
 

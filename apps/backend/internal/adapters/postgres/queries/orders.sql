@@ -97,10 +97,12 @@ WHERE  customer_id = $1
 
 -- name: ListOrdersByOrg :many
 -- Lists orders for an organization, most recent first, optionally
--- filtered by status and fuzzy-matched against buyer_name / buyer_email /
--- buyer_phone via pg_trgm similarity (empty search = no filtering; the
--- orders_buyer_*_trgm gin indexes back this predicate). Pass an empty
--- string for statusFilter to skip the status filter.
+-- filtered by status, event session, a created_at range, and
+-- fuzzy-matched against buyer_name / buyer_email / buyer_phone via pg_trgm
+-- similarity (empty search = no filtering; the orders_buyer_*_trgm gin
+-- indexes back this predicate). Pass an empty string for statusFilter/
+-- search, and nil for sessionID/from/to, to skip the corresponding filter
+-- (W1-A6d, feature #489, spec §14.2).
 SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        checkout_session_id, reservation_id, external_ref, source, status,
        currency, subtotal, discount, charge, total, charge_percent_bp,
@@ -110,8 +112,11 @@ FROM   orders
 WHERE  org_id = $1
   AND  ($2 = '' OR status = $2)
   AND  ($3 = '' OR buyer_name  % $3 OR buyer_email % $3 OR buyer_phone % $3)
+  AND  ($4::uuid IS NULL OR session_id = $4)
+  AND  ($5::timestamptz IS NULL OR created_at >= $5)
+  AND  ($6::timestamptz IS NULL OR created_at <= $6)
 ORDER  BY created_at DESC, id DESC
-LIMIT  $4 OFFSET $5;
+LIMIT  $7 OFFSET $8;
 
 -- name: UpdateOrderStatus :one
 -- Transitions status and stamps the matching lifecycle timestamp

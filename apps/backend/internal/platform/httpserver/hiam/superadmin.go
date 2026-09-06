@@ -285,7 +285,12 @@ func (h *Handler) HandleSuperadminListOrders(w http.ResponseWriter, r *http.Requ
 		stateFilter = &v
 	}
 
-	rows, err := h.superadminQueries.ListAllCheckoutSessions(r.Context(), orgID, stateFilter, limit, offset)
+	// W1-A6d (feature #489, spec §14.2): reads the `orders` aggregate table
+	// instead of checkout_sessions, while preserving the response's JSON
+	// keys for backward compatibility. user_id has no orders analogue (orders
+	// carries customer_id, not a user_id); it is repurposed to surface the
+	// buyer's customer_id, which is the closest equivalent identity.
+	rows, err := h.superadminQueries.ListAllOrders(r.Context(), orgID, stateFilter, limit, offset)
 	if err != nil {
 		h.logger.Error("superadmin: list orders failed", slog.Any("error", err))
 		httputil.WriteJSON(w, http.StatusInternalServerError,
@@ -303,33 +308,25 @@ func (h *Handler) HandleSuperadminListOrders(w http.ResponseWriter, r *http.Requ
 	h.logSuperadminAudit(r, "orders", reason, filters)
 
 	orders := make([]map[string]any, 0, len(rows))
-	for _, cs := range rows {
+	for _, o := range rows {
 		m := map[string]any{
-			"id":             cs.ID.String(),
-			"org_id":         cs.OrgID.String(),
-			"channel_id":     cs.ChannelID.String(),
-			"reservation_id": cs.ReservationID.String(),
-			"state":          cs.State,
-			"created_at":     cs.CreatedAt.Format(time.RFC3339),
-			"updated_at":     cs.UpdatedAt.Format(time.RFC3339),
+			"id":             o.ID.String(),
+			"org_id":         o.OrgID.String(),
+			"channel_id":     o.ChannelID.String(),
+			"reservation_id": o.ReservationID.String(),
+			"state":          o.Status,
+			"created_at":     o.CreatedAt.Format(time.RFC3339),
+			"updated_at":     o.UpdatedAt.Format(time.RFC3339),
+			"total":          o.Total,
+			"currency":       o.Currency,
 		}
-		if cs.UserID != nil {
-			m["user_id"] = cs.UserID.String()
+		if o.CustomerID != nil {
+			m["user_id"] = o.CustomerID.String()
 		} else {
 			m["user_id"] = nil
 		}
-		if cs.Total != nil {
-			m["total"] = *cs.Total
-		} else {
-			m["total"] = nil
-		}
-		if cs.Currency != nil {
-			m["currency"] = *cs.Currency
-		} else {
-			m["currency"] = nil
-		}
-		if cs.CompletedAt != nil {
-			m["completed_at"] = cs.CompletedAt.Format(time.RFC3339)
+		if o.PaidAt != nil {
+			m["completed_at"] = o.PaidAt.Format(time.RFC3339)
 		} else {
 			m["completed_at"] = nil
 		}

@@ -4388,6 +4388,266 @@ type OperatorNetworkListResponse struct {
 	Total int `json:"total"`
 }
 
+// OrderDetail defines model for OrderDetail.
+type OrderDetail struct {
+	// BuyerEmail Buyer's email, if captured.
+	BuyerEmail *string `json:"buyer_email"`
+
+	// BuyerName Buyer's name, if captured.
+	BuyerName *string `json:"buyer_name"`
+
+	// BuyerPhone Buyer's phone, if captured.
+	BuyerPhone *string `json:"buyer_phone"`
+
+	// CancelledAt When the order was cancelled, if it was.
+	CancelledAt *time.Time `json:"cancelled_at"`
+
+	// ChannelId Sales channel the order was placed through.
+	ChannelId openapi_types.UUID `json:"channel_id"`
+
+	// Charge Platform/provider charge, in minor currency units.
+	Charge int `json:"charge"`
+
+	// ChargePercentBp Charge rate applied, in basis points.
+	ChargePercentBp int `json:"charge_percent_bp"`
+
+	// CheckoutSessionId Checkout session this order was created from.
+	CheckoutSessionId openapi_types.UUID `json:"checkout_session_id"`
+
+	// CreatedAt When the order was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency code.
+	Currency string `json:"currency"`
+
+	// CustomerId Linked customer, if the buyer was resolved to one.
+	CustomerId *openapi_types.UUID `json:"customer_id"`
+
+	// Discount Discount applied, in minor currency units.
+	Discount int `json:"discount"`
+
+	// EventId Event the order's session belongs to.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Events Audit-trail events recorded against the order.
+	Events []OrderEventSummary `json:"events"`
+
+	// ExpiresAt When the order's hold expires, if still pending.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// ExternalRef External reference (e.g. gateway order id) for compat integrations.
+	ExternalRef *string `json:"external_ref"`
+
+	// Id UUIDv7 primary key of the order row.
+	Id openapi_types.UUID `json:"id"`
+
+	// Items Line items of the order.
+	Items []OrderItemSummary `json:"items"`
+
+	// OrgId Owning organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PaidAt When the order was marked paid, if it was.
+	PaidAt *time.Time `json:"paid_at"`
+
+	// PaymentMethod Payment method used, if known.
+	PaymentMethod *string `json:"payment_method"`
+
+	// PromoCodeId Promo code applied to this order, if any.
+	PromoCodeId *openapi_types.UUID `json:"promo_code_id"`
+
+	// ReservationId Reservation (hold) backing this order.
+	ReservationId openapi_types.UUID `json:"reservation_id"`
+
+	// SessionId Session the order was placed for.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// Source Where the order originated (e.g. widget, bil24, admin).
+	Source string `json:"source"`
+
+	// Status Order lifecycle status (pending_payment, paid, cancelled, expired).
+	Status string `json:"status"`
+
+	// Subtotal Subtotal before discount, in minor currency units.
+	Subtotal int `json:"subtotal"`
+
+	// SystemId Bigint id surfaced to Bil24-compat clients.
+	SystemId int64 `json:"system_id"`
+
+	// Tickets Tickets issued for this order's line items.
+	Tickets []OrderTicketSummary `json:"tickets"`
+
+	// Total Order total, in minor currency units.
+	Total int `json:"total"`
+
+	// UpdatedAt When the order was last updated.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// OrderEventSummary One audit-trail event recorded against an order.
+type OrderEventSummary struct {
+	// Actor Actor label that triggered the event (e.g. "user:<uuid>", "system").
+	Actor string `json:"actor"`
+
+	// CreatedAt When the event was recorded.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUIDv7 primary key of the order event row.
+	Id openapi_types.UUID `json:"id"`
+
+	// Payload Event-specific JSON payload.
+	Payload map[string]interface{} `json:"payload"`
+
+	// Type Event type (e.g. created, paid, cancelled).
+	Type string `json:"type"`
+}
+
+// OrderItemSummary One line item of an order (feature
+type OrderItemSummary struct {
+	// Charge Platform/provider charge for this item, in minor currency units.
+	Charge int `json:"charge"`
+
+	// Discount Discount applied to this item, in minor currency units.
+	Discount int `json:"discount"`
+
+	// Id UUIDv7 primary key of the order item row.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Line item kind (e.g. ticket).
+	Kind string `json:"kind"`
+
+	// Ordinal Position of this item within the order.
+	Ordinal int `json:"ordinal"`
+
+	// SessionSeatId Assigned seat, for reserved-seating sessions.
+	SessionSeatId *openapi_types.UUID `json:"session_seat_id"`
+
+	// TicketId Ticket issued for this item, once issuance completes.
+	TicketId *openapi_types.UUID `json:"ticket_id"`
+
+	// TierId Ticket tier this item was sold from.
+	TierId openapi_types.UUID `json:"tier_id"`
+
+	// Total Item total, in minor currency units.
+	Total int `json:"total"`
+
+	// UnitPrice Unit price, in minor currency units.
+	UnitPrice int `json:"unit_price"`
+}
+
+// OrderSummary One order, as returned by both the org-scoped orders list and the
+// `order` fields common to the detail endpoint (feature #489, W1-A6d,
+// spec §14.2).
+type OrderSummary struct {
+	// BuyerEmail Buyer's email, if captured.
+	BuyerEmail *string `json:"buyer_email"`
+
+	// BuyerName Buyer's name, if captured.
+	BuyerName *string `json:"buyer_name"`
+
+	// BuyerPhone Buyer's phone, if captured.
+	BuyerPhone *string `json:"buyer_phone"`
+
+	// CancelledAt When the order was cancelled, if it was.
+	CancelledAt *time.Time `json:"cancelled_at"`
+
+	// ChannelId Sales channel the order was placed through.
+	ChannelId openapi_types.UUID `json:"channel_id"`
+
+	// Charge Platform/provider charge, in minor currency units.
+	Charge int `json:"charge"`
+
+	// ChargePercentBp Charge rate applied, in basis points.
+	ChargePercentBp int `json:"charge_percent_bp"`
+
+	// CheckoutSessionId Checkout session this order was created from.
+	CheckoutSessionId openapi_types.UUID `json:"checkout_session_id"`
+
+	// CreatedAt When the order was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency code.
+	Currency string `json:"currency"`
+
+	// CustomerId Linked customer, if the buyer was resolved to one.
+	CustomerId *openapi_types.UUID `json:"customer_id"`
+
+	// Discount Discount applied, in minor currency units.
+	Discount int `json:"discount"`
+
+	// EventId Event the order's session belongs to.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// ExpiresAt When the order's hold expires, if still pending.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// ExternalRef External reference (e.g. gateway order id) for compat integrations.
+	ExternalRef *string `json:"external_ref"`
+
+	// Id UUIDv7 primary key of the order row.
+	Id openapi_types.UUID `json:"id"`
+
+	// OrgId Owning organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PaidAt When the order was marked paid, if it was.
+	PaidAt *time.Time `json:"paid_at"`
+
+	// PaymentMethod Payment method used, if known.
+	PaymentMethod *string `json:"payment_method"`
+
+	// PromoCodeId Promo code applied to this order, if any.
+	PromoCodeId *openapi_types.UUID `json:"promo_code_id"`
+
+	// ReservationId Reservation (hold) backing this order.
+	ReservationId openapi_types.UUID `json:"reservation_id"`
+
+	// SessionId Session the order was placed for.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// Source Where the order originated (e.g. widget, bil24, admin).
+	Source string `json:"source"`
+
+	// Status Order lifecycle status (pending_payment, paid, cancelled, expired).
+	Status string `json:"status"`
+
+	// Subtotal Subtotal before discount, in minor currency units.
+	Subtotal int `json:"subtotal"`
+
+	// SystemId Bigint id surfaced to Bil24-compat clients.
+	SystemId int64 `json:"system_id"`
+
+	// Total Order total, in minor currency units.
+	Total int `json:"total"`
+
+	// UpdatedAt When the order was last updated.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// OrderTicketSummary A ticket issued for one of the order's line items.
+type OrderTicketSummary struct {
+	// HolderEmail Ticket holder's email, if captured.
+	HolderEmail *string `json:"holder_email"`
+
+	// Id UUIDv7 primary key of the ticket row.
+	Id openapi_types.UUID `json:"id"`
+
+	// IssuedAt When the ticket was issued.
+	IssuedAt time.Time `json:"issued_at"`
+
+	// SeatNumber Seat number, for reserved-seating sessions.
+	SeatNumber *string `json:"seat_number"`
+
+	// SeatRow Seat row, for reserved-seating sessions.
+	SeatRow *string `json:"seat_row"`
+
+	// SeatSector Seat sector, for reserved-seating sessions.
+	SeatSector *string `json:"seat_sector"`
+
+	// Status Ticket lifecycle status.
+	Status string `json:"status"`
+}
+
 // OrganizationItem A single active organization (primary tenant boundary).
 // Includes legal & contact attributes added in migration
 // 0049_organizations_legal_fields (Wave O / feature #253). All
@@ -8261,6 +8521,36 @@ type UpdateExternalAllocationJSONBody struct {
 	Quantity *int `json:"quantity,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdOrdersParams defines parameters for GetV1OrganizationsOrgIdOrders.
+type GetV1OrganizationsOrgIdOrdersParams struct {
+	// Q Fuzzy search text over buyer_name/buyer_email/buyer_phone, max 200 chars.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Status Filter by order lifecycle status (e.g. pending_payment, paid, cancelled, expired).
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// SessionId Filter to orders placed for this session.
+	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
+
+	// From Only orders created at or after this RFC3339 timestamp.
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Only orders created at or before this RFC3339 timestamp.
+	To *time.Time `form:"to,omitempty" json:"to,omitempty"`
+
+	// Limit Page size, 1-200 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Pagination offset (default 0).
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// PostV1OrganizationsOrgIdOrdersIdCancelJSONBody defines parameters for PostV1OrganizationsOrgIdOrdersIdCancel.
+type PostV1OrganizationsOrgIdOrdersIdCancelJSONBody struct {
+	// Reason Optional free-text reason recorded on the cancellation audit event.
+	Reason *string `json:"reason,omitempty"`
+}
+
 // ListPublicFeedEventsParams defines parameters for ListPublicFeedEvents.
 type ListPublicFeedEventsParams struct {
 	// CityId Optional filter by publication city scope.
@@ -8582,6 +8872,9 @@ type GrantOrganizationMembershipJSONRequestBody = GrantMembershipRequest
 
 // RevokeOrganizationMembershipJSONRequestBody defines body for RevokeOrganizationMembership for application/json ContentType.
 type RevokeOrganizationMembershipJSONRequestBody = RevokeMembershipRequest
+
+// PostV1OrganizationsOrgIdOrdersIdCancelJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersIdCancel for application/json ContentType.
+type PostV1OrganizationsOrgIdOrdersIdCancelJSONRequestBody PostV1OrganizationsOrgIdOrdersIdCancelJSONBody
 
 // CreatePaymentProviderConfigJSONRequestBody defines body for CreatePaymentProviderConfig for application/json ContentType.
 type CreatePaymentProviderConfigJSONRequestBody = CreatePaymentProviderConfigRequest

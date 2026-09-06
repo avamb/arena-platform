@@ -252,21 +252,27 @@ FROM   orders
 WHERE  org_id = $1
   AND  ($2 = '' OR status = $2)
   AND  ($3 = '' OR buyer_name  % $3 OR buyer_email % $3 OR buyer_phone % $3)
+  AND  ($4::uuid IS NULL OR session_id = $4)
+  AND  ($5::timestamptz IS NULL OR created_at >= $5)
+  AND  ($6::timestamptz IS NULL OR created_at <= $6)
 ORDER  BY created_at DESC, id DESC
-LIMIT  $4 OFFSET $5`
+LIMIT  $7 OFFSET $8`
 
 // ListOrdersByOrg lists orders for an organization, most recent first,
-// optionally filtered by status and fuzzy-matched against buyer_name /
+// optionally filtered by status, event session, a created_at range
+// (W1-A6d, feature #489, spec §14.2), and fuzzy-matched against buyer_name /
 // buyer_email / buyer_phone via pg_trgm similarity (the orders_buyer_*_trgm
-// gin indexes back this predicate). Pass "" for statusFilter or search to
-// skip that filter.
+// gin indexes back this predicate). Pass "" for statusFilter or search, and
+// nil for sessionID/from/to, to skip the corresponding filter.
 func (q *Queries) ListOrdersByOrg(
 	ctx context.Context,
 	orgID uuid.UUID,
 	statusFilter, search string,
+	sessionID *uuid.UUID,
+	from, to *time.Time,
 	limit, offset int32,
 ) ([]OrderRow, error) {
-	rows, err := q.db.Query(ctx, listOrdersByOrg, orgID, statusFilter, search, limit, offset)
+	rows, err := q.db.Query(ctx, listOrdersByOrg, orgID, statusFilter, search, sessionID, from, to, limit, offset)
 	if err != nil {
 		return nil, err
 	}

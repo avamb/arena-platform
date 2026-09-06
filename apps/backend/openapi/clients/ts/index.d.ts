@@ -5268,6 +5268,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search / list orders within an organization
+         * @description Org-scoped order search (feature #489, W1-A6d, spec §14.2). The
+         *     optional `q` parameter performs a trigram fuzzy match over
+         *     buyer_name/buyer_email/buyer_phone; omit it to list every order in
+         *     the org. Requires the `order.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get order detail within an organization
+         * @description Returns the order detail (feature #489, W1-A6d, spec §14.2): the
+         *     order plus its line items, issued tickets and audit-trail events.
+         *     The order must belong to this org — an id belonging to another
+         *     organization is invisible, even by direct id lookup. Requires the
+         *     `order.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdOrdersId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/orders/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a pending order
+         * @description Cancels an order (feature #489, W1-A6d, spec §14.2). Only an order
+         *     in `pending_payment` status can be cancelled; any other status
+         *     answers 409. A successful cancellation also releases the order's
+         *     reservation hold. Requires the `order.write` permission.
+         */
+        post: operations["postV1OrganizationsOrgIdOrdersIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/tickets/{id}/scans": {
         parameters: {
             query?: never;
@@ -7620,6 +7690,205 @@ export interface components {
             attributes: components["schemas"]["CustomerAttributeItem"][];
             /** @description Consent records for this customer within the requesting org. */
             consents: components["schemas"]["CustomerConsentItem"][];
+        };
+        /**
+         * @description One order, as returned by both the org-scoped orders list and the
+         *     `order` fields common to the detail endpoint (feature #489, W1-A6d,
+         *     spec §14.2).
+         */
+        OrderSummary: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the order row.
+             */
+            id: string;
+            /**
+             * Format: int64
+             * @description Bigint id surfaced to Bil24-compat clients.
+             */
+            system_id: number;
+            /**
+             * Format: uuid
+             * @description Owning organization.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Sales channel the order was placed through.
+             */
+            channel_id: string;
+            /**
+             * Format: uuid
+             * @description Event the order's session belongs to.
+             */
+            event_id: string;
+            /**
+             * Format: uuid
+             * @description Session the order was placed for.
+             */
+            session_id: string;
+            /**
+             * Format: uuid
+             * @description Checkout session this order was created from.
+             */
+            checkout_session_id: string;
+            /**
+             * Format: uuid
+             * @description Reservation (hold) backing this order.
+             */
+            reservation_id: string;
+            /**
+             * Format: uuid
+             * @description Linked customer, if the buyer was resolved to one.
+             */
+            customer_id: string | null;
+            /** @description Where the order originated (e.g. widget, bil24, admin). */
+            source: string;
+            /** @description Order lifecycle status (pending_payment, paid, cancelled, expired). */
+            status: string;
+            /** @description ISO 4217 currency code. */
+            currency: string;
+            /** @description Subtotal before discount, in minor currency units. */
+            subtotal: number;
+            /** @description Discount applied, in minor currency units. */
+            discount: number;
+            /** @description Platform/provider charge, in minor currency units. */
+            charge: number;
+            /** @description Order total, in minor currency units. */
+            total: number;
+            /** @description Charge rate applied, in basis points. */
+            charge_percent_bp: number;
+            /**
+             * Format: uuid
+             * @description Promo code applied to this order, if any.
+             */
+            promo_code_id: string | null;
+            /** @description Buyer's name, if captured. */
+            buyer_name: string | null;
+            /** @description Buyer's email, if captured. */
+            buyer_email: string | null;
+            /** @description Buyer's phone, if captured. */
+            buyer_phone: string | null;
+            /** @description Payment method used, if known. */
+            payment_method: string | null;
+            /** @description External reference (e.g. gateway order id) for compat integrations. */
+            external_ref: string | null;
+            /**
+             * Format: date-time
+             * @description When the order was marked paid, if it was.
+             */
+            paid_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the order was cancelled, if it was.
+             */
+            cancelled_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the order's hold expires, if still pending.
+             */
+            expires_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the order was created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the order was last updated.
+             */
+            updated_at: string;
+        };
+        /** @description One line item of an order (feature */
+        OrderItemSummary: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the order item row.
+             */
+            id: string;
+            /** @description Position of this item within the order. */
+            ordinal: number;
+            /** @description Line item kind (e.g. ticket). */
+            kind: string;
+            /**
+             * Format: uuid
+             * @description Ticket tier this item was sold from.
+             */
+            tier_id: string;
+            /**
+             * Format: uuid
+             * @description Assigned seat, for reserved-seating sessions.
+             */
+            session_seat_id: string | null;
+            /**
+             * Format: uuid
+             * @description Ticket issued for this item, once issuance completes.
+             */
+            ticket_id: string | null;
+            /** @description Unit price, in minor currency units. */
+            unit_price: number;
+            /** @description Discount applied to this item, in minor currency units. */
+            discount: number;
+            /** @description Platform/provider charge for this item, in minor currency units. */
+            charge: number;
+            /** @description Item total, in minor currency units. */
+            total: number;
+        };
+        /** @description A ticket issued for one of the order's line items. */
+        OrderTicketSummary: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the ticket row.
+             */
+            id: string;
+            /** @description Ticket lifecycle status. */
+            status: string;
+            /** @description Ticket holder's email, if captured. */
+            holder_email: string | null;
+            /** @description Seat sector, for reserved-seating sessions. */
+            seat_sector: string | null;
+            /** @description Seat row, for reserved-seating sessions. */
+            seat_row: string | null;
+            /** @description Seat number, for reserved-seating sessions. */
+            seat_number: string | null;
+            /**
+             * Format: date-time
+             * @description When the ticket was issued.
+             */
+            issued_at: string;
+        };
+        /** @description One audit-trail event recorded against an order. */
+        OrderEventSummary: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the order event row.
+             */
+            id: string;
+            /** @description Event type (e.g. created, paid, cancelled). */
+            type: string;
+            /** @description Actor label that triggered the event (e.g. "user:<uuid>", "system"). */
+            actor: string;
+            /** @description Event-specific JSON payload. */
+            payload: Record<string, never>;
+            /**
+             * Format: date-time
+             * @description When the event was recorded.
+             */
+            created_at: string;
+        };
+        /**
+         * @description Order detail returned by GET
+         *     /v1/organizations/{org_id}/orders/{id} (feature #489, W1-A6d, spec
+         *     §14.2): the order fields plus its line items, issued tickets and
+         *     audit-trail events.
+         */
+        OrderDetail: components["schemas"]["OrderSummary"] & {
+            /** @description Line items of the order. */
+            items: components["schemas"]["OrderItemSummary"][];
+            /** @description Tickets issued for this order's line items. */
+            tickets: components["schemas"]["OrderTicketSummary"][];
+            /** @description Audit-trail events recorded against the order. */
+            events: components["schemas"]["OrderEventSummary"][];
         };
         /**
          * @description A single active venue (physical event location owned by one organization).
@@ -32295,6 +32564,267 @@ export interface operations {
                 };
             };
             /** @description Customer queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdOrders: {
+        parameters: {
+            query?: {
+                /** @description Fuzzy search text over buyer_name/buyer_email/buyer_phone, max 200 chars. */
+                q?: string;
+                /** @description Filter by order lifecycle status (e.g. pending_payment, paid, cancelled, expired). */
+                status?: string;
+                /** @description Filter to orders placed for this session. */
+                session_id?: string;
+                /** @description Only orders created at or after this RFC3339 timestamp. */
+                from?: string;
+                /** @description Only orders created at or before this RFC3339 timestamp. */
+                to?: string;
+                /** @description Page size, 1-200 (default 50). */
+                limit?: number;
+                /** @description Pagination offset (default 0). */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of orders within the organization. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        orders: components["schemas"]["OrderSummary"][];
+                        limit: number;
+                        offset: number;
+                    };
+                };
+            };
+            /** @description org_id path parameter, q, status, session_id, from, to, limit or offset invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdOrdersId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The order detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderDetail"];
+                };
+            };
+            /** @description org_id or id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdOrdersIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description Optional free-text reason recorded on the cancellation audit event. */
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The cancelled order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderSummary"];
+                };
+            };
+            /** @description org_id or id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.write`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order is not in pending_payment status and cannot be cancelled. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order queries unavailable (database not wired). */
             503: {
                 headers: {
                     [name: string]: unknown;

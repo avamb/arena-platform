@@ -2652,6 +2652,261 @@ components:
           items:
             $ref: "#/components/schemas/CustomerConsentItem"
 
+    OrderSummary:
+      type: object
+      required:
+        - id
+        - system_id
+        - org_id
+        - channel_id
+        - event_id
+        - session_id
+        - checkout_session_id
+        - reservation_id
+        - customer_id
+        - source
+        - status
+        - currency
+        - subtotal
+        - discount
+        - charge
+        - total
+        - charge_percent_bp
+        - promo_code_id
+        - buyer_name
+        - buyer_email
+        - buyer_phone
+        - payment_method
+        - external_ref
+        - paid_at
+        - cancelled_at
+        - expires_at
+        - created_at
+        - updated_at
+      description: |
+        One order, as returned by both the org-scoped orders list and the
+        `order` fields common to the detail endpoint (feature #489, W1-A6d,
+        spec §14.2).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the order row.
+        system_id:
+          type: integer
+          format: int64
+          description: Bigint id surfaced to Bil24-compat clients.
+        org_id:
+          type: string
+          format: uuid
+          description: Owning organization.
+        channel_id:
+          type: string
+          format: uuid
+          description: Sales channel the order was placed through.
+        event_id:
+          type: string
+          format: uuid
+          description: Event the order's session belongs to.
+        session_id:
+          type: string
+          format: uuid
+          description: Session the order was placed for.
+        checkout_session_id:
+          type: string
+          format: uuid
+          description: Checkout session this order was created from.
+        reservation_id:
+          type: string
+          format: uuid
+          description: Reservation (hold) backing this order.
+        customer_id:
+          type: [string, "null"]
+          format: uuid
+          description: Linked customer, if the buyer was resolved to one.
+        source:
+          type: string
+          description: Where the order originated (e.g. widget, bil24, admin).
+        status:
+          type: string
+          description: Order lifecycle status (pending_payment, paid, cancelled, expired).
+        currency:
+          type: string
+          description: ISO 4217 currency code.
+        subtotal:
+          type: integer
+          description: Subtotal before discount, in minor currency units.
+        discount:
+          type: integer
+          description: Discount applied, in minor currency units.
+        charge:
+          type: integer
+          description: Platform/provider charge, in minor currency units.
+        total:
+          type: integer
+          description: Order total, in minor currency units.
+        charge_percent_bp:
+          type: integer
+          description: Charge rate applied, in basis points.
+        promo_code_id:
+          type: [string, "null"]
+          format: uuid
+          description: Promo code applied to this order, if any.
+        buyer_name:
+          type: [string, "null"]
+          description: Buyer's name, if captured.
+        buyer_email:
+          type: [string, "null"]
+          description: Buyer's email, if captured.
+        buyer_phone:
+          type: [string, "null"]
+          description: Buyer's phone, if captured.
+        payment_method:
+          type: [string, "null"]
+          description: Payment method used, if known.
+        external_ref:
+          type: [string, "null"]
+          description: External reference (e.g. gateway order id) for compat integrations.
+        paid_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the order was marked paid, if it was.
+        cancelled_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the order was cancelled, if it was.
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the order's hold expires, if still pending.
+        created_at:
+          type: string
+          format: date-time
+          description: When the order was created.
+        updated_at:
+          type: string
+          format: date-time
+          description: When the order was last updated.
+
+    OrderItemSummary:
+      type: object
+      required: [id, ordinal, kind, tier_id, session_seat_id, ticket_id, unit_price, discount, charge, total]
+      description: One line item of an order (feature #489, W1-A6d, spec §14.2).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the order item row.
+        ordinal:
+          type: integer
+          description: Position of this item within the order.
+        kind:
+          type: string
+          description: Line item kind (e.g. ticket).
+        tier_id:
+          type: string
+          format: uuid
+          description: Ticket tier this item was sold from.
+        session_seat_id:
+          type: [string, "null"]
+          format: uuid
+          description: Assigned seat, for reserved-seating sessions.
+        ticket_id:
+          type: [string, "null"]
+          format: uuid
+          description: Ticket issued for this item, once issuance completes.
+        unit_price:
+          type: integer
+          description: Unit price, in minor currency units.
+        discount:
+          type: integer
+          description: Discount applied to this item, in minor currency units.
+        charge:
+          type: integer
+          description: Platform/provider charge for this item, in minor currency units.
+        total:
+          type: integer
+          description: Item total, in minor currency units.
+
+    OrderTicketSummary:
+      type: object
+      required: [id, status, holder_email, seat_sector, seat_row, seat_number, issued_at]
+      description: A ticket issued for one of the order's line items.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the ticket row.
+        status:
+          type: string
+          description: Ticket lifecycle status.
+        holder_email:
+          type: [string, "null"]
+          description: Ticket holder's email, if captured.
+        seat_sector:
+          type: [string, "null"]
+          description: Seat sector, for reserved-seating sessions.
+        seat_row:
+          type: [string, "null"]
+          description: Seat row, for reserved-seating sessions.
+        seat_number:
+          type: [string, "null"]
+          description: Seat number, for reserved-seating sessions.
+        issued_at:
+          type: string
+          format: date-time
+          description: When the ticket was issued.
+
+    OrderEventSummary:
+      type: object
+      required: [id, type, actor, payload, created_at]
+      description: One audit-trail event recorded against an order.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the order event row.
+        type:
+          type: string
+          description: Event type (e.g. created, paid, cancelled).
+        actor:
+          type: string
+          description: Actor label that triggered the event (e.g. "user:<uuid>", "system").
+        payload:
+          type: object
+          description: Event-specific JSON payload.
+        created_at:
+          type: string
+          format: date-time
+          description: When the event was recorded.
+
+    OrderDetail:
+      description: |
+        Order detail returned by GET
+        /v1/organizations/{org_id}/orders/{id} (feature #489, W1-A6d, spec
+        §14.2): the order fields plus its line items, issued tickets and
+        audit-trail events.
+      allOf:
+        - $ref: "#/components/schemas/OrderSummary"
+        - type: object
+          required: [items, tickets, events]
+          properties:
+            items:
+              type: array
+              description: Line items of the order.
+              items:
+                $ref: "#/components/schemas/OrderItemSummary"
+            tickets:
+              type: array
+              description: Tickets issued for this order's line items.
+              items:
+                $ref: "#/components/schemas/OrderTicketSummary"
+            events:
+              type: array
+              description: Audit-trail events recorded against the order.
+              items:
+                $ref: "#/components/schemas/OrderEventSummary"
+
     VenueItem:
       type: object
       required: [id, org_id, name, status, created_at, updated_at]
@@ -27858,6 +28113,256 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Customer queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/orders:
+    get:
+      operationId: getV1OrganizationsOrgIdOrders
+      summary: Search / list orders within an organization
+      description: |
+        Org-scoped order search (feature #489, W1-A6d, spec §14.2). The
+        optional `q` parameter performs a trigram fuzzy match over
+        buyer_name/buyer_email/buyer_phone; omit it to list every order in
+        the org. Requires the `order.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: q
+          in: query
+          required: false
+          description: Fuzzy search text over buyer_name/buyer_email/buyer_phone, max 200 chars.
+          schema: { type: string, maxLength: 200 }
+        - name: status
+          in: query
+          required: false
+          description: Filter by order lifecycle status (e.g. pending_payment, paid, cancelled, expired).
+          schema: { type: string }
+        - name: session_id
+          in: query
+          required: false
+          description: Filter to orders placed for this session.
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          description: Only orders created at or after this RFC3339 timestamp.
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          description: Only orders created at or before this RFC3339 timestamp.
+          schema: { type: string, format: date-time }
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1-200 (default 50).
+          schema: { type: integer, minimum: 1, maximum: 200 }
+        - name: offset
+          in: query
+          required: false
+          description: Pagination offset (default 0).
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: Page of orders within the organization.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orders, limit, offset]
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OrderSummary"
+                  limit: { type: integer }
+                  offset: { type: integer }
+        "400":
+          description: org_id path parameter, q, status, session_id, from, to, limit or offset invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`order.read`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Order queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/orders/{id}:
+    get:
+      operationId: getV1OrganizationsOrgIdOrdersId
+      summary: Get order detail within an organization
+      description: |
+        Returns the order detail (feature #489, W1-A6d, spec §14.2): the
+        order plus its line items, issued tickets and audit-trail events.
+        The order must belong to this org — an id belonging to another
+        organization is invisible, even by direct id lookup. Requires the
+        `order.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the order
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The order detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderDetail"
+        "400":
+          description: org_id or id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`order.read`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Order not found, or not linked to this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Order queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/orders/{id}/cancel:
+    post:
+      operationId: postV1OrganizationsOrgIdOrdersIdCancel
+      summary: Cancel a pending order
+      description: |
+        Cancels an order (feature #489, W1-A6d, spec §14.2). Only an order
+        in `pending_payment` status can be cancelled; any other status
+        answers 409. A successful cancellation also releases the order's
+        reservation hold. Requires the `order.write` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the order
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Optional free-text reason recorded on the cancellation audit event.
+      responses:
+        "200":
+          description: The cancelled order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderSummary"
+        "400":
+          description: org_id or id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`order.write`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Order not found, or not linked to this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Order is not in pending_payment status and cannot be cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Order queries unavailable (database not wired).
           content:
             application/json:
               schema:
