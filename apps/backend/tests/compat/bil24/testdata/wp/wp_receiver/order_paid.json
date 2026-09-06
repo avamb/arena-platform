@@ -1,11 +1,46 @@
 {
+  "_comment": "W1-B7e (#508) scenario: what a migrated WordPress receiver must observe when a paid order is dispatched. `data` is an expected SUBSET of the Bil24 order object (spec 9.3) — keys not listed here are not asserted; `{{placeholders}}` are bound to the seeded facts at run time. Values are Bil24 vocabulary: money in FLOAT MAJOR units, status words, integer ids.",
   "type": "order.paid",
   "data": {
     "id": "{{orderId}}",
-    "externalOrderId": "1001",
-    "currency": "CZK",
-    "totalSum": 500,
-    "email": "buyer@example.com",
-    "ticketIdList": [9001]
-  }
+    "status": "PAID",
+    "currency": "{{currency}}",
+    "email": "{{buyerEmail}}",
+    "sum": "{{orderSum}}",
+    "filteredSum": "{{orderSum}}",
+    "discount": 0,
+    "charge": "{{orderCharge}}",
+    "totalSum": "{{orderTotalSum}}",
+    "filteredTotalSum": "{{orderTotalSum}}",
+    "ticketQuantity": "{{ticketCount}}",
+    "filteredTicketQuantity": "{{ticketCount}}",
+    "paymentBankMessage": "Paid per protocol",
+    "agent": {
+      "name": "{{channelName}}"
+    },
+    "frontend": {
+      "name": "{{channelName}}",
+      "type": {
+        "id": 8,
+        "name": "Ticketing system"
+      }
+    }
+  },
+  "arrayLengths": {
+    "ticketList": "{{ticketCount}}",
+    "seatList": 0,
+    "gatewayOrderList": 0
+  },
+  "ticketList": {
+    "holderStatus": "NEVER_USE",
+    "category": "{{tierName}}",
+    "tariff": null,
+    "actionEvent": {
+      "actionName": "{{eventName}}",
+      "venueName": "{{venueName}}",
+      "currency": "{{currency}}",
+      "eTickets": true
+    }
+  },
+  "occurrences": 1
 }

@@ -27352,3 +27352,51 @@ Feature #501 - W1-B5b: GET /compat/bil24/image (sbt/1.0 seating plan)
   - Codegen re-run after the openapi.yaml change (openapi30gen +
     oapi-codegen@v2.4.1 + gen-ts-client.mjs); types_gen.go and the TS client
     are committed, .compat30.gen.yaml deleted. No migration, so no head pin.
+
+=== Feature #508 - W1-B7e: WP round-trip through real cancel handler, outbox
+    and wpstub (2026-09-06) ===
+  What landed
+  - apps/backend/tests/compat/bil24/wp_roundtrip_508_integration_test.go (new,
+    //go:build integration, package compat_bil24_test): the spec 15.3 scenario-4
+    delivery round-trip. Seeds a paid 3-ticket order (CZK, subtotal 3000,
+    charge 250, total 3250, venue tz Europe/Prague) plus an active
+    webhook_subscribers row with kind='bil24_wp' and channel_id, then drives
+    the REAL chain - outbox_events -> outbox.OutboxEventsDispatcher ->
+    fan-out -> bil24wire.Dispatcher -> HTTP -> wpstub.
+  - Four assertions, all driven by testdata/wp/wp_receiver/*.json:
+    (1) v1.order.paid arrives as order.paid with all 3 tickets;
+    (2) the real htickets.HandleCancelTicket cancel -> ticket.refunded once;
+    (3) wpstub answering 503 once -> next_attempt_at set, dead_lettered_at and
+        processed_at nil, no stored refund; retry succeeds on attempt 2;
+    (4) replaying the same envelope -> HTTP 200, zero extra stored occurrences.
+  - wpstub gained Deliveries(), SetOnceFail() and Reset(); the two scenario
+    JSON files gained the data/arrayLengths/ticketList subsets plus the retry
+    and replay blocks that the assertions read.
+  Design notes
+  - multiDispatcher is unexported in package main, so the test declares an
+    equivalent wp508MultiDispatcher with two no-op members standing in for the
+    base and MACS dispatchers, keeping bil24wire third as in production.
+  - BackoffFunc returns 1h so the retry is MANUAL: the test brings
+    next_attempt_at forward itself and the 503 assertions cannot race a
+    spontaneous redelivery. oed.Run gets context.Background() so Stop() does
+    not cancel an in-flight MarkFailed.
+  - Scenario files spell wire ids as {{placeholder}} strings while the
+    delivered JSON decodes them as float64, so comparison goes through a
+    canonical normal form using strconv.FormatFloat(x, 'f', -1, 64) - 'g'
+    would render a 9-digit system_ticket_id in exponent notation.
+  Gotchas worth remembering
+  - sessions_status_check allows only draft/scheduled/cancelled/completed.
+    'published' is an EVENTS status, not a sessions one - seeding a session
+    with it fails with SQLSTATE 23514.
+  - Bash 'cd' is rejected by the command allowlist, and a rejected call also
+    cancels its parallel siblings. Always run from the repo root with
+    repo-relative paths.
+  Gates - all green
+  - gofmt -l on the new file -> empty (integration-tagged files are skipped by
+    golangci-lint, so this must be run by hand)
+  - go build ./... , go vet ./... -> EXIT 0
+  - go test ./tests/compat/bil24/... ./tests/staticanalysis/...
+    ./internal/migrations/... ./internal/platform/bil24wire/... -> EXIT 0
+  - go test -tags integration -run TestCompatBil24_508
+    ./apps/backend/tests/compat/bil24/ against arena_postgres (port 55432)
+    -> EXIT 0, PASS. No openapi change, no migration.

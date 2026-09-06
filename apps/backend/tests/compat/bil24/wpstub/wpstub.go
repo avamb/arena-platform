@@ -43,6 +43,8 @@ type Server struct {
 	mu           sync.Mutex
 	received     []Event
 	seenRefundID map[string]struct{}
+	deliveries   int
+	failOnce     bool
 	http         *httptest.Server
 }
 
@@ -69,12 +71,37 @@ func (s *Server) Received() []Event {
 	return out
 }
 
-// Reset clears the stored bil24_tickets log and the dedup index.
+// Reset clears the stored bil24_tickets log, the dedup index and the delivery
+// counter. An armed SetOnceFail survives a Reset (same precedent as
+// internal/platform/macs/stub): the retry scenario arms the failure and then
+// clears the counters it is about to assert on.
 func (s *Server) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.received = nil
 	s.seenRefundID = map[string]struct{}{}
+	s.deliveries = 0
+}
+
+// Deliveries is the number of POSTs the stub has answered since the last
+// Reset, counting the rejected ones. It is the only signal a test has that a
+// dispatcher actually attempted a delivery, as opposed to skipping the row —
+// Received() cannot distinguish "not delivered yet" from "delivered and
+// deduplicated".
+func (s *Server) Deliveries() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.deliveries
+}
+
+// SetOnceFail arms the receiver to answer the NEXT delivery with 503 and
+// disarm itself, so the attempt after it succeeds. This models the transient
+// WordPress outage of spec §9.2: the outbox must retry rather than
+// dead-letter, and the retried envelope must still be accepted.
+func (s *Server) SetOnceFail() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failOnce = true
 }
 
 func writeJSON(w http.ResponseWriter, status int, body interface{}) {
@@ -88,6 +115,18 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "method_not_allowed"})
 		return
 	}
+	// Count the attempt BEFORE any rejection: a 503 is still a delivery the
+	// dispatcher made, and the retry assertions key off exactly that.
+	s.mu.Lock()
+	s.deliveries++
+	failing := s.failOnce
+	s.failOnce = false
+	s.mu.Unlock()
+	if failing {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{"ok": false, "error": "transient_unavailable"})
+		return
+	}
+
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "read_body"})

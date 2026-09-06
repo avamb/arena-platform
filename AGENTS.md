@@ -112,6 +112,12 @@ entries short and factual.
   and parentheses. PowerShell additionally rejects expandable strings with
   embedded expressions, `$()` subexpressions, and .NET method calls — prefer the
   bash inline-env form above.
+- **`cd` is rejected by the bash allowlist** ("Command 'cd' is not allowed"),
+  and a rejected call also cancels the sibling calls issued in the same
+  parallel batch. Always run from the repo root with repo-relative paths.
+- **`sessions.status` allows only `draft`/`scheduled`/`cancelled`/`completed`**
+  (`sessions_status_check`). `published` is an *events* status, not a sessions
+  one — seeding a session with it fails with SQLSTATE 23514.
 - **`httpserver.Options` needs BOTH `Pool` and `PgxPool` for a fully wired test
   server.** `PgxPool` only feeds the `*gen.Queries` fallbacks; `Pool` feeds
   `s.pool`, which is the nil-guard `bil24_shims.go` checks before wiring the

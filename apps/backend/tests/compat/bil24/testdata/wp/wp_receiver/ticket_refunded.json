@@ -1,9 +1,27 @@
 {
+  "_comment": "W1-B7e (#508) scenario: cancelling one ticket of the paid order must reach the receiver exactly once as ticket.refunded, survive a transient 503 (outbox retry, not dead-letter) and be deduplicated on replay. `data` is an expected SUBSET of the spec 9.2 payload; `retry` and `replay` drive the outbox assertions.",
   "type": "ticket.refunded",
   "data": {
-    "id": 9001,
+    "id": "{{ticketId}}",
     "orderId": "{{orderId}}",
-    "refundPrice": 500,
-    "refundDate": "{{now}}"
+    "holderStatus": "REFUND",
+    "category": "{{tierName}}",
+    "actionEvent": {
+      "actionName": "{{eventName}}",
+      "venueName": "{{venueName}}",
+      "currency": "{{currency}}",
+      "eTickets": true
+    }
+  },
+  "occurrences": 1,
+  "retry": {
+    "failFirstDelivery": true,
+    "deliveriesUntilSuccess": 2,
+    "nextAttemptAtSet": true,
+    "deadLettered": false
+  },
+  "replay": {
+    "expectStatus": 200,
+    "additionalOccurrences": 0
   }
 }
