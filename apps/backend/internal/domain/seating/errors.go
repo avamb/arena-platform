@@ -38,6 +38,18 @@ const (
 	ErrSeatInGACategory    = "seat_in_ga_category"
 	ErrSeatsMissing        = "seats_missing"
 	ErrSeatsNotAllowed     = "seats_not_allowed"
+
+	// §13.3: sbt-SVG import (ImportSBTSVG). These codes are distinct
+	// from the Inkscape-convention ones above because the offending
+	// element is described in sbt terms (sbt:cat, sbt:id) — an operator
+	// reading the error has to look at a different attribute.
+	ErrSBTCategoriesMissing   = "sbt_categories_missing"
+	ErrSBTCategoryInvalid     = "sbt_category_invalid"
+	ErrSBTDuplicateCategory   = "sbt_duplicate_category"
+	ErrSBTSeatIDInvalid       = "sbt_seat_id_invalid"
+	ErrSBTDuplicateSeatID     = "sbt_duplicate_seat_id"
+	ErrSBTSeatCategoryMissing = "sbt_seat_category_missing"
+	ErrSBTSeatsMissing        = "sbt_seats_missing"
 )
 
 // WarningCode is emitted for §6 rules that are advisory rather than

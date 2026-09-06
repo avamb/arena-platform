@@ -68,6 +68,12 @@ type Category struct {
 	Color        string `json:"color"`
 	PriceHint    string `json:"price_hint,omitempty"`
 	CurrencyHint string `json:"currency_hint,omitempty"`
+	// ExternalID is the upstream identity of the category when the plan
+	// came from a foreign system (§13.3: the Bil24 `categoryPriceId`
+	// carried as `sbt:id` in the sbt-SVG <metadata>). Zero means "no
+	// external identity", and is omitted from the canonical JSON so
+	// checksums of plans authored inside arena are unaffected.
+	ExternalID int64 `json:"external_id,omitempty"`
 	// Kind is "" (canonical form of seated) or KindGeneralAdmission.
 	Kind string `json:"kind,omitempty"`
 	// Capacity is the declared bulk capacity of a GA category. Always 0
@@ -96,6 +102,14 @@ type Seat struct {
 	Radius        float64 `json:"radius"`
 	CategoryIndex int     `json:"category_index"`
 	BarcodeHint   *string `json:"barcode_hint"`
+	// ExternalID is the upstream identity of the seat when the plan came
+	// from a foreign system (§13.3: the Bil24 `seatId` carried as
+	// `sbt:id` on the <circle>). Materialisation copies it into
+	// session_seats.system_seat_id so the very same integer keeps
+	// addressing the seat on the wire after a rebind. Zero means "no
+	// external identity" and is omitted from the canonical JSON, so
+	// checksums of plans authored inside arena are unaffected.
+	ExternalID int64 `json:"external_id,omitempty"`
 }
 
 // Row is a horizontal seat run belonging to a Section. Seats are
@@ -170,6 +184,12 @@ func SeatKey(sectionKey, rowKey, seatNumber string) string {
 // imports of the same SVG must produce byte-identical JSON, so seat
 // order within a row and row order within a section MUST NOT depend on
 // document order in the source SVG.
+//
+// External ids (Seat.ExternalID / Category.ExternalID, §13.3) travel
+// through canonicalisation untouched and therefore participate in
+// CanonicalJSON and Checksum: two imports of the same sbt-SVG hash
+// alike, and re-importing a plan whose upstream ids changed produces a
+// new geometry version, which is the intended signal.
 func Canonicalize(g Geometry) Geometry {
 	out := Geometry{
 		SchemaVersion: SchemaVersion,
