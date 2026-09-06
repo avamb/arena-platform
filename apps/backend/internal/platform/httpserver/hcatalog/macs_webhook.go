@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -22,6 +23,21 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
+
+// macsCallbackPathSuffix is the only path a MACS receiver serves: the
+// WordPress plugin mounts its importer at `/api/_wh/tickets`
+// (class-lops-macs.php). A subscriber URL pointing anywhere else silently
+// swallows every envelope — the site answers 200 with an HTML page and the
+// outbox marks the sale delivered — so W1-Mb (spec §10 M4) rejects it at
+// registration time instead of losing sales to a typo.
+const macsCallbackPathSuffix = "/api/_wh/tickets"
+
+// validMACSCallbackURL reports whether u addresses a MACS receiver. A
+// trailing slash is tolerated (a site owner pasting from a browser bar
+// usually carries one); anything else pointing elsewhere is not.
+func validMACSCallbackURL(u string) bool {
+	return strings.HasSuffix(strings.TrimRight(u, "/"), macsCallbackPathSuffix)
+}
 
 // MACSWebhookResponse is the response body for MACS webhook subscriber endpoints.
 type MACSWebhookResponse struct {
@@ -127,6 +143,14 @@ func (h *Handler) HandleUpsertMACSWebhook(pool *pgxpool.Pool, w http.ResponseWri
 	if req.CallbackURL == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"macs.missing_callback_url", "callback_url is required", r,
+		))
+		return
+	}
+	if !validMACSCallbackURL(req.CallbackURL) {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+			"macs.invalid_callback_url",
+			"callback_url must end with "+macsCallbackPathSuffix,
+			r,
 		))
 		return
 	}

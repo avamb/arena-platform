@@ -13492,8 +13492,11 @@ export interface components {
         /** @description Request body for PUT /v1/organizations/{org_id}/macs-webhook. */
         UpsertMACSWebhookRequest: {
             /**
-             * @description The HTTPS endpoint to receive MACS webhook events.
-             * @example https://macs.example.com/webhook/arena
+             * @description The HTTPS endpoint to receive MACS webhook events. It MUST end with
+             *     `/api/_wh/tickets` — the only path a MACS receiver serves — or the
+             *     request is rejected with 422 `macs.invalid_callback_url`.
+             *     A trailing slash is tolerated.
+             * @example https://macs.example.com/api/_wh/tickets
              */
             callback_url: string;
             /**
@@ -22227,6 +22230,20 @@ export interface operations {
             };
             /** @description Caller is not an org member. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description callback_url does not address a MACS receiver: it must end with
+             *     `/api/_wh/tickets` (error code `macs.invalid_callback_url`).
+             *     Any other path answers 200 with an HTML page, which the outbox
+             *     would read as a successful delivery.
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

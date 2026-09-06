@@ -19,7 +19,30 @@ import (
 // buildExport is the pre-extraction entry point, expressed as the
 // projection followed by the MACS encoder.
 func buildExport(rows []orderexport.Row) Export {
-	return encodeExport(orderexport.Build(rows))
+	orders := orderexport.Build(rows)
+	return encodeExport(orders, testWireIDs(orders))
+}
+
+// testWireIDs stands in for compatibility_id_map: every distinct session gets
+// an actionEventId and every distinct event an actionId, assigned in
+// first-seen order out of the arena id range. It makes the id plumbing of
+// spec §10 M3 observable without a database.
+func testWireIDs(orders []orderexport.Order) wireIDs {
+	ids := wireIDs{
+		actionEvents: map[uuid.UUID]int64{},
+		actions:      map[uuid.UUID]int64{},
+	}
+	for _, o := range orders {
+		for _, t := range o.Tickets {
+			if _, ok := ids.actionEvents[t.Event.SessionID]; !ok {
+				ids.actionEvents[t.Event.SessionID] = 1_000_000_001 + int64(len(ids.actionEvents))
+			}
+			if _, ok := ids.actions[t.Event.EventID]; !ok {
+				ids.actions[t.Event.EventID] = 2_000_000_001 + int64(len(ids.actions))
+			}
+		}
+	}
+	return ids
 }
 
 // helpers
@@ -34,8 +57,8 @@ func baseRow() orderexport.Row {
 	ticketID := uuid.MustParse("00000000-0000-0000-0000-000000000003")
 	csID := uuid.MustParse("00000000-0000-0000-0000-000000000004")
 	venueID := uuid.MustParse("00000000-0000-0000-0000-000000000005")
-	_ = sessionID // not in orderexport.Row
 	return orderexport.Row{
+		SessionID:         sessionID,
 		TicketID:          ticketID,
 		SystemTicketID:    1001,
 		CheckoutSessionID: csID,

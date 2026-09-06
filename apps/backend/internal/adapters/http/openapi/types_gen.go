@@ -7375,7 +7375,10 @@ type UpdateVenueRequestStatus string
 
 // UpsertMACSWebhookRequest Request body for PUT /v1/organizations/{org_id}/macs-webhook.
 type UpsertMACSWebhookRequest struct {
-	// CallbackUrl The HTTPS endpoint to receive MACS webhook events.
+	// CallbackUrl The HTTPS endpoint to receive MACS webhook events. It MUST end with
+	// `/api/_wh/tickets` — the only path a MACS receiver serves — or the
+	// request is rejected with 422 `macs.invalid_callback_url`.
+	// A trailing slash is tolerated.
 	CallbackUrl string `json:"callback_url"`
 
 	// SigningSecret HMAC-SHA256 key for the X-MACS-Signature header.

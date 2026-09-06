@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/ean13"
 )
 
 func sp(s string) *string { return &s }
@@ -247,10 +249,18 @@ func TestBuild_ShowTimeLocalUsesVenueTimezone(t *testing.T) {
 	}
 }
 
-func TestBuild_BarcodeCredentialWinsOverSystemTicketID(t *testing.T) {
+// W1-Mb (spec §10 M4 / §11): with no stored credential the projection DERIVES
+// the platform EAN-13 with the same formula the issuance path and the backfill
+// job mint, so the exported number always carries a valid check digit and can
+// never be contradicted by a later backfill.
+func TestBuild_BarcodeCredentialWinsOverDerivedEAN13(t *testing.T) {
 	r := baseRow()
-	if got := Build([]Row{r})[0].Tickets[0].Barcode; got != "1001" {
-		t.Errorf("Barcode = %q, want %q (system_ticket_id fallback)", got, "1001")
+	want := ean13.PlatformCode(r.SystemTicketID)
+	if got := Build([]Row{r})[0].Tickets[0].Barcode; got != want {
+		t.Errorf("Barcode = %q, want %q (derived EAN-13 fallback)", got, want)
+	}
+	if !ean13.Valid(want) {
+		t.Errorf("derived fallback %q is not a valid EAN-13", want)
 	}
 
 	r.BarcodeStr = sp("4600000000019")
@@ -259,8 +269,8 @@ func TestBuild_BarcodeCredentialWinsOverSystemTicketID(t *testing.T) {
 	}
 
 	r.BarcodeStr = sp("")
-	if got := Build([]Row{r})[0].Tickets[0].Barcode; got != "1001" {
-		t.Errorf("Barcode = %q, want the fallback for an empty credential", got)
+	if got := Build([]Row{r})[0].Tickets[0].Barcode; got != want {
+		t.Errorf("Barcode = %q, want the derived fallback for an empty credential", got)
 	}
 }
 

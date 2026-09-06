@@ -6,10 +6,11 @@
 package orderexport
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/ean13"
 )
 
 // Build groups rows by checkout session and assembles the order/ticket
@@ -97,9 +98,14 @@ func newTicket(row Row, orderID int64) Ticket {
 		tierName = *row.TierName
 	}
 
-	// The barcode credential wins; the bare system ticket id is the
-	// pre-credential fallback.
-	barcode := fmt.Sprintf("%d", row.SystemTicketID)
+	// The stored EAN-13 credential wins. A ticket issued before feature
+	// #502 has none yet; its code is DERIVED with the very formula the
+	// issuance path and the backfill job mint (prefix + zero-padded
+	// system_ticket_id + check digit), so the export never names a number
+	// that a later backfill would contradict — and never names one whose
+	// check digit fails, which is what makes a WordPress site fall back
+	// from EAN13 to Code128 (spec §10 M4 / §11).
+	barcode := ean13.PlatformCode(row.SystemTicketID)
 	if row.BarcodeStr != nil && *row.BarcodeStr != "" {
 		barcode = *row.BarcodeStr
 	}

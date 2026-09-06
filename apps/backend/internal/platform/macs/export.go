@@ -13,18 +13,25 @@ package macs
 
 import (
 	"context"
-	"encoding/binary"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/orderexport"
 )
 
 // ── MACS JSON wire types ─────────────────────────────────────────────────────
 // Field names are camelCase to match MACS's Python importer expectations.
 // omitempty is used for optional fields that MACS tolerates missing.
+
+// Barcode format constants. Real Bil24 exports report EAN-13 as id 0 (spec
+// §10 M4); MACS tolerates 1 as well, so 0 is the shape both systems agree on.
+const (
+	barcodeFormatEAN13ID   = 0
+	barcodeFormatEAN13Name = "EAN-13"
+)
 
 // Export is the top-level MACS import file: an array of orders.
 type Export []Order
@@ -92,13 +99,19 @@ type BarcodeFormat struct {
 // ActionEvent is the denormalized event context attached to every ticket.
 // MACS requires: id, cityName, venueName, actionName, actionLegalOwner, showTime.
 type ActionEvent struct {
-	ID               int64    `json:"id"` // event integer; derived from UUID first 8 bytes
-	ExternalEventID  string   `json:"externalEventId,omitempty"`
-	CityID           string   `json:"cityId,omitempty"`
-	CityName         string   `json:"cityName"`
-	VenueID          string   `json:"venueId,omitempty"`
-	VenueName        string   `json:"venueName"`
-	ActionID         string   `json:"actionId,omitempty"`
+	// ID is the SESSION's actionEventId from compatibility_id_map — the
+	// same integer the Bil24-compatible gateway and the WordPress sites
+	// use to name a showing (spec §10 M3). It is per SESSION, not per
+	// event: two showings of one event are two MACS action events.
+	ID              int64  `json:"id"`
+	ExternalEventID string `json:"externalEventId,omitempty"`
+	CityID          string `json:"cityId,omitempty"`
+	CityName        string `json:"cityName"`
+	VenueID         string `json:"venueId,omitempty"`
+	VenueName       string `json:"venueName"`
+	// ActionID is the EVENT's actionId from compatibility_id_map (spec
+	// §10 M3). 0 means "not mapped", which MACS reads as absent.
+	ActionID         int64    `json:"actionId"`
 	ActionName       string   `json:"actionName"`
 	ActionLegalOwner string   `json:"actionLegalOwner"`
 	Currency         string   `json:"currency,omitempty"`
@@ -108,29 +121,29 @@ type ActionEvent struct {
 
 // ── Encoder: orderexport projection → MACS JSON ──────────────────────────────
 
-// eventIntID derives a stable, non-negative int64 from a UUID by reading
-// the first 8 bytes as a big-endian uint64 and keeping the low 63 bits
-// (>> 1 clears the sign bit, so the conversion can never overflow). This
-// is deterministic for a given event UUID and fits MACS's integer event
-// ID requirement.
-func eventIntID(id uuid.UUID) int64 {
-	return int64(binary.BigEndian.Uint64(id[:8]) >> 1)
+// wireIDs carries the compatibility_id_map lookups the neutral projection
+// cannot know: an event SESSION's actionEventId and an EVENT's actionId
+// (spec §10 M3). A missing entry encodes as 0 — a degraded payload beats an
+// undelivered sale, exactly as in bil24wire.EncodeContext.
+type wireIDs struct {
+	actionEvents map[uuid.UUID]int64
+	actions      map[uuid.UUID]int64
 }
 
 // encodeExport maps the neutral projection onto the MACS document.
-func encodeExport(orders []orderexport.Order) Export {
+func encodeExport(orders []orderexport.Order, ids wireIDs) Export {
 	out := make(Export, 0, len(orders))
 	for _, o := range orders {
-		out = append(out, encodeOrder(o))
+		out = append(out, encodeOrder(o, ids))
 	}
 	return out
 }
 
 // encodeOrder maps one projected order onto the MACS order.
-func encodeOrder(o orderexport.Order) Order {
+func encodeOrder(o orderexport.Order, ids wireIDs) Order {
 	tickets := make([]Ticket, 0, len(o.Tickets))
 	for _, t := range o.Tickets {
-		tickets = append(tickets, encodeTicket(t))
+		tickets = append(tickets, encodeTicket(t, ids))
 	}
 	if len(tickets) == 0 {
 		// Preserve the pre-extraction shape: an order without tickets
@@ -160,7 +173,7 @@ func encodeOrder(o orderexport.Order) Order {
 // encodeTicket maps one projected ticket onto the MACS ticket. The MACS
 // vocabulary (integer holderStatus, integer event id, EAN-13 barcode
 // format) is applied HERE and nowhere else.
-func encodeTicket(t orderexport.Ticket) Ticket {
+func encodeTicket(t orderexport.Ticket, ids wireIDs) Ticket {
 	var refundDate *string
 	if t.RefundDate != nil {
 		s := t.RefundDate.UTC().Format(time.RFC3339)
@@ -189,16 +202,20 @@ func encodeTicket(t orderexport.Ticket) Ticket {
 		TotalPrice:     t.TotalPrice,
 		DiscountReason: t.DiscountReason,
 		Barcode:        t.Barcode,
+		// Real Bil24/MACS exports carry id 0 for EAN-13 (spec §10 M4);
+		// MACS also accepts 1, so this is a shape alignment, not a
+		// behaviour change on the receiving side.
 		BarcodeFormat: BarcodeFormat{
-			ID:   1,
-			Name: "EAN-13",
+			ID:   barcodeFormatEAN13ID,
+			Name: barcodeFormatEAN13Name,
 		},
 		ActionEvent: ActionEvent{
-			ID:               eventIntID(t.Event.EventID),
+			ID:               ids.actionEvents[t.Event.SessionID],
 			CityID:           cityID,
 			CityName:         t.Event.CityName,
 			VenueID:          t.Event.VenueID.String(),
 			VenueName:        t.Event.VenueName,
+			ActionID:         ids.actions[t.Event.EventID],
 			ActionName:       t.Event.EventName,
 			ActionLegalOwner: t.Event.OrgLegalName,
 			ShowTime:         t.Event.ShowTimeLocal,
@@ -214,6 +231,37 @@ func encodeTicket(t orderexport.Ticket) Ticket {
 
 // ── DB entry points ──────────────────────────────────────────────────────────
 
+// resolveWireIDs mints (on first read) and returns the actionEventId /
+// actionId of every session and event named by orders. A lookup failure is
+// swallowed into a nil map: the affected ids then encode as 0, the same
+// degraded-payload rule bil24wire applies, because a webhook that fails to
+// deliver costs more than one unmapped id.
+func resolveWireIDs(ctx context.Context, pool *pgxpool.Pool, orders ...orderexport.Order) wireIDs {
+	var sessions, events []uuid.UUID
+	for _, o := range orders {
+		for _, t := range o.Tickets {
+			sessions = append(sessions, t.Event.SessionID)
+			events = append(events, t.Event.EventID)
+		}
+	}
+	return wireIDs{
+		actionEvents: ensureIDs(ctx, pool, compatids.KindActionEvent, sessions),
+		actions:      ensureIDs(ctx, pool, compatids.KindAction, events),
+	}
+}
+
+// ensureIDs is resolveWireIDs' per-kind half.
+func ensureIDs(ctx context.Context, pool *pgxpool.Pool, kind compatids.Kind, ids []uuid.UUID) map[uuid.UUID]int64 {
+	if pool == nil || len(ids) == 0 {
+		return nil
+	}
+	out, err := compatids.EnsureMany(ctx, pool, kind, ids)
+	if err != nil {
+		return nil
+	}
+	return out
+}
+
 // QueryAndBuildExport fetches all completed tickets for sessionID from the DB
 // and assembles the MACS export document. Returns an empty array (not nil)
 // when the session has no completed tickets.
@@ -222,7 +270,7 @@ func QueryAndBuildExport(ctx context.Context, pool *pgxpool.Pool, sessionID uuid
 	if err != nil {
 		return nil, err
 	}
-	return encodeExport(orders), nil
+	return encodeExport(orders, resolveWireIDs(ctx, pool, orders...)), nil
 }
 
 // QueryAndBuildOrder returns the MACS Order for ONE order aggregate
@@ -234,7 +282,7 @@ func QueryAndBuildOrder(ctx context.Context, pool *pgxpool.Pool, orderID uuid.UU
 	if err != nil || order == nil {
 		return nil, err
 	}
-	encoded := encodeOrder(*order)
+	encoded := encodeOrder(*order, resolveWireIDs(ctx, pool, *order))
 	return &encoded, nil
 }
 
@@ -248,7 +296,8 @@ func QueryAndBuildTicket(ctx context.Context, pool *pgxpool.Pool, ticketID uuid.
 	if err != nil || ticket == nil {
 		return nil, nil, err
 	}
-	encodedOrder := encodeOrder(*order)
-	encodedTicket := encodeTicket(*ticket)
+	ids := resolveWireIDs(ctx, pool, *order)
+	encodedOrder := encodeOrder(*order, ids)
+	encodedTicket := encodeTicket(*ticket, ids)
 	return &encodedTicket, &encodedOrder, nil
 }

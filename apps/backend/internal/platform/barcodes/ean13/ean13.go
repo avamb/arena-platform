@@ -14,6 +14,19 @@ package ean13
 
 import "strconv"
 
+// PlatformPrefix is the GS1 internal-use prefix every platform-minted code
+// carries (spec §11). It is exported so the READERS of a code — the export
+// projection that has to name a ticket's barcode, the backfill job — derive
+// the same number the issuance path mints instead of each restating the
+// literal.
+const PlatformPrefix = "21"
+
+// PlatformCode is the platform's own barcode for a ticket: Encode under
+// PlatformPrefix over tickets.system_ticket_id (migration 0088).
+func PlatformCode(systemTicketID int64) string {
+	return Encode(PlatformPrefix, systemTicketID)
+}
+
 // Encode returns the 13-digit EAN-13 string for n under prefix: the prefix,
 // followed by n zero-padded to fill the remaining digits up to position 12,
 // followed by the GS1 check digit.

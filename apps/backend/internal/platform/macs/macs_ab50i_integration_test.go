@@ -19,9 +19,11 @@ package macs_test
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,7 +32,10 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/ean13"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcatalog"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/macs"
 )
 
 // macsExportReq creates a GET request for HandleMACSExport with chi URL params
@@ -105,8 +110,19 @@ func TestMACS_AB50i_ExportHandler_200_WithCity(t *testing.T) {
 	mustExec(`INSERT INTO tickets (id, session_id, checkout_session_id, status, issued_at) VALUES ($1, $2, $3, 'active', NOW())`,
 		ticketID, sessionID, csID)
 
+	// W1-Mb (spec §10 M4 / §11): the export must name the ticket's EAN-13
+	// credential, never its 64-hex static_qr. Seed BOTH so the join is
+	// actually discriminating.
+	const wantBarcode = "2100000000005"
+	staticQR := strings.ReplaceAll(uuid.New().String(), "-", "") + strings.ReplaceAll(uuid.New().String(), "-", "")
+	mustExec(`INSERT INTO ticket_credentials (ticket_id, type, payload) VALUES ($1, 'static_qr', $2)`,
+		ticketID, staticQR)
+	mustExec(`INSERT INTO ticket_credentials (ticket_id, type, payload) VALUES ($1, 'ean13', $2)`,
+		ticketID, wantBarcode)
+
 	t.Cleanup(func() {
 		c := context.Background()
+		pool.Exec(c, `DELETE FROM ticket_credentials WHERE ticket_id=$1`, ticketID)
 		pool.Exec(c, `DELETE FROM tickets WHERE id=$1`, ticketID)
 		pool.Exec(c, `DELETE FROM checkout_sessions WHERE id=$1`, csID)
 		pool.Exec(c, `DELETE FROM reservations WHERE id=$1`, res.ID)
@@ -118,6 +134,7 @@ func TestMACS_AB50i_ExportHandler_200_WithCity(t *testing.T) {
 		pool.Exec(c, `DELETE FROM organizations WHERE id=$1`, orgID)
 		pool.Exec(c, `DELETE FROM i18n_text WHERE namespace='geo.cities' AND key=$1`, citySlug)
 		pool.Exec(c, `DELETE FROM cities WHERE id=$1`, cityID)
+		pool.Exec(c, `DELETE FROM compatibility_id_map WHERE platform_id IN ($1, $2)`, sessionID, eventID)
 	})
 
 	h := hcatalog.New(nil, nil, nil, nil, nil, gen.New(pool), nil, pool, nil, slog.Default(), nil)
@@ -125,7 +142,45 @@ func TestMACS_AB50i_ExportHandler_200_WithCity(t *testing.T) {
 	h.HandleMACSExport(pool, w, macsExportReq(orgID, eventID, sessionID))
 
 	if w.Code != http.StatusOK {
-		t.Errorf("want 200, got %d\nBody: %s", w.Code, w.Body.String())
+		t.Fatalf("want 200, got %d\nBody: %s", w.Code, w.Body.String())
+	}
+
+	// The bytes on the wire — not the Go struct — are what a MACS importer
+	// reads, so assert the M3/M4 shape after a JSON round-trip.
+	var export macs.Export
+	if err := json.Unmarshal(w.Body.Bytes(), &export); err != nil {
+		t.Fatalf("decode export: %v\nBody: %s", err, w.Body.String())
+	}
+	if len(export) != 1 || len(export[0].TicketList) != 1 {
+		t.Fatalf("want 1 order with 1 ticket, got %d order(s): %s", len(export), w.Body.String())
+	}
+	tk := export[0].TicketList[0]
+
+	if tk.Barcode != wantBarcode {
+		t.Errorf("ticket.barcode = %q, want the ean13 credential %q (static_qr must not leak)", tk.Barcode, wantBarcode)
+	}
+	if !ean13.Valid(tk.Barcode) {
+		t.Errorf("ticket.barcode = %q is not a checksum-valid EAN-13", tk.Barcode)
+	}
+	if tk.BarcodeFormat.ID != 0 || tk.BarcodeFormat.Name != "EAN-13" {
+		t.Errorf("barcodeFormat = %+v, want {0 EAN-13}", tk.BarcodeFormat)
+	}
+
+	// M3: actionEvent.id is the SESSION's actionEventId and actionId the
+	// EVENT's actionId, both minted into compatibility_id_map by the export.
+	wantActionEventID, err := compatids.Ensure(ctx, pool, compatids.KindActionEvent, sessionID)
+	if err != nil {
+		t.Fatalf("compatids.Ensure(action_event): %v", err)
+	}
+	wantActionID, err := compatids.Ensure(ctx, pool, compatids.KindAction, eventID)
+	if err != nil {
+		t.Fatalf("compatids.Ensure(action): %v", err)
+	}
+	if tk.ActionEvent.ID != wantActionEventID {
+		t.Errorf("actionEvent.id = %d, want %d", tk.ActionEvent.ID, wantActionEventID)
+	}
+	if tk.ActionEvent.ActionID != wantActionID {
+		t.Errorf("actionEvent.actionId = %d, want %d", tk.ActionEvent.ActionID, wantActionID)
 	}
 }
 

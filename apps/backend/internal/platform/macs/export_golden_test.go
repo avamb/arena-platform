@@ -17,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/ean13"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/orderexport"
 )
 
@@ -103,11 +104,46 @@ func TestBuildExport_GoldenFieldTypes(t *testing.T) {
 
 	// Assert field presence on actionEvent.
 	ae, _ := ticket["actionEvent"].(map[string]any)
-	aeFields := []string{"id", "cityName", "venueName", "actionName", "actionLegalOwner", "showTime", "gateway"}
+	aeFields := []string{"id", "actionId", "cityName", "venueName", "actionName", "actionLegalOwner", "showTime", "gateway"}
 	for _, f := range aeFields {
 		if _, ok := ae[f]; !ok {
 			t.Errorf("actionEvent missing required field: %q", f)
 		}
+	}
+
+	// W1-Mb / spec §10 M3: the ids a partner system dereferences come from
+	// compatibility_id_map — actionEvent.id names the SESSION, actionId the
+	// EVENT — and both must travel as JSON numbers, never as strings or a
+	// hash of a UUID.
+	aeID, ok := ae["id"].(float64)
+	if !ok {
+		t.Errorf("actionEvent.id should be a number, got %T", ae["id"])
+	}
+	aeActionID, ok := ae["actionId"].(float64)
+	if !ok {
+		t.Errorf("actionEvent.actionId should be a number, got %T", ae["actionId"])
+	}
+	wantIDs := testWireIDs(orderexport.Build([]orderexport.Row{row1}))
+	if int64(aeID) != wantIDs.actionEvents[row1.SessionID] {
+		t.Errorf("actionEvent.id = %v, want the session's actionEventId %d", aeID, wantIDs.actionEvents[row1.SessionID])
+	}
+	if int64(aeActionID) != wantIDs.actions[row1.EventID] {
+		t.Errorf("actionEvent.actionId = %v, want the event's actionId %d", aeActionID, wantIDs.actions[row1.EventID])
+	}
+
+	// W1-Mb / spec §10 M4 / §11: the barcode is an EAN-13 whose check digit
+	// validates, and barcodeFormat is {0, "EAN-13"} — a number a site cannot
+	// print as EAN-13 makes it silently fall back to Code128.
+	barcode, _ := ticket["barcode"].(string)
+	if !ean13.Valid(barcode) {
+		t.Errorf("ticket.barcode = %q, want a checksum-valid EAN-13", barcode)
+	}
+	bf, _ := ticket["barcodeFormat"].(map[string]any)
+	if id, _ := bf["id"].(float64); id != 0 {
+		t.Errorf("barcodeFormat.id = %v, want 0 (EAN-13 as real Bil24 exports report it)", bf["id"])
+	}
+	if name, _ := bf["name"].(string); name != "EAN-13" {
+		t.Errorf("barcodeFormat.name = %q, want \"EAN-13\"", name)
 	}
 
 	// Assert discountReason format: "Промокод {code}".
@@ -187,11 +223,13 @@ func TestBuildExport_GoldenFieldTypes(t *testing.T) {
 // (Both files are in package macs, so strPtr/i64Ptr are accessible.)
 func goldenBaseRow() orderexport.Row {
 	eventID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	sessionID := uuid.MustParse("00000000-0000-0000-0000-000000000002")
 	ticketID := uuid.MustParse("00000000-0000-0000-0000-000000000003")
 	csID := uuid.MustParse("00000000-0000-0000-0000-000000000004")
 	venueID := uuid.MustParse("00000000-0000-0000-0000-000000000005")
 	tierID := uuid.MustParse("00000000-0000-0000-0000-000000000006")
 	return orderexport.Row{
+		SessionID:         sessionID,
 		TicketID:          ticketID,
 		SystemTicketID:    1001,
 		CheckoutSessionID: csID,

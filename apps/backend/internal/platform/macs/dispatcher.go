@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -457,9 +458,19 @@ func envelopeID(ev outbox.Event, fallback int64) int64 {
 		return fallback
 	}
 	if id, err := uuid.Parse(ev.ID); err == nil {
-		return eventIntID(id)
+		return uuidInt63(id)
 	}
 	return fallback
+}
+
+// uuidInt63 folds a UUID into a positive int64: the first 8 bytes read as a
+// big-endian unsigned integer, with the sign bit cleared. It is a display /
+// correlation id for an outbox row, NOT a compatibility id — anything the
+// MACS wire calls an "id" that a partner system dereferences (actionId,
+// actionEventId) comes from compatibility_id_map via compatids (spec §10 M3),
+// never from a hash.
+func uuidInt63(id uuid.UUID) int64 {
+	return int64(binary.BigEndian.Uint64(id[:8]) &^ (1 << 63))
 }
 
 // Compile-time interface guard.

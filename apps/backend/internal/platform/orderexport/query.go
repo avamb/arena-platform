@@ -97,6 +97,10 @@ SELECT
     -- range (1e9 + ticket id) so it can never collide with a real seat's
     -- system_seat_id (pass-7 review). Seat sequences start at 1.
     COALESCE(ss.system_seat_id, 1000000000 + t.system_ticket_id) AS seat_system_id,
+    -- W1-Mb (spec §10 M4 / §11): the exported barcode is the ticket's EAN-13
+    -- credential, never the 64-hex static_qr — a site that prints "EAN-13"
+    -- needs a number whose check digit validates. static_qr stays the
+    -- widget/PDF artifact.
     tc.payload AS barcode_str,
     tt.name AS tier_name,
     tt.price_amount AS tier_price,
@@ -114,7 +118,7 @@ LEFT JOIN i18n_text t_en ON t_en.namespace = 'geo.cities'
     AND t_en.key = ci.slug AND t_en.locale = 'en'
 LEFT JOIN session_seats ss ON ss.session_id = t.session_id
     AND ss.seat_key = t.seat_key AND t.seat_key IS NOT NULL
-LEFT JOIN ticket_credentials tc ON tc.ticket_id = t.id AND tc.type = 'static_qr'
+LEFT JOIN ticket_credentials tc ON tc.ticket_id = t.id AND tc.type = 'ean13'
 LEFT JOIN ticket_tiers tt ON tt.id = t.tier_id
 LEFT JOIN reservations r ON r.id = cs.reservation_id
 LEFT JOIN reservation_ga_items gi ON gi.reservation_id = r.id AND gi.tier_id = t.tier_id

@@ -24,6 +24,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/ean13"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/macs"
 )
 
@@ -199,5 +201,41 @@ func TestMACS_AB50h_ExportFidelity(t *testing.T) {
 		}
 	}
 
-	t.Logf("AB-50h export fidelity OK: %d orders", len(export))
+	// ── W1-Mb (spec §10 M3/M4): ids and barcode ───────────────────────────
+	// The export must name the SESSION's actionEventId and the EVENT's
+	// actionId out of compatibility_id_map — the same integers the
+	// Bil24-compatible gateway hands the WordPress sites — and a barcode a
+	// site can actually print as EAN-13.
+	wantActionEventID, err := compatids.Ensure(ctx, pool, compatids.KindActionEvent, sessionID)
+	if err != nil {
+		t.Fatalf("compatids.Ensure(action_event): %v", err)
+	}
+	wantActionID, err := compatids.Ensure(ctx, pool, compatids.KindAction, eventID)
+	if err != nil {
+		t.Fatalf("compatids.Ensure(action): %v", err)
+	}
+	t.Cleanup(func() {
+		c := context.Background()
+		pool.Exec(c, `DELETE FROM compatibility_id_map WHERE platform_id IN ($1, $2)`, sessionID, eventID)
+	})
+
+	for _, o := range export {
+		for _, tk := range o.TicketList {
+			if tk.ActionEvent.ID != wantActionEventID {
+				t.Errorf("actionEvent.id = %d, want the session's actionEventId %d", tk.ActionEvent.ID, wantActionEventID)
+			}
+			if tk.ActionEvent.ActionID != wantActionID {
+				t.Errorf("actionEvent.actionId = %d, want the event's actionId %d", tk.ActionEvent.ActionID, wantActionID)
+			}
+			if !ean13.Valid(tk.Barcode) {
+				t.Errorf("ticket %d barcode = %q, want a checksum-valid EAN-13", tk.ID, tk.Barcode)
+			}
+			if tk.BarcodeFormat.ID != 0 || tk.BarcodeFormat.Name != "EAN-13" {
+				t.Errorf("barcodeFormat = %+v, want {0 EAN-13}", tk.BarcodeFormat)
+			}
+		}
+	}
+
+	t.Logf("AB-50h export fidelity OK: %d orders, actionEventId=%d actionId=%d",
+		len(export), wantActionEventID, wantActionID)
 }

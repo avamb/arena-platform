@@ -9375,8 +9375,12 @@ components:
       properties:
         callback_url:
           type: string
-          description: The HTTPS endpoint to receive MACS webhook events.
-          example: https://macs.example.com/webhook/arena
+          description: |
+            The HTTPS endpoint to receive MACS webhook events. It MUST end with
+            `/api/_wh/tickets` — the only path a MACS receiver serves — or the
+            request is rejected with 422 `macs.invalid_callback_url`.
+            A trailing slash is tolerated.
+          example: https://macs.example.com/api/_wh/tickets
         signing_secret:
           type: string
           description: |
@@ -17722,6 +17726,16 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Caller is not an org member.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            callback_url does not address a MACS receiver: it must end with
+            `/api/_wh/tickets` (error code `macs.invalid_callback_url`).
+            Any other path answers 200 with an HTML page, which the outbox
+            would read as a successful delivery.
           content:
             application/json:
               schema:
