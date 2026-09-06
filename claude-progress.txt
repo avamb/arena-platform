@@ -28967,3 +28967,99 @@ No drift found, no code changes needed, nothing filed.
 Working tree otherwise left exactly as found (perennial untouched scratch:
 `.autoforge/prompts/coding_prompt.md` modified, `.claude/scheduled_tasks.lock`
 deleted, `features.db` untracked).
+
+================================================================================
+2026-09-06 — Feature #511 "W1-Mb: MACS ids, EAN-13, callback URL validation,
+golden and contract doc (M3-M5)" (epic #465, spec §10 M3-M5, depends on #510)
+================================================================================
+Commit 25ed030, pushed to master.
+
+M3 — actionEvent ids come from compatibility_id_map, not from a hash.
+- `macs.ActionEvent.ID` is now the SESSION's `actionEventId`
+  (`compatids.KindActionEvent` over `sessions.id`) and the new
+  `ActionEvent.ActionID int64` is the EVENT's `actionId`
+  (`compatids.KindAction` over `events.id`). `ActionID` changed type from
+  `string` (a UUID that MACS could not use) to `int64`.
+- New `wireIDs` struct + `resolveWireIDs`/`ensureIDs` in `macs/export.go`
+  thread the lookups into the pure encoder, which stays DB-free:
+  `encodeExport/encodeOrder/encodeTicket` all take a `wireIDs` argument now.
+  A `compatids.EnsureMany` failure yields a nil map, so the affected ids
+  encode as 0 — the same degraded-payload rule `bil24wire` uses, because an
+  undelivered sale costs more than one unmapped id.
+- `eventIntID` (the UUID hash) was deleted from `export.go`. The envelope's
+  top-level `id` still needs a UUID-derived integer, so it moved to
+  `dispatcher.go` as `uuidInt63`, with a comment separating "display /
+  correlation id for an outbox row" from "compatibility id a partner
+  dereferences". This was the one compile break of the session
+  (`undefined: eventIntID` in build AND vet).
+- `testWireIDs` in `export_unit_test.go` stands in for the map so the unit
+  and golden tests pin M3 without a database.
+
+M4 — EAN-13 barcode and the callback-URL rule.
+- `orderexport/query.go`: the barcode join is now
+  `ticket_credentials.type = 'ean13'`, previously `'static_qr'`. Exporting a
+  64-hex static_qr under a label of "EAN-13" is what makes a WordPress site
+  fall back from EAN13 to Code128.
+- `orderexport/build.go`: the pre-credential fallback is
+  `ean13.PlatformCode(system_ticket_id)` instead of the bare integer as a
+  string, so a pre-#502 ticket gets the exact number a later backfill would
+  mint rather than one the export would later contradict. New exported
+  `ean13.PlatformPrefix` + `ean13.PlatformCode` so readers and the issuance
+  path share one formula.
+- `barcodeFormat` is now `{"id": 0, "name": "EAN-13"}` (was id 1) behind the
+  `barcodeFormatEAN13ID`/`Name` consts — real Bil24 exports report 0 and
+  MACS accepts both, so this is shape alignment, not a receiver change.
+- `PUT /v1/organizations/{org_id}/macs-webhook` answers
+  `422 macs.invalid_callback_url` when `callback_url` does not end in
+  `/api/_wh/tickets` (one trailing slash tolerated). Extracted as the pure
+  predicate `validMACSCallbackURL` because the handler 503s on a nil pool
+  before validation, which makes a DB-free handler test impossible; the new
+  `hcatalog/macs_webhook_test.go` table-tests the predicate, including the
+  pre-W1 doc example `https://macs.example.com/_wh/tickets` (now rejected).
+
+M5 — already delivered by #510 (`macs/stub` rejects `order.paid` with
+`data.status != "PAID"` or an empty `data.ticketList`). No change needed.
+
+Golden, tests and docs.
+- `macs/testdata/sample_tickets.json` regenerated: `barcode` is now a real
+  13-digit code `2100000010011`, `barcodeFormat.id` 0, `actionEvent.id`
+  1000000001 and `actionEvent.actionId` 2000000001. Still BINDING, synthetic
+  disclaimer kept.
+- `export_golden_test.go` asserts the id plumbing, `ean13.Valid(barcode)` and
+  the format pair; `aeFields` gained `actionId`.
+- `orderexport/build_test.go`: `TestBuild_BarcodeCredentialWinsOverSystemTicketID`
+  renamed to `...OverDerivedEAN13` and rewritten against `ean13.PlatformCode`
+  — the test had encoded the old raw-id fallback, so the test was corrected
+  to the spec, not the code to the test.
+- `macs_ab50h_integration_test.go` asserts every exported ticket's
+  `ActionEvent.ID`/`.ActionID` against `compatids.Ensure` on the real DB.
+- `macs_ab50i_integration_test.go` now seeds BOTH a 64-hex `static_qr` and an
+  `ean13` credential on the same ticket and asserts the handler's wire bytes
+  carry the EAN-13 one — without the static_qr decoy the changed join would
+  not actually be proven. Seeded code `2100000000005` is checksum-valid, so
+  it satisfies migration 0093's `ticket_credentials_ean13_shape` CHECK.
+- `openapi.yaml`: `UpsertMACSWebhookRequest.callback_url` documents the rule
+  and `upsertMACSWebhook` gained a block-style 422 response. Regenerated
+  `types_gen.go` and `clients/ts/index.d.ts` and committed both.
+- `08_architecture/17_macs_integration_contract.md` reconciled: barcode source
+  row, `actionEvent.id` row plus a new `actionId` row, envelope example ids
+  and `barcodeFormat.id: 0`, both callback-URL samples moved to
+  `/api/_wh/tickets` with the 422 documented, and a new runbook section
+  "W1-Mb migration note — `actionEvent.id` changed key" warning that MACS
+  keys events on that id, so a pre-W1-Mb test session re-imports as a NEW
+  MACS event. Production impact is nil today — no arena events exist in the
+  production MACS instance — but staging must delete and re-import.
+
+Gates (all EXIT 0):
+- `go build ./...`, `go vet ./...`.
+- `go test` on macs, orderexport, barcodes, hcatalog, compatids,
+  `tests/compat/bil24`, `tests/staticanalysis`, `internal/migrations`, plus a
+  second pass over `httpserver/...` and `adapters/...` (24 ok lines).
+- Integration `-tags integration -p 1 -count=1` against the `arena_postgres`
+  stand on 55432 over macs + orderexport + compatids: 4 ok. A `-v` re-run
+  confirms AB-50h/AB-50i/W1-Ma all actually RAN and PASSed rather than
+  skipping.
+- Codegen drift re-check: regenerated and `git status --short` was clean.
+- `gofmt -l -w` over all 12 changed Go files including the two
+  `//go:build integration` ones (`export.go` needed reformatting).
+- Staged by path only; `git status --short` verified before committing.
