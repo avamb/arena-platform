@@ -3560,6 +3560,221 @@ type ImpersonateResponse struct {
 	Token *string `json:"token,omitempty"`
 }
 
+// ImportBil24SessionAction Bil24 "action" block — becomes an arena event. Property names keep the
+// legacy Bil24 camelCase spelling because the payload is forwarded
+// verbatim from a Bil24 GET_ALL_ACTIONS response by the site-side import
+// module (spec §13.4).
+type ImportBil24SessionAction struct {
+	// ActionId Bil24 action identifier. Must be positive and below 1e9.
+	ActionId int64 `json:"actionId"`
+
+	// ActionName Short action name. Used as the event title when fullActionName is empty.
+	ActionName *string `json:"actionName,omitempty"`
+
+	// Age Age restriction label as sent by Bil24, e.g. "18+".
+	Age *string `json:"age,omitempty"`
+
+	// BigPosterUrl Absolute URL of the Bil24 poster image. Side-loaded into arena media
+	// storage outside the import transaction; a fetch failure is reported
+	// as a warning and never fails the import.
+	BigPosterUrl *string `json:"bigPosterUrl,omitempty"`
+
+	// Description Free-form action description copied into the event description.
+	Description *string `json:"description,omitempty"`
+
+	// FullActionName Full action name. Preferred over actionName as the event title.
+	FullActionName *string `json:"fullActionName,omitempty"`
+
+	// OrganizerName Organizer display name as sent by Bil24.
+	OrganizerName *string `json:"organizerName,omitempty"`
+}
+
+// ImportBil24SessionActionEvent Bil24 "actionEvent" block — becomes an arena session. This block's
+// actionEventId is the idempotency key of the whole import.
+type ImportBil24SessionActionEvent struct {
+	// ActionEventId Bil24 action-event identifier and the idempotency key of the import.
+	// Must be positive and below 1e9.
+	ActionEventId int64 `json:"actionEventId"`
+
+	// ChargePercent Bil24 service-charge percentage. Informational only — arena never
+	// modifies the sales channel fee from an import and returns the
+	// import.charge_percent_ignored warning when this is non-zero.
+	ChargePercent *float32 `json:"chargePercent,omitempty"`
+
+	// Currency ISO 4217 alphabetic currency code for every tier price in this payload.
+	Currency *string `json:"currency,omitempty"`
+
+	// Day Local calendar day of the session in the legacy Bil24 "DD.MM.YYYY"
+	// format, interpreted in the venue timezone.
+	Day string `json:"day"`
+
+	// SeatingPlanId Bil24 seating-plan identifier. Accepted and range-checked but not
+	// yet materialised by this endpoint.
+	SeatingPlanId *int64 `json:"seatingPlanId,omitempty"`
+
+	// SeatingPlanName Human-readable seating plan name as sent by Bil24.
+	SeatingPlanName *string `json:"seatingPlanName,omitempty"`
+
+	// SellEndTime RFC3339 instant at which sales close. Stored as the session sale
+	// window end. Omit to leave the sale window unbounded.
+	SellEndTime *string `json:"sellEndTime,omitempty"`
+
+	// Time Local wall-clock start time in "HH:MM", interpreted in the venue
+	// timezone. Defaults to midnight when omitted.
+	Time *string `json:"time,omitempty"`
+}
+
+// ImportBil24SessionCategory One Bil24 price category — becomes an arena ticket tier.
+type ImportBil24SessionCategory struct {
+	// Availability General-admission capacity of the category. Summed across categories
+	// to size the session inventory.
+	Availability *int32 `json:"availability,omitempty"`
+
+	// CategoryPriceId Bil24 category-price identifier. Must be positive and below 1e9.
+	CategoryPriceId int64 `json:"categoryPriceId"`
+
+	// CategoryPriceName Tier display name.
+	CategoryPriceName *string `json:"categoryPriceName,omitempty"`
+
+	// Placement Whether the category is seated. Seated categories are accepted but
+	// imported as general admission by this endpoint.
+	Placement *bool `json:"placement,omitempty"`
+
+	// Price Ticket price in MAJOR currency units, as Bil24 sends it. Converted to
+	// the integer minor units arena stores, rounded half away from zero.
+	Price *float32 `json:"price,omitempty"`
+}
+
+// ImportBil24SessionRequest Request body for the Bil24 session import (spec §13.2). Assembled by the
+// site-side import module out of raw Bil24 responses, which is why the
+// property names are camelCase rather than the arena-wide snake_case.
+type ImportBil24SessionRequest struct {
+	// Action The Bil24 action (show/production) that becomes the arena event.
+	Action ImportBil24SessionAction `json:"action"`
+
+	// ActionEvent The Bil24 action event (one performance) that becomes the arena session.
+	ActionEvent ImportBil24SessionActionEvent `json:"actionEvent"`
+
+	// CategoryList Price categories to import as ticket tiers. Must contain at least one entry.
+	CategoryList []ImportBil24SessionCategory `json:"categoryList"`
+
+	// Publish When true, the imported event and session are pushed through the
+	// standard publish gate. A gate rejection is reported as a warning and
+	// never fails the import.
+	Publish *bool `json:"publish,omitempty"`
+
+	// SeatList Seats of the hall plan. Accepted but not materialised by this
+	// endpoint; a non-empty list yields the import.seating_not_imported
+	// warning.
+	SeatList *[]ImportBil24SessionSeat `json:"seatList,omitempty"`
+
+	// Svg Raw seating-plan SVG. Accepted but not stored by this endpoint; a
+	// non-empty value yields the import.seating_not_imported warning.
+	Svg *string `json:"svg,omitempty"`
+
+	// Venue The Bil24 venue hosting the performance, matched or created by external id.
+	Venue ImportBil24SessionVenue `json:"venue"`
+}
+
+// ImportBil24SessionResponse Result of a Bil24 session import (spec §13.2 step 9).
+type ImportBil24SessionResponse struct {
+	// Created True when the session did not exist before this call, false when an
+	// existing session was updated in place (repeat import).
+	Created bool `json:"created"`
+
+	// EventId Arena event UUID mapped to the payload's action.actionId.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// SeatingPlanVersionId Seating plan version created by this import. Always null — this
+	// endpoint imports general-admission sessions only.
+	SeatingPlanVersionId *openapi_types.UUID `json:"seating_plan_version_id"`
+
+	// SeatsMaterialized Number of seats materialised. Always 0 for general-admission imports.
+	SeatsMaterialized int `json:"seats_materialized"`
+
+	// SessionId Arena session UUID mapped to the payload's actionEvent.actionEventId.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// TierIds Map from the Bil24 categoryPriceId (as a decimal string) to the arena
+	// ticket tier UUID it maps to.
+	TierIds map[string]openapi_types.UUID `json:"tier_ids"`
+
+	// Warnings Non-fatal conditions observed during the import. Never null; empty when clean.
+	Warnings []ImportWarning `json:"warnings"`
+}
+
+// ImportBil24SessionSeat One Bil24 seat. Decoded and range-exempt (Bil24 seat ids legitimately
+// exceed 1e9) but not materialised by this endpoint.
+type ImportBil24SessionSeat struct {
+	// Available Whether the seat is currently sellable according to Bil24.
+	Available *bool `json:"available,omitempty"`
+
+	// CategoryPriceId Bil24 category-price identifier this seat belongs to.
+	CategoryPriceId *int64 `json:"categoryPriceId,omitempty"`
+
+	// Location Physical position of the seat within the hall plan.
+	Location *ImportBil24SessionSeatLocation `json:"location,omitempty"`
+
+	// SeatId Bil24 seat identifier.
+	SeatId *int64 `json:"seatId,omitempty"`
+}
+
+// ImportBil24SessionSeatLocation Sector / row / number triple identifying a seat within a hall.
+type ImportBil24SessionSeatLocation struct {
+	// Number Seat number label.
+	Number *string `json:"number,omitempty"`
+
+	// Row Row label.
+	Row *string `json:"row,omitempty"`
+
+	// Sector Sector or block label.
+	Sector *string `json:"sector,omitempty"`
+}
+
+// ImportBil24SessionVenue Bil24 "venue" block — matched to an arena venue by its Bil24 external id.
+type ImportBil24SessionVenue struct {
+	// Address Postal address of the venue.
+	Address *string `json:"address,omitempty"`
+
+	// CityId Bil24 city identifier. Range-checked only when non-zero.
+	CityId *int64 `json:"cityId,omitempty"`
+
+	// CityName City name used to resolve or create the arena geo city record.
+	CityName *string `json:"cityName,omitempty"`
+
+	// CountryId Bil24 country identifier. Range-checked only when non-zero.
+	CountryId *int64 `json:"countryId,omitempty"`
+
+	// CountryName Country name used to resolve the arena geo country record.
+	CountryName *string `json:"countryName,omitempty"`
+
+	// GeoLat Venue latitude in decimal degrees.
+	GeoLat *float32 `json:"geoLat,omitempty"`
+
+	// GeoLon Venue longitude in decimal degrees. Stored in the arena venues.geo_lng column.
+	GeoLon *float32 `json:"geoLon,omitempty"`
+
+	// Timezone IANA timezone name of the venue. Mandatory when arena does not yet
+	// know the venue, otherwise the stored venue timezone wins and a
+	// venue.timezone_kept warning is returned on divergence.
+	Timezone *string `json:"timezone,omitempty"`
+
+	// VenueId Bil24 venue identifier. Must be positive and below 1e9.
+	VenueId int64 `json:"venueId"`
+
+	// VenueName Venue display name, used when arena has to create the venue.
+	VenueName *string `json:"venueName,omitempty"`
+}
+
+// ImportWarning A non-fatal condition observed while importing. Warnings never fail the import.
+type ImportWarning struct {
+	// Code Stable machine-readable warning code.
+	Code string `json:"code"`
+
+	// Message Human-readable explanation of the warning.
+	Message string `json:"message"`
+}
+
 // InfoResponse defines model for InfoResponse.
 type InfoResponse struct {
 	// ActiveLocale Locale resolved for this specific request via Accept-Language → ?lang= → default_locale negotiation
@@ -8352,6 +8567,9 @@ type CreateExternalAllocationJSONRequestBody CreateExternalAllocationJSONBody
 
 // UpdateExternalAllocationJSONRequestBody defines body for UpdateExternalAllocation for application/json ContentType.
 type UpdateExternalAllocationJSONRequestBody UpdateExternalAllocationJSONBody
+
+// ImportBil24SessionJSONRequestBody defines body for ImportBil24Session for application/json ContentType.
+type ImportBil24SessionJSONRequestBody = ImportBil24SessionRequest
 
 // UpsertMACSWebhookJSONRequestBody defines body for UpsertMACSWebhook for application/json ContentType.
 type UpsertMACSWebhookJSONRequestBody = UpsertMACSWebhookRequest

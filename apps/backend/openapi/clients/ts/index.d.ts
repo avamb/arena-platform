@@ -5288,6 +5288,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/imports/bil24-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a Bil24 action event as an arena event + session
+         * @description Upserts the venue, event, session and ticket tiers described by a raw
+         *     Bil24 payload (spec §13.2). The call is idempotent on
+         *     `actionEvent.actionEventId`: a repeat with the same payload updates the
+         *     existing rows in place and answers `created: false` with identical
+         *     `event_id`, `session_id` and `tier_ids`.
+         *
+         *     This slice imports GENERAL ADMISSION sessions only. `seatList` and `svg`
+         *     are accepted and validated but not materialised; a non-empty value
+         *     yields an `import.seating_not_imported` warning and
+         *     `seating_plan_version_id` is always null.
+         *
+         *     Every Bil24 identifier except seat ids must be positive and below 1e9 —
+         *     the ceiling that separates Bil24-originated ids from arena-originated
+         *     ones in the compat mapping table. The sales channel is never modified:
+         *     a declared `chargePercent` is surfaced as a warning instead.
+         *
+         *     Requires the `import.bil24_session` permission and organization
+         *     membership. An organization API key (`Authorization: Bearer ak_…`)
+         *     carrying that scope is the primary caller — the site-side import module
+         *     (spec §13.4).
+         */
+        post: operations["importBil24Session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -13463,6 +13502,271 @@ export interface components {
              * @example my-secret-key
              */
             signing_secret?: string;
+        };
+        /**
+         * @description Bil24 "action" block — becomes an arena event. Property names keep the
+         *     legacy Bil24 camelCase spelling because the payload is forwarded
+         *     verbatim from a Bil24 GET_ALL_ACTIONS response by the site-side import
+         *     module (spec §13.4).
+         */
+        ImportBil24SessionAction: {
+            /**
+             * Format: int64
+             * @description Bil24 action identifier. Must be positive and below 1e9.
+             * @example 267271
+             */
+            actionId: number;
+            /**
+             * @description Short action name. Used as the event title when fullActionName is empty.
+             * @example Vino & Co Tasting
+             */
+            actionName?: string;
+            /**
+             * @description Full action name. Preferred over actionName as the event title.
+             * @example Vino & Co Grand Tasting 2026
+             */
+            fullActionName?: string;
+            /** @description Free-form action description copied into the event description. */
+            description?: string;
+            /**
+             * @description Absolute URL of the Bil24 poster image. Side-loaded into arena media
+             *     storage outside the import transaction; a fetch failure is reported
+             *     as a warning and never fails the import.
+             */
+            bigPosterUrl?: string;
+            /**
+             * @description Age restriction label as sent by Bil24, e.g. "18+".
+             * @example 18+
+             */
+            age?: string;
+            /** @description Organizer display name as sent by Bil24. */
+            organizerName?: string;
+        };
+        /**
+         * @description Bil24 "actionEvent" block — becomes an arena session. This block's
+         *     actionEventId is the idempotency key of the whole import.
+         */
+        ImportBil24SessionActionEvent: {
+            /**
+             * Format: int64
+             * @description Bil24 action-event identifier and the idempotency key of the import.
+             *     Must be positive and below 1e9.
+             * @example 703872
+             */
+            actionEventId: number;
+            /**
+             * @description Local calendar day of the session in the legacy Bil24 "DD.MM.YYYY"
+             *     format, interpreted in the venue timezone.
+             * @example 26.04.2026
+             */
+            day: string;
+            /**
+             * @description Local wall-clock start time in "HH:MM", interpreted in the venue
+             *     timezone. Defaults to midnight when omitted.
+             * @example 17:00
+             */
+            time?: string;
+            /**
+             * @description ISO 4217 alphabetic currency code for every tier price in this payload.
+             * @example EUR
+             */
+            currency?: string;
+            /**
+             * @description RFC3339 instant at which sales close. Stored as the session sale
+             *     window end. Omit to leave the sale window unbounded.
+             * @example 2026-04-26T14:00:00Z
+             */
+            sellEndTime?: string;
+            /**
+             * @description Bil24 service-charge percentage. Informational only — arena never
+             *     modifies the sales channel fee from an import and returns the
+             *     import.charge_percent_ignored warning when this is non-zero.
+             */
+            chargePercent?: number;
+            /**
+             * Format: int64
+             * @description Bil24 seating-plan identifier. Accepted and range-checked but not
+             *     yet materialised by this endpoint.
+             */
+            seatingPlanId?: number;
+            /** @description Human-readable seating plan name as sent by Bil24. */
+            seatingPlanName?: string;
+        };
+        /** @description Bil24 "venue" block — matched to an arena venue by its Bil24 external id. */
+        ImportBil24SessionVenue: {
+            /**
+             * Format: int64
+             * @description Bil24 venue identifier. Must be positive and below 1e9.
+             * @example 9619
+             */
+            venueId: number;
+            /** @description Venue display name, used when arena has to create the venue. */
+            venueName?: string;
+            /** @description Postal address of the venue. */
+            address?: string;
+            /**
+             * Format: int64
+             * @description Bil24 city identifier. Range-checked only when non-zero.
+             */
+            cityId?: number;
+            /** @description City name used to resolve or create the arena geo city record. */
+            cityName?: string;
+            /**
+             * Format: int64
+             * @description Bil24 country identifier. Range-checked only when non-zero.
+             */
+            countryId?: number;
+            /** @description Country name used to resolve the arena geo country record. */
+            countryName?: string;
+            /**
+             * @description IANA timezone name of the venue. Mandatory when arena does not yet
+             *     know the venue, otherwise the stored venue timezone wins and a
+             *     venue.timezone_kept warning is returned on divergence.
+             * @example Europe/Madrid
+             */
+            timezone?: string;
+            /** @description Venue latitude in decimal degrees. */
+            geoLat?: number;
+            /** @description Venue longitude in decimal degrees. Stored in the arena venues.geo_lng column. */
+            geoLon?: number;
+        };
+        /** @description One Bil24 price category — becomes an arena ticket tier. */
+        ImportBil24SessionCategory: {
+            /**
+             * Format: int64
+             * @description Bil24 category-price identifier. Must be positive and below 1e9.
+             * @example 12345
+             */
+            categoryPriceId: number;
+            /**
+             * @description Tier display name.
+             * @example Parter
+             */
+            categoryPriceName?: string;
+            /**
+             * @description Ticket price in MAJOR currency units, as Bil24 sends it. Converted to
+             *     the integer minor units arena stores, rounded half away from zero.
+             * @example 25
+             */
+            price?: number;
+            /**
+             * @description Whether the category is seated. Seated categories are accepted but
+             *     imported as general admission by this endpoint.
+             */
+            placement?: boolean;
+            /**
+             * Format: int32
+             * @description General-admission capacity of the category. Summed across categories
+             *     to size the session inventory.
+             * @example 100
+             */
+            availability?: number;
+        };
+        /** @description Sector / row / number triple identifying a seat within a hall. */
+        ImportBil24SessionSeatLocation: {
+            /** @description Sector or block label. */
+            sector?: string;
+            /** @description Row label. */
+            row?: string;
+            /** @description Seat number label. */
+            number?: string;
+        };
+        /**
+         * @description One Bil24 seat. Decoded and range-exempt (Bil24 seat ids legitimately
+         *     exceed 1e9) but not materialised by this endpoint.
+         */
+        ImportBil24SessionSeat: {
+            /**
+             * Format: int64
+             * @description Bil24 seat identifier.
+             */
+            seatId?: number;
+            /**
+             * Format: int64
+             * @description Bil24 category-price identifier this seat belongs to.
+             */
+            categoryPriceId?: number;
+            /** @description Physical position of the seat within the hall plan. */
+            location?: components["schemas"]["ImportBil24SessionSeatLocation"];
+            /** @description Whether the seat is currently sellable according to Bil24. */
+            available?: boolean;
+        };
+        /**
+         * @description Request body for the Bil24 session import (spec §13.2). Assembled by the
+         *     site-side import module out of raw Bil24 responses, which is why the
+         *     property names are camelCase rather than the arena-wide snake_case.
+         */
+        ImportBil24SessionRequest: {
+            /** @description The Bil24 action (show/production) that becomes the arena event. */
+            action: components["schemas"]["ImportBil24SessionAction"];
+            /** @description The Bil24 action event (one performance) that becomes the arena session. */
+            actionEvent: components["schemas"]["ImportBil24SessionActionEvent"];
+            /** @description The Bil24 venue hosting the performance, matched or created by external id. */
+            venue: components["schemas"]["ImportBil24SessionVenue"];
+            /** @description Price categories to import as ticket tiers. Must contain at least one entry. */
+            categoryList: components["schemas"]["ImportBil24SessionCategory"][];
+            /**
+             * @description Seats of the hall plan. Accepted but not materialised by this
+             *     endpoint; a non-empty list yields the import.seating_not_imported
+             *     warning.
+             */
+            seatList?: components["schemas"]["ImportBil24SessionSeat"][];
+            /**
+             * @description Raw seating-plan SVG. Accepted but not stored by this endpoint; a
+             *     non-empty value yields the import.seating_not_imported warning.
+             */
+            svg?: string;
+            /**
+             * @description When true, the imported event and session are pushed through the
+             *     standard publish gate. A gate rejection is reported as a warning and
+             *     never fails the import.
+             */
+            publish?: boolean;
+        };
+        /** @description A non-fatal condition observed while importing. Warnings never fail the import. */
+        ImportWarning: {
+            /**
+             * @description Stable machine-readable warning code.
+             * @example import.seating_not_imported
+             */
+            code: string;
+            /** @description Human-readable explanation of the warning. */
+            message: string;
+        };
+        /** @description Result of a Bil24 session import (spec §13.2 step 9). */
+        ImportBil24SessionResponse: {
+            /**
+             * Format: uuid
+             * @description Arena event UUID mapped to the payload's action.actionId.
+             */
+            event_id: string;
+            /**
+             * Format: uuid
+             * @description Arena session UUID mapped to the payload's actionEvent.actionEventId.
+             */
+            session_id: string;
+            /**
+             * @description Map from the Bil24 categoryPriceId (as a decimal string) to the arena
+             *     ticket tier UUID it maps to.
+             */
+            tier_ids: {
+                [key: string]: string;
+            };
+            /**
+             * Format: uuid
+             * @description Seating plan version created by this import. Always null — this
+             *     endpoint imports general-admission sessions only.
+             */
+            seating_plan_version_id?: string | null;
+            /** @description Number of seats materialised. Always 0 for general-admission imports. */
+            seats_materialized: number;
+            /** @description Non-fatal conditions observed during the import. Never null; empty when clean. */
+            warnings: components["schemas"]["ImportWarning"][];
+            /**
+             * @description True when the session did not exist before this call, false when an
+             *     existing session was updated in place (repeat import).
+             */
+            created: boolean;
         };
     };
     responses: never;
@@ -32036,6 +32340,108 @@ export interface operations {
             };
             /** @description Ticket not found. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    importBil24Session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportBil24SessionRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Import applied. `created` distinguishes a first import from an
+             *     idempotent repeat; both answer 200.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBil24SessionResponse"];
+                };
+            };
+            /** @description Request body is not valid JSON or exceeds the 8 MB limit. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing, or JWT / API key verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor is not a member of the target organization or lacks `import.bil24_session`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description A referenced Bil24 identifier is already bound to a different arena
+             *     resource (`import.category_bound_elsewhere`), or the seat set of a
+             *     session that already has sales would change (`import.session_has_sales`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Payload rejected before any write: `compat.external_id_out_of_range`,
+             *     `import.categories_required`, `import.action_name_required`,
+             *     `import.invalid_currency`, `import.invalid_start_time`,
+             *     `import.invalid_sell_end_time` or `venue.timezone_required`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Import transaction failed. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

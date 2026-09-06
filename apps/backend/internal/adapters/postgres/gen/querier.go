@@ -114,6 +114,18 @@ type Querier interface {
 	// ListActionVenuesByOrg: Bil24 compat GET_ALL_ACTIONS aggregation
 	// (feature #476 W1-A2b slice 14, spec §7.1)
 	ListActionVenuesByOrg(ctx context.Context, orgID uuid.UUID, locale string) ([]ActionVenueRow, error)
+
+	// Bil24 session import — POST /v1/organizations/{org_id}/imports/bil24-session
+	// (feature #517 W1-C3c, spec §13.2). source: imports_bil24.sql
+	GetVenueByBil24ExternalID(ctx context.Context, externalID string) (VenueRow, error)
+	GetVenueImportContext(ctx context.Context, id uuid.UUID) (VenueImportContextRow, error)
+	InsertImportedVenue(ctx context.Context, orgID uuid.UUID, cityID *uuid.UUID, name string, address *string, timezone string, geoLat, geoLng *float64, country *string, externalID string) (VenueRow, error)
+	UpdateImportedVenueGeography(ctx context.Context, id uuid.UUID, cityID *uuid.UUID, address *string, timezone string, geoLat, geoLng *float64, country *string) error
+	GetEventByBil24ExternalID(ctx context.Context, externalID string) (EventRow, error)
+	SetEventBil24ExternalID(ctx context.Context, id, orgID uuid.UUID, externalID string) error
+	SetEventPosterMediaID(ctx context.Context, id, orgID uuid.UUID, posterMediaID *uuid.UUID) error
+	SetEventImportMetadata(ctx context.Context, id, orgID uuid.UUID, name string, description, ageRating *string) error
+	GetSessionImportContext(ctx context.Context, id uuid.UUID) (SessionImportContextRow, error)
 	// ListActionEventsByOrg / ListActionEventTiersByOrg: the nested
 	// GET_ALL_ACTIONS catalog pair — one row per sellable session and one per
 	// live tier of those sessions, so the whole actionEventList /
