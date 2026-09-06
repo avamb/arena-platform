@@ -114,6 +114,13 @@ type Querier interface {
 	// ListActionVenuesByOrg: Bil24 compat GET_ALL_ACTIONS aggregation
 	// (feature #476 W1-A2b slice 14, spec §7.1)
 	ListActionVenuesByOrg(ctx context.Context, orgID uuid.UUID, locale string) ([]ActionVenueRow, error)
+	// ListActionEventsByOrg / ListActionEventTiersByOrg: the nested
+	// GET_ALL_ACTIONS catalog pair — one row per sellable session and one per
+	// live tier of those sessions, so the whole actionEventList /
+	// categoryLimitList projection costs two queries rather than N per event
+	// (feature #497 W1-B3a, spec §7.1).
+	ListActionEventsByOrg(ctx context.Context, orgID uuid.UUID) ([]ActionEventRow, error)
+	ListActionEventTiersByOrg(ctx context.Context, orgID uuid.UUID) ([]ActionEventTierRow, error)
 
 	// Geo reference data — countries & cities (feature #123)
 	ListCountries(ctx context.Context, locale string) ([]ListCountryRow, error)

@@ -248,11 +248,11 @@ func TestCompatBil24_450_Harness_Scenarios(t *testing.T) {
 	// The mapping is: 1→#497, 2→#495, 3→#484, 4→#509, 5→#494, 6→#492,
 	// 7→#501, 8→#518, 9→#514, 10→#520. Removing the Skip line is how the
 	// implementing feature adopts the scenario.
+	// Scenario 1 (feature #497, spec §7.1) boots the real server and walks the
+	// nested GET_ALL_ACTIONS catalog. The implementation lives in
+	// scenario01_catalog_test.go because it seeds extra fixtures of its own.
 	t.Run("01_catalog_get_all_actions", func(t *testing.T) {
-		t.Skip("feature #497: GET_ALL_ACTIONS with org isolation + venue TZ")
-		req, gld := loadWPFixture(t, "GET_ALL_ACTIONS", "basic")
-		_ = req
-		_ = resolveGolden(gld, st)
+		runScenario01Catalog(t, st)
 	})
 
 	t.Run("02_ga_purchase_flow", func(t *testing.T) {

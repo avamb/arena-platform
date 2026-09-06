@@ -1,0 +1,38 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "GET_ALL_ACTIONS",
+  "countryList": [],
+  "cityList": [],
+  "actionList": [
+    {
+      "actionId": "{{actionId}}",
+      "actionName": "{{actionName}}",
+      "organizerId": "{{organizerId}}",
+      "organizerName": "{{organizerName}}",
+      "firstEventDate": "{{day}}",
+      "lastEventDate": "{{day}}",
+      "minPrice": 500,
+      "maxPrice": 500,
+      "actionEventList": [
+        {
+          "actionEventId": "{{actionEventId}}",
+          "cityId": "{{cityId}}",
+          "venueId": "{{venueId}}",
+          "day": "{{day}}",
+          "time": "{{time}}",
+          "currency": "CZK",
+          "sellEndTime": "{{sellEndTime}}",
+          "seatingPlanId": "{{actionEventId}}",
+          "seatingPlanName": "Palác Akropolis (harness)",
+          "eTicket": true,
+          "availability": "{{seatsAvailable}}",
+          "minPrice": 500,
+          "chargePercent": 5,
+          "categoryLimitList": [],
+          "tariffPlanList": []
+        }
+      ]
+    }
+  ]
+}

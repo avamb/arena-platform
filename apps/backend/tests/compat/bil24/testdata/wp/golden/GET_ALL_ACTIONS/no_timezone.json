@@ -1,0 +1,20 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "GET_ALL_ACTIONS",
+  "countryList": [],
+  "cityList": [],
+  "actionList": [
+    {
+      "actionId": "{{noTZActionId}}",
+      "actionName": "{{noTZActionName}}",
+      "organizerId": "{{organizerId}}",
+      "organizerName": "{{organizerName}}",
+      "firstEventDate": "{{utcDay}}",
+      "lastEventDate": "{{utcDay}}",
+      "minPrice": 0,
+      "maxPrice": 0,
+      "actionEventList": []
+    }
+  ]
+}

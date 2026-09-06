@@ -15,7 +15,6 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -138,6 +137,29 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	// Spec §7.1 (feature #497 W1-B3a): the nested actionEventList subtree —
+	// sessions with local dates, availability and GA categories — plus the
+	// per-action price envelope. Built for the whole org in three round-trips
+	// (see cmd_catalog_events.go) and indexed by event id here.
+	//
+	// The unauthed fallback has no org to scope by, so it emits actions with
+	// an empty actionEventList rather than leaking another org's sessions.
+	var byEvent map[uuid.UUID]catalogAction
+	if authed {
+		var aerr error
+		byEvent, aerr = h.loadActionEvents(ctx, channel.OrgID, cartFeePercent(channel))
+		if aerr != nil {
+			h.logger.Error("bil24_compat: GET_ALL_ACTIONS: list action events failed",
+				slog.String("org_id", channel.OrgID.String()),
+				slog.String("error", aerr.Error()),
+			)
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInternalError, "failed to retrieve action list",
+			))
+			return
+		}
+	}
+
 	actionList := make([]map[string]any, 0, len(events))
 	for _, e := range events {
 		// Spec §7.1: only status='published' events appear in the catalog.
@@ -146,7 +168,7 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 		if authed && e.Status != "published" {
 			continue
 		}
-		actionList = append(actionList, h.buildActionEntry(ctx, e, organizerID, organizerName))
+		actionList = append(actionList, h.buildActionEntry(ctx, e, organizerID, organizerName, byEvent[e.ID]))
 	}
 
 	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
@@ -168,10 +190,11 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 //   - actionId       — int64 via compatActionID (UUID fallback for
 //     nil-compatDB unit tests).
 //   - actionName     — e.Name.
-//   - firstEventDate — e.FirstSessionAt (earliest scheduled session,
-//     RFC3339 UTC). Omitted when nil.
-//   - lastEventDate  — e.LastSessionAt (latest scheduled session,
-//     RFC3339 UTC). Omitted when nil. Spec §7.1 (feature #476 slice 17).
+//   - firstEventDate / lastEventDate — DD.MM.YYYY of the first / last
+//     projected session, taken from the venue-local `day` values so the
+//     calendar day is the buyer's, not UTC's. Falls back to the
+//     first_session_at / last_session_at caches (UTC) for an action with
+//     no projectable session; omitted when neither source has a date.
 //   - age            — e.AgeRating with the "NR" sentinel normalised to
 //     "" (spec §7.1: age string, "NR" → ""). Omitted when the column is
 //     nil OR when the normalised value is empty (omit rather than empty).
@@ -186,9 +209,11 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 //     hero) is deferred until media_objects grows a variants surface.
 //   - description    — e.Description raw HTML.
 //
-// Fields deferred to later slices (still missing from the spec §7.1
-// entry body): fullActionName (needs a source column), minPrice /
-// maxPrice (need a tier join), actionEventList (whole subtree).
+// The nested actionEventList and the minPrice / maxPrice envelope arrive
+// pre-built in `ae` (feature #497, cmd_catalog_events.go) — this helper
+// stays pure over EventRow and does not go looking for sessions itself.
+//
+// Still deferred: fullActionName (needs a source column on events).
 //
 // Organizer identity is passed in (organizerID, organizerName) because
 // the catalog is org-scoped in the authed branch — every entry carries
@@ -200,26 +225,50 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 //
 // This helper is pure over EventRow; it does not touch the DB itself,
 // so unit tests can pass a hand-built EventRow value.
-func (h *Handler) buildActionEntry(ctx context.Context, e gen.EventRow, organizerID int64, organizerName string) map[string]any {
+func (h *Handler) buildActionEntry(
+	ctx context.Context, e gen.EventRow, organizerID int64, organizerName string, ae catalogAction,
+) map[string]any {
+	// actionEventList is always present, even when empty: the WP plugin
+	// iterates it unguarded, and an action with no sellable session is a
+	// legitimate state (everything sold out of the six-hour window).
+	events := ae.events
+	if events == nil {
+		events = make([]map[string]any, 0)
+	}
 	action := map[string]any{
 		// Spec §4 / §7.1 (feature #476): int64 wire form via compat map.
 		// Fallback (nil compatDB) returns the legacy UUID string so pre-W1
 		// unit-test Handlers stay green.
-		"actionId":   h.compatActionID(ctx, e.ID),
-		"actionName": e.Name,
+		"actionId":        h.compatActionID(ctx, e.ID),
+		"actionName":      e.Name,
+		"actionEventList": events,
+		// Spec §7.1: the price envelope over the action's live tiers, in DB
+		// minor units like every other money field on this gateway. An action
+		// with no priced tier reports 0/0 rather than omitting the keys — the
+		// plugin's "from {minPrice}" template would print "from" alone.
+		"minPrice": ae.minPrice,
+		"maxPrice": ae.maxPrice,
 	}
-	// firstEventDate is the earliest session of the action (AB-37):
-	// events carry no own dates; the trigger-maintained cache
-	// first_session_at is the Bil24-correct source. Omitted entirely
-	// for an event with no sessions.
-	if e.FirstSessionAt != nil {
-		action["firstEventDate"] = e.FirstSessionAt.UTC().Format(time.RFC3339)
-	}
-	// Spec §7.1 (slice 17): lastEventDate mirrors firstEventDate against
-	// the trigger-maintained last_session_at cache. Same nil-handling
-	// contract — an event without sessions omits the key.
-	if e.LastSessionAt != nil {
-		action["lastEventDate"] = e.LastSessionAt.UTC().Format(time.RFC3339)
+	// firstEventDate / lastEventDate — spec §7.1 wants DD.MM.YYYY, and the
+	// only correct calendar day is the one at the VENUE. So they are read off
+	// the already-localised session projection (ordered by start_at) rather
+	// than formatted from the UTC first_session_at / last_session_at caches,
+	// which would roll over a day early or late for evening shows.
+	//
+	// The caches remain the fallback for an action with no projectable
+	// session (no sellable session, or every venue missing a timezone); they
+	// are formatted in UTC, which is the best available answer when no zone is
+	// known. Both keys are omitted when neither source has a date.
+	if len(events) > 0 {
+		action["firstEventDate"] = events[0]["day"]
+		action["lastEventDate"] = events[len(events)-1]["day"]
+	} else {
+		if e.FirstSessionAt != nil {
+			action["firstEventDate"] = e.FirstSessionAt.UTC().Format("02.01.2006") // allow:timeformat: spec §7.1 DD.MM.YYYY
+		}
+		if e.LastSessionAt != nil {
+			action["lastEventDate"] = e.LastSessionAt.UTC().Format("02.01.2006") // allow:timeformat: spec §7.1 DD.MM.YYYY
+		}
 	}
 	// Spec §7.1 (slice 17): age is the events.age_rating column with the
 	// documented "NR" ("not rated") sentinel normalised to "" per spec

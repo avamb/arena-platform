@@ -162,3 +162,129 @@ SELECT event_id
 FROM   sessions
 WHERE  id = $1
   AND  deleted_at IS NULL;
+
+-- name: ListActionEventsByOrg :many
+-- ListActionEventsByOrg returns every sellable session of the given
+-- organization's published events, shaped for the Bil24-compat
+-- GET_ALL_ACTIONS actionEventList block (feature #497, spec §7.1).
+--
+-- Filter semantics come straight from spec §7.1: events must be
+-- status='published' (visibility is NOT a filter — the site decides what to
+-- show), sessions must be status='scheduled' and start no earlier than six
+-- hours ago (a session that started within the last six hours is still being
+-- sold at the door), and soft-deleted rows on either side are out.
+--
+-- The aggregate sub-selects keep the projection at ONE query for the whole
+-- catalog instead of three per session:
+--   * sell_end_at — min(sale_window_end) over the session's live tiers; NULL
+--     when no tier carries a window, and the handler then falls back to
+--     start_at as the spec requires.
+--   * seats_total / seats_available — the materialised session_seats pool
+--     (assigned seats AND ga_units, AB-51). seats_total = 0 means the session
+--     has no unit rows at all, which is the signal to price availability off
+--     the ledger instead.
+--   * ledger_available — capacity_total − sold − held on the session-level
+--     (tier_id IS NULL) inventory_ledger row. A NULL capacity_total means
+--     "unlimited" and COALESCEs to 0 here: a session that is both unit-less
+--     and uncapped has no finite remaining count to report.
+--
+-- timezone is venues.timezone and MAY be NULL. Spec §7.1 requires the session
+-- to be dropped from the response with a warn log in that case, so the column
+-- is projected rather than filtered in SQL — the handler needs the venue name
+-- for the log line.
+SELECT s.id                                        AS session_id,
+       s.event_id,
+       s.venue_id,
+       v.city_id,
+       v.name                                      AS venue_name,
+       v.timezone,
+       s.start_at,
+       trim(s.currency)::text                      AS currency,
+       s.admission_mode,
+       sp.name                                     AS seating_plan_name,
+       (SELECT min(tt.sale_window_end)
+          FROM   ticket_tiers tt
+          WHERE  tt.session_id = s.id
+            AND  tt.deleted_at IS NULL
+            AND  tt.sale_window_end IS NOT NULL)   AS sell_end_at,
+       (SELECT count(*)
+          FROM   session_seats ss
+          WHERE  ss.session_id = s.id)::int        AS seats_total,
+       (SELECT count(*)
+          FROM   session_seats ss
+          WHERE  ss.session_id = s.id
+            AND  ss.status = 'available')::int     AS seats_available,
+       COALESCE((SELECT il.capacity_total - il.capacity_sold - il.capacity_held
+                   FROM   inventory_ledger il
+                   WHERE  il.session_id = s.id
+                     AND  il.tier_id IS NULL), 0)::int AS ledger_available
+FROM   sessions s
+JOIN   events   e ON e.id = s.event_id
+JOIN   venues   v ON v.id = s.venue_id
+LEFT JOIN seating_plan_versions spv ON spv.id = s.seating_plan_version_id
+LEFT JOIN seating_plans         sp  ON sp.id  = spv.seating_plan_id
+WHERE  e.org_id     = $1
+  AND  e.status     = 'published'
+  AND  e.deleted_at IS NULL
+  AND  s.deleted_at IS NULL
+  AND  s.status     = 'scheduled'
+  AND  s.start_at   > now() - interval '6 hours'
+ORDER BY s.start_at ASC, s.id ASC;
+
+-- name: ListActionEventTiersByOrg :many
+-- ListActionEventTiersByOrg returns every live ticket tier of the same session
+-- set as ListActionEventsByOrg, for the spec §7.1 categoryLimitList block and
+-- the minPrice / maxPrice aggregates (feature #497).
+--
+-- The GA/seated split is PROJECTED (is_ga) rather than filtered, because the
+-- two consumers want different subsets out of the same single round-trip:
+--   * categoryLimitList takes is_ga = true only. "GA tier" per spec §7.1 = a
+--     tier that sells a place without a seat: every tier of a
+--     general_admission session, plus the tiers stamped on kind='ga_unit' rows
+--     of a hybrid session. Seated tiers are deliberately excluded — their
+--     absence is how the WP plugin tells "pure seating" (empty
+--     categoryLimitList) from "combined" (bil24-acf-sync.php:434-446).
+--   * minPrice / maxPrice span ALL live tiers, so a pure-seating action still
+--     advertises a "from" price even though it exposes no categories here.
+--
+-- ga_units_available counts the tier's own free GA units; ga_units_total tells
+-- "this tier has no unit rows at all" (a GA pool with NULL tier_id, the common
+-- shape) apart from "genuinely sold out", so the handler knows when to fall
+-- back to the session-level remaining count.
+--
+-- The row carries the full ticket_tiers column list so the handler can reuse
+-- the shared TicketTierRow scanner and feed priceresolve.ForTiers in ONE
+-- round-trip for the whole catalog.
+SELECT tt.id, tt.session_id, tt.name, tt.pricing_mode, tt.price_amount,
+       tt.currency, tt.pwyw_min, tt.pwyw_max, tt.capacity,
+       tt.sale_window_start, tt.sale_window_end, tt.sort_order,
+       tt.created_at, tt.updated_at, tt.deleted_at,
+       (s.admission_mode = 'general_admission'
+        OR (s.admission_mode = 'hybrid'
+            AND EXISTS (SELECT 1
+                          FROM   session_seats ss3
+                          WHERE  ss3.session_id = tt.session_id
+                            AND  ss3.tier_id    = tt.id
+                            AND  ss3.kind       = 'ga_unit'))) AS is_ga,
+       (SELECT count(*)
+          FROM   session_seats ss
+          WHERE  ss.session_id = tt.session_id
+            AND  ss.tier_id    = tt.id
+            AND  ss.kind       = 'ga_unit')::int      AS ga_units_total,
+       (SELECT count(*)
+          FROM   session_seats ss
+          WHERE  ss.session_id = tt.session_id
+            AND  ss.tier_id    = tt.id
+            AND  ss.kind       = 'ga_unit'
+            AND  ss.status     = 'available')::int    AS ga_units_available
+FROM   ticket_tiers tt
+JOIN   sessions s ON s.id = tt.session_id
+JOIN   events   e ON e.id = s.event_id
+WHERE  e.org_id     = $1
+  AND  e.status     = 'published'
+  AND  e.deleted_at IS NULL
+  AND  s.deleted_at IS NULL
+  AND  s.status     = 'scheduled'
+  AND  s.start_at   > now() - interval '6 hours'
+  AND  tt.deleted_at IS NULL
+ORDER BY tt.session_id, tt.sort_order ASC, tt.id ASC;
