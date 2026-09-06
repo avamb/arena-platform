@@ -27780,3 +27780,54 @@ in the tree (`features.db`, modified `.autoforge/prompts/coding_prompt.md`,
 deleted `.claude/scheduled_tasks.lock`) left alone as in prior sessions. No
 code files changed this session (verification-only), so nothing to commit
 or push. Marked feature #455 passing via feature_mark_passing.
+
+## Integration gate (wave: #488-#508, #454, #455, #462, #482) — 2026-09-06
+
+Ran as the between-features Integrator, covering everything landed since
+the previous gate at f5edb4b (feature #487): commits 4054c91..906c989
+(orders wiring, W1-B7a-e bil24_wp outbox chain, GET_ALL_ACTIONS nested
+catalog, seating-plan image endpoint, EAN-13 credentials epic, customer
+read surface, plus three prior epic-verify sessions #454/#455/#462 which
+had already each re-run a full gate themselves). 485/522 features passing
+(92.9%), 0 in-progress, 0 needs-human-input.
+
+Commands run, repo root, arena_postgres dev-stand up on localhost:55432:
+- `go.exe build ./apps/backend/...` -> EXIT:0
+- `go.exe vet ./apps/backend/...` -> EXIT:0
+- `go.exe test ./apps/backend/...` (untagged, redirected to a log, never
+  piped through head) -> EXIT:0, 67 `ok` packages, zero FAIL lines
+- `gofmt -l` over apps/backend/internal, cmd, tools, tests -> empty
+- `go.exe test -tags integration ./apps/backend/...` (DATABASE_URL split
+  around the blocked `postgres` token per AGENTS.md) -> EXIT:0, 68 `ok`
+  packages, zero FAIL lines
+- `GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe run
+  github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run
+  ./apps/backend/...` -> "0 issues.", EXIT:0
+- Migration head pin: `migrations_head_test.go` expectedHead =
+  "0095_customer_read_role_grants.sql", matches the actual max-numbered
+  file in `internal/migrations/sql/` -> no drift
+- Codegen/spec drift check (openapi.yaml changed in this range - #489
+  orders endpoints, #507 wp-webhook, #500/#501 seating image): regenerated
+  via `go run ./apps/backend/tools/openapi30gen ...` +
+  `oapi-codegen@v2.4.1 --config=apps/backend/openapi/oapi-codegen.yaml` +
+  `node scripts/gen-ts-client.mjs` -> `git status --short` showed ZERO
+  diff afterward, confirming types_gen.go and the TS client were already
+  current
+- `go.exe test ./apps/backend/internal/platform/httpserver/ -run OpenAPI`
+  -> EXIT:0, all spec-example/operationID/schema tests pass
+- `npm run --prefix apps/admin-web type-check` -> EXIT:0
+- `npm run --prefix apps/admin-web test` -> 44 files / 1130 tests passed
+- `node scripts/admin-smoke-guardrails.mjs` -> OK, 123 files scanned
+- `git worktree list` -> only the main worktree, no stale entries to clean
+- `gh` CLI unavailable in this sandbox (pre-existing documented
+  limitation) - could not watch a live CI run; all local gates are the
+  full signal available here
+
+No drift found, nothing to fix, no fix-features filed. Pre-existing
+untouched artifacts (`features.db`, modified
+`.autoforge/prompts/coding_prompt.md`, deleted
+`.claude/scheduled_tasks.lock`) left alone, consistent with prior sessions
+- these are orchestrator/session scratch files outside the repo's own
+tracked application code. No feature statuses changed (integrator role
+never marks features passing/failing). Nothing to commit from this
+session's gate work itself except this progress note; pushing it now.
