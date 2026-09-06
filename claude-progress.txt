@@ -2,6 +2,64 @@
 arena_new — Backend Foundation Milestone — Progress Notes
 ================================================================================
 
+## 2026-09-06 - #515 W1-C3a - seating.ImportSBTSVG + geometry external ids
+
+Feature #515 COMPLETE (commit 2d11d8f, pushed to master).
+
+Delivered:
+- internal/domain/seating/sbt_import.go: ImportSBTSVG(raw) → (SBTPlan,
+  warnings, ValidationErrors). SBTPlan = canonical Geometry +
+  []SBTCategory{Index, ExternalID, Name, Color, Price, PriceMinor} +
+  StatusVersion. Rules per spec §13.3: viewBox mandatory (NO width/height
+  fallback and NO MaxCanvasDimension cap — a Bil24 plan is an upstream
+  fact, not something we authored); a seat is a <circle> carrying BOTH
+  sbt:id and sbt:state; sector = nearest ancestor with sbt:sect; row =
+  nearest ancestor with sbt:row or its <title>; number = sbt:seat (falls
+  back to <title>); category by sbt:cat INDEX resolved against
+  <metadata><sbt:category>; everything else (incl. <g id="Decor">) is
+  re-serialised decor.
+- Validation errors (new codes in errors.go): sbt_categories_missing,
+  sbt_category_invalid, sbt_duplicate_category, sbt_seat_id_invalid,
+  sbt_duplicate_seat_id, sbt_seat_category_missing, sbt_seats_missing;
+  plus the existing seat_missing_number / row_missing_sector_label /
+  row_missing_title / duplicate_seat / invalid_svg reused where the rule
+  is the same one.
+- geometry.go: Seat.ExternalID and Category.ExternalID (int64,
+  `external_id,omitempty`). omitempty is load-bearing: geometries
+  authored inside arena keep their PREVIOUS stored geometry_checksum, so
+  no re-versioning of existing plans. Both fields flow through
+  Canonicalize → CanonicalJSON → Checksum, so a re-import whose upstream
+  ids changed produces a new version (test pins both directions).
+- sbt_import_test.go: reads the writer's own golden
+  tests/compat/bil24/testdata/wp/svg/palac_akropolis.sbt.svg
+  (relative path — writer and reader must agree on ONE file), asserts
+  260 seats == the <circle sbt:id= count, 15 categories with external ids
+  1000000010..1000000150, priced category 3 = "1250"/125000 minor, seat
+  10000 → key balcony-center|1|1 cat 3 cx -69.301842, decor keeps
+  id="Decor" and drops sbt:sect/sbt:state/sbt:category. Plus
+  determinism, checksum-sensitivity, per-rule synthetic fixtures (15
+  cases), row-from-<title> fallback, decor-circle-is-not-a-seat.
+
+Notes for the next sub-features:
+- #516 materialisation: Seat.ExternalID is the value that must land in
+  session_seats.system_seat_id with system_seat_id_source='bil24' and be
+  re-applied on rebind.
+- #517/#518 endpoint: SBTCategory.ExternalID is Bil24's categoryPriceId
+  for compatids.RegisterExternal; PriceMinor is the DB-ready tier price.
+- Decor round-trip caveat: importing hseating's own output yields
+  DecorSVG already wrapped in <g id="Decor">, and RenderSBT10SVG wraps
+  again on re-export. Harmless nesting, but do not assert byte equality
+  of a full export→import→export cycle.
+
+Gates run: go build ./apps/backend/..., go vet ./apps/backend/... (clean),
+go test -count=1 on internal/domain/seating, httpserver/... (all),
+tests/compat/bil24/..., adapters/bil24compat/..., tests/staticanalysis/...,
+internal/migrations/... — all ok. gofmt -l on the four changed files:
+clean. golangci-lint on the seating package: 0 issues. No DB/migration/
+openapi/admin-web surface touched, so no codegen, no head pin bump, and
+no browser verification is applicable (this sub-feature is a pure domain
+parser; the HTTP surface is sibling feature #517).
+
 ## 2026-09-05 - #476 W1-A2b slice 14 - ListActionVenuesByOrg SQL prep
 
 Feature #476 STAYS in_progress (sub-feature rule: NEVER release claim as
