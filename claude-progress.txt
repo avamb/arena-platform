@@ -28148,3 +28148,38 @@ Gates (all from repo root, no pipelines used to judge exit status):
 Staged by path, never `git add .`. The usual scratch artifacts
 (`.autoforge/prompts/coding_prompt.md`, `.claude/scheduled_tasks.lock`,
 `features.db`) were left unstaged. Marking #491 passing.
+
+================================================================================
+Integration gate - 2026-09-06 (post #512/#498/#459/#491, head e5545b2)
+================================================================================
+
+Full repo-wide gate re-run, no code changes needed - clean pass:
+- `go.exe build ./apps/backend/...` -> EXIT:0
+- `go.exe vet ./apps/backend/...` -> EXIT:0
+- `gofmt -l` over internal/cmd/tools/tests/openapi -> empty
+- `go.exe test ./apps/backend/...` (untagged) -> EXIT:0, 68 ok packages, 0 FAIL
+- `GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe run
+  github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run
+  ./apps/backend/...` -> "0 issues."
+- Migration head pin test -> PASS, matches actual head 0096_api_keys.sql
+- `DATABASE_URL="post""gres://arena:arena@localhost:55432/arena?sslmode=disable"
+  JWT_SIGNING_SECRET=x go.exe test -tags integration ./apps/backend/...` ->
+  EXIT:0, 69 ok packages, 0 FAIL
+- Local migrate smoke test against `arena_postgres` dev-stand -> "no
+  migrations to run, current version: 96"
+- Codegen drift check: openapi30gen + oapi-codegen@v2.4.1 +
+  scripts/gen-ts-client.mjs re-run -> `git status --short apps/backend` empty,
+  types_gen.go and TS client both current
+- `npm run --prefix apps/admin-web type-check` -> EXIT:0
+- `npm run --prefix apps/admin-web test` -> 44 files / 1130 tests passed
+- `go.exe test ./apps/backend/tests/staticanalysis/...` -> EXIT:0 (all
+  guardrails, incl. layout/no-mock/no-in-memory-store checks)
+- `node scripts/admin-smoke-guardrails.mjs` -> OK, 123 files scanned
+- `git worktree list` -> only the primary checkout, no stale worktrees to prune
+
+No drift found anywhere; nothing to fix or commit besides this note. Stats:
+490/522 features passing, 0 in progress. Pre-existing scratch artifacts left
+alone as usual (`features.db`, modified `.autoforge/prompts/coding_prompt.md`,
+deleted `.claude/scheduled_tasks.lock`). `gh` CLI remains blocked in this
+sandbox for watching CI (pre-existing, documented in AGENTS.md) - pushed to
+origin/master and left for owner/CI to confirm remotely.
