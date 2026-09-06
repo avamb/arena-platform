@@ -126,6 +126,18 @@ func (c *DBChecker) Check(ctx context.Context, action, resource string) error {
 		return &PermissionDeniedError{Action: action, Resource: resource}
 	}
 
+	// Service actors (organization API keys, spec §13.1) carry no roles at
+	// all: their permission set is exactly api_keys.scopes, already resolved
+	// by the applyAuth middleware. Decide from that set and never touch the
+	// roles/memberships tables — an API key has no org_memberships row, so
+	// falling through would deny every request.
+	if actor.IsService() {
+		if actor.HasPermission(action) {
+			return nil
+		}
+		return &PermissionDeniedError{Action: action, Resource: resource}
+	}
+
 	// Build the effective role set: start with JWT roles.
 	roles := make([]string, len(actor.Roles))
 	copy(roles, actor.Roles)

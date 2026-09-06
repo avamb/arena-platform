@@ -48,6 +48,11 @@ func requireOrgMembership(w http.ResponseWriter, r *http.Request, q *gen.Queries
 // existence must not leak). A non-nil error is an infrastructure failure
 // and MUST surface as a 5xx, never as an authorization decision.
 func actorIsMemberOfOrg(ctx context.Context, q *gen.Queries, orgID uuid.UUID) (bool, error) {
+	// Organization API keys (spec §13.1) hold no org_memberships row: their
+	// reach is exactly api_keys.org_id. Decide here and never touch q.
+	if isService, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); isService {
+		return allowed, nil
+	}
 	actor, ok := auth.ActorFromContext(ctx)
 	if !ok || actor.ID == "" {
 		return false, nil

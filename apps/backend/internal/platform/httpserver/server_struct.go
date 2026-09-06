@@ -10,6 +10,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/apikeys"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/clock"
@@ -20,6 +21,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/ratelimit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/redissession"
 )
 
@@ -47,6 +49,14 @@ type Server struct {
 	outboxWriter outbox.Writer
 	perms        permissions.Checker
 	clk          clock.Clock
+
+	// apiKeyStore backs organization API-key authentication (spec §13.1,
+	// feature #513). Nil in unit tests that do not exercise service actors;
+	// authenticateAPIKey then answers 401 for every `ak_…` bearer.
+	apiKeyStore apikeys.Store
+	// apiKeyRL enforces APIKeyRateLimit requests per APIKeyRateWindow keyed
+	// by api_key.id. Nil disables the limit (tests only).
+	apiKeyRL ratelimit.Limiter
 
 	// Per-domain sqlc Queries handles. All are nilable; the corresponding
 	// route mounts guard against missing handles. See mount_*.go.

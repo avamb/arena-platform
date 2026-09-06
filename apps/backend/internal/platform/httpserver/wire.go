@@ -10,6 +10,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	httpadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/http"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/apikeys"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/clock"
@@ -50,6 +51,12 @@ type Options struct {
 	Audit    audit.Writer
 	Idem     idempotency.Store
 	PgxPool  *pgxpool.Pool
+
+	// APIKeyStore backs organization API-key authentication (spec §13.1,
+	// feature #513). When nil and PgxPool is non-nil the constructor builds a
+	// gen.Queries-backed store; when both are nil every `Bearer ak_…` request
+	// is rejected with 401.
+	APIKeyStore apikeys.Store
 
 	MetricsHandler http.Handler
 	Metrics        *observability.Metrics
@@ -193,6 +200,9 @@ func New(opts Options) *Server {
 	if auditWriter == nil && opts.PgxPool != nil {
 		auditWriter = audit.NewPGWriter(opts.PgxPool)
 	}
+	// Requests authenticated with an organization API key must be attributed
+	// to `api_key:<id>` no matter which handler writes the row (spec §13.1).
+	auditWriter = audit.WithServiceActor(auditWriter)
 	idemStore := opts.Idem
 	if idemStore == nil && opts.PgxPool != nil {
 		idemStore = idempotency.NewPGStore(opts.PgxPool)
@@ -214,6 +224,15 @@ func New(opts Options) *Server {
 	if clk == nil {
 		clk = clock.New()
 	}
+
+	// Organization API keys (spec §13.1, feature #513): the store is DB-backed
+	// whenever a pool is available; the limiter is always present so the
+	// 600/min budget cannot be silently lost by a wiring omission.
+	apiKeyStore := opts.APIKeyStore
+	if apiKeyStore == nil && opts.PgxPool != nil {
+		apiKeyStore = apikeys.NewStoreFromQueries(gen.New(opts.PgxPool))
+	}
+	apiKeyRL := newAPIKeyRateLimiter()
 
 	// sqlc Queries for /v1/server-info.
 	var siQueries *gen.Queries
@@ -249,6 +268,8 @@ func New(opts Options) *Server {
 		outboxWriter: outboxWriter,
 		perms:        permsChecker,
 		clk:          clk,
+		apiKeyStore:  apiKeyStore,
+		apiKeyRL:     apiKeyRL,
 		siQueries:    siQueries,
 
 		faultInjectOutboxAfterAudit: opts.FaultInjectOutboxAfterAudit,

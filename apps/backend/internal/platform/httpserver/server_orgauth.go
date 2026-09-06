@@ -23,6 +23,11 @@ import (
 // active membership in orgID. Mirrors the same helper in hiam and hcatalog
 // sub-packages but operates against the *Server's membershipQueries field.
 func actorIsMemberOfOrgServer(ctx context.Context, q *gen.Queries, orgID uuid.UUID) (bool, error) {
+	// Organization API keys (spec §13.1) hold no org_memberships row: their
+	// reach is exactly api_keys.org_id. Decide here and never touch q.
+	if isService, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); isService {
+		return allowed, nil
+	}
 	actor, ok := auth.ActorFromContext(ctx)
 	if !ok || actor.ID == "" {
 		return false, nil
@@ -73,6 +78,9 @@ func (s *Server) enforceMembershipInOrg(w http.ResponseWriter, r *http.Request, 
 			return false
 		}
 		return true
+	}
+	if isService, allowed := httputil.ServiceActorDecision(w, r, orgID); isService {
+		return allowed
 	}
 	if s.membershipQueries == nil {
 		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(

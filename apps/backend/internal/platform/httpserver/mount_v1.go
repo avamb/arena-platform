@@ -80,8 +80,11 @@ func (s *Server) mountV1Routes() {
 
 // applyAuth adds the canonical auth + permission middleware pair to pr.
 // Use inside a r.Group(...) closure to scope the middleware to a sub-tree.
+//
+// s.authMiddleware() accepts BOTH a user JWT and an organization API key
+// (`Authorization: Bearer ak_…`, spec §13.1) — see server_apikey_auth.go.
 func (s *Server) applyAuth(pr chi.Router, perm, scope string) {
-	pr.Use(auth.Middleware(s.authProvider(), auth.MiddlewareOptions{Logger: s.logger}))
+	pr.Use(s.authMiddleware())
 	pr.Use(permissions.RequirePermission(s.perms, perm, scope))
 	pr.Use(s.markSuperadminOrgAccess)
 }

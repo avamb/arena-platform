@@ -92,6 +92,16 @@ type Actor struct {
 	// by the admin when issuing this impersonation token. Empty for regular tokens.
 	// Set from the "impersonation_reason" JWT claim (feature #167).
 	ImpersonationReason string
+	// Permissions is the explicit, already-resolved set of permission codes
+	// this actor carries. It is populated ONLY for service actors
+	// authenticated with an organization API key (spec §13.1: "роли пустые,
+	// права = scopes"); user actors resolve permissions from their roles via
+	// permissions.DBChecker instead and leave this nil.
+	Permissions []string
+	// OrgID is the organization this actor is confined to. Populated only for
+	// service actors (api_keys.org_id); empty for user actors, whose org
+	// membership is resolved from org_memberships.
+	OrgID string
 }
 
 // IsImpersonated reports whether this actor's token was issued as an
