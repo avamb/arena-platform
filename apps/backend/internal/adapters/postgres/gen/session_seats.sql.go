@@ -11,6 +11,16 @@ import (
 	"github.com/google/uuid"
 )
 
+// Allowed values of session_seats.system_seat_id_source (migration 0090,
+// spec §3.1). 'arena' means the id came from
+// session_seats_system_id_seq; 'bil24' means it was assigned upstream and
+// copied verbatim from geometry.seats[].external_id at materialisation
+// so it survives a rebind (§13.2 step 6).
+const (
+	SeatIDSourceArena = "arena"
+	SeatIDSourceBil24 = "bil24"
+)
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SessionSeatRow — shared result type for all session_seats queries
 // ─────────────────────────────────────────────────────────────────────────────
@@ -97,12 +107,15 @@ func (q *Queries) InsertSessionSeat(
 
 const insertSessionSeats = `-- name: InsertSessionSeats :execrows
 INSERT INTO session_seats (
-    session_id, seat_key, sector_name, row_name, seat_number, tier_id
+    session_id, seat_key, sector_name, row_name, seat_number, tier_id,
+    system_seat_id, system_seat_id_source
 )
-SELECT $1, u.seat_key, u.sector_name, u.row_name, u.seat_number, u.tier_id::uuid
+SELECT $1, u.seat_key, u.sector_name, u.row_name, u.seat_number, u.tier_id::uuid,
+       COALESCE(u.system_seat_id, nextval('session_seats_system_id_seq')),
+       CASE WHEN u.system_seat_id IS NULL THEN 'arena' ELSE $8::text END
 FROM unnest(
-    $2::text[], $3::text[], $4::text[], $5::text[], $6::text[]
-) AS u(seat_key, sector_name, row_name, seat_number, tier_id)`
+    $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::bigint[]
+) AS u(seat_key, sector_name, row_name, seat_number, tier_id, system_seat_id)`
 
 // InsertSessionSeats is the batch variant of InsertSessionSeat: it
 // materializes every seat of a version geometry in a single multi-row
@@ -111,19 +124,66 @@ FROM unnest(
 // UUID strings and may be nil for seats without a resolved tier (they
 // travel as text[] and are cast per-row, matching the promo_codes uuid[]
 // text-codec precedent). Returns the number of rows inserted.
+//
+// W1-C3b (§3.1 / §13.2 step 6): systemSeatIDs carries the OPTIONAL
+// upstream seat identity (geometry.seats[].external_id — the Bil24
+// seatId). Non-nil entries are written verbatim into
+// session_seats.system_seat_id with system_seat_id_source = source, so
+// the same integer survives a rebind; nil entries fall back to the arena
+// sequence with source 'arena'. Pass nil to materialize a plan without
+// any external ids. Callers assigning explicit ids MUST call
+// AdvanceSessionSeatSystemIDSeq with the maximum id FIRST so the
+// sequence can never mint a colliding value later.
 func (q *Queries) InsertSessionSeats(
 	ctx context.Context,
 	sessionID uuid.UUID,
 	seatKeys, sectorNames, rowNames, seatNumbers []string,
 	tierIDs []*string,
+	systemSeatIDs []*int64,
+	source string,
 ) (int64, error) {
+	// Normalise the optional array to the seat count. unnest() does pad
+	// the shorter array with NULLs, but relying on that would make a nil
+	// slice depend on the driver's NULL-array encoding; an explicit
+	// same-length slice of nils is unambiguous.
+	if len(systemSeatIDs) != len(seatKeys) {
+		padded := make([]*int64, len(seatKeys))
+		copy(padded, systemSeatIDs)
+		systemSeatIDs = padded
+	}
+	if source == "" {
+		source = SeatIDSourceArena
+	}
 	tag, err := q.db.Exec(ctx, insertSessionSeats,
 		sessionID, seatKeys, sectorNames, rowNames, seatNumbers, tierIDs,
+		systemSeatIDs, source,
 	)
 	if err != nil {
 		return 0, err
 	}
 	return tag.RowsAffected(), nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AdvanceSessionSeatSystemIDSeq
+// ─────────────────────────────────────────────────────────────────────────────
+
+const advanceSessionSeatSystemIDSeq = `-- name: AdvanceSessionSeatSystemIDSeq :exec
+SELECT setval('session_seats_system_id_seq', $1::bigint)
+WHERE  $1::bigint > (SELECT last_value FROM session_seats_system_id_seq)`
+
+// AdvanceSessionSeatSystemIDSeq pushes session_seats_system_id_seq past an
+// explicitly assigned system_seat_id (W1-C3b). Materialising an imported
+// Bil24 plan writes upstream seat ids verbatim; without this the arena
+// sequence would eventually mint the same integer and violate the UNIQUE
+// index on session_seats.system_seat_id. Idempotent and monotone — the
+// sequence is only ever moved forward. Values <= 0 are a no-op.
+func (q *Queries) AdvanceSessionSeatSystemIDSeq(ctx context.Context, minValue int64) error {
+	if minValue <= 0 {
+		return nil
+	}
+	_, err := q.db.Exec(ctx, advanceSessionSeatSystemIDSeq, minValue)
+	return err
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -37,13 +37,35 @@ RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
 -- cast per-row, matching the promo_codes uuid[] text-codec precedent).
 -- Same column defaults as InsertSessionSeat (status 'available',
 -- reservation_id NULL, status_version 0).
+--
+-- W1-C3b (§3.1 / §13.2 step 6): system_seat_ids carries the OPTIONAL
+-- upstream seat identity (geometry.seats[].external_id — the Bil24
+-- seatId). A non-NULL entry is written verbatim into
+-- session_seats.system_seat_id with system_seat_id_source = $8, so the
+-- very same integer keeps addressing the seat across a rebind. A NULL
+-- entry falls back to the arena sequence with source 'arena'. Callers
+-- passing explicit ids MUST first run AdvanceSessionSeatSystemIDSeq so
+-- the sequence can never later mint a colliding value.
 INSERT INTO session_seats (
-    session_id, seat_key, sector_name, row_name, seat_number, tier_id
+    session_id, seat_key, sector_name, row_name, seat_number, tier_id,
+    system_seat_id, system_seat_id_source
 )
-SELECT $1, u.seat_key, u.sector_name, u.row_name, u.seat_number, u.tier_id::uuid
+SELECT $1, u.seat_key, u.sector_name, u.row_name, u.seat_number, u.tier_id::uuid,
+       COALESCE(u.system_seat_id, nextval('session_seats_system_id_seq')),
+       CASE WHEN u.system_seat_id IS NULL THEN 'arena' ELSE $8::text END
 FROM unnest(
-    $2::text[], $3::text[], $4::text[], $5::text[], $6::text[]
-) AS u(seat_key, sector_name, row_name, seat_number, tier_id);
+    $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::bigint[]
+) AS u(seat_key, sector_name, row_name, seat_number, tier_id, system_seat_id);
+
+-- name: AdvanceSessionSeatSystemIDSeq :exec
+-- Pushes session_seats_system_id_seq past an explicitly assigned
+-- system_seat_id (W1-C3b). Materialisation of an imported Bil24 plan
+-- writes upstream seat ids verbatim; without this the arena sequence
+-- would eventually mint the same integer and violate the UNIQUE index
+-- on session_seats.system_seat_id. Idempotent and monotone: the
+-- sequence is only ever moved forward, never back.
+SELECT setval('session_seats_system_id_seq', $1::bigint)
+WHERE  $1::bigint > (SELECT last_value FROM session_seats_system_id_seq);
 
 -- name: DeleteSessionSeatsBySession :execrows
 -- Wipes every materialized seat for a session. Called on the SEAT-B2

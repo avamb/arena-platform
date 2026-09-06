@@ -491,7 +491,8 @@ type Querier interface {
 
 	// Session seats — per-seat state for assigned-seats sessions (feature #305, Wave SEAT-B1)
 	InsertSessionSeat(ctx context.Context, sessionID uuid.UUID, seatKey, sectorName, rowName, seatNumber string, tierID *uuid.UUID) (SessionSeatRow, error)
-	InsertSessionSeats(ctx context.Context, sessionID uuid.UUID, seatKeys, sectorNames, rowNames, seatNumbers []string, tierIDs []*string) (int64, error)
+	InsertSessionSeats(ctx context.Context, sessionID uuid.UUID, seatKeys, sectorNames, rowNames, seatNumbers []string, tierIDs []*string, systemSeatIDs []*int64, source string) (int64, error)
+	AdvanceSessionSeatSystemIDSeq(ctx context.Context, minValue int64) error
 	DeleteSessionSeatsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error)
 	GetSessionSeatByID(ctx context.Context, id, sessionID uuid.UUID) (SessionSeatRow, error)
 	GetSessionSeatBySystemSeatID(ctx context.Context, sessionID uuid.UUID, systemSeatID int64) (SessionSeatRow, error)

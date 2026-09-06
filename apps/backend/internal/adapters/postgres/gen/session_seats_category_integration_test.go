@@ -60,6 +60,7 @@ func TestAB39_BulkSetSessionSeatTier_LiveDB(t *testing.T) {
 		[]string{"1", "1", "1"},
 		[]string{"1", "2", "3"},
 		[]*string{nil, nil, nil},
+		nil, "",
 	)
 	if err != nil {
 		t.Fatalf("InsertSessionSeats: %v", err)

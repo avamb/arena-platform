@@ -427,12 +427,24 @@ func (h *Handler) bindSessionSeatingCore(
 	// so a large plan costs one round-trip instead of one per seat.
 	// seat_key is copied verbatim from the geometry (§5.3 stable
 	// identifier); tier_id comes from the resolved map.
+	//
+	// W1-C3b (spec §3.1 / §13.2 step 6): when the geometry carries
+	// upstream seat identities (Seat.ExternalID — the Bil24 seatId parsed
+	// by seating.ImportSBTSVG), they are written verbatim into
+	// session_seats.system_seat_id with system_seat_id_source='bil24'.
+	// Because the geometry is immutable once locked, re-running the bind
+	// re-derives exactly the same integers: seat ids survive a rebind,
+	// which is what GET_SEAT_LIST / GET_SCHEMA / the sbt-SVG image put on
+	// the wire. Seats without an external id keep falling back to the
+	// arena sequence.
 	seatCount := geometry.SeatCount()
 	seatKeys := make([]string, 0, seatCount)
 	sectorNames := make([]string, 0, seatCount)
 	rowNames := make([]string, 0, seatCount)
 	seatNumbers := make([]string, 0, seatCount)
 	tierIDs := make([]*string, 0, seatCount)
+	systemSeatIDs := make([]*int64, 0, seatCount)
+	var maxExternalID int64
 	for _, section := range geometry.Sections {
 		for _, row := range section.Rows {
 			for _, seat := range row.Seats {
@@ -453,13 +465,37 @@ func (h *Handler) bindSessionSeatingCore(
 				rowNames = append(rowNames, row.Name)
 				seatNumbers = append(seatNumbers, seat.Number)
 				tierIDs = append(tierIDs, &tierStr)
+				if seat.ExternalID > 0 {
+					ext := seat.ExternalID
+					systemSeatIDs = append(systemSeatIDs, &ext)
+					if ext > maxExternalID {
+						maxExternalID = ext
+					}
+				} else {
+					systemSeatIDs = append(systemSeatIDs, nil)
+				}
 			}
+		}
+	}
+	seatIDSource := gen.SeatIDSourceArena
+	if maxExternalID > 0 {
+		seatIDSource = gen.SeatIDSourceBil24
+		// Push the arena sequence past every explicitly assigned id so a
+		// later plain materialization can never mint a colliding value
+		// (system_seat_id is globally UNIQUE). Monotone and idempotent.
+		if err := qtx.AdvanceSessionSeatSystemIDSeq(ctx, maxExternalID); err != nil {
+			h.logger.Error("seating: bind seat id sequence advance failed",
+				slog.String("error", err.Error()),
+			)
+			return nil, bindErr(http.StatusInternalServerError,
+				"seating.bind_failed", "failed to reserve seat id range", nil)
 		}
 	}
 	materialized := 0
 	if len(seatKeys) > 0 {
 		inserted, err := qtx.InsertSessionSeats(
 			ctx, sessionID, seatKeys, sectorNames, rowNames, seatNumbers, tierIDs,
+			systemSeatIDs, seatIDSource,
 		)
 		if err != nil {
 			h.logger.Error("seating: bind seat materialize failed",

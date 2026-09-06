@@ -226,7 +226,7 @@ func TestAB49Integration_AssignedSeat_CancelResellCycle(t *testing.T) {
 	// Materialize one seat and sell it.
 	if _, err := q.InsertSessionSeats(ctx, f.sessionID,
 		[]string{"A|1|1"}, []string{"A"}, []string{"1"}, []string{"1"},
-		[]*string{ptr(f.tierID.String())}); err != nil {
+		[]*string{ptr(f.tierID.String())}, nil, ""); err != nil {
 		t.Fatalf("InsertSessionSeats: %v", err)
 	}
 	sold := sellSeat(t, ctx, q, f, "A|1|1")
