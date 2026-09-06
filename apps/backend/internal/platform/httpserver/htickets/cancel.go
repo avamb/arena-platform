@@ -47,10 +47,8 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
 // cancelBodyLimit caps the JSON payload for the cancel endpoint.
@@ -170,116 +168,27 @@ func (h *Handler) HandleCancelTicket(w http.ResponseWriter, r *http.Request) {
 
 	// ── The cancellation transaction ─────────────────────────────────────
 	// Everything inventory- and gate-related happens here, atomically,
-	// and none of it is conditional on the money.
-	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "failed to begin transaction", r,
+	// and none of it is conditional on the money. The body lives in the
+	// exported CancelTicketTx so non-HTTP callers (the Bil24 gateway's
+	// REFUND_TICKET, feature #509) run the identical transaction.
+	actor, _ := auth.ActorFromContext(ctx)
+	outcome, cancelErr := h.CancelTicketTx(ctx, CancelTicketParams{
+		TicketID:     id,
+		Reason:       req.Reason,
+		RefundMode:   req.RefundMode,
+		RefundAmount: req.RefundAmount,
+		ActorType:    "user",
+		ActorID:      actor.ID,
+	})
+	if cancelErr != nil {
+		httputil.WriteJSON(w, cancelErr.Status, httputil.ErrorEnvelope(
+			cancelErr.Code, cancelErr.Message, r,
 		))
 		return
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
-	txq := h.ticketQueries.WithTx(tx)
-
-	cancelled, err := txq.CancelTicket(ctx, id, req.Reason, req.RefundMode)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			// Lost the race with a concurrent cancel — surface as conflict.
-			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
-				"ticket.not_active", "ticket is no longer active", r,
-			))
-			return
-		}
-		h.logger.Error("ticket.cancel: transition failed", slog.String("id", id.String()), slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"ticket.cancel_failed", "failed to cancel ticket", r,
-		))
-		return
-	}
-
-	release, err := ReleaseCancelledTicketInventoryTx(ctx, txq, cancelled)
-	if err != nil {
-		h.logger.Error("ticket.cancel: inventory release failed",
-			slog.String("id", id.String()),
-			slog.String("session_id", cancelled.SessionID.String()),
-			slog.String("error", err.Error()),
-		)
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"ticket.release_failed", "failed to release the ticket's inventory", r,
-		))
-		return
-	}
-
-	// Restore ledger capacity. Scope mirrors checkout conversion: a
-	// released seat/GA-unit row means the reservation confirmed
-	// session-level (nil tier) capacity; a row-less legacy/comp ticket
-	// confirmed per-tier capacity (see checkout_convert.go).
-	capacityRestored := false
-	if h.inventoryQueries != nil {
-		restoreTier := cancelled.TierID
-		if release.RowReleased() {
-			restoreTier = nil
-		}
-		if _, invErr := h.inventoryQueries.WithTx(tx).RestoreSoldCapacity(ctx, cancelled.SessionID, restoreTier, 1); invErr != nil {
-			h.logger.Error("ticket.cancel: capacity restore failed",
-				slog.String("id", id.String()),
-				slog.String("session_id", cancelled.SessionID.String()),
-				slog.String("error", invErr.Error()),
-			)
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"ticket.capacity_restore_failed", "failed to restore inventory capacity", r,
-			))
-			return
-		}
-		capacityRestored = true
-	}
-
-	// Revoke barcodes + credentials so the ticket stops admitting.
-	RevokeTicketArtifactsTx(ctx, h.logger, h.barcodeQueries, h.credentialQueries, tx, []gen.TicketRow{cancelled})
-
-	// Audit: who cancelled what, when, why, and the refund decision.
-	if h.audit != nil {
-		actor, _ := auth.ActorFromContext(ctx)
-		if auditErr := h.audit.WriteTx(ctx, tx, audit.Event{
-			OccurredAt:   time.Now().UTC(),
-			ActorType:    "user",
-			ActorID:      actor.ID,
-			Action:       "v1.ticket.cancel",
-			ResourceType: "ticket",
-			ResourceID:   cancelled.ID.String(),
-			RequestID:    logging.RequestID(ctx),
-			TraceID:      logging.TraceID(ctx),
-			Metadata: map[string]any{
-				"session_id":        cancelled.SessionID.String(),
-				"reason":            req.Reason,
-				"refund_mode":       req.RefundMode,
-				"refund_amount":     req.RefundAmount,
-				"seat_key":          cancelled.SeatKey,
-				"seat_released":     release.SeatReleased,
-				"ga_unit_released":  release.GAUnitReleased,
-				"capacity_restored": capacityRestored,
-			},
-		}); auditErr != nil {
-			h.logger.Error("ticket.cancel: audit write failed", slog.String("error", auditErr.Error()))
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"ticket.audit_failed", "failed to write audit event", r,
-			))
-			return
-		}
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"ticket.commit_failed", "failed to commit cancellation", r,
-		))
-		return
-	}
-
-	// The ticket no longer admits — notify the scanner pipeline (AB-50
-	// consumes these outbox events to feed MACS).
-	if h.publishTicketCancelledEvent != nil {
-		h.publishTicketCancelledEvent(ctx, cancelled, req.Reason, req.RefundMode)
-	}
+	cancelled := outcome.Ticket
+	release := outcome.Release
+	capacityRestored := outcome.CapacityRestored
 
 	// ── The money — strictly after the inventory committed ──────────────
 	resp := cancelTicketResponse{

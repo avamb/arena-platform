@@ -151,7 +151,7 @@ func (f *w1a6cFixture) cleanup() {
 		{`DELETE FROM delivery_jobs WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`, f.sessionID},
 		{`DELETE FROM ticket_credentials WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`, f.sessionID},
 		{`DELETE FROM tickets WHERE session_id = $1`, f.sessionID},
-		{`DELETE FROM outbox WHERE aggregate_id IN (SELECT id FROM orders WHERE org_id = $1)`, f.orgID},
+		{`DELETE FROM outbox_events WHERE aggregate_id IN (SELECT id::text FROM orders WHERE org_id = $1)`, f.orgID},
 		{`DELETE FROM order_events WHERE order_id IN (SELECT id FROM orders WHERE org_id = $1)`, f.orgID},
 		{`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE org_id = $1)`, f.orgID},
 		{`DELETE FROM orders WHERE org_id = $1`, f.orgID},
@@ -335,7 +335,7 @@ func TestW1A6c_PublicFeedPurchase_OrderItemsAndOrderPaid(t *testing.T) {
 		aggregateID uuid.UUID
 	)
 	if err := pool.QueryRow(ctx,
-		`SELECT count(*) FROM outbox WHERE aggregate_type = $1 AND event_type = $2 AND aggregate_id = $3`,
+		`SELECT count(*) FROM outbox_events WHERE aggregate_type = $1 AND event_type = $2 AND aggregate_id = $3::text`,
 		htickets.OrderAggregateType, htickets.OrderPaidEventType, order.ID).Scan(&paidCount); err != nil {
 		t.Fatalf("count outbox rows: %v", err)
 	}
@@ -343,8 +343,8 @@ func TestW1A6c_PublicFeedPurchase_OrderItemsAndOrderPaid(t *testing.T) {
 		t.Fatalf("v1.order.paid rows = %d, want exactly 1", paidCount)
 	}
 	if err := pool.QueryRow(ctx,
-		`SELECT aggregate_id, payload FROM outbox
-		 WHERE aggregate_type = $1 AND event_type = $2 AND aggregate_id = $3`,
+		`SELECT aggregate_id::uuid, payload FROM outbox_events
+		 WHERE aggregate_type = $1 AND event_type = $2 AND aggregate_id = $3::text`,
 		htickets.OrderAggregateType, htickets.OrderPaidEventType, order.ID,
 	).Scan(&aggregateID, &rawPayload); err != nil {
 		t.Fatalf("read outbox row: %v", err)
@@ -382,7 +382,7 @@ func TestW1A6c_PublicFeedPurchase_OrderItemsAndOrderPaid(t *testing.T) {
 		t.Errorf("replay returned %d tickets, want %d", len(replayed), qty)
 	}
 	if err := pool.QueryRow(ctx,
-		`SELECT count(*) FROM outbox WHERE aggregate_type = $1 AND event_type = $2 AND aggregate_id = $3`,
+		`SELECT count(*) FROM outbox_events WHERE aggregate_type = $1 AND event_type = $2 AND aggregate_id = $3::text`,
 		htickets.OrderAggregateType, htickets.OrderPaidEventType, order.ID).Scan(&paidCount); err != nil {
 		t.Fatalf("re-count outbox rows: %v", err)
 	}

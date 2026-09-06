@@ -429,8 +429,13 @@ func TestCompatBil24_450_Harness_Scenarios(t *testing.T) {
 		}
 	})
 
+	// Scenario 4 (feature #509, spec §7.13) drives REFUND_TICKET over the real
+	// server: the cancel transaction, refund_price / orders.status projection
+	// and the ticket.refunded fan-out to both the WordPress stub and the MACS
+	// stub, plus the idempotent replay and the cross-org -3. The body lives in
+	// scenario04_refund_test.go because it seeds a paid order of its own.
 	t.Run("04_refund_dedup", func(t *testing.T) {
-		t.Skip("feature #509: REFUND_TICKET fires ticket.refunded to wpstub AND MACS-stub; repeat → dedup; orders.status updates")
+		runScenario04Refund(t, st)
 	})
 
 	t.Run("05_expired_hold_on_pay_order", func(t *testing.T) {

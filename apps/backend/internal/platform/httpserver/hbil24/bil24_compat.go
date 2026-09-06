@@ -265,6 +265,11 @@ func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 		h.handleBil24AddPromoCodes(w, r, req)
 	case "CHECK_KDP":
 		h.handleBil24CheckKDP(w, r, req)
+	case "REFUND_TICKET":
+		// Feature #509 / spec §7.13: arena extension — the site refunds one
+		// ticket, the gateway runs the platform cancellation transaction
+		// with refund_mode='manual' and actor "gateway:<fid>".
+		h.handleBil24RefundTicket(w, r, req)
 	default:
 		// Feature #477 / spec section 6: unknown command name is a
 		// malformed-request condition and maps to ResultCodeInvalidRequest

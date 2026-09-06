@@ -215,7 +215,10 @@ func New(opts Options) *Server {
 	}
 	outboxWriter := opts.Outbox
 	if outboxWriter == nil && opts.PgxPool != nil {
-		outboxWriter = outbox.NewPGWriter(opts.PgxPool)
+		// outbox_events, not the legacy `outbox` table: every dispatcher
+		// (PGOutboxEventStore, macs, bil24wire, arena-worker) polls
+		// outbox_events, so events appended to `outbox` are never delivered.
+		outboxWriter = outbox.NewPGEventsWriter(opts.PgxPool)
 	}
 
 	// Permissions: DB-backed when a pool is available, AllowAll otherwise.

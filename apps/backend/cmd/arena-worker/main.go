@@ -450,7 +450,7 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		// v1.order.paid is written on the issuance transaction itself
 		// (feature #488), so the worker — which is where issuance actually
 		// runs in production — must carry the outbox writer.
-	).WithOutboxWriter(outbox.NewPGWriter(pool))
+	).WithOutboxWriter(outbox.NewPGEventsWriter(pool))
 	reg.Register(issuejob.JobType, issuejob.NewHandler(issuejob.HandlerOptions{
 		Queries:      queries,
 		IssueTickets: ticketIssueHandler.IssueTicketsForCheckout,

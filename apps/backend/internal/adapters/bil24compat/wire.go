@@ -113,6 +113,20 @@ type Request struct {
 	PromoCodes    []string
 	// PromoCode is the SINGULAR code CHECK_KDP validates without storing.
 	PromoCode string
+
+	// ── REFUND_TICKET fields (feature #509, spec §7.13) ──────────────────
+
+	// Reason is the optional operator-supplied refund reason. When empty
+	// the gateway substitutes the spec §7.13 default
+	// "REFUND_TICKET via gateway fid=<fid>".
+	Reason string `json:"reason"`
+	// RefundPrice is the optional refunded amount in MAJOR currency units
+	// (the Bil24 wire money convention, spec §4). nil means "the organizer
+	// has not decided the amount yet" — the ticket is still cancelled and
+	// tickets.refund_price stays NULL. It travels as a JSON number, but the
+	// WordPress plugin is known to quote money fields, so it is normalised
+	// through Request.UnmarshalJSON (number-or-string).
+	RefundPrice *float64
 }
 
 // requestAlias exists solely to give Request.UnmarshalJSON a recursion-free
@@ -146,17 +160,25 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 		ActionID        json.RawMessage `json:"actionId"`
 		ActionEventID   json.RawMessage `json:"actionEventId"`
 		CategoryPriceID json.RawMessage `json:"categoryPriceId"`
+		TicketID        json.RawMessage `json:"ticketId"`
+		RefundPrice     json.RawMessage `json:"refundPrice"`
 	}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
 	*r = Request(aux.requestAlias)
+	r.RefundPrice = flexWireFloatPtr(aux.RefundPrice)
 	r.FID = flexWireString(aux.FID)
 	r.UserID = flexWireInt64(aux.UserID)
 	r.SeatList = flexSeatList(aux.SeatList)
 	r.ActionID = flexWireString(aux.ActionID)
 	r.ActionEventID = flexWireString(aux.ActionEventID)
 	r.CategoryPriceID = flexWireString(aux.CategoryPriceID)
+	// Spec §4: ticketId is an int64 system_ticket_id on the wire, but every
+	// legacy client that stores it in a text column quotes it on the way back.
+	// Without the flex decode a numeric ticketId fails the WHOLE envelope and
+	// REFUND_TICKET / SCAN_TICKET answer -2 instead of doing their job.
+	r.TicketID = flexWireString(aux.TicketID)
 	return nil
 }
 
@@ -242,6 +264,31 @@ func flexWireInt64(raw json.RawMessage) int64 {
 		}
 	}
 	return 0
+}
+
+// flexWireFloatPtr renders a raw JSON scalar as an *float64: JSON numbers
+// decode directly, quoted numbers are parsed (the WordPress plugin quotes
+// money fields), and null / absent / non-numeric input yields nil, which
+// callers read as "not supplied" (feature #509, spec §7.13).
+func flexWireFloatPtr(raw json.RawMessage) *float64 {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var f float64
+	if err := json.Unmarshal(raw, &f); err == nil {
+		return &f
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return nil
+		}
+		if v, err := strconv.ParseFloat(s, 64); err == nil {
+			return &v
+		}
+	}
+	return nil
 }
 
 // CategoryQty is one row of the legacy Bil24 categoryList payload used by

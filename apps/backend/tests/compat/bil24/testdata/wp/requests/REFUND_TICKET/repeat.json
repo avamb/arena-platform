@@ -1,0 +1,9 @@
+{
+  "command": "REFUND_TICKET",
+  "fid": 1271,
+  "token": "{{token}}",
+  "locale": "ru-RU",
+  "ticketId": "{{systemTicketId}}",
+  "reason": "Customer requested a refund in WooCommerce",
+  "refundPrice": 500.00
+}

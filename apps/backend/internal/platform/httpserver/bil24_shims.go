@@ -27,6 +27,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbil24"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/orderexport"
 )
 
@@ -127,6 +128,29 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 		pool := s.pgxPool
 		h = h.WithOrderExport(func(ctx context.Context, csID uuid.UUID) (*orderexport.Order, error) {
 			return orderexport.QueryCheckoutSession(ctx, pool, csID)
+		})
+	}
+	// Feature #509 (W1-B8, spec §7.13): wire REFUND_TICKET onto the platform
+	// cancellation transaction. The querier resolves the wire bigint ticketId
+	// (tickets.system_ticket_id); the closure runs htickets' CancelTicketTx in
+	// manual refund mode with audit actor "gateway:<fid>", records the money on
+	// the ticket and projects it onto the order aggregate. Both ride the
+	// tickets handler, so the command self-gates with -99 on a pool-less
+	// Server, matching every other optional surface.
+	if s.ticketQueries != nil && s.pool != nil {
+		th := s.ticketsHandler()
+		h = h.WithRefundTicket(s.ticketQueries, func(ctx context.Context, in hbil24.GatewayRefundInput) (hbil24.GatewayRefundOutput, error) {
+			res, err := th.RefundTicketForGateway(ctx, htickets.GatewayRefundParams{
+				TicketID:    in.TicketID,
+				OrgID:       in.OrgID,
+				Reason:      in.Reason,
+				RefundPrice: in.RefundPrice,
+				Actor:       in.Actor,
+			})
+			if err != nil {
+				return hbil24.GatewayRefundOutput{}, err
+			}
+			return hbil24.GatewayRefundOutput{RefundDate: res.RefundDate}, nil
 		})
 	}
 	return h

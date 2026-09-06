@@ -1,0 +1,7 @@
+{
+  "command": "REFUND_TICKET",
+  "fid": 1271,
+  "token": "{{token}}",
+  "locale": "en",
+  "ticketId": "{{foreignSystemTicketId}}"
+}

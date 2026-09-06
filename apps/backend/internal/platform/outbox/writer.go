@@ -138,7 +138,56 @@ func prepareArgs(ev Event) ([]any, error) {
 }
 
 // -----------------------------------------------------------------------------
+// outbox_events writer (the table the dispatchers actually consume)
+// -----------------------------------------------------------------------------
+
+// PGEventsWriter is the production outbox writer backed by the outbox_events
+// table — the one every dispatcher reads (PGOutboxEventStore, macs.Dispatcher,
+// bil24wire.Dispatcher, cmd/arena-worker). The legacy PGWriter above targets
+// the older `outbox` table, which no dispatcher polls, so domain events written
+// through it were silently never delivered. New wiring must use this writer;
+// PGWriter is kept for the legacy table and its tests.
+type PGEventsWriter struct {
+	pool *pgxpool.Pool
+}
+
+// NewPGEventsWriter constructs a PGEventsWriter around a live pgx pool. The
+// pool is retained only for health-check purposes; all writes go through the
+// caller-supplied pgx.Tx in Append.
+func NewPGEventsWriter(pool *pgxpool.Pool) *PGEventsWriter { return &PGEventsWriter{pool: pool} }
+
+// Append inserts event into outbox_events using the supplied transaction.
+// processed_at is intentionally omitted so the database leaves it NULL, which
+// is what marks the row as pending delivery for the dispatcher poll query.
+func (w *PGEventsWriter) Append(ctx context.Context, tx pgx.Tx, event Event) error {
+	if tx == nil {
+		return errors.New("outbox: Append requires a non-nil tx")
+	}
+	args, err := prepareArgs(event)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, insertEventsSQL, args...); err != nil {
+		return fmt.Errorf("outbox: insert outbox_events: %w", err)
+	}
+	return nil
+}
+
+// insertEventsSQL writes one row to outbox_events. aggregate_id is a text
+// column there (unlike the uuid column on the legacy outbox table), so no cast
+// is needed.
+const insertEventsSQL = `
+	INSERT INTO outbox_events
+	    (aggregate_type, aggregate_id, event_type, payload, occurred_at)
+	VALUES
+	    ($1, $2, $3, $4::jsonb, COALESCE($5, now()))
+`
+
+// -----------------------------------------------------------------------------
 // Compile-time interface guard
 // -----------------------------------------------------------------------------
 
-var _ Writer = (*PGWriter)(nil)
+var (
+	_ Writer = (*PGWriter)(nil)
+	_ Writer = (*PGEventsWriter)(nil)
+)

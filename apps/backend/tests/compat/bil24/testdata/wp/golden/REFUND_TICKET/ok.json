@@ -1,0 +1,7 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "REFUND_TICKET",
+  "ticketId": "{{systemTicketId}}",
+  "refundDate": "{{refundDate}}"
+}

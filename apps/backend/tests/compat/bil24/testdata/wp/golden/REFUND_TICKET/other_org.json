@@ -1,0 +1,5 @@
+{
+  "resultCode": -3,
+  "description": "ticket not found in this channel's organization",
+  "command": "REFUND_TICKET"
+}

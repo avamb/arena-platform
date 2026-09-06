@@ -227,6 +227,43 @@ type GatewaySessionQuerier interface {
 // mirrors SeatedReserveFunc.
 type OrderProjector func(ctx context.Context, checkoutSessionID uuid.UUID) (*orderexport.Order, error)
 
+// RefundTicketQuerier is the narrow read contract handleBil24RefundTicket
+// uses to resolve the wire `ticketId` (tickets.system_ticket_id — bigint,
+// migration 0088) to a ticket row before the org-scope check and the refund
+// itself (feature #509, spec §7.13). Kept behind an interface so unit tests
+// can substitute an in-memory fake without a live PostgreSQL pool.
+// *gen.Queries satisfies it (gen/macs_system_ids.sql.go).
+type RefundTicketQuerier interface {
+	GetTicketBySystemTicketID(ctx context.Context, systemTicketID int64) (gen.TicketRow, error)
+}
+
+// GatewayRefundInput is the protocol-neutral request the gateway hands to
+// the platform refund path (feature #509, spec §7.13). RefundPrice is in
+// MINOR currency units — the handler converts the MAJOR-unit wire value —
+// and nil means "the organizer has not decided the amount yet", which
+// leaves tickets.refund_price NULL.
+type GatewayRefundInput struct {
+	TicketID    uuid.UUID
+	OrgID       uuid.UUID
+	Reason      string
+	RefundPrice *int64
+	Actor       string // "gateway:<fid>"
+}
+
+// GatewayRefundOutput carries back what the wire response needs: the
+// refund timestamp recorded on the ticket (spec §7.13 `refundDate`).
+type GatewayRefundOutput struct {
+	RefundDate time.Time
+}
+
+// RefundTicketFunc performs the manual-mode cancellation+refund of one
+// ticket. Production wiring (bil24_shims.go) injects a closure over
+// htickets.Handler.RefundTicketForGateway; tests inject in-memory fakes.
+// Declared as a func type rather than an interface because there is
+// exactly one method and the callback direction mirrors SeatedReserveFunc
+// — hbil24 must never import package httpserver.
+type RefundTicketFunc func(ctx context.Context, in GatewayRefundInput) (GatewayRefundOutput, error)
+
 // Handler holds the shared dependencies for all Bil24-gateway command
 // handlers. Every query handle is nilable; individual commands self-gate
 // with a Bil24 envelope resultCode=-99 ("service unavailable") response,
@@ -331,6 +368,15 @@ type Handler struct {
 	// is exactly the pre-#491 behaviour every earlier unit test asserts.
 	// Its interface and setter live in cmd_promo.go.
 	promoQ PromoQuerier
+
+	// refundQ / refundTicket (feature #509, W1-B8, spec §7.13) back the
+	// REFUND_TICKET command: the querier resolves the wire bigint ticketId
+	// to a ticket row, the callback runs the htickets cancellation
+	// transaction with refund_mode='manual'. Either one nil ⇒ the command
+	// self-gates with resultCode=-99, matching every other optional
+	// surface and keeping pre-#509 unit tests passing.
+	refundQ      RefundTicketQuerier
+	refundTicket RefundTicketFunc
 }
 
 // New constructs a Handler from the caller's dependencies.
@@ -483,6 +529,18 @@ func (h *Handler) WithGatewayCart(d CartDeps) *Handler {
 // body. Returns the receiver for chaining.
 func (h *Handler) WithOrderExport(p OrderProjector) *Handler {
 	h.orderExport = p
+	return h
+}
+
+// WithRefundTicket wires the REFUND_TICKET surface (feature #509, W1-B8,
+// spec §7.13): the ticket lookup by wire bigint id plus the callback that
+// runs the htickets cancellation transaction with refund_mode='manual' and
+// audit actor "gateway:<fid>". Callers that omit this setter keep the
+// pre-#509 behaviour where REFUND_TICKET answers resultCode=-99. Returns
+// the receiver for chaining.
+func (h *Handler) WithRefundTicket(q RefundTicketQuerier, f RefundTicketFunc) *Handler {
+	h.refundQ = q
+	h.refundTicket = f
 	return h
 }
 
