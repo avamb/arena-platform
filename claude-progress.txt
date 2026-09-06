@@ -28044,3 +28044,107 @@ this progress note (same pre-existing scratch artifacts as before: modified
 `.autoforge/prompts/coding_prompt.md`, deleted `.claude/scheduled_tasks.lock`,
 untracked `features.db` - left alone, not staged). Marking feature #459
 passing via feature_mark_passing.
+
+================================================================================
+Feature #491 (W1-B1a) - Bil24 compat ADD_PROMO_CODES + CHECK_KDP + GET_CART
+discount. Commit cbb0117, pushed to origin/master. BOTH steps delivered.
+================================================================================
+
+Spec section 7.6. Parent epic #457, depends on #488.
+
+Step 1 - "Two commands + session promo codes":
+- NEW `apps/backend/internal/platform/httpserver/hbil24/cmd_promo.go` (~390
+  lines, under the 700-line hbil24 cap). Carries the whole section 7.6
+  surface:
+  - `PromoQuerier` interface + `Handler.WithPromoCodes(q)` - the same
+    self-gating pattern as `WithGatewayCart`. Needs
+    `GetPromoCodeByCodeCI` and the pre-existing (#488)
+    `AppendGatewaySessionPromoCode`.
+  - `resolvePromoContext` mirrors `handleBil24GetCart`'s preamble exactly
+    (wired check -> authenticate -> locale -> gateway session -> collectCart),
+    so both promo commands and GET_CART agree on org, locale and cart lines.
+  - `mergePromoCodes` unions `promoCodeList` + `promoCodes`, trims, drops
+    empties, dedupes case-insensitively with FIRST spelling winning, and
+    truncates at `MaxPromoCodesPerRequest` = 10. Truncation is SILENT because
+    the plugin resends its whole accumulated list on every checkout render.
+  - `evaluatePromoCode` -> `hcheckout.ValidatePromoForLines` over the cart
+    lines. On an EMPTY cart it takes `promoWindowError` instead (status +
+    valid_from/valid_until only): with zero lines a tier-restricted code would
+    always report `promo.tier_not_applicable` and an unrestricted one would
+    always trip `min_order_amount`, and neither is a statement about the code.
+    Same error-code strings either way so the wording never changes.
+  - `handleBil24AddPromoCodes` classifies PER CODE, never per envelope -
+    `resultCode` stays 0 whenever the request itself parsed. Already-stored
+    codes go to `existPromoCodeList` without re-validation, refusals to
+    `errorPromoCodeList`, the rest to `newPromoCodeList`. `description` names
+    the FIRST refusal in the caller's locale. The CANONICAL DB spelling is
+    what gets persisted; the response echoes the spelling the caller sent.
+  - `handleBil24CheckKDP` validates the SINGULAR `promoCode`, persists
+    nothing, answers 0 or `ResultCodeUserVisible` (101) with a localised
+    reason. Safe to call on every keystroke.
+- `bil24_compat.go`: the `ADD_PROMO_CODES` / `CHECK_KDP` dispatcher arms no
+  longer return the -5 NOT_IMPLEMENTED stub feature #374 shipped.
+- `bil24_shims.go`: `h = h.WithPromoCodes(q)` inside the `s.pool != nil`
+  block. WITHOUT this both commands self-gate with -99 and GET_CART silently
+  reports discountAmount=0 - the wiring is the whole feature.
+- `queries/promo_codes.sql` + regenerated `gen/promo_codes.sql.go`,
+  `gen/querier.go`: `GetPromoCodeByCodeCI` (`lower(code) = lower($2)`,
+  org-scoped, `deleted_at IS NULL`, ORDER BY created_at LIMIT 1).
+- i18n `bil24.promo_not_found` / `_expired` / `_not_yet_valid` /
+  `_not_applicable` / `_min_order` / `_invalid` added to all four locales
+  (en, ru, cs, he) and to `bil24compat.Bil24DescriptionKeys`.
+- `bil24_374_test.go`: the old `..._ReturnsNotImplemented` assertion is now
+  `..._SelfGatesWithoutPromoSurface` (expects -99 on a Handler built without
+  the cart/promo surfaces). The -5 expectation was the stub's contract, not
+  the command's.
+
+Step 2 - "GET_CART discount + goldens":
+- `cmd_cart_get.go`: `sessionCartDiscount` walks `gw.PromoCodes` in stored
+  order and applies the FIRST code that yields a non-zero discount, then
+  `prorateDiscount` shares it across the rows in proportion to price with the
+  rounding remainder on the LAST row, so the per-seat `discount` values always
+  sum back to `discountAmount`. `getCartExtra` now takes the discount and
+  computes `chargeAmount` on the NET sum (`sum - discount`), so the service
+  fee follows the discount: 500 - 50 + 22.5 = 472.5, NOT 5% of 500.
+  A promo lookup error yields the zero discount rather than failing the read -
+  GET_CART must keep answering.
+- Fixtures: the pre-existing ADD_PROMO_CODES basic pair named `WELCOME10`,
+  which is never seeded. Corrected to `WAVE1` (seed_test.go step 9, percent
+  10, unrestricted). `basic` now sends `promoCodeList:["WAVE1"]` AND
+  `promoCodes:["wave1"]` to prove the union deduplicates case-insensitively
+  into ONE entry. NEW `ADD_PROMO_CODES/{exist,error}`,
+  `CHECK_KDP/{ok,invalid}` (CHECK_KDP `basic` renamed to `ok`; nothing else
+  referenced it), `GET_CART/with_promo`.
+- NEW `tests/compat/bil24/promo_491_test.go` (integration-tagged) walks the
+  real WordPress checkout sequence against a REAL server on the seeded DB -
+  no stubbed handler, no stubbed dispatcher: RESERVE a seat, CHECK_KDP ok +
+  invalid, assert the probe persisted NOTHING, ADD_PROMO_CODES basic ->
+  1/0/0, repeat -> 0/1/0, unknown code -> 0/0/1 with resultCode still 0, then
+  GET_CART -> sum 500, discountAmount 50, chargeAmount 22.5, totalSum 472.5
+  and the whole 50 on the single seat row.
+- `BEHAVIOR_DIFFERENCES.md` section 10 rewritten from "One active promo code
+  per session" to "Only ONE promo code is ever applied to money": arena's
+  checkout aggregate carries a SINGULAR `checkout_sessions.promo_code_id`, so
+  the wire contract is kept intact and the limitation is localised in the
+  pricing step. Redemption is still written at PAY_ORDER - ADD_PROMO_CODES
+  reserves nothing.
+
+Gates (all from repo root, no pipelines used to judge exit status):
+- `gofmt -l -w` on all 7 changed/new Go files including the
+  integration-tagged ones -> `promo_491_test.go` was the one hit
+- `go.exe build ./...` -> EXIT:0
+- `go.exe vet ./apps/backend/...` -> EXIT:0
+- `go.exe test` over httpserver/..., bil24compat/..., postgres/..., i18n/...,
+  tests/compat/bil24/..., tests/staticanalysis/..., internal/migrations/...
+  -> EXIT:0
+- integration vs the arena_postgres dev-stand (port 55432):
+  `-tags integration ./apps/backend/tests/compat/... ./apps/backend/internal/
+  platform/httpserver/...` -> EXIT:0; verbose confirmation that
+  `TestCompatBil24_491_PromoCodes_WireContract` genuinely RAN and PASSed
+  rather than skipping on a missing DSN
+- no openapi.yaml change -> no codegen; no migration added -> head pin
+  untouched at 96
+
+Staged by path, never `git add .`. The usual scratch artifacts
+(`.autoforge/prompts/coding_prompt.md`, `.claude/scheduled_tasks.lock`,
+`features.db`) were left unstaged. Marking #491 passing.
