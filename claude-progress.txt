@@ -28183,3 +28183,82 @@ alone as usual (`features.db`, modified `.autoforge/prompts/coding_prompt.md`,
 deleted `.claude/scheduled_tasks.lock`). `gh` CLI remains blocked in this
 sandbox for watching CI (pre-existing, documented in AGENTS.md) - pushed to
 origin/master and left for owner/CI to confirm remotely.
+
+---
+
+## Feature #513 - W1-C1b: service actor middleware, org-auth twins, rate
+## limit, audit (epic #466, spec 13.1) - DONE, both steps
+
+Builds on #512 (the `apikeys` package). Step 1 "Middleware + RBAC scopes" and
+Step 2 "Org-auth twins table test + rate limit + audit" are BOTH complete;
+nothing deferred. Commit b996c72, 25 files.
+
+What landed:
+
+- `auth.Actor` gained `Permissions []string` and `OrgID string`, populated
+  ONLY for service actors. `auth/service_actor.go` adds `Actor.IsService`,
+  `Actor.HasPermission` and `ServiceActorInOrg(ctx, orgID string)` - the one
+  decision authority every guard delegates to. It takes a string orgID on
+  purpose so `uuid` stays out of the `auth` package.
+- `httpserver/server_apikey_auth.go` (161 lines, under the 400-line cap):
+  `(s *Server) authMiddleware()` pre-builds the JWT chain once per mount and
+  dispatches per request on the bearer prefix, so `applyAuth` changed by
+  exactly ONE line and the three other `auth.Middleware` call sites
+  (mount_auth.go, mount_iam.go, mount_v1.go:183) are untouched. A `Bearer ak_`
+  token goes to `apikeys.Authenticate`; every rejection reason answers a
+  uniform 401 + `WWW-Authenticate: Bearer realm="arena"` so the response never
+  leaks WHICH check failed. Infra errors answer 500 `auth.api_key_check_failed`
+  and a `TouchLastUsed` failure is logged only - it must never fail a request.
+- `permissions.DBChecker.Check` short-circuits for service actors: the scope
+  set IS the permission set, and the roles/memberships tables are never
+  touched. The new test constructs the checker with a NIL RBACQuerier so any
+  fall-through would panic rather than quietly deny.
+- Rate limit: 600/min keyed by api_key id via `platform/ratelimit`
+  (`APIKeyRateLimit`/`APIKeyRateWindow` consts). The limiter is always
+  constructed in wire.go so the budget cannot be lost to a wiring omission.
+  Over budget answers 429 `auth.rate_limited`.
+- Audit: `audit.WithServiceActor(inner)` decorator installed once in wire.go
+  rewrites ActorType/ActorID to `api_key` / `api_key:<id>` when the context
+  carries a service actor. That avoids editing ~40 call sites that hardcode
+  ActorType "user". No migration needed - `audit_events.actor_type` is
+  free-form text with no CHECK constraint.
+
+Non-obvious things worth remembering:
+
+- **Ordering bug avoided**: in the `hpayments` and `hbankaccounts`
+  `requireOrgMembership` twins the `membershipQueries == nil` branch returns
+  TRUE (allow). The service-actor check therefore had to be inserted BEFORE
+  that branch in all four `requireOrgMembership` twins and in
+  `Server.enforceMembershipInOrg`, or an API key would have reached EVERY org
+  on a server without membership queries wired.
+  `TestEnforceMembershipInOrg_ServiceActorDeniedOtherOrg` pins the ordering.
+  `hseating.requireOrgMembership` needed no extra edit - it delegates straight
+  to `actorIsMemberOfOrg`.
+- **Superadmin marker cannot leak**: `markSuperadminOrgAccess` requires role
+  `platform_superadmin`; service actors carry empty `Roles`, so the marker is
+  unreachable for them and no extra guard was needed.
+- **"One table-driven test covering all five twins"** with unexported helpers:
+  the case table is exported from the new `apps/backend/tests/orgauthcases`
+  package and each of the SIX guard packages contributes a ~12-line iterating
+  test. Every case is answerable with a NIL `*gen.Queries`, which is the proof
+  that no case reaches the database - hence no `integration` tag is needed.
+  Case wording deliberately avoids the mock-data regexes the staticanalysis
+  guardrail scans for.
+- New wiring knob: `httpserver.Options.APIKeyStore`. It falls back to a
+  `gen.Queries`-backed store when `PgxPool` is set, and when both are nil every
+  `ak_` bearer simply answers 401.
+
+Gates run:
+
+- `go.exe build ./...` -> EXIT:0; `go.exe vet ./apps/backend/...` -> EXIT:0
+- FULL `go.exe test ./...` -> EXIT:0 with zero FAIL lines in the log, run to a
+  repo-relative log and grepped afterwards, never judged through a pipeline
+- `golangci-lint@latest run ./apps/backend/...` -> EXIT:0
+- `gofmt -l -w` on all touched files -> clean
+- staticanalysis + compat/bil24 + migrations packages all ok; every touched
+  top-level `httpserver/*.go` is well under the 400-line cap
+
+No API surface change, so no openapi.yaml or codegen work was required.
+Scratch artifacts left alone as usual (`features.db`, modified
+`.autoforge/prompts/coding_prompt.md`, deleted
+`.claude/scheduled_tasks.lock`).
