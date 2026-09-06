@@ -27891,3 +27891,47 @@ scratch artifacts (`features.db`, modified
 `.autoforge/prompts/coding_prompt.md`, deleted
 `.claude/scheduled_tasks.lock`) left alone as in prior sessions. Marked
 feature #461 passing via feature_mark_passing.
+
+## Feature #512 (W1-C1a: migration 0095 api_keys + apikeys package) - 2026-09-06
+
+Delivered the first sub-feature of epic #466 (W1-C1 organization API keys /
+service principal), scoped strictly to schema + package per the feature
+description - HTTP endpoints, applyAuth wiring and admin-web UI are sibling
+sub-features left untouched.
+
+- `apps/backend/internal/migrations/sql/0096_api_keys.sql` (spec's example
+  number 0095 was already taken by 0095_customer_read_role_grants.sql, so
+  used the next free head 0096 - documented inline in the migration header).
+  Creates `api_keys` (org_id/channel_id scoped, key_prefix UNIQUE, key_hash,
+  scopes text[], created_by, created_at/last_used_at/expires_at/revoked_at)
+  and inserts two permissions rows: `api_key.manage` and
+  `import.bil24_session`. Bumped `migrations_head_test.go` expectedHead to
+  0096_api_keys.sql.
+- `apps/backend/internal/adapters/postgres/queries/api_keys.sql` +
+  `.../gen/api_keys.sql.go` (hand-maintained sqlc-style wrapper, following
+  bank_accounts.sql.go): InsertAPIKey, GetAPIKeyByPrefix, GetAPIKeyByID,
+  ListAPIKeysByOrg, TouchAPIKeyLastUsed, RevokeAPIKey.
+- `apps/backend/internal/platform/apikeys/` (new package): `apikeys.go`
+  (Issue/Authenticate/ValidateScopes/TouchLastUsed, wire format
+  `ak_<prefix12>_<secret43>`, bcrypt cost 12, ForbiddenScopePrefixes
+  platform./admin., ForbiddenScopeExact api_key.manage, LastUsedThrottle =
+  1 minute) + `postgres_store.go` (Store adapter over gen.Queries, mirrors
+  customers/postgres_store.go) + `apikeys_test.go` (in-memory fakeStore,
+  no DB) + `postgres_store_integration_test.go` (`//go:build integration`,
+  proves the key_prefix UNIQUE constraint and a full
+  Issue->Authenticate->TouchLastUsed->reload round trip against real
+  Postgres).
+- Gates run: `go.exe build ./apps/backend/...` EXIT:0; `go.exe vet
+  ./apps/backend/...` EXIT:0; `gofmt -l` clean on all touched .go files;
+  targeted `go.exe test` on apikeys, internal/migrations, hbil24,
+  bil24compat, tests/compat/bil24, tests/staticanalysis all `ok`; full
+  untagged `go.exe test ./apps/backend/...` -> 68 ok / 0 FAIL; applied
+  migration 0096 to the shared `arena_postgres` dev-stand via
+  `cmd/arena-migrate` (95->96, OK); ran `-tags integration
+  ./apps/backend/internal/platform/apikeys/...` against that migrated
+  DB -> ok (2.5s), confirming the UNIQUE constraint and round trip live.
+- Committed (ae0db5b) and pushed to origin/master. Left the same
+  pre-existing scratch artifacts alone (`features.db`, modified
+  `.autoforge/prompts/coding_prompt.md`, deleted
+  `.claude/scheduled_tasks.lock`). Marked feature #512 passing via
+  feature_mark_passing.
