@@ -8640,6 +8640,93 @@ components:
           description: |
             RFC3339 UTC timestamp of this rotation.
 
+    ChannelWPWebhookSummary:
+      type: object
+      required: [channel_id, callback_url, active, created_at, updated_at]
+      description: |
+        Read-shape of a Bil24-compat `bil24_wp` webhook registration
+        (feature #507, spec §9.2). Emitted by `GET` and `DELETE`. Never
+        carries the signing secret.
+      properties:
+        channel_id:
+          type: string
+          format: uuid
+          description: Sales channel UUID that owns this webhook registration.
+        callback_url:
+          type: string
+          description: |
+            URL the arena outbox dispatcher POSTs catalog and order events to.
+        active:
+          type: boolean
+          description: |
+            Whether this subscriber is the currently active `bil24_wp`
+            registration for the channel. `false` immediately after `DELETE`.
+        created_at:
+          type: string
+          description: RFC3339 UTC timestamp when this subscriber row was created.
+        updated_at:
+          type: string
+          description: RFC3339 UTC timestamp of the last change to this row.
+
+    ChannelWPWebhookTestDelivery:
+      type: object
+      required: [ok, http_status]
+      description: |
+        Outcome of the synchronous `type=test` delivery attempt made during
+        `PUT .../wp-webhook` registration. Delivery failure never fails the
+        registration request itself.
+      properties:
+        ok:
+          type: boolean
+          description: |
+            `true` when the callback URL responded with a 2xx status within
+            the delivery timeout; `false` on any non-2xx response or
+            transport error (including timeout).
+        http_status:
+          type: integer
+          format: int32
+          description: |
+            HTTP status code returned by the callback URL, or `0` when the
+            request could not be completed (timeout, DNS failure, connection
+            refused, etc).
+
+    ChannelWPWebhookRegistered:
+      type: object
+      required: [channel_id, callback_url, signing_secret, active, created_at, updated_at, test_delivery]
+      description: |
+        One-shot response of `PUT /v1/organizations/{org_id}/channels/{id}/wp-webhook`
+        (feature #507, spec §9.2). Includes the signing secret exactly as
+        supplied by the caller; subsequent `GET`/`DELETE` calls never expose it.
+      properties:
+        channel_id:
+          type: string
+          format: uuid
+          description: Sales channel UUID that owns this webhook registration.
+        callback_url:
+          type: string
+          description: |
+            URL the arena outbox dispatcher POSTs catalog and order events to.
+        signing_secret:
+          type: string
+          description: |
+            HMAC-SHA256 signing secret echoed back from the request body.
+            Used to compute the `X-Arena-Signature` header on every delivery.
+        active:
+          type: boolean
+          description: Always `true` immediately after a successful `PUT`.
+        created_at:
+          type: string
+          description: RFC3339 UTC timestamp when this subscriber row was created.
+        updated_at:
+          type: string
+          description: RFC3339 UTC timestamp of the last change to this row.
+        test_delivery:
+          description: |
+            Outcome of the synchronous `type=test` delivery attempt made
+            during this registration.
+          allOf:
+            - $ref: "#/components/schemas/ChannelWPWebhookTestDelivery"
+
     FeedToken:
       type: object
       required: [id, channel_id, token, created_at]
@@ -24279,6 +24366,225 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Sales channel not found in the given organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/channels/{id}/wp-webhook:
+    get:
+      operationId: getChannelWPWebhook
+      summary: Get Bil24-compat WordPress webhook registration
+      description: |
+        Returns the current `bil24_wp` webhook registration
+        (`callback_url`, `active`, timestamps) for a sales channel. The
+        signing secret is never exposed by this endpoint. Requires
+        `channel.update` and the `X-Admin-Reason` header (audit trail).
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: Organization UUID that scopes this request (tenant isolation).
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: Sales channel UUID.
+          schema: { type: string, format: uuid }
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the admin read (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: WordPress webhook registration summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelWPWebhookSummary"
+        "400":
+          description: X-Admin-Reason header missing or empty.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor is not a member of the target organization or lacks `channel.update`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Sales channel not found in the given organization, or has no registered webhook.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      operationId: putChannelWPWebhook
+      summary: Register a Bil24-compat WordPress webhook
+      description: |
+        Deactivates any previous active `bil24_wp` subscriber for the
+        channel, creates a new one from the supplied `callback_url` and
+        `signing_secret`, and synchronously sends a `{"type":"test","data":null}`
+        envelope to `callback_url` (10s timeout) before responding. Delivery
+        failure never fails the registration; the outcome is reported in
+        `test_delivery`. Requires `channel.update` and the `X-Admin-Reason`
+        header.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: Organization UUID that scopes this request (tenant isolation).
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: Sales channel UUID.
+          schema: { type: string, format: uuid }
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the registration (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [callback_url, signing_secret]
+              properties:
+                callback_url:
+                  type: string
+                  description: |
+                    URL the arena outbox dispatcher will POST catalog and
+                    order events to.
+                signing_secret:
+                  type: string
+                  description: |
+                    HMAC-SHA256 secret used to sign every delivery via the
+                    `X-Arena-Signature` header.
+      responses:
+        "200":
+          description: Webhook registered. Signing secret echoed back exactly once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelWPWebhookRegistered"
+        "400":
+          description: X-Admin-Reason header missing/empty, or request body invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor is not a member of the target organization or lacks `channel.update`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Sales channel not found in the given organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteChannelWPWebhook
+      summary: Deregister the Bil24-compat WordPress webhook
+      description: |
+        Deactivates the active `bil24_wp` subscriber for the channel.
+        Requires `channel.update` and the `X-Admin-Reason` header.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: Organization UUID that scopes this request (tenant isolation).
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: Sales channel UUID.
+          schema: { type: string, format: uuid }
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for deregistering the webhook (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Webhook deregistered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelWPWebhookSummary"
+        "400":
+          description: X-Admin-Reason header missing or empty.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor is not a member of the target organization or lacks `channel.update`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Sales channel not found in the given organization, or has no registered webhook.
           content:
             application/json:
               schema:

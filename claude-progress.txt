@@ -27249,4 +27249,52 @@ Gates - all green
       ./apps/backend/tests/staticanalysis/...
       ./apps/backend/internal/migrations/... -> EXIT 0
   - golangci-lint on hseating + tests/compat/bil24 -> 0 issues
+
+Feature #507 (W1-B7d): wp-webhook PUT/GET/DELETE + admin-web section
+  Delivered PUT/GET/DELETE /v1/organizations/{org_id}/channels/{id}/wp-webhook
+  (spec 9.2), gated on channel.update + X-Admin-Reason, mirroring the
+  gateway-credential (#473) admin surface:
+  - PUT deactivates the channel's previous active bil24_wp subscriber,
+    inserts a new one, and SYNCHRONOUSLY sends a bil24wire {type:"test",
+    data:null} envelope (signed via bil24wire.Sign, 10s timeout) to the new
+    callback_url before responding; delivery failure never fails the PUT -
+    it is reported back as test_delivery:{ok,http_status}. signing_secret
+    is only ever present in the PUT response body.
+  - GET/DELETE return the read-shape (channel_id, callback_url, active,
+    created_at, updated_at) with no signing_secret; 404 when no active
+    subscriber exists.
+  - hcatalog/wp_webhook.go, catalog_shims.go, mount_iam.go route mount
+    reusing the channel.update permission group; openapi.yaml + regenerated
+    types_gen.go + TS client committed together.
+  - wp_webhook_507_test.go: route mount, 401/400/403 gating, 503 nil-dep
+    guard (dbDownPool + gen.New(nil), no live Postgres, mirrors
+    gateway_credential_473_test.go).
+  - wp_webhook_507_integration_test.go (integration-tagged): calls the
+    hcatalog.Handler methods directly against a real *pgxpool.Pool
+    (arena_postgres, port 55432), using auth.WithSuperadminOrgAccess to
+    take requireOrgMembership's superadmin-bypass branch instead of
+    seeding membership rows - exercises the real handler + the real
+    synchronous HTTP delivery to a local httptest receiver. Full lifecycle:
+    PUT (ok receiver) -> verify signature header + envelope body + 200
+    test_delivery -> GET (active, no signing_secret) -> PUT again against a
+    failing receiver (old subscriber deactivated, new one active,
+    test_delivery.ok=false but PUT still 200) -> DELETE -> GET 404 ->
+    second DELETE 404.
+  - admin-web: added WPWebhookSection to channels.tsx, rendered inside
+    ChannelFormDialog right after GatewayCredentialSection in edit mode.
+    Reuses the gateway-credential section's shared styles and
+    formatGatewayTimestamp helper; treats a 404 GET as "not configured yet"
+    rather than an error; shows the one-time signing_secret + test_delivery
+    outcome in a dismissible box after a successful PUT.
+  Gates - all green
+  - gofmt -l on wp_webhook_507_test.go, wp_webhook_507_integration_test.go,
+    hcatalog/wp_webhook.go, catalog_shims.go, mount_iam.go -> empty
+  - go build -tags integration ./apps/backend/... -> EXIT 0
+  - go vet -tags integration ./apps/backend/... -> EXIT 0
+  - go test ./apps/backend/... (untagged, full suite) -> EXIT 0, 65 ok
+  - go test -tags integration ./apps/backend/internal/platform/httpserver/...
+    against arena_postgres (port 55432) -> EXIT 0, all ok including the new
+    wp_webhook_507_integration_test.go
+  - admin-web: npm run type-check -> EXIT 0
+  - admin-web: vitest run --run -> 43 files, 1114 tests passed
   No openapi.yaml change, so no codegen. No migration, so no head pin.

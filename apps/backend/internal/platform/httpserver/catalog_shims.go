@@ -300,6 +300,20 @@ func (s *Server) handleDeleteChannelGatewayCredential(w http.ResponseWriter, r *
 	s.catalogHandler().HandleDeleteChannelGatewayCredential(w, r)
 }
 
+// ──── channel wp-webhook shims (feature #507, W1-B7d) ────────────────────────
+
+func (s *Server) handleGetChannelWPWebhook(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleGetChannelWPWebhook(s.pgxPool, w, r)
+}
+
+func (s *Server) handlePutChannelWPWebhook(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandlePutChannelWPWebhook(s.pgxPool, w, r)
+}
+
+func (s *Server) handleDeleteChannelWPWebhook(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleDeleteChannelWPWebhook(s.pgxPool, w, r)
+}
+
 // ──── session handler shims ───────────────────────────────────────────────────
 
 // onCapacityChange forwards to hcatalog.OnCapacityChange. Kept as a *Server

@@ -1292,6 +1292,12 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             channelId={mode.channel.id}
           />
         ) : null}
+        {isEdit ? (
+          <WPWebhookSection
+            orgId={mode.channel.org_id}
+            channelId={mode.channel.id}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -1498,6 +1504,260 @@ function GatewayCredentialSection({
             data-testid="channels-gateway-disable"
           >
             {disableMut.isPending ? "Disabling…" : "Disable"}
+          </button>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bil24-compatible WordPress webhook section (feature #507, epic #463,
+// spec §9.2).
+//
+// Surfaces the WordPress-plugin-facing webhook subscriber for a sales
+// channel: GET/PUT/DELETE
+//   /v1/organizations/{org_id}/channels/{id}/wp-webhook
+// All three verbs require `channel.update` + `X-Admin-Reason` (injected
+// automatically by authedFetch()). GET/DELETE never return signing_secret;
+// only the PUT response echoes it back once, alongside the outcome of the
+// synchronous `test` delivery the backend performs against callback_url
+// before returning. A failed test delivery does not fail the PUT request —
+// it is surfaced here as a warning next to the (still successful) summary.
+// ---------------------------------------------------------------------------
+
+interface ChannelWPWebhookSummary {
+  readonly channel_id: string;
+  readonly callback_url: string;
+  readonly active: boolean;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+interface ChannelWPWebhookTestDelivery {
+  readonly ok: boolean;
+  readonly http_status: number;
+}
+
+interface ChannelWPWebhookRegistered extends ChannelWPWebhookSummary {
+  readonly signing_secret: string;
+  readonly test_delivery: ChannelWPWebhookTestDelivery;
+}
+
+function WPWebhookSection({
+  orgId,
+  channelId,
+}: {
+  orgId: string;
+  channelId: string;
+}) {
+  const queryClient = useQueryClient();
+  const [callbackUrl, setCallbackUrl] = useState("");
+  const [signingSecret, setSigningSecret] = useState("");
+  const [justRegistered, setJustRegistered] = useState<ChannelWPWebhookRegistered | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const queryKey = ["wp-webhook", orgId, channelId];
+  const path = `/v1/organizations/${orgId}/channels/${channelId}/wp-webhook`;
+
+  const { data: summary, isLoading, error } = useQuery<ChannelWPWebhookSummary, ApiError>({
+    queryKey,
+    queryFn: () => authedFetch<ChannelWPWebhookSummary>({ method: "GET", path }),
+    retry: false,
+  });
+  const notConfigured = error instanceof ApiError && error.status === 404;
+
+  const registerMut = useMutation<ChannelWPWebhookRegistered, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<ChannelWPWebhookRegistered>({
+        method: "PUT",
+        path,
+        body: { callback_url: callbackUrl, signing_secret: signingSecret },
+      }),
+    onSuccess: (data) => {
+      setJustRegistered(data);
+      setCopied(false);
+      setActionError(null);
+      setCallbackUrl("");
+      setSigningSecret("");
+      queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err) => {
+      setActionError(err.message || "Failed to register the wp-webhook.");
+    },
+  });
+
+  const deactivateMut = useMutation<ChannelWPWebhookSummary, ApiError, void>({
+    mutationFn: () => authedFetch<ChannelWPWebhookSummary>({ method: "DELETE", path }),
+    onSuccess: () => {
+      setJustRegistered(null);
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err) => {
+      setActionError(err.message || "Failed to deactivate the wp-webhook.");
+    },
+  });
+
+  async function copySecret(): Promise<void> {
+    if (justRegistered === null) return;
+    try {
+      await navigator.clipboard.writeText(justRegistered.signing_secret);
+      setCopied(true);
+    } catch {
+      // Clipboard API unavailable (insecure context / permissions) — the
+      // secret is still visible in the box for manual copy.
+      setCopied(false);
+    }
+  }
+
+  return (
+    <section style={gatewaySectionStyle} data-testid="channels-wpwebhook-section">
+      <h3 style={gatewayTitleStyle}>WordPress webhook</h3>
+      <p style={fieldHintStyle}>
+        Callback the WordPress Bil24-compat plugin is notified on for this
+        channel. Registering sends a synchronous <code style={monoStyle}>test</code>{" "}
+        event to the callback URL before saving.
+      </p>
+
+      {isLoading && (
+        <p style={fieldHintStyle} data-testid="channels-wpwebhook-loading">
+          Loading…
+        </p>
+      )}
+      {error && !isLoading && !notConfigured && (
+        <p style={fieldErrorStyle} data-testid="channels-wpwebhook-load-error">
+          Failed to load webhook status: {error.message}
+        </p>
+      )}
+      {notConfigured && !isLoading && justRegistered === null && (
+        <p style={fieldHintStyle} data-testid="channels-wpwebhook-not-configured">
+          No webhook registered yet.
+        </p>
+      )}
+
+      {justRegistered !== null && (
+        <div style={gatewaySecretBoxStyle} data-testid="channels-wpwebhook-secret-box">
+          <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 600, color: "#065f46" }}>
+            ✓ Webhook registered. Copy the signing secret now — it will not
+            be shown again.
+          </p>
+          <div style={monoBoxStyle} data-testid="channels-wpwebhook-secret-value">
+            {justRegistered.signing_secret}
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+            <button
+              type="button"
+              style={secondaryButtonStyle}
+              onClick={copySecret}
+              data-testid="channels-wpwebhook-secret-copy"
+            >
+              {copied ? "Copied!" : "Copy"}
+            </button>
+            <button
+              type="button"
+              style={secondaryButtonStyle}
+              onClick={() => setJustRegistered(null)}
+              data-testid="channels-wpwebhook-secret-dismiss"
+            >
+              Dismiss
+            </button>
+          </div>
+          <p
+            style={
+              justRegistered.test_delivery.ok
+                ? { margin: "8px 0 0", fontSize: 11, color: "#065f46" }
+                : fieldErrorStyle
+            }
+            data-testid="channels-wpwebhook-test-delivery"
+          >
+            {justRegistered.test_delivery.ok
+              ? `Test delivery succeeded (HTTP ${justRegistered.test_delivery.http_status}).`
+              : `Test delivery failed (HTTP ${justRegistered.test_delivery.http_status}). The webhook was saved anyway; verify the callback URL.`}
+          </p>
+        </div>
+      )}
+
+      {!isLoading && summary !== undefined && justRegistered === null ? (
+        <dl style={{ margin: "8px 0", fontSize: 12, color: "#334155" }}>
+          <dt style={{ fontWeight: 600, marginBottom: 2 }}>Callback URL</dt>
+          <dd style={{ margin: "0 0 6px", wordBreak: "break-all" }} data-testid="channels-wpwebhook-callback-url">
+            {summary.callback_url}
+          </dd>
+          <dt style={{ fontWeight: 600, marginBottom: 2 }}>Status</dt>
+          <dd style={{ margin: "0 0 6px" }} data-testid="channels-wpwebhook-status">
+            {summary.active ? "Active" : "Inactive"}
+          </dd>
+          <dt style={{ fontWeight: 600, marginBottom: 2 }}>Last updated</dt>
+          <dd style={{ margin: 0 }} data-testid="channels-wpwebhook-updated-at">
+            {formatGatewayTimestamp(summary.updated_at)}
+          </dd>
+        </dl>
+      ) : null}
+
+      {actionError !== null && (
+        <p style={fieldErrorStyle} data-testid="channels-wpwebhook-action-error">
+          {actionError}
+        </p>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+        <label htmlFor="channels-wpwebhook-callback-input" style={fieldLabelStyle}>
+          Callback URL
+        </label>
+        <input
+          id="channels-wpwebhook-callback-input"
+          type="text"
+          style={inputStyle}
+          value={callbackUrl}
+          onChange={(e) => setCallbackUrl(e.target.value)}
+          placeholder="https://example.com/wp-json/bil24-compat/v1/webhook"
+          data-testid="channels-wpwebhook-callback-input"
+        />
+        <label htmlFor="channels-wpwebhook-secret-input" style={fieldLabelStyle}>
+          Signing secret (optional — generated if left blank)
+        </label>
+        <input
+          id="channels-wpwebhook-secret-input"
+          type="text"
+          style={inputMonoStyle}
+          value={signingSecret}
+          onChange={(e) => setSigningSecret(e.target.value)}
+          placeholder="leave blank to auto-generate"
+          data-testid="channels-wpwebhook-secret-input"
+        />
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button
+          type="button"
+          style={secondaryButtonStyle}
+          disabled={registerMut.isPending || callbackUrl.trim() === ""}
+          onClick={() => {
+            setActionError(null);
+            registerMut.mutate();
+          }}
+          data-testid="channels-wpwebhook-register"
+        >
+          {registerMut.isPending
+            ? "Registering…"
+            : summary?.active === true
+              ? "Re-register"
+              : "Register"}
+        </button>
+        {summary?.active === true ? (
+          <button
+            type="button"
+            style={dangerButtonStyle}
+            disabled={deactivateMut.isPending}
+            onClick={() => {
+              setActionError(null);
+              deactivateMut.mutate();
+            }}
+            data-testid="channels-wpwebhook-deactivate"
+          >
+            {deactivateMut.isPending ? "Deactivating…" : "Deactivate"}
           </button>
         ) : null}
       </div>

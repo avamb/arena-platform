@@ -4234,6 +4234,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/channels/{id}/wp-webhook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Bil24-compat WordPress webhook registration
+         * @description Returns the current `bil24_wp` webhook registration
+         *     (`callback_url`, `active`, timestamps) for a sales channel. The
+         *     signing secret is never exposed by this endpoint. Requires
+         *     `channel.update` and the `X-Admin-Reason` header (audit trail).
+         */
+        get: operations["getChannelWPWebhook"];
+        /**
+         * Register a Bil24-compat WordPress webhook
+         * @description Deactivates any previous active `bil24_wp` subscriber for the
+         *     channel, creates a new one from the supplied `callback_url` and
+         *     `signing_secret`, and synchronously sends a `{"type":"test","data":null}`
+         *     envelope to `callback_url` (10s timeout) before responding. Delivery
+         *     failure never fails the registration; the outcome is reported in
+         *     `test_delivery`. Requires `channel.update` and the `X-Admin-Reason`
+         *     header.
+         */
+        put: operations["putChannelWPWebhook"];
+        post?: never;
+        /**
+         * Deregister the Bil24-compat WordPress webhook
+         * @description Deactivates the active `bil24_wp` subscriber for the channel.
+         *     Requires `channel.update` and the `X-Admin-Reason` header.
+         */
+        delete: operations["deleteChannelWPWebhook"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/feeds/{token}": {
         parameters: {
             query?: never;
@@ -12542,6 +12580,79 @@ export interface components {
             image_url: string;
             /** @description RFC3339 UTC timestamp of this rotation. */
             rotated_at: string;
+        };
+        /**
+         * @description Read-shape of a Bil24-compat `bil24_wp` webhook registration
+         *     (feature #507, spec §9.2). Emitted by `GET` and `DELETE`. Never
+         *     carries the signing secret.
+         */
+        ChannelWPWebhookSummary: {
+            /**
+             * Format: uuid
+             * @description Sales channel UUID that owns this webhook registration.
+             */
+            channel_id: string;
+            /** @description URL the arena outbox dispatcher POSTs catalog and order events to. */
+            callback_url: string;
+            /**
+             * @description Whether this subscriber is the currently active `bil24_wp`
+             *     registration for the channel. `false` immediately after `DELETE`.
+             */
+            active: boolean;
+            /** @description RFC3339 UTC timestamp when this subscriber row was created. */
+            created_at: string;
+            /** @description RFC3339 UTC timestamp of the last change to this row. */
+            updated_at: string;
+        };
+        /**
+         * @description Outcome of the synchronous `type=test` delivery attempt made during
+         *     `PUT .../wp-webhook` registration. Delivery failure never fails the
+         *     registration request itself.
+         */
+        ChannelWPWebhookTestDelivery: {
+            /**
+             * @description `true` when the callback URL responded with a 2xx status within
+             *     the delivery timeout; `false` on any non-2xx response or
+             *     transport error (including timeout).
+             */
+            ok: boolean;
+            /**
+             * Format: int32
+             * @description HTTP status code returned by the callback URL, or `0` when the
+             *     request could not be completed (timeout, DNS failure, connection
+             *     refused, etc).
+             */
+            http_status: number;
+        };
+        /**
+         * @description One-shot response of `PUT /v1/organizations/{org_id}/channels/{id}/wp-webhook`
+         *     (feature #507, spec §9.2). Includes the signing secret exactly as
+         *     supplied by the caller; subsequent `GET`/`DELETE` calls never expose it.
+         */
+        ChannelWPWebhookRegistered: {
+            /**
+             * Format: uuid
+             * @description Sales channel UUID that owns this webhook registration.
+             */
+            channel_id: string;
+            /** @description URL the arena outbox dispatcher POSTs catalog and order events to. */
+            callback_url: string;
+            /**
+             * @description HMAC-SHA256 signing secret echoed back from the request body.
+             *     Used to compute the `X-Arena-Signature` header on every delivery.
+             */
+            signing_secret: string;
+            /** @description Always `true` immediately after a successful `PUT`. */
+            active: boolean;
+            /** @description RFC3339 UTC timestamp when this subscriber row was created. */
+            created_at: string;
+            /** @description RFC3339 UTC timestamp of the last change to this row. */
+            updated_at: string;
+            /**
+             * @description Outcome of the synchronous `type=test` delivery attempt made
+             *     during this registration.
+             */
+            test_delivery: components["schemas"]["ChannelWPWebhookTestDelivery"];
         };
         /**
          * @description A long-lived bearer token that grants a scanner device read access to the
@@ -28226,6 +28337,240 @@ export interface operations {
                 };
             };
             /** @description Sales channel not found in the given organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getChannelWPWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the admin read (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Sales channel UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description WordPress webhook registration summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelWPWebhookSummary"];
+                };
+            };
+            /** @description X-Admin-Reason header missing or empty. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor is not a member of the target organization or lacks `channel.update`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Sales channel not found in the given organization, or has no registered webhook. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putChannelWPWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the registration (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Sales channel UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description URL the arena outbox dispatcher will POST catalog and
+                     *     order events to.
+                     */
+                    callback_url: string;
+                    /**
+                     * @description HMAC-SHA256 secret used to sign every delivery via the
+                     *     `X-Arena-Signature` header.
+                     */
+                    signing_secret: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Webhook registered. Signing secret echoed back exactly once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelWPWebhookRegistered"];
+                };
+            };
+            /** @description X-Admin-Reason header missing/empty, or request body invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor is not a member of the target organization or lacks `channel.update`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Sales channel not found in the given organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteChannelWPWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for deregistering the webhook (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Sales channel UUID. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Webhook deregistered. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelWPWebhookSummary"];
+                };
+            };
+            /** @description X-Admin-Reason header missing or empty. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor is not a member of the target organization or lacks `channel.update`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Sales channel not found in the given organization, or has no registered webhook. */
             404: {
                 headers: {
                     [name: string]: unknown;

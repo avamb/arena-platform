@@ -1527,6 +1527,70 @@ type ChannelGatewayCredentialSummary struct {
 	RotatedAt string `json:"rotated_at"`
 }
 
+// ChannelWPWebhookRegistered One-shot response of `PUT /v1/organizations/{org_id}/channels/{id}/wp-webhook`
+// (feature #507, spec §9.2). Includes the signing secret exactly as
+// supplied by the caller; subsequent `GET`/`DELETE` calls never expose it.
+type ChannelWPWebhookRegistered struct {
+	// Active Always `true` immediately after a successful `PUT`.
+	Active bool `json:"active"`
+
+	// CallbackUrl URL the arena outbox dispatcher POSTs catalog and order events to.
+	CallbackUrl string `json:"callback_url"`
+
+	// ChannelId Sales channel UUID that owns this webhook registration.
+	ChannelId openapi_types.UUID `json:"channel_id"`
+
+	// CreatedAt RFC3339 UTC timestamp when this subscriber row was created.
+	CreatedAt string `json:"created_at"`
+
+	// SigningSecret HMAC-SHA256 signing secret echoed back from the request body.
+	// Used to compute the `X-Arena-Signature` header on every delivery.
+	SigningSecret string `json:"signing_secret"`
+
+	// TestDelivery Outcome of the synchronous `type=test` delivery attempt made
+	// during this registration.
+	TestDelivery ChannelWPWebhookTestDelivery `json:"test_delivery"`
+
+	// UpdatedAt RFC3339 UTC timestamp of the last change to this row.
+	UpdatedAt string `json:"updated_at"`
+}
+
+// ChannelWPWebhookSummary Read-shape of a Bil24-compat `bil24_wp` webhook registration
+// (feature #507, spec §9.2). Emitted by `GET` and `DELETE`. Never
+// carries the signing secret.
+type ChannelWPWebhookSummary struct {
+	// Active Whether this subscriber is the currently active `bil24_wp`
+	// registration for the channel. `false` immediately after `DELETE`.
+	Active bool `json:"active"`
+
+	// CallbackUrl URL the arena outbox dispatcher POSTs catalog and order events to.
+	CallbackUrl string `json:"callback_url"`
+
+	// ChannelId Sales channel UUID that owns this webhook registration.
+	ChannelId openapi_types.UUID `json:"channel_id"`
+
+	// CreatedAt RFC3339 UTC timestamp when this subscriber row was created.
+	CreatedAt string `json:"created_at"`
+
+	// UpdatedAt RFC3339 UTC timestamp of the last change to this row.
+	UpdatedAt string `json:"updated_at"`
+}
+
+// ChannelWPWebhookTestDelivery Outcome of the synchronous `type=test` delivery attempt made during
+// `PUT .../wp-webhook` registration. Delivery failure never fails the
+// registration request itself.
+type ChannelWPWebhookTestDelivery struct {
+	// HttpStatus HTTP status code returned by the callback URL, or `0` when the
+	// request could not be completed (timeout, DNS failure, connection
+	// refused, etc).
+	HttpStatus int32 `json:"http_status"`
+
+	// Ok `true` when the callback URL responded with a 2xx status within
+	// the delivery timeout; `false` on any non-2xx response or
+	// transport error (including timeout).
+	Ok bool `json:"ok"`
+}
+
 // CheckoutRecoverResponse Response body for `POST /v1/public/checkout/{checkout_token}/recover`
 // (feature #320 WID-0c).  Returned when a fresh reservation was
 // successfully created for the same seats/zones.
@@ -7565,6 +7629,35 @@ type PutChannelGatewayCredentialParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// DeleteChannelWPWebhookParams defines parameters for DeleteChannelWPWebhook.
+type DeleteChannelWPWebhookParams struct {
+	// XAdminReason Human-readable business reason for deregistering the webhook (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// GetChannelWPWebhookParams defines parameters for GetChannelWPWebhook.
+type GetChannelWPWebhookParams struct {
+	// XAdminReason Human-readable business reason for the admin read (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PutChannelWPWebhookJSONBody defines parameters for PutChannelWPWebhook.
+type PutChannelWPWebhookJSONBody struct {
+	// CallbackUrl URL the arena outbox dispatcher will POST catalog and
+	// order events to.
+	CallbackUrl string `json:"callback_url"`
+
+	// SigningSecret HMAC-SHA256 secret used to sign every delivery via the
+	// `X-Arena-Signature` header.
+	SigningSecret string `json:"signing_secret"`
+}
+
+// PutChannelWPWebhookParams defines parameters for PutChannelWPWebhook.
+type PutChannelWPWebhookParams struct {
+	// XAdminReason Human-readable business reason for the registration (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // CreateComplimentaryIssuanceJSONBody defines parameters for CreateComplimentaryIssuance.
 type CreateComplimentaryIssuanceJSONBody struct {
 	Note           *string             `json:"note,omitempty"`
@@ -7877,6 +7970,9 @@ type CreateFeedTokenJSONRequestBody CreateFeedTokenJSONBody
 
 // UpdateChannelJSONRequestBody defines body for UpdateChannel for application/json ContentType.
 type UpdateChannelJSONRequestBody UpdateChannelJSONBody
+
+// PutChannelWPWebhookJSONRequestBody defines body for PutChannelWPWebhook for application/json ContentType.
+type PutChannelWPWebhookJSONRequestBody PutChannelWPWebhookJSONBody
 
 // CreateComplimentaryIssuanceJSONRequestBody defines body for CreateComplimentaryIssuance for application/json ContentType.
 type CreateComplimentaryIssuanceJSONRequestBody CreateComplimentaryIssuanceJSONBody

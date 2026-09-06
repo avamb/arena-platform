@@ -13,6 +13,7 @@ package gen
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -82,4 +83,110 @@ func (q *Queries) ListWPSubscribersForEvent(ctx context.Context, eventID uuid.UU
 		results = append(results, r)
 	}
 	return results, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin CRUD (feature #507, W1-B7d, spec §9.2)
+//
+// The routing projection above (WPSubscriberRow) predates the admin surface
+// and is kept narrow on purpose; these queries serve the
+// PUT/GET/DELETE .../wp-webhook endpoints and need the full admin-facing
+// column set (active, created_at, updated_at) that routing never reads.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// WPWebhookAdminRow is the admin-facing projection of one webhook_subscribers
+// row of kind='bil24_wp': everything an operator needs to see or hand back
+// after a PUT, short of anything routing-only.
+type WPWebhookAdminRow struct {
+	ID            uuid.UUID `json:"id"`
+	ChannelID     uuid.UUID `json:"channel_id"`
+	CallbackURL   string    `json:"callback_url"`
+	SigningSecret string    `json:"signing_secret"`
+	Active        bool      `json:"active"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+func scanWPWebhookAdminRow(row interface {
+	Scan(dest ...any) error
+}) (WPWebhookAdminRow, error) {
+	var r WPWebhookAdminRow
+	err := row.Scan(&r.ID, &r.ChannelID, &r.CallbackURL, &r.SigningSecret, &r.Active, &r.CreatedAt, &r.UpdatedAt)
+	return r, err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CreateWPWebhookSubscriber
+// ─────────────────────────────────────────────────────────────────────────────
+
+const createWPWebhookSubscriberSQL = `-- name: CreateWPWebhookSubscriber :one
+INSERT INTO webhook_subscribers (
+    site_url,
+    callback_url,
+    signing_secret,
+    event_types,
+    active,
+    kind,
+    channel_id
+) VALUES (
+    '', $2, $3, '{}', TRUE, 'bil24_wp', $1
+)
+RETURNING id, channel_id, callback_url, signing_secret, active, created_at, updated_at`
+
+// CreateWPWebhookSubscriber inserts a new active bil24_wp subscriber for a
+// sales channel. Callers should call DeactivateWPSubscriberByChannel first —
+// at most one ACTIVE bil24_wp subscriber per channel is enforced by
+// uq_webhook_subscribers_bil24_wp_per_channel (migration 0094), so skipping
+// the deactivation step surfaces as a unique-violation instead of a silent
+// second-active row.
+func (q *Queries) CreateWPWebhookSubscriber(
+	ctx context.Context,
+	channelID uuid.UUID,
+	callbackURL string,
+	signingSecret string,
+) (WPWebhookAdminRow, error) {
+	row := q.db.QueryRow(ctx, createWPWebhookSubscriberSQL, channelID, callbackURL, signingSecret)
+	return scanWPWebhookAdminRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetActiveWPSubscriberByChannel
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getActiveWPSubscriberByChannelSQL = `-- name: GetActiveWPSubscriberByChannel :one
+SELECT id, channel_id, callback_url, signing_secret, active, created_at, updated_at
+FROM   webhook_subscribers
+WHERE  channel_id = $1
+  AND  kind       = 'bil24_wp'
+  AND  active     = TRUE`
+
+// GetActiveWPSubscriberByChannel is the admin-surface GET query: the full row
+// (minus site_url/event_types, which the admin surface never shows) for the
+// active bil24_wp subscriber of a channel. Returns pgx.ErrNoRows when the
+// channel has none registered.
+func (q *Queries) GetActiveWPSubscriberByChannel(ctx context.Context, channelID uuid.UUID) (WPWebhookAdminRow, error) {
+	row := q.db.QueryRow(ctx, getActiveWPSubscriberByChannelSQL, channelID)
+	return scanWPWebhookAdminRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DeactivateWPSubscriberByChannel
+// ─────────────────────────────────────────────────────────────────────────────
+
+const deactivateWPSubscriberByChannelSQL = `-- name: DeactivateWPSubscriberByChannel :one
+UPDATE webhook_subscribers
+SET    active     = FALSE,
+       updated_at = NOW()
+WHERE  channel_id = $1
+  AND  kind       = 'bil24_wp'
+  AND  active     = TRUE
+RETURNING id, channel_id, callback_url, signing_secret, active, created_at, updated_at`
+
+// DeactivateWPSubscriberByChannel soft-deletes the active bil24_wp subscriber
+// of a channel (re-registration or DELETE). Returns pgx.ErrNoRows when the
+// channel has no active subscriber — the normal case on first registration,
+// and the caller (PUT) ignores that error, while DELETE surfaces it as 404.
+func (q *Queries) DeactivateWPSubscriberByChannel(ctx context.Context, channelID uuid.UUID) (WPWebhookAdminRow, error) {
+	row := q.db.QueryRow(ctx, deactivateWPSubscriberByChannelSQL, channelID)
+	return scanWPWebhookAdminRow(row)
 }
