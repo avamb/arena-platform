@@ -28861,3 +28861,73 @@ chasing defect 2 was removed and the scratch logs deleted before staging.
 
 Staged by path (never `git add .`); `features.db` and the perennial
 `.autoforge`/`.claude` scratch left untouched. Pushed to master as dad8c02.
+
+────────────────────────────────────────────────────────────────────────────
+Feature #510 — W1-Ma: MACS order.paid from v1.order.paid; body-level success
+check (spec §10 M1/M2/M5) — 2026-09-06, commit 6d88d22
+────────────────────────────────────────────────────────────────────────────
+
+Before this, MACS learned about a sale one ticket at a time: the dispatcher
+turned every `v1.scanner.ticket.issued` into an `order.paid` envelope whose
+`data` was a single MACS Ticket. A three-ticket purchase arrived as three
+"orders". Spec §10 M1 says `order.paid` carries the ORDER — `{id, status:
+"PAID", ticketList:[…]}` — so that is what it now sends.
+
+1. Routing (`macs/dispatcher.go`). `Dispatch` gained a `v1.order.paid` arm
+   (`EventOrderPaid`) handled by `dispatchOrderPaid`: resolve the org from
+   `payload.org_id` (falling back to `session_id`), find the org's MACS
+   subscriber, project the order through the new
+   `macs.QueryAndBuildOrder` (→ `orderexport.QueryOrder`) and post it as
+   `data`. `v1.scanner.ticket.issued` is still handled, but only as the
+   COMPLIMENTARY path: `dispatchComplimentaryPaid` first asks
+   `ticketHasOrder` (`SELECT order_id IS NOT NULL FROM tickets`) and returns
+   nil when the ticket belongs to an order aggregate — otherwise the same
+   sale would be announced twice. For a genuinely order-less ticket,
+   `QueryAndBuildTicket` already returns an Order header whose ticketList
+   holds exactly that one ticket, so the synthetic order needed no new
+   projection. `ticket.refunded` is byte-for-byte unchanged (flat Ticket
+   `data`, holderStatus 3).
+
+2. Success is a BODY question, not just a status code (M2). `post` now reads
+   the ack (capped at 64 KiB) and `checkAck` requires `{"status":"OK"}`
+   case-insensitively; a 2xx with `{"status":"Error"}`, an absent status, an
+   empty body or non-JSON all return an error so the outbox retries. This
+   mirrors the WordPress receiver (`class-lops-macs.php:134-137`), which is
+   the only place the real contract is written down.
+
+3. The stub is the executable statement of that contract (M5), so it grew
+   `writeAck` + `validateOrderPaid`: `order.paid` without a non-empty
+   `data.ticketList`, or with `data.status != "PAID"`, is answered
+   `200 {"status":"Error"}` and changes NO ticket state (the envelope is
+   still recorded — the call did arrive). Ticket state for `order.paid` is
+   now read out of every `ticketList` entry instead of the old flat
+   `data.id`/`data.holderStatus`. New `SetOnceErrorPath` mirrors the
+   existing `SetOnceFailPath` at the body level.
+
+Tests. New `macs/stub/stub_test.go` pins the ack contract directly (6 accept/
+refuse cases, ticketList fan-out, "a refusal is inert", one-shot Error).
+`dispatcher_test.go` asserts the full order-shaped envelope, keeps a separate
+pin on the refunded shape, and adds a 9-case table for the ack check plus
+skip-paths for malformed / unroutable `v1.order.paid` payloads. New
+integration test `macs_orderpaid_integration_test.go`
+(`TestMACS_W1Ma_OrderPaidRoundTrip`) seeds ONE `orders` row (migration 0092)
+with 3 tickets, writes a single `v1.order.paid` to `outbox_events` and drives
+the REAL `OutboxEventsDispatcher`: first delivery gets the body-level Error →
+`next_attempt_at` set, `processed_at` nil, nothing recorded, no ticket
+tracked; after resetting `next_attempt_at` the retry gets OK → `processed_at`
+set, exactly ONE `order.paid` envelope with all three sysIDs in `ticketList`,
+two delivery attempts; finally an order-linked `ticket.issued` is dispatched
+and must add no delivery at all. `TestMACS_RoundTrip`'s step-1 assertions
+were rewritten for the order shape (its fixture ticket has no `order_id`, so
+`data.id` is still the ticket's system id via the synthetic order).
+
+Gates: `go build ./apps/backend/...` EXIT 0; `go vet ./apps/backend/...`
+EXIT 0; `go vet -tags integration ./…/macs/...` clean; full untagged
+`go test ./apps/backend/...` EXIT 0 (no FAIL lines); `-tags integration`
+runs of `./…/macs/` (AB-50g, W1-Ma and the AB-50d round-trip all PASS) and
+`./tests/compat/bil24/...` (both packages ok) against the dev stand on port
+55432; staticanalysis + migrations packages ok; golangci-lint "0 issues" on
+the macs tree; `gofmt -l` clean on all seven changed files including the
+integration-tagged ones. Scratch logs deleted before staging; staged by path,
+`features.db` and the `.autoforge`/`.claude` scratch left untouched. Pushed
+to master as 6d88d22.
