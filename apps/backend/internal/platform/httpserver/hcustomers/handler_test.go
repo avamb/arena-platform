@@ -157,14 +157,14 @@ func assign(dest any, v any) error {
 		return nil
 	}
 	rv := reflect.ValueOf(v)
-	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+	if rv.Kind() == reflect.Pointer && rv.IsNil() {
 		return nil
 	}
 	dv := reflect.ValueOf(dest).Elem()
 	switch {
 	case rv.Type() == dv.Type():
 		dv.Set(rv)
-	case dv.Kind() == reflect.Ptr && dv.Type().Elem() == rv.Type():
+	case dv.Kind() == reflect.Pointer && dv.Type().Elem() == rv.Type():
 		boxed := reflect.New(rv.Type())
 		boxed.Elem().Set(rv)
 		dv.Set(boxed)

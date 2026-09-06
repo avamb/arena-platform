@@ -15,6 +15,7 @@ package hcustomers
 import (
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -49,21 +50,21 @@ func parsePagination(w http.ResponseWriter, r *http.Request) (limit, offset int3
 	offset = 0
 	if v := r.URL.Query().Get("limit"); v != "" {
 		n, err := strconv.Atoi(v)
-		if err != nil || n <= 0 || n > maxLimit {
+		if err != nil || n <= 0 || n > maxLimit || n > math.MaxInt32 {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"customers.invalid_limit", "limit must be a positive integer up to 200", r))
 			return 0, 0, false
 		}
-		limit = int32(n)
+		limit = int32(n) // #nosec G109 -- bounded above by maxLimit (200) and math.MaxInt32
 	}
 	if v := r.URL.Query().Get("offset"); v != "" {
 		n, err := strconv.Atoi(v)
-		if err != nil || n < 0 {
+		if err != nil || n < 0 || n > math.MaxInt32 {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 				"customers.invalid_offset", "offset must be a non-negative integer", r))
 			return 0, 0, false
 		}
-		offset = int32(n)
+		offset = int32(n) // #nosec G109 -- bounded above by math.MaxInt32
 	}
 	return limit, offset, true
 }
