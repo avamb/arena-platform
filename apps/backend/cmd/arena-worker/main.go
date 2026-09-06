@@ -46,6 +46,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/backfill"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/bil24wire"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/brevo"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
@@ -480,6 +481,16 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	reg.Register(convertjob.JobType, convertjob.NewHandler(convertjob.HandlerOptions{
 		ConvertFn: convertHandler.ConvertReservationTx,
 		Logger:    logger,
+	}))
+
+	// tickets.backfill_ean13 mints the EAN-13 credential + platform barcode
+	// for tickets issued before feature #502 wired that into issuance.
+	// Feature #503, W1-B6b. Not self-scheduling — an operator/stand-setup
+	// script enqueues it (repeatedly, if the batch is large); each run is
+	// a bounded, idempotent pass.
+	reg.Register(backfill.JobType, backfill.NewHandler(backfill.Options{
+		Store:  backfill.NewPGStore(queries),
+		Logger: logger,
 	}))
 }
 

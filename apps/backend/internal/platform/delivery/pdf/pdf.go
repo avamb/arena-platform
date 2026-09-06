@@ -133,6 +133,14 @@ type Ticket struct {
 	// omits the code line (legacy credentials without a code).
 	HumanCode string
 
+	// EAN13 is the platform-minted EAN-13 barcode number
+	// (internal/platform/barcodes/ean13.Encode output, feature #502) printed
+	// as plain text under the QR/human-code block (feature #503, W1-B6b,
+	// spec §11: "arena PDF prints the EAN-13 number as text under the QR").
+	// Empty omits the line — legacy tickets issued before #502 have none
+	// until tickets.backfill_ean13 (feature #503) runs.
+	EAN13 string
+
 	// FinePrint is the small disclaimer printed at the bottom of the
 	// ticket. Empty string falls back to DefaultFinePrint.
 	FinePrint string

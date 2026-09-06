@@ -532,7 +532,7 @@ func ReleaseCancelledTicketInventoryTx(
 	return out, nil
 }
 
-// RevokeTicketArtifactsTx revokes every barcode and the qr/pdf
+// RevokeTicketArtifactsTx revokes every barcode and the static_qr/pdf/ean13
 // credentials of the given tickets inside the caller's transaction.
 // Best-effort per artifact (a missing credential is normal); errors are
 // logged, never returned — a stray barcode row must not block a
@@ -565,7 +565,7 @@ func RevokeTicketArtifactsTx(
 	if credentialQ != nil {
 		q := credentialQ.WithTx(tx)
 		for _, t := range tickets {
-			for _, credType := range []string{"qr", "pdf"} {
+			for _, credType := range []string{"static_qr", "pdf", "ean13"} {
 				if _, err := q.RevokeCredential(ctx, t.ID, credType); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 					logger.Warn("ticket.cancel: revoke credential failed",
 						slog.String("ticket_id", t.ID.String()),

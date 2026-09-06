@@ -122,6 +122,14 @@ type Payload struct {
 	// Empty for pre-SEAT-C4 tickets; the PDF renderer omits the code block
 	// when this field is empty.
 	HumanCode string `json:"human_code,omitempty"`
+	// EAN13 is the platform-minted EAN-13 barcode number (feature #502)
+	// printed as plain text under the QR/human-code block on the PDF
+	// (feature #503, W1-B6b, spec §11). Left empty by enqueuers; the
+	// handler resolves it from the ticket_credentials table at render
+	// time (see step 9 below) so callers never need to know about it.
+	// Legacy tickets issued before #502 (and not yet backfilled by the
+	// tickets.backfill_ean13 job) simply omit the line.
+	EAN13 string `json:"ean13,omitempty"`
 	// TicketPDFFormat controls the PDF layout: "mobile" (default),
 	// "a4", or "both". Resolved from the owning org's ticket_pdf_format
 	// flag at enqueue time. Empty → delivery worker defaults to "mobile".
@@ -386,6 +394,26 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		// for any blank fields.
 		brand := resolveBranding(ctx, opts.Media, p, logger)
 		branding := brand.Branding
+
+		// ── 8b. Resolve the EAN-13 number for the PDF ──────────────────────
+		// Feature #503 (W1-B6b): the PDF prints the platform-minted EAN-13
+		// number under the QR. Enqueuers never populate p.EAN13 directly, so
+		// resolve it here from ticket_credentials — a best-effort lookup,
+		// never fatal: pre-#502 tickets not yet caught up by
+		// tickets.backfill_ean13 simply render without the line.
+		if p.EAN13 == "" && opts.CredentialQueries != nil {
+			eanCred, eanErr := opts.CredentialQueries.GetCredentialByTicketID(ctx, ticketID, "ean13")
+			if eanErr != nil {
+				if !errors.Is(eanErr, pgx.ErrNoRows) {
+					logger.Warn("delivery: get ean13 credential failed; rendering pdf without it",
+						slog.String("ticket_id", ticketID.String()),
+						slog.String("error", eanErr.Error()),
+					)
+				}
+			} else {
+				p.EAN13 = eanCred.Payload
+			}
+		}
 
 		// ── 9. Generate PDF credential ────────────────────────────────────────
 		// Prefer the T-1 PDF renderer (apps/backend/internal/platform/delivery/pdf)
@@ -677,6 +705,7 @@ func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, brandin
 		SeatRow:                p.SeatRow,
 		SeatNumber:             p.SeatNumber,
 		QRPayload:              qr,
+		EAN13:                  p.EAN13,
 		OrgLogo:                logoBytes,
 		OrgName:                branding.OrgName,
 		OrgWebsiteURL:          branding.WebsiteURL,

@@ -276,6 +276,8 @@ type Querier interface {
 	SetTicketsReviewHoldByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID, reason string) (int64, error)
 	ClearTicketReviewHold(ctx context.Context, id uuid.UUID) (TicketRow, error)
 	CountActiveTicketsForSeat(ctx context.Context, sessionID uuid.UUID, seatKey string) (int64, error)
+	// ListTicketsMissingEAN13 (feature #503): backfill candidates for tickets.backfill_ean13.
+	ListTicketsMissingEAN13(ctx context.Context, limit int32) ([]TicketRow, error)
 	CountTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) (int64, error)
 	CountTicketsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error)
 	// AB-50a: MACS system id resolution (migration 0088)

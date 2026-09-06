@@ -148,3 +148,27 @@ FROM   tickets
 WHERE  session_id = $1
   AND  seat_key   = $2
   AND  status     = 'active';
+
+-- name: ListTicketsMissingEAN13 :many
+-- W1-B6b (feature #503): candidates for the tickets.backfill_ean13 worker
+-- job. Only 'active' tickets are backfilled — cancelled/transferred
+-- tickets have no scan-time use for a fresh barcode, and
+-- RevokeTicketArtifactsTx already revokes ean13 credentials on
+-- cancellation, so a cancelled ticket picked up here would immediately be
+-- a revoked-on-arrival row. LEFT JOIN + IS NULL finds tickets that never
+-- got an ean13 row (pre-#502 data); ORDER BY + LIMIT makes each run a
+-- bounded, resumable batch.
+SELECT t.id, t.checkout_session_id, t.session_id, t.tier_id, t.holder_email,
+       t.status, t.issued_at, t.created_at, t.updated_at,
+       t.seat_key, t.seat_sector, t.seat_row, t.seat_number, t.ordinal,
+       t.cancelled_at, t.cancellation_reason, t.refund_mode, t.refund_id,
+       t.refund_date, t.refund_price, t.review_hold, t.review_hold_reason,
+       t.system_ticket_id
+FROM   tickets t
+LEFT JOIN ticket_credentials c
+       ON c.ticket_id = t.id
+      AND c.type      = 'ean13'
+WHERE  c.id IS NULL
+  AND  t.status = 'active'
+ORDER BY t.id ASC
+LIMIT $1;

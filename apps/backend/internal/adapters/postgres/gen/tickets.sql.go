@@ -360,3 +360,42 @@ func (q *Queries) CountActiveTicketsForSeat(ctx context.Context, sessionID uuid.
 	err := q.db.QueryRow(ctx, countActiveTicketsForSeat, sessionID, seatKey).Scan(&count)
 	return count, err
 }
+
+const listTicketsMissingEAN13 = `-- name: ListTicketsMissingEAN13 :many
+SELECT t.id, t.checkout_session_id, t.session_id, t.tier_id, t.holder_email,
+       t.status, t.issued_at, t.created_at, t.updated_at,
+       t.seat_key, t.seat_sector, t.seat_row, t.seat_number, t.ordinal,
+       t.cancelled_at, t.cancellation_reason, t.refund_mode, t.refund_id,
+       t.refund_date, t.refund_price, t.review_hold, t.review_hold_reason,
+       t.system_ticket_id
+FROM   tickets t
+LEFT JOIN ticket_credentials c
+       ON c.ticket_id = t.id
+      AND c.type      = 'ean13'
+WHERE  c.id IS NULL
+  AND  t.status = 'active'
+ORDER BY t.id ASC
+LIMIT $1`
+
+// ListTicketsMissingEAN13 returns up to limit active tickets that have no
+// ean13 ticket_credentials row yet (feature #503, W1-B6b). Powers the
+// tickets.backfill_ean13 worker job: a LEFT JOIN ... IS NULL scan is
+// naturally idempotent — once a ticket gets its ean13 credential, it drops
+// out of every subsequent call's result set.
+func (q *Queries) ListTicketsMissingEAN13(ctx context.Context, limit int32) ([]TicketRow, error) {
+	rows, err := q.db.Query(ctx, listTicketsMissingEAN13, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tickets []TicketRow
+	for rows.Next() {
+		r, err := scanTicketRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		tickets = append(tickets, r)
+	}
+	return tickets, rows.Err()
+}

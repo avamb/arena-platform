@@ -169,6 +169,12 @@ func renderWithSpec(ticket Ticket, spec layoutSpec) ([]byte, error) {
 		y = drawHumanCode(pdf, code, spec, y+spec.blockGap)
 	}
 
+	// ── EAN-13 number as plain text under the QR/code block (feature #503,
+	// W1-B6b; spec §11) ─────────────────────────────────────────────────
+	if ean := strings.TrimSpace(ticket.EAN13); ean != "" {
+		y = drawEAN13(pdf, ean, spec, y+spec.blockGap/2)
+	}
+
 	// ── Ticket ID under the QR/code block ─────────────────────────────
 	pdf.SetFont("Helvetica", "", spec.idFS)
 	pdf.SetTextColor(102, 102, 102)
@@ -335,4 +341,18 @@ func drawHumanCode(pdf *gofpdf.Fpdf, code string, spec layoutSpec, y float64) fl
 		x += glyphW + gap
 	}
 	return baseline + 4
+}
+
+// drawEAN13 prints the platform-minted EAN-13 barcode number as plain
+// centered text underneath the QR/human-code block (feature #503, W1-B6b;
+// spec §11) and returns the y cursor below it. Unlike drawHumanCode this is
+// not letter-spaced/manual-entry styled — it is a small identification
+// line, so it reuses the same font size as the "Ticket ID" line below it.
+func drawEAN13(pdf *gofpdf.Fpdf, code string, spec layoutSpec, y float64) float64 {
+	pdf.SetFont("Helvetica", "", spec.idFS)
+	pdf.SetTextColor(102, 102, 102)
+	pdf.SetXY(spec.margin, y)
+	pdf.CellFormat(spec.pageW-2*spec.margin, spec.idFS+4, "EAN-13: "+code, "", 0, "C", false, 0, "")
+	pdf.SetTextColor(0, 0, 0)
+	return y + spec.idFS + 4
 }
