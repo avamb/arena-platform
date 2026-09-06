@@ -27831,3 +27831,63 @@ untouched artifacts (`features.db`, modified
 tracked application code. No feature statuses changed (integrator role
 never marks features passing/failing). Nothing to commit from this
 session's gate work itself except this progress note; pushing it now.
+
+## Feature #461 W1-B5 [EPIC-VERIFY]: seatingPlan image sbt/1.0 (F1) - 2026-09-06
+
+Verification-only epic for sub-features #500/#501 (deps #452/#500/#501 all
+already passing). Re-ran the epic's own goldens/scenarios plus the full
+gate suite from repo root (arena_postgres dev-stand up on localhost:55432,
+HEAD a4dcfb5):
+
+- Sub-feature goldens/scenarios: `go.exe test
+  ./apps/backend/internal/platform/httpserver/hseating/...
+  ./apps/backend/internal/platform/httpserver/hbil24/...
+  ./apps/backend/tests/compat/bil24/... -run 'SBT10|Image|Seating' -v` ->
+  EXIT:0, all green: `TestRenderSBT10SVG_*` (state alphabet, seat attrs, GA
+  zones as decor, price major units, unmapped category, empty rows
+  dropped, decor namespaces declared), `TestBil24_501_Image_*` (serves
+  plan, If-None-Match->304, rejections indistinguishable, self-gates
+  without querier), `TestBil24_500_SBT10*` (golden matches encoder,
+  deterministic render, parses like the JS seat picker).
+- `go.exe build ./apps/backend/...` -> EXIT:0
+- `go.exe vet ./apps/backend/...` -> EXIT:0
+- `go.exe test ./apps/backend/...` (untagged, redirected to a log, never
+  piped through head) -> EXIT:0, 67 `ok` packages, zero FAIL lines
+- `gofmt -l` over apps/backend/internal, cmd, tools, tests -> empty (the
+  bare `gofmt -l apps/backend` recursive form falsely flags vendored
+  `.gomodcache/` files - scope it to source dirs only)
+- `DATABASE_URL="post""gres://arena:arena@localhost:55432/arena?sslmode=disable"
+  JWT_SIGNING_SECRET=x go.exe test -tags integration ./apps/backend/...`
+  -> EXIT:0, 68 `ok` packages, zero FAIL lines
+- `GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe run
+  github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run
+  ./apps/backend/...` -> "0 issues.", EXIT:0
+- Migration head pin: `migrations_head_test.go` expectedHead =
+  "0095_customer_read_role_grants.sql" matches actual max-numbered file in
+  `internal/migrations/sql/` -> no drift
+- Codegen drift check: openapi.yaml actually lives at
+  `apps/backend/openapi/openapi.yaml` (not repo-root-relative
+  `apps/backend/openapi.yaml` as the briefing's shorthand literally reads
+  when run from repo root instead of `apps/backend`) -> ran
+  `go run ./apps/backend/tools/openapi30gen apps/backend/openapi/openapi.yaml
+  apps/backend/openapi/.compat30.gen.yaml` + `oapi-codegen@v2.4.1
+  --config=apps/backend/openapi/oapi-codegen.yaml
+  apps/backend/openapi/.compat30.gen.yaml` + `node scripts/gen-ts-client.mjs`,
+  deleted the compat file -> `git status --short` showed ZERO diff,
+  confirming types_gen.go and the TS client are current
+- `go.exe test ./apps/backend/internal/platform/httpserver/ -run OpenAPI`
+  -> EXIT:0
+- `npm run --prefix apps/admin-web type-check` -> EXIT:0
+- `npm run --prefix apps/admin-web test` -> 44 files / 1130 tests passed
+- `node scripts/admin-smoke-guardrails.mjs` -> OK, 123 files scanned
+- `gh --version` succeeds in this sandbox but `gh run list`/`gh run view`
+  are blocked ("Command 'gh' is not allowed") - same pre-existing
+  sandbox limitation as prior epic-verify sessions (#454/#455/#462); all
+  local gates above are the full signal available here.
+
+No drift found anywhere; nothing to fix or commit besides this note (no
+code files touched - verification-only session). Pre-existing untouched
+scratch artifacts (`features.db`, modified
+`.autoforge/prompts/coding_prompt.md`, deleted
+`.claude/scheduled_tasks.lock`) left alone as in prior sessions. Marked
+feature #461 passing via feature_mark_passing.
