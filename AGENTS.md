@@ -35,6 +35,19 @@ entries short and factual.
   `integration` build tag - the repo convention. An untagged live-DB test
   silently skips locally (no DATABASE_URL) but FAILS in the CI Unit job, where
   DATABASE_URL exists but no schema is migrated.
+- **`-tags integration ./apps/backend/...` run at Go's default parallel
+  package concurrency can produce spurious failures** under CPU contention
+  on this host: seen 2026-09-06 (post-#510) with
+  `TestMACS_W1Ma_OrderPaidRoundTrip` ("processed_at should be set by
+  MarkDispatched") and `TestCompatBil24_450_Harness_Scenarios/04_refund_dedup`
+  ("ticket.refunded never reached both sites") plus a `GET_ALL_ACTIONS` nil-
+  pointer panic in a concurrently-running package — all three vanished on a
+  clean re-run and stayed green across two full `-p 1` (serialized) passes.
+  These tests spin up ephemeral local HTTP stub servers and poll an outbox
+  dispatcher on a 20ms interval; under load, retries/timeouts race. Before
+  filing a fix-feature for an integration failure, re-run the specific test
+  alone (`-run <Test>`) and, if that's inconclusive, the whole suite with
+  `-p 1`; only a failure that survives isolation is a real defect.
 - Frontend: Vitest suites per app; admin-web full suite ~859+ tests.
 - Widget e2e (Playwright): mock suite and `:real` suite (live migrated+seeded
   backend). The Playwright vite dev server REQUIRES `VITE_API_BASE_URL` in the

@@ -28931,3 +28931,39 @@ the macs tree; `gofmt -l` clean on all seven changed files including the
 integration-tagged ones. Scratch logs deleted before staging; staged by path,
 `features.db` and the `.autoforge`/`.claude` scratch left untouched. Pushed
 to master as 6d88d22.
+
+================================================================================
+2026-09-06 — Integration gate (post #509/#510/#518/#467 epic-verify): all green
+================================================================================
+Ran the full repo-wide gate set from HEAD 1bfb5b3 (500/522 features passing).
+No drift found, no code changes needed, nothing filed.
+
+- `go.exe build ./apps/backend/...` / `go.exe vet ./apps/backend/...` — EXIT 0.
+- Full untagged `go.exe test ./apps/backend/...` — EXIT 0, 72 `ok` package
+  lines, zero FAIL.
+- `gofmt -l` over `apps/backend/{cmd,internal,tests,tools}` — silent.
+- golangci-lint@latest on `./apps/backend/...` — "0 issues."
+- `-tags integration ./apps/backend/...` against the live `arena_postgres`
+  stand (port 55432): the default-parallel run showed 2 spurious failures
+  (`TestMACS_W1Ma_OrderPaidRoundTrip`, harness scenario `04_refund_dedup`)
+  plus a `GET_ALL_ACTIONS` nil-pointer panic in a concurrently-running
+  package. Re-ran each failing test in isolation (PASS) and then the whole
+  integration suite with `-p 1` (PASS, 73 ok lines, zero FAIL) — confirmed
+  CPU-contention flakiness, not a product defect. New AGENTS.md § Tests entry
+  records the triage protocol for the next session.
+- Codegen drift: regenerated via `openapi30gen` + `oapi-codegen@v2.4.1` +
+  `gen-ts-client.mjs`; `git status --short` showed no changes — spec and
+  generated code already in sync.
+- Migration head pin: `expectedHead` = `0097_api_key_role_grants.sql`,
+  matches the actual head file; migrations package test passed as part of
+  the full suite.
+- admin-web: `type-check` EXIT 0, `test -- --run` 44 files / 1144 tests
+  EXIT 0, `build` EXIT 0 (only the usual chunk-size advisory).
+- widget: `type-check` EXIT 0, `test` 12 files / 497 tests EXIT 0.
+- `gh` CLI blocked in this sandbox as documented — could not push/watch CI.
+  Nothing was pushed this session (working tree had no gate-driven changes
+  beyond AGENTS.md + this note).
+
+Working tree otherwise left exactly as found (perennial untouched scratch:
+`.autoforge/prompts/coding_prompt.md` modified, `.claude/scheduled_tasks.lock`
+deleted, `features.db` untracked).
