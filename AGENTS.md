@@ -285,6 +285,18 @@ entries short and factual.
   our code and none of it should be fixed. Scope `gofmt -l`/similar sweeps to
   the real source dirs (`apps/backend/{cmd,internal,tests,tools}`) instead of
   the bare repo root.
+- **A bash `for f in ...; do ...; done` loop is rejected by the allowlist**
+  with a bogus "Command 'f' is not allowed". Enumerate paths explicitly
+  instead of looping.
+- **Bil24 harness: `{{categoryPriceId}}` resolves to a platform UUID by
+  default, and a UUID on the wire answers `-2`.** `resolveGolden`'s fallback
+  for that placeholder is `st.AssignedTierID` (a UUID), but since feature #476
+  `resolveCategoryPriceID` rejects UUIDs. Any scenario posting a category
+  price must mint the int64 wire id with `compatids.Ensure(ctx, pool,
+  compatids.KindCategoryPrice, id)` and override the placeholder through the
+  scenario's runtime map. Related: `cleanupHarnessWireRows` must sweep
+  `orders` before `checkout_sessions` before `reservations` — `orders` FKs
+  both parents and neither cascades.
 - **Stale `.claude/worktrees/*` directories accumulate** from old isolated
   agent runs and pollute repo-wide sweeps (e.g. `gofmt -l .` reports hits
   inside them). During an Integrator gate pass, check `git worktree list` for

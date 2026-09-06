@@ -29063,3 +29063,72 @@ Gates (all EXIT 0):
 - `gofmt -l -w` over all 12 changed Go files including the two
   `//go:build integration` ones (`export.go` needed reformatting).
 - Staged by path only; `git status --short` verified before committing.
+
+================================================================================
+Feature #492 — W1-B1b: CREATE_ORDER_EXT (2026-09-06, commit 516b421)
+================================================================================
+
+Both Steps done: (1) "CREATE_ORDER_EXT through ordering."; (2) "Goldens +
+scenario 6." Spec §7.7.
+
+Step 1 — the command now writes a REAL order aggregate instead of a stub:
+- New `hbil24/cmd_order_create.go` holds the whole flow; `cmd_order.go` only
+  delegates when `h.orderDeps.wired()`, and `httpserver/bil24_shims.go` wires
+  `hbil24.OrderDeps{Pool: s.pool, SessionQ: q, Q: q}`. Top-level
+  `httpserver/*.go` stays under 400 lines and `bil24compat` still does not
+  import `httpserver`.
+- Gateway session check → `1` when stale, `-3` when the session is out of
+  scope, `101` when sales are closed. `-2` for empty `lines` or empty
+  `orderId`; `101 bil24.line_wrong_session` for a category belonging to
+  another session.
+- Reservation preflight mirrors the site's `bil24_reserve_preflight`: create
+  the empty reservation and fill the action event from `lines` when absent.
+- `ordering.ReconcileLines` makes the cart equal `lines` exactly (new
+  `internal/platform/ordering/update.go`).
+- `customers.Resolve(fullName/phone/email)` with verified flags untouched.
+- One-open-order rule: an existing `pending_payment` order with a live hold is
+  UPDATED under the same orderId; an expired hold flips the old order to
+  `expired` and a new order is created.
+- Checkout session insert + confirm with
+  `PricingRules{PlatformFeeBP: fee_percent*100}` and the first applicable promo
+  code from request `promoCodes` ∪ session codes.
+- `orders` rows land `pending_payment`, `external_ref` = request `orderId`,
+  `source = bil24_gateway`.
+- Client-reported `total`/`chargePercent`/`expectedPrice` are NEVER trusted for
+  pricing — they go only into `order_events.created.payload.client_reported`.
+
+Step 2 — fixtures and harness scenario 6:
+- Six request+golden pairs under `testdata/wp/{requests,golden}/
+  CREATE_ORDER_EXT/`: basic, string_orderid, seated, promo, ga,
+  repeat_same_order. Money corrected to the seeded 5% channel fee, e.g. basic
+  is sum 500 / discount 0 / charge 25 / totalSum 525 CZK, promo is
+  1000/100/45/945, ga is 1800/0/90/1890 EUR.
+- `scenario06_create_order_test.go` drives the real server end to end and
+  asserts the golden KEY SET plus explicit money values, the
+  `totalSum = sum - discount + charge` invariant, the RFC3339 `expiration`, the
+  `orders` row shape incl. `charge_percent_bp = 500`, the
+  `client_reported` payload, item counts, and the open-order count. Scenario 6
+  is un-skipped in `harness_test.go`.
+
+TRAP worth remembering: `resolveGolden`'s fallback for `{{categoryPriceId}}`
+is `st.AssignedTierID`, a platform UUID — and since feature #476 a UUID on the
+wire is rejected with `-2`. A scenario that posts a category price MUST mint
+the int64 wire id with `compatids.Ensure(ctx, pool, KindCategoryPrice, uuid)`
+and override the placeholder through the runtime map. Also:
+`cleanupHarnessWireRows` now sweeps `orders` then `checkout_sessions` then
+`reservations`, in that order — `orders` FKs both parents and neither
+cascades.
+
+Gates (all EXIT 0):
+- `go build ./apps/backend/...`, `go vet ./apps/backend/...`, and
+  `go vet -tags integration ./apps/backend/tests/compat/bil24/...`.
+- Full unit suite `go test ./apps/backend/...` green.
+- Full integration suite serialized against the `arena_postgres` stand on
+  55432: `-tags integration -count=1 -p 1 ./apps/backend/...` → EXIT 0, zero
+  FAIL lines. A `-v` re-run confirms
+  `06_one_open_order_rule` actually RAN and PASSed rather than skipping.
+- `gofmt -l` clean over `apps/backend/{cmd,internal,tests,tools}` —
+  `cmd_order_create.go` needed reformatting and got it before staging. Note
+  the scoped dirs: a bare `gofmt -l .` walks into `apps/backend/.gomodcache`.
+- No openapi.yaml change, so no codegen; no migration, so no head bump.
+- Staged by path only; `git status --short` verified before committing.
