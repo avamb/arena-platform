@@ -27498,3 +27498,49 @@ No codegen/spec drift, no migration-pin drift. Working tree clean before and
 after (only the customers test file changed + the worktree removal).
 Commit: see git log for "integration: fix flaky-by-design phone literal in
 customers live-DB test + remove stale AB-50 worktree".
+
+## Feature #503 (W1-B6b): revoke fix, EAN-13/PDF scan paths, backfill job — 2026-09-06
+
+- RevokeTicketArtifactsTx (htickets/cancel.go) revoked only "qr"/"pdf"
+  credential types (a typo — the real type is "static_qr", and "ean13" was
+  never included at all). Fixed to revoke static_qr, pdf, AND ean13. Barcode
+  revocation across all authorities for a ticket was already correct.
+- SCAN_TICKET (hbil24) and POST /v1/scanner/validate (hscanner) already
+  resolved barcodes generically by (authority_type, external_ref) with no
+  per-format special-casing, so an EAN-13 code (minted by #502's issuance
+  path or #503's new backfill job) already resolved correctly with zero
+  production changes needed. Added tests proving this end to end:
+  cmd_tickets_503_test.go (SCAN_TICKET) and
+  scanner_validate_ean13_503_test.go (/v1/scanner/validate) — the latter
+  uses a custom fake DB that only returns the fixture row on an exact
+  external_ref match, so it genuinely proves ref round-tripping rather than
+  stubbing a fixed response.
+- Arena-generated ticket PDF (delivery/pdf/layout.go + pdf.go,
+  delivery/handler.go) now prints the platform EAN-13 number as plain
+  centered text under the QR/human-code block. delivery.Payload gained an
+  EAN13 field; handler.go resolves it at render time from
+  ticket_credentials (type=ean13), best-effort/non-fatal so pre-#502
+  tickets not yet backfilled simply omit the line.
+- New worker job tickets.backfill_ean13
+  (internal/platform/barcodes/backfill/): finds tickets missing an ean13
+  credential (new ListTicketsMissingEAN13 query, LEFT JOIN ... IS NULL),
+  mints EAN-13 payload + platform barcode per ticket, batched
+  (DefaultBatchSize=500). Idempotent by construction — a ticket drops out of
+  the candidate query the moment it's backfilled. Registered in
+  cmd/arena-worker/main.go. backfill_test.go proves idempotency (repeat Run
+  is a zero-work no-op), batch-size capping, and that an empty candidate
+  list short-circuits before ever touching the barcode-authority lookup.
+- New integration test revoke_artifacts_503_integration_test.go
+  (//go:build integration) issues a real ticket, adds static_qr/pdf
+  credentials plus a second legacy_bil24 barcode (fetch-or-create the
+  authority row — migration 0029 only seeds 'platform' by default, so a
+  fresh dev-stand/CI database has no legacy_bil24 row until one is created
+  on demand), calls RevokeTicketArtifactsTx in a real transaction, and
+  asserts all three credential types have non-nil revoked_at and both
+  barcode rows are status='revoked'. Verified green against the local
+  Postgres dev-stand (localhost:55432/arena), alongside a clean re-run of
+  the pre-existing ean13_issuance_502_integration_test.go as a regression
+  check.
+- Full `go test ./apps/backend/...` (no build tag) green across all
+  packages, no regressions. Staged by explicit path only (never git add
+  -A); pushed to origin master.
