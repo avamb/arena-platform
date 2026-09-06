@@ -28650,3 +28650,84 @@ Working tree left exactly as found (only the perennial untouched scratch:
 `.autoforge/prompts/coding_prompt.md` modified, `.claude/scheduled_tasks.lock`
 deleted, `features.db` untracked). No commit was made — nothing to stage.
 Feature #466 marked passing.
+
+================================================================================
+2026-09-06 — Feature #518 (W1-C3d): Bil24 session import, seated path + scenario 8
+================================================================================
+Commit b471fc5 on master (pushed). Spec §13.2 steps 6 and 10, parent epic #467.
+
+WHAT LANDED
+- `himports/seating.go` (new, ~494 lines): the whole seated half. With an svg
+  block the import parses the sbt plan, derives the admission mode
+  (assigned_seats / hybrid / general_admission), upserts a `seating_plans` row
+  whose `plan_type` follows the mode (note the vocabulary shift: mode "hybrid"
+  → plan_type "mixed"), appends a locked `seating_plan_versions` row, binds it
+  to the session with a category→tier map keyed by category index, and
+  materializes `session_seats` carrying the original Bil24 seat ids in
+  `system_seat_id`. `seatList` entries with `available:false` are materialized
+  as blocked seats plus an `import.seats_blocked` warning. Hybrid detection
+  synthesizes a GA category for every `placement:false` quota that is NOT also
+  drawn in the svg — a category present in both is inventoried by its seats
+  only, otherwise the same capacity would be sold twice.
+- Idempotency: an unchanged geometry checksum + mode reuses the existing
+  version and preserves every `system_seat_id`. A CHANGED seat set on a session
+  that already has tickets/reservations returns 409 `import.session_has_sales`.
+- `himports/types.go`: added `import.seats_blocked`, `import.seat_not_in_plan`,
+  `import.category_unmapped`; `import.seating_not_imported` now means
+  "seatList but no svg" instead of the old blanket emission.
+- `himports/bil24_session.go`: the response now returns the real
+  `seating_plan_version_id` and `seats_materialized`.
+- `himports/seating_518_test.go` (new): DB-free unit coverage — mode
+  derivation, GA synthesis and its capacity, the no-double-count rule, and the
+  mode→plan_type map. 5 tests, green.
+- `tests/compat/bil24/scenario08_import_test.go` (new, integration-tagged) and
+  the one-line un-skip in `harness_test.go`. Verified green four consecutive
+  times against the shared dev stand and residue-free (all fixtures derive
+  their external ids from a per-run random base, so reruns never collide).
+
+DEFECT FOUND AND FIXED BEYOND THE FEATURE TEXT
+The import never seeded the session-level `inventory_ledger` row. Every hold
+path checks it first and a missing row reads as "no capacity", so
+`ReserveCapacity` returned `pgx.ErrNoRows` → `hcheckout.CapacityError` →
+Bil24 `resultCode 101` "Category is sold out". In other words **every imported
+session was unsellable**, silently, until the scenario drove a real
+RESERVATION. Fixed by `syncInventoryLedger` in `import_exec.go`, called after
+`importSeating` because the seated path is what settles the final
+`capacity_total` (a hybrid session ends up with seated + standing, not the raw
+payload `availability`). It inserts on first import and updates capacity on
+re-import.
+
+THE ONE REMAINING STEP OF THIS FEATURE
+Scenario 8's sale tail — CREATE_ORDER_EXT → PAY_ORDER with the original seat
+ids echoed in `order.paid` — is NOT asserted, because it is not reachable
+today: `PAY_ORDER` is absent from the hbil24 dispatch table entirely, and
+`handleBil24CreateOrderExt` is a `-5` NOT_IMPLEMENTED stub owned by feature
+#495 (whose own scenario 2 is still skipped for the same reason). The scenario
+therefore stops at a real RESERVATION hold, which does exercise the imported
+inventory end to end. The tail should be added to
+`scenario08_import_test.go` as soon as #495 lands — the fixture, ids and
+cleanup are already in place for it. This is recorded in the file's package
+doc so the next agent does not have to rediscover it.
+
+CROSS-FEATURE CONFLICT SURFACED, DELIBERATELY NOT PAPERED OVER
+The import (#517) stores prices in MINOR units — `PriceMinorUnits()` multiplies
+by 100 and is pinned by `TestPriceMinorUnits`. The Bil24 cart projection
+(#484/#485) emits `price_amount` VERBATIM and is pinned by scenario 3
+(`sum == 500` against a seeded `price_amount=500`). Real Bil24 goldens
+(`testdata/wp/bil24_orders_pseudonymized.json`) carry MAJOR units on the wire.
+Consequence: an imported 900 CZK category is quoted to the WordPress basket as
+`sum: 90000`. Scenario 8 asserts the actual values (90000 / 94500) with an
+in-code NOTE naming the conflict, rather than "fixing" either side from a
+scenario test and hiding the disagreement. **Someone must decide which side
+owns the unit contract** — this will produce visibly 100× prices on a real
+migrated WP site otherwise.
+
+GATES (all green)
+`go build ./apps/backend/...` 0 · `go vet ./apps/backend/...` 0 · full
+`go test ./apps/backend/...` redirected to a file, EXIT 0, zero FAIL ·
+`go test -count=1 -tags integration -run TestCompatBil24_450_Harness
+./apps/backend/tests/compat/bil24/...` EXIT 0 against the migrated stand ·
+`gofmt -l` clean over `apps/backend/{cmd,internal,tests,tools}` ·
+golangci-lint on himports "0 issues". No migration, no openapi change, so no
+head bump and no codegen. Staged by path only — 7 files; `.autoforge/`,
+`.claude/scheduled_tasks.lock` and `features.db` deliberately left unstaged.
