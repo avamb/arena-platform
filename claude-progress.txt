@@ -27717,3 +27717,66 @@ deleted `.claude/scheduled_tasks.lock` are pre-existing orchestrator/session
 artifacts, not touched by this session, and were left alone. No code files
 changed this session (verification-only), so nothing to commit or push.
 Marked feature #454 passing via feature_mark_passing.
+
+## Feature #455 (W1-A5 EPIC-VERIFY): session cart mutable hold / RESERVATION
+four shapes / GET_CART (K4) full gate re-run — 2026-09-06
+
+Verification-only epic for sub-features #483 (mutable hold primitives),
+#484 (RESERVATION four shapes over session cart) and #485 (GET_CART), all
+already landed and marked passing in prior sessions (commits 92767f4,
+c95bb6a, and #485's commit, all already on origin/master before this
+session started). Confirmed `git rev-parse HEAD` == `git rev-parse
+origin/master` (408bb8e) at session start — nothing to push from prior
+sessions.
+
+Commands run this session, repo root, arena_postgres dev-stand on
+localhost:55432 (Docker was already up), all green:
+- `go.exe -C apps/backend build ./...` -> EXIT:0
+- `go.exe -C apps/backend vet ./...` -> EXIT:0
+- `go.exe -C apps/backend test ./...` (untagged, full suite, redirected to
+  a log file, never piped through head) -> EXIT:0, 67 `ok` packages, zero
+  FAIL lines
+- `gofmt -l` over apps/backend -> empty
+- `GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe -C apps/backend run
+  github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run ./...`
+  -> "0 issues.", EXIT:0
+- Migration head pin: `migrations_head_test.go` expectedHead =
+  "0095_customer_read_role_grants.sql", matches the actual max-numbered
+  file in `internal/migrations/sql/` (0095) -> no drift
+- No openapi.yaml change since #482 (ae9fa02, already gate-verified with
+  zero codegen diff in the #454 epic session) -> codegen drift check
+  skipped per gate condition, nothing new to regenerate
+- `npm run --prefix apps/admin-web type-check` -> EXIT:0
+- `npm run --prefix apps/admin-web test` -> 44 files / 1130 tests passed,
+  EXIT:0
+- Local migrate against the shared dev-stand: `DATABASE_URL=postgres://
+  arena:arena@localhost:55432/arena?sslmode=disable JWT_SIGNING_SECRET=x
+  go.exe -C apps/backend run ./cmd/arena-migrate` -> "no migrations to
+  run. current version: 95" -> stand already at head
+- `go.exe -C apps/backend test -tags integration ./...` (full repo) ->
+  EXIT:0, 68 `ok` packages, zero FAIL lines
+- Epic-specific goldens/scenarios re-run individually with `-v` against
+  `./tests/compat/bil24/...` and `./internal/platform/httpserver/
+  hcheckout/...`:
+  `TestCompatBil24_485_GetCart_WireContract`,
+  `TestCompatBil24_485_GetCart_GoldensExist`,
+  `TestCompatBil24_450_Harness_Scenarios/03_seated_seats_conflict_and_expiry`
+  (the RESERVE-by-seat / cross-session conflict / UN_RESERVE_ALL / re-
+  reserve / stale-session scenario named in the epic spec),
+  `TestBil24_478_ReservationSeatTakenGoldensMatchBundle`,
+  `TestW1A5a_ConcurrentExtendShrink_GA_LiveDB`,
+  `TestW1A5a_ConcurrentExtend_SameSeats_LiveDB`,
+  `TestW1A5a_ShrinkToEmptyCancels_LiveDB`,
+  `TestW1A5a_RefreshHoldExpiry_LiveDB` — all PASS, confirming the epic's
+  "done when" bar: golden RESERVATION/GET_CART fixtures green and harness
+  scenario 3 passes.
+- `gh run list` / `gh run view` -> blocked in this sandbox (`Command 'gh'
+  is not allowed`), same documented pre-existing limitation as #454/#462;
+  local gates (build/vet/test/lint/fmt/migration-pin/admin-web/
+  integration/epic-goldens) are the full signal available here.
+
+No drift found anywhere; nothing to fix. Pre-existing untouched artifacts
+in the tree (`features.db`, modified `.autoforge/prompts/coding_prompt.md`,
+deleted `.claude/scheduled_tasks.lock`) left alone as in prior sessions. No
+code files changed this session (verification-only), so nothing to commit
+or push. Marked feature #455 passing via feature_mark_passing.
