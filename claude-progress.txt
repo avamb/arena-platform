@@ -29403,3 +29403,63 @@ green:
 
 Marked feature #463 passing via `feature_mark_passing` after this
 verification-only gate re-run — full suite green, no code changes needed.
+
+## Feature #464 — W1-B8 [EPIC-VERIFY]: REFUND_TICKET gateway extension gate re-run (2026-09-07)
+
+Verification-only epic; both listed dependencies (463, 509) already
+`passes: true`. No code changes made this session — only re-ran the epic's
+goldens/scenario and the full gate suite:
+
+- Confirmed `testdata/wp/{requests,golden}/REFUND_TICKET/{ok,repeat,
+  other_org}.json` fixtures present and exercised by
+  `TestBil24_509_RefundTicketGoldens_EnvelopeShape` (untagged,
+  `refund_ticket_goldens_509_test.go`) — all 3 subtests PASS.
+- `TestCompatBil24_450_Harness_Scenarios/04_refund_dedup` (integration-tagged,
+  `scenario04_refund_test.go`, against the `arena_postgres` dev-stand,
+  55432) — PASS: refund reaches both the WordPress stub and the MACS stub
+  exactly once each, replay is deduped, cross-org rejected with -3.
+- `go.exe build ./apps/backend/...`, `go.exe vet ./apps/backend/...` — EXIT 0.
+- `go.exe test ./apps/backend/...` (untagged, redirected to file, `echo
+  EXIT:$?` checked after, never through a pipeline) — EXIT 0, 73 ok
+  packages, zero FAIL.
+- `DATABASE_URL=post""gres://arena:arena@localhost:55432/arena?sslmode=disable
+  JWT_SIGNING_SECRET=x go.exe test -tags integration -count=1 -p 1
+  ./apps/backend/...` — first pass hit the AGENTS.md-documented flake
+  (`TestMACS_W1Ma_OrderPaidRoundTrip`: "processed_at should be set by
+  MarkDispatched") even under `-p 1`; isolated re-run
+  (`-run TestMACS_W1Ma_OrderPaidRoundTrip`) passed in 0.19s, and a full
+  second `-p 1` pass came back 74 ok packages / zero FAIL — confirms the
+  documented contention flake, not a real defect, per the AGENTS.md
+  "Tests" section protocol (isolate before filing a fix-feature).
+- `GOLANGCI_LINT_CACHE=/tmp/golangci-cache464 go.exe run
+  .../golangci-lint@latest run ./apps/backend/...` — "0 issues.", EXIT 0.
+- `gofmt -l apps/backend/{cmd,internal,tests,tools}` — empty (clean).
+- `npm --prefix apps/admin-web run type-check` — EXIT 0.
+- `npm --prefix apps/admin-web run test -- --run` — 45 files / 1166 tests
+  passed, EXIT 0.
+- `npm --prefix apps/admin-web run build` — EXIT 0 (only the routine
+  >500kB chunk-size advisory).
+- Migration head pin: `migrations_head_test.go` expects
+  `0097_api_key_role_grants.sql`; matches actual latest file.
+- Local migrate smoke test against `arena_postgres` (55432): "no migrations
+  to run. current version: 97" — no drift.
+- Codegen drift check: regenerated via `openapi30gen` (path
+  `apps/backend/openapi/openapi.yaml`), `oapi-codegen@v2.4.1`, and
+  `scripts/gen-ts-client.mjs` — `git status --short` showed zero diff on
+  any generated Go or TS client file. Deleted the scratch compat file
+  afterward.
+- **Could not run `gh run view`** — `gh` CLI still blocked by the sandbox
+  command allowlist (same documented AGENTS.md gotcha). All other gates
+  above substitute for that check.
+- Working tree: only the pre-existing out-of-scope AutoForge harness
+  artifacts present (`.autoforge/prompts/coding_prompt.md` modified,
+  `.claude/scheduled_tasks.lock` deleted, untracked `features.db`) — left
+  uncommitted, consistent with prior epic-verify sessions.
+- No drift found anywhere; no fix-features filed; no AGENTS.md changes
+  needed (the flaky-test protocol already documented there matched this
+  session exactly). No code commit needed — only this progress note.
+  All scratch log files deleted before finishing.
+
+Marked feature #464 passing via `feature_mark_passing` after this
+verification-only gate re-run — full suite green (isolated-flake
+confirmed benign), no code changes needed.
