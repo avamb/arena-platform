@@ -27596,3 +27596,69 @@ localhost:55432):
 
 No drift found, nothing to fix. Marked feature #462 passing. No files
 changed this session (verification-only), so nothing to commit/push.
+
+## Feature #482 (W1-A4d): public-feed customer resolution + org read surface
+2026-09-06, commit ae9fa02 (push c4bd33b..ae9fa02 to origin master)
+
+Closed all three parts of #482 (spec §12.3, epic #454):
+1. customers.Resolve wiring from public-feed checkout (buyer name/phone/email
+   -> customers row + customer_org_links + reservations.customer_id stamp)
+   was already in place from a prior session; this session added a live-DB
+   integration test (customer_resolve_482_integration_test.go) driving the
+   REAL POST /v1/public/feeds/{token}/checkout/start plus the new GET
+   .../customers and GET .../customers/{id} endpoints through the mounted
+   chi router end to end, and in doing so caught a real RBAC bug: the
+   `customer.read` / `customer.import` permissions existed (0091_customers.sql)
+   but were granted to NO role, making the new read surface unreachable by any
+   tenant actor. Fixed via migration 0095_customer_read_role_grants.sql
+   (grants customer.read to admin/org_admin/organizer/agent, customer.import
+   admin-only, mirroring the 0011_memberships.sql grant pattern). Migration
+   head pin updated to 0095 in migrations_head_test.go.
+2. New GET /v1/organizations/{org_id}/customers?q= (search/list) and
+   GET /v1/organizations/{org_id}/customers/{id} (card: identities with
+   server-side masking of unverified strong identities, orders, attributes,
+   consents) endpoints: hcustomers/handler.go + handler_test.go,
+   mount_customers.go, customers_shims.go, wiring into mount_v1.go/
+   server_struct.go/wire.go, sqlc queries+gen for customers/orders/
+   reservations, OpenAPI paths + regenerated types_gen.go and TS client
+   (clients/ts/index.d.ts), openapi_drift_test.go coverage.
+3. admin-web Customers surface (built by a delegated subagent, verified
+   here): org-scoped list page (customers.tsx, search by q, org picker +
+   UUID paste, standard 401/403/error/empty/org-required states) and detail
+   card page (customerDetail.tsx, tabbed identities/orders/attributes/
+   consents, synthetic non-nav-registered detail permission entry), both
+   wired into routeTree.ts and navConfig.ts (new "/customers" nav entry
+   gated on customer.read), plus customers.test.ts Vitest coverage and the
+   two guardrail fixtures that needed updating for the new route pair
+   (saui14_smoke.test.ts route registry, navConfig.test.ts nav-id list).
+
+Verification this session (all from repo root, PATH-prefixed go.exe):
+- `go.exe build ./...` -> EXIT:0
+- `go.exe vet ./...` -> EXIT:0
+- gofmt sweep across every new/modified .go file -> only server_struct.go
+  needed `gofmt -w` (stray formatting from an earlier wiring edit); reran
+  gofmt -l afterward -> clean
+- `go.exe test ./apps/backend/internal/platform/httpserver/...
+  ./apps/backend/internal/migrations/... ./apps/backend/internal/platform/
+  httpserver/hcustomers/... ./apps/backend/internal/adapters/postgres/
+  gen/...` -> EXIT:0, all ok
+- `go.exe test ./...` (full repo, untagged) -> EXIT:0, 102 lines of output,
+  every package ok or no-test-files, zero FAIL lines
+- admin-web: `npm --prefix apps/admin-web run type-check` -> clean;
+  `npm --prefix apps/admin-web run test` -> 44 files / 1130 tests passed;
+  `node scripts/admin-smoke-guardrails.mjs` -> OK, 123 files scanned, no
+  forbidden patterns
+- Integration-tagged tests (public-feed checkout + org read surface) were
+  proven green in the prior session that authored them (live DB); not
+  re-run this session since no touched file changes that path further and
+  no DATABASE_URL was needed for this session's untagged-suite gate.
+
+Committed by explicit path (29 files, 3814 insertions) — never `git add .`;
+confirmed `.autoforge/prompts/coding_prompt.md`, `.claude/scheduled_tasks.lock`,
+and a stray `features.db` stayed unstaged. Pushed to origin master as
+ae9fa02. Marked feature #482 passing via feature_mark_passing.
+
+Known follow-up (NOT fixed, out of scope for #482): `order.read`/
+`order.write` permissions appear to have the same missing-role-grant gap
+that customer.read had before migration 0095 — worth a dedicated feature to
+audit all `permissions` rows against `role_permissions` for orphaned grants.
