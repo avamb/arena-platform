@@ -102,9 +102,10 @@ export interface paths {
          *         -1 transient, -2 invalid request, -3 not found,
          *         -4 unauthorized, -99 dependency unavailable).
          *
-         *     The request and response payloads are intentionally left
-         *     free-form here: the shape varies per command and the normative
-         *     definition is the specification document above, not this file.
+         *     The request and response shape is a `oneOf` union keyed by the
+         *     `command` field (spec §16): each variant below corresponds to one
+         *     Bil24 command from spec §7. The normative field-level contract
+         *     remains the specification document above; this file mirrors it.
          */
         post: operations["postBil24Command"];
         delete?: never;
@@ -14307,6 +14308,1136 @@ export interface components {
              */
             created: boolean;
         };
+        /**
+         * @description Fields common to every `/compat/bil24/json` command. `fid` and
+         *     `token` resolve the sales channel and organization; `locale`
+         *     selects the language of any localized `description` in the
+         *     response. Per-command payload fields are added by the more
+         *     specific `Bil24Req*` schemas below via `allOf`.
+         */
+        Bil24RequestEnvelope: {
+            /** @description Selects which of the Bil24 wire operations to run (spec §7). */
+            command: string;
+            /**
+             * @description Sales-channel credential (`sales_channels.display_number`).
+             *     Accepted as a JSON number or a numeric string on the wire.
+             */
+            fid: string;
+            /** @description Authentication credential paired with `fid`. */
+            token: string;
+            /**
+             * @description Optional. Language of localized `description` text in the
+             *     response (`ru`, `he`, `cs`, …). Defaults to the channel's
+             *     configured locale when absent.
+             */
+            locale?: string;
+        };
+        /**
+         * @description `GET_ALL_ACTIONS` (spec §7.1): the full public catalog (countries,
+         *     cities, venues, events with sessions) for the channel's
+         *     organization. The request carries only the common envelope.
+         */
+        Bil24ReqGetAllActions: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "GET_ALL_ACTIONS";
+        };
+        /**
+         * @description `GET_SEAT_LIST` (spec §7.2): per-seat inventory and category
+         *     pricing for one session.
+         */
+        Bil24ReqGetSeatList: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "GET_SEAT_LIST";
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the session (`compatibility_id_map`, kind `action_event`).
+             */
+            actionEventId: number;
+            /**
+             * @description When true, `seatList` in the response is filtered to
+             *     available seats only; `categoryList` is always complete.
+             *     Defaults to false (return every seat).
+             */
+            availableOnly?: boolean;
+        };
+        /**
+         * @description `CREATE_USER` (spec §7.3): resolves or creates a buyer and mints a
+         *     gateway session. All fields are optional; an anonymous buyer is
+         *     created when neither `email` nor `phone` is supplied.
+         */
+        Bil24ReqCreateUser: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "CREATE_USER";
+            /** @description Optional buyer email, used as a strong identity key (spec §12.2). */
+            email?: string;
+            /** @description Optional buyer first name. `display_name` = `firstName + " " + lastName`. */
+            firstName?: string;
+            /** @description Optional buyer last name. */
+            lastName?: string;
+            /** @description Optional buyer phone, used as a strong identity key (spec §12.2). */
+            phone?: string;
+        };
+        /** @description One general-admission tier line of a `RESERVATION` request's `categoryList`. */
+        Bil24ReservationCategoryLine: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the ticket tier (`compatibility_id_map`, kind `category_price`).
+             */
+            categoryPriceId: number;
+            /** @description Number of GA units requested against this tier. */
+            quantity: number;
+            /**
+             * Format: int64
+             * @description Accepted and ignored — arena has no tariff-plan concept.
+             */
+            tariffPlanId?: number | null;
+        };
+        /** @description One seat entry of a `RESERVATION` request's `seatList`. */
+        Bil24ReservationSeatLine: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the seat (`session_seats.system_seat_id`).
+             */
+            seatId: number;
+        };
+        /**
+         * @description `RESERVATION` (spec §7.4), covering all three wire shapes selected
+         *     by `type`: `RESERVE`/`UN_RESERVE` with either `categoryList` (GA
+         *     tiers) or `seatList` (assigned seats), and `UN_RESERVE_ALL` which
+         *     needs neither. The cart is one mutable reservation per (gateway
+         *     session, event session); `seatList` and `categoryList` together
+         *     in the same request is a `-2` invalid-request error.
+         */
+        Bil24ReqReservation: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "RESERVATION";
+            /**
+             * @description Sub-command selector. An empty/absent value is treated as
+             *     `RESERVE` for backward compatibility with pre-§7.4 clients.
+             * @enum {string}
+             */
+            type: "RESERVE" | "UN_RESERVE" | "UN_RESERVE_ALL";
+            /**
+             * Format: int64
+             * @description Buyer compatibility id returned by `CREATE_USER`.
+             */
+            userId: number;
+            /** @description Gateway session token returned by `CREATE_USER`. */
+            sessionId: string;
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the session. Required for `RESERVE` and
+             *     `UN_RESERVE`; absent for `UN_RESERVE_ALL`.
+             */
+            actionEventId?: number;
+            /** @description General-admission tier lines. Mutually exclusive with `seatList`. */
+            categoryList?: components["schemas"]["Bil24ReservationCategoryLine"][];
+            /** @description Assigned-seat entries. Mutually exclusive with `categoryList`. */
+            seatList?: components["schemas"]["Bil24ReservationSeatLine"][];
+        };
+        /**
+         * @description `GET_CART` (spec §7.5): the aggregated cart across every session of
+         *     the gateway session.
+         */
+        Bil24ReqGetCart: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "GET_CART";
+            /**
+             * Format: int64
+             * @description Buyer compatibility id returned by `CREATE_USER`.
+             */
+            userId: number;
+            /** @description Gateway session token returned by `CREATE_USER`. */
+            sessionId: string;
+        };
+        /**
+         * @description `ADD_PROMO_CODES` (spec §7.6). Legacy clients send the codes under
+         *     `promoCodeList`, `promoCodes`, or both; the gateway takes their
+         *     union, deduplicated, case-insensitive, capped at 10 codes.
+         */
+        Bil24ReqAddPromoCodes: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "ADD_PROMO_CODES";
+            /**
+             * Format: int64
+             * @description Buyer compatibility id returned by `CREATE_USER`.
+             */
+            userId: number;
+            /** @description Gateway session token returned by `CREATE_USER`. */
+            sessionId: string;
+            /** @description Documented spelling of the promo code list. */
+            promoCodeList?: string[];
+            /** @description Alternate spelling some WordPress builds emit instead of `promoCodeList`. */
+            promoCodes?: string[];
+        };
+        /**
+         * @description `CHECK_KDP` (spec §7.6): validates a single promo code against the
+         *     current cart without storing it.
+         */
+        Bil24ReqCheckKdp: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "CHECK_KDP";
+            /**
+             * Format: int64
+             * @description Buyer compatibility id returned by `CREATE_USER`.
+             */
+            userId: number;
+            /** @description Gateway session token returned by `CREATE_USER`. */
+            sessionId: string;
+            /** @description Single promo code to validate (not persisted). */
+            promoCode: string;
+        };
+        /** @description One line of a `CREATE_ORDER_EXT` request's `lines` array. */
+        Bil24OrderLine: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the ticket tier (`compatibility_id_map`, kind `category_price`).
+             */
+            categoryPriceId: number;
+            /** @description Requested ticket count for the tier (>= 1). */
+            quantity: number;
+            /**
+             * Format: int64
+             * @description Accepted and ignored — arena has no tariff-plan concept.
+             */
+            tariffPlanId?: number | null;
+        };
+        /**
+         * @description `CREATE_ORDER_EXT` (spec §7.7): reconciles the session cart for
+         *     `actionEventId` against `lines` and either creates a new
+         *     `pending_payment` order or returns the buyer's existing one for
+         *     the same session (one open order per buyer per session).
+         */
+        Bil24ReqCreateOrderExt: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "CREATE_ORDER_EXT";
+            /**
+             * @description Client-supplied order number, stored verbatim as
+             *     `orders.external_ref` and echoed back as `externalOrderId`.
+             *     Required and must be non-empty.
+             */
+            orderId: string;
+            /**
+             * Format: int64
+             * @description Buyer compatibility id returned by `CREATE_USER`.
+             */
+            userId: number;
+            /** @description Gateway session token returned by `CREATE_USER`. */
+            sessionId: string;
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the session the order is for.
+             */
+            actionEventId: number;
+            /**
+             * @description ISO-4217 code the client submitted. Advisory only — the
+             *     gateway always answers with the session's own currency.
+             */
+            currency?: string;
+            /**
+             * @description Price the client believes the order comes to, in major
+             *     currency units. Advisory only; recorded verbatim in
+             *     `order_events.created.payload.client_reported` and never
+             *     used for pricing.
+             */
+            total?: number;
+            /** @description Service-fee percentage the client believes applies. Advisory only. */
+            chargePercent?: number;
+            /**
+             * @description Requests the extended hold window some Bil24 deployments
+             *     grant bank-transfer buyers. Accepted; the gateway honours
+             *     the channel's configured TTL either way.
+             */
+            longReservation?: boolean;
+            /** @description Authoritative statement of the order composition. Empty is a `-2` error. */
+            lines: components["schemas"]["Bil24OrderLine"][];
+            /** @description Buyer email, feeds customer resolution (spec §12.2). */
+            email?: string;
+            /** @description Buyer phone, feeds customer resolution (spec §12.2). */
+            phone?: string;
+            /** @description Buyer full name (single field, unlike `CREATE_USER`'s first/last split). */
+            fullName?: string;
+            /** @description Promo codes to apply, unioned with the gateway session's stored codes. */
+            promoCodes?: string[];
+        };
+        /**
+         * @description `GET_ORDER_INFO` (spec §7.8): returns the order header (Bil24
+         *     `Order` shape without `ticketList`, spec §9.3) for an order in the
+         *     channel's organization.
+         */
+        Bil24ReqGetOrderInfo: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "GET_ORDER_INFO";
+            /** @description Bil24 wire id of the order (`orders.system_id`), number or numeric string. */
+            orderId: string;
+            /**
+             * Format: int64
+             * @description Optional buyer compatibility id; accepted but not required to scope the lookup.
+             */
+            userId?: number;
+            /** @description Optional gateway session token; accepted but not required to scope the lookup. */
+            sessionId?: string;
+        };
+        /**
+         * @description `PAY_ORDER` (spec §7.9): confirms payment taken by the WordPress
+         *     site's own payment gateway (WooCommerce), triggering the platform
+         *     order-paid transaction and synchronous ticket issuance.
+         */
+        Bil24ReqPayOrder: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "PAY_ORDER";
+            /** @description Bil24 wire id of the order (`orders.system_id`), number or numeric string. */
+            orderId: string;
+            /**
+             * Format: int64
+             * @description Buyer compatibility id returned by `CREATE_USER`.
+             */
+            userId: number;
+            /** @description Gateway session token returned by `CREATE_USER`. */
+            sessionId: string;
+            /**
+             * @description Amount the site's payment gateway charged, in major
+             *     currency units. Compared to `orders.total`
+             *     (0.01 tolerance) but never blocks payment confirmation on
+             *     a mismatch — only records `order_events.amount_mismatch`.
+             */
+            amount: number;
+            /** @description ISO-4217 code of the charged amount. */
+            currency: string;
+            /**
+             * @description Payment method label from the site's gateway (e.g.
+             *     `stripe`, `bank_transfer`). Stored as `orders.payment_method`.
+             */
+            method: string;
+        };
+        /**
+         * @description `GET_TICKETS_BY_ORDER` (spec §7.10): lists issued tickets for a
+         *     paid order. Answers `0` with empty lists when the order is not
+         *     yet paid or tickets are not yet issued.
+         */
+        Bil24ReqGetTicketsByOrder: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "GET_TICKETS_BY_ORDER";
+            /** @description Bil24 wire id of the order (`orders.system_id`), number or numeric string. */
+            orderId: string;
+            /**
+             * Format: int64
+             * @description Buyer compatibility id returned by `CREATE_USER`.
+             */
+            userId: number;
+            /** @description Gateway session token returned by `CREATE_USER`. */
+            sessionId: string;
+            /** @description Accepted and currently unused by the gateway response. */
+            rawCoordinates?: boolean;
+        };
+        /**
+         * @description `SEND_TICKETS_TO_EMAIL` (spec §7.11): queues a delivery job per
+         *     listed ticket. Disabled by a channel filter on both wave-1 sites;
+         *     implemented for completeness.
+         */
+        Bil24ReqSendTicketsToEmail: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "SEND_TICKETS_TO_EMAIL";
+            /**
+             * Format: int64
+             * @description Buyer compatibility id returned by `CREATE_USER`.
+             */
+            userId: number;
+            /** @description Gateway session token returned by `CREATE_USER`. */
+            sessionId: string;
+            /** @description Recipient email address for the delivery jobs. */
+            email: string;
+            /** @description Bil24 wire ids of the tickets to send (`tickets.system_ticket_id`). */
+            ticketIdList: number[];
+        };
+        /**
+         * @description `CANCEL_RESERVATION` (spec §7.12): releases the hold of an unpaid
+         *     order. Either `reservationId` or `orderId` may be supplied; an id
+         *     that is not found answers `0` (the site does not check the code).
+         *     A paid order answers `101`.
+         */
+        Bil24ReqCancelReservation: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "CANCEL_RESERVATION";
+            /** @description Platform reservation id returned by a successful `RESERVATION`. */
+            reservationId?: string;
+            /** @description Bil24 wire id of the order (`orders.system_id`), number or numeric string. */
+            orderId?: string;
+        };
+        /**
+         * @description `CANCEL_ORDER` (spec §7.12): cancels an unpaid order (and its
+         *     hold). A paid order answers `101 bil24.use_refund_ticket`.
+         */
+        Bil24ReqCancelOrder: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "CANCEL_ORDER";
+            /** @description Bil24 wire id of the order (`orders.system_id`), number or numeric string. */
+            orderId: string;
+        };
+        /**
+         * @description `REFUND_TICKET` (arena extension, spec §7.13): refunds one ticket
+         *     of an order in the channel's organization, driving the platform
+         *     cancellation transaction with `refund_mode='manual'`.
+         */
+        Bil24ReqRefundTicket: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "REFUND_TICKET";
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the ticket (`tickets.system_ticket_id`).
+             */
+            ticketId: number;
+            /**
+             * @description Optional operator-supplied refund reason. Defaults to
+             *     `"REFUND_TICKET via gateway fid=<fid>"` when absent.
+             */
+            reason?: string;
+            /**
+             * @description Optional refunded amount in major currency units. Absent
+             *     means the organizer has not decided the amount yet;
+             *     `tickets.refund_price` stays null.
+             */
+            refundPrice?: number;
+        };
+        /** @description `SCAN_TICKET` (spec §7.14): validates and marks a ticket's barcode as scanned. */
+        Bil24ReqScanTicket: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "SCAN_TICKET";
+            /**
+             * @description Ticket barcode or Bil24 wire id (`tickets.system_ticket_id`),
+             *     looked up across every barcode authority (`platform`, `legacy_bil24`).
+             */
+            ticketId: string;
+        };
+        /**
+         * @description `GET_SCHEMA` (spec §7.15): legacy seat-coordinate listing kept for
+         *     widget/partner compatibility; the wave-1 WordPress sites do not
+         *     call it.
+         */
+        Bil24ReqGetSchema: components["schemas"]["Bil24RequestEnvelope"] & {
+            /**
+             * @description Fixed command discriminator for this request shape.
+             * @enum {string}
+             */
+            command?: "GET_SCHEMA";
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the session.
+             */
+            actionEventId?: number;
+        };
+        /**
+         * @description Fields common to every `/compat/bil24/json` response, success or
+         *     error. `resultCode` is the real outcome signal — the HTTP status is
+         *     always 200 (spec §6): `0` OK, `1` stale gateway session, `101`
+         *     user-visible business error (localized `description`), `-1`
+         *     transient, `-2` invalid request, `-3` not found / out of org
+         *     scope, `-4` auth, `-5` not implemented, `-99` dependency
+         *     unavailable. Per-command payload fields are added by the more
+         *     specific `Bil24Resp*` schemas via `allOf`, and are present only
+         *     when `resultCode` is `0`.
+         */
+        Bil24ResponseEnvelope: {
+            /** @description Outcome code; see the schema description for the full table. */
+            resultCode: number;
+            /**
+             * @description Human-readable outcome text, localized per the request's
+             *     `locale` when `resultCode != 0`. `"OK"` on success.
+             */
+            description: string;
+            /** @description Echo of the request's `command`. */
+            command: string;
+        };
+        /** @description Success payload of `GET_ALL_ACTIONS` (spec §7.1), merged into the envelope. */
+        Bil24RespGetAllActions: components["schemas"]["Bil24ResponseEnvelope"] & {
+            /** @description Countries with at least one qualifying event. */
+            countryList?: components["schemas"]["Bil24CountryEntry"][];
+            /** @description Cities with at least one qualifying event, each carrying its venues. */
+            cityList?: components["schemas"]["Bil24CityEntry"][];
+            /** @description Published events (Bil24 "actions") with their sessions. */
+            actionList?: components["schemas"]["Bil24ActionEntry"][];
+        };
+        /** @description One row of `GET_ALL_ACTIONS.countryList`. */
+        Bil24CountryEntry: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the country.
+             */
+            countryId?: number;
+            /** @description Display name of the country. */
+            countryName?: string;
+        };
+        /** @description One row of `GET_ALL_ACTIONS.cityList`. */
+        Bil24CityEntry: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the city.
+             */
+            cityId?: number;
+            /** @description Display name of the city. */
+            cityName?: string;
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the city's country.
+             */
+            countryId?: number;
+            /** @description Venues located in this city. */
+            venueList?: components["schemas"]["Bil24VenueEntry"][];
+        };
+        /** @description One row of `GET_ALL_ACTIONS.cityList[].venueList`. */
+        Bil24VenueEntry: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the venue.
+             */
+            venueId?: number;
+            /** @description Display name of the venue. */
+            venueName?: string;
+            /** @description Street address of the venue. */
+            address?: string;
+            /** @description Latitude in decimal degrees. */
+            geoLat?: number;
+            /** @description Longitude in decimal degrees. */
+            geoLon?: number;
+        };
+        /**
+         * @description Wrapper matching the legacy wire shape the WordPress plugin
+         *     parses: presence of `categoryLimitList[0].categoryList` with
+         *     `placement:false` distinguishes a general-admission session from
+         *     a combined (GA + seated) one.
+         */
+        Bil24CategoryLimitEntry: {
+            /** @description General-admission tier rows only (tiers with seats never appear here). */
+            categoryList?: components["schemas"]["Bil24GACategoryEntry"][];
+        };
+        /** @description One GA tier row inside `categoryLimitList[].categoryList`. */
+        Bil24GACategoryEntry: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the ticket tier.
+             */
+            categoryPriceId?: number;
+            /** @description Display name of the tier. */
+            categoryPriceName?: string;
+            /** @description Always `false` here (GA tiers have no seats). */
+            placement?: boolean;
+            /** @description Current resolved price in major currency units. */
+            price?: number;
+            /** @description Remaining GA units for this tier. */
+            availability?: number;
+            /** @description Always empty — arena has no tariff-plan concept. */
+            tariffIdMap?: Record<string, never>;
+        };
+        /** @description One row of `GET_ALL_ACTIONS.actionList[].actionEventList` (one session). */
+        Bil24ActionEventEntry: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the session.
+             */
+            actionEventId?: number;
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the venue's city.
+             */
+            cityId?: number;
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the venue.
+             */
+            venueId?: number;
+            /** @description Session calendar day in the venue's timezone, `DD.MM.YYYY`. */
+            day?: string;
+            /** @description Session start time in the venue's timezone, `HH:MM`. */
+            time?: string;
+            /** @description ISO-4217 code of the session's prices. */
+            currency?: string;
+            /** @description RFC3339 timestamp after which sales close (earliest tier `sale_window_end`, else `start_at`). */
+            sellEndTime?: string;
+            /**
+             * Format: int64
+             * @description Equal to `actionEventId` for sessions with seats (used by the
+             *     site only as an "a plan exists" flag); `0` for pure
+             *     general-admission sessions.
+             */
+            seatingPlanId?: number;
+            /** @description Display name of the seating plan, when one exists. */
+            seatingPlanName?: string;
+            /** @description Whether e-tickets are enabled for this session. */
+            eTicket?: boolean;
+            /** @description Remaining capacity across all seats/units of the session. */
+            availability?: number;
+            /** @description Lowest resolved tier price for this session, major currency units. */
+            minPrice?: number;
+            /** @description Service-fee percentage of the sales channel, truncated to an integer. */
+            chargePercent?: number;
+            /**
+             * @description General-admission tiers only, wrapped per the legacy shape.
+             *     Empty for a pure-seated session.
+             */
+            categoryLimitList?: components["schemas"]["Bil24CategoryLimitEntry"][];
+            /** @description Always empty in wave 1 — arena has no tariff-plan concept. */
+            tariffPlanList?: unknown[];
+        };
+        /** @description One row of `GET_ALL_ACTIONS.actionList` (one published event). */
+        Bil24ActionEntry: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the event.
+             */
+            actionId?: number;
+            /** @description Localized short display name. */
+            actionName?: string;
+            /** @description Localized full display name, when it differs from `actionName`. */
+            fullActionName?: string;
+            /** @description HTML description, mirrored from `events.description`. */
+            description?: string;
+            /** @description Public URL of the small poster image. */
+            smallPosterUrl?: string;
+            /** @description Public URL of the large poster image. */
+            bigPosterUrl?: string;
+            /** @description Lowest resolved tier price across all shown sessions, major currency units. */
+            minPrice?: number;
+            /** @description Highest resolved tier price across all shown sessions, major currency units. */
+            maxPrice?: number;
+            /** @description Age restriction label (`events.age_rating`; `NR` renders as `""`). */
+            age?: string;
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the organizing entity.
+             */
+            organizerId?: number;
+            /** @description Display name of the organizer. */
+            organizerName?: string;
+            /** @description Calendar day of the earliest shown session, `DD.MM.YYYY`. */
+            firstEventDate?: string;
+            /** @description Calendar day of the latest shown session, `DD.MM.YYYY`. */
+            lastEventDate?: string;
+            /** @description Sessions of this event. */
+            actionEventList?: components["schemas"]["Bil24ActionEventEntry"][];
+        };
+        /** @description Sector/row/number location of a seat, used across several Bil24 command responses. */
+        Bil24SeatLocation: {
+            /** @description Sector or tier name. For a GA pseudo-seat, the tier name. */
+            sector?: string;
+            /** @description Row label. Empty for a GA pseudo-seat. */
+            row?: string;
+            /** @description Seat number within the row. Empty for a GA pseudo-seat. */
+            number?: string;
+        };
+        /** @description Success payload of `GET_SEAT_LIST` (spec §7.2), merged into the envelope. */
+        Bil24RespGetSeatList: components["schemas"]["Bil24ResponseEnvelope"] & {
+            /** @description ISO-4217 code of the session's prices. */
+            currency?: string;
+            /** @description All tiers of the session (seated and GA). */
+            categoryList?: components["schemas"]["Bil24SeatListCategory"][];
+            /**
+             * @description Per-seat inventory for assigned/hybrid sessions; GA units
+             *     appear as pseudo-seats. Empty for pure general-admission
+             *     sessions.
+             */
+            seatList?: components["schemas"]["Bil24SeatListSeat"][];
+        };
+        /** @description One row of `GET_SEAT_LIST.categoryList`. */
+        Bil24SeatListCategory: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the ticket tier.
+             */
+            categoryPriceId?: number;
+            /** @description Display name of the tier. */
+            categoryPriceName?: string;
+            /** @description Current resolved price in major currency units. */
+            price?: number;
+            /** @description Remaining seats/units for this tier. */
+            availability?: number;
+            /**
+             * @description `true` for tiers with seats, `false` for general-admission
+             *     tiers. The key is absent entirely for tiers of a pure-GA
+             *     session (no seating plan at all).
+             */
+            placement?: boolean;
+            /** @description Always empty — arena has no tariff-plan concept. */
+            tariffIdMap?: Record<string, never>;
+        };
+        /** @description One row of `GET_SEAT_LIST.seatList` (a real seat or a GA pseudo-seat). */
+        Bil24SeatListSeat: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the seat (`session_seats.system_seat_id`).
+             */
+            seatId?: number;
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the seat's ticket tier.
+             */
+            categoryPriceId?: number;
+            /**
+             * Format: int64
+             * @description Always `null` — arena has no tariff-plan concept.
+             */
+            tariffPlanId?: number | null;
+            /** @description Current resolved price in major currency units. */
+            price?: number;
+            /** @description Whether the seat/unit is currently available. */
+            available?: boolean;
+            /** @description Sector/row/number of the seat, or the tier name for a GA pseudo-seat. */
+            location?: components["schemas"]["Bil24SeatLocation"];
+        };
+        /** @description Success payload of `CREATE_USER` (spec §7.3), merged into the envelope. */
+        Bil24RespCreateUser: components["schemas"]["Bil24ResponseEnvelope"] & {
+            /**
+             * Format: int64
+             * @description Buyer compatibility id (`customers.system_id`).
+             */
+            userId?: number;
+            /**
+             * @description Newly minted gateway session token, echoed by every
+             *     subsequent command. Expires 30 days from issuance,
+             *     sliding on each use.
+             */
+            sessionId?: string;
+        };
+        /** @description One row of `RESERVATION`/`GET_CART`'s per-line seat/unit projection. */
+        Bil24ReservationSeatListItem: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the seat or GA pseudo-seat.
+             */
+            seatId?: number;
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the session this line belongs to.
+             */
+            actionEventId?: number;
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the ticket tier.
+             */
+            categoryPriceId?: number;
+            /**
+             * Format: int64
+             * @description Always `null` — arena has no tariff-plan concept.
+             */
+            tariffPlanId?: number | null;
+            /** @description Unit price in major currency units. */
+            price?: number;
+            /** @description Discount applied to this unit, major currency units. */
+            discount?: number;
+        };
+        /**
+         * @description Success payload of `RESERVATION` and `UN_RESERVE` (spec §7.4),
+         *     merged into the envelope. `seatList` is the entire cart across all
+         *     sessions of the gateway session, not just the session named in
+         *     the request.
+         */
+        Bil24RespReservation: components["schemas"]["Bil24ResponseEnvelope"] & {
+            /** @description Seconds until the nearest hold expiry; `0` when the cart is empty. */
+            cartTimeout?: number;
+            /** @description ISO-4217 code of the cart (one currency per gateway session). */
+            currency?: string;
+            /** @description Sum of unit prices before discount/fee, major currency units. */
+            sum?: number;
+            /** @description Total discount, major currency units. */
+            discount?: number;
+            /** @description Total service fee, major currency units. */
+            charge?: number;
+            /** @description Final payable total, major currency units. */
+            totalSum?: number;
+            /** @description Every seat/unit currently held across the whole gateway session. */
+            seatList?: components["schemas"]["Bil24ReservationSeatListItem"][];
+        };
+        /** @description One row of `GET_CART.actionEventList[].seatList`. */
+        Bil24CartSeatListItem: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the seat or GA pseudo-seat.
+             */
+            seatId?: number;
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the ticket tier.
+             */
+            categoryPriceId?: number;
+            /**
+             * Format: int64
+             * @description Always `null` — arena has no tariff-plan concept.
+             */
+            tariffPlanId?: number | null;
+            /** @description Unit price in major currency units. */
+            price?: number;
+            /** @description Discount applied to this unit, major currency units. */
+            discount?: number;
+        };
+        /** @description One row of `GET_CART.actionEventList`, grouping cart lines by session. */
+        Bil24CartActionEvent: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the session.
+             */
+            actionEventId?: number;
+            /** @description Service-fee percentage of the sales channel, truncated to an integer. */
+            chargePercent?: number;
+            /** @description Held seats/units of this session. */
+            seatList?: components["schemas"]["Bil24CartSeatListItem"][];
+        };
+        /**
+         * @description Success payload of `GET_CART` (spec §7.5), merged into the
+         *     envelope. Only `totalSum` carries the final total — the site's
+         *     own fallback chain reads it last.
+         */
+        Bil24RespGetCart: components["schemas"]["Bil24ResponseEnvelope"] & {
+            /** @description Seconds until the nearest hold expiry; `0` when the cart is empty. */
+            cartTimeout?: number;
+            /** @description ISO-4217 code of the cart. */
+            currency?: string;
+            /** @description Sum of unit prices before discount/fee, major currency units. */
+            sum?: number;
+            /** @description Total promo-code discount, distributed proportionally across lines. */
+            discountAmount?: number;
+            /** @description Total service fee, major currency units. */
+            chargeAmount?: number;
+            /** @description Final payable total, major currency units. */
+            totalSum?: number;
+            /** @description Cart lines grouped by session. Empty when the cart is empty. */
+            actionEventList?: components["schemas"]["Bil24CartActionEvent"][];
+        };
+        /** @description Success payload of `ADD_PROMO_CODES` (spec §7.6), merged into the envelope. */
+        Bil24RespAddPromoCodes: components["schemas"]["Bil24ResponseEnvelope"] & {
+            /** @description Codes newly validated and added to the gateway session. */
+            newPromoCodeList?: string[];
+            /** @description Codes already present on the gateway session. */
+            existPromoCodeList?: string[];
+            /**
+             * @description Codes that failed validation; `description` carries the
+             *     localized reason for the first failure.
+             */
+            errorPromoCodeList?: string[];
+        };
+        /** @description Success payload of `CREATE_ORDER_EXT` (spec §7.7), merged into the envelope. */
+        Bil24RespCreateOrder: components["schemas"]["Bil24ResponseEnvelope"] & {
+            /**
+             * Format: int64
+             * @description Arena-minted order id (`orders.system_id`, >= 1e9).
+             */
+            orderId?: number;
+            /** @description Echo of the request's `orderId` (`orders.external_ref`). */
+            externalOrderId?: string;
+            /** @description Sum of unit prices before discount/fee, major currency units. */
+            sum?: number;
+            /** @description Total discount, major currency units. */
+            discount?: number;
+            /** @description Total service fee, major currency units. */
+            charge?: number;
+            /** @description Final payable total, major currency units. */
+            totalSum?: number;
+            /** @description ISO-4217 code of the order (the session's currency, not the request's advisory one). */
+            currency?: string;
+            /** @description RFC3339 timestamp when the unpaid order's hold expires. */
+            expiration?: string;
+        };
+        /** @description Small `{id, name}` reference used throughout the Bil24 `Order`/`Ticket` projection (spec §9.3). */
+        Bil24OrderIdEntity: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the referenced entity.
+             */
+            id?: number;
+            /** @description Display name of the referenced entity. */
+            name?: string;
+        };
+        /** @description The `frontend` sub-object of a Bil24 `Order` (spec §9.3) — the sales channel that created it. */
+        Bil24OrderFrontend: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the sales channel (`fid`).
+             */
+            id?: number;
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the owning organization.
+             */
+            agentId?: number;
+            /** @description Channel URL or display name. */
+            name?: string;
+            /** @description Channel type reference, e.g. `{"id": 8, "name": "Ticketing system"}`. */
+            type?: components["schemas"]["Bil24OrderIdEntity"];
+        };
+        /**
+         * @description The `acquiring` sub-object of a Bil24 `Order` (spec §9.3). Wave 1
+         *     has no acquiring integration; always zero/empty values.
+         */
+        Bil24OrderAcquiring: {
+            /**
+             * Format: int64
+             * @description Always `0` in wave 1.
+             */
+            id?: number;
+            /**
+             * Format: int64
+             * @description Always `0` in wave 1.
+             */
+            systemId?: number;
+            /** @description Always `""` in wave 1. */
+            name?: string;
+            /** @description Always `""` in wave 1. */
+            systemName?: string;
+            /**
+             * Format: int64
+             * @description Always `0` in wave 1.
+             */
+            agentId?: number;
+            /** @description Always `""` in wave 1. */
+            agentName?: string;
+        };
+        /**
+         * @description Bil24 `Order` projection without `ticketList` (spec §9.3),
+         *     returned by `GET_ORDER_INFO` as the `order` field. The full
+         *     35-key set (36 in the projection minus `ticketList`) is
+         *     binding — see `orderexport.Order` /
+         *     `macs/export.go` for the neutral projection this is built from.
+         */
+        Bil24OrderHeader: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the order (`orders.system_id`).
+             */
+            id?: number;
+            /** @description RFC3339 order creation timestamp. */
+            date?: string;
+            /** @description Buyer reference. */
+            user?: components["schemas"]["Bil24UserRef"];
+            /** @description Organizing entity reference. */
+            agent?: components["schemas"]["Bil24OrderIdEntity"];
+            /** @description Sales channel that created the order. */
+            frontend?: components["schemas"]["Bil24OrderFrontend"];
+            /** @description ISO-4217 code of the order. */
+            currency?: string;
+            /** @description Payment method reference (e.g. `{"id": 0, "name": "stripe"}`). */
+            paymentMethod?: components["schemas"]["Bil24OrderIdEntity"];
+            /** @description Echo of the `CREATE_ORDER_EXT` request flag. */
+            longReservation?: boolean;
+            /** @description RFC3339 timestamp when an unpaid order's hold expires. */
+            expiration?: string;
+            /** @description Free-form processing status text. */
+            processing?: string;
+            /** @description Always empty — seats live under `ticketList` (omitted from this header projection). */
+            seatList?: unknown[];
+            /** @description Always empty in wave 1 — no upstream gateway order references. */
+            gatewayOrderList?: unknown[];
+            /** @description Sum of unit prices before discount/fee, major currency units. */
+            sum?: number;
+            /** @description Same as `sum` in wave 1 (no ticket filtering applied). */
+            filteredSum?: number;
+            /** @description Total discount, major currency units. */
+            discount?: number;
+            /** @description Same as `discount` in wave 1. */
+            filteredDiscount?: number;
+            /** @description Total service fee, major currency units. */
+            charge?: number;
+            /** @description Same as `charge` in wave 1. */
+            filteredCharge?: number;
+            /** @description Final payable total, major currency units. */
+            totalSum?: number;
+            /** @description Same as `totalSum` in wave 1. */
+            filteredTotalSum?: number;
+            /** @description Number of tickets/units on the order. */
+            ticketQuantity?: number;
+            /** @description Same as `ticketQuantity` in wave 1. */
+            filteredTicketQuantity?: number;
+            /** @description Bil24 order status text, e.g. `PAID`, `PENDING`, `CANCELLED`, `REFUNDED`. */
+            status?: string;
+            /** @description Acquiring reference; always zero/empty values in wave 1. */
+            acquiring?: components["schemas"]["Bil24OrderAcquiring"];
+            /** @description Always `""` in wave 1 (no bank-level payment integration). */
+            paymentBankId?: string;
+            /** @description Always `""` in wave 1. */
+            paymentBankStatus?: string;
+            /** @description Human-readable payment confirmation text, e.g. `"Paid per protocol"`. */
+            paymentBankMessage?: string;
+            /** @description Always `""` in wave 1 (no acquirer RRN available). */
+            paymentRRN?: string;
+            /** @description Always `""` in wave 1. */
+            paymentTerminalId?: string;
+            /** @description Always `""` in wave 1 (arena never stores card PANs). */
+            paymentCardPAN?: string;
+            /** @description Always `""` in wave 1. */
+            paymentCardBank?: string;
+            /** @description Buyer email (`orders.buyer_email`). */
+            email?: string;
+            /** @description Always `null` in wave 1 — arena delivery-mail tracking is not surfaced here. */
+            emailSent?: string | null;
+            /** @description Buyer phone. */
+            phone?: string;
+            /** @description Buyer full name. */
+            fullName?: string;
+        };
+        /** @description The `user` sub-object of a Bil24 `Order` (spec §9.3). */
+        Bil24UserRef: {
+            /**
+             * Format: int64
+             * @description Buyer compatibility id (`customers.system_id`).
+             */
+            id?: number;
+            /** @description Buyer email. */
+            email?: string;
+        };
+        /** @description Success payload of `GET_ORDER_INFO` (spec §7.8), merged into the envelope. */
+        Bil24RespGetOrderInfo: components["schemas"]["Bil24ResponseEnvelope"] & {
+            /** @description Bil24 `Order` projection without `ticketList` (spec §9.3). */
+            order?: components["schemas"]["Bil24OrderHeader"];
+            /** @description Duplicate of `description` when `resultCode != 0`. */
+            userMessage?: string;
+        };
+        /**
+         * @description Success payload of `PAY_ORDER` (spec §7.9): envelope only, no
+         *     extra payload keys.
+         */
+        Bil24RespPayOrder: components["schemas"]["Bil24ResponseEnvelope"];
+        /** @description One row of `GET_TICKETS_BY_ORDER.ticketList`. */
+        Bil24GetTicketsByOrderTicket: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the ticket (`tickets.system_ticket_id`).
+             */
+            ticketId?: number;
+            /**
+             * @description Public URL to download the ticket PDF. Requires
+             *     `PUBLIC_BASE_URL` (implemented as `APP_PUBLIC_URL`, spec
+             *     §16) to be configured; empty when unset.
+             */
+            pdfUrl?: string;
+            /** @description Same value as `pdfUrl` (legacy clients read either key). */
+            downloadUrl?: string;
+            /** @description EAN-13 barcode value printed on the ticket. */
+            barcode?: string;
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the seat (`session_seats.system_seat_id`).
+             */
+            seatId?: number;
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the ticket's tier.
+             */
+            categoryPriceId?: number;
+        };
+        /** @description Success payload of `GET_TICKETS_BY_ORDER` (spec §7.10), merged into the envelope. */
+        Bil24RespGetTicketsByOrder: components["schemas"]["Bil24ResponseEnvelope"] & {
+            /**
+             * @description Per-ticket details. Empty when the order is not yet paid
+             *     or tickets are not yet issued (still `resultCode: 0`).
+             */
+            ticketList?: components["schemas"]["Bil24GetTicketsByOrderTicket"][];
+            /** @description Flat list of `ticketId` values, used by the site as a cheap presence check. */
+            ticketIdList?: number[];
+        };
+        /**
+         * @description Success payload of `SEND_TICKETS_TO_EMAIL` (spec §7.11): envelope
+         *     only, no extra payload keys.
+         */
+        Bil24RespSendTicketsToEmail: components["schemas"]["Bil24ResponseEnvelope"];
+        /**
+         * @description Success payload of `CANCEL_RESERVATION` (spec §7.12): envelope
+         *     only, no extra payload keys.
+         */
+        Bil24RespCancelReservation: components["schemas"]["Bil24ResponseEnvelope"];
+        /**
+         * @description Success payload of `CANCEL_ORDER` (spec §7.12): envelope only, no
+         *     extra payload keys.
+         */
+        Bil24RespCancelOrder: components["schemas"]["Bil24ResponseEnvelope"];
+        /**
+         * @description Success payload of `CHECK_KDP` (spec §7.6): envelope only, no
+         *     extra payload keys.
+         */
+        Bil24RespCheckKdp: components["schemas"]["Bil24ResponseEnvelope"];
+        /** @description Success payload of `REFUND_TICKET` (arena extension, spec §7.13), merged into the envelope. */
+        Bil24RespRefundTicket: components["schemas"]["Bil24ResponseEnvelope"] & {
+            /**
+             * Format: int64
+             * @description Echo of the request's `ticketId`.
+             */
+            ticketId?: number;
+            /** @description RFC3339 timestamp the refund transaction completed. */
+            refundDate?: string;
+        };
+        /** @description Success payload of `SCAN_TICKET` (spec §7.14), merged into the envelope. */
+        Bil24RespScanTicket: components["schemas"]["Bil24ResponseEnvelope"] & {
+            /** @description Outcome of the scan attempt (e.g. `OK`, `ALREADY_SCANNED`, `REFUNDED`). */
+            scanStatus?: string;
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the scanned ticket (`tickets.system_ticket_id`).
+             */
+            ticketId?: number;
+        };
+        /** @description One row of `GET_SCHEMA.seatList`. */
+        Bil24GetSchemaSeat: {
+            /**
+             * Format: int64
+             * @description Bil24 wire id of the seat (`session_seats.system_seat_id`).
+             */
+            seatId?: number;
+            /** @description Index into the category list, matching the SVG `sbt:cat`/`sbt:index` convention. */
+            categoryIndex?: number;
+            /** @description Horizontal coordinate of the seat on the seating plan. */
+            x?: number;
+            /** @description Vertical coordinate of the seat on the seating plan. */
+            y?: number;
+        };
+        /** @description Success payload of `GET_SCHEMA` (spec §7.15), merged into the envelope. */
+        Bil24RespGetSchema: components["schemas"]["Bil24ResponseEnvelope"] & {
+            /** @description Seat coordinates and category index for the seating plan. */
+            seatList?: components["schemas"]["Bil24GetSchemaSeat"][];
+        };
     };
     responses: never;
     parameters: never;
@@ -14439,9 +15570,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
+                "application/json": components["schemas"]["Bil24ReqGetAllActions"] | components["schemas"]["Bil24ReqGetSeatList"] | components["schemas"]["Bil24ReqCreateUser"] | components["schemas"]["Bil24ReqReservation"] | components["schemas"]["Bil24ReqGetCart"] | components["schemas"]["Bil24ReqAddPromoCodes"] | components["schemas"]["Bil24ReqCheckKdp"] | components["schemas"]["Bil24ReqCreateOrderExt"] | components["schemas"]["Bil24ReqGetOrderInfo"] | components["schemas"]["Bil24ReqPayOrder"] | components["schemas"]["Bil24ReqGetTicketsByOrder"] | components["schemas"]["Bil24ReqSendTicketsToEmail"] | components["schemas"]["Bil24ReqCancelReservation"] | components["schemas"]["Bil24ReqCancelOrder"] | components["schemas"]["Bil24ReqRefundTicket"] | components["schemas"]["Bil24ReqScanTicket"] | components["schemas"]["Bil24ReqGetSchema"];
             };
         };
         responses: {
@@ -14454,9 +15583,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["Bil24RespGetAllActions"] | components["schemas"]["Bil24RespGetSeatList"] | components["schemas"]["Bil24RespCreateUser"] | components["schemas"]["Bil24RespReservation"] | components["schemas"]["Bil24RespGetCart"] | components["schemas"]["Bil24RespAddPromoCodes"] | components["schemas"]["Bil24RespCheckKdp"] | components["schemas"]["Bil24RespCreateOrder"] | components["schemas"]["Bil24RespGetOrderInfo"] | components["schemas"]["Bil24RespPayOrder"] | components["schemas"]["Bil24RespGetTicketsByOrder"] | components["schemas"]["Bil24RespSendTicketsToEmail"] | components["schemas"]["Bil24RespCancelReservation"] | components["schemas"]["Bil24RespCancelOrder"] | components["schemas"]["Bil24RespRefundTicket"] | components["schemas"]["Bil24RespScanTicket"] | components["schemas"]["Bil24RespGetSchema"];
                 };
             };
         };

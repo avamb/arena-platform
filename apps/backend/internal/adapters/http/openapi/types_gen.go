@@ -4,6 +4,7 @@
 package openapi
 
 import (
+	"encoding/json"
 	"time"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -84,6 +85,98 @@ const (
 	BarcodeItemStatusActive  BarcodeItemStatus = "active"
 	BarcodeItemStatusRevoked BarcodeItemStatus = "revoked"
 	BarcodeItemStatusScanned BarcodeItemStatus = "scanned"
+)
+
+// Defines values for Bil24ReqAddPromoCodesCommand.
+const (
+	ADDPROMOCODES Bil24ReqAddPromoCodesCommand = "ADD_PROMO_CODES"
+)
+
+// Defines values for Bil24ReqCancelOrderCommand.
+const (
+	CANCELORDER Bil24ReqCancelOrderCommand = "CANCEL_ORDER"
+)
+
+// Defines values for Bil24ReqCancelReservationCommand.
+const (
+	CANCELRESERVATION Bil24ReqCancelReservationCommand = "CANCEL_RESERVATION"
+)
+
+// Defines values for Bil24ReqCheckKdpCommand.
+const (
+	CHECKKDP Bil24ReqCheckKdpCommand = "CHECK_KDP"
+)
+
+// Defines values for Bil24ReqCreateOrderExtCommand.
+const (
+	CREATEORDEREXT Bil24ReqCreateOrderExtCommand = "CREATE_ORDER_EXT"
+)
+
+// Defines values for Bil24ReqCreateUserCommand.
+const (
+	CREATEUSER Bil24ReqCreateUserCommand = "CREATE_USER"
+)
+
+// Defines values for Bil24ReqGetAllActionsCommand.
+const (
+	GETALLACTIONS Bil24ReqGetAllActionsCommand = "GET_ALL_ACTIONS"
+)
+
+// Defines values for Bil24ReqGetCartCommand.
+const (
+	GETCART Bil24ReqGetCartCommand = "GET_CART"
+)
+
+// Defines values for Bil24ReqGetOrderInfoCommand.
+const (
+	GETORDERINFO Bil24ReqGetOrderInfoCommand = "GET_ORDER_INFO"
+)
+
+// Defines values for Bil24ReqGetSchemaCommand.
+const (
+	GETSCHEMA Bil24ReqGetSchemaCommand = "GET_SCHEMA"
+)
+
+// Defines values for Bil24ReqGetSeatListCommand.
+const (
+	GETSEATLIST Bil24ReqGetSeatListCommand = "GET_SEAT_LIST"
+)
+
+// Defines values for Bil24ReqGetTicketsByOrderCommand.
+const (
+	GETTICKETSBYORDER Bil24ReqGetTicketsByOrderCommand = "GET_TICKETS_BY_ORDER"
+)
+
+// Defines values for Bil24ReqPayOrderCommand.
+const (
+	PAYORDER Bil24ReqPayOrderCommand = "PAY_ORDER"
+)
+
+// Defines values for Bil24ReqRefundTicketCommand.
+const (
+	REFUNDTICKET Bil24ReqRefundTicketCommand = "REFUND_TICKET"
+)
+
+// Defines values for Bil24ReqReservationCommand.
+const (
+	RESERVATION Bil24ReqReservationCommand = "RESERVATION"
+)
+
+// Defines values for Bil24ReqReservationType.
+const (
+	RESERVE      Bil24ReqReservationType = "RESERVE"
+	UNRESERVE    Bil24ReqReservationType = "UN_RESERVE"
+	UNRESERVEALL Bil24ReqReservationType = "UN_RESERVE_ALL"
+)
+
+// Defines values for Bil24ReqScanTicketCommand.
+const (
+	SCANTICKET Bil24ReqScanTicketCommand = "SCAN_TICKET"
+)
+
+// Defines values for Bil24ReqSendTicketsToEmailCommand.
+const (
+	SENDTICKETSTOEMAIL Bil24ReqSendTicketsToEmailCommand = "SEND_TICKETS_TO_EMAIL"
 )
 
 // Defines values for BindSessionSeatingRequestAdmissionMode.
@@ -1377,6 +1470,1460 @@ type BarcodeItem struct {
 // marks a consumed barcode (double-scan protected); `revoked`
 // is terminal.
 type BarcodeItemStatus string
+
+// Bil24ActionEntry One row of `GET_ALL_ACTIONS.actionList` (one published event).
+type Bil24ActionEntry struct {
+	// ActionEventList Sessions of this event.
+	ActionEventList *[]Bil24ActionEventEntry `json:"actionEventList,omitempty"`
+
+	// ActionId Bil24 wire id of the event.
+	ActionId *int64 `json:"actionId,omitempty"`
+
+	// ActionName Localized short display name.
+	ActionName *string `json:"actionName,omitempty"`
+
+	// Age Age restriction label (`events.age_rating`; `NR` renders as `""`).
+	Age *string `json:"age,omitempty"`
+
+	// BigPosterUrl Public URL of the large poster image.
+	BigPosterUrl *string `json:"bigPosterUrl,omitempty"`
+
+	// Description HTML description, mirrored from `events.description`.
+	Description *string `json:"description,omitempty"`
+
+	// FirstEventDate Calendar day of the earliest shown session, `DD.MM.YYYY`.
+	FirstEventDate *string `json:"firstEventDate,omitempty"`
+
+	// FullActionName Localized full display name, when it differs from `actionName`.
+	FullActionName *string `json:"fullActionName,omitempty"`
+
+	// LastEventDate Calendar day of the latest shown session, `DD.MM.YYYY`.
+	LastEventDate *string `json:"lastEventDate,omitempty"`
+
+	// MaxPrice Highest resolved tier price across all shown sessions, major currency units.
+	MaxPrice *float32 `json:"maxPrice,omitempty"`
+
+	// MinPrice Lowest resolved tier price across all shown sessions, major currency units.
+	MinPrice *float32 `json:"minPrice,omitempty"`
+
+	// OrganizerId Bil24 wire id of the organizing entity.
+	OrganizerId *int64 `json:"organizerId,omitempty"`
+
+	// OrganizerName Display name of the organizer.
+	OrganizerName *string `json:"organizerName,omitempty"`
+
+	// SmallPosterUrl Public URL of the small poster image.
+	SmallPosterUrl *string `json:"smallPosterUrl,omitempty"`
+}
+
+// Bil24ActionEventEntry One row of `GET_ALL_ACTIONS.actionList[].actionEventList` (one session).
+type Bil24ActionEventEntry struct {
+	// ActionEventId Bil24 wire id of the session.
+	ActionEventId *int64 `json:"actionEventId,omitempty"`
+
+	// Availability Remaining capacity across all seats/units of the session.
+	Availability *int `json:"availability,omitempty"`
+
+	// CategoryLimitList General-admission tiers only, wrapped per the legacy shape.
+	// Empty for a pure-seated session.
+	CategoryLimitList *[]Bil24CategoryLimitEntry `json:"categoryLimitList,omitempty"`
+
+	// ChargePercent Service-fee percentage of the sales channel, truncated to an integer.
+	ChargePercent *int `json:"chargePercent,omitempty"`
+
+	// CityId Bil24 wire id of the venue's city.
+	CityId *int64 `json:"cityId,omitempty"`
+
+	// Currency ISO-4217 code of the session's prices.
+	Currency *string `json:"currency,omitempty"`
+
+	// Day Session calendar day in the venue's timezone, `DD.MM.YYYY`.
+	Day *string `json:"day,omitempty"`
+
+	// ETicket Whether e-tickets are enabled for this session.
+	ETicket *bool `json:"eTicket,omitempty"`
+
+	// MinPrice Lowest resolved tier price for this session, major currency units.
+	MinPrice *float32 `json:"minPrice,omitempty"`
+
+	// SeatingPlanId Equal to `actionEventId` for sessions with seats (used by the
+	// site only as an "a plan exists" flag); `0` for pure
+	// general-admission sessions.
+	SeatingPlanId *int64 `json:"seatingPlanId,omitempty"`
+
+	// SeatingPlanName Display name of the seating plan, when one exists.
+	SeatingPlanName *string `json:"seatingPlanName,omitempty"`
+
+	// SellEndTime RFC3339 timestamp after which sales close (earliest tier `sale_window_end`, else `start_at`).
+	SellEndTime *string `json:"sellEndTime,omitempty"`
+
+	// TariffPlanList Always empty in wave 1 — arena has no tariff-plan concept.
+	TariffPlanList *[]interface{} `json:"tariffPlanList,omitempty"`
+
+	// Time Session start time in the venue's timezone, `HH:MM`.
+	Time *string `json:"time,omitempty"`
+
+	// VenueId Bil24 wire id of the venue.
+	VenueId *int64 `json:"venueId,omitempty"`
+}
+
+// Bil24CartActionEvent One row of `GET_CART.actionEventList`, grouping cart lines by session.
+type Bil24CartActionEvent struct {
+	// ActionEventId Bil24 wire id of the session.
+	ActionEventId *int64 `json:"actionEventId,omitempty"`
+
+	// ChargePercent Service-fee percentage of the sales channel, truncated to an integer.
+	ChargePercent *int `json:"chargePercent,omitempty"`
+
+	// SeatList Held seats/units of this session.
+	SeatList *[]Bil24CartSeatListItem `json:"seatList,omitempty"`
+}
+
+// Bil24CartSeatListItem One row of `GET_CART.actionEventList[].seatList`.
+type Bil24CartSeatListItem struct {
+	// CategoryPriceId Bil24 wire id of the ticket tier.
+	CategoryPriceId *int64 `json:"categoryPriceId,omitempty"`
+
+	// Discount Discount applied to this unit, major currency units.
+	Discount *float32 `json:"discount,omitempty"`
+
+	// Price Unit price in major currency units.
+	Price *float32 `json:"price,omitempty"`
+
+	// SeatId Bil24 wire id of the seat or GA pseudo-seat.
+	SeatId *int64 `json:"seatId,omitempty"`
+
+	// TariffPlanId Always `null` — arena has no tariff-plan concept.
+	TariffPlanId *int64 `json:"tariffPlanId"`
+}
+
+// Bil24CategoryLimitEntry Wrapper matching the legacy wire shape the WordPress plugin
+// parses: presence of `categoryLimitList[0].categoryList` with
+// `placement:false` distinguishes a general-admission session from
+// a combined (GA + seated) one.
+type Bil24CategoryLimitEntry struct {
+	// CategoryList General-admission tier rows only (tiers with seats never appear here).
+	CategoryList *[]Bil24GACategoryEntry `json:"categoryList,omitempty"`
+}
+
+// Bil24CityEntry One row of `GET_ALL_ACTIONS.cityList`.
+type Bil24CityEntry struct {
+	// CityId Bil24 wire id of the city.
+	CityId *int64 `json:"cityId,omitempty"`
+
+	// CityName Display name of the city.
+	CityName *string `json:"cityName,omitempty"`
+
+	// CountryId Bil24 wire id of the city's country.
+	CountryId *int64 `json:"countryId,omitempty"`
+
+	// VenueList Venues located in this city.
+	VenueList *[]Bil24VenueEntry `json:"venueList,omitempty"`
+}
+
+// Bil24CountryEntry One row of `GET_ALL_ACTIONS.countryList`.
+type Bil24CountryEntry struct {
+	// CountryId Bil24 wire id of the country.
+	CountryId *int64 `json:"countryId,omitempty"`
+
+	// CountryName Display name of the country.
+	CountryName *string `json:"countryName,omitempty"`
+}
+
+// Bil24GACategoryEntry One GA tier row inside `categoryLimitList[].categoryList`.
+type Bil24GACategoryEntry struct {
+	// Availability Remaining GA units for this tier.
+	Availability *int `json:"availability,omitempty"`
+
+	// CategoryPriceId Bil24 wire id of the ticket tier.
+	CategoryPriceId *int64 `json:"categoryPriceId,omitempty"`
+
+	// CategoryPriceName Display name of the tier.
+	CategoryPriceName *string `json:"categoryPriceName,omitempty"`
+
+	// Placement Always `false` here (GA tiers have no seats).
+	Placement *bool `json:"placement,omitempty"`
+
+	// Price Current resolved price in major currency units.
+	Price *float32 `json:"price,omitempty"`
+
+	// TariffIdMap Always empty — arena has no tariff-plan concept.
+	TariffIdMap *map[string]interface{} `json:"tariffIdMap,omitempty"`
+}
+
+// Bil24GetSchemaSeat One row of `GET_SCHEMA.seatList`.
+type Bil24GetSchemaSeat struct {
+	// CategoryIndex Index into the category list, matching the SVG `sbt:cat`/`sbt:index` convention.
+	CategoryIndex *int `json:"categoryIndex,omitempty"`
+
+	// SeatId Bil24 wire id of the seat (`session_seats.system_seat_id`).
+	SeatId *int64 `json:"seatId,omitempty"`
+
+	// X Horizontal coordinate of the seat on the seating plan.
+	X *float32 `json:"x,omitempty"`
+
+	// Y Vertical coordinate of the seat on the seating plan.
+	Y *float32 `json:"y,omitempty"`
+}
+
+// Bil24GetTicketsByOrderTicket One row of `GET_TICKETS_BY_ORDER.ticketList`.
+type Bil24GetTicketsByOrderTicket struct {
+	// Barcode EAN-13 barcode value printed on the ticket.
+	Barcode *string `json:"barcode,omitempty"`
+
+	// CategoryPriceId Bil24 wire id of the ticket's tier.
+	CategoryPriceId *int64 `json:"categoryPriceId,omitempty"`
+
+	// DownloadUrl Same value as `pdfUrl` (legacy clients read either key).
+	DownloadUrl *string `json:"downloadUrl,omitempty"`
+
+	// PdfUrl Public URL to download the ticket PDF. Requires
+	// `PUBLIC_BASE_URL` (implemented as `APP_PUBLIC_URL`, spec
+	// §16) to be configured; empty when unset.
+	PdfUrl *string `json:"pdfUrl,omitempty"`
+
+	// SeatId Bil24 wire id of the seat (`session_seats.system_seat_id`).
+	SeatId *int64 `json:"seatId,omitempty"`
+
+	// TicketId Bil24 wire id of the ticket (`tickets.system_ticket_id`).
+	TicketId *int64 `json:"ticketId,omitempty"`
+}
+
+// Bil24OrderAcquiring The `acquiring` sub-object of a Bil24 `Order` (spec §9.3). Wave 1
+// has no acquiring integration; always zero/empty values.
+type Bil24OrderAcquiring struct {
+	// AgentId Always `0` in wave 1.
+	AgentId *int64 `json:"agentId,omitempty"`
+
+	// AgentName Always `""` in wave 1.
+	AgentName *string `json:"agentName,omitempty"`
+
+	// Id Always `0` in wave 1.
+	Id *int64 `json:"id,omitempty"`
+
+	// Name Always `""` in wave 1.
+	Name *string `json:"name,omitempty"`
+
+	// SystemId Always `0` in wave 1.
+	SystemId *int64 `json:"systemId,omitempty"`
+
+	// SystemName Always `""` in wave 1.
+	SystemName *string `json:"systemName,omitempty"`
+}
+
+// Bil24OrderFrontend The `frontend` sub-object of a Bil24 `Order` (spec §9.3) — the sales channel that created it.
+type Bil24OrderFrontend struct {
+	// AgentId Bil24 wire id of the owning organization.
+	AgentId *int64 `json:"agentId,omitempty"`
+
+	// Id Bil24 wire id of the sales channel (`fid`).
+	Id *int64 `json:"id,omitempty"`
+
+	// Name Channel URL or display name.
+	Name *string `json:"name,omitempty"`
+
+	// Type Channel type reference, e.g. `{"id": 8, "name": "Ticketing system"}`.
+	Type *Bil24OrderIdEntity `json:"type,omitempty"`
+}
+
+// Bil24OrderHeader Bil24 `Order` projection without `ticketList` (spec §9.3),
+// returned by `GET_ORDER_INFO` as the `order` field. The full
+// 35-key set (36 in the projection minus `ticketList`) is
+// binding — see `orderexport.Order` /
+// `macs/export.go` for the neutral projection this is built from.
+type Bil24OrderHeader struct {
+	// Acquiring Acquiring reference; always zero/empty values in wave 1.
+	Acquiring *Bil24OrderAcquiring `json:"acquiring,omitempty"`
+
+	// Agent Organizing entity reference.
+	Agent *Bil24OrderIdEntity `json:"agent,omitempty"`
+
+	// Charge Total service fee, major currency units.
+	Charge *float32 `json:"charge,omitempty"`
+
+	// Currency ISO-4217 code of the order.
+	Currency *string `json:"currency,omitempty"`
+
+	// Date RFC3339 order creation timestamp.
+	Date *string `json:"date,omitempty"`
+
+	// Discount Total discount, major currency units.
+	Discount *float32 `json:"discount,omitempty"`
+
+	// Email Buyer email (`orders.buyer_email`).
+	Email *string `json:"email,omitempty"`
+
+	// EmailSent Always `null` in wave 1 — arena delivery-mail tracking is not surfaced here.
+	EmailSent *string `json:"emailSent"`
+
+	// Expiration RFC3339 timestamp when an unpaid order's hold expires.
+	Expiration *string `json:"expiration,omitempty"`
+
+	// FilteredCharge Same as `charge` in wave 1.
+	FilteredCharge *float32 `json:"filteredCharge,omitempty"`
+
+	// FilteredDiscount Same as `discount` in wave 1.
+	FilteredDiscount *float32 `json:"filteredDiscount,omitempty"`
+
+	// FilteredSum Same as `sum` in wave 1 (no ticket filtering applied).
+	FilteredSum *float32 `json:"filteredSum,omitempty"`
+
+	// FilteredTicketQuantity Same as `ticketQuantity` in wave 1.
+	FilteredTicketQuantity *int `json:"filteredTicketQuantity,omitempty"`
+
+	// FilteredTotalSum Same as `totalSum` in wave 1.
+	FilteredTotalSum *float32 `json:"filteredTotalSum,omitempty"`
+
+	// Frontend Sales channel that created the order.
+	Frontend *Bil24OrderFrontend `json:"frontend,omitempty"`
+
+	// FullName Buyer full name.
+	FullName *string `json:"fullName,omitempty"`
+
+	// GatewayOrderList Always empty in wave 1 — no upstream gateway order references.
+	GatewayOrderList *[]interface{} `json:"gatewayOrderList,omitempty"`
+
+	// Id Bil24 wire id of the order (`orders.system_id`).
+	Id *int64 `json:"id,omitempty"`
+
+	// LongReservation Echo of the `CREATE_ORDER_EXT` request flag.
+	LongReservation *bool `json:"longReservation,omitempty"`
+
+	// PaymentBankId Always `""` in wave 1 (no bank-level payment integration).
+	PaymentBankId *string `json:"paymentBankId,omitempty"`
+
+	// PaymentBankMessage Human-readable payment confirmation text, e.g. `"Paid per protocol"`.
+	PaymentBankMessage *string `json:"paymentBankMessage,omitempty"`
+
+	// PaymentBankStatus Always `""` in wave 1.
+	PaymentBankStatus *string `json:"paymentBankStatus,omitempty"`
+
+	// PaymentCardBank Always `""` in wave 1.
+	PaymentCardBank *string `json:"paymentCardBank,omitempty"`
+
+	// PaymentCardPAN Always `""` in wave 1 (arena never stores card PANs).
+	PaymentCardPAN *string `json:"paymentCardPAN,omitempty"`
+
+	// PaymentMethod Payment method reference (e.g. `{"id": 0, "name": "stripe"}`).
+	PaymentMethod *Bil24OrderIdEntity `json:"paymentMethod,omitempty"`
+
+	// PaymentRRN Always `""` in wave 1 (no acquirer RRN available).
+	PaymentRRN *string `json:"paymentRRN,omitempty"`
+
+	// PaymentTerminalId Always `""` in wave 1.
+	PaymentTerminalId *string `json:"paymentTerminalId,omitempty"`
+
+	// Phone Buyer phone.
+	Phone *string `json:"phone,omitempty"`
+
+	// Processing Free-form processing status text.
+	Processing *string `json:"processing,omitempty"`
+
+	// SeatList Always empty — seats live under `ticketList` (omitted from this header projection).
+	SeatList *[]interface{} `json:"seatList,omitempty"`
+
+	// Status Bil24 order status text, e.g. `PAID`, `PENDING`, `CANCELLED`, `REFUNDED`.
+	Status *string `json:"status,omitempty"`
+
+	// Sum Sum of unit prices before discount/fee, major currency units.
+	Sum *float32 `json:"sum,omitempty"`
+
+	// TicketQuantity Number of tickets/units on the order.
+	TicketQuantity *int `json:"ticketQuantity,omitempty"`
+
+	// TotalSum Final payable total, major currency units.
+	TotalSum *float32 `json:"totalSum,omitempty"`
+
+	// User Buyer reference.
+	User *Bil24UserRef `json:"user,omitempty"`
+}
+
+// Bil24OrderIdEntity Small `{id, name}` reference used throughout the Bil24 `Order`/`Ticket` projection (spec §9.3).
+type Bil24OrderIdEntity struct {
+	// Id Bil24 wire id of the referenced entity.
+	Id *int64 `json:"id,omitempty"`
+
+	// Name Display name of the referenced entity.
+	Name *string `json:"name,omitempty"`
+}
+
+// Bil24OrderLine One line of a `CREATE_ORDER_EXT` request's `lines` array.
+type Bil24OrderLine struct {
+	// CategoryPriceId Bil24 wire id of the ticket tier (`compatibility_id_map`, kind `category_price`).
+	CategoryPriceId int64 `json:"categoryPriceId"`
+
+	// Quantity Requested ticket count for the tier (>= 1).
+	Quantity int `json:"quantity"`
+
+	// TariffPlanId Accepted and ignored — arena has no tariff-plan concept.
+	TariffPlanId *int64 `json:"tariffPlanId"`
+}
+
+// Bil24ReqAddPromoCodes defines model for Bil24ReqAddPromoCodes.
+type Bil24ReqAddPromoCodes struct {
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqAddPromoCodesCommand `json:"command"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// PromoCodeList Documented spelling of the promo code list.
+	PromoCodeList *[]string `json:"promoCodeList,omitempty"`
+
+	// PromoCodes Alternate spelling some WordPress builds emit instead of `promoCodeList`.
+	PromoCodes *[]string `json:"promoCodes,omitempty"`
+
+	// SessionId Gateway session token returned by `CREATE_USER`.
+	SessionId string `json:"sessionId"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+
+	// UserId Buyer compatibility id returned by `CREATE_USER`.
+	UserId int64 `json:"userId"`
+}
+
+// Bil24ReqAddPromoCodesCommand Fixed command discriminator for this request shape.
+type Bil24ReqAddPromoCodesCommand string
+
+// Bil24ReqCancelOrder defines model for Bil24ReqCancelOrder.
+type Bil24ReqCancelOrder struct {
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqCancelOrderCommand `json:"command"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// OrderId Bil24 wire id of the order (`orders.system_id`), number or numeric string.
+	OrderId string `json:"orderId"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+}
+
+// Bil24ReqCancelOrderCommand Fixed command discriminator for this request shape.
+type Bil24ReqCancelOrderCommand string
+
+// Bil24ReqCancelReservation defines model for Bil24ReqCancelReservation.
+type Bil24ReqCancelReservation struct {
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqCancelReservationCommand `json:"command"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// OrderId Bil24 wire id of the order (`orders.system_id`), number or numeric string.
+	OrderId *string `json:"orderId,omitempty"`
+
+	// ReservationId Platform reservation id returned by a successful `RESERVATION`.
+	ReservationId *string `json:"reservationId,omitempty"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+}
+
+// Bil24ReqCancelReservationCommand Fixed command discriminator for this request shape.
+type Bil24ReqCancelReservationCommand string
+
+// Bil24ReqCheckKdp defines model for Bil24ReqCheckKdp.
+type Bil24ReqCheckKdp struct {
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqCheckKdpCommand `json:"command"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// PromoCode Single promo code to validate (not persisted).
+	PromoCode string `json:"promoCode"`
+
+	// SessionId Gateway session token returned by `CREATE_USER`.
+	SessionId string `json:"sessionId"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+
+	// UserId Buyer compatibility id returned by `CREATE_USER`.
+	UserId int64 `json:"userId"`
+}
+
+// Bil24ReqCheckKdpCommand Fixed command discriminator for this request shape.
+type Bil24ReqCheckKdpCommand string
+
+// Bil24ReqCreateOrderExt defines model for Bil24ReqCreateOrderExt.
+type Bil24ReqCreateOrderExt struct {
+	// ActionEventId Bil24 wire id of the session the order is for.
+	ActionEventId int64 `json:"actionEventId"`
+
+	// ChargePercent Service-fee percentage the client believes applies. Advisory only.
+	ChargePercent *float32 `json:"chargePercent,omitempty"`
+
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqCreateOrderExtCommand `json:"command"`
+
+	// Currency ISO-4217 code the client submitted. Advisory only — the
+	// gateway always answers with the session's own currency.
+	Currency *string `json:"currency,omitempty"`
+
+	// Email Buyer email, feeds customer resolution (spec §12.2).
+	Email *string `json:"email,omitempty"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// FullName Buyer full name (single field, unlike `CREATE_USER`'s first/last split).
+	FullName *string `json:"fullName,omitempty"`
+
+	// Lines Authoritative statement of the order composition. Empty is a `-2` error.
+	Lines []Bil24OrderLine `json:"lines"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// LongReservation Requests the extended hold window some Bil24 deployments
+	// grant bank-transfer buyers. Accepted; the gateway honours
+	// the channel's configured TTL either way.
+	LongReservation *bool `json:"longReservation,omitempty"`
+
+	// OrderId Client-supplied order number, stored verbatim as
+	// `orders.external_ref` and echoed back as `externalOrderId`.
+	// Required and must be non-empty.
+	OrderId string `json:"orderId"`
+
+	// Phone Buyer phone, feeds customer resolution (spec §12.2).
+	Phone *string `json:"phone,omitempty"`
+
+	// PromoCodes Promo codes to apply, unioned with the gateway session's stored codes.
+	PromoCodes *[]string `json:"promoCodes,omitempty"`
+
+	// SessionId Gateway session token returned by `CREATE_USER`.
+	SessionId string `json:"sessionId"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+
+	// Total Price the client believes the order comes to, in major
+	// currency units. Advisory only; recorded verbatim in
+	// `order_events.created.payload.client_reported` and never
+	// used for pricing.
+	Total *float32 `json:"total,omitempty"`
+
+	// UserId Buyer compatibility id returned by `CREATE_USER`.
+	UserId int64 `json:"userId"`
+}
+
+// Bil24ReqCreateOrderExtCommand Fixed command discriminator for this request shape.
+type Bil24ReqCreateOrderExtCommand string
+
+// Bil24ReqCreateUser defines model for Bil24ReqCreateUser.
+type Bil24ReqCreateUser struct {
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqCreateUserCommand `json:"command"`
+
+	// Email Optional buyer email, used as a strong identity key (spec §12.2).
+	Email *string `json:"email,omitempty"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// FirstName Optional buyer first name. `display_name` = `firstName + " " + lastName`.
+	FirstName *string `json:"firstName,omitempty"`
+
+	// LastName Optional buyer last name.
+	LastName *string `json:"lastName,omitempty"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// Phone Optional buyer phone, used as a strong identity key (spec §12.2).
+	Phone *string `json:"phone,omitempty"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+}
+
+// Bil24ReqCreateUserCommand Fixed command discriminator for this request shape.
+type Bil24ReqCreateUserCommand string
+
+// Bil24ReqGetAllActions defines model for Bil24ReqGetAllActions.
+type Bil24ReqGetAllActions struct {
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqGetAllActionsCommand `json:"command"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+}
+
+// Bil24ReqGetAllActionsCommand Fixed command discriminator for this request shape.
+type Bil24ReqGetAllActionsCommand string
+
+// Bil24ReqGetCart defines model for Bil24ReqGetCart.
+type Bil24ReqGetCart struct {
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqGetCartCommand `json:"command"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// SessionId Gateway session token returned by `CREATE_USER`.
+	SessionId string `json:"sessionId"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+
+	// UserId Buyer compatibility id returned by `CREATE_USER`.
+	UserId int64 `json:"userId"`
+}
+
+// Bil24ReqGetCartCommand Fixed command discriminator for this request shape.
+type Bil24ReqGetCartCommand string
+
+// Bil24ReqGetOrderInfo defines model for Bil24ReqGetOrderInfo.
+type Bil24ReqGetOrderInfo struct {
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqGetOrderInfoCommand `json:"command"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// OrderId Bil24 wire id of the order (`orders.system_id`), number or numeric string.
+	OrderId string `json:"orderId"`
+
+	// SessionId Optional gateway session token; accepted but not required to scope the lookup.
+	SessionId *string `json:"sessionId,omitempty"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+
+	// UserId Optional buyer compatibility id; accepted but not required to scope the lookup.
+	UserId *int64 `json:"userId,omitempty"`
+}
+
+// Bil24ReqGetOrderInfoCommand Fixed command discriminator for this request shape.
+type Bil24ReqGetOrderInfoCommand string
+
+// Bil24ReqGetSchema defines model for Bil24ReqGetSchema.
+type Bil24ReqGetSchema struct {
+	// ActionEventId Bil24 wire id of the session.
+	ActionEventId *int64 `json:"actionEventId,omitempty"`
+
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqGetSchemaCommand `json:"command"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+}
+
+// Bil24ReqGetSchemaCommand Fixed command discriminator for this request shape.
+type Bil24ReqGetSchemaCommand string
+
+// Bil24ReqGetSeatList defines model for Bil24ReqGetSeatList.
+type Bil24ReqGetSeatList struct {
+	// ActionEventId Bil24 wire id of the session (`compatibility_id_map`, kind `action_event`).
+	ActionEventId int64 `json:"actionEventId"`
+
+	// AvailableOnly When true, `seatList` in the response is filtered to
+	// available seats only; `categoryList` is always complete.
+	// Defaults to false (return every seat).
+	AvailableOnly *bool `json:"availableOnly,omitempty"`
+
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqGetSeatListCommand `json:"command"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+}
+
+// Bil24ReqGetSeatListCommand Fixed command discriminator for this request shape.
+type Bil24ReqGetSeatListCommand string
+
+// Bil24ReqGetTicketsByOrder defines model for Bil24ReqGetTicketsByOrder.
+type Bil24ReqGetTicketsByOrder struct {
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqGetTicketsByOrderCommand `json:"command"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// OrderId Bil24 wire id of the order (`orders.system_id`), number or numeric string.
+	OrderId string `json:"orderId"`
+
+	// RawCoordinates Accepted and currently unused by the gateway response.
+	RawCoordinates *bool `json:"rawCoordinates,omitempty"`
+
+	// SessionId Gateway session token returned by `CREATE_USER`.
+	SessionId string `json:"sessionId"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+
+	// UserId Buyer compatibility id returned by `CREATE_USER`.
+	UserId int64 `json:"userId"`
+}
+
+// Bil24ReqGetTicketsByOrderCommand Fixed command discriminator for this request shape.
+type Bil24ReqGetTicketsByOrderCommand string
+
+// Bil24ReqPayOrder defines model for Bil24ReqPayOrder.
+type Bil24ReqPayOrder struct {
+	// Amount Amount the site's payment gateway charged, in major
+	// currency units. Compared to `orders.total`
+	// (0.01 tolerance) but never blocks payment confirmation on
+	// a mismatch — only records `order_events.amount_mismatch`.
+	Amount float32 `json:"amount"`
+
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqPayOrderCommand `json:"command"`
+
+	// Currency ISO-4217 code of the charged amount.
+	Currency string `json:"currency"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// Method Payment method label from the site's gateway (e.g.
+	// `stripe`, `bank_transfer`). Stored as `orders.payment_method`.
+	Method string `json:"method"`
+
+	// OrderId Bil24 wire id of the order (`orders.system_id`), number or numeric string.
+	OrderId string `json:"orderId"`
+
+	// SessionId Gateway session token returned by `CREATE_USER`.
+	SessionId string `json:"sessionId"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+
+	// UserId Buyer compatibility id returned by `CREATE_USER`.
+	UserId int64 `json:"userId"`
+}
+
+// Bil24ReqPayOrderCommand Fixed command discriminator for this request shape.
+type Bil24ReqPayOrderCommand string
+
+// Bil24ReqRefundTicket defines model for Bil24ReqRefundTicket.
+type Bil24ReqRefundTicket struct {
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqRefundTicketCommand `json:"command"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// Reason Optional operator-supplied refund reason. Defaults to
+	// `"REFUND_TICKET via gateway fid=<fid>"` when absent.
+	Reason *string `json:"reason,omitempty"`
+
+	// RefundPrice Optional refunded amount in major currency units. Absent
+	// means the organizer has not decided the amount yet;
+	// `tickets.refund_price` stays null.
+	RefundPrice *float32 `json:"refundPrice,omitempty"`
+
+	// TicketId Bil24 wire id of the ticket (`tickets.system_ticket_id`).
+	TicketId int64 `json:"ticketId"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+}
+
+// Bil24ReqRefundTicketCommand Fixed command discriminator for this request shape.
+type Bil24ReqRefundTicketCommand string
+
+// Bil24ReqReservation defines model for Bil24ReqReservation.
+type Bil24ReqReservation struct {
+	// ActionEventId Bil24 wire id of the session. Required for `RESERVE` and
+	// `UN_RESERVE`; absent for `UN_RESERVE_ALL`.
+	ActionEventId *int64 `json:"actionEventId,omitempty"`
+
+	// CategoryList General-admission tier lines. Mutually exclusive with `seatList`.
+	CategoryList *[]Bil24ReservationCategoryLine `json:"categoryList,omitempty"`
+
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqReservationCommand `json:"command"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// SeatList Assigned-seat entries. Mutually exclusive with `categoryList`.
+	SeatList *[]Bil24ReservationSeatLine `json:"seatList,omitempty"`
+
+	// SessionId Gateway session token returned by `CREATE_USER`.
+	SessionId string `json:"sessionId"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+
+	// Type Sub-command selector. An empty/absent value is treated as
+	// `RESERVE` for backward compatibility with pre-§7.4 clients.
+	Type Bil24ReqReservationType `json:"type"`
+
+	// UserId Buyer compatibility id returned by `CREATE_USER`.
+	UserId int64 `json:"userId"`
+}
+
+// Bil24ReqReservationCommand Fixed command discriminator for this request shape.
+type Bil24ReqReservationCommand string
+
+// Bil24ReqReservationType Sub-command selector. An empty/absent value is treated as
+// `RESERVE` for backward compatibility with pre-§7.4 clients.
+type Bil24ReqReservationType string
+
+// Bil24ReqScanTicket defines model for Bil24ReqScanTicket.
+type Bil24ReqScanTicket struct {
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqScanTicketCommand `json:"command"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// TicketId Ticket barcode or Bil24 wire id (`tickets.system_ticket_id`),
+	// looked up across every barcode authority (`platform`, `legacy_bil24`).
+	TicketId string `json:"ticketId"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+}
+
+// Bil24ReqScanTicketCommand Fixed command discriminator for this request shape.
+type Bil24ReqScanTicketCommand string
+
+// Bil24ReqSendTicketsToEmail defines model for Bil24ReqSendTicketsToEmail.
+type Bil24ReqSendTicketsToEmail struct {
+	// Command Fixed command discriminator for this request shape.
+	Command Bil24ReqSendTicketsToEmailCommand `json:"command"`
+
+	// Email Recipient email address for the delivery jobs.
+	Email string `json:"email"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// SessionId Gateway session token returned by `CREATE_USER`.
+	SessionId string `json:"sessionId"`
+
+	// TicketIdList Bil24 wire ids of the tickets to send (`tickets.system_ticket_id`).
+	TicketIdList []int64 `json:"ticketIdList"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+
+	// UserId Buyer compatibility id returned by `CREATE_USER`.
+	UserId int64 `json:"userId"`
+}
+
+// Bil24ReqSendTicketsToEmailCommand Fixed command discriminator for this request shape.
+type Bil24ReqSendTicketsToEmailCommand string
+
+// Bil24RequestEnvelope Fields common to every `/compat/bil24/json` command. `fid` and
+// `token` resolve the sales channel and organization; `locale`
+// selects the language of any localized `description` in the
+// response. Per-command payload fields are added by the more
+// specific `Bil24Req*` schemas below via `allOf`.
+type Bil24RequestEnvelope struct {
+	// Command Selects which of the Bil24 wire operations to run (spec §7).
+	Command string `json:"command"`
+
+	// Fid Sales-channel credential (`sales_channels.display_number`).
+	// Accepted as a JSON number or a numeric string on the wire.
+	Fid string `json:"fid"`
+
+	// Locale Optional. Language of localized `description` text in the
+	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
+	// configured locale when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// Token Authentication credential paired with `fid`.
+	Token string `json:"token"`
+}
+
+// Bil24ReservationCategoryLine One general-admission tier line of a `RESERVATION` request's `categoryList`.
+type Bil24ReservationCategoryLine struct {
+	// CategoryPriceId Bil24 wire id of the ticket tier (`compatibility_id_map`, kind `category_price`).
+	CategoryPriceId int64 `json:"categoryPriceId"`
+
+	// Quantity Number of GA units requested against this tier.
+	Quantity int `json:"quantity"`
+
+	// TariffPlanId Accepted and ignored — arena has no tariff-plan concept.
+	TariffPlanId *int64 `json:"tariffPlanId"`
+}
+
+// Bil24ReservationSeatLine One seat entry of a `RESERVATION` request's `seatList`.
+type Bil24ReservationSeatLine struct {
+	// SeatId Bil24 wire id of the seat (`session_seats.system_seat_id`).
+	SeatId int64 `json:"seatId"`
+}
+
+// Bil24ReservationSeatListItem One row of `RESERVATION`/`GET_CART`'s per-line seat/unit projection.
+type Bil24ReservationSeatListItem struct {
+	// ActionEventId Bil24 wire id of the session this line belongs to.
+	ActionEventId *int64 `json:"actionEventId,omitempty"`
+
+	// CategoryPriceId Bil24 wire id of the ticket tier.
+	CategoryPriceId *int64 `json:"categoryPriceId,omitempty"`
+
+	// Discount Discount applied to this unit, major currency units.
+	Discount *float32 `json:"discount,omitempty"`
+
+	// Price Unit price in major currency units.
+	Price *float32 `json:"price,omitempty"`
+
+	// SeatId Bil24 wire id of the seat or GA pseudo-seat.
+	SeatId *int64 `json:"seatId,omitempty"`
+
+	// TariffPlanId Always `null` — arena has no tariff-plan concept.
+	TariffPlanId *int64 `json:"tariffPlanId"`
+}
+
+// Bil24RespAddPromoCodes defines model for Bil24RespAddPromoCodes.
+type Bil24RespAddPromoCodes struct {
+	// Command Echo of the request's `command`.
+	Command string `json:"command"`
+
+	// Description Human-readable outcome text, localized per the request's
+	// `locale` when `resultCode != 0`. `"OK"` on success.
+	Description string `json:"description"`
+
+	// ErrorPromoCodeList Codes that failed validation; `description` carries the
+	// localized reason for the first failure.
+	ErrorPromoCodeList *[]string `json:"errorPromoCodeList,omitempty"`
+
+	// ExistPromoCodeList Codes already present on the gateway session.
+	ExistPromoCodeList *[]string `json:"existPromoCodeList,omitempty"`
+
+	// NewPromoCodeList Codes newly validated and added to the gateway session.
+	NewPromoCodeList *[]string `json:"newPromoCodeList,omitempty"`
+
+	// ResultCode Outcome code; see the schema description for the full table.
+	ResultCode int `json:"resultCode"`
+}
+
+// Bil24RespCancelOrder Fields common to every `/compat/bil24/json` response, success or
+// error. `resultCode` is the real outcome signal — the HTTP status is
+// always 200 (spec §6): `0` OK, `1` stale gateway session, `101`
+// user-visible business error (localized `description`), `-1`
+// transient, `-2` invalid request, `-3` not found / out of org
+// scope, `-4` auth, `-5` not implemented, `-99` dependency
+// unavailable. Per-command payload fields are added by the more
+// specific `Bil24Resp*` schemas via `allOf`, and are present only
+// when `resultCode` is `0`.
+type Bil24RespCancelOrder = Bil24ResponseEnvelope
+
+// Bil24RespCancelReservation Fields common to every `/compat/bil24/json` response, success or
+// error. `resultCode` is the real outcome signal — the HTTP status is
+// always 200 (spec §6): `0` OK, `1` stale gateway session, `101`
+// user-visible business error (localized `description`), `-1`
+// transient, `-2` invalid request, `-3` not found / out of org
+// scope, `-4` auth, `-5` not implemented, `-99` dependency
+// unavailable. Per-command payload fields are added by the more
+// specific `Bil24Resp*` schemas via `allOf`, and are present only
+// when `resultCode` is `0`.
+type Bil24RespCancelReservation = Bil24ResponseEnvelope
+
+// Bil24RespCheckKdp Fields common to every `/compat/bil24/json` response, success or
+// error. `resultCode` is the real outcome signal — the HTTP status is
+// always 200 (spec §6): `0` OK, `1` stale gateway session, `101`
+// user-visible business error (localized `description`), `-1`
+// transient, `-2` invalid request, `-3` not found / out of org
+// scope, `-4` auth, `-5` not implemented, `-99` dependency
+// unavailable. Per-command payload fields are added by the more
+// specific `Bil24Resp*` schemas via `allOf`, and are present only
+// when `resultCode` is `0`.
+type Bil24RespCheckKdp = Bil24ResponseEnvelope
+
+// Bil24RespCreateOrder defines model for Bil24RespCreateOrder.
+type Bil24RespCreateOrder struct {
+	// Charge Total service fee, major currency units.
+	Charge *float32 `json:"charge,omitempty"`
+
+	// Command Echo of the request's `command`.
+	Command string `json:"command"`
+
+	// Currency ISO-4217 code of the order (the session's currency, not the request's advisory one).
+	Currency *string `json:"currency,omitempty"`
+
+	// Description Human-readable outcome text, localized per the request's
+	// `locale` when `resultCode != 0`. `"OK"` on success.
+	Description string `json:"description"`
+
+	// Discount Total discount, major currency units.
+	Discount *float32 `json:"discount,omitempty"`
+
+	// Expiration RFC3339 timestamp when the unpaid order's hold expires.
+	Expiration *string `json:"expiration,omitempty"`
+
+	// ExternalOrderId Echo of the request's `orderId` (`orders.external_ref`).
+	ExternalOrderId *string `json:"externalOrderId,omitempty"`
+
+	// OrderId Arena-minted order id (`orders.system_id`, >= 1e9).
+	OrderId *int64 `json:"orderId,omitempty"`
+
+	// ResultCode Outcome code; see the schema description for the full table.
+	ResultCode int `json:"resultCode"`
+
+	// Sum Sum of unit prices before discount/fee, major currency units.
+	Sum *float32 `json:"sum,omitempty"`
+
+	// TotalSum Final payable total, major currency units.
+	TotalSum *float32 `json:"totalSum,omitempty"`
+}
+
+// Bil24RespCreateUser defines model for Bil24RespCreateUser.
+type Bil24RespCreateUser struct {
+	// Command Echo of the request's `command`.
+	Command string `json:"command"`
+
+	// Description Human-readable outcome text, localized per the request's
+	// `locale` when `resultCode != 0`. `"OK"` on success.
+	Description string `json:"description"`
+
+	// ResultCode Outcome code; see the schema description for the full table.
+	ResultCode int `json:"resultCode"`
+
+	// SessionId Newly minted gateway session token, echoed by every
+	// subsequent command. Expires 30 days from issuance,
+	// sliding on each use.
+	SessionId *string `json:"sessionId,omitempty"`
+
+	// UserId Buyer compatibility id (`customers.system_id`).
+	UserId *int64 `json:"userId,omitempty"`
+}
+
+// Bil24RespGetAllActions defines model for Bil24RespGetAllActions.
+type Bil24RespGetAllActions struct {
+	// ActionList Published events (Bil24 "actions") with their sessions.
+	ActionList *[]Bil24ActionEntry `json:"actionList,omitempty"`
+
+	// CityList Cities with at least one qualifying event, each carrying its venues.
+	CityList *[]Bil24CityEntry `json:"cityList,omitempty"`
+
+	// Command Echo of the request's `command`.
+	Command string `json:"command"`
+
+	// CountryList Countries with at least one qualifying event.
+	CountryList *[]Bil24CountryEntry `json:"countryList,omitempty"`
+
+	// Description Human-readable outcome text, localized per the request's
+	// `locale` when `resultCode != 0`. `"OK"` on success.
+	Description string `json:"description"`
+
+	// ResultCode Outcome code; see the schema description for the full table.
+	ResultCode int `json:"resultCode"`
+}
+
+// Bil24RespGetCart defines model for Bil24RespGetCart.
+type Bil24RespGetCart struct {
+	// ActionEventList Cart lines grouped by session. Empty when the cart is empty.
+	ActionEventList *[]Bil24CartActionEvent `json:"actionEventList,omitempty"`
+
+	// CartTimeout Seconds until the nearest hold expiry; `0` when the cart is empty.
+	CartTimeout *int `json:"cartTimeout,omitempty"`
+
+	// ChargeAmount Total service fee, major currency units.
+	ChargeAmount *float32 `json:"chargeAmount,omitempty"`
+
+	// Command Echo of the request's `command`.
+	Command string `json:"command"`
+
+	// Currency ISO-4217 code of the cart.
+	Currency *string `json:"currency,omitempty"`
+
+	// Description Human-readable outcome text, localized per the request's
+	// `locale` when `resultCode != 0`. `"OK"` on success.
+	Description string `json:"description"`
+
+	// DiscountAmount Total promo-code discount, distributed proportionally across lines.
+	DiscountAmount *float32 `json:"discountAmount,omitempty"`
+
+	// ResultCode Outcome code; see the schema description for the full table.
+	ResultCode int `json:"resultCode"`
+
+	// Sum Sum of unit prices before discount/fee, major currency units.
+	Sum *float32 `json:"sum,omitempty"`
+
+	// TotalSum Final payable total, major currency units.
+	TotalSum *float32 `json:"totalSum,omitempty"`
+}
+
+// Bil24RespGetOrderInfo defines model for Bil24RespGetOrderInfo.
+type Bil24RespGetOrderInfo struct {
+	// Command Echo of the request's `command`.
+	Command string `json:"command"`
+
+	// Description Human-readable outcome text, localized per the request's
+	// `locale` when `resultCode != 0`. `"OK"` on success.
+	Description string `json:"description"`
+
+	// Order Bil24 `Order` projection without `ticketList` (spec §9.3).
+	Order *Bil24OrderHeader `json:"order,omitempty"`
+
+	// ResultCode Outcome code; see the schema description for the full table.
+	ResultCode int `json:"resultCode"`
+
+	// UserMessage Duplicate of `description` when `resultCode != 0`.
+	UserMessage *string `json:"userMessage,omitempty"`
+}
+
+// Bil24RespGetSchema defines model for Bil24RespGetSchema.
+type Bil24RespGetSchema struct {
+	// Command Echo of the request's `command`.
+	Command string `json:"command"`
+
+	// Description Human-readable outcome text, localized per the request's
+	// `locale` when `resultCode != 0`. `"OK"` on success.
+	Description string `json:"description"`
+
+	// ResultCode Outcome code; see the schema description for the full table.
+	ResultCode int `json:"resultCode"`
+
+	// SeatList Seat coordinates and category index for the seating plan.
+	SeatList *[]Bil24GetSchemaSeat `json:"seatList,omitempty"`
+}
+
+// Bil24RespGetSeatList defines model for Bil24RespGetSeatList.
+type Bil24RespGetSeatList struct {
+	// CategoryList All tiers of the session (seated and GA).
+	CategoryList *[]Bil24SeatListCategory `json:"categoryList,omitempty"`
+
+	// Command Echo of the request's `command`.
+	Command string `json:"command"`
+
+	// Currency ISO-4217 code of the session's prices.
+	Currency *string `json:"currency,omitempty"`
+
+	// Description Human-readable outcome text, localized per the request's
+	// `locale` when `resultCode != 0`. `"OK"` on success.
+	Description string `json:"description"`
+
+	// ResultCode Outcome code; see the schema description for the full table.
+	ResultCode int `json:"resultCode"`
+
+	// SeatList Per-seat inventory for assigned/hybrid sessions; GA units
+	// appear as pseudo-seats. Empty for pure general-admission
+	// sessions.
+	SeatList *[]Bil24SeatListSeat `json:"seatList,omitempty"`
+}
+
+// Bil24RespGetTicketsByOrder defines model for Bil24RespGetTicketsByOrder.
+type Bil24RespGetTicketsByOrder struct {
+	// Command Echo of the request's `command`.
+	Command string `json:"command"`
+
+	// Description Human-readable outcome text, localized per the request's
+	// `locale` when `resultCode != 0`. `"OK"` on success.
+	Description string `json:"description"`
+
+	// ResultCode Outcome code; see the schema description for the full table.
+	ResultCode int `json:"resultCode"`
+
+	// TicketIdList Flat list of `ticketId` values, used by the site as a cheap presence check.
+	TicketIdList *[]int64 `json:"ticketIdList,omitempty"`
+
+	// TicketList Per-ticket details. Empty when the order is not yet paid
+	// or tickets are not yet issued (still `resultCode: 0`).
+	TicketList *[]Bil24GetTicketsByOrderTicket `json:"ticketList,omitempty"`
+}
+
+// Bil24RespPayOrder Fields common to every `/compat/bil24/json` response, success or
+// error. `resultCode` is the real outcome signal — the HTTP status is
+// always 200 (spec §6): `0` OK, `1` stale gateway session, `101`
+// user-visible business error (localized `description`), `-1`
+// transient, `-2` invalid request, `-3` not found / out of org
+// scope, `-4` auth, `-5` not implemented, `-99` dependency
+// unavailable. Per-command payload fields are added by the more
+// specific `Bil24Resp*` schemas via `allOf`, and are present only
+// when `resultCode` is `0`.
+type Bil24RespPayOrder = Bil24ResponseEnvelope
+
+// Bil24RespRefundTicket defines model for Bil24RespRefundTicket.
+type Bil24RespRefundTicket struct {
+	// Command Echo of the request's `command`.
+	Command string `json:"command"`
+
+	// Description Human-readable outcome text, localized per the request's
+	// `locale` when `resultCode != 0`. `"OK"` on success.
+	Description string `json:"description"`
+
+	// RefundDate RFC3339 timestamp the refund transaction completed.
+	RefundDate *string `json:"refundDate,omitempty"`
+
+	// ResultCode Outcome code; see the schema description for the full table.
+	ResultCode int `json:"resultCode"`
+
+	// TicketId Echo of the request's `ticketId`.
+	TicketId *int64 `json:"ticketId,omitempty"`
+}
+
+// Bil24RespReservation defines model for Bil24RespReservation.
+type Bil24RespReservation struct {
+	// CartTimeout Seconds until the nearest hold expiry; `0` when the cart is empty.
+	CartTimeout *int `json:"cartTimeout,omitempty"`
+
+	// Charge Total service fee, major currency units.
+	Charge *float32 `json:"charge,omitempty"`
+
+	// Command Echo of the request's `command`.
+	Command string `json:"command"`
+
+	// Currency ISO-4217 code of the cart (one currency per gateway session).
+	Currency *string `json:"currency,omitempty"`
+
+	// Description Human-readable outcome text, localized per the request's
+	// `locale` when `resultCode != 0`. `"OK"` on success.
+	Description string `json:"description"`
+
+	// Discount Total discount, major currency units.
+	Discount *float32 `json:"discount,omitempty"`
+
+	// ResultCode Outcome code; see the schema description for the full table.
+	ResultCode int `json:"resultCode"`
+
+	// SeatList Every seat/unit currently held across the whole gateway session.
+	SeatList *[]Bil24ReservationSeatListItem `json:"seatList,omitempty"`
+
+	// Sum Sum of unit prices before discount/fee, major currency units.
+	Sum *float32 `json:"sum,omitempty"`
+
+	// TotalSum Final payable total, major currency units.
+	TotalSum *float32 `json:"totalSum,omitempty"`
+}
+
+// Bil24RespScanTicket defines model for Bil24RespScanTicket.
+type Bil24RespScanTicket struct {
+	// Command Echo of the request's `command`.
+	Command string `json:"command"`
+
+	// Description Human-readable outcome text, localized per the request's
+	// `locale` when `resultCode != 0`. `"OK"` on success.
+	Description string `json:"description"`
+
+	// ResultCode Outcome code; see the schema description for the full table.
+	ResultCode int `json:"resultCode"`
+
+	// ScanStatus Outcome of the scan attempt (e.g. `OK`, `ALREADY_SCANNED`, `REFUNDED`).
+	ScanStatus *string `json:"scanStatus,omitempty"`
+
+	// TicketId Bil24 wire id of the scanned ticket (`tickets.system_ticket_id`).
+	TicketId *int64 `json:"ticketId,omitempty"`
+}
+
+// Bil24RespSendTicketsToEmail Fields common to every `/compat/bil24/json` response, success or
+// error. `resultCode` is the real outcome signal — the HTTP status is
+// always 200 (spec §6): `0` OK, `1` stale gateway session, `101`
+// user-visible business error (localized `description`), `-1`
+// transient, `-2` invalid request, `-3` not found / out of org
+// scope, `-4` auth, `-5` not implemented, `-99` dependency
+// unavailable. Per-command payload fields are added by the more
+// specific `Bil24Resp*` schemas via `allOf`, and are present only
+// when `resultCode` is `0`.
+type Bil24RespSendTicketsToEmail = Bil24ResponseEnvelope
+
+// Bil24ResponseEnvelope Fields common to every `/compat/bil24/json` response, success or
+// error. `resultCode` is the real outcome signal — the HTTP status is
+// always 200 (spec §6): `0` OK, `1` stale gateway session, `101`
+// user-visible business error (localized `description`), `-1`
+// transient, `-2` invalid request, `-3` not found / out of org
+// scope, `-4` auth, `-5` not implemented, `-99` dependency
+// unavailable. Per-command payload fields are added by the more
+// specific `Bil24Resp*` schemas via `allOf`, and are present only
+// when `resultCode` is `0`.
+type Bil24ResponseEnvelope struct {
+	// Command Echo of the request's `command`.
+	Command string `json:"command"`
+
+	// Description Human-readable outcome text, localized per the request's
+	// `locale` when `resultCode != 0`. `"OK"` on success.
+	Description string `json:"description"`
+
+	// ResultCode Outcome code; see the schema description for the full table.
+	ResultCode int `json:"resultCode"`
+}
+
+// Bil24SeatListCategory One row of `GET_SEAT_LIST.categoryList`.
+type Bil24SeatListCategory struct {
+	// Availability Remaining seats/units for this tier.
+	Availability *int `json:"availability,omitempty"`
+
+	// CategoryPriceId Bil24 wire id of the ticket tier.
+	CategoryPriceId *int64 `json:"categoryPriceId,omitempty"`
+
+	// CategoryPriceName Display name of the tier.
+	CategoryPriceName *string `json:"categoryPriceName,omitempty"`
+
+	// Placement `true` for tiers with seats, `false` for general-admission
+	// tiers. The key is absent entirely for tiers of a pure-GA
+	// session (no seating plan at all).
+	Placement *bool `json:"placement,omitempty"`
+
+	// Price Current resolved price in major currency units.
+	Price *float32 `json:"price,omitempty"`
+
+	// TariffIdMap Always empty — arena has no tariff-plan concept.
+	TariffIdMap *map[string]interface{} `json:"tariffIdMap,omitempty"`
+}
+
+// Bil24SeatListSeat One row of `GET_SEAT_LIST.seatList` (a real seat or a GA pseudo-seat).
+type Bil24SeatListSeat struct {
+	// Available Whether the seat/unit is currently available.
+	Available *bool `json:"available,omitempty"`
+
+	// CategoryPriceId Bil24 wire id of the seat's ticket tier.
+	CategoryPriceId *int64 `json:"categoryPriceId,omitempty"`
+
+	// Location Sector/row/number of the seat, or the tier name for a GA pseudo-seat.
+	Location *Bil24SeatLocation `json:"location,omitempty"`
+
+	// Price Current resolved price in major currency units.
+	Price *float32 `json:"price,omitempty"`
+
+	// SeatId Bil24 wire id of the seat (`session_seats.system_seat_id`).
+	SeatId *int64 `json:"seatId,omitempty"`
+
+	// TariffPlanId Always `null` — arena has no tariff-plan concept.
+	TariffPlanId *int64 `json:"tariffPlanId"`
+}
+
+// Bil24SeatLocation Sector/row/number location of a seat, used across several Bil24 command responses.
+type Bil24SeatLocation struct {
+	// Number Seat number within the row. Empty for a GA pseudo-seat.
+	Number *string `json:"number,omitempty"`
+
+	// Row Row label. Empty for a GA pseudo-seat.
+	Row *string `json:"row,omitempty"`
+
+	// Sector Sector or tier name. For a GA pseudo-seat, the tier name.
+	Sector *string `json:"sector,omitempty"`
+}
+
+// Bil24UserRef The `user` sub-object of a Bil24 `Order` (spec §9.3).
+type Bil24UserRef struct {
+	// Email Buyer email.
+	Email *string `json:"email,omitempty"`
+
+	// Id Buyer compatibility id (`customers.system_id`).
+	Id *int64 `json:"id,omitempty"`
+}
+
+// Bil24VenueEntry One row of `GET_ALL_ACTIONS.cityList[].venueList`.
+type Bil24VenueEntry struct {
+	// Address Street address of the venue.
+	Address *string `json:"address,omitempty"`
+
+	// GeoLat Latitude in decimal degrees.
+	GeoLat *float32 `json:"geoLat,omitempty"`
+
+	// GeoLon Longitude in decimal degrees.
+	GeoLon *float32 `json:"geoLon,omitempty"`
+
+	// VenueId Bil24 wire id of the venue.
+	VenueId *int64 `json:"venueId,omitempty"`
+
+	// VenueName Display name of the venue.
+	VenueName *string `json:"venueName,omitempty"`
+}
 
 // BindSessionSeatingRequest Request body for the seating-bind endpoint. Assigns the given
 // seating_plan_version to the target session in an assigned-seats
@@ -8103,7 +9650,9 @@ type GetBil24SeatingPlanImageParams struct {
 type GetBil24SeatingPlanImageParamsType string
 
 // PostBil24CommandJSONBody defines parameters for PostBil24Command.
-type PostBil24CommandJSONBody map[string]interface{}
+type PostBil24CommandJSONBody struct {
+	union json.RawMessage
+}
 
 // PostV1AdminCustomerImportsParams defines parameters for PostV1AdminCustomerImports.
 type PostV1AdminCustomerImportsParams struct {

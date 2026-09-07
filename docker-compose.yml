@@ -158,6 +158,17 @@ services:
       # arena-healthcheck reads HEALTH_ADDR to know which URL to probe.
       # For arena-api: the main HTTP server on :8080.
       HEALTH_ADDR: "http://localhost:8080"
+
+      # Canonical public SPA origin (see .env.example for the full
+      # description). This is also the Bil24 compat spec's required
+      # "PUBLIC_BASE_URL" (spec §16): GET_TICKETS_BY_ORDER's pdfUrl and the
+      # gateway-credential PUT response derive base_url/image_url from it.
+      APP_PUBLIC_URL: "${APP_PUBLIC_URL:-http://localhost:5174}"
+      # Bil24-compatible gateway (/compat/bil24/*). Off by default in the
+      # local dev compose stack; set to "true" to exercise the WordPress
+      # Bil24 compat contract against this stand.
+      BIL24_COMPAT_ENABLED: "${BIL24_COMPAT_ENABLED:-false}"
+      BIL24_REQUIRE_TOKEN: "${BIL24_REQUIRE_TOKEN:-true}"
     ports:
       - "8080:8080"
     healthcheck:
