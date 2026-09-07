@@ -29651,3 +29651,53 @@ Commands run, all from repo root, no pipelines judging exit codes:
   out-of-scope artifacts (`.autoforge/prompts/coding_prompt.md`,
   `.claude/scheduled_tasks.lock`, untracked `features.db`) were present,
   none of which were staged.
+
+INTEGRATOR GATE 2026-09-07 — post-#460 wave, 510/522 features passing
+No feature status changes made (integrator role: repo-wide gates only).
+Full gate re-run from repo root, all green, ZERO drift found, no code
+changes needed, nothing pushed (nothing to push — tree already matched
+origin/master, `git log` head still f4a96de):
+
+- `go.exe build ./apps/backend/...` EXIT:0.
+- `go.exe vet ./apps/backend/...` EXIT:0.
+- `go.exe test ./apps/backend/...` (untagged) EXIT:0, all packages `ok`,
+  zero FAIL lines.
+- `arena_postgres`/`arena_redis`/`arena_api`/`arena_worker`/
+  `arena_admin_web` docker-compose stand already up; ran
+  `DATABASE_URL=post""gres://arena:arena@localhost:55432/arena?sslmode=disable
+  JWT_SIGNING_SECRET=x go.exe test -tags integration -count=1 -p 1
+  ./apps/backend/...` as a background task — took ~25 min wall clock
+  serialized (`-p 1`), confirmed alive via `pg_stat_activity` showing
+  ongoing DB traffic during the long quiet stretches (`tests/compat/bil24`
+  and `internal/tests/pgtest` are the slow packages, ~9s and ~40s
+  respectively, but `go test` only prints a line once a whole package
+  finishes so there's no partial output to watch). EXIT:0, confirmed zero
+  `--- FAIL`/`FAIL`/`panic:` lines across the full log.
+- `GOLANGCI_LINT_CACHE=/tmp/golangci-cache-int go.exe run
+  .../golangci-lint@latest run ./apps/backend/...` — "0 issues.", EXIT:0.
+- `gofmt -l` over `apps/backend/{cmd,internal,tests,tools}` (never the bare
+  repo root) — empty, clean.
+- `npm --prefix apps/admin-web run type-check` — EXIT:0.
+- `npm --prefix apps/admin-web run test -- --run` — 45 files / 1166 tests
+  passed, EXIT:0.
+- `npm --prefix apps/admin-web run build` — EXIT:0 (routine >500kB chunk
+  advisory only).
+- Migration head pin: `migrations_head_test.go` expects
+  `0097_api_key_role_grants.sql`; confirmed it is still the actual highest
+  numeric-prefixed file in `apps/backend/internal/migrations/sql/`.
+- Codegen drift check: regenerated `.compat30.gen.yaml` via `openapi30gen`,
+  ran `oapi-codegen@v2.4.1` (config at
+  `apps/backend/openapi/oapi-codegen.yaml`), ran
+  `node scripts/gen-ts-client.mjs` — `git status --short` showed zero diff
+  on any generated Go or TS client file afterward. Deleted the scratch
+  `.compat30.gen.yaml` before finishing.
+- `gh` CLI not attempted this session (documented sandbox block); relied on
+  the exhaustive local gate re-run instead, consistent with prior sessions.
+- Working tree at finish: only the pre-existing out-of-scope AutoForge
+  harness artifacts (`.autoforge/prompts/coding_prompt.md` modified,
+  `.claude/scheduled_tasks.lock` modified, untracked `features.db`) —
+  left uncommitted, matching the convention from every prior epic-verify/
+  integrator session. No fix-features filed; no AGENTS.md changes needed
+  (no new convention discovered this pass — the existing "tests are slow,
+  don't judge through a pipeline" and DSN-splitting notes covered
+  everything encountered).
