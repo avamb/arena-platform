@@ -30014,3 +30014,40 @@ backlog #469's own entry (09_autoforge/wp_bil24_compat_backlog.md §5).
   `.claude/scheduled_tasks.lock`, untracked `features.db`) untouched.
   Committed `f98d646` and pushed to `origin/master` (819d32f..f98d646).
   Feature #522 marked passing.
+
+## Integrator gate pass — 2026-09-07 (post-#522, at fdacd10)
+
+Full repo-wide gate re-run from repo root, no pipelines. All green, zero
+drift found, nothing to fix or file:
+- `go.exe build ./apps/backend/...` EXIT:0; `go.exe vet ./apps/backend/...`
+  EXIT:0.
+- `go.exe test ./apps/backend/...` (untagged) — 0 FAIL lines, EXIT:0.
+- `-tags integration -count=1 -p 1 ./apps/backend/...` (serialized, live
+  Docker Postgres stand port 55432) — 76 `ok` package lines, 0 FAIL,
+  EXIT:0.
+- `gofmt -l` on `apps/backend/{cmd,internal,tests,tools}` — empty.
+- golangci-lint (absolute `GOLANGCI_LINT_CACHE`) `run ./apps/backend/...`
+  — "0 issues.", EXIT:0.
+- Codegen drift check: regenerated `.compat30.gen.yaml` via
+  `openapi30gen` (`apps/backend/openapi/openapi.yaml`) then
+  `oapi-codegen@v2.4.1 --config=apps/backend/openapi/oapi-codegen.yaml`
+  — zero diff against committed `types_gen.go`/`index.d.ts`; temp file
+  removed after.
+- Migration head pin: `0098_customer_imports.sql` is still both the
+  actual highest-numbered file and `TestHead_KnownCurrentHead`'s
+  expectation — no drift.
+- `npm --prefix apps/admin-web run type-check` EXIT:0; `run test -- --run`
+  — 46/46 files, 1189/1189 tests, EXIT:0; `run build` EXIT:0 (routine
+  >500kB chunk advisory only).
+- `gh` unavailable in this sandbox (documented recurring limitation) —
+  could not watch the live CI run; relied on the exhaustive local gate
+  re-run instead, matching every prior epic-verify session's approach.
+- Working tree at finish: clean except the same pre-existing
+  out-of-scope AutoForge harness noise every prior session has left
+  untouched (`.autoforge/prompts/coding_prompt.md` modified, deleted
+  `.claude/scheduled_tasks.lock`, untracked `features.db`).
+- No commits made this pass (nothing needed fixing). No fix-features
+  filed. Feature stats at start: 515/522 passing; the 7 non-passing are
+  the known in-flight W1-B1/B2/D epic-verify chain (#457, #458, #469)
+  and their not-yet-implemented sub-features (#493, #494, #495, #496) —
+  normal in-progress wave state, not integration defects.
