@@ -51,6 +51,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/brevo"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/convertjob"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/customerimport"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
@@ -531,6 +532,19 @@ func registerMediaGCHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *confi
 		"backend", cfg.MediaBackend,
 		"retention", mediastore.DefaultRetention.String(),
 	)
+
+	// customer.import (feature #519) reads its uploaded export through the
+	// same mediastore.Repo, so it shares this MEDIA_BACKEND-gated wiring
+	// point rather than duplicating the storage.NewFromConfig call. No
+	// HTTP endpoint enqueues this job yet — feature #520 builds the
+	// create-import endpoint; until then a row inserted into worker_jobs
+	// by hand (or a future admin tool) is the only producer.
+	reg.Register(customerimport.JobType, customerimport.NewHandler(customerimport.Options{
+		Pool:   pool,
+		Media:  repo,
+		Logger: logger,
+	}))
+	logger.Info("customer.import handler registered", "backend", cfg.MediaBackend)
 }
 
 // buildEmailSender returns an email.Sender appropriate for the current
