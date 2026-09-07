@@ -29526,3 +29526,82 @@ gate suite:
 
 Marked feature #465 passing via `feature_mark_passing` after this
 verification-only gate re-run — full suite green, no code changes needed.
+
+SESSION 2026-09-07 — feature #499 W1-B4 GET_SEAT_LIST full form
+Commit 557a887, pushed to master. Marked passing via `feature_mark_passing`.
+
+- Rebuilt `hbil24/cmd_seat_list.go` to spec §7.2: `currency`,
+  `categoryList[{categoryPriceId,categoryPriceName,price,availability,
+  placement,tariffIdMap}]`, `seatList[{seatId,categoryPriceId,tariffPlanId,
+  price,available,location{sector,row,number}}]`. `placement` is a `*bool`
+  with `omitempty` so it is tri-state on the wire: `true` for seated tiers,
+  `false` for a GA tier living inside a seating plan, and the KEY IS ABSENT
+  for a pure-GA session. `seatId` is the int64 `session_seats.system_seat_id`
+  (never a UUID — a UUID on the wire answers -2 since #476). Prices come from
+  `priceresolve.ForTiers` with the tier's own `price_amount` as fallback.
+  `availableOnly` filters the `seatList` ONLY, never `categoryList`.
+- Retired two legacy keys from the response: the `admissionMode` echo and the
+  numeric BSS `status` per seat. §7.2 carries the admission mode implicitly
+  (via `placement` plus whether `seatList` is populated) and each seat's
+  sellability as the boolean `available`. `scenario08_import_test.go` was
+  updated to assert the new shape (and to assert `admissionMode` is ABSENT).
+- **Real defect found and fixed while writing the goldens**: `seatListLedgers`
+  discarded the session-level (`tier_id IS NULL`) `inventory_ledger` row and
+  `seatListAvailability` had no session-level fallback. The seeded pure-GA
+  session materialises its 50 `ga_unit` rows with `tier_id NULL`, so no tier
+  owns inventory of its own and GET_SEAT_LIST would have reported
+  `availability: 0` for both tiers while GET_ALL_ACTIONS reports 50 for the
+  very same fixture. Fixed in the HANDLER, not the golden: tier-less units and
+  the session-level ledger row are now bucketed under `uuid.Nil` (a real tier
+  id is never the nil UUID, so the namespaces cannot collide) and
+  `seatListAvailability` walks a 6-step precedence — tier units → tier ledger
+  → session unit pool → session ledger → `tier.capacity` → 0 — mirroring
+  `cmd_catalog_events.go`'s `sessionAvailability`. Unlimited ledgers
+  (`capacity_total NULL`) fall through; oversold ledgers clamp at zero.
+  This honours the standing rule that goldens are corrected only to match
+  SPEC text, never to match code.
+- Goldens + request fixtures for all five documented shapes under
+  `testdata/wp/{golden,requests}/GET_SEAT_LIST/`: `basic`, `seated` (one held
+  seat → `available: false`), `hybrid`, `ga`, `available_only`. `basic.json`
+  was rewritten from the obsolete `{id,index,name,color,class}` legacy shape.
+- New `tests/compat/bil24/seat_list_499_test.go` (`//go:build integration`)
+  drives all five goldens plus the out-of-scope case end to end. Its hybrid
+  seeder is local on purpose — `sc1SeedHybridEvent` materialises GA units
+  ONLY, and the point of the §7.2 hybrid shape is both kinds side by side, so
+  the local seeder creates 4 real `kind='seat'` rows (tier `Balkon`, 1500,
+  sort_order 0) plus 10 `kind='ga_unit'` rows (tier `Stání`, 700, sort_order
+  1) on one `admission_mode='hybrid'` session bound to the seeded plan
+  version. The out-of-scope sub-test reuses `sc1SeedForeignChannel` so -3 is
+  proven with REAL credentials of another org — a bogus token would answer -4
+  and prove nothing about org scoping. `sl499HoldOneSeat` registers a
+  `t.Cleanup` restore so the sub-tests stay order-independent.
+
+Gotchas confirmed this session (already in AGENTS.md, re-verified):
+- **`resolveGolden` substitutes only a FIXED placeholder set**
+  (`actionEventId`, `categoryPriceId`, `sessionId`, `token`, `orderId`,
+  `now+ttl`, `seatId:<label>`). Any other `{{...}}` stays a LITERAL string in
+  the resolved golden — that is the deliberate house style for run-varying
+  values (`{{seatsAvailable}}`, `{{hybridGACategoryPriceId}}`, `{{sector}}`):
+  the golden supplies the KEY SET and the test asserts the value separately.
+  Confirmed by reading the existing GET_ALL_ACTIONS goldens.
+- **Golden comparison is strict key-set but does NOT recurse into arrays** —
+  array element key sets must be walked by hand in the test.
+
+Gates (all from repo root, `go.exe`, no pipelines — logs redirected then
+grepped, deleted before staging):
+- `go build ./apps/backend/...` EXIT:0; `go vet ./apps/backend/...` EXIT:0.
+- `go vet -tags integration ./apps/backend/tests/compat/bil24/...` EXIT:0.
+- Integration vs Docker PG (55432), `-count=1 -v -run TestCompatBil24_499`:
+  all 6 sub-tests PASS (basic, seated, available_only, hybrid, ga,
+  out_of_scope_is_minus_3).
+- `-tags integration -count=1 -p 1` over `tests/compat/bil24/...`,
+  `tests/staticanalysis/...`, `internal/migrations/...`, `hbil24/...`,
+  `adapters/bil24compat/...` — all ok.
+- Full `go test ./apps/backend/...` EXIT:0, zero FAIL lines.
+- `gofmt -l -w` on every changed Go file INCLUDING the integration-tagged
+  ones (golangci-lint skips those, CI's format check does not).
+- No `openapi.yaml` change (compat gateway is outside the OpenAPI surface),
+  so no codegen; no migration, so no head-pin bump.
+- Staged by path only; `git status --short` verified — the pre-existing
+  out-of-scope AutoForge artifacts (`.autoforge/prompts/coding_prompt.md`,
+  `.claude/scheduled_tasks.lock`, untracked `features.db`) left uncommitted.
