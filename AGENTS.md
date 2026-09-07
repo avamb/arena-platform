@@ -145,6 +145,27 @@ entries short and factual.
   the default in `httpserver/wire.go` and `cmd/arena-worker/main.go`; use it
   for any new wiring. Tests asserting that an event was published must query
   `outbox_events` and cast the id (`aggregate_id = $1::text`).
+- **"Best effort" writes inside a money transaction MUST sit behind a
+  SAVEPOINT.** A statement that fails inside a pgx tx aborts the whole tx even
+  if the Go code logs-and-swallows the error: the later COMMIT comes back
+  25P02 "commit unexpectedly resulted in rollback" and the payment silently
+  vanishes behind a generic error code. Found in `hbil24`'s PAY_ORDER
+  (feature #494), where `customer_org_links.source` got the illegal value
+  `bil24_gateway` — the CHECK from migration 0091 allows only
+  ('order','import') — and a 23514 rolled back an otherwise-good payment.
+  Pattern: wrap each non-critical section in a nested `tx.Begin(ctx)`
+  (SAVEPOINT), have the helper RETURN its error, and roll back just that
+  savepoint. See `Handler.payBestEffort` in `hbil24/cmd_order_pay.go`.
+- **The Bil24 compat gateway does NOT convert money units on the wire.**
+  `cmd_order_create.go` answers `totalSum: orders.total` verbatim, so an
+  incoming `amount` is directly comparable to `orders.total` — no `/100`.
+  A stray division made every correct payment look like a mismatch
+  (`reported=525 expected=5.25`).
+- **`payment_intents_provider_payment_id` is a GLOBAL unique index**
+  (migration 0025), unscoped by org — same class of trap as
+  `customer_identities_strong_uq`. Integration tests must randomize the
+  external ref that feeds it per run, or leftovers from an interrupted run
+  against the shared dev stand collide with 23505.
 - **`audit_events.actor_id` is a nullable `uuid` column** and `audit.insertSQL`
   casts it with `NULLIF($3,'')::uuid`, so `audit.Event.ActorID` accepts only a
   UUID string or `""`. A non-UUID principal label (the Bil24 gateway's
