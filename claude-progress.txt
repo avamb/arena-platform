@@ -29840,3 +29840,54 @@ origin/master, `git log` head still f4a96de):
   coding_prompt.md`, deleted `.claude/scheduled_tasks.lock`, untracked
   `features.db` untouched) and pushed to `origin/master`
   (`4d6f06d..c5b798b`). Feature #520 marked passing.
+
+## Feature #468 — W1-C7 [EPIC-VERIFY]: customer import tool gate re-run (2026-09-07)
+
+Verification-only epic for sub-features #519 (customer.import worker job)
+and #520 (admin endpoints/OpenAPI/admin-web page), both already committed
+and marked passing in prior sessions. Ran the full gate suite from repo
+root (never through a pipeline) and confirmed everything green:
+
+- go build ./apps/backend/... EXIT:0; go vet ./apps/backend/... EXIT:0.
+- go test ./apps/backend/... (untagged) - 75 "ok" package lines, zero
+  FAIL, EXIT:0.
+- gofmt -l over apps/backend/{cmd,internal,tests,tools} - empty.
+- golangci-lint (absolute GOLANGCI_LINT_CACHE) run ./apps/backend/... -
+  "0 issues.", EXIT:0.
+- Focused integration pass (live Docker Postgres stand, port 55432):
+  -tags integration on tests/compat/bil24/...,
+  internal/platform/customerimport/...,
+  internal/platform/httpserver/hcustomerimports/...,
+  internal/migrations/... - all ok, EXIT:0 (includes harness scenario 10,
+  the C7 dry-run/apply/re-apply idempotency scenario).
+- Full -tags integration -count=1 -p 1 ./apps/backend/... (serialized,
+  per the AGENTS.md contention note) run as a background task - 76 ok
+  lines, zero FAIL/panic, EXIT:0.
+- npm --prefix apps/admin-web run type-check EXIT:0; npm --prefix
+  apps/admin-web run test -- --run - 46 files / 1189 tests, EXIT:0
+  (includes customerImports.test.ts, 23 tests); npm --prefix
+  apps/admin-web run build EXIT:0 (routine >500kB chunk advisory only).
+- Migration head pin: TestHead_KnownCurrentHead still expects
+  0098_customer_imports.sql, matches the actual highest-numbered file.
+- Codegen drift check found and fixed one real drift: regenerating
+  types_gen.go/TS client via openapi30gen + oapi-codegen@v2.4.1 +
+  gen-ts-client.mjs (correct path is apps/backend/openapi/openapi.yaml,
+  not repo-root openapi.yaml) produced a 1-line diff in both files -
+  CustomerImportRowsResponse.rows had a description in openapi.yaml
+  (line 1539, added in feature #520's session) that was never propagated
+  into the committed generated files. Confirmed
+  TestOpenAPIDocs_SchemaPropertiesDescription and
+  TestErrorResponses_AllErrorsUseErrorEnvelopeRef both still pass
+  post-regen. gofmt-clean. Staged by path only (types_gen.go +
+  index.d.ts), committed 67d4f36 "fix: regenerate OpenAPI-derived
+  clients to match committed spec description", pushed to origin/master
+  (47a303f..67d4f36).
+- gh run view/gh run list blocked in this sandbox ("Command 'gh' is not
+  allowed" - same documented limitation as every prior epic-verify
+  session); relied on the exhaustive local gate re-run as the
+  verification basis instead.
+- Working tree at finish: only pre-existing out-of-scope AutoForge
+  harness artifacts (.autoforge/prompts/coding_prompt.md modified,
+  .claude/scheduled_tasks.lock deleted, untracked features.db) - left
+  untouched, matching prior sessions' convention.
+- Feature #468 marked passing.
