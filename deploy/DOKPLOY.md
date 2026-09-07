@@ -140,6 +140,12 @@ into each service's env tab).
 > - `BIL24_COMPAT_ENABLED=true` requires `BIL24_REQUIRE_TOKEN=true` (the
 >   gateway never mounts without fid/token enforcement in production;
 >   feature #390 / PR2-32).
+> - `BIL24_COMPAT_ENABLED=true` also requires a non-empty `https://`
+>   `APP_PUBLIC_URL` — that variable IS the Bil24 spec's `PUBLIC_BASE_URL`.
+>   The gateway's `GET_TICKETS_BY_ORDER` answers absolute ticket links
+>   (`APP_PUBLIC_URL` + `/v1/public/checkout/<token>/tickets/<uuid>/pdf`);
+>   an empty base yields host-less `pdfUrl`/`downloadUrl` values no buyer
+>   can open (feature #495 / W1-B2b, spec §7.10/§16).
 
 #### Mandatory shared variables
 
@@ -154,7 +160,7 @@ into each service's env tab).
 | `APP_COMMIT` | api / worker / migrate | *(injected by CI)* | |
 | `JWT_SIGNING_SECRET` | api / worker | *(strong random, ≥ 32 bytes)* | Shared symmetric key; must not be a dev placeholder |
 | `ENABLE_DEV_AUTH` | api / worker | `false` | **Must be false** |
-| `APP_PUBLIC_URL` | api / worker | `https://app.example.com` | Canonical **SPA origin** for emails and webhooks; distinct from the API base URL and never derived from request headers |
+| `APP_PUBLIC_URL` | api / worker | `https://app.example.com` | Canonical **SPA origin** for emails and webhooks; distinct from the API base URL and never derived from request headers. Also serves as the Bil24 spec's `PUBLIC_BASE_URL` — mandatory when `BIL24_COMPAT_ENABLED=true` |
 | `OUTBOX_MODE` | worker | `webhook` or `disabled` | `noop` and empty are forbidden in production |
 | `EMAIL_MODE` | worker | `smtp` | `log` is forbidden in production |
 | `ALLOW_PRIVATE_DB_PLAINTEXT` | api / worker / migrate | `false` | Set `true` only for an unqualified Docker service host or private IP when in-network PostgreSQL has no TLS. Never use for a managed/external DB. |
