@@ -29701,3 +29701,60 @@ origin/master, `git log` head still f4a96de):
   (no new convention discovered this pass — the existing "tests are slow,
   don't judge through a pipeline" and DSN-splitting notes covered
   everything encountered).
+
+## Feature #519 — customer.import worker job (2026-09-07)
+
+- Implemented the backend-only `customer.import` worker job (spec §3.7 /
+  §12.4): `apps/backend/internal/platform/customerimport/parsers.go`
+  (`ParseBil24OrdersJSON`, `ParseCSVRows` producing a common `ParsedRow`),
+  `job.go` (`RunImport` with `dry_run`/`apply` modes, `NewHandler`),
+  registered as `customerimport.JobType` in
+  `apps/backend/cmd/arena-worker/main.go` under the existing
+  `MediaBackend`-gated wiring point (shares the `mediastore.Repo` the
+  media-gc handler already builds). HTTP endpoints/admin-web UI are
+  explicitly out of scope — feature #520.
+- `dry_run` runs entirely inside a `pgx.Tx` that is unconditionally rolled
+  back (explicit rollback call before persisting the report, in addition
+  to the `defer`) — proven live in `job_integration_test.go`: zero
+  `customer_import_rows` and zero `customer_identities` rows survive a
+  dry_run. `apply` writes one `customer_import_rows` row per source row
+  inside one committed tx, using `UNIQUE(import_id, row_hash)` as the
+  re-apply idempotency guard (`GetCustomerImportRowByHash` short-circuits
+  a repeat row via `tallyExisting` without re-running `customers.Resolve`,
+  consent insert, or the org-link upsert).
+- Import rows NEVER call `customers.MarkVerified` — only a `marketing`
+  `customer_consents` grant is recorded per resolved row (first-import-
+  wins via the table's PK, so a second row for the same customer/org
+  doesn't duplicate the consent). Verified live: the attached email
+  identity's `verified_at` stays NULL after apply.
+- Tests: `parsers_test.go` (no build tag) — 6 tests, all green, using the
+  real `tests/compat/bil24/testdata/wp/bil24_orders_pseudonymized.json`
+  fixture (68 orders, Olga Svoboda dedup/date-parse assertions) plus CSV
+  parser column-mapping/org_rule cases. `job_integration_test.go`
+  (`//go:build integration`) — one full dry_run → apply → re-apply cycle
+  against the live Docker Postgres stand (port 55432), asserting: dry_run
+  writes zero `customer_import_rows`/identities; apply creates exactly
+  one customer across two same-email rows (Created=1, Matched=1), writes
+  2 `customer_import_rows`, one `marketing` consent (not two), and
+  `customer_org_links` counters `orders_count=2 tickets_count=3`;
+  re-apply is a no-op on all counters (idempotency proven via row_hash).
+  Ran against the dev stand after applying pending migration 0098 there
+  (`go run ./cmd/arena-migrate`, 97→98) — PASS.
+- Gates run and green: `go build ./...`, `go vet ./...`,
+  `go test ./internal/platform/customerimport/...` (parser unit tests),
+  `go test ./internal/migrations/...` (migration head pin unaffected —
+  0098 already pinned from a prior session), `go test
+  ./tests/staticanalysis/...`, `gofmt -l` clean on every new/modified
+  file, `-tags integration` run of `./tests/compat/bil24/...` (no
+  regression from the new `mediastore`/`customers` usage). Used the
+  `media_objects.owner_type` value `"org_logo"` as a harmless placeholder
+  for seeding the test's uploaded-file media row — confirmed
+  `mediastore.Repo.Insert` does not itself validate against
+  `AllowedOwnerTypes` (that allowlist only gates `POST /v1/media`), so any
+  DB-CHECK-valid value works; none of the five allowed values (`org_logo`,
+  `event_poster`, `artist_photo`, `seating_plan_svg`, `session_poster`)
+  semantically fit a raw customer/order export file, which is a judgment
+  call worth revisiting if feature #520's upload endpoint needs a better
+  category.
+- Committed `749c03e` "feat(customerimport): customer.import worker job
+  feature #519" (9 files) and pushed to `origin/master`.
