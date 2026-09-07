@@ -1,15 +1,15 @@
-// cmd_seat_list.go — Bil24-compatible GET_SEAT_LIST handler and its two
-// per-mode branches (GA tier facade + per-unit assigned-seat / hybrid),
-// plus the small pure helpers they share (seatListCurrency,
-// bssStatusCode).
+// cmd_seat_list.go — Bil24-compatible GET_SEAT_LIST handler (spec §7.2).
 //
-// Extracted from cmd_catalog.go by feature #476 W1-A2b slice 22 so the
-// spec-mandated split (feature description: "no file over 700 lines")
-// stays honored — GET_ALL_ACTIONS and its projection helpers grew past
-// the ceiling as the actionList body caught up to spec §7.1, so
-// GET_SEAT_LIST moves into its own file to make room. The dispatcher
-// (HandleBil24Command in bil24_compat.go) stays the single central
-// case-list — this file only owns the seat-list projection.
+// Feature #499 (W1-B4) replaced the two divergent legacy branches (a GA
+// "tier facade" that emitted tiers *as* seats, and a per-unit branch that
+// emitted BSS status codes) with ONE projection: the spec §7.2
+// GetSeatListResponse — a `categoryList` describing every ticket tier and
+// a `seatList` describing every ticketable place. The seat-status enum,
+// the `admissionMode` echo and the `pricingMode`/`availableCount` tier
+// keys are gone from the wire; nothing in the WordPress plugin read them.
+//
+// The dispatcher (HandleBil24Command in bil24_compat.go) stays the single
+// central case-list — this file only owns the seat-list projection.
 package hbil24
 
 import (
@@ -20,59 +20,74 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET_SEAT_LIST — list ticket tiers for a session
-// ─────────────────────────────────────────────────────────────────────────────
+// admissionGA is the sessions.admission_mode value for a session with no
+// seating plan at all. Mirrored here rather than imported so the
+// projection stays readable at its branch points; the other two values
+// ("assigned_seats", "hybrid") are only ever tested as "not this one".
+const admissionGA = "general_admission"
 
-// handleBil24GetSeatList maps GET_SEAT_LIST to either ticket-tier listing
-// (general_admission) or the real assigned-seat inventory
-// (assigned_seats / hybrid) for a specific event session. Feature #312
-// Wave SEAT-D1 introduced the admission_mode branch on top of the
-// pre-existing tier-facade behavior.
+// seatKindGAUnit is the session_seats.kind value for a general-admission
+// unit — a ticketable place with no coordinates. The other value is
+// "seat".
+const seatKindGAUnit = "ga_unit"
+
+// tierUnitStats accumulates what the session_seats snapshot says about one
+// ticket tier: how many rows of each kind it owns and how many of them are
+// currently sellable. Feature #499 (spec §7.2) derives both the category
+// `availability` count and the tri-state `placement` flag from it.
+type tierUnitStats struct {
+	seats     int
+	gaUnits   int
+	available int
+}
+
+// handleBil24GetSeatList answers GET_SEAT_LIST with the spec §7.2
+// response: the session currency, the full category (ticket-tier) list and
+// the seat list.
 //
-// Bil24 request fields used:
-//   - actionEventId: platform session UUID (Bil24 event instance)
+//	{
+//	  "resultCode": 0, "description": "OK", "command": "GET_SEAT_LIST",
+//	  "currency": "CZK",
+//	  "categoryList": [
+//	    {"categoryPriceId": 1000000020, "categoryPriceName": "Parter",
+//	     "price": 900, "availability": 84, "placement": true,
+//	     "tariffIdMap": {}}
+//	  ],
+//	  "seatList": [
+//	    {"seatId": 1731, "categoryPriceId": 1000000020, "tariffPlanId": null,
+//	     "price": 900, "available": true,
+//	     "location": {"sector": "Parter", "row": "3", "number": "12"}}
+//	  ]
+//	}
 //
-// Response shapes:
+// Shape rules (all from spec §7.2):
 //
-//   - general_admission (or admissionQ nil / session not resolvable to a
-//     seating binding) — one entry per ticket_tier. Feature #476 slice 22
-//     (spec §7.2) renamed the per-entry name key from the legacy
-//     `categoryName` to spec-canonical `categoryPriceName` — the Bil24
-//     wire uses the "categoryPrice" naming everywhere (categoryPriceId
-//     is already the id key) and the WP plugin reads
-//     `categoryPriceName` off the response envelope:
+//   - `placement` is TRI-STATE. A seated tier is `true`; a
+//     general-admission tier that lives inside a seating plan (hybrid
+//     session) is `false`; on a pure-GA session the key is ABSENT
+//     entirely, because "placement" is only meaningful where a plan
+//     exists. Modelled as *bool with `omitempty`.
 //
-//     {
-//     "categoryPriceId":   "<uuid>", "categoryPriceName": "...",
-//     "price": <cents>, "currency": "USD",
-//     "pricingMode": "fixed"|"free"|"pwyw",
-//     "availableCount": <int or null>
-//     }
+//   - `seatList` carries every kind='seat' row on an assigned_seats
+//     session; on a hybrid session it ALSO carries the kind='ga_unit'
+//     rows as pseudo-seats, whose location is {sector: <tier name>,
+//     row: "", number: ""} so the WordPress renderer can group them; on a
+//     pure-GA session it is the empty array (there is nothing to place).
 //
-//   - assigned_seats / hybrid — one entry per session_seat, per ADR-005
-//     the seat identifier is the platform session_seats.id serialised
-//     as a plain UUID string:
+//   - `availableOnly:true` filters `seatList` ONLY. `categoryList` always
+//     describes the complete category set so a sold-out category still
+//     renders.
 //
-//     {
-//     "seatId":          "<uuid>",       // session_seats.id as string
-//     "categoryPriceId": "<uuid>",       // tier UUID (nullable)
-//     "sector":          "...",
-//     "row":             "...",
-//     "number":          "...",
-//     "price":           <cents>,        // 0 if no tier bound yet
-//     "currency":        "USD",
-//     "status":          <BSS int>       // 0 unavailable, 1 available, 3 held, 4 sold
-//     }
+//   - `tariffPlanId` is always null and `tariffIdMap` always {} — arena
+//     has no tariff-plan concept, but the keys are part of the contract
+//     the plugin destructures.
 //
-// BSS status codes are the Bil24 seat-status wire values (§6 of the
-// Bil24 gateway spec): 0 = unavailable (admin), 1 = available, 3 = held
-// (reservation active), 4 = sold. The mapping never surfaces the internal
-// row status string.
+// A session outside the calling channel's organization answers -3.
 //
 // Operator note: stadium-scale seat maps can push the seatList payload
 // past 1 MiB. Enable gzip on the reverse proxy fronting POST
@@ -82,8 +97,7 @@ import (
 // print stays predictable.
 func (h *Handler) handleBil24GetSeatList(w http.ResponseWriter, r *http.Request, req bil24Request) {
 	// tier and seat services can be independently unwired; the outer
-	// guard fails fast only if BOTH are missing (no data source at all
-	// for either branch).
+	// guard fails fast only if BOTH are missing (no data source at all).
 	if h.tierQueries == nil && h.seatQ == nil {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInternalError, "seat service unavailable",
@@ -120,55 +134,88 @@ func (h *Handler) handleBil24GetSeatList(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
-	// Resolve admission_mode when the seating dependencies are wired.
-	// Missing dependencies / lookup failures silently fall back to the
-	// tier-facade behavior — legacy GA clients keep working during the
-	// SEAT-D rollout even when the seating tables are empty.
-	admissionMode := "general_admission"
+	// Resolve admission_mode when the seating dependency is wired. A
+	// missing dependency or a lookup failure degrades to general_admission
+	// — the most conservative shape (empty seatList, no placement key).
+	admissionMode := admissionGA
 	if h.admissionQ != nil {
-		row, aerr := h.admissionQ.GetSessionAdmissionModeByID(ctx, sessionID)
-		if aerr == nil && row.AdmissionMode != "" {
+		if row, aerr := h.admissionQ.GetSessionAdmissionModeByID(ctx, sessionID); aerr == nil && row.AdmissionMode != "" {
 			admissionMode = row.AdmissionMode
 		}
 	}
 
-	// Route: sessions with materialized seat/GA-unit rows emit per-unit
-	// entries (AB-51 restored compat parity — every ticketable place has
-	// a seatId); the tier facade remains the fallback for unwired seat
-	// queries and legacy GA sessions without unit rows.
+	// The unit snapshot drives BOTH halves of the response: seatList rows
+	// come straight from it, and each category's `availability` is a count
+	// over it. ListSessionSeatsAdmin (rather than ListSessionSeats) is the
+	// read because only it carries session_seats.kind, and the hybrid
+	// branch must tell a seat from a GA unit.
+	var units []gen.SessionSeatAdminRow
 	if h.seatQ != nil {
-		seats, serr := h.seatQ.ListSessionSeats(ctx, sessionID)
-		if serr != nil && admissionMode != "general_admission" {
-			h.logger.Error("bil24_compat: GET_SEAT_LIST: list session seats failed",
-				slog.String("session_id", sessionID.String()),
-				slog.String("error", serr.Error()),
-			)
-			writeBil24JSON(w, http.StatusOK, bil24Error(
-				req.Command, ResultCodeInternalError, "failed to retrieve seat list",
-			))
-			return
-		}
-		if serr == nil && (admissionMode != "general_admission" || len(seats) > 0) {
-			h.getSeatListUnits(w, ctx, req, sessionID, admissionMode, seats)
-			return
+		rows, serr := h.seatQ.ListSessionSeatsAdmin(ctx, sessionID)
+		if serr != nil {
+			// On a placed session the seat map IS the response; failing
+			// loudly beats emitting a plausible-looking empty hall.
+			if admissionMode != admissionGA {
+				h.logger.Error("bil24_compat: GET_SEAT_LIST: list session seats failed",
+					slog.String("session_id", sessionID.String()),
+					slog.String("error", serr.Error()),
+				)
+				writeBil24JSON(w, http.StatusOK, bil24Error(
+					req.Command, ResultCodeInternalError, "failed to retrieve seat list",
+				))
+				return
+			}
+		} else {
+			units = rows
 		}
 	}
-	if h.tierQueries == nil {
+
+	// Without tier data there is no categoryList to build. That is fatal
+	// unless the unit snapshot alone can still carry the response (a
+	// placed session with an unwired tier facade degrades to priced-at-zero
+	// seats rather than a hard failure).
+	if h.tierQueries == nil && len(units) == 0 {
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInternalError, "tier service unavailable",
 		))
 		return
 	}
-	h.getSeatListGA(w, ctx, req, sessionID)
+
+	tiers, ok := h.seatListTiers(w, ctx, req, sessionID, len(units))
+	if !ok {
+		return
+	}
+
+	priceOf := h.seatListPricer(ctx, sessionID, tiers)
+	stats := seatListUnitStats(units)
+
+	resp := bil24compat.GetSeatListResponse{
+		Currency:     seatListCurrency(tiers),
+		CategoryList: h.buildSeatListCategories(ctx, sessionID, admissionMode, tiers, stats, priceOf),
+		SeatList:     h.buildSeatList(ctx, admissionMode, units, tiers, priceOf, req.AvailableOnly),
+	}
+
+	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
+		"currency":     resp.Currency,
+		"categoryList": resp.CategoryList,
+		"seatList":     resp.SeatList,
+	}))
 }
 
-// getSeatListGA is the pre-#312 tier-facade GET_SEAT_LIST response for
-// general_admission sessions (and the fallback whenever the SEAT-D
-// dependencies are not wired). Kept factored out so the assigned-seat
-// branch can remain a self-contained addition.
-func (h *Handler) getSeatListGA(w http.ResponseWriter, ctx context.Context, req bil24Request, sessionID uuid.UUID) {
+// seatListTiers loads the session's ticket-tier snapshot. A load failure is
+// fatal only when the unit snapshot is also empty — otherwise the response
+// degrades to seats priced at zero with an empty categoryList, which is
+// strictly more useful to the caller than -99. It writes the error envelope
+// itself and reports ok=false when it does.
+func (h *Handler) seatListTiers(w http.ResponseWriter, ctx context.Context, req bil24Request, sessionID uuid.UUID, unitCount int) ([]gen.TicketTierRow, bool) {
+	if h.tierQueries == nil {
+		return nil, true
+	}
 	tiers, err := h.tierQueries.ListTicketTiersBySession(ctx, sessionID)
-	if err != nil {
+	if err == nil {
+		return tiers, true
+	}
+	if unitCount == 0 {
 		h.logger.Error("bil24_compat: GET_SEAT_LIST: list tiers failed",
 			slog.String("session_id", sessionID.String()),
 			slog.String("error", err.Error()),
@@ -176,176 +223,282 @@ func (h *Handler) getSeatListGA(w http.ResponseWriter, ctx context.Context, req 
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInternalError, "failed to retrieve seat list",
 		))
-		return
+		return nil, false
 	}
+	h.logger.Warn("bil24_compat: GET_SEAT_LIST: tier snapshot failed; emitting seats with zero price",
+		slog.String("session_id", sessionID.String()),
+		slog.String("error", err.Error()),
+	)
+	return nil, true
+}
 
-	// AB-48: scheduled prices via the ONE resolver (base on lookup failure).
-	effPrices, effErr := priceresolve.ForTiers(ctx, h.tierQueries, tiers, time.Now().UTC())
-	if effErr != nil {
-		h.logger.Error("bil24_compat: GET_SEAT_LIST: price window lookup failed",
-			slog.String("session_id", sessionID.String()),
-			slog.String("error", effErr.Error()),
-		)
-		effPrices = nil
+// seatListPricer resolves the AB-48 scheduled price for every tier once and
+// returns a lookup closure over the result. A resolver failure degrades to
+// the tiers' base price_amount rather than failing the command — a stale
+// price is recoverable, a -99 on the seat map is not.
+//
+// The returned amount is the raw minor-currency unit (cents), which is the
+// money convention the Bil24 wire uses everywhere in this gateway.
+func (h *Handler) seatListPricer(ctx context.Context, sessionID uuid.UUID, tiers []gen.TicketTierRow) func(gen.TicketTierRow) int64 {
+	var eff map[uuid.UUID]priceresolve.Effective
+	if h.tierQueries != nil && len(tiers) > 0 {
+		m, err := priceresolve.ForTiers(ctx, h.tierQueries, tiers, time.Now().UTC())
+		if err != nil {
+			h.logger.Warn("bil24_compat: GET_SEAT_LIST: price window lookup failed; using base prices",
+				slog.String("session_id", sessionID.String()),
+				slog.String("error", err.Error()),
+			)
+		} else {
+			eff = m
+		}
 	}
-	effectiveOf := func(t gen.TicketTierRow) int64 {
-		if eff, ok := effPrices[t.ID]; ok {
-			return eff.Amount
+	return func(t gen.TicketTierRow) int64 {
+		if e, ok := eff[t.ID]; ok {
+			return e.Amount
 		}
 		return t.PriceAmount
 	}
-
-	seatList := make([]map[string]any, 0, len(tiers))
-	for _, t := range tiers {
-		// Spec §4 / §7.2 (feature #476): int64 wire form via compat map.
-		// Fallback (nil compatDB) returns the legacy UUID string so the
-		// pre-W1 unit-test Handlers stay green.
-		seatList = append(seatList, buildGASeatEntry(
-			h.compatCategoryPriceID(ctx, t.ID), t, effectiveOf(t),
-		))
-	}
-
-	// Spec §7.2 (feature #476 slice 21): the response envelope carries the
-	// session-level currency at the top level. Bil24 goldens under
-	// testdata/wp/golden/GET_SEAT_LIST/basic.json expect this key; every
-	// tier of a session shares one currency (a mixed-currency session is
-	// rejected at ticket_tier admission time), so the first non-empty tier
-	// currency is the correct source. Omitted entirely when there is no
-	// tier at all — the pre-slice callers see no wire regression because
-	// the empty-tier path never emitted a currency to begin with.
-	body := map[string]any{
-		"seatList": seatList,
-	}
-	if cur := seatListCurrency(tiers); cur != "" {
-		body["currency"] = cur
-	}
-	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, body))
 }
 
-// buildGASeatEntry projects one ticket-tier row into a single GA-branch
-// seatList entry per spec §7.2. Extracted in feature #476 W1-A2b slice
-// 22 so the entry's wire-shape contract (in particular the
-// `categoryPriceName` rename from the legacy `categoryName`) can be
-// unit-tested without spinning up a live pool or Handler.
+// seatListUnitStats folds the session_seats snapshot into per-tier counts.
+// Units with no tier binding are bucketed under uuid.Nil: a GA pool is very
+// commonly materialised with tier_id NULL, and that pool is the session-level
+// fallback every tier without units of its own reports (see
+// seatListAvailability). A real tier id is never the nil UUID, so the two
+// namespaces cannot collide.
+func seatListUnitStats(units []gen.SessionSeatAdminRow) map[uuid.UUID]tierUnitStats {
+	out := make(map[uuid.UUID]tierUnitStats, len(units))
+	for _, u := range units {
+		key := uuid.Nil
+		if u.TierID != nil {
+			key = *u.TierID
+		}
+		st := out[key]
+		if u.Kind == seatKindGAUnit {
+			st.gaUnits++
+		} else {
+			st.seats++
+		}
+		if u.Status == "available" {
+			st.available++
+		}
+		out[key] = st
+	}
+	return out
+}
+
+// buildSeatListCategories projects the tier snapshot onto spec §7.2's
+// `categoryList`. Every tier appears, sold out or not — `availableOnly`
+// deliberately does not reach this list (see handleBil24GetSeatList).
+func (h *Handler) buildSeatListCategories(
+	ctx context.Context,
+	sessionID uuid.UUID,
+	admissionMode string,
+	tiers []gen.TicketTierRow,
+	stats map[uuid.UUID]tierUnitStats,
+	priceOf func(gen.TicketTierRow) int64,
+) []bil24compat.GetSeatListCategory {
+	ledgers := h.seatListLedgers(ctx, sessionID, tiers, stats)
+
+	out := make([]bil24compat.GetSeatListCategory, 0, len(tiers))
+	for _, t := range tiers {
+		out = append(out, bil24compat.GetSeatListCategory{
+			CategoryPriceID:   h.compatCategoryPriceIDInt(ctx, t.ID),
+			CategoryPriceName: t.Name,
+			Price:             float64(priceOf(t)),
+			Availability:      seatListAvailability(t, stats, ledgers),
+			Placement:         seatListPlacement(admissionMode, stats[t.ID]),
+			TariffIDMap:       map[string]any{},
+		})
+	}
+	return out
+}
+
+// seatListLedgers loads the inventory ledger only when it is actually
+// needed: a session whose every tier has materialised unit rows counts its
+// availability off those rows and never touches the ledger. Returns nil on
+// any failure — seatListAvailability then falls back to the tier capacity.
 //
-// The categoryPriceID argument is passed in already-resolved (int64 via
-// compatCategoryPriceID on the production path, UUID string on the
-// nil-compatDB unit-test path) so this helper stays pure over the row —
-// it does not touch the DB and it does not depend on the Handler.
+// The session-level row (tier_id NULL) is KEPT, bucketed under uuid.Nil: it
+// is the fallback a tier without inventory of its own reports, exactly as
+// GET_ALL_ACTIONS does (cmd_catalog_events.go sessionAvailability).
+func (h *Handler) seatListLedgers(ctx context.Context, sessionID uuid.UUID, tiers []gen.TicketTierRow, stats map[uuid.UUID]tierUnitStats) map[uuid.UUID]gen.InventoryLedgerRow {
+	if h.tierQueries == nil {
+		return nil
+	}
+	needed := false
+	for _, t := range tiers {
+		if _, ok := stats[t.ID]; !ok {
+			needed = true
+			break
+		}
+	}
+	if !needed {
+		return nil
+	}
+	rows, err := h.tierQueries.ListInventoryLedgersBySession(ctx, sessionID)
+	if err != nil {
+		h.logger.Warn("bil24_compat: GET_SEAT_LIST: inventory ledger lookup failed; using tier capacity",
+			slog.String("session_id", sessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		return nil
+	}
+	out := make(map[uuid.UUID]gen.InventoryLedgerRow, len(rows))
+	for _, r := range rows {
+		key := uuid.Nil
+		if r.TierID != nil {
+			key = *r.TierID
+		}
+		out[key] = r
+	}
+	return out
+}
+
+// seatListAvailability computes spec §7.2's per-category `availability`
+// (how many tickets remain sellable in this category), in precedence order:
 //
-// availableCount is emitted ONLY when the tier row has a non-nil
-// Capacity; the pre-slice behavior omitted the key for uncapped tiers
-// and this slice keeps that contract so uncapped-tier callers see no
-// wire regression from the rename.
-func buildGASeatEntry(categoryPriceID any, t gen.TicketTierRow, effectivePrice int64) map[string]any {
-	entry := map[string]any{
-		"categoryPriceId":   categoryPriceID,
-		"categoryPriceName": t.Name,
-		"price":             effectivePrice,
-		"currency":          t.Currency,
-		"pricingMode":       t.PricingMode,
+//  1. the count of available session_seats rows bound to the tier, when the
+//     tier has materialised units — the seat map is the truth for placed
+//     inventory;
+//  2. otherwise the tier's own inventory ledger row: capacity_total − sold
+//     − held, which is what a general-admission tier without unit rows
+//     actually has left;
+//  3. otherwise the session-level GA unit pool (session_seats rows with
+//     tier_id NULL). A GA pool is very commonly materialised unbound, and
+//     every tier of that session sells out of it;
+//  4. otherwise the session-level ledger row (tier_id NULL) — spec §7.2's
+//     "для безлимитного GA без юнитов — capacity − sold − held";
+//  5. otherwise the tier's own declared capacity;
+//  6. otherwise 0 (an uncapped tier with no ledger row has nothing
+//     countable to report).
+//
+// Steps 3–4 are the same rule GET_ALL_ACTIONS applies (cmd_catalog_events.go
+// projectCategories): a tier with no inventory of its own is NOT "sold out",
+// the session-level remaining count is the honest answer. Emitting 0 here
+// while the sibling command reports 50 for the same fixture would be an
+// outright contradiction on the wire.
+//
+// The result is clamped at zero: an oversold ledger must not surface as a
+// negative count, which legacy clients render as garbage.
+func seatListAvailability(t gen.TicketTierRow, stats map[uuid.UUID]tierUnitStats, ledgers map[uuid.UUID]gen.InventoryLedgerRow) int {
+	if st, ok := stats[t.ID]; ok {
+		return clampNonNegative(st.available)
+	}
+	if l, ok := ledgers[t.ID]; ok && l.CapacityTotal != nil {
+		return ledgerRemaining(l)
+	}
+	if st, ok := stats[uuid.Nil]; ok {
+		return clampNonNegative(st.available)
+	}
+	if l, ok := ledgers[uuid.Nil]; ok && l.CapacityTotal != nil {
+		return ledgerRemaining(l)
 	}
 	if t.Capacity != nil {
-		entry["availableCount"] = *t.Capacity
+		return clampNonNegative(int(*t.Capacity))
 	}
-	return entry
+	return 0
 }
 
-// getSeatListUnits is the per-unit GET_SEAT_LIST branch (SEAT-D1,
-// extended by AB-51 to GA sessions). It emits one entry per
-// session_seats row — assigned seats carry sector/row/number, GA units
-// carry empty coordinates exactly like the Bil24 seat-management table —
-// joining tier metadata (price/currency) from the session's
-// ticket_tiers snapshot.
-func (h *Handler) getSeatListUnits(w http.ResponseWriter, ctx context.Context, req bil24Request, sessionID uuid.UUID, admissionMode string, seats []gen.SessionSeatRow) {
-	// Load tier snapshot for price / currency projection. When the tier
-	// dependency is unwired (nil) or fails, we degrade gracefully with
-	// price=0 / currency omitted rather than failing the whole
-	// response — seat inventory is still meaningful without prices.
-	var tiers []gen.TicketTierRow
-	if h.tierQueries != nil {
-		var terr error
-		tiers, terr = h.tierQueries.ListTicketTiersBySession(ctx, sessionID)
-		if terr != nil {
-			h.logger.Warn("bil24_compat: GET_SEAT_LIST: tier snapshot failed; emitting seats with zero price",
-				slog.String("session_id", sessionID.String()),
-				slog.String("error", terr.Error()),
-			)
-			tiers = nil
-		}
+// ledgerRemaining is capacity_total − sold − held, floored at zero.
+func ledgerRemaining(l gen.InventoryLedgerRow) int {
+	return clampNonNegative(int(*l.CapacityTotal) - int(l.CapacitySold) - int(l.CapacityHeld))
+}
+
+// clampNonNegative floors n at zero.
+func clampNonNegative(n int) int {
+	if n < 0 {
+		return 0
+	}
+	return n
+}
+
+// seatListPlacement computes spec §7.2's TRI-STATE `placement` flag:
+//
+//   - nil (key omitted) on a pure general-admission session — there is no
+//     seating plan, so "is this category placed?" has no answer;
+//   - false for a category whose units are all GA units inside a plan
+//     (the standing-room tier of a hybrid session);
+//   - true otherwise — a seated category, and by default any category of a
+//     placed session that has not materialised units yet.
+func seatListPlacement(admissionMode string, st tierUnitStats) *bool {
+	if admissionMode == admissionGA {
+		return nil
+	}
+	placed := !(st.gaUnits > 0 && st.seats == 0)
+	return &placed
+}
+
+// buildSeatList projects the session_seats snapshot onto spec §7.2's
+// `seatList`.
+//
+// A pure general-admission session returns the empty array regardless of
+// what the snapshot holds: GA units are counted in categoryList
+// availability, not placed on a map. On a placed session (assigned_seats or
+// hybrid) every unit is emitted, GA units as pseudo-seats sectored by their
+// tier name.
+//
+// availableOnly drops non-available rows HERE and nowhere else.
+func (h *Handler) buildSeatList(
+	ctx context.Context,
+	admissionMode string,
+	units []gen.SessionSeatAdminRow,
+	tiers []gen.TicketTierRow,
+	priceOf func(gen.TicketTierRow) int64,
+	availableOnly bool,
+) []bil24compat.GetSeatListSeat {
+	if admissionMode == admissionGA {
+		return []bil24compat.GetSeatListSeat{}
 	}
 	tierByID := make(map[uuid.UUID]gen.TicketTierRow, len(tiers))
 	for _, t := range tiers {
 		tierByID[t.ID] = t
 	}
-	// AB-48: scheduled prices via the ONE resolver (base on failure).
-	var effPrices map[uuid.UUID]priceresolve.Effective
-	if h.tierQueries != nil && len(tiers) > 0 {
-		if m, effErr := priceresolve.ForTiers(ctx, h.tierQueries, tiers, time.Now().UTC()); effErr != nil {
-			h.logger.Warn("bil24_compat: GET_SEAT_LIST: price window lookup failed; using base prices",
-				slog.String("error", effErr.Error()))
-		} else {
-			effPrices = m
-		}
-	}
-	effectiveOf := func(t gen.TicketTierRow) int64 {
-		if eff, ok := effPrices[t.ID]; ok {
-			return eff.Amount
-		}
-		return t.PriceAmount
-	}
 
-	seatList := make([]map[string]any, 0, len(seats))
-	for _, s := range seats {
-		entry := map[string]any{
-			// Spec §4 / §7.2 (W1-A2b feature #476): seatId on the wire is
+	out := make([]bil24compat.GetSeatListSeat, 0, len(units))
+	for _, u := range units {
+		available := u.Status == "available"
+		if availableOnly && !available {
+			continue
+		}
+		seat := bil24compat.GetSeatListSeat{
+			// Spec §4: seatId on the wire is
 			// session_seats.system_seat_id (bigint, migration 0088 /
-			// AB-50a). Legacy ADR-005 UUID projection has been retired —
-			// callers that need the platform UUID resolve it via
-			// compatids on the way back in.
-			"seatId": s.SystemSeatID,
-			"sector": s.SectorName,
-			"row":    s.RowName,
-			"number": s.SeatNumber,
-			"status": bssStatusCode(s.Status),
+			// AB-50a), never the platform UUID.
+			SeatID:    u.SystemSeatID,
+			Available: available,
+			// arena has no tariff-plan concept; the key is part of the
+			// contract and is always null.
+			TariffPlanID: nil,
+			Location: bil24compat.GetSeatListLocation{
+				Sector: u.SectorName,
+				Row:    u.RowName,
+				Number: u.SeatNumber,
+			},
 		}
-		if s.TierID != nil {
-			// Spec §4 / §7.2 (feature #476): int64 wire form via compat map.
-			entry["categoryPriceId"] = h.compatCategoryPriceID(ctx, *s.TierID)
-			if t, ok := tierByID[*s.TierID]; ok {
-				entry["price"] = effectiveOf(t)
-				entry["currency"] = t.Currency
-			} else {
-				entry["price"] = int64(0)
+		if u.TierID != nil {
+			seat.CategoryPriceID = h.compatCategoryPriceIDInt(ctx, *u.TierID)
+			if t, ok := tierByID[*u.TierID]; ok {
+				seat.Price = float64(priceOf(t))
+				if u.Kind == seatKindGAUnit {
+					// A GA unit has no coordinates of its own; spec §7.2
+					// sectors it by its category so the plugin can group
+					// the standing-room block next to the seated ones.
+					seat.Location.Sector = t.Name
+				}
 			}
-		} else {
-			entry["price"] = int64(0)
 		}
-		seatList = append(seatList, entry)
+		out = append(out, seat)
 	}
-
-	// Spec §7.2 (feature #476 slice 21): top-level currency mirrors the GA
-	// branch. The tier snapshot is best-effort here (a stale/failed load
-	// leaves `tiers` empty and we simply omit the key rather than emit an
-	// empty string), so pre-slice callers on the unit branch that had no
-	// tier snapshot at all still see the same admissionMode+seatList shape.
-	body := map[string]any{
-		"seatList":      seatList,
-		"admissionMode": admissionMode,
-	}
-	if cur := seatListCurrency(tiers); cur != "" {
-		body["currency"] = cur
-	}
-	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, body))
+	return out
 }
 
 // seatListCurrency projects a session's ticket-tier snapshot onto the
 // spec §7.2 top-level `currency` key. Every tier of one session shares a
 // currency (mixed-currency inserts are rejected at ticket_tier admission)
 // so the first non-empty tier currency is the correct value; empty input
-// returns "" so callers can OMIT the key rather than emit an empty
-// string. Pure over the tier slice — no DB round-trip — so the wire-shape
-// contract can be unit-tested without spinning up a live pool.
+// returns "". Pure over the tier slice — no DB round-trip — so the
+// wire-shape contract can be unit-tested without spinning up a live pool.
 //
 // Feature #476 W1-A2b slice 21 (spec §7.2).
 func seatListCurrency(tiers []gen.TicketTierRow) string {
@@ -355,29 +508,4 @@ func seatListCurrency(tiers []gen.TicketTierRow) string {
 		}
 	}
 	return ""
-}
-
-// bssStatusCode maps an internal session_seats.status string to the Bil24
-// BSS wire code documented in §6 of the gateway spec:
-//
-//	unavailable → 0  (admin-withheld)
-//	available   → 1
-//	held        → 3  (a reservation currently owns the seat)
-//	sold        → 4
-//
-// Any unknown status maps to 0 so legacy clients never see a hole in
-// the enum surface.
-func bssStatusCode(status string) int {
-	switch status {
-	case "available":
-		return 1
-	case "held":
-		return 3
-	case "sold":
-		return 4
-	case "unavailable":
-		return 0
-	default:
-		return 0
-	}
 }

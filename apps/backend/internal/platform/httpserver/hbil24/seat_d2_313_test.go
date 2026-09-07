@@ -263,19 +263,28 @@ func TestBil24_313_GetSchema_JoinsGetSeatListBySeatID(t *testing.T) {
 			len(seatListEntries), len(schemaEntries))
 	}
 
-	// Build seatId → coord from GET_SCHEMA and seatId → status from
+	// Build seatId → coord from GET_SCHEMA and seatId → available from
 	// GET_SEAT_LIST; every seatId MUST appear in both maps. seatId is
 	// session_seats.system_seat_id (int64) per W1-A2b feature #476 —
-	// JSON numbers decode as float64 in map[string]any.
+	// JSON numbers decode as float64 in map[string]any. This join is the
+	// whole point of the pair of commands: GET_SCHEMA says WHERE a seat
+	// is, GET_SEAT_LIST says WHETHER it can be bought, and they must key
+	// on the identical int64. Feature #499 replaced the BSS status enum
+	// with the boolean `available` (spec §7.2); the join itself is
+	// unchanged.
 	coords := make(map[int64][2]float64, len(schemaEntries))
 	for _, e := range schemaEntries {
 		m := e.(map[string]any)
 		coords[int64(m["seatId"].(float64))] = [2]float64{m["x"].(float64), m["y"].(float64)}
 	}
-	statuses := make(map[int64]int, len(seatListEntries))
+	available := make(map[int64]bool, len(seatListEntries))
 	for _, e := range seatListEntries {
 		m := e.(map[string]any)
-		statuses[int64(m["seatId"].(float64))] = int(m["status"].(float64))
+		avail, ok := m["available"].(bool)
+		if !ok {
+			t.Fatalf("GET_SEAT_LIST entry missing boolean `available`: %v", m)
+		}
+		available[int64(m["seatId"].(float64))] = avail
 	}
 
 	for _, key := range systemIDs {
@@ -284,16 +293,12 @@ func TestBil24_313_GetSchema_JoinsGetSeatListBySeatID(t *testing.T) {
 			t.Errorf("seatId %d missing from GET_SCHEMA", key)
 			continue
 		}
-		status, hasStatus := statuses[key]
-		if !hasStatus {
+		if _, hasAvail := available[key]; !hasAvail {
 			t.Errorf("seatId %d missing from GET_SEAT_LIST", key)
 			continue
 		}
 		if coord[0] < 100 || coord[0] > 130 {
 			t.Errorf("seatId %d coord.x out of range: %v", key, coord[0])
-		}
-		if status < 0 || status > 4 {
-			t.Errorf("seatId %d status out of BSS range: %d", key, status)
 		}
 	}
 }

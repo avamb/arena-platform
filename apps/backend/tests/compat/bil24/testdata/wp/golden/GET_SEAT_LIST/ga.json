@@ -1,0 +1,23 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "GET_SEAT_LIST",
+  "currency": "EUR",
+  "categoryList": [
+    {
+      "categoryPriceId": "{{earlyBirdCategoryPriceId}}",
+      "categoryPriceName": "Early Bird",
+      "price": 900,
+      "availability": 50,
+      "tariffIdMap": {}
+    },
+    {
+      "categoryPriceId": "{{standardCategoryPriceId}}",
+      "categoryPriceName": "Standard",
+      "price": 1250,
+      "availability": 50,
+      "tariffIdMap": {}
+    }
+  ],
+  "seatList": []
+}

@@ -260,10 +260,14 @@ func runScenario08Import(t *testing.T, st *harnessState) {
 	if code := numberField(t, seatResp, "resultCode"); code != 0 {
 		t.Fatalf("GET_SEAT_LIST resultCode = %v, want 0 (description %v)", code, seatResp["description"])
 	}
-	if got := seatResp["admissionMode"]; got != "hybrid" {
-		t.Errorf("GET_SEAT_LIST admissionMode = %v, want hybrid (placed seats + a placement:false category)", got)
+	// Feature #499 retired the `admissionMode` echo and the numeric BSS
+	// `status` code from the GET_SEAT_LIST wire shape: spec §7.2 carries the
+	// admission mode implicitly (through `placement` and whether `seatList`
+	// is populated) and each seat's sellability as a boolean `available`.
+	if _, present := seatResp["admissionMode"]; present {
+		t.Errorf("GET_SEAT_LIST still echoes admissionMode; spec §7.2 has no such key")
 	}
-	wireStatus := map[int64]float64{}
+	wireAvailable := map[int64]bool{}
 	rows, _ := seatResp["seatList"].([]interface{})
 	for _, raw := range rows {
 		row, _ := raw.(map[string]interface{})
@@ -271,22 +275,23 @@ func runScenario08Import(t *testing.T, st *harnessState) {
 		if !ok {
 			continue
 		}
-		wireStatus[int64(id)] = numberField(t, row, "status")
+		avail, ok := row["available"].(bool)
+		if !ok {
+			t.Errorf("GET_SEAT_LIST seat %v has available = %#v, want a bool", row["seatId"], row["available"])
+			continue
+		}
+		wireAvailable[int64(id)] = avail
 	}
 	for _, id := range f.seatIDs {
-		st8, ok := wireStatus[id]
+		got, ok := wireAvailable[id]
 		if !ok {
 			t.Errorf("GET_SEAT_LIST does not carry imported Bil24 seatId %d; the import "+
 				"must preserve the upstream identity (got %v)", id, seatResp["seatList"])
 			continue
 		}
-		// BSS status codes (spec §7.2): 0 unavailable, 1 available.
-		want := float64(1)
-		if id == f.blockedSeat {
-			want = 0
-		}
-		if st8 != want {
-			t.Errorf("GET_SEAT_LIST seat %d status = %v, want %v", id, st8, want)
+		want := id != f.blockedSeat
+		if got != want {
+			t.Errorf("GET_SEAT_LIST seat %d available = %v, want %v", id, got, want)
 		}
 	}
 

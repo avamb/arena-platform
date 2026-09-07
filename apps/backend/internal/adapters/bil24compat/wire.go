@@ -103,6 +103,15 @@ type Request struct {
 	// it is normalised through Request.UnmarshalJSON (number-or-string).
 	UserID int64
 
+	// ── GET_SEAT_LIST fields (feature #499, spec §7.2) ───────────────────
+
+	// AvailableOnly asks the gateway to drop every non-available seat from
+	// the `seatList` projection. Spec §7.2 is explicit that the filter
+	// applies to seatList ONLY — `categoryList` always describes the full
+	// category set so the WordPress site can still render sold-out
+	// categories. Absent / false means "return every seat".
+	AvailableOnly bool `json:"availableOnly"`
+
 	// ── ADD_PROMO_CODES / CHECK_KDP fields (feature #491, spec §7.6) ──
 
 	// PromoCodeList and PromoCodes are the two spellings ADD_PROMO_CODES

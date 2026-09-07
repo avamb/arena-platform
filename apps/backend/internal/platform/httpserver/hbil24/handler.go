@@ -60,6 +60,14 @@ type SeatQuerier interface {
 	// int64 end-to-end; the nil-compatDB fallback keeps calling
 	// GetSessionSeatByID with the ADR-005 UUID passthrough.
 	GetSessionSeatBySystemSeatID(ctx context.Context, sessionID uuid.UUID, systemSeatID int64) (gen.SessionSeatRow, error)
+	// ListSessionSeatsAdmin returns the same rows as ListSessionSeats plus
+	// the session_seats.kind discriminator ('seat' | 'ga_unit'). Feature
+	// #499 (spec §7.2) needs it: on a hybrid session the seatList must
+	// project real seats AND GA units as pseudo-seats, and the two are only
+	// distinguishable by kind — gen.SessionSeatRow carries no such column
+	// and its scan helper is shared by ~20 queries, so the discriminating
+	// read gets its own row type rather than widening the shared one.
+	ListSessionSeatsAdmin(ctx context.Context, sessionID uuid.UUID) ([]gen.SessionSeatAdminRow, error)
 }
 
 // ReservationContextQuerier resolves the tenant context a Bil24 RESERVATION

@@ -1,0 +1,50 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "GET_SEAT_LIST",
+  "currency": "CZK",
+  "categoryList": [
+    {
+      "categoryPriceId": "{{hybridSeatedCategoryPriceId}}",
+      "categoryPriceName": "Balkon",
+      "price": 1500,
+      "availability": 4,
+      "placement": true,
+      "tariffIdMap": {}
+    },
+    {
+      "categoryPriceId": "{{hybridGACategoryPriceId}}",
+      "categoryPriceName": "Stání",
+      "price": 700,
+      "availability": 10,
+      "placement": false,
+      "tariffIdMap": {}
+    }
+  ],
+  "seatList": [
+    {
+      "seatId": "{{seatId:hybridSeat}}",
+      "categoryPriceId": "{{hybridSeatedCategoryPriceId}}",
+      "tariffPlanId": null,
+      "price": 1500,
+      "available": true,
+      "location": {
+        "sector": "Balkon",
+        "row": "1",
+        "number": "1"
+      }
+    },
+    {
+      "seatId": "{{seatId:hybridGAUnit}}",
+      "categoryPriceId": "{{hybridGACategoryPriceId}}",
+      "tariffPlanId": null,
+      "price": 700,
+      "available": true,
+      "location": {
+        "sector": "Stání",
+        "row": "",
+        "number": ""
+      }
+    }
+  ]
+}

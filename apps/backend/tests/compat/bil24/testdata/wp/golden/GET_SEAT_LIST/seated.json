@@ -25,6 +25,18 @@
         "row": "{{row}}",
         "number": "{{number}}"
       }
+    },
+    {
+      "seatId": "{{seatId:held}}",
+      "categoryPriceId": "{{categoryPriceId}}",
+      "tariffPlanId": null,
+      "price": 500,
+      "available": false,
+      "location": {
+        "sector": "{{sector}}",
+        "row": "{{row}}",
+        "number": "{{number}}"
+      }
     }
   ]
 }

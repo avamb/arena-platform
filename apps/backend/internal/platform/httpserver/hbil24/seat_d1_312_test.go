@@ -55,6 +55,11 @@ func (f *fakeAdmission) GetSessionAdmissionModeByID(_ context.Context, id uuid.U
 // fakeSeats implements the SeatQuerier contract in memory.
 type fakeSeats struct {
 	seats map[uuid.UUID][]gen.SessionSeatRow
+	// kinds overrides the session_seats.kind reported by
+	// ListSessionSeatsAdmin for individual seat IDs. Anything absent from
+	// the map is reported as a plain "seat", which is what every
+	// pre-#499 fixture in this file means.
+	kinds map[uuid.UUID]string
 	err   error
 }
 
@@ -92,6 +97,26 @@ func (f *fakeSeats) GetSessionSeatBySystemSeatID(_ context.Context, sessionID uu
 		}
 	}
 	return gen.SessionSeatRow{}, pgx.ErrNoRows
+}
+
+// ListSessionSeatsAdmin satisfies the feature #499 (W1-B4) extension of
+// SeatQuerier: the same rows as ListSessionSeats plus the
+// session_seats.kind discriminator GET_SEAT_LIST needs to tell a real
+// seat from a GA pseudo-seat on a hybrid session.
+func (f *fakeSeats) ListSessionSeatsAdmin(_ context.Context, id uuid.UUID) ([]gen.SessionSeatAdminRow, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	rows := f.seats[id]
+	out := make([]gen.SessionSeatAdminRow, 0, len(rows))
+	for _, s := range rows {
+		kind := "seat"
+		if k, ok := f.kinds[s.ID]; ok {
+			kind = k
+		}
+		out = append(out, gen.SessionSeatAdminRow{SessionSeatRow: s, Kind: kind})
+	}
+	return out, nil
 }
 
 // fakeResCtx implements ReservationContextQuerier in memory.
@@ -326,13 +351,15 @@ func newReserveFixture(admissionMode string) *reserveFixture {
 // GET_SEAT_LIST — SEAT-D1 assigned-seats branch
 // ─────────────────────────────────────────────────────────────────────────────
 
-// TestBil24_312_GetSeatList_AssignedSeats_ProjectsRealSeats verifies the
-// SEAT-D1 wire projection: assigned_seats sessions emit one entry per
-// session_seat with the ADR-005 seatId (session_seats.id string), BSS
-// status code, and admissionMode=assigned_seats. The tier snapshot is
-// unwired for this test so entries fall back to price=0 without
-// tripping the graceful-degrade path.
-func TestBil24_312_GetSeatList_AssignedSeats_ProjectsRealSeats(t *testing.T) {
+// TestBil24_499_GetSeatList_AssignedSeats_ProjectsRealSeats verifies the
+// spec §7.2 wire projection (feature #499, formerly the SEAT-D1 shape):
+// an assigned_seats session emits one seatList entry per session_seat,
+// keyed by the int64 system_seat_id, carrying a boolean `available`
+// rather than the retired BSS status enum, and a nested `location`
+// object rather than flat sector/row/number keys. The tier snapshot is
+// unwired for this test so entries fall back to price=0 without tripping
+// the graceful-degrade path.
+func TestBil24_499_GetSeatList_AssignedSeats_ProjectsRealSeats(t *testing.T) {
 	sessionID := uuid.New()
 	tierID := uuid.New()
 	seatIDs := []uuid.UUID{uuid.New(), uuid.New(), uuid.New(), uuid.New()}
@@ -354,8 +381,10 @@ func TestBil24_312_GetSeatList_AssignedSeats_ProjectsRealSeats(t *testing.T) {
 	if rc := mustResultCode(t, resp); rc != ResultCodeOK {
 		t.Fatalf("want %d, got %d; body: %v", ResultCodeOK, rc, resp)
 	}
-	if resp["admissionMode"] != "assigned_seats" {
-		t.Errorf("admissionMode: want assigned_seats, got %v", resp["admissionMode"])
+	// The retired keys must be gone: `admissionMode` was never in spec
+	// §7.2 and no WordPress build reads it.
+	if _, present := resp["admissionMode"]; present {
+		t.Errorf("admissionMode must no longer be emitted, got %v", resp["admissionMode"])
 	}
 	list, ok := resp["seatList"].([]any)
 	if !ok {
@@ -365,39 +394,55 @@ func TestBil24_312_GetSeatList_AssignedSeats_ProjectsRealSeats(t *testing.T) {
 		t.Fatalf("seatList: want 4 entries, got %d", len(list))
 	}
 
-	// Order and BSS codes. seatId is session_seats.system_seat_id (int64)
-	// per W1-A2b feature #476 (spec §4/§7.2); JSON numbers decode as
-	// float64 in map[string]any.
-	wantStatusCodes := []int{1, 3, 4, 0}
+	// Order and availability. seatId is session_seats.system_seat_id
+	// (int64) per spec §4/§7.2; JSON numbers decode as float64 in
+	// map[string]any. Only the "available" row is available:true — held,
+	// sold and unavailable all collapse to false, which is exactly what
+	// the tri-valued BSS enum used to encode.
+	wantAvailable := []bool{true, false, false, false}
 	wantSeatIDs := []int64{1_000_000_201, 1_000_000_202, 1_000_000_203, 1_000_000_204}
 	for i, entry := range list {
 		m := entry.(map[string]any)
 		if got := int64(m["seatId"].(float64)); got != wantSeatIDs[i] {
 			t.Errorf("seat[%d].seatId: want %d, got %v", i, wantSeatIDs[i], m["seatId"])
 		}
-		if m["sector"] != "A" {
-			t.Errorf("seat[%d].sector: want A, got %v", i, m["sector"])
+		if got := m["available"]; got != wantAvailable[i] {
+			t.Errorf("seat[%d].available: want %v, got %v", i, wantAvailable[i], got)
 		}
-		if got := int(m["status"].(float64)); got != wantStatusCodes[i] {
-			t.Errorf("seat[%d].status: want %d, got %d", i, wantStatusCodes[i], got)
+		if _, present := m["status"]; present {
+			t.Errorf("seat[%d]: BSS `status` enum must no longer be emitted, got %v", i, m["status"])
+		}
+		loc, ok := m["location"].(map[string]any)
+		if !ok {
+			t.Fatalf("seat[%d].location missing / wrong type: %T %v", i, m["location"], m["location"])
+		}
+		if loc["sector"] != "A" || loc["row"] != "1" {
+			t.Errorf("seat[%d].location: want sector=A row=1, got %v", i, loc)
+		}
+		// tariffPlanId is part of the contract and is always null.
+		if v, present := m["tariffPlanId"]; !present || v != nil {
+			t.Errorf("seat[%d].tariffPlanId: want present-and-null, got present=%v value=%v", i, present, v)
 		}
 	}
 
-	// Tier-bound seats include categoryPriceId; unbound seat 4 does not.
-	first := list[0].(map[string]any)
-	if first["categoryPriceId"] != tierID.String() {
-		t.Errorf("seat[0].categoryPriceId: want %s, got %v", tierID, first["categoryPriceId"])
+	// categoryPriceId is ALWAYS present now (spec §7.2 declares it int64,
+	// not optional). The unit-test Handler omits compatDB, so there is no
+	// int64 to mint and every entry reports 0.
+	for i, entry := range list {
+		m := entry.(map[string]any)
+		if _, present := m["categoryPriceId"]; !present {
+			t.Errorf("seat[%d]: categoryPriceId must always be present", i)
+		}
 	}
-	last := list[3].(map[string]any)
-	if _, present := last["categoryPriceId"]; present {
-		t.Errorf("seat[3] should not carry categoryPriceId when TierID is nil, got %v", last["categoryPriceId"])
-	}
+	_ = tierID
 }
 
-// TestBil24_312_GetSeatList_GA_UsesTierFacade ensures general_admission
-// still routes through the pre-#312 tier-facade branch (no seatList
-// projection with real seats).
-func TestBil24_312_GetSeatList_GA_UsesTierFacade(t *testing.T) {
+// TestBil24_499_GetSeatList_GA_RequiresTierFacade ensures a pure
+// general_admission session still depends on the tier facade to build
+// its categoryList: with tierQueries unwired and no unit rows to fall
+// back on, the command self-gates with -99 rather than emitting an
+// empty-but-plausible catalogue.
+func TestBil24_499_GetSeatList_GA_RequiresTierFacade(t *testing.T) {
 	sessionID := uuid.New()
 	adm := &fakeAdmission{sessions: map[uuid.UUID]gen.SessionAdmissionRow{
 		sessionID: {ID: sessionID, AdmissionMode: "general_admission"},
@@ -418,24 +463,39 @@ func TestBil24_312_GetSeatList_GA_UsesTierFacade(t *testing.T) {
 	}
 }
 
-// TestBil24_312_GetSeatList_BSSStatusCodes checks the §6 BSS mapping —
-// pure, pool-free unit test.
-func TestBil24_312_GetSeatList_BSSStatusCodes(t *testing.T) {
-	cases := []struct {
-		status string
-		want   int
-	}{
-		{"available", 1},
-		{"held", 3},
-		{"sold", 4},
-		{"unavailable", 0},
-		{"", 0},
-		{"unknown", 0},
+// TestBil24_499_GetSeatList_PureGA_EmptySeatList pins the spec §7.2 rule
+// that a pure general-admission session emits `seatList: []` even when
+// the session has materialised GA unit rows. GA units are inventory, not
+// places: they are counted in the category's `availability` and must not
+// be drawn on a seat map. The tri-state `placement` key is likewise
+// ABSENT for every category of such a session (there is no plan for a
+// category to be placed in or out of) — the sibling
+// TestBil24_499_SeatListPlacement_TriState covers the flag itself; this
+// test covers it end-to-end through the envelope.
+func TestBil24_499_GetSeatList_PureGA_EmptySeatList(t *testing.T) {
+	sessionID := uuid.New()
+	tierID := uuid.New()
+	units := []gen.SessionSeatRow{
+		{ID: uuid.New(), SessionID: sessionID, SeatKey: "GA-1", TierID: &tierID, Status: "available", SystemSeatID: 1_000_000_301},
+		{ID: uuid.New(), SessionID: sessionID, SeatKey: "GA-2", TierID: &tierID, Status: "sold", SystemSeatID: 1_000_000_302},
 	}
-	for _, c := range cases {
-		if got := bssStatusCode(c.status); got != c.want {
-			t.Errorf("bssStatusCode(%q) = %d; want %d", c.status, got, c.want)
-		}
+	adm := &fakeAdmission{sessions: map[uuid.UUID]gen.SessionAdmissionRow{
+		sessionID: {ID: sessionID, AdmissionMode: "general_admission", CapacityTotal: 2},
+	}}
+	kinds := map[uuid.UUID]string{units[0].ID: "ga_unit", units[1].ID: "ga_unit"}
+	sf := &fakeSeats{seats: map[uuid.UUID][]gen.SessionSeatRow{sessionID: units}, kinds: kinds}
+	h := newHandler(adm, sf, nil)
+
+	resp := postJSON(t, h, `{"command":"GET_SEAT_LIST","actionEventId":"`+sessionID.String()+`"}`)
+	if rc := mustResultCode(t, resp); rc != ResultCodeOK {
+		t.Fatalf("want %d, got %d; body: %v", ResultCodeOK, rc, resp)
+	}
+	list, ok := resp["seatList"].([]any)
+	if !ok {
+		t.Fatalf("seatList missing / wrong type: %T %v", resp["seatList"], resp["seatList"])
+	}
+	if len(list) != 0 {
+		t.Errorf("seatList: want [] on a pure-GA session, got %d entries: %v", len(list), list)
 	}
 }
 

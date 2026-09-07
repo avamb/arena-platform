@@ -152,6 +152,24 @@ func (h *Handler) compatCategoryPriceID(ctx context.Context, tierID uuid.UUID) a
 	return h.compatEnsure(ctx, compatids.KindCategoryPrice, tierID, "category_price")
 }
 
+// compatCategoryPriceIDInt is the strictly-int64 variant of
+// compatCategoryPriceID, for response projections that are typed structs
+// rather than map[string]any envelopes (feature #499, spec §7.2:
+// GetSeatListCategory.CategoryPriceID and GetSeatListSeat.CategoryPriceID
+// are declared int64 because spec §4 admits no other wire form for a
+// catalog id).
+//
+// When h.compatDB is nil — the unit-test Handler that omits the pool —
+// there is no int64 to mint, and the legacy UUID-string fallback cannot be
+// squeezed into an int64 field, so the result is 0. Production always has
+// compatDB wired, so 0 never reaches a real client.
+func (h *Handler) compatCategoryPriceIDInt(ctx context.Context, tierID uuid.UUID) int64 {
+	if v, ok := h.compatCategoryPriceID(ctx, tierID).(int64); ok {
+		return v
+	}
+	return 0
+}
+
 // compatActionID returns the spec-§4 int64 wire form for an event UUID
 // (compatibility_id_map kind = action). Fallback semantics match
 // compatCategoryPriceID.

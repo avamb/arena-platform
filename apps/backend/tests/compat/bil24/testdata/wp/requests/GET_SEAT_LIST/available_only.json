@@ -3,5 +3,6 @@
   "fid": 1271,
   "token": "{{token}}",
   "locale": "ru-RU",
-  "actionEventId": "{{actionEventId}}"
+  "actionEventId": "{{actionEventId}}",
+  "availableOnly": true
 }

@@ -528,79 +528,157 @@ func TestBil24_476_SeatListCurrency_FirstNonEmpty(t *testing.T) {
 	}
 }
 
-// TestBil24_476_BuildGASeatEntry_CategoryPriceNameRename pins the
-// spec §7.2 wire-shape contract for a single GA-branch seatList entry
-// (feature #476 W1-A2b slice 22). The per-entry name key is
-// `categoryPriceName` — the legacy `categoryName` was pre-slice-22
-// vocabulary that had no partner (the id key already used
-// `categoryPriceId`) and diverged from spec §7.2 / the WP plugin.
+// TestBil24_499_SeatListAvailability_PrecedenceOrder pins spec §7.2's
+// per-category `availability` rule (feature #499). The number the
+// WordPress site renders as "N tickets left" must come from the most
+// specific source that exists, in this order:
 //
-// The test also pins the neighbouring invariants so a future edit does
-// not re-rename or drop them by accident:
-//   - categoryPriceId is passed through as-is (int64 in prod, UUID
-//     string in unit tests).
-//   - price is the EFFECTIVE amount (post-priceresolve), not the tier's
-//     base amount.
-//   - currency / pricingMode surface verbatim from the tier row.
-//   - availableCount is emitted ONLY when Capacity is non-nil (the
-//     uncapped case must omit rather than emit 0 or -1 — the WP plugin
-//     treats an absent key as "unlimited" and 0 as "sold out").
-//   - legacy `categoryName` is NEVER present on the map (regression
-//     guard against a partial revert of the rename).
-func TestBil24_476_BuildGASeatEntry_CategoryPriceNameRename(t *testing.T) {
+//  1. the count of AVAILABLE session_seats rows bound to the tier, when
+//     the tier has materialised units at all — for placed inventory the
+//     seat map is the truth and the ledger is a lagging summary;
+//  2. otherwise the tier's own inventory ledger row (capacity_total −
+//     sold − held);
+//  3. otherwise the SESSION-LEVEL unit pool (session_seats with tier_id
+//     NULL) — a GA pool is very commonly materialised unbound;
+//  4. otherwise the SESSION-LEVEL ledger row (tier_id NULL), which is
+//     spec §7.2's "unlimited GA without units — capacity − sold − held";
+//  5. otherwise the tier's own declared capacity;
+//  6. otherwise 0.
+//
+// Steps 3–4 keep this command consistent with GET_ALL_ACTIONS, which
+// already reports the session-level remaining count for a tier that owns
+// no inventory of its own. Reporting 0 here while the sibling command
+// reports 50 for the SAME session would be a contradiction on the wire.
+//
+// The clamp at zero is part of the contract: an oversold ledger must not
+// put a negative count on the wire, which legacy clients render as
+// garbage rather than as "sold out".
+func TestBil24_499_SeatListAvailability_PrecedenceOrder(t *testing.T) {
 	tierID := uuid.MustParse("00000000-0000-0000-0000-000000000c22")
 	cap32 := int32(120)
-	tier := gen.TicketTierRow{
-		ID:          tierID,
-		Name:        "Standing",
-		PriceAmount: 300,
-		Currency:    "CZK",
-		PricingMode: "fixed",
-		Capacity:    &cap32,
+	tier := gen.TicketTierRow{ID: tierID, Name: "Standing", Capacity: &cap32}
+
+	ledgerCap := int32(50)
+	ledgers := map[uuid.UUID]gen.InventoryLedgerRow{
+		tierID: {TierID: &tierID, CapacityTotal: &ledgerCap, CapacitySold: 8, CapacityHeld: 2},
+	}
+	withUnits := map[uuid.UUID]tierUnitStats{
+		tierID: {seats: 30, available: 7},
 	}
 
-	t.Run("capped tier emits all keys and availableCount", func(t *testing.T) {
-		entry := buildGASeatEntry(tierID.String(), tier, 350)
-
-		if _, ok := entry["categoryName"]; ok {
-			t.Fatalf("legacy `categoryName` key must not be emitted anymore; got entry=%#v", entry)
-		}
-		if got, want := entry["categoryPriceName"], "Standing"; got != want {
-			t.Errorf("categoryPriceName=%v want %v", got, want)
-		}
-		if got, want := entry["categoryPriceId"], tierID.String(); got != want {
-			t.Errorf("categoryPriceId=%v want %v", got, want)
-		}
-		if got, want := entry["price"], int64(350); got != want {
-			t.Errorf("price=%v want %v (must be the effective amount, not the base)", got, want)
-		}
-		if got, want := entry["currency"], "CZK"; got != want {
-			t.Errorf("currency=%v want %v", got, want)
-		}
-		if got, want := entry["pricingMode"], "fixed"; got != want {
-			t.Errorf("pricingMode=%v want %v", got, want)
-		}
-		if got, want := entry["availableCount"], int32(120); got != want {
-			t.Errorf("availableCount=%v want %v", got, want)
+	t.Run("units win over ledger and tier capacity", func(t *testing.T) {
+		got := seatListAvailability(tier, withUnits, ledgers)
+		if got != 7 {
+			t.Errorf("availability=%d want 7 (count of available unit rows)", got)
 		}
 	})
 
-	t.Run("uncapped tier omits availableCount", func(t *testing.T) {
+	t.Run("ledger used when the tier has no units", func(t *testing.T) {
+		got := seatListAvailability(tier, nil, ledgers)
+		if got != 40 {
+			t.Errorf("availability=%d want 40 (capacity_total 50 - sold 8 - held 2)", got)
+		}
+	})
+
+	t.Run("session-level unit pool used when the tier owns nothing", func(t *testing.T) {
+		pool := map[uuid.UUID]tierUnitStats{
+			uuid.Nil: {gaUnits: 50, available: 44},
+		}
+		got := seatListAvailability(tier, pool, nil)
+		if got != 44 {
+			t.Errorf("availability=%d want 44 (the session's unbound GA pool)", got)
+		}
+	})
+
+	t.Run("session-level ledger used when nothing else exists", func(t *testing.T) {
+		sessCap := int32(50)
+		sessLedger := map[uuid.UUID]gen.InventoryLedgerRow{
+			uuid.Nil: {CapacityTotal: &sessCap, CapacitySold: 5, CapacityHeld: 1},
+		}
 		uncapped := tier
 		uncapped.Capacity = nil
-		entry := buildGASeatEntry(int64(1000000021), uncapped, 300)
+		got := seatListAvailability(uncapped, nil, sessLedger)
+		if got != 44 {
+			t.Errorf("availability=%d want 44 (session ledger 50 - sold 5 - held 1)", got)
+		}
+	})
 
-		if _, ok := entry["availableCount"]; ok {
-			t.Errorf("availableCount must be OMITTED when Capacity is nil; got %#v", entry["availableCount"])
+	t.Run("tier capacity used when no ledger and no units exist", func(t *testing.T) {
+		got := seatListAvailability(tier, nil, nil)
+		if got != 120 {
+			t.Errorf("availability=%d want 120 (the tier's own capacity)", got)
 		}
-		if got, want := entry["categoryPriceId"], int64(1000000021); got != want {
-			t.Errorf("categoryPriceId=%v want %v (int64 wire form on prod path)", got, want)
+	})
+
+	t.Run("unlimited ledger falls through to tier capacity", func(t *testing.T) {
+		unlimited := map[uuid.UUID]gen.InventoryLedgerRow{
+			tierID: {TierID: &tierID, CapacityTotal: nil, CapacitySold: 3},
 		}
-		if got, want := entry["categoryPriceName"], "Standing"; got != want {
-			t.Errorf("categoryPriceName=%v want %v", got, want)
+		got := seatListAvailability(tier, nil, unlimited)
+		if got != 120 {
+			t.Errorf("availability=%d want 120 (nil capacity_total means unlimited, not zero)", got)
 		}
-		if _, ok := entry["categoryName"]; ok {
-			t.Fatalf("legacy `categoryName` key must not be emitted anymore")
+	})
+
+	t.Run("uncapped tier with no ledger reports zero", func(t *testing.T) {
+		uncapped := tier
+		uncapped.Capacity = nil
+		if got := seatListAvailability(uncapped, nil, nil); got != 0 {
+			t.Errorf("availability=%d want 0", got)
+		}
+	})
+
+	t.Run("oversold ledger clamps at zero", func(t *testing.T) {
+		uncapped := tier
+		uncapped.Capacity = nil
+		oversold := map[uuid.UUID]gen.InventoryLedgerRow{
+			tierID: {TierID: &tierID, CapacityTotal: &ledgerCap, CapacitySold: 60, CapacityHeld: 5},
+		}
+		if got := seatListAvailability(uncapped, nil, oversold); got != 0 {
+			t.Errorf("availability=%d want 0 (never negative on the wire)", got)
+		}
+	})
+}
+
+// TestBil24_499_SeatListPlacement_TriState pins spec §7.2's TRI-STATE
+// `placement` flag (feature #499). The three states are semantically
+// distinct and the WordPress plugin branches on all three:
+//
+//	nil   — pure general-admission session: there is no seating plan, so
+//	        "is this category placed?" has no answer and the KEY IS ABSENT
+//	        from the JSON (the *bool carries `omitempty`).
+//	false — a GA category living inside a plan (the standing-room block of
+//	        a hybrid session): placed inventory exists, this category just
+//	        is not part of it.
+//	true  — a seated category.
+//
+// Collapsing nil into false is the tempting bug: it would make a pure-GA
+// session claim it has a seat map.
+func TestBil24_499_SeatListPlacement_TriState(t *testing.T) {
+	t.Run("pure GA session omits the key", func(t *testing.T) {
+		if got := seatListPlacement("general_admission", tierUnitStats{gaUnits: 50}); got != nil {
+			t.Errorf("placement=%v want nil (key absent on a pure-GA session)", *got)
+		}
+	})
+
+	t.Run("hybrid GA-only category is false", func(t *testing.T) {
+		got := seatListPlacement("hybrid", tierUnitStats{gaUnits: 40})
+		if got == nil || *got {
+			t.Errorf("placement=%v want false (GA category inside a seating plan)", got)
+		}
+	})
+
+	t.Run("hybrid seated category is true", func(t *testing.T) {
+		got := seatListPlacement("hybrid", tierUnitStats{seats: 84})
+		if got == nil || !*got {
+			t.Errorf("placement=%v want true (seated category)", got)
+		}
+	})
+
+	t.Run("assigned_seats category with no units yet is true", func(t *testing.T) {
+		got := seatListPlacement("assigned_seats", tierUnitStats{})
+		if got == nil || !*got {
+			t.Errorf("placement=%v want true (a placed session's categories default to placed)", got)
 		}
 	})
 }
