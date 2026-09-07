@@ -30230,3 +30230,42 @@ full gate suite fresh, no code changes needed:
 No drift found, no fixes needed, no code commit for this pass (only this
 progress note and the routine AutoForge/scheduler noise pre-existing in
 the tree). Feature #457 marked passing.
+
+## Integrator gate pass — 2026-09-07 (post-#496, at c348ccf)
+
+Full repo-wide gate re-run from repo root after feature #496 (CANCEL_
+RESERVATION/CANCEL_ORDER) landed. All green, zero drift, nothing to fix
+or file:
+- `go.exe build ./apps/backend/...` EXIT:0; `go.exe vet ./apps/backend/...`
+  EXIT:0.
+- `go.exe test ./apps/backend/...` (untagged, no pipeline) — 75 `ok`
+  package lines, 0 FAIL, EXIT:0.
+- `gofmt -l` on `apps/backend/{cmd,internal,tests,tools}` — empty.
+- golangci-lint v2 (`GOLANGCI_LINT_CACHE=/tmp/golangci-cache`, `@latest`
+  pin) `run ./apps/backend/...` — "0 issues.", EXIT:0.
+- Codegen drift check: `openapi30gen` (`apps/backend/openapi/openapi.yaml`)
+  → `oapi-codegen@v2.4.1` → zero diff against committed
+  `internal/adapters/http/openapi/types_gen.go`; `node
+  scripts/gen-ts-client.mjs` → zero diff against committed
+  `openapi/clients/ts/index.d.ts`; temp `.compat30.gen.yaml` removed after.
+- Migration head pin: feature #496 added no migration; `TestHead_
+  KnownCurrentHead` still expects `0098_customer_imports.sql`, still the
+  actual highest-numbered file — no drift.
+- Live integration run against the local Docker Postgres stand (port
+  55432), `-tags integration -count=1 -p 1` (serialized per AGENTS.md
+  convention) — 76 `ok` package lines, 0 FAIL/panic, EXIT:0. Covers the
+  new `cancel_goldens_496_test.go` and `bil24_compat_157_test.go` updates.
+- `npm --prefix apps/admin-web run type-check` EXIT:0; `run test -- --run`
+  — 46/46 files, 1189/1189 tests, EXIT:0; `run build` EXIT:0 (routine
+  >500kB chunk advisory only).
+- `gh` unavailable in this sandbox (documented recurring limitation) —
+  could not watch the live CI run; relied on the exhaustive local gate
+  re-run instead.
+- Working tree at finish: clean except the same pre-existing out-of-scope
+  AutoForge harness noise every prior session has left untouched
+  (`.autoforge/prompts/coding_prompt.md`, `.claude/scheduled_tasks.lock`,
+  untracked `features.db`).
+- No commits made this pass (nothing needed fixing). No fix-features
+  filed. Feature stats: 520/522 passing, 0 in progress; the 2 remaining
+  are epic-verify wrappers (#458 W1-B2, ready to claim; #469 W1-D, blocked
+  on #458) — normal in-progress wave state, not integration defects.
