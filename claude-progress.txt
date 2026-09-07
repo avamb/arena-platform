@@ -29970,3 +29970,47 @@ backlog #469's own entry (09_autoforge/wp_bil24_compat_backlog.md §5).
   `PUBLIC_BASE_URL`, and `17_macs_integration_contract.md` update after
   feature #465 — check sibling sub-features under epic #469's dependency
   list before assuming these are done.
+- Feature #522 (W1-Db: OpenAPI completeness for `/compat/bil24/*` +
+  `PUBLIC_BASE_URL` env/deploy) done. `/compat/bil24/image` was already
+  fully documented (feature #501), no changes needed. Added to
+  `openapi.yaml`: `Bil24RequestEnvelope`/`Bil24ResponseEnvelope` plus 17
+  per-command request schemas (`Bil24Req*`) and 17 per-command response
+  schemas (`Bil24Resp*`, one for every spec §7 command including the four
+  not yet wired into the Go dispatcher — `PAY_ORDER`, `GET_TICKETS_BY_ORDER`,
+  `SEND_TICKETS_TO_EMAIL`, `CANCEL_RESERVATION` — because the spec, not the
+  code, is the documentation's design authority) plus ~20 nested helper
+  schemas (Order/Ticket/actionEvent projections per spec §9.3, seat-list,
+  cart, promo-code, schema entries). `POST /compat/bil24/json`'s
+  requestBody/200-response now `oneOf` across the 17 request/response
+  schemas respectively, replacing the old free-form
+  `additionalProperties: true`. Two pre-existing-style traps hit and fixed
+  while authoring: an unquoted `description:` string containing
+  `` `{"id": ...}` `` broke the repo's line-based YAML parser at two spots
+  (`Bil24OrderFrontend.type`, `Bil24RespCreateOrder.paymentMethod`) —
+  colon-space inside an unquoted scalar is a YAML mapping separator; fixed
+  by single-quoting those two description strings. Ran the full codegen
+  chain (`openapi30gen` → `oapi-codegen@v2.4.1` → `gen-ts-client.mjs`,
+  `.compat30.gen.yaml` deleted after) and committed the regenerated
+  `types_gen.go`/`index.d.ts`. Confirmed `PUBLIC_BASE_URL` (spec §16) is
+  already implemented as the existing `APP_PUBLIC_URL` var (feature #473
+  decision, `hcatalog/handler.go`/`catalog_shims.go`/`config.go`) — no new
+  env var introduced; documented the equivalence in `.env.example` (both
+  near `APP_PUBLIC_URL` and in the Bil24 gateway section) and added
+  `APP_PUBLIC_URL`/`BIL24_COMPAT_ENABLED`/`BIL24_REQUIRE_TOKEN` (all
+  overridable via shell env, defaulting off) to the `api` service in
+  `docker-compose.yml` (the actual "deploy compose" file — `deploy/`
+  itself only holds shell scripts/runbooks, no compose file). Gates green:
+  `go build ./apps/backend/...`, `go vet ./apps/backend/...`,
+  `go test ./apps/backend/internal/platform/httpserver/hbil24/...
+  ./apps/backend/internal/adapters/bil24compat/...
+  ./apps/backend/tests/compat/bil24/...
+  ./apps/backend/tests/staticanalysis/... ./apps/backend/internal/migrations/...`
+  and the full `./apps/backend/internal/platform/httpserver/...` (covers
+  `openapi_docs_test.go`/`openapi_drift_test.go`/`openapi_error_responses_test.go`),
+  all `ok`; `gofmt -l` on `types_gen.go` empty. Staged by explicit path
+  (`.env.example`, `types_gen.go`, `index.d.ts`, `openapi.yaml`,
+  `docker-compose.yml`), left unrelated pre-existing working-tree noise
+  (`.autoforge/prompts/coding_prompt.md`, deleted
+  `.claude/scheduled_tasks.lock`, untracked `features.db`) untouched.
+  Committed `f98d646` and pushed to `origin/master` (819d32f..f98d646).
+  Feature #522 marked passing.
