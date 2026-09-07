@@ -30138,3 +30138,95 @@ Committed as 5a2b8af, 23 files, +1746/-4. Working tree left with only
 the same pre-existing out-of-scope AutoForge noise
 (`.autoforge/prompts/coding_prompt.md`, deleted
 `.claude/scheduled_tasks.lock`, untracked `features.db`).
+
+## Feature #493 (W1-B1c): GET_ORDER_INFO strict mode — 2026-09-07
+
+Root cause: CREATE_ORDER_EXT (feature #492) mints `orders.id`, a UUID
+genuinely distinct from `checkout_sessions.id` (related only via
+`orders.checkout_session_id`, a UNIQUE FK). `handleBil24GetOrderInfo`
+predates the `orders` aggregate table (migration 0092, feature #486) and
+only ever looked up `checkout_sessions.id` — so GET_ORDER_INFO answered -3
+"not found" for an order a caller had JUST created via CREATE_ORDER_EXT.
+
+Fix in `hbil24/cmd_order.go`: added `resolveOrderInfoOrder` (mirrors
+`payResolveOrder` from PAY_ORDER/#494) accepting all three orderId shapes
+the gateway has ever emitted — bigint system_id, orders.id UUID, legacy
+checkout_sessions.id UUID — org-scoped when authed, org-checked again
+defense-in-depth after the unscoped checkout_session fallback. New pure
+`buildGetOrderInfoBodyFromOrder` projects the orders-table row (all
+NOT NULL financial columns, no nil guards needed) when the #505
+`encodeOrderHeaderForWire` full-wire path isn't available (no tickets
+issued yet). The whole new path is gated behind `h.orderDeps.Q != nil` so
+`regression_158_test.go`'s unwired `buildCompatServer` keeps working
+unchanged. `buildGetOrderInfoBody`/`encodeOrderHeaderForWire`/
+`checkoutCharge` signatures were NOT touched (pinned by
+`bil24_476_order_test.go` / `bil24_505_order_wire_test.go`).
+
+Also corrected `GET_ORDER_INFO/basic.json` golden and the integration
+test's assertion: a freshly-created order's `status` is
+`ordering.StatusPendingPayment` ("pending_payment"), not
+"pricing_confirmed" (that was checkout_sessions.state terminology, no
+longer what the projection reads).
+
+Gates: `go build ./apps/backend/...` EXIT:0; `go vet` EXIT:0; `gofmt -l`
+empty on all 4 changed files; `go test ./apps/backend/internal/platform/
+httpserver/hbil24/...` EXIT:0 (bil24_476/505 pinned tests still green);
+`go test -run TestCompatBil24_158 ./apps/backend/tests/compat/bil24/...`
+EXIT:0 (unwired smoke tests unaffected); live integration run against the
+local Docker Postgres stand (port 55432):
+`TestCompatBil24_493_GetOrderInfo` PASS (basic success, cross-org -3,
+invalid-id -2), plus the wider `492|493|494|505|450` set and the full
+`tests/compat/bil24/...` integration suite all PASS.
+
+Committed as 52066d8 (cmd_order.go, cmd_order_493_test.go,
+get_order_info_493_test.go, GET_ORDER_INFO/basic.json golden), pushed to
+origin/master, feature #493 marked passing.
+
+## 2026-09-07 — Feature #457 (W1-B1 EPIC-VERIFY): CREATE_ORDER_EXT,
+## ADD_PROMO_CODES, CHECK_KDP, GET_ORDER_INFO — full gate re-run, no drift
+
+Verification-only epic per its description. Sub-features #491 (ADD_PROMO_
+CODES/CHECK_KDP), #492 (CREATE_ORDER_EXT), #493 (GET_ORDER_INFO) and epic
+#456 (order aggregate) were already `passes:true` at claim time. Ran the
+full gate suite fresh, no code changes needed:
+
+- `go.exe build ./apps/backend/...` EXIT:0; `go.exe vet ./apps/backend/...`
+  EXIT:0.
+- Focused packages (`hbil24`, `bil24compat`, `tests/compat/bil24`,
+  `tests/staticanalysis`, `internal/migrations`) EXIT:0.
+- Full `go test ./apps/backend/...` (redirected to a file, exit code read
+  from the redirect, never judged through a pipeline per AGENTS.md) EXIT:0,
+  zero `FAIL` lines.
+- `gofmt -l` across `cmd`/`internal`/`tests`/`tools` (never the bare repo
+  root, to avoid `.gomodcache` noise): empty.
+- golangci-lint v2 (`GOLANGCI_LINT_CACHE=/tmp/golangci-cache`, `@latest`
+  pin) on `./apps/backend/...`: "0 issues."
+- Live integration run against the local Docker Postgres stand (port
+  55432, `arena`/`arena`), `-tags integration -count=1` (forced uncached):
+  `tests/compat/bil24/...` and `.../wpstub` both green. Explicitly isolated
+  `TestCompatBil24_450_Harness_Scenarios/06_one_open_order_rule` — PASS
+  (this is "harness scenario 6" named in the epic's done-criteria).
+- Confirmed every golden fixture named in the epic exists on disk:
+  `CREATE_ORDER_EXT/{basic,ga,promo,repeat_same_order,seated,
+  string_orderid}.json`, `ADD_PROMO_CODES/{basic,error,exist}.json`,
+  `CHECK_KDP/{ok,invalid}.json`, `GET_ORDER_INFO/basic.json`.
+- Migration head pin: `0098_customer_imports.sql` is still both the
+  actual highest-numbered file and `TestHead_KnownCurrentHead`'s
+  expectation — no drift.
+- Codegen drift check: `openapi30gen` against the real path
+  (`apps/backend/openapi/openapi.yaml` — NOT `apps/backend/openapi.yaml`,
+  which doesn't exist) → `oapi-codegen@v2.4.1` → zero diff against
+  committed `types_gen.go`; `node scripts/gen-ts-client.mjs` → zero diff
+  against committed `openapi/clients/ts/index.d.ts`. Temp
+  `.compat30.gen.yaml` removed after.
+- `npm --prefix apps/admin-web run type-check` EXIT:0; `run test -- --run`
+  — 46/46 files, 1189/1189 tests, EXIT:0; `run build` EXIT:0 (routine
+  >500kB chunk advisory only).
+- `gh` unavailable in this sandbox (documented recurring limitation,
+  confirmed again this pass) — could not watch the live CI run; relied on
+  the exhaustive local gate re-run instead, matching every prior
+  epic-verify session's approach.
+
+No drift found, no fixes needed, no code commit for this pass (only this
+progress note and the routine AutoForge/scheduler noise pre-existing in
+the tree). Feature #457 marked passing.
