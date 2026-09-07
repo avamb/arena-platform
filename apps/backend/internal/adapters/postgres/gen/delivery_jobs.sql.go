@@ -88,6 +88,43 @@ func (q *Queries) InsertDeliveryJob(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RequeueDeliveryJob
+// ─────────────────────────────────────────────────────────────────────────────
+
+const requeueDeliveryJob = `-- name: RequeueDeliveryJob :one
+INSERT INTO delivery_jobs (ticket_id, recipient_email)
+VALUES ($1, $2)
+ON CONFLICT (ticket_id) DO UPDATE
+    SET recipient_email = EXCLUDED.recipient_email,
+        status          = 'pending',
+        attempts        = 0,
+        last_error      = NULL,
+        sent_at         = NULL,
+        processing_at   = NULL,
+        queued_at       = now(),
+        updated_at      = now()
+RETURNING id, ticket_id, recipient_email, status, attempts, last_error,
+          queued_at, sent_at, processing_at, created_at, updated_at`
+
+// RequeueDeliveryJob enqueues a ticket for delivery to an explicitly chosen
+// recipient, resetting an existing job back to 'pending'.
+//
+// It differs from InsertDeliveryJob, which is deliberately a no-op on conflict
+// so a replayed payment webhook cannot mail the same ticket twice. This one is
+// the opposite intent: the buyer has ASKED for the tickets again (Bil24
+// SEND_TICKETS_TO_EMAIL, spec §7.11), possibly at a different address, so the
+// terminal 'sent'/'failed' state of the previous attempt must be cleared or the
+// worker would never look at the row again.
+func (q *Queries) RequeueDeliveryJob(
+	ctx context.Context,
+	ticketID uuid.UUID,
+	recipientEmail *string,
+) (DeliveryJobRow, error) {
+	row := q.db.QueryRow(ctx, requeueDeliveryJob, ticketID, recipientEmail)
+	return scanDeliveryJobRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GetDeliveryJobByTicketID
 // ─────────────────────────────────────────────────────────────────────────────
 

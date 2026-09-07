@@ -24,6 +24,9 @@
 //   - testdata/wp/bil24_orders_pseudonymized.json is a Bil24-side dump used
 //     by feature #520 (customer import) and is not part of the wire contract
 //     this test guards.
+//   - values under a key ending in "url" are EXCLUDED (see isOpaqueLinkPath).
+//     §4 governs external identifiers, and a link is not one; §7.10's
+//     pdfUrl/downloadUrl carry the ticket UUID as a path segment on purpose.
 //
 // Failure mode: the test prints every offending file with the exact JSON path
 // (e.g. `actionList[0].actionEventList[0].sessionId`) and the offending value
@@ -133,11 +136,30 @@ func scanForUUID(v any, path string) []uuidHit {
 			out = append(out, scanForUUID(sub, fmt.Sprintf("%s[%d]", path, i))...)
 		}
 	case string:
-		if uuidPattern.MatchString(x) {
+		if uuidPattern.MatchString(x) && !isOpaqueLinkPath(path) {
 			out = append(out, uuidHit{path: pathOrRoot(path), value: x})
 		}
 	}
 	return out
+}
+
+// isOpaqueLinkPath reports whether a JSON path names a LINK rather than an
+// identifier — any key whose name ends in "url".
+//
+// Spec §4 forbids UUIDs as external IDENTIFIERS: values the WordPress site
+// parses, stores and sends back to us. A URL is neither. GET_TICKETS_BY_ORDER's
+// pdfUrl/downloadUrl (spec §7.10) are absolute links into the platform's own
+// public PDF route, whose path segment is the ticket's UUID — the site only
+// ever hands the whole string to the browser, and rewriting that route to a
+// bigint would expose an enumerable ticket space on an unauthenticated
+// endpoint. The identifier the site DOES read back on that same row —
+// ticketId — is still an int64 and is still guarded.
+func isOpaqueLinkPath(path string) bool {
+	seg := path
+	if i := strings.LastIndexAny(seg, ".]"); i >= 0 {
+		seg = seg[i+1:]
+	}
+	return strings.HasSuffix(strings.ToLower(seg), "url")
 }
 
 func joinPath(parent, key string) string {

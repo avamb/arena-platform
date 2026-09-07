@@ -1037,6 +1037,29 @@ func (c *Config) validateProduction() []error {
 		))
 	}
 
+	// 14. The Bil24 gateway builds absolute ticket-PDF links
+	// (PUBLIC_BASE_URL + /v1/public/checkout/<token>/tickets/<uuid>/pdf) for
+	// GET_TICKETS_BY_ORDER (feature #495, spec §7.10/§16). PUBLIC_BASE_URL is
+	// this deployment's APP_PUBLIC_URL. With it empty the WordPress site
+	// receives host-less pdfUrl/downloadUrl values that no buyer can open, so
+	// production refuses to mount the gateway without it.
+	if c.Bil24CompatEnabled {
+		pub := strings.TrimSpace(c.AppPublicURL)
+		if pub == "" {
+			errs = append(errs, errors.New(
+				"APP_PUBLIC_URL (the spec's PUBLIC_BASE_URL) is required in production when"+
+					" BIL24_COMPAT_ENABLED=true; GET_TICKETS_BY_ORDER cannot build absolute"+
+					" ticket PDF links without it",
+			))
+		} else if !strings.HasPrefix(strings.ToLower(pub), "https://") {
+			errs = append(errs, fmt.Errorf(
+				"APP_PUBLIC_URL must start with https:// in production (got %q);"+
+					" Bil24 ticket PDF links must not be plaintext",
+				pub,
+			))
+		}
+	}
+
 	return errs
 }
 

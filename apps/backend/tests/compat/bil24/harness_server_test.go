@@ -45,6 +45,14 @@ import (
 // surface as a user actor rather than the Bil24 gateway wire protocol.
 const harnessJWTStubSecret = "harness-jwt-stub-secret-long-enough-for-hs256"
 
+// harnessPublicBaseURL is the spec's PUBLIC_BASE_URL for the harness server:
+// the absolute origin GET_TICKETS_BY_ORDER (feature #495, spec §7.10) prefixes
+// onto every pdfUrl/downloadUrl it hands the WP site. It is deliberately NOT
+// the httptest listener's own URL — that is only known after the server boots,
+// while config is built before — and the scenario asserts the prefix literally,
+// so a regression that drops the base and emits a bare path is caught.
+const harnessPublicBaseURL = "https://arena.harness.test"
+
 // harnessServerConfig is the minimal *config.Config httpserver.New consults.
 // ActiveLocales carries the four spec §6 gateway locales so localized
 // descriptions (ru/he goldens) resolve through the real i18n bundle.
@@ -54,6 +62,7 @@ func harnessServerConfig() *config.Config {
 		AppName:         "arena-api-bil24-harness",
 		AppVersion:      "0.0.0-test",
 		AppCommit:       "test",
+		AppPublicURL:    harnessPublicBaseURL,
 		HTTPListenAddr:  "127.0.0.1:0",
 		BodyLimitBytes:  1 << 20,
 		RequestTimeout:  30 * time.Second,
@@ -137,6 +146,13 @@ func cleanupHarnessWireRows(t *testing.T, st *harnessState) {
 	ctx := context.Background()
 	orgID := st.OrgID
 	stmts := []string{
+		// Feature #495: scenario 2 is the first to actually REDEEM a promo, and
+		// promo_code_redemptions FKs promo_codes with ON DELETE RESTRICT — so a
+		// leftover redemption blocks the seed's own promo_codes/organizations
+		// teardown, not just this sweep. Its reservation FK is SET NULL, so it
+		// can go first.
+		`DELETE FROM promo_code_redemptions WHERE promo_code_id IN
+		     (SELECT id FROM promo_codes WHERE org_id = $1::uuid)`,
 		// session_seats.reservation_id points at the hold; release the seats
 		// back to 'available' before the reservations rows go away.
 		`UPDATE session_seats SET reservation_id = NULL, status = 'available'

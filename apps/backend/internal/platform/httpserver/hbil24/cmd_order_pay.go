@@ -214,10 +214,26 @@ func (h *Handler) handleBil24PayOrderWired(w http.ResponseWriter, r *http.Reques
 // transitional format. So all three shapes the gateway has ever emitted are
 // accepted, and each is org-scoped before it is returned.
 func (h *Handler) payResolveOrder(ctx context.Context, raw string, orgID uuid.UUID) (gen.OrderRow, error) {
+	return resolveOrderRef(ctx, h.orderDeps.Q, raw, orgID)
+}
+
+// orderRefQuerier is the read surface resolveOrderRef needs. It exists so
+// GET_TICKETS_BY_ORDER (feature #495) can reuse the lookup without dragging in
+// PAY_ORDER's transaction starter: a read command must not require a writable
+// OrderDeps bundle to answer.
+type orderRefQuerier interface {
+	GetOrderBySystemID(ctx context.Context, systemID int64) (gen.OrderRow, error)
+	GetOrderByID(ctx context.Context, id, orgID uuid.UUID) (gen.OrderRow, error)
+	GetOrderByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) (gen.OrderRow, error)
+}
+
+// resolveOrderRef accepts every orderId shape the gateway has ever emitted and
+// returns the order only when it belongs to the caller's org.
+func resolveOrderRef(ctx context.Context, q orderRefQuerier, raw string, orgID uuid.UUID) (gen.OrderRow, error) {
 	raw = strings.TrimSpace(raw)
 
 	if sysID, err := strconv.ParseInt(raw, 10, 64); err == nil {
-		order, gErr := h.orderDeps.Q.GetOrderBySystemID(ctx, sysID)
+		order, gErr := q.GetOrderBySystemID(ctx, sysID)
 		if gErr != nil {
 			return gen.OrderRow{}, gErr
 		}
@@ -232,7 +248,7 @@ func (h *Handler) payResolveOrder(ctx context.Context, raw string, orgID uuid.UU
 		return gen.OrderRow{}, pgx.ErrNoRows
 	}
 
-	order, err := h.orderDeps.Q.GetOrderByID(ctx, id, orgID)
+	order, err := q.GetOrderByID(ctx, id, orgID)
 	if err == nil {
 		return order, nil
 	}
@@ -240,7 +256,7 @@ func (h *Handler) payResolveOrder(ctx context.Context, raw string, orgID uuid.UU
 		return gen.OrderRow{}, err
 	}
 	// Older gateway answers exposed the checkout session id as orderId.
-	order, err = h.orderDeps.Q.GetOrderByCheckoutSession(ctx, id)
+	order, err = q.GetOrderByCheckoutSession(ctx, id)
 	if err != nil {
 		return gen.OrderRow{}, err
 	}

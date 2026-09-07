@@ -90,6 +90,9 @@ other = "שורת ההזמנה שייכת לאירוע אחר"
 ["bil24.order_cancelled"]
 other = "ההזמנה בוטלה"
 
+["bil24.no_tickets_to_send"]
+other = "בהזמנה זו אין כרטיסים לשליחה"
+
 ["bil24.use_refund_ticket"]
 other = "יש לבקש החזר עבור הכרטיס"
 

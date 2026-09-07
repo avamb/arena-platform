@@ -1,0 +1,7 @@
+{
+  "resultCode": 0,
+  "description": "OK",
+  "command": "GET_TICKETS_BY_ORDER",
+  "ticketList": [],
+  "ticketIdList": []
+}

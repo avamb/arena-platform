@@ -136,6 +136,9 @@ var Bil24DescriptionKeys = []string{
 	"bil24.pricing_mode_unsupported",
 	"bil24.line_wrong_session",
 	"bil24.order_cancelled",
+	// Spec §7.11 (feature #495): SEND_TICKETS_TO_EMAIL found the order but it
+	// carries nothing mailable — every ticket cancelled, or none issued yet.
+	"bil24.no_tickets_to_send",
 	"bil24.use_refund_ticket",
 	"bil24.unknown_command",
 	"bil24.invalid_request",

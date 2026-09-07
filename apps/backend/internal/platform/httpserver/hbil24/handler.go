@@ -442,7 +442,42 @@ type Handler struct {
 	// orderDeps.Q for its transaction, so an unwired payDeps alone makes
 	// PAY_ORDER answer resultCode=-5, matching every other optional surface.
 	payDeps PayOrderDeps
+
+	// ticketsDeps (feature #495, W1-B2b, spec §7.10/§7.11) backs
+	// GET_TICKETS_BY_ORDER and SEND_TICKETS_TO_EMAIL: the order/ticket/
+	// delivery-job query surface, the neutral order projection the ticket rows
+	// are built from, and the PUBLIC_BASE_URL the absolute pdfUrl is prefixed
+	// with. Not wired ⇒ both commands self-gate with resultCode=-5, which is
+	// the pre-#495 stub behaviour every earlier unit test asserts.
+	ticketsDeps TicketsDeps
 }
+
+// TicketsDeps bundles the optional GET_TICKETS_BY_ORDER / SEND_TICKETS_TO_EMAIL
+// dependencies (feature #495, W1-B2b, spec §7.10/§7.11).
+type TicketsDeps struct {
+	// Q resolves the order (by system id, platform id or checkout session id),
+	// reads the checkout session whose token the ticket PDF link is built from,
+	// maps tickets to their tiers for categoryPriceId, and enqueues the
+	// delivery jobs SEND_TICKETS_TO_EMAIL asks for.
+	Q *gen.Queries
+	// Project is the same neutral projection GET_ORDER_INFO uses. It is the
+	// only surface that carries BOTH the int64 system_seat_id and the spec §4
+	// barcode rule (stored EAN-13 credential wins, else the code derived from
+	// system_ticket_id), so the ticket rows are assembled from it rather than
+	// from gen.TicketRow.
+	Project OrderProjector
+	// PublicBaseURL is the spec's PUBLIC_BASE_URL — this deployment's
+	// APP_PUBLIC_URL. It prefixes every pdfUrl / downloadUrl. Empty is
+	// tolerated (the links degrade to host-less paths and the handler warns);
+	// config.Validate makes it a hard boot error in production whenever
+	// BIL24_COMPAT_ENABLED is on, which is where that must be caught.
+	PublicBaseURL string
+}
+
+// wired reports whether the ticket-delivery surface is available. The base URL
+// is deliberately NOT part of the test: a missing PUBLIC_BASE_URL degrades the
+// links, it does not justify hiding the buyer's tickets.
+func (d TicketsDeps) wired() bool { return d.Q != nil && d.Project != nil }
 
 // PayIssueTicketsFunc issues (or gap-fills) the tickets of a paid checkout
 // session and reports how many tickets the session now has. Production wiring
@@ -662,6 +697,15 @@ func (h *Handler) WithOrderCreate(d OrderDeps) *Handler {
 // Returns the receiver for chaining.
 func (h *Handler) WithPayOrder(d PayOrderDeps) *Handler {
 	h.payDeps = d
+	return h
+}
+
+// WithTicketsByOrder wires the ticket-delivery surface (feature #495, W1-B2b,
+// spec §7.10/§7.11) shared by GET_TICKETS_BY_ORDER and SEND_TICKETS_TO_EMAIL.
+// Callers that omit this setter keep the pre-#495 behaviour where both commands
+// answer resultCode=-5. Returns the receiver for chaining.
+func (h *Handler) WithTicketsByOrder(d TicketsDeps) *Handler {
+	h.ticketsDeps = d
 	return h
 }
 

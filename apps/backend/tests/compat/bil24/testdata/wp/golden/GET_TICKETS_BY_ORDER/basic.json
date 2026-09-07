@@ -5,8 +5,8 @@
   "ticketList": [
     {
       "ticketId": 9001,
-      "pdfUrl": "https://arena.local/tickets/9001.pdf",
-      "downloadUrl": "https://arena.local/tickets/9001",
+      "pdfUrl": "https://arena.example.com/v1/public/checkout/cs_public_token/tickets/00000000-0000-0000-0000-000000009001/pdf",
+      "downloadUrl": "https://arena.example.com/v1/public/checkout/cs_public_token/tickets/00000000-0000-0000-0000-000000009001/pdf",
       "barcode": "2401502608417",
       "seatId": "{{seatId:Parter-3-12}}",
       "categoryPriceId": 1

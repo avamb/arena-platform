@@ -93,6 +93,9 @@ other = "строка заказа относится к другому сеан
 ["bil24.order_cancelled"]
 other = "заказ отменён"
 
+["bil24.no_tickets_to_send"]
+other = "в этом заказе нет билетов для отправки"
+
 ["bil24.use_refund_ticket"]
 other = "оформите возврат билета"
 

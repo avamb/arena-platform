@@ -99,6 +99,9 @@ other = "order line does not belong to this session"
 ["bil24.order_cancelled"]
 other = "order has been cancelled"
 
+["bil24.no_tickets_to_send"]
+other = "this order has no tickets to send"
+
 ["bil24.use_refund_ticket"]
 other = "please issue a refund for the ticket instead"
 

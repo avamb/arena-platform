@@ -163,6 +163,7 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 			return hbil24.GatewayRefundOutput{RefundDate: res.RefundDate}, nil
 		})
 	}
+	h = s.withBil24Tickets(h)
 	return h
 }
 

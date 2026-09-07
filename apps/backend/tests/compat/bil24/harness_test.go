@@ -264,8 +264,14 @@ func TestCompatBil24_450_Harness_Scenarios(t *testing.T) {
 		runScenario01Catalog(t, st)
 	})
 
+	// Scenario 2 (feature #495, spec §7.10 / §7.11) is the only end-to-end
+	// purchase: CREATE_USER → RESERVATION (general admission) → GET_CART →
+	// ADD_PROMO_CODES → GET_CART → CREATE_ORDER_EXT → GET_TICKETS_BY_ORDER
+	// (empty, the order is unpaid) → PAY_ORDER → GET_TICKETS_BY_ORDER (the PDF
+	// links) → SEND_TICKETS_TO_EMAIL. The implementation lives in
+	// scenario02_ga_purchase_test.go.
 	t.Run("02_ga_purchase_flow", func(t *testing.T) {
-		t.Skip("feature #495: CREATE_USER→RESERVE×2→GET_CART→ADD_PROMO_CODES→CREATE_ORDER_EXT→PAY_ORDER→GET_TICKETS_BY_ORDER end-to-end")
+		runScenario02GAPurchase(t, st)
 	})
 
 	// Scenario 3 (feature #484, spec §7.4) is the first scenario to boot the

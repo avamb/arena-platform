@@ -183,6 +183,18 @@ type Request struct {
 	// lands in orders.payment_method and in the payment intent's synthetic
 	// provider_payment_id "wc:<external_ref>:<method>".
 	Method string `json:"method"`
+
+	// ── SEND_TICKETS_TO_EMAIL fields (feature #495, spec §7.11) ──────────
+
+	// TicketIDList names the tickets the buyer asked to have mailed again.
+	// Spec §7.11's envelope is {userId, sessionId, email, ticketIdList}: there
+	// is no orderId, so the gateway resolves the order from these ids. Each
+	// entry is a spec §4 int64 system_ticket_id; like every other id on this
+	// wire it arrives either as a JSON number or as a quoted number, so it is
+	// normalised through Request.UnmarshalJSON. An empty list means "every
+	// ticket of the order the session is working on" is NOT implied — the
+	// handler answers -2, because a resend with no target is a client bug.
+	TicketIDList []int64
 }
 
 // requestAlias exists solely to give Request.UnmarshalJSON a recursion-free
@@ -223,6 +235,7 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 		ChargePercent   json.RawMessage `json:"chargePercent"`
 		ExpectedPrice   json.RawMessage `json:"expectedPrice"`
 		Amount          json.RawMessage `json:"amount"`
+		TicketIDList    json.RawMessage `json:"ticketIdList"`
 	}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -252,7 +265,40 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	r.ExpectedPrice = flexWireFloatPtr(aux.ExpectedPrice)
 	// Spec §7.9: PAY_ORDER's charged amount, same money tolerance.
 	r.Amount = flexWireFloatPtr(aux.Amount)
+	// Spec §7.11: SEND_TICKETS_TO_EMAIL's ticketIdList, per-element flexible
+	// for the same reason ticketId is (clients that stored the id in a text
+	// column quote it on the way back).
+	r.TicketIDList = flexWireInt64List(aux.TicketIDList)
 	return nil
+}
+
+// flexWireInt64List normalises a JSON array of int64 ids that legacy clients
+// may quote element-by-element:
+//
+//	[4021, 4022]        spec §4 int64 system ids, bare
+//	["4021", "4022"]    the same ids round-tripped through a text column
+//
+// Entries that are neither (null, objects, non-numeric strings) are skipped
+// rather than failing the whole envelope; the caller then reports the short
+// or empty list through the ordinary -2 invalid-request path.
+func flexWireInt64List(raw json.RawMessage) []int64 {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var entries []json.RawMessage
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return nil
+	}
+	out := make([]int64, 0, len(entries))
+	for _, e := range entries {
+		if v := flexWireInt64(e); v != 0 {
+			out = append(out, v)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // flexSeatList normalises the three seatList wire shapes into []string:
