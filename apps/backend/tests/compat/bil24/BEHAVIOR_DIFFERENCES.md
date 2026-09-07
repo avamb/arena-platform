@@ -198,6 +198,65 @@ lives in `apps/backend/tests/compat/bil24/wpstub/`.
 inventories; feature #468 regenerates the pseudonymized fixture from the
 internal projection to un-skip that test.
 
+### 16. Result codes (spec §6) — full map
+
+| Code | Meaning | When |
+|---|---|---|
+| `0` | OK | always on success, including idempotent repeats |
+| `1` | gateway session not found / expired | `userId`/`sessionId` missing from `gateway_sessions` or `expires_at < now()`; the site recreates the user after this (`class-bil24-seat-picker.php:757`) |
+| `101` | business error, `description` shown to the buyer | seat taken, category sold out, sales closed, promo invalid, hold expired, event outside the channel's catalog scope — **and** the one post-payment case in item 17 below |
+| `-1` | transient, retry | DB/pool errors, deadlock, worker timeout. No longer "unknown command" (feature #477 realigned the map to spec §6) |
+| `-2` | invalid request | unknown command, missing/malformed field, JSON parse failure |
+| `-3` | not found | id outside the channel's catalog/org scope (non-user-facing case) |
+| `-4` | access denied | bad/missing `fid`/`token` |
+| `-5` | not implemented | legacy widget-only commands (`AUTH`, `GET_ORDERS`, …) — never called by Lampyris/Vino&Co |
+| `-99` | internal error | panic-recovery |
+
+`description` is localized from the request `locale` (`ru-RU`→`ru`, `en-GB`→`en`,
+`he-IL`→`he`, `cs-CZ`→`cs`; unknown → channel `default_locale` → `en`) via
+`bil24.*` i18n keys. `resultCode` is always present — `GET_ALL_ACTIONS` callers assert on
+its presence unconditionally (`bil24-acf-sync.php:337`).
+
+### 17. `PAY_ORDER` reacquires an expired hold before failing; `manual_review` is the
+
+only post-payment `101`
+
+WooCommerce confirms payment client-side (its own gateway), then calls `PAY_ORDER` — money
+has already moved by the time arena sees this command (spec §7.9, open question 3 in
+`01_api_compatibility_gateway_ru.md`). If the backing hold expired between checkout and
+`PAY_ORDER`, the gateway does **not** fail the payment outright: it attempts
+`hcheckout.ReacquireHold` for the exact same seats/units first (`order_events.hold_reacquired`
+on success — proceed as normal). Only if reacquisition itself fails does the order and its
+`checkout_sessions` row move to `manual_review`, log `order_events.hold_expired`, answer
+`101 bil24.hold_expired`, **and** raise an operator alert (audit row + `error` log) — because
+the buyer's card has already been charged and the situation can only be resolved by a human.
+The WordPress site marks `bil24_ext_status=pay_failed` and the order becomes visible in its
+admin console for manual follow-up. This is the only `101` the gateway ever returns after a
+successful charge; every other `101` happens before money moves. `amount` mismatches
+(±0.01 tolerance) against `orders.total` do **not** block payment — they only log
+`order_events.amount_mismatch`.
+
+### 18. `holderStatus` spelling: gateway emits `NEVER_USE`/`REFUND`, accepts `REFUND` or `REFUNDED`
+
+The real pseudonymized order exports use `NEVER_USE` (×724) and `REFUND` (×95) as the only
+two `holderStatus` values ever seen on the wire — never `"REFUNDED"`. But the site's own
+notification receiver (`bil24-notification-receiver.php:209`, `class-btm-data.php:39`) writes
+and compares against `"REFUNDED"` internally. The gateway therefore **emits** `NEVER_USE` or
+`REFUND` (matching real legacy data and the `ticket.refunded` webhook payload, see item 14)
+and, on any inbound field the plugin might echo back, **accepts both** `REFUND` and
+`REFUNDED` as equivalent. Never emit `REFUNDED` — a golden fixture expecting it is wrong.
+
+### 19. `seatingPlanId` = `actionEventId` for seated sessions, `0` for pure GA
+
+Legacy Bil24 never gave the site a real seating-plan identity to key on. The site only uses
+`seatingPlanId` as a boolean-ish "does this session have a plan" flag and as the cache key for
+its own combined-catalog probe (`_bil24_combined_probe`, `bil24-acf-sync.php:434-446`) — it
+never dereferences it as a foreign id into anything. The gateway therefore returns the
+session's own `actionEventId` in `seatingPlanId` for any session with seats, and `0` for a
+session that is pure general-admission. **Open, not blocking wave 1** (spec §17): if a site
+ever starts treating `seatingPlanId` as a real lookup key instead of a cache-key/flag, this
+needs a real `kind='seating_plan'` id minted through `compatids` instead of the reuse.
+
 ## Rules for this file
 
 1. New behaviour differences MUST be added here with a spec section reference.

@@ -165,11 +165,46 @@ POST /api/bil24/json
 
 The exact public URL can differ by domain, but the request body contract must remain stable.
 
-## Open Questions
+## Open Questions — answered by wave 1 (2026-09-04, spec `18_bil24_compat_wave1_specification_ru.md`)
 
-1. Which exact Bil24 commands are used by Vino&Co today?
-2. Which response fields are actually consumed by the WordPress plugin?
-3. Does the current WordPress flow call `PAY_ORDER`, or does payment confirmation happen through a separate provider/webhook?
-4. Which commands must be strict-compatible and which can be enhanced?
-5. Do we need legacy numeric IDs in responses, or can existing clients accept string IDs?
+These were genuinely open when this doc was written (2026-06-21). Wave 1 read the actual
+PHP plugin source (`lampyrisevents`, `vinoandco-prod-rebuild`) and 420 real orders / 819
+real tickets, and closed all five:
+
+1. **Which exact Bil24 commands are used by Vino&Co today?** Fifteen, enumerated in
+   `apps/backend/tests/compat/bil24/BEHAVIOR_DIFFERENCES.md` (command inventory): `GET_ALL_ACTIONS`,
+   `GET_SEAT_LIST`, `CREATE_USER`, `RESERVATION` (4 request sub-shapes), `GET_CART`,
+   `ADD_PROMO_CODES`, `CHECK_KDP`, `CREATE_ORDER_EXT`, `GET_ORDER_INFO`, `PAY_ORDER`,
+   `GET_TICKETS_BY_ORDER`, `SEND_TICKETS_TO_EMAIL`, `CANCEL_RESERVATION`, `CANCEL_ORDER`,
+   `SCAN_TICKET`. Legacy widget-only commands (`AUTH`, `GET_ORDERS`, …) are not called by
+   either site and stay `resultCode=-5` (not implemented). Spec §7.
+2. **Which response fields are actually consumed by the WordPress plugin?** All fields listed
+   under "Level 3: Response Shape Compatibility" above are read by name in the plugin source
+   (`class-bil24-client.php`, `class-bil24-seat-picker.php`, `bil24-acf-sync.php`); spec §7
+   gives the full per-command response shape as a named Go struct in `bil24compat`, every field
+   mandatory unless marked `omitempty`. Money fields (`sum`/`discount`/`charge`/`totalSum`) and
+   `holderStatus` spelling are the two fields where a wrong shape silently breaks a checked-in
+   template — see `BEHAVIOR_DIFFERENCES.md` items 1, 8, 10.
+3. **Does the WordPress flow call `PAY_ORDER`, or does payment confirmation happen through a
+   separate provider/webhook?** It calls `PAY_ORDER` directly (`class-bil24-orders.php:1210-1218`)
+   after WooCommerce's own payment gateway confirms the charge client-side — WooCommerce owns
+   the money movement, `PAY_ORDER` only tells arena "payment succeeded, issue tickets". Because
+   of this ordering, `PAY_ORDER` must never fail closed on a stale/expired hold: spec §7.9
+   requires a reacquire-hold attempt first, and only routes to `manual_review` +
+   `resultCode=101` (the one business error allowed *after* money has moved) if reacquisition
+   fails, plus an operator alert. See `BEHAVIOR_DIFFERENCES.md` item 5 (deleted from the diff
+   list, folded into this answer) and spec §7.9 step 2.
+4. **Which commands must be strict-compatible and which can be enhanced?** All fifteen are
+   strict-compatible for the two owned sites (ADR-034 — the compat gateway is the *primary*
+   path here, not a bridge to a native rewrite). "Enhanced mode" for `GET_ORDER_INFO`
+   (returning `ticketList`) stays unimplemented: the plugin never reads that field and adding it
+   would risk a key-set mismatch against the strict golden fixtures (spec §15.2, "extra key
+   fails the harness").
+5. **Do we need legacy numeric IDs, or can clients accept strings?** Legacy numeric semantics
+   are required and now formalized as ADR-037: every id on the wire is `int64`, catalog ids go
+   through the `compatids` map, ticket/seat/order/customer ids reuse existing bigint columns,
+   Bil24-origin ids keep their original numeric value, and new arena-native ids start at `1e9`
+   so they can never collide with a real historical Bil24 id. Numeric-looking strings are
+   accepted on input (`"2593277"`) for resilience against PHP's loose typing, but every id in a
+   *response* is always a JSON number. Spec §4, §17 (ADR-037).
 

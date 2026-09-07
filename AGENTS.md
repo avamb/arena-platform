@@ -304,3 +304,24 @@ entries short and factual.
   `git -C <path> log --oneline -5` and a content diff of a sample file
   against HEAD, then remove with `git worktree remove <path> --force` and
   `git branch -D <branch>`.
+- **The Bil24 compat gateway has TWO independent "disabled" switches at two
+  different HTTP-status levels, and only one of them 404s.** The
+  `BIL24_COMPAT_ENABLED` env var un-mounts the whole `/compat/bil24/*`
+  subtree (real `404`) — an all-channels, deploy-time kill switch. A
+  per-channel `sales_channels.settings.gateway.enabled=false`
+  (`hbil24/auth.go`) does NOT 404: it answers `HTTP 200` with JSON envelope
+  `resultCode=-4` ("unknown fid or channel disabled"), same as every other
+  compat command. Only `GET /compat/bil24/image` uses a real `404` status
+  for every "you may not see this" case by design (spec §8: an enumerable
+  404 there would leak which failure mode applies). Don't probe HTTP status
+  to detect a disabled channel — check `resultCode`. Documented in
+  `docs/ops/bil24_gateway.md` §5 (feature #521).
+- **`outbox_events` dead-letter replay is SQL-only, no admin endpoint.**
+  `internal/platform/outbox` stops retrying a row once `dead_lettered_at` is
+  set; find candidates with
+  `SELECT * FROM outbox_events WHERE dead_lettered_at IS NOT NULL`, fix the
+  root cause named in `last_error` (usually a stale/unregistered WP webhook
+  URL), then clear `dead_lettered_at`/`next_attempt_at`/`attempts` on that
+  one row to requeue it. Do not bulk-requeue against a still-broken
+  receiver — it just refills the dead-letter queue. Full runbook:
+  `docs/ops/bil24_gateway.md` §4.
