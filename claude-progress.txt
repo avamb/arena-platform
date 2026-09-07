@@ -29891,3 +29891,82 @@ root (never through a pipeline) and confirmed everything green:
   .claude/scheduled_tasks.lock deleted, untracked features.db) - left
   untouched, matching prior sessions' convention.
 - Feature #468 marked passing.
+
+## Feature #521 (W1-Da): ADR-034..038, gateway doc, BEHAVIOR_DIFFERENCES,
+## ops runbook, AGENTS.md — 2026-09-07
+
+Docs-only sub-feature of epic #469 (W1-D). Read spec §17 (ADR table) and
+§7.9/§6/§0/§7.1 for the facts needed by BEHAVIOR_DIFFERENCES additions, plus
+backlog #469's own entry (09_autoforge/wp_bil24_compat_backlog.md §5).
+
+- `08_architecture/11_architecture_decision_log_ru.md`: added ADR-034..038
+  rows (compat gateway is primary path for the two owned sites, `ordering`
+  package as sole order-mutation aggregate, customer as platform entity
+  with per-org consent, wire-integer-ID rule, org service-key model),
+  each with a Why grounded in spec §17 and cross-referenced code facts
+  (ADR-033 layout, ADR-029 API security).
+- `08_architecture/01_api_compatibility_gateway_ru.md`: answered its own
+  5 "Open Questions" (commands used, response fields consumed, PAY_ORDER
+  vs WooCommerce payment ordering, strict-vs-enhanced compat scope,
+  numeric-ID requirement) from the wave-1 spec's actual PHP-source
+  findings, replacing speculative 2026-06-21 questions with 2026-09-04
+  spec-backed answers.
+- `apps/backend/tests/compat/bil24/BEHAVIOR_DIFFERENCES.md`: added item
+  16 (full result-code table, spec §6), item 17 (PAY_ORDER reacquire-hold
+  algorithm and why `manual_review`/101 is the only post-payment business
+  error — spec §7.9), item 18 (`holderStatus` emits `NEVER_USE`/`REFUND`,
+  accepts `REFUND`/`REFUNDED` — real pseudonymized data has zero
+  `"REFUNDED"` occurrences, only the site's own receiver uses that
+  spelling internally), item 19 (`seatingPlanId` = `actionEventId` for
+  seated sessions / `0` for GA, spec §7.1 + §17 "Открыто" note — the site
+  only uses it as a boolean/cache-key, never a real FK).
+- New `docs/ops/bil24_gateway.md` runbook, verified against actual code
+  (not guessed): credential provisioning via
+  `PUT /v1/organizations/{org}/channels/{id}/gateway-credential`
+  (`hcatalog/gateway_credential.go`), webhook registration via
+  `PUT .../wp-webhook` (`hcatalog/wp_webhook.go`, synchronous test
+  delivery), rotation (PUT-is-rotate for the gateway credential; separate
+  issue+revoke for org API keys — no dedicated rotate endpoint exists),
+  `outbox_events` dead-letter SQL query + single-row requeue (no admin
+  endpoint exists for this), the two independent disable switches
+  (`BIL24_COMPAT_ENABLED` env var → real 404 for the whole subtree vs.
+  per-channel `sales_channels.settings.gateway.enabled=false` → HTTP 200
+  with `resultCode=-4`, NOT a 404 — corrected a wrong assumption from the
+  original feature description before writing this down), roll-back-by-
+  URL (config-only, never disable the credential mid-cutover), and a note
+  that `lampyris-staging`/`vino-staging` are not yet literal seed data in
+  `cmd/arena-seed` (grepped, zero hits) — operators must create those
+  orgs manually until a future session adds them to the seed script.
+- `AGENTS.md`: two new Gotchas entries — the dual gateway-disable-switch
+  semantics (404 vs resultCode=-4, so don't probe HTTP status) and the
+  outbox_events dead-letter replay procedure (SQL-only, single-row
+  requeue, root-causes usually a stale WP webhook URL) — both cross-
+  referenced to the new runbook.
+- Verified via a research subagent that read the actual endpoint code
+  (`hcatalog/gateway_credential.go`, `hcatalog/wp_webhook.go`,
+  `internal/platform/outbox/outbox_events_dispatcher.go`, `hbil24/auth.go`,
+  `hbil24/bil24_compat.go`) rather than inferring field names from the
+  feature description; confirmed the runbook's JSON field names
+  (`fid`/`token`/`base_url`/`image_url`/`rotated_at`,
+  `callback_url`/`signing_secret`/`test_delivery`) against the actual
+  `json:"..."` struct tags before publishing.
+- Gates: `go build ./apps/backend/...` EXIT:0, `go vet ./apps/backend/...`
+  EXIT:0, `go test ./apps/backend/tests/compat/bil24/...
+  ./apps/backend/tests/staticanalysis/... ./apps/backend/internal/migrations/...`
+  all `ok` (the file-existence/size guard
+  `TestCompatBil24_158_BehaviorDifferencesDocExists` still passes). No Go
+  source, migration, or openapi.yaml touched — codegen/migration-head
+  steps not applicable this session.
+- Committed `b55bf6b` "docs: ADR-034..038, gateway open-questions answers,
+  behavior-differences additions, ops runbook (feature 521)" (5 files,
+  staged by explicit path; left unrelated pre-existing working-tree noise
+  `.autoforge/prompts/coding_prompt.md`, deleted
+  `.claude/scheduled_tasks.lock`, untracked `features.db` untouched) and
+  pushed to `origin/master` (c302596..b55bf6b). Feature #521 marked
+  passing.
+- Remaining for epic #469 (W1-D, not this session's scope): OpenAPI
+  coverage confirmation for `/compat/bil24/json` and `/compat/bil24/image`
+  (oneOf by `command`), `.env.example`/`deploy/` entries for
+  `PUBLIC_BASE_URL`, and `17_macs_integration_contract.md` update after
+  feature #465 — check sibling sub-features under epic #469's dependency
+  list before assuming these are done.
