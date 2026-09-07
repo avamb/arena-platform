@@ -2922,6 +2922,7 @@ type CustomerImportRowAction string
 
 // CustomerImportRowsResponse defines model for CustomerImportRowsResponse.
 type CustomerImportRowsResponse struct {
+	// Rows Matching customer_import_rows.
 	Rows []CustomerImportRow `json:"rows"`
 
 	// Total Number of rows returned (post-filter).

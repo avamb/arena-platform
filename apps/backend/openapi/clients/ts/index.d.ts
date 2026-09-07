@@ -6809,6 +6809,7 @@ export interface components {
             created_at: string;
         };
         CustomerImportRowsResponse: {
+            /** @description Matching customer_import_rows. */
             rows: components["schemas"]["CustomerImportRow"][];
             /** @description Number of rows returned (post-filter). */
             total: number;
