@@ -262,6 +262,8 @@ func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 		h.handleBil24PayOrder(w, r, req)
 	case "SCAN_TICKET":
 		h.handleBil24ScanTicket(w, r, req)
+	case "CANCEL_RESERVATION":
+		h.handleBil24CancelReservation(w, r, req)
 	case "CANCEL_ORDER":
 		h.handleBil24CancelOrder(w, r, req)
 	case "ADD_PROMO_CODES":

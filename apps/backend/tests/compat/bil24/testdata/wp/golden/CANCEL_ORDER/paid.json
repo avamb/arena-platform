@@ -1,0 +1,5 @@
+{
+  "resultCode": 101,
+  "description": "order has already been paid; use the refund flow instead",
+  "command": "CANCEL_ORDER"
+}

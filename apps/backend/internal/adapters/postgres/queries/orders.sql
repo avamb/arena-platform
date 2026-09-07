@@ -78,6 +78,21 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
 FROM   orders
 WHERE  checkout_session_id = $1;
 
+-- name: GetOrderByReservationID :one
+-- Loads the order holding a given reservation (orders is 1:1 with the
+-- reservation that backs its hold). CANCEL_RESERVATION (spec §7.12, feature
+-- #496) is keyed on the wire `reservationId` returned by RESERVATION rather
+-- than an order id, so this is its lookup path. Returns pgx.ErrNoRows for a
+-- reservation that never became an order (or does not exist), which the
+-- caller maps to the spec's "unknown id -> 0" contract.
+SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
+       checkout_session_id, reservation_id, external_ref, source, status,
+       currency, subtotal, discount, charge, total, charge_percent_bp,
+       promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+FROM   orders
+WHERE  reservation_id = $1;
+
 -- name: FindOpenOrderByCustomerSession :one
 -- Resolves the single pending_payment order for a (customer, event
 -- session) pair, mirroring the partial unique index

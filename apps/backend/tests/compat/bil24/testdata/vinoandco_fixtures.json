@@ -310,7 +310,7 @@
   },
   {
     "name": "cancel_order_legacy_opaque_id",
-    "description": "CANCEL_ORDER with a legacy Bil24 order reference — -2 until translation table implemented",
+    "description": "CANCEL_ORDER with a legacy Bil24 order reference, on a deployment where the order surface is not wired (this fixture's test server has no Pool/order deps) — matches the PAY_ORDER/REFUND_TICKET convention (spec §7.12, feature #496): a well-formed request self-gates to -5 NOT_IMPLEMENTED regardless of the id's shape once the mandatory-field check passes; a wired deployment instead resolves the id and answers 0 for one that does not exist",
     "request": {
       "command": "CANCEL_ORDER",
       "fid": "1271",
@@ -320,7 +320,7 @@
     },
     "expect": {
       "http_status": 200,
-      "result_code_eq": -2,
+      "result_code_eq": -5,
       "command_echo": "CANCEL_ORDER",
       "required_response_fields": ["resultCode", "description", "command"]
     }

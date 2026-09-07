@@ -1,7 +1,7 @@
-// cmd_order.go — Bil24-compatible order commands: GET_ORDER_INFO
-// (implemented), CREATE_ORDER_EXT and CANCEL_ORDER (scaffold stubs that
-// return NOT_IMPLEMENTED). Extracted from bil24_compat.go by feature #476
-// so per-command files stay well under 700 lines.
+// cmd_order.go — Bil24-compatible order commands: GET_ORDER_INFO and
+// CREATE_ORDER_EXT. Extracted from bil24_compat.go by feature #476 so
+// per-command files stay well under 700 lines. CANCEL_ORDER and
+// CANCEL_RESERVATION live in cmd_order_cancel.go (feature #496, spec §7.12).
 package hbil24
 
 import (
@@ -457,56 +457,5 @@ func (h *Handler) handleBil24CreateOrderExt(w http.ResponseWriter, r *http.Reque
 	writeBil24JSON(w, http.StatusOK, bil24Error(
 		req.Command, ResultCodeNotImplemented,
 		"CREATE_ORDER_EXT is not implemented; use POST /v1/checkout/reservations to create a reservation",
-	))
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CANCEL_ORDER — cancel a checkout session — scaffold stub
-// ─────────────────────────────────────────────────────────────────────────────
-
-// handleBil24CancelOrder maps CANCEL_ORDER to checkout session cancellation.
-//
-// Bil24 request fields used:
-//   - orderId: platform checkout session UUID
-//
-// CANCEL_ORDER is NOT IMPLEMENTED in this gateway version. The command is
-// recognized (not "unknown") but returns resultCode=-5 (NOT_IMPLEMENTED)
-// so legacy clients get a machine-readable signal that the operation is
-// unavailable. Full cancellation requires the checkout state machine to
-// transition to 'cancelled' and potentially trigger a refund; callers
-// MUST migrate to POST /v1/checkout/{id}/cancel.
-//
-// Returning resultCode=0 (success) from an unimplemented stub is a security
-// risk because it allows the caller to believe an order was cancelled when
-// in fact no state transition, no seat release, and no refund was initiated.
-// This was fixed in feature #374.
-//
-// Response: { "resultCode": -5, "command": "CANCEL_ORDER", ... }
-func (h *Handler) handleBil24CancelOrder(w http.ResponseWriter, _ *http.Request, req bil24Request) {
-	if req.OrderID == "" {
-		writeBil24JSON(w, http.StatusOK, bil24Error(
-			req.Command, ResultCodeInvalidRequest, "orderId is required",
-		))
-		return
-	}
-	orderID, err := TranslateLegacyID(req.OrderID)
-	if err != nil {
-		writeBil24JSON(w, http.StatusOK, bil24Error(
-			req.Command, ResultCodeInvalidRequest,
-			"orderId must be a valid order identifier",
-		))
-		return
-	}
-
-	h.logger.Warn("bil24_compat: CANCEL_ORDER is not implemented; returning NOT_IMPLEMENTED",
-		slog.String("order_id", orderID.String()),
-		slog.String("fid", req.FID),
-	)
-
-	// NOT_IMPLEMENTED: never return resultCode=0 from an unimplemented stub.
-	// Real implementation: POST /v1/checkout/{id}/cancel.
-	writeBil24JSON(w, http.StatusOK, bil24Error(
-		req.Command, ResultCodeNotImplemented,
-		"CANCEL_ORDER is not implemented; use POST /v1/checkout/{id}/cancel",
 	))
 }

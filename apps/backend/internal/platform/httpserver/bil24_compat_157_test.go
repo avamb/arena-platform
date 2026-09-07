@@ -558,13 +558,20 @@ func TestBil24_157_CancelOrder_MissingOrderID_Returns_InvalidRequest(t *testing.
 	}
 }
 
-func TestBil24_157_CancelOrder_InvalidOrderID_Returns_InvalidRequest(t *testing.T) {
+func TestBil24_157_CancelOrder_InvalidOrderID_Returns_NotImplemented(t *testing.T) {
+	// Feature #496 (spec §7.12) wired CANCEL_ORDER up to ordering.Cancel; on a
+	// deployment where the order surface isn't wired (this test server has no
+	// Pool/order deps), the handler self-gates to -5 once the mandatory-field
+	// check passes, the same way PAY_ORDER/REFUND_TICKET do — it never
+	// inspects the id's shape first. A wired deployment instead resolves the
+	// id and answers 0 for one that does not parse or does not exist (an
+	// unknown id is still success per spec §7.12).
 	s := buildBil24Server(t)
 	w := postBil24(s, `{"command":"CANCEL_ORDER","orderId":"NOT_A_UUID"}`)
 	m := decodeBil24Response(t, w)
 	rc := int(m["resultCode"].(float64))
-	if rc != ResultCodeInvalidRequest {
-		t.Errorf("expected %d for non-UUID orderId, got %d", ResultCodeInvalidRequest, rc)
+	if rc != ResultCodeNotImplemented {
+		t.Errorf("expected %d for non-UUID orderId on an unwired deployment, got %d", ResultCodeNotImplemented, rc)
 	}
 }
 
