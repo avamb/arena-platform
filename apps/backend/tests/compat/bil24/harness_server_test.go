@@ -151,6 +151,24 @@ func cleanupHarnessWireRows(t *testing.T, st *harnessState) {
 		// reservations. order_items/order_events cascade from orders, but the
 		// two parents do not — so the orders sweep has to precede the
 		// checkout_sessions sweep, which in turn has to precede reservations.
+		// Feature #494: a paid gateway order issues real tickets and records a
+		// payment_intent. tickets FK both orders and checkout_sessions and
+		// payment_intents FKs checkout_sessions, and neither cascades, so both
+		// have to go before the orders/checkout_sessions sweeps below. tickets
+		// carries no org_id — it is scoped through its checkout session — and
+		// itself has two non-cascading children: the §11 barcodes and the
+		// order_items row whose ticket_id issuance backfilled.
+		`DELETE FROM barcodes WHERE ticket_id IN
+		     (SELECT t.id FROM tickets t
+		       JOIN checkout_sessions cs ON cs.id = t.checkout_session_id
+		      WHERE cs.org_id = $1::uuid)`,
+		`UPDATE order_items SET ticket_id = NULL WHERE ticket_id IN
+		     (SELECT t.id FROM tickets t
+		       JOIN checkout_sessions cs ON cs.id = t.checkout_session_id
+		      WHERE cs.org_id = $1::uuid)`,
+		`DELETE FROM tickets WHERE checkout_session_id IN
+		     (SELECT id FROM checkout_sessions WHERE org_id = $1::uuid)`,
+		`DELETE FROM payment_intents WHERE org_id = $1::uuid`,
 		`DELETE FROM orders WHERE org_id = $1::uuid`,
 		`DELETE FROM checkout_sessions WHERE org_id = $1::uuid`,
 		`DELETE FROM reservations WHERE org_id = $1::uuid`,

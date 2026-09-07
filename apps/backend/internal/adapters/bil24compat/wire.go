@@ -168,6 +168,21 @@ type Request struct {
 	// WordPress plugin is known to quote money fields, so it is normalised
 	// through Request.UnmarshalJSON (number-or-string).
 	RefundPrice *float64
+
+	// ── PAY_ORDER fields (feature #494, spec §7.9) ───────────────────────
+
+	// Amount is the sum the WordPress shop actually charged the buyer, in
+	// MAJOR currency units (spec §4). Spec §7.9 makes it advisory: a
+	// mismatch against orders.total beyond ±0.01 is recorded as
+	// order_events.amount_mismatch but never blocks the payment — the money
+	// has already moved on the shop side. It travels as a JSON number, but
+	// the WordPress plugin quotes money fields, so it is normalised through
+	// Request.UnmarshalJSON (number-or-string).
+	Amount *float64
+	// Method is the shop-side payment method label ("woo_bank_card", …). It
+	// lands in orders.payment_method and in the payment intent's synthetic
+	// provider_payment_id "wc:<external_ref>:<method>".
+	Method string `json:"method"`
 }
 
 // requestAlias exists solely to give Request.UnmarshalJSON a recursion-free
@@ -207,6 +222,7 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 		Total           json.RawMessage `json:"total"`
 		ChargePercent   json.RawMessage `json:"chargePercent"`
 		ExpectedPrice   json.RawMessage `json:"expectedPrice"`
+		Amount          json.RawMessage `json:"amount"`
 	}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -234,6 +250,8 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	r.Total = flexWireFloatPtr(aux.Total)
 	r.ChargePercent = flexWireFloatPtr(aux.ChargePercent)
 	r.ExpectedPrice = flexWireFloatPtr(aux.ExpectedPrice)
+	// Spec §7.9: PAY_ORDER's charged amount, same money tolerance.
+	r.Amount = flexWireFloatPtr(aux.Amount)
 	return nil
 }
 

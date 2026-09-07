@@ -522,6 +522,22 @@ func (q *Queries) ListOrderItemsByOrder(ctx context.Context, orderID uuid.UUID) 
 	return items, rows.Err()
 }
 
+const setOrderPaymentMethod = `-- name: SetOrderPaymentMethod :exec
+UPDATE orders
+SET    payment_method = $3,
+       updated_at     = now()
+WHERE  id = $1
+  AND  org_id = $2`
+
+// SetOrderPaymentMethod records how the order was paid (spec §7.9: the Bil24
+// compat gateway's PAY_ORDER stores the WooCommerce payment method verbatim).
+// Kept separate from UpdateOrderStatus so the ordering aggregate's transition
+// guard stays the single owner of the status column.
+func (q *Queries) SetOrderPaymentMethod(ctx context.Context, id, orgID uuid.UUID, method string) error {
+	_, err := q.db.Exec(ctx, setOrderPaymentMethod, id, orgID, method)
+	return err
+}
+
 const updateOrderItemTicket = `-- name: UpdateOrderItemTicket :exec
 UPDATE order_items
 SET    ticket_id = $2

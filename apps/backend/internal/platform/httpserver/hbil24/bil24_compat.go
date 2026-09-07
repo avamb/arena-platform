@@ -254,6 +254,12 @@ func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 		h.handleBil24GetOrderInfo(w, r, req)
 	case "CREATE_ORDER_EXT":
 		h.handleBil24CreateOrderExt(w, r, req)
+	case "PAY_ORDER":
+		// Feature #494 / spec §7.9: the WordPress shop reports a completed
+		// WooCommerce payment; we transition the order and issue tickets
+		// synchronously so the site's GET_TICKETS_BY_ORDER poll succeeds first
+		// try (§7.10).
+		h.handleBil24PayOrder(w, r, req)
 	case "SCAN_TICKET":
 		h.handleBil24ScanTicket(w, r, req)
 	case "CANCEL_ORDER":

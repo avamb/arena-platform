@@ -72,6 +72,19 @@ import (
 // convert failure after a committed checkout left the reservation 'active'
 // and eligible for TTL expiry / resale.
 func (h *Handler) convertReservationInTx(ctx context.Context, q *gen.Queries, reservationID uuid.UUID) error {
+	return ConvertReservationInTx(ctx, q, reservationID)
+}
+
+// ConvertReservationInTx is the exported, receiver-free form of
+// convertReservationInTx. It exists so other httpserver sub-packages (the
+// Bil24 compat gateway's PAY_ORDER command, feature #494) can run the
+// held→sold conversion inline inside their own transaction without importing
+// the parent httpserver package or constructing an hcheckout.Handler.
+//
+// q must be gen.New(tx) bound to an active transaction. The function neither
+// commits nor rolls back. It is idempotent: a reservation already in
+// 'converted', 'expired' or 'cancelled' state returns nil.
+func ConvertReservationInTx(ctx context.Context, q *gen.Queries, reservationID uuid.UUID) error {
 	if q == nil {
 		return nil
 	}

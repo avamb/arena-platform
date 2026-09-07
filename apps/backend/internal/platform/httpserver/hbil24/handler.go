@@ -435,7 +435,49 @@ type Handler struct {
 	// lookup its sales-open gate needs. Not wired ⇒ the command self-gates
 	// with resultCode=-5, which is the pre-#492 stub behaviour.
 	orderDeps OrderDeps
+
+	// payDeps (feature #494, W1-B2a, spec §7.9) backs PAY_ORDER: the
+	// synchronous ticket-issuance callback plus the audit writer used for
+	// the manual-review operator alert. The command reuses orderDeps.Pool /
+	// orderDeps.Q for its transaction, so an unwired payDeps alone makes
+	// PAY_ORDER answer resultCode=-5, matching every other optional surface.
+	payDeps PayOrderDeps
 }
+
+// PayIssueTicketsFunc issues (or gap-fills) the tickets of a paid checkout
+// session and reports how many tickets the session now has. Production wiring
+// injects a closure over htickets.Handler.IssueTicketsForCheckoutWithOptions;
+// it is a func type rather than an interface so hbil24 never has to import the
+// parent httpserver package (which imports hbil24 — that would be a cycle).
+//
+// suppressDelivery carries the spec §7.9 step 6 rule: gateway orders get no
+// arena delivery e-mail unless the channel sets
+// settings.gateway.platform_email = true.
+type PayIssueTicketsFunc func(ctx context.Context, cs gen.CheckoutSessionRow, suppressDelivery bool) (int, error)
+
+// PayOrderAlertFunc raises the spec §7.9 step 2 operator alert when a paid
+// order's hold could not be re-acquired and the order was parked in
+// manual_review. Production wiring injects a closure over the audit writer;
+// the handler additionally logs at error level regardless, so a nil callback
+// degrades the alert to log-only rather than losing it.
+type PayOrderAlertFunc func(ctx context.Context, orderID uuid.UUID, actor string, metadata map[string]any)
+
+// PayOrderDeps bundles the optional PAY_ORDER dependencies (feature #494,
+// W1-B2a, spec §7.9). Only IssueTickets is required for the command to be
+// considered wired: without it the post-commit synchronous issuance that
+// §7.10's 5-poll GET_TICKETS_BY_ORDER contract depends on cannot happen, and
+// answering "paid" without tickets would strand the buyer.
+type PayOrderDeps struct {
+	// IssueTickets runs htickets issuance synchronously right after the
+	// payment transaction commits (spec §7.9 step 5).
+	IssueTickets PayIssueTicketsFunc
+	// Alert raises the manual-review operator alert (spec §7.9 step 2).
+	// Optional; nil degrades to the error log the handler writes anyway.
+	Alert PayOrderAlertFunc
+}
+
+// wired reports whether the PAY_ORDER surface is available.
+func (d PayOrderDeps) wired() bool { return d.IssueTickets != nil }
 
 // New constructs a Handler from the caller's dependencies.
 //
@@ -610,6 +652,16 @@ func (h *Handler) WithRefundTicket(q RefundTicketQuerier, f RefundTicketFunc) *H
 // chaining.
 func (h *Handler) WithOrderCreate(d OrderDeps) *Handler {
 	h.orderDeps = d
+	return h
+}
+
+// WithPayOrder wires the PAY_ORDER surface (feature #494, W1-B2a, spec §7.9):
+// the synchronous ticket-issuance callback and the manual-review operator
+// alert. PAY_ORDER also needs the OrderDeps transaction starter, so both
+// setters must be called for the command to leave its resultCode=-5 stub.
+// Returns the receiver for chaining.
+func (h *Handler) WithPayOrder(d PayOrderDeps) *Handler {
+	h.payDeps = d
 	return h
 }
 

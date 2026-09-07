@@ -78,6 +78,13 @@ type GatewaySettings struct {
 	// so the operator can be nudged to run the credential-rotation endpoint
 	// (§5.4) and drop the legacy shape. Never affects authorization.
 	LegacyOnly bool
+	// PlatformEmail opts a channel INTO arena's own ticket-delivery e-mails
+	// for gateway-originated orders (spec §7.9 step 6, feature #494). It
+	// defaults to FALSE because the WordPress shop sends its own PDF: a
+	// migrated site would otherwise mail every buyer twice. Only PAY_ORDER
+	// consults it; SEND_TICKETS_TO_EMAIL (§7.11) enqueues delivery
+	// explicitly and is unaffected.
+	PlatformEmail bool
 }
 
 // gatewaySettingsShape mirrors the two shapes we accept while decoding the
@@ -90,6 +97,7 @@ type gatewaySettingsShape struct {
 		Enabled       *bool  `json:"enabled"`
 		TokenHash     string `json:"token_hash"`
 		DefaultLocale string `json:"default_locale"`
+		PlatformEmail *bool  `json:"platform_email"`
 	} `json:"gateway"`
 	// Legacy top-level hash (feature #374/#390 admin shape). Preserved for
 	// backward compat until #476 removes it.
@@ -117,13 +125,17 @@ func parseGatewaySettings(raw json.RawMessage) GatewaySettings {
 		// one for authorization purposes.
 		return GatewaySettings{}
 	}
-	if shape.Gateway != nil && (shape.Gateway.TokenHash != "" || shape.Gateway.Enabled != nil || shape.Gateway.DefaultLocale != "") {
+	if shape.Gateway != nil && (shape.Gateway.TokenHash != "" || shape.Gateway.Enabled != nil ||
+		shape.Gateway.DefaultLocale != "" || shape.Gateway.PlatformEmail != nil) {
 		out := GatewaySettings{
 			TokenHash:     shape.Gateway.TokenHash,
 			DefaultLocale: shape.Gateway.DefaultLocale,
 		}
 		if shape.Gateway.Enabled != nil {
 			out.Enabled = *shape.Gateway.Enabled
+		}
+		if shape.Gateway.PlatformEmail != nil {
+			out.PlatformEmail = *shape.Gateway.PlatformEmail
 		}
 		return out
 	}

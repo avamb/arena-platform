@@ -137,6 +137,17 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
           paid_at, cancelled_at, expires_at, metadata, created_at, updated_at;
 
+-- name: SetOrderPaymentMethod :exec
+-- Records how the order was paid (spec §7.9: the Bil24 compat gateway's
+-- PAY_ORDER stores the WooCommerce payment method verbatim). Separate from
+-- UpdateOrderStatus so the ordering aggregate's transition guard stays the
+-- single owner of the status column.
+UPDATE orders
+SET    payment_method = $3,
+       updated_at     = now()
+WHERE  id = $1
+  AND  org_id = $2;
+
 -- name: InsertOrderItem :one
 -- Adds one unit (ticket or GA unit) to an order. session_seat_id is null
 -- for GA units minted without a seat row; ticket_id is null until

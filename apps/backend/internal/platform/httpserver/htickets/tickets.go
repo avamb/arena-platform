@@ -164,6 +164,31 @@ func issuanceLockKey(id uuid.UUID) int64 {
 // operation fails. Callers should log but not hard-fail when the checkout is
 // already terminal (the customer got their goods; ticket retry is safe).
 func (h *Handler) IssueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSessionRow) ([]gen.TicketRow, error) {
+	return h.IssueTicketsForCheckoutWithOptions(ctx, cs, IssuanceOptions{})
+}
+
+// IssuanceOptions tunes a single IssueTicketsForCheckout run. The zero value
+// reproduces the historical behaviour exactly, so every pre-existing caller
+// keeps its semantics by going through IssueTicketsForCheckout.
+type IssuanceOptions struct {
+	// SuppressDelivery skips EnqueueDeliveryJobs for the newly minted tickets.
+	//
+	// Spec §7.9 step 6 (feature #494): orders that originate at the Bil24
+	// compat gateway are fulfilled by the WordPress shop, which mails its own
+	// PDF. Sending arena's delivery e-mail too would mail every buyer twice,
+	// so PAY_ORDER suppresses it unless the channel opts back in with
+	// settings.gateway.platform_email = true. Ticket rows, EAN-13 barcodes,
+	// scanner events and v1.order.paid are unaffected — only the e-mail job
+	// is skipped, and SEND_TICKETS_TO_EMAIL (§7.11) can still enqueue one
+	// explicitly on demand.
+	SuppressDelivery bool
+}
+
+// IssueTicketsForCheckoutWithOptions is IssueTicketsForCheckout with explicit
+// per-call knobs; see IssuanceOptions. All the invariants documented on
+// IssueTicketsForCheckout (advisory lock, gap-fill, idempotency) hold here —
+// this is the real implementation and that one is a zero-options wrapper.
+func (h *Handler) IssueTicketsForCheckoutWithOptions(ctx context.Context, cs gen.CheckoutSessionRow, opts IssuanceOptions) ([]gen.TicketRow, error) {
 	if h.ticketQueries == nil {
 		return nil, fmt.Errorf("IssueTicketsForCheckout: ticketQueries not wired")
 	}
@@ -398,7 +423,16 @@ func (h *Handler) IssueTicketsForCheckout(ctx context.Context, cs gen.CheckoutSe
 	// Enqueue email delivery jobs for each newly issued ticket (feature #141).
 	// Best-effort: errors are logged internally, not returned.
 	// Only new tickets get delivery jobs; existing ones were already enqueued.
-	if len(newTickets) > 0 {
+	// Gateway-originated orders opt out entirely (spec §7.9 step 6, #494).
+	switch {
+	case len(newTickets) == 0:
+		// nothing to deliver
+	case opts.SuppressDelivery:
+		h.logger.Info("tickets: delivery suppressed by caller",
+			slog.String("checkout_session_id", cs.ID.String()),
+			slog.Int("new_tickets_issued", len(newTickets)),
+		)
+	default:
 		h.EnqueueDeliveryJobs(ctx, newTickets)
 	}
 

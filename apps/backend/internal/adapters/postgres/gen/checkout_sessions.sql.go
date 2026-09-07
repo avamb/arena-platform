@@ -278,6 +278,27 @@ func (q *Queries) ExpireCheckoutSession(ctx context.Context, id uuid.UUID) (Chec
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MarkCheckoutSessionManualReview — any non-terminal → manual_review
+// ─────────────────────────────────────────────────────────────────────────────
+
+const markCheckoutSessionManualReview = `-- name: MarkCheckoutSessionManualReview :one
+UPDATE checkout_sessions
+SET    state      = 'manual_review',
+       updated_at = now()
+WHERE  id    = $1
+  AND  state NOT IN ('completed', 'abandoned', 'expired')
+RETURNING ` + selectCheckoutSessionColumns
+
+// MarkCheckoutSessionManualReview parks a session for operator attention
+// (spec §7.9: the Bil24 compat gateway's PAY_ORDER could not reacquire the
+// expired hold, so money was taken on the site but the seats are gone).
+// Returns pgx.ErrNoRows when the session does not exist or is already terminal.
+func (q *Queries) MarkCheckoutSessionManualReview(ctx context.Context, id uuid.UUID) (CheckoutSessionRow, error) {
+	row := q.db.QueryRow(ctx, markCheckoutSessionManualReview, id)
+	return scanCheckoutSessionRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ListCheckoutSessionsByReservation
 // ─────────────────────────────────────────────────────────────────────────────
 

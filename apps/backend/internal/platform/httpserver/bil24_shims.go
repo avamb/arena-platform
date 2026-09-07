@@ -124,6 +124,10 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 		// sales-open gate; Q is the pool-bound surface ordering.ReconcileLines uses
 		// BEFORE that transaction opens (the hold mutators commit their own).
 		h = h.WithOrderCreate(hbil24.OrderDeps{Pool: s.pool, SessionQ: q, Q: q})
+		// Feature #494 (W1-B2a, spec §7.9): PAY_ORDER reuses the OrderDeps
+		// transaction starter and adds the synchronous issuance callback plus
+		// the manual-review operator alert. See bil24_pay_shims.go.
+		h = h.WithPayOrder(s.bil24PayDeps())
 	}
 	// Feature #505 (W1-B7b, spec §7.8/§9.3): wire the neutral order projection
 	// so GET_ORDER_INFO answers with the bil24wire order object (36 keys minus

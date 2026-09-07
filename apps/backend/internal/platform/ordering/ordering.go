@@ -68,6 +68,15 @@ const (
 	EventPaid            = "paid"
 	EventCancelled       = "cancelled"
 	EventHoldExpired     = "hold_expired"
+	// EventHoldReacquired records that PAY_ORDER found the order's hold past
+	// its TTL and successfully re-took the same seats/GA units before
+	// charging through (spec §7.9, feature #494).
+	EventHoldReacquired = "hold_reacquired"
+	// EventAmountMismatch records a PAY_ORDER whose `amount` differed from
+	// orders.total by more than ±0.01. Spec §7.9 makes this NON-blocking:
+	// the shop has already taken the buyer's money, so the gateway records
+	// the discrepancy for reconciliation and completes the payment anyway.
+	EventAmountMismatch = "amount_mismatch"
 )
 
 // ActorSystem is the order_events.actor value for anything the platform does

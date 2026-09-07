@@ -447,8 +447,14 @@ func TestCompatBil24_450_Harness_Scenarios(t *testing.T) {
 		runScenario04Refund(t, st)
 	})
 
+	// Scenario 5 (feature #494, W1-B2a, spec §7.9) drives PAY_ORDER over the
+	// real server: the one-transaction payment write set, synchronous ticket
+	// issuance, the ReacquireHold success path (order_events.hold_reacquired)
+	// and its failure path (order + checkout session parked in manual_review,
+	// operator audit alert, the only 101 after payment). The body lives in
+	// scenario05_pay_order_test.go because it seeds four buyers of its own.
 	t.Run("05_expired_hold_on_pay_order", func(t *testing.T) {
-		t.Skip("feature #494: PAY_ORDER on expired hold → ReacquireHold success path AND failure path (manual_review + operator alert)")
+		runScenario05PayOrder(t, st)
 	})
 
 	// Scenario 6 (feature #492, W1-B1b, spec §7.7) drives CREATE_ORDER_EXT over
