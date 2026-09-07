@@ -541,6 +541,14 @@ func scanGoFilesForCamelCaseJSONTags(t *testing.T, root string) []string {
 		if strings.Contains(normalized, "internal/platform/bil24wire/") {
 			return nil
 		}
+		// customerimport/parsers.go decodes the Bil24 order-export JSON that
+		// organizers download from Bil24 (ticketList, fullName, actionEvent
+		// etc., feature #519 W1-C7a) — a third-party wire format, same class
+		// as bil24compat above. The exemption is file-scoped on purpose: the
+		// rest of the package (job.go, admin surface) stays under the guardrail.
+		if strings.HasSuffix(normalized, "internal/platform/customerimport/parsers.go") {
+			return nil
+		}
 		// oapi-codegen output mirrors external wire format schemas (including
 		// MACS camelCase) and is exempt — the guardrail protects hand-written
 		// handler code, not auto-generated type bindings.

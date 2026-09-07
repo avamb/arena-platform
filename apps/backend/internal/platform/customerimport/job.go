@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -371,7 +372,14 @@ func runApply(ctx context.Context, opts Options, topQ *gen.Queries, imp gen.Cust
 			_ = topQ.MarkCustomerImportFailed(ctx, imp.ID)
 			return Report{}, fmt.Errorf("customerimport: insert consent row %d: %w", rowNo, err)
 		}
-		if err := txQ.UpsertCustomerOrgLinkStats(ctx, res.Customer.ID, orgID, orderAt, int32(row.TicketsCount)); err != nil {
+		tickets := row.TicketsCount
+		if tickets < 0 {
+			tickets = 0
+		}
+		if tickets > math.MaxInt32 {
+			tickets = math.MaxInt32
+		}
+		if err := txQ.UpsertCustomerOrgLinkStats(ctx, res.Customer.ID, orgID, orderAt, int32(tickets)); err != nil { // #nosec G115 -- clamped to [0, MaxInt32] above
 			_ = topQ.MarkCustomerImportFailed(ctx, imp.ID)
 			return Report{}, fmt.Errorf("customerimport: upsert org link stats row %d: %w", rowNo, err)
 		}
