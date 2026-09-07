@@ -30325,3 +30325,66 @@ pre-existing out-of-scope AutoForge noise every prior session has left
 untouched: `.autoforge/prompts/coding_prompt.md`,
 `.claude/scheduled_tasks.lock`, untracked `features.db`). Feature #458
 marked passing. Next ready epic-verify: #469 (W1-D), now unblocked.
+
+## Feature #469 (W1-D EPIC-VERIFY): docs, OpenAPI completeness,
+## ADR-034..038, gateway ops runbook — 2026-09-07 — WAVE COMPLETE
+
+Verification-only epic per its description, last of the wave (all 6
+dependencies — #458, #464, #465, #467, #468, #521, #522 — already
+`passes:true` at claim time; feature stats were 521/522). Confirmed the
+epic's documentation deliverables all exist and re-ran the full gate
+suite fresh; no drift, no code changes needed:
+
+- Docs present and correct: `08_architecture/11_architecture_decision_log_ru.md`
+  rows ADR-034 (compat gateway primary path, guardrail #6 exception),
+  ADR-035 (`ordering` package sole order-mutation path, partial reversal
+  of ADR-033), ADR-036 (platform customer, per-org consent), ADR-037
+  (wire-integer-id rule), ADR-038 (org service keys) all present with
+  full rationale text. `apps/backend/tests/compat/bil24/BEHAVIOR_
+  DIFFERENCES.md` and `docs/ops/bil24_gateway.md` both present (dated
+  2026-09-07 from feature #521). `openapi/openapi.yaml` documents both
+  `/compat/bil24/json` (oneOf-by-command request/response schemas) and
+  `/compat/bil24/image`. `.env.example` (root and admin-web) document
+  `APP_PUBLIC_URL` as the spec's `PUBLIC_BASE_URL` (feature #522).
+- `go.exe build ./apps/backend/...` EXIT:0; `go.exe vet ./apps/backend/...`
+  EXIT:0.
+- Full `go.exe test ./apps/backend/...` (untagged, redirected to a file,
+  exit code read from the file, never judged through a pipeline): 75 `ok`
+  package lines, 0 FAIL, EXIT:0.
+- `gofmt -l` on `apps/backend/{cmd,internal,tests,tools}`: empty.
+- golangci-lint v2 (`GOLANGCI_LINT_CACHE=/tmp/golangci-cache`, `@latest`
+  pin) `run ./apps/backend/...`: "0 issues."
+- Codegen drift check: regenerated `types_gen.go` in place via
+  `openapi30gen` (`apps/backend/openapi/openapi.yaml`) →
+  `oapi-codegen@v2.4.1` (writes directly to the configured output path) —
+  `git status`/`git diff --stat` on the file showed zero changes, i.e.
+  zero drift against the committed version; `node scripts/gen-ts-client.mjs`
+  likewise produced zero diff against the committed TS client. Temp
+  `.compat30.gen.yaml` removed after.
+- Migration head pin: `TestHead_KnownCurrentHead` still green,
+  `0098_customer_imports.sql` still the actual highest-numbered file — no
+  drift.
+- `npm --prefix apps/admin-web run type-check` EXIT:0; `npm --prefix
+  apps/admin-web run test` (vitest) — 46/46 files, 1189/1189 tests,
+  EXIT:0; `npm --prefix apps/admin-web run build` EXIT:0 (routine >500kB
+  chunk advisory only, same as every prior session).
+- Live integration run against the local Docker Postgres stand (port
+  55432, `arena`/`arena`), `-tags integration -count=1 -p 1` (serialized
+  per AGENTS.md convention), run in the background and polled to
+  completion: 76 `ok` package lines, 0 FAIL, including
+  `tests/compat/bil24` (11.4s), `tests/compat/bil24/wpstub` and
+  `internal/platform/httpserver/hbil24` all green.
+- `gh run list --limit 3` (this session `gh` WAS reachable, unlike some
+  prior sessions' documented sandbox limitation): three most recent CI
+  runs on `master` all `completed`/`success`, latest being the #458
+  progress-note commit — confirms CI is green at HEAD, matching the local
+  gate re-run.
+- Working tree at finish: clean except the same pre-existing out-of-scope
+  AutoForge noise every prior session has left untouched
+  (`.autoforge/prompts/coding_prompt.md`, `.claude/scheduled_tasks.lock`,
+  untracked `features.db`).
+
+No drift found, no fixes needed, no code commit for this pass (only this
+progress note). Feature #469 marked passing. Feature stats now 522/522
+(100%) — **W1 wave complete**: no more epic-verify wrappers remain ready
+or blocked.
