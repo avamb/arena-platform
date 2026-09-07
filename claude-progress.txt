@@ -30051,3 +30051,90 @@ drift found, nothing to fix or file:
   the known in-flight W1-B1/B2/D epic-verify chain (#457, #458, #469)
   and their not-yet-implemented sub-features (#493, #494, #495, #496) —
   normal in-progress wave state, not integration defects.
+
+## 2026-09-07 — Feature #494 (W1-B2a): PAY_ORDER with hold reacquire,
+## manual_review and synchronous issuance
+
+Spec §7.9. Handler `internal/platform/httpserver/hbil24/cmd_order_pay.go`
+plus goldens `tests/compat/bil24/testdata/wp/golden/PAY_ORDER/{basic,
+repeat,expired_reacquired,expired_manual_review}.json` and the un-skipped
+harness scenario 5 (`scenario05_pay_order_test.go`).
+
+Implemented:
+- Order lookup by `orders.system_id` inside channel scope (`-3` when out
+  of scope); `paid` → `0` idempotent; `cancelled`/`refunded` → `101`.
+- Live hold → straight to the payment tx. Expired hold → `ReacquireHold`
+  on the same seats/units: success writes `order_events.hold_reacquired`;
+  failure moves order AND checkout_session to `manual_review`, writes
+  `order_events.hold_expired`, raises the operator alert (audit row +
+  `error` log) and answers `101 bil24.hold_expired`. Only `101` is ever
+  returned after the payment point.
+- `amount` mismatch is NON-blocking: it records
+  `order_events.amount_mismatch` and continues.
+- One transaction: `payment_intents` (provider `manual`,
+  `provider_payment_id = wc:<external_ref>:<method>`, state `succeeded`),
+  `checkout_sessions → completed`, reservation → `converted`, promo
+  redemption, `orders.status = paid` + `paid_at` + `payment_method`,
+  `customer_org_links` upsert, `customer_identities.verified_at`.
+- After commit: SYNCHRONOUS `htickets.IssueTicketsForCheckout` with
+  `holder_email = orders.buyer_email`, then EAN-13 barcodes (§11) and the
+  `v1.order.paid` outbox event (§9.1). The `checkout.issue_tickets` job is
+  still enqueued as insurance. No arena delivery e-mails for gateway
+  orders.
+
+Two real defects the new scenario surfaced and this pass fixed:
+1. **Best-effort writes were poisoning the payment transaction.**
+   `payLinkCustomer` passed `ordering.SourceBil24Gateway`
+   ("bil24_gateway") but `customer_org_links.source` is CHECK-constrained
+   to ('order','import') by migration 0091. The 23514 was logged and
+   swallowed — but a failed statement aborts the enclosing pgx tx, so the
+   subsequent COMMIT came back 25P02 "commit unexpectedly resulted in
+   rollback" and the customer's payment silently vanished behind a
+   generic `-1`. Fixed the value (`payCustomerLinkSource = "order"`) AND
+   added `payBestEffort`, a pgx nested-transaction (SAVEPOINT) wrapper now
+   used for every non-critical section (amount reconciliation, promo
+   redemption, customer linking, issuance-insurance job). Those helpers
+   now RETURN their error instead of logging-and-swallowing, so the
+   savepoint rolls back just that section. General lesson worth
+   remembering: inside a money transaction, "best effort" is only safe
+   behind a SAVEPOINT.
+2. **A money-unit conversion that does not apply to this gateway.**
+   `payRecordAmountMismatch` computed `expected := float64(order.Total) /
+   100`, flagging every correct payment (`reported=525 expected=5.25`).
+   The Bil24 compat wire carries order money in the SAME units as
+   `orders.total` — `cmd_order_create.go` answers `totalSum: order.Total`
+   verbatim — so there is no minor-unit conversion anywhere in this
+   gateway. Division removed, doc comments corrected.
+
+Test/harness work:
+- Scenario 5 is the only scenario that SELLS seats, permanently consuming
+  them from the shared seeded session. It originally took `labels[0..2]`,
+  which starved scenario 6's reservation and made it fail with `-99` once
+  scenario 5 was un-skipped. Moved to the tail labels (len-2..len-4),
+  leaving len-1 to the scenario 4 refund flow.
+- `payment_intents_provider_payment_id` is a GLOBAL unique index
+  (migration 0025), unscoped by org — a fixed `wc:1001:...` literal
+  collides with leftovers from any prior interrupted run against the
+  shared dev stand. Shop order refs are now suffixed with a per-run
+  random tag, per the AGENTS.md convention about global-unique columns.
+  Had to hand-delete the stale rows left by the earlier broken run.
+- `cleanupHarnessWireRows` gained barcodes → `order_items.ticket_id =
+  NULL` → tickets → payment_intents sweeps ahead of the existing
+  orders → checkout_sessions → reservations order, otherwise the new
+  issuance rows deadlock teardown on four different FKs. Verified zero
+  cleanup-failure log lines afterwards.
+
+Gates, all green: `go build ./...` EXIT:0; `go vet -tags integration
+./apps/backend/...` EXIT:0; `gofmt -l` empty on every changed file
+(including the integration-tagged ones, which lint skips); focused
+httpserver/staticanalysis/migrations packages EXIT:0; full `go test
+./...` EXIT:0 (redirected to a file, not judged through a pipeline);
+golangci-lint "0 issues." EXIT:0; and the live integration run against
+the local stand with `05_expired_hold_on_pay_order` PASS,
+`06_one_open_order_rule` PASS, every other harness scenario PASS and
+`TestCompatBil24_494_PayOrderGoldensExist` PASS.
+
+Committed as 5a2b8af, 23 files, +1746/-4. Working tree left with only
+the same pre-existing out-of-scope AutoForge noise
+(`.autoforge/prompts/coding_prompt.md`, deleted
+`.claude/scheduled_tasks.lock`, untracked `features.db`).
