@@ -4,13 +4,12 @@
   "command": "GET_ORDER_INFO",
   "order": {
     "id": "{{orderId}}",
-    "status": "NEW",
+    "status": "pending_payment",
     "currency": "CZK",
     "sum": 500,
     "discount": 0,
-    "charge": 0,
-    "totalSum": 500,
-    "ticketQuantity": 1,
-    "expiration": "{{now+ttl}}"
+    "charge": 25,
+    "totalSum": 525,
+    "ticketQuantity": 0
   }
 }

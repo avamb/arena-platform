@@ -5,19 +5,40 @@
 package hbil24
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
+// errInvalidOrderInfoID marks a GET_ORDER_INFO orderId that is neither a
+// positive int64 (system_id) nor a parseable UUID (orders.id or
+// checkout_sessions.id) — a protocol error (-2), distinct from a
+// well-formed identifier that simply does not resolve to a row (-3).
+var errInvalidOrderInfoID = errors.New("hbil24: invalid GET_ORDER_INFO orderId")
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET_ORDER_INFO — get checkout session + tickets (GetTicket)
 // ─────────────────────────────────────────────────────────────────────────────
+
+// bil24ErrorWithUserMessage constructs an error response like bil24Error but
+// additionally carries a `userMessage` field duplicating the description, per
+// spec §7.8: GET_ORDER_INFO error responses must include a user-facing
+// message alongside the machine-readable description/resultCode so the
+// legacy WordPress plugin can surface it without its own message table.
+func bil24ErrorWithUserMessage(command string, code int, description string) bil24Response {
+	resp := bil24Error(command, code, description)
+	resp.Data = map[string]any{"userMessage": description}
+	return resp
+}
 
 // handleBil24GetOrderInfo maps GET_ORDER_INFO to the platform checkout session
 // and its associated tickets.
@@ -67,17 +88,8 @@ import (
 //     slice, but the value is still checkout_sessions.state verbatim.
 func (h *Handler) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request, req bil24Request) {
 	if h.checkoutQueries == nil {
-		writeBil24JSON(w, http.StatusOK, bil24Error(
+		writeBil24JSON(w, http.StatusOK, bil24ErrorWithUserMessage(
 			req.Command, ResultCodeInternalError, "order service unavailable",
-		))
-		return
-	}
-
-	orderID, err := TranslateLegacyID(req.OrderID)
-	if err != nil {
-		writeBil24JSON(w, http.StatusOK, bil24Error(
-			req.Command, ResultCodeInvalidRequest,
-			"orderId must be a valid order identifier",
 		))
 		return
 	}
@@ -89,10 +101,31 @@ func (h *Handler) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Feature #493 (W1-B1c, spec §7.8): once the orders aggregate table
+	// (feature #486/#492) is wired, GET_ORDER_INFO must understand every
+	// orderId shape CREATE_ORDER_EXT has ever emitted — the bigint
+	// system_id, the orders.id UUID, and the legacy checkout_sessions.id
+	// UUID — not just the pre-#486 checkout_sessions-only identifier space.
+	// Unwired deployments/tests (see regression_158_test.go's
+	// buildCompatServer) fall through unchanged to the legacy path below.
+	if h.orderDeps.Q != nil {
+		h.handleBil24GetOrderInfoFromOrder(w, r, req, channel, authed)
+		return
+	}
+
+	orderID, err := TranslateLegacyID(req.OrderID)
+	if err != nil {
+		writeBil24JSON(w, http.StatusOK, bil24ErrorWithUserMessage(
+			req.Command, ResultCodeInvalidRequest,
+			"orderId must be a valid order identifier",
+		))
+		return
+	}
+
 	cs, err := h.checkoutQueries.GetCheckoutSessionByID(r.Context(), orderID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeBil24JSON(w, http.StatusOK, bil24Error(
+			writeBil24JSON(w, http.StatusOK, bil24ErrorWithUserMessage(
 				req.Command, ResultCodeNotFound, "order not found",
 			))
 			return
@@ -101,7 +134,7 @@ func (h *Handler) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request
 			slog.String("order_id", orderID.String()),
 			slog.String("error", err.Error()),
 		)
-		writeBil24JSON(w, http.StatusOK, bil24Error(
+		writeBil24JSON(w, http.StatusOK, bil24ErrorWithUserMessage(
 			req.Command, ResultCodeInternalError, "failed to retrieve order",
 		))
 		return
@@ -116,7 +149,7 @@ func (h *Handler) handleBil24GetOrderInfo(w http.ResponseWriter, r *http.Request
 			slog.String("channel_org", channel.OrgID.String()),
 			slog.String("order_org", cs.OrgID.String()),
 		)
-		writeBil24JSON(w, http.StatusOK, bil24Error(
+		writeBil24JSON(w, http.StatusOK, bil24ErrorWithUserMessage(
 			req.Command, ResultCodeNotFound,
 			"order not found in this channel's organization",
 		))
@@ -214,6 +247,134 @@ func buildGetOrderInfoBody(cs gen.CheckoutSessionRow, ticketQuantity int) map[st
 		order["currency"] = currency
 	}
 	return order
+}
+
+// handleBil24GetOrderInfoFromOrder answers GET_ORDER_INFO from the orders
+// aggregate table (feature #486/#492) once orderDeps is wired. It resolves
+// the orderId in any of the three shapes the gateway has ever emitted
+// (system_id, orders.id, checkout_sessions.id — see resolveOrderInfoOrder),
+// re-derives the linked checkout session to reuse the unchanged
+// encodeOrderHeaderForWire path (feature #505) when tickets have been
+// issued, and otherwise falls back to a pure orders-row projection.
+func (h *Handler) handleBil24GetOrderInfoFromOrder(
+	w http.ResponseWriter, r *http.Request, req bil24Request,
+	channel gen.SalesChannelRow, authed bool,
+) {
+	order, err := h.resolveOrderInfoOrder(r.Context(), req.OrderID, channel, authed)
+	if err != nil {
+		switch {
+		case errors.Is(err, errInvalidOrderInfoID):
+			writeBil24JSON(w, http.StatusOK, bil24ErrorWithUserMessage(
+				req.Command, ResultCodeInvalidRequest,
+				"orderId must be a valid order identifier",
+			))
+		case errors.Is(err, pgx.ErrNoRows):
+			writeBil24JSON(w, http.StatusOK, bil24ErrorWithUserMessage(
+				req.Command, ResultCodeNotFound, "order not found",
+			))
+		default:
+			h.logger.Error("bil24_compat: GET_ORDER_INFO: fetch order failed",
+				slog.String("order_id", req.OrderID),
+				slog.String("error", err.Error()),
+			)
+			writeBil24JSON(w, http.StatusOK, bil24ErrorWithUserMessage(
+				req.Command, ResultCodeInternalError, "failed to retrieve order",
+			))
+		}
+		return
+	}
+
+	// Defense-in-depth: the checkout_session_id fallback inside
+	// resolveOrderInfoOrder is unscoped, so re-check the org here too,
+	// exactly mirroring the pre-#493 cross-tenant guard below.
+	if authed && order.OrgID != channel.OrgID {
+		h.logger.Warn("bil24_compat: GET_ORDER_INFO: cross-tenant order access rejected",
+			slog.String("order_id", order.ID.String()),
+			slog.String("channel_org", channel.OrgID.String()),
+			slog.String("order_org", order.OrgID.String()),
+		)
+		writeBil24JSON(w, http.StatusOK, bil24ErrorWithUserMessage(
+			req.Command, ResultCodeNotFound,
+			"order not found in this channel's organization",
+		))
+		return
+	}
+
+	ticketQuantity := 0
+	if cs, cerr := h.checkoutQueries.GetCheckoutSessionByID(r.Context(), order.CheckoutSessionID); cerr == nil {
+		if wireOrder, ok := h.encodeOrderHeaderForWire(r.Context(), cs, channel); ok {
+			writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
+				"order": wireOrder,
+			}))
+			return
+		}
+		if h.ticketQueries != nil {
+			if tickets, terr := h.ticketQueries.ListTicketsByCheckoutSession(r.Context(), order.CheckoutSessionID); terr == nil {
+				ticketQuantity = len(tickets)
+			}
+		}
+	}
+
+	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
+		"order": buildGetOrderInfoBodyFromOrder(order, ticketQuantity),
+	}))
+}
+
+// resolveOrderInfoOrder mirrors payResolveOrder (cmd_order_pay.go, feature
+// #494): the gateway has, over its lifetime, emitted an orderId as a bigint
+// system_id, an orders.id UUID and (pre-#486) a checkout_sessions.id UUID,
+// and a caller echoing whatever we gave it must not be punished for our own
+// transitional format. Unlike PAY_ORDER, GET_ORDER_INFO may be called
+// unauthenticated (requireToken=false dev mode), so org-scoping is applied
+// only when authed — the caller's org is not yet known otherwise.
+func (h *Handler) resolveOrderInfoOrder(
+	ctx context.Context, raw string, channel gen.SalesChannelRow, authed bool,
+) (gen.OrderRow, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return gen.OrderRow{}, errInvalidOrderInfoID
+	}
+
+	if sysID, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		return h.orderDeps.Q.GetOrderBySystemID(ctx, sysID)
+	}
+
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return gen.OrderRow{}, errInvalidOrderInfoID
+	}
+
+	if authed {
+		order, oerr := h.orderDeps.Q.GetOrderByID(ctx, id, channel.OrgID)
+		if oerr == nil {
+			return order, nil
+		}
+		if !errors.Is(oerr, pgx.ErrNoRows) {
+			return gen.OrderRow{}, oerr
+		}
+	}
+	// Older gateway answers, and the unauthenticated (dev-mode) path, exposed
+	// the checkout session id as orderId. The result is org-checked by the
+	// caller (handleBil24GetOrderInfoFromOrder) once authed is known.
+	return h.orderDeps.Q.GetOrderByCheckoutSession(ctx, id)
+}
+
+// buildGetOrderInfoBodyFromOrder projects an orders-table row + ticket count
+// into the spec §7.8 / §9.3 `order` object body (feature #493, W1-B1c). All
+// financial/currency columns on orders are NOT NULL, unlike the pre-#486
+// checkout_sessions projection in buildGetOrderInfoBody, so no nil guards
+// are needed here.
+func buildGetOrderInfoBodyFromOrder(order gen.OrderRow, ticketQuantity int) map[string]any {
+	return map[string]any{
+		"id":             TranslatePlatformID(order.ID),
+		"status":         order.Status,
+		"sum":            order.Subtotal,
+		"discount":       order.Discount,
+		"charge":         order.Charge,
+		"totalSum":       order.Total,
+		"currency":       order.Currency,
+		"ticketQuantity": ticketQuantity,
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
