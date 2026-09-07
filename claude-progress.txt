@@ -30269,3 +30269,59 @@ or file:
   filed. Feature stats: 520/522 passing, 0 in progress; the 2 remaining
   are epic-verify wrappers (#458 W1-B2, ready to claim; #469 W1-D, blocked
   on #458) — normal in-progress wave state, not integration defects.
+
+## Feature #458 (W1-B2 EPIC-VERIFY): PAY_ORDER, GET_TICKETS_BY_ORDER,
+## SEND_TICKETS_TO_EMAIL, CANCEL_RESERVATION, CANCEL_ORDER — 2026-09-07
+
+Verification-only epic per its description; sub-features #494 (PAY_ORDER),
+#495 (GET_TICKETS_BY_ORDER/SEND_TICKETS_TO_EMAIL) and #496 (CANCEL_
+RESERVATION/CANCEL_ORDER) plus epic #457 were already `passes:true`. HEAD
+at claim time (66baf6e) was exactly the commit where a prior session's
+integrator pass had already run the full gate suite post-#496 and found
+zero drift — re-ran everything fresh in this session to confirm, no code
+changes required:
+
+- `go.exe build ./apps/backend/...` EXIT:0; `go.exe vet ./apps/backend/...`
+  EXIT:0.
+- Focused packages (`hbil24`, `bil24compat`, `tests/compat/bil24`,
+  `tests/staticanalysis`, `internal/migrations`), untagged: 6 `ok`, 0 FAIL,
+  EXIT:0.
+- `gofmt -l` on `apps/backend/{cmd,internal,tests,tools}`: empty.
+- Full `go.exe test ./apps/backend/...` (redirected to a file, exit code
+  read from the file, never judged through a pipeline): 75 `ok`, 0 FAIL,
+  EXIT:0.
+- golangci-lint v2 (`GOLANGCI_LINT_CACHE=/tmp/golangci-cache`, `@latest`
+  pin) `run ./apps/backend/...`: "0 issues."
+- Codegen drift check: `openapi30gen` (`apps/backend/openapi/openapi.yaml`)
+  → `oapi-codegen@v2.4.1` → zero diff against committed `types_gen.go`;
+  `node scripts/gen-ts-client.mjs` → zero diff against committed
+  `openapi/clients/ts/index.d.ts`; temp `.compat30.gen.yaml` removed after.
+- Migration head pin: `0098_customer_imports.sql` still both the actual
+  highest-numbered file and `TestHead_KnownCurrentHead`'s expectation — no
+  drift.
+- `npm --prefix apps/admin-web run type-check` EXIT:0; `run test -- --run`
+  — 46/46 files, 1189/1189 tests, EXIT:0; `run build` EXIT:0 (routine
+  >500kB chunk advisory only).
+- Live integration run against the local Docker Postgres stand (port
+  55432, `arena`/`arena`), `-tags integration -count=1 -p 1` (serialized
+  per AGENTS.md convention): 76 `ok` package lines, 0 FAIL/panic, EXIT:0.
+- Isolated re-run of `TestCompatBil24_450_Harness_Scenarios` (`-v`):
+  confirmed scenario `02_ga_purchase_flow` and `05_expired_hold_on_pay_order`
+  (the two named in the epic's done-criteria) both ran to completion inside
+  an overall `--- PASS`, alongside all other scenarios (01, 03, 04, 06-10).
+- All named golden fixtures present on disk: `PAY_ORDER/{basic,
+  expired_manual_review,expired_reacquired,repeat}.json`,
+  `GET_TICKETS_BY_ORDER/{basic,before_issuance}.json`,
+  `SEND_TICKETS_TO_EMAIL/basic.json`, `CANCEL_RESERVATION/{basic,
+  unknown}.json`, `CANCEL_ORDER/{basic,paid}.json`.
+- `gh` unavailable in this sandbox (documented recurring limitation,
+  confirmed again this pass) — could not watch the live CI run; relied on
+  the exhaustive local gate re-run instead, matching every prior
+  epic-verify session's approach.
+
+No drift found, no fixes needed, no code commit for this pass (only this
+progress note; working tree otherwise unchanged apart from the same
+pre-existing out-of-scope AutoForge noise every prior session has left
+untouched: `.autoforge/prompts/coding_prompt.md`,
+`.claude/scheduled_tasks.lock`, untracked `features.db`). Feature #458
+marked passing. Next ready epic-verify: #469 (W1-D), now unblocked.
