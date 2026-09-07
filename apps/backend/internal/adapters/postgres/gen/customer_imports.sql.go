@@ -55,6 +55,30 @@ func scanCustomerImportRow(row interface {
 	return r, err
 }
 
+const insertCustomerImport = `-- name: InsertCustomerImport :one
+INSERT INTO customer_imports
+    (org_id, source_label, file_media_id, mapping, legal_basis, status, created_by)
+VALUES ($1, $2, $3, $4::jsonb, $5, 'uploaded', $6)
+RETURNING id, org_id, source_label, file_media_id, mapping, legal_basis,
+          status, dry_run_report, apply_report, created_by, created_at, updated_at`
+
+// InsertCustomerImport creates a customer_imports row for POST
+// /v1/admin/customer-imports (feature #520, W1-C7b). Status always starts
+// at 'uploaded' (migration 0098's customer_imports_status_check).
+func (q *Queries) InsertCustomerImport(
+	ctx context.Context,
+	orgID *uuid.UUID,
+	sourceLabel string,
+	fileMediaID uuid.UUID,
+	mappingJSON []byte,
+	legalBasis string,
+	createdBy uuid.UUID,
+) (CustomerImportRow, error) {
+	row := q.db.QueryRow(ctx, insertCustomerImport,
+		orgID, sourceLabel, fileMediaID, mappingJSON, legalBasis, createdBy)
+	return scanCustomerImportRow(row)
+}
+
 const getCustomerImportByID = `-- name: GetCustomerImportByID :one
 SELECT id, org_id, source_label, file_media_id, mapping, legal_basis,
        status, dry_run_report, apply_report, created_by, created_at, updated_at
@@ -202,6 +226,37 @@ WHERE  import_id = $1
 func (q *Queries) GetCustomerImportRowByHash(ctx context.Context, importID uuid.UUID, rowHash string) (CustomerImportRowRow, error) {
 	row := q.db.QueryRow(ctx, getCustomerImportRowByHash, importID, rowHash)
 	return scanCustomerImportRowRow(row)
+}
+
+const listCustomerImportRows = `-- name: ListCustomerImportRows :many
+SELECT id, import_id, row_no, row_hash, raw, resolved_customer_id, org_id,
+       action, reason, created_at
+FROM   customer_import_rows
+WHERE  import_id = $1
+  AND  ($2::text = '' OR action = $2::text)
+ORDER BY row_no`
+
+// ListCustomerImportRows lists customer_import_rows for GET
+// /v1/admin/customer-imports/{id}/rows, optionally filtered by action. Pass
+// an empty string for actionFilter to list every row regardless of action.
+func (q *Queries) ListCustomerImportRows(ctx context.Context, importID uuid.UUID, actionFilter string) ([]CustomerImportRowRow, error) {
+	rows, err := q.db.Query(ctx, listCustomerImportRows, importID, actionFilter)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CustomerImportRowRow
+	for rows.Next() {
+		r, scanErr := scanCustomerImportRowRow(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

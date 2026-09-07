@@ -1359,6 +1359,190 @@ components:
           type: integer
           description: Applied page offset.
 
+    CreateCustomerImportRequest:
+      type: object
+      required: [source_label, file_media_id, legal_basis]
+      description: |
+        Registers a customer_imports row referencing an already-uploaded
+        file (POST /v1/media). Dry-run/apply are triggered by the dedicated
+        endpoints below (feature #520, W1-C7b, spec §12.4).
+      properties:
+        org_id:
+          type: [string, "null"]
+          format: uuid
+          description: Organization the imported customers/orders belong to. Omit for a platform-wide import.
+          example: "01900000-0000-7000-8000-000000000010"
+        source_label:
+          type: string
+          enum:
+            - bil24_orders_json
+            - wc_customers_csv
+            - gsheets_csv
+            - brevo_csv
+            - generic_csv
+          description: Source format of the uploaded file, selecting the parser used by dry-run/apply.
+        file_media_id:
+          type: string
+          format: uuid
+          description: media_objects.id of the already-uploaded import file.
+        mapping:
+          type: object
+          description: Optional column/field mapping overrides consumed by the parser. Defaults to {} when omitted.
+          additionalProperties: true
+        legal_basis:
+          type: string
+          enum:
+            - organizer_contract
+            - legitimate_interest
+            - explicit_consent
+          description: GDPR legal basis recorded for this import (migration 0098 customer_imports_legal_basis_check).
+
+    CustomerImport:
+      type: object
+      required: [id, source_label, file_media_id, mapping, legal_basis, status, dry_run_report, apply_report, created_by, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: customer_imports.id.
+        org_id:
+          type: [string, "null"]
+          format: uuid
+          description: Organization the import is scoped to, when set.
+        source_label:
+          type: string
+          description: Source format of the uploaded file.
+        file_media_id:
+          type: string
+          format: uuid
+          description: media_objects.id of the uploaded import file.
+        mapping:
+          type: object
+          description: Column/field mapping overrides used by the parser.
+          additionalProperties: true
+        legal_basis:
+          type: string
+          description: GDPR legal basis recorded for this import.
+        status:
+          type: string
+          enum:
+            - uploaded
+            - dry_run_running
+            - dry_run_done
+            - applying
+            - applied
+            - failed
+          description: Current lifecycle state (migration 0098 customer_imports_status_check).
+        dry_run_report:
+          type: [object, "null"]
+          description: Most recent dry-run CustomerImportReport, when one has been run.
+          additionalProperties: true
+        apply_report:
+          type: [object, "null"]
+          description: Most recent apply CustomerImportReport, when one has been run.
+          additionalProperties: true
+        created_by:
+          type: string
+          format: uuid
+          description: users.id of the operator who registered the import.
+        created_at:
+          type: string
+          format: date-time
+          description: Row creation timestamp.
+        updated_at:
+          type: string
+          format: date-time
+          description: Last status/report update timestamp.
+
+    CustomerImportReport:
+      type: object
+      required: [rows, created, matched, merge_candidates, skipped, by_org, errors]
+      description: |
+        Result of running customerimport.RunImport in dry_run or apply mode
+        (feature #519). dry_run mode never writes customer_import_rows; the
+        counts reflect what apply would do.
+      properties:
+        rows:
+          type: integer
+          description: Total rows parsed from the source file.
+        created:
+          type: integer
+          description: Rows that would create (dry_run) or created (apply) a new customer.
+        matched:
+          type: integer
+          description: Rows matched to an existing customer.
+        merge_candidates:
+          type: integer
+          description: Rows flagged as a possible duplicate needing manual review.
+        skipped:
+          type: integer
+          description: Rows skipped (invalid or unresolvable).
+        by_org:
+          type: object
+          description: Row counts keyed by resolved organization id.
+          additionalProperties:
+            type: integer
+        errors:
+          type: array
+          description: Non-fatal row-level error messages encountered while parsing/resolving.
+          items:
+            type: string
+
+    CustomerImportRow:
+      type: object
+      required: [id, import_id, row_no, row_hash, resolved_customer_id, org_id, action, reason, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: customer_import_rows.id.
+        import_id:
+          type: string
+          format: uuid
+          description: Parent customer_imports.id.
+        row_no:
+          type: integer
+          description: 1-based row number within the source file.
+        row_hash:
+          type: string
+          description: Content hash used for the UNIQUE(import_id, row_hash) idempotency guard.
+        resolved_customer_id:
+          type: [string, "null"]
+          format: uuid
+          description: customers.id the row resolved to, when applicable.
+        org_id:
+          type: [string, "null"]
+          format: uuid
+          description: Organization the resolved customer link belongs to, when applicable.
+        action:
+          type: [string, "null"]
+          enum:
+            - created
+            - matched
+            - merge_candidate
+            - skipped
+          description: Outcome recorded for this row (migration 0098 customer_import_rows_action_check).
+        reason:
+          type: [string, "null"]
+          description: Human-readable explanation for the recorded action.
+        created_at:
+          type: string
+          format: date-time
+          description: Row creation timestamp.
+
+    CustomerImportRowsResponse:
+      type: object
+      required: [rows, total]
+      properties:
+        rows:
+          type: array
+          description: Matching customer_import_rows.
+          items:
+            $ref: "#/components/schemas/CustomerImportRow"
+        total:
+          type: integer
+          description: Number of rows returned (post-filter).
+
     AuthVerifyResponse:
       type: object
       required: [user_id, email, email_verified_at, message]
@@ -10609,6 +10793,351 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or user provisioning dependencies not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/customer-imports:
+    post:
+      operationId: postV1AdminCustomerImports
+      summary: Admin - register a customer/order import
+      description: |
+        Records a customer_imports row referencing an already-uploaded
+        file_media_id. Registration alone does not parse the file — call
+        the dry-run or apply endpoints below to run
+        customerimport.RunImport synchronously (feature #519/#520, W1-C7b,
+        spec §12.4). Requires JWT, superadmin.read, and X-Admin-Reason.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the admin write (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCustomerImportRequest"
+      responses:
+        "201":
+          description: Customer import registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerImport"
+        "400":
+          description: Missing reason, invalid body, or invalid source_label/legal_basis/file_media_id/org_id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold superadmin.read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: org_id or file_media_id does not reference an existing row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/customer-imports/{id}:
+    get:
+      operationId: getV1AdminCustomerImportsId
+      summary: Admin - get a customer import
+      description: Loads a single customer_imports row, including its latest dry-run/apply reports. Requires JWT, superadmin.read, and X-Admin-Reason.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: customer_imports.id.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for cross-tenant access.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: The customer import.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerImport"
+        "400":
+          description: Missing X-Admin-Reason or invalid id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold superadmin.read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No customer import with this id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/customer-imports/{id}/dry-run:
+    post:
+      operationId: postV1AdminCustomerImportsIdDryRun
+      summary: Admin - dry-run a customer import
+      description: |
+        Runs customerimport.RunImport in dry_run mode synchronously against
+        the uploaded file and returns the resulting CustomerImportReport.
+        dry_run mode never writes customer_import_rows (feature #519).
+        Requires JWT, superadmin.read, and X-Admin-Reason.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: customer_imports.id.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the admin write (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Dry-run completed; report reflects what apply would do.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerImportReport"
+        "400":
+          description: Missing X-Admin-Reason or invalid id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold superadmin.read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No customer import with this id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The import file could not be parsed or resolved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database or media storage not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/customer-imports/{id}/apply:
+    post:
+      operationId: postV1AdminCustomerImportsIdApply
+      summary: Admin - apply a customer import
+      description: |
+        Runs customerimport.RunImport in apply mode synchronously, writing
+        customer_import_rows and creating/linking customers, and returns the
+        resulting CustomerImportReport. Idempotent at the database level via
+        UNIQUE(import_id, row_hash) — re-applying the same file reports
+        already-applied rows by their previously recorded action rather
+        than re-running resolution (feature #519). Requires JWT,
+        superadmin.read, and X-Admin-Reason.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: customer_imports.id.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the admin write (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Apply completed; report reflects the rows written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerImportReport"
+        "400":
+          description: Missing X-Admin-Reason or invalid id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold superadmin.read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No customer import with this id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The import file could not be parsed or resolved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database or media storage not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/customer-imports/{id}/rows:
+    get:
+      operationId: getV1AdminCustomerImportsIdRows
+      summary: Admin - list customer import rows
+      description: |
+        Lists customer_import_rows for a customer import, optionally
+        filtered by outcome via ?action=. 404s if the parent import does not
+        exist. Requires JWT, superadmin.read, and X-Admin-Reason.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: customer_imports.id.
+          schema:
+            type: string
+            format: uuid
+        - name: action
+          in: query
+          description: Optional row outcome filter.
+          schema:
+            type: string
+            enum:
+              - created
+              - matched
+              - merge_candidate
+              - skipped
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for cross-tenant access.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Matching rows.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerImportRowsResponse"
+        "400":
+          description: Missing X-Admin-Reason, invalid id, or invalid action.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold superadmin.read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No customer import with this id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
           content:
             application/json:
               schema:

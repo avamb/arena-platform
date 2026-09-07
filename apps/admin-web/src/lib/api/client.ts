@@ -41,6 +41,8 @@ import type {
   AuthLogoutRequest,
   AuthRefreshRequest,
   AuthRefreshResponse,
+  CreateCustomerImportRequest,
+  CustomerImport,
   ErrorEnvelope,
   MeResponse,
 } from "@/lib/api/types";
@@ -296,6 +298,17 @@ export async function createAdminUser(
   return authedFetch<AdminCreateUserResponse>({
     method: "POST",
     path: "/v1/admin/users",
+    body: req,
+  });
+}
+
+/** POST /v1/admin/customer-imports (feature #520, W1-C7b). */
+export async function createCustomerImport(
+  req: CreateCustomerImportRequest,
+): Promise<CustomerImport> {
+  return authedFetch<CustomerImport>({
+    method: "POST",
+    path: "/v1/admin/customer-imports",
     body: req,
   });
 }

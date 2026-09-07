@@ -10,6 +10,17 @@
 -- aggregate introduced by migration 0091 with writes the apply path needs
 -- that no earlier feature required.
 
+-- name: InsertCustomerImport :one
+-- Creates a customer_imports row for POST /v1/admin/customer-imports
+-- (feature #520, W1-C7b). Status always starts at 'uploaded' (migration
+-- 0098's customer_imports_status_check) — RunImport advances it as the
+-- dry-run/apply flow progresses.
+INSERT INTO customer_imports
+    (org_id, source_label, file_media_id, mapping, legal_basis, status, created_by)
+VALUES ($1, $2, $3, $4::jsonb, $5, 'uploaded', $6)
+RETURNING id, org_id, source_label, file_media_id, mapping, legal_basis,
+          status, dry_run_report, apply_report, created_by, created_at, updated_at;
+
 -- name: GetCustomerImportByID :one
 -- Loads a customer_imports row for the job handler. Returns pgx.ErrNoRows
 -- when absent.
@@ -75,6 +86,18 @@ SELECT id, import_id, row_no, row_hash, raw, resolved_customer_id, org_id,
 FROM   customer_import_rows
 WHERE  import_id = $1
   AND  row_hash = $2;
+
+-- name: ListCustomerImportRows :many
+-- Lists customer_import_rows for GET /v1/admin/customer-imports/{id}/rows,
+-- optionally filtered by action (sqlc.narg pattern: pass an empty string for
+-- "no filter" since action is nullable and empty is not a valid action
+-- value). Ordered by row_no for stable pagination-free listing.
+SELECT id, import_id, row_no, row_hash, raw, resolved_customer_id, org_id,
+       action, reason, created_at
+FROM   customer_import_rows
+WHERE  import_id = $1
+  AND  ($2::text = '' OR action = $2::text)
+ORDER BY row_no;
 
 -- ─── Customer-aggregate additions the apply path needs (migration 0091) ────
 

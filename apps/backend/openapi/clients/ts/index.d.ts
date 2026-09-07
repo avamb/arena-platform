@@ -355,6 +355,121 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/customer-imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - register a customer/order import
+         * @description Records a customer_imports row referencing an already-uploaded
+         *     file_media_id. Registration alone does not parse the file — call
+         *     the dry-run or apply endpoints below to run
+         *     customerimport.RunImport synchronously (feature #519/#520, W1-C7b,
+         *     spec §12.4). Requires JWT, superadmin.read, and X-Admin-Reason.
+         */
+        post: operations["postV1AdminCustomerImports"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/customer-imports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - get a customer import
+         * @description Loads a single customer_imports row, including its latest dry-run/apply reports. Requires JWT, superadmin.read, and X-Admin-Reason.
+         */
+        get: operations["getV1AdminCustomerImportsId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/customer-imports/{id}/dry-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - dry-run a customer import
+         * @description Runs customerimport.RunImport in dry_run mode synchronously against
+         *     the uploaded file and returns the resulting CustomerImportReport.
+         *     dry_run mode never writes customer_import_rows (feature #519).
+         *     Requires JWT, superadmin.read, and X-Admin-Reason.
+         */
+        post: operations["postV1AdminCustomerImportsIdDryRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/customer-imports/{id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - apply a customer import
+         * @description Runs customerimport.RunImport in apply mode synchronously, writing
+         *     customer_import_rows and creating/linking customers, and returns the
+         *     resulting CustomerImportReport. Idempotent at the database level via
+         *     UNIQUE(import_id, row_hash) — re-applying the same file reports
+         *     already-applied rows by their previously recorded action rather
+         *     than re-running resolution (feature #519). Requires JWT,
+         *     superadmin.read, and X-Admin-Reason.
+         */
+        post: operations["postV1AdminCustomerImportsIdApply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/customer-imports/{id}/rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - list customer import rows
+         * @description Lists customer_import_rows for a customer import, optionally
+         *     filtered by outcome via ?action=. 404s if the parent import does not
+         *     exist. Requires JWT, superadmin.read, and X-Admin-Reason.
+         */
+        get: operations["getV1AdminCustomerImportsIdRows"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/register": {
         parameters: {
             query?: never;
@@ -6546,6 +6661,157 @@ export interface components {
             limit: number;
             /** @description Applied page offset. */
             offset: number;
+        };
+        /**
+         * @description Registers a customer_imports row referencing an already-uploaded
+         *     file (POST /v1/media). Dry-run/apply are triggered by the dedicated
+         *     endpoints below (feature #520, W1-C7b, spec §12.4).
+         */
+        CreateCustomerImportRequest: {
+            /**
+             * Format: uuid
+             * @description Organization the imported customers/orders belong to. Omit for a platform-wide import.
+             * @example 01900000-0000-7000-8000-000000000010
+             */
+            org_id?: string | null;
+            /**
+             * @description Source format of the uploaded file, selecting the parser used by dry-run/apply.
+             * @enum {string}
+             */
+            source_label: "bil24_orders_json" | "wc_customers_csv" | "gsheets_csv" | "brevo_csv" | "generic_csv";
+            /**
+             * Format: uuid
+             * @description media_objects.id of the already-uploaded import file.
+             */
+            file_media_id: string;
+            /** @description Optional column/field mapping overrides consumed by the parser. Defaults to {} when omitted. */
+            mapping?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description GDPR legal basis recorded for this import (migration 0098 customer_imports_legal_basis_check).
+             * @enum {string}
+             */
+            legal_basis: "organizer_contract" | "legitimate_interest" | "explicit_consent";
+        };
+        CustomerImport: {
+            /**
+             * Format: uuid
+             * @description customer_imports.id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Organization the import is scoped to, when set.
+             */
+            org_id?: string | null;
+            /** @description Source format of the uploaded file. */
+            source_label: string;
+            /**
+             * Format: uuid
+             * @description media_objects.id of the uploaded import file.
+             */
+            file_media_id: string;
+            /** @description Column/field mapping overrides used by the parser. */
+            mapping: {
+                [key: string]: unknown;
+            };
+            /** @description GDPR legal basis recorded for this import. */
+            legal_basis: string;
+            /**
+             * @description Current lifecycle state (migration 0098 customer_imports_status_check).
+             * @enum {string}
+             */
+            status: "uploaded" | "dry_run_running" | "dry_run_done" | "applying" | "applied" | "failed";
+            /** @description Most recent dry-run CustomerImportReport, when one has been run. */
+            dry_run_report: {
+                [key: string]: unknown;
+            } | null;
+            /** @description Most recent apply CustomerImportReport, when one has been run. */
+            apply_report: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Format: uuid
+             * @description users.id of the operator who registered the import.
+             */
+            created_by: string;
+            /**
+             * Format: date-time
+             * @description Row creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Last status/report update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * @description Result of running customerimport.RunImport in dry_run or apply mode
+         *     (feature #519). dry_run mode never writes customer_import_rows; the
+         *     counts reflect what apply would do.
+         */
+        CustomerImportReport: {
+            /** @description Total rows parsed from the source file. */
+            rows: number;
+            /** @description Rows that would create (dry_run) or created (apply) a new customer. */
+            created: number;
+            /** @description Rows matched to an existing customer. */
+            matched: number;
+            /** @description Rows flagged as a possible duplicate needing manual review. */
+            merge_candidates: number;
+            /** @description Rows skipped (invalid or unresolvable). */
+            skipped: number;
+            /** @description Row counts keyed by resolved organization id. */
+            by_org: {
+                [key: string]: number;
+            };
+            /** @description Non-fatal row-level error messages encountered while parsing/resolving. */
+            errors: string[];
+        };
+        CustomerImportRow: {
+            /**
+             * Format: uuid
+             * @description customer_import_rows.id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Parent customer_imports.id.
+             */
+            import_id: string;
+            /** @description 1-based row number within the source file. */
+            row_no: number;
+            /** @description Content hash used for the UNIQUE(import_id, row_hash) idempotency guard. */
+            row_hash: string;
+            /**
+             * Format: uuid
+             * @description customers.id the row resolved to, when applicable.
+             */
+            resolved_customer_id: string | null;
+            /**
+             * Format: uuid
+             * @description Organization the resolved customer link belongs to, when applicable.
+             */
+            org_id: string | null;
+            /**
+             * @description Outcome recorded for this row (migration 0098 customer_import_rows_action_check).
+             * @enum {string|null}
+             */
+            action: "created" | "matched" | "merge_candidate" | "skipped" | null;
+            /** @description Human-readable explanation for the recorded action. */
+            reason: string | null;
+            /**
+             * Format: date-time
+             * @description Row creation timestamp.
+             */
+            created_at: string;
+        };
+        CustomerImportRowsResponse: {
+            rows: components["schemas"]["CustomerImportRow"][];
+            /** @description Number of rows returned (post-filter). */
+            total: number;
         };
         AuthVerifyResponse: {
             /**
@@ -14706,6 +14972,383 @@ export interface operations {
                 };
             };
             /** @description Database pool or user provisioning dependencies not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminCustomerImports: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the admin write (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCustomerImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Customer import registered. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerImport"];
+                };
+            };
+            /** @description Missing reason, invalid body, or invalid source_label/legal_basis/file_media_id/org_id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold superadmin.read. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description org_id or file_media_id does not reference an existing row. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminCustomerImportsId: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for cross-tenant access. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description customer_imports.id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The customer import. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerImport"];
+                };
+            };
+            /** @description Missing X-Admin-Reason or invalid id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold superadmin.read. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No customer import with this id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminCustomerImportsIdDryRun: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the admin write (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description customer_imports.id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Dry-run completed; report reflects what apply would do. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerImportReport"];
+                };
+            };
+            /** @description Missing X-Admin-Reason or invalid id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold superadmin.read. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No customer import with this id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The import file could not be parsed or resolved. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminCustomerImportsIdApply: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the admin write (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description customer_imports.id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Apply completed; report reflects the rows written. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerImportReport"];
+                };
+            };
+            /** @description Missing X-Admin-Reason or invalid id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold superadmin.read. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No customer import with this id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The import file could not be parsed or resolved. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminCustomerImportsIdRows: {
+        parameters: {
+            query?: {
+                /** @description Optional row outcome filter. */
+                action?: "created" | "matched" | "merge_candidate" | "skipped";
+            };
+            header: {
+                /** @description Human-readable business reason for cross-tenant access. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description customer_imports.id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matching rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerImportRowsResponse"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, invalid id, or invalid action. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold superadmin.read. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No customer import with this id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
             503: {
                 headers: {
                     [name: string]: unknown;

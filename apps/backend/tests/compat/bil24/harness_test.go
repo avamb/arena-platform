@@ -37,6 +37,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,6 +68,13 @@ type harnessState struct {
 	// and use it for the few out-of-band assertions (expiring a gateway
 	// session, minting a compatibility id) that have no wire command.
 	Pool *pgxpool.Pool
+	// Media is the local-storage-backed mediastore.Repo startHarnessServer
+	// wires into httpserver.Options.Media (feature #520, scenario 10): the
+	// customer-imports admin endpoints need it to read the uploaded export
+	// file back out during dry-run/apply, so scenarios that exercise that
+	// surface use this same instance to seed the media_objects row the
+	// import references.
+	Media *mediastore.Repo
 }
 
 // setupHarness reads DATABASE_URL, opens a pgxpool, seeds the fixture via
@@ -609,7 +618,7 @@ func TestCompatBil24_450_Harness_Scenarios(t *testing.T) {
 	})
 
 	t.Run("10_customer_import_c7_dry_run_then_apply", func(t *testing.T) {
-		t.Skip("feature #520: dry-run on bil24_orders_pseudonymized.json → report; apply → idempotent")
+		runScenario10CustomerImport(t, st)
 	})
 }
 

@@ -170,6 +170,7 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
       "observability",
       "geo",
       "webhooks",
+      "customer_imports",
     ]);
   });
 

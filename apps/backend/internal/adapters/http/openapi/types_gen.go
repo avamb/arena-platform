@@ -138,6 +138,22 @@ const (
 	CreateBarcodeAuthorityRequestTypePlatform         CreateBarcodeAuthorityRequestType = "platform"
 )
 
+// Defines values for CreateCustomerImportRequestLegalBasis.
+const (
+	ExplicitConsent    CreateCustomerImportRequestLegalBasis = "explicit_consent"
+	LegitimateInterest CreateCustomerImportRequestLegalBasis = "legitimate_interest"
+	OrganizerContract  CreateCustomerImportRequestLegalBasis = "organizer_contract"
+)
+
+// Defines values for CreateCustomerImportRequestSourceLabel.
+const (
+	Bil24OrdersJson CreateCustomerImportRequestSourceLabel = "bil24_orders_json"
+	BrevoCsv        CreateCustomerImportRequestSourceLabel = "brevo_csv"
+	GenericCsv      CreateCustomerImportRequestSourceLabel = "generic_csv"
+	GsheetsCsv      CreateCustomerImportRequestSourceLabel = "gsheets_csv"
+	WcCustomersCsv  CreateCustomerImportRequestSourceLabel = "wc_customers_csv"
+)
+
 // Defines values for CreateEventRequestStatus.
 const (
 	CreateEventRequestStatusArchived  CreateEventRequestStatus = "archived"
@@ -255,6 +271,24 @@ const (
 	Phone      CustomerIdentityItemKind = "phone"
 	Telegram   CustomerIdentityItemKind = "telegram"
 	WcCustomer CustomerIdentityItemKind = "wc_customer"
+)
+
+// Defines values for CustomerImportStatus.
+const (
+	CustomerImportStatusApplied       CustomerImportStatus = "applied"
+	CustomerImportStatusApplying      CustomerImportStatus = "applying"
+	CustomerImportStatusDryRunDone    CustomerImportStatus = "dry_run_done"
+	CustomerImportStatusDryRunRunning CustomerImportStatus = "dry_run_running"
+	CustomerImportStatusFailed        CustomerImportStatus = "failed"
+	CustomerImportStatusUploaded      CustomerImportStatus = "uploaded"
+)
+
+// Defines values for CustomerImportRowAction.
+const (
+	CustomerImportRowActionCreated        CustomerImportRowAction = "created"
+	CustomerImportRowActionMatched        CustomerImportRowAction = "matched"
+	CustomerImportRowActionMergeCandidate CustomerImportRowAction = "merge_candidate"
+	CustomerImportRowActionSkipped        CustomerImportRowAction = "skipped"
 )
 
 // Defines values for DeliveryJobStatus.
@@ -624,13 +658,13 @@ const (
 
 // Defines values for TransitionPaymentIntentRequestState.
 const (
-	Authorized     TransitionPaymentIntentRequestState = "authorized"
-	Created        TransitionPaymentIntentRequestState = "created"
-	Failed         TransitionPaymentIntentRequestState = "failed"
-	ManualReview   TransitionPaymentIntentRequestState = "manual_review"
-	Processing     TransitionPaymentIntentRequestState = "processing"
-	RequiresAction TransitionPaymentIntentRequestState = "requires_action"
-	Succeeded      TransitionPaymentIntentRequestState = "succeeded"
+	TransitionPaymentIntentRequestStateAuthorized     TransitionPaymentIntentRequestState = "authorized"
+	TransitionPaymentIntentRequestStateCreated        TransitionPaymentIntentRequestState = "created"
+	TransitionPaymentIntentRequestStateFailed         TransitionPaymentIntentRequestState = "failed"
+	TransitionPaymentIntentRequestStateManualReview   TransitionPaymentIntentRequestState = "manual_review"
+	TransitionPaymentIntentRequestStateProcessing     TransitionPaymentIntentRequestState = "processing"
+	TransitionPaymentIntentRequestStateRequiresAction TransitionPaymentIntentRequestState = "requires_action"
+	TransitionPaymentIntentRequestStateSucceeded      TransitionPaymentIntentRequestState = "succeeded"
 )
 
 // Defines values for UpdateEventRequestVisibility.
@@ -738,6 +772,14 @@ const (
 // Defines values for GetBil24SeatingPlanImageParamsType.
 const (
 	GetBil24SeatingPlanImageParamsTypeSeatingPlan GetBil24SeatingPlanImageParamsType = "seatingPlan"
+)
+
+// Defines values for GetV1AdminCustomerImportsIdRowsParamsAction.
+const (
+	GetV1AdminCustomerImportsIdRowsParamsActionCreated        GetV1AdminCustomerImportsIdRowsParamsAction = "created"
+	GetV1AdminCustomerImportsIdRowsParamsActionMatched        GetV1AdminCustomerImportsIdRowsParamsAction = "matched"
+	GetV1AdminCustomerImportsIdRowsParamsActionMergeCandidate GetV1AdminCustomerImportsIdRowsParamsAction = "merge_candidate"
+	GetV1AdminCustomerImportsIdRowsParamsActionSkipped        GetV1AdminCustomerImportsIdRowsParamsAction = "skipped"
 )
 
 // Defines values for ListEventsParamsVisibility.
@@ -2136,6 +2178,32 @@ type CreateBarcodeAuthorityRequest struct {
 // to the `barcode_authorities_type_check` constraint.
 type CreateBarcodeAuthorityRequestType string
 
+// CreateCustomerImportRequest Registers a customer_imports row referencing an already-uploaded
+// file (POST /v1/media). Dry-run/apply are triggered by the dedicated
+// endpoints below (feature #520, W1-C7b, spec §12.4).
+type CreateCustomerImportRequest struct {
+	// FileMediaId media_objects.id of the already-uploaded import file.
+	FileMediaId openapi_types.UUID `json:"file_media_id"`
+
+	// LegalBasis GDPR legal basis recorded for this import (migration 0098 customer_imports_legal_basis_check).
+	LegalBasis CreateCustomerImportRequestLegalBasis `json:"legal_basis"`
+
+	// Mapping Optional column/field mapping overrides consumed by the parser. Defaults to {} when omitted.
+	Mapping *map[string]interface{} `json:"mapping,omitempty"`
+
+	// OrgId Organization the imported customers/orders belong to. Omit for a platform-wide import.
+	OrgId *openapi_types.UUID `json:"org_id"`
+
+	// SourceLabel Source format of the uploaded file, selecting the parser used by dry-run/apply.
+	SourceLabel CreateCustomerImportRequestSourceLabel `json:"source_label"`
+}
+
+// CreateCustomerImportRequestLegalBasis GDPR legal basis recorded for this import (migration 0098 customer_imports_legal_basis_check).
+type CreateCustomerImportRequestLegalBasis string
+
+// CreateCustomerImportRequestSourceLabel Source format of the uploaded file, selecting the parser used by dry-run/apply.
+type CreateCustomerImportRequestSourceLabel string
+
 // CreateEventRequest Create-time payload for POST /v1/organizations/{org_id}/events.
 // The owning organization is taken from the path; the body MUST NOT
 // repeat it. Dates and venue are NOT collected here (AB-36/AB-37):
@@ -2750,6 +2818,115 @@ type CustomerIdentityItem struct {
 
 // CustomerIdentityItemKind Identity kind. Strong kinds are email/phone/telegram; the rest are weak (channel-scoped).
 type CustomerIdentityItemKind string
+
+// CustomerImport defines model for CustomerImport.
+type CustomerImport struct {
+	// ApplyReport Most recent apply CustomerImportReport, when one has been run.
+	ApplyReport *map[string]interface{} `json:"apply_report"`
+
+	// CreatedAt Row creation timestamp.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy users.id of the operator who registered the import.
+	CreatedBy openapi_types.UUID `json:"created_by"`
+
+	// DryRunReport Most recent dry-run CustomerImportReport, when one has been run.
+	DryRunReport *map[string]interface{} `json:"dry_run_report"`
+
+	// FileMediaId media_objects.id of the uploaded import file.
+	FileMediaId openapi_types.UUID `json:"file_media_id"`
+
+	// Id customer_imports.id.
+	Id openapi_types.UUID `json:"id"`
+
+	// LegalBasis GDPR legal basis recorded for this import.
+	LegalBasis string `json:"legal_basis"`
+
+	// Mapping Column/field mapping overrides used by the parser.
+	Mapping map[string]interface{} `json:"mapping"`
+
+	// OrgId Organization the import is scoped to, when set.
+	OrgId *openapi_types.UUID `json:"org_id"`
+
+	// SourceLabel Source format of the uploaded file.
+	SourceLabel string `json:"source_label"`
+
+	// Status Current lifecycle state (migration 0098 customer_imports_status_check).
+	Status CustomerImportStatus `json:"status"`
+
+	// UpdatedAt Last status/report update timestamp.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// CustomerImportStatus Current lifecycle state (migration 0098 customer_imports_status_check).
+type CustomerImportStatus string
+
+// CustomerImportReport Result of running customerimport.RunImport in dry_run or apply mode
+// (feature #519). dry_run mode never writes customer_import_rows; the
+// counts reflect what apply would do.
+type CustomerImportReport struct {
+	// ByOrg Row counts keyed by resolved organization id.
+	ByOrg map[string]int `json:"by_org"`
+
+	// Created Rows that would create (dry_run) or created (apply) a new customer.
+	Created int `json:"created"`
+
+	// Errors Non-fatal row-level error messages encountered while parsing/resolving.
+	Errors []string `json:"errors"`
+
+	// Matched Rows matched to an existing customer.
+	Matched int `json:"matched"`
+
+	// MergeCandidates Rows flagged as a possible duplicate needing manual review.
+	MergeCandidates int `json:"merge_candidates"`
+
+	// Rows Total rows parsed from the source file.
+	Rows int `json:"rows"`
+
+	// Skipped Rows skipped (invalid or unresolvable).
+	Skipped int `json:"skipped"`
+}
+
+// CustomerImportRow defines model for CustomerImportRow.
+type CustomerImportRow struct {
+	// Action Outcome recorded for this row (migration 0098 customer_import_rows_action_check).
+	Action *CustomerImportRowAction `json:"action"`
+
+	// CreatedAt Row creation timestamp.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id customer_import_rows.id.
+	Id openapi_types.UUID `json:"id"`
+
+	// ImportId Parent customer_imports.id.
+	ImportId openapi_types.UUID `json:"import_id"`
+
+	// OrgId Organization the resolved customer link belongs to, when applicable.
+	OrgId *openapi_types.UUID `json:"org_id"`
+
+	// Reason Human-readable explanation for the recorded action.
+	Reason *string `json:"reason"`
+
+	// ResolvedCustomerId customers.id the row resolved to, when applicable.
+	ResolvedCustomerId *openapi_types.UUID `json:"resolved_customer_id"`
+
+	// RowHash Content hash used for the UNIQUE(import_id, row_hash) idempotency guard.
+	RowHash string `json:"row_hash"`
+
+	// RowNo 1-based row number within the source file.
+	RowNo int `json:"row_no"`
+}
+
+// CustomerImportRowAction Outcome recorded for this row (migration 0098 customer_import_rows_action_check).
+type CustomerImportRowAction string
+
+// CustomerImportRowsResponse defines model for CustomerImportRowsResponse.
+type CustomerImportRowsResponse struct {
+	Rows []CustomerImportRow `json:"rows"`
+
+	// Total Number of rows returned (post-filter).
+	Total int `json:"total"`
+}
 
 // CustomerOrgOrderItem One order this customer placed within the requesting org.
 type CustomerOrgOrderItem struct {
@@ -7927,6 +8104,42 @@ type GetBil24SeatingPlanImageParamsType string
 // PostBil24CommandJSONBody defines parameters for PostBil24Command.
 type PostBil24CommandJSONBody map[string]interface{}
 
+// PostV1AdminCustomerImportsParams defines parameters for PostV1AdminCustomerImports.
+type PostV1AdminCustomerImportsParams struct {
+	// XAdminReason Human-readable business reason for the admin write (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// GetV1AdminCustomerImportsIdParams defines parameters for GetV1AdminCustomerImportsId.
+type GetV1AdminCustomerImportsIdParams struct {
+	// XAdminReason Human-readable business reason for cross-tenant access.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminCustomerImportsIdApplyParams defines parameters for PostV1AdminCustomerImportsIdApply.
+type PostV1AdminCustomerImportsIdApplyParams struct {
+	// XAdminReason Human-readable business reason for the admin write (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminCustomerImportsIdDryRunParams defines parameters for PostV1AdminCustomerImportsIdDryRun.
+type PostV1AdminCustomerImportsIdDryRunParams struct {
+	// XAdminReason Human-readable business reason for the admin write (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// GetV1AdminCustomerImportsIdRowsParams defines parameters for GetV1AdminCustomerImportsIdRows.
+type GetV1AdminCustomerImportsIdRowsParams struct {
+	// Action Optional row outcome filter.
+	Action *GetV1AdminCustomerImportsIdRowsParamsAction `form:"action,omitempty" json:"action,omitempty"`
+
+	// XAdminReason Human-readable business reason for cross-tenant access.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// GetV1AdminCustomerImportsIdRowsParamsAction defines parameters for GetV1AdminCustomerImportsIdRows.
+type GetV1AdminCustomerImportsIdRowsParamsAction string
+
 // AttachNetworkAgentParams defines parameters for AttachNetworkAgent.
 type AttachNetworkAgentParams struct {
 	// XAdminReason SAUI-09 audit-reason header. The trimmed value is stamped
@@ -8647,6 +8860,9 @@ type UpdateWebhookSubscriberJSONBody struct {
 
 // PostBil24CommandJSONRequestBody defines body for PostBil24Command for application/json ContentType.
 type PostBil24CommandJSONRequestBody PostBil24CommandJSONBody
+
+// PostV1AdminCustomerImportsJSONRequestBody defines body for PostV1AdminCustomerImports for application/json ContentType.
+type PostV1AdminCustomerImportsJSONRequestBody = CreateCustomerImportRequest
 
 // PostV1AdminGeoCitiesJSONRequestBody defines body for PostV1AdminGeoCities for application/json ContentType.
 type PostV1AdminGeoCitiesJSONRequestBody = GeoCreateCityRequest

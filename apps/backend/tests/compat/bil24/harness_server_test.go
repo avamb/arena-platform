@@ -32,10 +32,12 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 )
 
 // harnessJWTStubSecret is the stub HS256 secret used to mint JWTs for
@@ -92,6 +94,21 @@ func startHarnessServer(t *testing.T, st *harnessState) string {
 		t.Fatal("startHarnessServer: harnessState.Pool is nil — seedHarness must expose the pool")
 	}
 
+	// Media is a local-storage-backed mediastore.Repo (feature #520, scenario
+	// 10): the customer-imports admin endpoints 503 without it, since
+	// customerimport.RunImport reads the uploaded export file back through
+	// it. st.Media is exposed so scenario tests can seed the media_objects
+	// row the import references using this exact instance.
+	local, err := storage.NewLocalStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("startHarnessServer: storage.NewLocalStorage: %v", err)
+	}
+	media, err := mediastore.New(mediastore.Options{Pool: st.Pool, Storage: local})
+	if err != nil {
+		t.Fatalf("startHarnessServer: mediastore.New: %v", err)
+	}
+	st.Media = media
+
 	// Both Pool and PgxPool must be set: PgxPool feeds the *gen.Queries
 	// fallbacks, while Pool feeds s.pool — the guard bil24_shims.go checks
 	// before wiring CREATE_USER's customer store and the #484 cart deps.
@@ -101,6 +118,7 @@ func startHarnessServer(t *testing.T, st *harnessState) string {
 		Logger:             slog.New(slog.NewJSONHandler(io.Discard, nil)),
 		Pool:               st.Pool,
 		PgxPool:            st.Pool,
+		Media:              st.Media,
 		Auth:               harnessStubAuth(t),
 		Bil24CompatEnabled: true,
 		Bil24RequireToken:  true,

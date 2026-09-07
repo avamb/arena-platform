@@ -156,6 +156,11 @@ type Options struct {
 	// (feature #286). When nil the routes return 503 storage_unavailable;
 	// production deployments configure MEDIA_BACKEND so this is non-nil.
 	Media *mediastore.Repo
+
+	// CustomerImportQueries backs the /v1/admin/customer-imports surface
+	// (feature #520, W1-C7b, spec §12.4). When nil and PgxPool is non-nil,
+	// the constructor falls back to gen.New(PgxPool).
+	CustomerImportQueries *gen.Queries
 }
 
 // pickQueries returns the explicitly-injected *gen.Queries, or one constructed
@@ -333,6 +338,7 @@ func New(opts Options) *Server {
 		reconciliationQueries: pickQueries(opts.ReconciliationQueries, opts.PgxPool),
 		networkQueries:        pickQueries(opts.NetworkQueries, opts.PgxPool),
 		seatingQueries:        pickQueries(opts.SeatingQueries, opts.PgxPool),
+		customerImportQueries: pickQueries(opts.CustomerImportQueries, opts.PgxPool),
 		meQueries:             pickMeQueries(opts.MeQueries, opts.PgxPool),
 		media:                 opts.Media,
 		pgxPool:               opts.PgxPool,

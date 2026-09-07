@@ -74,3 +74,10 @@ export type AdminTicketDeliveryResponse = components["schemas"]["AdminTicketDeli
 
 // ── Refunds ───────────────────────────────────────────────────────────────
 export type ApproveRefundRequest = components["schemas"]["ApproveRefundRequest"];
+
+// ── Customer imports (feature #520, W1-C7b) ──────────────────────────────
+export type CreateCustomerImportRequest = components["schemas"]["CreateCustomerImportRequest"];
+export type CustomerImport = components["schemas"]["CustomerImport"];
+export type CustomerImportReport = components["schemas"]["CustomerImportReport"];
+export type CustomerImportRow = components["schemas"]["CustomerImportRow"];
+export type CustomerImportRowsResponse = components["schemas"]["CustomerImportRowsResponse"];

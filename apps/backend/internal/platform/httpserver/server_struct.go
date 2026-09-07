@@ -117,6 +117,11 @@ type Server struct {
 	seatingQueries *gen.Queries
 	meQueries      meQuerier
 	media          *mediastore.Repo
+	// customerImportQueries backs the /v1/admin/customer-imports CRUD +
+	// dry-run/apply surface (feature #520, W1-C7b, spec §12.4). Nil when
+	// neither PgxPool nor an explicit override is supplied; the mount
+	// self-gates on nil.
+	customerImportQueries *gen.Queries
 	// pgxPool is the raw *pgxpool.Pool used by features that need direct
 	// pool access beyond the PoolDB interface (e.g. macs export, AB-50b).
 	// Wired from Options.PgxPool in wire.go.

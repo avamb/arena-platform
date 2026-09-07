@@ -220,6 +220,10 @@ const ROUTE_REGISTRY: Readonly<
   "/pos": { routeId: "PosRoute", file: "legacyPlaceholders.tsx" },
   "/geo": { routeId: "GeoRoute", file: "geo.tsx" },
   "/webhooks": { routeId: "WebhooksRoute", file: "webhooks.tsx" },
+  "/customer-imports": {
+    routeId: "CustomerImportsRoute",
+    file: "customerImports.tsx",
+  },
 };
 
 /**

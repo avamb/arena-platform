@@ -411,6 +411,10 @@ func buildDriftTestServer(t *testing.T) *Server {
 		// /v1/seating-plans/{id}[/versions[/{n}]|/fork] are mounted for the
 		// drift check.
 		SeatingQueries: gen.New(nil),
+		// Wire CustomerImportQueries so the customer-imports admin routes
+		// (feature #520, W1-C7b) under /v1/admin/customer-imports[/{id}[/dry-run|/apply|/rows]]
+		// are mounted for the drift check.
+		CustomerImportQueries: gen.New(nil),
 		// Wire BarcodeQueries so the barcode federation + scanner routes
 		// (features #142/#144, documented under #275 and the follow-up
 		// full-surface documentation pass) are mounted: GET/POST

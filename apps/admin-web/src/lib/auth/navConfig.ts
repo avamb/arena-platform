@@ -62,7 +62,8 @@ export type NavRoutePath =
   | "/audit"
   | "/observability"
   | "/geo"
-  | "/webhooks";
+  | "/webhooks"
+  | "/customer-imports";
 
 export type PermissionRule =
   | "always"
@@ -329,6 +330,15 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     scopeKinds: ["global", "platform"],
     purpose:
       "Register, edit, and pause HTTP endpoints that receive signed outbox events. Requires webhook.subscriber.manage.",
+  },
+  {
+    id: "customer_imports",
+    label: "Customer Imports",
+    to: "/customer-imports",
+    permission: { anyOf: ["superadmin.read"] },
+    scopeKinds: ["global", "platform"],
+    purpose:
+      "Register, dry-run, and apply customer/order export imports (feature #520). Requires superadmin.read.",
   },
 ];
 

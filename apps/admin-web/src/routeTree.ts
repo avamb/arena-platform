@@ -29,6 +29,7 @@ import { Route as ResetPasswordRoute } from "@/routes/resetPassword";
 import { Route as VerifyEmailRoute } from "@/routes/verifyEmail";
 import { Route as AcceptInviteRoute } from "@/routes/acceptInvite";
 import { Route as SessionSeatsRoute } from "@/routes/sessionSeats";
+import { Route as CustomerImportsRoute } from "@/routes/customerImports";
 
 /**
  * Manually-assembled route tree.
@@ -71,4 +72,5 @@ export const routeTree = RootRoute.addChildren([
   VerifyEmailRoute,
   AcceptInviteRoute,
   SessionSeatsRoute,
+  CustomerImportsRoute,
 ]);
