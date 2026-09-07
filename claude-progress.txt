@@ -30388,3 +30388,42 @@ No drift found, no fixes needed, no code commit for this pass (only this
 progress note). Feature #469 marked passing. Feature stats now 522/522
 (100%) — **W1 wave complete**: no more epic-verify wrappers remain ready
 or blocked.
+
+## Integrator gate pass — 2026-09-07 (post-#469, at 101145a, no new commits)
+
+Re-ran from repo root; HEAD unchanged since the prior session's #469
+epic-verify pass (no feature work landed in between, feature stats still
+522/522). Full gate suite green, zero drift, nothing to fix or file:
+- `go.exe build ./apps/backend/...` EXIT:0; `go.exe vet ./apps/backend/...`
+  EXIT:0.
+- Full `go.exe test ./apps/backend/...` (untagged, redirected to a file,
+  exit code read from the file): 75 `ok` package lines, 0 FAIL, EXIT:0.
+- `gofmt -l` on `apps/backend/{cmd,internal,tests,tools}`: empty.
+- golangci-lint v2 (`GOLANGCI_LINT_CACHE=/tmp/golangci-cache`, `@latest`
+  pin) `run ./apps/backend/...`: "0 issues."
+- Codegen drift check: `openapi30gen` (`apps/backend/openapi/openapi.yaml`)
+  → `oapi-codegen@v2.4.1` → zero diff against committed `types_gen.go`;
+  `node scripts/gen-ts-client.mjs` → zero diff against committed
+  `apps/backend/openapi/clients/ts/index.d.ts`; temp `.compat30.gen.yaml`
+  removed after.
+- Migration head pin: `0098_customer_imports.sql` still both the actual
+  highest-numbered file (`apps/backend/internal/migrations/sql/`) and
+  `TestHead_KnownCurrentHead`'s expectation — no drift.
+- `npm --prefix apps/admin-web run type-check` EXIT:0; `run test -- --run`
+  — 46/46 files, 1189/1189 tests, EXIT:0; `run build` EXIT:0 (routine
+  >500kB chunk advisory only).
+- Live integration run against the local Docker Postgres stand (port
+  55432, `arena`/`arena`), `-tags integration -count=1 -p 1` (serialized
+  per AGENTS.md convention), run in the background, notified on
+  completion: 76 `ok` package lines, 0 FAIL.
+- `gh` unavailable in this sandbox this session (documented recurring
+  limitation) — could not watch/confirm CI status remotely; relied on the
+  exhaustive local gate re-run.
+- Working tree at finish: clean except the same pre-existing out-of-scope
+  AutoForge noise every prior session has left untouched
+  (`.autoforge/prompts/coding_prompt.md`, `.claude/scheduled_tasks.lock`,
+  untracked `features.db`). Nothing to push — HEAD already matched
+  `origin/master` at session start and no commits were needed this pass.
+
+No drift found, no fixes needed, no commit made, no fix-features filed.
+Wave remains complete at 522/522 (100%).
