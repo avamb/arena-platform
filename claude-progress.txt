@@ -29758,3 +29758,85 @@ origin/master, `git log` head still f4a96de):
   category.
 - Committed `749c03e` "feat(customerimport): customer.import worker job
   feature #519" (9 files) and pushed to `origin/master`.
+
+## Feature #520 (W1-C7b): customer-imports admin endpoints, OpenAPI,
+## admin-web page; scenario 10 — 2026-09-07
+
+- Backend: new `internal/platform/httpserver/hcustomerimports/` package
+  (`handler.go`, `create.go`, `get.go`, `run.go`, `handler_test.go`) plus a
+  thin `customerimports_shims.go` bridge and `mountCustomerImportRoutes`
+  registered in `mount_v1.go`. Five routes under `platform.superadmin`
+  (Go permission `"superadmin.read"`, scope `"customer_imports"`) +
+  `X-Admin-Reason`:
+  `POST /v1/admin/customer-imports` (create, status `uploaded`),
+  `POST .../{id}/dry-run` and `POST .../{id}/apply` — both call
+  `customerimport.RunImport` (feature #519) SYNCHRONOUSLY in-process and
+  return the `Report` in the HTTP response body (no worker_jobs enqueue —
+  the spec's "→ отчёт" phrasing reads as a direct response, and this
+  avoids needing a live worker during tests), `GET .../{id}` (row +
+  reports), `GET .../{id}/rows?action=` (idempotency/audit inspection).
+  Added `InsertCustomerImport` and a rows-listing query to
+  `adapters/postgres/queries/customer_imports.sql` +
+  hand-maintained `gen/customer_imports.sql.go` wrapper (no new migration
+  — 0098's tables already had every needed column/CHECK enum). New
+  `Server.customerImportQueries *gen.Queries` field wired in
+  `server_struct.go`/`wire.go`; handler uses `s.pgxPool` (raw pool, not
+  the `s.pool` interface) for `customerimport.Options.Pool` and `s.media`
+  for `Options.Media`, per the documented `s.pool`-vs-`s.pgxPool`
+  distinction.
+- OpenAPI: 5 paths + schemas added to `openapi.yaml` (api-keys path item
+  as structural template, shared `X-Admin-Reason` header param, block-style
+  error responses, `$ref` properties given sibling `description`). Ran
+  `openapi30gen` + `oapi-codegen@v2.4.1` → committed regenerated
+  `internal/adapters/http/openapi/types_gen.go` and
+  `openapi/clients/ts/index.d.ts`. Wired into `openapi_drift_test.go`.
+- Un-skipped harness scenario 10
+  (`10_customer_import_c7_dry_run_then_apply` in
+  `tests/compat/bil24/harness_test.go`, kept the exact `t.Run` string for
+  `TestCompatBil24_450_Harness_ScenarioCoverage`'s guard) with a new
+  `scenario10_customer_import_test.go` (`//go:build integration`):
+  create → dry-run (asserts report counts/by_org) → apply → re-apply
+  (asserts idempotent, no new creates). Verified 3x green against the
+  live Docker Postgres dev-stand (port 55432, migrations already at 98):
+  `DATABASE_URL=post""gres://arena:arena@localhost:55432/arena?sslmode=disable
+  JWT_SIGNING_SECRET=x go test -tags integration ./tests/compat/bil24/...
+  -run Harness -v` → all scenarios PASS including 10, plus
+  `TestCompatBil24_450_Harness_ScenarioCoverage`.
+- Admin-web: new `routes/customerImports.tsx` page under the Platform nav
+  (`navConfig.ts` entry, `superadmin.read` permission, global scope),
+  registered in `routeTree.ts`; hand-written fetch helpers added to
+  `lib/api/client.ts`/`types.ts` (no generated client methods exist, only
+  generated TS *types*). Page: create form (file_media_id, source_label,
+  org_id optional, mapping JSON textarea, legal_basis dropdown — no file
+  upload widget in this iteration, operator pastes an existing
+  `file_media_id`), dry-run button + report view, apply button + report
+  view. `routes/customerImports.test.ts` (23 tests) covers only the pure
+  exported helpers (path builders, response mappers), matching the
+  `users.test.ts` convention — no full component mount tests. Updating
+  the new route required fixing two pre-existing guardrail fixtures that
+  assert route/nav-entry parity: `smoke/saui14_smoke.test.ts`
+  (`ROUTE_REGISTRY`) and `lib/auth/__tests__/navConfig.test.ts`
+  (`platform_superadmin` nav-entry count) — both are the repo's own
+  drift guards, not defects in the new code.
+- Gates run and independently re-verified green (not just trusted from
+  the delegated agent's report): `go build ./...`, `go vet ./...`,
+  `go test` across `httpserver/...` (incl. new `hcustomerimports`),
+  `adapters/postgres/...`, `tests/staticanalysis/...`,
+  `internal/migrations/...`, `tests/compat/bil24/...` (untagged — 0
+  regressions), the OpenAPI/snake_case/error-envelope guard tests
+  (`-run "OpenAPI|SnakeCase|ErrorResponses"` across all packages), `gofmt
+  -l` clean on every new/modified backend file. Admin-web: `npm run
+  type-check` clean, `npm run test -- --run` → 46/46 files, 1189/1189
+  tests green. Every new/modified `httpserver/*.go` file stayed well
+  under the 400-line cap (largest new file 302 lines); confirmed
+  `bil24compat` still has zero import of `internal/platform/httpserver`.
+  Admin-web page verified only via type-check + Vitest — no Playwright/
+  browser check was run this session (no interactive human turn to drive
+  one; the page has no dynamic server data beyond the report JSON already
+  covered by the pure-helper tests).
+- Committed `c5b798b` "Add customer-imports admin endpoints, OpenAPI,
+  admin-web page (feature 520)" (26 files, staged by explicit path — left
+  unrelated pre-existing working-tree noise `.autoforge/prompts/
+  coding_prompt.md`, deleted `.claude/scheduled_tasks.lock`, untracked
+  `features.db` untouched) and pushed to `origin/master`
+  (`4d6f06d..c5b798b`). Feature #520 marked passing.
