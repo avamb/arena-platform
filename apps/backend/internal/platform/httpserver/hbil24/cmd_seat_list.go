@@ -425,7 +425,7 @@ func seatListPlacement(admissionMode string, st tierUnitStats) *bool {
 	if admissionMode == admissionGA {
 		return nil
 	}
-	placed := !(st.gaUnits > 0 && st.seats == 0)
+	placed := st.gaUnits == 0 || st.seats > 0
 	return &placed
 }
 
