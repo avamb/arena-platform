@@ -406,6 +406,17 @@ func (h *Handler) upsertArenaSession(
 		if err != nil {
 			return uuid.Nil, false, fmt.Errorf("insert session: %w", err)
 		}
+		// AB-51 (mirrored from hcatalog/sessions.go): a plan-less GA session's
+		// capacity is enforced by a fungible pool of session_seats rows
+		// ("ga|pool|<n>", tier NULL until held), not by inventory_ledger — no
+		// production RESERVATION path reads that table. The event-bundle
+		// importer never binds a seating plan, so every session it creates is
+		// plan-less GA and needs its pool materialized here, or the very first
+		// RESERVATION against it short-allocates and answers "sold out"
+		// regardless of the bundle's declared availability.
+		if _, err := q.InsertGAUnits(ctx, created.ID, "ga|pool", 0, nil, capacity); err != nil {
+			return uuid.Nil, false, fmt.Errorf("materialize general-admission inventory: %w", err)
+		}
 		return created.ID, true, nil
 	}
 

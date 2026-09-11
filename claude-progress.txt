@@ -30757,3 +30757,97 @@ Gates
 No test was weakened or deleted. openapi.yaml untouched (the MACS payload is
 not part of the public REST surface), so no codegen.
 
+============================================================
+Feature #530 — W1-M [EPIC-VERIFY]: end-to-end money round-trip
+bundle -> catalog -> cart -> PAY_ORDER -> webhooks, full cold gate
+2026-09-11
+============================================================
+
+New test: apps/backend/tests/compat/bil24/w1m_530_integration_test.go,
+TestCompatBil24_530_MoneyRoundTripBundleToWebhooks. Drives the full pipeline
+through real production code, nothing stubbed except the two receiving
+sites:
+
+  POST /v1/organizations/{org}/imports/event-bundle (arena_ga_lampyris.json,
+    categoryList Standard=450 / VIP=900)
+    -> GET_ALL_ACTIONS quotes minPrice=450, categoryList prices 450/900
+    -> RESERVATION (categoryList hold, 1 unit of Standard): sum=450,
+       charge=22.5 (harness channel's flat 5% service charge), totalSum=472.5
+    -> CREATE_ORDER_EXT totalSum echoes the same 472.5
+    -> PAY_ORDER(amount=472.5) -> resultCode 0
+    -> real ticket-issuance path (htickets.publishOrderPaid) appends the
+       v1.order.paid outbox row; the real bil24wire AND macs dispatchers
+       (wp508MultiDispatcher fan-out, reused from the #509 round-trip test)
+       deliver it to the wpstub and the MACS stub, each carrying
+       totalSum=472.5 as a JSON number — the MACS stub's raw envelope bytes
+       are grepped for the literal "totalSum":472.5 to rule out "472.50" or
+       float-dust rendering (spec 20 SS2.1).
+
+Real defect found and fixed (not a test gap): the very first RESERVATION
+against an event-bundle-imported GA session answered resultCode 101
+"Category is sold out" regardless of the bundle's declared availability.
+Root cause: since AB-51, GA capacity is enforced by concrete session_seats
+rows of kind='ga_unit' (hcheckout.AllocateGAUnitsForHold), not by the legacy
+inventory_ledger table — hcatalog's own session-create handler materializes
+that pool via InsertGAUnits right after creating a plan-less GA session
+(hcatalog/sessions.go:604-618), but the event-bundle importer's source=arena
+branch (himports/import_arena.go, upsertArenaSession) only ever synced
+inventory_ledger and never called InsertGAUnits, so an imported session had
+priced categories but a zero-unit pool. Fixed by calling
+q.InsertGAUnits(ctx, created.ID, "ga|pool", 0, nil, capacity) right after
+the session-create branch of upsertArenaSession, mirroring hcatalog exactly.
+This also means every FUTURE event-bundle-imported GA session is sellable,
+not just this test's fixture — a real product bug, now closed.
+
+A second, purely test-side issue: the new test's own order/reservation rows
+had to be cleaned up in a t.Cleanup registered AFTER bundle527RegisterCleanup
+(session/tier/event/venue teardown) so LIFO ordering tears them down first;
+initially missed the non-cascading session_seats.reservation_id and
+reservation_seats FKs (migration 0058: "kept informational on convert"),
+which surfaced only as 23503s from a LATER, unrelated cleanup step
+(event_bundle_527's own t.Cleanup) failing — traced by temporarily logging
+every cleanup statement's error, not swallowing it silently, then reordered:
+null out session_seats.reservation_id and delete reservation_seats BEFORE
+deleting the reservations row.
+
+Gates (fresh run, this feature only; repo-relative log files, no pipeline
+masking exit codes)
+- go.exe -C apps/backend build ./...                                EXIT:0
+- go.exe -C apps/backend vet ./...                                  EXIT:0
+- gofmt -l <every file touched by #528, #529, #530>                 no output
+- DATABASE_URL=<dev stand 55432> JWT_SIGNING_SECRET=x go.exe -C
+  apps/backend test -tags integration -run TestCompatBil24_530 -count=2
+  -v ./tests/compat/bil24/...                                       EXIT:0
+  (both runs pass; second run also proves the cleanup fix — no FK errors
+  logged from any t.Cleanup in either run)
+- go.exe -C apps/backend test -count=1 ./...  (full repo unit suite)EXIT:0
+  (76 packages ok, 0 FAIL)
+- DATABASE_URL=<dev stand> JWT_SIGNING_SECRET=x go.exe -C apps/backend
+  test -tags integration -count=1 ./tests/compat/bil24/...
+  ./internal/platform/httpserver/himports/... ./internal/platform/macs/...
+  ./internal/migrations/...                                         EXIT:0
+  (compat/bil24 18.2s, wpstub 1.1s, himports 1.8s, macs 2.1s,
+  macs/stub 1.1s, migrations 0.3s)
+- GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe run
+  github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run
+  ./apps/backend/...                                                EXIT:0
+  ("0 issues.")
+- Codegen drift check: go.exe run ./apps/backend/tools/openapi30gen
+  apps/backend/openapi/openapi.yaml
+  apps/backend/openapi/.openapi.compat30.gen.yaml, then oapi-codegen@v2.4.1
+  --config=apps/backend/openapi/oapi-codegen.yaml against that file, then
+  node scripts/gen-ts-client.mjs — all EXIT:0; git status --short shows NO
+  changes under apps/backend/openapi or apps/backend/internal/adapters/http
+  after regeneration (expected: this feature touched no OpenAPI-surfaced
+  field). The temp .openapi.compat30.gen.yaml was removed before staging.
+- npm --prefix apps/admin-web run type-check                        EXIT:0
+- npm --prefix apps/admin-web run test                              EXIT:0
+  (46 files, 1189 tests passed)
+
+No test was weakened, skipped or deleted to reach green; the one red result
+(RESERVATION resultCode 101) was fixed at its root in
+himports/import_arena.go rather than worked around in the test. Only two
+files changed: the new integration test and the one-method import_arena.go
+fix — verified via `git status --short` before staging (no foreign files
+picked up).
+
