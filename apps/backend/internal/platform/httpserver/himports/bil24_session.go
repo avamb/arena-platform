@@ -10,6 +10,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,7 +30,26 @@ import (
 const maxImportBodyBytes int64 = 8 << 20
 
 // HandleBil24Session serves POST /v1/organizations/{org_id}/imports/bil24-session.
+//
+// The legacy route is a thin alias of the event-bundle handler with the source
+// PINNED to bil24 (event-bundle spec §2): a body without `source` behaves
+// exactly as before, and a body declaring source=arena is refused with
+// import.source_mismatch rather than silently taking the arena path.
 func (h *Handler) HandleBil24Session(w http.ResponseWriter, r *http.Request) {
+	h.handleImport(w, r, bil24compat.SourceBil24)
+}
+
+// HandleEventBundle serves POST /v1/organizations/{org_id}/imports/event-bundle
+// (event-bundle spec §2) — the same handler with no pinned source, so the body
+// must declare one.
+func (h *Handler) HandleEventBundle(w http.ResponseWriter, r *http.Request) {
+	h.handleImport(w, r, "")
+}
+
+// handleImport is the shared implementation of both import routes.
+// forcedSource is the source the route pins ("" on the event-bundle route,
+// which requires the body to declare it).
+func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request, forcedSource string) {
 	if h.queries == nil || h.pool == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
@@ -59,8 +79,27 @@ func (h *Handler) HandleBil24Session(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 1 — every Bil24 identifier must stay below the 1e9 compat ceiling.
-	if err := req.ValidateExternalIDs(); err != nil {
+	// Step 0 — which identifier regime applies (event-bundle spec §3 / §5).
+	source, ok := resolveImportSource(w, r, req, forcedSource)
+	if !ok {
+		return
+	}
+	externalRef, ok := resolveExternalRef(w, r, req, source)
+	if !ok {
+		return
+	}
+
+	// Step 1 — identifier ranges. For bil24 every id is required and must stay
+	// below the 1e9 compat ceiling; for arena every id is optional but a
+	// supplied one must be at or above it.
+	if source == bil24compat.SourceArena {
+		if err := req.ValidateArenaIDs(); err != nil {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+				"import.arena_id_out_of_range", err.Error(), r,
+			))
+			return
+		}
+	} else if err := req.ValidateExternalIDs(); err != nil {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
 			"compat.external_id_out_of_range", err.Error(), r,
 		))
@@ -105,6 +144,34 @@ func (h *Handler) HandleBil24Session(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	// The event-bundle additions are syntax-checked against the same fixed
+	// zone, for the same reason.
+	if _, err := req.ActionEvent.ParseLocalEnd(time.UTC); err != nil {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+			"import.end_time_invalid", err.Error(), r,
+		))
+		return
+	}
+	saleStart, err := req.ActionEvent.ParseSellStart()
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+			"import.invalid_sell_start_time", err.Error(), r,
+		))
+		return
+	}
+
+	if source == bil24compat.SourceArena {
+		noteArenaIgnoredFields(req, warnings)
+		// The arena execution path (matching rules, compat-id minting,
+		// compat_ids in the response) lands with feature #525; until then a
+		// well-formed arena bundle is answered honestly rather than being
+		// run through the Bil24 algorithm, which would mint wrong ids.
+		httputil.WriteJSON(w, http.StatusNotImplemented, httputil.ErrorEnvelope(
+			"import.arena_source_not_implemented",
+			"source=arena is accepted but not executed yet", r,
+		))
+		return
+	}
 
 	// The venue timezone must be resolvable BEFORE anything is written: it
 	// determines the session start instant, and a wrong guess would silently
@@ -131,14 +198,26 @@ func (h *Handler) HandleBil24Session(w http.ResponseWriter, r *http.Request) {
 	// otherwise correct catalog import.
 	posterMediaID := h.sideLoadPoster(ctx, orgID, req, warnings)
 
+	endAt, err := req.ActionEvent.ParseLocalEnd(loc)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+			"import.end_time_invalid", err.Error(), r,
+		))
+		return
+	}
+
 	plan := importPlan{
-		OrgID:         orgID,
-		Request:       req,
-		Currency:      currency,
-		StartAt:       startAt.UTC(),
-		SaleWindowEnd: saleEnd,
-		PosterMediaID: posterMediaID,
-		Timezone:      loc.String(),
+		OrgID:           orgID,
+		Source:          source,
+		ExternalRef:     externalRef,
+		Request:         req,
+		Currency:        currency,
+		StartAt:         startAt.UTC(),
+		EndAt:           endAt,
+		SaleWindowStart: saleStart,
+		SaleWindowEnd:   saleEnd,
+		PosterMediaID:   posterMediaID,
+		Timezone:        loc.String(),
 	}
 
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -181,6 +260,103 @@ func (h *Handler) HandleBil24Session(w http.ResponseWriter, r *http.Request) {
 		Warnings:             warnings.list(),
 		Created:              result.Created,
 	})
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Source and externalRef (event-bundle spec §3, §5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// resolveImportSource decides which identifier regime the payload runs under
+// and answers the request itself when the body disagrees with the route.
+//
+//   - a `source` value outside {bil24, arena} is always 422
+//     import.source_invalid, on either route;
+//   - on the event-bundle route (forcedSource == "") a missing source is the
+//     same error — the caller must be explicit about which regime it wants;
+//   - on the legacy route a missing source keeps meaning bil24 (that is what
+//     every existing #517/#518 caller sends), while an explicit source that
+//     contradicts the route is 422 import.source_mismatch.
+func resolveImportSource(w http.ResponseWriter, r *http.Request, req bil24compat.ImportSessionRequest, forcedSource string) (string, bool) {
+	declared := trimSpace(req.Source)
+	if declared != "" && !bil24compat.KnownImportSource(declared) {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+			"import.source_invalid", "source must be one of: bil24, arena", r,
+		))
+		return "", false
+	}
+	if forcedSource == "" {
+		if declared == "" {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+				"import.source_invalid", "source is required and must be one of: bil24, arena", r,
+			))
+			return "", false
+		}
+		return declared, true
+	}
+	if declared != "" && declared != forcedSource {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+			"import.source_mismatch",
+			"this route only accepts source="+forcedSource+"; use /imports/event-bundle for source="+declared, r,
+		))
+		return "", false
+	}
+	return forcedSource, true
+}
+
+// resolveExternalRef normalises and validates the idempotency key. It is
+// mandatory for source=arena (import.external_ref_required) and optional for
+// bil24; in both cases a present-but-blank or over-long value is rejected with
+// import.external_ref_invalid, matching the length CHECK on
+// session_external_refs (migration 0099).
+func resolveExternalRef(w http.ResponseWriter, r *http.Request, req bil24compat.ImportSessionRequest, source string) (string, bool) {
+	ref := req.NormalizedExternalRef()
+	if ref == "" {
+		if req.ExternalRef != "" {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+				"import.external_ref_invalid", "externalRef must not be blank", r,
+			))
+			return "", false
+		}
+		if source == bil24compat.SourceArena {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+				"import.external_ref_required", "externalRef is required when source=arena", r,
+			))
+			return "", false
+		}
+		return "", true
+	}
+	if len([]rune(ref)) > bil24compat.MaxExternalRefLength {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+			"import.external_ref_invalid", "externalRef must be at most 200 characters", r,
+		))
+		return "", false
+	}
+	return ref, true
+}
+
+// noteArenaIgnoredFields records the non-fatal "this field belongs to the
+// other source" warnings of spec §3: fee and seating-plan metadata mean
+// nothing for an arena-native bundle, and seating itself is out of scope for
+// this wave.
+func noteArenaIgnoredFields(req bil24compat.ImportSessionRequest, warnings *warningSink) {
+	var ignored []string
+	if req.ActionEvent.ChargePercent != 0 {
+		ignored = append(ignored, "actionEvent.chargePercent")
+	}
+	if req.ActionEvent.SeatingPlanID != 0 {
+		ignored = append(ignored, "actionEvent.seatingPlanId")
+	}
+	if trimSpace(req.ActionEvent.SeatingPlanName) != "" {
+		ignored = append(ignored, "actionEvent.seatingPlanName")
+	}
+	if len(ignored) > 0 {
+		warnings.add(WarnFieldIgnoredForSource,
+			"ignored for source=arena: "+strings.Join(ignored, ", "))
+	}
+	if len(req.SeatList) > 0 || trimSpace(req.SVG) != "" {
+		warnings.add(WarnSeatingNotImported,
+			"seating is not supported for source=arena in this wave; the session stays general admission")
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

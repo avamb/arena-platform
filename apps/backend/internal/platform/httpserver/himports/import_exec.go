@@ -36,13 +36,24 @@ const defaultSessionDuration = 3 * time.Hour
 // transaction: it is deliberately free of *http.Request so the executor cannot
 // reach back into transport concerns.
 type importPlan struct {
-	OrgID         uuid.UUID
-	Request       bil24compat.ImportSessionRequest
-	Currency      string
-	StartAt       time.Time
-	SaleWindowEnd *time.Time
-	PosterMediaID *uuid.UUID
-	Timezone      string
+	OrgID uuid.UUID
+	// Source is the resolved identifier regime (bil24compat.SourceBil24 or
+	// SourceArena); ExternalRef is the normalised idempotency key, empty when
+	// the payload carried none (only possible for source=bil24).
+	Source      string
+	ExternalRef string
+	Request     bil24compat.ImportSessionRequest
+	Currency    string
+	StartAt     time.Time
+	// EndAt is the parsed actionEvent.endTime, nil when the payload carried
+	// none — the session then keeps defaultSessionDuration.
+	EndAt *time.Time
+	// SaleWindowStart is the parsed actionEvent.sellStartTime, nil when the
+	// payload carried none (sales open immediately).
+	SaleWindowStart *time.Time
+	SaleWindowEnd   *time.Time
+	PosterMediaID   *uuid.UUID
+	Timezone        string
 }
 
 // importResult is the identifier set the response is built from.

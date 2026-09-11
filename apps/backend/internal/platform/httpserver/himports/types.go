@@ -44,6 +44,19 @@ const (
 	// from the one already stored on the existing venue; the stored value
 	// wins because changing it would move every existing session.
 	WarnVenueTimezoneKept = "import.venue_timezone_kept"
+	// WarnVenueMatchedByName — a source=arena bundle carried no venueId and
+	// an existing active venue of the organization matched on name
+	// (event-bundle spec §3.2 step 4). The matched venue is reused AS IS:
+	// address/geo/timezone from the payload are deliberately not applied.
+	WarnVenueMatchedByName = "import.venue_matched_by_name"
+	// WarnTierNotInPayload — the session carries ticket tiers the bundle did
+	// not mention. They are left untouched (the bundle cannot delete), and
+	// their compat ids are listed in the message so the site can reconcile.
+	WarnTierNotInPayload = "import.tier_not_in_payload"
+	// WarnFieldIgnoredForSource — a field that only makes sense for the other
+	// source was present and ignored (for source=arena: chargePercent,
+	// seatingPlanId, seatingPlanName — event-bundle spec §3 / §5).
+	WarnFieldIgnoredForSource = "import.field_ignored_for_source"
 )
 
 // Warning is one non-fatal note about the import.
