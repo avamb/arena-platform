@@ -30427,3 +30427,104 @@ epic-verify pass (no feature work landed in between, feature stats still
 
 No drift found, no fixes needed, no commit made, no fix-features filed.
 Wave remains complete at 522/522 (100%).
+
+================================================================================
+2026-09-11 — W1-E mini-wave: arena-native event bundle (#523, #524, #525)
+================================================================================
+
+Batch of three features, implemented and pushed in order. Design authority:
+08_architecture/19_event_bundle_arena_native_spec_ru.md.
+
+#523 (c24f350) — migration 0099 session_external_refs: the bundle idempotency
+key, PK (org_id, external_ref) plus a unique index on session_id so a session
+can carry at most one caller-side ref. Canonical SQL + hand-written gen
+wrappers (GetSessionByExternalRef / GetExternalRefBySession /
+InsertSessionExternalRef). Migration-head pin moved 0098 -> 0099.
+
+#524 (ce99e75) — the wire contract and the pre-transaction validation ladder:
+top-level source and externalRef on ImportSessionRequest, POST
+/v1/organizations/{org_id}/imports/event-bundle mounted alongside the legacy
+/imports/bil24-session (which keeps pinning source=bil24 and stays unchanged
+in behaviour), the identifier-range gate (bil24 ids < 1e9, arena ids >= 1e9),
+and the import.field_ignored_for_source warning for chargePercent /
+seatingPlanId / seatingPlanName under source=arena.
+
+#525 (a765b63) — the source=arena executor, replacing #524's 501 stub. Runs
+inside the same transaction as executeImport. Matching order per spec 3.2:
+session by externalRef then by actionEventId; event by actionId ONLY (no
+match-by-name — two productions sharing a title is normal and folding them
+would be unrecoverable); venue by compat id, then by lower(btrim(name)) within
+the org, then create; tiers by categoryPriceId, then by normalised name, then
+create. New queries FindActiveVenueByNormalizedName / InsertArenaVenue — the
+Bil24 InsertImportedVenue could not be reused because venues.external_bil24_id
+carries a GLOBAL partial-unique index reserved for genuinely Bil24-sourced
+venues.
+
+Three things worth remembering from #525:
+
+1. Timezone ordering differs between the two paths, deliberately. A Bil24
+   venue is found by its global external id BEFORE the transaction opens, so
+   the HTTP layer can compute the session start instant. An arena venue is
+   only findable by compat id or org-scoped name, both of which need the
+   transaction — so plan.StartAt/EndAt/Timezone stay zero for source=arena and
+   the instant is computed inside executeArenaImport once resolveArenaVenue
+   has returned the *time.Location. A venue matched BY NAME is reused AS IS:
+   its stored timezone wins (import.venue_timezone_kept) and the payload's
+   address/geo are NOT applied, because other events already depend on them.
+
+2. Poster dedup now hashes BEFORE writing. sideLoadPoster buffers the bounded
+   body, sha256s it in Go, and compares against the event's current
+   poster_media_id checksum via mediastore.GetByID; only a genuine difference
+   reaches PutAndStream. The previous store-then-compare shape would have
+   orphaned a blob on every repeated bundle. Both import paths share this.
+
+3. TWO error codes beyond the spec's table, added on purpose and flagged here
+   because the spec does not enumerate them:
+   - import.action_mismatch (409) when the session addressed by externalRef /
+     actionEventId belongs to a different event than the supplied actionId.
+     UpdateSession is scoped by event_id and a bundle must not move a session
+     away from its tiers, tickets and publication state.
+   - import.venue_name_required (422) when neither venue.venueId nor
+     venue.venueName is present and there is no matched session to inherit a
+     venue from.
+   Also note a behaviour change on the LEGACY path: upsertTiers now passes
+   plan.SaleWindowStart to Insert/UpdateTicketTier where it previously passed
+   nil. sellStartTime was being parsed and then dropped; that was a bug.
+
+Response shape (spec 4): ImportSessionResponse gained external_ref (null only
+when the payload carried none, which only source=bil24 may do) and compat_ids
+{action_id, action_event_id, venue_id, category_price_ids}. category_price_ids
+is aligned POSITIONALLY with the request's categoryList so the caller can zip
+the two without consulting tier_ids, and is never nil. Both paths read the ids
+back through compatids.Ensure/EnsureMany AFTER registration rather than
+echoing the payload, so the block provably matches what GET_ALL_ACTIONS will
+later report.
+
+Verification for #525:
+- go.exe build ./apps/backend/... EXIT:0; go.exe vet ./apps/backend/...
+  EXIT:0; go.exe vet -tags integration on himports EXIT:0.
+- gofmt -l on himports, gen/ and queries/: empty (the integration-tagged file
+  included — golangci-lint skips those by default).
+- golangci-lint v2 @latest on himports + gen: EXIT:0.
+- Live stand (Docker Postgres, port 55432), -tags integration -count=1 on
+  himports: EXIT:0, which covers the five spec-9 scenarios of the new
+  event_bundle_525_integration_test.go (create + arena-minted ids >= 1e9 with
+  source='arena' + ref row + poster; exact repeat idempotent on externalRef;
+  edit by ref with a repriced tier, an added tier and then a dropped one
+  yielding import.tier_not_in_payload with the tier KEPT; foreign-org id ->
+  404 import.compat_id_unknown, sub-ceiling id -> 422
+  import.arena_id_out_of_range, ref bound elsewhere -> 409; venue matched by
+  name) AND the legacy #517/#518 suites, still green and untouched.
+- Two unit tests in event_bundle_524_test.go were rewritten, not weakened:
+  they pinned the 501 stub that #525 was explicitly chartered to remove, and
+  now assert the bundle reaches the executor instead.
+
+Two gotchas the integration work surfaced:
+- orgs_name_unique_active makes the organization DISPLAY NAME unique, not just
+  the slug, so both need the per-run suffix on the shared dev stand.
+- go test ./apps/backend/internal/platform/httpserver/ panics on this Windows
+  host with "runtime error: integer overflow" inside testing_windows.go:61
+  (highPrecisionTime.sub / QPC), with no test named. Verified PRE-EXISTING by
+  stashing every change and reproducing it on clean HEAD — it is a Go
+  toolchain/Windows issue, not a repo defect, and does not reproduce in CI.
+
