@@ -9,6 +9,10 @@ implement the first steps, commit by path, push, write a short note naming what 
 
 - Spec (design authority): `08_architecture/18_bil24_compat_wave1_specification_ru.md`.
   Read ONLY the sections your feature names (e.g. `§7.4`). Do not read it end to end.
+- **W1-E (features #523-#527, event bundle for `source=arena`)**: design authority is
+  `08_architecture/19_event_bundle_arena_native_spec_ru.md` (short; read it whole). Existing
+  import code: `httpserver/himports/{bil24_session.go,import_exec.go,seating.go}`, wire in
+  `internal/adapters/bil24compat/import_wire.go`, tests `himports/bil24_session_517*_test.go`.
 - Backlog with file:line facts: `09_autoforge/wp_bil24_compat_backlog.md` — read only your
   epic's entry (§5) and §8 (the split). Skip §4 unless you need a code fact.
 - Progress notes: `tail -150 claude-progress.txt` is enough (the top is newest).
