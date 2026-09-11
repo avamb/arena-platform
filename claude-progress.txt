@@ -30528,3 +30528,74 @@ Two gotchas the integration work surfaced:
   stashing every change and reproducing it on clean HEAD — it is a Go
   toolchain/Windows issue, not a repo defect, and does not reproduce in CI.
 
+## Feature #527 (W1-E [EPIC-VERIFY]) — 2026-09-11
+
+Added apps/backend/tests/compat/bil24/event_bundle_527_integration_test.go
+(build tag integration, package compat_bil24_test): two standalone top-level
+Test funcs (not added to the fixed 10-entry TestCompatBil24_450_Harness_
+Scenarios table, which is guarded by TestCompatBil24_450_Harness_
+ScenarioCoverage and tied to a different spec, §15.3).
+
+- TestCompatBil24_527_EventBundleRoundTrip: POSTs the event-bundle fixture
+  (arena_ga_lampyris.json, per-run randomized externalRef/names, poster
+  pointed at a local httptest.NewServer PNG) through the real REST route
+  /v1/organizations/{org}/imports/event-bundle using an import.bil24_session-
+  scoped API key (sc8ImportKey). Asserts created=true, arena-minted compat
+  ids (action_id/action_event_id/venue_id/2x category_price_id) all >=
+  ExternalIDCeiling. Then calls hbil24 GET_ALL_ACTIONS over the wire and
+  cross-checks: actionId, venueId, day/time (Europe/Prague wall clock,
+  matches fixture verbatim), currency, both category names/ids, and that
+  bigPosterUrl in the wire response is rendered as /v1/media-files/{uuid}
+  (never the original httptest URL) — confirms the side-loaded poster is
+  actually served from media_objects, per cmd_catalog.go's resolution order.
+- TestCompatBil24_527_LegacyAliasSourceMismatch: POSTs an event-bundle-shaped
+  body (source=arena implicit) to the LEGACY alias route
+  /v1/organizations/{org}/imports/bil24-session and asserts 422
+  import.source_mismatch; then posts a real bil24-shaped payload (sc8Payload)
+  to the same route and asserts it still succeeds (created=true), proving the
+  alias only rejects the wrong source, not everything.
+
+Known cross-feature disagreement asserted as-is, not fixed (per task
+instruction to follow the spec/document disagreements rather than weaken a
+test): category prices imported via the bundle are stored in MINOR units
+(ImportSessionCategory.PriceMinorUnits = price*100), but GET_ALL_ACTIONS
+echoes ticket_tiers.price_amount verbatim (major-unit convention). A bundle
+price of 450/900 therefore round-trips as 45000/90000 in the wire response.
+This is the identical, already-documented (AGENTS.md, scenario08_import_
+test.go) gap — not introduced or altered by #527. Test asserts wantPrices =
+{45000, 90000} with an inline comment citing the precedent.
+
+Full cold-cache gate (2026-09-11), all commands run from repo root, exit
+codes captured explicitly (never judged through a pipe):
+- go.exe vet -tags integration ./apps/backend/tests/compat/bil24/...  EXIT:0
+- go.exe test -tags integration -run TestCompatBil24_527 -count=1 -v
+  ./apps/backend/tests/compat/bil24/...  EXIT:0 (both new tests PASS; first
+  attempt failed on the price assertion above before the wantPrices fix)
+- go.exe test -tags integration -count=1
+  ./apps/backend/internal/platform/httpserver/himports/...  EXIT:0
+- go.exe test -tags integration -count=1 ./apps/backend/tests/compat/bil24/...
+  EXIT:0 (full compat suite, all pre-existing scenarios still green)
+- go.exe test -tags integration -count=1
+  ./apps/backend/internal/migrations/... ./apps/backend/cmd/arena-migrate/...
+  EXIT:0 (note: ./apps/backend/internal/platform/migrations/... does not
+  exist — the real path is one level shallower, no /platform/ segment)
+- go.exe test -count=1 ./...  EXIT:0 (full untagged suite, 22 ok packages,
+  0 FAIL lines, confirmed by grepping a redirected log file, not a pipe)
+- gofmt -l over apps/backend/{cmd,internal,tests,tools}: empty
+- GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe run
+  github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run
+  ./apps/backend/...  -> "0 issues."
+- Codegen drift check: re-ran openapi30gen + oapi-codegen@v2.4.1 against
+  apps/backend/openapi/openapi.yaml, and scripts/gen-ts-client.mjs; git
+  status after both regenerations shows zero changes to types_gen.go or the
+  TS client — no drift (#527 has no API-surface change, pure test work).
+- npm --prefix apps/admin-web run type-check  EXIT:0
+- npm --prefix apps/admin-web run test -- --run  EXIT:0 (46 test files, 1189
+  tests passed)
+
+No production code was changed for #527 — verification-only feature, as
+chartered. Spec authority: 08_architecture/19_event_bundle_arena_native_
+spec_ru.md §9 (scenarios 6-7) and §5 (error codes); both matched code
+behavior with no disagreement requiring a spec-vs-code call other than the
+already-known price-units gap noted above.
+
