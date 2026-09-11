@@ -1,6 +1,6 @@
 # Пакетное создание мероприятия («event bundle») с сайта и из ботов — спецификация W1-E
 
-Статус: design authority для мини-волны **W1-E** (AutoForge, фичи #523–#527).
+Статус: design authority для мини-волны **W1-E** (AutoForge, фичи #523–#527). Реализовано 2026-09-11, head 4c5991a.
 Дата: 2026-09-11. Решение владельца: транспорт создания мероприятий с сайта — вариант C
 (один пакетный идемпотентный эндпоинт), Lampyris первым, staging только.
 Дополняет `18_bil24_compat_wave1_specification_ru.md` §13 (далее «спека W1»); при расхождении
@@ -169,6 +169,8 @@ snake_case-гардрейла):
 | 409 | `import.external_ref_conflict` | `externalRef` привязан к другому сеансу / сеанс уже имеет другой ref |
 | 422 | `import.end_time_invalid` | `endTime` не `HH:MM` |
 | 422 | `import.invalid_sell_start_time` | `sellStartTime` не RFC3339 или ≥ `sellEndTime` |
+| 409 | `import.action_mismatch` | прислан `actionId`, не совпадающий с событием найденного сеанса (сеанс нельзя перенести между событиями) — добавлено в #525 |
+| 422 | `import.venue_name_required` | `source=arena`, нет ни `venueId`, ни `venueName`, ни сеанса, у которого можно унаследовать площадку — добавлено в #525 |
 
 Предупреждения (не ошибки): `import.seating_not_imported`,
 `import.venue_matched_by_name`, `import.tier_not_in_payload`, `import.poster_skipped`,
