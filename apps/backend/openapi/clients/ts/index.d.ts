@@ -5513,6 +5513,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/imports/event-bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create or edit an event as one idempotent bundle (Bil24 relay or arena-native)
+         * @description Same upsert as POST .../imports/bil24-session, generalised to two
+         *     identifier regimes selected by the mandatory `source` field
+         *     (event-bundle spec §1-§5):
+         *
+         *     - `source: bil24` — identical to the legacy route: every `*Id` field
+         *       is required and must be below 1e9, identifiers come from Bil24.
+         *     - `source: arena` — for events created directly from a site or bot
+         *       without a Bil24 relay. Every `*Id` field is OPTIONAL: omitted means
+         *       "create and mint an id ≥ 1e9" (registered in the compat mapping
+         *       table so GET_ALL_ACTIONS reports it identically to a Bil24-sourced
+         *       one); supplied it must already be ≥ 1e9 and resolve to an object of
+         *       this organization. `externalRef` becomes the mandatory idempotency
+         *       key instead of `actionEvent.actionEventId` (event-bundle spec §3.2):
+         *       a repeat call with the same `externalRef` edits the existing event
+         *       in place. Seating is NOT supported for source=arena in this wave —
+         *       `seatList`/`svg` are accepted but yield a warning, never seats.
+         *
+         *     The response (`ImportBil24SessionResponse`, unchanged shape between
+         *     both routes) always includes `external_ref` and `compat_ids` — the
+         *     full identifier set to persist on the caller's side, aligned
+         *     positionally with `categoryList` for `compat_ids.category_price_ids`.
+         *
+         *     Requires the `import.bil24_session` permission and organization
+         *     membership, exactly like the legacy route. An organization API key
+         *     (`Authorization: Bearer ak_…`) carrying that scope is the primary
+         *     caller — the site-side "Мероприятия (arena)" tab (event-bundle spec
+         *     §10) and, in future iterations, chat-bot integrations.
+         */
+        post: operations["importEventBundle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -14052,7 +14098,12 @@ export interface components {
         ImportBil24SessionAction: {
             /**
              * Format: int64
-             * @description Bil24 action identifier. Must be positive and below 1e9.
+             * @description Bil24 action identifier. Must be positive and below 1e9 for
+             *     source=bil24 (the default / the legacy /imports/bil24-session
+             *     route). On a source=arena event-bundle payload this field is
+             *     OPTIONAL: omitted or 0 means "create and mint an id ≥ 1e9";
+             *     supplied it must already be ≥ 1e9 and resolve to an event of this
+             *     organization (event-bundle spec §3.1).
              * @example 267271
              */
             actionId: number;
@@ -14089,8 +14140,12 @@ export interface components {
         ImportBil24SessionActionEvent: {
             /**
              * Format: int64
-             * @description Bil24 action-event identifier and the idempotency key of the import.
-             *     Must be positive and below 1e9.
+             * @description Bil24 action-event identifier and the idempotency key of the
+             *     import for source=bil24 — must be positive and below 1e9. For
+             *     source=arena the idempotency key is the top-level `externalRef`
+             *     instead; this field is OPTIONAL, omitted or 0 means "create and
+             *     mint an id ≥ 1e9", supplied it must already be ≥ 1e9 and resolve
+             *     to a session of this organization (event-bundle spec §3.1, §3.2).
              * @example 703872
              */
             actionEventId: number;
@@ -14118,25 +14173,55 @@ export interface components {
              */
             sellEndTime?: string;
             /**
+             * @description Optional local wall-clock end time in "HH:MM", interpreted in the
+             *     venue timezone (event-bundle spec §3). A value at or before `time`
+             *     means the session ends the NEXT calendar day. Omitted — the import
+             *     keeps its default session duration (currently 3 hours).
+             * @example 22:00
+             */
+            endTime?: string;
+            /**
+             * @description Optional RFC3339 instant at which sales open, stored as every
+             *     imported tier's `sale_window_start` (event-bundle spec §3). Must
+             *     be strictly before `sellEndTime` when both are present
+             *     (`import.invalid_sell_start_time` otherwise). Omitted — sales open
+             *     immediately.
+             * @example 2026-09-15T10:00:00+02:00
+             */
+            sellStartTime?: string;
+            /**
              * @description Bil24 service-charge percentage. Informational only — arena never
              *     modifies the sales channel fee from an import and returns the
              *     import.charge_percent_ignored warning when this is non-zero.
+             *     Ignored entirely (with import.field_ignored_for_source) on a
+             *     source=arena event-bundle payload.
              */
             chargePercent?: number;
             /**
              * Format: int64
              * @description Bil24 seating-plan identifier. Accepted and range-checked but not
-             *     yet materialised by this endpoint.
+             *     yet materialised by this endpoint. Ignored entirely (with
+             *     import.field_ignored_for_source) on a source=arena event-bundle
+             *     payload.
              */
             seatingPlanId?: number;
-            /** @description Human-readable seating plan name as sent by Bil24. */
+            /**
+             * @description Human-readable seating plan name as sent by Bil24. Ignored
+             *     entirely (with import.field_ignored_for_source) on a source=arena
+             *     event-bundle payload.
+             */
             seatingPlanName?: string;
         };
         /** @description Bil24 "venue" block — matched to an arena venue by its Bil24 external id. */
         ImportBil24SessionVenue: {
             /**
              * Format: int64
-             * @description Bil24 venue identifier. Must be positive and below 1e9.
+             * @description Bil24 venue identifier. Must be positive and below 1e9 for
+             *     source=bil24. For source=arena this field is OPTIONAL: omitted or
+             *     0 falls back to matching an active organization venue by
+             *     `lower(btrim(venueName))`, creating one when no match exists;
+             *     supplied it must already be ≥ 1e9 and resolve to a venue of this
+             *     organization (event-bundle spec §3.1, §3.2 step 4).
              * @example 9619
              */
             venueId: number;
@@ -14174,7 +14259,13 @@ export interface components {
         ImportBil24SessionCategory: {
             /**
              * Format: int64
-             * @description Bil24 category-price identifier. Must be positive and below 1e9.
+             * @description Bil24 category-price identifier. Must be positive and below 1e9
+             *     for source=bil24. For source=arena this field is OPTIONAL:
+             *     omitted or 0 falls back to matching a tier of this session by
+             *     `lower(btrim(categoryPriceName))`, creating one when no match
+             *     exists; supplied it must already be ≥ 1e9 and resolve to a tier of
+             *     this session (409 import.category_bound_elsewhere when it belongs
+             *     to a different session; event-bundle spec §3.1, §3.2 step 5).
              * @example 12345
              */
             categoryPriceId: number;
@@ -14263,6 +14354,43 @@ export interface components {
              */
             publish?: boolean;
         };
+        /**
+         * @description Request body for POST /v1/organizations/{org_id}/imports/event-bundle
+         *     (event-bundle spec §2-§5) — the same shape as ImportBil24SessionRequest
+         *     (action / actionEvent / venue / categoryList / seatList / svg /
+         *     publish, plus actionEvent.endTime and actionEvent.sellStartTime),
+         *     extended with the two fields that select and identify the path:
+         *     `source` and `externalRef`. The legacy POST
+         *     .../imports/bil24-session route accepts the same JSON body but keeps
+         *     its own documented contract (ImportBil24SessionRequest) unchanged —
+         *     `source` there is implicit (bil24) and a body that declares
+         *     `source: arena` on that route is rejected with 422
+         *     import.source_mismatch.
+         */
+        ImportEventBundleRequest: components["schemas"]["ImportBil24SessionRequest"] & {
+            /**
+             * @description Selects the identifier regime (event-bundle spec §3.1).
+             *     `bil24`: every `*Id` field must be supplied and below 1e9,
+             *     identical to the legacy route. `arena`: every `*Id` field is
+             *     optional (arena mints one ≥ 1e9 when omitted; a supplied one
+             *     must already be ≥ 1e9 and resolve to an object of this
+             *     organization) and `externalRef` becomes mandatory.
+             * @enum {string}
+             */
+            source: "bil24" | "arena";
+            /**
+             * @description Caller-side idempotency key for the session, unique within
+             *     the organization (migration 0099 session_external_refs).
+             *     MANDATORY when source=arena (422
+             *     import.external_ref_required otherwise; 422
+             *     import.external_ref_invalid when empty after trim or over 200
+             *     characters); optional for source=bil24. Recommended shape
+             *     `wp:<site-slug>:product:<wc_product_id>` for a WordPress
+             *     product, `tg:<bot>:<chat>:<msg>` for a bot.
+             * @example wp:lampyris-staging:product:4711
+             */
+            externalRef?: string;
+        };
         /** @description A non-fatal condition observed while importing. Warnings never fail the import. */
         ImportWarning: {
             /**
@@ -14273,7 +14401,50 @@ export interface components {
             /** @description Human-readable explanation of the warning. */
             message: string;
         };
-        /** @description Result of a Bil24 session import (spec §13.2 step 9). */
+        /**
+         * @description The compat-identifier set the caller must persist on its side
+         *     (event-bundle spec §4): for source=arena these are the ids arena just
+         *     minted, for source=bil24 they are the ids the payload supplied,
+         *     echoed back after registration. Either way they are exactly what
+         *     GET_ALL_ACTIONS will later report, so the site can store them
+         *     immediately instead of waiting for a catalog sync.
+         */
+        ImportCompatIDs: {
+            /**
+             * Format: int64
+             * @description Compat id of the arena event — action.actionId, minted or echoed.
+             * @example 1000000007
+             */
+            action_id: number;
+            /**
+             * Format: int64
+             * @description Compat id of the arena session — actionEvent.actionEventId, minted or echoed.
+             * @example 1000000008
+             */
+            action_event_id: number;
+            /**
+             * Format: int64
+             * @description Compat id of the arena venue — venue.venueId, minted or echoed.
+             * @example 1000000003
+             */
+            venue_id: number;
+            /**
+             * @description Compat ids of the arena ticket tiers, aligned POSITIONALLY with
+             *     the request's categoryList so the caller can zip the two without
+             *     consulting tier_ids. Never null — always one entry per requested
+             *     category.
+             * @example [
+             *       1000000012,
+             *       1000000013
+             *     ]
+             */
+            category_price_ids: number[];
+        };
+        /**
+         * @description Result of an import through either route (spec §13.2 step 9;
+         *     event-bundle spec §4 — the response shape is identical for
+         *     /imports/bil24-session and /imports/event-bundle, both sources).
+         */
         ImportBil24SessionResponse: {
             /**
              * Format: uuid
@@ -14307,6 +14478,18 @@ export interface components {
              *     existing session was updated in place (repeat import).
              */
             created: boolean;
+            /**
+             * @description The idempotency key the bundle was stored under (event-bundle
+             *     spec §4), or null when the payload carried none — only possible
+             *     for source=bil24 (the legacy route never sends externalRef).
+             * @example wp:lampyris-staging:product:4711
+             */
+            external_ref: string | null;
+            /**
+             * @description The identifier set the caller must persist on its side
+             *     (event-bundle spec §4). See ImportCompatIDs.
+             */
+            compat_ids: components["schemas"]["ImportCompatIDs"];
         };
         /**
          * @description Fields common to every `/compat/bil24/json` command. `fid` and
@@ -34748,7 +34931,142 @@ export interface operations {
              * @description Payload rejected before any write: `compat.external_id_out_of_range`,
              *     `import.categories_required`, `import.action_name_required`,
              *     `import.invalid_currency`, `import.invalid_start_time`,
-             *     `import.invalid_sell_end_time` or `venue.timezone_required`.
+             *     `import.invalid_sell_end_time`, `venue.timezone_required`,
+             *     `import.source_mismatch` (body declared `source: arena` on this
+             *     legacy route), `import.end_time_invalid` or
+             *     `import.invalid_sell_start_time`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Import transaction failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    importEventBundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportEventBundleRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Import applied. `created` distinguishes a first import from an
+             *     idempotent repeat (matched by `externalRef` for source=arena, by
+             *     `actionEvent.actionEventId` for source=bil24); both answer 200.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBil24SessionResponse"];
+                };
+            };
+            /** @description Request body is not valid JSON or exceeds the 8 MB limit. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing, or JWT / API key verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor is not a member of the target organization or lacks `import.bil24_session`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `import.compat_id_unknown` — a supplied compat id (source=arena)
+             *     does not resolve to an object of this organization; also returned
+             *     when the id belongs to a different organization, to avoid leaking
+             *     existence.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description A referenced Bil24 identifier is already bound to a different
+             *     arena resource (`import.category_bound_elsewhere`), the seat set
+             *     of a session that already has sales would change
+             *     (`import.session_has_sales`), `externalRef` is already bound to a
+             *     different session or the matched session already carries a
+             *     different `externalRef` (`import.external_ref_conflict`), or the
+             *     session resolved by `externalRef`/`actionEventId` belongs to a
+             *     different event than the supplied `actionId`
+             *     (`import.action_mismatch`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Payload rejected before any write: `compat.external_id_out_of_range`,
+             *     `import.categories_required`, `import.action_name_required`,
+             *     `import.invalid_currency`, `import.invalid_start_time`,
+             *     `import.invalid_sell_end_time`, `venue.timezone_required`,
+             *     `import.source_invalid` (missing or not one of bil24/arena),
+             *     `import.external_ref_required` (source=arena without
+             *     `externalRef`), `import.external_ref_invalid` (empty after trim
+             *     or over 200 characters), `import.arena_id_out_of_range`
+             *     (source=arena, a supplied `*Id` is below 1e9),
+             *     `import.end_time_invalid`, `import.invalid_sell_start_time` or
+             *     `import.venue_name_required` (source=arena, neither `venueId` nor
+             *     `venueName` present and no matched session to inherit a venue
+             *     from).
              */
             422: {
                 headers: {

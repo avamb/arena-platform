@@ -34,14 +34,24 @@ func (s *Server) handleImportBil24Session(w http.ResponseWriter, r *http.Request
 	s.importsHandler().HandleBil24Session(w, r)
 }
 
+// handleImportEventBundle serves POST .../imports/event-bundle (event-bundle
+// spec §2). Same handler family as the legacy alias, but the source is not
+// pinned — the request body must declare source=bil24|arena itself.
+func (s *Server) handleImportEventBundle(w http.ResponseWriter, r *http.Request) {
+	s.importsHandler().HandleEventBundle(w, r)
+}
+
 // mountImportRoutes mounts the operator-facing bulk import surface
-// (spec §13.2):
+// (spec §13.2, event-bundle spec §2):
 //
-//	POST /v1/organizations/{org_id}/imports/bil24-session
+//	POST /v1/organizations/{org_id}/imports/bil24-session   (legacy alias, source pinned to bil24)
+//	POST /v1/organizations/{org_id}/imports/event-bundle    (source declared in body: bil24|arena)
 //
-// Gated on the `import.bil24_session` permission, which spec §13.1 lists among
-// the scopes an organization API key may carry — the site-side import module
-// (spec §13.4) is the primary caller.
+// Gated on the `import.bil24_session` permission (reused for both routes —
+// renaming it is cosmetic, deferred per event-bundle spec §2), which spec
+// §13.1 lists among the scopes an organization API key may carry — the
+// site-side import module (spec §13.4 / event-bundle spec §10) is the
+// primary caller.
 func (s *Server) mountImportRoutes(r chi.Router) {
 	if !s.authEnabled() || s.eventQueries == nil || s.pool == nil {
 		return
@@ -49,5 +59,6 @@ func (s *Server) mountImportRoutes(r chi.Router) {
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "import.bil24_session", "imports")
 		pr.Post("/organizations/{org_id}/imports/bil24-session", s.handleImportBil24Session)
+		pr.Post("/organizations/{org_id}/imports/event-bundle", s.handleImportEventBundle)
 	})
 }

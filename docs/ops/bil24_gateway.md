@@ -139,6 +139,67 @@ own channel/credential (§1) and webhook (§2) — do not share a single org/cha
 two sites, they must stay tenant-isolated like any other two organizations. If a future
 session adds them to `arena-seed`, update this section with the exact seed command.
 
+## 8. Creating events from the site (event bundle)
+
+Design authority: `08_architecture/19_event_bundle_arena_native_spec_ru.md`. This is the
+arena-native path for a site (or, in future iterations, a chat bot) to create an event **without
+Bil24 in the loop**: one idempotent `POST` creates or edits the event + session + venue + price
+categories + poster + publication in a single call.
+
+- **Route**: `POST /v1/organizations/{org_id}/imports/event-bundle`, body `source: "arena"`,
+  `Authorization: Bearer ak_…` carrying the `import.bil24_session` scope (same permission as the
+  Bil24 relay import; the name is legacy, renaming it is cosmetic and deferred). The legacy
+  `POST .../imports/bil24-session` route still exists unchanged and is now a thin alias that pins
+  `source: "bil24"` — a body declaring `source: "arena"` there is rejected with 422
+  `import.source_mismatch`.
+- **Identifiers**: every Bil24-style `*Id` field (`action.actionId`, `actionEvent.actionEventId`,
+  `venue.venueId`, `categoryList[].categoryPriceId`) is OPTIONAL for `source=arena` — omit it and
+  arena mints a compat id ≥ 1e9; supply one only when editing an existing object (it must already
+  be ≥ 1e9 and belong to this organization, otherwise 404 `import.compat_id_unknown`).
+- **Idempotency key**: `externalRef` (mandatory for `source=arena`, e.g.
+  `wp:lampyris-staging:product:4711`), not `actionEventId`. A repeat call with the same
+  `externalRef` edits the existing session in place instead of creating a duplicate.
+- **No seats**: `seatList`/`svg` are accepted but not materialised for `source=arena` in this
+  wave (warning `import.seating_not_imported`, never a 422) — this is the general-admission-only
+  branch. A seated event still goes through the multi-call Bil24-relay chain (`§13.2` below).
+- **Response**: the same `ImportBil24SessionResponse` shape as the legacy route, now always
+  carrying `external_ref` and `compat_ids` (`action_id`, `action_event_id`, `venue_id`,
+  `category_price_ids` — the last one positionally aligned with the request's `categoryList`).
+  Save `compat_ids.action_event_id` on the caller's side immediately; it is exactly what
+  `GET_ALL_ACTIONS` will report once the event is `published`.
+
+Minimal curl example against a staging org (replace `$ORG_ID` and the `ak_…` key):
+
+```bash
+curl -s -X POST "https://staging.example.com/v1/organizations/$ORG_ID/imports/event-bundle" \
+  -H "Authorization: Bearer ak_xxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  --data @apps/backend/tests/compat/bil24/testdata/wp/event_bundle/arena_ga_lampyris.json
+```
+
+That fixture is the exact staging-Lampyris example body from spec §3 (also used by the
+`TestEventBundleFixture_DecodesAndValidates` decode/validation test in
+`apps/backend/tests/compat/bil24/event_bundle_fixture_526_test.go`). A successful call answers
+something like:
+
+```json
+{
+  "event_id": "…", "session_id": "…", "created": true,
+  "external_ref": "wp:lampyris-staging:product:4711",
+  "compat_ids": {
+    "action_id": 1000000007, "action_event_id": 1000000008,
+    "venue_id": 1000000003, "category_price_ids": [1000000012, 1000000013]
+  }
+}
+```
+
+**Round-trip to `GET_ALL_ACTIONS`**: once the bundle publishes (`publish: true` in the body, or a
+follow-up bundle that flips it), the event surfaces through the same compat gateway `GET_ALL_ACTIONS`
+command (§1's fid/token) any Bil24-relay event does — `actionId`/`actionEventId`/`venueId`/
+`categoryPriceId` in the response are exactly `compat_ids`, `day`/`time` are rendered in the
+venue's timezone, and `bigPosterUrl` points at `/v1/media-files/{poster_media_id}`. The site does
+not need to wait for that sync to know the ids — it already has them in the bundle's own response.
+
 ## Related reading
 
 - Wire-level behavior differences and result-code map:

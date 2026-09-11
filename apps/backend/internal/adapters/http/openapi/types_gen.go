@@ -422,6 +422,12 @@ const (
 	Ok HealthzResponseStatus = "ok"
 )
 
+// Defines values for ImportEventBundleRequestSource.
+const (
+	Arena ImportEventBundleRequestSource = "arena"
+	Bil24 ImportEventBundleRequestSource = "bil24"
+)
+
 // Defines values for MediaObjectOwnerType.
 const (
 	MediaObjectOwnerTypeArtistPhoto    MediaObjectOwnerType = "artist_photo"
@@ -5290,7 +5296,12 @@ type ImpersonateResponse struct {
 // verbatim from a Bil24 GET_ALL_ACTIONS response by the site-side import
 // module (spec §13.4).
 type ImportBil24SessionAction struct {
-	// ActionId Bil24 action identifier. Must be positive and below 1e9.
+	// ActionId Bil24 action identifier. Must be positive and below 1e9 for
+	// source=bil24 (the default / the legacy /imports/bil24-session
+	// route). On a source=arena event-bundle payload this field is
+	// OPTIONAL: omitted or 0 means "create and mint an id ≥ 1e9";
+	// supplied it must already be ≥ 1e9 and resolve to an event of this
+	// organization (event-bundle spec §3.1).
 	ActionId int64 `json:"actionId"`
 
 	// ActionName Short action name. Used as the event title when fullActionName is empty.
@@ -5317,13 +5328,19 @@ type ImportBil24SessionAction struct {
 // ImportBil24SessionActionEvent Bil24 "actionEvent" block — becomes an arena session. This block's
 // actionEventId is the idempotency key of the whole import.
 type ImportBil24SessionActionEvent struct {
-	// ActionEventId Bil24 action-event identifier and the idempotency key of the import.
-	// Must be positive and below 1e9.
+	// ActionEventId Bil24 action-event identifier and the idempotency key of the
+	// import for source=bil24 — must be positive and below 1e9. For
+	// source=arena the idempotency key is the top-level `externalRef`
+	// instead; this field is OPTIONAL, omitted or 0 means "create and
+	// mint an id ≥ 1e9", supplied it must already be ≥ 1e9 and resolve
+	// to a session of this organization (event-bundle spec §3.1, §3.2).
 	ActionEventId int64 `json:"actionEventId"`
 
 	// ChargePercent Bil24 service-charge percentage. Informational only — arena never
 	// modifies the sales channel fee from an import and returns the
 	// import.charge_percent_ignored warning when this is non-zero.
+	// Ignored entirely (with import.field_ignored_for_source) on a
+	// source=arena event-bundle payload.
 	ChargePercent *float32 `json:"chargePercent,omitempty"`
 
 	// Currency ISO 4217 alphabetic currency code for every tier price in this payload.
@@ -5333,16 +5350,33 @@ type ImportBil24SessionActionEvent struct {
 	// format, interpreted in the venue timezone.
 	Day string `json:"day"`
 
+	// EndTime Optional local wall-clock end time in "HH:MM", interpreted in the
+	// venue timezone (event-bundle spec §3). A value at or before `time`
+	// means the session ends the NEXT calendar day. Omitted — the import
+	// keeps its default session duration (currently 3 hours).
+	EndTime *string `json:"endTime,omitempty"`
+
 	// SeatingPlanId Bil24 seating-plan identifier. Accepted and range-checked but not
-	// yet materialised by this endpoint.
+	// yet materialised by this endpoint. Ignored entirely (with
+	// import.field_ignored_for_source) on a source=arena event-bundle
+	// payload.
 	SeatingPlanId *int64 `json:"seatingPlanId,omitempty"`
 
-	// SeatingPlanName Human-readable seating plan name as sent by Bil24.
+	// SeatingPlanName Human-readable seating plan name as sent by Bil24. Ignored
+	// entirely (with import.field_ignored_for_source) on a source=arena
+	// event-bundle payload.
 	SeatingPlanName *string `json:"seatingPlanName,omitempty"`
 
 	// SellEndTime RFC3339 instant at which sales close. Stored as the session sale
 	// window end. Omit to leave the sale window unbounded.
 	SellEndTime *string `json:"sellEndTime,omitempty"`
+
+	// SellStartTime Optional RFC3339 instant at which sales open, stored as every
+	// imported tier's `sale_window_start` (event-bundle spec §3). Must
+	// be strictly before `sellEndTime` when both are present
+	// (`import.invalid_sell_start_time` otherwise). Omitted — sales open
+	// immediately.
+	SellStartTime *string `json:"sellStartTime,omitempty"`
 
 	// Time Local wall-clock start time in "HH:MM", interpreted in the venue
 	// timezone. Defaults to midnight when omitted.
@@ -5355,7 +5389,13 @@ type ImportBil24SessionCategory struct {
 	// to size the session inventory.
 	Availability *int32 `json:"availability,omitempty"`
 
-	// CategoryPriceId Bil24 category-price identifier. Must be positive and below 1e9.
+	// CategoryPriceId Bil24 category-price identifier. Must be positive and below 1e9
+	// for source=bil24. For source=arena this field is OPTIONAL:
+	// omitted or 0 falls back to matching a tier of this session by
+	// `lower(btrim(categoryPriceName))`, creating one when no match
+	// exists; supplied it must already be ≥ 1e9 and resolve to a tier of
+	// this session (409 import.category_bound_elsewhere when it belongs
+	// to a different session; event-bundle spec §3.1, §3.2 step 5).
 	CategoryPriceId int64 `json:"categoryPriceId"`
 
 	// CategoryPriceName Tier display name.
@@ -5401,14 +5441,25 @@ type ImportBil24SessionRequest struct {
 	Venue ImportBil24SessionVenue `json:"venue"`
 }
 
-// ImportBil24SessionResponse Result of a Bil24 session import (spec §13.2 step 9).
+// ImportBil24SessionResponse Result of an import through either route (spec §13.2 step 9;
+// event-bundle spec §4 — the response shape is identical for
+// /imports/bil24-session and /imports/event-bundle, both sources).
 type ImportBil24SessionResponse struct {
+	// CompatIds The identifier set the caller must persist on its side
+	// (event-bundle spec §4). See ImportCompatIDs.
+	CompatIds ImportCompatIDs `json:"compat_ids"`
+
 	// Created True when the session did not exist before this call, false when an
 	// existing session was updated in place (repeat import).
 	Created bool `json:"created"`
 
 	// EventId Arena event UUID mapped to the payload's action.actionId.
 	EventId openapi_types.UUID `json:"event_id"`
+
+	// ExternalRef The idempotency key the bundle was stored under (event-bundle
+	// spec §4), or null when the payload carried none — only possible
+	// for source=bil24 (the legacy route never sends externalRef).
+	ExternalRef *string `json:"external_ref"`
 
 	// SeatingPlanVersionId Seating plan version created by this import. Always null — this
 	// endpoint imports general-admission sessions only.
@@ -5484,12 +5535,95 @@ type ImportBil24SessionVenue struct {
 	// venue.timezone_kept warning is returned on divergence.
 	Timezone *string `json:"timezone,omitempty"`
 
-	// VenueId Bil24 venue identifier. Must be positive and below 1e9.
+	// VenueId Bil24 venue identifier. Must be positive and below 1e9 for
+	// source=bil24. For source=arena this field is OPTIONAL: omitted or
+	// 0 falls back to matching an active organization venue by
+	// `lower(btrim(venueName))`, creating one when no match exists;
+	// supplied it must already be ≥ 1e9 and resolve to a venue of this
+	// organization (event-bundle spec §3.1, §3.2 step 4).
 	VenueId int64 `json:"venueId"`
 
 	// VenueName Venue display name, used when arena has to create the venue.
 	VenueName *string `json:"venueName,omitempty"`
 }
+
+// ImportCompatIDs The compat-identifier set the caller must persist on its side
+// (event-bundle spec §4): for source=arena these are the ids arena just
+// minted, for source=bil24 they are the ids the payload supplied,
+// echoed back after registration. Either way they are exactly what
+// GET_ALL_ACTIONS will later report, so the site can store them
+// immediately instead of waiting for a catalog sync.
+type ImportCompatIDs struct {
+	// ActionEventId Compat id of the arena session — actionEvent.actionEventId, minted or echoed.
+	ActionEventId int64 `json:"action_event_id"`
+
+	// ActionId Compat id of the arena event — action.actionId, minted or echoed.
+	ActionId int64 `json:"action_id"`
+
+	// CategoryPriceIds Compat ids of the arena ticket tiers, aligned POSITIONALLY with
+	// the request's categoryList so the caller can zip the two without
+	// consulting tier_ids. Never null — always one entry per requested
+	// category.
+	CategoryPriceIds []int64 `json:"category_price_ids"`
+
+	// VenueId Compat id of the arena venue — venue.venueId, minted or echoed.
+	VenueId int64 `json:"venue_id"`
+}
+
+// ImportEventBundleRequest defines model for ImportEventBundleRequest.
+type ImportEventBundleRequest struct {
+	// Action The Bil24 action (show/production) that becomes the arena event.
+	Action ImportBil24SessionAction `json:"action"`
+
+	// ActionEvent The Bil24 action event (one performance) that becomes the arena session.
+	ActionEvent ImportBil24SessionActionEvent `json:"actionEvent"`
+
+	// CategoryList Price categories to import as ticket tiers. Must contain at least one entry.
+	CategoryList []ImportBil24SessionCategory `json:"categoryList"`
+
+	// ExternalRef Caller-side idempotency key for the session, unique within
+	// the organization (migration 0099 session_external_refs).
+	// MANDATORY when source=arena (422
+	// import.external_ref_required otherwise; 422
+	// import.external_ref_invalid when empty after trim or over 200
+	// characters); optional for source=bil24. Recommended shape
+	// `wp:<site-slug>:product:<wc_product_id>` for a WordPress
+	// product, `tg:<bot>:<chat>:<msg>` for a bot.
+	ExternalRef *string `json:"externalRef,omitempty"`
+
+	// Publish When true, the imported event and session are pushed through the
+	// standard publish gate. A gate rejection is reported as a warning and
+	// never fails the import.
+	Publish *bool `json:"publish,omitempty"`
+
+	// SeatList Seats of the hall plan. Accepted but not materialised by this
+	// endpoint; a non-empty list yields the import.seating_not_imported
+	// warning.
+	SeatList *[]ImportBil24SessionSeat `json:"seatList,omitempty"`
+
+	// Source Selects the identifier regime (event-bundle spec §3.1).
+	// `bil24`: every `*Id` field must be supplied and below 1e9,
+	// identical to the legacy route. `arena`: every `*Id` field is
+	// optional (arena mints one ≥ 1e9 when omitted; a supplied one
+	// must already be ≥ 1e9 and resolve to an object of this
+	// organization) and `externalRef` becomes mandatory.
+	Source ImportEventBundleRequestSource `json:"source"`
+
+	// Svg Raw seating-plan SVG. Accepted but not stored by this endpoint; a
+	// non-empty value yields the import.seating_not_imported warning.
+	Svg *string `json:"svg,omitempty"`
+
+	// Venue The Bil24 venue hosting the performance, matched or created by external id.
+	Venue ImportBil24SessionVenue `json:"venue"`
+}
+
+// ImportEventBundleRequestSource Selects the identifier regime (event-bundle spec §3.1).
+// `bil24`: every `*Id` field must be supplied and below 1e9,
+// identical to the legacy route. `arena`: every `*Id` field is
+// optional (arena mints one ≥ 1e9 when omitted; a supplied one
+// must already be ≥ 1e9 and resolve to an object of this
+// organization) and `externalRef` becomes mandatory.
+type ImportEventBundleRequestSource string
 
 // ImportWarning A non-fatal condition observed while importing. Warnings never fail the import.
 type ImportWarning struct {
@@ -10629,6 +10763,9 @@ type UpdateExternalAllocationJSONRequestBody UpdateExternalAllocationJSONBody
 
 // ImportBil24SessionJSONRequestBody defines body for ImportBil24Session for application/json ContentType.
 type ImportBil24SessionJSONRequestBody = ImportBil24SessionRequest
+
+// ImportEventBundleJSONRequestBody defines body for ImportEventBundle for application/json ContentType.
+type ImportEventBundleJSONRequestBody = ImportEventBundleRequest
 
 // UpsertMACSWebhookJSONRequestBody defines body for UpsertMACSWebhook for application/json ContentType.
 type UpsertMACSWebhookJSONRequestBody = UpsertMACSWebhookRequest

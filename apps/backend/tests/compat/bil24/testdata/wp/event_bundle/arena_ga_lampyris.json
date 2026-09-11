@@ -1,0 +1,45 @@
+{
+  "source": "arena",
+  "externalRef": "wp:lampyris-staging:product:4711",
+  "action": {
+    "actionId": null,
+    "actionName": "Lampyris Tasting",
+    "fullActionName": "Lampyris Wine & Light Tasting 2026",
+    "description": "An evening wine and light-art tasting staged by Lampyris at Palác Akropolis.",
+    "bigPosterUrl": "https://staging.lampyrisevents.com/wp-content/uploads/….jpg",
+    "age": "12+",
+    "organizerName": "Lampyris"
+  },
+  "actionEvent": {
+    "actionEventId": null,
+    "day": "26.10.2026",
+    "time": "19:00",
+    "endTime": "22:00",
+    "currency": "CZK",
+    "sellEndTime": "2026-10-26T18:00:00+01:00",
+    "sellStartTime": "2026-09-15T10:00:00+02:00"
+  },
+  "venue": {
+    "venueId": null,
+    "venueName": "Palác Akropolis",
+    "address": "Kubelíkova 27",
+    "cityName": "Praha",
+    "countryName": "Czechia",
+    "timezone": "Europe/Prague"
+  },
+  "categoryList": [
+    {
+      "categoryPriceId": null,
+      "categoryPriceName": "Standard",
+      "price": 450,
+      "availability": 300
+    },
+    {
+      "categoryPriceId": null,
+      "categoryPriceName": "VIP",
+      "price": 900,
+      "availability": 40
+    }
+  ],
+  "publish": true
+}

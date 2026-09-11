@@ -1123,10 +1123,13 @@ sbt-SVG тестового сеанса (снять интерактивно в 
 
 Не в этом репо; фиксируется, чтобы обе стороны сошлись:
 
-- Без мест: `POST /v1/organizations/{org}/events` → `POST …/sessions` (площадка, дата, валюта)
-  → `POST …/sessions/{id}/tiers` (категории, цены, вместимость, окно продаж) → `PUT
-  /v1/sessions/{id}/media` (постер) → `POST …/events/{id}/status {published}`. После
-  публикации — `event.created` вебхук и штатный `GET_ALL_ACTIONS`.
+- Без мест: одним пакетным вызовом `POST /v1/organizations/{org_id}/imports/event-bundle`,
+  `source: "arena"` (событие + сеанс + площадка + категории цен + афиша + публикация за один
+  идемпотентный запрос, ключ идемпотентности — `externalRef`, а не многошаговая цепочка
+  `POST /events` → `POST /sessions` → `POST /tiers` → `PUT /media` → `POST /status`).
+  Design authority и полный контракт — `08_architecture/19_event_bundle_arena_native_spec_ru.md`;
+  раннер и curl-пример — `docs/ops/bil24_gateway.md` §8. После публикации — `event.created`
+  вебхук и штатный `GET_ALL_ACTIONS`, как и раньше.
 - С местами: модуль импорта сайта вызывает у Bil24 `GET_ALL_ACTIONS`, `GET_SEAT_LIST
   (availableOnly:false)`, `image?type=seatingPlan`, собирает тело §13.2 и шлёт под ключом.
 - Ключ — `Authorization: Bearer ak_…`; ошибки — стандартный `ErrorEnvelope` arena.
