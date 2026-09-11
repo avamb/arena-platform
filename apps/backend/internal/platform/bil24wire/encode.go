@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/orderexport"
 )
 
@@ -315,10 +316,10 @@ func ticketCharge(o orderexport.Order, charge int64, i int) int64 {
 	return 0
 }
 
-// major converts minor units to the float major units the wire uses. The
-// division by 100 is exact for every amount below 2^53/100, which is every
-// amount a ticketing system can produce.
-func major(minor int64) float64 { return float64(minor) / 100 }
+// major converts minor units to the float major units the wire uses. The one
+// conversion helper of the whole gateway lives in bil24compat/money (spec 20
+// §2.3); this is a local alias so the call sites stay short.
+func major(minor int64) float64 { return money.Major(minor) }
 
 // nullableMajor converts an optional minor-unit amount.
 func nullableMajor(minor *int64) *float64 {

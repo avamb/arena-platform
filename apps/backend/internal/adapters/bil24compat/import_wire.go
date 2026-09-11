@@ -18,9 +18,10 @@ package bil24compat
 import (
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 )
 
 // ExternalIDCeiling mirrors compatids' invariant: Bil24-originated
@@ -138,7 +139,7 @@ type ImportSessionCategory struct {
 // minor units arena stores in ticket_tiers.price_amount, rounding half away
 // from zero to avoid the 24.999999 → 2499 float artefact.
 func (c ImportSessionCategory) PriceMinorUnits() int64 {
-	return int64(math.Round(c.Price * 100))
+	return money.Minor(c.Price)
 }
 
 // ImportSessionSeatLocation is the sector / row / number triple of a seat.

@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 )
@@ -338,13 +339,16 @@ func (h *Handler) reservationContext(
 // gateway_ru.md): sum = subtotal, discount = discount, charge = service
 // charge, and the invariant totalSum = sum - discount + charge is
 // preserved by deriving charge from the pipeline total.
+//
+// The breakdown is in minor units; the wire is major (spec 20 §2), so the
+// derivation stays integral and every field is converted once, here.
 func bil24FinancialFields(bd hcheckout.PricingBreakdown) map[string]any {
 	charge := bd.Total - (bd.Subtotal - bd.Discount)
 	fields := map[string]any{
-		"sum":      bd.Subtotal,
-		"discount": bd.Discount,
-		"charge":   charge,
-		"totalSum": bd.Total,
+		"sum":      money.Major(bd.Subtotal),
+		"discount": money.Major(bd.Discount),
+		"charge":   money.Major(charge),
+		"totalSum": money.Major(bd.Total),
 	}
 	if bd.Currency != "" {
 		fields["currency"] = bd.Currency

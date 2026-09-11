@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,6 +26,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
@@ -247,16 +247,16 @@ func gatewayRefundActor(fid int64) string {
 }
 
 // refundPriceMinorUnits converts the optional MAJOR-unit wire amount into
-// the integer minor units arena stores in tickets.refund_price, rounding
-// half away from zero to avoid the 24.999999 → 2499 float artefact. A nil
+// the integer minor units arena stores in tickets.refund_price (spec 20 §2.4:
+// every inbound money value goes through bil24compat/money, which rounds half
+// away from zero and so avoids the 24.999999 → 2499 float artefact). A nil
 // or negative input yields nil ("amount not decided"), which leaves the
 // column NULL — the cancellation still happens either way (AB-49).
 func refundPriceMinorUnits(p *float64) *int64 {
 	if p == nil || *p < 0 {
 		return nil
 	}
-	v := int64(math.Round(*p * 100))
-	return &v
+	return money.MinorPtr(p)
 }
 
 // refundDateString renders the refund timestamp of an already-cancelled

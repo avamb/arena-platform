@@ -40,6 +40,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 )
 
@@ -412,6 +413,8 @@ func sc6AssertOrderRow(t *testing.T, st *harnessState, orderID uuid.UUID, wantEx
 	if currency != want.currency {
 		t.Errorf("orders.currency = %q, want %q", currency, want.currency)
 	}
+	// sc6Money holds the values the WIRE reported — major units (spec 20 §2).
+	// The orders columns are minor units, so the comparison converts.
 	for _, tc := range []struct {
 		name string
 		got  int64
@@ -422,8 +425,9 @@ func sc6AssertOrderRow(t *testing.T, st *harnessState, orderID uuid.UUID, wantEx
 		{"charge", charge, want.charge},
 		{"total", total, want.total},
 	} {
-		if float64(tc.got) != tc.want {
-			t.Errorf("orders.%s = %d, want %v", tc.name, tc.got, tc.want)
+		if tc.got != money.Minor(tc.want) {
+			t.Errorf("orders.%s = %d minor, want %v major (%d minor)",
+				tc.name, tc.got, tc.want, money.Minor(tc.want))
 		}
 	}
 	// The channel's own 5% is authoritative; the client's chargePercent is not.

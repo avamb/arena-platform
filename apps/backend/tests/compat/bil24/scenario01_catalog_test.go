@@ -443,17 +443,18 @@ func sc1SeedHybridEvent(t *testing.T, st *harnessState, start, end time.Time) st
 	if err := st.Pool.QueryRow(ctx,
 		`INSERT INTO ticket_tiers (session_id, name, pricing_mode,
 		     price_amount, currency, sort_order)
-		 VALUES ($1, 'Stání', 'fixed', 700, 'CZK', 0)
+		 VALUES ($1, 'Stání', 'fixed', 70000, 'CZK', 0)
 		 RETURNING id`, sessID,
 	).Scan(&gaTierID); err != nil {
 		t.Fatalf("seed hybrid GA tier: %v", err)
 	}
 	// A seated tier with no ga_unit rows: it must NOT become a category, but it
-	// must still widen the action's maxPrice to 1500.
+	// must still widen the action's maxPrice to 1500. price_amount is minor
+	// units (spec 20 §2.2): 150000 = CZK 1500.00 on the wire.
 	if _, err := st.Pool.Exec(ctx,
 		`INSERT INTO ticket_tiers (session_id, name, pricing_mode,
 		     price_amount, currency, sort_order)
-		 VALUES ($1, 'Balkon', 'fixed', 1500, 'CZK', 1)`, sessID,
+		 VALUES ($1, 'Balkon', 'fixed', 150000, 'CZK', 1)`, sessID,
 	); err != nil {
 		t.Fatalf("seed hybrid seated tier: %v", err)
 	}

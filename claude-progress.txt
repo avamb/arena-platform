@@ -30599,3 +30599,87 @@ spec_ru.md §9 (scenarios 6-7) and §5 (error codes); both matched code
 behavior with no disagreement requiring a spec-vs-code call other than the
 already-known price-units gap noted above.
 
+================================================================================
+#528 W1-M1 [MAJOR] money package + all hbil24 emit/consume sites on the
+major-unit wire   (2026-09-11)
+================================================================================
+
+Spec authority: 08_architecture/20_bil24_gateway_money_units_spec_ru.md.
+Rule implemented: the /compat/bil24/json wire carries MAJOR currency units as
+JSON numbers (<=2 decimals, no trailing zeros); the database carries MINOR
+units as bigint; every calculation runs in minor units; the conversion happens
+exactly once, in internal/adapters/bil24compat/money.
+
+What landed
+- New package internal/adapters/bil24compat/money: Major, Minor, ScaleFor,
+  RoundMinor, with unit tests covering half-away-from-zero rounding, negative
+  amounts, zero-decimal currencies and the float-repr trap (18.9 vs 18.90).
+- Every emit site in spec 20 section 3's table now goes through money.Major:
+  GET_ALL_ACTIONS, GET_SEAT_LIST, GET_CART, RESERVATION, CREATE_ORDER_EXT and
+  both legacy GET_ORDER_INFO paths (cmd_catalog.go, cmd_catalog_events.go,
+  cmd_seat_list.go, cmd_cart.go, cmd_cart_get.go, cmd_cart_view.go,
+  cmd_order.go, cmd_order_create.go), plus bil24wire/encode.go.
+- Consume sites go through money.Minor: PAY_ORDER compares Minor(amount)
+  against orders.total with a +/-1 MINOR unit tolerance (cmd_order_pay.go),
+  REFUND_TICKET converts refundPrice (cmd_refund.go), and the Bil24 import
+  converts categoryList[].price (bil24compat/import_wire.go).
+- Fixtures: every seeded price scaled x100 so the existing goldens stay
+  byte-identical, and event_bundle_527 / scenario08_import now assert the real
+  450/900 and 900/945 figures with their "known gap" comments deleted.
+- New fractional golden case (spec 20 section 5), integration-tagged:
+  tests/compat/bil24/money_fractional_528_test.go. Seeds a 1890-minor EUR tier
+  and drives GET_SEAT_LIST -> RESERVATION -> CREATE_ORDER_EXT -> PAY_ORDER,
+  asserting the RAW response bytes contain "price":18.9 / "charge":0.95 /
+  "totalSum":19.85 and never 18.90, 18.899..., 0.9450 or a string-quoted sum.
+  PAY_ORDER accepts 19.85, 19.84 and 19.86 and rejects 19.90 with
+  amount_mismatch; the orders row stays minor (1890/0/95/1985) and the
+  mismatch order_events payload carries both reported_amount_minor and
+  expected_amount_minor. Each sub-case mints its own buyer/reservation/order
+  because a paid order short-circuits to an idempotent 0 before the amount
+  check runs. The wire accounting identity is asserted in integer minor units
+  (sum - discount + charge == total) because major-unit float addition gives
+  19.849999999999998.
+- Static guardrail tests/staticanalysis/money_units_528_test.go forbids bare
+  "/ 100" and "* 100" in hbil24, macs and bil24wire.
+- Docs: BEHAVIOR_DIFFERENCES.md section 8 now links spec 20 and names the
+  fractional case; AGENTS.md's obsolete gotcha ("the gateway does NOT convert
+  money units") is replaced by the real rule plus a second gotcha about the
+  cart-vs-hcheckout rounding divergence below.
+
+Real defect found by the new fractional case
+hcheckout.ComputePricingLines FLOORS the basis-point platform fee
+(discounted * rate / 10_000), so a 5 % fee on 1890 minor came out as 94, while
+the gateway cart's feeChargeMinor rounds half away from zero and had already
+shown the buyer 95 in RESERVATION/GET_CART. CREATE_ORDER_EXT would therefore
+persist 19.84 for a cart that displayed 19.85, and PAY_ORDER's +/-1 minor
+tolerance would sit one unit off centre — spec 20 section 5's explicitly
+accepted 19.86 would have been recorded as an amount_mismatch. Every existing
+whole-number fixture was blind to this. Fixed with a gateway-local
+applyGatewayCharge (cmd_cart_view.go) that re-states the platform fee with the
+cart's rounding and restores total = subtotal - discount + charge before
+anything is persisted. Deliberately NOT fixed inside hcheckout: the floor rule
+there is the platform-wide contract for the REST and widget checkout,
+documented on CheckoutPricing.platform_fee in openapi.yaml. Per the feature
+statement, where code and spec disagree the spec wins — but the blast radius
+is kept to the gateway.
+
+Gates (all re-run after the final gofmt sweep)
+- gofmt -l over bil24compat / bil24wire / hbil24 / tests-compat-bil24 /
+  tests-staticanalysis -> two files reported (cmd_order.go, cmd_seat_list.go),
+  fixed with gofmt -w, re-run clean
+- go.exe build ./apps/backend/...                               EXIT:0
+- go.exe vet -tags integration ./apps/backend/tests/compat/bil24/...  EXIT:0
+- go.exe test ./apps/backend/...  (full unit suite)             EXIT:0, 0 FAIL
+- DATABASE_URL=<dev stand 55432> JWT_SIGNING_SECRET=x go.exe test -tags
+  integration -count=1 -p 1 ./apps/backend/tests/compat/bil24/...
+  ./apps/backend/internal/platform/macs/...
+  ./apps/backend/internal/platform/httpserver/himports/...      EXIT:0
+  (compat/bil24 15.5s, wpstub 0.7s, macs 1.2s, macs/stub 0.9s, himports 1.2s)
+- GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe run
+  github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run
+  ./apps/backend/...                                            EXIT:0
+  ("0 issues.")
+
+No test was weakened or deleted to reach green. No API surface changed, so no
+openapi/codegen regeneration was required.
+

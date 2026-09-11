@@ -726,19 +726,20 @@ func TestBil24_312_Reservation_Seated_RealHold(t *testing.T) {
 		t.Errorf("cartTimeout: want (0, %v], got %v", hcheckout.DefaultReservationTTL.Seconds(), resp["cartTimeout"])
 	}
 
-	// Financial fields: 2 seats × 2500 = 5000; zero-rate rules → charge 0.
-	if got := int64(resp["sum"].(float64)); got != 5000 {
-		t.Errorf("sum: want 5000, got %d", got)
+	// Financial fields: 2 seats × 2500 minor = 5000 minor → 50 MAJOR units on
+	// the wire (spec 20 §2); zero-rate rules → charge 0.
+	if got := resp["sum"].(float64); got != 50 {
+		t.Errorf("sum: want 50, got %v", got)
 	}
-	if got := int64(resp["totalSum"].(float64)); got != 5000 {
-		t.Errorf("totalSum: want 5000, got %d", got)
+	if got := resp["totalSum"].(float64); got != 50 {
+		t.Errorf("totalSum: want 50, got %v", got)
 	}
-	sum := int64(resp["sum"].(float64))
-	discount := int64(resp["discount"].(float64))
-	charge := int64(resp["charge"].(float64))
-	totalSum := int64(resp["totalSum"].(float64))
+	sum := resp["sum"].(float64)
+	discount := resp["discount"].(float64)
+	charge := resp["charge"].(float64)
+	totalSum := resp["totalSum"].(float64)
 	if totalSum != sum-discount+charge {
-		t.Errorf("financial invariant broken: totalSum=%d, sum-discount+charge=%d", totalSum, sum-discount+charge)
+		t.Errorf("financial invariant broken: totalSum=%v, sum-discount+charge=%v", totalSum, sum-discount+charge)
 	}
 	if resp["currency"] != "CZK" {
 		t.Errorf("currency: want CZK, got %v", resp["currency"])
@@ -770,15 +771,16 @@ func TestBil24_312_Reservation_Seated_FeesInCharge(t *testing.T) {
 	if rc := mustResultCode(t, resp); rc != ResultCodeOK {
 		t.Fatalf("want %d, got %d; body: %v", ResultCodeOK, rc, resp)
 	}
-	// 1 seat × 2500 → platform 125, provider 50 → charge 175, totalSum 2675.
-	if got := int64(resp["sum"].(float64)); got != 2500 {
-		t.Errorf("sum: want 2500, got %d", got)
+	// 1 seat × 2500 minor → platform 125, provider 50 → charge 175 minor,
+	// totalSum 2675 minor — on the wire (major units): 25 / 1.75 / 26.75.
+	if got := resp["sum"].(float64); got != 25 {
+		t.Errorf("sum: want 25, got %v", got)
 	}
-	if got := int64(resp["charge"].(float64)); got != 175 {
-		t.Errorf("charge: want 175 (5%%+2%% fees), got %d", got)
+	if got := resp["charge"].(float64); got != 1.75 {
+		t.Errorf("charge: want 1.75 (5%%+2%% fees), got %v", got)
 	}
-	if got := int64(resp["totalSum"].(float64)); got != 2675 {
-		t.Errorf("totalSum: want 2675, got %d", got)
+	if got := resp["totalSum"].(float64); got != 26.75 {
+		t.Errorf("totalSum: want 26.75, got %v", got)
 	}
 }
 
@@ -874,12 +876,12 @@ func TestBil24_312_Reservation_GA_RealHold(t *testing.T) {
 	if int(resp["totalQuantity"].(float64)) != 5 {
 		t.Errorf("totalQuantity: want 5, got %v", resp["totalQuantity"])
 	}
-	// 2×2500 + 3×1000 = 8000.
-	if got := int64(resp["sum"].(float64)); got != 8000 {
-		t.Errorf("sum: want 8000, got %d", got)
+	// 2×2500 + 3×1000 = 8000 minor → 80 major units on the wire (spec 20 §2).
+	if got := resp["sum"].(float64); got != 80 {
+		t.Errorf("sum: want 80, got %v", got)
 	}
-	if got := int64(resp["totalSum"].(float64)); got != 8000 {
-		t.Errorf("totalSum: want 8000, got %d", got)
+	if got := resp["totalSum"].(float64); got != 80 {
+		t.Errorf("totalSum: want 80, got %v", got)
 	}
 	ridStr, _ := resp["reservationId"].(string)
 	if _, err := uuid.Parse(ridStr); err != nil {

@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 )
@@ -266,12 +267,13 @@ func (h *Handler) buildActionEntry(
 		"actionName":      e.Name,
 		"fullActionName":  e.Name,
 		"actionEventList": events,
-		// Spec §7.1: the price envelope over the action's live tiers, in DB
-		// minor units like every other money field on this gateway. An action
-		// with no priced tier reports 0/0 rather than omitting the keys — the
-		// plugin's "from {minPrice}" template would print "from" alone.
-		"minPrice": ae.minPrice,
-		"maxPrice": ae.maxPrice,
+		// Spec §7.1 + spec 20 §3: the price envelope over the action's live
+		// tiers, in MAJOR currency units like every other money field on this
+		// gateway (the tiers carry minor units in the DB). An action with no
+		// priced tier reports 0/0 rather than omitting the keys — the plugin's
+		// "from {minPrice}" template would print "from" alone.
+		"minPrice": money.Major(ae.minPrice),
+		"maxPrice": money.Major(ae.maxPrice),
 	}
 	// firstEventDate / lastEventDate — spec §7.1 wants DD.MM.YYYY, and the
 	// only correct calendar day is the one at the VENUE. So they are read off

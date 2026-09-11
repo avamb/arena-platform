@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
@@ -235,12 +236,14 @@ func buildGetOrderInfoBody(cs gen.CheckoutSessionRow, ticketQuantity int) map[st
 		// int64 (compatibility_id_map KindOrder) but that migration is
 		// deferred to a later slice; today we emit the UUID string via
 		// TranslatePlatformID for continuity with pre-slice callers.
-		"id":             TranslatePlatformID(cs.ID),
-		"status":         cs.State,
-		"sum":            sum,
-		"discount":       discount,
-		"charge":         charge,
-		"totalSum":       totalSum,
+		"id":     TranslatePlatformID(cs.ID),
+		"status": cs.State,
+		// Spec 20 §3: this legacy branch must agree with the #505
+		// bil24wire projection of the SAME command — major units.
+		"sum":            money.Major(sum),
+		"discount":       money.Major(discount),
+		"charge":         money.Major(charge),
+		"totalSum":       money.Major(totalSum),
 		"ticketQuantity": ticketQuantity,
 	}
 	if currency != "" {
@@ -366,12 +369,13 @@ func (h *Handler) resolveOrderInfoOrder(
 // are needed here.
 func buildGetOrderInfoBodyFromOrder(order gen.OrderRow, ticketQuantity int) map[string]any {
 	return map[string]any{
-		"id":             TranslatePlatformID(order.ID),
-		"status":         order.Status,
-		"sum":            order.Subtotal,
-		"discount":       order.Discount,
-		"charge":         order.Charge,
-		"totalSum":       order.Total,
+		"id":     TranslatePlatformID(order.ID),
+		"status": order.Status,
+		// Spec 20 §3: orders.* are minor units, the wire is major.
+		"sum":            money.Major(order.Subtotal),
+		"discount":       money.Major(order.Discount),
+		"charge":         money.Major(order.Charge),
+		"totalSum":       money.Major(order.Total),
 		"currency":       order.Currency,
 		"ticketQuantity": ticketQuantity,
 	}

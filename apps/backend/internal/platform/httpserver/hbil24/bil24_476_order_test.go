@@ -63,18 +63,19 @@ func TestBil24_476_BuildGetOrderInfoBody_KeyRenames_Spec78(t *testing.T) {
 	}
 
 	// Financial keys unchanged from pre-slice: sum, discount, charge,
-	// totalSum, currency.
-	if got["sum"] != int64(500) {
-		t.Errorf("sum = %v, want 500", got["sum"])
+	// totalSum, currency — but their UNITS are the wire's major units
+	// (spec 20 §3), so 500 minor renders as 5.
+	if got["sum"] != 5.0 {
+		t.Errorf("sum = %v, want 5 (500 minor)", got["sum"])
 	}
-	if got["discount"] != int64(0) {
+	if got["discount"] != 0.0 {
 		t.Errorf("discount = %v, want 0", got["discount"])
 	}
-	if got["charge"] != int64(0) {
+	if got["charge"] != 0.0 {
 		t.Errorf("charge = %v, want 0", got["charge"])
 	}
-	if got["totalSum"] != int64(500) {
-		t.Errorf("totalSum = %v, want 500", got["totalSum"])
+	if got["totalSum"] != 5.0 {
+		t.Errorf("totalSum = %v, want 5 (500 minor)", got["totalSum"])
 	}
 	if got["currency"] != "CZK" {
 		t.Errorf("currency = %v, want %q", got["currency"], "CZK")
@@ -103,8 +104,9 @@ func TestBil24_476_BuildGetOrderInfoBody_ChargeSumsFees(t *testing.T) {
 
 	got := buildGetOrderInfoBody(cs, 0)
 
-	if got["charge"] != int64(50) {
-		t.Errorf("charge = %v, want 50 (platform_fee 30 + provider_fee 20)", got["charge"])
+	// 30 + 20 = 50 minor → 0.5 on the wire (spec 20 §3).
+	if got["charge"] != 0.5 {
+		t.Errorf("charge = %v, want 0.5 (platform_fee 30 + provider_fee 20, minor)", got["charge"])
 	}
 	if got["ticketQuantity"] != 0 {
 		t.Errorf("ticketQuantity = %v, want 0", got["ticketQuantity"])
@@ -129,10 +131,10 @@ func TestBil24_476_BuildGetOrderInfoBody_CurrencyAbsentWhenNil(t *testing.T) {
 	// Zero-valued financial keys still present with 0 — the pre-slice
 	// contract emits them even when nil, so tests / consumers can key
 	// on presence to detect a successful envelope.
-	if got["sum"] != int64(0) {
+	if got["sum"] != 0.0 {
 		t.Errorf("sum = %v, want 0", got["sum"])
 	}
-	if got["totalSum"] != int64(0) {
+	if got["totalSum"] != 0.0 {
 		t.Errorf("totalSum = %v, want 0", got["totalSum"])
 	}
 }

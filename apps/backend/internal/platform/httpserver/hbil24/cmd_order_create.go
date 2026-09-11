@@ -49,6 +49,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
@@ -184,8 +185,20 @@ func (h *Handler) handleBil24CreateOrderExtSession(w http.ResponseWriter, r *htt
 
 	bd := hcheckout.ComputePricingLines(
 		orderPricingLines(units), discount, currency,
-		hcheckout.PricingRules{PlatformFeeRate: int64(cartFeePercent(cc.channel) * 100)},
+		// PlatformFeeRate is in basis points, fee_percent is a percentage:
+		// percent × 100 = bp (percentScale, not a money conversion).
+		hcheckout.PricingRules{PlatformFeeRate: int64(cartFeePercent(cc.channel) * percentScale)},
 	)
+	// ComputePricingLines FLOORS the basis-point fee (`discounted * rate /
+	// 10_000`), which is the platform-wide rule for the REST/widget checkout.
+	// The Bil24 cart does not: spec 20 §5 prices a 5 % fee on 18.90 as 0.95,
+	// and the RESERVATION / GET_CART projections the buyer has just looked at
+	// already answered 0.95 through feeChargeMinor. Billing 19.84 for a cart
+	// that displayed 19.85 is a support incident, and it also shifts
+	// PAY_ORDER's ±1 minor-unit tolerance one unit off centre, so the spec's
+	// own 19.86 would be recorded as an amount_mismatch. The gateway therefore
+	// re-states the fee with the cart's rounding before anything is persisted.
+	bd = applyGatewayCharge(bd, cartFeePercent(cc.channel))
 
 	h.orderPersist(ctx, w, req, cc, sess, res, units, bd, promoCodeID)
 }
@@ -654,12 +667,13 @@ func (h *Handler) orderPersist(
 	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
 		"orderId":         TranslatePlatformID(order.ID),
 		"externalOrderId": req.OrderID,
-		"sum":             order.Subtotal,
-		"discount":        order.Discount,
-		"charge":          order.Charge,
-		"totalSum":        order.Total,
-		"currency":        order.Currency,
-		"expiration":      expiration.UTC().Format(time.RFC3339),
+		// Spec 20 §3: orders.* are minor units, the wire is major.
+		"sum":        money.Major(order.Subtotal),
+		"discount":   money.Major(order.Discount),
+		"charge":     money.Major(order.Charge),
+		"totalSum":   money.Major(order.Total),
+		"currency":   order.Currency,
+		"expiration": expiration.UTC().Format(time.RFC3339),
 	}))
 }
 

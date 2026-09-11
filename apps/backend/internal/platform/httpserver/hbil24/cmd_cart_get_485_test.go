@@ -120,7 +120,9 @@ func newGetCartFixture(t *testing.T, feePercent string) *getCartFixture {
 	tiers := &fakeTiers{tiers: map[uuid.UUID]gen.TicketTierRow{
 		tierID: {
 			ID: tierID, SessionID: sessionID, Name: "Standard",
-			PricingMode: "fixed", PriceAmount: 500, Currency: "CZK",
+			// 50000 minor units = CZK 500 on the wire (spec 20 §5: the
+			// fixture carries minor units, the expectations stay major).
+			PricingMode: "fixed", PriceAmount: 50000, Currency: "CZK",
 		},
 	}}
 

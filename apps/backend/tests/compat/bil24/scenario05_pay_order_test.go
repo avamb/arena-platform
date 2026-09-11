@@ -170,7 +170,9 @@ func runScenario05PayOrder(t *testing.T, st *harnessState) {
 	// figure the shop reported: arena's ledger must not inherit the site's
 	// arithmetic.
 	sc5AssertPaymentIntent(t, st, basicOrder.orderID,
-		"wc:"+basicOrder.externalRef+":woo_bank_card", 525, "CZK")
+		// payment_intents.amount is a DB column: minor units (spec 20 §2.2).
+		// The wire figure the shop reported is 525 major = 52500 minor.
+		"wc:"+basicOrder.externalRef+":woo_bank_card", 52500, "CZK")
 	// §7.9 step 4 — the inventory side.
 	sc5AssertStates(t, st, basicOrder.orderID, "completed", "converted")
 	// §7.9 step 5 — SYNCHRONOUS issuance. If this were left to the worker the

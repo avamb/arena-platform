@@ -24,6 +24,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
@@ -224,7 +225,9 @@ func (h *Handler) projectActionEvents(
 		} else {
 			entry["categoryLimitList"] = []map[string]any{}
 		}
-		entry["minPrice"] = minPrice
+		// Spec 20 §3: the wire carries major units; minPrice/maxPrice are
+		// accumulated in minor units above and converted once here.
+		entry["minPrice"] = money.Major(minPrice)
 
 		acc := out[s.EventID]
 		if len(acc.events) == 0 {
@@ -292,8 +295,9 @@ func (h *Handler) projectCategories(
 			"categoryPriceName": t.Tier.Name,
 			// placement=false marks the row as "no seat to choose". Seated
 			// tiers never reach here, so the key is a constant.
-			"placement":    false,
-			"price":        price,
+			"placement": false,
+			// Spec 20 §3: major units on the wire, minor units in the DB.
+			"price":        money.Major(price),
 			"availability": avail,
 			// arena has no tariff plans in wave 1; the site synthesises a
 			// default variation when the map is empty. The KEY must exist.

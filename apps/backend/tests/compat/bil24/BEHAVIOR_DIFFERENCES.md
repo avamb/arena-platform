@@ -101,6 +101,20 @@ zeros beyond 2 decimals. `sum − discount + charge = totalSum` is a
 platform-side invariant computed from the persisted cart, not accepted
 from the client.
 
+The units behind that rule are specified in full by
+[`08_architecture/20_bil24_gateway_money_units_spec_ru.md`](../../../../../08_architecture/20_bil24_gateway_money_units_spec_ru.md)
+(mini-wave W1-M, features #528–#530): the wire carries **MAJOR** currency
+units, the database carries **MINOR** units (`bigint`), every calculation
+(channel `fee_percent`, promo discounts, cart sums) runs in minor units, and
+the conversion happens exactly once at the encoding boundary through
+`internal/adapters/bil24compat/money`. Incoming money (`PAY_ORDER.amount`,
+`REFUND_TICKET.refundPrice`, the import's `categoryList[].price`) is
+converted with `money.Minor` before it is compared or stored; `PAY_ORDER`
+tolerates ±1 minor unit of drift between the shop's cart and ours. The
+fractional case spec 20 §5 pins by name — 1890 minor → `price: 18.9`,
+`charge: 0.95`, `totalSum: 19.85` — is exercised end to end by
+`money_fractional_528_test.go`.
+
 ### 9. Show times are venue-local without offset; TTL fields carry offset
 
 `actionEvent.showTime` = `"2028-02-15T19:00:00"` (no timezone) in the venue

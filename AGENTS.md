@@ -156,11 +156,32 @@ entries short and factual.
   Pattern: wrap each non-critical section in a nested `tx.Begin(ctx)`
   (SAVEPOINT), have the helper RETURN its error, and roll back just that
   savepoint. See `Handler.payBestEffort` in `hbil24/cmd_order_pay.go`.
-- **The Bil24 compat gateway does NOT convert money units on the wire.**
-  `cmd_order_create.go` answers `totalSum: orders.total` verbatim, so an
-  incoming `amount` is directly comparable to `orders.total` — no `/100`.
-  A stray division made every correct payment look like a mismatch
-  (`reported=525 expected=5.25`).
+- **Bil24 wire money is MAJOR units; the DB is MINOR units** (spec
+  `08_architecture/20_bil24_gateway_money_units_spec_ru.md`, features
+  #528–#530). Every `sum`/`price`/`charge`/`discount`/`totalSum`/
+  `refundPrice` on the `/compat/bil24/json` wire is a JSON **number** in
+  major units with ≤2 decimals and no trailing zeros (`18.9`, not `18.90`);
+  `orders.total`, `ticket_tiers.price_amount` etc. are `bigint` minor units.
+  All arithmetic (channel `fee_percent`, discounts, cart sums) runs in minor
+  units and the conversion happens **exactly once**, only in
+  `internal/adapters/bil24compat/money` (`money.Major` to emit,
+  `money.Minor` to consume). Never hand-roll `/ 100` or `* 100` in
+  `hbil24`/`macs`/`bil24wire` — a static guardrail in `tests/staticanalysis`
+  rejects it. PAY_ORDER compares `money.Minor(amount)` against
+  `orders.total` with a ±1 **minor**-unit tolerance; REFUND_TICKET and the
+  Bil24 import convert incoming money the same way. (The earlier gotcha here
+  claimed the gateway does no conversion at all — that was the pre-#528
+  behaviour and is obsolete.)
+- **The Bil24 cart ROUNDS the service charge, `hcheckout` FLOORS it.**
+  `hcheckout.ComputePricingLines` computes the basis-point platform fee as
+  `discounted * rate / 10_000` (integer floor) — the platform-wide contract
+  for the REST/widget checkout, documented on `CheckoutPricing.platform_fee`
+  in openapi.yaml. The gateway's cart projections (`feeChargeMinor`) round
+  half away from zero, so a 5 % fee on 1890 is 95, not 94. CREATE_ORDER_EXT
+  therefore re-states the fee with `applyGatewayCharge` (`cmd_cart_view.go`)
+  before persisting, or the buyer would be billed 19.84 for a cart that
+  displayed 19.85 and PAY_ORDER's ±1 tolerance would sit one unit off centre.
+  Do not "fix" this by changing `hcheckout`.
 - **`payment_intents_provider_payment_id` is a GLOBAL unique index**
   (migration 0025), unscoped by org — same class of trap as
   `customer_identities_strong_uq`. Integration tests must randomize the

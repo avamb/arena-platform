@@ -345,26 +345,17 @@ func runScenario08Import(t *testing.T, st *harnessState) {
 	if got := numberField(t, heldRow, "seatId"); got != float64(f.seatIDs[0]) {
 		t.Errorf("RESERVE held seatId = %v, want the imported Bil24 id %d", got, f.seatIDs[0])
 	}
-	// The imported category price (900) is stored in MINOR units by
+	// Units round-trip (spec 20 §2): the imported category price (900 MAJOR
+	// units) is stored as 90000 minor units by
 	// ImportSessionCategory.PriceMinorUnits (feature #517, pinned by
-	// TestPriceMinorUnits), so ticket_tiers.price_amount is 90000. The cart
-	// projection puts price_amount on the wire verbatim — seed_test.go seeds
-	// price_amount=500 and scenario 3 asserts sum==500 — so the hold reports
-	// 90000 here.
-	//
-	// NOTE (cross-feature, deliberately asserted as-is rather than "fixed"
-	// here): those two conventions disagree. Real Bil24 payloads carry MAJOR
-	// units on the wire (testdata/wp/bil24_orders_pseudonymized.json shows
-	// sums like 1710 CZK), so an imported 900 CZK category is quoted to the
-	// WordPress basket as 90000. The fix belongs to whichever of the import
-	// (#517) or the cart projection (#484/#485) owns the unit contract; both
-	// sides are currently pinned by their own tests, and silently changing one
-	// from a scenario test would hide the disagreement instead of surfacing it.
-	if got := numberField(t, hold, "sum"); got != 90000 {
-		t.Errorf("RESERVE sum = %v, want 90000 (the imported Parter price in minor units)", got)
+	// TestPriceMinorUnits) and the cart projection converts back on the way
+	// out, so the WordPress basket is quoted the same 900 CZK real Bil24
+	// would have quoted.
+	if got := numberField(t, hold, "sum"); got != 900 {
+		t.Errorf("RESERVE sum = %v, want 900 (the imported Parter price, major units)", got)
 	}
-	if got := numberField(t, hold, "totalSum"); got != 94500 {
-		t.Errorf("RESERVE totalSum = %v, want 94500 (90000 + 5%% channel fee)", got)
+	if got := numberField(t, hold, "totalSum"); got != 945 {
+		t.Errorf("RESERVE totalSum = %v, want 945 (900 + 5%% channel fee)", got)
 	}
 
 	// ── a blocked seat is genuinely off sale ─────────────────────────────────

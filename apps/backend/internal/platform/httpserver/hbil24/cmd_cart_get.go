@@ -24,6 +24,8 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 )
 
 // handleBil24GetCart serves spec §7.5. The credential / gateway-session /
@@ -113,8 +115,10 @@ func getCartExtra(snap cartSnapshot, feePercent float64, disc cartDiscount) map[
 			"seatId":          l.seatID,
 			"categoryPriceId": l.categoryPriceID,
 			"tariffPlanId":    nil,
-			"price":           l.price,
-			"discount":        rowDiscount,
+			// Spec 20 §3: the row money is held in minor units all the way
+			// through the proration above and converted once, here.
+			"price":    money.Major(l.price),
+			"discount": money.Major(rowDiscount),
 		})
 	}
 
@@ -136,18 +140,22 @@ func getCartExtra(snap cartSnapshot, feePercent float64, disc cartDiscount) map[
 	// discountAmount is the promo discount actually applied to this cart
 	// (feature #491); chargeAmount and totalSum are computed on the NET sum,
 	// so the fee follows the discount rather than the list price.
+	//
+	// Spec 20 §2.2: the fee arithmetic stays in MINOR units (exact integers)
+	// and the whole money block is converted to major units exactly once, at
+	// the encoding step below.
 	discount := disc.total
 	sum := snap.sum
-	charge := float64(sum-discount) * feePercent / 100
-	total := float64(sum-discount) + charge
+	charge := feeChargeMinor(sum-discount, feePercent)
+	total := sum - discount + charge
 
 	return map[string]any{
 		"cartTimeout":     snap.timeout(),
 		"currency":        snap.currency,
-		"sum":             sum,
-		"discountAmount":  discount,
-		"chargeAmount":    charge,
-		"totalSum":        total,
+		"sum":             money.Major(sum),
+		"discountAmount":  money.Major(discount),
+		"chargeAmount":    money.Major(charge),
+		"totalSum":        money.Major(total),
 		"actionEventList": actionEventList,
 	}
 }

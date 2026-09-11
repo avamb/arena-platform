@@ -408,11 +408,13 @@ func sl499SeedHybridSession(t *testing.T, st *harnessState, start, end time.Time
 	}
 
 	// sort_order fixes the categoryList order the golden spells out.
+	// price_amount is minor units (spec 20 §2.2): 150000 / 70000 are the
+	// CZK 1500 / CZK 700 the wire assertions below expect.
 	var seatedTierID uuid.UUID
 	if err := st.Pool.QueryRow(ctx,
 		`INSERT INTO ticket_tiers (session_id, name, pricing_mode,
 		     price_amount, currency, sort_order)
-		 VALUES ($1, 'Balkon', 'fixed', 1500, 'CZK', 0)
+		 VALUES ($1, 'Balkon', 'fixed', 150000, 'CZK', 0)
 		 RETURNING id`, sessID,
 	).Scan(&seatedTierID); err != nil {
 		t.Fatalf("seed hybrid seated tier: %v", err)
@@ -421,7 +423,7 @@ func sl499SeedHybridSession(t *testing.T, st *harnessState, start, end time.Time
 	if err := st.Pool.QueryRow(ctx,
 		`INSERT INTO ticket_tiers (session_id, name, pricing_mode,
 		     price_amount, currency, sort_order)
-		 VALUES ($1, 'Stání', 'fixed', 700, 'CZK', 1)
+		 VALUES ($1, 'Stání', 'fixed', 70000, 'CZK', 1)
 		 RETURNING id`, sessID,
 	).Scan(&gaTierID); err != nil {
 		t.Fatalf("seed hybrid GA tier: %v", err)

@@ -31,6 +31,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
@@ -433,8 +434,9 @@ func (h *Handler) writeCartResponse(ctx context.Context, w http.ResponseWriter, 
 			"actionEventId":   l.actionEventID,
 			"categoryPriceId": l.categoryPriceID,
 			"tariffPlanId":    nil,
-			"price":           l.price,
-			"discount":        0,
+			// Spec 20 §3: major units on the wire, minor units in the DB.
+			"price":    money.Major(l.price),
+			"discount": 0,
 		})
 	}
 	sum := snap.sum
@@ -442,20 +444,19 @@ func (h *Handler) writeCartResponse(ctx context.Context, w http.ResponseWriter, 
 	cartTimeout := snap.timeout()
 
 	// Spec §7.4: charge is the channel service fee applied to the net sum;
-	// totalSum = sum - discount + charge. fee_percent is numeric(5,2), so the
-	// arithmetic is done in float64 and marshals without a fractional part
-	// whenever the result is integral (the seed's 0.00 case).
+	// totalSum = sum - discount + charge. The whole computation runs in minor
+	// units (spec 20 §2.2) and is converted to the wire's major units once.
 	var discount int64
-	charge := float64(sum-discount) * cartFeePercent(cc.channel) / 100
-	totalSum := float64(sum-discount) + charge
+	charge := feeChargeMinor(sum-discount, cartFeePercent(cc.channel))
+	totalSum := sum - discount + charge
 
 	extra := map[string]any{
 		"cartTimeout": cartTimeout,
 		"currency":    currency,
-		"sum":         sum,
-		"discount":    discount,
-		"charge":      charge,
-		"totalSum":    totalSum,
+		"sum":         money.Major(sum),
+		"discount":    money.Major(discount),
+		"charge":      money.Major(charge),
+		"totalSum":    money.Major(totalSum),
 		"seatList":    seatList,
 	}
 	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, extra))
@@ -469,6 +470,41 @@ func cartFeePercent(channel gen.SalesChannelRow) float64 {
 		return 0
 	}
 	return pct
+}
+
+// percentScale is the "per cent" in per cent: a percentage divided by it is
+// the plain fraction. It is NOT a money conversion — spec 20 §2.3 routes every
+// minor/major money conversion through bil24compat/money, and the static
+// guardrail in tests/staticanalysis forbids the bare literal here so the two
+// can never be confused.
+const percentScale = 100.0
+
+// feeChargeMinor applies the channel service fee to a NET amount, both in
+// minor units (spec 20 §2.2: the arithmetic is integral, the conversion to the
+// wire's major units happens once at encoding time). The result rounds half
+// away from zero, so a 5 % fee on 18.90 is 0.95 rather than a float 0.945 that
+// would make totalSum disagree with sum − discount + charge.
+func feeChargeMinor(netMinor int64, feePercent float64) int64 {
+	if feePercent <= 0 {
+		return 0
+	}
+	return money.RoundMinor(float64(netMinor) * feePercent / percentScale)
+}
+
+// applyGatewayCharge re-states a platform pricing breakdown's service charge
+// with the Bil24 cart's rounding, so CREATE_ORDER_EXT persists (and answers)
+// the exact figure RESERVATION / GET_CART has already shown the buyer. Only
+// the platform fee moves; the accounting identity the schema CHECK enforces
+// (total = subtotal − discount + charge) is restored explicitly afterwards.
+//
+// It deliberately does NOT change hcheckout.ComputePricingLines: the floor
+// rule there is the platform-wide contract for the REST and widget checkout
+// (documented on CheckoutPricing.platform_fee in openapi.yaml), while this is
+// a gateway-local convention that spec 20 §5 pins by example.
+func applyGatewayCharge(bd hcheckout.PricingBreakdown, feePercent float64) hcheckout.PricingBreakdown {
+	bd.PlatformFee = feeChargeMinor(bd.Subtotal-bd.Discount, feePercent)
+	bd.Total = bd.Subtotal - bd.Discount + bd.PlatformFee + bd.ProviderFee + bd.Tax
+	return bd
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

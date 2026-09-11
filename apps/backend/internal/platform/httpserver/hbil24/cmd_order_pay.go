@@ -35,7 +35,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -44,6 +43,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
@@ -67,10 +67,11 @@ const (
 // transaction, so there is no PSP to name.
 const payProviderManual = "manual"
 
-// payAmountToleranceMajor is the ±0.01 window of spec §7.9 step 3. The Bil24
-// wire carries order money in the same units as orders.total (CREATE_ORDER
-// answers `totalSum: orders.total` verbatim), so no conversion is involved.
-const payAmountToleranceMajor = 0.01
+// payAmountToleranceMinor is the ±1 minor unit window of spec §7.9 step 3,
+// restated by spec 20 §2.4. The wire carries MAJOR units, orders.total is
+// minor, so the comparison converts first (money.Minor) and then tolerates a
+// single minor unit of rounding drift between the shop's cart and ours.
+const payAmountToleranceMinor int64 = 1
 
 // payCustomerLinkSource is customer_org_links.source. Migration 0091
 // constrains it to ('order','import'); a gateway sale is an order.
@@ -479,9 +480,9 @@ func (h *Handler) payEnsureHold(
 // refusal — hence the error is returned for the caller's SAVEPOINT to discard
 // rather than aborting the payment.
 //
-// No unit conversion happens here: this gateway puts order money on the wire
-// verbatim (CREATE_ORDER answers `totalSum: orders.total`), so the reported
-// amount and orders.total are already in the same units.
+// Units (spec 20 §2.4): req.Amount is major, orders.total is minor, so the
+// reported amount is converted with money.Minor before anything is compared,
+// and BOTH sides are recorded in minor units on the order event.
 func (h *Handler) payRecordAmountMismatch(
 	ctx context.Context,
 	txq *gen.Queries,
@@ -492,23 +493,29 @@ func (h *Handler) payRecordAmountMismatch(
 	if req.Amount == nil {
 		return nil
 	}
-	expected := float64(order.Total)
-	if math.Abs(expected-*req.Amount) <= payAmountToleranceMajor {
+	reportedMinor := money.Minor(*req.Amount)
+	delta := reportedMinor - order.Total
+	if delta < 0 {
+		delta = -delta
+	}
+	if delta <= payAmountToleranceMinor {
 		return nil
 	}
 	h.logger.Warn("bil24_compat: PAY_ORDER: reported amount differs from the order total",
 		slog.String("order_id", order.ID.String()),
-		slog.Float64("reported", *req.Amount),
-		slog.Float64("expected", expected),
+		slog.Float64("reported_major", *req.Amount),
+		slog.Int64("reported_minor", reportedMinor),
+		slog.Int64("expected_minor", order.Total),
 	)
 	if _, err := txq.InsertOrderEvent(ctx, order.ID, ordering.EventAmountMismatch, actor,
 		payPayload(map[string]any{
-			"reported_amount":  *req.Amount,
-			"expected_amount":  expected,
-			"order_total":      order.Total,
-			"currency":         order.Currency,
-			"wire_currency":    strings.TrimSpace(req.Currency),
-			"tolerance_majors": payAmountToleranceMajor,
+			"reported_amount":       *req.Amount,
+			"reported_amount_minor": reportedMinor,
+			"expected_amount_minor": order.Total,
+			"order_total":           order.Total,
+			"currency":              order.Currency,
+			"wire_currency":         strings.TrimSpace(req.Currency),
+			"tolerance_minor":       payAmountToleranceMinor,
 		}),
 	); err != nil {
 		return fmt.Errorf("record amount_mismatch: %w", err)

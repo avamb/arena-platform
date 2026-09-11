@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 )
@@ -305,10 +306,11 @@ func (h *Handler) buildSeatListCategories(
 		out = append(out, bil24compat.GetSeatListCategory{
 			CategoryPriceID:   h.compatCategoryPriceIDInt(ctx, t.ID),
 			CategoryPriceName: t.Name,
-			Price:             float64(priceOf(t)),
-			Availability:      seatListAvailability(t, stats, ledgers),
-			Placement:         seatListPlacement(admissionMode, stats[t.ID]),
-			TariffIDMap:       map[string]any{},
+			// Spec 20 §3: major units on the wire (priceOf is minor).
+			Price:        money.Major(priceOf(t)),
+			Availability: seatListAvailability(t, stats, ledgers),
+			Placement:    seatListPlacement(admissionMode, stats[t.ID]),
+			TariffIDMap:  map[string]any{},
 		})
 	}
 	return out
@@ -479,7 +481,7 @@ func (h *Handler) buildSeatList(
 		if u.TierID != nil {
 			seat.CategoryPriceID = h.compatCategoryPriceIDInt(ctx, *u.TierID)
 			if t, ok := tierByID[*u.TierID]; ok {
-				seat.Price = float64(priceOf(t))
+				seat.Price = money.Major(priceOf(t))
 				if u.Kind == seatKindGAUnit {
 					// A GA unit has no coordinates of its own; spec §7.2
 					// sectors it by its category so the plugin can group

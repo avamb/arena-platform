@@ -208,16 +208,11 @@ func TestCompatBil24_527_EventBundleRoundTrip(t *testing.T) {
 		t.Fatalf("categoryList has %d entries, want 2 (Standard + VIP)", len(cats))
 	}
 	wantNames := []string{"Standard", "VIP"}
-	// NOTE (known cross-feature disagreement, not introduced or fixed here):
-	// ImportSessionCategory.PriceMinorUnits stores the bundle's price
-	// MULTIPLIED by 100 (feature #517's minor-units convention), while
-	// GET_ALL_ACTIONS/the cart projection put ticket_tiers.price_amount on the
-	// wire verbatim (scenario08_import_test.go documents the identical gap
-	// for the legacy Bil24 import path). So a bundle price of 450 round-trips
-	// here as 45000, not 450. Asserted as-is per AGENTS.md guidance to follow
-	// actual behavior rather than silently paper over a pre-existing
-	// documented gap from an EPIC-VERIFY feature.
-	wantPrices := []float64{45000, 90000}
+	// Units round-trip losslessly (spec 20 §2): the bundle's MAJOR-unit price
+	// is stored as minor units by ImportSessionCategory.PriceMinorUnits
+	// (450 → 45000) and GET_ALL_ACTIONS converts back on the way out, so the
+	// catalog quotes the very number the bundle declared.
+	wantPrices := []float64{450, 900}
 	wantIDs := make([]float64, len(catIDsRaw))
 	for i, raw := range catIDsRaw {
 		id, ok := raw.(float64)

@@ -253,11 +253,15 @@ func seedHarness(t *testing.T) *harnessState {
 	// tier so a RESERVATION response carries a real sum / charge / totalSum.
 	// Every session_seat below is stamped with it, which is what hbil24's
 	// cart projection reads to price a seat row.
+	//
+	// price_amount is MINOR units (spec 20 §2.2): 50000 = CZK 500.00, which
+	// is exactly the `sum: 500` / `totalSum: 525` the goldens already pin —
+	// spec 20 §5 multiplies the seeds rather than rewriting the goldens.
 	var assignedTierID uuid.UUID
 	if err := pool.QueryRow(ctx,
 		`INSERT INTO ticket_tiers (session_id, name, pricing_mode,
 		     price_amount, currency, sort_order)
-		 VALUES ($1,'Parter','fixed',500,'CZK',0)
+		 VALUES ($1,'Parter','fixed',50000,'CZK',0)
 		 RETURNING id`,
 		assignedSessID,
 	).Scan(&assignedTierID); err != nil {
@@ -335,11 +339,13 @@ func seedHarness(t *testing.T) *harnessState {
 		t.Fatalf("seed GA session_seats: %v", err)
 	}
 	// Two tiers (Early Bird + Standard), EUR — matches spec §9.3 sample.
+	// Minor units again (spec 20 §5): 90000/125000 → minPrice 900 /
+	// maxPrice 1250 on the wire, the values the goldens pin.
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO ticket_tiers (session_id, name, pricing_mode,
 		     price_amount, currency, sort_order)
-		 VALUES ($1,'Early Bird','fixed',900,'EUR',0),
-		        ($1,'Standard','fixed',1250,'EUR',1)`,
+		 VALUES ($1,'Early Bird','fixed',90000,'EUR',0),
+		        ($1,'Standard','fixed',125000,'EUR',1)`,
 		gaSessID,
 	); err != nil {
 		t.Fatalf("seed ticket_tiers: %v", err)
