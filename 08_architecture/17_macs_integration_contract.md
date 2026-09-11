@@ -71,8 +71,23 @@ city configured. Link the venue to a city before exporting.
 | `actionEvent.id` | The **session's** `actionEventId` from `compatibility_id_map` (`kind = 'action_event'`, `platform_id = sessions.id`), allocated by `compatids.Ensure`. Arena-native ids start at 1_000_000_000; sessions imported from Bil24 keep their original id. Never a hash. |
 | `actionEvent.actionId` | The **event's** `actionId` from `compatibility_id_map` (`kind = 'action'`, `platform_id = events.id`), same allocation rules. |
 | `actionEvent.showTime` | `sessions.start_at` formatted in the venue's local timezone (`venues.timezone`), without TZ suffix: `"2026-08-22T20:00:00"` |
-| `price` | Actual sold price: `COALESCE(reservation_ga_items.unit_price, ticket_tiers.price_amount, 0)`. Falls back to `order_subtotal / ticket_count` for untiered GA. |
+| `price` | Actual sold price in **major currency units** (see Money below): `COALESCE(reservation_ga_items.unit_price, ticket_tiers.price_amount, 0)`. Falls back to `order_subtotal / ticket_count` for untiered GA. |
 | `discountReason` | See discountReason vocabulary below |
+
+**Money:**
+
+Every money field — the order's `sum`, `discount`, `charge`, `totalSum` and the
+ticket's `price`, `discount`, `charge`, `totalPrice`, `refundPrice` — is a JSON
+**number in MAJOR currency units with at most two decimal places** (`15`, `5.25`,
+`18.9`), never a string and never minor units. That is exactly what the real
+Bil24 webhook MACS already ingests, and what the Bil24-compatible gateway emits
+on its own wire, so a MACS payload and the `bil24_wp` payload for the same order
+carry identical figures.
+
+The database stores minor units (`bigint`); the conversion happens once, in
+`internal/adapters/bil24compat/money`, when the payload is encoded. All
+arithmetic — proration, fees, refunds — is done in minor units first. Design
+authority: `08_architecture/20_bil24_gateway_money_units_spec_ru.md` §§2, 4.
 
 **discountReason vocabulary:**
 
@@ -87,6 +102,10 @@ city configured. Link the venue to a city before exporting.
 The checkout-level discount is prorated across tickets proportionally:
 `ticket.discount = ticket.price * order.discount / order.subtotal`.
 The last ticket absorbs any rounding remainder so that `sum(ticket.discount) == order.discount` exactly.
+The proration runs entirely in **minor** units, before the encoder converts to
+major units — the identity above holds exactly in minor units, and summing the
+major-unit floats on the wire may not reproduce it (0.33 + 0.33 + 0.34 is
+0.9999999999999999 in binary floating point).
 
 ---
 

@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/orderexport"
 )
@@ -38,14 +39,20 @@ type Export []Order
 
 // Order represents one checkout_session in MACS format.
 type Order struct {
-	ID               int64         `json:"id"`
-	Date             string        `json:"date"`   // ISO-8601 UTC, e.g. "2026-08-22T10:00:00Z"
-	Status           string        `json:"status"` // always "PAID" for completed orders
-	Currency         string        `json:"currency"`
-	Sum              int64         `json:"sum"`      // subtotal in minor units
-	Discount         int64         `json:"discount"` // discount in minor units
-	Charge           int64         `json:"charge"`   // total charged (sum - discount)
-	TotalSum         int64         `json:"totalSum"`
+	ID       int64  `json:"id"`
+	Date     string `json:"date"`   // ISO-8601 UTC, e.g. "2026-08-22T10:00:00Z"
+	Status   string `json:"status"` // always "PAID" for completed orders
+	Currency string `json:"currency"`
+	// Money on the MACS wire is MAJOR currency units with at most two
+	// decimals — the same representation the real Bil24 webhook MACS already
+	// ingests, and the same one the Bil24-compatible gateway emits (spec
+	// 08_architecture/20_bil24_gateway_money_units_spec_ru.md §§2, 4). The
+	// orderexport projection behind these fields is in MINOR units; the
+	// single conversion happens in encodeOrder via money.Major.
+	Sum              float64       `json:"sum"`      // subtotal
+	Discount         float64       `json:"discount"` // discount applied to the subtotal
+	Charge           float64       `json:"charge"`   // total charged (sum - discount)
+	TotalSum         float64       `json:"totalSum"`
 	DiscountReason   string        `json:"discountReason,omitempty"`
 	TicketQuantity   int           `json:"ticketQuantity"`
 	User             OrderUser     `json:"user"`
@@ -64,23 +71,24 @@ type OrderUser struct {
 
 // Ticket represents one issued ticket in MACS format.
 type Ticket struct {
-	ID             int64         `json:"id"`      // system_ticket_id
-	SeatID         int64         `json:"seatId"`  // system_seat_id or system_ticket_id for GA
-	OrderID        int64         `json:"orderId"` // parent order id
-	SeatLocation   SeatLocation  `json:"seatLocation"`
-	Category       string        `json:"category,omitempty"` // tier name
-	Tariff         string        `json:"tariff,omitempty"`
-	Price          int64         `json:"price"` // unit price in minor units
-	Discount       int64         `json:"discount"`
-	Charge         int64         `json:"charge"`
-	TotalPrice     int64         `json:"totalPrice"`
+	ID           int64        `json:"id"`      // system_ticket_id
+	SeatID       int64        `json:"seatId"`  // system_seat_id or system_ticket_id for GA
+	OrderID      int64        `json:"orderId"` // parent order id
+	SeatLocation SeatLocation `json:"seatLocation"`
+	Category     string       `json:"category,omitempty"` // tier name
+	Tariff       string       `json:"tariff,omitempty"`
+	// Major units, <= 2 decimals — see the Order money comment above.
+	Price          float64       `json:"price"` // unit price
+	Discount       float64       `json:"discount"`
+	Charge         float64       `json:"charge"`
+	TotalPrice     float64       `json:"totalPrice"`
 	DiscountReason string        `json:"discountReason,omitempty"`
 	Barcode        string        `json:"barcode"`
 	BarcodeFormat  BarcodeFormat `json:"barcodeFormat"`
 	ActionEvent    ActionEvent   `json:"actionEvent"`
 	HolderStatus   int           `json:"holderStatus"` // 0=valid, 3=refunded
 	RefundDate     *string       `json:"refundDate,omitempty"`
-	RefundPrice    *int64        `json:"refundPrice,omitempty"`
+	RefundPrice    *float64      `json:"refundPrice,omitempty"`
 }
 
 // SeatLocation is the sector/row/number triple.
@@ -155,10 +163,10 @@ func encodeOrder(o orderexport.Order, ids wireIDs) Order {
 		Date:             o.CompletedAt.UTC().Format(time.RFC3339),
 		Status:           "PAID",
 		Currency:         o.Currency,
-		Sum:              o.Subtotal,
-		Discount:         o.Discount,
-		Charge:           o.Total,
-		TotalSum:         o.Total,
+		Sum:              money.Major(o.Subtotal),
+		Discount:         money.Major(o.Discount),
+		Charge:           money.Major(o.Total),
+		TotalSum:         money.Major(o.Total),
 		DiscountReason:   o.DiscountReason,
 		TicketQuantity:   o.TicketQuantity(),
 		User:             OrderUser{ID: o.BuyerUserID, Email: o.BuyerEmail},
@@ -196,10 +204,10 @@ func encodeTicket(t orderexport.Ticket, ids wireIDs) Ticket {
 		},
 		Category:       t.TierName,
 		Tariff:         t.TierName,
-		Price:          t.Price,
-		Discount:       t.Discount,
-		Charge:         t.Charge,
-		TotalPrice:     t.TotalPrice,
+		Price:          money.Major(t.Price),
+		Discount:       money.Major(t.Discount),
+		Charge:         money.Major(t.Charge),
+		TotalPrice:     money.Major(t.TotalPrice),
 		DiscountReason: t.DiscountReason,
 		Barcode:        t.Barcode,
 		// Real Bil24/MACS exports carry id 0 for EAN-13 (spec §10 M4);
@@ -225,7 +233,7 @@ func encodeTicket(t orderexport.Ticket, ids wireIDs) Ticket {
 		// transferred) collapses to 3 at this boundary only.
 		HolderStatus: TicketStatus(t.PlatformStatus),
 		RefundDate:   refundDate,
-		RefundPrice:  t.RefundPrice,
+		RefundPrice:  money.MajorPtr(t.RefundPrice),
 	}
 }
 

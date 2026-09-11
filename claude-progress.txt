@@ -30683,3 +30683,77 @@ Gates (all re-run after the final gofmt sweep)
 No test was weakened or deleted to reach green. No API surface changed, so no
 openapi/codegen regeneration was required.
 
+================================================================================
+#529 W1-M2 MACS order.paid / ticket.refunded money to major units; bil24wire
+onto money; contract doc 17 updated   (2026-09-11)
+================================================================================
+
+Spec authority: 08_architecture/20_bil24_gateway_money_units_spec_ru.md §§2, 4.
+MACS and the Bil24 bil24_wp webhook describe the SAME sale to two partner
+systems, and both are legacy contracts expecting MAJOR currency units. MACS was
+still shipping the database's minor units verbatim, so an order a WordPress
+site knew as 19.85 arrived at MACS as 1985.
+
+What landed
+- internal/platform/macs/export.go: Order.{Sum,Discount,Charge,TotalSum} and
+  Ticket.{Price,Discount,Charge,TotalPrice} are now float64, RefundPrice is
+  *float64, all filled through money.Major / money.MajorPtr in
+  encodeOrder/encodeTicket. JSON tags unchanged. The stale "minor units"
+  comments are replaced by one block stating the major-unit rule and naming the
+  single conversion point.
+- internal/platform/bil24wire/encode.go: the local major()/nullableMajor()
+  aliases are deleted; the 13 call sites name money.Major / money.MajorPtr
+  directly. Behaviour unchanged (the aliases already delegated).
+- 08_architecture/17_macs_integration_contract.md: the per-ticket field table's
+  `price` row says major units, a new "Money" subsection enumerates every money
+  field and states the major-on-the-wire / minor-in-the-DB split with a link to
+  spec 20, and the proration section notes the identity holds exactly in minor
+  units only (0.33+0.33+0.34 is 0.9999999999999999 as floats).
+- NEW tests/… macs_money_529_integration_test.go (integration-tagged), the
+  fractional case: one order seeded at 1890 minor subtotal + 95 charge = 1985
+  total, asserting (a) every MACS money field in major units, (b) the rendered
+  JSON contains "sum":18.9 / "totalSum":19.85 / "price":18.9 and never 18.90,
+  18.899, 19.8500 or a minor-unit 1890/1985, (c) the accounting identity in
+  minor units, (d) bil24wire.EncodeOrder of the SAME orderexport projection
+  answers identical sum/discount/totalSum/ticket price.
+- macs_orderpaid_integration_test.go (TestMACS_W1Ma_OrderPaidRoundTrip) now
+  asserts the delivered order.paid envelope carries sum/charge/totalSum = 30
+  and each ticket price = 10 for its 3000-minor / 3-ticket order, each with at
+  most two decimals — checked as money.Major(money.Minor(v)) == v rather than a
+  ×100 literal, which the #528 guardrail rightly rejects (and which is the same
+  code path the encoder uses).
+- export_unit_test.go / macs_ab50h_integration_test.go updated to major units
+  (1500 minor -> 15, 1200 -> 12, refund 1500 -> 15; proration 0.33/0.33/0.34
+  summed via money.Minor) and %d -> %v format verbs.
+
+Fixture gap found (not a production defect)
+orderexport projects an order's money from the CHECKOUT SESSION
+(query.go: COALESCE(cs.total, 0), cs.subtotal, cs.discount, cs.payment_provider),
+not from the orders row. Both round-trip fixtures inserted a checkout_sessions
+row with those columns NULL, so the exported payload had been carrying zeros
+for money all along — invisible until this wave added the first money
+assertion on a delivered envelope. Fixed in the fixtures (the production
+checkout flow writes both rows); the orders row is left populated too so the
+two agree.
+
+Gates
+- go.exe build ./apps/backend/...                               EXIT:0
+- go.exe vet -tags integration ./apps/backend/...               EXIT:0
+- go.exe test ./apps/backend/...  (full unit suite)             EXIT:0, 0 FAIL
+- DATABASE_URL=<dev stand 55432> JWT_SIGNING_SECRET=x go.exe test -tags
+  integration -count=1 -p 1 ./apps/backend/internal/platform/macs/...
+  ./apps/backend/tests/compat/bil24/...
+  ./apps/backend/internal/platform/httpserver/himports/...      EXIT:0
+  (macs 1.4s, macs/stub 0.7s, compat/bil24 16.8s, wpstub 0.8s, himports 1.5s)
+- GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe run
+  github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run
+  ./apps/backend/...                                            EXIT:0
+  ("0 issues.")
+- gofmt -l apps/backend/{cmd,internal,tests,tools}              no output
+- tests/staticanalysis money guardrail (#528)                   EXIT:0 — it
+  caught two ×100 literals in my own new test helpers; the helpers were
+  rewritten through the money package rather than the guardrail relaxed.
+
+No test was weakened or deleted. openapi.yaml untouched (the MACS payload is
+not part of the public REST surface), so no codegen.
+

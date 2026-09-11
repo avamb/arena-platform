@@ -35,6 +35,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/macs"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/macs/stub"
@@ -102,7 +103,13 @@ func TestMACS_W1Ma_OrderPaidRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InsertReservation: %v", err)
 	}
-	mustExec(`INSERT INTO checkout_sessions (id, org_id, channel_id, reservation_id, state) VALUES ($1, $2, $3, $4, 'completed')`,
+	// The money lives on the checkout session: that is what orderexport
+	// projects (COALESCE(cs.total, 0) …). Leaving it NULL used to be
+	// harmless here because nothing asserted the figures; the W1-M2
+	// assertions below need a real 3000-minor sale.
+	mustExec(`INSERT INTO checkout_sessions (id, org_id, channel_id, reservation_id, state,
+			subtotal, discount, total, currency, payment_provider, completed_at)
+		VALUES ($1, $2, $3, $4, 'completed', 3000, 0, 3000, 'CZK', 'stripe', NOW())`,
 		checkoutID, orgID, channelID, res.ID)
 	mustExec(`INSERT INTO orders (id, org_id, channel_id, event_id, session_id, checkout_session_id,
 			reservation_id, source, status, currency, subtotal, discount, charge, total, buyer_email, paid_at)
@@ -259,6 +266,29 @@ func TestMACS_W1Ma_OrderPaidRoundTrip(t *testing.T) {
 	if data["status"] != "PAID" {
 		t.Errorf("data.status = %v; want \"PAID\"", data["status"])
 	}
+	// W1-M2 (#529, spec 20 §§2, 4): money on the MACS wire is MAJOR units
+	// with at most two decimals. The order was seeded with subtotal 3000 /
+	// total 3000 MINOR, so the delivered envelope must say 30, not 3000 —
+	// shipping the raw bigint here is a silent 100× overstatement.
+	for _, c := range []struct {
+		field string
+		want  float64
+	}{{"sum", 30}, {"totalSum", 30}, {"charge", 30}, {"discount", 0}} {
+		got, isNum := data[c.field].(float64)
+		if !isNum {
+			t.Errorf("data.%s is %T; want a JSON number", c.field, data[c.field])
+			continue
+		}
+		if got != c.want {
+			t.Errorf("data.%s = %v; want %v major units", c.field, got, c.want)
+		}
+		// A value the wire can represent survives Major∘Minor unchanged;
+		// a third decimal place does not.
+		if money.Major(money.Minor(got)) != got {
+			t.Errorf("data.%s = %v has more than two decimal places", c.field, got)
+		}
+	}
+
 	list, ok := data["ticketList"].([]any)
 	if !ok {
 		t.Fatalf("data.ticketList is %T; want a JSON array", data["ticketList"])
@@ -277,6 +307,10 @@ func TestMACS_W1Ma_OrderPaidRoundTrip(t *testing.T) {
 			t.Fatalf("data.ticketList[%d].id is %T; want a number", i, tk["id"])
 		}
 		seen[int64(id)] = true
+		// 3000 minor over 3 tickets = 1000 minor each = 10 major.
+		if price, isNum := tk["price"].(float64); !isNum || price != 10 {
+			t.Errorf("data.ticketList[%d].price = %v (%T); want 10 major units", i, tk["price"], tk["price"])
+		}
 		for _, field := range []string{"seatId", "barcode", "actionEvent", "orderId"} {
 			if _, present := tk[field]; !present {
 				t.Errorf("data.ticketList[%d] is missing the MACS-required field %q", i, field)

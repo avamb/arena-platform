@@ -171,13 +171,13 @@ func TestMACS_AB50h_ExportFidelity(t *testing.T) {
 						t.Errorf("order.discountReason = %q, want %q", o.DiscountReason, expectedDR)
 					}
 					if tk.Discount <= 0 {
-						t.Errorf("ticket.discount = %d, want > 0 (promo discount applied)", tk.Discount)
+						t.Errorf("ticket.discount = %v, want > 0 (promo discount applied)", tk.Discount)
 					}
 					if tk.Charge <= 0 {
-						t.Errorf("ticket.charge = %d, want > 0", tk.Charge)
+						t.Errorf("ticket.charge = %v, want > 0", tk.Charge)
 					}
 					if tk.TotalPrice != tk.Charge {
-						t.Errorf("ticket.totalPrice = %d, want == charge (%d)", tk.TotalPrice, tk.Charge)
+						t.Errorf("ticket.totalPrice = %v, want == charge (%v)", tk.TotalPrice, tk.Charge)
 					}
 				})
 			}
@@ -187,7 +187,7 @@ func TestMACS_AB50h_ExportFidelity(t *testing.T) {
 						t.Errorf("ticket.discountReason = %q, want empty for no-promo order", tk.DiscountReason)
 					}
 					if tk.Discount != 0 {
-						t.Errorf("ticket.discount = %d, want 0 for no-promo order", tk.Discount)
+						t.Errorf("ticket.discount = %v, want 0 for no-promo order", tk.Discount)
 					}
 				})
 			}

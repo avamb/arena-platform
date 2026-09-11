@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/orderexport"
 )
 
@@ -127,8 +128,10 @@ func TestBuildExport_SingleActiveTicket(t *testing.T) {
 	if tk.HolderStatus != StatusNotUsed {
 		t.Errorf("expected holderStatus=%d for active ticket, got %d", StatusNotUsed, tk.HolderStatus)
 	}
-	if tk.Price != 1500 {
-		t.Errorf("expected price=1500, got %d", tk.Price)
+	// Money on the MACS wire is MAJOR units (spec 20 §§2, 4): the row carries
+	// 1500 minor, the wire carries 15.
+	if tk.Price != 15 {
+		t.Errorf("expected price=15 major units (1500 minor), got %v", tk.Price)
 	}
 	if tk.SeatID != row.SeatSystemID {
 		t.Errorf("GA ticket: expected seatId=%d (seatSystemID), got %d", row.SeatSystemID, tk.SeatID)
@@ -181,8 +184,8 @@ func TestBuildExport_CancelledTicket(t *testing.T) {
 	if tk.RefundDate == nil {
 		t.Error("expected RefundDate to be set")
 	}
-	if tk.RefundPrice == nil || *tk.RefundPrice != 1500 {
-		t.Error("expected RefundPrice=1500")
+	if tk.RefundPrice == nil || *tk.RefundPrice != 15 {
+		t.Errorf("expected RefundPrice=15 major units (1500 minor), got %v", tk.RefundPrice)
 	}
 }
 
@@ -265,8 +268,8 @@ func TestBuildExport_SoldPrice(t *testing.T) {
 
 	export := buildExport([]orderexport.Row{row})
 	tk := export[0].TicketList[0]
-	if tk.Price != 1200 {
-		t.Errorf("expected price=1200 (soldPrice), got %d", tk.Price)
+	if tk.Price != 12 {
+		t.Errorf("expected price=12 major units (soldPrice 1200 minor), got %v", tk.Price)
 	}
 }
 
@@ -317,33 +320,39 @@ func TestBuildExport_ProrationRemainder_LastTicketAbsorbsRounding(t *testing.T) 
 		t.Fatalf("expected 3 tickets, got %d", len(o.TicketList))
 	}
 
+	// The proration contract is stated in MINOR units, and so is this
+	// assertion: the wire now carries major-unit floats (0.33, 0.33, 0.34)
+	// whose float sum is 0.9999999999999999, not 1. Converting back through
+	// money.Minor is the only honest way to check an exact identity — which
+	// is precisely why the encoder itself never adds major units.
 	var totalDiscount int64
 	for _, tk := range o.TicketList {
-		totalDiscount += tk.Discount
+		totalDiscount += money.Minor(tk.Discount)
 	}
 	if totalDiscount != 100 {
-		t.Errorf("sum of ticket discounts = %d, want 100 (must equal order discount exactly)", totalDiscount)
+		t.Errorf("sum of ticket discounts = %d minor, want 100 (must equal order discount exactly)", totalDiscount)
 	}
 
-	// First two tickets get floor(1000*100/3000) = 33.
-	if o.TicketList[0].Discount != 33 {
-		t.Errorf("ticket[0].discount = %d, want 33", o.TicketList[0].Discount)
+	// First two tickets get floor(1000*100/3000) = 33 minor = 0.33.
+	if o.TicketList[0].Discount != 0.33 {
+		t.Errorf("ticket[0].discount = %v, want 0.33", o.TicketList[0].Discount)
 	}
-	if o.TicketList[1].Discount != 33 {
-		t.Errorf("ticket[1].discount = %d, want 33", o.TicketList[1].Discount)
+	if o.TicketList[1].Discount != 0.33 {
+		t.Errorf("ticket[1].discount = %v, want 0.33", o.TicketList[1].Discount)
 	}
-	// Last ticket absorbs remainder: 100 - 33 - 33 = 34.
-	if o.TicketList[2].Discount != 34 {
-		t.Errorf("ticket[2].discount = %d, want 34 (absorbs remainder)", o.TicketList[2].Discount)
+	// Last ticket absorbs remainder: 100 - 33 - 33 = 34 minor = 0.34.
+	if o.TicketList[2].Discount != 0.34 {
+		t.Errorf("ticket[2].discount = %v, want 0.34 (absorbs remainder)", o.TicketList[2].Discount)
 	}
 
-	// Charge = price - discount for each ticket.
+	// Charge = price - discount for each ticket, again in minor units.
 	for i, tk := range o.TicketList {
-		if tk.Charge != tk.Price-tk.Discount {
-			t.Errorf("ticket[%d].charge = %d, want %d (price-discount)", i, tk.Charge, tk.Price-tk.Discount)
+		price, discount := money.Minor(tk.Price), money.Minor(tk.Discount)
+		if money.Minor(tk.Charge) != price-discount {
+			t.Errorf("ticket[%d].charge = %v, want %d minor (price-discount)", i, tk.Charge, price-discount)
 		}
 		if tk.TotalPrice != tk.Charge {
-			t.Errorf("ticket[%d].totalPrice = %d, want == charge (%d)", i, tk.TotalPrice, tk.Charge)
+			t.Errorf("ticket[%d].totalPrice = %v, want == charge (%v)", i, tk.TotalPrice, tk.Charge)
 		}
 	}
 }

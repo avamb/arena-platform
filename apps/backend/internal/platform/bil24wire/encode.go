@@ -150,14 +150,14 @@ func EncodeOrderHeader(o orderexport.Order, ec EncodeContext) Order {
 		// ticketList stays nil here — see the field comment.
 		SeatList:               []any{},
 		GatewayOrderList:       []any{},
-		Sum:                    major(o.Subtotal),
-		FilteredSum:            major(o.Subtotal),
-		Discount:               major(o.Discount),
-		FilteredDiscount:       major(o.Discount),
-		Charge:                 major(charge),
-		FilteredCharge:         major(charge),
-		TotalSum:               major(net + charge),
-		FilteredTotalSum:       major(net + charge),
+		Sum:                    money.Major(o.Subtotal),
+		FilteredSum:            money.Major(o.Subtotal),
+		Discount:               money.Major(o.Discount),
+		FilteredDiscount:       money.Major(o.Discount),
+		Charge:                 money.Major(charge),
+		FilteredCharge:         money.Major(charge),
+		TotalSum:               money.Major(net + charge),
+		FilteredTotalSum:       money.Major(net + charge),
 		TicketQuantity:         o.TicketQuantity(),
 		FilteredTicketQuantity: o.TicketQuantity(),
 		Status:                 StatusPaid,
@@ -186,7 +186,7 @@ func EncodeTicketRefunded(t orderexport.Ticket, ec EncodeContext) RefundedTicket
 		OrderID:      t.OrderID,
 		SeatID:       t.SeatID,
 		Barcode:      t.Barcode,
-		RefundPrice:  nullableMajor(t.RefundPrice),
+		RefundPrice:  money.MajorPtr(t.RefundPrice),
 		RefundDate:   nullableTime(t.RefundDate),
 		Category:     t.TierName,
 		HolderStatus: HolderStatusRefund,
@@ -209,17 +209,17 @@ func encodeTicket(t orderexport.Ticket, ec EncodeContext, charge int64) Ticket {
 		SeatLocation:   seat,
 		Category:       t.TierName,
 		Tariff:         nil,
-		Price:          major(t.Price),
-		Discount:       major(t.Discount),
-		Charge:         major(charge),
-		TotalPrice:     major(t.Price - t.Discount + charge),
+		Price:          money.Major(t.Price),
+		Discount:       money.Major(t.Discount),
+		Charge:         money.Major(charge),
+		TotalPrice:     money.Major(t.Price - t.Discount + charge),
 		DiscountReason: promoReason(t.DiscountReason),
 		Barcode:        t.Barcode,
 		BarcodeFormat:  BarcodeFormat{ID: barcodeFormatEAN13ID, Name: barcodeFormatEAN13Name},
 		ActionEvent:    encodeActionEvent(t, ec),
 		HolderStatus:   holderStatus(t.PlatformStatus),
 		RefundDate:     nullableTime(t.RefundDate),
-		RefundPrice:    nullableMajor(t.RefundPrice),
+		RefundPrice:    money.MajorPtr(t.RefundPrice),
 	}
 }
 
@@ -316,19 +316,9 @@ func ticketCharge(o orderexport.Order, charge int64, i int) int64 {
 	return 0
 }
 
-// major converts minor units to the float major units the wire uses. The one
-// conversion helper of the whole gateway lives in bil24compat/money (spec 20
-// §2.3); this is a local alias so the call sites stay short.
-func major(minor int64) float64 { return money.Major(minor) }
-
-// nullableMajor converts an optional minor-unit amount.
-func nullableMajor(minor *int64) *float64 {
-	if minor == nil {
-		return nil
-	}
-	v := major(*minor)
-	return &v
-}
+// (The local major/nullableMajor aliases this file used to carry are gone:
+// minor→major conversion is bil24compat/money's job and nobody else's, so the
+// call sites above name money.Major / money.MajorPtr directly — spec 20 §2.3.)
 
 // offsetTime renders a timestamp as RFC3339 WITH an offset (never naive) —
 // the wire form of `date`, `expiration`, `processing` and `refundDate`.
