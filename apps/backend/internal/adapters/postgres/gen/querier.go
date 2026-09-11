@@ -126,6 +126,18 @@ type Querier interface {
 	SetEventPosterMediaID(ctx context.Context, id, orgID uuid.UUID, posterMediaID *uuid.UUID) error
 	SetEventImportMetadata(ctx context.Context, id, orgID uuid.UUID, name string, description, ageRating *string) error
 	GetSessionImportContext(ctx context.Context, id uuid.UUID) (SessionImportContextRow, error)
+
+	// Arena-native event bundle — POST /v1/organizations/{org_id}/imports/event-bundle
+	// with source=arena (feature #525 W1-E1c, event-bundle spec §3.2).
+	// source: imports_arena.sql
+	FindActiveVenueByNormalizedName(ctx context.Context, orgID uuid.UUID, name string) (VenueRow, error)
+	InsertArenaVenue(ctx context.Context, orgID uuid.UUID, cityID *uuid.UUID, name string, address *string, timezone string, geoLat, geoLng *float64, country *string) (VenueRow, error)
+	// session_external_refs — the bundle idempotency key (migration 0099,
+	// feature #523). source: session_external_refs.sql
+	GetSessionByExternalRef(ctx context.Context, orgID uuid.UUID, externalRef string) (sessionID, eventID uuid.UUID, err error)
+	GetExternalRefBySession(ctx context.Context, sessionID uuid.UUID) (string, error)
+	InsertSessionExternalRef(ctx context.Context, orgID uuid.UUID, externalRef string, sessionID uuid.UUID) error
+
 	// ListActionEventsByOrg / ListActionEventTiersByOrg: the nested
 	// GET_ALL_ACTIONS catalog pair — one row per sellable session and one per
 	// live tier of those sessions, so the whole actionEventList /

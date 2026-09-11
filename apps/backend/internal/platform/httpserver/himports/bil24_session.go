@@ -160,65 +160,57 @@ func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request, forcedSou
 		return
 	}
 
-	if source == bil24compat.SourceArena {
-		noteArenaIgnoredFields(req, warnings)
-		// The arena execution path (matching rules, compat-id minting,
-		// compat_ids in the response) lands with feature #525; until then a
-		// well-formed arena bundle is answered honestly rather than being
-		// run through the Bil24 algorithm, which would mint wrong ids.
-		httputil.WriteJSON(w, http.StatusNotImplemented, httputil.ErrorEnvelope(
-			"import.arena_source_not_implemented",
-			"source=arena is accepted but not executed yet", r,
-		))
-		return
-	}
-
-	// The venue timezone must be resolvable BEFORE anything is written: it
-	// determines the session start instant, and a wrong guess would silently
-	// schedule the session at the wrong moment.
-	loc, tzWarn, err := h.resolveTimezone(ctx, req)
-	if err != nil {
-		h.writeTimezoneError(w, r, err)
-		return
-	}
-	if tzWarn != "" {
-		warnings.add(WarnVenueTimezoneKept, tzWarn)
-	}
-	startAt, err := req.ActionEvent.ParseLocalStart(loc)
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
-			"import.invalid_start_time", err.Error(), r,
-		))
-		return
-	}
-
-	// Poster side-load happens OUTSIDE the transaction: it is a network call
-	// to a third-party host and must never hold row locks open. A failure is
-	// downgraded to a warning — a missing poster does not invalidate an
-	// otherwise correct catalog import.
-	posterMediaID := h.sideLoadPoster(ctx, orgID, req, warnings)
-
-	endAt, err := req.ActionEvent.ParseLocalEnd(loc)
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
-			"import.end_time_invalid", err.Error(), r,
-		))
-		return
-	}
-
 	plan := importPlan{
 		OrgID:           orgID,
 		Source:          source,
 		ExternalRef:     externalRef,
 		Request:         req,
 		Currency:        currency,
-		StartAt:         startAt.UTC(),
-		EndAt:           endAt,
 		SaleWindowStart: saleStart,
 		SaleWindowEnd:   saleEnd,
-		PosterMediaID:   posterMediaID,
-		Timezone:        loc.String(),
 	}
+
+	// An arena bundle carries no Bil24 venue id, so its venue — and therefore
+	// its timezone and start instant — can only be found inside the import
+	// transaction (see import_arena.go). A Bil24 payload resolves both here,
+	// before anything is written, because a wrong timezone guess would
+	// silently schedule the session at the wrong moment.
+	if source == bil24compat.SourceArena {
+		noteArenaIgnoredFields(req, warnings)
+	} else {
+		loc, tzWarn, tzErr := h.resolveTimezone(ctx, req)
+		if tzErr != nil {
+			h.writeTimezoneError(w, r, tzErr)
+			return
+		}
+		if tzWarn != "" {
+			warnings.add(WarnVenueTimezoneKept, tzWarn)
+		}
+		startAt, saErr := req.ActionEvent.ParseLocalStart(loc)
+		if saErr != nil {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+				"import.invalid_start_time", saErr.Error(), r,
+			))
+			return
+		}
+		endAt, eaErr := req.ActionEvent.ParseLocalEnd(loc)
+		if eaErr != nil {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+				"import.end_time_invalid", eaErr.Error(), r,
+			))
+			return
+		}
+		plan.StartAt = startAt.UTC()
+		plan.EndAt = endAt
+		plan.Timezone = loc.String()
+	}
+
+	// Poster side-load happens OUTSIDE the transaction: it is a network call
+	// to a third-party host and must never hold row locks open. A failure is
+	// downgraded to a warning — a missing poster does not invalidate an
+	// otherwise correct catalog import.
+	plan.PosterMediaID = h.sideLoadPoster(ctx, orgID, req,
+		h.currentPosterMediaID(ctx, orgID, source, externalRef, req), warnings)
 
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -235,7 +227,11 @@ func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request, forcedSou
 		}
 	}()
 
-	result, err := h.executeImport(ctx, gen.New(tx), tx, plan, warnings)
+	exec := h.executeImport
+	if source == bil24compat.SourceArena {
+		exec = h.executeArenaImport
+	}
+	result, err := exec(ctx, gen.New(tx), tx, plan, warnings)
 	if err != nil {
 		h.writeImportError(w, r, err)
 		return
@@ -251,6 +247,10 @@ func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request, forcedSou
 
 	h.writeImportAudit(ctx, r, orgID, req, result)
 
+	var refOut *string
+	if externalRef != "" {
+		refOut = &externalRef
+	}
 	httputil.WriteJSON(w, http.StatusOK, ImportSessionResponse{
 		EventID:              result.EventID,
 		SessionID:            result.SessionID,
@@ -259,6 +259,8 @@ func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request, forcedSou
 		SeatsMaterialized:    result.Seating.SeatsMaterialized,
 		Warnings:             warnings.list(),
 		Created:              result.Created,
+		ExternalRef:          refOut,
+		CompatIDs:            result.CompatIDs,
 	})
 }
 

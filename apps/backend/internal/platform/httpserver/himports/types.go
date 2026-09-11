@@ -76,6 +76,15 @@ type Warning struct {
 // the number of session_seats rows (assigned seats plus GA units) the session
 // carries. Both stay null / 0 for a payload without an svg block, which is
 // imported as a pure general-admission session.
+// ExternalRef echoes the idempotency key the bundle was stored under, or null
+// when the payload carried none (only possible for source=bil24).
+//
+// CompatIDs is the identifier set the caller must persist on its side
+// (event-bundle spec §4): for source=arena these are the ids arena just
+// minted, for source=bil24 they are the ids the payload supplied, echoed back
+// after registration. Either way they are exactly what GET_ALL_ACTIONS will
+// later report, so the site can store them immediately instead of waiting for
+// a catalog sync.
 type ImportSessionResponse struct {
 	EventID              uuid.UUID            `json:"event_id"`
 	SessionID            uuid.UUID            `json:"session_id"`
@@ -84,6 +93,21 @@ type ImportSessionResponse struct {
 	SeatsMaterialized    int                  `json:"seats_materialized"`
 	Warnings             []Warning            `json:"warnings"`
 	Created              bool                 `json:"created"`
+	ExternalRef          *string              `json:"external_ref"`
+	CompatIDs            ImportCompatIDs      `json:"compat_ids"`
+}
+
+// ImportCompatIDs is the compatibility-identifier block of the import response
+// (event-bundle spec §4).
+//
+// CategoryPriceIDs is aligned POSITIONALLY with the request's categoryList, so
+// the caller can zip the two without consulting tier_ids. It is never nil —
+// the response contract promises an array.
+type ImportCompatIDs struct {
+	ActionID         int64   `json:"action_id"`
+	ActionEventID    int64   `json:"action_event_id"`
+	VenueID          int64   `json:"venue_id"`
+	CategoryPriceIDs []int64 `json:"category_price_ids"`
 }
 
 // warningSink accumulates warnings in emission order while de-duplicating on

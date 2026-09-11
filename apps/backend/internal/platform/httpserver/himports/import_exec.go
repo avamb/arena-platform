@@ -6,7 +6,10 @@
 package himports
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -65,6 +68,9 @@ type importResult struct {
 	// Seating is the zero value for a general-admission import (no svg in
 	// the payload): seating_plan_version_id:null, seats_materialized:0.
 	Seating seatingOutcome
+	// CompatIDs is the compat-mapping view of the same graph (event-bundle
+	// spec §4) — minted for source=arena, echoed for source=bil24.
+	CompatIDs ImportCompatIDs
 }
 
 // executeImport runs spec §13.2 steps 2-5 and 7-8 inside tx.
@@ -85,7 +91,7 @@ func (h *Handler) executeImport(ctx context.Context, q *gen.Queries, tx pgx.Tx, 
 	if err != nil {
 		return importResult{}, err
 	}
-	tierIDs, err := h.upsertTiers(ctx, q, tx, plan, sessionID)
+	tierIDs, orderedTiers, err := h.upsertTiers(ctx, q, tx, plan, sessionID)
 	if err != nil {
 		return importResult{}, err
 	}
@@ -121,13 +127,60 @@ func (h *Handler) executeImport(ctx context.Context, q *gen.Queries, tx pgx.Tx, 
 		}
 	}
 
+	// The compat ids are read back rather than echoed from the payload: after
+	// registerExternal every id in the mapping IS the payload's, and reading
+	// it makes the response provably consistent with what GET_ALL_ACTIONS
+	// will later report.
+	compat, err := ensureCompatIDs(ctx, tx, eventID, sessionID, venueID, orderedTiers)
+	if err != nil {
+		return importResult{}, err
+	}
+
 	return importResult{
 		EventID:   eventID,
 		SessionID: sessionID,
 		TierIDs:   tierIDs,
 		Created:   created,
 		Seating:   seatingOut,
+		CompatIDs: compat,
 	}, nil
+}
+
+// ensureCompatIDs reads (minting on first sight) the compatibility identifiers
+// of the imported graph — the compat_ids block of the response, event-bundle
+// spec §4. tierIDs must be positionally aligned with the request's
+// categoryList, which is what the response contract promises.
+func ensureCompatIDs(ctx context.Context, tx pgx.Tx, eventID, sessionID, venueID uuid.UUID, tierIDs []uuid.UUID) (ImportCompatIDs, error) {
+	out := ImportCompatIDs{CategoryPriceIDs: make([]int64, 0, len(tierIDs))}
+
+	pairs := []struct {
+		kind   compatids.Kind
+		id     uuid.UUID
+		target *int64
+	}{
+		{compatids.KindAction, eventID, &out.ActionID},
+		{compatids.KindActionEvent, sessionID, &out.ActionEventID},
+		{compatids.KindVenue, venueID, &out.VenueID},
+	}
+	for _, p := range pairs {
+		systemID, err := compatids.Ensure(ctx, tx, p.kind, p.id)
+		if err != nil {
+			return ImportCompatIDs{}, fmt.Errorf("compat id for %s %s: %w", p.kind, p.id, err)
+		}
+		*p.target = systemID
+	}
+
+	// EnsureMany deduplicates, so the read-back is by platform id rather than
+	// by position — a categoryList that mentions the same tier twice still
+	// gets the same id in both slots.
+	minted, err := compatids.EnsureMany(ctx, tx, compatids.KindCategoryPrice, tierIDs)
+	if err != nil {
+		return ImportCompatIDs{}, fmt.Errorf("compat ids for ticket tiers: %w", err)
+	}
+	for _, tierID := range tierIDs {
+		out.CategoryPriceIDs = append(out.CategoryPriceIDs, minted[tierID])
+	}
+	return out, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -436,8 +489,12 @@ func (h *Handler) syncInventoryLedger(ctx context.Context, q *gen.Queries, event
 // categoryPriceId through the compat mapping. The returned map is what the
 // response's tier_ids object is built from, so its keys are the DECIMAL STRING
 // form of the Bil24 categoryPriceId.
-func (h *Handler) upsertTiers(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan, sessionID uuid.UUID) (map[string]uuid.UUID, error) {
+//
+// The second return value is the same tier ids in categoryList ORDER, which is
+// what compat_ids.category_price_ids is built from (event-bundle spec §4).
+func (h *Handler) upsertTiers(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan, sessionID uuid.UUID) (map[string]uuid.UUID, []uuid.UUID, error) {
 	out := make(map[string]uuid.UUID, len(plan.Request.CategoryList))
+	ordered := make([]uuid.UUID, 0, len(plan.Request.CategoryList))
 
 	for i, c := range plan.Request.CategoryList {
 		name := trimSpace(c.CategoryPriceName)
@@ -446,7 +503,7 @@ func (h *Handler) upsertTiers(ctx context.Context, q *gen.Queries, tx pgx.Tx, pl
 		}
 		price := c.PriceMinorUnits()
 		if price < 0 {
-			return nil, failImport(http.StatusUnprocessableEntity, "import.invalid_price",
+			return nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_price",
 				fmt.Sprintf("categoryList[%d].price must not be negative", i))
 		}
 		mode := "fixed"
@@ -462,36 +519,38 @@ func (h *Handler) upsertTiers(ctx context.Context, q *gen.Queries, tx pgx.Tx, pl
 
 		tierID, err := compatids.Resolve(ctx, tx, compatids.KindCategoryPrice, c.CategoryPriceID)
 		if err != nil && !errors.Is(err, compatids.ErrNotFound) {
-			return nil, fmt.Errorf("resolve category compat id: %w", err)
+			return nil, nil, fmt.Errorf("resolve category compat id: %w", err)
 		}
 
 		if errors.Is(err, compatids.ErrNotFound) {
-			row, insErr := q.InsertTicketTier(ctx, sessionID, name, mode, price, plan.Currency, nil, nil, capacity, nil, plan.SaleWindowEnd, sortOrder)
+			row, insErr := q.InsertTicketTier(ctx, sessionID, name, mode, price, plan.Currency, nil, nil, capacity, plan.SaleWindowStart, plan.SaleWindowEnd, sortOrder)
 			if insErr != nil {
-				return nil, fmt.Errorf("insert ticket tier: %w", insErr)
+				return nil, nil, fmt.Errorf("insert ticket tier: %w", insErr)
 			}
 			if regErr := registerExternal(ctx, tx, compatids.KindCategoryPrice, row.ID, c.CategoryPriceID); regErr != nil {
-				return nil, regErr
+				return nil, nil, regErr
 			}
 			out[externalIDString(c.CategoryPriceID)] = row.ID
+			ordered = append(ordered, row.ID)
 			continue
 		}
 
-		updated, updErr := q.UpdateTicketTier(ctx, tierID, sessionID, name, mode, &price, plan.Currency, nil, nil, capacity, nil, plan.SaleWindowEnd, &sortOrder)
+		updated, updErr := q.UpdateTicketTier(ctx, tierID, sessionID, name, mode, &price, plan.Currency, nil, nil, capacity, plan.SaleWindowStart, plan.SaleWindowEnd, &sortOrder)
 		if errors.Is(updErr, pgx.ErrNoRows) {
 			// The mapping points at a tier of ANOTHER session — the Bil24
 			// category id was reused across action events. Re-pointing the
 			// mapping would corrupt the other session's outbound ids, so this
 			// is a conflict the operator has to resolve upstream.
-			return nil, failImport(http.StatusConflict, "import.category_bound_elsewhere",
+			return nil, nil, failImport(http.StatusConflict, "import.category_bound_elsewhere",
 				"categoryPriceId "+externalIDString(c.CategoryPriceID)+" is already bound to a ticket tier of a different session")
 		}
 		if updErr != nil {
-			return nil, fmt.Errorf("update ticket tier: %w", updErr)
+			return nil, nil, fmt.Errorf("update ticket tier: %w", updErr)
 		}
 		out[externalIDString(c.CategoryPriceID)] = updated.ID
+		ordered = append(ordered, updated.ID)
 	}
-	return out, nil
+	return out, ordered, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -543,13 +602,62 @@ func (h *Handler) applyPublish(ctx context.Context, q *gen.Queries, plan importP
 // Poster side-load
 // ─────────────────────────────────────────────────────────────────────────────
 
+// currentPosterMediaID best-effort resolves the poster the addressed event
+// already carries, so sideLoadPoster can skip re-creating a media object for
+// bytes arena already stores (event-bundle spec §3.3).
+//
+// Every failure answers nil, which only means "no dedup this time": a wrong
+// negative costs one redundant media object, never a wrong catalog write. It
+// runs BEFORE the transaction on the pool-backed handle, matching the poster
+// side-load it feeds.
+func (h *Handler) currentPosterMediaID(ctx context.Context, orgID uuid.UUID, source, externalRef string, req bil24compat.ImportSessionRequest) *uuid.UUID {
+	if h.queries == nil {
+		return nil
+	}
+	var eventID uuid.UUID
+	switch {
+	case source == bil24compat.SourceArena && req.Action.ActionID > 0:
+		row, err := h.queries.GetCompatibilityIDBySystemID(ctx, string(compatids.KindAction), req.Action.ActionID)
+		if err != nil {
+			return nil
+		}
+		eventID = row.PlatformID
+	case source == bil24compat.SourceArena:
+		if externalRef == "" {
+			return nil
+		}
+		_, evID, err := h.queries.GetSessionByExternalRef(ctx, orgID, externalRef)
+		if err != nil {
+			return nil
+		}
+		eventID = evID
+	default:
+		row, err := h.queries.GetEventByBil24ExternalID(ctx, externalIDString(req.Action.ActionID))
+		if err != nil {
+			return nil
+		}
+		eventID = row.ID
+	}
+
+	event, err := h.queries.GetEventRaw(ctx, eventID)
+	if err != nil || event.OrgID != orgID {
+		return nil
+	}
+	return event.PosterMediaID
+}
+
 // sideLoadPoster downloads action.bigPosterUrl and records it as an
 // event_poster media object. Every failure path degrades to a warning: an
 // unreachable poster host must never cost the operator a catalog import.
 //
+// currentPoster is the media object the event already carries, if any. The
+// bytes are buffered and hashed BEFORE anything is written: an unchanged
+// poster then costs neither a storage object nor a media_objects row, which is
+// what makes repeated event-bundle edits cheap (event-bundle spec §3.3).
+//
 // Runs OUTSIDE the import transaction (mediastore.Insert uses its own pool and
 // a third-party download must not hold row locks).
-func (h *Handler) sideLoadPoster(ctx context.Context, orgID uuid.UUID, req bil24compat.ImportSessionRequest, warnings *warningSink) *uuid.UUID {
+func (h *Handler) sideLoadPoster(ctx context.Context, orgID uuid.UUID, req bil24compat.ImportSessionRequest, currentPoster *uuid.UUID, warnings *warningSink) *uuid.UUID {
 	raw := trimSpace(req.Action.BigPosterURL)
 	if raw == "" {
 		return nil
@@ -589,16 +697,35 @@ func (h *Handler) sideLoadPoster(ctx context.Context, orgID uuid.UUID, req bil24
 		return skip("upstream content type " + contentType + " is not an image")
 	}
 
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPosterBytes))
+	if err != nil {
+		return skip(err.Error())
+	}
+	if len(body) == 0 {
+		return skip("upstream returned an empty body")
+	}
+	sum := sha256.Sum256(body)
+	checksum := hex.EncodeToString(sum[:])
+
+	// Unchanged bytes → keep the existing object and its id. The event's
+	// poster_media_id is then re-set to the value it already had, which is a
+	// harmless no-op write.
+	if currentPoster != nil {
+		if existing, getErr := h.media.GetByID(ctx, *currentPoster); getErr == nil && existing.ChecksumSHA256 == checksum {
+			return currentPoster
+		}
+	}
+
 	key, err := mediastore.NewStorageKey("event_poster")
 	if err != nil {
 		return skip(err.Error())
 	}
-	checksum, size, err := h.media.PutAndStream(fetchCtx, key, contentType, io.LimitReader(resp.Body, maxPosterBytes))
+	storedChecksum, size, err := h.media.PutAndStream(fetchCtx, key, contentType, bytes.NewReader(body))
 	if err != nil {
 		return skip(err.Error())
 	}
-	if size == 0 {
-		return skip("upstream returned an empty body")
+	if storedChecksum != checksum || size != int64(len(body)) {
+		return skip("storage returned a different checksum than the downloaded bytes")
 	}
 
 	obj, err := h.media.Insert(ctx, mediastore.InsertInput{

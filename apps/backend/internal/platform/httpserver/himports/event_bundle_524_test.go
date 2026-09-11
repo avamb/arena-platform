@@ -3,9 +3,11 @@
 //
 // Like bil24_session_517_test.go, everything asserted here is reachable
 // WITHOUT a database: source / externalRef / id-range / endTime /
-// sellStartTime are all decided before the handler opens a transaction, and
-// a source=arena bundle is answered 501 before the venue lookup. The
-// execution half of source=arena lands with feature #525.
+// sellStartTime are all decided before the handler opens a transaction. A
+// bundle that clears the ladder reaches the transaction and fails there
+// against the unusable test DBTX, which is how these tests tell "accepted" from
+// "rejected". The executed behaviour of source=arena (feature #525) is covered
+// by event_bundle_525_integration_test.go against a live database.
 package himports
 
 import (
@@ -269,24 +271,25 @@ func TestEventBundle_ArenaAcceptsIDsAtOrAboveCeiling(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	newTestHandler().HandleEventBundle(rec, importRequest(t, uuid.New(), payload))
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want 501 (validation passed, executor lands with #525); body=%s",
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 (validation passed, db down); body=%s",
 			rec.Code, rec.Body.String())
 	}
 }
 
-// TestEventBundle_ArenaPassesValidationButIsNotExecutedYet documents the #524
-// boundary: a well-formed arena bundle is answered honestly with 501 instead
-// of being run through the Bil24 algorithm, which would mint wrong ids.
-// Feature #525 replaces this branch with the real executor.
-func TestEventBundle_ArenaPassesValidationButIsNotExecutedYet(t *testing.T) {
+// TestEventBundle_ArenaReachesTheExecutor is the counterpart of the rejection
+// ladder above: a well-formed arena bundle must clear every pre-transaction
+// check and get as far as opening the import transaction. With the test
+// handler's unusable pool that surfaces as import.transaction_failed, which is
+// the closest a database-free test can get to "the executor ran".
+func TestEventBundle_ArenaReachesTheExecutor(t *testing.T) {
 	rec := httptest.NewRecorder()
 	newTestHandler().HandleEventBundle(rec, importRequest(t, uuid.New(), arenaPayload()))
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want 501; body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body=%s", rec.Code, rec.Body.String())
 	}
-	if got := decodeError(t, rec); got != "import.arena_source_not_implemented" {
-		t.Fatalf("code = %q, want import.arena_source_not_implemented", got)
+	if got := decodeError(t, rec); got != "import.transaction_failed" {
+		t.Fatalf("code = %q, want import.transaction_failed; body=%s", got, rec.Body.String())
 	}
 }
 
