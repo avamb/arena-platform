@@ -31211,3 +31211,109 @@ Gates (all from the repo root, no pipelines):
 Next: feature #538 (W1-S1 EPIC-VERIFY) — end-to-end test over #535+#536+#537
 plus the full cold gate. Then roll the stand with API_PUBLIC_URL (spec 22 §3).
 
+=== Feature #538 (W1-S1 [EPIC-VERIFY]) — 2026-09-12 ===
+
+Extended superadmin_org_provisioning_533_integration_test.go (real superadmin
+login → org → channel → gateway-credential → wp-webhook → channel-bound
+api-key → event-bundle import with publish:true, cityName "Praha" and a
+poster served by a local httptest origin → GET_ALL_ACTIONS) to close the loop
+on #535/#536/#537 end to end, on the real handler stack + real outbox
+dispatcher, instead of only per-feature unit slices:
+- superadminProvisioning533Server now wires a real mediastore.Repo (local
+  disk storage.NewLocalStorage) and overrides cfg.AppPublicURL /
+  cfg.APIPublicURL to two DELIBERATELY DIFFERENT hosts
+  (https://app.prov533.test / https://api.prov533.test), so a regression that
+  rebuilds a site-facing link on the wrong origin is caught, not masked by
+  single-host coincidence.
+- Step 4 (gateway-credential): asserts base_url/image_url sit on
+  API_PUBLIC_URL specifically (.../compat/bil24, .../compat/bil24/image),
+  never on APP_PUBLIC_URL or the bare origin.
+- Step 6 (api-keys): the service key is bound to the channel via
+  channel_id in the create-key body (hapikeys already supported it).
+- Step 7 (import): venue carries cityName "Praha" + countryName "Czechia"
+  (resolveGeography bails out to nil/nil/nil with NO warning when
+  countryName is empty — a JSON-fixture trap, see Errors below) and
+  action.bigPosterUrl points at a per-test httptest poster origin. Asserts
+  the response's publication{channel_id,feed_token_id,publication_id} is
+  non-null and matches the bound channel — the AUTO-publication from #536
+  fires with zero manual feed-token/publications calls anywhere in the test.
+- Step 8 (GET_ALL_ACTIONS): asserts (a) cityList[].cityName for the venue's
+  city is "Praha" verbatim, not the lowercased slug (#537); (b)
+  actionList[].bigPosterUrl is absolute on API_PUBLIC_URL with expires+sig,
+  a plain GET through the live test server returns 200 + the exact poster
+  bytes, and the same path WITHOUT the signature is rejected (negative
+  control proving the 200 was earned by the signature).
+- Step 9: queries agent_feed_tokens/event_publications directly to confirm
+  the rows #536 auto-created (label "auto:event-bundle") — replaces the old
+  manual POST .../feed-tokens + POST .../publications steps this test used
+  to perform BEFORE #536 existed.
+- New sibling test TestSuperadminOrgProvisioning538_JWTActorNoAutoPublication:
+  same superadmin, a channel that EXISTS but the import is authenticated
+  with the superadmin's own JWT (auth.Actor.Type=user, ChannelID always
+  nil) rather than a service API key. Asserts publication=null, NO
+  import.channel_publication_skipped warning (see Errors — that warning is
+  service-actor-only, not "any channel-less publish"), and zero rows in
+  event_publications / agent_feed_tokens(label=auto:event-bundle) for the
+  org's channels. Closes the review gap #536 flagged: a human import must
+  never auto-publish, no matter how many channels the org has.
+
+Errors found and fixed while building this test (both would have shipped a
+false negative or false positive, not a product defect):
+1. resolveGeography (himports/import_exec.go) returns (nil,nil,nil) with NO
+   warning when venue.countryName is empty — cityName is never even looked
+   at in that path. My first importBody draft carried cityName only (no
+   countryName), which produced an empty cityList/countryList and cityId=0
+   on the wire, silently — the venue's city.Praha fixture bundle
+   (bundle527Fixture) always ships countryName "Czechia" alongside cityName
+   "Praha", which is WHY every other #537 test worked and mine didn't at
+   first. Fixed by adding "countryName": "Czechia" to the venue object.
+   Worth flagging as a possible product gap on its own: silently discarding
+   cityName because countryName was omitted has no warning at all, unlike
+   the WarnCountryUnresolved/WarnCityUnresolved paths that DO warn when a
+   name fails to resolve.
+2. My first draft of the 538 sibling test asserted
+   import.channel_publication_skipped fires for a JWT/human actor with no
+   channel binding. Read ensureChannelPublication (import_publication.go)
+   line by line: it short-circuits to (nil,nil) — no warning — for any actor
+   whose Type isn't auth.ActorTypeService, by design ("a human operator...
+   publishes through the admin UI"). That warning is reserved for a SERVICE
+   actor that IS eligible for auto-publish but lacks a channel binding. Test
+   assertion was wrong, not the product; fixed to assert the warning's
+   ABSENCE instead, with a comment explaining why.
+3. The new JWT-actor import call initially used integDoRequest (no
+   X-Admin-Reason) and got a 400 superadmin.missing_reason — the
+   organization is not one the superadmin is a member of, so the route's
+   markSuperadminOrgAccess bypass demands the header on every org-scoped
+   call, imports included. Fixed by switching to
+   provDoRequestWithReasonAndBody, matching every other step in this file.
+
+Gates (all from the repo root, no pipelines):
+- go.exe -C apps/backend build ./...                                EXIT:0
+- DATABASE_URL=<dev stand :55432> JWT_SIGNING_SECRET=x go.exe -C apps/backend
+    test -tags integration -run TestSuperadminOrgProvisioning -v
+    ./internal/platform/httpserver/                                 EXIT:0
+- same, -count=2 (state-leak check)                                 EXIT:0
+- same, -count=1 -p 1 across ./internal/platform/httpserver/...
+    ./internal/platform/httpserver/hauth/... .../hcatalog/...
+    .../himports/... .../hbil24/... .../hfeed/... ./tests/compat/bil24/...
+    ./internal/migrations/...                                       EXIT:0
+- go.exe -C apps/backend test -count=1 ./...  (full unit suite)     EXIT:0
+- gofmt -l apps/backend/{cmd,internal,tests,tools}                  (clean) EXIT:0
+- GOLANGCI_LINT_CACHE=/tmp/golangci-cache golangci-lint run
+    ./apps/backend/...                                              0 issues EXIT:0
+- git status --short on openapi/gen dirs (codegen drift check)      empty — no
+    API-surface change this feature, codegen untouched
+- npm --prefix apps/admin-web run type-check                        EXIT:0
+- npm --prefix apps/admin-web run test                              EXIT:0
+
+Feature #538 closes the W1-S1 epic-verify slice: #535 (signed absolute
+media/gateway URLs), #536 (auto-publication for a channel-bound service
+key, no auto-publication for a human/JWT actor), and #537 (city i18n name)
+are now all proven on ONE real end-to-end flow through the live handler
+stack, real outbox dispatcher, real Postgres — not just per-feature slices.
+
+Next: roll the stand with API_PUBLIC_URL set (spec 22 §3) so the live
+WordPress sites actually receive the fixed URLs; audit whether resolveGeography's
+silent-discard-without-warning on countryName-empty (Errors item 1 above)
+deserves its own fix-feature.
+
