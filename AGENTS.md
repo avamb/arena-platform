@@ -372,6 +372,24 @@ entries short and factual.
   404 there would leak which failure mode applies). Don't probe HTTP status
   to detect a disabled channel — check `resultCode`. Documented in
   `docs/ops/bil24_gateway.md` §5 (feature #521).
+- **Reproduce the CI Integration job on a FRESH database, not on the shared dev
+  stand.** The dev-stand DB (`arena`, port 55432) carries months of data, so
+  tests that only pass thanks to pre-existing rows (or fail only on empty
+  tables) diverge from CI. Seen 2026-09-12: the W1-S1 e2e test decoded
+  `warnings` as `[]string`, passed on the stand (no warnings there) and failed
+  in CI where a fresh import returns advisory `{code,message}` objects. Recipe:
+  `docker exec arena_postgres psql -U arena -d arena -c "CREATE DATABASE arena_ci OWNER arena"`
+  (DROP first if it exists — one statement per `-c`, DROP cannot run in a
+  transaction), then with `DATABASE_URL=...:55432/arena_ci...` run
+  `go.exe run ./apps/backend/cmd/arena-migrate up`, `go.exe run ./apps/backend/cmd/arena-seed`,
+  and `go.exe test -count=1 -p 1 -tags integration ./apps/backend/...`. The
+  `internal/tests/pgtest` package panics on Windows ("rootless Docker is not
+  supported") — that one is host-specific, ignore it locally.
+- **`audit.WithServiceActor` must keep `actor_id` a bare uuid.** It used to
+  write `api_key:<uuid>`, which `audit_events.actor_id uuid` rejects with
+  22P02 — every audited mutation under an organization API key silently lost
+  its audit row (and would abort a WriteTx transaction). The human label now
+  lives in `actor_type='api_key'` + `metadata.actor_label` (fix 871eeed).
 - **`outbox_events` dead-letter replay is SQL-only, no admin endpoint.**
   `internal/platform/outbox` stops retrying a row once `dead_lettered_at` is
   set; find candidates with
