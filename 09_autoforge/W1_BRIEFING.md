@@ -9,6 +9,8 @@ implement the first steps, commit by path, push, write a short note naming what 
 
 - Spec (design authority): `08_architecture/18_bil24_compat_wave1_specification_ru.md`.
   Read ONLY the sections your feature names (e.g. `§7.4`). Do not read it end to end.
+- **W1-S1 (features #535-#538, site-facing gaps from the live stand test)**: design authority is
+  `08_architecture/22_site_facing_gaps_w1s1_ru.md` (short; read it whole).
 - **W1-S0 (features #531-#533, superadmin parity on org-scoped surfaces)**: design authority is
   `08_architecture/21_superadmin_org_access_parity_ru.md` (short; read it whole).
 - **W1-M (features #528-#530, money units on the wire)**: design authority is
