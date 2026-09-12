@@ -14445,6 +14445,35 @@ export interface components {
             category_price_ids: number[];
         };
         /**
+         * @description The sales-channel binding the import performed on the caller's behalf
+         *     (feature #536, spec 22 §2.2). Publishing an event only flips its
+         *     status; the site's webhook subscriber is found through
+         *     event_publications → agent_feed_tokens → webhook_subscribers keyed by
+         *     sales channel, so a bundle sent with publish:true by an organization
+         *     API key that names a channel is also published INTO that channel —
+         *     inside the same transaction, before the v1.event.published notification
+         *     fires. Repeating the bundle reuses the same feed token and publication.
+         */
+        ImportPublication: {
+            /**
+             * Format: uuid
+             * @description The sales channel the calling API key is bound to (api_keys.channel_id).
+             */
+            channel_id: string;
+            /**
+             * Format: uuid
+             * @description The channel's agent feed token that carries the webhook fan-out.
+             *     An existing active, non-revoked token is reused; otherwise one is
+             *     minted with the label `auto:event-bundle`.
+             */
+            feed_token_id: string;
+            /**
+             * Format: uuid
+             * @description The event_publications row linking the event to the feed token.
+             */
+            publication_id: string;
+        };
+        /**
          * @description Result of an import through either route (spec §13.2 step 9;
          *     event-bundle spec §4 — the response shape is identical for
          *     /imports/bil24-session and /imports/event-bundle, both sources).
@@ -14494,6 +14523,16 @@ export interface components {
              *     (event-bundle spec §4). See ImportCompatIDs.
              */
             compat_ids: components["schemas"]["ImportCompatIDs"];
+            /**
+             * @description The sales-channel publication this import performed (feature #536),
+             *     or null when none happened: the caller is not an organization API
+             *     key, the bundle did not request publish:true, the publish gate
+             *     refused the transition, or the key is not bound to a channel — the
+             *     last case also raises the warning
+             *     `import.channel_publication_skipped`, and without a channel binding
+             *     no site webhook is delivered for this event.
+             */
+            publication: components["schemas"]["ImportPublication"] | null;
         };
         /**
          * @description Fields common to every `/compat/bil24/json` command. `fid` and

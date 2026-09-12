@@ -53,6 +53,12 @@ const (
 	// not mention. They are left untouched (the bundle cannot delete), and
 	// their compat ids are listed in the message so the site can reconcile.
 	WarnTierNotInPayload = "import.tier_not_in_payload"
+	// WarnChannelPublicationSkipped — publish:true succeeded, but the calling
+	// organization API key is not bound to a sales channel, so the event was
+	// not published into any channel and the site's webhook subscriber (which
+	// hangs off channel → feed token → publication) will never be found
+	// (feature #536, spec 22 §2.2).
+	WarnChannelPublicationSkipped = "import.channel_publication_skipped"
 	// WarnFieldIgnoredForSource — a field that only makes sense for the other
 	// source was present and ignored (for source=arena: chargePercent,
 	// seatingPlanId, seatingPlanName — event-bundle spec §3 / §5).
@@ -95,6 +101,22 @@ type ImportSessionResponse struct {
 	Created              bool                 `json:"created"`
 	ExternalRef          *string              `json:"external_ref"`
 	CompatIDs            ImportCompatIDs      `json:"compat_ids"`
+	Publication          *ImportPublication   `json:"publication"`
+}
+
+// ImportPublication reports the channel binding the import performed on the
+// caller's behalf (feature #536, spec 22 §2.2): the sales channel the calling
+// organization API key is bound to, the feed token that carries the channel's
+// webhook fan-out (minted with label auto:event-bundle on first use) and the
+// event_publications row itself.
+//
+// It is null whenever no binding happened — the caller is a human operator, the
+// bundle did not ask for publish:true, the publish gate refused, or the key is
+// not bound to a channel (which also raises import.channel_publication_skipped).
+type ImportPublication struct {
+	ChannelID     uuid.UUID `json:"channel_id"`
+	FeedTokenID   uuid.UUID `json:"feed_token_id"`
+	PublicationID uuid.UUID `json:"publication_id"`
 }
 
 // ImportCompatIDs is the compatibility-identifier block of the import response

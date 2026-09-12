@@ -131,11 +131,15 @@ func (s *Server) authenticateAPIKey(w http.ResponseWriter, r *http.Request, raw 
 		s.logger.Warn("apikeys: last_used_at update failed", "error", err.Error())
 	}
 
+	// ChannelID is carried through verbatim (nil when the key is not bound to a
+	// channel): himports publishes a publish:true import into exactly this
+	// channel so the site's webhook subscriber becomes reachable — feature #536.
 	return auth.Actor{
 		ID:          key.ID.String(),
 		Type:        auth.ActorTypeService,
 		Permissions: key.Scopes,
 		OrgID:       key.OrgID.String(),
+		ChannelID:   key.ChannelID,
 		RawToken:    raw,
 	}, true
 }

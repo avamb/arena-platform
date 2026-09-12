@@ -211,6 +211,27 @@ command (§1's fid/token) any Bil24-relay event does — `actionId`/`actionEvent
 venue's timezone, and `bigPosterUrl` points at `/v1/media-files/{poster_media_id}`. The site does
 not need to wait for that sync to know the ids — it already has them in the bundle's own response.
 
+**The API key MUST be bound to the site's sales channel, or no webhooks flow.** Publishing an event
+sets `events.status = 'published'` and emits `v1.event.published`, but the WP webhook fan-out finds
+its receivers through `event_publications → agent_feed_tokens (active, not revoked) →
+webhook_subscribers (kind = 'bil24_wp')`, keyed by **sales channel**. An event that was never
+published *into a channel* therefore has zero subscribers, and the outbox row is dispatched with
+nothing to deliver — the site that created the event never receives `event.created`.
+
+Since feature #536 the import closes that gap by itself: when a bundle with `publish: true` is
+posted by an organization API key whose `channel_id` is set, arena publishes the event into that
+channel inside the same transaction — reusing the channel's active feed token, or minting one with
+the label `auto:event-bundle` — and echoes the result as
+`publication: {channel_id, feed_token_id, publication_id}` in the response. Repeating the bundle
+reuses the same token and publication (no duplicates).
+
+If the key is **not** bound to a channel, the response carries `publication: null` plus the warning
+`import.channel_publication_skipped`, and the site will never see a webhook. Fix it by creating the
+key with a `channel_id` (§1 provisions the channel) — an existing key cannot be re-pointed, so issue
+a new one and retire the old — then re-post the same bundle (same `externalRef`); the publication
+appears without any manual admin step. The `§2` webhook subscriber must still be registered on that
+same channel.
+
 ## Related reading
 
 - Wire-level behavior differences and result-code map:

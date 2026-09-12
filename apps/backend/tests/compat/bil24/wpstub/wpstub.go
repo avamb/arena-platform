@@ -7,8 +7,12 @@
 // and §9) is intentionally small:
 //
 //   - HTTP POST application/json.
-//   - Body MUST contain non-empty "type" (string) and "data" (object) fields —
+//   - Body MUST contain non-empty "type" (string) and "data" fields —
 //     otherwise the receiver returns 400 with body {"ok":false,"error":"..."}.
+//     "data" is an OBJECT for the order/ticket families and an ARRAY of
+//     actionEvent references for the catalog family (`event.created`,
+//     `event.updated`, …), which is what bil24wire.dispatchCatalog emits; the
+//     stub accepts both shapes and exposes them as Event.Data / Event.DataList.
 //   - Any other well-formed body returns 200 {"ok":true}.
 //   - When "type" == "ticket.refunded", the receiver deduplicates by
 //     data.id — a repeated payload for the same id still returns 200 {"ok":true}
@@ -36,6 +40,10 @@ import (
 type Event struct {
 	Type string                 `json:"type"`
 	Data map[string]interface{} `json:"data"`
+	// DataList is the catalog-family shape of the same field: `event.created`
+	// and its siblings carry an ARRAY of {"actionEventId": …} references
+	// instead of a single object. Exactly one of Data / DataList is non-nil.
+	DataList []map[string]interface{} `json:"data_list"`
 }
 
 // Server is an in-memory replay of bil24-notification-receiver.php.
@@ -133,18 +141,32 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var env struct {
-		Type string                 `json:"type"`
-		Data map[string]interface{} `json:"data"`
+		Type string          `json:"type"`
+		Data json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(body, &env); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "malformed_json"})
 		return
 	}
-	if env.Type == "" || env.Data == nil {
+	// `data` is an object for the order/ticket families and an array for the
+	// catalog family; anything else (or a missing field) is a malformed
+	// payload the PHP receiver rejects.
+	var (
+		data     map[string]interface{}
+		dataList []map[string]interface{}
+	)
+	switch {
+	case json.Unmarshal(env.Data, &data) == nil && data != nil:
+	case json.Unmarshal(env.Data, &dataList) == nil && dataList != nil:
+	default:
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "type_and_data_required"})
 		return
 	}
-	if err := s.store(env.Type, env.Data); err != nil {
+	if env.Type == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "type_and_data_required"})
+		return
+	}
+	if err := s.store(env.Type, data, dataList); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
 	}
@@ -152,7 +174,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 }
 
 // store is separated from serve to keep the dedup rule testable without HTTP.
-func (s *Server) store(evtType string, data map[string]interface{}) error {
+func (s *Server) store(evtType string, data map[string]interface{}, dataList []map[string]interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -167,7 +189,14 @@ func (s *Server) store(evtType string, data map[string]interface{}) error {
 		}
 		s.seenRefundID[key] = struct{}{}
 	}
-	s.received = append(s.received, Event{Type: evtType, Data: cloneMap(data)})
+	ev := Event{Type: evtType}
+	if data != nil {
+		ev.Data = cloneMap(data)
+	}
+	for _, entry := range dataList {
+		ev.DataList = append(ev.DataList, cloneMap(entry))
+	}
+	s.received = append(s.received, ev)
 	return nil
 }
 

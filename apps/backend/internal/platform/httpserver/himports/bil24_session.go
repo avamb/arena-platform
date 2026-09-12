@@ -271,6 +271,7 @@ func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request, forcedSou
 		Created:              result.Created,
 		ExternalRef:          refOut,
 		CompatIDs:            result.CompatIDs,
+		Publication:          result.Publication,
 	})
 }
 

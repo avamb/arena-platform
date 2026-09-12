@@ -34,6 +34,7 @@ import (
 
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
@@ -102,6 +103,15 @@ type Actor struct {
 	// service actors (api_keys.org_id); empty for user actors, whose org
 	// membership is resolved from org_memberships.
 	OrgID string
+	// ChannelID is the sales channel an organization API key is bound to
+	// (api_keys.channel_id, optional). It is populated ONLY for service actors
+	// and answers "which site is speaking?" — the import surface uses it to
+	// publish a freshly imported event into the caller's own channel, which is
+	// what makes the WP webhook chain (event_publications → agent_feed_tokens →
+	// webhook_subscribers) find a subscriber (feature #536, spec
+	// 08_architecture/22_site_facing_gaps_w1s1_ru.md §2.2). nil means the key
+	// is not bound to a channel — a supported configuration, not an error.
+	ChannelID *uuid.UUID
 }
 
 // IsImpersonated reports whether this actor's token was issued as an

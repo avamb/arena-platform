@@ -5463,6 +5463,15 @@ type ImportBil24SessionResponse struct {
 	// for source=bil24 (the legacy route never sends externalRef).
 	ExternalRef *string `json:"external_ref"`
 
+	// Publication The sales-channel publication this import performed (feature #536),
+	// or null when none happened: the caller is not an organization API
+	// key, the bundle did not request publish:true, the publish gate
+	// refused the transition, or the key is not bound to a channel — the
+	// last case also raises the warning
+	// `import.channel_publication_skipped`, and without a channel binding
+	// no site webhook is delivered for this event.
+	Publication *ImportPublication `json:"publication"`
+
 	// SeatingPlanVersionId Seating plan version created by this import. Always null — this
 	// endpoint imports general-admission sessions only.
 	SeatingPlanVersionId *openapi_types.UUID `json:"seating_plan_version_id"`
@@ -5626,6 +5635,27 @@ type ImportEventBundleRequest struct {
 // must already be ≥ 1e9 and resolve to an object of this
 // organization) and `externalRef` becomes mandatory.
 type ImportEventBundleRequestSource string
+
+// ImportPublication The sales-channel binding the import performed on the caller's behalf
+// (feature #536, spec 22 §2.2). Publishing an event only flips its
+// status; the site's webhook subscriber is found through
+// event_publications → agent_feed_tokens → webhook_subscribers keyed by
+// sales channel, so a bundle sent with publish:true by an organization
+// API key that names a channel is also published INTO that channel —
+// inside the same transaction, before the v1.event.published notification
+// fires. Repeating the bundle reuses the same feed token and publication.
+type ImportPublication struct {
+	// ChannelId The sales channel the calling API key is bound to (api_keys.channel_id).
+	ChannelId openapi_types.UUID `json:"channel_id"`
+
+	// FeedTokenId The channel's agent feed token that carries the webhook fan-out.
+	// An existing active, non-revoked token is reused; otherwise one is
+	// minted with the label `auto:event-bundle`.
+	FeedTokenId openapi_types.UUID `json:"feed_token_id"`
+
+	// PublicationId The event_publications row linking the event to the feed token.
+	PublicationId openapi_types.UUID `json:"publication_id"`
+}
 
 // ImportWarning A non-fatal condition observed while importing. Warnings never fail the import.
 type ImportWarning struct {

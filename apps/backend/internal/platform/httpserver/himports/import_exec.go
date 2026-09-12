@@ -77,6 +77,9 @@ type importResult struct {
 	// uses it, after tx.Commit succeeds, to decide whether to fire the
 	// catalog-change outbox notification exactly once per real transition.
 	PublishedNow bool
+	// Publication is the channel binding the import performed on behalf of the
+	// calling service actor (feature #536), nil when there was none.
+	Publication *ImportPublication
 }
 
 // executeImport runs spec §13.2 steps 2-5 and 7-8 inside tx.
@@ -135,6 +138,14 @@ func (h *Handler) executeImport(ctx context.Context, q *gen.Queries, tx pgx.Tx, 
 		}
 	}
 
+	// Still inside the transaction: the site's own key publishes the event into
+	// its channel, so the webhook subscriber exists before handleImport fires
+	// the post-commit v1.event.published notification (feature #536).
+	publication, err := h.ensureChannelPublication(ctx, q, plan, eventID, venueID, warnings)
+	if err != nil {
+		return importResult{}, err
+	}
+
 	// The compat ids are read back rather than echoed from the payload: after
 	// registerExternal every id in the mapping IS the payload's, and reading
 	// it makes the response provably consistent with what GET_ALL_ACTIONS
@@ -152,6 +163,7 @@ func (h *Handler) executeImport(ctx context.Context, q *gen.Queries, tx pgx.Tx, 
 		Seating:      seatingOut,
 		CompatIDs:    compat,
 		PublishedNow: publishedNow,
+		Publication:  publication,
 	}, nil
 }
 
