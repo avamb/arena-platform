@@ -30851,3 +30851,55 @@ files changed: the new integration test and the one-method import_arena.go
 fix — verified via `git status --short` before staging (no foreign files
 picked up).
 
+## 2026-09-12 — W1-S0 batch: #531 + #532 (superadmin org-access parity)
+
+Spec: 08_architecture/21_superadmin_org_access_parity_ru.md §3.2.
+
+#531 — markSuperadminOrgAccess resolved superadmin status purely from the
+JWT `roles` claim, which real login-issued JWTs never populate (see the
+pre-existing "org-scoped user_roles never reach a real logged-in user's
+permission checks" gotcha in AGENTS.md). Fixed by adding
+permissions.SuperadminBypassChecker with a single combined
+DBChecker.SuperadminOrgBypass(ctx, actor) method: resolves effective
+roles (JWT union DB memberships via the existing cached
+MembershipQuerier.GetActiveRolesForUser path), checks platform_superadmin
+membership, then checks superadmin.read via the checker's own cached
+resolvePermissions — at most one extra DB round trip, no double query.
+mount_v1.go's superadminOrgBypass calls this when s.perms implements the
+new interface, else falls back to the old JWT-claim check for callers
+that wire a bare Checker. 4 unit tests (DB-resolved grant, plain-member
+denial, service-actor exclusion, legacy-claim fallback) plus a real
+register+login+SQL-grant integration test asserting 200/400/403 and
+exactly one superadmin.organization_access audit row. Commit 301721d,
+pushed, feature_mark_passing(531) succeeded.
+
+#532 — platform_superadmin was missing 6 permissions seeded after
+migration 0071 (order.read/write, customer.read/import, api_key.manage,
+import.bil24_session) because those migrations never granted them to
+platform_superadmin in the same file — a real superadmin 403'd on the
+gated surfaces (e.g. the API-keys admin tab). Migration 0100 does a
+one-shot CROSS JOIN catch-up grant of every current permission to
+platform_superadmin; verified applying cleanly against the shared
+dev-stand Postgres (schema version 99 -> 100) before committing.
+Guardrails added: a static embedded-FS-scanning unit test (Unit-CI safe,
+no DB) failing any FUTURE migration numbered above 0100 that seeds a
+permission without granting it to platform_superadmin in the same file
+(caught and fixed one false-positive bug during development: the initial
+literal-match scanned the WHOLE Up section including the seeding INSERT
+itself, which trivially always "matched"); a live-DB integration test
+comparing count(permissions) against count(role_permissions) joined to
+the platform_superadmin role, independent of which migration caused a
+gap; and an httpserver integration test that registers+grants+logs in a
+real superadmin and asserts GET /v1/me lists all 6 previously-missing
+permissions. AGENTS.md documents the new rule under ## Migrations. Gates
+run: go build, go vet (plain and -tags integration), go test -count=1
+across the whole backend module, golangci-lint (0 issues), gofmt -l on
+every changed .go file (clean) — all EXIT:0. The three new #532 tests
+were re-run together and individually and all pass (or skip as expected
+without DATABASE_URL). Commit eb75a8c, pushed, feature_mark_passing(532)
+succeeded.
+
+No admin-web/UI changes were needed for either feature (pure backend RBAC
++ migration work). Both features closed out the assigned W1-S0 batch for
+this session; no further features were assigned.
+
