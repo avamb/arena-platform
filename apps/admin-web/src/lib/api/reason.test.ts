@@ -134,9 +134,13 @@ describe("requiresAdminReason()", () => {
     // Superadmin read prefixes always match regardless of method.
     ["/v1/admin/organizations", "GET", true],
     ["/v1/admin/organizations", "POST", true],
-    // SAUI-14 (#246): cross-tenant org-scoped resource mutations
-    // (venues / channels / payment-configs / members) require a reason
-    // on POST/PATCH/PUT/DELETE but not on GET.
+    // #534: cross-tenant org-scoped resource access (venues / channels /
+    // payment-configs / members) requires a reason on every method,
+    // including GET -- originally (SAUI-14 / #246) this was mutation-only,
+    // but the backend now requires the header on org-scoped GETs too once
+    // the superadmin bypass (#531/#532) is granted, so gating only
+    // mutations left every read tab of the organization drawer stuck in a
+    // "missing_reason ... Retry" loop for a real superadmin.
     [
       "/v1/organizations/11111111-1111-1111-1111-111111111111/venues",
       "POST",
@@ -213,33 +217,33 @@ describe("requiresAdminReason()", () => {
       "DELETE",
       true,
     ],
-    // Bank-account READS are not gated.
+    // Bank-account reads are now gated too (#534).
     [
       "/v1/organizations/11111111-1111-1111-1111-111111111111/bank-accounts",
       "GET",
-      false,
+      true,
     ],
-    // Reads on the same paths are not gated -- the drawer's read tabs
-    // must not pop the modal for plain browsing.
+    // Reads on the same paths are gated (#534) -- the drawer's read tabs
+    // need the header once the backend enforces the superadmin bypass.
     [
       "/v1/organizations/11111111-1111-1111-1111-111111111111/venues",
       "GET",
-      false,
+      true,
     ],
     [
       "/v1/organizations/11111111-1111-1111-1111-111111111111/channels",
       "GET",
-      false,
+      true,
     ],
     [
       "/v1/organizations/11111111-1111-1111-1111-111111111111/payment-configs",
       "GET",
-      false,
+      true,
     ],
     [
       "/v1/organizations/11111111-1111-1111-1111-111111111111/members",
       "GET",
-      false,
+      true,
     ],
     // The org root itself is NOT in the new regex set so plain
     // organization PATCH/DELETE still go through the existing
@@ -249,11 +253,37 @@ describe("requiresAdminReason()", () => {
       "PATCH",
       false,
     ],
-    // Unrelated sub-resources stay out of the gate.
+    // #534: events/sessions/customers/orders/imports under an org are now
+    // gated on every method too.
     [
       "/v1/organizations/11111111-1111-1111-1111-111111111111/events",
       "POST",
-      false,
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/events",
+      "GET",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/sessions",
+      "GET",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/customers",
+      "GET",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/orders",
+      "GET",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/imports",
+      "POST",
+      true,
     ],
     // Query strings are stripped before matching.
     [
@@ -261,10 +291,10 @@ describe("requiresAdminReason()", () => {
       "POST",
       true,
     ],
-    // W1-A1e (#474): unlike the channels-prefix mutation-only gate above,
-    // the gateway-credential sub-resource requires X-Admin-Reason on
-    // EVERY verb, including GET -- the summary read exposes rotation
-    // metadata and is treated as a sensitive admin action per spec.
+    // W1-A1e (#474): the gateway-credential sub-resource requires
+    // X-Admin-Reason on EVERY verb, including GET -- the summary read
+    // exposes rotation metadata and is treated as a sensitive admin
+    // action per spec (also now implied by the channels-prefix regex).
     [
       "/v1/organizations/11111111-1111-1111-1111-111111111111/channels/22222222-2222-2222-2222-222222222222/gateway-credential",
       "GET",
@@ -280,13 +310,13 @@ describe("requiresAdminReason()", () => {
       "DELETE",
       true,
     ],
-    // The plain channel list/detail path stays mutation-gated only, so a
-    // sibling sub-resource under the same channel does not accidentally
-    // widen to require a reason on GET.
+    // The plain channel list/detail path is now gated on every method too
+    // (#534), including GET -- a sibling sub-resource under the same
+    // channel (gateway-credential) was already gated before this change.
     [
       "/v1/organizations/11111111-1111-1111-1111-111111111111/channels/22222222-2222-2222-2222-222222222222",
       "GET",
-      false,
+      true,
     ],
     // W1-C1c (#514): api-keys requires X-Admin-Reason on every verb,
     // including the list GET.
@@ -440,73 +470,88 @@ describe("authedFetch() X-Admin-Reason injection", () => {
     );
   });
 
-  it("on superadmin.missing_reason: clears cache, re-prompts, retries once", async () => {
+  it("on superadmin.missing_reason WITH a cached reason: retries once with the cached value, no prompt (#534)", async () => {
     authedSession();
-    setActiveReason("stale-reason");
-
-    // Mirror the real ReasonContext resolver behaviour: short-circuit
-    // when an active reason is cached, only "prompt" when it is not.
+    setActiveReason("cached-reason");
     let promptCalls = 0;
     setReasonResolver(async () => {
-      const cached = getActiveReason();
-      if (cached !== null) {
-        return cached;
-      }
+      promptCalls += 1;
+      return "should-not-be-used";
+    });
+
+    const fetchMock = vi
+      .fn()
+      // First attempt -> a path/method combo requiresAdminReason() does
+      // not (yet) recognise, so no header was attached; backend rejects.
+      .mockResolvedValueOnce(
+        mockResponse({
+          status: 400,
+          body: errorEnvelope(MISSING_REASON_CODE, "reason required"),
+        }),
+      )
+      // Auto-retry with the cached reason -> success.
+      .mockResolvedValueOnce(mockResponse({ status: 200, body: { ok: true } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await authedFetch<{ ok: boolean }>({
+      method: "GET",
+      path: "/v1/organizations/11111111-1111-1111-1111-111111111111/not-yet-gated",
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // The resolver (interactive prompt) must never fire when a reason is
+    // already cached -- the retry is fully automatic.
+    expect(promptCalls).toBe(0);
+    const firstReq = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const retryReq = fetchMock.mock.calls[1]?.[1] as RequestInit;
+    expect(
+      (firstReq.headers as Record<string, string>)["X-Admin-Reason"],
+    ).toBeUndefined();
+    expect(
+      (retryReq.headers as Record<string, string>)["X-Admin-Reason"],
+    ).toBe("cached-reason");
+    // The cached reason is untouched by a successful auto-retry.
+    expect(getActiveReason()).toBe("cached-reason");
+  });
+
+  it("on superadmin.missing_reason with NO cached reason: clears cache, prompts, retries once", async () => {
+    authedSession();
+
+    let promptCalls = 0;
+    setReasonResolver(async () => {
       promptCalls += 1;
       return `fresh-reason-${promptCalls}`;
     });
 
     const fetchMock = vi
       .fn()
-      // First attempt -> backend rejects the stale reason.
       .mockResolvedValueOnce(
         mockResponse({
           status: 400,
           body: errorEnvelope(MISSING_REASON_CODE, "reason expired"),
         }),
       )
-      // Retry with fresh reason -> success.
       .mockResolvedValueOnce(mockResponse({ status: 200, body: { ok: true } }));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await authedFetch<{ ok: boolean }>({
       method: "GET",
-      path: "/v1/admin/tickets",
+      path: "/v1/organizations/11111111-1111-1111-1111-111111111111/not-yet-gated",
     });
 
     expect(result).toEqual({ ok: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(promptCalls).toBe(1);
-    const firstReq = fetchMock.mock.calls[0]?.[1] as RequestInit;
     const retryReq = fetchMock.mock.calls[1]?.[1] as RequestInit;
-    expect(
-      (firstReq.headers as Record<string, string>)["X-Admin-Reason"],
-    ).toBe("stale-reason");
     expect(
       (retryReq.headers as Record<string, string>)["X-Admin-Reason"],
     ).toBe("fresh-reason-1");
-    // Cached reason updated to the fresh value (the resolver persisted it
-    // via the React layer; here we just verify the API path replaced
-    // whatever was there).
-    // Resolver itself does not write to the store, so we expect the
-    // cleared state.
-    expect(getActiveReason()).toBeNull();
   });
 
-  it("does NOT retry the missing-reason path more than once", async () => {
+  it("does NOT retry the missing-reason path more than once (cached-reason branch)", async () => {
     authedSession();
     setActiveReason("seeded");
-
-    // Mirror the real ReasonContext resolver: cached reason short-circuits.
-    let promptCalls = 0;
-    setReasonResolver(async () => {
-      const cached = getActiveReason();
-      if (cached !== null) {
-        return cached;
-      }
-      promptCalls += 1;
-      return `fresh-${promptCalls}`;
-    });
 
     // Use mockImplementation so each call gets a fresh Response (the
     // body of a Response can only be consumed once).
@@ -523,9 +568,37 @@ describe("authedFetch() X-Admin-Reason injection", () => {
     await expect(
       authedFetch({ method: "GET", path: "/v1/admin/orders" }),
     ).rejects.toMatchObject({ code: MISSING_REASON_CODE });
-    // Exactly two attempts: original + one retry. The original used the
-    // pre-seeded reason; the retry triggered a single prompt after the
-    // cache was cleared.
+    // Exactly two attempts: original + one automatic retry with the
+    // cached reason. No third attempt even though the retry also failed.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(getActiveReason()).toBe("seeded");
+  });
+
+  it("does NOT retry the missing-reason path more than once (no-cached-reason branch)", async () => {
+    authedSession();
+
+    let promptCalls = 0;
+    setReasonResolver(async () => {
+      promptCalls += 1;
+      return `fresh-${promptCalls}`;
+    });
+
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        mockResponse({
+          status: 400,
+          body: errorEnvelope(MISSING_REASON_CODE, "still bad"),
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      authedFetch({
+        method: "GET",
+        path: "/v1/organizations/11111111-1111-1111-1111-111111111111/not-yet-gated",
+      }),
+    ).rejects.toMatchObject({ code: MISSING_REASON_CODE });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(promptCalls).toBe(1);
   });

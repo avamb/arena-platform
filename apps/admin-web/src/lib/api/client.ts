@@ -29,6 +29,7 @@ import {
 import {
   MISSING_REASON_CODE,
   clearActiveReason,
+  getActiveReason,
   requiresAdminReason,
   resolveReasonFor,
 } from "@/lib/api/reason";
@@ -325,11 +326,21 @@ interface AuthedRequest {
  *   1. 401 -> single refresh-and-retry. If refresh fails the session is
  *      cleared and the original 401 propagates so AuthProvider can
  *      redirect to /login.
- *   2. 400 with code `superadmin.missing_reason` -> clear the cached
- *      reason (so the resolver re-prompts), resolve a fresh reason for
- *      this path, retry exactly once with the new reason injected. This
- *      covers the case where the operator's persisted reason was
- *      invalidated server-side mid-session.
+ *   2. 400 with code `superadmin.missing_reason` -> retry exactly once,
+ *      for ANY path/method:
+ *        - if a reason is already cached (sessionStorage
+ *          `arena.admin.adminReason`), retry immediately with that
+ *          cached value via the `adminReason` override -- this is the
+ *          #534 fix: `reason.ts`'s path predicate only attaches the
+ *          header pre-emptively for paths/methods it recognises, so a
+ *          server-side surface that now mandates the header (e.g. an
+ *          org-scoped GET once `markSuperadminOrgAccess` grants the
+ *          superadmin bypass) would otherwise dead-end in a
+ *          "missing_reason" loop even though the operator already
+ *          supplied a reason this session;
+ *        - otherwise fall back to the interactive prompt flow: clear the
+ *          stale cache (if any) so the resolver re-prompts, resolve a
+ *          fresh reason, retry once with it injected.
  *
  * Each retry policy fires at most once; a second failure of the same
  * kind propagates to the caller. The two policies are independent --
@@ -349,13 +360,22 @@ export async function authedFetch<T>(req: AuthedRequest): Promise<T> {
       }
       return rawFetch<T>({ ...req, authenticated: true, noRefresh: true });
     }
-    if (
-      err instanceof ApiError &&
-      err.code === MISSING_REASON_CODE &&
-      requiresAdminReason(req.path, req.method)
-    ) {
-      // Server rejected our (possibly stale) reason. Drop the cached
-      // reason, prompt the operator again, retry once with the new value.
+    if (err instanceof ApiError && err.code === MISSING_REASON_CODE) {
+      // #534: a cached reason already exists for this session -- retry
+      // immediately with it, for ANY path/method. This covers org-scoped
+      // reads that `requiresAdminReason()` doesn't (yet) recognise as
+      // reason-gated but that the backend now rejects without the header.
+      const cached = getActiveReason();
+      if (cached !== null) {
+        return rawFetch<T>({
+          ...req,
+          authenticated: true,
+          adminReason: cached,
+        });
+      }
+      // No cached reason: fall back to the interactive prompt flow. Drop
+      // any stale cache so the resolver re-prompts, resolve a fresh
+      // reason, retry once with the new value.
       clearActiveReason();
       let fresh: string;
       try {

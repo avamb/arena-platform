@@ -67,40 +67,47 @@ const REASON_REQUIRED_MUTATION_PREFIXES: readonly string[] = [
 
 /**
  * Regex patterns that require X-Admin-Reason ONLY on mutation methods
- * (POST/PATCH/PUT/DELETE). Added by SAUI-14 (#246) so that cross-tenant
- * superadmin mutations on org-scoped resources (venues, sales channels,
- * payment provider configs, memberships) always pass through the
- * ReasonPromptModal flow before going to the backend, matching the audit
- * guarantee that all superadmin mutations carry a non-empty audit reason.
- *
- * Each pattern is anchored at both ends and treats trailing /<id> or
- * /<id>/<subresource> path segments as part of the same resource.
+ * (POST/PATCH/PUT/DELETE). Historically (SAUI-14 / #246) this also held
+ * venues/channels/payment-configs/members/bank-accounts, but #534 moved
+ * those into REASON_REQUIRED_REGEX below: the backend now requires the
+ * header on GET too (once `markSuperadminOrgAccess` grants the org-scoped
+ * bypass server-side, see #531/#532), and the header is harmless for an
+ * org member reading their own org, so gating only mutations left every
+ * organization-drawer read tab stuck on a "missing_reason ... Retry" loop
+ * for a real superadmin. Kept empty for now as a documented extension
+ * point for any future mutation-only surface.
  */
-const REASON_REQUIRED_MUTATION_REGEX: readonly RegExp[] = [
+const REASON_REQUIRED_MUTATION_REGEX: readonly RegExp[] = [];
+
+/**
+ * Regex patterns that require X-Admin-Reason on EVERY method, including
+ * GET.
+ *
+ *   - `.../channels/{id}/gateway-credential` (W1-A1e / #474): the GET
+ *     summary is a sensitive admin read, not a routine list/detail fetch.
+ *   - `.../api-keys(/...)?` (W1-C1c / #514): mints/destroys server-to-server
+ *     credentials, so even the list read is sensitive.
+ *   - `venues|channels|payment-configs|members|bank-accounts` (originally
+ *     SAUI-14 / #246, mutation-only) and
+ *     `events|sessions|customers|orders|imports` under
+ *     `/v1/organizations/{id}/...` (#534): the header is harmless for an
+ *     org member browsing their own org and mandatory for a platform
+ *     superadmin per `markSuperadminOrgAccess` (#531/#532), so every
+ *     org-scoped surface gates on all methods now, not just mutations.
+ */
+const REASON_REQUIRED_REGEX: readonly RegExp[] = [
+  /^\/v1\/organizations\/[^/]+\/channels\/[^/]+\/gateway-credential$/,
+  /^\/v1\/organizations\/[^/]+\/api-keys(?:\/.*)?$/,
   /^\/v1\/organizations\/[^/]+\/venues(?:\/.*)?$/,
   /^\/v1\/organizations\/[^/]+\/channels(?:\/.*)?$/,
   /^\/v1\/organizations\/[^/]+\/payment-configs(?:\/.*)?$/,
   /^\/v1\/organizations\/[^/]+\/members(?:\/.*)?$/,
-  // Wave O / feature #256 — banking coordinate mutations on tenant orgs.
   /^\/v1\/organizations\/[^/]+\/bank-accounts(?:\/.*)?$/,
-];
-
-/**
- * Regex patterns that require X-Admin-Reason on EVERY method, including
- * GET. Added by W1-A1e (#474): the Bil24-compat gateway-credential
- * endpoints (`GET`/`PUT`/`DELETE .../channels/{id}/gateway-credential`)
- * mandate the header on all three verbs per the OpenAPI contract (the
- * GET summary is a sensitive admin read, not a routine list/detail
- * fetch) — unlike the channel CRUD prefix above, which only gates
- * mutations so operators can browse without a prompt.
- */
-const REASON_REQUIRED_REGEX: readonly RegExp[] = [
-  /^\/v1\/organizations\/[^/]+\/channels\/[^/]+\/gateway-credential$/,
-  // W1-C1c (#514): GET/POST/DELETE .../api-keys all require the header —
-  // this surface mints and destroys server-to-server credentials, so even
-  // the list read is treated as a sensitive admin action, not routine
-  // browsing.
-  /^\/v1\/organizations\/[^/]+\/api-keys(?:\/.*)?$/,
+  /^\/v1\/organizations\/[^/]+\/events(?:\/.*)?$/,
+  /^\/v1\/organizations\/[^/]+\/sessions(?:\/.*)?$/,
+  /^\/v1\/organizations\/[^/]+\/customers(?:\/.*)?$/,
+  /^\/v1\/organizations\/[^/]+\/orders(?:\/.*)?$/,
+  /^\/v1\/organizations\/[^/]+\/imports(?:\/.*)?$/,
 ];
 
 /** HTTP methods treated as mutations for the SAUI-09 gate. */
