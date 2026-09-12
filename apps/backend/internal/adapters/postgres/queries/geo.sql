@@ -88,6 +88,15 @@ INSERT INTO cities (country_id, slug)
 VALUES ($1, $2)
 RETURNING id, country_id, slug, created_at;
 
+-- name: InsertI18nTextIfAbsent :exec
+-- InsertI18nTextIfAbsent writes a translation only when the
+-- (namespace, key, locale) triple has none yet. An existing translation is
+-- never overwritten: an operator's wording outranks whatever an automated
+-- writer (the Bil24 / event-bundle import, feature #537) happens to carry.
+INSERT INTO i18n_text (namespace, key, locale, value)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (namespace, key, locale) DO NOTHING;
+
 -- name: UpdateCity :one
 -- UpdateCity updates the slug of an existing city identified by id.
 UPDATE cities

@@ -303,7 +303,10 @@ func (h *Handler) resolveArenaVenue(ctx context.Context, q *gen.Queries, tx pgx.
 		if err != nil {
 			return uuid.Nil, nil, err
 		}
-		cityID, country := h.resolveGeography(ctx, q, tx, plan, warnings)
+		cityID, country, geoErr := h.resolveGeography(ctx, q, tx, plan, warnings)
+		if geoErr != nil {
+			return uuid.Nil, nil, geoErr
+		}
 		if err := q.UpdateImportedVenueGeography(ctx, venueID, cityID, optString(v.Address), store, v.GeoLat, v.GeoLon, country); err != nil {
 			return uuid.Nil, nil, fmt.Errorf("update venue geography: %w", err)
 		}
@@ -353,7 +356,10 @@ func (h *Handler) resolveArenaVenue(ctx context.Context, q *gen.Queries, tx pgx.
 	if err != nil {
 		return uuid.Nil, nil, err
 	}
-	cityID, country := h.resolveGeography(ctx, q, tx, plan, warnings)
+	cityID, country, geoErr := h.resolveGeography(ctx, q, tx, plan, warnings)
+	if geoErr != nil {
+		return uuid.Nil, nil, geoErr
+	}
 	created, err := q.InsertArenaVenue(ctx, plan.OrgID, cityID, name, optString(v.Address), store, v.GeoLat, v.GeoLon, country)
 	if err != nil {
 		return uuid.Nil, nil, fmt.Errorf("insert venue: %w", err)

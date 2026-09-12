@@ -287,6 +287,27 @@ func (q *Queries) InsertCity(ctx context.Context, countryID uuid.UUID, slug stri
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// InsertI18nTextIfAbsent
+// ─────────────────────────────────────────────────────────────────────────────
+
+const insertI18nTextIfAbsent = `-- name: InsertI18nTextIfAbsent :exec
+INSERT INTO i18n_text (namespace, key, locale, value)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (namespace, key, locale) DO NOTHING
+`
+
+// InsertI18nTextIfAbsent writes a translation only when the
+// (namespace, key, locale) triple has none yet, and reports no error when one
+// already exists. It deliberately does NOT upsert: unlike the admin geo
+// endpoints (hgeo, which writes on an operator's explicit instruction), the
+// automated writers — the Bil24 and event-bundle imports, feature #537 — must
+// never clobber a name a human curated.
+func (q *Queries) InsertI18nTextIfAbsent(ctx context.Context, namespace, key, locale, value string) error {
+	_, err := q.db.Exec(ctx, insertI18nTextIfAbsent, namespace, key, locale, value)
+	return err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // UpdateCity
 // ─────────────────────────────────────────────────────────────────────────────
 

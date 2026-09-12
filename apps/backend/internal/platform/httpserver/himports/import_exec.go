@@ -215,7 +215,10 @@ func (h *Handler) resolveVenue(ctx context.Context, q *gen.Queries, tx pgx.Tx, p
 	v := plan.Request.Venue
 	ext := externalIDString(v.VenueID)
 
-	cityID, country := h.resolveGeography(ctx, q, tx, plan, warnings)
+	cityID, country, err := h.resolveGeography(ctx, q, tx, plan, warnings)
+	if err != nil {
+		return uuid.Nil, err
+	}
 	address := optString(v.Address)
 
 	existing, err := q.GetVenueByBil24ExternalID(ctx, ext)
@@ -255,7 +258,11 @@ func (h *Handler) resolveVenue(ctx context.Context, q *gen.Queries, tx pgx.Tx, p
 // currency that the Bil24 payload simply does not carry, so an unknown country
 // is reported as a warning and the venue is stored without a city instead of
 // failing the whole import.
-func (h *Handler) resolveGeography(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan, warnings *warningSink) (*uuid.UUID, *string) {
+//
+// The error return is reserved for failures that already poisoned the
+// transaction (a write that Postgres refused); everything the import can
+// survive is still reported through warnings.
+func (h *Handler) resolveGeography(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan, warnings *warningSink) (*uuid.UUID, *string, error) {
 	v := plan.Request.Venue
 
 	countryRow, ok := h.lookupCountry(ctx, q, v.CountryName)
@@ -264,7 +271,7 @@ func (h *Handler) resolveGeography(ctx context.Context, q *gen.Queries, tx pgx.T
 			warnings.add(WarnCountryUnresolved,
 				"country \""+trimSpace(v.CountryName)+"\" is not known to arena; the venue was stored without country and city")
 		}
-		return nil, nil
+		return nil, nil, nil
 	}
 	if v.CountryID > 0 {
 		// A failed registration must not sink the import: the mapping is only
@@ -277,7 +284,7 @@ func (h *Handler) resolveGeography(ctx context.Context, q *gen.Queries, tx pgx.T
 
 	citySlug := slugify(v.CityName)
 	if citySlug == "" {
-		return nil, &iso2
+		return nil, &iso2, nil
 	}
 	city, err := q.GetCityBySlug(ctx, citySlug)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -286,15 +293,20 @@ func (h *Handler) resolveGeography(ctx context.Context, q *gen.Queries, tx pgx.T
 	if err != nil {
 		warnings.add(WarnCityUnresolved,
 			"city \""+trimSpace(v.CityName)+"\" could not be resolved: "+err.Error())
-		return nil, &iso2
+		return nil, &iso2, nil
 	}
 	if v.CityID > 0 {
 		if err := registerExternal(ctx, tx, compatids.KindCity, city.ID, v.CityID); err != nil {
 			h.logger.Warn("import: city compat id not registered", "error", err.Error())
 		}
 	}
+	// cities carry no name column — the display name lives in i18n_text, and
+	// without it every reader falls back to the lowercase slug (feature #537).
+	if err := h.ensureCityNameTranslations(ctx, q, plan, city.Slug, v.CityName); err != nil {
+		return nil, nil, err
+	}
 	cityID := city.ID
-	return &cityID, &iso2
+	return &cityID, &iso2, nil
 }
 
 // lookupCountry resolves a Bil24 countryName against arena's countries table,
