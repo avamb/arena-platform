@@ -122,6 +122,20 @@ func superadminProvisioning533Server(t *testing.T) (*Server, string) {
 		t.Fatalf("mediastore.New: %v", err)
 	}
 
+	// The bundle fixture below names venue.countryName "Czechia", which is NOT
+	// in the 0006_geo.sql seed list. On the shared dev stand the row happens
+	// to exist because tests/compat/bil24's harness seeds it, but the CI
+	// Integration job runs packages in parallel on a fresh database, so this
+	// package must seed it itself (same idempotent idiom as the harness) or
+	// the import degrades to import.country_unresolved and the venue is
+	// stored without a city. Seen red on CI run 34711169622 (d740d44).
+	if _, err := srv.pgxPool.Exec(context.Background(),
+		`INSERT INTO countries (iso2, iso3, slug, currency)
+		 VALUES ('CZ','CZE','czechia','CZK')
+		 ON CONFLICT (iso2) DO NOTHING`); err != nil {
+		t.Fatalf("seed country CZ: %v", err)
+	}
+
 	// productionIntegrationServer already returns a fully-wired *Server; the
 	// compat gateway mount decision is made once inside New(), so rebuild
 	// with the extra flags rather than trying to flip them after construction.
