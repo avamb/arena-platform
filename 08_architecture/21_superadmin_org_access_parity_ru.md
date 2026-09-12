@@ -80,3 +80,25 @@
 | 533 | W1-S0 [EPIC-VERIFY] | Сквозной тест провижининга под суперадмином + полный холодный гейт + прогресс-нота | 2 |
 
 Зависимости: 533 → 531, 532.
+
+## 6. Дополнение 2026-09-12 после редеплоя (фича #534, admin-web)
+
+Бэкенд с #531/#532 на стенде отвечает 200 на `GET …/channels` и `…/api-keys` при заголовке
+`X-Admin-Reason`. Но SPA (`apps/admin-web/src/lib/api/reason.ts`) прикладывает заголовок на
+`/v1/organizations/{id}/channels|venues|payment-configs|members|bank-accounts` **только для мутаций**
+(`REASON_REQUIRED_MUTATION_REGEX`), поэтому вкладки организации (Channels, Venues, Payments, Users) и
+страница `/channels?org=…` показывают «superadmin.missing_reason … Retry», а кнопка Retry повторяет запрос
+снова без заголовка. До #531 байпас никогда не срабатывал (403), и пробел был не виден.
+
+Решение (#534):
+1. `lib/api/client.ts`: при ответе 400 `superadmin.missing_reason` — **один автоматический повтор** с
+   сохранённой причиной (`arena.admin.adminReason` из sessionStorage) для любого пути и метода; без
+   сохранённой причины — существующий промпт.
+2. `reason.ts`: перевести org-scoped регэкспы из «только мутации» в «все методы» для
+   `channels|venues|payment-configs|members|bank-accounts|events|sessions|customers|orders|api-keys|
+   imports` под `/v1/organizations/{id}/…` — заголовок на чтение безвреден для члена организации и
+   обязателен для суперадмина.
+3. Кнопка Retry в состояниях ошибки передаёт `adminReason` явно.
+4. Тесты: `reason.test.ts` (GET на org-scoped путь требует причину), тест клиента на авто-повтор
+   (первый ответ 400 missing_reason → второй запрос с заголовком → 200), vitest без регрессий,
+   `npm run type-check`.
