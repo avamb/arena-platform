@@ -74,15 +74,25 @@ type publicFeedEventResponse struct {
 	UpdatedAt string  `json:"updated_at"`
 }
 
-// mediaFileURL builds the public URL for a media object id. Kept as a
-// package-level helper so tests and public-feed handlers agree on the shape.
+// mediaFileURL builds the public URL for a media object id.
+//
 // Feature #435/#436 (AB-47b/AB-47c) — media objects are served from
-// /v1/media-files/{id} on the same host as the API.
-func mediaFileURL(id uuid.UUID) string {
+// /v1/media-files/{id} on the same host as the API. Feature #535 (spec 22
+// §2.1) upgrades that to an ABSOLUTE SIGNED URL on the API public origin when
+// a signer is wired, because GET /v1/media-files/{uuid} answers 401 without
+// the expires/sig pair and third-party consumers fetch the artwork
+// themselves. With no signer (unit tests, deployments without media storage)
+// the pre-#535 host-relative shape is kept verbatim.
+func (h *Handler) mediaFileURL(ctx context.Context, id uuid.UUID) string {
+	if h != nil && h.mediaSigner != nil {
+		if signed := h.mediaSigner(ctx, id); signed != "" {
+			return signed
+		}
+	}
 	return "/v1/media-files/" + id.String()
 }
 
-func publicFeedEventFromRow(e gen.EventRow) publicFeedEventResponse {
+func (h *Handler) publicFeedEventFromRow(ctx context.Context, e gen.EventRow) publicFeedEventResponse {
 	resp := publicFeedEventResponse{
 		ID:            e.ID.String(),
 		DisplayNumber: e.DisplayNumber,
@@ -98,7 +108,7 @@ func publicFeedEventFromRow(e gen.EventRow) publicFeedEventResponse {
 	}
 	if e.PosterMediaID != nil {
 		mid := e.PosterMediaID.String()
-		url := mediaFileURL(*e.PosterMediaID)
+		url := h.mediaFileURL(ctx, *e.PosterMediaID)
 		resp.PosterMediaID = &mid
 		resp.PosterURL = &url
 	}
@@ -255,7 +265,7 @@ func buildBuyerFields(collectName, collectPhone bool) []BuyerFieldItem {
 	return BuildBuyerFields(collectName, collectPhone)
 }
 
-func publicFeedSessionFromRow(s gen.SessionRow, buyerFields []BuyerFieldItem) publicFeedSessionResponse {
+func (h *Handler) publicFeedSessionFromRow(ctx context.Context, s gen.SessionRow, buyerFields []BuyerFieldItem) publicFeedSessionResponse {
 	resp := publicFeedSessionResponse{
 		ID:            s.ID.String(),
 		StartAt:       s.StartAt.UTC().Format(time.RFC3339),
@@ -271,7 +281,7 @@ func publicFeedSessionFromRow(s gen.SessionRow, buyerFields []BuyerFieldItem) pu
 	// caller knows the event cover.
 	if s.PosterMediaID != nil {
 		mid := s.PosterMediaID.String()
-		url := mediaFileURL(*s.PosterMediaID)
+		url := h.mediaFileURL(ctx, *s.PosterMediaID)
 		resp.PosterMediaID = &mid
 		resp.PosterURL = &url
 	}
@@ -294,7 +304,7 @@ func (r *publicFeedSessionResponse) applyPosterFallback(eventPosterMediaID *stri
 // public shape. Poster rows expose a poster_url built from media_id; video
 // rows expose video_url. Rows are already ordered by position from the
 // query, but we sort defensively.
-func (r *publicFeedSessionResponse) applyMediaGallery(rows []gen.SessionMediaItemRow) {
+func (h *Handler) applyMediaGallery(ctx context.Context, r *publicFeedSessionResponse, rows []gen.SessionMediaItemRow) {
 	if len(rows) == 0 {
 		return
 	}
@@ -307,7 +317,7 @@ func (r *publicFeedSessionResponse) applyMediaGallery(rows []gen.SessionMediaIte
 		switch row.Kind {
 		case "poster":
 			if row.MediaID != nil {
-				url := mediaFileURL(*row.MediaID)
+				url := h.mediaFileURL(ctx, *row.MediaID)
 				item.PosterURL = &url
 			}
 		case "video":
@@ -508,7 +518,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 
 	events := make([]publicFeedEventResponse, 0, len(rows))
 	for _, row := range rows {
-		events = append(events, publicFeedEventFromRow(row))
+		events = append(events, h.publicFeedEventFromRow(ctx, row))
 	}
 	h.hydrateFeedVenueNames(ctx, events)
 
@@ -597,7 +607,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	eventResp := publicFeedEventFromRow(event)
+	eventResp := h.publicFeedEventFromRow(ctx, event)
 	{
 		hydrated := []publicFeedEventResponse{eventResp}
 		h.hydrateFeedVenueNames(ctx, hydrated)
@@ -658,7 +668,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 				}
 			}
 			for _, sess := range sessions {
-				sessResp := publicFeedSessionFromRow(sess, defaultBuyerFields)
+				sessResp := h.publicFeedSessionFromRow(ctx, sess, defaultBuyerFields)
 				sessResp.applySeatingLinks(admissionByID[sess.ID.String()])
 				sessResp.applyPosterFallback(eventResp.PosterMediaID, eventResp.PosterURL)
 
@@ -674,7 +684,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 							slog.String("error", mediaErr.Error()),
 						)
 					} else {
-						sessResp.applyMediaGallery(mediaRows)
+						h.applyMediaGallery(ctx, &sessResp, mediaRows)
 					}
 				}
 

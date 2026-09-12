@@ -4483,8 +4483,10 @@ export interface paths {
          *     stamps `settings.gateway.token_rotated_at`, and returns the plaintext
          *     token exactly once alongside the wire `fid`, `base_url`, `image_url`
          *     and `rotated_at`. `base_url` and `image_url` are derived from the
-         *     deployment's `APP_PUBLIC_URL` configuration and are the empty string
-         *     when unset. Emits the audit action `v1.channel.gateway_credential.rotated`
+         *     deployment's `API_PUBLIC_URL` configuration (falling back to
+         *     `APP_PUBLIC_URL`) and point at `/compat/bil24` and
+         *     `/compat/bil24/image` respectively; both are the empty string when
+         *     neither variable is set. Emits the audit action `v1.channel.gateway_credential.rotated`
          *     with `metadata.outcome="rotated"`. Requires `channel.update` and the
          *     `X-Admin-Reason` header.
          */
@@ -13699,15 +13701,17 @@ export interface components {
              */
             token: string;
             /**
-             * @description Canonical arena public base URL for the WordPress plugin's
-             *     `/compat/bil24/json` endpoint, derived from `APP_PUBLIC_URL`.
-             *     Empty string when `APP_PUBLIC_URL` is unset.
+             * @description Gateway endpoint the WordPress plugin must call:
+             *     `<API_PUBLIC_URL>/compat/bil24`. Derived from `API_PUBLIC_URL`
+             *     (falling back to `APP_PUBLIC_URL` on single-host deployments).
+             *     Empty string when neither is configured.
              */
             base_url: string;
             /**
-             * @description Canonical arena public base URL for the WordPress plugin's
-             *     `/compat/bil24/image` endpoint, derived from `APP_PUBLIC_URL`.
-             *     Empty string when `APP_PUBLIC_URL` is unset.
+             * @description Poster-proxy endpoint of the same gateway:
+             *     `<API_PUBLIC_URL>/compat/bil24/image`. The plugin appends only the
+             *     `?fid=…&id=…` query. Empty string when neither `API_PUBLIC_URL`
+             *     nor `APP_PUBLIC_URL` is configured.
              */
             image_url: string;
             /** @description RFC3339 UTC timestamp of this rotation. */
@@ -15533,8 +15537,8 @@ export interface components {
             ticketId?: number;
             /**
              * @description Public URL to download the ticket PDF. Requires
-             *     `PUBLIC_BASE_URL` (implemented as `APP_PUBLIC_URL`, spec
-             *     §16) to be configured; empty when unset.
+             *     `PUBLIC_BASE_URL` (implemented as `API_PUBLIC_URL`, falling back
+             *     to `APP_PUBLIC_URL`; spec §16) to be configured; empty when unset.
              */
             pdfUrl?: string;
             /** @description Same value as `pdfUrl` (legacy clients read either key). */

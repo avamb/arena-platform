@@ -112,7 +112,7 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		s.audit,
 		s.publicFeedRL,
 		hcheckout.PricingRules(s.pricingRules),
-	)
+	).WithMediaSigner(s.signedMediaURL)
 }
 
 // ─── type aliases ─────────────────────────────────────────────────────────────

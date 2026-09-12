@@ -450,7 +450,21 @@ type Handler struct {
 	// with. Not wired ⇒ both commands self-gate with resultCode=-5, which is
 	// the pre-#495 stub behaviour every earlier unit test asserts.
 	ticketsDeps TicketsDeps
+
+	// posterSigner (feature #535, spec 22 §2.1) turns a media_objects id into
+	// an absolute, signed URL the WordPress site can actually fetch. Nil — or
+	// a signer that answers "" — keeps the pre-#535 host-relative
+	// /v1/media-files/{uuid} projection, which is what every unit test that
+	// builds a bare Handler asserts. Production wiring passes a closure over
+	// mediastore.Repo.SignedDownloadURL on the API public origin.
+	posterSigner MediaURLSigner
 }
+
+// MediaURLSigner builds a publicly fetchable URL for a media object id.
+// Implementations return "" when they cannot sign (storage not configured,
+// object missing) so the caller can fall back to its legacy projection instead
+// of emitting a broken link. Feature #535, spec 22 §2.1.
+type MediaURLSigner func(ctx context.Context, mediaID uuid.UUID) string
 
 // TicketsDeps bundles the optional GET_TICKETS_BY_ORDER / SEND_TICKETS_TO_EMAIL
 // dependencies (feature #495, W1-B2b, spec §7.10/§7.11).
@@ -706,6 +720,14 @@ func (h *Handler) WithPayOrder(d PayOrderDeps) *Handler {
 // answer resultCode=-5. Returns the receiver for chaining.
 func (h *Handler) WithTicketsByOrder(d TicketsDeps) *Handler {
 	h.ticketsDeps = d
+	return h
+}
+
+// WithPosterSigner wires the absolute signed-poster URL builder (feature #535,
+// spec 22 §2.1). Callers that omit it keep the pre-#535 host-relative
+// /v1/media-files/{uuid} projection. Returns the receiver for chaining.
+func (h *Handler) WithPosterSigner(s MediaURLSigner) *Handler {
+	h.posterSigner = s
 	return h
 }
 

@@ -31046,3 +31046,91 @@ API key, event-bundle import with working publish fan-out — without a
 single memberships row, using only X-Admin-Reason-gated org-scoped calls
 and the server-side DB role resolution #531 added.
 
+================================================================================
+Feature #535 — W1-S1a: API_PUBLIC_URL, gateway endpoint URLs, signed posters
+================================================================================
+Spec: 08_architecture/22_site_facing_gaps_w1s1_ru.md §2.1.
+
+Problem: three site-facing links the WordPress plugin consumes were built
+on the wrong origin or without a signature, so the site silently got
+nothing.
+  1. PUT .../gateway-credential answered `base_url = <bare origin>`. Pasted
+     into the plugin's "Bil24 API URL" field, every command went to `/`.
+  2. GET_ALL_ACTIONS.bigPosterUrl (and the public feed's media URLs) was a
+     host-relative `/v1/media-files/{uuid}`. That route is signature-gated
+     and answers 401 without `expires`/`sig`, so artwork sync got nothing —
+     and a relative path has no host for a third party to resolve anyway.
+  3. Everything site-facing was built on APP_PUBLIC_URL, the SPA origin.
+     On a split-host deployment (admin SPA vs API) those links resolve to
+     the front-end and never reach a handler.
+
+Implementation:
+- config: new `APIPublicURL` (`API_PUBLIC_URL`), plus
+  `Config.APIPublicBaseURL()` = API_PUBLIC_URL, trailing slash trimmed,
+  falling back to APP_PUBLIC_URL on single-host deployments. Production
+  rule 14 (gateway enabled ⇒ https:// public URL) now validates that
+  EFFECTIVE value, so the pre-existing #495 tests that only set
+  AppPublicURL keep passing unweakened.
+- httpserver: new `public_url_shims.go` holding `apiPublicURL()` and
+  `signedMediaURL(ctx, id)` (absolute signed URL, 24h TTL; S3 presigned
+  URLs pass through as-is, the local backend's relative signed path gets
+  the API origin prefixed; "" on failure so callers fall back). Split out
+  of catalog_shims.go because the additions pushed that file to 422 lines
+  and tripped the feature #175 400-line gate — the same reason the now
+  dead `appPublicURL()` accessor was removed instead of parked.
+- mediastore: new `Repo.SignedDownloadURL(ctx, id, ttl)` — local backend
+  signs without a DB round-trip, external backends presign via StorageKey.
+- hbil24 / hfeed: injected `MediaURLSigner` callbacks (`WithPosterSigner`,
+  `WithMediaSigner`). With no signer wired the pre-#535 relative path is
+  emitted verbatim, so every existing unit test holds; the legacy free-form
+  `events.image_url` passthrough is never rewritten.
+- hcatalog: `gatewayBaseURL`/`gatewayImageURL` derive
+  `<origin>/compat/bil24` and `<origin>/compat/bil24/image`; empty origin
+  stays empty rather than degrading into a host-less path.
+- Docs/config: .env.example, deploy/DOKPLOY.md (both tables),
+  docs/ops/bil24_gateway.md §1, docker-compose.yml.
+- openapi.yaml descriptions for base_url/image_url/pdfUrl updated;
+  types_gen.go and the TS client regenerated and committed.
+
+New tests (nothing weakened, skipped or deleted):
+- config/config_535_test.go — fallback table, production accept/reject.
+- hbil24/poster_535_test.go — absolute+signed, legacy passthrough verbatim,
+  no-signer fallback, failing-signer fallback, no-artwork stays empty.
+- hcatalog/gateway_credential_535_test.go — endpoint URL derivation.
+- tests/compat/bil24/poster_535_integration_test.go — the spec's required
+  end-to-end check: import a bundle with a side-loaded poster →
+  GET_ALL_ACTIONS → take bigPosterUrl off the wire → re-issue it against
+  the live test server → HTTP 200 and the exact poster bytes, with an
+  unsigned-path negative control proving the route is still gated; plus
+  PUT gateway-credential → base_url/image_url on the API origin and the
+  rotated token proven to authenticate against the endpoint it names.
+- The harness now runs with API_PUBLIC_URL deliberately DIFFERENT from
+  APP_PUBLIC_URL (api.harness.test vs arena.harness.test) and a real media
+  signing secret, so any regression rebuilding a site link on the SPA
+  origin fails scenario 2 / 527 / 535.
+- Fixed a pre-existing cleanup leak in bundle527RegisterCleanup: GA
+  capacity materialises as session_seats rows, so the session/event/venue
+  deletes were failing with 23503 and leaking rows into the shared stand.
+
+Gates:
+- go.exe -C apps/backend build ./...                                EXIT:0
+- go.exe -C apps/backend vet ./...                                  EXIT:0
+- go.exe -C apps/backend vet -tags integration ./...                EXIT:0
+- go.exe -C apps/backend test ./...   (full unit suite)             EXIT:0
+- DATABASE_URL=<dev stand :55432> JWT_SIGNING_SECRET=x go.exe -C apps/backend
+  test -tags integration -p 1 -count=1 ./...                        EXIT:0
+  (two earlier passes each hit one of the AGENTS.md-documented flaky
+  integration tests — TestCompatBil24_530_MoneyRoundTripBundleToWebhooks
+  and TestIdemRaceOneDBWrite_ExactlyOneAuditAndOutboxPerKey; both passed
+  in isolation, 530 once and the idem race -count=3, and the third full
+  serialized pass was clean end to end.)
+- GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe run
+  github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run
+  ./apps/backend/...                                                EXIT:0
+- gofmt -l apps/backend/{cmd,internal,tests,tools}      (no output) EXIT:0
+- Codegen: openapi30gen + oapi-codegen@v2.4.1 (config
+  apps/backend/openapi/oapi-codegen.yaml, run from repo ROOT — the output
+  paths are repo-root-relative) + node scripts/gen-ts-client.mjs, both
+  regenerated files committed.
+- npm --prefix apps/admin-web run type-check                        EXIT:0
+

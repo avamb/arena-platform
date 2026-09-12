@@ -341,7 +341,9 @@ func sc2AssertTicketRows(t *testing.T, resp map[string]interface{}, want int) []
 
 	// The link the buyer clicks must be ABSOLUTE: the WordPress site renders it
 	// on its own origin, so a relative path would resolve against the shop.
-	wantPrefix := harnessPublicBaseURL + "/v1/public/checkout/"
+	// Feature #535: the origin is API_PUBLIC_URL — the PDF is served by the
+	// API, not by the admin SPA.
+	wantPrefix := harnessAPIPublicBaseURL + "/v1/public/checkout/"
 	seen := map[string]bool{}
 	for i, raw := range list {
 		row, ok := raw.(map[string]interface{})

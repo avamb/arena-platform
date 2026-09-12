@@ -141,11 +141,13 @@ into each service's env tab).
 >   gateway never mounts without fid/token enforcement in production;
 >   feature #390 / PR2-32).
 > - `BIL24_COMPAT_ENABLED=true` also requires a non-empty `https://`
->   `APP_PUBLIC_URL` — that variable IS the Bil24 spec's `PUBLIC_BASE_URL`.
+>   `API_PUBLIC_URL` (or, on a single-host deployment, `APP_PUBLIC_URL` as its
+>   fallback) — that value IS the Bil24 spec's `PUBLIC_BASE_URL`.
 >   The gateway's `GET_TICKETS_BY_ORDER` answers absolute ticket links
->   (`APP_PUBLIC_URL` + `/v1/public/checkout/<token>/tickets/<uuid>/pdf`);
+>   (`API_PUBLIC_URL` + `/v1/public/checkout/<token>/tickets/<uuid>/pdf`) and
+>   `GET_ALL_ACTIONS` answers absolute signed poster URLs on the same origin;
 >   an empty base yields host-less `pdfUrl`/`downloadUrl` values no buyer
->   can open (feature #495 / W1-B2b, spec §7.10/§16).
+>   can open (feature #495 / W1-B2b, spec §7.10/§16; feature #535).
 
 #### Mandatory shared variables
 
@@ -160,7 +162,8 @@ into each service's env tab).
 | `APP_COMMIT` | api / worker / migrate | *(injected by CI)* | |
 | `JWT_SIGNING_SECRET` | api / worker | *(strong random, ≥ 32 bytes)* | Shared symmetric key; must not be a dev placeholder |
 | `ENABLE_DEV_AUTH` | api / worker | `false` | **Must be false** |
-| `APP_PUBLIC_URL` | api / worker | `https://app.example.com` | Canonical **SPA origin** for emails and webhooks; distinct from the API base URL and never derived from request headers. Also serves as the Bil24 spec's `PUBLIC_BASE_URL` — mandatory when `BIL24_COMPAT_ENABLED=true` |
+| `APP_PUBLIC_URL` | api / worker | `https://app.example.com` | Canonical **SPA origin** for emails and webhooks; distinct from the API base URL and never derived from request headers. Also the single-host fallback for `API_PUBLIC_URL` |
+| `API_PUBLIC_URL` | api / worker | `https://api.example.com` | Canonical **API origin**. Every link a third-party site must FETCH is built on it: Bil24 `base_url`/`image_url`, `GET_ALL_ACTIONS` signed poster URLs, `GET_TICKETS_BY_ORDER` `pdfUrl`. Empty falls back to `APP_PUBLIC_URL`; the effective value is mandatory and `https://` when `BIL24_COMPAT_ENABLED=true` (feature #535) |
 | `OUTBOX_MODE` | worker | `webhook` or `disabled` | `noop` and empty are forbidden in production |
 | `EMAIL_MODE` | worker | `smtp` | `log` is forbidden in production |
 | `ALLOW_PRIVATE_DB_PLAINTEXT` | api / worker / migrate | `false` | Set `true` only for an unqualified Docker service host or private IP when in-network PostgreSQL has no TLS. Never use for a managed/external DB. |
@@ -301,6 +304,7 @@ Set each variable below.  A full list of *optional* tuning variables is in
 | `EMAIL_MODE` | `smtp` | **`log` and empty are rejected** |
 | `OUTBOX_MODE` | `webhook` or `disabled` | **`noop` and empty are rejected** |
 | `APP_PUBLIC_URL` | `https://app.example.com` | Required when EMAIL_MODE=smtp; the SPA origin used for canonical email links, separate from the API base URL |
+| `API_PUBLIC_URL` | `https://api.example.com` | The API origin third parties fetch from; required (directly or via the `APP_PUBLIC_URL` fallback) when `BIL24_COMPAT_ENABLED=true` |
 | `SMTP_HOST` | SMTP server hostname | Required when EMAIL_MODE=smtp |
 | `SMTP_FROM` | `tickets@arena.example.com` | Required when EMAIL_MODE=smtp |
 

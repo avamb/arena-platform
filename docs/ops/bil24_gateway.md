@@ -27,6 +27,17 @@ Response (200, **token shown once, never re-displayable**):
  "image_url": "https://api.example/compat/bil24/image", "rotated_at": "2026-09-07T12:00:00Z"}
 ```
 
+`base_url` and `image_url` are built from `API_PUBLIC_URL` — the deployment's public **API**
+origin (e.g. `https://api.arenasoldout.com`), which is normally NOT the admin SPA origin
+`APP_PUBLIC_URL` (e.g. `https://app.arenasoldout.com`). `API_PUBLIC_URL` empty falls back to
+`APP_PUBLIC_URL` for single-host stands; in production with `BIL24_COMPAT_ENABLED=true` the
+effective value must be a non-empty `https://` URL or the process refuses to start. The same
+origin carries `GET_TICKETS_BY_ORDER`'s `pdfUrl`/`downloadUrl` and the **absolute signed**
+`bigPosterUrl`/`smallPosterUrl` that `GET_ALL_ACTIONS` hands the site's artwork sync — those
+poster links carry an `expires`/`sig` pair with a 24-hour TTL, and `GET /v1/media-files/{id}`
+answers `401` without them, so a site syncing more than a day after a catalog read must re-read
+the catalog rather than cache the URL (feature #535).
+
 This mints a new 32-byte random token (`GenerateGatewayToken`), bcrypt-hashes it into
 `sales_channels.settings.gateway.token_hash`, and sets `settings.gateway.enabled = true`. Put
 `fid` and `token` into the site's Bil24-plugin config (`class-bil24-client.php` constants /

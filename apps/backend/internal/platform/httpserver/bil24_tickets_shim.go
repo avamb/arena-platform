@@ -36,9 +36,11 @@ func (s *Server) withBil24Tickets(h *hbil24.Handler) *hbil24.Handler {
 		Project: func(ctx context.Context, csID uuid.UUID) (*orderexport.Order, error) {
 			return orderexport.QueryCheckoutSession(ctx, pool, csID)
 		},
-		// The spec's PUBLIC_BASE_URL. config.Validate makes it mandatory in
-		// production whenever BIL24_COMPAT_ENABLED is on, so an empty value
-		// here can only be a dev deployment.
-		PublicBaseURL: s.appPublicURL(),
+		// The spec's PUBLIC_BASE_URL — the API origin (API_PUBLIC_URL, feature
+		// #535), NOT the SPA origin: the buyer opens these PDF links against
+		// the API host. config.Validate makes it mandatory in production
+		// whenever BIL24_COMPAT_ENABLED is on, so an empty value here can only
+		// be a dev deployment.
+		PublicBaseURL: s.apiPublicURL(),
 	})
 }

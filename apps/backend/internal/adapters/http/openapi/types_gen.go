@@ -1684,8 +1684,8 @@ type Bil24GetTicketsByOrderTicket struct {
 	DownloadUrl *string `json:"downloadUrl,omitempty"`
 
 	// PdfUrl Public URL to download the ticket PDF. Requires
-	// `PUBLIC_BASE_URL` (implemented as `APP_PUBLIC_URL`, spec
-	// §16) to be configured; empty when unset.
+	// `PUBLIC_BASE_URL` (implemented as `API_PUBLIC_URL`, falling back
+	// to `APP_PUBLIC_URL`; spec §16) to be configured; empty when unset.
 	PdfUrl *string `json:"pdfUrl,omitempty"`
 
 	// SeatId Bil24 wire id of the seat (`session_seats.system_seat_id`).
@@ -3146,18 +3146,20 @@ type Channel struct {
 // (feature #473, spec §5.4). The plaintext `token` is returned exactly
 // once and is never retrievable afterwards.
 type ChannelGatewayCredentialRotated struct {
-	// BaseUrl Canonical arena public base URL for the WordPress plugin's
-	// `/compat/bil24/json` endpoint, derived from `APP_PUBLIC_URL`.
-	// Empty string when `APP_PUBLIC_URL` is unset.
+	// BaseUrl Gateway endpoint the WordPress plugin must call:
+	// `<API_PUBLIC_URL>/compat/bil24`. Derived from `API_PUBLIC_URL`
+	// (falling back to `APP_PUBLIC_URL` on single-host deployments).
+	// Empty string when neither is configured.
 	BaseUrl string `json:"base_url"`
 
 	// Fid Wire `fid` (channel `display_number`); WordPress plugins send this
 	// in every `/compat/bil24/*` request alongside `token`.
 	Fid int64 `json:"fid"`
 
-	// ImageUrl Canonical arena public base URL for the WordPress plugin's
-	// `/compat/bil24/image` endpoint, derived from `APP_PUBLIC_URL`.
-	// Empty string when `APP_PUBLIC_URL` is unset.
+	// ImageUrl Poster-proxy endpoint of the same gateway:
+	// `<API_PUBLIC_URL>/compat/bil24/image`. The plugin appends only the
+	// `?fid=…&id=…` query. Empty string when neither `API_PUBLIC_URL`
+	// nor `APP_PUBLIC_URL` is configured.
 	ImageUrl string `json:"image_url"`
 
 	// RotatedAt RFC3339 UTC timestamp of this rotation.

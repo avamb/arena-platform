@@ -11,7 +11,9 @@
 //	           stamps settings.gateway.token_rotated_at, and returns the
 //	           plaintext token ONCE together with the wire fid
 //	           (channel.display_number), base_url and image_url derived from
-//	           APP_PUBLIC_URL, and rotated_at.
+//	           API_PUBLIC_URL (feature #535 — the gateway endpoint itself,
+//	           <origin>/compat/bil24 and <origin>/compat/bil24/image, not the
+//	           bare origin), and rotated_at.
 //	GET    /v1/organizations/{org_id}/channels/{id}/gateway-credential
 //	         → returns {fid, enabled, rotated_at} (token/hash never exposed).
 //	DELETE /v1/organizations/{org_id}/channels/{id}/gateway-credential
@@ -31,6 +33,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -85,6 +88,30 @@ type gatewayCredentialPutResponse struct {
 	BaseURL   string `json:"base_url"`
 	ImageURL  string `json:"image_url"`
 	RotatedAt string `json:"rotated_at"`
+}
+
+// gatewayBaseURL turns the deployment's public API origin into the value the
+// WordPress plugin must paste into its "Bil24 API URL" field: the gateway
+// endpoint itself, not the bare origin (feature #535, spec 22 §2.1 — the
+// runbook §1 shape). An empty origin (operator has configured neither
+// API_PUBLIC_URL nor APP_PUBLIC_URL) stays empty rather than degrading into a
+// host-less path, matching the pre-#535 "empty string if unset" contract.
+func gatewayBaseURL(publicBaseURL string) string {
+	base := strings.TrimRight(strings.TrimSpace(publicBaseURL), "/")
+	if base == "" {
+		return ""
+	}
+	return base + "/compat/bil24"
+}
+
+// gatewayImageURL is gatewayBaseURL's sibling for the poster proxy endpoint.
+// The plugins append only the ?fid=…&id=… query themselves.
+func gatewayImageURL(publicBaseURL string) string {
+	base := gatewayBaseURL(publicBaseURL)
+	if base == "" {
+		return ""
+	}
+	return base + "/image"
 }
 
 // gatewaySettingsPersisted is the JSONB projection we serialise back into
@@ -287,8 +314,8 @@ func (h *Handler) HandlePutChannelGatewayCredential(w http.ResponseWriter, r *ht
 	httputil.WriteJSON(w, http.StatusOK, gatewayCredentialPutResponse{
 		FID:       ch.DisplayNumber,
 		Token:     token,
-		BaseURL:   h.publicBaseURL, // empty string when APP_PUBLIC_URL unset (spec §5.4)
-		ImageURL:  h.publicBaseURL, // same origin; the plugins concatenate /compat/bil24/image?fid=… themselves
+		BaseURL:   gatewayBaseURL(h.publicBaseURL),
+		ImageURL:  gatewayImageURL(h.publicBaseURL),
 		RotatedAt: rotatedAt.Format(time.RFC3339),
 	})
 }

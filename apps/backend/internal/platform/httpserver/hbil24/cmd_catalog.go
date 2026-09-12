@@ -317,7 +317,7 @@ func (h *Handler) buildActionEntry(
 	// pre-AB-47 events.image_url free-form column. The URL shape mirrors
 	// hfeed.mediaFileURL so the WP plugin and public feed agree on the
 	// canonical /v1/media-files/{uuid} host.
-	if url := posterURL(e, ae.posterMediaID); url != "" {
+	if url := h.posterURL(ctx, e, ae.posterMediaID); url != "" {
 		action["bigPosterUrl"] = url
 		action["smallPosterUrl"] = url
 	}
@@ -357,24 +357,38 @@ func (h *Handler) buildActionEntry(
 //     working exactly as before.
 //  3. e.ImageURL — legacy free-form URL from the pre-AB-47 CMS.
 //
-// All three render through the canonical /v1/media-files/{uuid} host except
-// the legacy passthrough, matching hfeed.mediaFileURL so the WP plugin and
-// the public feed always agree on the artwork host. Returns "" when none of
+// Both media-backed sources render through the poster signer (feature #535,
+// spec 22 §2.1): an ABSOLUTE URL on the API public origin carrying the
+// mediastore expires/sig pair, because the WordPress site downloads the
+// artwork itself and GET /v1/media-files/{uuid} answers 401 without a
+// signature. With no signer wired — every unit test that builds a bare
+// Handler, and any deployment without media storage — the pre-#535
+// host-relative /v1/media-files/{uuid} projection is kept verbatim. The
+// legacy e.ImageURL passthrough is never rewritten. Returns "" when none of
 // the three is set so the caller can omit the JSON keys.
-//
-// Pure over gen.EventRow plus the optional session override — no DB
-// round-trip of its own.
-func posterURL(e gen.EventRow, sessionPosterMediaID *uuid.UUID) string {
+func (h *Handler) posterURL(ctx context.Context, e gen.EventRow, sessionPosterMediaID *uuid.UUID) string {
 	if sessionPosterMediaID != nil {
-		return "/v1/media-files/" + sessionPosterMediaID.String()
+		return h.mediaURL(ctx, *sessionPosterMediaID)
 	}
 	if e.PosterMediaID != nil {
-		return "/v1/media-files/" + e.PosterMediaID.String()
+		return h.mediaURL(ctx, *e.PosterMediaID)
 	}
 	if e.ImageURL != nil && *e.ImageURL != "" {
 		return *e.ImageURL
 	}
 	return ""
+}
+
+// mediaURL renders one media id, preferring the signed absolute form and
+// falling back to the canonical host-relative path when no signer is wired or
+// signing fails.
+func (h *Handler) mediaURL(ctx context.Context, id uuid.UUID) string {
+	if h.posterSigner != nil {
+		if signed := h.posterSigner(ctx, id); signed != "" {
+			return signed
+		}
+	}
+	return "/v1/media-files/" + id.String()
 }
 
 // prewarmVenueTreeCompatIDs batch-resolves every country/city/venue id that

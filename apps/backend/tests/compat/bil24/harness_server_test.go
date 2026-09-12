@@ -53,6 +53,19 @@ const harnessJWTStubSecret = "harness-jwt-stub-secret-long-enough-for-hs256"
 // so a regression that drops the base and emits a bare path is caught.
 const harnessPublicBaseURL = "https://arena.harness.test"
 
+// harnessAPIPublicBaseURL is API_PUBLIC_URL for the harness server (feature
+// #535, spec 22 §2.1): the public origin of the API itself, deliberately
+// DIFFERENT from the SPA origin above so a regression that rebuilds a
+// site-facing link on the SPA host is caught. Everything the WordPress site
+// fetches — pdfUrl/downloadUrl, the absolute signed poster URLs — must carry
+// this prefix.
+const harnessAPIPublicBaseURL = "https://api.harness.test"
+
+// harnessMediaSigningSecret signs the local-backend media download URLs the
+// harness hands out, so the GET_ALL_ACTIONS poster links carry a real `sig`
+// the media endpoint actually verifies rather than a signature-less dev URL.
+const harnessMediaSigningSecret = "harness-media-signing-secret"
+
 // harnessServerConfig is the minimal *config.Config httpserver.New consults.
 // ActiveLocales carries the four spec §6 gateway locales so localized
 // descriptions (ru/he goldens) resolve through the real i18n bundle.
@@ -63,6 +76,7 @@ func harnessServerConfig() *config.Config {
 		AppVersion:      "0.0.0-test",
 		AppCommit:       "test",
 		AppPublicURL:    harnessPublicBaseURL,
+		APIPublicURL:    harnessAPIPublicBaseURL,
 		HTTPListenAddr:  "127.0.0.1:0",
 		BodyLimitBytes:  1 << 20,
 		RequestTimeout:  30 * time.Second,
@@ -112,7 +126,11 @@ func startHarnessServer(t *testing.T, st *harnessState) string {
 	if err != nil {
 		t.Fatalf("startHarnessServer: storage.NewLocalStorage: %v", err)
 	}
-	media, err := mediastore.New(mediastore.Options{Pool: st.Pool, Storage: local})
+	media, err := mediastore.New(mediastore.Options{
+		Pool:          st.Pool,
+		Storage:       local,
+		SigningSecret: []byte(harnessMediaSigningSecret),
+	})
 	if err != nil {
 		t.Fatalf("startHarnessServer: mediastore.New: %v", err)
 	}

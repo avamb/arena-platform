@@ -288,6 +288,28 @@ func (r *Repo) SignedURL(id uuid.UUID, key string, ttl time.Duration) (string, e
 	}
 }
 
+// SignedDownloadURL returns a signed download URL for the object identified by
+// id without the caller having to know its storage key.
+//
+// The local backend signs the /v1/media-files/{id} path directly and needs no
+// database round-trip. Any other backend needs the object's storage key to
+// presign, so the row is loaded first; ErrNotFound is returned verbatim for a
+// missing object.
+//
+// Feature #535 (spec 22 §2.1): catalog projections (Bil24 GET_ALL_ACTIONS
+// posters, the public feed) only carry a media id, so this is the entry point
+// they use to emit a URL a third-party site can actually fetch.
+func (r *Repo) SignedDownloadURL(ctx context.Context, id uuid.UUID, ttl time.Duration) (string, error) {
+	if r.storage.Backend() == storage.BackendLocal {
+		return r.localSignedURL(id, ttl), nil
+	}
+	obj, err := r.GetByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return r.SignedURL(id, obj.StorageKey, ttl)
+}
+
 func (r *Repo) localSignedURL(id uuid.UUID, ttl time.Duration) string {
 	expires := time.Now().Add(ttl).Unix()
 	path := fmt.Sprintf("/v1/media-files/%s", id.String())

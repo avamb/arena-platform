@@ -36,18 +36,7 @@ func (s *Server) catalogHandler() *hcatalog.Handler {
 	).WithMembershipQueries(s.membershipQueries).
 		WithSeatingBinder(s.bindSeatingForSessionCreate).
 		WithCatalogEventPublisher(s.publishCatalogEvent).
-		WithPublicBaseURL(s.appPublicURL())
-}
-
-// appPublicURL returns cfg.AppPublicURL when present, otherwise the empty
-// string. Callers (currently the gateway-credential PUT endpoint, feature
-// #473 spec §5.4) treat "" as "operator has not configured a public URL yet",
-// which is a supported development-mode behaviour.
-func (s *Server) appPublicURL() string {
-	if s.cfg == nil {
-		return ""
-	}
-	return s.cfg.AppPublicURL
+		WithPublicBaseURL(s.apiPublicURL())
 }
 
 // bindSeatingForSessionCreate adapts hseating's inline bind (AB-36 step 3)

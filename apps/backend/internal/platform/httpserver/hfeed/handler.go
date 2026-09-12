@@ -19,6 +19,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -63,6 +64,23 @@ type Handler struct {
 	audit              audit.Writer
 	rl                 RateLimiter
 	pricingRules       hcheckout.PricingRules
+	// mediaSigner (feature #535, spec 22 §2.1) turns a media_objects id into
+	// an absolute signed URL an external consumer can fetch. Nil keeps the
+	// pre-#535 host-relative /v1/media-files/{uuid} projection.
+	mediaSigner MediaURLSigner
+}
+
+// MediaURLSigner builds a publicly fetchable URL for a media object id,
+// returning "" when it cannot sign (storage not configured, object missing) so
+// the caller falls back to the host-relative projection instead of emitting a
+// broken link. Feature #535, spec 22 §2.1.
+type MediaURLSigner func(ctx context.Context, mediaID uuid.UUID) string
+
+// WithMediaSigner wires the absolute signed-media URL builder. Returns the
+// receiver for chaining.
+func (h *Handler) WithMediaSigner(s MediaURLSigner) *Handler {
+	h.mediaSigner = s
+	return h
 }
 
 // New constructs a Handler from the caller's dependencies. Nil queries and a

@@ -74,7 +74,8 @@ func bundle527Fixture(t *testing.T, posterURL string) map[string]any {
 // bundle527RegisterCleanup tears down one bundle-created event/session in FK
 // order. It mirrors sc8RegisterCleanup (scenario08_import_test.go) minus the
 // seating-plan half: the arena-bundle fixture is pure general admission, so
-// there are no session_seats/reservations to sweep.
+// there is no seating plan and no reservation to sweep — but GA capacity does
+// materialise as session_seats rows, which must still go.
 func bundle527RegisterCleanup(t *testing.T, st *harnessState, eventID, sessionID uuid.UUID) {
 	t.Helper()
 	t.Cleanup(func() {
@@ -91,6 +92,13 @@ func bundle527RegisterCleanup(t *testing.T, st *harnessState, eventID, sessionID
 		stmts := []stmt{
 			{`DELETE FROM session_external_refs WHERE session_id = $1`, sessionID},
 			{`DELETE FROM inventory_ledger WHERE session_id = $1`, sessionID},
+			// The bundle is general admission, but GA capacity is still
+			// materialised as session_seats rows of kind='ga_unit' — they FK
+			// both the session and its tiers with no cascade, so they have to
+			// go before either (feature #535: without this sweep the session,
+			// event and venue deletes below all failed with 23503 and leaked
+			// rows into the shared dev stand).
+			{`DELETE FROM session_seats WHERE session_id = $1`, sessionID},
 			{`DELETE FROM compatibility_id_map WHERE platform_id IN
 			      (SELECT id FROM ticket_tiers WHERE session_id = $1)`, sessionID},
 			{`DELETE FROM ticket_tiers WHERE session_id = $1`, sessionID},
@@ -227,11 +235,17 @@ func TestCompatBil24_527_EventBundleRoundTrip(t *testing.T) {
 		sc1WantNumber(t, cat, "categoryPriceId", wantIDs[i])
 	}
 
-	// bigPosterUrl must be the canonical host-relative media route, never the
-	// original https://staging… URL the bundle supplied.
+	// bigPosterUrl must be the canonical media route, never the original
+	// https://staging… URL the bundle supplied. Feature #535: it is now an
+	// ABSOLUTE signed URL on API_PUBLIC_URL, because the site downloads the
+	// artwork itself and /v1/media-files/{id} answers 401 without a signature.
 	posterURL, _ := action["bigPosterUrl"].(string)
-	if !strings.HasPrefix(posterURL, "/v1/media-files/") {
-		t.Errorf("actionList[0].bigPosterUrl = %q, want a /v1/media-files/{uuid} prefix", posterURL)
+	if !strings.HasPrefix(posterURL, harnessAPIPublicBaseURL+"/v1/media-files/") {
+		t.Errorf("actionList[0].bigPosterUrl = %q, want a %s/v1/media-files/{uuid} prefix",
+			posterURL, harnessAPIPublicBaseURL)
+	}
+	if !strings.Contains(posterURL, "expires=") || !strings.Contains(posterURL, "sig=") {
+		t.Errorf("actionList[0].bigPosterUrl = %q, want the mediastore expires+sig pair", posterURL)
 	}
 }
 

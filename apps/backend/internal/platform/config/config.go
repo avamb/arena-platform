@@ -97,6 +97,15 @@ type Config struct {
 	// emails and webhooks so they are never derived from r.Host or forwarded
 	// headers. Required for production when EMAIL_MODE=smtp.
 	AppPublicURL string `env:"APP_PUBLIC_URL" required:"false" default:""`
+	// APIPublicURL is the canonical public origin of the HTTP API itself
+	// (e.g. https://api.example.com). On a split deployment the SPA
+	// (APP_PUBLIC_URL) and the API live on different hosts, and everything a
+	// third-party site must be able to FETCH — Bil24 gateway base_url /
+	// image_url, ticket PDF links, signed poster URLs — has to be built from
+	// the API origin, not the SPA origin. Empty falls back to AppPublicURL so
+	// single-host deployments keep working unchanged (feature #535, spec
+	// 22_site_facing_gaps_w1s1_ru.md §2.1). Read through APIPublicBaseURL().
+	APIPublicURL string `env:"API_PUBLIC_URL" required:"false" default:""`
 
 	// -------------------------------------------------------------------------
 	// HTTP
@@ -345,6 +354,7 @@ func (c *Config) LogAttrs() []slog.Attr {
 		slog.String("app_version", c.AppVersion),
 		slog.String("app_commit", c.AppCommit),
 		slog.String("app_public_url", c.AppPublicURL),
+		slog.String("api_public_url", c.APIPublicURL),
 		slog.String("http_listen_addr", c.HTTPListenAddr),
 		slog.String("worker_metrics_addr", c.WorkerMetricsAddr),
 		slog.String("database_url", redactDSN(c.DatabaseURL)),
@@ -373,6 +383,20 @@ func (c *Config) LogAttrs() []slog.Attr {
 	}
 }
 
+// APIPublicBaseURL returns the canonical public origin of the HTTP API with
+// any trailing slash removed: API_PUBLIC_URL when set, otherwise the
+// APP_PUBLIC_URL fallback for single-host deployments, otherwise "".
+//
+// Every link a third party has to FETCH from this deployment — the Bil24
+// gateway base_url/image_url, ticket PDF links, signed poster URLs — is built
+// on this value, never on request headers (feature #535, spec 22 §2.1).
+func (c *Config) APIPublicBaseURL() string {
+	if v := strings.TrimRight(strings.TrimSpace(c.APIPublicURL), "/"); v != "" {
+		return v
+	}
+	return strings.TrimRight(strings.TrimSpace(c.AppPublicURL), "/")
+}
+
 // Load reads configuration from environment variables, parses typed values,
 // runs Validate, and returns either a populated *Config or an aggregated
 // validation error.
@@ -383,6 +407,7 @@ func Load() (*Config, error) {
 		AppVersion:   getenv("APP_VERSION", "0.0.0-dev"),
 		AppCommit:    getenv("APP_COMMIT", "local"),
 		AppPublicURL: getenv("APP_PUBLIC_URL", ""),
+		APIPublicURL: getenv("API_PUBLIC_URL", ""),
 
 		HTTPListenAddr:     getenv("HTTP_LISTEN_ADDR", ":8080"),
 		WorkerMetricsAddr:  getenv("WORKER_METRICS_ADDR", ":9091"),
@@ -1043,18 +1068,23 @@ func (c *Config) validateProduction() []error {
 	// this deployment's APP_PUBLIC_URL. With it empty the WordPress site
 	// receives host-less pdfUrl/downloadUrl values that no buyer can open, so
 	// production refuses to mount the gateway without it.
+	//
+	// Feature #535 (spec 22 §2.1): the value actually used is API_PUBLIC_URL,
+	// with APP_PUBLIC_URL as the single-host fallback — so the rule validates
+	// the EFFECTIVE base returned by APIPublicBaseURL().
 	if c.Bil24CompatEnabled {
-		pub := strings.TrimSpace(c.AppPublicURL)
+		pub := c.APIPublicBaseURL()
 		if pub == "" {
 			errs = append(errs, errors.New(
-				"APP_PUBLIC_URL (the spec's PUBLIC_BASE_URL) is required in production when"+
-					" BIL24_COMPAT_ENABLED=true; GET_TICKETS_BY_ORDER cannot build absolute"+
-					" ticket PDF links without it",
+				"API_PUBLIC_URL (the spec's PUBLIC_BASE_URL; falls back to APP_PUBLIC_URL) is"+
+					" required in production when BIL24_COMPAT_ENABLED=true; the gateway cannot"+
+					" build absolute ticket PDF links, signed poster URLs or base_url/image_url"+
+					" without it",
 			))
 		} else if !strings.HasPrefix(strings.ToLower(pub), "https://") {
 			errs = append(errs, fmt.Errorf(
-				"APP_PUBLIC_URL must start with https:// in production (got %q);"+
-					" Bil24 ticket PDF links must not be plaintext",
+				"API_PUBLIC_URL (or its APP_PUBLIC_URL fallback) must start with https:// in"+
+					" production (got %q); Bil24 ticket PDF and poster links must not be plaintext",
 				pub,
 			))
 		}

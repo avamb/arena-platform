@@ -4,6 +4,7 @@
 package hfeed
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -11,6 +12,12 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
+
+// unsignedFeed is a Handler with no media signer wired: the projection helpers
+// then emit the canonical host-relative /v1/media-files/{uuid} URL these tests
+// pin. Feature #535 turned the helpers into methods so the absolute signed
+// variant can be injected in production; the unsigned shape is unchanged.
+func unsignedFeed() *Handler { return &Handler{} }
 
 // TestPublicFeedEventFromRow_PosterCover_AB47c verifies that an event row
 // with poster_media_id set surfaces poster_url built via mediaFileURL.
@@ -28,7 +35,7 @@ func TestPublicFeedEventFromRow_PosterCover_AB47c(t *testing.T) {
 		UpdatedAt:     time.Now(),
 		PosterMediaID: &mediaID,
 	}
-	resp := publicFeedEventFromRow(e)
+	resp := unsignedFeed().publicFeedEventFromRow(context.Background(), e)
 	if resp.PosterMediaID == nil || *resp.PosterMediaID != mediaID.String() {
 		t.Fatalf("PosterMediaID: got %v, want %s", resp.PosterMediaID, mediaID)
 	}
@@ -52,7 +59,7 @@ func TestPublicFeedEventFromRow_NoPoster_AB47c(t *testing.T) {
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
-	resp := publicFeedEventFromRow(e)
+	resp := unsignedFeed().publicFeedEventFromRow(context.Background(), e)
 	if resp.PosterMediaID != nil {
 		t.Errorf("PosterMediaID: want nil, got %v", *resp.PosterMediaID)
 	}
@@ -89,7 +96,7 @@ func TestPublicFeedSession_PosterFallback_AB47c(t *testing.T) {
 	}
 
 	// Case A: session cover set → session wins, fallback is a no-op.
-	sessResp := publicFeedSessionFromRow(buildRow(&sessionPoster), nil)
+	sessResp := unsignedFeed().publicFeedSessionFromRow(context.Background(), buildRow(&sessionPoster), nil)
 	ep := eventPoster.String()
 	epURL := "/v1/media-files/" + ep
 	sessResp.applyPosterFallback(&ep, &epURL)
@@ -101,7 +108,7 @@ func TestPublicFeedSession_PosterFallback_AB47c(t *testing.T) {
 	}
 
 	// Case B: no session cover, event has one → event fallback wins.
-	sessResp = publicFeedSessionFromRow(buildRow(nil), nil)
+	sessResp = unsignedFeed().publicFeedSessionFromRow(context.Background(), buildRow(nil), nil)
 	sessResp.applyPosterFallback(&ep, &epURL)
 	if sessResp.PosterMediaID == nil || *sessResp.PosterMediaID != ep {
 		t.Errorf("Case B event fallback: got %v, want %s", sessResp.PosterMediaID, ep)
@@ -111,7 +118,7 @@ func TestPublicFeedSession_PosterFallback_AB47c(t *testing.T) {
 	}
 
 	// Case C: neither → both fields stay nil (widget hides the cover).
-	sessResp = publicFeedSessionFromRow(buildRow(nil), nil)
+	sessResp = unsignedFeed().publicFeedSessionFromRow(context.Background(), buildRow(nil), nil)
 	sessResp.applyPosterFallback(nil, nil)
 	if sessResp.PosterMediaID != nil || sessResp.PosterURL != nil {
 		t.Errorf("Case C no cover: got %v / %v, want nil / nil",
@@ -142,7 +149,7 @@ func TestPublicFeedSession_MediaGallery_AB47c(t *testing.T) {
 		},
 	}
 	var resp publicFeedSessionResponse
-	resp.applyMediaGallery(rows)
+	unsignedFeed().applyMediaGallery(context.Background(), &resp, rows)
 	if len(resp.MediaGallery) != 2 {
 		t.Fatalf("MediaGallery len: got %d, want 2", len(resp.MediaGallery))
 	}
@@ -174,7 +181,7 @@ func TestPublicFeedSession_MediaGallery_AB47c(t *testing.T) {
 // (default empty from publicFeedSessionFromRow).
 func TestPublicFeedSession_MediaGallery_EmptyRows_AB47c(t *testing.T) {
 	t.Parallel()
-	sessResp := publicFeedSessionFromRow(gen.SessionRow{
+	sessResp := unsignedFeed().publicFeedSessionFromRow(context.Background(), gen.SessionRow{
 		ID:             uuid.New(),
 		EventID:        uuid.New(),
 		VenueID:        uuid.New(),
@@ -187,7 +194,7 @@ func TestPublicFeedSession_MediaGallery_EmptyRows_AB47c(t *testing.T) {
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}, nil)
-	sessResp.applyMediaGallery(nil)
+	unsignedFeed().applyMediaGallery(context.Background(), &sessResp, nil)
 	if sessResp.MediaGallery == nil {
 		t.Errorf("MediaGallery should be an empty slice (JSON []) after applyMediaGallery(nil), not nil")
 	}

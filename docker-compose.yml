@@ -160,10 +160,14 @@ services:
       HEALTH_ADDR: "http://localhost:8080"
 
       # Canonical public SPA origin (see .env.example for the full
-      # description). This is also the Bil24 compat spec's required
-      # "PUBLIC_BASE_URL" (spec §16): GET_TICKETS_BY_ORDER's pdfUrl and the
-      # gateway-credential PUT response derive base_url/image_url from it.
+      # description).
       APP_PUBLIC_URL: "${APP_PUBLIC_URL:-http://localhost:5174}"
+      # Canonical public API origin — the Bil24 compat spec's "PUBLIC_BASE_URL"
+      # (spec §16, feature #535): GET_TICKETS_BY_ORDER's pdfUrl, the
+      # gateway-credential PUT response's base_url/image_url and the absolute
+      # signed poster URLs in GET_ALL_ACTIONS are all built on it. Defaults to
+      # this stand's own API port, NOT the admin SPA port.
+      API_PUBLIC_URL: "${API_PUBLIC_URL:-http://localhost:8080}"
       # Bil24-compatible gateway (/compat/bil24/*). Off by default in the
       # local dev compose stack; set to "true" to exercise the WordPress
       # Bil24 compat contract against this stand.

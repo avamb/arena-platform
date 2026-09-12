@@ -164,6 +164,13 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 		})
 	}
 	h = s.withBil24Tickets(h)
+	// Feature #535 (spec 22 §2.1): posters go out as absolute signed URLs on
+	// the API public origin so the WordPress site's artwork sync can actually
+	// download them. Without media storage wired the signer is omitted and the
+	// catalog keeps its host-relative projection.
+	if s.media != nil {
+		h = h.WithPosterSigner(s.signedMediaURL)
+	}
 	return h
 }
 
