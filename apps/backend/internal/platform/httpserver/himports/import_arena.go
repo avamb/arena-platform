@@ -87,8 +87,10 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 	if err := h.syncInventoryLedger(ctx, q, eventID, sessionID); err != nil {
 		return importResult{}, err
 	}
+	var publishedNow bool
 	if plan.Request.Publish {
-		if err := h.applyPublish(ctx, q, plan, eventID, sessionID, warnings); err != nil {
+		publishedNow, err = h.applyPublish(ctx, q, plan, eventID, sessionID, warnings)
+		if err != nil {
 			return importResult{}, err
 		}
 	}
@@ -106,11 +108,12 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 	}
 
 	return importResult{
-		EventID:   eventID,
-		SessionID: sessionID,
-		TierIDs:   keyed,
-		Created:   created,
-		CompatIDs: compat,
+		EventID:      eventID,
+		SessionID:    sessionID,
+		TierIDs:      keyed,
+		Created:      created,
+		CompatIDs:    compat,
+		PublishedNow: publishedNow,
 	}, nil
 }
 

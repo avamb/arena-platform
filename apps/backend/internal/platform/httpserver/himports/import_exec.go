@@ -71,6 +71,12 @@ type importResult struct {
 	// CompatIDs is the compat-mapping view of the same graph (event-bundle
 	// spec §4) — minted for source=arena, echoed for source=bil24.
 	CompatIDs ImportCompatIDs
+	// PublishedNow reports whether THIS call transitioned the event to
+	// 'published' (applyPublish's bool return) — false when publish:true was
+	// a no-op (already published) or was skipped with a warning. handleImport
+	// uses it, after tx.Commit succeeds, to decide whether to fire the
+	// catalog-change outbox notification exactly once per real transition.
+	PublishedNow bool
 }
 
 // executeImport runs spec §13.2 steps 2-5 and 7-8 inside tx.
@@ -121,8 +127,10 @@ func (h *Handler) executeImport(ctx context.Context, q *gen.Queries, tx pgx.Tx, 
 			plan.Request.ActionEvent.ChargePercent))
 	}
 
+	var publishedNow bool
 	if plan.Request.Publish {
-		if err := h.applyPublish(ctx, q, plan, eventID, sessionID, warnings); err != nil {
+		publishedNow, err = h.applyPublish(ctx, q, plan, eventID, sessionID, warnings)
+		if err != nil {
 			return importResult{}, err
 		}
 	}
@@ -137,12 +145,13 @@ func (h *Handler) executeImport(ctx context.Context, q *gen.Queries, tx pgx.Tx, 
 	}
 
 	return importResult{
-		EventID:   eventID,
-		SessionID: sessionID,
-		TierIDs:   tierIDs,
-		Created:   created,
-		Seating:   seatingOut,
-		CompatIDs: compat,
+		EventID:      eventID,
+		SessionID:    sessionID,
+		TierIDs:      tierIDs,
+		Created:      created,
+		Seating:      seatingOut,
+		CompatIDs:    compat,
+		PublishedNow: publishedNow,
 	}, nil
 }
 
@@ -561,41 +570,48 @@ func (h *Handler) upsertTiers(ctx context.Context, q *gen.Queries, tx pgx.Tx, pl
 // (AB-42: at least one session, every session priced) allows it. A refusal is
 // a warning, never a failure — the catalog rows imported successfully and the
 // operator can publish manually after fixing the cause.
-func (h *Handler) applyPublish(ctx context.Context, q *gen.Queries, plan importPlan, eventID, sessionID uuid.UUID, warnings *warningSink) error {
+//
+// The returned bool reports whether this call actually performed the
+// 'published' transition (as opposed to it being a no-op because the event
+// was already published, or skipped with a warning): the caller uses it to
+// decide whether to fire the catalog-change outbox notification AFTER the
+// enclosing transaction commits — see handleImport in bil24_session.go for
+// why that firing must not happen from inside applyPublish itself.
+func (h *Handler) applyPublish(ctx context.Context, q *gen.Queries, plan importPlan, eventID, sessionID uuid.UUID, warnings *warningSink) (bool, error) {
 	event, err := q.GetEventRaw(ctx, eventID)
 	if err != nil {
-		return fmt.Errorf("read event before publish: %w", err)
+		return false, fmt.Errorf("read event before publish: %w", err)
 	}
 	if event.Status == "published" {
-		return nil
+		return false, nil
 	}
 	if !catalogdomain.IsValidEventTransition(event.Status, "published") {
 		warnings.add(WarnPublishSkipped,
 			"publish requested but the event cannot move from "+event.Status+" to published")
-		return nil
+		return false, nil
 	}
 
 	sessions, err := q.ListSessionsByEvent(ctx, eventID)
 	if err != nil {
-		return fmt.Errorf("list sessions before publish: %w", err)
+		return false, fmt.Errorf("list sessions before publish: %w", err)
 	}
 	for _, s := range sessions {
 		tiers, tErr := q.ListTicketTiersBySession(ctx, s.ID)
 		if tErr != nil {
-			return fmt.Errorf("list tiers before publish: %w", tErr)
+			return false, fmt.Errorf("list tiers before publish: %w", tErr)
 		}
 		if len(tiers) == 0 {
 			warnings.add(WarnPublishSkipped,
 				"publish requested but session "+s.ID.String()+" has no ticket tier")
-			return nil
+			return false, nil
 		}
 	}
 
 	if _, err := q.UpdateEventStatus(ctx, eventID, plan.OrgID, "published"); err != nil {
-		return fmt.Errorf("publish event: %w", err)
+		return false, fmt.Errorf("publish event: %w", err)
 	}
 	_ = sessionID // the session status was already set by resolveSession
-	return nil
+	return true, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -245,6 +245,16 @@ func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request, forcedSou
 	}
 	committed = true
 
+	// Fires only now — after the commit — and only when applyPublish actually
+	// performed the transition this call: a mirror (the Bil24 gateway's wp
+	// webhook dispatcher included) must see publish-via-import the same way
+	// it sees a manual PATCH .../events/{id} status=published, but never
+	// before the row it describes is durable.
+	if result.PublishedNow && h.publishCatalogEvent != nil {
+		h.publishCatalogEvent(ctx, eventPublishedEventType, result.EventID.String(), orgID.String(),
+			[]string{result.SessionID.String()})
+	}
+
 	h.writeImportAudit(ctx, r, orgID, req, result)
 
 	var refOut *string

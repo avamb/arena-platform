@@ -57,6 +57,20 @@ const posterFetchTimeout = 15 * time.Second
 // 16 MB leaves generous headroom while bounding memory and storage abuse.
 const maxPosterBytes int64 = 16 << 20
 
+// CatalogEventPublisher mirrors hcatalog.CatalogEventPublisher's exact
+// signature so the import handler can notify mirrors (the Bil24 gateway's wp
+// dispatcher among them) of a catalog change without importing hcatalog —
+// same func-value-injection precedent as WithSeatingBinder/catalog_shims.go.
+type CatalogEventPublisher func(ctx context.Context, eventType, eventID, orgID string, sessionIDs []string)
+
+// eventPublishedEventType is the outbox event type a mirror reacts to by
+// emitting event.created (bil24wire.SiteEventEventCreated). It duplicates
+// hcatalog.EventPublishedEventType / bil24wire.EventEventPublished
+// ("v1.event.published") as a package-local string constant rather than
+// importing either package — the same precedent hcatalog itself follows
+// (its own copy is not shared with bil24wire either).
+const eventPublishedEventType = "v1.event.published"
+
 // Handler holds the shared dependencies for the import handlers.
 type Handler struct {
 	queries           *gen.Queries
@@ -66,6 +80,12 @@ type Handler struct {
 	http              Doer
 	audit             audit.Writer
 	logger            *slog.Logger
+	// publishCatalogEvent notifies mirrors of a catalog change (event-bundle
+	// spec: publish:true on import must reach the same wp/MACS dispatch path
+	// a manual PATCH .../events/{id} status=published triggers). Nil is a
+	// valid, supported value: an import server wired without it simply skips
+	// the notification, matching every other optional Handler dependency.
+	publishCatalogEvent CatalogEventPublisher
 	// now is injectable so tests get deterministic timestamps.
 	now func() time.Time
 }
@@ -102,6 +122,15 @@ func (h *Handler) WithMembershipQueries(q *gen.Queries) *Handler {
 // otherwise valid import.
 func (h *Handler) WithMedia(m *mediastore.Repo) *Handler {
 	h.media = m
+	return h
+}
+
+// WithCatalogEventPublisher wires the outbox notification for catalog
+// changes an import's publish:true step causes. When nil (the default) the
+// publish transition happens exactly as before, silently skipping the
+// notification.
+func (h *Handler) WithCatalogEventPublisher(p CatalogEventPublisher) *Handler {
+	h.publishCatalogEvent = p
 	return h
 }
 

@@ -25,7 +25,8 @@ func (s *Server) importsHandler() *himports.Handler {
 		s.audit,
 		s.logger,
 	).WithMembershipQueries(s.membershipQueries).
-		WithMedia(s.media)
+		WithMedia(s.media).
+		WithCatalogEventPublisher(s.publishCatalogEvent)
 }
 
 // ─── import handler shims ─────────────────────────────────────────────────────

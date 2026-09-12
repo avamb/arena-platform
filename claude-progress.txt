@@ -30903,3 +30903,146 @@ No admin-web/UI changes were needed for either feature (pure backend RBAC
 + migration work). Both features closed out the assigned W1-S0 batch for
 this session; no further features were assigned.
 
+================================================================================
+#533 W1-S0 [EPIC-VERIFY]: superadmin provisions a site org end-to-end,
+full cold gate   (2026-09-12)
+================================================================================
+
+Spec: 08_architecture/21_superadmin_org_access_parity_ru.md §3.3.
+
+New test: apps/backend/internal/platform/httpserver/superadmin_org_provisioning_533_integration_test.go,
+TestSuperadminOrgProvisioning533_Integration. Drives the whole W1-S0 chain
+through real public HTTP endpoints, as a real login-issued superadmin with
+ZERO membership rows (the only DB row it needs is a NULL-org_id
+user_roles grant of platform_superadmin, per #531):
+
+  register + grant platform_superadmin (NULL org_id) + login
+  -> POST /v1/organizations (no X-Admin-Reason needed: org.create is not
+     org-scoped) creates a brand-new org, randomized slug
+  -> POST .../channels (X-Admin-Reason required) creates a sales channel
+  -> PUT .../gateway-credential mints fid/token
+  -> PUT .../wp-webhook points a local stub receiver at the channel
+  -> POST .../api-keys mints an ak_ key scoped to import.bil24_session
+  -> POST .../imports/event-bundle, AUTHENTICATED WITH THE FRESH API KEY
+     (not the superadmin JWT), imports an arena-sourced bundle (two tiers,
+     15/20 major-unit prices, publish:true)
+  -> POST /compat/bil24/json GET_ALL_ACTIONS with the minted fid+token sees
+     the imported action with major-unit minPrice/maxPrice 15/20
+  -> POST .../channels/{id}/feed-tokens + POST /v1/events/{id}/publications
+     bind the imported event to the channel's feed (see real defect below)
+  -> a real bil24wire.Dispatcher, driven by a real
+     outbox.OutboxEventsDispatcher polling loop against the actual outbox
+     row the import wrote, delivers event.created to the stub receiver,
+     naming the action_event_id the import minted.
+
+Every step's HTTP status is asserted explicitly (201/200 as appropriate).
+The server is built via a local superadminProvisioning533Server helper
+that reuses productionIntegrationServer's Options but additionally turns
+on Bil24CompatEnabled/Bil24RequireToken (the plain auth-only server used
+by #531/#532 does not mount the compat gateway).
+
+Real defect found and fixed (not a test gap): POST .../imports/event-bundle
+with publish:true silently never notified any mirror of the new event.
+hcatalog's own event-status-PATCH path calls a CatalogEventPublisher hook
+(wired in catalog_shims.go to s.publishCatalogEvent, which fans out through
+hscanner to the v1.event.published outbox row bil24wire.Dispatcher turns
+into event.created for every WP subscriber on that event's feed) — but
+himports.Handler.applyPublish only ever flipped events.status to
+'published' in SQL and never called any equivalent hook, so an
+event-bundle import's publish:true was invisible to every wp-webhook
+subscriber even though a manual PATCH .../events/{id} status=published for
+the identical row fires correctly. Fixed by:
+  - himports/import_exec.go, himports/import_arena.go: applyPublish now
+    returns (bool, error) instead of just error — the bool reports whether
+    THIS call actually performed the published transition (as opposed to
+    a no-op because the event was already published, or a warning-skip)
+    — both executeImport (source=bil24) and executeArenaImport
+    (source=arena) plumb it through importResult.PublishedNow.
+  - himports/handler.go: new CatalogEventPublisher type (mirrors
+    hcatalog's exact signature) + Handler.publishCatalogEvent field +
+    WithCatalogEventPublisher setter, defaulting to nil (no-op) so every
+    other import server construction site is unaffected.
+  - himports/bil24_session.go: handleImport fires
+    h.publishCatalogEvent(ctx, "v1.event.published", eventID, orgID,
+    []string{sessionID}) AFTER tx.Commit() succeeds and only when
+    result.PublishedNow is true — never from inside applyPublish itself,
+    so a rollback can never leave a phantom notification in flight for a
+    row that was never actually durable.
+  - imports_shims.go: importsHandler() now chains
+    .WithCatalogEventPublisher(s.publishCatalogEvent), the same
+    scanner_shims.go-defined method catalog_shims.go already wires for the
+    hcatalog handler.
+This also means every FUTURE event-bundle import with publish:true fans
+out to WP/MACS subscribers correctly, not just this test's fixture — a
+real product bug, now closed, discovered only because this feature
+insisted on the real outbox+dispatcher chain rather than asserting on the
+import response alone (step 9/10 above; see file's doc comment for the
+full reasoning, including why feed-token + event-publication binding is a
+SEPARATE prerequisite from the wp-webhook registration itself — the
+catalog dispatch path resolves subscribers via
+ListWPSubscribersForEvent's feed-token/publication join, not by
+channel_id directly, unlike the order/ticket dispatch path).
+
+A second, smaller finding: the catalog dispatch envelope's `data` field is
+a JSON ARRAY of {"actionEventId": N} objects (bil24wire.Dispatcher.
+dispatchCatalog), unlike the order.paid/ticket.refunded envelopes
+tests/compat/bil24/wpstub already models as an object — reusing wpstub for
+this test's stub receiver would 400 on every delivery. The test therefore
+defines its own minimal provStubReceiver/provStubEvent pair scoped to this
+file rather than editing wpstub's shared decode shape.
+
+Gates (fresh run, this feature only; repo-relative log files under the
+repo root, deleted after inspection; no pipeline masking exit codes)
+- go.exe -C apps/backend build ./...                                EXIT:0
+- go.exe -C apps/backend vet ./...                                  EXIT:0
+- go.exe -C apps/backend vet -tags integration ./...                EXIT:0
+- gofmt -l on every file touched by #531, #532 and #533 (14 files:
+  himports/{bil24_session,handler,import_arena,import_exec}.go,
+  imports_shims.go, the new 533 test, mount_v1.go, both 531 test files,
+  permissions/{checker,rbac_checker}.go, migrations_head_test.go, both 532
+  migrations test files, the 532 httpserver integration test)    no output
+- DATABASE_URL=<dev stand 55432> JWT_SIGNING_SECRET=x go.exe -C
+  apps/backend test -tags integration -run
+  TestSuperadminOrgProvisioning533_Integration -count=2 -v
+  ./internal/platform/httpserver/                                   EXIT:0
+  (both runs pass, 1.2-1.9s each, independently — proves no leftover-state
+  dependency between runs)
+- go.exe -C apps/backend test -count=1 ./...  (full unit suite)     EXIT:0
+  (76 packages ok, 0 FAIL)
+- DATABASE_URL=<dev stand> JWT_SIGNING_SECRET=x go.exe -C apps/backend
+  test -tags integration -count=1 -p 1
+  ./internal/platform/httpserver/... ./internal/platform/httpserver/hcatalog/...
+  ./internal/platform/httpserver/himports/... ./tests/compat/bil24/...
+  ./internal/migrations/...                                         EXIT:0
+  (httpserver 14.7s incl. hauth/hiam/hcatalog/himports subpackages,
+  tests/compat/bil24 17.7s, wpstub 0.7s, migrations 0.3s — all ok, 0 FAIL)
+- GOLANGCI_LINT_CACHE=/tmp/golangci-cache go.exe run
+  github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run
+  ./apps/backend/...                                                EXIT:0
+  ("0 issues.")
+- Codegen drift: not applicable — openapi.yaml untouched (`git status
+  --short apps/backend/openapi` empty both before and after this feature);
+  every route this test exercises (organizations, channels,
+  gateway-credential, wp-webhook, api-keys, imports/event-bundle,
+  feed-tokens, event publications, compat/bil24/json) already existed from
+  prior waves.
+- npm --prefix apps/admin-web run type-check                        EXIT:0
+- npm --prefix apps/admin-web run test                              EXIT:0
+  (46 files, 1189 tests passed) — no admin-web changes were needed, this
+  is a backend-only fix, run per the gate checklist regardless.
+
+No existing test was weakened, skipped or deleted to reach green. Only
+product-code files touched: the 4 himports files + imports_shims.go above,
+all directly implementing the missing publish-notification hook; the rest
+of the diff is the single new integration test. Verified via
+`git status --short` before staging that no foreign scratch files
+(features.db, .claude/scheduled_tasks.lock deletion, coding_prompt.md
+edit — all pre-existing from outside this feature's scope) were staged.
+
+This closes out the whole W1-S0 mini-wave (#531, #532, #533): a real
+platform_superadmin can now provision a brand-new WordPress-site
+organization end-to-end — org, channel, gateway credential, wp-webhook,
+API key, event-bundle import with working publish fan-out — without a
+single memberships row, using only X-Admin-Reason-gated org-scoped calls
+and the server-side DB role resolution #531 added.
+
