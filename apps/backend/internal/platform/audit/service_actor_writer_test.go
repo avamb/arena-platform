@@ -18,7 +18,9 @@ func serviceActorCtx(id string) context.Context {
 }
 
 // TestAttributeToServiceActor pins spec §13.1: mutations performed under an
-// organization API key must land in audit_events as actor `api_key:<id>`,
+// organization API key must land in audit_events with actor_type "api_key",
+// actor_id = the key's uuid (the column is uuid — a prefixed label would abort
+// the INSERT with 22P02) and the human label `api_key:<id>` in metadata,
 // while every other request keeps the attribution its call site supplied.
 func TestAttributeToServiceActor(t *testing.T) {
 	tests := []struct {
@@ -33,7 +35,7 @@ func TestAttributeToServiceActor(t *testing.T) {
 			ctx:           serviceActorCtx(testKeyID),
 			in:            Event{ActorType: "user", ActorID: "someone-else", Action: "event.update"},
 			wantActorType: ServiceActorType,
-			wantActorID:   ServiceActorPrefix + testKeyID,
+			wantActorID:   testKeyID,
 		},
 		{
 			name: "user actor passes through unchanged",
@@ -66,6 +68,11 @@ func TestAttributeToServiceActor(t *testing.T) {
 			got := attributeToServiceActor(tc.ctx, tc.in)
 			if got.ActorType != tc.wantActorType {
 				t.Fatalf("ActorType = %q, want %q", got.ActorType, tc.wantActorType)
+			}
+			if tc.wantActorType == ServiceActorType {
+				if label, _ := got.Metadata["actor_label"].(string); label != ServiceActorPrefix+testKeyID {
+					t.Fatalf("Metadata[actor_label] = %q, want %q", label, ServiceActorPrefix+testKeyID)
+				}
 			}
 			if got.ActorID != tc.wantActorID {
 				t.Fatalf("ActorID = %q, want %q", got.ActorID, tc.wantActorID)

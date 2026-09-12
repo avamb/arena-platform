@@ -64,7 +64,18 @@ func attributeToServiceActor(ctx context.Context, ev Event) Event {
 	if !ok || !actor.IsService() || actor.ID == "" {
 		return ev
 	}
+	// audit_events.actor_id is a uuid column (insertSQL casts it with
+	// NULLIF($3,'')::uuid), so the actor id MUST stay the bare api_keys.id —
+	// a prefixed label aborts the INSERT with SQLSTATE 22P02 and, on the
+	// WriteTx path, the enclosing transaction with it (AGENTS.md trap).
+	// The human-readable "api_key:<id>" label lives in actor_type + metadata.
 	ev.ActorType = ServiceActorType
-	ev.ActorID = ServiceActorPrefix + actor.ID
+	ev.ActorID = actor.ID
+	if ev.Metadata == nil {
+		ev.Metadata = map[string]any{}
+	}
+	if _, exists := ev.Metadata["actor_label"]; !exists {
+		ev.Metadata["actor_label"] = ServiceActorPrefix + actor.ID
+	}
 	return ev
 }

@@ -455,7 +455,7 @@ SELECT $1, id, NULL FROM roles WHERE name = 'platform_superadmin' AND org_id IS 
 			FeedTokenID   string `json:"feed_token_id"`
 			PublicationID string `json:"publication_id"`
 		} `json:"publication"`
-		Warnings []string `json:"warnings"`
+		Warnings []importWarning `json:"warnings"`
 	}
 	if err := json.Unmarshal([]byte(body), &importResp); err != nil {
 		t.Fatalf("decode import response: %v; body: %s", err, body)
@@ -468,7 +468,7 @@ SELECT $1, id, NULL FROM roles WHERE name = 'platform_superadmin' AND org_id IS 
 		t.Fatalf("import event-bundle: empty event_id in response: %s", body)
 	}
 	for _, w := range importResp.Warnings {
-		if w == "import.channel_publication_skipped" {
+		if w.Code == "import.channel_publication_skipped" {
 			t.Fatalf("import event-bundle: got import.channel_publication_skipped for a channel-bound key, body: %s", body)
 		}
 	}
@@ -788,10 +788,10 @@ SELECT $1, id, NULL FROM roles WHERE name = 'platform_superadmin' AND org_id IS 
 		t.Fatalf("import event-bundle (JWT actor): expected 200, got %d, body: %s", resp.StatusCode, body)
 	}
 	var importResp struct {
-		EventID     string    `json:"event_id"`
-		Created     bool      `json:"created"`
-		Publication *struct{} `json:"publication"`
-		Warnings    []string  `json:"warnings"`
+		EventID     string          `json:"event_id"`
+		Created     bool            `json:"created"`
+		Publication *struct{}       `json:"publication"`
+		Warnings    []importWarning `json:"warnings"`
 	}
 	if err := json.Unmarshal([]byte(body), &importResp); err != nil {
 		t.Fatalf("decode import response: %v; body: %s", err, body)
@@ -818,7 +818,7 @@ SELECT $1, id, NULL FROM roles WHERE name = 'platform_superadmin' AND org_id IS 
 	// imports (which would be misleading — nothing was skipped, it was never
 	// attempted) is caught.
 	for _, w := range importResp.Warnings {
-		if w == "import.channel_publication_skipped" {
+		if w.Code == "import.channel_publication_skipped" {
 			t.Errorf("import response warnings = %v, want no import.channel_publication_skipped for a JWT/human actor "+
 				"(that warning is reserved for a channel-less SERVICE actor)", importResp.Warnings)
 		}
@@ -897,4 +897,12 @@ func provDoRequestWithReasonAndBody(t *testing.T, client *http.Client, method, u
 		t.Fatalf("%s %s: %v", method, url, err)
 	}
 	return resp
+}
+
+// importWarning mirrors the {code,message} objects the import endpoints put
+// in `warnings` (spec 19 section 5) — on a fresh database the bundle legitimately
+// returns advisory warnings, so the response must decode as objects, not strings.
+type importWarning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
