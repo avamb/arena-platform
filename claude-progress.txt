@@ -31134,3 +31134,80 @@ Gates:
   regenerated files committed.
 - npm --prefix apps/admin-web run type-check                        EXIT:0
 
+================================================================================
+2026-09-12 — W1-S1 batch: features #536 and #537 (head 5012513)
+================================================================================
+
+#536 W1-S1b — auto-publish an imported event into the calling key's channel.
+The working tree already carried a complete implementation from an interrupted
+session; this session reviewed it line by line, re-ran every gate and shipped it
+(commit 399152d).
+- auth.Actor gains ChannelID *uuid.UUID (service actors only);
+  server_apikey_auth.go copies api_keys.channel_id verbatim.
+- New himports/import_publication.go: on publish:true from a service actor with
+  a channel, INSIDE the import transaction — reuse the channel's active,
+  non-revoked agent_feed_tokens row or mint one labelled auto:event-bundle, then
+  PublishEvent with the city of the session's venue. Wired into BOTH import
+  paths (import_exec.go for source=bil24, import_arena.go for source=arena), so
+  the webhook subscriber exists before the post-commit v1.event.published fires.
+  Errors are returned, never swallowed (a failed statement would poison the tx).
+- Key without a channel: publication=null plus the new warning
+  import.channel_publication_skipped. Response gains
+  publication {channel_id, feed_token_id, publication_id} | null —
+  openapi.yaml + types_gen.go + TS client regenerated (codegen re-run this
+  session and reproduced the committed files byte for byte).
+- wpstub now accepts the catalog-family data ARRAY shape (Event.DataList), as
+  bil24wire.dispatchCatalog emits it; the order/ticket object shape is unchanged.
+- tests/compat/bil24/channel_publication_536_integration_test.go: full
+  httpserver + real OutboxEventsDispatcher + real bil24wire.Dispatcher →
+  wpstub receives event.created carrying the imported action_event_id with NO
+  manual publication; repeat creates no second token/publication; a key without
+  a channel warns and writes no event_publications row.
+- docs/ops/bil24_gateway.md §8: the key must be bound to the site channel.
+
+#537 W1-S1c — imported cities get a display name (commit 5012513).
+- himports/city_i18n.go: ensureCityNameTranslations writes the payload's
+  cityName into i18n_text (namespace geo.cities, key = city slug) for the
+  organization's default_locale AND for en, whitespace collapsed, case
+  preserved. Called from resolveGeography, so both import sources are covered.
+- New gen query InsertI18nTextIfAbsent (queries/geo.sql + gen/geo.sql.go),
+  ON CONFLICT DO NOTHING: additive only, an operator's correction is never
+  overwritten and a repeat writes nothing.
+- resolveGeography now returns an error (3 call sites updated): the insert runs
+  inside the import transaction, where a refused write cannot be downgraded to
+  a warning.
+- Tests: himports/city_i18n_537_test.go (normalization rule, incl. "never
+  equals the slug"); tests/compat/bil24/city_name_537_integration_test.go —
+  arena bundle → GET_ALL_ACTIONS cityList[].cityName comes back in the sent
+  case, en + org-locale rows present, repeat adds no rows, an operator
+  correction survives a re-import; plus the same check on the
+  source=bil24 /imports/bil24-session route.
+
+Gates (all from the repo root, no pipelines):
+- go.exe -C apps/backend build ./...                                EXIT:0
+- go.exe -C apps/backend vet ./...                                  EXIT:0
+- go.exe -C apps/backend vet -tags integration ./...                EXIT:0
+- go.exe -C apps/backend test ./internal/platform/httpserver/...
+    ./internal/platform/auth/... ./internal/adapters/bil24compat/...
+    ./internal/adapters/postgres/... ./tests/staticanalysis/...     EXIT:0
+- DATABASE_URL=<dev stand :55432> JWT_SIGNING_SECRET=x go.exe -C apps/backend
+    test -tags integration -count=1 -run TestCompatBil24_536 ./tests/compat/bil24/  EXIT:0
+- same, -run TestCompatBil24_537 verbose: both tests PASS, none skipped        EXIT:0
+- same, -p 1 ./tests/compat/bil24/... ./internal/platform/httpserver/...
+    ./internal/adapters/postgres/...                                EXIT:1 — ONLY
+    TestAuthEmailIntegrationPR02_VerificationEmailArrives and
+    TestAuthEmailIntegrationPR02_PasswordResetEmailArrives
+    "no handler for job type checkout.issue_tickets". PROVEN PRE-EXISTING:
+    with both features stashed the same package run fails identically
+    EXIT:1, and each test passes alone once the leftover job row in the
+    shared dev stand has been consumed. Shared-stand pollution / drain-loop
+    hygiene, not a #536/#537 defect — worth a fix-feature of its own.
+- gofmt -l on every changed file                       (no output) EXIT:0
+- GOLANGCI_LINT_CACHE=/tmp/golangci-cache golangci-lint run ./apps/backend/...
+                                                        0 issues   EXIT:0
+- Codegen (#536 only): openapi30gen + oapi-codegen@v2.4.1 + gen-ts-client.mjs,
+  .compat30.gen.yaml removed, regenerated files committed.
+
+Next: feature #538 (W1-S1 EPIC-VERIFY) — end-to-end test over #535+#536+#537
+plus the full cold gate. Then roll the stand with API_PUBLIC_URL (spec 22 §3).
+
