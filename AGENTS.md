@@ -110,6 +110,20 @@ entries short and factual.
   `mediastore.TestAllowedOwnerTypes_MatchMigrationCheckConstraint` now guards
   that pair by reading the embedded migration FS — extend the same pattern for
   any new allowlist/CHECK pair.
+- **A new permission must be granted to `platform_superadmin` in the SAME
+  migration that seeds it**, or `TestSuperadminPermissionParity532` (static,
+  `internal/migrations/superadmin_permission_parity_532_test.go`, guards every
+  migration numbered above 0100) and the live-DB counterpart
+  `TestSuperadminPermissionParity532_Integration` both go red. Migration 0071
+  granted `platform_superadmin` every permission that existed AT THAT TIME
+  (a one-shot `CROSS JOIN permissions`, not a standing trigger); permissions
+  seeded afterwards (0091/0092/0096) were granted only to `admin`/`org_admin`
+  and never reached `platform_superadmin`, so a real superadmin 403'd on the
+  API-keys/customers/orders admin surfaces despite `/v1/me` reporting the
+  role. Migration 0100 re-ran the same `CROSS JOIN` catch-up once; either add
+  an explicit `role_permissions` grant naming `platform_superadmin` next to
+  your new `INSERT INTO permissions`, or repeat the `CROSS JOIN permissions`
+  idiom in your own migration.
 
 ## Gotchas
 
