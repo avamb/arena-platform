@@ -385,6 +385,15 @@ entries short and factual.
   and `go.exe test -count=1 -p 1 -tags integration ./apps/backend/...`. The
   `internal/tests/pgtest` package panics on Windows ("rootless Docker is not
   supported") — that one is host-specific, ignore it locally.
+  **Also run the package under test BEFORE any other package** (or alone):
+  CI runs packages in parallel, so rows that another package's harness seeds
+  (e.g. `tests/compat/bil24/seed_test.go` inserting country `CZ`/`czechia`,
+  which `0006_geo.sql` never seeds) are NOT guaranteed to exist. Seen
+  2026-09-12 on run 34711169622: the 533/538 provisioning test passed locally
+  only because the harness had already inserted Czechia, and failed in CI
+  with `import.country_unresolved`. A test that needs geo rows outside the
+  0006 seed list must insert them itself with the harness's idempotent
+  `INSERT ... ON CONFLICT (iso2) DO NOTHING` idiom.
 - **`audit.WithServiceActor` must keep `actor_id` a bare uuid.** It used to
   write `api_key:<uuid>`, which `audit_events.actor_id uuid` rejects with
   22P02 — every audited mutation under an organization API key silently lost
