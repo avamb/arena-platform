@@ -33,6 +33,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
@@ -89,6 +90,19 @@ type Checker interface {
 	// auth.ActorFromContext — callers MUST place the auth middleware before any
 	// RequirePermission middleware so the actor is present.
 	Check(ctx context.Context, action, resource string) error
+}
+
+// SuperadminBypassChecker is implemented by Checkers that can evaluate the
+// cross-tenant superadmin org-access bypass server-side, without trusting the
+// JWT roles claim (feature #531). httpserver.markSuperadminOrgAccess type-
+// asserts s.perms against this interface; Checkers that don't implement it
+// (AllowAllChecker/DenyAllChecker, used in tests and simpler wiring) simply
+// never grant the bypass and callers fall back to a JWT-claim-only check.
+type SuperadminBypassChecker interface {
+	// SuperadminOrgBypass reports whether actor should receive the
+	// cross-tenant organization-membership bypass marker. See
+	// DBChecker.SuperadminOrgBypass for the resolution algorithm.
+	SuperadminOrgBypass(ctx context.Context, actor auth.Actor) bool
 }
 
 // -----------------------------------------------------------------------------

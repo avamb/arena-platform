@@ -100,13 +100,32 @@ func (s *Server) applyAuth(pr chi.Router, perm, scope string) {
 func (s *Server) markSuperadminOrgAccess(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		actor, authenticated := auth.ActorFromContext(r.Context())
-		if authenticated && hasRole(actor.Roles, "platform_superadmin") &&
-			s.perms.Check(r.Context(), "superadmin.read", "organizations") == nil {
+		if authenticated && s.superadminOrgBypass(r.Context(), actor) {
 			r = r.WithContext(auth.WithSuperadminOrgAccess(r.Context()))
 			s.auditSuperadminOrgAccess(r)
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// superadminOrgBypass decides whether actor should receive the cross-tenant
+// organization-membership bypass marker (feature #531).
+//
+// Real login/refresh-issued JWTs carry no roles claim (hauth/login.go issues
+// tokens with a nil roles argument), so a JWT-claim-only check never fires
+// for a genuine superadmin session. When s.perms implements
+// permissions.SuperadminBypassChecker (the production DBChecker), roles are
+// instead resolved server-side: JWT roles unioned with membership-derived
+// roles fetched fresh from the database, exactly like every other permission
+// check on this server. Checkers that don't implement the interface
+// (AllowAllChecker/DenyAllChecker, used by simpler test wiring) fall back to
+// the historical JWT-claim-only check.
+func (s *Server) superadminOrgBypass(ctx context.Context, actor auth.Actor) bool {
+	if bypasser, ok := s.perms.(permissions.SuperadminBypassChecker); ok {
+		return bypasser.SuperadminOrgBypass(ctx, actor)
+	}
+	return hasRole(actor.Roles, "platform_superadmin") &&
+		s.perms.Check(ctx, "superadmin.read", "organizations") == nil
 }
 
 func hasRole(roles []string, wanted string) bool {

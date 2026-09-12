@@ -205,6 +205,66 @@ func (c *DBChecker) resolvePermissions(ctx context.Context, roles []string) (map
 	return set, nil
 }
 
+// SuperadminOrgBypass reports whether actor should receive the cross-tenant
+// superadmin org-access marker (feature #531, spec
+// 08_architecture/21_superadmin_org_access_parity_ru.md §3.1).
+//
+// Real login/refresh-issued JWTs carry no roles claim (hauth/login.go calls
+// auth.IssueJWT with a nil roles argument), so relying on actor.Roles alone
+// never grants the bypass for a genuine superadmin session. This method
+// instead resolves the actor's effective role set the same way Check does —
+// JWT roles unioned with membership-derived roles fetched fresh from the
+// database via the wired MembershipQuerier — and then verifies both that
+// platform_superadmin is among those roles and that the resolved role set
+// carries the superadmin.read permission (via the same cached
+// resolvePermissions path Check uses). This performs at most one membership
+// DB round trip, matching the cost Check itself would already pay for this
+// actor — callers must NOT also call Check separately for the same request
+// or they will pay for a second, uncached membership lookup.
+//
+// Service actors (API keys) never receive the bypass: they carry no roles
+// and have no memberships row.
+func (c *DBChecker) SuperadminOrgBypass(ctx context.Context, actor auth.Actor) bool {
+	if actor.IsService() {
+		return false
+	}
+
+	roles := make([]string, len(actor.Roles))
+	copy(roles, actor.Roles)
+
+	if c.memberships != nil && actor.ID != "" {
+		if uid, err := uuid.Parse(actor.ID); err == nil {
+			if memberRoles, err := c.memberships.GetActiveRolesForUser(ctx, uid); err == nil {
+				roles = append(roles, memberRoles...)
+			}
+			// On a membership lookup failure, fall through with JWT-only
+			// roles rather than failing the request — the bypass simply
+			// won't be granted, which is the safe direction.
+		}
+	}
+
+	if !hasRoleName(roles, "platform_superadmin") || len(roles) == 0 {
+		return false
+	}
+
+	perms, err := c.resolvePermissions(ctx, roles)
+	if err != nil {
+		return false
+	}
+	_, ok := perms["superadmin.read"]
+	return ok
+}
+
+// hasRoleName reports whether wanted is present in roles.
+func hasRoleName(roles []string, wanted string) bool {
+	for _, role := range roles {
+		if role == wanted {
+			return true
+		}
+	}
+	return false
+}
+
 // InvalidateCache clears the in-process permission cache. Call this in tests
 // or after a live role/permission configuration change.
 func (c *DBChecker) InvalidateCache() {
