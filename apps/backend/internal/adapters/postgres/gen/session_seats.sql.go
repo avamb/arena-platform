@@ -982,6 +982,36 @@ func (q *Queries) ReleaseSoldGAUnitForReservation(ctx context.Context, sessionID
 	return scanSessionSeatRow(row)
 }
 
+const releaseSoldGAUnitBySeatKey = `-- name: ReleaseSoldGAUnitBySeatKey :one
+UPDATE session_seats ss
+SET    status         = 'available',
+       reservation_id = NULL,
+       status_version = $3,
+       updated_at     = now()
+WHERE  ss.session_id = $1
+  AND  ss.seat_key   = $2
+  AND  ss.kind       = 'ga_unit'
+  AND  ss.status     = 'sold'
+  AND  NOT EXISTS (
+         SELECT 1 FROM tickets t
+         WHERE  t.session_id = ss.session_id
+           AND  t.seat_key   = ss.seat_key
+           AND  t.status     = 'active'
+       )
+RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
+          ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
+          ss.status_version, ss.updated_at, ss.system_seat_id`
+
+// ReleaseSoldGAUnitBySeatKey is the ga_unit twin of ReleaseSoldSessionSeat.
+// Since AB-51 issuance stamps the concrete unit's seat_key on the GA
+// ticket, so a cancellation releases exactly THAT unit, guarded the same
+// way (sold, and no other ACTIVE ticket still references it). Returns
+// pgx.ErrNoRows when the unit is not sold or still referenced.
+func (q *Queries) ReleaseSoldGAUnitBySeatKey(ctx context.Context, sessionID uuid.UUID, seatKey string, statusVersion int64) (SessionSeatRow, error) {
+	row := q.db.QueryRow(ctx, releaseSoldGAUnitBySeatKey, sessionID, seatKey, statusVersion)
+	return scanSessionSeatRow(row)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CountSessionSeatsByTier (AB-48)
 // ─────────────────────────────────────────────────────────────────────────────

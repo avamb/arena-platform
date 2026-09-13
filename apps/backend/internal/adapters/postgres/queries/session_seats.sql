@@ -479,6 +479,31 @@ RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
           ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
           ss.status_version, ss.updated_at;
 
+-- name: ReleaseSoldGAUnitBySeatKey :one
+-- ga_unit twin of ReleaseSoldSessionSeat. Since AB-51 issuance stamps the
+-- concrete unit's seat_key ("ga|pool|000003") on the GA ticket, so a
+-- cancellation releases exactly THAT unit, guarded the same way (sold, and
+-- no other ACTIVE ticket still references it). Returns pgx.ErrNoRows when
+-- the unit is not sold or still referenced — the caller aborts.
+UPDATE session_seats ss
+SET    status         = 'available',
+       reservation_id = NULL,
+       status_version = $3,
+       updated_at     = now()
+WHERE  ss.session_id = $1
+  AND  ss.seat_key   = $2
+  AND  ss.kind       = 'ga_unit'
+  AND  ss.status     = 'sold'
+  AND  NOT EXISTS (
+         SELECT 1 FROM tickets t
+         WHERE  t.session_id = ss.session_id
+           AND  t.seat_key   = ss.seat_key
+           AND  t.status     = 'active'
+       )
+RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
+          ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
+          ss.status_version, ss.updated_at;
+
 -- name: CountSessionSeatsByTier :many
 -- AB-48 step 3: per-tier inventory counts for the price forms ("Third:
 -- EUR 30 · Seats: 260"). Physical seats and GA units are reported

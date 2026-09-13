@@ -40,6 +40,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -402,6 +403,23 @@ func ReleaseCancelledTicketInventoryTx(
 		version, err := txq.IncrementSessionSeatStatusVersion(ctx, ticket.SessionID)
 		if err != nil {
 			return out, err
+		}
+		// Since AB-51 every GA ticket carries the seat_key of the concrete
+		// ga_unit row it consumed ("ga|pool|000003", "ga|c3|000012"), so a
+		// seat_key alone does not mean an assigned seat. Release exactly
+		// that unit — never a fungible sibling — through the ga_unit twin of
+		// ReleaseSoldSessionSeat; the 'seat' query would answer ErrNoRows
+		// for it (kind mismatch) and the operator got "ticket.release_failed"
+		// for every GA ticket sold through the site (found live 2026-09-13).
+		if strings.HasPrefix(*ticket.SeatKey, "ga|") {
+			if _, err := txq.ReleaseSoldGAUnitBySeatKey(ctx, ticket.SessionID, *ticket.SeatKey, version); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return out, errors.New("GA unit " + *ticket.SeatKey + " is not releasable (not sold, or an active ticket still references it)")
+				}
+				return out, err
+			}
+			out.GAUnitReleased = true
+			return out, nil
 		}
 		if _, err := txq.ReleaseSoldSessionSeat(ctx, ticket.SessionID, *ticket.SeatKey, version); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {

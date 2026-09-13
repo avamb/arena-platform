@@ -424,6 +424,17 @@ entries short and factual.
   fallback to the min ticket id only when `tickets.order_id` is NULL);
   integration tests resolve a wire orderId back to the row with
   `SELECT id FROM orders WHERE system_id=$1`.
+- **A GA ticket carries the seat_key of its ga_unit (`ga|pool|000003`),
+  so `tickets.seat_key != NULL` does NOT mean an assigned seat.** Since
+  AB-51 issuance stamps the unit key on every GA ticket; the cancellation
+  release used to send any seat_key to `ReleaseSoldSessionSeat`
+  (`kind='seat'` only) and every GA ticket sold through a site failed with
+  `ticket.release_failed` (found live 2026-09-13). Branch on the `ga|`
+  prefix and release that exact unit with `ReleaseSoldGAUnitBySeatKey`; the
+  reservation-scoped `ReleaseSoldGAUnitForReservation` is only for legacy
+  NULL-seat_key tickets. Integration fixtures that insert GA tickets with a
+  NULL seat_key test the legacy shape, not the real one — add the stamped
+  variant too (`TestAB49Integration_GAUnit_ReleaseByTicketSeatKey`).
 - **`outbox_events` dead-letter replay is SQL-only, no admin endpoint.**
   `internal/platform/outbox` stops retrying a row once `dead_lettered_at` is
   set; find candidates with

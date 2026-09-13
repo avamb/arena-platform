@@ -524,3 +524,103 @@ func TestAB49Integration_OrderScope_FullAndPartial(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// TestAB49Integration_GAUnit_ReleaseByTicketSeatKey covers the shape every
+// GA ticket has had since AB-51: issuance stamps the concrete ga_unit's
+// seat_key ("ga|pool|000002") on the ticket. Cancelling it must release
+// exactly THAT unit through the ga_unit twin of ReleaseSoldSessionSeat —
+// the 'seat' query answers ErrNoRows for a ga_unit row (kind mismatch), which
+// surfaced live on the staging stand 2026-09-13 as ticket.release_failed for
+// a ticket sold through the WordPress site.
+func TestAB49Integration_GAUnit_ReleaseByTicketSeatKey(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set — skipping AB-49 GA seat_key integration test")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	defer pool.Close()
+
+	f := newAB49Fixture(t, ctx, pool, "general_admission")
+	defer f.cleanup()
+	q := gen.New(pool)
+
+	if _, err := q.InsertGAUnits(ctx, f.sessionID, "ga|pool", 0, &f.tierID, 3); err != nil {
+		t.Fatalf("InsertGAUnits: %v", err)
+	}
+	v, err := q.IncrementSessionSeatStatusVersion(ctx, f.sessionID)
+	if err != nil {
+		t.Fatalf("version bump: %v", err)
+	}
+	held, err := q.AllocateGAUnitsForHold(ctx, f.sessionID, f.resID, &f.tierID, v, &f.tierID, 2)
+	if err != nil {
+		t.Fatalf("AllocateGAUnitsForHold: %v", err)
+	}
+	if len(held) != 2 {
+		t.Fatalf("held units = %d, want 2", len(held))
+	}
+	for _, u := range held {
+		v, err = q.IncrementSessionSeatStatusVersion(ctx, f.sessionID)
+		if err != nil {
+			t.Fatalf("version bump: %v", err)
+		}
+		if _, err := q.SellSessionSeat(ctx, u.ID, f.resID, v); err != nil {
+			t.Fatalf("SellSessionSeat GA unit: %v", err)
+		}
+	}
+
+	// Two tickets, each stamped with its unit's seat_key (post-AB-51 shape).
+	keyA, keyB := held[0].SeatKey, held[1].SeatKey
+	ticketA, err := q.InsertTicket(ctx, f.checkoutID, f.sessionID, &f.tierID, nil,
+		&keyA, nil, nil, nil, 0)
+	if err != nil {
+		t.Fatalf("InsertTicket GA A: %v", err)
+	}
+	if _, err := q.InsertTicket(ctx, f.checkoutID, f.sessionID, &f.tierID, nil,
+		&keyB, nil, nil, nil, 1); err != nil {
+		t.Fatalf("InsertTicket GA B: %v", err)
+	}
+
+	cancelled, err := q.CancelTicket(ctx, ticketA.ID, "ga cancel by seat_key", "none")
+	if err != nil {
+		t.Fatalf("CancelTicket GA A: %v", err)
+	}
+	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	outcome, err := htickets.ReleaseCancelledTicketInventoryTx(ctx, q.WithTx(tx), cancelled)
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		t.Fatalf("ReleaseCancelledTicketInventoryTx GA (seat_key): %v", err)
+	}
+	if !outcome.GAUnitReleased || outcome.SeatReleased {
+		_ = tx.Rollback(ctx)
+		t.Fatalf("outcome = %+v, want GAUnitReleased only", outcome)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	// Exactly ticket A's unit came back; ticket B's unit is still sold.
+	var statusA, statusB string
+	if err := pool.QueryRow(ctx, `SELECT status FROM session_seats WHERE session_id=$1 AND seat_key=$2`, f.sessionID, keyA).Scan(&statusA); err != nil {
+		t.Fatalf("read unit A: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT status FROM session_seats WHERE session_id=$1 AND seat_key=$2`, f.sessionID, keyB).Scan(&statusB); err != nil {
+		t.Fatalf("read unit B: %v", err)
+	}
+	if statusA != "available" || statusB != "sold" {
+		t.Fatalf("unit A = %q (want available), unit B = %q (want sold)", statusA, statusB)
+	}
+	soldLeft, err := q.CountGAUnitsHeldSoldByTier(ctx, f.sessionID, f.tierID)
+	if err != nil {
+		t.Fatalf("CountGAUnitsHeldSoldByTier: %v", err)
+	}
+	if soldLeft != 1 {
+		t.Fatalf("units still held/sold = %d, want 1", soldLeft)
+	}
+}
