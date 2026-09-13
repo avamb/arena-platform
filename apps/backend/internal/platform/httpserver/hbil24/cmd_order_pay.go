@@ -1,19 +1,19 @@
-// Package hbil24 — PAY_ORDER (spec §7.9, feature #494, W1-B2a).
+// Package hbil24 — PAY_ORDER (spec §7.9, feature #494, W1-B2a; rewritten for
+// the payment-window contract, owner decision 2026-09-13).
 //
 // PAY_ORDER is the moment the WordPress shop tells us "the buyer has paid".
 // The money never touches arena: WooCommerce has already charged the card and
-// is reporting the fact. Everything this command does is therefore a
-// *bookkeeping* transition, and the two hard constraints follow from that:
+// is reporting the fact (or is about to void the authorization — the site
+// only calls PAY_ORDER after a successful capture). Two hard constraints
+// follow from that plus the owner's payment-window rule:
 //
-//   - The money has ALREADY MOVED. Once the shop says paid, refusing the
-//     payment strands the buyer with a charge and no ticket. So almost every
-//     discrepancy is recorded and waved through: an `amount` that disagrees
-//     with orders.total only writes order_events.amount_mismatch (spec §7.9
-//     step 3), and a promo-redemption bookkeeping failure is logged, never
-//     fatal. The single exception is a hold that can no longer be re-taken —
-//     we cannot conjure a seat somebody else is now sitting in — which parks
-//     the order in manual_review, alerts an operator and answers 101. That is
-//     the ONLY 101 after payment; the site then sets bil24_ext_status=pay_failed.
+//   - A buyer gets a FIXED payment window from the moment the site created
+//     the order (CREATE_ORDER_EXT sets orders.expires_at =
+//     reservations.expires_at = now + window + grace). Once that instant
+//     passes, payment is no longer accepted — the order is expired or
+//     cancelled and its inventory goes back on sale automatically. There is
+//     NO MANUAL REVIEW anywhere in this file any more: every outcome
+//     resolves without an operator.
 //
 //   - The site polls GET_TICKETS_BY_ORDER five times with 2/4/8s backoff
 //     (spec §7.10). Issuing tickets asynchronously would make the first poll a
@@ -22,11 +22,17 @@
 //     inside that same transaction anyway, as insurance for the case where the
 //     process dies between COMMIT and the synchronous call.
 //
-// The write set is one transaction (spec §7.9 step 4): payment_intents
-// (provider='manual'), checkout_sessions → completed, reservation → converted,
-// promo redemption, orders → paid, customer_org_links, customer_identities
-// verification.
-
+// Every PAY_ORDER call takes a row-level lock on the order FIRST
+// (LockOrderForUpdate) and makes its ENTIRE decision inside that one
+// transaction: concurrent PAY_ORDER calls for the same order (a WordPress
+// retry storm, or several requests landing right at the payment-window
+// boundary) serialize on the lock instead of racing a read-then-write status
+// decision, so at most one of them ever pays, expires, or cancels the order.
+//
+// The write set of a successful payment is one transaction (spec §7.9 step
+// 4): payment_intents (provider='manual'), checkout_sessions → completed,
+// reservation → converted, promo redemption, orders → paid, customer_org_links,
+// customer_identities verification.
 package hbil24
 
 import (
@@ -59,14 +65,15 @@ import (
 const (
 	payStatusRefunded          = "refunded"
 	payStatusPartiallyRefunded = "partially_refunded"
-	// payStatusManualReview parks an order whose hold could not be re-taken.
+	// payStatusManualReview is handled for LEGACY rows only: nothing in this
+	// file writes it any more (owner decision 2026-09-13 — no manual
+	// review), but a row parked by a pre-payment-window deployment must
+	// still answer something sane and stop being retried forever.
 	payStatusManualReview = "manual_review"
 	// payStatusAbandoned mirrors checkout_sessions' 'abandoned' state in the
 	// orders CHECK constraint. No code path writes it to orders today, but
 	// PAY_ORDER enumerates every status the constraint allows rather than
-	// letting an unhandled one fall through to ordering.MarkPaid's generic
-	// ErrInvalidTransition (which used to surface as a retry-forever -1 for
-	// 'expired' — the defect this file fixes).
+	// letting an unhandled one fall through to a generic error.
 	payStatusAbandoned = "abandoned"
 )
 
@@ -86,32 +93,11 @@ const payAmountToleranceMinor int64 = 1
 const payCustomerLinkSource = "order"
 
 // errPayHoldExpired is the internal sentinel raised when ReacquireHoldTx could
-// not restore the order's inventory. It aborts the payment transaction so that
-// the manual-review park runs in a transaction of its own — parking an order in
-// the same transaction we are about to roll back would lose the park.
+// not restore the order's inventory (payment-window contract case c: the
+// hold's own TTL passed and somebody else's RESERVE took the seats). It
+// aborts the payment transaction so the CANCEL (payCancelOrder) runs against
+// an order that transaction has already rolled back.
 var errPayHoldExpired = errors.New("hbil24: order hold expired and could not be reacquired")
-
-// errPaySupersededByOpenOrder is the internal sentinel raised when reviving an
-// expired order collides with orders_one_pending_per_customer_session_uq
-// (ordering.ErrOpenOrderConflict): the SAME customer re-reserved for the SAME
-// session and CREATE_ORDER_EXT already minted a fresh pending_payment order
-// while this order's late payment was in flight. The seats this order's hold
-// pointed at may even have been successfully re-acquired by step 2 — that
-// does not matter, the order itself can never legally become pending_payment
-// again while the newer order holds that slot. Handled exactly like
-// errPayHoldExpired (park + alert + 101), but with a distinct park reason so
-// an operator sees the real cause instead of a misleading "hold expired".
-var errPaySupersededByOpenOrder = errors.New("hbil24: order was superseded by a newer open order for the same customer and session")
-
-// payParkReasonHoldExpired / payParkReasonSupersededByOpenOrder are the two
-// causes payParkManualReview records — in order_events.hold_expired.payload
-// and in the operator alert — so an operator can tell "the seats are gone"
-// apart from "the customer already has a different open order for this
-// money". Every PAY_ORDER manual-review park names one of these explicitly.
-const (
-	payParkReasonHoldExpired           = "hold_expired"
-	payParkReasonSupersededByOpenOrder = "superseded_by_open_order"
-)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Entry point
@@ -146,7 +132,9 @@ func (h *Handler) handleBil24PayOrder(w http.ResponseWriter, r *http.Request, re
 	h.handleBil24PayOrderWired(w, r, req)
 }
 
-// handleBil24PayOrderWired walks spec §7.9 steps 1–6.
+// handleBil24PayOrderWired resolves the order, then hands the ENTIRE
+// pay-or-expire-or-cancel decision to payLocked, which makes it atomically
+// under a row lock on the order (see the package doc comment).
 func (h *Handler) handleBil24PayOrderWired(w http.ResponseWriter, r *http.Request, req bil24Request) {
 	ctx := r.Context()
 
@@ -168,9 +156,11 @@ func (h *Handler) handleBil24PayOrderWired(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Step 1 — resolve the order inside the caller's org. A crafted orderId
-	// belonging to another tenant must be indistinguishable from a typo, so
-	// both answer -3.
+	// Resolve the order inside the caller's org. A crafted orderId belonging
+	// to another tenant must be indistinguishable from a typo, so both
+	// answer -3. This read is only used to find the id/org for the lock —
+	// the actual decision below re-reads the row under LockOrderForUpdate,
+	// so a stale value here cannot cause a wrong answer.
 	order, err := h.payResolveOrder(ctx, req.OrderID, gw.OrgID)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
@@ -183,76 +173,47 @@ func (h *Handler) handleBil24PayOrderWired(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Step 1 (cont.) — terminal / non-payable statuses, enumerated over every
-	// value the orders CHECK constraint allows. Already paid is the
-	// idempotent replay the shop performs after a timeout: answer 0 and
-	// write nothing. 'expired' is deliberately NOT listed here — the buyer's
-	// money has already moved by the time the shop calls PAY_ORDER, so an
-	// expired order falls through to the normal payment transaction below,
-	// which attempts to revive it (ordering.ReviveForPayment) before
-	// MarkPaid runs; only when the hold cannot be secured does it end up in
-	// manual_review, exactly like a hold that died between RESERVE and pay.
-	switch order.Status {
-	case ordering.StatusPaid:
-		writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, nil))
+	outcome, cs, err := h.payLocked(ctx, req, order, cartHoldTTL(channel))
+	if err != nil {
+		h.payTransient(w, req, "payment transaction failed", err)
 		return
-	case ordering.StatusCancelled, payStatusRefunded, payStatusPartiallyRefunded, payStatusAbandoned:
+	}
+
+	switch outcome {
+	case payOutcomePaid, payOutcomeAlreadyPaid:
+		if outcome == payOutcomePaid {
+			h.payIssueTickets(ctx, order, cs, settings)
+		}
+		writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, nil))
+	case payOutcomeOrderExpired:
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUserVisible,
+			h.localizeDesc(req.Locale, locale, "bil24.order_expired",
+				"payment time for this order has expired", nil),
+		))
+	case payOutcomeOrderCancelled:
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeUserVisible,
 			h.localizeDesc(req.Locale, locale, "bil24.order_cancelled",
 				"order has been cancelled", nil),
 		))
-		return
-	case payStatusManualReview:
-		// Already parked from an earlier PAY_ORDER attempt — either this
-		// exact revival-failed path, or the classic live-hold-died-at-pay-
-		// time path. The WordPress plugin retries whatever is not 0, so a
-		// replay MUST be idempotent: answer the same hold_expired 101
-		// without touching the order/checkout session again and without
-		// raising a second operator alert. payParkManualReview is NOT
-		// called here on purpose — see its own doc comment for why calling
-		// it twice would be unsafe (duplicate hold_expired events and an
-		// alert storm on every WordPress retry).
+	case payOutcomeHoldExpired:
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeUserVisible,
 			h.localizeDesc(req.Locale, locale, "bil24.hold_expired",
 				"your hold has expired, please reserve again", nil),
 		))
-		return
+	default:
+		h.payTransient(w, req, "unexpected pay outcome", fmt.Errorf("hbil24: unhandled payOutcome %d", outcome))
 	}
+}
 
-	// Steps 2–4 — one transaction.
-	cs, err := h.payExecute(ctx, req, order, cartHoldTTL(channel))
-	switch {
-	case errors.Is(err, errPayHoldExpired):
-		h.payParkManualReview(ctx, req, order, payParkReasonHoldExpired)
-		writeBil24JSON(w, http.StatusOK, bil24Error(
-			req.Command, ResultCodeUserVisible,
-			h.localizeDesc(req.Locale, locale, "bil24.hold_expired",
-				"your hold has expired, please reserve again", nil),
-		))
-		return
-	case errors.Is(err, errPaySupersededByOpenOrder):
-		// The customer's money is taken, but this order can never legally
-		// become pending_payment again while their newer order holds the
-		// one-open-order slot for this session (see errPaySupersededByOpenOrder).
-		// Same wire contract as a dead hold — 101, park, alert — the site
-		// cannot act on the distinction anyway.
-		h.payParkManualReview(ctx, req, order, payParkReasonSupersededByOpenOrder)
-		writeBil24JSON(w, http.StatusOK, bil24Error(
-			req.Command, ResultCodeUserVisible,
-			h.localizeDesc(req.Locale, locale, "bil24.hold_expired",
-				"your hold has expired, please reserve again", nil),
-		))
-		return
-	case err != nil:
-		h.payTransient(w, req, "payment transaction failed", err)
-		return
-	}
-
-	// Steps 5–6 — synchronous issuance. The delivery e-mail is suppressed
-	// unless the channel opts in: the WordPress shop mails its own PDF, and
-	// two e-mails per buyer is a support incident, not a feature.
+// payIssueTickets runs steps 5-6 of spec §7.9: synchronous ticket issuance
+// right after the payment transaction commits. Suppressing arena's own
+// delivery e-mail unless the channel opts in (settings.gateway.platform_email)
+// — the WordPress shop mails its own PDF, and two e-mails per buyer is a
+// support incident, not a feature.
+func (h *Handler) payIssueTickets(ctx context.Context, order gen.OrderRow, cs gen.CheckoutSessionRow, settings GatewaySettings) {
 	issued, ierr := h.payDeps.IssueTickets(ctx, cs, !settings.PlatformEmail)
 	if ierr != nil {
 		// The payment is committed and the insurance worker job is queued, so
@@ -263,23 +224,19 @@ func (h *Handler) handleBil24PayOrderWired(w http.ResponseWriter, r *http.Reques
 			slog.String("checkout_session_id", cs.ID.String()),
 			slog.String("error", ierr.Error()),
 		)
-	} else {
-		h.logger.Info("bil24_compat: PAY_ORDER: order paid",
-			slog.String("order_id", order.ID.String()),
-			slog.Int64("order_system_id", order.SystemID),
-			slog.Int("tickets", issued),
-		)
+		return
 	}
-
-	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, nil))
+	h.logger.Info("bil24_compat: PAY_ORDER: order paid",
+		slog.String("order_id", order.ID.String()),
+		slog.Int64("order_system_id", order.SystemID),
+		slog.Int("tickets", issued),
+	)
 }
 
 // payResolveOrder implements spec §7.9 step 1's lookup. The spec names
-// orders.system_id — the bigint wire id — but CREATE_ORDER_EXT currently
-// answers with the platform UUID (see cmd_order_create.go's deferred-id note),
-// and a site that echoes what we gave it must not be punished for our own
-// transitional format. So all three shapes the gateway has ever emitted are
-// accepted, and each is org-scoped before it is returned.
+// orders.system_id — the bigint wire id — and every shape the gateway has
+// ever emitted (system_id, platform UUID, legacy checkout_session UUID) is
+// accepted, each org-scoped before it is returned.
 func (h *Handler) payResolveOrder(ctx context.Context, raw string, orgID uuid.UUID) (gen.OrderRow, error) {
 	return resolveOrderRef(ctx, h.orderDeps.Q, raw, orgID)
 }
@@ -339,26 +296,214 @@ func payScopeOrder(order gen.OrderRow, orgID uuid.UUID) (gen.OrderRow, error) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Steps 2–4 — the payment transaction
+// payLocked — the one atomic decision (payment-window contract)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// payExecute runs spec §7.9 steps 2–4 atomically and returns the completed
-// checkout session, which step 5 needs to issue tickets against.
-func (h *Handler) payExecute(
+// payOutcome enumerates every wire-visible result payLocked can reach.
+type payOutcome int
+
+const (
+	// payOutcomePaid — the payment just completed in THIS call; tickets must
+	// be issued. resultCode 0.
+	payOutcomePaid payOutcome = iota
+	// payOutcomeAlreadyPaid — the order was already 'paid' before this call
+	// (idempotent replay); nothing to issue again. resultCode 0.
+	payOutcomeAlreadyPaid
+	// payOutcomeOrderExpired — the payment window (window+grace from
+	// CREATE_ORDER_EXT) has passed, whether this call is the one that just
+	// expired the order or it was already expired. resultCode 101
+	// bil24.order_expired.
+	payOutcomeOrderExpired
+	// payOutcomeOrderCancelled — cancelled/refunded/partially_refunded/
+	// abandoned. resultCode 101 bil24.order_cancelled.
+	payOutcomeOrderCancelled
+	// payOutcomeHoldExpired — the hold died and could not be reacquired
+	// (case c: sold out to someone else within the window), so the order was
+	// just cancelled; or a LEGACY manual_review row from before this
+	// contract. resultCode 101 bil24.hold_expired.
+	payOutcomeHoldExpired
+)
+
+// payLocked is the single entry point for PAY_ORDER's whole decision. It
+// takes a row-level lock on the order FIRST (LockOrderForUpdate) and decides
+// everything else — pay, expire, or leave alone — from the row it reads
+// UNDER that lock, never from a value read before the transaction opened.
+// That is what makes 10 concurrent PAY_ORDER calls for the same order safe:
+// they serialize on the lock, and only the first one to observe
+// pending_payment (with a live-or-reacquirable hold, before the deadline)
+// actually pays; every other call sees the row AFTER that transaction
+// committed and answers consistently with whatever it became.
+func (h *Handler) payLocked(
 	ctx context.Context,
 	req bil24Request,
 	order gen.OrderRow,
 	ttl time.Duration,
-) (gen.CheckoutSessionRow, error) {
+) (payOutcome, gen.CheckoutSessionRow, error) {
 	tx, err := h.orderDeps.Pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return gen.CheckoutSessionRow{}, fmt.Errorf("begin: %w", err)
+		return 0, gen.CheckoutSessionRow{}, fmt.Errorf("begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	txq := gen.New(tx)
 	now := time.Now().UTC()
 	actor := orderActor(req)
 
+	locked, err := txq.LockOrderForUpdate(ctx, order.ID, order.OrgID)
+	if err != nil {
+		return 0, gen.CheckoutSessionRow{}, fmt.Errorf("lock order: %w", err)
+	}
+
+	switch locked.Status {
+	case ordering.StatusPaid:
+		return payOutcomeAlreadyPaid, gen.CheckoutSessionRow{}, tx.Commit(ctx)
+	case ordering.StatusExpired:
+		return payOutcomeOrderExpired, gen.CheckoutSessionRow{}, tx.Commit(ctx)
+	case ordering.StatusCancelled, payStatusRefunded, payStatusPartiallyRefunded, payStatusAbandoned:
+		return payOutcomeOrderCancelled, gen.CheckoutSessionRow{}, tx.Commit(ctx)
+	case payStatusManualReview:
+		// Legacy rows only (nothing writes this status any more): answer the
+		// same wire result without touching anything.
+		return payOutcomeHoldExpired, gen.CheckoutSessionRow{}, tx.Commit(ctx)
+	case ordering.StatusPendingPayment:
+		// fall through to the window/hold decision below.
+	default:
+		return 0, gen.CheckoutSessionRow{}, fmt.Errorf("hbil24: order %s has unexpected status %q", locked.ID, locked.Status)
+	}
+
+	// Case (d): the payment window (window+grace from CREATE_ORDER_EXT) has
+	// passed and reservation.expire_sweep / order.expire_sweep have not yet
+	// caught up. PAY_ORDER performs both sweeps' job itself, atomically,
+	// under the same lock: expire the order, release the hold.
+	if locked.ExpiresAt != nil && now.After(*locked.ExpiresAt) {
+		expired, ok, err := ordering.ExpireIfStillPending(ctx, txq, ordering.ExpireIfStillPendingInput{
+			OrderID: locked.ID, Actor: actor, Now: now,
+		})
+		if err != nil {
+			return 0, gen.CheckoutSessionRow{}, err
+		}
+		if !ok {
+			// Cannot happen while we hold the row lock and just confirmed
+			// pending_payment above — stay defensive rather than silently
+			// answering something that might be stale.
+			return 0, gen.CheckoutSessionRow{}, fmt.Errorf("hbil24: order %s changed status under lock", locked.ID)
+		}
+		if err := hcheckout.ExpireHoldForOrderTx(ctx, txq, locked.ReservationID); err != nil {
+			return 0, gen.CheckoutSessionRow{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return 0, gen.CheckoutSessionRow{}, fmt.Errorf("commit: %w", err)
+		}
+		h.logger.Info("bil24_compat: PAY_ORDER: order expired — payment window elapsed",
+			slog.String("order_id", locked.ID.String()),
+			slog.Int64("order_system_id", locked.SystemID),
+			slog.Time("expires_at", *locked.ExpiresAt),
+		)
+		_ = expired
+		return payOutcomeOrderExpired, gen.CheckoutSessionRow{}, nil
+	}
+
+	// Cases (b)/(c): still inside the window — live hold pays normally, a
+	// TTL'd-but-reacquirable hold is re-taken and pays, a hold genuinely
+	// lost to someone else cancels the order.
+	cs, err := h.payExecuteLocked(ctx, tx, txq, req, locked, ttl, now, actor)
+	switch {
+	case errors.Is(err, errPayHoldExpired):
+		// Roll back EXPLICITLY, right now, before doing anything else: this
+		// transaction is still holding the LockOrderForUpdate row lock, and
+		// payCancelOrder below opens a SEPARATE connection to cancel the
+		// order — it would otherwise block waiting for a lock this very
+		// call is holding, on the very same goroutine that has to return
+		// before the deferred Rollback ever runs. Rolling back here (the
+		// deferred Rollback afterwards is then a harmless no-op) releases
+		// the lock immediately, so the cancel below proceeds as a fresh,
+		// separate transaction/statement, mirroring CANCEL_ORDER
+		// (cmd_order_cancel.go).
+		_ = tx.Rollback(ctx)
+		h.payCancelOrder(ctx, req, locked, "hold_expired")
+		return payOutcomeHoldExpired, gen.CheckoutSessionRow{}, nil
+	case err != nil:
+		return 0, gen.CheckoutSessionRow{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, gen.CheckoutSessionRow{}, fmt.Errorf("commit: %w", err)
+	}
+	return payOutcomePaid, cs, nil
+}
+
+// payCancelOrder is case (c)'s automatic resolution (owner decision
+// 2026-09-13: no manual review). It mirrors CANCEL_ORDER
+// (cmd_order_cancel.go handleBil24CancelWired): cancel the order aggregate
+// via the ordering lifecycle (an order_event with the reason, so the audit
+// trail shows exactly why), then best-effort release whatever the hold still
+// holds. Both steps run outside any transaction the caller was in — that
+// transaction already rolled back — and are individually idempotent, so a
+// concurrent caller reaching the same conclusion for the same order cannot
+// corrupt anything: Cancel is a no-op on an already-cancelled order and
+// ReleaseHold tolerates an already-released one.
+func (h *Handler) payCancelOrder(ctx context.Context, req bil24Request, order gen.OrderRow, reason string) {
+	actor := orderActor(req)
+	updated, err := ordering.Cancel(ctx, h.orderDeps.Q, ordering.CancelInput{
+		OrderID: order.ID,
+		OrgID:   order.OrgID,
+		Actor:   actor,
+		Reason:  reason,
+	})
+	if err != nil {
+		if errors.Is(err, ordering.ErrInvalidTransition) {
+			// Lost a race: a concurrent call already moved this order on
+			// (paid it, expired it, cancelled it) before this cancel could
+			// land. Whatever it became is already the truth the next
+			// PAY_ORDER call will see — nothing more to do here.
+			h.logger.Warn("bil24_compat: PAY_ORDER: order already moved on before the cancel landed",
+				slog.String("order_id", order.ID.String()),
+				slog.String("reason", reason),
+			)
+			return
+		}
+		h.logger.Error("bil24_compat: PAY_ORDER: could not cancel the order after a lost hold",
+			slog.String("order_id", order.ID.String()),
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+
+	if _, relErr := hcheckout.ReleaseHold(ctx, h.orderDeps.Pool, h.orderDeps.Q, updated.ReservationID); relErr != nil {
+		var notReleasable *hcheckout.NotReleasableError
+		if !errors.As(relErr, &notReleasable) && !errors.Is(relErr, hcheckout.ErrHoldNotFound) {
+			h.logger.Error("bil24_compat: PAY_ORDER: release hold after cancel failed",
+				slog.String("order_id", order.ID.String()),
+				slog.String("error", relErr.Error()),
+			)
+		}
+	}
+
+	h.logger.Warn("bil24_compat: PAY_ORDER: order cancelled — hold could not be secured",
+		slog.String("order_id", updated.ID.String()),
+		slog.Int64("order_system_id", updated.SystemID),
+		slog.String("reservation_id", updated.ReservationID.String()),
+		slog.String("reason", reason),
+		slog.String("actor", actor),
+	)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The payment transaction body (runs inside payLocked's transaction)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// payExecuteLocked runs spec §7.9 steps 2-4 inside the caller's transaction
+// (already holding the order's row lock) and returns the completed checkout
+// session, which the caller needs to issue tickets against. It never begins
+// or commits a transaction itself — payLocked owns that.
+func (h *Handler) payExecuteLocked(
+	ctx context.Context,
+	tx pgx.Tx,
+	txq *gen.Queries,
+	req bil24Request,
+	order gen.OrderRow,
+	ttl time.Duration,
+	now time.Time,
+	actor string,
+) (gen.CheckoutSessionRow, error) {
 	cs, err := txq.GetCheckoutSessionByID(ctx, order.CheckoutSessionID)
 	if err != nil {
 		return gen.CheckoutSessionRow{}, fmt.Errorf("load checkout session: %w", err)
@@ -367,43 +512,6 @@ func (h *Handler) payExecute(
 	// Step 2 — the hold.
 	if err := h.payEnsureHold(ctx, txq, order, actor, ttl, now); err != nil {
 		return gen.CheckoutSessionRow{}, err
-	}
-
-	// Step 2b — revive an order the expire sweep (or a competing
-	// CREATE_ORDER_EXT) already closed, now that step 2 has proven the hold
-	// behind it is securable. Money-safety fix: MarkPaid below only accepts
-	// pending_payment → paid, so without this an expired order's late
-	// payment used to fail with a generic error and answer resultCode -1
-	// FOREVER — the WordPress plugin retries -1, but order.status never
-	// changes on its own, so every retry hit the identical refusal. A
-	// pending_payment order (the common case) is untouched by this branch.
-	if order.Status == ordering.StatusExpired {
-		if _, err := ordering.ReviveForPayment(ctx, txq, ordering.ReviveInput{
-			OrderID: order.ID, OrgID: order.OrgID, Actor: actor,
-		}); err != nil {
-			// The customer re-reserved and CREATE_ORDER_EXT already minted a
-			// fresh pending_payment order for this same customer+session
-			// before this late payment arrived (orders_one_pending_per_
-			// customer_session_uq, SQLSTATE 23505). This order can NEVER
-			// become pending_payment again while that newer order holds the
-			// slot — retrying would fail identically forever, exactly the
-			// -1-loop money-safety defect this file exists to close. Treat
-			// it like an unrecoverable hold: park + alert + 101, never -1.
-			if errors.Is(err, ordering.ErrOpenOrderConflict) {
-				return gen.CheckoutSessionRow{}, errPaySupersededByOpenOrder
-			}
-			// Any other revive failure (typically ErrInvalidTransition: a
-			// concurrent process moved the order on — paid it, cancelled it,
-			// parked it — between this handler's pre-transaction read and
-			// now) surfaces as a plain error, answering -1 (transient)
-			// rather than a park sentinel: re-parking on a status we no
-			// longer understand would risk clobbering whatever that other
-			// writer just did. The very next retry re-reads order.Status
-			// fresh and the top-level switch above resolves it correctly —
-			// unlike the original defect, this is a one-shot retry, not a
-			// forever loop.
-			return gen.CheckoutSessionRow{}, fmt.Errorf("revive order: %w", err)
-		}
 	}
 
 	// Step 3 — amount reconciliation. Non-blocking by design.
@@ -425,9 +533,10 @@ func (h *Handler) payExecute(
 	completed, err := txq.CompleteCheckoutSession(ctx, cs.ID, intent.ID.String(), payProviderManual)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		// Not pricing_confirmed any more. The order was not paid (we checked),
-		// so this is a session another path already completed or parked; carry
-		// on with the row we read rather than aborting a committed payment.
+		// Not pricing_confirmed any more. The order was not paid (we checked
+		// under the lock), so this is a session another path already
+		// completed or parked; carry on with the row we read rather than
+		// aborting a committed payment.
 		h.logger.Warn("bil24_compat: PAY_ORDER: checkout session was not pricing_confirmed",
 			slog.String("checkout_session_id", cs.ID.String()),
 			slog.String("state", cs.State),
@@ -475,9 +584,6 @@ func (h *Handler) payExecute(
 		return payEnqueueIssuance(ctx, sp, completed.ID)
 	})
 
-	if err := tx.Commit(ctx); err != nil {
-		return gen.CheckoutSessionRow{}, fmt.Errorf("commit: %w", err)
-	}
 	return completed, nil
 }
 
@@ -525,7 +631,8 @@ func (h *Handler) payBestEffort(
 // payEnsureHold is spec §7.9 step 2. A live hold is left alone; a hold past its
 // TTL is re-taken on the same seats/GA units via ReacquireHoldTx, which either
 // succeeds (order_events.hold_reacquired) or fails because somebody else now
-// holds the inventory (errPayHoldExpired → manual review).
+// holds the inventory (errPayHoldExpired → the order is cancelled by the
+// caller, payLocked/payCancelOrder).
 func (h *Handler) payEnsureHold(
 	ctx context.Context,
 	txq *gen.Queries,
@@ -727,7 +834,13 @@ func payEnqueueIssuance(ctx context.Context, tx pgx.Tx, checkoutSessionID uuid.U
 
 // payProviderPaymentID is the spec §7.9 step 4 provider reference:
 // wc:<external_ref>:<method>. It is what an operator greps for when the shop
-// and the platform disagree about a transaction.
+// and the platform disagree about a transaction. It is also what makes two
+// concurrent successful PAY_ORDER transactions for the SAME order mutually
+// exclusive at the database level: payment_intents.provider_payment_id is a
+// GLOBAL unique index, and this value is deterministic per order+method, so
+// whichever transaction's InsertPaymentIntent commits first wins and the
+// other gets a real 23505 — belt-and-braces alongside the LockOrderForUpdate
+// serialization in payLocked.
 func payProviderPaymentID(order gen.OrderRow, method string) string {
 	ref := ""
 	if order.ExternalRef != nil {
@@ -741,93 +854,6 @@ func payProviderPaymentID(order gen.OrderRow, method string) string {
 		m = "unknown"
 	}
 	return "wc:" + ref + ":" + m
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// The manual-review fallback
-// ─────────────────────────────────────────────────────────────────────────────
-
-// payParkManualReview is the second half of spec §7.9 step 2's failure branch.
-// It runs in its own transaction because the payment transaction has already
-// been rolled back, and it is deliberately best-effort at every step: the buyer
-// has been charged and an operator MUST learn about it, so a failure to write
-// one of these rows still produces the alert and the error log. `reason` is
-// one of the payParkReasonXxx constants — recorded verbatim in both the
-// order_events.hold_expired payload and the operator alert, so an operator
-// can tell "the seats are gone" apart from "the customer already has a
-// different open order for this money" without reading application logs.
-//
-// Callers MUST NOT invoke this twice for the same order (see the
-// payStatusManualReview branch in handleBil24PayOrderWired): a replayed
-// PAY_ORDER on an already-parked order short-circuits before reaching here,
-// or this would write a duplicate hold_expired event and fire a second
-// operator alert on every WordPress retry.
-func (h *Handler) payParkManualReview(ctx context.Context, req bil24Request, order gen.OrderRow, reason string) {
-	actor := orderActor(req)
-
-	tx, err := h.orderDeps.Pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		h.logger.Error("bil24_compat: PAY_ORDER: could not open the manual-review transaction",
-			slog.String("order_id", order.ID.String()),
-			slog.String("error", err.Error()),
-		)
-	} else {
-		defer func() { _ = tx.Rollback(ctx) }()
-		txq := gen.New(tx)
-
-		if _, uErr := txq.UpdateOrderStatus(ctx, order.ID, order.OrgID, payStatusManualReview, nil, nil); uErr != nil {
-			h.logger.Error("bil24_compat: PAY_ORDER: could not park the order in manual_review",
-				slog.String("order_id", order.ID.String()),
-				slog.String("error", uErr.Error()),
-			)
-		}
-		if _, mErr := txq.MarkCheckoutSessionManualReview(ctx, order.CheckoutSessionID); mErr != nil && !errors.Is(mErr, pgx.ErrNoRows) {
-			h.logger.Error("bil24_compat: PAY_ORDER: could not park the checkout session in manual_review",
-				slog.String("checkout_session_id", order.CheckoutSessionID.String()),
-				slog.String("error", mErr.Error()),
-			)
-		}
-		if _, eErr := txq.InsertOrderEvent(ctx, order.ID, ordering.EventHoldExpired, actor,
-			payPayload(map[string]any{
-				"reservation_id": order.ReservationID.String(),
-				"reason":         reason,
-				"external_ref":   req.OrderID,
-			}),
-		); eErr != nil {
-			h.logger.Error("bil24_compat: PAY_ORDER: could not record hold_expired",
-				slog.String("order_id", order.ID.String()),
-				slog.String("error", eErr.Error()),
-			)
-		}
-		if cErr := tx.Commit(ctx); cErr != nil {
-			h.logger.Error("bil24_compat: PAY_ORDER: manual-review transaction commit failed",
-				slog.String("order_id", order.ID.String()),
-				slog.String("error", cErr.Error()),
-			)
-		}
-	}
-
-	// The operator alert. The error log is unconditional so an unwired Alert
-	// callback degrades the alert rather than losing it.
-	h.logger.Error("bil24_compat: PAY_ORDER: PAID ORDER PARKED IN MANUAL REVIEW",
-		slog.String("order_id", order.ID.String()),
-		slog.Int64("order_system_id", order.SystemID),
-		slog.String("org_id", order.OrgID.String()),
-		slog.String("reservation_id", order.ReservationID.String()),
-		slog.String("external_ref", req.OrderID),
-		slog.String("actor", actor),
-		slog.String("reason", reason),
-	)
-	if h.payDeps.Alert != nil {
-		h.payDeps.Alert(ctx, order.ID, actor, map[string]any{
-			"reason":              reason,
-			"order_system_id":     order.SystemID,
-			"reservation_id":      order.ReservationID.String(),
-			"checkout_session_id": order.CheckoutSessionID.String(),
-			"external_ref":        req.OrderID,
-			"actor_label":         actor,
-		})
-	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

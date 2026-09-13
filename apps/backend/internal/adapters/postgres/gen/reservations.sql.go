@@ -305,7 +305,7 @@ func (q *Queries) UpdateReservationQuantity(ctx context.Context, id uuid.UUID, q
 
 const refreshReservationsExpiry = `-- name: RefreshReservationsExpiry :many
 UPDATE reservations
-SET    expires_at = $2,
+SET    expires_at = GREATEST(expires_at, $2),
        updated_at = now()
 WHERE  id = ANY($1::uuid[])
   AND  state IN ('draft', 'active')
@@ -313,8 +313,10 @@ RETURNING id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,
           expires_at, created_at, updated_at, cancelled_at, converted_at, expired_at`
 
 // RefreshReservationsExpiry slides the TTL of the given open reservations to
-// expiresAt. Closed reservations are silently skipped and therefore absent from
-// the result, which lets callers detect a swept cart by comparing counts.
+// expiresAt, NEVER shortening it (GREATEST-guarded, payment-window contract,
+// owner decision 2026-09-13). Closed reservations are silently skipped and
+// therefore absent from the result, which lets callers detect a swept cart by
+// comparing counts.
 func (q *Queries) RefreshReservationsExpiry(ctx context.Context, ids []uuid.UUID, expiresAt time.Time) ([]ReservationRow, error) {
 	rows, err := q.db.Query(ctx, refreshReservationsExpiry, ids, expiresAt)
 	if err != nil {
@@ -331,6 +333,29 @@ func (q *Queries) RefreshReservationsExpiry(ctx context.Context, ids []uuid.UUID
 		reservations = append(reservations, r)
 	}
 	return reservations, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SetReservationExpiry
+// ─────────────────────────────────────────────────────────────────────────────
+
+const setReservationExpiry = `-- name: SetReservationExpiry :one
+UPDATE reservations
+SET    expires_at = $2,
+       updated_at = now()
+WHERE  id = $1
+  AND  state IN ('draft', 'active')
+RETURNING id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,
+          expires_at, created_at, updated_at, cancelled_at, converted_at, expired_at`
+
+// SetReservationExpiry sets ONE reservation's expires_at to EXACTLY
+// expiresAt (payment-window contract, owner decision 2026-09-13) — unlike
+// RefreshReservationsExpiry this can move it earlier. Used only by
+// hcheckout.SetHoldExpiryTx. Returns pgx.ErrNoRows when the reservation does
+// not exist or is no longer draft/active.
+func (q *Queries) SetReservationExpiry(ctx context.Context, id uuid.UUID, expiresAt time.Time) (ReservationRow, error) {
+	row := q.db.QueryRow(ctx, setReservationExpiry, id, expiresAt)
+	return scanReservationRow(row)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

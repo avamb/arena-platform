@@ -9,5 +9,7 @@
   "charge": 90,
   "totalSum": 1890,
   "currency": "EUR",
-  "expiration": "{{now+ttl}}"
+  "expiration": "{{now+ttl}}",
+  "paymentDeadline": 0,
+  "paymentTimeout": 1200
 }

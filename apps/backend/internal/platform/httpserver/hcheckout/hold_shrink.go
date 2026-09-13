@@ -335,6 +335,109 @@ func RefreshHoldExpiryTx(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SetHoldExpiryTx — payment-window contract (owner decision 2026-09-13)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// SetHoldExpiryTx moves a single reservation's expires_at to an EXACT
+// absolute instant inside the caller's transaction — never a relative TTL —
+// touching only the reservations row: no inventory_ledger, no session_seats,
+// no sessions.seat_status_version bump. It is what CREATE_ORDER_EXT uses to
+// align a hold's expiry with its order's payment deadline
+// (orders.expires_at = reservations.expires_at = now + window + grace, set
+// in the SAME transaction that writes the order).
+//
+// Because it touches neither `sessions` nor `inventory_ledger`, it carries
+// no lock-order obligation with those two (see the hold-mutation lock-order
+// rule on createGAHoldTx); the only lock taken is the UPDATE's own row lock
+// on `reservations`.
+//
+// Uses SetReservationExpiry, an EXACT set — unlike RefreshReservationsExpiry
+// (used by every cart mutation: ExtendHold/ShrinkHold/ReacquireHold/
+// RefreshHoldExpiry, all GREATEST-guarded so a plain cart action can never
+// shorten a hold) this call CAN move expires_at earlier. That is
+// deliberate: CREATE_ORDER_EXT is the one authoritative "restart" of the
+// window, and a channel's overridden payment_window_seconds may be SHORTER
+// than the platform's default cart TTL a preceding same-request
+// cartRefreshAll already applied — the order's own deadline must win
+// either way. A plain cart RESERVE/UN_RESERVE issued AFTER this call still
+// cannot claw the deadline back down, because those go through the
+// GREATEST-guarded primitive instead. Returns ErrHoldNotFound when the
+// reservation does not exist or is no longer draft/active.
+func SetHoldExpiryTx(ctx context.Context, txq *gen.Queries, reservationID uuid.UUID, expiresAt time.Time) (gen.ReservationRow, error) {
+	if txq == nil {
+		return gen.ReservationRow{}, errors.New("hcheckout: SetHoldExpiryTx requires queries")
+	}
+	row, err := txq.SetReservationExpiry(ctx, reservationID, expiresAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return gen.ReservationRow{}, ErrHoldNotFound
+		}
+		return gen.ReservationRow{}, fmt.Errorf("hcheckout: set hold expiry: %w", err)
+	}
+	return row, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ExpireHoldForOrderTx — payment-window contract (owner decision 2026-09-13)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ExpireHoldForOrderTx releases one reservation's hold (seats + capacity)
+// and transitions it to 'expired', inside the CALLER's own transaction. It
+// mirrors exactly what reservation.expire_sweep's own per-row step
+// (expireReservation, reservation_processor.go) does, but for exactly one
+// reservation the caller already knows is dead and inside a transaction the
+// caller controls.
+//
+// Used by hbil24 PAY_ORDER: when a buyer's payment attempt arrives after the
+// order's fixed payment window has passed and reservation.expire_sweep has
+// not yet processed it, PAY_ORDER performs the sweep's job itself in the
+// SAME transaction that also expires the order (ordering.ExpireIfStillPending),
+// so the late payment attempt and the seat release commit atomically — no
+// manual review, by owner decision.
+//
+// Lock order matches every other hold mutation: releaseReservationSeatsTx
+// bumps sessions.seat_status_version BEFORE releaseHoldCapacityTx touches
+// inventory_ledger.
+//
+// Idempotent: a reservation already outside draft/active (already
+// cancelled/converted/expired by a concurrent transition) is left
+// completely alone — zero writes — and the function returns nil.
+func ExpireHoldForOrderTx(ctx context.Context, txq *gen.Queries, reservationID uuid.UUID) error {
+	if txq == nil {
+		return errors.New("hcheckout: ExpireHoldForOrderTx requires queries")
+	}
+	res, err := txq.GetReservationByID(ctx, reservationID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return fmt.Errorf("hcheckout: load reservation: %w", err)
+	}
+	if res.State != "draft" && res.State != "active" {
+		return nil
+	}
+
+	releasedSeats, err := releaseReservationSeatsTx(ctx, txq, res.SessionID, res.ID)
+	if err != nil {
+		return fmt.Errorf("hcheckout: release seats: %w", err)
+	}
+
+	if _, err := txq.UpdateReservationStateGuarded(ctx, res.ID, res.State, "expired"); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Lost a race to a concurrent transition between the read above
+			// and this guarded write — nothing more to do.
+			return nil
+		}
+		return fmt.Errorf("hcheckout: expire reservation: %w", err)
+	}
+
+	if err := releaseHoldCapacityTx(ctx, txq, res.SessionID, res.ID, res.TierID, res.Quantity, releasedSeats); err != nil {
+		return fmt.Errorf("hcheckout: release capacity: %w", err)
+	}
+	return nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ReacquireHold
 // ─────────────────────────────────────────────────────────────────────────────
 

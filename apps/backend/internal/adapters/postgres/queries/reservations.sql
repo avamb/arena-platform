@@ -118,13 +118,36 @@ RETURNING id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,
           expires_at, created_at, updated_at, cancelled_at, converted_at, expired_at;
 
 -- name: RefreshReservationsExpiry :many
--- W1-A5a: slides the TTL of the given open reservations to $2. Closed
+-- W1-A5a: slides the TTL of the given open reservations to $2, NEVER
+-- shortening it (GREATEST-guarded, payment-window contract, owner decision
+-- 2026-09-13): CREATE_ORDER_EXT sets a reservation's expires_at to
+-- now+window+grace, which is normally longer than a plain cart TTL, and a
+-- later RESERVE/UN_RESERVE on the same cart (this same query, via
+-- RefreshHoldExpiryTx / ExtendHoldTx / ShrinkHoldTx / ReacquireHoldTx) must
+-- never claw that payment window back down to now+cartTTL. Closed
 -- reservations are silently skipped (not returned), which lets the caller
 -- detect a swept cart by comparing the returned count with len(ids).
 UPDATE reservations
-SET    expires_at = $2,
+SET    expires_at = GREATEST(expires_at, $2),
        updated_at = now()
 WHERE  id = ANY($1::uuid[])
+  AND  state IN ('draft', 'active')
+RETURNING id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,
+          expires_at, created_at, updated_at, cancelled_at, converted_at, expired_at;
+
+-- name: SetReservationExpiry :one
+-- Payment-window contract (owner decision 2026-09-13): sets ONE
+-- reservation's expires_at to EXACTLY $2 — unlike RefreshReservationsExpiry
+-- this can move it earlier. Used only by hcheckout.SetHoldExpiryTx, which
+-- CREATE_ORDER_EXT calls to align the hold with the order's own payment
+-- deadline: that deadline is the authoritative "restart" value even when a
+-- channel's overridden window is SHORTER than the platform's default cart
+-- TTL a preceding cartRefreshAll may have just set. Returns pgx.ErrNoRows
+-- when the reservation does not exist or is no longer draft/active.
+UPDATE reservations
+SET    expires_at = $2,
+       updated_at = now()
+WHERE  id = $1
   AND  state IN ('draft', 'active')
 RETURNING id, org_id, channel_id, session_id, tier_id, user_id, quantity, state,
           expires_at, created_at, updated_at, cancelled_at, converted_at, expired_at;

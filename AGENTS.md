@@ -727,66 +727,29 @@ entries short and factual.
   `101 bil24.open_order_exists` and writes nothing. The same-session repeat
   case (`existing.ReservationID == res.ID`, bounce off WooCommerce payment
   and come back) is a separate branch and is unaffected.
-- **PAY_ORDER must never answer -1 for an order `order.expire_sweep` already
-  closed, and must never re-park+re-alert a `manual_review` order on
-  replay.** `ordering.MarkPaid` only accepts `pending_payment → paid`, so an
-  `expired` order used to fall through to it and answer `ErrInvalidTransition`
-  as a generic error → bil24 `resultCode -1`. Since nothing about
-  `orders.status` changes on its own, the WordPress plugin's retry loop got
-  -1 FOREVER for a buyer who had already been charged — this is the money-
-  safety asymmetry PAY_ORDER exists to handle (spec §7.9: the money already
-  moved). Fixed with `ordering.ReviveForPayment` (status-guarded
-  `ReviveOrderIfExpired`, `order_events.revived_for_payment`), called from
-  `payExecute` right after the existing hold-secure/reacquire check
-  (`payEnsureHold`) succeeds for an `expired` order — same hold logic a
-  `pending_payment` order already goes through, just also allowed to
-  resurrect the order status. When the hold cannot be secured, the existing
-  `payParkManualReview` path (manual_review + operator alert + `101
-  bil24.hold_expired`) is unchanged. Separately, `handleBil24PayOrderWired`'s
-  terminal-status switch now enumerates EVERY status the `orders` CHECK
-  constraint allows (`paid`, `cancelled`/`refunded`/`partially_refunded`/
-  `abandoned`, `manual_review`) instead of only the first three — a
-  `manual_review` order used to fall through to the same `payEnsureHold` →
-  `errPayHoldExpired` → `payParkManualReview` path on every replay, writing a
-  duplicate `hold_expired` event and firing a second operator alert per
-  WordPress retry (an alert storm). It now short-circuits to the same `101
-  bil24.hold_expired` answer with no writes and no alert. Tests:
-  `apps/backend/tests/compat/bil24/order_pay_revival_integration_test.go`,
-  `apps/backend/internal/platform/ordering/lifecycle_test.go`
-  (`TestReviveForPayment_*`).
-- **`ordering.ReviveForPayment` reviving an `expired` order can ITSELF hit
-  `orders_one_pending_per_customer_session_uq` — found in review of the
-  above fix, 2026-09-14.** Scenario: order A expires and its hold dies; the
-  SAME customer re-reserves for the SAME session and CREATE_ORDER_EXT
-  legitimately mints a fresh order B (`pending_payment`) — allowed, because A
-  is genuinely no longer "open". Then A's late PAY_ORDER arrives:
-  `payEnsureHold` successfully re-acquires A's untouched seats, but the
-  `UPDATE orders SET status='pending_payment' ... WHERE status='expired'`
-  that revives A collides with B's row on `(customer_id, session_id)`
-  (SQLSTATE 23505) — A can never legally hold that slot while B does. Left
-  unhandled this reproduces the EXACT -1-forever defect the fix above closes,
-  just one level deeper (`ReviveForPayment` wrapped it as a plain error →
-  `payExecute` → generic error → `payTransient` → -1 on every retry, forever,
-  with money already taken). Fixed: `ordering.ErrOpenOrderConflict` (detected
-  via `errors.As` into `*pgconn.PgError`, code `23505`, constraint name
-  checked when the driver supplies one — `orders_one_pending_per_
-  customer_session_uq` — and treated as a match when it does not, since a
-  23505 right after this specific UPDATE has no other plausible cause).
-  `hbil24` maps it to `errPaySupersededByOpenOrder`, handled exactly like
-  `errPayHoldExpired` (tx rollback — which also releases the just-reacquired
-  hold — then `payParkManualReview`, `101 bil24.hold_expired` on the wire)
-  but recorded with a DISTINCT internal reason,
-  `payParkReasonSupersededByOpenOrder` (`"superseded_by_open_order"`), in
-  both `order_events.hold_expired.payload.reason` and the operator alert
-  metadata — `payParkManualReview` now takes a `reason string` parameter for
-  exactly this. The customer's newer order (B) is never touched: the
-  colliding UPDATE aborts A's transaction only. Note for future readers:
-  `orders_one_pending_per_customer_session_uq` is a PARTIAL index (`WHERE
-  status = 'pending_payment'`), so `payParkManualReview`'s own
-  `UpdateOrderStatus(..., 'manual_review', ...)` write can NEVER hit this
-  constraint — only the expired→pending_payment revive write can. Tests:
-  `TestCompatBil24_PayOrderRevival_SupersededByOpenOrder`
-  (`order_pay_revival_integration_test.go`),
-  `TestReviveForPayment_OpenOrderConflictIsDistinguishable` /
-  `TestReviveForPayment_OtherUniqueViolationIsNotMisclassified`
-  (`ordering/lifecycle_test.go`). Runbook: `docs/ops/bil24_gateway.md` §9.2.
+- **PAY_ORDER runs under a fixed payment window and never parks anything in
+  `manual_review` — owner decision 2026-09-13.** A buyer has
+  `settings.gateway.payment_window_seconds` (default 1200) plus
+  `payment_grace_seconds` (default 120) to pay, timed from the most recent
+  `CREATE_ORDER_EXT` (which sets `orders.expires_at = reservations.expires_at`
+  to that instant and returns `paymentDeadline`/`paymentTimeout`); a plain
+  cart `RESERVE`/`UN_RESERVE` never shortens that. PAY_ORDER takes a row lock
+  on the order (`LockOrderForUpdate`) as its first statement and decides
+  everything — pay, expire, or cancel — from the row it reads UNDER that
+  lock, so concurrent calls for the same order serialize instead of racing a
+  read-then-write status decision. Inside the window a live or reacquirable
+  hold pays normally (`resultCode 0`); a hold lost to someone else within the
+  window is CANCELLED automatically (`ordering.Cancel`,
+  `order_events.cancelled` payload.reason=`hold_expired`, `101
+  bil24.hold_expired`); past the window the order is EXPIRED automatically
+  (mirroring `order.expire_sweep`'s own per-row step,
+  `ordering.ExpireIfStillPending` + `hcheckout.ExpireHoldForOrderTx`, `101
+  bil24.order_expired`) — NO revival, ever. The earlier revival machinery
+  (`ordering.ReviveForPayment`, `ErrOpenOrderConflict`,
+  `EventRevivedForPayment`, `payParkManualReview`) is removed: a fixed window
+  makes it unreachable. A `manual_review` order in a live database predates
+  this change and PAY_ORDER still answers it `101 bil24.hold_expired` with no
+  writes so a stale row cannot retry-loop, but nothing new will ever create
+  one. Tests: `apps/backend/tests/compat/bil24/order_pay_window_integration_test.go`,
+  `apps/backend/internal/platform/ordering/lifecycle_test.go`. Runbook:
+  `docs/ops/bil24_gateway.md` §9.2.

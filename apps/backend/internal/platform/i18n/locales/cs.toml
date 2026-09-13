@@ -75,6 +75,9 @@ other = "částka objednávky je nižší než minimum pro tento slevový kód"
 ["bil24.hold_expired"]
 other = "rezervace vypršela, prosím zopakujte"
 
+["bil24.order_expired"]
+other = "doba pro platbu této objednávky vypršela"
+
 ["bil24.open_order_exists"]
 other = "na tuto akci již máte nezaplacenou objednávku, nejprve ji dokončete nebo zrušte"
 

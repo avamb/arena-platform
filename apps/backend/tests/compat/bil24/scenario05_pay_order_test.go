@@ -22,11 +22,14 @@
 //	                      re-taken, recorded as order_events.hold_reacquired,
 //	                      and the payment proceeds to 0
 //	expired_manual_review a hold past its TTL whose seat now belongs to another
-//	                      reservation cannot be restored: the order and its
-//	                      checkout session are parked in manual_review,
-//	                      order_events.hold_expired is written, an operator
-//	                      audit alert is raised, and the answer is 101 — the
-//	                      ONLY 101 after payment (§7.9 step 2)
+//	                      reservation cannot be restored: the order is
+//	                      CANCELLED automatically (owner decision 2026-09-13 —
+//	                      no manual review anywhere), order_events.cancelled
+//	                      is written with payload.reason=hold_expired, and the
+//	                      answer is 101 bil24.hold_expired — the ONLY 101
+//	                      after payment (§7.9 step 2). The case name is kept
+//	                      for the checked-in fixture pair even though the
+//	                      order no longer lands in manual_review.
 //
 // Everything of substance is asserted against the database rather than the
 // envelope, because assertGoldenKeySet compares KEY SETS only: all four
@@ -36,7 +39,6 @@ package compat_bil24_test
 
 import (
 	"context"
-	"encoding/json"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -231,7 +233,7 @@ func runScenario05PayOrder(t *testing.T, st *harnessState) {
 	// state a competing buyer's RESERVE would have produced in the window.
 	// ReacquireHoldTx then reports a seat conflict and the order is parked.
 	lost := newOrder("harness-494-manual@example.test", labels[2], ref("1004"))
-	lostReservation, lostCheckout := sc5OrderRefs(t, st, lost.orderID)
+	lostReservation, _ := sc5OrderRefs(t, st, lost.orderID)
 	sc5ExpireReservation(t, st, lostReservation)
 	// The basic case's reservation is 'converted' and owns no session_seats
 	// row any more, which makes it a safe FK-valid stand-in for "somebody
@@ -248,18 +250,26 @@ func runScenario05PayOrder(t *testing.T, st *harnessState) {
 		t.Error("bil24.hold_expired carries an empty description; §7.9 has the site render it verbatim")
 	}
 
-	// The park itself. Both halves matter: an order in manual_review whose
-	// checkout session still looks payable would be re-paid by the next poll.
-	sc5AssertOrderStatus(t, st, lost.orderID, "manual_review")
-	sc5AssertCheckoutState(t, st, lostCheckout, "manual_review")
-	sc5AssertOrderEvent(t, st, lost.orderID, "hold_expired")
+	// The automatic cancellation (owner decision 2026-09-13: no manual
+	// review). The order is cancelled outright, its own hold_expired reason
+	// travels in the cancelled event's payload, and there is no parked
+	// checkout session or operator alert to find.
+	sc5AssertOrderStatus(t, st, lost.orderID, "cancelled")
+	sc5AssertOrderEvent(t, st, lost.orderID, "cancelled")
+	var reason string
+	if err := st.Pool.QueryRow(context.Background(),
+		`SELECT payload->>'reason' FROM order_events WHERE order_id=$1 AND type='cancelled'
+		 ORDER BY created_at DESC LIMIT 1`, lost.orderID,
+	).Scan(&reason); err != nil {
+		t.Fatalf("read cancelled event reason for %s: %v", lost.orderID, err)
+	}
+	if reason != "hold_expired" {
+		t.Errorf("order_events.cancelled payload.reason = %q, want hold_expired", reason)
+	}
 	// The payment transaction was rolled back wholesale — no intent, no
 	// tickets, nothing half-written.
 	sc5AssertPaymentIntentCount(t, st, lost.orderID, 0)
 	sc5AssertTicketCount(t, st, lost.orderID, 0)
-	// §7.9 step 2: the buyer has been charged and nobody can fix that from a
-	// log line alone, so an operator alert is mandatory.
-	sc5AssertManualReviewAlert(t, st, lost.orderID)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -451,18 +461,6 @@ func sc5AssertStates(t *testing.T, st *harnessState, orderID uuid.UUID, wantChec
 	}
 }
 
-func sc5AssertCheckoutState(t *testing.T, st *harnessState, checkoutID uuid.UUID, want string) {
-	t.Helper()
-	var state string
-	if err := st.Pool.QueryRow(context.Background(),
-		`SELECT state FROM checkout_sessions WHERE id=$1`, checkoutID).Scan(&state); err != nil {
-		t.Fatalf("read checkout session %s: %v", checkoutID, err)
-	}
-	if state != want {
-		t.Errorf("checkout_sessions.state = %q, want %q", state, want)
-	}
-}
-
 // sc5AssertTickets proves §7.9 step 5 end to end: the right number of tickets
 // exist, each carries the buyer's address (so delivery never has to re-derive
 // it), each points back at the order, and every order item points forward at
@@ -584,41 +582,6 @@ func sc5AssertNoOrderEvent(t *testing.T, st *harnessState, orderID uuid.UUID, ty
 	if got != 0 {
 		t.Errorf("order %s has %d %q event(s); the reported amount matched the order total exactly",
 			orderID, got, typ)
-	}
-}
-
-// sc5AssertManualReviewAlert proves the operator really is told. A parked paid
-// order that only produces a log line is a buyer with a charge and no ticket
-// and nobody watching.
-func sc5AssertManualReviewAlert(t *testing.T, st *harnessState, orderID uuid.UUID) {
-	t.Helper()
-	var raw []byte
-	if err := st.Pool.QueryRow(context.Background(),
-		`SELECT metadata FROM audit_events
-		 WHERE  action = 'bil24.pay_order.manual_review'
-		   AND  resource_type = 'order'
-		   AND  resource_id = $1
-		 ORDER BY occurred_at DESC LIMIT 1`, orderID.String(),
-	).Scan(&raw); err != nil {
-		t.Fatalf("no manual-review audit alert for order %s: %v", orderID, err)
-	}
-	var md map[string]interface{}
-	if err := json.Unmarshal(raw, &md); err != nil {
-		t.Fatalf("parse audit metadata %s: %v", raw, err)
-	}
-	// audit_events.actor_id is a uuid column, so the gateway's principal label
-	// has to travel as metadata — passing it as ActorID aborts the enclosing
-	// transaction with SQLSTATE 22P02.
-	wantActor := "gateway:" + strconv.FormatInt(st.ChannelFID, 10)
-	if got, _ := md["actor"].(string); got != wantActor {
-		t.Errorf("audit metadata.actor = %#v, want %q", md["actor"], wantActor)
-	}
-	if got, _ := md["reason"].(string); got != "hold_expired" {
-		t.Errorf("audit metadata.reason = %#v, want \"hold_expired\"", md["reason"])
-	}
-	if _, ok := md["external_ref"]; !ok {
-		t.Errorf("audit metadata has no external_ref; an operator cannot find the "+
-			"WooCommerce order without it: %s", raw)
 	}
 }
 

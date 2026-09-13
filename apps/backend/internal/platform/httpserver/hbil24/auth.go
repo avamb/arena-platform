@@ -43,12 +43,55 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Payment window (owner decision 2026-09-13)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// A buyer gets a FIXED payment window from the moment the site creates the
+// order (CREATE_ORDER_EXT). After window+grace elapses, payment is no longer
+// accepted — no manual review, every outcome resolves automatically (see
+// cmd_order_pay.go). The window and its grace are per-channel, with sane
+// platform defaults when the channel sets neither.
+const (
+	// DefaultPaymentWindowSeconds is how long a buyer has to pay from the
+	// moment CREATE_ORDER_EXT creates (or restarts) the order: 20 minutes.
+	DefaultPaymentWindowSeconds = 1200
+	// DefaultPaymentGraceSeconds absorbs network latency only: a site that
+	// authorized a card just before its deadline may deliver PAY_ORDER a few
+	// seconds late.
+	DefaultPaymentGraceSeconds = 120
+
+	minPaymentWindowSeconds = 60
+	maxPaymentWindowSeconds = 7200
+	minPaymentGraceSeconds  = 0
+	maxPaymentGraceSeconds  = 600
+)
+
+// clampPaymentSeconds normalizes an optional settings.gateway.payment_*
+// value: unset (nil) becomes def; a value outside [lo,hi] is clamped to the
+// nearest bound rather than silently discarded, so an operator's typo does
+// not surprise-reset to the platform default.
+func clampPaymentSeconds(v *int, def, lo, hi int) int {
+	if v == nil {
+		return def
+	}
+	n := *v
+	if n < lo {
+		return lo
+	}
+	if n > hi {
+		return hi
+	}
+	return n
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // settings.gateway parser (spec §5.1)
@@ -84,6 +127,37 @@ type GatewaySettings struct {
 	// consults it; SEND_TICKETS_TO_EMAIL (§7.11) enqueues delivery
 	// explicitly and is unaffected.
 	PlatformEmail bool
+	// PaymentWindowSeconds is the fixed payment window (owner decision
+	// 2026-09-13): how long a buyer has to pay from the moment
+	// CREATE_ORDER_EXT creates (or restarts) the order. Always populated —
+	// defaults to DefaultPaymentWindowSeconds and is clamped to
+	// [60, 7200] seconds.
+	PaymentWindowSeconds int
+	// PaymentGraceSeconds absorbs network latency only (a site that
+	// authorized a card just before its deadline may deliver PAY_ORDER a
+	// few seconds late). Always populated — defaults to
+	// DefaultPaymentGraceSeconds and is clamped to [0, 600] seconds.
+	PaymentGraceSeconds int
+
+	// paymentWindowRaw / paymentGraceRaw carry the AS-DECODED (pre-default,
+	// pre-clamp) values between parseGatewaySettingsBlock and
+	// parseGatewaySettings; nil means "the channel did not set this key".
+	// Unexported: callers only ever see the defaulted/clamped
+	// PaymentWindowSeconds / PaymentGraceSeconds above.
+	paymentWindowRaw *int
+	paymentGraceRaw  *int
+}
+
+// PaymentWindow is the buyer's fixed time to pay, measured from order
+// creation.
+func (g GatewaySettings) PaymentWindow() time.Duration {
+	return time.Duration(g.PaymentWindowSeconds) * time.Second
+}
+
+// PaymentGrace is the extra slack added on top of PaymentWindow purely to
+// absorb the site's own network latency delivering PAY_ORDER.
+func (g GatewaySettings) PaymentGrace() time.Duration {
+	return time.Duration(g.PaymentGraceSeconds) * time.Second
 }
 
 // gatewaySettingsShape mirrors the two shapes we accept while decoding the
@@ -93,10 +167,12 @@ type GatewaySettings struct {
 // or empty.
 type gatewaySettingsShape struct {
 	Gateway *struct {
-		Enabled       *bool  `json:"enabled"`
-		TokenHash     string `json:"token_hash"`
-		DefaultLocale string `json:"default_locale"`
-		PlatformEmail *bool  `json:"platform_email"`
+		Enabled              *bool  `json:"enabled"`
+		TokenHash            string `json:"token_hash"`
+		DefaultLocale        string `json:"default_locale"`
+		PlatformEmail        *bool  `json:"platform_email"`
+		PaymentWindowSeconds *int   `json:"payment_window_seconds"`
+		PaymentGraceSeconds  *int   `json:"payment_grace_seconds"`
 	} `json:"gateway"`
 	// Legacy top-level hash (feature #374/#390 admin shape). Preserved for
 	// backward compat until #476 removes it.
@@ -115,6 +191,18 @@ type gatewaySettingsShape struct {
 //     treated as `enabled=true` when present so existing deployments keep
 //     working through one wave.
 func parseGatewaySettings(raw json.RawMessage) GatewaySettings {
+	out := parseGatewaySettingsBlock(raw)
+	out.PaymentWindowSeconds = clampPaymentSeconds(out.paymentWindowRaw, DefaultPaymentWindowSeconds, minPaymentWindowSeconds, maxPaymentWindowSeconds)
+	out.PaymentGraceSeconds = clampPaymentSeconds(out.paymentGraceRaw, DefaultPaymentGraceSeconds, minPaymentGraceSeconds, maxPaymentGraceSeconds)
+	return out
+}
+
+// parseGatewaySettingsBlock decodes everything EXCEPT the payment-window
+// defaulting/clamping, which parseGatewaySettings applies uniformly
+// afterwards regardless of which branch below produced the result — a
+// channel with no gateway block at all still gets the platform default
+// payment window.
+func parseGatewaySettingsBlock(raw json.RawMessage) GatewaySettings {
 	if len(raw) == 0 {
 		return GatewaySettings{}
 	}
@@ -125,10 +213,13 @@ func parseGatewaySettings(raw json.RawMessage) GatewaySettings {
 		return GatewaySettings{}
 	}
 	if shape.Gateway != nil && (shape.Gateway.TokenHash != "" || shape.Gateway.Enabled != nil ||
-		shape.Gateway.DefaultLocale != "" || shape.Gateway.PlatformEmail != nil) {
+		shape.Gateway.DefaultLocale != "" || shape.Gateway.PlatformEmail != nil ||
+		shape.Gateway.PaymentWindowSeconds != nil || shape.Gateway.PaymentGraceSeconds != nil) {
 		out := GatewaySettings{
-			TokenHash:     shape.Gateway.TokenHash,
-			DefaultLocale: shape.Gateway.DefaultLocale,
+			TokenHash:        shape.Gateway.TokenHash,
+			DefaultLocale:    shape.Gateway.DefaultLocale,
+			paymentWindowRaw: shape.Gateway.PaymentWindowSeconds,
+			paymentGraceRaw:  shape.Gateway.PaymentGraceSeconds,
 		}
 		if shape.Gateway.Enabled != nil {
 			out.Enabled = *shape.Gateway.Enabled

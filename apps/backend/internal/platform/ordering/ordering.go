@@ -77,15 +77,6 @@ const (
 	// the shop has already taken the buyer's money, so the gateway records
 	// the discrepancy for reconciliation and completes the payment anyway.
 	EventAmountMismatch = "amount_mismatch"
-	// EventRevivedForPayment records that PAY_ORDER found an order the
-	// expire sweep (or a single-order Expire call) had already closed, but
-	// whose hold could still be secured — live, or re-acquired via
-	// hcheckout.ReacquireHoldTx — when the shop's late payment arrived. The
-	// order is moved back to pending_payment (ReviveForPayment) immediately
-	// before MarkPaid runs, so this event and EventPaid always appear
-	// together on a revived order's audit trail. Money-safety fix: refusing
-	// the payment here would strand a buyer who has already been charged.
-	EventRevivedForPayment = "revived_for_payment"
 )
 
 // ActorSystem is the order_events.actor value for anything the platform does
@@ -130,22 +121,6 @@ var (
 	// an order whose status forbids it (paying a cancelled order, expiring a
 	// paid one).
 	ErrInvalidTransition = errors.New("ordering: invalid status transition")
-
-	// ErrOpenOrderConflict is returned by ReviveForPayment when reviving an
-	// expired order would violate orders_one_pending_per_customer_session_uq
-	// (migration 0092: a partial unique index on (customer_id, session_id)
-	// WHERE status='pending_payment'). This is a genuine, narrow race: order
-	// A (the one PAY_ORDER is trying to pay) expired, the same customer
-	// re-reserved for the same session, and CREATE_ORDER_EXT legitimately
-	// minted a fresh order B (pending_payment) before A's late payment
-	// arrived. A cannot be revived without giving the customer two
-	// simultaneous pending_payment orders for one session — order B is the
-	// customer's current, live open order, and A is money already taken for
-	// inventory that has moved on. Unlike a transient infrastructure error,
-	// retrying PAY_ORDER for A will fail IDENTICALLY forever as long as B
-	// stays open, so callers must treat this the same as an unrecoverable
-	// hold (park A in manual_review, alert an operator) rather than as -1.
-	ErrOpenOrderConflict = errors.New("ordering: reviving this order would collide with another open order for the same customer and session")
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -195,14 +170,10 @@ type EventStore interface {
 	InsertOrderEvent(ctx context.Context, orderID uuid.UUID, eventType, actor string, payload json.RawMessage) (gen.OrderEventRow, error)
 }
 
-// LifecycleStore is the query surface MarkPaid / Cancel / Expire /
-// ReviveForPayment need.
+// LifecycleStore is the query surface MarkPaid / Cancel / Expire need.
 type LifecycleStore interface {
 	GetOrderByID(ctx context.Context, id, orgID uuid.UUID) (gen.OrderRow, error)
 	UpdateOrderStatus(ctx context.Context, id, orgID uuid.UUID, status string, paidAt, cancelledAt *time.Time) (gen.OrderRow, error)
-	// ReviveOrderIfExpired is ReviveForPayment's status-guarded write: see
-	// gen.Queries.ReviveOrderIfExpired.
-	ReviveOrderIfExpired(ctx context.Context, id, orgID uuid.UUID) (gen.OrderRow, error)
 	EventStore
 }
 

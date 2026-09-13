@@ -513,25 +513,16 @@ func (d TicketsDeps) wired() bool { return d.Q != nil && d.Project != nil }
 // settings.gateway.platform_email = true.
 type PayIssueTicketsFunc func(ctx context.Context, cs gen.CheckoutSessionRow, suppressDelivery bool) (int, error)
 
-// PayOrderAlertFunc raises the spec §7.9 step 2 operator alert when a paid
-// order's hold could not be re-acquired and the order was parked in
-// manual_review. Production wiring injects a closure over the audit writer;
-// the handler additionally logs at error level regardless, so a nil callback
-// degrades the alert to log-only rather than losing it.
-type PayOrderAlertFunc func(ctx context.Context, orderID uuid.UUID, actor string, metadata map[string]any)
-
 // PayOrderDeps bundles the optional PAY_ORDER dependencies (feature #494,
-// W1-B2a, spec §7.9). Only IssueTickets is required for the command to be
-// considered wired: without it the post-commit synchronous issuance that
-// §7.10's 5-poll GET_TICKETS_BY_ORDER contract depends on cannot happen, and
-// answering "paid" without tickets would strand the buyer.
+// W1-B2a, spec §7.9; payment-window contract, owner decision 2026-09-13).
+// Only IssueTickets is required for the command to be considered wired:
+// without it the post-commit synchronous issuance that §7.10's 5-poll
+// GET_TICKETS_BY_ORDER contract depends on cannot happen, and answering
+// "paid" without tickets would strand the buyer.
 type PayOrderDeps struct {
 	// IssueTickets runs htickets issuance synchronously right after the
 	// payment transaction commits (spec §7.9 step 5).
 	IssueTickets PayIssueTicketsFunc
-	// Alert raises the manual-review operator alert (spec §7.9 step 2).
-	// Optional; nil degrades to the error log the handler writes anyway.
-	Alert PayOrderAlertFunc
 }
 
 // wired reports whether the PAY_ORDER surface is available.
