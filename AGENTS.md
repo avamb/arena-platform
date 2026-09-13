@@ -657,3 +657,27 @@ entries short and factual.
   manual-review writes run in a SAVEPOINT (`parkCheckoutForManualReview`) and a
   non-NoRows completion error answers 500 so the provider redelivers — never
   swallow a failed statement inside that transaction.
+- **Bil24 gateway token verification is cached in-process, keyed on the
+  stored bcrypt hash** (`hbil24/token_cache.go`, perf fix — uncached, every
+  `/compat/bil24/json` command paid a fresh ~50-190ms bcrypt compare; a load
+  test showed 3-4 CPU cores at 44 req/s and 1.5-3s waits on a 200-reservation
+  burst). Only SUCCESSFUL verifications are cached — a wrong guess always
+  re-runs bcrypt, so caching can never make brute-forcing cheaper. The cache
+  key IS the bcrypt hash string (not the channel id): both call sites
+  (`authenticateCommand`'s inline check and the legacy `validateGatewayToken`
+  helper used by RESERVATION/cart/CREATE_ORDER_EXT/PAY_ORDER/
+  GET_TICKETS_BY_ORDER) go through the shared `Handler.verifyGatewayToken`,
+  but only `authenticateCommand` resolves a full channel row —
+  `validateGatewayToken` only ever receives the settings blob. bcrypt's
+  random salt makes every hash effectively unique per channel, so keying by
+  hash gives the same rotation-invalidates-immediately property as keying by
+  channel id would (`PUT .../gateway-credential` writes a new hash, so the
+  next request simply misses the cache under the old key and the cache never
+  holds a stale credential), without needing a channel id at every call
+  site — the disabled-channel / no-hash-configured gates still run BEFORE
+  the cache is ever consulted, unchanged. TTL defaults to 5 minutes,
+  configurable via `BIL24_TOKEN_CACHE_TTL` / `Handler.WithTokenCacheTTL`.
+  Any NEW auth path must call `verifyGatewayToken`, never
+  `bcrypt.CompareHashAndPassword` directly — a static call would bypass both
+  the cache and the singleflight cold-cache dedup that collapses a burst of
+  identical concurrent requests onto one bcrypt call.

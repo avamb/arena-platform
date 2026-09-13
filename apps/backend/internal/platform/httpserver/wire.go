@@ -76,6 +76,11 @@ type Options struct {
 	// NEVER set this to false in production — an uncredentialled gateway allows
 	// unauthenticated inventory mutation.
 	Bil24RequireToken bool
+	// Bil24TokenCacheTTL overrides how long a successful gateway token
+	// verification is cached (perf fix, hbil24/token_cache.go). Corresponds
+	// to env var BIL24_TOKEN_CACHE_TTL. Zero falls back to hbil24's own
+	// default (5 minutes).
+	Bil24TokenCacheTTL time.Duration
 
 	// Per-domain sqlc *Queries. See struct docs above.
 	SuperadminQueries     *gen.Queries
@@ -293,6 +298,7 @@ func New(opts Options) *Server {
 		debugSlowDelay:              opts.DebugSlowDelay,
 		bil24Enabled:                opts.Bil24CompatEnabled,
 		bil24RequireToken:           opts.Bil24RequireToken,
+		bil24TokenCacheTTL:          opts.Bil24TokenCacheTTL,
 
 		geoQueries:            pickQueries(opts.GeoQueries, opts.PgxPool),
 		orgQueries:            pickQueries(opts.OrgQueries, opts.PgxPool),

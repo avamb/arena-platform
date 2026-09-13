@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -458,6 +459,17 @@ type Handler struct {
 	// builds a bare Handler asserts. Production wiring passes a closure over
 	// mediastore.Repo.SignedDownloadURL on the API public origin.
 	posterSigner MediaURLSigner
+
+	// tokenCache (perf fix, see token_cache.go) caches successful gateway
+	// token verifications, keyed by the bcrypt hash string, so a repeat
+	// request skips the ~50-190ms bcrypt compare. New() always sets this to
+	// a non-nil cache with defaultTokenCacheTTL; WithTokenCacheTTL overrides
+	// the TTL. Both authenticateCommand and validateGatewayToken go through
+	// Handler.verifyGatewayToken, which uses this field.
+	tokenCache *tokenCache
+	// tokenSF coalesces concurrent cold-cache bcrypt compares for the same
+	// (hash, token) onto a single call. Zero value is ready to use.
+	tokenSF singleflight.Group
 }
 
 // MediaURLSigner builds a publicly fetchable URL for a media object id.
@@ -566,7 +578,19 @@ func New(
 		schemaQ:         schemaQ,
 		resDeps:         resDeps,
 		logger:          logger,
+		tokenCache:      newTokenCache(defaultTokenCacheTTL),
 	}
+}
+
+// WithTokenCacheTTL overrides how long a successful gateway token
+// verification stays cached (default defaultTokenCacheTTL = 5 minutes;
+// production wiring reads this from BIL24_TOKEN_CACHE_TTL). A non-positive
+// duration falls back to the default. This replaces the cache (any entries
+// cached under the previous TTL are dropped), so call it during setup,
+// before the handler serves traffic. Returns the receiver for chaining.
+func (h *Handler) WithTokenCacheTTL(ttl time.Duration) *Handler {
+	h.tokenCache = newTokenCache(ttl)
+	return h
 }
 
 // WithRequireToken enables or disables fid/token authentication for

@@ -253,7 +253,11 @@ func run() error {
 		// NEVER set this to false in production — unauthenticated gateway access
 		// allows inventory mutation without credentials.
 		Bil24RequireToken: cfg.Bil24RequireToken,
-		Media:             mediaRepo,
+		// Bil24TokenCacheTTL overrides the gateway token verification cache
+		// TTL (perf fix, hbil24/token_cache.go). Zero (BIL24_TOKEN_CACHE_TTL
+		// unset) leaves hbil24's own 5-minute default in place.
+		Bil24TokenCacheTTL: cfg.Bil24TokenCacheTTL,
+		Media:              mediaRepo,
 	})
 
 	listenErrCh := make(chan error, 1)
