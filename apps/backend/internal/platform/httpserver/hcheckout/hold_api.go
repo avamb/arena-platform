@@ -159,14 +159,38 @@ func CreateSeatedHold(ctx context.Context, pool TxStarter, q *gen.Queries, in Se
 	}
 	quantity := int32(len(seats)) //nolint:gosec // bounded above by int32Max
 
-	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+	var out SeatedHoldResult
+	err := retryOnSerializationFailure(ctx, holdMutationRetryAttempts, func() error {
+		tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+		if err != nil {
+			return fmt.Errorf("hcheckout: begin seated hold tx: %w", err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+
+		res, txErr := createSeatedHoldTx(ctx, q.WithTx(tx), in, seats, quantity)
+		if txErr != nil {
+			return txErr
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("hcheckout: commit seated hold: %w", err)
+		}
+		out = res
+		return nil
+	})
 	if err != nil {
-		return SeatedHoldResult{}, fmt.Errorf("hcheckout: begin seated hold tx: %w", err)
+		return SeatedHoldResult{}, err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	return out, nil
+}
 
-	txq := q.WithTx(tx)
-
+// createSeatedHoldTx is CreateSeatedHold's transaction body, extracted so
+// retryOnSerializationFailure can re-run the whole thing from scratch inside
+// a fresh transaction on a 40P01/40001 race.
+//
+// Lock order (must match every other hold mutation): sessions row
+// (seat_status_version bump) → session_seats rows (deterministic
+// seat_key-ordered FOR UPDATE) → inventory_ledger row (ReserveCapacity).
+func createSeatedHoldTx(ctx context.Context, txq *gen.Queries, in SeatedHoldInput, seats []string, quantity int32) (SeatedHoldResult, error) {
 	// Admission-mode gate: seated requires assigned_seats OR hybrid.
 	mode, err := txq.GetSessionAdmissionModeByID(ctx, in.SessionID)
 	if err != nil {
@@ -232,9 +256,6 @@ func CreateSeatedHold(ctx context.Context, pool TxStarter, q *gen.Queries, in Se
 		held = append(held, row)
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return SeatedHoldResult{}, fmt.Errorf("hcheckout: commit seated hold: %w", err)
-	}
 	return SeatedHoldResult{Reservation: res, Seats: held}, nil
 }
 
@@ -288,14 +309,43 @@ func CreateGAHold(ctx context.Context, pool TxStarter, q *gen.Queries, in GAHold
 		totalQty += it.Quantity
 	}
 
-	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+	var out gen.ReservationRow
+	err := retryOnSerializationFailure(ctx, holdMutationRetryAttempts, func() error {
+		tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+		if err != nil {
+			return fmt.Errorf("hcheckout: begin GA hold tx: %w", err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+
+		res, txErr := createGAHoldTx(ctx, q.WithTx(tx), in, totalQty)
+		if txErr != nil {
+			return txErr
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("hcheckout: commit GA hold: %w", err)
+		}
+		out = res
+		return nil
+	})
 	if err != nil {
-		return gen.ReservationRow{}, fmt.Errorf("hcheckout: begin GA hold tx: %w", err)
+		return gen.ReservationRow{}, err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	return out, nil
+}
 
-	txq := q.WithTx(tx)
-
+// createGAHoldTx is CreateGAHold's transaction body, extracted so
+// retryOnSerializationFailure can re-run the whole thing from scratch inside
+// a fresh transaction on a 40P01/40001 race.
+//
+// Lock order (must match every other hold mutation, and the root cause of
+// the concurrent-GA-RESERVATION deadlock this function used to trigger):
+// sessions row (seat_status_version bump) FIRST, THEN the inventory_ledger
+// row (ReserveCapacity). Every other hold mutation in this package already
+// bumps the version before touching capacity; this one used to reserve
+// capacity first, which deadlocked (40P01) against a concurrent
+// ExtendHold/ShrinkHold/CreateSeatedHold on the SAME session taking the two
+// locks in the opposite order. Do not reorder these two calls again.
+func createGAHoldTx(ctx context.Context, txq *gen.Queries, in GAHoldInput, totalQty int32) (gen.ReservationRow, error) {
 	// Admission-mode gate: quantity requires general_admission OR hybrid.
 	mode, err := txq.GetSessionAdmissionModeByID(ctx, in.SessionID)
 	if err != nil {
@@ -308,8 +358,15 @@ func CreateGAHold(ctx context.Context, pool TxStarter, q *gen.Queries, in GAHold
 		return gen.ReservationRow{}, ErrHoldQuantityNotSupported
 	}
 
-	// AB-51: session-level capacity reserve (the same accounting the
-	// seated path uses); concrete ga_unit rows are the per-tier truth.
+	// Step 1 — bump the session's monotonic seat_status_version stamp
+	// BEFORE touching inventory_ledger (global hold-mutation lock order).
+	newVersion, err := txq.IncrementSessionSeatStatusVersion(ctx, in.SessionID)
+	if err != nil {
+		return gen.ReservationRow{}, fmt.Errorf("hcheckout: bump seat_status_version: %w", err)
+	}
+
+	// Step 2 — AB-51: session-level capacity reserve (the same accounting
+	// the seated path uses); concrete ga_unit rows are the per-tier truth.
 	if _, err := txq.ReserveCapacity(ctx, in.SessionID, nil, totalQty); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return gen.ReservationRow{}, &CapacityError{Requested: totalQty}
@@ -331,10 +388,6 @@ func CreateGAHold(ctx context.Context, pool TxStarter, q *gen.Queries, in GAHold
 
 	// Allocate concrete GA units for every line (AB-51): available ->
 	// held, reservation + tier stamped, linked via reservation_seats.
-	newVersion, err := txq.IncrementSessionSeatStatusVersion(ctx, in.SessionID)
-	if err != nil {
-		return gen.ReservationRow{}, fmt.Errorf("hcheckout: bump seat_status_version: %w", err)
-	}
 	lines := make([]GAUnitLine, 0, len(in.Items))
 	for i := range in.Items {
 		tid := in.Items[i].TierID
@@ -355,9 +408,6 @@ func CreateGAHold(ctx context.Context, pool TxStarter, q *gen.Queries, in GAHold
 		}
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return gen.ReservationRow{}, fmt.Errorf("hcheckout: commit GA hold: %w", err)
-	}
 	return res, nil
 }
 
@@ -382,14 +432,36 @@ func ReleaseHold(ctx context.Context, pool TxStarter, q *gen.Queries, reservatio
 		return gen.ReservationRow{}, errors.New("hcheckout: ReleaseHold requires a pool and queries")
 	}
 
-	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+	var out gen.ReservationRow
+	err := retryOnSerializationFailure(ctx, holdMutationRetryAttempts, func() error {
+		tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+		if err != nil {
+			return fmt.Errorf("hcheckout: begin release tx: %w", err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+
+		res, txErr := releaseHoldTx(ctx, q.WithTx(tx), reservationID)
+		if txErr != nil {
+			return txErr
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("hcheckout: commit release: %w", err)
+		}
+		out = res
+		return nil
+	})
 	if err != nil {
-		return gen.ReservationRow{}, fmt.Errorf("hcheckout: begin release tx: %w", err)
+		return gen.ReservationRow{}, err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	return out, nil
+}
 
-	txq := q.WithTx(tx)
-
+// releaseHoldTx is ReleaseHold's transaction body, extracted so
+// retryOnSerializationFailure can re-run the whole thing from scratch inside
+// a fresh transaction on a 40P01/40001 race. Lock order: releaseReservationSeatsTx
+// bumps sessions.seat_status_version before releaseHoldCapacityTx touches
+// inventory_ledger — see the hold-mutation lock order note on CreateGAHold.
+func releaseHoldTx(ctx context.Context, txq *gen.Queries, reservationID uuid.UUID) (gen.ReservationRow, error) {
 	current, err := txq.GetReservationByID(ctx, reservationID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -414,7 +486,8 @@ func ReleaseHold(ctx context.Context, pool TxStarter, q *gen.Queries, reservatio
 	}
 
 	// Release held seats (no-op for GA reservations). Only reached after
-	// winning the guarded transition above.
+	// winning the guarded transition above. Bumps seat_status_version BEFORE
+	// releaseHoldCapacityTx touches inventory_ledger.
 	released, err := releaseReservationSeatsTx(ctx, txq, current.SessionID, current.ID)
 	if err != nil {
 		return gen.ReservationRow{}, fmt.Errorf("hcheckout: release seats: %w", err)
@@ -427,9 +500,6 @@ func ReleaseHold(ctx context.Context, pool TxStarter, q *gen.Queries, reservatio
 		return gen.ReservationRow{}, fmt.Errorf("hcheckout: %w", err)
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return gen.ReservationRow{}, fmt.Errorf("hcheckout: commit release: %w", err)
-	}
 	return cancelled, nil
 }
 

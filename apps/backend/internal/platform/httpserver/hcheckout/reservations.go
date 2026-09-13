@@ -447,6 +447,34 @@ func (h *Handler) HandleCreateReservation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// AB-51: allocate concrete GA units for the hold (available -> held,
+	// linked via reservation_seats). Plan-bound sessions allocate from
+	// the tier's category pool; plan-less from the fungible NULL pool.
+	//
+	// Lock order (must match every other hold mutation — see the note on
+	// hcheckout.createGAHoldTx): bump sessions.seat_status_version BEFORE
+	// touching inventory_ledger. This branch used to call ReserveCapacity
+	// first, which deadlocked (40P01) against a concurrent seated-hold /
+	// ExtendHold / ShrinkHold on the same session taking the two locks in
+	// the opposite order — the same root cause as the CreateGAHold
+	// deadlock. Do not reorder these two calls again.
+	admission, err := resQ.GetSessionAdmissionModeByID(ctx, sessionID)
+	if err != nil {
+		h.logger.Error("reservation: admission lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"reservation.insert_failed", "failed to create reservation", r,
+		))
+		return
+	}
+	newVersion, err := resQ.IncrementSessionSeatStatusVersion(ctx, sessionID)
+	if err != nil {
+		h.logger.Error("reservation: bump seat_status_version failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"reservation.insert_failed", "failed to create reservation", r,
+		))
+		return
+	}
+
 	// Reserve SESSION-LEVEL capacity — returns pgx.ErrNoRows when
 	// over-capacity. AB-51: the per-tier truth is the ga_unit allocation
 	// below; the ledger keeps the session rollup exactly like the seated
@@ -475,25 +503,6 @@ func (h *Handler) HandleCreateReservation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// AB-51: allocate concrete GA units for the hold (available -> held,
-	// linked via reservation_seats). Plan-bound sessions allocate from
-	// the tier's category pool; plan-less from the fungible NULL pool.
-	admission, err := resQ.GetSessionAdmissionModeByID(ctx, sessionID)
-	if err != nil {
-		h.logger.Error("reservation: admission lookup failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"reservation.insert_failed", "failed to create reservation", r,
-		))
-		return
-	}
-	newVersion, err := resQ.IncrementSessionSeatStatusVersion(ctx, sessionID)
-	if err != nil {
-		h.logger.Error("reservation: bump seat_status_version failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"reservation.insert_failed", "failed to create reservation", r,
-		))
-		return
-	}
 	if _, err := AllocateGAUnitsTx(
 		ctx, resQ, sessionID, res.ID, newVersion,
 		admission.SeatingPlanVersionID != nil,
