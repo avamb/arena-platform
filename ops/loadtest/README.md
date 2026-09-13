@@ -61,8 +61,6 @@ Test-design notes learned the hard way:
 - Give every simulated buyer its own email and phone. Customers are matched
   by those identities and arena keeps one open order per customer per session,
   so a shared email makes buyers expire each other's pending orders.
-- `PUT .../gateway-credential` resets the channel's `reservation_ttl_override`
-  to NULL; `provision.mjs` re-applies the TTL with a PATCH afterwards.
 - The first findings report is `docs/loadtest/2026-09-13_local_step1_ru.md`.
 
 ---

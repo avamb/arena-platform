@@ -80,7 +80,7 @@ type Querier interface {
 	GetSalesChannelByID(ctx context.Context, id, orgID uuid.UUID) (SalesChannelRow, error)
 	GetSalesChannelByDisplayNumber(ctx context.Context, displayNumber int64) (SalesChannelRow, error)
 	ListSalesChannelsByOrg(ctx context.Context, orgID uuid.UUID) ([]SalesChannelRow, error)
-	UpdateSalesChannel(ctx context.Context, id, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent *string, reservationTTLOverride *int32, settings json.RawMessage) (SalesChannelRow, error)
+	UpdateSalesChannel(ctx context.Context, id, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent *string, reservationTTLOverride *int32, setReservationTTLOverride bool, settings json.RawMessage) (SalesChannelRow, error)
 	SoftDeleteSalesChannel(ctx context.Context, id, orgID uuid.UUID) (SalesChannelRow, error)
 
 	// Memberships — user → org role assignments (feature #120)

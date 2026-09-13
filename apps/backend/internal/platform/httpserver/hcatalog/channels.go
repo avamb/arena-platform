@@ -172,6 +172,19 @@ func NormalizeChannelSettings(raw json.RawMessage) (json.RawMessage, string) {
 	return raw, ""
 }
 
+// ValidateReservationTTLOverride enforces that, when present, the override is
+// a positive number of seconds. nil (org-level default) is always valid.
+// Returns a non-empty error message when invalid.
+func ValidateReservationTTLOverride(v *int32) string {
+	if v == nil {
+		return ""
+	}
+	if *v <= 0 {
+		return "reservation_ttl_override must be a positive number of seconds"
+	}
+	return ""
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/organizations/{org_id}/channels
 // ─────────────────────────────────────────────────────────────────────────────
@@ -247,6 +260,14 @@ func (h *Handler) HandleCreateChannel(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"channel.invalid_config", msg, r,
 			map[string]any{"field": "payment_mode"},
+		))
+		return
+	}
+
+	if msg := ValidateReservationTTLOverride(req.ReservationTTLOverride); msg != "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"channel.invalid_reservation_ttl_override", msg, r,
+			map[string]any{"field": "reservation_ttl_override"},
 		))
 		return
 	}
@@ -378,13 +399,18 @@ func (h *Handler) HandleGetChannel(w http.ResponseWriter, r *http.Request) {
 // PATCH /v1/organizations/{org_id}/channels/{id}
 // ─────────────────────────────────────────────────────────────────────────────
 
+// updateChannelRequest reuses the package-level optionalInt32 (events.go) for
+// reservation_ttl_override so PATCH can distinguish "key absent from the JSON
+// body" (Present == false, stored value untouched) from "key present as
+// null" (Present == true, Value == nil, column cleared to NULL) and "key
+// present with a value" (Present == true, Value != nil, column set).
 type updateChannelRequest struct {
 	Name                   string          `json:"name"`
 	PaymentMode            string          `json:"payment_mode"`
 	Provider               string          `json:"provider"`
 	ProviderAccountID      *string         `json:"provider_account_id"`
 	FeePercent             *string         `json:"fee_percent"`
-	ReservationTTLOverride *int32          `json:"reservation_ttl_override"`
+	ReservationTTLOverride optionalInt32   `json:"reservation_ttl_override"`
 	Settings               json.RawMessage `json:"settings"`
 }
 
@@ -473,9 +499,21 @@ func (h *Handler) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.ReservationTTLOverride.Present {
+		if msg := ValidateReservationTTLOverride(req.ReservationTTLOverride.Value); msg != "" {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"channel.invalid_reservation_ttl_override", msg, r,
+				map[string]any{"field": "reservation_ttl_override"},
+			))
+			return
+		}
+	}
+
 	updated, err := h.channelQueries.UpdateSalesChannel(ctx,
 		chID, orgID, req.Name, req.PaymentMode, req.Provider,
-		req.ProviderAccountID, req.FeePercent, req.ReservationTTLOverride, settings,
+		req.ProviderAccountID, req.FeePercent,
+		req.ReservationTTLOverride.Value, req.ReservationTTLOverride.Present,
+		settings,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
