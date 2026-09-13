@@ -21,6 +21,10 @@
  *   After the hold TTL (fixtures reservation_ttl_seconds) + EXPIRY_GRACE_SECONDS a new
  *   buyer must be able to reserve the whole pool again.
  *
+ * SCENARIO=paywindow — every unit of the "paywindow" pool is ordered; half the
+ *   buyers pay inside the channel's payment window, half after deadline + grace.
+ *   Late payments must be refused and exactly their units return to sale.
+ *
  * Run (Docker Desktop, repo root):
  *   docker run --rm -i -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.internal:8080 \
  *     -e SCENARIO=flow grafana/k6:0.54.0 run /lt/gateway.js
@@ -58,6 +62,9 @@ const journeyMs = new Trend('gw_purchase_journey_ms', true); // CREATE_USER .. P
 const issuanceMs = new Trend('gw_ticket_issuance_ms', true); // PAY_ORDER ok → tickets visible
 const ticketsMissing = new Counter('gw_tickets_not_issued');
 const openOrderRefused = new Counter('gw_open_order_refused'); // SHARED_BUYERS: 101 open_order_exists
+const deadlineOk = new Rate('gw_payment_deadline_ok');   // CREATE_ORDER_EXT paymentDeadline = now + window
+const ontimePayOk = new Rate('gw_ontime_pay_ok');
+const latePayRefused = new Rate('gw_late_pay_refused');
 const expiredHoldsReleased = new Rate('gw_expired_holds_released');
 
 const scenarios = {
@@ -77,6 +84,20 @@ const scenarios = {
   race: {
     racers: {
       executor: 'per-vu-iterations', vus: RACERS, iterations: 1, maxDuration: '3m', exec: 'race',
+    },
+  },
+  // Every unit of the "paywindow" pool is ordered. Buyers on even iterations
+  // pay inside the window, the others pay after deadline + grace and must be
+  // refused. Afterwards a new buyer must be able to reserve exactly the units
+  // of the refused orders: the rest stay sold.
+  paywindow: {
+    orderers: {
+      executor: 'per-vu-iterations', vus: FIX.events.paywindow ? FIX.events.paywindow.capacity : 1, iterations: 1,
+      maxDuration: `${(FIX.payment_window_seconds || 60) + (FIX.payment_grace_seconds || 10) + 60}s`, exec: 'orderAndMaybePay',
+    },
+    returning: {
+      executor: 'per-vu-iterations', vus: 1, iterations: 1, exec: 'reserveReturnedUnits',
+      startTime: `${(FIX.payment_window_seconds || 60) + (FIX.payment_grace_seconds || 10) + 45}s`, maxDuration: '1m',
     },
   },
   // Every unit of the "expiry" pool is reserved and walked away from (no
@@ -102,6 +123,12 @@ export const options = {
     }
     : SCENARIO === 'expiry' ? {
       gw_errors: ['rate<0.001'],
+      gw_expired_holds_released: ['rate==1'],
+    } : SCENARIO === 'paywindow' ? {
+      gw_errors: ['rate<0.001'],
+      gw_payment_deadline_ok: ['rate==1'],
+      gw_ontime_pay_ok: ['rate==1'],
+      gw_late_pay_refused: ['rate==1'],
       gw_expired_holds_released: ['rate==1'],
     } : {
       gw_errors: ['rate<0.005'],
@@ -303,6 +330,62 @@ export function race() {
   });
   if (!pay.ok) { purchaseFailed.add(1); return; }
   purchaseOk.add(1);
+}
+
+export function orderAndMaybePay() {
+  const ev = FIX.events.paywindow;
+  const cat = ev.categories[0];
+  const window = FIX.payment_window_seconds;
+  const grace = FIX.payment_grace_seconds;
+  const user = createUser();
+  if (!user) { purchaseFailed.add(1); return; }
+  const hold = reserve(user, ev, cat, 1);
+  if (!hold.ok || hold.code !== 0) { purchaseFailed.add(1); return; }
+  const cart = gw('GET_CART', { userId: user.userId, sessionId: user.sessionId });
+  const order = gw('CREATE_ORDER_EXT', {
+    orderId: nextSiteOrderId(), userId: user.userId, sessionId: user.sessionId, currency: 'CZK',
+    total: cart.data ? cart.data.totalSum : cat.price, actionEventId: ev.action_event_id, longReservation: false,
+    lines: [{ categoryPriceId: cat.category_price_id, quantity: 1, tariffPlanId: null }],
+    email: buyerEmail(), phone: buyerPhone(), fullName: 'Window Buyer', chargePercent: 0, promoCodes: [],
+  });
+  if (!order.ok) { purchaseFailed.add(1); return; }
+  const deadline = order.data.paymentDeadline;
+  const expected = Math.floor(Date.now() / 1000) + window;
+  deadlineOk.add(typeof deadline === 'number' && Math.abs(deadline - expected) <= 5 && order.data.paymentTimeout === window);
+
+  // Split by the scenario-wide iteration index (0..capacity-1): VU ids are shared
+  // with the other scenario and would not split the pool evenly.
+  const onTime = exec.scenario.iterationInTest % 2 === 0;
+  if (onTime) {
+    sleep(Math.random() * window / 2);
+  } else {
+    // Past deadline + grace, as a site whose buyer paid too late.
+    sleep(Math.max(0, (deadline || expected) + grace + 5 - Date.now() / 1000));
+  }
+  const pay = gw('PAY_ORDER', {
+    orderId: order.data.orderId, userId: user.userId, sessionId: user.sessionId,
+    amount: order.data.totalSum, currency: 'CZK', method: 'woo_bank_card',
+  }, { okCodes: onTime ? [0] : [101] });
+  if (onTime) {
+    ontimePayOk.add(pay.code === 0);
+  } else {
+    latePayRefused.add(pay.code === 101 && String((pay.data && pay.data.description) || '').includes('expired'));
+  }
+}
+
+export function reserveReturnedUnits() {
+  const ev = FIX.events.paywindow;
+  const refused = Math.floor(ev.capacity / 2); // odd iterations paid late
+  const user = createUser();
+  if (!user) { expiredHoldsReleased.add(false); return; }
+  const r = reserve(user, ev, ev.categories[0], refused);
+  expiredHoldsReleased.add(r.code === 0);
+  // One more than the refused orders must not fit: the on-time orders stay sold.
+  const extra = createUser();
+  const over = extra ? reserve(extra, ev, ev.categories[0], 1) : { code: null };
+  console.log(`paywindow: window=${FIX.payment_window_seconds}s grace=${FIX.payment_grace_seconds}s `
+    + `re-reserve ${refused} units -> resultCode=${r.code}, one more -> resultCode=${over.code}`);
+  expiredHoldsReleased.add(over.code === 101);
 }
 
 export function walkAway() {

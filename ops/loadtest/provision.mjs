@@ -13,6 +13,8 @@
  *       flow  : large GA pool   (purchase journeys, both entry points)
  *       race  : tiny GA pool    (N buyers race for the last tickets)
  *       expiry: small GA pool   (abandoned holds must return to sale)
+ *       paywindow: small GA pool (unpaid orders expire after the payment window)
+ *   - a short gateway payment window on the channel (PAYMENT_WINDOW, PAYMENT_GRACE)
  *
  * Writes ops/loadtest/results/fixtures.local.json (gitignored — holds the
  * gateway token and API key of the local stand).
@@ -43,6 +45,9 @@ const FLOW_POOL = parseInt(process.env.FLOW_POOL || '20000', 10);
 const RACE_POOL = parseInt(process.env.RACE_POOL || '10', 10);
 const EXPIRY_POOL = parseInt(process.env.EXPIRY_POOL || '20', 10);
 const RESERVATION_TTL = parseInt(process.env.RESERVATION_TTL || '120', 10);
+const PAYWINDOW_POOL = parseInt(process.env.PAYWINDOW_POOL || '20', 10);
+const PAYMENT_WINDOW = parseInt(process.env.PAYMENT_WINDOW || '60', 10);
+const PAYMENT_GRACE = parseInt(process.env.PAYMENT_GRACE || '10', 10);
 const runId = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12) + '-' + randomUUID().slice(0, 4);
 
 async function call(method, path, { token, body, admin = true, expect = [200, 201] } = {}) {
@@ -138,6 +143,18 @@ async function main() {
     throw new Error(`channel TTL override not preserved after gateway-credential PUT: ${reloaded.reservation_ttl_override}`);
   }
 
+  // Short payment window so SCENARIO=paywindow can observe it. The PATCH
+  // replaces the whole settings object, so merge into what the credential PUT
+  // wrote and verify the token hash survived.
+  const settings = reloaded.settings && typeof reloaded.settings === 'object' ? reloaded.settings : {};
+  settings.gateway = { ...(settings.gateway || {}), payment_window_seconds: PAYMENT_WINDOW, payment_grace_seconds: PAYMENT_GRACE };
+  await call('PATCH', `/v1/organizations/${ORG_ID}/channels/${channel.id}`, { token, body: { settings } });
+  const { channel: withWindow } = await call('GET', `/v1/organizations/${ORG_ID}/channels/${channel.id}`, { token });
+  const gwSettings = (withWindow.settings && withWindow.settings.gateway) || {};
+  if (gwSettings.payment_window_seconds !== PAYMENT_WINDOW || !gwSettings.token_hash) {
+    throw new Error(`payment window not applied or gateway credential lost: ${JSON.stringify(gwSettings)}`);
+  }
+
   const key = await call('POST', `/v1/organizations/${ORG_ID}/api-keys`, {
     token,
     body: {
@@ -153,6 +170,7 @@ async function main() {
     flow: [['Standard', 450, FLOW_POOL], ['VIP', 900, Math.max(1, Math.floor(FLOW_POOL / 10))]],
     race: [['Last tickets', 500, RACE_POOL]],
     expiry: [['Abandoned carts', 300, EXPIRY_POOL]],
+    paywindow: [['Unpaid orders', 350, PAYWINDOW_POOL]],
   };
   for (const [kind, cats] of Object.entries(plan)) {
     const r = await call('POST', `/v1/organizations/${ORG_ID}/imports/event-bundle`, {
@@ -197,6 +215,8 @@ async function main() {
     gateway: { fid: gw.fid, token: gw.token },
     api_key: apiKey,
     reservation_ttl_seconds: RESERVATION_TTL,
+    payment_window_seconds: PAYMENT_WINDOW,
+    payment_grace_seconds: PAYMENT_GRACE,
     native: { feed_token: feed.token, feed_token_id: feed.id, org_jwt: orgJwt },
     events,
     created_at: new Date().toISOString(),
