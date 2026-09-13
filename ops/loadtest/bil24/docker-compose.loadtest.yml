@@ -7,6 +7,6 @@ services:
       BIL24_COMPAT_ENABLED: "true"
       BIL24_REQUIRE_TOKEN: "true"
       DB_LOG_QUERIES: "false"
-      # native.js sends "X-Forwarded-For: <visitor>, <proxy>" as a real reverse
-      # proxy would, so the per-IP limit keys on distinct simulated visitors.
+      # native.js sends "X-Forwarded-For: <visitor>" as one reverse proxy would
+      # append it, so the per-IP limit keys on distinct simulated visitors.
       TRUSTED_PROXY_COUNT: "1"

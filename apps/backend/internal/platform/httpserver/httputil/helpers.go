@@ -99,14 +99,23 @@ func ClientIP(r *http.Request) string {
 // the Go net/http server from the TCP connection and cannot be forged by the
 // client.
 //
-// When trustedProxies == N (N > 0), each trusted proxy is expected to append
-// one entry to the end of the X-Forwarded-For list. The real client IP is
-// therefore the entry at position len(xff)-N-1 (0-indexed from the left). If
-// the XFF list contains fewer than N+1 entries the function falls back to
-// RemoteAddr to avoid returning an attacker-controlled value.
+// When trustedProxies == N (N > 0), each trusted proxy appends the address of
+// the peer that connected to IT to the end of X-Forwarded-For (nginx
+// $proxy_add_x_forwarded_for, Traefik, AWS ALB all behave this way). The last
+// proxy is the TCP peer of this process and is not in the header. So with N
+// proxies the header ends with N appended entries and the real client is the
+// FIRST of them: position len(xff)-N (0-indexed from the left). Entries to the
+// left of it were supplied by the client and are ignored. If the list has
+// fewer than N entries the function falls back to RemoteAddr.
 //
-// Example: behind one nginx reverse proxy set trustedProxies=1. The XFF value
-// would be "<real-client>, <nginx-added>"; the function returns <real-client>.
+// Example: client -> Traefik -> arena-api, trustedProxies=1. A client sending
+// no header arrives as "<real-client>"; a client spoofing "X-Forwarded-For:
+// 6.6.6.6" arrives as "6.6.6.6, <real-client>". Both return <real-client>.
+//
+// Until 2026-09-13 this used len(xff)-N-1, i.e. it assumed each proxy also
+// appended its OWN address. Behind a single real proxy that returned the
+// proxy address for every visitor, collapsing all per-IP rate limits into
+// one shared bucket.
 func TrustedClientIP(r *http.Request, trustedProxies int) string {
 	remoteAddr := func() string {
 		host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -135,9 +144,10 @@ func TrustedClientIP(r *http.Request, trustedProxies int) string {
 		}
 	}
 
-	// The real client is at len(ips)-trustedProxies-1. If there are not
-	// enough entries, the header is suspicious — fall back to RemoteAddr.
-	idx := len(ips) - trustedProxies - 1
+	// The real client is the first proxy-appended entry: len(ips)-trustedProxies.
+	// Fewer entries than trusted hops means the header did not come through the
+	// declared proxy chain — fall back to RemoteAddr.
+	idx := len(ips) - trustedProxies
 	if idx < 0 {
 		return remoteAddr()
 	}

@@ -523,12 +523,16 @@ entries short and factual.
   left registered unconditionally, it silently defeats
   `httputil.TrustedClientIP`'s `trustedProxies==0` "ignore XFF" safe
   default, because by the time `TrustedClientIP` looks at `r.RemoteAddr` it
-  has already been overwritten from a spoofable header. `RealIP` is now
-  gated on `TrustedProxyCount > 0`. The existing hauth login-rate-limit
-  tests never caught this because they call `s.handleAuthLogin` directly,
-  bypassing the router's middleware chain entirely — a rate-limit test that
-  wants to prove IP-spoof resistance must go through `s.router.ServeHTTP`,
-  not the handler method, or it will pass against a vulnerability that's
-  still live in production. Behind Traefik/Dokploy/nginx/any reverse proxy,
+  has already been overwritten from a spoofable header. chi `RealIP` is
+  replaced by `trustedRealIP` (router.go), registered only when
+  `TrustedProxyCount > 0`. **Hop-count rule: the client is the Nth
+  X-Forwarded-For entry from the right** (`len-N`): nginx, Traefik and AWS
+  ALB append the address of their PEER, never their own. Until 2026-09-13
+  `httputil.TrustedClientIP` used `len-N-1`, so behind one real proxy every
+  visitor resolved to the proxy address; do not reintroduce that. The
+  existing hauth login-rate-limit tests never caught the RealIP problem because they call `s.handleAuthLogin`
+  directly, bypassing the router middleware chain — a rate-limit test that
+  wants to prove IP-spoof resistance must go through `s.router.ServeHTTP`.
+  Behind Traefik/Dokploy/nginx/any reverse proxy,
   `TRUSTED_PROXY_COUNT` MUST be set to the real proxy hop count or every
   visitor is rate-limited as if they were the proxy's own IP.

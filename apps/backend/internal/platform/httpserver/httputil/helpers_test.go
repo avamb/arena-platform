@@ -66,34 +66,32 @@ func TestTrustedClientIP_ZeroProxies_NegativeCount_TreatedAsZero(t *testing.T) {
 // ---------------------------------------------------------------------------
 // TrustedClientIP — one trusted proxy hop
 // ---------------------------------------------------------------------------
+//
+// Real proxies (nginx , Traefik, AWS ALB) append the
+// address of the peer that connected to them — the CLIENT for the first hop —
+// and never their own address. The last proxy is RemoteAddr.
 
-func TestTrustedClientIP_OneProxy_ReturnsSecondFromRight(t *testing.T) {
-	// Layout: "<real-client>, <proxy-added>"
-	// With trustedProxies=1, the rightmost entry is the trusted proxy; the
-	// real client is at index len-1-1 = 0.
+func TestTrustedClientIP_OneProxy_ReturnsProxyAppendedClient(t *testing.T) {
+	// client -> proxy -> app: the proxy wrote the client's address.
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	r.Header.Set("X-Forwarded-For", "203.0.113.42, 10.0.0.1")
+	r.Header.Set("X-Forwarded-For", "203.0.113.42")
 	r.RemoteAddr = "10.0.0.1:40000"
 
 	got := TrustedClientIP(r, 1)
 	if got != "203.0.113.42" {
-		t.Errorf("TrustedClientIP(1) = %q; want 203.0.113.42 (real client)", got)
+		t.Errorf("TrustedClientIP(1) = %q; want 203.0.113.42 (real client, not the proxy)", got)
 	}
 }
 
-func TestTrustedClientIP_OneProxy_SpoofedLeftEntry_RealClientStillFromRight(t *testing.T) {
-	// Attacker injects a fake IP at the left; the trusted proxy appended the real one.
-	// XFF: "<attacker-injected>, <real-client>, <trusted-proxy-added>"
-	// trustedProxies=1 → real client is at index len-1-1 = 1 → real-client value.
+func TestTrustedClientIP_OneProxy_SpoofedLeftEntryIgnored(t *testing.T) {
+	// The client sent "X-Forwarded-For: 6.6.6.6"; the proxy appended the real one.
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	r.Header.Set("X-Forwarded-For", "evil-fake-ip, 203.0.113.99, 10.0.0.1")
+	r.Header.Set("X-Forwarded-For", "6.6.6.6, 203.0.113.99")
 	r.RemoteAddr = "10.0.0.1:40001"
 
 	got := TrustedClientIP(r, 1)
-	// With 1 trusted proxy the rightmost hop is trusted; the real client is the
-	// second-from-right entry.
 	if got != "203.0.113.99" {
-		t.Errorf("TrustedClientIP(1) = %q; want 203.0.113.99", got)
+		t.Errorf("TrustedClientIP(1) = %q; want 203.0.113.99 (spoofed entry must be ignored)", got)
 	}
 }
 
@@ -108,31 +106,15 @@ func TestTrustedClientIP_OneProxy_EmptyXFF_FallsBackToRemoteAddr(t *testing.T) {
 	}
 }
 
-func TestTrustedClientIP_OneProxy_TooFewXFFEntries_FallsBackToRemoteAddr(t *testing.T) {
-	// Only 1 entry in XFF but trustedProxies=1 requires 2 entries (one for the
-	// real client, one for the trusted proxy). The single entry is from the
-	// trusted proxy itself, so there is no real-client entry to read.
-	// The function should fall back to RemoteAddr to avoid returning an
-	// attacker-controlled value.
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	r.Header.Set("X-Forwarded-For", "1.2.3.4") // only 1 entry
-	r.RemoteAddr = "192.168.1.1:9090"
-
-	got := TrustedClientIP(r, 1)
-	if got != "192.168.1.1" {
-		t.Errorf("TrustedClientIP(1) with single XFF entry = %q; want 192.168.1.1 (fallback)", got)
-	}
-}
-
 // ---------------------------------------------------------------------------
 // TrustedClientIP — two trusted proxy hops
 // ---------------------------------------------------------------------------
 
-func TestTrustedClientIP_TwoProxies_ReturnsThirdFromRight(t *testing.T) {
-	// Layout: "<real-client>, <inner-proxy>, <outer-proxy>"
-	// With trustedProxies=2, index = len-2-1 = 0 → real-client.
+func TestTrustedClientIP_TwoProxies_ReturnsFirstProxyAppendedEntry(t *testing.T) {
+	// client -> inner proxy -> outer proxy -> app.
+	// Inner appended the client, outer appended the inner proxy; RemoteAddr is outer.
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	r.Header.Set("X-Forwarded-For", "1.2.3.4, 10.0.0.5, 10.0.0.6")
+	r.Header.Set("X-Forwarded-For", "1.2.3.4, 10.0.0.5")
 	r.RemoteAddr = "10.0.0.6:12345"
 
 	got := TrustedClientIP(r, 2)
@@ -142,16 +124,26 @@ func TestTrustedClientIP_TwoProxies_ReturnsThirdFromRight(t *testing.T) {
 }
 
 func TestTrustedClientIP_TwoProxies_ClientCannotSpoofWithOneInjectedEntry(t *testing.T) {
-	// Attacker injects one extra IP. With trustedProxies=2, the function still
-	// picks the correct entry: index = len-2-1.
-	// XFF: "<fake>, <real-client>, <inner-proxy>, <outer-proxy>" → index 4-2-1=1 → real-client.
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	r.Header.Set("X-Forwarded-For", "6.6.6.6, 1.2.3.4, 10.0.0.5, 10.0.0.6")
+	r.Header.Set("X-Forwarded-For", "6.6.6.6, 1.2.3.4, 10.0.0.5")
 	r.RemoteAddr = "10.0.0.6:12345"
 
 	got := TrustedClientIP(r, 2)
 	if got != "1.2.3.4" {
 		t.Errorf("TrustedClientIP(2) with injected entry = %q; want 1.2.3.4", got)
+	}
+}
+
+func TestTrustedClientIP_TwoProxies_TooFewXFFEntries_FallsBackToRemoteAddr(t *testing.T) {
+	// Two hops declared but only one appended entry: the header did not come
+	// through the declared chain, so nothing in it is trustworthy.
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set("X-Forwarded-For", "1.2.3.4")
+	r.RemoteAddr = "192.168.1.1:9090"
+
+	got := TrustedClientIP(r, 2)
+	if got != "192.168.1.1" {
+		t.Errorf("TrustedClientIP(2) with single XFF entry = %q; want 192.168.1.1 (fallback)", got)
 	}
 }
 
@@ -161,12 +153,11 @@ func TestTrustedClientIP_TwoProxies_ClientCannotSpoofWithOneInjectedEntry(t *tes
 
 func TestTrustedClientIP_InvalidIPInXFF_FallsBackToRemoteAddr(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	// A non-IP string at the expected position.
-	r.Header.Set("X-Forwarded-For", "not-an-ip, 10.0.0.1")
+	// A non-IP string at the proxy-appended position.
+	r.Header.Set("X-Forwarded-For", "203.0.113.1, not-an-ip")
 	r.RemoteAddr = "10.0.0.1:9000"
 
 	got := TrustedClientIP(r, 1)
-	// "not-an-ip" is at index 0 = len-1-1, which fails net.ParseIP → fallback.
 	if got != "10.0.0.1" {
 		t.Errorf("TrustedClientIP(1) with invalid XFF = %q; want 10.0.0.1 (fallback)", got)
 	}
@@ -174,7 +165,7 @@ func TestTrustedClientIP_InvalidIPInXFF_FallsBackToRemoteAddr(t *testing.T) {
 
 func TestTrustedClientIP_IPv6_ParsedCorrectly(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	r.Header.Set("X-Forwarded-For", "2001:db8::1, 10.0.0.1")
+	r.Header.Set("X-Forwarded-For", "2001:db8::1")
 	r.RemoteAddr = "10.0.0.1:7777"
 
 	got := TrustedClientIP(r, 1)

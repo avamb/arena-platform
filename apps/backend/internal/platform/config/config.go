@@ -124,11 +124,13 @@ type Config struct {
 	// between this process and the public internet. When 0 (the default),
 	// X-Forwarded-For is completely ignored and RemoteAddr is used as the
 	// client IP for rate-limiting — this is the safe default for deployments
-	// without a load balancer. When N > 0, the (N+1)th-from-right entry in
-	// XFF is treated as the real client IP; the rightmost N entries are added
-	// by trusted proxies and therefore cannot be spoofed by clients.
+	// without a load balancer. When N > 0, the Nth-from-right entry in XFF
+	// is treated as the real client IP: each trusted proxy appends the address
+	// of its peer, so the rightmost N entries were written by trusted proxies
+	// and the first of them is the client. Entries further left are
+	// client-supplied and ignored.
 	//
-	// Example: behind one nginx reverse proxy set TRUSTED_PROXY_COUNT=1.
+	// Example: behind one Traefik/nginx reverse proxy set TRUSTED_PROXY_COUNT=1.
 	// WARNING: setting this value higher than your actual proxy depth allows
 	// clients to spoof their IP by prepending entries to X-Forwarded-For.
 	TrustedProxyCount int `env:"TRUSTED_PROXY_COUNT" required:"false" default:"0"`

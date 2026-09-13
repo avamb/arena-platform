@@ -464,9 +464,9 @@ func TestPublicFeed152_HTTP_IPRateLimit_HonouredWithTrustedProxyCountOne(t *test
 
 	w1 := httptest.NewRecorder()
 	req1 := httptest.NewRequest(http.MethodGet, "/v1/public/feeds/ip-trusted-token-a/events", nil)
-	// One trusted hop: the rightmost entry is the proxy's own address, the
-	// real client is the one before it.
-	req1.Header.Set("X-Forwarded-For", "10.0.0.1, 172.17.0.1")
+	// One trusted hop: the proxy appended the address of the client that
+	// connected to it, so the rightmost entry is the real client.
+	req1.Header.Set("X-Forwarded-For", "10.0.0.1")
 	s.router.ServeHTTP(w1, req1)
 	if w1.Code == http.StatusTooManyRequests {
 		t.Fatalf("first visitor should not be rate limited, got 429: %s", w1.Body.String())
@@ -474,10 +474,34 @@ func TestPublicFeed152_HTTP_IPRateLimit_HonouredWithTrustedProxyCountOne(t *test
 
 	w2 := httptest.NewRecorder()
 	req2 := httptest.NewRequest(http.MethodGet, "/v1/public/feeds/ip-trusted-token-b/events", nil)
-	req2.Header.Set("X-Forwarded-For", "10.0.0.2, 172.17.0.1")
+	req2.Header.Set("X-Forwarded-For", "10.0.0.2")
 	s.router.ServeHTTP(w2, req2)
 	if w2.Code == http.StatusTooManyRequests {
 		t.Fatalf("second visitor has a different real IP and must not share the first visitor's bucket, got 429: %s", w2.Body.String())
+	}
+}
+
+// TestPublicFeed152_HTTP_IPRateLimit_SpoofedPrefixIgnoredWithTrustedProxyCountOne:
+// behind one proxy a client can still prepend its own X-Forwarded-For value.
+// The proxy appends the real address after it, so two requests from the same
+// real client with different spoofed prefixes must share one IP bucket.
+func TestPublicFeed152_HTTP_IPRateLimit_SpoofedPrefixIgnoredWithTrustedProxyCountOne(t *testing.T) {
+	s := buildPublicFeedServerWithLimits(t, 100000, 1, 1)
+
+	w1 := httptest.NewRecorder()
+	req1 := httptest.NewRequest(http.MethodGet, "/v1/public/feeds/ip-prefix-token-a/events", nil)
+	req1.Header.Set("X-Forwarded-For", "6.6.6.1, 10.0.0.9")
+	s.router.ServeHTTP(w1, req1)
+	if w1.Code == http.StatusTooManyRequests {
+		t.Fatalf("first request should not be rate limited, got 429: %s", w1.Body.String())
+	}
+
+	w2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodGet, "/v1/public/feeds/ip-prefix-token-b/events", nil)
+	req2.Header.Set("X-Forwarded-For", "6.6.6.2, 10.0.0.9")
+	s.router.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 — a spoofed prefix must not create a new IP bucket behind one trusted proxy, got %d: %s", w2.Code, w2.Body.String())
 	}
 }
 

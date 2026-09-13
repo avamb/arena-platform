@@ -98,9 +98,10 @@ function visitorIp() {
 function req(method, name, path, body, { token, okStatus = [200, 201] } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   const ip = visitorIp();
-  // Shape of a request that passed one reverse proxy: client first, proxy last.
-  // The stand runs with TRUSTED_PROXY_COUNT=1 (compose override).
-  if (ip) headers['X-Forwarded-For'] = `${ip}, 172.30.0.1`;
+  // Shape of a request that passed one reverse proxy: the proxy appended the
+  // visitor's address. The stand runs with TRUSTED_PROXY_COUNT=1 (compose
+  // override), so this entry is the visitor's IP.
+  if (ip) headers['X-Forwarded-For'] = ip;
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = http.request(method, BASE_URL + path, body === undefined ? null : JSON.stringify(body), {
     headers, tags: { name }, timeout: '30s',

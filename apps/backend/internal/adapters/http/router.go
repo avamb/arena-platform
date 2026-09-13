@@ -103,6 +103,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 )
@@ -202,23 +203,17 @@ func NewRouter(deps Deps) chi.Router {
 	//    included in the response body for developer convenience; in
 	//    production / staging it is omitted to prevent information leaks.
 	r.Use(panicRecoverer(deps.Logger, deps.Metrics, deps.AppEnv))
-	// 2. RealIP — must run before any middleware that reads r.RemoteAddr.
-	//    Only registered when TrustedProxyCount > 0 (a reverse proxy is
-	//    declared). chi's RealIP unconditionally trusts True-Client-IP /
-	//    X-Real-IP / the FIRST X-Forwarded-For entry — all client-supplied,
-	//    spoofable headers — and rewrites r.RemoteAddr in place BEFORE any
-	//    downstream code runs. Left unconditional, this silently defeats
-	//    httputil.TrustedClientIP's trustedProxies==0 "ignore XFF, use the
-	//    raw TCP peer address" safe default: by the time TrustedClientIP
-	//    inspects r.RemoteAddr for its own fallback, it has already been
-	//    overwritten from a header the client controls, so its "safe"
-	//    fallback path is not actually safe. This was found while closing
-	//    the public-feed rate limiter's IP-spoofing hole (AGENTS.md), whose
-	//    HTTP-level tests go through the full router — unlike the earlier
-	//    hauth rate-limit tests, which call the handler directly and so
-	//    never exercised this middleware.
+	// 2. Trusted real IP — must run before any middleware that reads
+	//    r.RemoteAddr. Registered only when TrustedProxyCount > 0 (a reverse
+	//    proxy is declared); with 0 the TCP peer address stays untouched.
+	//    chi's own RealIP is NOT used: it trusts True-Client-IP, X-Real-IP and
+	//    the FIRST X-Forwarded-For entry, all of which the client controls, so
+	//    it rewrote r.RemoteAddr from a spoofable value before any handler ran.
+	//    trustedRealIP applies the same hop-count rule as
+	//    httputil.TrustedClientIP, so RemoteAddr, the public API rate limiter
+	//    and the login limiter all agree on one spoof-resistant client address.
 	if deps.TrustedProxyCount > 0 {
-		r.Use(chimw.RealIP)
+		r.Use(trustedRealIP(deps.TrustedProxyCount))
 	}
 	// 3. RequestID — populates chimw.GetReqID(ctx).
 	r.Use(chimw.RequestID)
@@ -1037,4 +1032,19 @@ func newRandomHex(byteLen int) string {
 		}
 	}
 	return hex.EncodeToString(b)
+}
+
+// trustedRealIP rewrites r.RemoteAddr to the client address derived from
+// X-Forwarded-For with a trusted hop count (see httputil.TrustedClientIP).
+// When the header does not carry enough proxy-appended entries RemoteAddr is
+// left as the TCP peer.
+func trustedRealIP(trustedProxies int) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if ip := httputil.TrustedClientIP(r, trustedProxies); ip != "" {
+				r.RemoteAddr = ip
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

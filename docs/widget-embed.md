@@ -156,10 +156,11 @@ reverse proxy, **`TRUSTED_PROXY_COUNT` must be set to the actual proxy
 depth** (`1` behind one hop, `2` behind two, etc.) — left at the default
 `0`, every visitor is seen through the proxy's own IP and shares one
 bucket, so one busy visitor can rate-limit everyone else behind the same
-proxy. This also controls whether the router's `RealIP` middleware runs at
-all: with `TRUSTED_PROXY_COUNT=0` it is disabled outright, so a
-client-supplied `X-Forwarded-For` header can never influence rate limiting,
-audit logs, or anything else that reads the request's remote address.
+proxy. With a non-zero value the client is the Nth `X-Forwarded-For` entry
+from the right (each proxy appends the address that connected to it, so a
+client-supplied prefix is ignored), and the router's `trustedRealIP`
+middleware writes that address into the request's remote address. With
+`TRUSTED_PROXY_COUNT=0` the header is ignored entirely.
 
 ---
 
