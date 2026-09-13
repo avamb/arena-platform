@@ -109,6 +109,26 @@ func TestWriteCartHoldError_OtherPgError_MapsToTransient(t *testing.T) {
 	}
 }
 
+// TestWriteCartHoldError_PermanentPgError_StaysInternal: an integrity error
+// repeats on every retry, so it must not be answered as transient or the
+// WordPress plugin would loop on it.
+func TestWriteCartHoldError_PermanentPgError_StaysInternal(t *testing.T) {
+	h := &Handler{logger: discardLogger()}
+	w := httptest.NewRecorder()
+	req := bil24Request{Command: "RESERVATION"}
+	cc := cartCtx{}
+
+	err := fmt.Errorf("hcheckout: insert reservation: %w", &pgconn.PgError{
+		Code: "23514", Message: "new row violates check constraint",
+	})
+	h.writeCartHoldError(w, req, cc, nil, cartPricing{}, err)
+
+	got := decodeResultCode(t, w.Body.Bytes())
+	if got != float64(ResultCodeInternalError) {
+		t.Fatalf("resultCode = %v, want %v (ResultCodeInternalError)", got, ResultCodeInternalError)
+	}
+}
+
 // TestWriteCartHoldError_PlainUntypedError_StaysInternal proves the -99
 // fallback is preserved for a genuinely unexpected, non-Postgres error —
 // the "programming error" bucket the task asks to keep at -99.

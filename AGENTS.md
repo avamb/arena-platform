@@ -526,10 +526,11 @@ entries short and factual.
   inside one Postgres already aborted. `hbil24`'s `writeCartHoldError`
   default branch (and CREATE_ORDER_EXT's hold-failure path, which routes
   through the same function) answers Bil24 resultCode **-1** (transient,
-  retried by the WordPress plugin) for any `*pgconn.PgError` reaching it —
-  including a 40P01/40001 that survived the retry — rather than **-99**
-  (non-retryable); -99 is now reserved for errors that are not a Postgres
-  error at all. Any NEW code opening a transaction that touches BOTH
+  retried by the WordPress plugin) for a Postgres error of a retryable
+  SQLSTATE class — 40 (deadlock/serialization, incl. one that survived the
+  retry), 08, 53, 57 (`isRetryablePgError`) — rather than **-99**. Integrity
+  and data errors (23xxx, 22xxx) stay -99: they repeat on every retry and
+  would make the plugin loop. Any NEW code opening a transaction that touches BOTH
   `inventory_ledger` and `sessions.seat_status_version` must follow the
   same order and go through (or mirror) `retryOnSerializationFailure`.
 - **The public widget API has THREE independent rate limits, not one shared

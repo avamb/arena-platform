@@ -590,10 +590,10 @@ func (h *Handler) writeCartHoldError(
 		// answer -1 (transient) rather than -99 so the plugin's retry logic
 		// kicks in instead of surfacing a hard error to the buyer. Every
 		// other untyped error here is a genuinely unexpected failure and
-		// keeps -99: pgconn.PgError is the one error family we can reliably
-		// tell apart from "something is wrong with our code".
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
+		// keeps -99. Only retryable SQLSTATE classes count (see
+		// isRetryablePgError): a constraint or data error repeats on every
+		// retry, so answering -1 there would make the plugin loop.
+		if isRetryablePgError(err) {
 			h.writeCartTransient(w, req, cc)
 			return
 		}
@@ -650,4 +650,22 @@ func (h *Handler) writeCartTransient(w http.ResponseWriter, req bil24Request, cc
 	writeBil24JSON(w, http.StatusOK, bil24Error(
 		req.Command, ResultCodeTransient, "temporary failure, please retry",
 	))
+}
+
+// isRetryablePgError reports whether err carries a Postgres error that a
+// retry can plausibly clear: class 40 (transaction rollback: deadlock,
+// serialization failure), 08 (connection exception), 53 (insufficient
+// resources) and 57 (operator intervention, e.g. statement timeout or admin
+// shutdown). Integrity, data and syntax errors are permanent and excluded.
+func isRetryablePgError(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || len(pgErr.Code) < 2 {
+		return false
+	}
+	switch pgErr.Code[:2] {
+	case "40", "08", "53", "57":
+		return true
+	default:
+		return false
+	}
 }
