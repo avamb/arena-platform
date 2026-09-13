@@ -282,28 +282,66 @@ already goes through:
   `pending_payment` (`ordering.ReviveForPayment`, recorded as `order_events.revived_for_payment`)
   and the payment completes normally: `resultCode 0`, tickets issued synchronously.
 - If the hold cannot be secured (the seats now belong to a different reservation), the order and
-  its checkout session are parked in `manual_review`, `order_events.hold_expired` is written, an
-  operator alert fires, and the answer is `resultCode 101 bil24.hold_expired` — identical to the
-  pre-existing behavior for a live order whose hold died between RESERVE and PAY_ORDER.
+  its checkout session are parked in `manual_review`, `order_events.hold_expired` is written with
+  `payload.reason = "hold_expired"`, an operator alert fires with the same reason, and the answer
+  is `resultCode 101 bil24.hold_expired` — identical to the pre-existing behavior for a live order
+  whose hold died between RESERVE and PAY_ORDER.
+- **A third outcome, found in review**: the hold itself CAN be re-acquired, but the SAME customer
+  already re-reserved for the SAME session and CREATE_ORDER_EXT legitimately minted a fresh
+  `pending_payment` order while this order's late payment was in flight. Reviving this order would
+  give the customer two simultaneous `pending_payment` orders for one session, which the partial
+  unique index `orders_one_pending_per_customer_session_uq` forbids (SQLSTATE 23505,
+  `ordering.ErrOpenOrderConflict`). This is NOT a transient error — retrying identically forever
+  would reproduce the exact same -1-forever defect this whole section exists to close — so it is
+  treated exactly like an unrecoverable hold: the payment transaction rolls back (releasing the
+  re-acquired hold back to the newer order's reach), the order and its checkout session park in
+  `manual_review`, `order_events.hold_expired` is written with `payload.reason =
+  "superseded_by_open_order"` (a DIFFERENT reason than the plain case, so an operator reading the
+  alert or the event payload can tell "the seats are gone" apart from "the customer already has
+  another open order for this money"), and the answer is still `resultCode 101 bil24.hold_expired`
+  — the wire contract does not distinguish the two park reasons, only the operator-facing metadata
+  does. The customer's newer order is completely untouched by this — it is the correct, live order
+  for the money that has not yet been collected against it.
 
 Every other non-payable status PAY_ORDER can see is handled explicitly rather than falling through
 to a generic error: `paid` answers `0` idempotently (no writes), `cancelled`/`refunded`/
 `partially_refunded`/`abandoned` answer `101 bil24.order_cancelled`, and — this is the idempotency
-half of the fix — a **replayed** PAY_ORDER on an order already parked in `manual_review` answers
-the same `101 bil24.hold_expired` again WITHOUT re-parking it, without writing a second
-`hold_expired` event, and without raising a second operator alert. Before this fix, a replay
-(which the WordPress plugin performs on any non-zero resultCode) re-ran the whole park-and-alert
-sequence every time, which would have paged an operator once per retry.
+half of the fix — a **replayed** PAY_ORDER on an order already parked in `manual_review` (either
+park reason) answers the same `101 bil24.hold_expired` again WITHOUT re-parking it, without writing
+a second `hold_expired` event, and without raising a second operator alert. Before this fix, a
+replay (which the WordPress plugin performs on any non-zero resultCode) re-ran the whole
+park-and-alert sequence every time, which would have paged an operator once per retry.
 
 Runbook implication: a `manual_review` order from the §9.2 path needs the SAME manual resolution as
-any other manual-review order (§4-adjacent — there is no automated recovery). Find candidates with:
+any other manual-review order (§4-adjacent — there is no automated recovery). Find candidates and
+read the park reason (both from the audit trail and from the order's own event payload) with:
 
 ```sql
 SELECT id, system_id, org_id, status, expires_at, updated_at
 FROM orders
 WHERE status = 'manual_review'
 ORDER BY updated_at DESC;
+
+SELECT order_id, type, payload->>'reason' AS reason, created_at
+FROM order_events
+WHERE order_id = '<order id>' AND type = 'hold_expired'
+ORDER BY created_at DESC;
 ```
+
+`reason = 'superseded_by_open_order'` means the buyer already has a working, live order for this
+session — check whether THAT order completed normally before doing anything with the parked one; a
+refund against the parked order (not the live one) is very likely what the buyer actually needs.
+`reason = 'hold_expired'` (or the pre-fix rows with no reason at all) means the seats are genuinely
+gone and the resolution is the general manual-review one: refund or manually re-issue against
+different inventory.
+
+**Note on the unique index**: `orders_one_pending_per_customer_session_uq` (migration 0092) is a
+PARTIAL index — `CREATE UNIQUE INDEX ... ON orders (customer_id, session_id) WHERE status =
+'pending_payment'` — so it only constrains rows CURRENTLY valued `pending_payment`. Parking an
+order in `manual_review` (`UpdateOrderStatus(..., 'manual_review', ...)`, `payParkManualReview`)
+takes the row OUT of the index's predicate and can never itself collide with this constraint,
+regardless of what other orders exist for the same customer+session — only the REVIVE write
+(`expired` → `pending_payment`) can.
 
 and cross-reference `order_events` for that `order_id` (`hold_expired` / `revived_for_payment` /
 `hold_reacquired`) to see which path it took.

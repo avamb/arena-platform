@@ -130,6 +130,22 @@ var (
 	// an order whose status forbids it (paying a cancelled order, expiring a
 	// paid one).
 	ErrInvalidTransition = errors.New("ordering: invalid status transition")
+
+	// ErrOpenOrderConflict is returned by ReviveForPayment when reviving an
+	// expired order would violate orders_one_pending_per_customer_session_uq
+	// (migration 0092: a partial unique index on (customer_id, session_id)
+	// WHERE status='pending_payment'). This is a genuine, narrow race: order
+	// A (the one PAY_ORDER is trying to pay) expired, the same customer
+	// re-reserved for the same session, and CREATE_ORDER_EXT legitimately
+	// minted a fresh order B (pending_payment) before A's late payment
+	// arrived. A cannot be revived without giving the customer two
+	// simultaneous pending_payment orders for one session — order B is the
+	// customer's current, live open order, and A is money already taken for
+	// inventory that has moved on. Unlike a transient infrastructure error,
+	// retrying PAY_ORDER for A will fail IDENTICALLY forever as long as B
+	// stays open, so callers must treat this the same as an unrecoverable
+	// hold (park A in manual_review, alert an operator) rather than as -1.
+	ErrOpenOrderConflict = errors.New("ordering: reviving this order would collide with another open order for the same customer and session")
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

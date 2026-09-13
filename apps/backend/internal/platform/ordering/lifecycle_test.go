@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
@@ -303,6 +304,50 @@ func TestReviveForPayment_RefusesOtherStatuses(t *testing.T) {
 		if len(f.events) != 0 {
 			t.Fatalf("ReviveForPayment from %s: wrote %d events on a refused revive", status, len(f.events))
 		}
+	}
+}
+
+// The forever-(-1)-loop defect found in review: order A expired, the same
+// customer re-reserved for the same session, and CREATE_ORDER_EXT already
+// minted a fresh pending_payment order B before A's late PAY_ORDER arrived.
+// Reviving A collides with orders_one_pending_per_customer_session_uq
+// (SQLSTATE 23505) — ReviveForPayment must surface this as the distinguishable
+// ErrOpenOrderConflict, NOT a generic error, so the caller can park A in
+// manual_review (money-safety) instead of retrying an identical failure
+// forever.
+func TestReviveForPayment_OpenOrderConflictIsDistinguishable(t *testing.T) {
+	f, row := storeWithOrder(StatusExpired)
+	f.reviveErrOn[row.ID] = &pgconn.PgError{
+		Code:           "23505",
+		ConstraintName: "orders_one_pending_per_customer_session_uq",
+	}
+
+	_, err := ReviveForPayment(context.Background(), f, ReviveInput{OrderID: row.ID, OrgID: row.OrgID})
+	if !errors.Is(err, ErrOpenOrderConflict) {
+		t.Fatalf("err = %v, want ErrOpenOrderConflict", err)
+	}
+	if len(f.events) != 0 {
+		t.Fatalf("wrote %d events on a conflicting revive", len(f.events))
+	}
+}
+
+// A unique violation on some OTHER constraint (or one whose name the driver
+// did not surface) must not be silently swallowed as ErrOpenOrderConflict —
+// only when the constraint name is present AND matches, or is absent
+// entirely, is it treated as this specific collision.
+func TestReviveForPayment_OtherUniqueViolationIsNotMisclassified(t *testing.T) {
+	f, row := storeWithOrder(StatusExpired)
+	f.reviveErrOn[row.ID] = &pgconn.PgError{
+		Code:           "23505",
+		ConstraintName: "some_other_unrelated_uq",
+	}
+
+	_, err := ReviveForPayment(context.Background(), f, ReviveInput{OrderID: row.ID, OrgID: row.OrgID})
+	if errors.Is(err, ErrOpenOrderConflict) {
+		t.Fatalf("err = %v, misclassified an unrelated unique violation as ErrOpenOrderConflict", err)
+	}
+	if err == nil {
+		t.Fatal("ReviveForPayment: want an error for an unrelated unique violation, got nil")
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
@@ -233,6 +234,9 @@ type ReviveInput struct {
 func ReviveForPayment(ctx context.Context, q LifecycleStore, in ReviveInput) (gen.OrderRow, error) {
 	updated, err := q.ReviveOrderIfExpired(ctx, in.OrderID, in.OrgID)
 	if err != nil {
+		if isOpenOrderUniqueViolation(err) {
+			return gen.OrderRow{}, fmt.Errorf("%w: %w", ErrOpenOrderConflict, err)
+		}
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return gen.OrderRow{}, fmt.Errorf("ordering: revive order: %w", err)
 		}
@@ -250,6 +254,23 @@ func ReviveForPayment(ctx context.Context, q LifecycleStore, in ReviveInput) (ge
 		return gen.OrderRow{}, fmt.Errorf("ordering: insert revived_for_payment event: %w", err)
 	}
 	return updated, nil
+}
+
+// isOpenOrderUniqueViolation reports whether err is a Postgres 23505
+// (unique_violation) against orders_one_pending_per_customer_session_uq —
+// the partial unique index ReviveOrderIfExpired's UPDATE can hit when the
+// customer already has a DIFFERENT pending_payment order for this session.
+// When the driver surfaces a constraint name it must match exactly; when it
+// does not (some pooling layers strip it), the SQLSTATE code alone is
+// treated as sufficient — this function is only ever consulted right after
+// ReviveOrderIfExpired's single UPDATE, so a 23505 there has no other
+// plausible cause.
+func isOpenOrderUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+		return false
+	}
+	return pgErr.ConstraintName == "" || pgErr.ConstraintName == "orders_one_pending_per_customer_session_uq"
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

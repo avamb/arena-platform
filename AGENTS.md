@@ -701,3 +701,39 @@ entries short and factual.
   `apps/backend/tests/compat/bil24/order_pay_revival_integration_test.go`,
   `apps/backend/internal/platform/ordering/lifecycle_test.go`
   (`TestReviveForPayment_*`).
+- **`ordering.ReviveForPayment` reviving an `expired` order can ITSELF hit
+  `orders_one_pending_per_customer_session_uq` — found in review of the
+  above fix, 2026-09-14.** Scenario: order A expires and its hold dies; the
+  SAME customer re-reserves for the SAME session and CREATE_ORDER_EXT
+  legitimately mints a fresh order B (`pending_payment`) — allowed, because A
+  is genuinely no longer "open". Then A's late PAY_ORDER arrives:
+  `payEnsureHold` successfully re-acquires A's untouched seats, but the
+  `UPDATE orders SET status='pending_payment' ... WHERE status='expired'`
+  that revives A collides with B's row on `(customer_id, session_id)`
+  (SQLSTATE 23505) — A can never legally hold that slot while B does. Left
+  unhandled this reproduces the EXACT -1-forever defect the fix above closes,
+  just one level deeper (`ReviveForPayment` wrapped it as a plain error →
+  `payExecute` → generic error → `payTransient` → -1 on every retry, forever,
+  with money already taken). Fixed: `ordering.ErrOpenOrderConflict` (detected
+  via `errors.As` into `*pgconn.PgError`, code `23505`, constraint name
+  checked when the driver supplies one — `orders_one_pending_per_
+  customer_session_uq` — and treated as a match when it does not, since a
+  23505 right after this specific UPDATE has no other plausible cause).
+  `hbil24` maps it to `errPaySupersededByOpenOrder`, handled exactly like
+  `errPayHoldExpired` (tx rollback — which also releases the just-reacquired
+  hold — then `payParkManualReview`, `101 bil24.hold_expired` on the wire)
+  but recorded with a DISTINCT internal reason,
+  `payParkReasonSupersededByOpenOrder` (`"superseded_by_open_order"`), in
+  both `order_events.hold_expired.payload.reason` and the operator alert
+  metadata — `payParkManualReview` now takes a `reason string` parameter for
+  exactly this. The customer's newer order (B) is never touched: the
+  colliding UPDATE aborts A's transaction only. Note for future readers:
+  `orders_one_pending_per_customer_session_uq` is a PARTIAL index (`WHERE
+  status = 'pending_payment'`), so `payParkManualReview`'s own
+  `UpdateOrderStatus(..., 'manual_review', ...)` write can NEVER hit this
+  constraint — only the expired→pending_payment revive write can. Tests:
+  `TestCompatBil24_PayOrderRevival_SupersededByOpenOrder`
+  (`order_pay_revival_integration_test.go`),
+  `TestReviveForPayment_OpenOrderConflictIsDistinguishable` /
+  `TestReviveForPayment_OtherUniqueViolationIsNotMisclassified`
+  (`ordering/lifecycle_test.go`). Runbook: `docs/ops/bil24_gateway.md` §9.2.

@@ -34,6 +34,7 @@ package compat_bil24_test
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"testing"
 	"time"
@@ -97,6 +98,31 @@ func revCountManualReviewAlerts(t *testing.T, st *harnessState, orderID uuid.UUI
 		t.Fatalf("count manual-review alerts for %s: %v", orderID, err)
 	}
 	return got
+}
+
+// revAssertLatestManualReviewAlertReason pins the metadata.reason field of the
+// MOST RECENT manual-review alert for an order — payParkManualReview's
+// distinguishing park reason (hold_expired vs superseded_by_open_order), the
+// thing an operator actually reads to know what happened.
+func revAssertLatestManualReviewAlertReason(t *testing.T, st *harnessState, orderID uuid.UUID, want string) {
+	t.Helper()
+	var raw []byte
+	if err := st.Pool.QueryRow(context.Background(),
+		`SELECT metadata FROM audit_events
+		 WHERE  action = 'bil24.pay_order.manual_review'
+		   AND  resource_type = 'order'
+		   AND  resource_id = $1
+		 ORDER BY occurred_at DESC LIMIT 1`, orderID.String(),
+	).Scan(&raw); err != nil {
+		t.Fatalf("no manual-review audit alert for order %s: %v", orderID, err)
+	}
+	var md map[string]interface{}
+	if err := json.Unmarshal(raw, &md); err != nil {
+		t.Fatalf("parse audit metadata %s: %v", raw, err)
+	}
+	if got, _ := md["reason"].(string); got != want {
+		t.Errorf("audit metadata.reason = %#v, want %q", md["reason"], want)
+	}
 }
 
 // TestCompatBil24_PayOrderRevival_ExpiredOrderWithReacquirableHold is case
@@ -313,6 +339,163 @@ func TestCompatBil24_PayOrderRevival_ManualReviewReplayIsIdempotent(t *testing.T
 	if got := revCountManualReviewAlerts(t, st, lostOrderID); got != 1 {
 		t.Errorf("manual-review alerts after the REPLAYED PAY_ORDER = %d, want still 1 — "+
 			"alert-storm defect: an operator would be paged again on every WordPress retry", got)
+	}
+}
+
+// TestCompatBil24_PayOrderRevival_SupersededByOpenOrder is the forever-(-1)-
+// loop defect found in review of the original fix: order A expires, its hold
+// dies. The SAME customer re-reserves for the SAME session, and
+// CREATE_ORDER_EXT legitimately mints a fresh order B (pending_payment) —
+// this is allowed, A is genuinely no longer "open". THEN A's late PAY_ORDER
+// arrives: payEnsureHold re-acquires A's (still untouched) seats, but reviving
+// A back to pending_payment would violate
+// orders_one_pending_per_customer_session_uq because B already occupies that
+// slot. The revive must be caught as ordering.ErrOpenOrderConflict and
+// treated like an unrecoverable hold — park A in manual_review with a
+// DISTINCT reason (superseded_by_open_order, not hold_expired), answer 101,
+// and leave B completely untouched. A replay must stay idempotent, exactly
+// like the plain hold_expired manual-review case.
+func TestCompatBil24_PayOrderRevival_SupersededByOpenOrder(t *testing.T) {
+	st := setupHarness(t)
+	base := startHarnessServer(t, st)
+
+	actionEventID := mustActionEventID(t, st, st.AssignedSessID)
+	labels := sortedSeatLabels(st)
+	if len(labels) < 2 {
+		t.Fatalf("seed produced %d seats for the assigned-seats session, need at least 2", len(labels))
+	}
+	tierWireID := sc6TierWireID(t, st, st.AssignedTierID)
+	runtime := map[string]string{
+		"actionEventId":   strconv.FormatInt(actionEventID, 10),
+		"categoryPriceId": strconv.FormatInt(tierWireID, 10),
+	}
+
+	reserve := func(user float64, sess, label string) {
+		t.Helper()
+		resp := postBil24(t, base, map[string]any{
+			"command":       "RESERVATION",
+			"fid":           st.ChannelFID,
+			"token":         st.ChannelToken,
+			"locale":        "ru-RU",
+			"type":          "RESERVE",
+			"userId":        user,
+			"sessionId":     sess,
+			"actionEventId": actionEventID,
+			"seatList":      []any{map[string]any{"seatId": st.SeatIDs[label]}},
+		})
+		if code := numberField(t, resp, "resultCode"); code != 0 {
+			t.Fatalf("RESERVE %s resultCode = %v, want 0 (description %v)", label, code, resp["description"])
+		}
+	}
+	createOrder := func(sess string, user float64, orderIDRaw string) map[string]interface{} {
+		t.Helper()
+		rt := map[string]string{"sessionId": sess}
+		for k, v := range runtime {
+			rt[k] = v
+		}
+		req, _ := loadWPFixture(t, "CREATE_ORDER_EXT", "basic")
+		req = resolveGolden(req, st, rt)
+		req["fid"] = st.ChannelFID
+		req["token"] = st.ChannelToken
+		req["userId"] = user
+		req["orderId"] = orderIDRaw
+		return postBil24(t, base, req)
+	}
+
+	// ── order A: the customer's original checkout, about to expire ─────────
+	sessA, userA := createGatewayUser(t, base, st, "harness-superseded-a@example.test")
+	reserve(userA, sessA, labels[0])
+	respA := createOrder(sessA, userA, "superseded-a-1")
+	if code := numberField(t, respA, "resultCode"); code != 0 {
+		t.Fatalf("CREATE_ORDER_EXT (order A) resultCode = %v, want 0 (description %v)", code, respA["description"])
+	}
+	orderA := sc6OrderID(t, st, "superseded-a", respA)
+
+	// A's hold's own TTL passes (still 'active', still exclusively held by
+	// A — nobody steals the seat), so PAY_ORDER's payEnsureHold can re-take
+	// it later exactly like the plain reacquire case.
+	reservationA, checkoutA := sc5OrderRefs(t, st, orderA)
+	sc5ExpireReservation(t, st, reservationA)
+
+	// order.expire_sweep closes A's AGGREGATE (order.status -> expired); it
+	// does NOT touch the reservation, which is a separate job's job.
+	revBackdateOrderExpiry(t, st, orderA)
+	if n := revRunExpireSweep(t, st); n < 1 {
+		t.Fatalf("RunExpireSweep expired %d orders, want at least 1 (order A)", n)
+	}
+	sc5AssertOrderStatus(t, st, orderA, "expired")
+	baselineHoldExpired := revCountOrderEvents(t, st, orderA, "hold_expired")
+
+	// ── order B: the SAME customer legitimately re-reserves for the SAME
+	// session, a DIFFERENT seat, under a fresh gateway session (a real
+	// browser would start a new cart once the old one is gone). A is already
+	// 'expired', so FindOpenOrder does not see it — CREATE_ORDER_EXT for B
+	// must succeed normally, unaffected by the open_order_exists guard.
+	sessB, userB := createGatewayUser(t, base, st, "harness-superseded-b@example.test")
+	reserve(userB, sessB, labels[1])
+	respB := createOrder(sessB, userB, "superseded-b-1")
+	if code := numberField(t, respB, "resultCode"); code != 0 {
+		t.Fatalf("CREATE_ORDER_EXT (order B, legitimate re-reservation) resultCode = %v, want 0 "+
+			"(description %v)", code, respB["description"])
+	}
+	orderB := sc6OrderID(t, st, "superseded-b", respB)
+	sc6AssertOpenOrderCount(t, st, 1) // only B is open; A is expired
+
+	// ── A's late payment arrives — WooCommerce already charged the buyer ───
+	systemIDA := sc5SystemID(t, st, orderA)
+	pay := func() map[string]interface{} {
+		t.Helper()
+		req, _ := loadWPFixture(t, "PAY_ORDER", "basic")
+		req = resolveGolden(req, st, map[string]string{"sessionId": sessA, "orderId": strconv.FormatInt(systemIDA, 10)})
+		req["fid"] = st.ChannelFID
+		req["token"] = st.ChannelToken
+		req["userId"] = userA
+		return postBil24(t, base, req)
+	}
+
+	first := pay()
+	if code := numberField(t, first, "resultCode"); code != 101 {
+		t.Fatalf("PAY_ORDER on an order superseded by a newer open order resultCode = %v, want 101 "+
+			"(description %v) — retrying this must never loop on -1 while the buyer has been charged",
+			code, first["description"])
+	}
+	if desc, _ := first["description"].(string); desc == "" {
+		t.Error("bil24.hold_expired carries an empty description on the superseded-by-open-order park")
+	}
+
+	// A is parked, B is completely untouched — the whole point of the fix.
+	sc5AssertOrderStatus(t, st, orderA, "manual_review")
+	sc5AssertCheckoutState(t, st, checkoutA, "manual_review")
+	sc5AssertOrderStatus(t, st, orderB, "pending_payment")
+	sc5AssertPaymentIntentCount(t, st, orderA, 0)
+	sc5AssertTicketCount(t, st, orderA, 0)
+	if got := revCountOrderEvents(t, st, orderA, "hold_expired"); got != baselineHoldExpired+1 {
+		t.Fatalf("hold_expired events on order A after the first PAY_ORDER = %d, want %d",
+			got, baselineHoldExpired+1)
+	}
+	if got := revCountManualReviewAlerts(t, st, orderA); got != 1 {
+		t.Fatalf("manual-review alerts for order A after the first PAY_ORDER = %d, want 1", got)
+	}
+	// The distinguishing reason: an operator reading this alert must be told
+	// "the customer has another open order", not the misleading "hold
+	// expired" — the hold itself was successfully re-acquired.
+	revAssertLatestManualReviewAlertReason(t, st, orderA, "superseded_by_open_order")
+
+	// ── the replay — same shape as the plugin's retry loop ──────────────────
+	second := pay()
+	if code := numberField(t, second, "resultCode"); code != 101 {
+		t.Fatalf("replayed PAY_ORDER on a manual_review order resultCode = %v, want 101 (description %v)",
+			code, second["description"])
+	}
+	sc5AssertOrderStatus(t, st, orderA, "manual_review")
+	sc5AssertOrderStatus(t, st, orderB, "pending_payment")
+	if got := revCountOrderEvents(t, st, orderA, "hold_expired"); got != baselineHoldExpired+1 {
+		t.Errorf("hold_expired events on order A after the REPLAYED PAY_ORDER = %d, want still %d",
+			got, baselineHoldExpired+1)
+	}
+	if got := revCountManualReviewAlerts(t, st, orderA); got != 1 {
+		t.Errorf("manual-review alerts for order A after the REPLAYED PAY_ORDER = %d, want still 1 — "+
+			"alert-storm defect", got)
 	}
 }
 
