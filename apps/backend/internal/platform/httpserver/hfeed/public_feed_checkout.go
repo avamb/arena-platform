@@ -139,13 +139,10 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	}
 
 	feedToken := chi.URLParam(r, "feed_token")
-	clientIP := httputil.ExtractClientIP(r)
 
-	// ── 1. Rate limiting (shared with browse endpoints) ──────────────────────
-	if !h.rl.CheckToken(feedToken) || !h.rl.CheckIP(clientIP) {
-		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
-			"feed.rate_limited", "too many requests; please slow down", r,
-		))
+	// ── 1. Rate limiting: per-feed-token (shared with browse endpoints) +
+	// per-IP, both always evaluated. ──────────────────────────────────────────
+	if !h.enforceRateLimit(w, r, "feed.rate_limited", h.rl.CheckFeedToken, feedToken) {
 		return
 	}
 

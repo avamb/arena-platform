@@ -134,6 +134,23 @@ type Config struct {
 	TrustedProxyCount int `env:"TRUSTED_PROXY_COUNT" required:"false" default:"0"`
 
 	// -------------------------------------------------------------------------
+	// Public widget API rate limits (feed/checkout endpoints, hfeed package)
+	// -------------------------------------------------------------------------
+	// A feed token belongs to a sales channel, NOT a single visitor — it is
+	// shared by EVERY buyer of that site's widget. Throttling it at a
+	// per-visitor-sized limit collapses under real concurrent traffic (seen
+	// live: 200 visitors / 50 orders-per-minute produced 15884/16543 429s).
+	// PublicFeedTokenRateLimit is therefore a site-wide ceiling and defaults
+	// high; PublicCheckoutTokenRateLimit is the per-buyer limit (one
+	// checkout's status polling / recover / ticket-pdf calls) and
+	// PublicAPIIPRateLimit is the per-client-IP backstop, keyed by
+	// TrustedClientIP(r, TrustedProxyCount) — never raw X-Forwarded-For. A
+	// value of 0 disables that particular check.
+	PublicFeedTokenRateLimit     int `env:"PUBLIC_FEED_TOKEN_RATE_LIMIT" required:"false" default:"20000"`
+	PublicCheckoutTokenRateLimit int `env:"PUBLIC_CHECKOUT_TOKEN_RATE_LIMIT" required:"false" default:"120"`
+	PublicAPIIPRateLimit         int `env:"PUBLIC_API_IP_RATE_LIMIT" required:"false" default:"600"`
+
+	// -------------------------------------------------------------------------
 	// Database (PostgreSQL 17)
 	// -------------------------------------------------------------------------
 	DatabaseURL       string        `env:"DATABASE_URL"               required:"true"`
@@ -494,6 +511,27 @@ func Load() (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.TrustedProxyCount = iTPC
+
+	// PUBLIC_FEED_TOKEN_RATE_LIMIT / PUBLIC_CHECKOUT_TOKEN_RATE_LIMIT /
+	// PUBLIC_API_IP_RATE_LIMIT — public widget API limits. See the field
+	// docs above: the feed-token limit is site-wide, not per-visitor.
+	iFeedTokRL, err := getenvInt("PUBLIC_FEED_TOKEN_RATE_LIMIT", 20000)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.PublicFeedTokenRateLimit = iFeedTokRL
+
+	iCheckoutTokRL, err := getenvInt("PUBLIC_CHECKOUT_TOKEN_RATE_LIMIT", 120)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.PublicCheckoutTokenRateLimit = iCheckoutTokRL
+
+	iAPIIPRL, err := getenvInt("PUBLIC_API_IP_RATE_LIMIT", 600)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.PublicAPIIPRateLimit = iAPIIPRL
 
 	d, err := getenvDuration("REQUEST_TIMEOUT_SECONDS", 30*time.Second, true)
 	if err != nil {

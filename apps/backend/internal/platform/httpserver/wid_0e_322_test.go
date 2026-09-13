@@ -58,16 +58,28 @@ func buildWID0eServerNilFunnel(t *testing.T) *Server {
 
 // buildWID0eServer builds a server with gen.New(nil) as funnelQueries.
 // DB calls will panic/error (nil pool), but the route is mounted.
+//
+// The rate limits are set explicitly (rather than left at the zero value a
+// hand-built Config literal would otherwise carry, which disables the check
+// per PUBLIC_*_RATE_LIMIT's "0 disables" contract) so
+// TestWID0e322_HTTP_RateLimited_Returns429 below can actually exercise a
+// 429. PublicAPIIPRateLimit is set far above the feed-token limit so the
+// feed-token bucket is deterministically the one that trips first — every
+// request in that test shares both the same feed token and the same
+// httptest RemoteAddr.
 func buildWID0eServer(t *testing.T) *Server {
 	t.Helper()
 	cfg := &config.Config{
-		AppEnv:         config.EnvDevelopment,
-		RequestTimeout: 5 * time.Second,
-		BodyLimitBytes: 1 << 20,
-		JWTSecretStub:  "test-secret-which-is-long-enough-for-hs256",
-		EnableStubAuth: true,
-		DefaultLocale:  "en",
-		ActiveLocales:  []string{"en", "ru"},
+		AppEnv:                       config.EnvDevelopment,
+		RequestTimeout:               5 * time.Second,
+		BodyLimitBytes:               1 << 20,
+		JWTSecretStub:                "test-secret-which-is-long-enough-for-hs256",
+		EnableStubAuth:               true,
+		DefaultLocale:                "en",
+		ActiveLocales:                []string{"en", "ru"},
+		PublicFeedTokenRateLimit:     100,
+		PublicCheckoutTokenRateLimit: 100,
+		PublicAPIIPRateLimit:         100000,
 	}
 	return New(Options{
 		Config:        cfg,
@@ -195,11 +207,11 @@ func TestWID0e322_Step5_HandlerHasRateLimiting(t *testing.T) {
 	if !strings.Contains(content, "rate_limited") {
 		t.Error("public_funnel_events.go: expected 'rate_limited' error code")
 	}
-	if !strings.Contains(content, "CheckToken") {
-		t.Error("public_funnel_events.go: expected CheckToken rate limit check")
+	if !strings.Contains(content, "CheckFeedToken") {
+		t.Error("public_funnel_events.go: expected CheckFeedToken rate limit check")
 	}
-	if !strings.Contains(content, "CheckIP") {
-		t.Error("public_funnel_events.go: expected CheckIP rate limit check")
+	if !strings.Contains(content, "enforceRateLimit") {
+		t.Error("public_funnel_events.go: expected enforceRateLimit (per-token + per-IP, both always evaluated)")
 	}
 }
 
@@ -374,7 +386,8 @@ func TestWID0e322_HTTP_RateLimited_Returns429(t *testing.T) {
 	s := buildWID0eServer(t)
 	body := `{"events":[{"event_type":"cart_opened"}]}`
 
-	// Exhaust the per-token rate limiter (default 100 requests/min).
+	// Exhaust the per-feed-token rate limiter (100 requests/min, set
+	// explicitly by buildWID0eServer — the real default is 20000, site-wide).
 	// Send 101 requests from the same IP with the same token.
 	for i := 0; i <= 100; i++ {
 		w := httptest.NewRecorder()

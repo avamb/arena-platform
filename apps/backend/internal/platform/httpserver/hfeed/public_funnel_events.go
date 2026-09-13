@@ -83,14 +83,11 @@ func (h *Handler) HandlePostFunnelEvents(w http.ResponseWriter, r *http.Request)
 	}
 
 	feedToken := chi.URLParam(r, "feed_token")
-	clientIP := httputil.ExtractClientIP(r)
 
-	// Rate limiting: counted against the same per-token + per-IP buckets as
-	// the browse endpoints so the aggregate widget traffic is throttled.
-	if !h.rl.CheckToken(feedToken) || !h.rl.CheckIP(clientIP) {
-		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
-			"feed.rate_limited", "too many requests; please slow down", r,
-		))
+	// Rate limiting: counted against the same per-feed-token + per-IP buckets
+	// as the browse endpoints (CheckToken/CheckIP both always evaluated) so
+	// the aggregate widget traffic is throttled together.
+	if !h.enforceRateLimit(w, r, "feed.rate_limited", h.rl.CheckFeedToken, feedToken) {
 		return
 	}
 

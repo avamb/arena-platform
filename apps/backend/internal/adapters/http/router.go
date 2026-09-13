@@ -168,6 +168,16 @@ type Deps struct {
 	// Defaults to otel.Tracer(TracerName) so the global TracerProvider
 	// installed by observability.InitTracer drives sampling and export.
 	Tracer trace.Tracer
+
+	// TrustedProxyCount mirrors config.Config.TrustedProxyCount: the number
+	// of trusted reverse-proxy hops in front of this process. It gates
+	// whether chi's RealIP middleware runs at all — see the comment on step
+	// 2 of the chain below for why an unconditional RealIP defeats every
+	// downstream consumer of httputil.TrustedClientIP's "trustedProxies==0
+	// ⇒ ignore X-Forwarded-For" contract. Zero (the default) disables
+	// RealIP entirely, matching TrustedProxyCount's own "safe default"
+	// semantics.
+	TrustedProxyCount int
 }
 
 // NewRouter constructs a chi.Router with the canonical arena_new
@@ -193,7 +203,23 @@ func NewRouter(deps Deps) chi.Router {
 	//    production / staging it is omitted to prevent information leaks.
 	r.Use(panicRecoverer(deps.Logger, deps.Metrics, deps.AppEnv))
 	// 2. RealIP — must run before any middleware that reads r.RemoteAddr.
-	r.Use(chimw.RealIP)
+	//    Only registered when TrustedProxyCount > 0 (a reverse proxy is
+	//    declared). chi's RealIP unconditionally trusts True-Client-IP /
+	//    X-Real-IP / the FIRST X-Forwarded-For entry — all client-supplied,
+	//    spoofable headers — and rewrites r.RemoteAddr in place BEFORE any
+	//    downstream code runs. Left unconditional, this silently defeats
+	//    httputil.TrustedClientIP's trustedProxies==0 "ignore XFF, use the
+	//    raw TCP peer address" safe default: by the time TrustedClientIP
+	//    inspects r.RemoteAddr for its own fallback, it has already been
+	//    overwritten from a header the client controls, so its "safe"
+	//    fallback path is not actually safe. This was found while closing
+	//    the public-feed rate limiter's IP-spoofing hole (AGENTS.md), whose
+	//    HTTP-level tests go through the full router — unlike the earlier
+	//    hauth rate-limit tests, which call the handler directly and so
+	//    never exercised this middleware.
+	if deps.TrustedProxyCount > 0 {
+		r.Use(chimw.RealIP)
+	}
 	// 3. RequestID — populates chimw.GetReqID(ctx).
 	r.Use(chimw.RequestID)
 	// 4. requestContext — copies the chi RequestID into the X-Request-Id
