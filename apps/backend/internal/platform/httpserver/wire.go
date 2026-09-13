@@ -15,6 +15,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/clock"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbil24"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
@@ -298,7 +299,7 @@ func New(opts Options) *Server {
 		debugSlowDelay:              opts.DebugSlowDelay,
 		bil24Enabled:                opts.Bil24CompatEnabled,
 		bil24RequireToken:           opts.Bil24RequireToken,
-		bil24TokenCacheTTL:          opts.Bil24TokenCacheTTL,
+		bil24TokenCache:             hbil24.NewTokenCache(opts.Bil24TokenCacheTTL),
 
 		geoQueries:            pickQueries(opts.GeoQueries, opts.PgxPool),
 		orgQueries:            pickQueries(opts.OrgQueries, opts.PgxPool),

@@ -40,7 +40,7 @@
 //     entry (Go's randomized map iteration order makes this a cheap
 //     approximation of random eviction).
 //   - A cold-cache burst of identical (hash, token) requests coalesces onto
-//     a single bcrypt call via singleflight (Handler.tokenSF) — the load
+//     a single bcrypt call via singleflight (TokenCache.sf) — the load
 //     test that surfaced this defect sent 200 simultaneous identical
 //     reservation requests, which would otherwise run 200 bcrypt compares.
 package hbil24
@@ -53,11 +53,12 @@ import (
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
 	// defaultTokenCacheTTL is how long a successful verification stays
-	// cached when the handler is not otherwise configured (WithTokenCacheTTL
+	// cached when NewTokenCache gets no positive TTL (
 	// / BIL24_TOKEN_CACHE_TTL).
 	defaultTokenCacheTTL = 5 * time.Minute
 
@@ -84,9 +85,15 @@ type tokenCacheEntry struct {
 	expires time.Time
 }
 
-// tokenCache is an in-process, concurrency-safe cache of successful Bil24
+// TokenCache is an in-process, concurrency-safe cache of successful Bil24
 // gateway token verifications, keyed by the bcrypt hash string.
-type tokenCache struct {
+//
+// It must outlive a single request. The httpserver builds a fresh
+// hbil24.Handler per request (bil24_shims.go), so a cache owned by the
+// Handler starts empty every time and never hits: the first version of this
+// fix did exactly that and the load test showed no change. The Server owns
+// one TokenCache and passes it in with Handler.WithTokenCache.
+type TokenCache struct {
 	mu      sync.RWMutex
 	entries map[string]tokenCacheEntry
 	ttl     time.Duration
@@ -94,15 +101,18 @@ type tokenCache struct {
 	// now is the clock the cache checks expiry against. Defaults to
 	// time.Now; tests override it to exercise TTL expiry deterministically.
 	now func() time.Time
+	// sf coalesces concurrent cold-cache bcrypt compares for the same
+	// (hash, token) onto a single call. Zero value is ready to use.
+	sf singleflight.Group
 }
 
-// newTokenCache builds a tokenCache with the given TTL (defaultTokenCacheTTL
+// NewTokenCache builds a TokenCache with the given TTL (defaultTokenCacheTTL
 // when ttl <= 0) and the default entry cap.
-func newTokenCache(ttl time.Duration) *tokenCache {
+func NewTokenCache(ttl time.Duration) *TokenCache {
 	if ttl <= 0 {
 		ttl = defaultTokenCacheTTL
 	}
-	return &tokenCache{
+	return &TokenCache{
 		entries: make(map[string]tokenCacheEntry),
 		ttl:     ttl,
 		maxSize: maxTokenCacheEntries,
@@ -114,7 +124,7 @@ func newTokenCache(ttl time.Duration) *tokenCache {
 // token. tokenHash must be the hash freshly read from the channel's settings
 // for THIS request — a hash nobody has verified yet (never cached, or
 // rotated away from) is always a miss, never an error.
-func (c *tokenCache) hit(tokenHash, token string) bool {
+func (c *TokenCache) hit(tokenHash, token string) bool {
 	c.mu.RLock()
 	entry, ok := c.entries[tokenHash]
 	c.mu.RUnlock()
@@ -131,7 +141,7 @@ func (c *tokenCache) hit(tokenHash, token string) bool {
 // put records a successful verification of token against tokenHash. Callers
 // must only call this AFTER bcryptCompare has actually succeeded — put never
 // re-verifies.
-func (c *tokenCache) put(tokenHash, token string) {
+func (c *TokenCache) put(tokenHash, token string) {
 	entry := tokenCacheEntry{
 		digest:  sha256.Sum256([]byte(token)),
 		expires: c.now().Add(c.ttl),
@@ -148,7 +158,7 @@ func (c *tokenCache) put(tokenHash, token string) {
 // evictLocked drops expired entries; if none were expired (cache still full
 // of live entries) it drops one arbitrary entry to bound memory. Callers
 // must hold c.mu for writing.
-func (c *tokenCache) evictLocked() {
+func (c *TokenCache) evictLocked() {
 	now := c.now()
 	removedExpired := false
 	for hash, e := range c.entries {
@@ -181,7 +191,7 @@ func (h *Handler) verifyGatewayToken(tokenHash, token string) bool {
 		// cache: verify without caching. The field is deliberately not
 		// assigned here, since concurrent requests would race on it.
 		// Production wiring always goes through New().
-		cache = newTokenCache(defaultTokenCacheTTL)
+		cache = NewTokenCache(defaultTokenCacheTTL)
 	}
 
 	if cache.hit(tokenHash, token) {
@@ -190,7 +200,7 @@ func (h *Handler) verifyGatewayToken(tokenHash, token string) bool {
 
 	digest := sha256.Sum256([]byte(token))
 	key := tokenHash + "|" + hex.EncodeToString(digest[:])
-	v, _, _ := h.tokenSF.Do(key, func() (interface{}, error) {
+	v, _, _ := cache.sf.Do(key, func() (interface{}, error) {
 		ok := bcryptCompare([]byte(tokenHash), []byte(token)) == nil
 		if ok {
 			cache.put(tokenHash, token)

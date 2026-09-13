@@ -15,6 +15,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/clock"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbil24"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
@@ -147,8 +148,8 @@ type Server struct {
 	// Defaults to false at the struct level but wired to true in production
 	// via Options.Bil24RequireToken (config default: true).
 	bil24RequireToken bool
-	// bil24TokenCacheTTL mirrors BIL24_TOKEN_CACHE_TTL (perf fix: gateway
-	// token verification cache, see hbil24/token_cache.go). Zero value falls
-	// back to hbil24's own default (5 minutes) via WithTokenCacheTTL.
-	bil24TokenCacheTTL time.Duration
+	// bil24TokenCache is the gateway token verification cache (perf fix, see
+	// hbil24/token_cache.go), built once from BIL24_TOKEN_CACHE_TTL and shared
+	// by every per-request hbil24.Handler. nil in bare test Servers.
+	bil24TokenCache *hbil24.TokenCache
 }

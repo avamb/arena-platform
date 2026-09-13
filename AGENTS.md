@@ -699,7 +699,13 @@ entries short and factual.
   holds a stale credential), without needing a channel id at every call
   site — the disabled-channel / no-hash-configured gates still run BEFORE
   the cache is ever consulted, unchanged. TTL defaults to 5 minutes,
-  configurable via `BIL24_TOKEN_CACHE_TTL` / `Handler.WithTokenCacheTTL`.
+  configurable via `BIL24_TOKEN_CACHE_TTL`. **The cache must live on the
+  Server, not the Handler:** `Server.bil24Handler()` builds a fresh
+  `hbil24.Handler` per request, so the first version (cache as a Handler
+  field) never hit and the load test showed no CPU change. `New` builds one
+  `hbil24.TokenCache` and every per-request Handler receives it through
+  `WithTokenCache`; the same trap applies to any other per-process state
+  added to a per-request handler.
   Any NEW auth path must call `verifyGatewayToken`, never
   `bcrypt.CompareHashAndPassword` directly — a static call would bypass both
   the cache and the singleflight cold-cache dedup that collapses a burst of

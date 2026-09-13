@@ -131,7 +131,7 @@ func TestTokenCache_Expiry_FakeClock(t *testing.T) {
 	h := newMinimalHandler()
 
 	cur := time.Now()
-	h.tokenCache = &tokenCache{
+	h.tokenCache = &TokenCache{
 		entries: make(map[string]tokenCacheEntry),
 		ttl:     time.Minute,
 		maxSize: maxTokenCacheEntries,
@@ -304,5 +304,33 @@ func TestVerifyGatewayToken_ValidateGatewayTokenPath_UsesCache(t *testing.T) {
 	}
 	if got := atomic.LoadInt64(count); got != 1 {
 		t.Errorf("expected validateGatewayToken to route through the token cache: want 1 compare, got %d", got)
+	}
+}
+
+// TestTokenCache_SharedAcrossHandlers is the regression guard for the first
+// version of this fix: the httpserver builds a fresh Handler per request, so a
+// cache owned by one Handler never hit and the load test showed no change. Two
+// Handlers given the same TokenCache must share the verification.
+func TestTokenCache_SharedAcrossHandlers(t *testing.T) {
+	count := withCountingBcrypt(t)
+	tokenHash := mustBcryptHash(t, "shared-token")
+	shared := NewTokenCache(time.Minute)
+
+	for i := 0; i < 3; i++ {
+		h := newMinimalHandler().WithTokenCache(shared)
+		if !h.verifyGatewayToken(tokenHash, "shared-token") {
+			t.Fatalf("request %d: expected verification to succeed", i)
+		}
+	}
+	if got := atomic.LoadInt64(count); got != 1 {
+		t.Errorf("per-request Handlers sharing one TokenCache: want 1 bcrypt compare, got %d", got)
+	}
+
+	// Without the shared cache every per-request Handler pays bcrypt again.
+	if !newMinimalHandler().verifyGatewayToken(tokenHash, "shared-token") {
+		t.Fatalf("expected verification with a private cache to succeed")
+	}
+	if got := atomic.LoadInt64(count); got != 2 {
+		t.Errorf("a Handler with its own private cache must run bcrypt, want 2 compares, got %d", got)
 	}
 }
