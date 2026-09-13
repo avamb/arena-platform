@@ -25,8 +25,10 @@
 package hcheckout
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -995,23 +997,14 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 				// 'completed' normally (expired/abandoned/manual_review/
 				// created/payment_started). Park it — and the order, when
 				// one exists — for an operator instead of pretending success.
-				if _, mErr := txQ.MarkCheckoutSessionManualReview(ctx, csID); mErr != nil && !errors.Is(mErr, pgx.ErrNoRows) {
-					h.logger.Error("webhook: mark checkout session manual_review failed",
+				// Best-effort writes inside the money transaction MUST sit behind a
+				// SAVEPOINT (AGENTS.md): a failing statement would otherwise abort
+				// the whole tx and the COMMIT would silently roll back the
+				// succeeded payment intent.
+				if spErr := h.parkCheckoutForManualReview(ctx, tx, csID); spErr != nil {
+					h.logger.Error("webhook: park checkout for manual_review failed; payment state kept",
 						slog.String("checkout_session_id", csID.String()),
-						slog.String("error", mErr.Error()),
-					)
-				}
-				if ord, ordErr := txQ.GetOrderByCheckoutSession(ctx, csID); ordErr == nil {
-					if _, uErr := txQ.UpdateOrderStatus(ctx, ord.ID, ord.OrgID, "manual_review", nil, nil); uErr != nil {
-						h.logger.Error("webhook: mark order manual_review failed",
-							slog.String("order_id", ord.ID.String()),
-							slog.String("error", uErr.Error()),
-						)
-					}
-				} else if !errors.Is(ordErr, pgx.ErrNoRows) {
-					h.logger.Error("webhook: order lookup for manual_review failed",
-						slog.String("checkout_session_id", csID.String()),
-						slog.String("error", ordErr.Error()),
+						slog.String("error", spErr.Error()),
 					)
 				}
 				h.logger.Warn("webhook: payment succeeded but checkout session could not be completed; parked for manual review",
@@ -1021,10 +1014,14 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 				)
 			}
 		default:
+			// The statement failed and aborted the transaction: nothing after
+			// it can commit. Answer 500 so the provider redelivers the event.
 			h.logger.Error("webhook: complete checkout session failed",
 				slog.String("checkout_session_id", csID.String()),
 				slog.String("error", compErr.Error()),
 			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("webhook.checkout_completion_failed", "failed to complete checkout session", r))
+			return
 		}
 	}
 
@@ -1198,4 +1195,32 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 		"payment_intent":     paymentIntentFromRow(updated),
 		"checkout_completed": checkoutCompleted,
 	})
+}
+
+// parkCheckoutForManualReview moves a checkout session (and its order, when
+// one exists) to manual_review inside a SAVEPOINT of the webhook transaction,
+// so a failure here rolls back only these writes and never the payment
+// intent's succeeded state.
+func (h *Handler) parkCheckoutForManualReview(ctx context.Context, tx pgx.Tx, csID uuid.UUID) error {
+	sp, err := tx.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin savepoint: %w", err)
+	}
+	defer func() { _ = sp.Rollback(ctx) }()
+	q := gen.New(sp)
+
+	if _, err := q.MarkCheckoutSessionManualReview(ctx, csID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("mark checkout session manual_review: %w", err)
+	}
+	ord, err := q.GetOrderByCheckoutSession(ctx, csID)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+	case err != nil:
+		return fmt.Errorf("order lookup: %w", err)
+	default:
+		if _, err := q.UpdateOrderStatus(ctx, ord.ID, ord.OrgID, "manual_review", nil, nil); err != nil {
+			return fmt.Errorf("mark order manual_review: %w", err)
+		}
+	}
+	return sp.Commit(ctx)
 }

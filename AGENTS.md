@@ -650,3 +650,10 @@ entries short and factual.
   drains `worker_jobs` generically (`auth_email_integration_test.go`) then
   fails with "no handler for job type checkout.issue_tickets" — seen live
   2026-09-13 on `arena_ci_webhook`.
+- **The payment webhook completes a checkout only from `pricing_confirmed`**
+  (`CompleteCheckoutSession` guard). Nothing sets `payment_started` today;
+  a future hosted-payment flow that does MUST extend the completion guard or
+  every paid checkout in that state is parked in `manual_review`. The
+  manual-review writes run in a SAVEPOINT (`parkCheckoutForManualReview`) and a
+  non-NoRows completion error answers 500 so the provider redelivers — never
+  swallow a failed statement inside that transaction.

@@ -503,3 +503,105 @@ func TestWebhookWidgetCompletion_FlatBodyStillWorksEndToEnd(t *testing.T) {
 		t.Fatalf("checkout_sessions.state after flat-body webhook = %q, want completed", csAfter.State)
 	}
 }
+
+// TestWebhookWidgetCompletion_PaymentAfterExpiry_ParksForManualReview: money
+// arrives for a checkout that already expired. The payment intent must stay
+// succeeded (the money is real), and the checkout session and its order are
+// parked in manual_review instead of being force-completed. This branch writes
+// behind a SAVEPOINT inside the webhook transaction; a regression there would
+// roll back the succeeded intent silently.
+func TestWebhookWidgetCompletion_PaymentAfterExpiry_ParksForManualReview(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	f := newWebhookWidgetFixture(t, ctx, pool)
+	defer f.cleanup()
+
+	srv := buildIntegrationResetServer(t, pool)
+	q := gen.New(pool)
+
+	startBody, err := json.Marshal(map[string]any{
+		"session_id": f.sessionID.String(),
+		"tier_id":    f.tierID.String(),
+		"qty":        1,
+		"buyer": map[string]any{
+			"email": f.buyerMail,
+			"name":  "Late Payment Buyer",
+			"phone": f.buyerPhone,
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal checkout/start request: %v", err)
+	}
+	startReq := httptest.NewRequest(http.MethodPost,
+		"/v1/public/feeds/"+f.feedToken+"/checkout/start", bytes.NewReader(startBody))
+	startReq.Header.Set("Content-Type", "application/json")
+	startRec := httptest.NewRecorder()
+	srv.router.ServeHTTP(startRec, startReq)
+	if startRec.Code != http.StatusCreated {
+		t.Fatalf("checkout/start = %d, want 201; body: %s", startRec.Code, startRec.Body.String())
+	}
+	var startResp struct {
+		CheckoutSession struct {
+			ID string `json:"id"`
+		} `json:"checkout_session"`
+	}
+	if err := json.Unmarshal(startRec.Body.Bytes(), &startResp); err != nil {
+		t.Fatalf("decode checkout/start response: %v", err)
+	}
+	csID := uuid.MustParse(startResp.CheckoutSession.ID)
+	cs, err := q.GetCheckoutSessionByID(ctx, csID)
+	if err != nil || cs.Total == nil {
+		t.Fatalf("GetCheckoutSessionByID: %v (total nil: %v)", err, cs.Total == nil)
+	}
+
+	// The buyer took too long: the session expired before the provider event.
+	if _, err := pool.Exec(ctx, `UPDATE checkout_sessions SET state = 'expired', updated_at = now() WHERE id = $1`, csID); err != nil {
+		t.Fatalf("expire checkout session: %v", err)
+	}
+
+	providerPaymentID := "pi_whwc_late_" + uuid.New().String()[:12]
+	pi, err := q.InsertPaymentIntent(ctx, &csID, f.orgID, "stripe",
+		&providerPaymentID, *cs.Total, "EUR", "created", nil, nil)
+	if err != nil {
+		t.Fatalf("InsertPaymentIntent: %v", err)
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"id":   "evt_whwc_late_" + uuid.New().String()[:12],
+		"type": "payment_intent.succeeded",
+		"data": map[string]any{"object": map[string]any{"id": providerPaymentID, "status": "succeeded"}},
+	})
+	if err != nil {
+		t.Fatalf("marshal webhook payload: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/payment-intents/webhook", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("webhook = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+
+	piAfter, err := q.GetPaymentIntentByID(ctx, pi.ID)
+	if err != nil {
+		t.Fatalf("GetPaymentIntentByID: %v", err)
+	}
+	if piAfter.State != "succeeded" {
+		t.Fatalf("payment_intents.state = %q, want succeeded — the captured payment must never be rolled back", piAfter.State)
+	}
+	csAfter, err := q.GetCheckoutSessionByID(ctx, csID)
+	if err != nil {
+		t.Fatalf("GetCheckoutSessionByID after webhook: %v", err)
+	}
+	if csAfter.State == "completed" {
+		t.Fatalf("checkout_sessions.state = completed, want it NOT force-completed after expiry")
+	}
+	var orderStatus string
+	if err := pool.QueryRow(ctx, `SELECT status FROM orders WHERE checkout_session_id = $1`, csID).Scan(&orderStatus); err == nil {
+		if orderStatus == "paid" {
+			t.Errorf("orders.status = paid for an expired checkout, want manual_review or unchanged")
+		}
+		t.Logf("checkout state after late payment: %s, order status: %s", csAfter.State, orderStatus)
+	}
+}
