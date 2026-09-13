@@ -197,6 +197,62 @@ func Expire(ctx context.Context, q LifecycleStore, in ExpireInput) (gen.OrderRow
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ReviveForPayment
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ReviveInput describes an expired order a caller has already proven can be
+// paid — its hold is either still live or was just re-acquired.
+type ReviveInput struct {
+	OrderID uuid.UUID
+	OrgID   uuid.UUID
+	Actor   string
+}
+
+// ReviveForPayment moves an expired order back to pending_payment so MarkPaid
+// can complete it a moment later in the SAME transaction. This is
+// intentionally the ONLY path that resurrects an expired order: the buyer's
+// WooCommerce charge already happened before the shop ever called PAY_ORDER,
+// and order.expire_sweep (or a single-order Expire, e.g. a competing
+// CREATE_ORDER_EXT) closing the aggregate in the meantime does not make that
+// charge go away. Callers MUST have already proven the hold is securable
+// (payEnsureHold's live-or-reacquired check) before calling this — it does
+// not touch inventory itself, only the order's bookkeeping status, and it
+// records EventRevivedForPayment so the audit trail shows what happened
+// before the immediately-following 'paid' event.
+//
+// The write is the status-guarded ReviveOrderIfExpired rather than a
+// read-then-write, mirroring Expire's sweep counterpart
+// (ExpireOrderIfStillPending): if a concurrent process already moved the
+// order on (paid it, parked it in manual_review, cancelled it) the guard
+// matches zero rows and this function reloads the row to decide rather than
+// clobbering whatever that other process did. An order already at
+// pending_payment or paid is treated as a harmless no-op (MarkPaid handles
+// both idempotently); every other status is ErrInvalidTransition, which the
+// caller (hbil24 PAY_ORDER) turns into a transient retry rather than ever
+// resurrecting or re-parking an order behind someone else's back.
+func ReviveForPayment(ctx context.Context, q LifecycleStore, in ReviveInput) (gen.OrderRow, error) {
+	updated, err := q.ReviveOrderIfExpired(ctx, in.OrderID, in.OrgID)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return gen.OrderRow{}, fmt.Errorf("ordering: revive order: %w", err)
+		}
+		current, gErr := q.GetOrderByID(ctx, in.OrderID, in.OrgID)
+		if gErr != nil {
+			return gen.OrderRow{}, fmt.Errorf("ordering: reload order after failed revive: %w", gErr)
+		}
+		if current.Status == StatusPendingPayment || current.Status == StatusPaid {
+			return current, nil
+		}
+		return gen.OrderRow{}, fmt.Errorf("%w: %s -> %s (revive)", ErrInvalidTransition, current.Status, StatusPendingPayment)
+	}
+
+	if _, err := q.InsertOrderEvent(ctx, updated.ID, EventRevivedForPayment, actorOrSystem(in.Actor), emptyJSON()); err != nil {
+		return gen.OrderRow{}, fmt.Errorf("ordering: insert revived_for_payment event: %w", err)
+	}
+	return updated, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // FindOpenOrder
 // ─────────────────────────────────────────────────────────────────────────────
 

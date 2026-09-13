@@ -52,14 +52,22 @@ import (
 )
 
 // Order statuses PAY_ORDER refuses outright. ordering exposes the happy-path
-// vocabulary; these two live only in the migration-0092 CHECK constraint (the
-// refund pipeline writes them) so they are named here rather than widening the
-// ordering package for a read-only comparison.
+// vocabulary; these live only in the migration-0092 CHECK constraint (the
+// refund pipeline writes the first two; nothing today writes the third) so
+// they are named here rather than widening the ordering package for a
+// read-only comparison.
 const (
 	payStatusRefunded          = "refunded"
 	payStatusPartiallyRefunded = "partially_refunded"
 	// payStatusManualReview parks an order whose hold could not be re-taken.
 	payStatusManualReview = "manual_review"
+	// payStatusAbandoned mirrors checkout_sessions' 'abandoned' state in the
+	// orders CHECK constraint. No code path writes it to orders today, but
+	// PAY_ORDER enumerates every status the constraint allows rather than
+	// letting an unhandled one fall through to ordering.MarkPaid's generic
+	// ErrInvalidTransition (which used to surface as a retry-forever -1 for
+	// 'expired' — the defect this file fixes).
+	payStatusAbandoned = "abandoned"
 )
 
 // payProviderManual is payment_intents.provider for a payment collected by the
@@ -153,17 +161,40 @@ func (h *Handler) handleBil24PayOrderWired(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Step 1 (cont.) — terminal statuses. Already paid is the idempotent
-	// replay the shop performs after a timeout: answer 0 and write nothing.
+	// Step 1 (cont.) — terminal / non-payable statuses, enumerated over every
+	// value the orders CHECK constraint allows. Already paid is the
+	// idempotent replay the shop performs after a timeout: answer 0 and
+	// write nothing. 'expired' is deliberately NOT listed here — the buyer's
+	// money has already moved by the time the shop calls PAY_ORDER, so an
+	// expired order falls through to the normal payment transaction below,
+	// which attempts to revive it (ordering.ReviveForPayment) before
+	// MarkPaid runs; only when the hold cannot be secured does it end up in
+	// manual_review, exactly like a hold that died between RESERVE and pay.
 	switch order.Status {
 	case ordering.StatusPaid:
 		writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, nil))
 		return
-	case ordering.StatusCancelled, payStatusRefunded, payStatusPartiallyRefunded:
+	case ordering.StatusCancelled, payStatusRefunded, payStatusPartiallyRefunded, payStatusAbandoned:
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeUserVisible,
 			h.localizeDesc(req.Locale, locale, "bil24.order_cancelled",
 				"order has been cancelled", nil),
+		))
+		return
+	case payStatusManualReview:
+		// Already parked from an earlier PAY_ORDER attempt — either this
+		// exact revival-failed path, or the classic live-hold-died-at-pay-
+		// time path. The WordPress plugin retries whatever is not 0, so a
+		// replay MUST be idempotent: answer the same hold_expired 101
+		// without touching the order/checkout session again and without
+		// raising a second operator alert. payParkManualReview is NOT
+		// called here on purpose — see its own doc comment for why calling
+		// it twice would be unsafe (duplicate hold_expired events and an
+		// alert storm on every WordPress retry).
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUserVisible,
+			h.localizeDesc(req.Locale, locale, "bil24.hold_expired",
+				"your hold has expired, please reserve again", nil),
 		))
 		return
 	}
@@ -301,6 +332,30 @@ func (h *Handler) payExecute(
 	// Step 2 — the hold.
 	if err := h.payEnsureHold(ctx, txq, order, actor, ttl, now); err != nil {
 		return gen.CheckoutSessionRow{}, err
+	}
+
+	// Step 2b — revive an order the expire sweep (or a competing
+	// CREATE_ORDER_EXT) already closed, now that step 2 has proven the hold
+	// behind it is securable. Money-safety fix: MarkPaid below only accepts
+	// pending_payment → paid, so without this an expired order's late
+	// payment used to fail with a generic error and answer resultCode -1
+	// FOREVER — the WordPress plugin retries -1, but order.status never
+	// changes on its own, so every retry hit the identical refusal. A
+	// pending_payment order (the common case) is untouched by this branch.
+	if order.Status == ordering.StatusExpired {
+		if _, err := ordering.ReviveForPayment(ctx, txq, ordering.ReviveInput{
+			OrderID: order.ID, OrgID: order.OrgID, Actor: actor,
+		}); err != nil {
+			// A concurrent process moved the order on (parked it, cancelled
+			// it, ...) between this handler's pre-transaction read and now.
+			// Surfacing a plain error here answers -1 (transient) rather
+			// than errPayHoldExpired: re-parking on a status we no longer
+			// understand would risk clobbering whatever that other writer
+			// just did. The very next retry re-reads order.Status fresh and
+			// the top-level switch above resolves it correctly — unlike the
+			// original defect, this is a one-shot retry, not a forever loop.
+			return gen.CheckoutSessionRow{}, fmt.Errorf("revive order: %w", err)
+		}
 	}
 
 	// Step 3 — amount reconciliation. Non-blocking by design.

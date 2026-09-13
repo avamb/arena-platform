@@ -657,3 +657,47 @@ entries short and factual.
   manual-review writes run in a SAVEPOINT (`parkCheckoutForManualReview`) and a
   non-NoRows completion error answers 500 so the provider redelivers — never
   swallow a failed statement inside that transaction.
+- **CREATE_ORDER_EXT must never expire a customer's open order without
+  checking the hold behind it is actually dead.** `orderWriteAggregate`
+  (`hbil24/cmd_order_create.go`) used to call `ordering.Expire` unconditionally
+  the moment `FindOpenOrder` found a second open order for the same
+  customer+session pointing at a different reservation, on the assumption
+  that a second open order can only mean "the first expired". Two gateway
+  buyers who share the checkout identity the WordPress plugin sent (email/
+  phone — whatever the buyer typed, not a stable account id) reserving
+  separately for the same session let buyer B's CREATE_ORDER_EXT silently
+  steal buyer A's still-live hold; A's PAY_ORDER then failed after
+  WooCommerce had already charged them (reproduced under `ops/loadtest`,
+  2026-09-13). Fixed: the existing order's reservation is now loaded and only
+  expired when its state is not `draft`/`active` or its `expires_at` has
+  already passed (`orderOldHoldIsLive`); otherwise CREATE_ORDER_EXT answers
+  `101 bil24.open_order_exists` and writes nothing. The same-session repeat
+  case (`existing.ReservationID == res.ID`, bounce off WooCommerce payment
+  and come back) is a separate branch and is unaffected.
+- **PAY_ORDER must never answer -1 for an order `order.expire_sweep` already
+  closed, and must never re-park+re-alert a `manual_review` order on
+  replay.** `ordering.MarkPaid` only accepts `pending_payment → paid`, so an
+  `expired` order used to fall through to it and answer `ErrInvalidTransition`
+  as a generic error → bil24 `resultCode -1`. Since nothing about
+  `orders.status` changes on its own, the WordPress plugin's retry loop got
+  -1 FOREVER for a buyer who had already been charged — this is the money-
+  safety asymmetry PAY_ORDER exists to handle (spec §7.9: the money already
+  moved). Fixed with `ordering.ReviveForPayment` (status-guarded
+  `ReviveOrderIfExpired`, `order_events.revived_for_payment`), called from
+  `payExecute` right after the existing hold-secure/reacquire check
+  (`payEnsureHold`) succeeds for an `expired` order — same hold logic a
+  `pending_payment` order already goes through, just also allowed to
+  resurrect the order status. When the hold cannot be secured, the existing
+  `payParkManualReview` path (manual_review + operator alert + `101
+  bil24.hold_expired`) is unchanged. Separately, `handleBil24PayOrderWired`'s
+  terminal-status switch now enumerates EVERY status the `orders` CHECK
+  constraint allows (`paid`, `cancelled`/`refunded`/`partially_refunded`/
+  `abandoned`, `manual_review`) instead of only the first three — a
+  `manual_review` order used to fall through to the same `payEnsureHold` →
+  `errPayHoldExpired` → `payParkManualReview` path on every replay, writing a
+  duplicate `hold_expired` event and firing a second operator alert per
+  WordPress retry (an alert storm). It now short-circuits to the same `101
+  bil24.hold_expired` answer with no writes and no alert. Tests:
+  `apps/backend/tests/compat/bil24/order_pay_revival_integration_test.go`,
+  `apps/backend/internal/platform/ordering/lifecycle_test.go`
+  (`TestReviveForPayment_*`).

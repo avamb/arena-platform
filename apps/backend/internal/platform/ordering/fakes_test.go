@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
@@ -37,6 +38,7 @@ type fakeStore struct {
 
 	expirable   []gen.OrderRow
 	expireErrOn map[uuid.UUID]error
+	reviveErrOn map[uuid.UUID]error
 
 	insertOrderErr error
 	insertItemErr  error
@@ -47,6 +49,7 @@ func newFakeStore() *fakeStore {
 	return &fakeStore{
 		orders:      map[uuid.UUID]gen.OrderRow{},
 		expireErrOn: map[uuid.UUID]error{},
+		reviveErrOn: map[uuid.UUID]error{},
 	}
 }
 
@@ -181,6 +184,22 @@ func (f *fakeStore) UpdateOrderStatus(_ context.Context, id, _ uuid.UUID, status
 	if cancelledAt != nil {
 		row.CancelledAt = cancelledAt
 	}
+	f.orders[id] = row
+	return row, nil
+}
+
+// reviveErrOn lets a test force ReviveOrderIfExpired to fail for one order id
+// (e.g. a non-ErrNoRows infrastructure error), mirroring expireErrOn above.
+func (f *fakeStore) ReviveOrderIfExpired(_ context.Context, id, _ uuid.UUID) (gen.OrderRow, error) {
+	if err, ok := f.reviveErrOn[id]; ok {
+		return gen.OrderRow{}, err
+	}
+	row, ok := f.orders[id]
+	if !ok || row.Status != StatusExpired {
+		return gen.OrderRow{}, pgx.ErrNoRows
+	}
+	row.Status = StatusPendingPayment
+	row.CancelledAt = nil
 	f.orders[id] = row
 	return row, nil
 }

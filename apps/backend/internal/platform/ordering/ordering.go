@@ -77,6 +77,15 @@ const (
 	// the shop has already taken the buyer's money, so the gateway records
 	// the discrepancy for reconciliation and completes the payment anyway.
 	EventAmountMismatch = "amount_mismatch"
+	// EventRevivedForPayment records that PAY_ORDER found an order the
+	// expire sweep (or a single-order Expire call) had already closed, but
+	// whose hold could still be secured — live, or re-acquired via
+	// hcheckout.ReacquireHoldTx — when the shop's late payment arrived. The
+	// order is moved back to pending_payment (ReviveForPayment) immediately
+	// before MarkPaid runs, so this event and EventPaid always appear
+	// together on a revived order's audit trail. Money-safety fix: refusing
+	// the payment here would strand a buyer who has already been charged.
+	EventRevivedForPayment = "revived_for_payment"
 )
 
 // ActorSystem is the order_events.actor value for anything the platform does
@@ -170,10 +179,14 @@ type EventStore interface {
 	InsertOrderEvent(ctx context.Context, orderID uuid.UUID, eventType, actor string, payload json.RawMessage) (gen.OrderEventRow, error)
 }
 
-// LifecycleStore is the query surface MarkPaid / Cancel / Expire need.
+// LifecycleStore is the query surface MarkPaid / Cancel / Expire /
+// ReviveForPayment need.
 type LifecycleStore interface {
 	GetOrderByID(ctx context.Context, id, orgID uuid.UUID) (gen.OrderRow, error)
 	UpdateOrderStatus(ctx context.Context, id, orgID uuid.UUID, status string, paidAt, cancelledAt *time.Time) (gen.OrderRow, error)
+	// ReviveOrderIfExpired is ReviveForPayment's status-guarded write: see
+	// gen.Queries.ReviveOrderIfExpired.
+	ReviveOrderIfExpired(ctx context.Context, id, orgID uuid.UUID) (gen.OrderRow, error)
 	EventStore
 }
 

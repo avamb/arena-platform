@@ -84,6 +84,9 @@ other = "the order total is below the minimum for this promo code"
 ["bil24.hold_expired"]
 other = "your hold has expired, please reserve again"
 
+["bil24.open_order_exists"]
+other = "you already have an unpaid order for this event, complete or cancel it first"
+
 ["bil24.order_not_found"]
 other = "order not found"
 

@@ -232,6 +232,82 @@ a new one and retire the old — then re-post the same bundle (same `externalRef
 appears without any manual admin step. The `§2` webhook subscriber must still be registered on that
 same channel.
 
+## 9. Orders: colliding open orders and late payments on expired orders
+
+Two related money-safety behaviors were fixed in the order aggregate (`hbil24/cmd_order_create.go`,
+`hbil24/cmd_order_pay.go`, `internal/platform/ordering`) and are worth knowing about when a site
+reports a payment problem.
+
+### 9.1 CREATE_ORDER_EXT: `bil24.open_order_exists` (resultCode 101)
+
+A customer may hold at most one `pending_payment` order per event session
+(`orders_one_pending_per_customer_session_uq`). CREATE_ORDER_EXT used to assume that finding a
+second open order for the same customer+session always meant "the first one expired, mint a
+replacement" — and expired it unconditionally, even when its hold was still fully live. Two
+gateway buyers who happen to share the checkout identity the WordPress plugin sent (email/phone —
+whatever the buyer typed at checkout, not a stable account id) could have buyer A's still-valid
+hold silently stolen by buyer B's checkout a few milliseconds later; A's subsequent PAY_ORDER then
+failed even though WooCommerce had already charged them.
+
+CREATE_ORDER_EXT now only expires the existing open order when its hold is actually gone — the
+reservation's state is not `draft`/`active`, or its `expires_at` has already passed. When the old
+hold is still live, the request is refused with `resultCode 101` and description key
+`bil24.open_order_exists` ("you already have an unpaid order for this event, complete or cancel it
+first"), and nothing is written — the whole transaction, including the checkout session the request
+just inserted, rolls back. The customer's original order is untouched and stays payable.
+
+This is NOT triggered by the same gateway session resending CREATE_ORDER_EXT for its own cart
+(bounced off the WooCommerce payment page, edited the basket, came back) — that case still updates
+the existing order in place, unchanged from before.
+
+If a site reports `open_order_exists` for what looks like one buyer: check whether two browser
+tabs/devices under the same identity are checking out the same event concurrently. The fix is
+working as intended — the buyer (or their second tab) needs to finish or cancel the first order.
+
+### 9.2 PAY_ORDER on an order the expire sweep already closed
+
+`order.expire_sweep` (spec §14.1, every minute) closes a `pending_payment` order once its hold's
+TTL passes. The buyer's WooCommerce charge can still land a moment after the sweep tick, and
+PAY_ORDER used to answer a generic `resultCode -1` for an `expired` order — which the WordPress
+plugin retries forever, because nothing about `orders.status` ever changes on its own. That left a
+charged buyer with no ticket and no way out except manual intervention.
+
+PAY_ORDER on an `expired` order now attempts to **revive** it before completing the payment,
+reusing the exact same hold-check/reacquire logic (`payEnsureHold`) a live `pending_payment` order
+already goes through:
+
+- If the reservation is still live, or its TTL has passed but the seats are still exclusively
+  held by it (`hcheckout.ReacquireHoldTx` re-takes them, recorded as `order_events.hold_reacquired`
+  — same as the pre-existing live-hold-died-at-pay-time case), the order is moved back to
+  `pending_payment` (`ordering.ReviveForPayment`, recorded as `order_events.revived_for_payment`)
+  and the payment completes normally: `resultCode 0`, tickets issued synchronously.
+- If the hold cannot be secured (the seats now belong to a different reservation), the order and
+  its checkout session are parked in `manual_review`, `order_events.hold_expired` is written, an
+  operator alert fires, and the answer is `resultCode 101 bil24.hold_expired` — identical to the
+  pre-existing behavior for a live order whose hold died between RESERVE and PAY_ORDER.
+
+Every other non-payable status PAY_ORDER can see is handled explicitly rather than falling through
+to a generic error: `paid` answers `0` idempotently (no writes), `cancelled`/`refunded`/
+`partially_refunded`/`abandoned` answer `101 bil24.order_cancelled`, and — this is the idempotency
+half of the fix — a **replayed** PAY_ORDER on an order already parked in `manual_review` answers
+the same `101 bil24.hold_expired` again WITHOUT re-parking it, without writing a second
+`hold_expired` event, and without raising a second operator alert. Before this fix, a replay
+(which the WordPress plugin performs on any non-zero resultCode) re-ran the whole park-and-alert
+sequence every time, which would have paged an operator once per retry.
+
+Runbook implication: a `manual_review` order from the §9.2 path needs the SAME manual resolution as
+any other manual-review order (§4-adjacent — there is no automated recovery). Find candidates with:
+
+```sql
+SELECT id, system_id, org_id, status, expires_at, updated_at
+FROM orders
+WHERE status = 'manual_review'
+ORDER BY updated_at DESC;
+```
+
+and cross-reference `order_events` for that `order_id` (`hold_expired` / `revived_for_payment` /
+`hold_reacquired`) to see which path it took.
+
 ## Related reading
 
 - Wire-level behavior differences and result-code map:

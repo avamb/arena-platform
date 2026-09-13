@@ -244,6 +244,68 @@ func TestExpire_IsIdempotent(t *testing.T) {
 	}
 }
 
+// ReviveForPayment is the money-safety fix for a late PAY_ORDER on an order
+// the expire sweep already closed: the buyer's WooCommerce charge already
+// happened, so an expired order whose hold can still be secured must be
+// payable again rather than answering -1 forever.
+func TestReviveForPayment_MovesExpiredBackToPendingAndAudits(t *testing.T) {
+	f, row := storeWithOrder(StatusExpired)
+	row.CancelledAt = ptr(time.Date(2026, 9, 13, 9, 0, 0, 0, time.UTC))
+	f.orders[row.ID] = row
+
+	got, err := ReviveForPayment(context.Background(), f, ReviveInput{
+		OrderID: row.ID, OrgID: row.OrgID, Actor: "gateway:1271",
+	})
+	if err != nil {
+		t.Fatalf("ReviveForPayment: %v", err)
+	}
+	if got.Status != StatusPendingPayment {
+		t.Fatalf("status = %s, want %s", got.Status, StatusPendingPayment)
+	}
+	if got.CancelledAt != nil {
+		t.Fatalf("cancelled_at = %v, want nil — a revived order must not still look expired", got.CancelledAt)
+	}
+	if len(f.events) != 1 || f.events[0].Type != EventRevivedForPayment || f.events[0].Actor != "gateway:1271" {
+		t.Fatalf("events = %+v, want one revived_for_payment event by the gateway actor", f.events)
+	}
+}
+
+// A retried PAY_ORDER whose first attempt already revived (and paid) the
+// order must not fail: MarkPaid handles the terminal idempotency, but the
+// revival step itself must also treat pending_payment/paid as a harmless
+// no-op rather than erroring before MarkPaid gets a chance to run.
+func TestReviveForPayment_IsANoOpOnPendingOrPaid(t *testing.T) {
+	for _, status := range []string{StatusPendingPayment, StatusPaid} {
+		f, row := storeWithOrder(status)
+		got, err := ReviveForPayment(context.Background(), f, ReviveInput{OrderID: row.ID, OrgID: row.OrgID})
+		if err != nil {
+			t.Fatalf("ReviveForPayment from %s: %v", status, err)
+		}
+		if got.Status != status {
+			t.Fatalf("ReviveForPayment from %s: status = %s, want unchanged %s", status, got.Status, status)
+		}
+		if len(f.events) != 0 {
+			t.Fatalf("ReviveForPayment from %s: wrote %d events, want 0", status, len(f.events))
+		}
+	}
+}
+
+// A genuinely dead order (cancelled, refunded, parked in manual_review by an
+// earlier failed attempt) must never be silently resurrected — an operator or
+// the site's own retry loop, not this function, decides what happens next.
+func TestReviveForPayment_RefusesOtherStatuses(t *testing.T) {
+	for _, status := range []string{StatusCancelled, "manual_review", "refunded", "abandoned"} {
+		f, row := storeWithOrder(status)
+		_, err := ReviveForPayment(context.Background(), f, ReviveInput{OrderID: row.ID, OrgID: row.OrgID})
+		if !errors.Is(err, ErrInvalidTransition) {
+			t.Fatalf("ReviveForPayment from %s: err = %v, want ErrInvalidTransition", status, err)
+		}
+		if len(f.events) != 0 {
+			t.Fatalf("ReviveForPayment from %s: wrote %d events on a refused revive", status, len(f.events))
+		}
+	}
+}
+
 func TestFindOpenOrder_ReturnsTheOpenOrder(t *testing.T) {
 	f := newFakeStore()
 	open := gen.OrderRow{ID: uuid.New(), Status: StatusPendingPayment}
