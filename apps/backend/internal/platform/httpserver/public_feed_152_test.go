@@ -18,6 +18,7 @@ package httpserver
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -190,61 +191,293 @@ func TestPublicFeed152_DetailResponseContentType(t *testing.T) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Rate limiter unit tests
+//
+// newPublicFeedRateLimiter(feedTokenLimit, checkoutTokenLimit, ipLimit) now
+// tracks THREE independent buckets (feed token / checkout token / IP) since
+// a feed token belongs to a whole sales channel and must not share a bucket
+// with a single buyer's checkout token (defect: 200 concurrent widget
+// visitors sharing one feed token exhausted a per-visitor-sized limit and
+// 15884/16543 requests were rejected). Each check* method now returns
+// (allowed bool, retryAfterSeconds int).
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestPublicFeed152_RateLimiterTokenAllow(t *testing.T) {
-	rl := newPublicFeedRateLimiter(5, 100)
+func TestPublicFeed152_RateLimiterFeedTokenAllow(t *testing.T) {
+	rl := newPublicFeedRateLimiter(5, 100, 100)
 	for i := 0; i < 5; i++ {
-		if !rl.checkToken("test-token") {
-			t.Fatalf("checkToken call %d: expected allow, got block", i+1)
+		if allowed, _ := rl.checkFeedToken("test-token"); !allowed {
+			t.Fatalf("checkFeedToken call %d: expected allow, got block", i+1)
 		}
 	}
 }
 
-func TestPublicFeed152_RateLimiterTokenBlock(t *testing.T) {
-	rl := newPublicFeedRateLimiter(3, 100)
+func TestPublicFeed152_RateLimiterFeedTokenBlock(t *testing.T) {
+	rl := newPublicFeedRateLimiter(3, 100, 100)
 	for i := 0; i < 3; i++ {
-		rl.checkToken("test-token")
+		rl.checkFeedToken("test-token")
 	}
-	if rl.checkToken("test-token") {
-		t.Fatal("checkToken: expected block after limit, got allow")
+	allowed, retryAfter := rl.checkFeedToken("test-token")
+	if allowed {
+		t.Fatal("checkFeedToken: expected block after limit, got allow")
+	}
+	if retryAfter < 1 {
+		t.Fatalf("checkFeedToken: expected retryAfterSeconds >= 1 on block, got %d", retryAfter)
+	}
+}
+
+func TestPublicFeed152_RateLimiterCheckoutTokenAllow(t *testing.T) {
+	rl := newPublicFeedRateLimiter(100, 5, 100)
+	for i := 0; i < 5; i++ {
+		if allowed, _ := rl.checkCheckoutToken("checkout-token"); !allowed {
+			t.Fatalf("checkCheckoutToken call %d: expected allow, got block", i+1)
+		}
+	}
+}
+
+func TestPublicFeed152_RateLimiterCheckoutTokenBlock(t *testing.T) {
+	rl := newPublicFeedRateLimiter(100, 3, 100)
+	for i := 0; i < 3; i++ {
+		rl.checkCheckoutToken("checkout-token")
+	}
+	if allowed, _ := rl.checkCheckoutToken("checkout-token"); allowed {
+		t.Fatal("checkCheckoutToken: expected block after limit, got allow")
+	}
+}
+
+func TestPublicFeed152_RateLimiterFeedAndCheckoutTokenBucketsIndependent(t *testing.T) {
+	// A feed token and a checkout token happening to share the same string
+	// value must not share a counter — they are different credentials for
+	// different scopes (site-wide vs. one buyer).
+	rl := newPublicFeedRateLimiter(1, 1, 100)
+	if allowed, _ := rl.checkFeedToken("shared-value"); !allowed {
+		t.Fatal("checkFeedToken: expected allow on first call")
+	}
+	if allowed, _ := rl.checkFeedToken("shared-value"); allowed {
+		t.Fatal("checkFeedToken: expected block on second call (limit 1)")
+	}
+	// The checkout-token bucket for the SAME string must still be fresh.
+	if allowed, _ := rl.checkCheckoutToken("shared-value"); !allowed {
+		t.Fatal("checkCheckoutToken: expected allow — independent bucket from checkFeedToken")
 	}
 }
 
 func TestPublicFeed152_RateLimiterIPAllow(t *testing.T) {
-	rl := newPublicFeedRateLimiter(100, 5)
+	rl := newPublicFeedRateLimiter(100, 100, 5)
 	for i := 0; i < 5; i++ {
-		if !rl.checkIP("1.2.3.4") {
+		if allowed, _ := rl.checkIP("1.2.3.4"); !allowed {
 			t.Fatalf("checkIP call %d: expected allow, got block", i+1)
 		}
 	}
 }
 
 func TestPublicFeed152_RateLimiterIPBlock(t *testing.T) {
-	rl := newPublicFeedRateLimiter(100, 3)
+	rl := newPublicFeedRateLimiter(100, 100, 3)
 	for i := 0; i < 3; i++ {
 		rl.checkIP("1.2.3.4")
 	}
-	if rl.checkIP("1.2.3.4") {
+	allowed, retryAfter := rl.checkIP("1.2.3.4")
+	if allowed {
 		t.Fatal("checkIP: expected block after limit, got allow")
+	}
+	if retryAfter < 1 {
+		t.Fatalf("checkIP: expected retryAfterSeconds >= 1 on block, got %d", retryAfter)
 	}
 }
 
 func TestPublicFeed152_RateLimiterDifferentTokensIndependent(t *testing.T) {
-	rl := newPublicFeedRateLimiter(2, 100)
+	rl := newPublicFeedRateLimiter(2, 100, 100)
 	// Fill token-A to the limit.
-	rl.checkToken("token-A")
-	rl.checkToken("token-A")
+	rl.checkFeedToken("token-A")
+	rl.checkFeedToken("token-A")
 	// token-B should still be allowed.
-	if !rl.checkToken("token-B") {
-		t.Fatal("checkToken token-B: expected allow (independent from token-A), got block")
+	if allowed, _ := rl.checkFeedToken("token-B"); !allowed {
+		t.Fatal("checkFeedToken token-B: expected allow (independent from token-A), got block")
 	}
 }
 
 func TestPublicFeed152_RateLimiterNewInstanceAllows(t *testing.T) {
-	rl := newPublicFeedRateLimiter(1, 1)
-	if !rl.checkToken("brand-new") {
+	rl := newPublicFeedRateLimiter(1, 1, 1)
+	if allowed, _ := rl.checkFeedToken("brand-new"); !allowed {
 		t.Fatal("first call on new limiter should always be allowed")
+	}
+}
+
+// TestPublicFeed152_RateLimiterZeroDisables covers "0 disables this check"
+// (PUBLIC_FEED_TOKEN_RATE_LIMIT / PUBLIC_CHECKOUT_TOKEN_RATE_LIMIT /
+// PUBLIC_API_IP_RATE_LIMIT contract): a 0 limit must always allow, no matter
+// how many requests are made.
+func TestPublicFeed152_RateLimiterZeroDisables(t *testing.T) {
+	rl := newPublicFeedRateLimiter(0, 0, 0)
+	for i := 0; i < 1000; i++ {
+		if allowed, retryAfter := rl.checkFeedToken("tok"); !allowed || retryAfter != 0 {
+			t.Fatalf("checkFeedToken call %d: limit 0 must always allow with retryAfter 0, got allowed=%v retryAfter=%d", i, allowed, retryAfter)
+		}
+		if allowed, retryAfter := rl.checkCheckoutToken("tok"); !allowed || retryAfter != 0 {
+			t.Fatalf("checkCheckoutToken call %d: limit 0 must always allow with retryAfter 0, got allowed=%v retryAfter=%d", i, allowed, retryAfter)
+		}
+		if allowed, retryAfter := rl.checkIP("1.2.3.4"); !allowed || retryAfter != 0 {
+			t.Fatalf("checkIP call %d: limit 0 must always allow with retryAfter 0, got allowed=%v retryAfter=%d", i, allowed, retryAfter)
+		}
+	}
+}
+
+// TestPublicFeed152_RateLimiterRetryAfterWithinWindow verifies the
+// retryAfterSeconds returned on a block is a sane whole-second value bounded
+// by the 1-minute window (never 0, never more than 60).
+func TestPublicFeed152_RateLimiterRetryAfterWithinWindow(t *testing.T) {
+	rl := newPublicFeedRateLimiter(1, 100, 100)
+	rl.checkFeedToken("tok")
+	_, retryAfter := rl.checkFeedToken("tok")
+	if retryAfter < 1 || retryAfter > 60 {
+		t.Fatalf("retryAfterSeconds out of bounds: got %d, want 1-60", retryAfter)
+	}
+}
+
+// TestPublicFeed152_RateLimiterSweepPrunesExpiredEntries covers the
+// unbounded-map-growth fix: an expired window must eventually be dropped
+// from the map, not accumulate forever under spoofed/rotating keys.
+func TestPublicFeed152_RateLimiterSweepPrunesExpiredEntries(t *testing.T) {
+	rl := newPublicFeedRateLimiter(100, 100, 100)
+	rl.checkIP("1.2.3.4")
+	if len(rl.ips) != 1 {
+		t.Fatalf("expected 1 tracked IP before expiry, got %d", len(rl.ips))
+	}
+	// Force the tracked window into the past so the next sweep collects it,
+	// and force the sweep gate open (sweepExpiredLocked only runs at most
+	// once per minute).
+	rl.mu.Lock()
+	rl.ips["1.2.3.4"].resetAt = time.Now().Add(-time.Minute)
+	rl.lastSweep = time.Time{}
+	rl.mu.Unlock()
+
+	// A check on an unrelated key triggers sweepExpiredLocked under the lock.
+	rl.checkIP("5.6.7.8")
+
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	if _, stillPresent := rl.ips["1.2.3.4"]; stillPresent {
+		t.Fatal("expired IP window was not pruned by the sweep")
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HTTP-level rate limit tests: Retry-After header + spoof-resistant IP keying
+// ─────────────────────────────────────────────────────────────────────────────
+
+// buildPublicFeedServerWithLimits builds a Server with the public feed routes
+// mounted and explicit rate limits / trusted-proxy depth, so HTTP-level tests
+// can deterministically trip the 429 path.
+func buildPublicFeedServerWithLimits(t *testing.T, feedTokenLimit, ipLimit, trustedProxies int) *Server {
+	t.Helper()
+	cfg := &config.Config{
+		AppEnv:                   config.EnvDevelopment,
+		RequestTimeout:           5 * time.Second,
+		BodyLimitBytes:           1 << 20,
+		JWTSecretStub:            "test-secret-which-is-long-enough-for-hs256",
+		EnableStubAuth:           true,
+		DefaultLocale:            "en",
+		ActiveLocales:            []string{"en", "ru"},
+		PublicFeedTokenRateLimit: feedTokenLimit,
+		PublicAPIIPRateLimit:     ipLimit,
+		TrustedProxyCount:        trustedProxies,
+	}
+	return New(Options{
+		Config:            cfg,
+		PublicFeedQueries: gen.New(nil),
+		FeedTokenQueries:  gen.New(nil),
+		SessionQueries:    gen.New(nil),
+		TierQueries:       gen.New(nil),
+	})
+}
+
+// TestPublicFeed152_HTTP_RateLimited_SetsRetryAfterHeader exercises the full
+// HTTP path: once the per-feed-token bucket is exhausted, the 429 response
+// must carry a Retry-After header (whole seconds, >= 1) alongside the
+// unchanged feed.rate_limited error envelope.
+func TestPublicFeed152_HTTP_RateLimited_SetsRetryAfterHeader(t *testing.T) {
+	s := buildPublicFeedServerWithLimits(t, 1, 100000, 0)
+
+	// First request consumes the single allowed slot.
+	w1 := httptest.NewRecorder()
+	req1 := httptest.NewRequest(http.MethodGet, "/v1/public/feeds/retry-after-token/events", nil)
+	s.router.ServeHTTP(w1, req1)
+
+	// Second request must be blocked with Retry-After set.
+	w2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodGet, "/v1/public/feeds/retry-after-token/events", nil)
+	s.router.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 on second request, got %d: %s", w2.Code, w2.Body.String())
+	}
+	retryAfter := w2.Header().Get("Retry-After")
+	if retryAfter == "" {
+		t.Fatal("expected Retry-After header on 429 response, got none")
+	}
+	seconds, err := strconv.Atoi(retryAfter)
+	if err != nil {
+		t.Fatalf("Retry-After header must be a whole-second integer, got %q: %v", retryAfter, err)
+	}
+	if seconds < 1 || seconds > 60 {
+		t.Fatalf("Retry-After out of bounds: got %d, want 1-60", seconds)
+	}
+	if !strings.Contains(w2.Body.String(), "feed.rate_limited") {
+		t.Fatalf("expected feed.rate_limited error code in body, got: %s", w2.Body.String())
+	}
+}
+
+// TestPublicFeed152_HTTP_IPRateLimit_SpoofedXFFIgnoredWhenTrustedProxyCountZero
+// proves the fix for the IP-keying spoof: with TRUSTED_PROXY_COUNT=0 (the
+// default), two requests carrying DIFFERENT client-supplied X-Forwarded-For
+// values must still land in the SAME IP bucket, because the raw header is
+// never trusted — only RemoteAddr is used.
+func TestPublicFeed152_HTTP_IPRateLimit_SpoofedXFFIgnoredWhenTrustedProxyCountZero(t *testing.T) {
+	s := buildPublicFeedServerWithLimits(t, 100000, 1, 0)
+
+	w1 := httptest.NewRecorder()
+	req1 := httptest.NewRequest(http.MethodGet, "/v1/public/feeds/ip-spoof-token-a/events", nil)
+	req1.Header.Set("X-Forwarded-For", "9.9.9.1")
+	s.router.ServeHTTP(w1, req1)
+	if w1.Code == http.StatusTooManyRequests {
+		t.Fatalf("first request should not be rate limited, got 429: %s", w1.Body.String())
+	}
+
+	// Different feed token AND a different spoofed XFF value — but the same
+	// underlying httptest RemoteAddr. If XFF were trusted, this would land in
+	// a different IP bucket and be allowed; since TRUSTED_PROXY_COUNT=0, it
+	// must share the bucket with req1 and get blocked.
+	w2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodGet, "/v1/public/feeds/ip-spoof-token-b/events", nil)
+	req2.Header.Set("X-Forwarded-For", "9.9.9.2")
+	s.router.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 — spoofed XFF must not bypass the per-IP bucket when TRUSTED_PROXY_COUNT=0, got %d: %s", w2.Code, w2.Body.String())
+	}
+}
+
+// TestPublicFeed152_HTTP_IPRateLimit_HonouredWithTrustedProxyCountOne is the
+// mirror case: with TRUSTED_PROXY_COUNT=1 (one trusted reverse proxy), two
+// requests through that proxy carrying genuinely DIFFERENT real client IPs
+// (as the trusted hop would append them) land in DIFFERENT IP buckets, so
+// the second visitor is not punished for the first visitor's traffic.
+func TestPublicFeed152_HTTP_IPRateLimit_HonouredWithTrustedProxyCountOne(t *testing.T) {
+	s := buildPublicFeedServerWithLimits(t, 100000, 1, 1)
+
+	w1 := httptest.NewRecorder()
+	req1 := httptest.NewRequest(http.MethodGet, "/v1/public/feeds/ip-trusted-token-a/events", nil)
+	// One trusted hop: the rightmost entry is the proxy's own address, the
+	// real client is the one before it.
+	req1.Header.Set("X-Forwarded-For", "10.0.0.1, 172.17.0.1")
+	s.router.ServeHTTP(w1, req1)
+	if w1.Code == http.StatusTooManyRequests {
+		t.Fatalf("first visitor should not be rate limited, got 429: %s", w1.Body.String())
+	}
+
+	w2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodGet, "/v1/public/feeds/ip-trusted-token-b/events", nil)
+	req2.Header.Set("X-Forwarded-For", "10.0.0.2, 172.17.0.1")
+	s.router.ServeHTTP(w2, req2)
+	if w2.Code == http.StatusTooManyRequests {
+		t.Fatalf("second visitor has a different real IP and must not share the first visitor's bucket, got 429: %s", w2.Body.String())
 	}
 }
 

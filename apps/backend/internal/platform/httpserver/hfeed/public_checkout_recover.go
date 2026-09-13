@@ -88,13 +88,9 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 	}
 
 	checkoutToken := chi.URLParam(r, "checkout_token")
-	clientIP := httputil.ExtractClientIP(r)
 
-	// ── 1. Rate limiting ──────────────────────────────────────────────────────
-	if !h.rl.CheckToken(checkoutToken) || !h.rl.CheckIP(clientIP) {
-		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
-			"checkout.rate_limited", "too many requests; please slow down", r,
-		))
+	// ── 1. Rate limiting: per-checkout-token + per-IP, both always evaluated. ──
+	if !h.enforceRateLimit(w, r, "checkout.rate_limited", h.rl.CheckCheckoutToken, checkoutToken) {
 		return
 	}
 

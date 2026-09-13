@@ -11,12 +11,15 @@
 //
 // Rate limiting:
 //
-//	Per-token: 100 requests/minute
-//	Per-IP:    300 requests/minute
+//	Per-feed-token: PUBLIC_FEED_TOKEN_RATE_LIMIT requests/minute (site-wide —
+//	                a feed token is shared by every buyer of that site's
+//	                widget, default 20000)
+//	Per-IP:         PUBLIC_API_IP_RATE_LIMIT requests/minute (default 600),
+//	                keyed by the spoof-resistant TrustedClientIP
 //
 // The concrete in-memory limiter (publicFeedRateLimiter) lives in the parent
 // package's feed_shims.go; the handlers here consume it through the narrow
-// RateLimiter interface declared in handler.go.
+// RateLimiter interface declared in handler.go, via Handler.enforceRateLimit.
 //
 // Cache-Control:
 //
@@ -383,13 +386,9 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 	}
 
 	feedToken := chi.URLParam(r, "feed_token")
-	clientIP := httputil.ExtractClientIP(r)
 
-	// Rate limit: per-token + per-IP
-	if !h.rl.CheckToken(feedToken) || !h.rl.CheckIP(clientIP) {
-		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
-			"feed.rate_limited", "too many requests; please slow down", r,
-		))
+	// Rate limit: per-feed-token (site-wide) + per-IP, both always evaluated.
+	if !h.enforceRateLimit(w, r, "feed.rate_limited", h.rl.CheckFeedToken, feedToken) {
 		return
 	}
 
@@ -566,13 +565,9 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	}
 
 	feedToken := chi.URLParam(r, "feed_token")
-	clientIP := httputil.ExtractClientIP(r)
 
-	// Rate limit: per-token + per-IP
-	if !h.rl.CheckToken(feedToken) || !h.rl.CheckIP(clientIP) {
-		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
-			"feed.rate_limited", "too many requests; please slow down", r,
-		))
+	// Rate limit: per-feed-token (site-wide) + per-IP, both always evaluated.
+	if !h.enforceRateLimit(w, r, "feed.rate_limited", h.rl.CheckFeedToken, feedToken) {
 		return
 	}
 

@@ -3,7 +3,9 @@
 // GET /v1/public/checkout/{checkout_token}
 //
 // No JWT required. The checkout_token in the path is the credential.
-// Rate-limited like the public feed (per-token + per-IP, shared publicFeedRL limiter).
+// Rate-limited by the shared publicFeedRL limiter: per-checkout-token
+// (PUBLIC_CHECKOUT_TOKEN_RATE_LIMIT, one buyer's journey) + per-IP
+// (PUBLIC_API_IP_RATE_LIMIT), both always evaluated.
 //
 // The checkout_token is an opaque 64-char hex string minted at checkout creation
 // (either by the DB DEFAULT or by the caller via mintCheckoutToken in
@@ -110,7 +112,7 @@ type checkoutStatusResponse struct {
 // No JWT required. The checkout_token path parameter is the credential.
 //
 // Flow:
-//  1. Rate-limit by token + IP (shared publicFeedRL limiter).
+//  1. Rate-limit by checkout token + IP (shared publicFeedRL limiter).
 //  2. Look up the checkout session by checkout_token.
 //  3. Load reservation for expires_at.
 //  4. For pending sessions: load reservation_seats (assigned) or use
@@ -126,13 +128,10 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 	}
 
 	checkoutToken := chi.URLParam(r, "checkout_token")
-	clientIP := httputil.ExtractClientIP(r)
 
-	// Rate-limit: use checkout_token as the "token" key (same pool as feed tokens).
-	if !h.rl.CheckToken(checkoutToken) || !h.rl.CheckIP(clientIP) {
-		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
-			"checkout.rate_limited", "too many requests; please slow down", r,
-		))
+	// Rate-limit: per-checkout-token (one buyer's journey) + per-IP, both
+	// always evaluated.
+	if !h.enforceRateLimit(w, r, "checkout.rate_limited", h.rl.CheckCheckoutToken, checkoutToken) {
 		return
 	}
 
@@ -351,12 +350,8 @@ func (h *Handler) HandleGetPublicTicketPDF(w http.ResponseWriter, r *http.Reques
 
 	checkoutToken := chi.URLParam(r, "checkout_token")
 	ticketIDStr := chi.URLParam(r, "ticket_id")
-	clientIP := httputil.ExtractClientIP(r)
 
-	if !h.rl.CheckToken(checkoutToken) || !h.rl.CheckIP(clientIP) {
-		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
-			"checkout.rate_limited", "too many requests; please slow down", r,
-		))
+	if !h.enforceRateLimit(w, r, "checkout.rate_limited", h.rl.CheckCheckoutToken, checkoutToken) {
 		return
 	}
 

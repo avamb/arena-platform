@@ -502,3 +502,33 @@ entries short and factual.
   host-side `DATABASE_URL` (migration smoke tests, the CI-Integration-job
   recipe above) at the new port instead of 55432 until a future session
   reclaims it.
+- **The public widget API has THREE independent rate limits, not one shared
+  bucket, and the per-IP one only works when `TRUSTED_PROXY_COUNT` is set
+  correctly.** `PUBLIC_FEED_TOKEN_RATE_LIMIT` (default 20000/min) is
+  site-wide — a feed token belongs to a sales channel and is shared by
+  EVERY buyer of that site's widget, so sizing it like a per-visitor limit
+  collapses under real concurrent traffic (found live: 200 visitors / 50
+  orders-per-minute produced 15884/16543 429s, and 100/200 buyers lost a
+  seat race to their own throttling). `PUBLIC_CHECKOUT_TOKEN_RATE_LIMIT`
+  (default 120/min) is the separate per-buyer limit for one checkout's
+  status/recover/pdf calls, and `PUBLIC_API_IP_RATE_LIMIT` (default
+  600/min) is the per-IP backstop — all three configured in
+  `internal/platform/config/config.go`, `0` disables a given check, and
+  `hfeed.Handler.enforceRateLimit` evaluates the token bucket AND the IP
+  bucket on every request (never short-circuited), so a burst blocked by
+  one still counts against the other. Discovered along the way: chi's
+  `RealIP` middleware (`internal/adapters/http/router.go`) unconditionally
+  trusts the client-supplied `X-Forwarded-For`/`X-Real-IP`/`True-Client-IP`
+  headers and rewrites `r.RemoteAddr` in place BEFORE any handler runs —
+  left registered unconditionally, it silently defeats
+  `httputil.TrustedClientIP`'s `trustedProxies==0` "ignore XFF" safe
+  default, because by the time `TrustedClientIP` looks at `r.RemoteAddr` it
+  has already been overwritten from a spoofable header. `RealIP` is now
+  gated on `TrustedProxyCount > 0`. The existing hauth login-rate-limit
+  tests never caught this because they call `s.handleAuthLogin` directly,
+  bypassing the router's middleware chain entirely — a rate-limit test that
+  wants to prove IP-spoof resistance must go through `s.router.ServeHTTP`,
+  not the handler method, or it will pass against a vulnerability that's
+  still live in production. Behind Traefik/Dokploy/nginx/any reverse proxy,
+  `TRUSTED_PROXY_COUNT` MUST be set to the real proxy hop count or every
+  visitor is rate-limited as if they were the proxy's own IP.

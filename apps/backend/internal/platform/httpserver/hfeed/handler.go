@@ -18,6 +18,8 @@ package hfeed
 import (
 	"context"
 	"log/slog"
+	"net/http"
+	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -25,6 +27,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // pgUniqueViolation is the PostgreSQL error code for unique-constraint violations.
@@ -36,14 +39,30 @@ type TxStarter interface {
 	BeginTx(ctx context.Context, txOptions pgx.TxOptions) (pgx.Tx, error)
 }
 
-// RateLimiter is the narrow rate-limiting interface the public feed handlers
-// require. The concrete in-memory limiter (publicFeedRateLimiter) stays in
-// package httpserver's feed_shims.go because public_feed_152_test.go drives
-// its unexported checkToken / checkIP methods directly; it satisfies this
-// interface via exported CheckToken / CheckIP adapter methods.
+// RateLimiter is the narrow rate-limiting interface the public feed/checkout
+// handlers require. The concrete in-memory limiter (publicFeedRateLimiter)
+// stays in package httpserver's feed_shims.go because public_feed_152_test.go
+// drives its unexported checkFeedToken / checkCheckoutToken / checkIP methods
+// directly; it satisfies this interface via the exported CheckFeedToken /
+// CheckCheckoutToken / CheckIP adapter methods.
+//
+// Each Check* method reports (allowed, retryAfterSeconds): retryAfterSeconds
+// is the whole seconds remaining until that bucket's window resets, valid
+// only when allowed is false, and is surfaced on a 429 as Retry-After.
 type RateLimiter interface {
-	CheckToken(token string) bool
-	CheckIP(ip string) bool
+	// CheckFeedToken checks the feed-token bucket. A feed token belongs to a
+	// sales channel and is shared by EVERY buyer of that site's widget — this
+	// must stay a site-wide limit (PUBLIC_FEED_TOKEN_RATE_LIMIT), never a
+	// per-visitor one.
+	CheckFeedToken(token string) (allowed bool, retryAfterSeconds int)
+	// CheckCheckoutToken checks the checkout-token bucket: one buyer's
+	// checkout journey (status polling, recover, ticket PDF).
+	CheckCheckoutToken(token string) (allowed bool, retryAfterSeconds int)
+	// CheckIP checks the per-client-IP bucket. Callers must key it with
+	// Handler.clientIP (httputil.TrustedClientIP), never raw
+	// httputil.ExtractClientIP / X-Forwarded-For, which is client-controlled
+	// and trivially spoofed.
+	CheckIP(ip string) (allowed bool, retryAfterSeconds int)
 }
 
 // Handler holds the shared dependencies for all feed-domain HTTP handlers.
@@ -68,6 +87,12 @@ type Handler struct {
 	// an absolute signed URL an external consumer can fetch. Nil keeps the
 	// pre-#535 host-relative /v1/media-files/{uuid} projection.
 	mediaSigner MediaURLSigner
+	// trustedProxies is the reverse-proxy hop count (config.TrustedProxyCount)
+	// used to derive the spoof-resistant client IP for rate limiting via
+	// httputil.TrustedClientIP. 0 (the default) ignores X-Forwarded-For
+	// entirely and uses the TCP peer address — correct only when this
+	// process is reachable directly, not behind Traefik/nginx/etc.
+	trustedProxies int
 }
 
 // MediaURLSigner builds a publicly fetchable URL for a media object id,
@@ -104,6 +129,7 @@ func New(
 	auditW audit.Writer,
 	rl RateLimiter,
 	pricingRules hcheckout.PricingRules,
+	trustedProxies int,
 ) *Handler {
 	return &Handler{
 		feedTokenQueries:   feedTokenQ,
@@ -122,5 +148,49 @@ func New(
 		audit:              auditW,
 		rl:                 rl,
 		pricingRules:       pricingRules,
+		trustedProxies:     trustedProxies,
 	}
+}
+
+// clientIP derives the request's client IP for rate-limiting purposes using
+// the spoof-resistant TrustedClientIP helper — never httputil.ExtractClientIP,
+// which trusts the FIRST X-Forwarded-For entry unconditionally and is
+// therefore bypassable by any caller that sets that header. With
+// trustedProxies == 0 (the default) XFF is ignored entirely and the raw TCP
+// peer address is used.
+func (h *Handler) clientIP(r *http.Request) string {
+	return httputil.TrustedClientIP(r, h.trustedProxies)
+}
+
+// enforceRateLimit evaluates the token-scoped bucket (tokenCheck — pass
+// h.rl.CheckFeedToken or h.rl.CheckCheckoutToken) AND the per-IP bucket on
+// EVERY call, never short-circuited: a naive `!okToken || !okIP` stops
+// evaluating at the first false, so a burst that trips the token limit would
+// never increment the IP counter (and vice versa), letting that half of the
+// defense go uncounted under exactly the load it exists to catch. On block
+// it sets Retry-After to the larger of the two blocking windows and writes
+// the 429 envelope with errorCode (callers keep their existing
+// feed.rate_limited / checkout.rate_limited codes), returning false; the
+// caller must return immediately. Returns true when the request may proceed.
+func (h *Handler) enforceRateLimit(
+	w http.ResponseWriter, r *http.Request, errorCode string,
+	tokenCheck func(string) (bool, int), token string,
+) bool {
+	allowedTok, retryTok := tokenCheck(token)
+	allowedIP, retryIP := h.rl.CheckIP(h.clientIP(r))
+	if allowedTok && allowedIP {
+		return true
+	}
+	retryAfter := 1
+	if !allowedTok && retryTok > retryAfter {
+		retryAfter = retryTok
+	}
+	if !allowedIP && retryIP > retryAfter {
+		retryAfter = retryIP
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+	httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
+		errorCode, "too many requests; please slow down", r,
+	))
+	return false
 }

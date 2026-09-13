@@ -192,6 +192,7 @@ func New(opts Options) *Server {
 		Metrics:            opts.Metrics,
 		AppEnv:             string(opts.Config.AppEnv),
 		CORSAllowedOrigins: opts.Config.CORSAllowedOrigins,
+		TrustedProxyCount:  opts.Config.TrustedProxyCount,
 	})
 
 	// Wire locale middleware when a Bundle is provided.
@@ -306,7 +307,7 @@ func New(opts Options) *Server {
 		eventQueries:          pickQueries(opts.EventQueries, opts.PgxPool),
 		publicationQueries:    pickQueries(opts.PublicationQueries, opts.PgxPool),
 		publicFeedQueries:     pickQueries(opts.PublicFeedQueries, opts.PgxPool),
-		publicFeedRL:          newPublicFeedRateLimiter(100, 300),
+		publicFeedRL:          newPublicFeedRateLimiter(publicFeedTokenRateLimit(opts.Config), publicCheckoutTokenRateLimit(opts.Config), publicAPIIPRateLimit(opts.Config)),
 		sessionQueries:        pickQueries(opts.SessionQueries, opts.PgxPool),
 		gdprQueries:           pickQueries(opts.GDPRQueries, opts.PgxPool),
 		tierQueries:           pickQueries(opts.TierQueries, opts.PgxPool),
