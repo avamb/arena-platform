@@ -401,15 +401,18 @@ func (h *Handler) validateGatewayToken(
 	req bil24Request,
 	settings json.RawMessage,
 ) bool {
-	// Parse the stored gateway_token_hash from the channel settings.
-	var cfg struct {
-		GatewayTokenHash string `json:"gateway_token_hash"`
-	}
-	if len(settings) > 0 {
-		_ = json.Unmarshal(settings, &cfg) // ignore decode errors — empty cfg means no hash
-	}
+	// Resolve the stored hash through the SAME parser authenticateCommand()
+	// uses, so a channel provisioned by the admin gateway-credential
+	// endpoint (nested `settings.gateway.token_hash`, spec §5.1 shape 1) is
+	// accepted here too. This function used to read only the legacy
+	// top-level `gateway_token_hash`; on the staging stand every channel
+	// provisioned after W1 therefore passed GET_ALL_ACTIONS but got -1
+	// "channel is not configured for gateway access" from CREATE_USER /
+	// cart / CREATE_ORDER_EXT / PAY_ORDER / GET_TICKETS_BY_ORDER — found
+	// live 2026-09-13 with the Lampyris staging site's ticket picker.
+	cfg := parseGatewaySettings(settings)
 
-	if cfg.GatewayTokenHash == "" {
+	if cfg.TokenHash == "" {
 		// No hash configured: this channel has not been set up for gateway
 		// access. Reject rather than allow unauthenticated access.
 		h.logger.Warn("bil24_compat: gateway_token_hash not configured on channel; rejecting",
@@ -435,7 +438,7 @@ func (h *Handler) validateGatewayToken(
 		return false
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(cfg.GatewayTokenHash), []byte(req.Token)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(cfg.TokenHash), []byte(req.Token)); err != nil {
 		h.logger.Warn("bil24_compat: token validation failed",
 			slog.String("command", req.Command),
 			slog.String("fid", req.FID),

@@ -74,6 +74,10 @@ type fakeResCtxWithToken struct {
 	channelID uuid.UUID
 	tokenHash string // empty string = no hash stored in settings
 	noChannel bool   // if true, GetSalesChannelByID returns ErrNoRows
+	// nested stores the hash in the W1 shape written by the admin
+	// gateway-credential endpoint (settings.gateway.token_hash) instead of
+	// the legacy top-level gateway_token_hash.
+	nested bool
 }
 
 func (f *fakeResCtxWithToken) GetSessionOrgContext(_ context.Context, id uuid.UUID) (gen.SessionOrgContextRow, error) {
@@ -101,7 +105,13 @@ func (f *fakeResCtxWithToken) GetSalesChannelByID(_ context.Context, id, orgID u
 		return gen.SalesChannelRow{}, pgx.ErrNoRows
 	}
 	var settings json.RawMessage
-	if f.tokenHash != "" {
+	if f.tokenHash != "" && f.nested {
+		var err error
+		settings, err = json.Marshal(map[string]any{"gateway": map[string]any{"enabled": true, "token_hash": f.tokenHash}})
+		if err != nil {
+			return gen.SalesChannelRow{}, err
+		}
+	} else if f.tokenHash != "" {
 		var err error
 		settings, err = json.Marshal(map[string]string{"gateway_token_hash": f.tokenHash})
 		if err != nil {
