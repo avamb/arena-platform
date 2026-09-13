@@ -32,14 +32,22 @@ WHERE  org_id = $1
 ORDER  BY created_at ASC, id ASC;
 
 -- name: UpdateSalesChannel :one
+-- reservation_ttl_override is guarded by the explicit $9 boolean flag rather
+-- than overloaded on NULL: unlike every other column here, NULL is a valid,
+-- meaningful value for this one (org-level default), so it cannot double as
+-- "caller didn't ask to change this". Pass set_reservation_ttl_override=false
+-- (with $8 = NULL) to leave the stored value untouched; pass true with $8 =
+-- NULL to explicitly clear it, or true with $8 = <n> to set it. Found live:
+-- every partial update that passed nil (e.g. the gateway-credential PUT)
+-- silently wiped a configured hold TTL back to the 20-minute default.
 UPDATE sales_channels
 SET    name                     = COALESCE(NULLIF($3, ''), name),
        payment_mode             = COALESCE(NULLIF($4, ''), payment_mode),
        provider                 = COALESCE(NULLIF($5, ''), provider),
        provider_account_id      = CASE WHEN $6::text IS NOT NULL THEN $6::text ELSE provider_account_id END,
        fee_percent              = CASE WHEN $7::numeric IS NOT NULL THEN $7::numeric ELSE fee_percent END,
-       reservation_ttl_override = $8,
-       settings                 = CASE WHEN $9::jsonb IS NOT NULL THEN $9::jsonb ELSE settings END,
+       reservation_ttl_override = CASE WHEN $9::boolean THEN $8 ELSE reservation_ttl_override END,
+       settings                 = CASE WHEN $10::jsonb IS NOT NULL THEN $10::jsonb ELSE settings END,
        updated_at               = now()
 WHERE  id = $1
   AND  org_id = $2

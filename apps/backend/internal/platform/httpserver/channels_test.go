@@ -871,6 +871,100 @@ func TestChannel236_CreateChannel_InvalidSettingsReturns400(t *testing.T) {
 	}
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// reservation_ttl_override validation (fix for the TTL-wipe defect: create
+// and PATCH both reject 0/negative before reaching UpdateSalesChannel/
+// InsertSalesChannel).
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestChannel_CreateChannel_ZeroReservationTTLOverrideReturns400(t *testing.T) {
+	s := buildChannelServer(t)
+	orgID := uuid.New()
+	token := mintJWT(t, s.stub, "00000000-0000-0000-0000-000000000001")
+
+	body := `{"name":"x","payment_mode":"merchant_of_record","provider":"stripe","reservation_ttl_override":0}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID.String()+"/channels",
+		strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for reservation_ttl_override=0, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	resp := channelRespJSON(t, w)
+	if code := errorCode(t, resp); code != "channel.invalid_reservation_ttl_override" {
+		t.Errorf("expected code='channel.invalid_reservation_ttl_override', got %q", code)
+	}
+}
+
+func TestChannel_CreateChannel_NegativeReservationTTLOverrideReturns400(t *testing.T) {
+	s := buildChannelServer(t)
+	orgID := uuid.New()
+	token := mintJWT(t, s.stub, "00000000-0000-0000-0000-000000000001")
+
+	body := `{"name":"x","payment_mode":"merchant_of_record","provider":"stripe","reservation_ttl_override":-60}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID.String()+"/channels",
+		strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for reservation_ttl_override=-60, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	resp := channelRespJSON(t, w)
+	if code := errorCode(t, resp); code != "channel.invalid_reservation_ttl_override" {
+		t.Errorf("expected code='channel.invalid_reservation_ttl_override', got %q", code)
+	}
+}
+
+func TestChannel_UpdateChannel_ZeroReservationTTLOverrideReturns400(t *testing.T) {
+	s := buildChannelServer(t)
+	orgID := uuid.New()
+	chID := uuid.New()
+	token := mintJWT(t, s.stub, "00000000-0000-0000-0000-000000000001")
+
+	req := httptest.NewRequest(http.MethodPatch, "/v1/organizations/"+orgID.String()+"/channels/"+chID.String(),
+		strings.NewReader(`{"reservation_ttl_override":0}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for reservation_ttl_override=0, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	resp := channelRespJSON(t, w)
+	if code := errorCode(t, resp); code != "channel.invalid_reservation_ttl_override" {
+		t.Errorf("expected code='channel.invalid_reservation_ttl_override', got %q", code)
+	}
+}
+
+func TestChannel_UpdateChannel_NegativeReservationTTLOverrideReturns400(t *testing.T) {
+	s := buildChannelServer(t)
+	orgID := uuid.New()
+	chID := uuid.New()
+	token := mintJWT(t, s.stub, "00000000-0000-0000-0000-000000000001")
+
+	req := httptest.NewRequest(http.MethodPatch, "/v1/organizations/"+orgID.String()+"/channels/"+chID.String(),
+		strings.NewReader(`{"reservation_ttl_override":-1}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for reservation_ttl_override=-1, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	resp := channelRespJSON(t, w)
+	if code := errorCode(t, resp); code != "channel.invalid_reservation_ttl_override" {
+		t.Errorf("expected code='channel.invalid_reservation_ttl_override', got %q", code)
+	}
+}
+
 func TestChannel236_MigrationFileExists(t *testing.T) {
 	content := findFileByName(t, "0045_channel_settings.sql")
 	if content == "" {
@@ -895,7 +989,10 @@ func TestChannel236_QueryFileSettingsParameter(t *testing.T) {
 	for _, token := range []string{
 		"settings",
 		"$8::jsonb",
-		"$9::jsonb",
+		// UpdateSalesChannel's settings placeholder moved from $9 to $10
+		// when the reservation_ttl_override TTL-wipe fix inserted an
+		// explicit set_reservation_ttl_override boolean flag at $9.
+		"$10::jsonb",
 	} {
 		if !strings.Contains(content, token) {
 			t.Errorf("channels.sql missing token %q for #236 settings support", token)

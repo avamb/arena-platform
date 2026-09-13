@@ -161,8 +161,8 @@ SET    name                     = COALESCE(NULLIF($3, ''), name),
        provider                 = COALESCE(NULLIF($5, ''), provider),
        provider_account_id      = CASE WHEN $6::text IS NOT NULL THEN $6::text ELSE provider_account_id END,
        fee_percent              = CASE WHEN $7::numeric IS NOT NULL THEN $7::numeric ELSE fee_percent END,
-       reservation_ttl_override = $8,
-       settings                 = CASE WHEN $9::jsonb IS NOT NULL THEN $9::jsonb ELSE settings END,
+       reservation_ttl_override = CASE WHEN $9::boolean THEN $8 ELSE reservation_ttl_override END,
+       settings                 = CASE WHEN $10::jsonb IS NOT NULL THEN $10::jsonb ELSE settings END,
        updated_at               = now()
 WHERE  id = $1
   AND  org_id = $2
@@ -173,9 +173,17 @@ RETURNING id, display_number, org_id, name, payment_mode, provider, provider_acc
 // Empty string fields are ignored (existing value kept). Returns pgx.ErrNoRows
 // when the channel does not exist, does not belong to the org, or has been soft-deleted.
 // Pass settings = nil to leave the existing settings value untouched.
-func (q *Queries) UpdateSalesChannel(ctx context.Context, id, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent *string, reservationTTLOverride *int32, settings json.RawMessage) (SalesChannelRow, error) {
+//
+// reservationTTLOverride is only written when setReservationTTLOverride is
+// true — NULL is a meaningful stored value (falls back to the org default),
+// so it cannot double as "leave untouched" the way the other nullable
+// columns here do. Pass setReservationTTLOverride=false to preserve whatever
+// TTL override is already stored (reservationTTLOverride is ignored in that
+// case); pass true with reservationTTLOverride=nil to explicitly clear it to
+// NULL, or true with a value to set it.
+func (q *Queries) UpdateSalesChannel(ctx context.Context, id, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent *string, reservationTTLOverride *int32, setReservationTTLOverride bool, settings json.RawMessage) (SalesChannelRow, error) {
 	row := q.db.QueryRow(ctx, updateSalesChannel,
-		id, orgID, name, paymentMode, provider, providerAccountID, feePercent, reservationTTLOverride, settings,
+		id, orgID, name, paymentMode, provider, providerAccountID, feePercent, reservationTTLOverride, setReservationTTLOverride, settings,
 	)
 	return scanSalesChannelRow(row)
 }

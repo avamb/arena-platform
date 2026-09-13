@@ -4455,7 +4455,13 @@ export interface paths {
         head?: never;
         /**
          * Update a sales channel
-         * @description Update a sales channel.
+         * @description Partially update a sales channel. Every request field is optional
+         *     and independently applied — see `UpdateChannelRequest` for the
+         *     per-field omitted/null/value semantics, which differ for
+         *     `reservation_ttl_override` (tri-state: omit=keep,
+         *     null=clear-to-org-default, value=set) versus the other nullable
+         *     fields (omit or null both keep; only a value is applied).
+         *     Requires the `channel.update` permission.
          */
         patch: operations["updateChannel"];
         trace?: never;
@@ -13733,6 +13739,122 @@ export interface components {
              * @description ISO-8601 timestamp of the last update, if any.
              */
             updated_at?: string;
+        };
+        /**
+         * @description Body for `POST /v1/organizations/{org_id}/channels` (features
+         *     #121/#236). Only `name` is required — `payment_mode` defaults to
+         *     `direct_merchant` and `provider` defaults to `stripe` when omitted
+         *     or empty, matching `HandleCreateChannel`'s server-side defaults.
+         */
+        CreateChannelRequest: {
+            /**
+             * @description Human-readable channel label, e.g. "Online Widget",
+             *     "Box Office". Trimmed; empty after trim returns 400
+             *     `channel.invalid_name`.
+             */
+            name: string;
+            /**
+             * @description Defaults to `direct_merchant` when omitted or empty. Any other
+             *     value returns 400 `channel.invalid_config`.
+             * @enum {string}
+             */
+            payment_mode?: "direct_merchant" | "merchant_of_record";
+            /**
+             * @description Defaults to `stripe` when omitted or empty. Any other value
+             *     returns 400 `channel.invalid_config`.
+             * @enum {string}
+             */
+            provider?: "stripe" | "allpay";
+            /**
+             * @description Merchant account identifier at the provider. Required
+             *     (non-empty after trim) when `payment_mode` is
+             *     `direct_merchant`; returns 400 `channel.invalid_config` when
+             *     missing. Ignored for `merchant_of_record`.
+             */
+            provider_account_id?: string;
+            /**
+             * @description Platform fee percentage as a decimal string, e.g. `"2.50"`.
+             *     Defaults to `"0.00"` when omitted or empty.
+             */
+            fee_percent?: string;
+            /**
+             * Format: int32
+             * @description Per-channel checkout hold TTL override, in seconds, that takes
+             *     precedence over the organization-level default
+             *     (`sales_channels.reservation_ttl_override`, resolved by
+             *     `resolveReservationTTL`). Omit or pass `null` to use the
+             *     organization default. A value of 0 or negative is rejected
+             *     with 400 `channel.invalid_reservation_ttl_override`.
+             */
+            reservation_ttl_override?: number | null;
+            /**
+             * @description Opaque JSONB blob of per-channel settings. Structure is
+             *     channel-type-specific; omit for an empty object (`{}`).
+             */
+            settings?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * @description Body for `PATCH /v1/organizations/{org_id}/channels/{id}`
+         *     (features #121/#236). Every field is optional and independently
+         *     applied: an omitted field leaves the stored column unchanged.
+         */
+        UpdateChannelRequest: {
+            /**
+             * @description New channel label. Omit (or send an empty string) to leave
+             *     the stored name unchanged.
+             */
+            name?: string;
+            /**
+             * @description New payment mode. Omit (or send an empty string) to leave
+             *     unchanged. When set together with `provider` /
+             *     `provider_account_id`, the same combination rules as create
+             *     apply and return 400 `channel.invalid_config` on violation.
+             * @enum {string}
+             */
+            payment_mode?: "direct_merchant" | "merchant_of_record";
+            /**
+             * @description New payment provider. Omit (or send an empty string) to
+             *     leave unchanged.
+             * @enum {string}
+             */
+            provider?: "stripe" | "allpay";
+            /**
+             * @description New merchant account identifier. Omitting the key OR sending
+             *     JSON `null` both leave the stored value unchanged (the
+             *     handler cannot currently clear this column via PATCH — only
+             *     a non-null string value is applied).
+             */
+            provider_account_id?: string | null;
+            /**
+             * @description New platform fee percentage as a decimal string. Omitting
+             *     the key OR sending JSON `null` both leave the stored value
+             *     unchanged; only a non-null string value is applied.
+             */
+            fee_percent?: string | null;
+            /**
+             * Format: int32
+             * @description Per-channel checkout hold TTL override, in seconds. Tri-state,
+             *     unlike the other fields above: omitting this key entirely
+             *     leaves the stored `reservation_ttl_override` untouched
+             *     (fixed defect: earlier versions of this endpoint — reached
+             *     e.g. via `PUT .../gateway-credential`, which patches other
+             *     fields and always omitted this one — silently wiped a
+             *     configured TTL back to the organization default). Sending
+             *     JSON `null` explicitly clears the override back to the
+             *     organization default. Sending a positive integer sets it;
+             *     0 or negative is rejected with 400
+             *     `channel.invalid_reservation_ttl_override`.
+             */
+            reservation_ttl_override?: number | null;
+            /**
+             * @description New settings blob, merged in whole (not deep-merged) when
+             *     present. Omit to leave the stored settings unchanged.
+             */
+            settings?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * @description Read-shape of the Bil24-compat gateway credential (feature #473,
@@ -31499,10 +31621,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    name: string;
-                    type: string;
-                };
+                "application/json": components["schemas"]["CreateChannelRequest"];
             };
         };
         responses: {
@@ -31513,6 +31632,22 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Channel"];
+                };
+            };
+            /**
+             * @description Invalid body or field. Possible error codes:
+             *     `channel.invalid_body`, `channel.empty_body`,
+             *     `channel.invalid_json`, `channel.invalid_name`,
+             *     `channel.invalid_config`,
+             *     `channel.invalid_reservation_ttl_override`,
+             *     `channel.invalid_settings`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Unauthorized. */
@@ -31526,6 +31661,18 @@ export interface operations {
             };
             /** @description Insufficient permission (`channel.create`). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description A channel with the same name already exists in this
+             *     organization (`channel.duplicate`).
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -31642,9 +31789,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    name?: string;
-                };
+                "application/json": components["schemas"]["UpdateChannelRequest"];
             };
         };
         responses: {
@@ -31657,8 +31802,53 @@ export interface operations {
                     "application/json": components["schemas"]["Channel"];
                 };
             };
+            /**
+             * @description Invalid body or field. Possible error codes:
+             *     `channel.invalid_body`, `channel.empty_body`,
+             *     `channel.invalid_json`, `channel.invalid_config`,
+             *     `channel.invalid_reservation_ttl_override`,
+             *     `channel.invalid_settings`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`channel.update`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Channel not found. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description A channel with the same name already exists in this
+             *     organization (`channel.duplicate`).
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -428,7 +428,8 @@ func (h *Handler) persistGatewaySettings(
 	qtx := h.channelQueries.WithTx(tx)
 	if _, err := qtx.UpdateSalesChannel(ctx,
 		chID, orgID,
-		"", "", "", nil, nil, nil, // no changes to name/payment/provider/… fields
+		"", "", "", nil, nil, // no changes to name/payment/provider/fee fields
+		nil, false, // reservation_ttl_override: never touched by gateway-credential PUT/DELETE
 		settings,
 	); err != nil {
 		return err

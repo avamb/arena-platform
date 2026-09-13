@@ -231,6 +231,18 @@ const (
 	CreateBarcodeAuthorityRequestTypePlatform         CreateBarcodeAuthorityRequestType = "platform"
 )
 
+// Defines values for CreateChannelRequestPaymentMode.
+const (
+	CreateChannelRequestPaymentModeDirectMerchant   CreateChannelRequestPaymentMode = "direct_merchant"
+	CreateChannelRequestPaymentModeMerchantOfRecord CreateChannelRequestPaymentMode = "merchant_of_record"
+)
+
+// Defines values for CreateChannelRequestProvider.
+const (
+	CreateChannelRequestProviderAllpay CreateChannelRequestProvider = "allpay"
+	CreateChannelRequestProviderStripe CreateChannelRequestProvider = "stripe"
+)
+
 // Defines values for CreateCustomerImportRequestLegalBasis.
 const (
 	ExplicitConsent    CreateCustomerImportRequestLegalBasis = "explicit_consent"
@@ -764,6 +776,18 @@ const (
 	TransitionPaymentIntentRequestStateProcessing     TransitionPaymentIntentRequestState = "processing"
 	TransitionPaymentIntentRequestStateRequiresAction TransitionPaymentIntentRequestState = "requires_action"
 	TransitionPaymentIntentRequestStateSucceeded      TransitionPaymentIntentRequestState = "succeeded"
+)
+
+// Defines values for UpdateChannelRequestPaymentMode.
+const (
+	UpdateChannelRequestPaymentModeDirectMerchant   UpdateChannelRequestPaymentMode = "direct_merchant"
+	UpdateChannelRequestPaymentModeMerchantOfRecord UpdateChannelRequestPaymentMode = "merchant_of_record"
+)
+
+// Defines values for UpdateChannelRequestProvider.
+const (
+	UpdateChannelRequestProviderAllpay UpdateChannelRequestProvider = "allpay"
+	UpdateChannelRequestProviderStripe UpdateChannelRequestProvider = "stripe"
 )
 
 // Defines values for UpdateEventRequestVisibility.
@@ -3732,6 +3756,55 @@ type CreateBarcodeAuthorityRequest struct {
 // CreateBarcodeAuthorityRequestType Authority type — drives scan-flow authority resolution. Pinned
 // to the `barcode_authorities_type_check` constraint.
 type CreateBarcodeAuthorityRequestType string
+
+// CreateChannelRequest Body for `POST /v1/organizations/{org_id}/channels` (features
+// #121/#236). Only `name` is required — `payment_mode` defaults to
+// `direct_merchant` and `provider` defaults to `stripe` when omitted
+// or empty, matching `HandleCreateChannel`'s server-side defaults.
+type CreateChannelRequest struct {
+	// FeePercent Platform fee percentage as a decimal string, e.g. `"2.50"`.
+	// Defaults to `"0.00"` when omitted or empty.
+	FeePercent *string `json:"fee_percent,omitempty"`
+
+	// Name Human-readable channel label, e.g. "Online Widget",
+	// "Box Office". Trimmed; empty after trim returns 400
+	// `channel.invalid_name`.
+	Name string `json:"name"`
+
+	// PaymentMode Defaults to `direct_merchant` when omitted or empty. Any other
+	// value returns 400 `channel.invalid_config`.
+	PaymentMode *CreateChannelRequestPaymentMode `json:"payment_mode,omitempty"`
+
+	// Provider Defaults to `stripe` when omitted or empty. Any other value
+	// returns 400 `channel.invalid_config`.
+	Provider *CreateChannelRequestProvider `json:"provider,omitempty"`
+
+	// ProviderAccountId Merchant account identifier at the provider. Required
+	// (non-empty after trim) when `payment_mode` is
+	// `direct_merchant`; returns 400 `channel.invalid_config` when
+	// missing. Ignored for `merchant_of_record`.
+	ProviderAccountId *string `json:"provider_account_id,omitempty"`
+
+	// ReservationTtlOverride Per-channel checkout hold TTL override, in seconds, that takes
+	// precedence over the organization-level default
+	// (`sales_channels.reservation_ttl_override`, resolved by
+	// `resolveReservationTTL`). Omit or pass `null` to use the
+	// organization default. A value of 0 or negative is rejected
+	// with 400 `channel.invalid_reservation_ttl_override`.
+	ReservationTtlOverride *int32 `json:"reservation_ttl_override"`
+
+	// Settings Opaque JSONB blob of per-channel settings. Structure is
+	// channel-type-specific; omit for an empty object (`{}`).
+	Settings *map[string]interface{} `json:"settings,omitempty"`
+}
+
+// CreateChannelRequestPaymentMode Defaults to `direct_merchant` when omitted or empty. Any other
+// value returns 400 `channel.invalid_config`.
+type CreateChannelRequestPaymentMode string
+
+// CreateChannelRequestProvider Defaults to `stripe` when omitted or empty. Any other value
+// returns 400 `channel.invalid_config`.
+type CreateChannelRequestProvider string
 
 // CreateCustomerImportRequest Registers a customer_imports row referencing an already-uploaded
 // file (POST /v1/media). Dry-run/apply are triggered by the dedicated
@@ -9121,6 +9194,63 @@ type UpdateBankAccountRequest struct {
 	RoutingNumber *string `json:"routing_number"`
 }
 
+// UpdateChannelRequest Body for `PATCH /v1/organizations/{org_id}/channels/{id}`
+// (features #121/#236). Every field is optional and independently
+// applied: an omitted field leaves the stored column unchanged.
+type UpdateChannelRequest struct {
+	// FeePercent New platform fee percentage as a decimal string. Omitting
+	// the key OR sending JSON `null` both leave the stored value
+	// unchanged; only a non-null string value is applied.
+	FeePercent *string `json:"fee_percent"`
+
+	// Name New channel label. Omit (or send an empty string) to leave
+	// the stored name unchanged.
+	Name *string `json:"name,omitempty"`
+
+	// PaymentMode New payment mode. Omit (or send an empty string) to leave
+	// unchanged. When set together with `provider` /
+	// `provider_account_id`, the same combination rules as create
+	// apply and return 400 `channel.invalid_config` on violation.
+	PaymentMode *UpdateChannelRequestPaymentMode `json:"payment_mode,omitempty"`
+
+	// Provider New payment provider. Omit (or send an empty string) to
+	// leave unchanged.
+	Provider *UpdateChannelRequestProvider `json:"provider,omitempty"`
+
+	// ProviderAccountId New merchant account identifier. Omitting the key OR sending
+	// JSON `null` both leave the stored value unchanged (the
+	// handler cannot currently clear this column via PATCH — only
+	// a non-null string value is applied).
+	ProviderAccountId *string `json:"provider_account_id"`
+
+	// ReservationTtlOverride Per-channel checkout hold TTL override, in seconds. Tri-state,
+	// unlike the other fields above: omitting this key entirely
+	// leaves the stored `reservation_ttl_override` untouched
+	// (fixed defect: earlier versions of this endpoint — reached
+	// e.g. via `PUT .../gateway-credential`, which patches other
+	// fields and always omitted this one — silently wiped a
+	// configured TTL back to the organization default). Sending
+	// JSON `null` explicitly clears the override back to the
+	// organization default. Sending a positive integer sets it;
+	// 0 or negative is rejected with 400
+	// `channel.invalid_reservation_ttl_override`.
+	ReservationTtlOverride *int32 `json:"reservation_ttl_override"`
+
+	// Settings New settings blob, merged in whole (not deep-merged) when
+	// present. Omit to leave the stored settings unchanged.
+	Settings *map[string]interface{} `json:"settings,omitempty"`
+}
+
+// UpdateChannelRequestPaymentMode New payment mode. Omit (or send an empty string) to leave
+// unchanged. When set together with `provider` /
+// `provider_account_id`, the same combination rules as create
+// apply and return 400 `channel.invalid_config` on violation.
+type UpdateChannelRequestPaymentMode string
+
+// UpdateChannelRequestProvider New payment provider. Omit (or send an empty string) to
+// leave unchanged.
+type UpdateChannelRequestProvider string
+
 // UpdateEventRequest Partial update for PATCH /v1/organizations/{org_id}/events/{id}.
 // All fields are optional; omitted (or empty) fields leave the
 // existing value unchanged. Status transitions are NOT applied
@@ -10375,20 +10505,9 @@ type GetOrgBillingUsageParams struct {
 	PeriodEnd *time.Time `form:"period_end,omitempty" json:"period_end,omitempty"`
 }
 
-// CreateChannelJSONBody defines parameters for CreateChannel.
-type CreateChannelJSONBody struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-}
-
 // CreateFeedTokenJSONBody defines parameters for CreateFeedToken.
 type CreateFeedTokenJSONBody struct {
 	Label *string `json:"label,omitempty"`
-}
-
-// UpdateChannelJSONBody defines parameters for UpdateChannel.
-type UpdateChannelJSONBody struct {
-	Name *string `json:"name,omitempty"`
 }
 
 // DeleteChannelGatewayCredentialParams defines parameters for DeleteChannelGatewayCredential.
@@ -10794,13 +10913,13 @@ type CreateOrganizationBankAccountJSONRequestBody = CreateBankAccountRequest
 type UpdateOrganizationBankAccountJSONRequestBody = UpdateBankAccountRequest
 
 // CreateChannelJSONRequestBody defines body for CreateChannel for application/json ContentType.
-type CreateChannelJSONRequestBody CreateChannelJSONBody
+type CreateChannelJSONRequestBody = CreateChannelRequest
 
 // CreateFeedTokenJSONRequestBody defines body for CreateFeedToken for application/json ContentType.
 type CreateFeedTokenJSONRequestBody CreateFeedTokenJSONBody
 
 // UpdateChannelJSONRequestBody defines body for UpdateChannel for application/json ContentType.
-type UpdateChannelJSONRequestBody UpdateChannelJSONBody
+type UpdateChannelJSONRequestBody = UpdateChannelRequest
 
 // PutChannelWPWebhookJSONRequestBody defines body for PutChannelWPWebhook for application/json ContentType.
 type PutChannelWPWebhookJSONRequestBody PutChannelWPWebhookJSONBody

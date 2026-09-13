@@ -126,22 +126,16 @@ async function main() {
 
   const gw = await call('PUT', `/v1/organizations/${ORG_ID}/channels/${channel.id}/gateway-credential`, { token, body: {} });
 
-  // Re-apply the hold TTL: the gateway-credential PUT runs UpdateSalesChannel,
-  // whose SQL assigns reservation_ttl_override unconditionally, so it resets
-  // the override to NULL (found by this suite, 2026-09-13).
-  const { channel: patched } = await call('PATCH', `/v1/organizations/${ORG_ID}/channels/${channel.id}`, {
-    token,
-    body: {
-      name: channel.name,
-      payment_mode: channel.payment_mode,
-      provider: channel.provider,
-      provider_account_id: `acct_loadtest_${runId}`,
-      fee_percent: channel.fee_percent,
-      reservation_ttl_override: RESERVATION_TTL,
-    },
-  });
-  if (patched.reservation_ttl_override !== RESERVATION_TTL) {
-    throw new Error(`channel TTL override not applied: ${patched.reservation_ttl_override}`);
+  // Guard against a regression of the TTL-wipe defect this suite found
+  // 2026-09-13: UpdateSalesChannel used to assign reservation_ttl_override
+  // unconditionally, so any partial update that omitted the field — the
+  // gateway-credential PUT above included — reset it to NULL. The fix makes
+  // the SQL layer preserve the stored value unless a caller explicitly asks
+  // to change it, so re-fetching the channel here should still show the TTL
+  // set at creation time.
+  const { channel: reloaded } = await call('GET', `/v1/organizations/${ORG_ID}/channels/${channel.id}`, { token });
+  if (reloaded.reservation_ttl_override !== RESERVATION_TTL) {
+    throw new Error(`channel TTL override not preserved after gateway-credential PUT: ${reloaded.reservation_ttl_override}`);
   }
 
   const key = await call('POST', `/v1/organizations/${ORG_ID}/api-keys`, {

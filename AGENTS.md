@@ -452,11 +452,33 @@ entries short and factual.
   distinct email AND phone: customers are matched by those identities and a
   second pending order for the same customer+session expires the first one.
   Findings of the first run: `docs/loadtest/2026-09-13_local_step1_ru.md`.
-- **`UpdateSalesChannel` assigns `reservation_ttl_override = $8`
-  unconditionally** (every other column is COALESCE/CASE-guarded), so any
-  partial channel update that passes nil — notably
-  `PUT .../channels/{id}/gateway-credential` — resets a configured hold TTL to
-  NULL (20-minute default). Found by the load-test suite 2026-09-13.
+- **`UpdateSalesChannel`'s `reservation_ttl_override` column needs an explicit
+  set flag, never NULL-overloading — NULL is itself a meaningful stored value
+  (org-level default) for this one column, unlike the rest.** Until fixed
+  (found by the load-test suite 2026-09-13), the SQL assigned
+  `reservation_ttl_override = $8` unconditionally while every other column
+  was COALESCE/CASE-guarded, so any partial channel update that passed nil —
+  notably `PUT .../channels/{id}/gateway-credential`, which never touches the
+  TTL, and even a same-package PATCH that only changed `name` — silently
+  wiped a configured hold TTL back to NULL (20-minute default). The fix
+  threads a `set_reservation_ttl_override boolean` parameter down to
+  `channels.sql`/`channels.sql.go`
+  (`reservation_ttl_override = CASE WHEN $9::boolean THEN $8 ELSE
+  reservation_ttl_override END`, settings moved to `$10`): pass
+  `set=false` to leave the column untouched (gateway-credential PUT/DELETE
+  and the WordPress webhook paths always do), `set=true` with a value to
+  change it. `HandleUpdateChannel`'s PATCH body distinguishes the JSON key
+  being absent (keep), present as `null` (clear to org default), and present
+  with a positive integer (set) via the package-level `optionalInt32` tri-
+  state type already used by the AB-45d event-metadata PATCH
+  (`hcatalog/events.go`) — reuse that type for any new nullable PATCH field
+  rather than redeclaring it (it collides on redeclaration in the same
+  package). 0 and negative values are rejected on both create and update
+  with 400 `channel.invalid_reservation_ttl_override`. The other PATCH
+  fields (`provider_account_id`, `fee_percent`) are NOT tri-state: for them,
+  omitting the key or sending `null` both leave the stored value unchanged,
+  only a non-null value is ever applied, and neither can currently be
+  cleared to NULL via PATCH.
 - **`reservation.expire_sweep` now releases TTL-expired reservation holds —
   this was a live production defect until the fix.**
   `hcheckout.ReservationProcessor.ProcessExpiredReservations` existed since
