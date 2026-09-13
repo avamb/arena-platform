@@ -79,6 +79,17 @@ call.
 - **Webhook signing secret**: re-run §2 with a new `signing_secret` (or omit it to let the
   server generate one); this also rotates `callback_url` if it changed.
 
+**Token verification cache**: every successful gateway token check is cached in-process
+(`hbil24/token_cache.go`, perf fix — uncached, every `/compat/bil24/json` command paid a fresh
+~50-190ms bcrypt compare) so a channel doing repeat traffic does not re-run bcrypt on every
+request. The cache is keyed by the bcrypt hash string itself, so the "old token stops
+authenticating the instant the new hash is written" rotation guarantee above still holds
+exactly — a request presenting the old token is checked against the NEW hash (freshly read
+from `sales_channels.settings` on every request) and simply misses the cache, paying a real
+bcrypt compare that fails. Only successful verifications are ever cached; a wrong guess always
+re-runs bcrypt. TTL defaults to 5 minutes and is configurable via `BIL24_TOKEN_CACHE_TTL`
+(e.g. `2m`, `10m`); 0/unset keeps the default.
+
 ## 4. Dead-lettered outbox rows
 
 There is no admin HTTP surface for this yet — it is SQL against the live dispatch table,

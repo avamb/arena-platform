@@ -46,7 +46,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
@@ -310,7 +309,7 @@ func (h *Handler) authenticateCommand(
 		))
 		return gen.SalesChannelRow{}, false
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(gw.TokenHash), []byte(req.Token)); err != nil {
+	if !h.verifyGatewayToken(gw.TokenHash, req.Token) {
 		h.logger.Warn("bil24_compat: token validation failed",
 			slog.String("command", req.Command),
 			slog.String("channel_id", ch.ID.String()),
@@ -438,7 +437,7 @@ func (h *Handler) validateGatewayToken(
 		return false
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(cfg.TokenHash), []byte(req.Token)); err != nil {
+	if !h.verifyGatewayToken(cfg.TokenHash, req.Token) {
 		h.logger.Warn("bil24_compat: token validation failed",
 			slog.String("command", req.Command),
 			slog.String("fid", req.FID),

@@ -77,6 +77,10 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 		s.bil24ReservationDeps(),
 		s.logger,
 	).WithRequireToken(s.bil24RequireToken)
+	// Perf fix (hbil24/token_cache.go): BIL24_TOKEN_CACHE_TTL. Zero keeps default.
+	if s.bil24TokenCacheTTL > 0 {
+		h = h.WithTokenCacheTTL(s.bil24TokenCacheTTL)
+	}
 	// Feature #471 (W1-A1b): wire the channel-lookup surface so the auth
 	// path can resolve wire `fid` (display_number int64) → sales_channels
 	// row → org_id before any read/hold command runs. The org_id gates

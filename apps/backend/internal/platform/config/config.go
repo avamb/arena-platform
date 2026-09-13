@@ -274,6 +274,14 @@ type Config struct {
 	// — NEVER set this to false unless you fully understand the security
 	// implication (unauthenticated inventory mutation). Feature #381, PR2-25.
 	Bil24RequireToken bool `env:"BIL24_REQUIRE_TOKEN" required:"false" default:"true"`
+	// Bil24TokenCacheTTL is how long a successful gateway token verification
+	// (the bcrypt check above) is cached in-process before the next request
+	// pays the ~50-190ms bcrypt cost again. Perf fix: uncached, every
+	// /compat/bil24/json command ran a fresh bcrypt compare regardless of how
+	// recently the same credential had already verified successfully. Only
+	// successful verifications are ever cached (see hbil24/token_cache.go);
+	// a wrong guess always re-runs bcrypt.
+	Bil24TokenCacheTTL time.Duration `env:"BIL24_TOKEN_CACHE_TTL" required:"false" default:"5m"`
 
 	// -------------------------------------------------------------------------
 	// Payment webhook authentication (feature #362, PR2-06)
@@ -694,6 +702,13 @@ func Load() (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.Bil24RequireToken = b
+
+	// Bil24 gateway token verification cache TTL (perf fix).
+	d, err = getenvDuration("BIL24_TOKEN_CACHE_TTL", 5*time.Minute, false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.Bil24TokenCacheTTL = d
 
 	// Media S3 path-style flag.
 	b, err = getenvBool("MEDIA_S3_USE_PATH_STYLE", true)

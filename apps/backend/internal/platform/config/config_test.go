@@ -992,7 +992,7 @@ func TestLoad_WorkerAndOutboxDefaults(t *testing.T) {
 		"WORKER_CONCURRENCY", "WORKER_POLL_INTERVAL", "WORKER_JOB_TIMEOUT",
 		"WORKER_RETRY_BACKOFF_BASE", "WORKER_RETRY_BACKOFF_MAX",
 		"OUTBOX_BATCH_SIZE", "OUTBOX_POLL_INTERVAL",
-		"IDEMPOTENCY_TTL", "IDEMPOTENCY_KEY_MAX_LENGTH",
+		"IDEMPOTENCY_TTL", "IDEMPOTENCY_KEY_MAX_LENGTH", "BIL24_TOKEN_CACHE_TTL",
 	} {
 		es.unset(k)
 	}
@@ -1015,6 +1015,7 @@ func TestLoad_WorkerAndOutboxDefaults(t *testing.T) {
 		{"OutboxBatchSize", cfg.OutboxBatchSize, 50},
 		{"OutboxPollInterval", cfg.OutboxPollInterval, 2 * time.Second},
 		{"IdempotencyTTL", cfg.IdempotencyTTL, 24 * time.Hour},
+		{"Bil24TokenCacheTTL", cfg.Bil24TokenCacheTTL, 5 * time.Minute},
 		{"IdempotencyKeyMaxLength", cfg.IdempotencyKeyMaxLength, 255},
 	}
 	for _, c := range checks {
@@ -1136,6 +1137,7 @@ func TestConfigFieldTags_EnvTagPresent(t *testing.T) {
 		{"JWTAudience", "JWT_AUDIENCE"},
 		{"JWTDefaultTTL", "JWT_DEFAULT_TTL"},
 		{"IdempotencyTTL", "IDEMPOTENCY_TTL"},
+		{"Bil24TokenCacheTTL", "BIL24_TOKEN_CACHE_TTL"},
 		{"IdempotencyKeyMaxLength", "IDEMPOTENCY_KEY_MAX_LENGTH"},
 		{"DefaultLocale", "DEFAULT_LOCALE"},
 		{"ActiveLocales", "ACTIVE_LOCALES"},
@@ -1233,6 +1235,7 @@ func TestConfigFieldTags_DefaultTagOnNonRequiredFields(t *testing.T) {
 		{"WorkerPollInterval", "1s"},
 		{"OutboxBatchSize", "50"},
 		{"IdempotencyTTL", "24h"},
+		{"Bil24TokenCacheTTL", "5m"},
 		{"IdempotencyKeyMaxLength", "255"},
 		{"EmailMode", "log"},
 		{"OutboxMode", "noop"},

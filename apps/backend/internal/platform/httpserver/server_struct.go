@@ -147,4 +147,8 @@ type Server struct {
 	// Defaults to false at the struct level but wired to true in production
 	// via Options.Bil24RequireToken (config default: true).
 	bil24RequireToken bool
+	// bil24TokenCacheTTL mirrors BIL24_TOKEN_CACHE_TTL (perf fix: gateway
+	// token verification cache, see hbil24/token_cache.go). Zero value falls
+	// back to hbil24's own default (5 minutes) via WithTokenCacheTTL.
+	bil24TokenCacheTTL time.Duration
 }
