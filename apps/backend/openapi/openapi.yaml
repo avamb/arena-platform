@@ -8002,19 +8002,87 @@ components:
 
     PaymentIntentWebhookRequest:
       type: object
-      required: [provider_payment_id, event_type]
       description: |
-        Normalised webhook body for `POST /v1/payment-intents/webhook`.
+        `POST /v1/payment-intents/webhook` accepts EITHER of two body
+        shapes:
+
+        1. The normalised flat shape documented by this schema's
+           top-level properties (`provider_payment_id`, `event_type`,
+           ...) — used by the mock provider and by AllPay callbacks.
+        2. A genuine Stripe event envelope —
+           `{"id":"evt_...","type":"payment_intent.succeeded",
+           "data":{"object":{"id":"pi_...","status":"succeeded",
+           "last_payment_error":{...}}}}` — which is what Stripe (and
+           `internal/adapters/stripebilling/adapter.go`) actually send.
+           The handler detects the envelope by the presence of a
+           top-level `type` string together with a top-level `data`
+           object, and maps `data.object.id` → `provider_payment_id`,
+           `type` → `event_type`, and
+           `data.object.last_payment_error.code` /
+           `.message` → `failure_code` / `failure_message`. The raw
+           body is kept verbatim in `payment_intent_events.event_payload`
+           either way.
+
         Real deployments verify provider HMAC / signature headers (e.g.
-        `Stripe-Signature`) before parsing. The handler maps
-        `event_type` → target state via a Stripe-compatible mapping
-        plus `mock.*` shorthand aliases; `target_state` may be supplied
-        to override the mapping (used by mock-provider tests).
+        `Stripe-Signature`, format `t=<unix_ts>,v1=<hex_hmac>`) before
+        parsing either shape. The handler maps `event_type` (or the
+        envelope's `type`) → target state via a Stripe-compatible
+        mapping plus `mock.*` shorthand aliases; `target_state` may be
+        supplied to override the mapping (used by mock-provider tests).
+        Webhook-delivered transitions are intentionally more permissive
+        than the authenticated `POST /v1/payment-intents/{id}/transition`
+        endpoint: a provider may deliver `succeeded` / `failed` /
+        `authorized` directly from `created` or `requires_action`
+        without an intermediate `processing` event ever arriving.
 
         Idempotency: each `(provider_payment_id, event_type)` pair is
-        recorded with a UNIQUE constraint. Duplicate deliveries return
-        `204 No Content` without reprocessing.
+        recorded with a UNIQUE constraint. Duplicate deliveries —
+        including a replayed Stripe envelope carrying the same `id` —
+        return `204 No Content` without reprocessing.
       properties:
+        id:
+          type: string
+          description: |
+            Stripe event envelope only — the Stripe event id
+            (`evt_...`). Not used as the idempotency key (that is still
+            `(provider_payment_id, event_type)`); kept for audit
+            traceability in the persisted raw payload.
+        type:
+          type: string
+          description: |
+            Stripe event envelope only — the envelope's event type
+            (e.g. `payment_intent.succeeded`), equivalent to the flat
+            shape's `event_type`. Presence of both `type` and `data`
+            at the top level is what the handler uses to detect the
+            envelope shape.
+        data:
+          type: object
+          description: |
+            Stripe event envelope only — carries the payment intent
+            object under `data.object`.
+          properties:
+            object:
+              type: object
+              description: The Stripe payment intent object.
+              properties:
+                id:
+                  type: string
+                  description: Provider-side payment intent id (`pi_...`); mapped to `provider_payment_id`.
+                status:
+                  type: string
+                  description: Stripe's own status string for the payment intent object.
+                last_payment_error:
+                  type: [object, "null"]
+                  description: |
+                    Present on failure events; `code` / `message` are
+                    mapped to `failure_code` / `failure_message`.
+                  properties:
+                    code:
+                      type: string
+                      description: Machine-readable Stripe decline/error code.
+                    message:
+                      type: string
+                      description: Human-readable Stripe error message.
         provider_payment_id:
           type: string
           description: |
@@ -8095,6 +8163,17 @@ components:
             - type: "null"
           description: |
             Present when `processed: true`; carries the updated intent.
+        checkout_completed:
+          type: boolean
+          description: |
+            `true` when the linked checkout session was transitioned to
+            `completed` (or was already `completed` from a prior/racing
+            delivery of this event) as part of processing this webhook.
+            `false` when the intent transitioned to `succeeded` but the
+            checkout session could not be completed — e.g. its hold
+            expired before the webhook arrived — and was instead parked
+            in `manual_review` for an operator. Omitted when the event
+            did not concern a succeeded payment.
 
     RefundItem:
       type: object
@@ -24020,6 +24099,27 @@ paths:
                 value:
                   provider_payment_id: "pi_mock_0001"
                   event_type: "mock.succeeded"
+              stripeEnvelope:
+                summary: Genuine Stripe event envelope (`payment_intent.succeeded`)
+                value:
+                  id: "evt_3OqQ6vJk9z2c1def"
+                  type: "payment_intent.succeeded"
+                  data:
+                    object:
+                      id: "pi_3OqQ6vJk9z2c1abc"
+                      status: "succeeded"
+              stripeEnvelopeFailed:
+                summary: Genuine Stripe event envelope (`payment_intent.payment_failed`)
+                value:
+                  id: "evt_3OqQ6vJk9z2c1ghi"
+                  type: "payment_intent.payment_failed"
+                  data:
+                    object:
+                      id: "pi_3OqQ6vJk9z2c1abc"
+                      status: "requires_payment_method"
+                      last_payment_error:
+                        code: "card_declined"
+                        message: "Your card was declined."
       responses:
         "200":
           description: |
