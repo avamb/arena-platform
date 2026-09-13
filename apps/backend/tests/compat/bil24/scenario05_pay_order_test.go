@@ -131,7 +131,7 @@ func runScenario05PayOrder(t *testing.T, st *harnessState) {
 		return sc5Order{
 			sess:        sess,
 			user:        user,
-			orderID:     sc6OrderID(t, "sc5/"+email, created),
+			orderID:     sc6OrderID(t, st, "sc5/"+email, created),
 			externalRef: externalRef,
 		}
 	}

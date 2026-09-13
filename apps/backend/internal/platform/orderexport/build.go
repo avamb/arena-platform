@@ -35,8 +35,15 @@ func Build(rows []Row) []Order {
 
 		o := &orders[orderIdx[csID]]
 
-		// order.id is the minimum system_ticket_id of the order.
-		if o.ID == 0 || row.SystemTicketID < o.ID {
+		// order.id is orders.system_id (spec 18 §4: the site-visible orderId,
+		// the order.paid webhook data.id and every ticketList[].orderId),
+		// constant across the order's rows and set once in newOrder(). Only a
+		// ticket predating the orders aggregate (tickets.order_id NULL) has no
+		// system_id; for those we keep the legacy behaviour — the minimum
+		// system_ticket_id of the order — so historical exports do not change
+		// shape. The min-fallback never runs for an order that HAS a system_id,
+		// so a small ticket id can never clobber a ≥1e9 order id.
+		if row.OrderSystemID == nil && (o.ID == 0 || row.SystemTicketID < o.ID) {
 			o.ID = row.SystemTicketID
 		}
 
@@ -63,9 +70,13 @@ func newOrder(row Row) Order {
 	if row.PaymentProvider != nil {
 		paymentProvider = *row.PaymentProvider
 	}
+	orderID := int64(0) // set to min system_ticket_id below when no orders.system_id
+	if row.OrderSystemID != nil {
+		orderID = *row.OrderSystemID
+	}
 	return Order{
 		CheckoutSessionID: row.CheckoutSessionID,
-		ID:                0, // set to min system_ticket_id while ticketing
+		ID:                orderID, // orders.system_id, or min system_ticket_id (legacy)
 		CompletedAt:       row.OrderCompletedAt,
 		Currency:          row.OrderCurrency,
 		Subtotal:          row.OrderSubtotal,

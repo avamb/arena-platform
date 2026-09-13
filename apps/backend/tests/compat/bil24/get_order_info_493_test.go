@@ -27,8 +27,11 @@
 package compat_bil24_test
 
 import (
+	"context"
 	"strconv"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func TestCompatBil24_493_GetOrderInfo(t *testing.T) {
@@ -75,14 +78,24 @@ func TestCompatBil24_493_GetOrderInfo(t *testing.T) {
 		t.Fatalf("CREATE_ORDER_EXT basic resultCode = %v, want 0 (description %v)",
 			code, createResp["description"])
 	}
-	orderID, _ := createResp["orderId"].(string)
-	if orderID == "" {
-		t.Fatalf("CREATE_ORDER_EXT basic did not return an orderId: %v", createResp)
+	// Spec 18 §4 / §9.3: CREATE_ORDER_EXT answers with orders.system_id, a
+	// JSON number >= 1e9, never the platform UUID.
+	orderSystemID := int64(numberField(t, createResp, "orderId"))
+	if orderSystemID < 1_000_000_000 {
+		t.Fatalf("CREATE_ORDER_EXT basic orderId = %d, want orders.system_id (>= 1e9)", orderSystemID)
+	}
+	orderIDStr := strconv.FormatInt(orderSystemID, 10)
+
+	var orderUUID uuid.UUID
+	if err := st.Pool.QueryRow(context.Background(),
+		`SELECT id FROM orders WHERE system_id=$1`, orderSystemID,
+	).Scan(&orderUUID); err != nil {
+		t.Fatalf("resolve order uuid for system_id %d: %v", orderSystemID, err)
 	}
 
 	// ── step 2: GET_ORDER_INFO against the pending order ────────────────────
 	infoReq, gld := loadWPFixture(t, "GET_ORDER_INFO", "basic")
-	infoRuntime := map[string]string{"orderId": orderID}
+	infoRuntime := map[string]string{"orderId": orderIDStr}
 	infoReq = resolveGolden(infoReq, st, infoRuntime)
 	infoReq["fid"] = st.ChannelFID
 	infoReq["token"] = st.ChannelToken
@@ -101,9 +114,14 @@ func TestCompatBil24_493_GetOrderInfo(t *testing.T) {
 	if !ok {
 		t.Fatalf("GET_ORDER_INFO basic: order = %#v, want an object", info["order"])
 	}
-	if order["id"] != orderID {
-		t.Errorf("GET_ORDER_INFO basic: order.id = %v, want %v", order["id"], orderID)
+	// Spec 18 §4: a pending order with no issued tickets falls back to the
+	// plain orders-row projection (buildGetOrderInfoBodyFromOrder), and that
+	// shape must carry the SAME orders.system_id CREATE_ORDER_EXT answered —
+	// the site keys everything on that one integer.
+	if got := int64(numberField(t, order, "id")); got != orderSystemID {
+		t.Errorf("GET_ORDER_INFO basic: order.id = %v, want orders.system_id %d", order["id"], orderSystemID)
 	}
+	_ = orderUUID // still resolved above: proves the wire id maps back to the orders row
 	if order["status"] != "pending_payment" {
 		t.Errorf("GET_ORDER_INFO basic: order.status = %v, want pending_payment", order["status"])
 	}
@@ -135,7 +153,7 @@ func TestCompatBil24_493_GetOrderInfo(t *testing.T) {
 		"fid":       other.ChannelFID,
 		"token":     other.ChannelToken,
 		"locale":    "en-US",
-		"orderId":   orderID,
+		"orderId":   orderIDStr,
 		"userId":    10001,
 		"sessionId": "",
 	}

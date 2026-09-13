@@ -415,15 +415,18 @@ func TestCompatBil24_508_WPReceiverRoundTrip(t *testing.T) {
 		VALUES ('', $1, $2, '{}', TRUE, 'bil24_wp', $3, $4)`,
 		recv.URL(), signingSecret, orgID, channelID)
 
-	// The integer ids the site knows this sale by.
+	// The integer id the site knows this sale by. Spec 18 §4 / §9.3: the
+	// order.paid webhook's data.id (and every ticketList[].orderId) carries
+	// orders.system_id, not a ticket's system_ticket_id and not the platform
+	// UUID (orderexport.Order.ID = orders.system_id, feature #528-#530).
 	var orderWireID int64
 	if err := pool.QueryRow(ctx,
-		`SELECT MIN(system_ticket_id) FROM tickets WHERE order_id=$1`, orderID,
+		`SELECT system_id FROM orders WHERE id=$1`, orderID,
 	).Scan(&orderWireID); err != nil {
 		t.Fatalf("read order wire id: %v", err)
 	}
 	if orderWireID <= 0 {
-		t.Fatalf("order wire id = %d; want a minted system_ticket_id", orderWireID)
+		t.Fatalf("order wire id = %d; want a minted orders.system_id", orderWireID)
 	}
 
 	bind := map[string]string{

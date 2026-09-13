@@ -369,7 +369,9 @@ func (h *Handler) resolveOrderInfoOrder(
 // are needed here.
 func buildGetOrderInfoBodyFromOrder(order gen.OrderRow, ticketQuantity int) map[string]any {
 	return map[string]any{
-		"id":     TranslatePlatformID(order.ID),
+		// Spec 18 §4: the wire orderId is orders.system_id, the same integer
+		// CREATE_ORDER_EXT answered and the order.paid webhook will carry.
+		"id":     order.SystemID,
 		"status": order.Status,
 		// Spec 20 §3: orders.* are minor units, the wire is major.
 		"sum":            money.Major(order.Subtotal),

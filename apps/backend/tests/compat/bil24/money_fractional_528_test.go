@@ -182,7 +182,7 @@ func TestCompatBil24_528_FractionalMoneyOnTheWire(t *testing.T) {
 				"charge":   fx528ChargeMajor,
 				"totalSum": fx528TotalMajor,
 			})
-			orderID := sc6OrderID(t, tc.name, created)
+			orderID := sc6OrderID(t, st, tc.name, created)
 			// The database side of the same money, in MINOR units: this is the
 			// half of spec 20 §2.2 no wire assertion can see.
 			fx528AssertOrderRow(t, st, orderID)

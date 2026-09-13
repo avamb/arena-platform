@@ -410,6 +410,20 @@ entries short and factual.
   picker on the live stand (fixed 9c350f3). Never hand-roll a settings
   decode for the hash again; the unit test
   `TestBil24_ValidateGatewayToken_AcceptsNestedGatewayShape` guards it.
+- **The order's wire id is `orders.system_id` everywhere** (spec 18 §4 line
+  "orderId (ответ CREATE_ORDER_EXT) → orders.system_id", §9.3 example
+  `"id": 1000000500`). CREATE_ORDER_EXT `orderId`, the `order.paid` webhook
+  `data.id` and every `ticketList[].orderId` must be the SAME integer, because
+  the WordPress receiver (`bil24-notification-receiver.php`) stores the
+  CREATE_ORDER_EXT value in `bil24_external_order_id` and later matches
+  `data.id` against it. Until 2026-09-13 CREATE_ORDER_EXT answered the
+  platform UUID and `orderexport.Order.ID` was `min(system_ticket_id)`, so the
+  first real purchase through the stand paid fine but the site logged
+  "WC order not found for Bil24 #1" and never received its tickets.
+  `orderexport` now LEFT JOINs `orders` and uses `orders.system_id` (legacy
+  fallback to the min ticket id only when `tickets.order_id` is NULL);
+  integration tests resolve a wire orderId back to the row with
+  `SELECT id FROM orders WHERE system_id=$1`.
 - **`outbox_events` dead-letter replay is SQL-only, no admin endpoint.**
   `internal/platform/outbox` stops retrying a row once `dead_lettered_at` is
   set; find candidates with

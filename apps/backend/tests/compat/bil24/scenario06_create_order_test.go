@@ -137,7 +137,7 @@ func runScenario06CreateOrder(t *testing.T, st *harnessState) {
 	// Seeded money: one CZK 500 seat on a 5% channel, no promo.
 	sc6AssertMoney(t, "basic", basic, sc6Money{sum: 500, discount: 0, charge: 25, total: 525, currency: "CZK"})
 
-	orderID := sc6OrderID(t, "basic", basic)
+	orderID := sc6OrderID(t, st, "basic", basic)
 	if got, _ := basic["externalOrderId"].(string); got != "1001" {
 		t.Errorf("basic externalOrderId = %q, want \"1001\" — the site's numeric "+
 			"orderId travels back as a string", got)
@@ -159,7 +159,7 @@ func runScenario06CreateOrder(t *testing.T, st *harnessState) {
 			code, str["description"])
 	}
 	assertGoldenKeySet(t, str, gldStr)
-	if got := sc6OrderID(t, "string_orderid", str); got != orderID {
+	if got := sc6OrderID(t, st, "string_orderid", str); got != orderID {
 		t.Fatalf("string_orderid orderId = %s, want the SAME order %s — §7.7 step 5 "+
 			"forbids a second open order for one buyer and session", got, orderID)
 	}
@@ -179,7 +179,7 @@ func runScenario06CreateOrder(t *testing.T, st *harnessState) {
 			code, repeat["description"])
 	}
 	assertGoldenKeySet(t, repeat, gldRepeat)
-	if got := sc6OrderID(t, "repeat_same_order", repeat); got != orderID {
+	if got := sc6OrderID(t, st, "repeat_same_order", repeat); got != orderID {
 		t.Fatalf("repeat_same_order orderId = %s, want %s", got, orderID)
 	}
 	sc6AssertOpenOrderCount(t, st, 1)
@@ -193,7 +193,7 @@ func runScenario06CreateOrder(t *testing.T, st *harnessState) {
 			code, seated["description"])
 	}
 	assertGoldenKeySet(t, seated, gldSeated)
-	if got := sc6OrderID(t, "seated", seated); got != orderID {
+	if got := sc6OrderID(t, st, "seated", seated); got != orderID {
 		t.Fatalf("seated orderId = %s, want the same %s", got, orderID)
 	}
 	sc6AssertMoney(t, "seated", seated, sc6Money{sum: 1000, discount: 0, charge: 50, total: 1050, currency: "CZK"})
@@ -208,7 +208,7 @@ func runScenario06CreateOrder(t *testing.T, st *harnessState) {
 			code, promo["description"])
 	}
 	assertGoldenKeySet(t, promo, gldPromo)
-	if got := sc6OrderID(t, "promo", promo); got != orderID {
+	if got := sc6OrderID(t, st, "promo", promo); got != orderID {
 		t.Fatalf("promo orderId = %s, want the same %s", got, orderID)
 	}
 	// WAVE1 is 10% of 1000 = 100; the 5% channel charge is taken on the NET
@@ -240,7 +240,7 @@ func runScenario06CreateOrder(t *testing.T, st *harnessState) {
 			code, ga["description"])
 	}
 	assertGoldenKeySet(t, ga, gldGA)
-	gaOrderID := sc6OrderID(t, "ga", ga)
+	gaOrderID := sc6OrderID(t, st, "ga", ga)
 	if gaOrderID == orderID {
 		t.Fatal("the GA order reused the seated session's order; one order is one SESSION")
 	}
@@ -349,18 +349,50 @@ func sc6AssertMoney(t *testing.T, label string, resp map[string]interface{}, wan
 	}
 }
 
-// sc6OrderID reads the response orderId as the platform UUID it must be.
-func sc6OrderID(t *testing.T, label string, resp map[string]interface{}) uuid.UUID {
+// sc6OrderID reads the response orderId — spec 18 §4 / §9.3: CREATE_ORDER_EXT
+// answers with orders.system_id, a JSON number >= 1e9, never the platform
+// UUID — and resolves it to the platform order UUID via the harness pool.
+func sc6OrderID(t *testing.T, st *harnessState, label string, resp map[string]interface{}) uuid.UUID {
 	t.Helper()
-	raw, ok := resp["orderId"].(string)
-	if !ok || raw == "" {
-		t.Fatalf("CREATE_ORDER_EXT %s: orderId = %#v, want a non-empty string", label, resp["orderId"])
-	}
-	id, err := uuid.Parse(raw)
-	if err != nil {
-		t.Fatalf("CREATE_ORDER_EXT %s: orderId %q is not a platform uuid: %v", label, raw, err)
+	systemID := sc6OrderSystemID(t, label, resp)
+	var id uuid.UUID
+	if err := st.Pool.QueryRow(context.Background(),
+		`SELECT id FROM orders WHERE system_id=$1`, systemID,
+	).Scan(&id); err != nil {
+		t.Fatalf("CREATE_ORDER_EXT %s: resolve order uuid for system_id %d: %v", label, systemID, err)
 	}
 	return id
+}
+
+// sc6OrderSystemID extracts orders.system_id from a wire response's orderId
+// field, tolerating every JSON number shape a decoder might hand back:
+// float64 (encoding/json's default, what postBil24 produces), json.Number
+// (a UseNumber decoder) and a plain numeric string.
+func sc6OrderSystemID(t *testing.T, label string, resp map[string]interface{}) int64 {
+	t.Helper()
+	raw, ok := resp["orderId"]
+	if !ok {
+		t.Fatalf("CREATE_ORDER_EXT %s: response has no orderId: %v", label, resp)
+	}
+	switch v := raw.(type) {
+	case float64:
+		return int64(v)
+	case json.Number:
+		n, err := v.Int64()
+		if err != nil {
+			t.Fatalf("CREATE_ORDER_EXT %s: orderId %v is not an integer: %v", label, v, err)
+		}
+		return n
+	case string:
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			t.Fatalf("CREATE_ORDER_EXT %s: orderId %q is not numeric: %v", label, v, err)
+		}
+		return n
+	default:
+		t.Fatalf("CREATE_ORDER_EXT %s: orderId = %#v, want a JSON number (orders.system_id)", label, raw)
+		return 0
+	}
 }
 
 // sc6AssertExpiration checks the §7.7 expiration is an RFC3339 timestamp in the

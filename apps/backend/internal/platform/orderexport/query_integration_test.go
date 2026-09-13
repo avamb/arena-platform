@@ -188,15 +188,15 @@ func TestQueryOrderAndSession_LiveProjection(t *testing.T) {
 		t.Errorf("BuyerEmail = %q", order.BuyerEmail)
 	}
 
-	// order.ID is the minimum system_ticket_id; every ticket back-references it.
-	var minSystemTicketID int64
+	// order.ID is orders.system_id (spec 18 §4); every ticket back-references it.
+	var wantSystemID int64
 	if err := pool.QueryRow(ctx,
-		`SELECT MIN(system_ticket_id) FROM tickets WHERE order_id=$1`, orderID,
-	).Scan(&minSystemTicketID); err != nil {
-		t.Fatalf("read min system_ticket_id: %v", err)
+		`SELECT system_id FROM orders WHERE id=$1`, orderID,
+	).Scan(&wantSystemID); err != nil {
+		t.Fatalf("read orders.system_id: %v", err)
 	}
-	if order.ID != minSystemTicketID {
-		t.Errorf("order.ID = %d, want %d (min system_ticket_id)", order.ID, minSystemTicketID)
+	if order.ID != wantSystemID {
+		t.Errorf("order.ID = %d, want %d (orders.system_id)", order.ID, wantSystemID)
 	}
 
 	// Per-ticket money: prorated discounts sum EXACTLY to the order discount.

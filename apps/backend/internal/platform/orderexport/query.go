@@ -18,8 +18,14 @@ import (
 // projection can be unit-tested (and adapters golden-tested) without a
 // database.
 type Row struct {
-	TicketID          uuid.UUID
-	SystemTicketID    int64
+	TicketID       uuid.UUID
+	SystemTicketID int64
+	// OrderSystemID is orders.system_id (≥ 1e9) of the ticket's owning order
+	// aggregate (migration 0092). It is the site-visible orderId per spec 18
+	// §4 and the id the order.paid webhook and ticketList[].orderId must carry.
+	// Nullable: a ticket predating the orders aggregate has tickets.order_id
+	// NULL, and the build falls back to the legacy min-system-ticket-id.
+	OrderSystemID     *int64
 	CheckoutSessionID uuid.UUID
 	TierID            *uuid.UUID
 	HolderEmail       *string
@@ -63,6 +69,7 @@ const sessionQuery = `
 SELECT
     t.id AS ticket_id,
     t.system_ticket_id,
+    ord.system_id AS order_system_id,
     t.checkout_session_id,
     t.tier_id,
     t.holder_email,
@@ -108,6 +115,7 @@ SELECT
     pc.code AS promo_code_name,
     v.timezone AS venue_timezone
 FROM tickets t
+LEFT JOIN orders ord ON ord.id = t.order_id
 JOIN checkout_sessions cs ON cs.id = t.checkout_session_id
 JOIN sessions s ON s.id = t.session_id
 JOIN events e ON e.id = s.event_id
@@ -219,6 +227,7 @@ func query(ctx context.Context, pool *pgxpool.Pool, sql string, id uuid.UUID) ([
 		if err := rows.Scan(
 			&r.TicketID,
 			&r.SystemTicketID,
+			&r.OrderSystemID,
 			&r.CheckoutSessionID,
 			&r.TierID,
 			&r.HolderEmail,

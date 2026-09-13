@@ -168,7 +168,7 @@ func runScenario02GAPurchase(t *testing.T, st *harnessState) {
 	sc6AssertMoney(t, "ga", order, sc6Money{
 		sum: sc2Gross, discount: sc2Discount, charge: sc2Charge, total: sc2Total, currency: sc2Currency,
 	})
-	orderID := sc6OrderID(t, "ga", order)
+	orderID := sc6OrderID(t, st, "ga", order)
 
 	// ── step 6: the site polls for tickets before the money moves ──────────
 	// §7.10: an unpaid order is NOT an error. The lists must be present and

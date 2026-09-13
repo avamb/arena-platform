@@ -183,7 +183,7 @@ func TestCompatBil24_530_MoneyRoundTripBundleToWebhooks(t *testing.T) {
 		"charge":   w530ChargeMajor,
 		"totalSum": w530TotalMajor,
 	})
-	orderID := sc6OrderID(t, "530", created)
+	orderID := sc6OrderID(t, st, "530", created)
 
 	// bundle527RegisterCleanup (registered above, right after the import)
 	// deletes ticket_tiers/sessions/events/venues; cleanupHarnessWireRows

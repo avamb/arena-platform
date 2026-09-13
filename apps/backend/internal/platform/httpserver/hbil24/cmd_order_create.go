@@ -665,7 +665,12 @@ func (h *Handler) orderPersist(
 		expiration = *order.ExpiresAt
 	}
 	writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, map[string]any{
-		"orderId":         TranslatePlatformID(order.ID),
+		// Spec 18 §4: the site-visible orderId is orders.system_id (int ≥ 1e9),
+		// NOT the platform UUID. The order.paid webhook and GET_TICKETS_BY_ORDER
+		// speak the same system_id, so the site stores one value that matches
+		// every later notification (found live 2026-09-13: the UUID form never
+		// matched the webhook's numeric id and the WordPress shop lost the sale).
+		"orderId":         order.SystemID,
 		"externalOrderId": req.OrderID,
 		// Spec 20 §3: orders.* are minor units, the wire is major.
 		"sum":        money.Major(order.Subtotal),
