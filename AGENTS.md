@@ -790,3 +790,39 @@ entries short and factual.
   `TestReviveForPayment_OpenOrderConflictIsDistinguishable` /
   `TestReviveForPayment_OtherUniqueViolationIsNotMisclassified`
   (`ordering/lifecycle_test.go`). Runbook: `docs/ops/bil24_gateway.md` §9.2.
+- **`customers.Resolve` is race-safe via lookup-after-23505 inside a
+  SAVEPOINT.** `customer_identities_strong_uq` (migration 0091) is a
+  GLOBAL unique index, so two concurrent first-time resolves for the same
+  brand-new email/phone both pass the initial lookup and race the insert;
+  the loser used to surface a raw SQLSTATE 23505 (Bil24 CREATE_USER logged
+  an ERROR and answered -1; a checkout-confirm transaction that treated
+  the error as "non-fatal" was actually already aborted, one statement
+  away from 25P02). `postgres_store.go`'s `InsertIdentity` now wraps the
+  insert with `WithSavepoint` (a nested `pgx.Tx.Begin` — a real SAVEPOINT
+  when the Store already runs inside an ambient tx, a fresh top-level
+  transaction when it runs directly against a pool, detected via
+  `gen.Queries.DB()` type-asserted against the narrow
+  `Begin(ctx) (pgx.Tx, error)` both concrete types satisfy) and, on a
+  unique violation, returns `ErrIdentityConflict` instead of the raw
+  error. `resolve.go`'s `resolveAttempt` savepoints the WHOLE
+  create-customer-and-attach-identity sequence (and every found-branch
+  identity attach) through the same mechanism, so a loss rolls the
+  customer row back together with the losing insert — no orphan customer
+  survives — then re-runs itself (bounded, `identityRaceMaxRetries`),
+  which finds the winner via the ordinary lookup. `customers.LinkOrg`
+  (`UpsertCustomerOrgLink`) was already `ON CONFLICT DO NOTHING` and
+  needed no change. **Any best-effort identity resolution/org-link that
+  runs on a checkout or money transaction must STILL sit behind its own
+  SAVEPOINT** (AGENTS.md pattern above, `Handler.payBestEffort` /
+  `hfeed.Handler.bestEffort`) as defense in depth — `Resolve`'s internal
+  retry only covers the identity race itself, not every other way that
+  section could fail. Tests:
+  `TestResolve_LostEmailRaceOnCreate_RecoversToWinningCustomer` /
+  `_NoOrphanCustomerSurvives` / `TestResolve_LostWeakIdentityRace_ExistingCustomer`
+  (`customers_test.go`, fakeStore's `injectConflict`),
+  `TestPostgresStore_ConcurrentResolve_SameNewEmail_LiveDB`
+  (`resolve_race_integration_test.go`, 20 real goroutines),
+  `TestPublicFeedCheckout_ConcurrentSameNewBuyer_NoRaceAbortedTx`
+  (`httpserver/public_feed_checkout_race_integration_test.go`),
+  `TestBil24_CreateUser_ConcurrentSameNewEmail_AllSucceedSameUserID`
+  (`tests/compat/bil24/create_user_race_test.go`).

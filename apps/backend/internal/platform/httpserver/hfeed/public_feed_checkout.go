@@ -1102,7 +1102,7 @@ func (h *Handler) confirmPublicCheckout(
 		return
 	}
 
-	if err := h.createPublicOrder(ctx, txq, checkCtx, cs, buyer, tierUnitPrices); err != nil {
+	if err := h.createPublicOrder(ctx, tx, txq, checkCtx, cs, buyer, tierUnitPrices); err != nil {
 		h.logger.Error("public_feed_checkout: create order failed",
 			slog.String("checkout_session_id", cs.ID.String()),
 			slog.String("error", err.Error()),
@@ -1138,6 +1138,54 @@ func (h *Handler) confirmPublicCheckout(
 	})
 }
 
+// bestEffort runs a write set that must never cost a buyer their paid-for
+// cart. Merely logging and swallowing the error is NOT enough: Postgres
+// marks the whole enclosing transaction aborted after any failed
+// statement, so every later statement in that transaction dies with
+// 25P02 and the eventual COMMIT silently rolls the order back too. A
+// SAVEPOINT (pgx nested transaction) confines the damage to this section,
+// which is then discarded and logged. Mirrors
+// hbil24.Handler.payBestEffort (AGENTS.md "best-effort writes... MUST sit
+// behind a SAVEPOINT"); returns whether the section committed, so callers
+// that need to know what was actually written (e.g. a customer id to
+// carry forward) can act on it instead of assuming success.
+func (h *Handler) bestEffort(
+	ctx context.Context,
+	tx pgx.Tx,
+	label string,
+	checkoutSessionID uuid.UUID,
+	fn func(pgx.Tx) error,
+) bool {
+	sp, err := tx.Begin(ctx)
+	if err != nil {
+		h.logger.Error("public_feed_checkout: could not open a savepoint",
+			slog.String("section", label),
+			slog.String("checkout_session_id", checkoutSessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		return false
+	}
+	if err := fn(sp); err != nil {
+		_ = sp.Rollback(ctx)
+		h.logger.Warn("public_feed_checkout: bookkeeping section failed and was discarded (non-fatal)",
+			slog.String("section", label),
+			slog.String("checkout_session_id", checkoutSessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		return false
+	}
+	if err := sp.Commit(ctx); err != nil {
+		_ = sp.Rollback(ctx)
+		h.logger.Warn("public_feed_checkout: bookkeeping section could not be released (non-fatal)",
+			slog.String("section", label),
+			slog.String("checkout_session_id", checkoutSessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		return false
+	}
+	return true
+}
+
 // createPublicOrder mints the order aggregate for a just-confirmed public
 // checkout session, on the caller's transaction.
 //
@@ -1148,6 +1196,7 @@ func (h *Handler) confirmPublicCheckout(
 // degrade quietly, because neither is worth failing a paid-for cart over.
 func (h *Handler) createPublicOrder(
 	ctx context.Context,
+	tx pgx.Tx,
 	txq *gen.Queries,
 	checkCtx gen.PublicCheckoutContextRow,
 	cs gen.CheckoutSessionRow,
@@ -1156,48 +1205,57 @@ func (h *Handler) createPublicOrder(
 ) error {
 	var customerID *uuid.UUID
 	if buyer.Email != "" {
-		store := customers.NewStoreFromQueries(txq)
-		name := ""
-		if buyer.Name != nil {
-			name = *buyer.Name
-		}
-		phone := ""
-		if buyer.Phone != nil {
-			phone = *buyer.Phone
-		}
-		res, resErr := customers.Resolve(ctx, store, customers.ResolveInput{
-			Email:     buyer.Email,
-			Phone:     phone,
-			Name:      name,
-			ChannelID: checkCtx.SalesChannelID,
-			Now:       time.Now().UTC(),
-		})
-		if resErr != nil {
-			h.logger.Warn("public_feed_checkout: customer resolve failed (non-fatal)",
-				slog.String("checkout_session_id", cs.ID.String()),
-				slog.String("error", resErr.Error()),
-			)
-		} else {
-			id := res.Customer.ID
-			customerID = &id
-			if linkErr := customers.LinkOrg(ctx, store, id, checkCtx.OrgID, "order"); linkErr != nil {
-				h.logger.Warn("public_feed_checkout: customer org link failed (non-fatal)",
-					slog.String("customer_id", id.String()),
-					slog.String("error", linkErr.Error()),
-				)
+		// Best-effort by design (see the doc comment above), but "log and
+		// swallow" is NOT enough on its own: Postgres marks the whole
+		// checkout transaction aborted after any failed statement in this
+		// block (e.g. customers.Resolve exhausting its own internal race
+		// retries, or a genuine constraint error), and the later order
+		// write / COMMIT would then die with 25P02, silently losing an
+		// already-paid-for cart. A SAVEPOINT confines the damage to this
+		// section — AGENTS.md "best-effort writes... MUST sit behind a
+		// SAVEPOINT", mirroring hbil24.Handler.payBestEffort. resolvedID is
+		// only promoted to the outer customerID once the WHOLE section
+		// (resolve + org link + reservation link) has actually committed —
+		// otherwise a later statement in this same section failing after
+		// Resolve succeeded would leave customerID pointing at a customer
+		// row the savepoint rollback just undid.
+		var resolvedID uuid.UUID
+		committed := h.bestEffort(ctx, tx, "customer resolution", cs.ID, func(sp pgx.Tx) error {
+			spq := gen.New(sp)
+			store := customers.NewStoreFromQueries(spq)
+			name := ""
+			if buyer.Name != nil {
+				name = *buyer.Name
+			}
+			phone := ""
+			if buyer.Phone != nil {
+				phone = *buyer.Phone
+			}
+			res, resErr := customers.Resolve(ctx, store, customers.ResolveInput{
+				Email:     buyer.Email,
+				Phone:     phone,
+				Name:      name,
+				ChannelID: checkCtx.SalesChannelID,
+				Now:       time.Now().UTC(),
+			})
+			if resErr != nil {
+				return fmt.Errorf("resolve customer: %w", resErr)
+			}
+			resolvedID = res.Customer.ID
+			if linkErr := customers.LinkOrg(ctx, store, resolvedID, checkCtx.OrgID, "order"); linkErr != nil {
+				return fmt.Errorf("link customer to org %s: %w", resolvedID.String(), linkErr)
 			}
 			// spec §12.2 call sites: attach the resolved buyer to the
 			// reservation itself, not just the order, so a cancelled/
 			// expired cart that never reaches an order still records who
-			// held it. Non-fatal — losing this rollup must never fail a
-			// paid-for cart.
-			if resvErr := txq.UpdateReservationCustomer(ctx, cs.ReservationID, id); resvErr != nil {
-				h.logger.Warn("public_feed_checkout: reservation customer link failed (non-fatal)",
-					slog.String("reservation_id", cs.ReservationID.String()),
-					slog.String("customer_id", id.String()),
-					slog.String("error", resvErr.Error()),
-				)
+			// held it.
+			if resvErr := spq.UpdateReservationCustomer(ctx, cs.ReservationID, resolvedID); resvErr != nil {
+				return fmt.Errorf("link customer to reservation %s: %w", cs.ReservationID.String(), resvErr)
 			}
+			return nil
+		})
+		if committed {
+			customerID = &resolvedID
 		}
 	}
 

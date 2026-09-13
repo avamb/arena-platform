@@ -10,10 +10,12 @@ package customers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
@@ -88,9 +90,79 @@ func (s *queriesStore) InsertIdentity(
 	}
 	row, err := s.q.InsertCustomerIdentity(ctx, customerID, string(kind), value, channelID, verifiedAt, source)
 	if err != nil {
+		if isIdentityUniqueViolation(err) {
+			return Identity{}, fmt.Errorf("%w: %w", ErrIdentityConflict, err)
+		}
 		return Identity{}, err
 	}
 	return identityFromRow(row), nil
+}
+
+// isIdentityUniqueViolation reports whether err is the Postgres 23505 that
+// InsertCustomerIdentity's two partial unique indexes raise:
+// customer_identities_strong_uq (email/phone/telegram, platform-wide) and
+// customer_identities_weak_uq (device/wc_customer/bil24_user, per channel).
+// When the driver surfaces a constraint name it must match one of the two;
+// when it does not (some pooling layers strip it), the SQLSTATE alone is
+// trusted since this statement has no other statement that could raise a
+// 23505. Mirrors ordering.isOpenOrderUniqueViolation.
+func isIdentityUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+		return false
+	}
+	return pgErr.ConstraintName == "" ||
+		pgErr.ConstraintName == "customer_identities_strong_uq" ||
+		pgErr.ConstraintName == "customer_identities_weak_uq"
+}
+
+// txBeginner is satisfied by both *pgxpool.Pool (Begin opens a genuine
+// top-level transaction) and pgx.Tx (Begin opens a nested transaction —
+// a Postgres SAVEPOINT). gen.Queries.DB() returns whichever one this
+// Store was constructed with, so WithSavepoint gets the right behaviour
+// in either case without needing to know which it has.
+type txBeginner interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
+// WithSavepoint runs fn against a Store scoped to a nested transaction: a
+// SAVEPOINT when this Store already executes inside an ambient pgx.Tx (the
+// case for every real caller in this repo — hfeed's checkout-confirm tx,
+// hbil24's CREATE_ORDER_EXT/PAY_ORDER tx, customerimport's import tx), or a
+// fresh top-level transaction when it executes directly against a pool
+// (h.customerStore in hbil24/cmd_user.go). On success the nested
+// transaction is committed (releasing the savepoint); on any error
+// returned by fn it is rolled back and the SAME error is returned,
+// leaving this Store — and the caller's own ambient transaction, if any —
+// fully usable afterward. This is the AGENTS.md "best-effort writes...
+// MUST sit behind a SAVEPOINT" pattern (see hbil24.Handler.payBestEffort),
+// generalised so platform/customers can apply it to its own inserts and
+// so other callers (hfeed) can reuse it for their own best-effort writes
+// on the same Store.
+//
+// When the underlying DBTX does not support Begin (a test double with no
+// real transaction semantics), fn just runs directly against s — safe for
+// unit tests that only exercise control flow, but callers that need real
+// rollback isolation must supply a DBTX backed by pgx.
+func (s *queriesStore) WithSavepoint(ctx context.Context, fn func(Store) error) error {
+	beginner, ok := s.q.DB().(txBeginner)
+	if !ok {
+		return fn(s)
+	}
+	sp, err := beginner.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	nested := &queriesStore{q: gen.New(sp)}
+	if err := fn(nested); err != nil {
+		_ = sp.Rollback(ctx)
+		return err
+	}
+	if err := sp.Commit(ctx); err != nil {
+		_ = sp.Rollback(ctx)
+		return err
+	}
+	return nil
 }
 
 func (s *queriesStore) UpdateDisplayName(ctx context.Context, customerID uuid.UUID, displayName string) error {

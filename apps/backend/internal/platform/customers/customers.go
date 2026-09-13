@@ -98,6 +98,18 @@ var (
 	// index on customer_identities requires channel_id NOT NULL for
 	// weak rows.
 	ErrChannelRequiredForWeak = errors.New("customers: channel_id required for weak identity")
+
+	// ErrIdentityConflict is returned by Store.InsertIdentity (wrapping
+	// the underlying driver error with fmt.Errorf("%w: %w", ...), so
+	// errors.Is still matches) when the insert lost a race against a
+	// concurrent insert of the identical (kind, value[, channel_id])
+	// identity — the customer_identities_strong_uq / _weak_uq partial
+	// unique indexes (migration 0091) are the only source. Resolve
+	// recognises this sentinel and recovers by re-running the lookup
+	// that would have found the identity had it been visible a moment
+	// earlier, instead of surfacing SQLSTATE 23505 to the caller. See
+	// AGENTS.md "customers.Resolve is race-safe".
+	ErrIdentityConflict = errors.New("customers: identity already exists (lost the race)")
 )
 
 // Customer is the resolver-facing subset of the customers row. The

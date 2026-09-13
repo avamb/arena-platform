@@ -37,6 +37,15 @@ type Queries struct {
 	db DBTX
 }
 
+// DB returns the DBTX this Queries instance executes against — either a
+// *pgxpool.Pool or a pgx.Tx. Callers that need to open a nested
+// transaction (a Postgres SAVEPOINT when db is already a pgx.Tx, a fresh
+// top-level transaction when db is a pool) use this to type-assert db
+// against the narrow `Begin(context.Context) (pgx.Tx, error)` interface
+// both concrete types satisfy — see platform/customers.WithSavepoint,
+// the canonical caller.
+func (q *Queries) DB() DBTX { return q.db }
+
 // WithTx returns a new *Queries that executes all queries within tx.
 // Typical usage:
 //

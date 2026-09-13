@@ -86,6 +86,27 @@ type fakeStore struct {
 	touched         []uuid.UUID
 	verified        map[uuid.UUID]time.Time
 	nextSystemID    int64
+
+	// injectConflict, when set, makes the NEXT InsertIdentity call for the
+	// named (kind, value) simulate losing a race to a concurrent resolver:
+	// it seeds the "winner" identity directly on the root store (as if a
+	// separate, already-committed transaction had just inserted it) and
+	// returns ErrIdentityConflict, exactly like postgres_store.go's real
+	// translation of SQLSTATE 23505. It is a shared pointer so it still
+	// fires — exactly once — from inside a WithSavepoint snapshot.
+	injectConflict *conflictInjector
+}
+
+// conflictInjector backs fakeStore.injectConflict. root always points at
+// the outermost fakeStore a test constructed (clone() propagates the
+// pointer unchanged), so the seeded "winner" row survives even when the
+// snapshot that observed the conflict is discarded by WithSavepoint.
+type conflictInjector struct {
+	kind   IdentityKind
+	value  string
+	winner uuid.UUID
+	fired  bool
+	root   *fakeStore
 }
 
 type mergeCand struct {
@@ -149,6 +170,42 @@ func (f *fakeStore) InsertIdentity(_ context.Context, customerID uuid.UUID, kind
 	if kind.IsStrong() && channelID != nil {
 		channelID = nil
 	}
+
+	if inj := f.injectConflict; inj != nil && !inj.fired && inj.kind == kind && inj.value == value {
+		inj.fired = true
+		winnerRow := Identity{
+			ID:              uuid.New(),
+			CustomerID:      inj.winner,
+			Kind:            kind,
+			ValueNormalized: value,
+			ChannelID:       channelID,
+			Source:          source,
+			FirstSeenAt:     time.Now().UTC(),
+			LastSeenAt:      time.Now().UTC(),
+		}
+		// The winner represents a DIFFERENT, already-committed transaction —
+		// it lands on the root store directly, bypassing whatever savepoint
+		// snapshot this call is running against.
+		inj.root.identities[winnerRow.ID] = &winnerRow
+		return Identity{}, ErrIdentityConflict
+	}
+
+	// Enforce the same partial-unique-index semantics
+	// customer_identities_strong_uq / _weak_uq apply in Postgres, so
+	// fakeStore-based tests can exercise Resolve's race recovery without a
+	// real database.
+	for _, existing := range f.identities {
+		if existing.Kind != kind || existing.ValueNormalized != value {
+			continue
+		}
+		if kind.IsStrong() {
+			return Identity{}, ErrIdentityConflict
+		}
+		if existing.ChannelID != nil && channelID != nil && *existing.ChannelID == *channelID {
+			return Identity{}, ErrIdentityConflict
+		}
+	}
+
 	id := Identity{
 		ID:              uuid.New(),
 		CustomerID:      customerID,
@@ -162,6 +219,65 @@ func (f *fakeStore) InsertIdentity(_ context.Context, customerID uuid.UUID, kind
 	}
 	f.identities[id.ID] = &id
 	return id, nil
+}
+
+// WithSavepoint gives fakeStore-based unit tests the same rollback
+// semantics postgres_store.go gets from a real SAVEPOINT: fn runs against
+// a snapshot of this store's maps, and on error the snapshot is discarded
+// — nothing fn wrote survives — instead of merged back into f.
+func (f *fakeStore) WithSavepoint(_ context.Context, fn func(Store) error) error {
+	snapshot := f.clone()
+	if err := fn(snapshot); err != nil {
+		return err
+	}
+	f.adopt(snapshot)
+	return nil
+}
+
+// clone deep-copies f's maps/slices into a fresh *fakeStore. injectConflict
+// is a shared pointer, deliberately NOT deep-copied, so a conflict injected
+// on the root store still fires (once) no matter how many nested
+// WithSavepoint snapshots it passes through.
+func (f *fakeStore) clone() *fakeStore {
+	nf := &fakeStore{
+		customers:      make(map[uuid.UUID]*Customer, len(f.customers)),
+		identities:     make(map[uuid.UUID]*Identity, len(f.identities)),
+		orgLinks:       make(map[[2]uuid.UUID]string, len(f.orgLinks)),
+		verified:       make(map[uuid.UUID]time.Time, len(f.verified)),
+		nextSystemID:   f.nextSystemID,
+		injectConflict: f.injectConflict,
+	}
+	for id, c := range f.customers {
+		cc := *c
+		nf.customers[id] = &cc
+	}
+	for id, r := range f.identities {
+		rr := *r
+		nf.identities[id] = &rr
+	}
+	for k, v := range f.orgLinks {
+		nf.orgLinks[k] = v
+	}
+	for k, v := range f.verified {
+		nf.verified[k] = v
+	}
+	nf.mergeCandidates = append(nf.mergeCandidates, f.mergeCandidates...)
+	nf.attributes = append(nf.attributes, f.attributes...)
+	nf.touched = append(nf.touched, f.touched...)
+	return nf
+}
+
+// adopt merges a successful snapshot's writes back into f — the "commit"
+// counterpart to clone's "begin".
+func (f *fakeStore) adopt(snapshot *fakeStore) {
+	f.customers = snapshot.customers
+	f.identities = snapshot.identities
+	f.orgLinks = snapshot.orgLinks
+	f.verified = snapshot.verified
+	f.nextSystemID = snapshot.nextSystemID
+	f.mergeCandidates = snapshot.mergeCandidates
+	f.attributes = snapshot.attributes
+	f.touched = snapshot.touched
 }
 
 func (f *fakeStore) UpdateDisplayName(_ context.Context, customerID uuid.UUID, displayName string) error {
@@ -595,6 +711,111 @@ func TestMarkVerified(t *testing.T) {
 	}
 	if got := s.identities[id.ID].VerifiedAt; got == nil || !got.Equal(at) {
 		t.Errorf("VerifiedAt overwritten; got %v want %v", got, at)
+	}
+}
+
+// ── Race safety (23505-then-lookup) ──────────────────────────────────────────
+
+// TestResolve_LostEmailRaceOnCreate_RecoversToWinningCustomer simulates two
+// concurrent first-time Resolve calls for the identical brand-new email:
+// both miss the Step 2 lookup, and the second one's identity insert loses
+// the race with SQLSTATE 23505 (via fakeStore's injectConflict). Resolve
+// must recover by re-resolving instead of returning the raw conflict.
+func TestResolve_LostEmailRaceOnCreate_RecoversToWinningCustomer(t *testing.T) {
+	s := newFakeStore()
+	ctx := context.Background()
+	winnerCustomer, _ := s.InsertCustomer(ctx, "Winner", "")
+
+	s.injectConflict = &conflictInjector{
+		kind:   KindEmail,
+		value:  "race@example.com",
+		winner: winnerCustomer.ID,
+		root:   s,
+	}
+
+	res, err := Resolve(ctx, s, ResolveInput{Email: "race@example.com"})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if !s.injectConflict.fired {
+		t.Fatalf("test bug: the injected conflict never fired")
+	}
+	if res.Customer.ID != winnerCustomer.ID {
+		t.Fatalf("got customer %v, want the race winner %v", res.Customer.ID, winnerCustomer.ID)
+	}
+	if res.Created {
+		t.Errorf("recovered resolve must report Created=false — it joined the winner, it did not mint a new customer")
+	}
+}
+
+// TestResolve_LostEmailRaceOnCreate_NoOrphanCustomerSurvives is the
+// invariant the concurrent integration test (postgres_store_integration_test.go)
+// re-proves against a real database: after the race, exactly one customer
+// and one identity row exist — the loser's InsertCustomer must have been
+// rolled back together with its losing identity insert, inside the same
+// savepoint.
+func TestResolve_LostEmailRaceOnCreate_NoOrphanCustomerSurvives(t *testing.T) {
+	s := newFakeStore()
+	ctx := context.Background()
+	// The winner represents a SEPARATE, already-committed transaction; it
+	// is not present yet when Resolve starts (that is the whole point of
+	// the race), and is only seeded once the injected conflict fires
+	// inside Resolve's own losing InsertIdentity attempt.
+	winnerCustomer, _ := s.InsertCustomer(ctx, "Winner", "")
+	s.injectConflict = &conflictInjector{
+		kind:   KindEmail,
+		value:  "race2@example.com",
+		winner: winnerCustomer.ID,
+		root:   s,
+	}
+
+	if _, err := Resolve(ctx, s, ResolveInput{Email: "race2@example.com"}); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+
+	if got := len(s.customers); got != 1 {
+		t.Fatalf("customers = %d, want exactly 1 (no orphan from the losing attempt)", got)
+	}
+	matching := 0
+	for _, id := range s.identities {
+		if id.Kind == KindEmail && id.ValueNormalized == "race2@example.com" {
+			matching++
+		}
+	}
+	if matching != 1 {
+		t.Fatalf("email identities for race2@example.com = %d, want exactly 1", matching)
+	}
+}
+
+// TestResolve_LostWeakIdentityRace_ExistingCustomer covers the OTHER race
+// class called out in the fix: attaching an additional identity to an
+// ALREADY-resolved (found-branch) customer, not creating a new one. A
+// device-token attach that loses the race must not error and must not
+// disturb the customer it was already going to return.
+func TestResolve_LostWeakIdentityRace_ExistingCustomer(t *testing.T) {
+	s := newFakeStore()
+	ctx := context.Background()
+	channel := uuid.New()
+	c, _ := s.InsertCustomer(ctx, "Anna", "")
+	_, _ = s.InsertIdentity(ctx, c.ID, KindEmail, "anna@example.com", nil, SourceLive, nil)
+
+	s.injectConflict = &conflictInjector{
+		kind:   KindDevice,
+		value:  "dev-race",
+		winner: c.ID, // same customer — a concurrent duplicate resolve, not a real conflict
+		root:   s,
+	}
+
+	res, err := Resolve(ctx, s, ResolveInput{
+		Email:       "anna@example.com",
+		ChannelID:   channel,
+		DeviceToken: "dev-race",
+	})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if res.Customer.ID != c.ID {
+		t.Fatalf("got %v, want %v", res.Customer.ID, c.ID)
 	}
 }
 

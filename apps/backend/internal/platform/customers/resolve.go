@@ -64,6 +64,16 @@ type Store interface {
 	// name rule ("не перезаписывать непустое имя пустым"). Returns
 	// ErrNotFound when the id is unknown.
 	GetCustomer(ctx context.Context, id uuid.UUID) (Customer, error)
+
+	// WithSavepoint runs fn against a Store scoped to a nested
+	// transaction (a SAVEPOINT, or a fresh top-level transaction when
+	// this Store runs directly against a pool) and commits it on
+	// success; any error from fn rolls the nested transaction back and
+	// is returned unchanged, leaving this Store fully usable afterward.
+	// Resolve uses this to make the create-customer and identity-attach
+	// paths race-safe: see the "customers.Resolve is race-safe" gotcha
+	// in AGENTS.md and postgres_store.go's implementation.
+	WithSavepoint(ctx context.Context, fn func(Store) error) error
 }
 
 // ResolveInput is the caller-supplied §12.2 payload. Any subset may be
@@ -105,10 +115,41 @@ type ResolveResult struct {
 	MergeCandidateQueued bool
 }
 
+// identityRaceMaxRetries bounds how many times Resolve re-runs itself after
+// losing an identity-insert race to a concurrent Resolve call (see
+// resolveAttempt). By the time a caller observes the unique-violation the
+// winning row is already committed and visible (Postgres blocks the
+// second inserter until the first's transaction finishes), so in practice
+// a single retry always succeeds; a small extra margin absorbs a
+// pathological pile-up of many simultaneous first-time resolves for the
+// identical identity without ever looping forever.
+const identityRaceMaxRetries = 3
+
 // Resolve implements spec §12.2. See the top-of-file docstring for the
 // contract; the numbered comments below match the numbered steps in the
 // spec.
 func Resolve(ctx context.Context, s Store, in ResolveInput) (ResolveResult, error) {
+	return resolveAttempt(ctx, s, in, identityRaceMaxRetries)
+}
+
+// resolveAttempt is Resolve's real body, parameterised by how many more
+// times it may recover from a lost identity-insert race by re-running
+// itself from scratch. Every place that writes a customer_identities row —
+// the "nothing found, create a customer" branch AND the "found, attach a
+// missing identity" branches — runs through s.WithSavepoint via the
+// withRace closure below: customer_identities_strong_uq is a GLOBAL unique
+// index
+// (migration 0091), so two concurrent Resolve calls providing the same
+// brand-new email or phone can both pass the Step 2 lookup and then race
+// the insert. Losing that race must neither abort the caller's ambient
+// transaction (money/checkout transactions cannot tolerate that — see
+// AGENTS.md "best-effort writes... MUST sit behind a SAVEPOINT") nor leave
+// an orphan customer row behind (the loser's InsertCustomer, if any, lives
+// in the SAME savepoint as the losing identity insert, so a rollback
+// undoes both together). Re-running resolveAttempt afterward simply
+// redoes the Step 2/3 lookups, which now see the winner's committed row
+// and take the ordinary "found" path.
+func resolveAttempt(ctx context.Context, s Store, in ResolveInput, retriesLeft int) (ResolveResult, error) {
 	if in.Now.IsZero() {
 		in.Now = time.Now().UTC()
 	}
@@ -166,6 +207,34 @@ func Resolve(ctx context.Context, s Store, in ResolveInput) (ResolveResult, erro
 
 	res := ResolveResult{PhoneWasInvalid: phoneWasInvalid}
 
+	// withRace runs fn (the write path for whichever branch matched) inside
+	// s.WithSavepoint. customer_identities_strong_uq/_weak_uq are the only
+	// statements fn can hit that raise ErrIdentityConflict; when one does,
+	// the savepoint above has already rolled back everything fn wrote in
+	// this attempt (a freshly inserted customer included — see the
+	// "nothing found" caller below), so recovering by re-running
+	// resolveAttempt from scratch is safe: it simply redoes the Step 2/3
+	// lookups, which now see the winner's committed row. Any other error
+	// propagates unchanged.
+	withRace := func(fn func(sp Store) (ResolveResult, error)) (ResolveResult, error) {
+		var out ResolveResult
+		txErr := s.WithSavepoint(ctx, func(sp Store) error {
+			result, err := fn(sp)
+			if err != nil {
+				return err
+			}
+			out = result
+			return nil
+		})
+		if txErr == nil {
+			return out, nil
+		}
+		if errors.Is(txErr, ErrIdentityConflict) && retriesLeft > 0 {
+			return resolveAttempt(ctx, s, in, retriesLeft-1)
+		}
+		return ResolveResult{}, txErr
+	}
+
 	// Both strong keys found and agree → return that customer.
 	// Both found but disagree → spec §12.2 step 2: return the e-mail's
 	// customer, DO NOT reassign the phone, and queue a merge candidate.
@@ -179,7 +248,9 @@ func Resolve(ctx context.Context, s Store, in ResolveInput) (ResolveResult, erro
 		if err := s.TouchIdentity(ctx, byPhone.ID); err != nil {
 			return ResolveResult{}, err
 		}
-		return finishResolve(ctx, s, res, byEmail.CustomerID, in, source /*addEmail*/, false /*addPhone*/, false)
+		return withRace(func(sp Store) (ResolveResult, error) {
+			return finishResolve(ctx, sp, res, byEmail.CustomerID, in, source /*addEmail*/, false /*addPhone*/, false)
+		})
 
 	case byEmail != nil && byPhone != nil && byEmail.CustomerID != byPhone.CustomerID:
 		if err := s.InsertMergeCandidate(ctx, byEmail.CustomerID, byPhone.CustomerID, MergeReasonEmailOfAPhoneOfB); err != nil {
@@ -191,19 +262,25 @@ func Resolve(ctx context.Context, s Store, in ResolveInput) (ResolveResult, erro
 		}
 		// Deliberately do NOT touch byPhone or attach anything else —
 		// spec: "телефон не переприсваивать".
-		return finishResolve(ctx, s, res, byEmail.CustomerID, in, source /*addEmail*/, false /*addPhone*/, false)
+		return withRace(func(sp Store) (ResolveResult, error) {
+			return finishResolve(ctx, sp, res, byEmail.CustomerID, in, source /*addEmail*/, false /*addPhone*/, false)
+		})
 
 	case byEmail != nil:
 		if err := s.TouchIdentity(ctx, byEmail.ID); err != nil {
 			return ResolveResult{}, err
 		}
-		return finishResolve(ctx, s, res, byEmail.CustomerID, in, source, false, normPhone != "")
+		return withRace(func(sp Store) (ResolveResult, error) {
+			return finishResolve(ctx, sp, res, byEmail.CustomerID, in, source, false, normPhone != "")
+		})
 
 	case byPhone != nil:
 		if err := s.TouchIdentity(ctx, byPhone.ID); err != nil {
 			return ResolveResult{}, err
 		}
-		return finishResolve(ctx, s, res, byPhone.CustomerID, in, source, normEmail != "", false)
+		return withRace(func(sp Store) (ResolveResult, error) {
+			return finishResolve(ctx, sp, res, byPhone.CustomerID, in, source, normEmail != "", false)
+		})
 	}
 
 	// ── Step 3: weak-key lookup within the channel. ────────────────────
@@ -230,16 +307,26 @@ func Resolve(ctx context.Context, s Store, in ResolveInput) (ResolveResult, erro
 		if err := s.TouchIdentity(ctx, byWeak.ID); err != nil {
 			return ResolveResult{}, err
 		}
-		return finishResolve(ctx, s, res, byWeak.CustomerID, in, source, normEmail != "", normPhone != "")
+		return withRace(func(sp Store) (ResolveResult, error) {
+			return finishResolve(ctx, sp, res, byWeak.CustomerID, in, source, normEmail != "", normPhone != "")
+		})
 	}
 
 	// ── Nothing found: create a fresh customer. ────────────────────────
-	c, err := s.InsertCustomer(ctx, in.Name, "")
-	if err != nil {
-		return ResolveResult{}, err
-	}
-	res.Created = true
-	return finishResolve(ctx, s, res, c.ID, in, source, normEmail != "", normPhone != "")
+	// The whole create-and-attach sequence runs inside withRace's
+	// savepoint, so a losing race on the identity insert rolls the
+	// customer row back together with it — no orphan customer survives —
+	// and Resolve re-resolves from scratch, landing on the winner via the
+	// ordinary Step 2 lookup above.
+	return withRace(func(sp Store) (ResolveResult, error) {
+		c, err := sp.InsertCustomer(ctx, in.Name, "")
+		if err != nil {
+			return ResolveResult{}, err
+		}
+		r := res
+		r.Created = true
+		return finishResolve(ctx, sp, r, c.ID, in, source, normEmail != "", normPhone != "")
+	})
 }
 
 // finishResolve is the shared tail: attach whichever identities were not
