@@ -30,6 +30,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -582,6 +583,20 @@ func (h *Handler) writeCartHoldError(
 			slog.String("gateway_session_id", cc.gw.ID.String()),
 			slog.String("error", err.Error()),
 		)
+		// A Postgres error reaching here (a 40P01 deadlock / 40001
+		// serialization failure that survived hcheckout's bounded retry, a
+		// dropped connection, a statement timeout, …) is an infrastructure
+		// failure the WordPress plugin should retry, not a programming bug —
+		// answer -1 (transient) rather than -99 so the plugin's retry logic
+		// kicks in instead of surfacing a hard error to the buyer. Every
+		// other untyped error here is a genuinely unexpected failure and
+		// keeps -99: pgconn.PgError is the one error family we can reliably
+		// tell apart from "something is wrong with our code".
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			h.writeCartTransient(w, req, cc)
+			return
+		}
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeInternalError, "failed to update reservation",
 		))

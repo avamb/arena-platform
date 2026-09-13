@@ -502,6 +502,36 @@ entries short and factual.
   host-side `DATABASE_URL` (migration smoke tests, the CI-Integration-job
   recipe above) at the new port instead of 55432 until a future session
   reclaims it.
+- **Every hold-mutation transaction must lock `sessions` (the
+  `seat_status_version` bump) BEFORE it touches `inventory_ledger`
+  (`ReserveCapacity`/`ReleaseCapacity`/`ConfirmCapacity`), never the other
+  way round.** `CreateGAHold` (`hcheckout/hold_api.go`) used to reserve
+  capacity first and bump the version second — the opposite order from
+  every sibling primitive (`CreateSeatedHold`, `ExtendHoldTx`,
+  `ShrinkHoldTx`, `ReleaseHold`, `ConvertReservationInTx`) — so a buyer
+  opening a brand-new GA cart via CreateGAHold deadlocked (Postgres
+  `40P01`) against a buyer extending/shrinking an *existing* cart on the
+  same session; the same inversion existed independently in
+  `HandleCreateReservation`'s GA branch (`hcheckout/reservations.go`, the
+  plain REST `POST /v1/reservations` quantity path). Both were fixed by
+  reordering: version bump, THEN `ReserveCapacity`/`ReleaseCapacity`. See
+  the lock-order comment on `hcheckout.createGAHoldTx`. Because two
+  DIFFERENT reservations can still legitimately contend for the two locks
+  even with the order fixed everywhere, `hcheckout/retry.go` adds
+  `retryOnSerializationFailure` (3 attempts, 10-50ms jittered backoff,
+  ctx-aware) wrapping the whole transaction body of every hold-mutation
+  entry point (`CreateGAHold`, `CreateSeatedHold`, `ReleaseHold` directly;
+  `ExtendHold`/`ShrinkHold`/`ReacquireHold` via the shared `inHoldTx`
+  helper) — a retry MUST restart the whole transaction, never continue
+  inside one Postgres already aborted. `hbil24`'s `writeCartHoldError`
+  default branch (and CREATE_ORDER_EXT's hold-failure path, which routes
+  through the same function) answers Bil24 resultCode **-1** (transient,
+  retried by the WordPress plugin) for any `*pgconn.PgError` reaching it —
+  including a 40P01/40001 that survived the retry — rather than **-99**
+  (non-retryable); -99 is now reserved for errors that are not a Postgres
+  error at all. Any NEW code opening a transaction that touches BOTH
+  `inventory_ledger` and `sessions.seat_status_version` must follow the
+  same order and go through (or mirror) `retryOnSerializationFailure`.
 - **The public widget API has THREE independent rate limits, not one shared
   bucket, and the per-IP one only works when `TRUSTED_PROXY_COUNT` is set
   correctly.** `PUBLIC_FEED_TOKEN_RATE_LIMIT` (default 20000/min) is

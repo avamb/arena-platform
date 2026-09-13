@@ -470,7 +470,12 @@ func filterAlreadyHeldSeatKeys(ctx context.Context, txq *gen.Queries, reservatio
 	return out, nil
 }
 
-// inHoldTx runs fn inside a fresh transaction started from pool.
+// inHoldTx runs fn inside a fresh transaction started from pool, retrying the
+// WHOLE transaction (begin → fn → commit) up to holdMutationRetryAttempts
+// times when it loses a Postgres deadlock (40P01) or serialization failure
+// (40001) race — see retry.go. Every ExtendHold / ShrinkHold / ReacquireHold
+// call goes through this one helper, so wiring the retry here covers all
+// three without touching their bodies.
 func inHoldTx(
 	ctx context.Context,
 	pool TxStarter,
@@ -481,18 +486,26 @@ func inHoldTx(
 	if pool == nil || q == nil {
 		return HoldMutationResult{}, errors.New("hcheckout: hold mutation requires a pool and queries")
 	}
-	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return HoldMutationResult{}, fmt.Errorf("hcheckout: begin %s tx: %w", label, err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	var out HoldMutationResult
+	err := retryOnSerializationFailure(ctx, holdMutationRetryAttempts, func() error {
+		tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+		if err != nil {
+			return fmt.Errorf("hcheckout: begin %s tx: %w", label, err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
 
-	out, err := fn(q.WithTx(tx))
+		res, fnErr := fn(q.WithTx(tx))
+		if fnErr != nil {
+			return fnErr
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("hcheckout: commit %s: %w", label, err)
+		}
+		out = res
+		return nil
+	})
 	if err != nil {
 		return HoldMutationResult{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return HoldMutationResult{}, fmt.Errorf("hcheckout: commit %s: %w", label, err)
 	}
 	return out, nil
 }
