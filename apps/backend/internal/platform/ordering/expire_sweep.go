@@ -17,10 +17,11 @@ import (
 //
 // Spec §14.1: once a minute, every pending_payment order whose expires_at has
 // passed and whose checkout session never produced a succeeded payment intent
-// becomes 'expired'. Inventory itself is released by the existing reservation
-// TTL worker — this job only closes the order aggregate so the admin list and
-// GET_ORDER_INFO stop showing a purchase that will never complete, and so the
-// "one open order per customer+session" index frees up.
+// becomes 'expired'. Inventory itself is released by the separate
+// reservation.expire_sweep job (internal/platform/reservationexpiry) — this
+// job only closes the order aggregate so the admin list and GET_ORDER_INFO
+// stop showing a purchase that will never complete, and so the "one open
+// order per customer+session" index frees up.
 //
 // The job is self-scheduling in the same cron-like way as idempotency.cleanup:
 // each successful run enqueues the next one. That keeps the worker's job

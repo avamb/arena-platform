@@ -457,9 +457,48 @@ entries short and factual.
   partial channel update that passes nil — notably
   `PUT .../channels/{id}/gateway-credential` — resets a configured hold TTL to
   NULL (20-minute default). Found by the load-test suite 2026-09-13.
-- **No process expires reservations.** `hcheckout.ReservationProcessor.
-  ProcessExpiredReservations` is only called from integration tests; neither
-  arena-api nor arena-worker schedules it, and `order.expire_sweep` closes
-  orders only. Expired holds keep `inventory_ledger.capacity_held` and
-  `session_seats` `held` forever (proven by `gateway.js SCENARIO=expiry`).
-  Do not assume abandoned carts return to sale until a worker job exists.
+- **`reservation.expire_sweep` now releases TTL-expired reservation holds —
+  this was a live production defect until the fix.**
+  `hcheckout.ReservationProcessor.ProcessExpiredReservations` existed since
+  feature #131 but nothing in arena-api or arena-worker ever called it; a
+  buyer who reserved and walked away left `reservations` (draft/active),
+  `session_seats`/`ga_unit` rows (status held) and
+  `inventory_ledger.capacity_held` stuck forever, showing a session as sold
+  out with nothing sold. `internal/platform/reservationexpiry` is the
+  self-scheduling worker job (cadence 30s, batch 500, registered in
+  `cmd/arena-worker/main.go` next to `order.expire_sweep`) that finally
+  drives it. `order.expire_sweep` (`internal/platform/ordering`) only closes
+  the order aggregate — it never released inventory, despite an old comment
+  in that file claiming otherwise. The audit also found the TTL processor's
+  capacity-release branching had silently drifted from `ReleaseHold`'s (it
+  was missing the legacy-GA-lines branch); both now share
+  `releaseHoldCapacityTx` (`hcheckout/hold_api.go`) so the two release paths
+  cannot diverge again. Any FUTURE new hold shape (a new `session_seats.kind`,
+  a new capacity-accounting scheme, etc.) must stay releasable by
+  `expireReservation` (`hcheckout/reservation_processor.go`) — mirror
+  whatever `ReleaseHold` does for it, and extend the shared helper rather
+  than hand-rolling a second branch.
+- **Docker Desktop on this Windows host can lose the host-port publish for
+  `arena_postgres` (55432) to a Hyper-V/WSL NAT port exclusion** —
+  `netsh interface ipv4 show excludedportrange protocol=tcp` sometimes
+  reprograms its excluded ranges (commonly on a reboot) to include 55432, so
+  `docker start`/`up`/`--force-recreate` on the postgres service fails with
+  `bind: An attempt was made to access a socket in a way forbidden by its
+  access permissions` and `docker port arena_postgres` shows no mapping at
+  all — `localhost:55432` then refuses every connection even though
+  `docker exec arena_postgres psql ...` and the container's OWN network
+  (arena_api/arena_worker talking to it by the `postgres` hostname) work
+  fine throughout. Fixing the exclusion needs `Restart-Service winnat`,
+  which needs admin and is a system-settings change agents must not make.
+  Workaround that does not touch Windows: recreate the container with a
+  free host port instead of 55432 (check candidates against
+  `netsh interface ipv4 show excludedportrange protocol=tcp` first — low
+  ports like 25432/45432 are reliably outside the Hyper-V dynamic range) —
+  `docker rm arena_postgres` then
+  `docker run -d --name arena_postgres --network arena_new_default --network-alias postgres -e POSTGRES_DB=arena -e POSTGRES_USER=arena -e POSTGRES_PASSWORD=arena -v arena_new_arena_pg_data:/var/lib/postgresql/data -p 45432:5432 --restart unless-stopped postgres:17-alpine`
+  — the named volume (`arena_new_arena_pg_data`) and the `postgres` network
+  alias preserve both the data and arena_api/arena_worker's connectivity;
+  verify with `select count(*) from organizations` before/after. Point any
+  host-side `DATABASE_URL` (migration smoke tests, the CI-Integration-job
+  recipe above) at the new port instead of 55432 until a future session
+  reclaims it.
