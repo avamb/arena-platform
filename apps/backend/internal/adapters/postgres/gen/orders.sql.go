@@ -169,6 +169,32 @@ func (q *Queries) GetOrderByID(ctx context.Context, id, orgID uuid.UUID) (OrderR
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// LockOrderForUpdate
+// ─────────────────────────────────────────────────────────────────────────────
+
+const lockOrderForUpdate = `-- name: LockOrderForUpdate :one
+SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
+       checkout_session_id, reservation_id, external_ref, source, status,
+       currency, subtotal, discount, charge, total, charge_percent_bp,
+       promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+FROM   orders
+WHERE  id = $1
+  AND  org_id = $2
+FOR UPDATE`
+
+// LockOrderForUpdate is GetOrderByID plus a row-level lock (payment-window
+// contract, owner decision 2026-09-13): PAY_ORDER calls this FIRST, inside
+// its transaction, so concurrent PAY_ORDER calls for the same order
+// serialize on the lock instead of racing a read-then-write status
+// decision. Returns pgx.ErrNoRows when not found or owned by another org.
+// MUST be called inside a transaction.
+func (q *Queries) LockOrderForUpdate(ctx context.Context, id, orgID uuid.UUID) (OrderRow, error) {
+	row := q.db.QueryRow(ctx, lockOrderForUpdate, id, orgID)
+	return scanOrderRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GetOrderBySystemID
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -734,36 +760,5 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
 // matches zero rows and gets pgx.ErrNoRows instead of clobbering a paid order.
 func (q *Queries) ExpireOrderIfStillPending(ctx context.Context, id uuid.UUID) (OrderRow, error) {
 	row := q.db.QueryRow(ctx, expireOrderIfStillPending, id)
-	return scanOrderRow(row)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ReviveOrderIfExpired
-// ─────────────────────────────────────────────────────────────────────────────
-
-const reviveOrderIfExpired = `-- name: ReviveOrderIfExpired :one
-UPDATE orders
-SET    status       = 'pending_payment',
-       cancelled_at = NULL,
-       updated_at   = now()
-WHERE  id     = $1
-  AND  org_id = $2
-  AND  status = 'expired'
-RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
-          checkout_session_id, reservation_id, external_ref, source, status,
-          currency, subtotal, discount, charge, total, charge_percent_bp,
-          promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
-          paid_at, cancelled_at, expires_at, metadata, created_at, updated_at`
-
-// ReviveOrderIfExpired flips one order back to 'pending_payment' only while it
-// is still 'expired' (money-safety fix: PAY_ORDER's late-payment revival,
-// ordering.ReviveForPayment). The status guard mirrors
-// ExpireOrderIfStillPending — whichever caller wins the race sees the row,
-// everyone else gets pgx.ErrNoRows instead of clobbering whatever status the
-// order actually moved to. cancelled_at is cleared explicitly (unlike
-// UpdateOrderStatus's COALESCE-preserve semantics) so a later paid order does
-// not carry a stale "stopped being live at" timestamp from its expiry.
-func (q *Queries) ReviveOrderIfExpired(ctx context.Context, id, orgID uuid.UUID) (OrderRow, error) {
-	row := q.db.QueryRow(ctx, reviveOrderIfExpired, id, orgID)
 	return scanOrderRow(row)
 }

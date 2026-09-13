@@ -131,6 +131,12 @@ var Bil24DescriptionKeys = []string{
 	"bil24.promo_not_applicable",
 	"bil24.promo_min_order",
 	"bil24.hold_expired",
+	// bil24.order_expired (payment-window contract, owner decision
+	// 2026-09-13): PAY_ORDER answers this when the buyer's fixed payment
+	// window (set by CREATE_ORDER_EXT) has elapsed — distinct from
+	// bil24.hold_expired, which is a hold lost to a competitor WITHIN the
+	// window.
+	"bil24.order_expired",
 	// bil24.open_order_exists (money-safety fix): CREATE_ORDER_EXT refuses to
 	// steal a customer's still-live open order for the same session when a
 	// second CREATE_ORDER_EXT arrives pointing at a different reservation.

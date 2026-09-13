@@ -275,87 +275,61 @@ If a site reports `open_order_exists` for what looks like one buyer: check wheth
 tabs/devices under the same identity are checking out the same event concurrently. The fix is
 working as intended — the buyer (or their second tab) needs to finish or cancel the first order.
 
-### 9.2 PAY_ORDER on an order the expire sweep already closed
+### 9.2 The payment window (owner decision 2026-09-13) — PAY_ORDER never parks in manual_review
 
-`order.expire_sweep` (spec §14.1, every minute) closes a `pending_payment` order once its hold's
-TTL passes. The buyer's WooCommerce charge can still land a moment after the sweep tick, and
-PAY_ORDER used to answer a generic `resultCode -1` for an `expired` order — which the WordPress
-plugin retries forever, because nothing about `orders.status` ever changes on its own. That left a
-charged buyer with no ticket and no way out except manual intervention.
+A buyer gets a FIXED window to pay, starting the instant the site creates (or restarts) the order:
+`CREATE_ORDER_EXT` sets `orders.expires_at = reservations.expires_at = now + payment_window_seconds
++ payment_grace_seconds`, both settable per channel under `settings.gateway`
+(`payment_window_seconds`, default 1200s/20min, bounds 60..7200; `payment_grace_seconds`, default
+120s, bounds 0..600 — the grace absorbs only the site's own network latency delivering PAY_ORDER,
+never extends how long the buyer has to authorize the card). Every `CREATE_ORDER_EXT` — a fresh
+order or the same-cart update-in-place — restarts this window from the moment it runs, and the
+response carries two new fields alongside the pre-existing `expiration` (which the spec already
+defines, RFC3339, the hold's own deadline): `paymentDeadline` (unix epoch seconds, `now + window`,
+the instant the SITE must stop accepting payment) and `paymentTimeout` (the window in seconds). A
+plain cart `RESERVATION RESERVE`/`UN_RESERVE` on the same session never shortens a hold whose
+expiry an open order has already pushed out — the underlying TTL-refresh primitive only ever moves
+`expires_at` forward.
 
-PAY_ORDER on an `expired` order now attempts to **revive** it before completing the payment,
-reusing the exact same hold-check/reacquire logic (`payEnsureHold`) a live `pending_payment` order
-already goes through:
+By owner decision, **there is no manual review anywhere in the gateway path any more** — the owner
+has no staff for it, so every PAY_ORDER outcome resolves automatically:
 
-- If the reservation is still live, or its TTL has passed but the seats are still exclusively
-  held by it (`hcheckout.ReacquireHoldTx` re-takes them, recorded as `order_events.hold_reacquired`
-  — same as the pre-existing live-hold-died-at-pay-time case), the order is moved back to
-  `pending_payment` (`ordering.ReviveForPayment`, recorded as `order_events.revived_for_payment`)
-  and the payment completes normally: `resultCode 0`, tickets issued synchronously.
-- If the hold cannot be secured (the seats now belong to a different reservation), the order and
-  its checkout session are parked in `manual_review`, `order_events.hold_expired` is written with
-  `payload.reason = "hold_expired"`, an operator alert fires with the same reason, and the answer
-  is `resultCode 101 bil24.hold_expired` — identical to the pre-existing behavior for a live order
-  whose hold died between RESERVE and PAY_ORDER.
-- **A third outcome, found in review**: the hold itself CAN be re-acquired, but the SAME customer
-  already re-reserved for the SAME session and CREATE_ORDER_EXT legitimately minted a fresh
-  `pending_payment` order while this order's late payment was in flight. Reviving this order would
-  give the customer two simultaneous `pending_payment` orders for one session, which the partial
-  unique index `orders_one_pending_per_customer_session_uq` forbids (SQLSTATE 23505,
-  `ordering.ErrOpenOrderConflict`). This is NOT a transient error — retrying identically forever
-  would reproduce the exact same -1-forever defect this whole section exists to close — so it is
-  treated exactly like an unrecoverable hold: the payment transaction rolls back (releasing the
-  re-acquired hold back to the newer order's reach), the order and its checkout session park in
-  `manual_review`, `order_events.hold_expired` is written with `payload.reason =
-  "superseded_by_open_order"` (a DIFFERENT reason than the plain case, so an operator reading the
-  alert or the event payload can tell "the seats are gone" apart from "the customer already has
-  another open order for this money"), and the answer is still `resultCode 101 bil24.hold_expired`
-  — the wire contract does not distinguish the two park reasons, only the operator-facing metadata
-  does. The customer's newer order is completely untouched by this — it is the correct, live order
-  for the money that has not yet been collected against it.
+| Order state at PAY_ORDER | Hold | Result |
+|---|---|---|
+| `paid` | — | `resultCode 0`, idempotent, no writes |
+| `pending_payment`, within the window | live | pays normally, `resultCode 0`, tickets issued synchronously |
+| `pending_payment`, within the window | TTL'd but still exclusively ours | re-acquired (`order_events.hold_reacquired`), then pays, `resultCode 0` |
+| `pending_payment`, within the window | lost to someone else's RESERVE | the order is **cancelled** automatically (`ordering.Cancel`, `order_events.cancelled` with `payload.reason="hold_expired"`), `resultCode 101 bil24.hold_expired` |
+| `pending_payment`, past the window | any | the order is **expired** in place (mirrors `order.expire_sweep`'s own per-row step) and its hold released, `order_events.hold_expired` with `payload.reason="payment_window_elapsed"`, `resultCode 101 bil24.order_expired` |
+| `expired` | — | `resultCode 101 bil24.order_expired`, NO revival, no writes |
+| `cancelled`/`refunded`/`partially_refunded`/`abandoned` | — | `resultCode 101 bil24.order_cancelled`, no writes |
+| `manual_review` (**legacy rows only** — nothing writes this status any more) | — | `resultCode 101 bil24.hold_expired`, no writes |
 
-Every other non-payable status PAY_ORDER can see is handled explicitly rather than falling through
-to a generic error: `paid` answers `0` idempotently (no writes), `cancelled`/`refunded`/
-`partially_refunded`/`abandoned` answer `101 bil24.order_cancelled`, and — this is the idempotency
-half of the fix — a **replayed** PAY_ORDER on an order already parked in `manual_review` (either
-park reason) answers the same `101 bil24.hold_expired` again WITHOUT re-parking it, without writing
-a second `hold_expired` event, and without raising a second operator alert. Before this fix, a
-replay (which the WordPress plugin performs on any non-zero resultCode) re-ran the whole
-park-and-alert sequence every time, which would have paged an operator once per retry.
+Every branch is idempotent: a replayed PAY_ORDER (the WordPress plugin retries any non-zero
+`resultCode`) answers the same result again without writing a second event or touching inventory
+twice.
 
-Runbook implication: a `manual_review` order from the §9.2 path needs the SAME manual resolution as
-any other manual-review order (§4-adjacent — there is no automated recovery). Find candidates and
-read the park reason (both from the audit trail and from the order's own event payload) with:
+**Concurrency.** PAY_ORDER takes a row-level lock on the order (`LockOrderForUpdate`) as the FIRST
+statement of its transaction and makes its ENTIRE decision — pay, expire, or leave alone — from the
+row it reads UNDER that lock, never from a value read before the transaction opened. Concurrent
+PAY_ORDER calls for the SAME order (a WordPress retry storm, or several requests landing right at
+the payment-window boundary) therefore serialize on the lock: only the first to observe
+`pending_payment` with a securable hold before the deadline actually pays; every later call sees
+the row AFTER that transaction committed and answers consistently with whatever it became. As a
+second, independent safety net, `payment_intents.provider_payment_id` is a GLOBAL unique index and
+is deterministic per order+method, so two transactions racing to complete the SAME payment can
+never both succeed even if the lock were somehow bypassed.
 
-```sql
-SELECT id, system_id, org_id, status, expires_at, updated_at
-FROM orders
-WHERE status = 'manual_review'
-ORDER BY updated_at DESC;
-
-SELECT order_id, type, payload->>'reason' AS reason, created_at
-FROM order_events
-WHERE order_id = '<order id>' AND type = 'hold_expired'
-ORDER BY created_at DESC;
-```
-
-`reason = 'superseded_by_open_order'` means the buyer already has a working, live order for this
-session — check whether THAT order completed normally before doing anything with the parked one; a
-refund against the parked order (not the live one) is very likely what the buyer actually needs.
-`reason = 'hold_expired'` (or the pre-fix rows with no reason at all) means the seats are genuinely
-gone and the resolution is the general manual-review one: refund or manually re-issue against
-different inventory.
-
-**Note on the unique index**: `orders_one_pending_per_customer_session_uq` (migration 0092) is a
-PARTIAL index — `CREATE UNIQUE INDEX ... ON orders (customer_id, session_id) WHERE status =
-'pending_payment'` — so it only constrains rows CURRENTLY valued `pending_payment`. Parking an
-order in `manual_review` (`UpdateOrderStatus(..., 'manual_review', ...)`, `payParkManualReview`)
-takes the row OUT of the index's predicate and can never itself collide with this constraint,
-regardless of what other orders exist for the same customer+session — only the REVIVE write
-(`expired` → `pending_payment`) can.
-
-and cross-reference `order_events` for that `order_id` (`hold_expired` / `revived_for_payment` /
-`hold_reacquired`) to see which path it took.
+**What this replaces.** Before this decision, an `expired` order attempted a "revival"
+(`ordering.ReviveForPayment`) back to `pending_payment` when its hold could still be secured, and a
+hold that could not be secured parked the order (and its checkout session) in `manual_review` with
+an operator alert (`payParkManualReview`). Both mechanisms, and the `ordering.ErrOpenOrderConflict`
+edge case they created (reviving an order could collide with a customer's newer legitimately-open
+order for the same session), are REMOVED — a fixed payment window makes them unreachable: an order
+past its window is expired outright rather than revival-eligible, and a hold lost within the window
+is cancelled automatically rather than parked for a human. A `manual_review` order in a live
+database predates this change; nothing new will ever create one, and PAY_ORDER's terminal-status
+handling for it is kept only so a stale row does not retry-loop.
 
 ## Related reading
 

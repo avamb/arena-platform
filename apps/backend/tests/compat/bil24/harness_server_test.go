@@ -203,6 +203,19 @@ func cleanupHarnessWireRows(t *testing.T, st *harnessState) {
 		`DELETE FROM tickets WHERE checkout_session_id IN
 		     (SELECT id FROM checkout_sessions WHERE org_id = $1::uuid)`,
 		`DELETE FROM payment_intents WHERE org_id = $1::uuid`,
+		// Payment-window contract (owner decision 2026-09-13): PAY_ORDER's
+		// success path enqueues a checkout.issue_tickets worker_jobs row keyed
+		// by checkout_session_id/reservation_id in its JSON payload (no FK), the
+		// same job type the widget payment webhook enqueues. It MUST be swept
+		// before the checkout_sessions/reservations deletes below, or it leaks
+		// into internal/platform/httpserver's auth_email_integration_test.go,
+		// which drains worker_jobs generically and has no handler registered
+		// for this job type (mirrors the exact gotcha already documented for
+		// webhook_widget_completion_integration_test.go's cleanup).
+		`DELETE FROM worker_jobs WHERE payload->>'checkout_session_id' IN
+		     (SELECT id::text FROM checkout_sessions WHERE org_id = $1::uuid)`,
+		`DELETE FROM worker_jobs WHERE payload->>'reservation_id' IN
+		     (SELECT id::text FROM reservations WHERE org_id = $1::uuid)`,
 		`DELETE FROM orders WHERE org_id = $1::uuid`,
 		`DELETE FROM checkout_sessions WHERE org_id = $1::uuid`,
 		`DELETE FROM reservations WHERE org_id = $1::uuid`,

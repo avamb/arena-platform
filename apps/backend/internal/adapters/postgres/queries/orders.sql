@@ -52,6 +52,28 @@ FROM   orders
 WHERE  id = $1
   AND  org_id = $2;
 
+-- name: LockOrderForUpdate :one
+-- Payment-window contract (owner decision 2026-09-13, spec §7.9 replacement):
+-- PAY_ORDER takes a row-level lock on the order FIRST, before deciding
+-- whether to pay, cancel, or expire it, so that concurrent PAY_ORDER calls
+-- for the SAME order (a WordPress retry storm, or several requests landing
+-- right at the payment-window boundary) serialize on this lock instead of
+-- racing a read-then-write decision — MarkPaid's own UpdateOrderStatus has
+-- no status guard at the SQL level, so without this lock a slow transaction
+-- could blindly overwrite a status a faster, concurrent transaction already
+-- moved on. Returns pgx.ErrNoRows when the order does not exist or belongs
+-- to another org. MUST be called inside a transaction; the lock is held
+-- until commit/rollback.
+SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
+       checkout_session_id, reservation_id, external_ref, source, status,
+       currency, subtotal, discount, charge, total, charge_percent_bp,
+       promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
+       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
+FROM   orders
+WHERE  id = $1
+  AND  org_id = $2
+FOR UPDATE;
+
 -- name: GetOrderBySystemID :one
 -- Loads an order by the bigint system_id exposed to Bil24 clients as
 -- orderId (GET_ORDER_INFO, spec §7.8). Returns pgx.ErrNoRows when absent.

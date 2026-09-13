@@ -600,6 +600,24 @@ func (h *Handler) orderPersist(
 	defer func() { _ = tx.Rollback(ctx) }()
 	txq := gen.New(tx)
 
+	// Payment window (owner decision 2026-09-13): every CREATE_ORDER_EXT — a
+	// fresh order or a same-cart update-in-place — restarts the buyer's
+	// fixed window to pay from THIS instant. The reservation's expires_at is
+	// moved to the SAME instant, in this SAME transaction, via a primitive
+	// that touches only the reservations row (no inventory, no seat lock
+	// order to observe); ordering.CreateOrderFromCheckout /
+	// UpdateOrderFromCheckout then copy orders.expires_at straight from the
+	// reservation they re-read a moment later, so the two are always exactly
+	// equal.
+	settings := parseGatewaySettings(cc.channel.Settings)
+	now := time.Now().UTC()
+	paymentDeadline := now.Add(settings.PaymentWindow())
+	holdExpiresAt := paymentDeadline.Add(settings.PaymentGrace())
+	if _, err := hcheckout.SetHoldExpiryTx(ctx, txq, res.ID, holdExpiresAt); err != nil {
+		h.orderInternal(w, req, "set hold expiry failed", err)
+		return
+	}
+
 	// Step 4. Verified flags are never touched here: Resolve only attaches
 	// identities, and the gateway has not proven ownership of either channel.
 	cres, err := customers.Resolve(ctx, customers.NewStoreFromQueries(txq), customers.ResolveInput{
@@ -685,12 +703,24 @@ func (h *Handler) orderPersist(
 		"orderId":         order.SystemID,
 		"externalOrderId": req.OrderID,
 		// Spec 20 §3: orders.* are minor units, the wire is major.
-		"sum":        money.Major(order.Subtotal),
-		"discount":   money.Major(order.Discount),
-		"charge":     money.Major(order.Charge),
-		"totalSum":   money.Major(order.Total),
-		"currency":   order.Currency,
-		"expiration": expiration.UTC().Format(time.RFC3339),
+		"sum":      money.Major(order.Subtotal),
+		"discount": money.Major(order.Discount),
+		"charge":   money.Major(order.Charge),
+		"totalSum": money.Major(order.Total),
+		"currency": order.Currency,
+		// expiration is the pre-existing spec §7.7 field (the hold's own
+		// expires_at). paymentDeadline/paymentTimeout are new additions for
+		// the payment-window contract (owner decision 2026-09-13): the spec
+		// itself has no timeout field on CREATE_ORDER_EXT, only this
+		// RFC3339 `expiration`, so these are gateway-specific extensions the
+		// site opts into reading. paymentDeadline is deliberately the
+		// window-only instant (NOT expiration, which also carries the
+		// grace) — it is the moment the SITE must stop accepting payment;
+		// the grace exists purely to absorb the site's own delivery
+		// latency to PAY_ORDER after that.
+		"expiration":      expiration.UTC().Format(time.RFC3339),
+		"paymentDeadline": paymentDeadline.Unix(),
+		"paymentTimeout":  settings.PaymentWindowSeconds,
 	}))
 }
 

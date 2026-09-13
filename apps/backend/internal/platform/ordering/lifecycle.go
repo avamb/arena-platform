@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
@@ -198,79 +197,50 @@ func Expire(ctx context.Context, q LifecycleStore, in ExpireInput) (gen.OrderRow
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ReviveForPayment
+// ExpireIfStillPending — payment-window contract (owner decision 2026-09-13)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ReviveInput describes an expired order a caller has already proven can be
-// paid — its hold is either still live or was just re-acquired.
-type ReviveInput struct {
+// ExpireIfStillPendingInput describes a status-guarded expire attempt for
+// exactly one order, safe to race against a concurrent payment.
+type ExpireIfStillPendingInput struct {
 	OrderID uuid.UUID
-	OrgID   uuid.UUID
 	Actor   string
+	Now     time.Time
 }
 
-// ReviveForPayment moves an expired order back to pending_payment so MarkPaid
-// can complete it a moment later in the SAME transaction. This is
-// intentionally the ONLY path that resurrects an expired order: the buyer's
-// WooCommerce charge already happened before the shop ever called PAY_ORDER,
-// and order.expire_sweep (or a single-order Expire, e.g. a competing
-// CREATE_ORDER_EXT) closing the aggregate in the meantime does not make that
-// charge go away. Callers MUST have already proven the hold is securable
-// (payEnsureHold's live-or-reacquired check) before calling this — it does
-// not touch inventory itself, only the order's bookkeeping status, and it
-// records EventRevivedForPayment so the audit trail shows what happened
-// before the immediately-following 'paid' event.
+// ExpireIfStillPending atomically flips a pending_payment order to expired
+// and records the hold_expired event, exactly like the order.expire_sweep
+// job's own per-row step (RunExpireSweep) — but usable from a single caller
+// that already knows one order's payment window has elapsed. hbil24
+// PAY_ORDER calls this when a buyer's payment attempt arrives after the
+// order's fixed payment window (window+grace from CREATE_ORDER_EXT, owner
+// decision 2026-09-13 — no manual review) has passed and the sweep has not
+// yet processed it: it performs the sweep's job itself, in the same
+// transaction that also releases the reservation's hold
+// (hcheckout.ExpireHoldForOrderTx).
 //
-// The write is the status-guarded ReviveOrderIfExpired rather than a
-// read-then-write, mirroring Expire's sweep counterpart
-// (ExpireOrderIfStillPending): if a concurrent process already moved the
-// order on (paid it, parked it in manual_review, cancelled it) the guard
-// matches zero rows and this function reloads the row to decide rather than
-// clobbering whatever that other process did. An order already at
-// pending_payment or paid is treated as a harmless no-op (MarkPaid handles
-// both idempotently); every other status is ErrInvalidTransition, which the
-// caller (hbil24 PAY_ORDER) turns into a transient retry rather than ever
-// resurrecting or re-parking an order behind someone else's back.
-func ReviveForPayment(ctx context.Context, q LifecycleStore, in ReviveInput) (gen.OrderRow, error) {
-	updated, err := q.ReviveOrderIfExpired(ctx, in.OrderID, in.OrgID)
+// The underlying write is the status-guarded ExpireOrderIfStillPending
+// rather than a read-then-write: ok=false (with a nil error) means the
+// order already moved on to some other status (paid by a request that won
+// a race, expired by the sweep itself, or cancelled) — there is nothing
+// more for this call to do, and the caller should re-read the order to
+// answer correctly.
+func ExpireIfStillPending(ctx context.Context, q SweepStore, in ExpireIfStillPendingInput) (gen.OrderRow, bool, error) {
+	row, err := q.ExpireOrderIfStillPending(ctx, in.OrderID)
 	if err != nil {
-		if isOpenOrderUniqueViolation(err) {
-			return gen.OrderRow{}, fmt.Errorf("%w: %w", ErrOpenOrderConflict, err)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return gen.OrderRow{}, false, nil
 		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return gen.OrderRow{}, fmt.Errorf("ordering: revive order: %w", err)
-		}
-		current, gErr := q.GetOrderByID(ctx, in.OrderID, in.OrgID)
-		if gErr != nil {
-			return gen.OrderRow{}, fmt.Errorf("ordering: reload order after failed revive: %w", gErr)
-		}
-		if current.Status == StatusPendingPayment || current.Status == StatusPaid {
-			return current, nil
-		}
-		return gen.OrderRow{}, fmt.Errorf("%w: %s -> %s (revive)", ErrInvalidTransition, current.Status, StatusPendingPayment)
+		return gen.OrderRow{}, false, fmt.Errorf("ordering: expire order: %w", err)
 	}
 
-	if _, err := q.InsertOrderEvent(ctx, updated.ID, EventRevivedForPayment, actorOrSystem(in.Actor), emptyJSON()); err != nil {
-		return gen.OrderRow{}, fmt.Errorf("ordering: insert revived_for_payment event: %w", err)
+	if _, err := q.InsertOrderEvent(ctx, row.ID, EventHoldExpired, actorOrSystem(in.Actor), marshalPayload(map[string]any{
+		"reason":     "payment_window_elapsed",
+		"expires_at": row.ExpiresAt,
+	})); err != nil {
+		return gen.OrderRow{}, false, fmt.Errorf("ordering: insert hold_expired event: %w", err)
 	}
-	return updated, nil
-}
-
-// isOpenOrderUniqueViolation reports whether err is a Postgres 23505
-// (unique_violation) against orders_one_pending_per_customer_session_uq —
-// the partial unique index ReviveOrderIfExpired's UPDATE can hit when the
-// customer already has a DIFFERENT pending_payment order for this session.
-// When the driver surfaces a constraint name it must match exactly; when it
-// does not (some pooling layers strip it), the SQLSTATE code alone is
-// treated as sufficient — this function is only ever consulted right after
-// ReviveOrderIfExpired's single UPDATE, so a 23505 there has no other
-// plausible cause.
-func isOpenOrderUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
-		return false
-	}
-	return pgErr.ConstraintName == "" || pgErr.ConstraintName == "orders_one_pending_per_customer_session_uq"
+	return row, true, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

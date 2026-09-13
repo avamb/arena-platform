@@ -9,5 +9,7 @@
   "charge": 45,
   "totalSum": 945,
   "currency": "CZK",
-  "expiration": "{{now+ttl}}"
+  "expiration": "{{now+ttl}}",
+  "paymentDeadline": 0,
+  "paymentTimeout": 1200
 }
