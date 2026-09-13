@@ -1,0 +1,12 @@
+# Local load-test overrides for the Bil24 gateway suite.
+# Usage, from the repo root:
+#   docker compose -f docker-compose.yml -f ops/loadtest/bil24/docker-compose.loadtest.yml up -d --build api worker
+services:
+  api:
+    environment:
+      BIL24_COMPAT_ENABLED: "true"
+      BIL24_REQUIRE_TOKEN: "true"
+      DB_LOG_QUERIES: "false"
+      # native.js sends "X-Forwarded-For: <visitor>, <proxy>" as a real reverse
+      # proxy would, so the per-IP limit keys on distinct simulated visitors.
+      TRUSTED_PROXY_COUNT: "1"

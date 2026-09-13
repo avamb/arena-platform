@@ -444,3 +444,22 @@ entries short and factual.
   one row to requeue it. Do not bulk-requeue against a still-broken
   receiver — it just refills the dead-letter queue. Full runbook:
   `docs/ops/bil24_gateway.md` §4.
+- **Load-test the sales paths with `ops/loadtest` (gateway.js, native.js,
+  provision.mjs, sql/audit.sql), never against a server.** `provision.mjs`
+  refuses non-local BASE_URLs. Run k6 from `grafana/k6:0.54.0` with
+  `BASE_URL=http://host.docker.internal:8080`; on Git Bash prefix
+  `MSYS_NO_PATHCONV=1` and mount a `C:/...` path. Give every simulated buyer a
+  distinct email AND phone: customers are matched by those identities and a
+  second pending order for the same customer+session expires the first one.
+  Findings of the first run: `docs/loadtest/2026-09-13_local_step1_ru.md`.
+- **`UpdateSalesChannel` assigns `reservation_ttl_override = $8`
+  unconditionally** (every other column is COALESCE/CASE-guarded), so any
+  partial channel update that passes nil — notably
+  `PUT .../channels/{id}/gateway-credential` — resets a configured hold TTL to
+  NULL (20-minute default). Found by the load-test suite 2026-09-13.
+- **No process expires reservations.** `hcheckout.ReservationProcessor.
+  ProcessExpiredReservations` is only called from integration tests; neither
+  arena-api nor arena-worker schedules it, and `order.expire_sweep` closes
+  orders only. Expired holds keep `inventory_ledger.capacity_held` and
+  `session_seats` `held` forever (proven by `gateway.js SCENARIO=expiry`).
+  Do not assume abandoned carts return to sale until a worker job exists.

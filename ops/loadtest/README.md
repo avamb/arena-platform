@@ -18,6 +18,55 @@ bcrypt + JWT issuance path that all other users depend on.
 
 ---
 
+## Sales-path suite — both entry points (local stand)
+
+Added 2026-09-13. Exercises the whole sale on one on-sale event through both
+ways arena sells tickets, and checks inventory correctness afterwards.
+
+| File | What it does |
+|------|--------------|
+| `provision.mjs` | Local-only fixtures: channel with a short hold TTL, gateway credential (fid/token), import API key, three events (`flow` 20k+2k GA, `race` 10 GA, `expiry` 20 GA), public feed token with the events published, org JWT. Writes `results/fixtures.local.json` (gitignored, holds local secrets). |
+| `gateway.js` | The Bil24-compatible gateway (`/compat/bil24/json`) the migrated WordPress sites use. `SCENARIO=flow` (browsers + buyers + abandoned carts, polls tickets), `race` (N buyers for the last tickets), `expiry` (abandoned holds must return to sale after the TTL). |
+| `native.js` | arena's own public API used by the widget: feed → `checkout/start` → payment intent + webhook (`processing`, `succeeded`) → public checkout status. `SCENARIO=flow` or `race`. |
+| `sql/audit.sql` | Read-only inventory audit for one session: ledger vs units vs tickets, double-sold units, expired holds never released. Every "violations" column must be 0. |
+| `bil24/docker-compose.loadtest.yml` | Compose override: mounts the gateway, turns SQL query logging off. |
+
+Defaults model the agreed peak: **200 concurrent visitors, 50 orders/min**, 5 minutes.
+
+```bash
+# 1. Stand with the gateway mounted (rebuild the image when the code changed)
+docker compose -f docker-compose.yml -f ops/loadtest/bil24/docker-compose.loadtest.yml up -d --build api worker
+
+# 2. Fixtures (re-run before each race/expiry run: those pools are consumed)
+node ops/loadtest/provision.mjs
+
+# 3. Scenarios — k6 runs from the official image, results land in ops/loadtest/results/
+#    (on Git Bash prefix with MSYS_NO_PATHCONV=1 and use a C:/... path for -v)
+docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.internal:8080 -e SCENARIO=flow   grafana/k6:0.54.0 run /lt/gateway.js
+docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.internal:8080 -e SCENARIO=race   grafana/k6:0.54.0 run /lt/gateway.js
+docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.internal:8080 -e SCENARIO=expiry grafana/k6:0.54.0 run /lt/gateway.js
+docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.internal:8080 -e SCENARIO=flow   grafana/k6:0.54.0 run /lt/native.js
+docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.internal:8080 -e SCENARIO=race   grafana/k6:0.54.0 run /lt/native.js
+
+# 4. Audit a session afterwards (session ids are in results/fixtures.local.json)
+docker exec -i arena_postgres psql -U arena -d arena -v session_id=<uuid> < ops/loadtest/sql/audit.sql
+```
+
+Knobs: `BROWSERS`, `ORDERS_PER_MIN`, `ABANDON_PER_MIN`, `DURATION`, `RACERS`,
+`TICKET_POLL_SECONDS`, `EXPIRY_GRACE_SECONDS`, `SHARED_IP=1` (native: all
+visitors from one IP), `DEBUG=1` (log every failed call). Provisioning:
+`FLOW_POOL`, `RACE_POOL`, `EXPIRY_POOL`, `RESERVATION_TTL`.
+
+Test-design notes learned the hard way:
+- Give every simulated buyer its own email and phone. Customers are matched
+  by those identities and arena keeps one open order per customer per session,
+  so a shared email makes buyers expire each other's pending orders.
+- `PUT .../gateway-credential` resets the channel's `reservation_ttl_override`
+  to NULL; `provision.mjs` re-applies the TTL with a PATCH afterwards.
+- The first findings report is `docs/loadtest/2026-09-13_local_step1_ru.md`.
+
+---
+
 ## First Production Profile — Single Instance CI Baseline
 
 These thresholds are enforced by the k6 `thresholds:` blocks. A run fails the

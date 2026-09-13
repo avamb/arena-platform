@@ -37,17 +37,25 @@ export function login(baseUrl, email, password) {
 }
 
 /**
- * Issue a dev JWT via POST /v1/dev/auth/token (works only when DEBUG_ROUTES=true).
- * Useful in CI load tests where no real user DB is seeded.
+ * Issue a dev JWT via POST /v1/dev/auth/token (mounted only when ENABLE_DEV_AUTH=true,
+ * which docker-compose sets for the api service).
+ *
+ * The endpoint decodes with DisallowUnknownFields and expects
+ * {actor_id, org_id?, roles[], ttl_seconds?}. This helper used to send
+ * {user_id, role}, which the server rejects with 400, so every script built on
+ * it (scanner.js, checkout.js) silently ran unauthenticated (fixed 2026-09-13).
  *
  * @param {string}  baseUrl  e.g. "http://localhost:8080"
- * @param {string}  userId   any UUID to embed in the JWT sub claim
+ * @param {string}  userId   UUID embedded as the JWT subject (actor_id)
  * @param {string}  role     "admin" | "org_admin" | "member" (default "member")
+ * @param {string}  orgId    optional organization UUID for org-scoped claims
  */
-export function devToken(baseUrl, userId, role = 'member') {
+export function devToken(baseUrl, userId, role = 'member', orgId = undefined) {
+  const body = { actor_id: userId, roles: [role], ttl_seconds: 3600 };
+  if (orgId) body.org_id = orgId;
   const res = http.post(
     `${baseUrl}/v1/dev/auth/token`,
-    JSON.stringify({ user_id: userId, role }),
+    JSON.stringify(body),
     { headers: { 'Content-Type': 'application/json' } },
   );
 
