@@ -399,6 +399,17 @@ entries short and factual.
   22P02 — every audited mutation under an organization API key silently lost
   its audit row (and would abort a WriteTx transaction). The human label now
   lives in `actor_type='api_key'` + `metadata.actor_label` (fix 871eeed).
+- **Every gateway token check must go through `hbil24.parseGatewaySettings`.**
+  `sales_channels.settings` carries the hash in two shapes: legacy top-level
+  `gateway_token_hash` and the W1 shape `settings.gateway.token_hash` written
+  by `PUT .../channels/{id}/gateway-credential`. `authenticateCommand` used
+  the parser, but the older `validateGatewayToken` path (RESERVATION, cart
+  commands, CREATE_ORDER_EXT, PAY_ORDER, GET_TICKETS_BY_ORDER) decoded only
+  the legacy key, so a freshly provisioned channel passed GET_ALL_ACTIONS and
+  then got `-1 channel is not configured for gateway access` from the ticket
+  picker on the live stand (fixed 9c350f3). Never hand-roll a settings
+  decode for the hash again; the unit test
+  `TestBil24_ValidateGatewayToken_AcceptsNestedGatewayShape` guards it.
 - **`outbox_events` dead-letter replay is SQL-only, no admin endpoint.**
   `internal/platform/outbox` stops retrying a row once `dead_lettered_at` is
   set; find candidates with
