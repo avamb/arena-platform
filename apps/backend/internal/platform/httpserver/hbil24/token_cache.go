@@ -177,12 +177,11 @@ func (c *tokenCache) evictLocked() {
 func (h *Handler) verifyGatewayToken(tokenHash, token string) bool {
 	cache := h.tokenCache
 	if cache == nil {
-		// Defensive fallback for Handlers built as bare struct literals
-		// (several pre-existing unit tests do this for paths that never
-		// reach auth). Production wiring always goes through New(), which
-		// sets tokenCache unconditionally.
+		// Handlers built as bare struct literals in unit tests have no
+		// cache: verify without caching. The field is deliberately not
+		// assigned here, since concurrent requests would race on it.
+		// Production wiring always goes through New().
 		cache = newTokenCache(defaultTokenCacheTTL)
-		h.tokenCache = cache
 	}
 
 	if cache.hit(tokenHash, token) {
