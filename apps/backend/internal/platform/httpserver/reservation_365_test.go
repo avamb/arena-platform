@@ -137,19 +137,24 @@ func TestReservation365_Step4_ExpireReservationGuardedTransition(t *testing.T) {
 	})
 
 	t.Run("capacity_released_after_guarded_transition", func(t *testing.T) {
-		// ReleaseCapacity call must appear AFTER the UpdateReservationStateGuarded
-		// call in source order, so capacity is only released when we win the race.
-		// We look for the actual method-call patterns (not comments or text).
+		// The capacity release call must appear AFTER the
+		// UpdateReservationStateGuarded call in source order, so capacity is
+		// only released when we win the race. Since the reservation-sweep
+		// fix, capacity release goes through the shared releaseHoldCapacityTx
+		// helper (hold_api.go) rather than calling ReleaseCapacity directly
+		// here — it mirrors ReleaseHold's per-tier/GA-lines branching so the
+		// two release paths cannot drift apart. We look for the actual
+		// call pattern (not comments or text).
 		guardedIdx := strings.Index(content, "UpdateReservationStateGuarded(")
-		releaseIdx := strings.Index(content, ".ReleaseCapacity(")
+		releaseIdx := strings.Index(content, "releaseHoldCapacityTx(")
 		if guardedIdx < 0 {
 			t.Fatal("UpdateReservationStateGuarded( call not found in reservation_processor.go")
 		}
 		if releaseIdx < 0 {
-			t.Fatal(".ReleaseCapacity( call not found in reservation_processor.go")
+			t.Fatal("releaseHoldCapacityTx( call not found in reservation_processor.go")
 		}
 		if releaseIdx < guardedIdx {
-			t.Error("reservation_processor.go: .ReleaseCapacity( call appears BEFORE UpdateReservationStateGuarded( — capacity will double-release on concurrent cancel")
+			t.Error("reservation_processor.go: releaseHoldCapacityTx( call appears BEFORE UpdateReservationStateGuarded( — capacity will double-release on concurrent cancel")
 		}
 	})
 

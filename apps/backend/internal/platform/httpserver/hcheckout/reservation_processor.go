@@ -207,19 +207,11 @@ func (p *ReservationProcessor) expireReservation(ctx context.Context, r gen.Rese
 
 	// Release held capacity — only reached when the guarded transition won.
 	// Non-fatal if it fails (inventory may already be inconsistent, but the
-	// reservation is already marked expired above). AB-51: reservations
-	// with linked seat/GA-unit rows were reserved session-level (nil
-	// tier); row-less legacy reservations mirror their original reserve.
-	if releasedSeats > 0 {
-		relQty := int32(releasedSeats) //nolint:gosec // bounded by seat count
-		if _, err := q.ReleaseCapacity(ctx, r.SessionID, nil, relQty); err != nil {
-			p.logger.Warn("reservation_processor: release capacity failed (non-fatal)",
-				slog.String("reservation_id", r.ID.String()),
-				slog.String("session_id", r.SessionID.String()),
-				slog.String("error", err.Error()),
-			)
-		}
-	} else if _, err := q.ReleaseCapacity(ctx, r.SessionID, r.TierID, r.Quantity); err != nil {
+	// reservation is already marked expired above). Mirrors ReleaseHold's
+	// capacity-release branching via the shared releaseHoldCapacityTx helper
+	// (hold_api.go): session-level for released seats/GA units, per-tier for
+	// legacy GA lines, or the reservation's own tier_id+quantity fallback.
+	if err := releaseHoldCapacityTx(ctx, q, r.SessionID, r.ID, r.TierID, r.Quantity, releasedSeats); err != nil {
 		p.logger.Warn("reservation_processor: release capacity failed (non-fatal)",
 			slog.String("reservation_id", r.ID.String()),
 			slog.String("session_id", r.SessionID.String()),

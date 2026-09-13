@@ -64,6 +64,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/reservationexpiry"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
@@ -236,11 +237,27 @@ func run() error {
 	// once, and every subsequent run is enqueued by the handler itself.
 	if err := ordering.ScheduleInitialExpireSweepJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: a delayed first sweep only means an already-dead order
-		// lingers in pending_payment a little longer. Inventory is released
-		// by the reservation TTL worker regardless.
+		// lingers in pending_payment a little longer. This job only closes
+		// the order aggregate — the held inventory itself is released by
+		// reservation.expire_sweep, scheduled separately below.
 		logger.Warn("could not schedule initial order expire sweep job", "error", err.Error())
 	} else {
 		logger.Info("order expire sweep job scheduled at startup")
+	}
+
+	// 7d. Reservation expire-sweep startup scheduling ------------------------
+	// Same cron-like pattern: seed the queue once, and every subsequent run
+	// is enqueued by the handler itself. This is the job that actually
+	// releases TTL-expired reservation holds (session_seats/ga_unit rows and
+	// inventory_ledger.capacity_held) — without it a reservation the buyer
+	// abandoned stays held forever and the session shows sold out with
+	// nothing sold.
+	if err := reservationexpiry.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
+		// Non-fatal: a delayed first sweep only means an already-dead hold
+		// lingers a little longer before its inventory is released.
+		logger.Warn("could not schedule initial reservation expire sweep job", "error", err.Error())
+	} else {
+		logger.Info("reservation expire sweep job scheduled at startup")
 	}
 
 	// 8. Metrics + healthz HTTP server (feature #109, step 6) ----------------
@@ -396,6 +413,21 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		Store:     gen.New(pool),
 		Logger:    logger,
 		Scheduler: ordering.NewPGSweepScheduler(pool),
+	}))
+
+	// reservation.expire_sweep releases the inventory (held session_seats /
+	// ga_unit rows plus the inventory_ledger.capacity_held counter) behind a
+	// reservation whose TTL passed, then self-schedules the next run 30s
+	// later. This is the job that was missing entirely before this fix:
+	// hcheckout.ReservationProcessor existed since feature #131 but nothing
+	// in arena-api or arena-worker ever called it, so an abandoned hold
+	// stayed 'held' forever.
+	reservationQueries := gen.New(pool)
+	reg.Register(reservationexpiry.JobType, reservationexpiry.NewHandler(reservationexpiry.Options{
+		Processor: hcheckout.NewReservationProcessor(pool, reservationQueries, logger).
+			WithCheckoutQueries(reservationQueries),
+		Logger:    logger,
+		Scheduler: reservationexpiry.NewPGScheduler(pool),
 	}))
 
 	// ticket.deliver sends transactional emails with PDF attachments for

@@ -420,42 +420,62 @@ func ReleaseHold(ctx context.Context, pool TxStarter, q *gen.Queries, reservatio
 		return gen.ReservationRow{}, fmt.Errorf("hcheckout: release seats: %w", err)
 	}
 
-	// GA lines (empty for seated holds and legacy single-tier rows).
-	gaItems, err := txq.ListReservationGAItems(ctx, current.ID)
-	if err != nil {
-		return gen.ReservationRow{}, fmt.Errorf("hcheckout: list GA lines: %w", err)
-	}
-
-	// Return reserved capacity, mirroring how it was taken:
-	//   - session-level (nil tier) for released seats AND GA units —
-	//     since AB-51 both kinds live in reservation_seats and reserve
-	//     session-level capacity;
-	//   - per-tier for GA lines of LEGACY pre-AB-51 holds (no linked
-	//     units — released == 0);
-	//   - legacy fallback (reservation.tier_id + quantity) when the hold
-	//     predates GA lines and holds no seats.
-	switch {
-	case released > 0:
-		relQty := int32(released) //nolint:gosec // bounded by seat count
-		if _, err := txq.ReleaseCapacity(ctx, current.SessionID, nil, relQty); err != nil {
-			return gen.ReservationRow{}, fmt.Errorf("hcheckout: release seat capacity: %w", err)
-		}
-	case len(gaItems) > 0:
-		for i := range gaItems {
-			it := gaItems[i]
-			tierID := it.TierID
-			if _, err := txq.ReleaseCapacity(ctx, current.SessionID, &tierID, it.Quantity); err != nil {
-				return gen.ReservationRow{}, fmt.Errorf("hcheckout: release GA capacity: %w", err)
-			}
-		}
-	default:
-		if _, err := txq.ReleaseCapacity(ctx, current.SessionID, current.TierID, current.Quantity); err != nil {
-			return gen.ReservationRow{}, fmt.Errorf("hcheckout: release capacity: %w", err)
-		}
+	// Return reserved capacity, mirroring how it was taken. Shared with the
+	// TTL worker's expireReservation so the two capacity-release paths
+	// cannot drift apart.
+	if err := releaseHoldCapacityTx(ctx, txq, current.SessionID, current.ID, current.TierID, current.Quantity, released); err != nil {
+		return gen.ReservationRow{}, fmt.Errorf("hcheckout: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return gen.ReservationRow{}, fmt.Errorf("hcheckout: commit release: %w", err)
 	}
 	return cancelled, nil
+}
+
+// releaseHoldCapacityTx returns previously-reserved inventory_ledger capacity
+// for a cancelled/expired reservation, mirroring how CreateSeatedHold /
+// CreateGAHold took it:
+//
+//   - session-level (nil tier) when seats or GA units were released via
+//     reservation_seats (releasedSeats > 0) — every AB-51 hold lives here,
+//     since seats and GA units both reserve session-level capacity;
+//   - per-tier for legacy GA lines (reservation_ga_items) when the hold
+//     predates GA-unit stamping (releasedSeats == 0 but lines exist);
+//   - the reservation's own tier_id + quantity fallback for legacy
+//     single-tier holds with neither linked seats nor GA lines.
+//
+// Shared by ReleaseHold (the cancel path) and the TTL worker's
+// expireReservation (reservation_processor.go) so the branch logic cannot
+// silently drift between the two release paths — the bug this helper fixes
+// is that the TTL worker used to release capacity ONLY session-level or via
+// the legacy fallback, skipping the legacy-GA-lines branch entirely.
+func releaseHoldCapacityTx(ctx context.Context, q *gen.Queries, sessionID, reservationID uuid.UUID, fallbackTierID *uuid.UUID, fallbackQuantity int32, releasedSeats int) error {
+	if releasedSeats > 0 {
+		relQty := int32(releasedSeats) //nolint:gosec // bounded by seat count
+		if _, err := q.ReleaseCapacity(ctx, sessionID, nil, relQty); err != nil {
+			return fmt.Errorf("release seat capacity: %w", err)
+		}
+		return nil
+	}
+
+	gaItems, err := q.ListReservationGAItems(ctx, reservationID)
+	if err != nil {
+		return fmt.Errorf("list GA lines: %w", err)
+	}
+	if len(gaItems) > 0 {
+		for i := range gaItems {
+			it := gaItems[i]
+			tierID := it.TierID
+			if _, err := q.ReleaseCapacity(ctx, sessionID, &tierID, it.Quantity); err != nil {
+				return fmt.Errorf("release GA capacity: %w", err)
+			}
+		}
+		return nil
+	}
+
+	if _, err := q.ReleaseCapacity(ctx, sessionID, fallbackTierID, fallbackQuantity); err != nil {
+		return fmt.Errorf("release capacity: %w", err)
+	}
+	return nil
 }
