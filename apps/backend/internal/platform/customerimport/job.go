@@ -232,7 +232,6 @@ func runDryRun(ctx context.Context, opts Options, topQ *gen.Queries, imp gen.Cus
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // dry_run NEVER commits — see file doc comment.
 
-	store := customers.NewStoreFromQueries(gen.New(tx))
 	report := newReport()
 	source := "import:" + sourceLabel
 
@@ -249,16 +248,39 @@ func runDryRun(ctx context.Context, opts Options, topQ *gen.Queries, imp gen.Cus
 		if row.FirstOrderAt != nil {
 			orderAt = *row.FirstOrderAt
 		}
-		res, err := customers.Resolve(ctx, store, customers.ResolveInput{
-			Email:  row.Email,
-			Phone:  row.Phone,
-			Name:   row.Name,
-			Source: source,
-			Now:    orderAt,
-		})
-		if err != nil {
+		// Each row's resolve runs behind its own SAVEPOINT: this loop
+		// shares ONE transaction across every row, and a row whose
+		// resolve fails for a genuine reason (not the identity race
+		// customers.Resolve already recovers from internally) would
+		// otherwise abort that shared tx — silently turning every
+		// LATER row in the file into a spurious "skipped" too, since
+		// nothing here previously checked whether the tx was still
+		// usable before continuing the loop. AGENTS.md "best-effort
+		// writes... MUST sit behind a SAVEPOINT".
+		var res customers.ResolveResult
+		resolveErr := func() error {
+			sp, spErr := tx.Begin(ctx)
+			if spErr != nil {
+				return spErr
+			}
+			store := customers.NewStoreFromQueries(gen.New(sp))
+			var err error
+			res, err = customers.Resolve(ctx, store, customers.ResolveInput{
+				Email:  row.Email,
+				Phone:  row.Phone,
+				Name:   row.Name,
+				Source: source,
+				Now:    orderAt,
+			})
+			if err != nil {
+				_ = sp.Rollback(ctx)
+				return err
+			}
+			return sp.Commit(ctx)
+		}()
+		if resolveErr != nil {
 			report.Skipped++
-			report.Errors = append(report.Errors, fmt.Sprintf("row %d: %v", report.Rows, err))
+			report.Errors = append(report.Errors, fmt.Sprintf("row %d: %v", report.Rows, resolveErr))
 			continue
 		}
 		switch {

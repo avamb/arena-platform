@@ -140,6 +140,15 @@ func (m *memCustomerStore) GetCustomer(_ context.Context, id uuid.UUID) (custome
 	return customers.Customer{}, customers.ErrNotFound
 }
 
+// WithSavepoint is a test double with no real transaction semantics: none
+// of the CREATE_USER tests in this file exercise a concurrent-insert race,
+// so fn just runs directly against m. Real rollback isolation lives in
+// postgres_store.go and is covered by customers_test.go's fakeStore
+// (unit) and postgres_store_integration_test.go (real Postgres).
+func (m *memCustomerStore) WithSavepoint(_ context.Context, fn func(customers.Store) error) error {
+	return fn(m)
+}
+
 // memSessionQuerier is an in-memory GatewaySessionQuerier.
 type memSessionQuerier struct {
 	byToken    map[string]gen.GatewaySessionRow
