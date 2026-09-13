@@ -57,6 +57,7 @@ const purchaseFailed = new Counter('gw_purchases_failed');
 const journeyMs = new Trend('gw_purchase_journey_ms', true); // CREATE_USER .. PAY_ORDER
 const issuanceMs = new Trend('gw_ticket_issuance_ms', true); // PAY_ORDER ok → tickets visible
 const ticketsMissing = new Counter('gw_tickets_not_issued');
+const openOrderRefused = new Counter('gw_open_order_refused'); // SHARED_BUYERS: 101 open_order_exists
 const expiredHoldsReleased = new Rate('gw_expired_holds_released');
 
 const scenarios = {
@@ -146,12 +147,28 @@ function nextSiteOrderId() {
   return 7_000_000_000 + exec.vu.idInTest * 100_000 + (wcOrderSeq % 100_000);
 }
 
+// SHARED_BUYERS=N folds every buyer onto N identities, so concurrent buyers
+// share an email and phone the way family members or a shared office inbox
+// do. Arena then refuses a second order of the same customer for the same
+// session with resultCode 101 while the first order's hold is live, and no
+// payment may fail. 0 (default) gives every buyer its own identity.
+const SHARED_BUYERS = parseInt(__ENV.SHARED_BUYERS || '0', 10);
+// PAY_DELAY_SECONDS=N waits up to N seconds between CREATE_ORDER_EXT and
+// PAY_ORDER, which makes orders of shared identities overlap.
+const PAY_DELAY_SECONDS = parseInt(__ENV.PAY_DELAY_SECONDS || '0', 10);
+
+function buyerKey() {
+  if (SHARED_BUYERS > 0) return `shared${exec.scenario.iterationInTest % SHARED_BUYERS}`;
+  return `${exec.vu.idInTest}-${exec.scenario.iterationInTest}`;
+}
+
 function buyerEmail() {
-  return `loadtest+${FIX.run_id}-${exec.vu.idInTest}-${exec.scenario.iterationInTest}@example.test`;
+  return `loadtest+${FIX.run_id}-${buyerKey()}@example.test`;
 }
 
 function buyerPhone() {
   // Distinct per buyer as well: phone is a strong customer identity too.
+  if (SHARED_BUYERS > 0) return `+42079${String(exec.scenario.iterationInTest % SHARED_BUYERS).padStart(6, '0')}`;
   return `+4207${String(exec.vu.idInTest).padStart(4, '0')}${String(exec.scenario.iterationInTest % 10000).padStart(4, '0')}`;
 }
 
@@ -186,15 +203,25 @@ function purchase(ev, cat, quantity) {
     orderId: nextSiteOrderId(), userId: user.userId, sessionId: user.sessionId, currency: 'CZK',
     total: cart.data.totalSum, actionEventId: ev.action_event_id, longReservation: false,
     lines: [{ categoryPriceId: cat.category_price_id, quantity, tariffPlanId: null }],
-    // One email per buyer: arena allows one open order per customer per session,
-    // and customers are matched by email, so a shared email makes buyers cancel
-    // each other's pending orders.
+    // Arena allows one open order per customer per session, and customers are
+    // matched by email and phone: see SHARED_BUYERS.
     email: buyerEmail(), phone: buyerPhone(), fullName: 'Load Buyer',
     chargePercent: 0, promoCodes: [],
   }, { okCodes: [0, 101] });
   if (!order.ok) { purchaseFailed.add(1); return 'failed'; }
-  if (order.code === 101) { purchaseSoldOut.add(1); return 'sold_out'; }
+  if (order.code === 101) {
+    if (String(order.data.description || '').includes('unpaid order')) {
+      openOrderRefused.add(1);
+      gw('RESERVATION', { type: 'UN_RESERVE_ALL', userId: user.userId, sessionId: user.sessionId },
+        { metric: 'UN_RESERVE_ALL' });
+      return 'refused';
+    }
+    purchaseSoldOut.add(1);
+    return 'sold_out';
+  }
 
+  // A buyer spends time on the shop's payment page between order and payment.
+  if (PAY_DELAY_SECONDS > 0) sleep(Math.random() * PAY_DELAY_SECONDS);
   const pay = gw('PAY_ORDER', {
     orderId: order.data.orderId, userId: user.userId, sessionId: user.sessionId,
     amount: order.data.totalSum, currency: 'CZK', method: 'woo_bank_card',
@@ -319,7 +346,7 @@ export function handleSummary(data) {
   const count = (k) => (m[k] ? m[k].values.count : 0);
   const line = SCENARIO === 'race'
     ? `race: ok=${count('gw_purchases_ok')} sold_out=${count('gw_purchases_sold_out')} failed=${count('gw_purchases_failed')} capacity=${FIX.events.race.capacity}\n`
-    : `flow: purchases ok=${count('gw_purchases_ok')} failed=${count('gw_purchases_failed')} tickets_not_issued=${count('gw_tickets_not_issued')}\n`;
+    : `flow: purchases ok=${count('gw_purchases_ok')} failed=${count('gw_purchases_failed')} tickets_not_issued=${count('gw_tickets_not_issued')} open_order_refused=${count('gw_open_order_refused')}\n`;
   return {
     stdout: `${textSummary(data, { indent: ' ', enableColors: false })}\n${line}`,
     [file]: JSON.stringify(data, null, 2),

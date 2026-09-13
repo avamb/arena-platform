@@ -54,7 +54,11 @@ docker exec -i arena_postgres psql -U arena -d arena -v session_id=<uuid> < ops/
 
 Knobs: `BROWSERS`, `ORDERS_PER_MIN`, `ABANDON_PER_MIN`, `DURATION`, `RACERS`,
 `TICKET_POLL_SECONDS`, `EXPIRY_GRACE_SECONDS`, `SHARED_IP=1` (native: all
-visitors from one IP), `DEBUG=1` (log every failed call). Provisioning:
+visitors from one IP), `SHARED_BUYERS=N` and `PAY_DELAY_SECONDS=N` (gateway:
+fold buyers onto N shared email/phone identities and wait before paying, so
+orders of one customer overlap; expect `gw_open_order_refused` > 0 and no
+failed payments, the journey threshold fails by design), `DEBUG=1` (log every
+failed call). Provisioning:
 `FLOW_POOL`, `RACE_POOL`, `EXPIRY_POOL`, `RESERVATION_TTL`.
 
 Test-design notes learned the hard way:
