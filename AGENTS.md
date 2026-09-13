@@ -784,4 +784,3 @@ entries short and factual.
   `TestReviveForPayment_OpenOrderConflictIsDistinguishable` /
   `TestReviveForPayment_OtherUniqueViolationIsNotMisclassified`
   (`ordering/lifecycle_test.go`). Runbook: `docs/ops/bil24_gateway.md` §9.2.
->>>>>>> worktree-agent-a50da49ee8dfc4015
