@@ -509,6 +509,36 @@ func TestOpenAPI271_SpecExamplesValidate(t *testing.T) {
 			t.Errorf("webhook example %q: value is not a mapping", name)
 			continue
 		}
+		// The webhook handler (parseWebhookPaymentIntentRequest) accepts TWO
+		// body shapes: the flat, normalised shape (provider_payment_id,
+		// event_type at the top level) and a genuine Stripe event envelope
+		// ({"type":...,"data":{"object":{"id":...}}}). Detect which shape this
+		// example uses the same way the handler does — presence of top-level
+		// "type" AND "data" — before checking the field that carries the id.
+		_, hasType := value["type"]
+		dataRaw, hasData := value["data"]
+		isEnvelope := hasType && hasData
+		if isEnvelope {
+			data, ok := dataRaw.(map[string]any)
+			if !ok {
+				t.Errorf("webhook example %q: data must be a mapping", name)
+				continue
+			}
+			object, ok := data["object"].(map[string]any)
+			if !ok {
+				t.Errorf("webhook example %q: data.object must be a mapping", name)
+				continue
+			}
+			ppi, ok := object["id"].(string)
+			if !ok || strings.TrimSpace(ppi) == "" {
+				t.Errorf("webhook example %q: data.object.id %v must be a non-empty string (handler rejects with webhook.missing_provider_payment_id)", name, object["id"])
+			}
+			et, ok := value["type"].(string)
+			if !ok || strings.TrimSpace(et) == "" {
+				t.Errorf("webhook example %q: type %v must be a non-empty string (handler rejects with webhook.missing_event_type)", name, value["type"])
+			}
+			continue
+		}
 		ppi, ok := value["provider_payment_id"].(string)
 		if !ok || strings.TrimSpace(ppi) == "" {
 			t.Errorf("webhook example %q: provider_payment_id %v must be a non-empty string (handler rejects with webhook.missing_provider_payment_id)", name, value["provider_payment_id"])

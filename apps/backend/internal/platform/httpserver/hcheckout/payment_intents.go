@@ -98,6 +98,70 @@ func IsTerminalPaymentIntentState(state string) bool {
 	return isTerminalPaymentIntentState(state)
 }
 
+// validWebhookTransitions is the transition table used ONLY by
+// HandlePaymentIntentWebhook (the unauthenticated provider callback). It is
+// strictly more permissive than validPaymentIntentTransitions for the
+// non-terminal source states: a real provider (Stripe in particular)
+// routinely delivers `succeeded` / `failed` / `authorized` directly from
+// `created` or `requires_action` without an intermediate `processing` event
+// ever reaching us. Before this table existed, such a webhook was answered
+// 200 `processed:false` ("state transition not valid from current state")
+// and the payment was silently dropped — the order stayed unpaid and no
+// tickets were issued despite money having been captured.
+//
+// The authenticated POST /v1/payment-intents/{id}/transition endpoint keeps
+// enforcing the strict validPaymentIntentTransitions chain unchanged — this
+// table widens ONLY what the webhook will accept. Terminal states
+// (succeeded, failed) still admit no further transitions from either table.
+//
+// Note on the audit trail: payment_intent_events records exactly one row per
+// delivered event (keyed by (provider_payment_id, event_type)) carrying the
+// event's own target_state; it is not a hop-by-hop state history table, so a
+// webhook-driven created→succeeded jump does not need (and does not write) a
+// synthetic intermediate `processing` row.
+var validWebhookTransitions = map[string]map[string]bool{
+	"created": {
+		"requires_action": true,
+		"processing":      true,
+		"succeeded":       true,
+		"authorized":      true,
+		"failed":          true,
+	},
+	"requires_action": {
+		"processing": true,
+		"succeeded":  true,
+		"authorized": true,
+		"failed":     true,
+	},
+	"processing": {
+		"authorized":    true,
+		"succeeded":     true,
+		"failed":        true,
+		"manual_review": true,
+	},
+	"authorized": {
+		"succeeded": true,
+		"failed":    true,
+	},
+	"manual_review": {
+		"succeeded": true,
+		"failed":    true,
+	},
+	"succeeded": {},
+	"failed":    {},
+}
+
+// ValidWebhookTransitions is the exported form of validWebhookTransitions,
+// for use by the httpserver shim layer and tests.
+var ValidWebhookTransitions = validWebhookTransitions
+
+// validWebhookTransition reports whether target is reachable from current
+// via a webhook-delivered event. Used ONLY by HandlePaymentIntentWebhook.
+func validWebhookTransition(current, target string) bool {
+	targets, ok := validWebhookTransitions[current]
+	return ok && targets[target]
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Response type
 // ─────────────────────────────────────────────────────────────────────────────
@@ -576,16 +640,95 @@ type webhookPaymentIntentRequest struct {
 	EventPayload json.RawMessage `json:"event_payload"`
 }
 
+// stripeEventEnvelope is Stripe's standard webhook event envelope shape:
+//
+//	{"id":"evt_...","type":"payment_intent.succeeded",
+//	 "data":{"object":{"id":"pi_...","status":"succeeded",
+//	 "last_payment_error":{"code":"...","message":"..."}}}}
+//
+// This is what Stripe (and this repo's own internal/adapters/stripebilling/adapter.go,
+// see HandleBillingWebhook) actually send — as opposed to the flat, normalised
+// webhookPaymentIntentRequest shape used by the mock provider and AllPay.
+// AllPay is left as-is: it POSTs the flat shape natively and has no envelope
+// of its own to parse.
+type stripeEventEnvelope struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+	Data struct {
+		Object struct {
+			ID               string `json:"id"`
+			Status           string `json:"status"`
+			LastPaymentError *struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"last_payment_error"`
+		} `json:"object"`
+	} `json:"data"`
+}
+
+// parseWebhookPaymentIntentRequest accepts BOTH bodies
+// POST /v1/payment-intents/webhook supports:
+//
+//   - The flat, normalised shape (webhookPaymentIntentRequest) used by the
+//     mock provider, AllPay, and every pre-existing test/integration fixture.
+//   - A genuine Stripe event envelope (stripeEventEnvelope). Before this fix
+//     a real Stripe payment_intent.succeeded webhook — which Stripe always
+//     sends as an envelope, never as the flat shape — failed parsing with
+//     webhook.missing_provider_payment_id because the decoder only ever
+//     looked for a top-level provider_payment_id field.
+//
+// Detection: a top-level "type" string together with a top-level "data"
+// object signals the envelope; the flat shape has neither key. When the
+// envelope is detected, data.object.id maps to ProviderPaymentID, type maps
+// to EventType, data.object.last_payment_error.code/message map to
+// FailureCode/FailureMessage, and the raw body is kept as EventPayload for
+// the audit trail either way.
+func parseWebhookPaymentIntentRequest(body []byte) (webhookPaymentIntentRequest, error) {
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(body, &probe); err != nil {
+		return webhookPaymentIntentRequest{}, err
+	}
+	_, hasType := probe["type"]
+	_, hasData := probe["data"]
+	if !hasType || !hasData {
+		var req webhookPaymentIntentRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			return webhookPaymentIntentRequest{}, err
+		}
+		return req, nil
+	}
+
+	var env stripeEventEnvelope
+	if err := json.Unmarshal(body, &env); err != nil {
+		return webhookPaymentIntentRequest{}, err
+	}
+	req := webhookPaymentIntentRequest{
+		ProviderPaymentID: env.Data.Object.ID,
+		EventType:         env.Type,
+		EventPayload:      json.RawMessage(body),
+	}
+	if env.Data.Object.LastPaymentError != nil {
+		if code := env.Data.Object.LastPaymentError.Code; code != "" {
+			req.FailureCode = &code
+		}
+		if msg := env.Data.Object.LastPaymentError.Message; msg != "" {
+			req.FailureMessage = &msg
+		}
+	}
+	return req, nil
+}
+
 // webhookEventTypeToState maps normalized provider event types to payment intent states.
 // This covers the common Stripe-compatible event type strings; real deployments
 // should extend or override this map per-provider.
 var webhookEventTypeToState = map[string]string{
-	"payment_intent.requires_action":   "requires_action",
-	"payment_intent.processing":        "processing",
-	"payment_intent.amount_capturable": "authorized",
-	"payment_intent.succeeded":         "succeeded",
-	"payment_intent.payment_failed":    "failed",
-	"payment_intent.manual_review":     "manual_review",
+	"payment_intent.requires_action":           "requires_action",
+	"payment_intent.processing":                "processing",
+	"payment_intent.amount_capturable":         "authorized",
+	"payment_intent.amount_capturable_updated": "authorized", // real Stripe event type name
+	"payment_intent.succeeded":                 "succeeded",
+	"payment_intent.payment_failed":            "failed",
+	"payment_intent.manual_review":             "manual_review",
 	// Shorthand aliases used by mock provider tests.
 	"mock.requires_action": "requires_action",
 	"mock.processing":      "processing",
@@ -659,8 +802,8 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 	}
 	ctx := r.Context()
 
-	var req webhookPaymentIntentRequest
-	if err := json.Unmarshal(body, &req); err != nil {
+	req, err := parseWebhookPaymentIntentRequest(body)
+	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("webhook.invalid_json", "request body is not valid JSON", r))
 		return
 	}
@@ -721,8 +864,7 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	validTargets := validPaymentIntentTransitions[currentState]
-	if !validTargets[targetState] {
+	if !validWebhookTransition(currentState, targetState) {
 		// Transition not valid — acknowledge without transitioning.
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"acknowledged": true,
@@ -803,12 +945,97 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Step 2b (HIGH-severity fix, 2026-09-13): complete the linked checkout
+	// session in the SAME transaction as the intent's succeeded transition.
+	// Before this fix checkout_sessions.state never left 'pricing_confirmed'
+	// on the widget/public purchase path — POST .../checkout/start → payment
+	// → GET /v1/public/checkout/{token} answered "pending" forever even
+	// though the order was marked paid and tickets were issued underneath
+	// (proven live: a 251-purchase load test showed 251/251 orders paid with
+	// tickets issued while checkout_sessions.state stayed pricing_confirmed).
+	// See AGENTS.md.
+	//
+	// Idempotent: a replayed event for a session that is already 'completed'
+	// is treated as success (checkoutCompleted=true) without re-running
+	// CompleteCheckoutSession — everything gated on checkoutCompleted below
+	// (ticket issuance, order mark-paid, reservation conversion) is itself
+	// idempotent, so replaying them for an already-completed session is safe.
+	//
+	// A session that can no longer reach 'completed' for any OTHER reason
+	// (its hold TTL'd out and the reservation/checkout expired before the
+	// provider's webhook arrived, or it is already parked in manual_review)
+	// is NOT silently force-completed — money has been captured but the hold
+	// may be gone, so the session (and the order, when one exists) are
+	// parked in 'manual_review' for an operator instead, mirroring hbil24's
+	// payParkManualReview (PAY_ORDER, spec §7.9). Ticket issuance, the order
+	// mark-paid step, and reservation conversion are all gated on
+	// checkoutCompleted so a parked session never silently ships tickets for
+	// seats that may no longer be held.
+	checkoutCompleted := false
+	if updated.State == "succeeded" && updated.CheckoutSessionID != nil {
+		csID := *updated.CheckoutSessionID
+		_, compErr := txQ.CompleteCheckoutSession(ctx, csID, pi.ID.String(), pi.Provider)
+		switch {
+		case compErr == nil:
+			checkoutCompleted = true
+		case errors.Is(compErr, pgx.ErrNoRows):
+			cur, curErr := txQ.GetCheckoutSessionByID(ctx, csID)
+			switch {
+			case curErr != nil:
+				h.logger.Error("webhook: checkout session reload failed after complete guard miss",
+					slog.String("checkout_session_id", csID.String()),
+					slog.String("error", curErr.Error()),
+				)
+			case cur.State == "completed":
+				// Replayed event, or a completion that raced this one home
+				// first — already done, nothing to redo.
+				checkoutCompleted = true
+			default:
+				// Money captured but the session can no longer transition to
+				// 'completed' normally (expired/abandoned/manual_review/
+				// created/payment_started). Park it — and the order, when
+				// one exists — for an operator instead of pretending success.
+				if _, mErr := txQ.MarkCheckoutSessionManualReview(ctx, csID); mErr != nil && !errors.Is(mErr, pgx.ErrNoRows) {
+					h.logger.Error("webhook: mark checkout session manual_review failed",
+						slog.String("checkout_session_id", csID.String()),
+						slog.String("error", mErr.Error()),
+					)
+				}
+				if ord, ordErr := txQ.GetOrderByCheckoutSession(ctx, csID); ordErr == nil {
+					if _, uErr := txQ.UpdateOrderStatus(ctx, ord.ID, ord.OrgID, "manual_review", nil, nil); uErr != nil {
+						h.logger.Error("webhook: mark order manual_review failed",
+							slog.String("order_id", ord.ID.String()),
+							slog.String("error", uErr.Error()),
+						)
+					}
+				} else if !errors.Is(ordErr, pgx.ErrNoRows) {
+					h.logger.Error("webhook: order lookup for manual_review failed",
+						slog.String("checkout_session_id", csID.String()),
+						slog.String("error", ordErr.Error()),
+					)
+				}
+				h.logger.Warn("webhook: payment succeeded but checkout session could not be completed; parked for manual review",
+					slog.String("payment_intent_id", pi.ID.String()),
+					slog.String("checkout_session_id", csID.String()),
+					slog.String("session_state_before", cur.State),
+				)
+			}
+		default:
+			h.logger.Error("webhook: complete checkout session failed",
+				slog.String("checkout_session_id", csID.String()),
+				slog.String("error", compErr.Error()),
+			)
+		}
+	}
+
 	// Step 3: Enqueue the ticket-issuance durable job in the same transaction
 	// (feature #363). The worker picks up checkout.issue_tickets and calls
 	// IssueTicketsForCheckout (idempotent, feature #366). Delivery jobs are
 	// enqueued inside IssueTicketsForCheckout — no separate call needed
-	// (feature #367, removes duplicate enqueueDelivery).
-	if updated.State == "succeeded" && updated.CheckoutSessionID != nil {
+	// (feature #367, removes duplicate enqueueDelivery). Gated on
+	// checkoutCompleted (Step 2b) so a manual_review-parked session never
+	// gets tickets issued for seats that may no longer be held.
+	if checkoutCompleted {
 		jobPayload, _ := json.Marshal(issuejob.Payload{
 			CheckoutSessionID: updated.CheckoutSessionID.String(),
 		})
@@ -848,7 +1075,8 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 	// Anything else is logged and swallowed: refusing to issue tickets for a
 	// payment the provider has already captured would be strictly worse than an
 	// order row lagging behind, which the paid-order reconciliation can repair.
-	if updated.State == "succeeded" && updated.CheckoutSessionID != nil {
+	// Gated on checkoutCompleted (Step 2b) for the same reason as Step 3.
+	if checkoutCompleted {
 		if ord, ordErr := txQ.GetOrderByCheckoutSession(ctx, *updated.CheckoutSessionID); ordErr != nil {
 			if !errors.Is(ordErr, pgx.ErrNoRows) {
 				h.logger.Warn("webhook: order lookup for mark-paid failed (non-fatal)",
@@ -880,8 +1108,9 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 	// fails (e.g. transient network hiccup), the worker will retry until
 	// the reservation reaches 'converted' state.
 	// If the inline call succeeds, convertReservationInTx is idempotent and
-	// the job runs as a no-op.
-	if updated.State == "succeeded" && updated.CheckoutSessionID != nil && h.checkoutQueries != nil {
+	// the job runs as a no-op. Gated on checkoutCompleted (Step 2b) for the
+	// same reason as Step 3.
+	if checkoutCompleted && h.checkoutQueries != nil {
 		cs, csErr := h.checkoutQueries.GetCheckoutSessionByID(ctx, *updated.CheckoutSessionID)
 		if csErr == nil {
 			convJobPayload, _ := json.Marshal(convertjob.Payload{
@@ -911,7 +1140,8 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	// Commit: event row + state change + job enqueue are now durable.
+	// Commit: event row + state change + checkout completion + job enqueue
+	// are now durable.
 	if commitErr := tx.Commit(ctx); commitErr != nil {
 		h.logger.Error("webhook: commit failed",
 			slog.String("id", pi.ID.String()),
@@ -935,7 +1165,8 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 	// the seats (feature #360). This is idempotent: already-converted reservations
 	// are silently skipped. If this call fails, the checkout.issue_tickets worker
 	// job will still issue tickets; operators can re-trigger conversion manually.
-	if updated.State == "succeeded" && updated.CheckoutSessionID != nil && h.checkoutQueries != nil {
+	// Gated on checkoutCompleted (Step 2b) for the same reason as Step 3.
+	if checkoutCompleted && h.checkoutQueries != nil {
 		cs, csErr := h.checkoutQueries.GetCheckoutSessionByID(ctx, *updated.CheckoutSessionID)
 		if csErr != nil {
 			h.logger.Error("webhook: checkout lookup failed after payment succeeded (convert skipped)",
@@ -961,9 +1192,10 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 	// Delivery jobs are enqueued inside IssueTicketsForCheckout (feature #367).
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"acknowledged":   true,
-		"event_type":     req.EventType,
-		"processed":      true,
-		"payment_intent": paymentIntentFromRow(updated),
+		"acknowledged":       true,
+		"event_type":         req.EventType,
+		"processed":          true,
+		"payment_intent":     paymentIntentFromRow(updated),
+		"checkout_completed": checkoutCompleted,
 	})
 }

@@ -169,6 +169,27 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 	}
 
 	publicStatus := checkoutStatusToPublic(cs.State)
+
+	// Defense in depth (HIGH-severity fix, 2026-09-13): the payment webhook
+	// now completes the checkout session in the same transaction as the
+	// order mark-paid step (see hcheckout.HandlePaymentIntentWebhook Step
+	// 2b), so this branch should no longer trigger in normal operation. It
+	// stays as a safety net for any other path that marks an order paid
+	// without also completing its checkout session (e.g. a future bug, or a
+	// session that predates that fix) — checkoutQueries carries every
+	// gen.Queries method, GetOrderByCheckoutSession included, so no extra
+	// wiring is needed to check the order directly.
+	if publicStatus != "paid" && h.checkoutQueries != nil {
+		if ord, ordErr := h.checkoutQueries.GetOrderByCheckoutSession(ctx, cs.ID); ordErr == nil && ord.Status == "paid" {
+			h.logger.Warn("public_checkout_status: order is paid but checkout session disagrees; reporting paid",
+				slog.String("checkout_session_id", cs.ID.String()),
+				slog.String("checkout_session_state", cs.State),
+				slog.String("order_id", ord.ID.String()),
+			)
+			publicStatus = "paid"
+		}
+	}
+
 	expiresAtStr := reservation.ExpiresAt.UTC().Format(time.RFC3339)
 
 	resp := checkoutStatusResponse{

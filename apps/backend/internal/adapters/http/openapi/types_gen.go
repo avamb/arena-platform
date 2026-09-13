@@ -6963,6 +6963,16 @@ type PaymentIntentWebhookAck struct {
 	// Acknowledged Always `true` when the webhook is accepted.
 	Acknowledged bool `json:"acknowledged"`
 
+	// CheckoutCompleted `true` when the linked checkout session was transitioned to
+	// `completed` (or was already `completed` from a prior/racing
+	// delivery of this event) as part of processing this webhook.
+	// `false` when the intent transitioned to `succeeded` but the
+	// checkout session could not be completed — e.g. its hold
+	// expired before the webhook arrived — and was instead parked
+	// in `manual_review` for an operator. Omitted when the event
+	// did not concern a succeeded payment.
+	CheckoutCompleted *bool `json:"checkout_completed,omitempty"`
+
 	// EventType Echo of the inbound `event_type`.
 	EventType string `json:"event_type"`
 
@@ -6978,20 +6988,69 @@ type PaymentIntentWebhookAck struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
-// PaymentIntentWebhookRequest Normalised webhook body for `POST /v1/payment-intents/webhook`.
+// PaymentIntentWebhookRequest `POST /v1/payment-intents/webhook` accepts EITHER of two body
+// shapes:
+//
+//  1. The normalised flat shape documented by this schema's
+//     top-level properties (`provider_payment_id`, `event_type`,
+//     ...) — used by the mock provider and by AllPay callbacks.
+//  2. A genuine Stripe event envelope —
+//     `{"id":"evt_...","type":"payment_intent.succeeded",
+//     "data":{"object":{"id":"pi_...","status":"succeeded",
+//     "last_payment_error":{...}}}}` — which is what Stripe (and
+//     `internal/adapters/stripebilling/adapter.go`) actually send.
+//     The handler detects the envelope by the presence of a
+//     top-level `type` string together with a top-level `data`
+//     object, and maps `data.object.id` → `provider_payment_id`,
+//     `type` → `event_type`, and
+//     `data.object.last_payment_error.code` /
+//     `.message` → `failure_code` / `failure_message`. The raw
+//     body is kept verbatim in `payment_intent_events.event_payload`
+//     either way.
+//
 // Real deployments verify provider HMAC / signature headers (e.g.
-// `Stripe-Signature`) before parsing. The handler maps
-// `event_type` → target state via a Stripe-compatible mapping
-// plus `mock.*` shorthand aliases; `target_state` may be supplied
-// to override the mapping (used by mock-provider tests).
+// `Stripe-Signature`, format `t=<unix_ts>,v1=<hex_hmac>`) before
+// parsing either shape. The handler maps `event_type` (or the
+// envelope's `type`) → target state via a Stripe-compatible
+// mapping plus `mock.*` shorthand aliases; `target_state` may be
+// supplied to override the mapping (used by mock-provider tests).
+// Webhook-delivered transitions are intentionally more permissive
+// than the authenticated `POST /v1/payment-intents/{id}/transition`
+// endpoint: a provider may deliver `succeeded` / `failed` /
+// `authorized` directly from `created` or `requires_action`
+// without an intermediate `processing` event ever arriving.
 //
 // Idempotency: each `(provider_payment_id, event_type)` pair is
-// recorded with a UNIQUE constraint. Duplicate deliveries return
-// `204 No Content` without reprocessing.
+// recorded with a UNIQUE constraint. Duplicate deliveries —
+// including a replayed Stripe envelope carrying the same `id` —
+// return `204 No Content` without reprocessing.
 type PaymentIntentWebhookRequest struct {
 	// ClientSecret Provider client secret for browser-side confirmation flows;
 	// stored on the intent when supplied.
 	ClientSecret *string `json:"client_secret"`
+
+	// Data Stripe event envelope only — carries the payment intent
+	// object under `data.object`.
+	Data *struct {
+		// Object The Stripe payment intent object.
+		Object *struct {
+			// Id Provider-side payment intent id (`pi_...`); mapped to `provider_payment_id`.
+			Id *string `json:"id,omitempty"`
+
+			// LastPaymentError Present on failure events; `code` / `message` are
+			// mapped to `failure_code` / `failure_message`.
+			LastPaymentError *struct {
+				// Code Machine-readable Stripe decline/error code.
+				Code *string `json:"code,omitempty"`
+
+				// Message Human-readable Stripe error message.
+				Message *string `json:"message,omitempty"`
+			} `json:"last_payment_error"`
+
+			// Status Stripe's own status string for the payment intent object.
+			Status *string `json:"status,omitempty"`
+		} `json:"object,omitempty"`
+	} `json:"data,omitempty"`
 
 	// EventPayload Raw provider webhook payload, persisted verbatim for audit
 	// in `payment_intent_events.event_payload`.
@@ -7002,7 +7061,7 @@ type PaymentIntentWebhookRequest struct {
 	// `payment_intent.payment_failed`,
 	// `payment_intent.requires_action`). Unknown event types are
 	// acknowledged with `processed: false` (no transition).
-	EventType string `json:"event_type"`
+	EventType *string `json:"event_type,omitempty"`
 
 	// FailureCode Machine-readable provider failure code recorded on failure events.
 	FailureCode *string `json:"failure_code"`
@@ -7010,9 +7069,15 @@ type PaymentIntentWebhookRequest struct {
 	// FailureMessage Human-readable provider failure message recorded on failure events.
 	FailureMessage *string `json:"failure_message"`
 
+	// Id Stripe event envelope only — the Stripe event id
+	// (`evt_...`). Not used as the idempotency key (that is still
+	// `(provider_payment_id, event_type)`); kept for audit
+	// traceability in the persisted raw payload.
+	Id *string `json:"id,omitempty"`
+
 	// ProviderPaymentId Provider-side payment intent identifier used to look up the
 	// row to transition.
-	ProviderPaymentId string `json:"provider_payment_id"`
+	ProviderPaymentId *string `json:"provider_payment_id,omitempty"`
 
 	// ScaRedirectUrl Provider 3-D Secure / SCA redirect URL persisted on the
 	// intent when the event requires customer action.
@@ -7021,6 +7086,13 @@ type PaymentIntentWebhookRequest struct {
 	// TargetState Optional explicit target state that overrides the
 	// `event_type` → state mapping.
 	TargetState *PaymentIntentWebhookRequestTargetState `json:"target_state,omitempty"`
+
+	// Type Stripe event envelope only — the envelope's event type
+	// (e.g. `payment_intent.succeeded`), equivalent to the flat
+	// shape's `event_type`. Presence of both `type` and `data`
+	// at the top level is what the handler uses to detect the
+	// envelope shape.
+	Type *string `json:"type,omitempty"`
 }
 
 // PaymentIntentWebhookRequestTargetState Optional explicit target state that overrides the

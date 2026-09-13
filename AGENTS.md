@@ -540,3 +540,82 @@ entries short and factual.
   Behind Traefik/Dokploy/nginx/any reverse proxy,
   `TRUSTED_PROXY_COUNT` MUST be set to the real proxy hop count or every
   visitor is rate-limited as if they were the proxy's own IP.
+- **The widget/public payment webhook MUST complete the checkout session in
+  the same transaction as the payment-succeeded state transition, or a paid
+  purchase reports "pending" forever.** Until 2026-09-13,
+  `hcheckout.HandlePaymentIntentWebhook` (`payment_intents.go`) marked the
+  payment intent succeeded, enqueued `checkout.issue_tickets`, marked the
+  order paid (`ordering.MarkPaid`), and converted the reservation — but
+  never called `CompleteCheckoutSession`. `checkout_sessions.state` stayed
+  `pricing_confirmed`, so `hfeed.checkoutStatusToPublic` answered `pending`
+  on `GET /v1/public/checkout/{token}` even though the order was paid and
+  tickets were issued underneath (a 251-purchase load test showed 251/251
+  stuck this way). The fix adds a Step 2b inside the webhook's existing
+  transaction: `CompleteCheckoutSession(ctx, csID, pi.ID.String(),
+  pi.Provider)`, idempotent (an already-`completed` session — replay, or a
+  completion that raced this one home first — is treated as success without
+  re-running it), and NOT force-completed when the session can no longer
+  reach `pricing_confirmed`→`completed` (hold TTL'd out before the webhook
+  arrived, already `manual_review`, etc.) — that case parks the session (and
+  the order, via `UpdateOrderStatus(..., "manual_review", ...)`) for an
+  operator instead, mirroring `hbil24`'s `payParkManualReview`
+  (PAY_ORDER, spec §7.9). Ticket issuance, the order mark-paid step, and
+  reservation conversion are all gated on this completion succeeding
+  (`checkoutCompleted`) so a parked session never ships tickets for seats
+  that may no longer be held.
+- **`validPaymentIntentTransitions` is too strict for a REAL provider
+  webhook and must not be loosened directly** — Stripe commonly delivers
+  `payment_intent.succeeded` (and `.payment_failed` /
+  `.amount_capturable_updated`) straight from `created`, skipping
+  `processing` entirely; the strict table answered `200 processed:false`
+  ("state transition not valid") and silently dropped the payment. Fixed
+  with a SEPARATE `validWebhookTransitions` table /
+  `validWebhookTransition()` helper used ONLY by
+  `HandlePaymentIntentWebhook` — the authenticated
+  `POST /v1/payment-intents/{id}/transition` endpoint still enforces
+  `validPaymentIntentTransitions` unchanged. Extend the webhook table, never
+  the strict one, when a provider needs a new direct hop.
+- **`POST /v1/payment-intents/webhook` must accept both the flat legacy body
+  AND a genuine Stripe event envelope.** The pre-existing decoder only
+  understood `{"provider_payment_id","event_type",...}` (used by the mock
+  provider, AllPay, and tests); a real Stripe webhook is
+  `{"id":"evt_...","type":"payment_intent.succeeded","data":{"object":{"id":"pi_...","status":"...","last_payment_error":{...}}}}`
+  and failed with `webhook.missing_provider_payment_id`.
+  `parseWebhookPaymentIntentRequest` (`payment_intents.go`) detects the
+  envelope by a top-level `type` string TOGETHER WITH a top-level `data`
+  object (the flat shape has neither), then maps `data.object.id` →
+  `provider_payment_id`, `type` → `event_type`, and
+  `data.object.last_payment_error.code`/`.message` → `failure_code`/
+  `failure_message`. The existing `(provider_payment_id, event_type)`
+  idempotency dedup (`payment_intent_events` UNIQUE constraint) is reused
+  as-is for both shapes — the Stripe event's own `id` is kept in the raw
+  `event_payload` for audit but is deliberately NOT folded into the dedup
+  key (would need a migration; the existing key already makes a replay a
+  no-op once the intent reaches its terminal state — see below).
+  `verifyWebhookSignature`/`payments.VerifyStripeSignature` already
+  implement Stripe's real scheme correctly (`Stripe-Signature:
+  t=<ts>,v1=<hex>`, HMAC-SHA256 over `"<ts>.<raw body>"`, constant-time
+  compare, 5-minute tolerance) — do not "fix" that path again.
+- **A replayed webhook event for an already-terminal payment intent answers
+  `200 processed:false`, NOT `204`.** The `204 No Content` path is the
+  `InsertPaymentIntentEvent` `ON CONFLICT DO NOTHING` dedup, which only
+  fires while the intent is still non-terminal (e.g. two deliveries racing
+  in before the first commits). Once the first delivery commits, the intent
+  is terminal (`succeeded`/`failed`), and EVERY later delivery — including
+  an exact replay — is caught by the earlier `isTerminalPaymentIntentState`
+  guard before the transaction even opens, which always answers `200`
+  `{"processed":false,"reason":"payment intent is already in a terminal
+  state"}`. A test asserting "replay is a no-op" against a real end-to-end
+  flow must expect 200, not 204.
+- **A test that drives `HandlePaymentIntentWebhook` end-to-end (checkout
+  completion, ticket issuance) MUST sweep `worker_jobs` in its cleanup.**
+  The webhook enqueues `checkout.issue_tickets` / `checkout.convert_reservation`
+  rows keyed by `checkout_session_id` / `reservation_id` in their JSON
+  `payload` (no FK to clean them up via cascade). A fixture that deletes
+  `checkout_sessions/reservations` without first deleting the matching
+  `worker_jobs` rows (`payload->>'checkout_session_id' IN (...)` /
+  `payload->>'reservation_id' IN (...)`, run BEFORE those parent deletes)
+  leaks rows into the shared test database; another integration test that
+  drains `worker_jobs` generically (`auth_email_integration_test.go`) then
+  fails with "no handler for job type checkout.issue_tickets" — seen live
+  2026-09-13 on `arena_ci_webhook`.
