@@ -131,6 +131,10 @@ var Bil24DescriptionKeys = []string{
 	"bil24.promo_not_applicable",
 	"bil24.promo_min_order",
 	"bil24.hold_expired",
+	// bil24.open_order_exists (money-safety fix): CREATE_ORDER_EXT refuses to
+	// steal a customer's still-live open order for the same session when a
+	// second CREATE_ORDER_EXT arrives pointing at a different reservation.
+	"bil24.open_order_exists",
 	"bil24.order_not_found",
 	"bil24.currency_mismatch",
 	"bil24.pricing_mode_unsupported",

@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
@@ -241,6 +242,112 @@ func TestExpire_IsIdempotent(t *testing.T) {
 	}
 	if len(f.events) != 0 {
 		t.Fatalf("wrote %d events re-expiring", len(f.events))
+	}
+}
+
+// ReviveForPayment is the money-safety fix for a late PAY_ORDER on an order
+// the expire sweep already closed: the buyer's WooCommerce charge already
+// happened, so an expired order whose hold can still be secured must be
+// payable again rather than answering -1 forever.
+func TestReviveForPayment_MovesExpiredBackToPendingAndAudits(t *testing.T) {
+	f, row := storeWithOrder(StatusExpired)
+	row.CancelledAt = ptr(time.Date(2026, 9, 13, 9, 0, 0, 0, time.UTC))
+	f.orders[row.ID] = row
+
+	got, err := ReviveForPayment(context.Background(), f, ReviveInput{
+		OrderID: row.ID, OrgID: row.OrgID, Actor: "gateway:1271",
+	})
+	if err != nil {
+		t.Fatalf("ReviveForPayment: %v", err)
+	}
+	if got.Status != StatusPendingPayment {
+		t.Fatalf("status = %s, want %s", got.Status, StatusPendingPayment)
+	}
+	if got.CancelledAt != nil {
+		t.Fatalf("cancelled_at = %v, want nil — a revived order must not still look expired", got.CancelledAt)
+	}
+	if len(f.events) != 1 || f.events[0].Type != EventRevivedForPayment || f.events[0].Actor != "gateway:1271" {
+		t.Fatalf("events = %+v, want one revived_for_payment event by the gateway actor", f.events)
+	}
+}
+
+// A retried PAY_ORDER whose first attempt already revived (and paid) the
+// order must not fail: MarkPaid handles the terminal idempotency, but the
+// revival step itself must also treat pending_payment/paid as a harmless
+// no-op rather than erroring before MarkPaid gets a chance to run.
+func TestReviveForPayment_IsANoOpOnPendingOrPaid(t *testing.T) {
+	for _, status := range []string{StatusPendingPayment, StatusPaid} {
+		f, row := storeWithOrder(status)
+		got, err := ReviveForPayment(context.Background(), f, ReviveInput{OrderID: row.ID, OrgID: row.OrgID})
+		if err != nil {
+			t.Fatalf("ReviveForPayment from %s: %v", status, err)
+		}
+		if got.Status != status {
+			t.Fatalf("ReviveForPayment from %s: status = %s, want unchanged %s", status, got.Status, status)
+		}
+		if len(f.events) != 0 {
+			t.Fatalf("ReviveForPayment from %s: wrote %d events, want 0", status, len(f.events))
+		}
+	}
+}
+
+// A genuinely dead order (cancelled, refunded, parked in manual_review by an
+// earlier failed attempt) must never be silently resurrected — an operator or
+// the site's own retry loop, not this function, decides what happens next.
+func TestReviveForPayment_RefusesOtherStatuses(t *testing.T) {
+	for _, status := range []string{StatusCancelled, "manual_review", "refunded", "abandoned"} {
+		f, row := storeWithOrder(status)
+		_, err := ReviveForPayment(context.Background(), f, ReviveInput{OrderID: row.ID, OrgID: row.OrgID})
+		if !errors.Is(err, ErrInvalidTransition) {
+			t.Fatalf("ReviveForPayment from %s: err = %v, want ErrInvalidTransition", status, err)
+		}
+		if len(f.events) != 0 {
+			t.Fatalf("ReviveForPayment from %s: wrote %d events on a refused revive", status, len(f.events))
+		}
+	}
+}
+
+// The forever-(-1)-loop defect found in review: order A expired, the same
+// customer re-reserved for the same session, and CREATE_ORDER_EXT already
+// minted a fresh pending_payment order B before A's late PAY_ORDER arrived.
+// Reviving A collides with orders_one_pending_per_customer_session_uq
+// (SQLSTATE 23505) — ReviveForPayment must surface this as the distinguishable
+// ErrOpenOrderConflict, NOT a generic error, so the caller can park A in
+// manual_review (money-safety) instead of retrying an identical failure
+// forever.
+func TestReviveForPayment_OpenOrderConflictIsDistinguishable(t *testing.T) {
+	f, row := storeWithOrder(StatusExpired)
+	f.reviveErrOn[row.ID] = &pgconn.PgError{
+		Code:           "23505",
+		ConstraintName: "orders_one_pending_per_customer_session_uq",
+	}
+
+	_, err := ReviveForPayment(context.Background(), f, ReviveInput{OrderID: row.ID, OrgID: row.OrgID})
+	if !errors.Is(err, ErrOpenOrderConflict) {
+		t.Fatalf("err = %v, want ErrOpenOrderConflict", err)
+	}
+	if len(f.events) != 0 {
+		t.Fatalf("wrote %d events on a conflicting revive", len(f.events))
+	}
+}
+
+// A unique violation on some OTHER constraint (or one whose name the driver
+// did not surface) must not be silently swallowed as ErrOpenOrderConflict —
+// only when the constraint name is present AND matches, or is absent
+// entirely, is it treated as this specific collision.
+func TestReviveForPayment_OtherUniqueViolationIsNotMisclassified(t *testing.T) {
+	f, row := storeWithOrder(StatusExpired)
+	f.reviveErrOn[row.ID] = &pgconn.PgError{
+		Code:           "23505",
+		ConstraintName: "some_other_unrelated_uq",
+	}
+
+	_, err := ReviveForPayment(context.Background(), f, ReviveInput{OrderID: row.ID, OrgID: row.OrgID})
+	if errors.Is(err, ErrOpenOrderConflict) {
+		t.Fatalf("err = %v, misclassified an unrelated unique violation as ErrOpenOrderConflict", err)
+	}
+	if err == nil {
+		t.Fatal("ReviveForPayment: want an error for an unrelated unique violation, got nil")
 	}
 }
 

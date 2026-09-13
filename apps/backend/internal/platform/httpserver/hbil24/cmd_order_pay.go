@@ -52,14 +52,22 @@ import (
 )
 
 // Order statuses PAY_ORDER refuses outright. ordering exposes the happy-path
-// vocabulary; these two live only in the migration-0092 CHECK constraint (the
-// refund pipeline writes them) so they are named here rather than widening the
-// ordering package for a read-only comparison.
+// vocabulary; these live only in the migration-0092 CHECK constraint (the
+// refund pipeline writes the first two; nothing today writes the third) so
+// they are named here rather than widening the ordering package for a
+// read-only comparison.
 const (
 	payStatusRefunded          = "refunded"
 	payStatusPartiallyRefunded = "partially_refunded"
 	// payStatusManualReview parks an order whose hold could not be re-taken.
 	payStatusManualReview = "manual_review"
+	// payStatusAbandoned mirrors checkout_sessions' 'abandoned' state in the
+	// orders CHECK constraint. No code path writes it to orders today, but
+	// PAY_ORDER enumerates every status the constraint allows rather than
+	// letting an unhandled one fall through to ordering.MarkPaid's generic
+	// ErrInvalidTransition (which used to surface as a retry-forever -1 for
+	// 'expired' — the defect this file fixes).
+	payStatusAbandoned = "abandoned"
 )
 
 // payProviderManual is payment_intents.provider for a payment collected by the
@@ -82,6 +90,28 @@ const payCustomerLinkSource = "order"
 // the manual-review park runs in a transaction of its own — parking an order in
 // the same transaction we are about to roll back would lose the park.
 var errPayHoldExpired = errors.New("hbil24: order hold expired and could not be reacquired")
+
+// errPaySupersededByOpenOrder is the internal sentinel raised when reviving an
+// expired order collides with orders_one_pending_per_customer_session_uq
+// (ordering.ErrOpenOrderConflict): the SAME customer re-reserved for the SAME
+// session and CREATE_ORDER_EXT already minted a fresh pending_payment order
+// while this order's late payment was in flight. The seats this order's hold
+// pointed at may even have been successfully re-acquired by step 2 — that
+// does not matter, the order itself can never legally become pending_payment
+// again while the newer order holds that slot. Handled exactly like
+// errPayHoldExpired (park + alert + 101), but with a distinct park reason so
+// an operator sees the real cause instead of a misleading "hold expired".
+var errPaySupersededByOpenOrder = errors.New("hbil24: order was superseded by a newer open order for the same customer and session")
+
+// payParkReasonHoldExpired / payParkReasonSupersededByOpenOrder are the two
+// causes payParkManualReview records — in order_events.hold_expired.payload
+// and in the operator alert — so an operator can tell "the seats are gone"
+// apart from "the customer already has a different open order for this
+// money". Every PAY_ORDER manual-review park names one of these explicitly.
+const (
+	payParkReasonHoldExpired           = "hold_expired"
+	payParkReasonSupersededByOpenOrder = "superseded_by_open_order"
+)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Entry point
@@ -153,17 +183,40 @@ func (h *Handler) handleBil24PayOrderWired(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Step 1 (cont.) — terminal statuses. Already paid is the idempotent
-	// replay the shop performs after a timeout: answer 0 and write nothing.
+	// Step 1 (cont.) — terminal / non-payable statuses, enumerated over every
+	// value the orders CHECK constraint allows. Already paid is the
+	// idempotent replay the shop performs after a timeout: answer 0 and
+	// write nothing. 'expired' is deliberately NOT listed here — the buyer's
+	// money has already moved by the time the shop calls PAY_ORDER, so an
+	// expired order falls through to the normal payment transaction below,
+	// which attempts to revive it (ordering.ReviveForPayment) before
+	// MarkPaid runs; only when the hold cannot be secured does it end up in
+	// manual_review, exactly like a hold that died between RESERVE and pay.
 	switch order.Status {
 	case ordering.StatusPaid:
 		writeBil24JSON(w, http.StatusOK, bil24OK(req.Command, nil))
 		return
-	case ordering.StatusCancelled, payStatusRefunded, payStatusPartiallyRefunded:
+	case ordering.StatusCancelled, payStatusRefunded, payStatusPartiallyRefunded, payStatusAbandoned:
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeUserVisible,
 			h.localizeDesc(req.Locale, locale, "bil24.order_cancelled",
 				"order has been cancelled", nil),
+		))
+		return
+	case payStatusManualReview:
+		// Already parked from an earlier PAY_ORDER attempt — either this
+		// exact revival-failed path, or the classic live-hold-died-at-pay-
+		// time path. The WordPress plugin retries whatever is not 0, so a
+		// replay MUST be idempotent: answer the same hold_expired 101
+		// without touching the order/checkout session again and without
+		// raising a second operator alert. payParkManualReview is NOT
+		// called here on purpose — see its own doc comment for why calling
+		// it twice would be unsafe (duplicate hold_expired events and an
+		// alert storm on every WordPress retry).
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUserVisible,
+			h.localizeDesc(req.Locale, locale, "bil24.hold_expired",
+				"your hold has expired, please reserve again", nil),
 		))
 		return
 	}
@@ -172,7 +225,20 @@ func (h *Handler) handleBil24PayOrderWired(w http.ResponseWriter, r *http.Reques
 	cs, err := h.payExecute(ctx, req, order, cartHoldTTL(channel))
 	switch {
 	case errors.Is(err, errPayHoldExpired):
-		h.payParkManualReview(ctx, req, order)
+		h.payParkManualReview(ctx, req, order, payParkReasonHoldExpired)
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUserVisible,
+			h.localizeDesc(req.Locale, locale, "bil24.hold_expired",
+				"your hold has expired, please reserve again", nil),
+		))
+		return
+	case errors.Is(err, errPaySupersededByOpenOrder):
+		// The customer's money is taken, but this order can never legally
+		// become pending_payment again while their newer order holds the
+		// one-open-order slot for this session (see errPaySupersededByOpenOrder).
+		// Same wire contract as a dead hold — 101, park, alert — the site
+		// cannot act on the distinction anyway.
+		h.payParkManualReview(ctx, req, order, payParkReasonSupersededByOpenOrder)
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeUserVisible,
 			h.localizeDesc(req.Locale, locale, "bil24.hold_expired",
@@ -301,6 +367,43 @@ func (h *Handler) payExecute(
 	// Step 2 — the hold.
 	if err := h.payEnsureHold(ctx, txq, order, actor, ttl, now); err != nil {
 		return gen.CheckoutSessionRow{}, err
+	}
+
+	// Step 2b — revive an order the expire sweep (or a competing
+	// CREATE_ORDER_EXT) already closed, now that step 2 has proven the hold
+	// behind it is securable. Money-safety fix: MarkPaid below only accepts
+	// pending_payment → paid, so without this an expired order's late
+	// payment used to fail with a generic error and answer resultCode -1
+	// FOREVER — the WordPress plugin retries -1, but order.status never
+	// changes on its own, so every retry hit the identical refusal. A
+	// pending_payment order (the common case) is untouched by this branch.
+	if order.Status == ordering.StatusExpired {
+		if _, err := ordering.ReviveForPayment(ctx, txq, ordering.ReviveInput{
+			OrderID: order.ID, OrgID: order.OrgID, Actor: actor,
+		}); err != nil {
+			// The customer re-reserved and CREATE_ORDER_EXT already minted a
+			// fresh pending_payment order for this same customer+session
+			// before this late payment arrived (orders_one_pending_per_
+			// customer_session_uq, SQLSTATE 23505). This order can NEVER
+			// become pending_payment again while that newer order holds the
+			// slot — retrying would fail identically forever, exactly the
+			// -1-loop money-safety defect this file exists to close. Treat
+			// it like an unrecoverable hold: park + alert + 101, never -1.
+			if errors.Is(err, ordering.ErrOpenOrderConflict) {
+				return gen.CheckoutSessionRow{}, errPaySupersededByOpenOrder
+			}
+			// Any other revive failure (typically ErrInvalidTransition: a
+			// concurrent process moved the order on — paid it, cancelled it,
+			// parked it — between this handler's pre-transaction read and
+			// now) surfaces as a plain error, answering -1 (transient)
+			// rather than a park sentinel: re-parking on a status we no
+			// longer understand would risk clobbering whatever that other
+			// writer just did. The very next retry re-reads order.Status
+			// fresh and the top-level switch above resolves it correctly —
+			// unlike the original defect, this is a one-shot retry, not a
+			// forever loop.
+			return gen.CheckoutSessionRow{}, fmt.Errorf("revive order: %w", err)
+		}
 	}
 
 	// Step 3 — amount reconciliation. Non-blocking by design.
@@ -648,8 +751,18 @@ func payProviderPaymentID(order gen.OrderRow, method string) string {
 // It runs in its own transaction because the payment transaction has already
 // been rolled back, and it is deliberately best-effort at every step: the buyer
 // has been charged and an operator MUST learn about it, so a failure to write
-// one of these rows still produces the alert and the error log.
-func (h *Handler) payParkManualReview(ctx context.Context, req bil24Request, order gen.OrderRow) {
+// one of these rows still produces the alert and the error log. `reason` is
+// one of the payParkReasonXxx constants — recorded verbatim in both the
+// order_events.hold_expired payload and the operator alert, so an operator
+// can tell "the seats are gone" apart from "the customer already has a
+// different open order for this money" without reading application logs.
+//
+// Callers MUST NOT invoke this twice for the same order (see the
+// payStatusManualReview branch in handleBil24PayOrderWired): a replayed
+// PAY_ORDER on an already-parked order short-circuits before reaching here,
+// or this would write a duplicate hold_expired event and fire a second
+// operator alert on every WordPress retry.
+func (h *Handler) payParkManualReview(ctx context.Context, req bil24Request, order gen.OrderRow, reason string) {
 	actor := orderActor(req)
 
 	tx, err := h.orderDeps.Pool.BeginTx(ctx, pgx.TxOptions{})
@@ -677,7 +790,7 @@ func (h *Handler) payParkManualReview(ctx context.Context, req bil24Request, ord
 		if _, eErr := txq.InsertOrderEvent(ctx, order.ID, ordering.EventHoldExpired, actor,
 			payPayload(map[string]any{
 				"reservation_id": order.ReservationID.String(),
-				"reason":         "hold could not be reacquired at payment time",
+				"reason":         reason,
 				"external_ref":   req.OrderID,
 			}),
 		); eErr != nil {
@@ -696,17 +809,18 @@ func (h *Handler) payParkManualReview(ctx context.Context, req bil24Request, ord
 
 	// The operator alert. The error log is unconditional so an unwired Alert
 	// callback degrades the alert rather than losing it.
-	h.logger.Error("bil24_compat: PAY_ORDER: PAID ORDER PARKED IN MANUAL REVIEW — inventory could not be restored",
+	h.logger.Error("bil24_compat: PAY_ORDER: PAID ORDER PARKED IN MANUAL REVIEW",
 		slog.String("order_id", order.ID.String()),
 		slog.Int64("order_system_id", order.SystemID),
 		slog.String("org_id", order.OrgID.String()),
 		slog.String("reservation_id", order.ReservationID.String()),
 		slog.String("external_ref", req.OrderID),
 		slog.String("actor", actor),
+		slog.String("reason", reason),
 	)
 	if h.payDeps.Alert != nil {
 		h.payDeps.Alert(ctx, order.ID, actor, map[string]any{
-			"reason":              "hold_expired",
+			"reason":              reason,
 			"order_system_id":     order.SystemID,
 			"reservation_id":      order.ReservationID.String(),
 			"checkout_session_id": order.CheckoutSessionID.String(),

@@ -652,6 +652,18 @@ func (h *Handler) orderPersist(
 
 	order, err := h.orderWriteAggregate(ctx, txq, in, customerID, cc, res)
 	if err != nil {
+		if errors.Is(err, errOpenOrderExists) {
+			// Money-safety fix: the transaction rolls back on this return
+			// (checkout session insert included), so nothing this request
+			// touched is written — the customer's OTHER, still-live order
+			// is left exactly as it was.
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeUserVisible,
+				h.localizeDesc(req.Locale, cc.locale, "bil24.open_order_exists",
+					"you already have an unpaid order for this event, complete or cancel it first", nil),
+			))
+			return
+		}
 		h.orderInternal(w, req, "order write failed", err)
 		return
 	}
@@ -682,12 +694,30 @@ func (h *Handler) orderPersist(
 	}))
 }
 
+// errOpenOrderExists is returned by orderWriteAggregate when the customer's
+// existing pending_payment order for this session still has a LIVE
+// reservation behind it that is DIFFERENT from the one this CREATE_ORDER_EXT
+// is about — e.g. two gateway buyers who happen to share an email each
+// reserving their own seat for the same session. Money-safety defect found
+// under load (2026-09-13): the code used to expire that still-valid order
+// unconditionally, on the unchecked assumption that a second open order can
+// only mean "the first one expired and the buyer re-reserved". It silently
+// stole buyer A's hold out from under them the moment buyer B's
+// CREATE_ORDER_EXT landed, and A's subsequent PAY_ORDER then failed even
+// though WooCommerce had already (or was about to) charge them. The caller
+// answers bil24 resultCode 101 bil24.open_order_exists and writes nothing —
+// the whole transaction, including the checkout session this request just
+// inserted, rolls back.
+var errOpenOrderExists = errors.New("hbil24: customer already has a live open order for this session")
+
 // orderWriteAggregate is spec §7.7 step 5, the one-open-order rule. The
 // customer may hold at most one pending_payment order per event session
 // (orders_one_pending_per_customer_session_uq), so a repeat CREATE_ORDER_EXT
 // either rewrites that order — same orderId, refreshed numbers, which is what
-// the site depends on to avoid duplicate WooCommerce orders — or, when the hold
-// behind it is gone, expires it and mints a fresh one.
+// the site depends on to avoid duplicate WooCommerce orders — or, when the
+// hold behind it is REALLY gone, expires it and mints a fresh one. "Really
+// gone" is checked against the reservation itself, not inferred from the mere
+// existence of a second order: see orderOldHoldIsLive.
 func (h *Handler) orderWriteAggregate(
 	ctx context.Context,
 	txq *gen.Queries,
@@ -699,14 +729,28 @@ func (h *Handler) orderWriteAggregate(
 	existing, ferr := ordering.FindOpenOrder(ctx, txq, customerID, cc.sessionID)
 	switch {
 	case ferr == nil && existing.ReservationID == res.ID:
+		// The SAME gateway cart re-sending CREATE_ORDER_EXT (bounced off
+		// WooCommerce payment, edited the basket, came back) — always
+		// update in place, unaffected by the live-hold check below.
 		out, err := ordering.UpdateOrderFromCheckout(ctx, txq, ordering.UpdateInput{
 			OrderID: existing.ID, OrgID: existing.OrgID, CreateInput: in,
 		})
 		return out.Order, err
 	case ferr == nil:
-		// The open order points at a hold this cart no longer uses — it
-		// expired and the buyer re-reserved. Retire it so the partial unique
-		// index lets the replacement in.
+		live, err := orderOldHoldIsLive(ctx, txq, existing.ReservationID)
+		if err != nil {
+			return gen.OrderRow{}, err
+		}
+		if live {
+			// Somebody else's (or this same buyer's, under a different
+			// gateway session) reservation is still genuinely held. Refuse
+			// rather than steal it — see errOpenOrderExists.
+			return gen.OrderRow{}, errOpenOrderExists
+		}
+		// The open order's hold is really gone (not draft/active, or its
+		// TTL already passed): it expired and the buyer re-reserved, or a
+		// stale attempt is being superseded. Retire it so the partial
+		// unique index lets the replacement in.
 		if _, err := ordering.Expire(ctx, txq, ordering.ExpireInput{
 			OrderID: existing.ID, OrgID: existing.OrgID, Actor: in.Actor,
 		}); err != nil {
@@ -719,6 +763,28 @@ func (h *Handler) orderWriteAggregate(
 
 	out, err := ordering.CreateOrderFromCheckout(ctx, txq, in)
 	return out.Order, err
+}
+
+// orderOldHoldIsLive reports whether an EXISTING open order's reservation
+// still genuinely holds inventory. It mirrors payEnsureHold's own notion of
+// "live" (cmd_order_pay.go, spec §7.9): state draft/active AND not past its
+// TTL. A hold in that state but whose TTL has simply not been swept yet by
+// reservationexpiry is treated the SAME as one already flipped to
+// cancelled/expired — what matters is whether the seats are still reserved
+// for that buyer, not the row's own bookkeeping lag.
+//
+// A reservation row that no longer exists (should not happen — reservations
+// are never hard-deleted — but defensive nonetheless) is treated as "not
+// live": there is nothing left to protect.
+func orderOldHoldIsLive(ctx context.Context, q *gen.Queries, reservationID uuid.UUID) (bool, error) {
+	res, err := q.GetReservationByID(ctx, reservationID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return (res.State == "draft" || res.State == "active") && res.ExpiresAt.After(time.Now().UTC()), nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

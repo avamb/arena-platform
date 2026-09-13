@@ -449,8 +449,9 @@ entries short and factual.
   refuses non-local BASE_URLs. Run k6 from `grafana/k6:0.54.0` with
   `BASE_URL=http://host.docker.internal:8080`; on Git Bash prefix
   `MSYS_NO_PATHCONV=1` and mount a `C:/...` path. Give every simulated buyer a
-  distinct email AND phone: customers are matched by those identities and a
-  second pending order for the same customer+session expires the first one.
+  distinct email AND phone: customers are matched by those identities, and a
+  second CREATE_ORDER_EXT for the same customer+session is refused with
+  `101 bil24.open_order_exists` while the first order's hold is live.
   Findings of the first run: `docs/loadtest/2026-09-13_local_step1_ru.md`.
 - **`UpdateSalesChannel`'s `reservation_ttl_override` column needs an explicit
   set flag, never NULL-overloading — NULL is itself a meaningful stored value
@@ -703,3 +704,84 @@ entries short and factual.
   `bcrypt.CompareHashAndPassword` directly — a static call would bypass both
   the cache and the singleflight cold-cache dedup that collapses a burst of
   identical concurrent requests onto one bcrypt call.
+- **CREATE_ORDER_EXT must never expire a customer's open order without
+  checking the hold behind it is actually dead.** `orderWriteAggregate`
+  (`hbil24/cmd_order_create.go`) used to call `ordering.Expire` unconditionally
+  the moment `FindOpenOrder` found a second open order for the same
+  customer+session pointing at a different reservation, on the assumption
+  that a second open order can only mean "the first expired". Two gateway
+  buyers who share the checkout identity the WordPress plugin sent (email/
+  phone — whatever the buyer typed, not a stable account id) reserving
+  separately for the same session let buyer B's CREATE_ORDER_EXT silently
+  steal buyer A's still-live hold; A's PAY_ORDER then failed after
+  WooCommerce had already charged them (reproduced under `ops/loadtest`,
+  2026-09-13). Fixed: the existing order's reservation is now loaded and only
+  expired when its state is not `draft`/`active` or its `expires_at` has
+  already passed (`orderOldHoldIsLive`); otherwise CREATE_ORDER_EXT answers
+  `101 bil24.open_order_exists` and writes nothing. The same-session repeat
+  case (`existing.ReservationID == res.ID`, bounce off WooCommerce payment
+  and come back) is a separate branch and is unaffected.
+- **PAY_ORDER must never answer -1 for an order `order.expire_sweep` already
+  closed, and must never re-park+re-alert a `manual_review` order on
+  replay.** `ordering.MarkPaid` only accepts `pending_payment → paid`, so an
+  `expired` order used to fall through to it and answer `ErrInvalidTransition`
+  as a generic error → bil24 `resultCode -1`. Since nothing about
+  `orders.status` changes on its own, the WordPress plugin's retry loop got
+  -1 FOREVER for a buyer who had already been charged — this is the money-
+  safety asymmetry PAY_ORDER exists to handle (spec §7.9: the money already
+  moved). Fixed with `ordering.ReviveForPayment` (status-guarded
+  `ReviveOrderIfExpired`, `order_events.revived_for_payment`), called from
+  `payExecute` right after the existing hold-secure/reacquire check
+  (`payEnsureHold`) succeeds for an `expired` order — same hold logic a
+  `pending_payment` order already goes through, just also allowed to
+  resurrect the order status. When the hold cannot be secured, the existing
+  `payParkManualReview` path (manual_review + operator alert + `101
+  bil24.hold_expired`) is unchanged. Separately, `handleBil24PayOrderWired`'s
+  terminal-status switch now enumerates EVERY status the `orders` CHECK
+  constraint allows (`paid`, `cancelled`/`refunded`/`partially_refunded`/
+  `abandoned`, `manual_review`) instead of only the first three — a
+  `manual_review` order used to fall through to the same `payEnsureHold` →
+  `errPayHoldExpired` → `payParkManualReview` path on every replay, writing a
+  duplicate `hold_expired` event and firing a second operator alert per
+  WordPress retry (an alert storm). It now short-circuits to the same `101
+  bil24.hold_expired` answer with no writes and no alert. Tests:
+  `apps/backend/tests/compat/bil24/order_pay_revival_integration_test.go`,
+  `apps/backend/internal/platform/ordering/lifecycle_test.go`
+  (`TestReviveForPayment_*`).
+- **`ordering.ReviveForPayment` reviving an `expired` order can ITSELF hit
+  `orders_one_pending_per_customer_session_uq` — found in review of the
+  above fix, 2026-09-14.** Scenario: order A expires and its hold dies; the
+  SAME customer re-reserves for the SAME session and CREATE_ORDER_EXT
+  legitimately mints a fresh order B (`pending_payment`) — allowed, because A
+  is genuinely no longer "open". Then A's late PAY_ORDER arrives:
+  `payEnsureHold` successfully re-acquires A's untouched seats, but the
+  `UPDATE orders SET status='pending_payment' ... WHERE status='expired'`
+  that revives A collides with B's row on `(customer_id, session_id)`
+  (SQLSTATE 23505) — A can never legally hold that slot while B does. Left
+  unhandled this reproduces the EXACT -1-forever defect the fix above closes,
+  just one level deeper (`ReviveForPayment` wrapped it as a plain error →
+  `payExecute` → generic error → `payTransient` → -1 on every retry, forever,
+  with money already taken). Fixed: `ordering.ErrOpenOrderConflict` (detected
+  via `errors.As` into `*pgconn.PgError`, code `23505`, constraint name
+  checked when the driver supplies one — `orders_one_pending_per_
+  customer_session_uq` — and treated as a match when it does not, since a
+  23505 right after this specific UPDATE has no other plausible cause).
+  `hbil24` maps it to `errPaySupersededByOpenOrder`, handled exactly like
+  `errPayHoldExpired` (tx rollback — which also releases the just-reacquired
+  hold — then `payParkManualReview`, `101 bil24.hold_expired` on the wire)
+  but recorded with a DISTINCT internal reason,
+  `payParkReasonSupersededByOpenOrder` (`"superseded_by_open_order"`), in
+  both `order_events.hold_expired.payload.reason` and the operator alert
+  metadata — `payParkManualReview` now takes a `reason string` parameter for
+  exactly this. The customer's newer order (B) is never touched: the
+  colliding UPDATE aborts A's transaction only. Note for future readers:
+  `orders_one_pending_per_customer_session_uq` is a PARTIAL index (`WHERE
+  status = 'pending_payment'`), so `payParkManualReview`'s own
+  `UpdateOrderStatus(..., 'manual_review', ...)` write can NEVER hit this
+  constraint — only the expired→pending_payment revive write can. Tests:
+  `TestCompatBil24_PayOrderRevival_SupersededByOpenOrder`
+  (`order_pay_revival_integration_test.go`),
+  `TestReviveForPayment_OpenOrderConflictIsDistinguishable` /
+  `TestReviveForPayment_OtherUniqueViolationIsNotMisclassified`
+  (`ordering/lifecycle_test.go`). Runbook: `docs/ops/bil24_gateway.md` §9.2.
+>>>>>>> worktree-agent-a50da49ee8dfc4015
