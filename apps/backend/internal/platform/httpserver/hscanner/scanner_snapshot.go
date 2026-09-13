@@ -120,9 +120,11 @@ func (h *Handler) HandleScannerSnapshot(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 
 	// ── Rate limit ──────────────────────────────────────────────────────────
-	// trustedProxies=1: scanner requests arrive through one nginx reverse proxy;
-	// TrustedClientIP reads the penultimate XFF entry to obtain the real client IP.
-	ip := httputil.TrustedClientIP(r, 1)
+	// The router's trustedRealIP middleware has already resolved the client
+	// address into RemoteAddr per TRUSTED_PROXY_COUNT, so read the peer only.
+	// A hardcoded hop count here trusted X-Forwarded-For even on deployments
+	// without a proxy.
+	ip := httputil.TrustedClientIP(r, 0)
 	if !h.rateLimiter.CheckIP(ip) {
 		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
 			"scanner.rate_limited", "too many requests; please slow down", r,
@@ -288,9 +290,11 @@ func (h *Handler) HandleScannerValidate(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 
 	// ── Rate limit ────────────────────────────────────────────────────────────
-	// trustedProxies=1: scanner requests arrive through one nginx reverse proxy;
-	// TrustedClientIP reads the penultimate XFF entry to obtain the real client IP.
-	ip := httputil.TrustedClientIP(r, 1)
+	// The router's trustedRealIP middleware has already resolved the client
+	// address into RemoteAddr per TRUSTED_PROXY_COUNT, so read the peer only.
+	// A hardcoded hop count here trusted X-Forwarded-For even on deployments
+	// without a proxy.
+	ip := httputil.TrustedClientIP(r, 0)
 	if !h.rateLimiter.CheckIP(ip) {
 		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
 			"scanner.rate_limited", "too many requests; please slow down", r,

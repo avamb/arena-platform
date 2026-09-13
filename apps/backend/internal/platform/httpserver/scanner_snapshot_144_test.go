@@ -587,11 +587,10 @@ func TestScannerSnapshot144_IPRateLimitReturns429(t *testing.T) {
 	}
 	req := httptest.NewRequest(http.MethodGet,
 		"/v1/scanner/snapshot?session_id=00000000-0000-0000-0000-000000000001", nil)
-	// The handler resolves the client via TrustedClientIP(r, 1): with one
-	// trusted proxy the real client is the penultimate XFF entry, so the
-	// header needs a "client, proxy" pair for the pre-warmed key to match.
-	// A single-entry XFF is treated as suspicious and falls back to RemoteAddr.
-	req.Header.Set("X-Forwarded-For", "10.0.0.1, 203.0.113.7")
+	// The handler keys on RemoteAddr: the router's trustedRealIP middleware
+	// resolves proxies before handlers run. A spoofed header must not matter.
+	req.RemoteAddr = "10.0.0.1:52000"
+	req.Header.Set("X-Forwarded-For", "198.51.100.9")
 	rw := httptest.NewRecorder()
 	s.handleScannerSnapshot(rw, req)
 	if rw.Code != http.StatusTooManyRequests {

@@ -529,7 +529,11 @@ entries short and factual.
   X-Forwarded-For entry from the right** (`len-N`): nginx, Traefik and AWS
   ALB append the address of their PEER, never their own. Until 2026-09-13
   `httputil.TrustedClientIP` used `len-N-1`, so behind one real proxy every
-  visitor resolved to the proxy address; do not reintroduce that. The
+  visitor resolved to the proxy address; do not reintroduce that. Handlers
+  behind the router may read the peer with `TrustedClientIP(r, 0)`, since
+  `trustedRealIP` already rewrote RemoteAddr; never hardcode a hop count
+  (the scanner snapshot and request log used `1` and trusted XFF even
+  without a proxy). The
   existing hauth login-rate-limit tests never caught the RealIP problem because they call `s.handleAuthLogin`
   directly, bypassing the router middleware chain — a rate-limit test that
   wants to prove IP-spoof resistance must go through `s.router.ServeHTTP`.
