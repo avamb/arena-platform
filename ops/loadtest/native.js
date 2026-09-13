@@ -6,7 +6,8 @@
  *
  * Payment: the local stand has no Stripe. A paid checkout is completed the way
  * the provider would complete it — POST /v1/payment-intents (org JWT) followed
- * by POST /v1/payment-intents/webhook processing + succeeded. The webhook is
+ * by POST /v1/payment-intents/webhook with a Stripe payment_intent.succeeded
+ * event envelope. The webhook is
  * unsigned only because STRIPE_WEBHOOK_SECRET / ALLPAY_WEBHOOK_SECRET are unset
  * locally; tickets are then issued by arena-worker (checkout.issue_tickets).
  *
@@ -139,16 +140,16 @@ function pay(cs) {
     provider_payment_id: providerPaymentId, amount: cs.total, currency: cs.currency,
   }, { token: FIX.native.org_jwt });
   if (!intent.ok) return false;
-  // The intent state machine only accepts created → processing → succeeded; a
-  // bare `succeeded` on a `created` intent is acknowledged with 200 and ignored.
-  for (const eventType of ['payment_intent.processing', 'payment_intent.succeeded']) {
-    const hook = req('POST', 'payment_webhook', '/v1/payment-intents/webhook', {
-      provider_payment_id: providerPaymentId, event_type: eventType,
-    });
-    if (!hook.ok || (hook.data && hook.data.processed === false)) {
-      if (__ENV.DEBUG) console.warn(`webhook ${eventType} not processed: ${JSON.stringify(hook.data)}`);
-      return false;
-    }
+  // A Stripe card payment: one `payment_intent.succeeded` event envelope for an
+  // intent still in `created`, exactly as Stripe delivers it.
+  const hook = req('POST', 'payment_webhook', '/v1/payment-intents/webhook', {
+    id: `evt_loadtest_${providerPaymentId}`,
+    type: 'payment_intent.succeeded',
+    data: { object: { id: providerPaymentId, status: 'succeeded' } },
+  });
+  if (!hook.ok || (hook.data && hook.data.processed === false)) {
+    if (__ENV.DEBUG) console.warn(`webhook succeeded not processed: ${JSON.stringify(hook.data)}`);
+    return false;
   }
   return true;
 }
