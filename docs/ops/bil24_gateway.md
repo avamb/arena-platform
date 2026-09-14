@@ -331,6 +331,99 @@ is cancelled automatically rather than parked for a human. A `manual_review` ord
 database predates this change; nothing new will ever create one, and PAY_ORDER's terminal-status
 handling for it is kept only so a stale row does not retry-loop.
 
+## 10. Category quotas and availability after migration 0101
+
+Since migration 0101 a GA (General Admission) category owns its places
+(`08_architecture/23_ga_category_quotas_plan_ru.md`): its quantity is
+`ticket_tiers.capacity`, the places are `session_seats` rows of
+`kind='ga_unit'` carrying its `tier_id`, and `sessions.capacity_total` is
+always the sum of a session's places (seated + GA), never edited on its
+own. **Per-category `inventory_ledger` rows no longer exist** — only the
+session-level row (`tier_id IS NULL`) does.
+
+### 10.1 Operator actions
+
+All three go through the admin category table (`apps/admin-web/src/routes/events.tsx`,
+the "Add category" button and the per-row quantity/open toggle) or directly
+against `PATCH`/`POST .../sessions/{session_id}/tiers[/{id}]`
+(`hcatalog/ticket_tiers.go`), same auth/`X-Admin-Reason` convention as the
+rest of this runbook:
+
+- **Change quantity**: `PATCH .../tiers/{id} {"capacity": N}`. Only ever
+  resizes a GA category's own places; a seated category's quantity is
+  read-only (it comes from the seating-plan geometry).
+- **Close / open**: `PATCH .../tiers/{id} {"is_open": false|true}`. A closed
+  category takes no NEW holds; places already held or sold are unaffected
+  and an order already placed for it can still be paid (PAY_ORDER and
+  `ReacquireHoldTx` never re-check `is_open`).
+- **Add a category mid-sale**: `POST .../tiers {"name", "pricing_mode",
+  "price_amount", "capacity", ...}`. Allowed at any time, including with
+  live sales on other categories; on a session bound to a seating plan this
+  always creates a GA category (never new plan seats) and flips the
+  session from `assigned_seats` to `hybrid` in the same transaction — it
+  never flips back.
+
+### 10.2 What the site sees
+
+- A closed category reports `availability: 0` on the wire — the Bil24
+  protocol has no "closed" flag, so the WordPress plugin renders it the
+  same as sold out.
+- A category added mid-sale is invisible to the site until the next
+  `GET_ALL_ACTIONS` catalog sync mints it a `categoryPriceId`
+  (`compatids.Ensure`). The site caches remaining availability per category
+  in product meta (`bil24_category_availability`), so after closing,
+  reopening, or resizing a category on the arena side, re-run the site's
+  catalog sync before judging what the page shows — a stale meta value is
+  not a sign the change didn't take.
+
+### 10.3 Error codes an operator can hit
+
+| Status | Code | Meaning |
+|---|---|---|
+| 409 | `tier.quantity_below_used` | Requested `capacity` is below what the category already holds/has sold; `details.floor` is the lowest value that would be accepted (and `details.used`, the held+sold count it's derived from). |
+| 409 | `tier.in_use` | Delete refused — the category still holds or has sold places. Close it instead. |
+| 409 | `tier.seated_category` | The category's places come from the seating plan; its quantity is read-only and it cannot be deleted (quantity/deletion requests only — price and open/close still work). |
+| 400 | `tier.capacity_required` | `capacity` was cleared (`null`) on a category that owns places — a GA/seated category must always keep a quantity, since session capacity is the sum of category quantities. |
+| — (422, session endpoint) | `session.capacity_override_not_applicable` | A GA/hybrid session's own `capacity_override` was set — a GA session's capacity is always the sum of its categories, never independently editable. |
+
+### 10.4 Post-change SQL invariant
+
+Run this after any manual quota edit, or as part of an incident
+investigation, against one session:
+
+```sql
+-- Category quantities, session capacity and the session-level ledger row
+-- must all agree. tier_places counts a seated category's own seats too.
+SELECT
+  s.id AS session_id,
+  s.capacity_total,
+  (SELECT count(*) FROM session_seats ss
+     WHERE ss.session_id = s.id AND ss.kind IN ('seat', 'ga_unit')) AS tier_places,
+  (SELECT coalesce(sum(tt.capacity), 0) FROM ticket_tiers tt
+     WHERE tt.session_id = s.id AND tt.deleted_at IS NULL) AS sum_tier_capacity,
+  il.capacity_total AS ledger_capacity_total
+FROM sessions s
+LEFT JOIN inventory_ledger il ON il.session_id = s.id AND il.tier_id IS NULL
+WHERE s.id = :session_id;
+```
+
+`capacity_total`, `tier_places`, `sum_tier_capacity` and
+`ledger_capacity_total` must all be equal. A mismatch means a quota
+mutation happened outside `gaquota` (the package that owns this
+invariant) or a migration/backfill left rows out of sync.
+
+### 10.5 "Available but not deletable" places
+
+Two foreign keys into `session_seats` carry **no cascade**:
+`reservation_seats.session_seat_id` and `order_items.session_seat_id`. A
+place can be `status='available'` today and still be referenced by one of
+these — a converted reservation that kept its join row, or an order whose
+ticket was later cancelled and released — and a delete of that "free"
+place fails with `23503` until the join row is cleaned up first. This is
+why shrinking or deleting a category can leave a place behind that looks
+free but refuses to go away; it is not a bug in a single delete call, both
+FKs have to be checked.
+
 ## Related reading
 
 - Wire-level behavior differences and result-code map:

@@ -484,6 +484,17 @@ CREATE TABLE customer_import_rows (
 Ниже для каждой команды: запрос (ключи, которые реально шлёт PHP), ответ (именованная Go-структура
 в `bil24compat`, все поля обязательны, если не сказано `omitempty`), семантика, ошибки.
 
+### 7.0 Квоты категорий (миграция 0101)
+
+С миграции 0101 GA-категория владеет своими местами (план
+`08_architecture/23_ga_category_quotas_plan_ru.md`): `ticket_tiers.capacity` — её количество,
+места — `session_seats` вида `ga_unit` с жёсткой `tier_id`, ключи `ga|t<unit_seq>|<n>` для
+категорий, заведённых через квоты (админку, шлюз, повторный импорт), `ga|c<index>|<n>` — для
+категорий геометрии GA-схемы; старые ключи `ga|pool|<n>` не переименовываются, но теперь тоже
+несут категорию. `sessions.capacity_total` = сумма мест сеанса (места схемы + GA-категории) и
+отдельно не редактируется; строк `inventory_ledger` по отдельной категории больше нет. Ниже
+`availability`/`placement` в ответах и гейт продаж описаны уже в этой модели.
+
 ### 7.1 `GET_ALL_ACTIONS`
 
 Запрос: только конверт. Ответ — `GetAllActionsResponse`:
@@ -524,12 +535,16 @@ CREATE TABLE customer_import_rows (
 - `day`/`time` — `sessions.start_at` в `venues.timezone`; NULL timezone → сеанс **не отдаётся**,
   в лог `warn bil24.venue_timezone_missing` (акцепт-чеклист стенда требует TZ у всех площадок).
 - `sellEndTime` — `min(tier.sale_window_end)` по тарифам, иначе `start_at`; RFC3339 с офсетом.
-- `availability` сеанса — остаток: `count(session_seats.status='available')` для сеансов с
-  местами/юнитами, иначе `capacity − sold − held` из `inventory_ledger`.
+- `availability` сеанса — сумма доступных мест **открытых и попадающих в окно продаж**
+  категорий: у категорий с местами (seated) — их свободные места, у GA — свободные юниты её
+  категории; закрытая (`ticket_tiers.is_open=false`) или вне `sale_window_start/end` категория
+  в сумму не входит (`sessionAvailability`, `hbil24/cmd_catalog_events.go`).
 - `categoryLimitList[0].categoryList` — **только GA-тарифы** (тарифы без мест: `admission_mode
   = general_admission` или GA-юниты в hybrid), `placement:false`. Тарифы с местами сюда не
   попадают — так сайт различает «чисто рассадка» (`categoryLimitList` пуст) и «combined»
   (`bil24-acf-sync.php:434-446`). `price` — `priceresolve.ForTier` на момент ответа.
+  `availability` категории — её свободные места, `0` для закрытой или вне окна продаж
+  (`gaCategoryAvailability`; признака «закрыта» в проводе Bil24 нет, решение 4 плана 23).
 - `seatingPlanId` = `actionEventId` для сеансов с местами (сайт использует его только как
   признак «есть план» и ключ кэша пробы `_bil24_combined_probe`, `bil24-acf-sync.php:434-446`),
   `0` для чисто GA; `seatingPlanName` = `seating_plans.name`.
@@ -555,16 +570,18 @@ CREATE TABLE customer_import_rows (
     "available": true, "location": {"sector": "Parter", "row": "3", "number": "12"}}]}
 ```
 
-- `placement` — тристейт как у Bil24: `true` для тарифов с местами, `false` для GA, ключ
-  отсутствует у тарифов сеансов без плана (чисто GA) — сайт считает отсутствие ключа
-  рассадкой только внутри плана (`class-bil24-seat-picker.php:554-555`), а для чисто GA
-  использует только `categoryList`.
+- `placement` — тристейт как у Bil24: `true` для категорий с местами (`kind='seat'`, в том
+  числе seated-категория на `hybrid`-сеансе), `false` для GA (включая GA-категорию, добавленную
+  вручную на сеансе со схемой — решение 10 плана 23), ключ отсутствует у тарифов сеансов без
+  плана (чисто GA) — сайт считает отсутствие ключа рассадкой только внутри плана
+  (`class-bil24-seat-picker.php:554-555`), а для чисто GA использует только `categoryList`.
 - `seatList`: для `assigned_seats` — все места (`kind='seat'`); для `hybrid` — места **и**
   GA-юниты как псевдо-места (`location` = `{"sector": "<tier name>", "row": "", "number": ""}`,
   категория с `placement:false`); для `general_admission` — `[]`.
 - `available` = `status='available'`; `availableOnly:true` фильтрует `seatList`, `categoryList`
-  всегда полный; `availability` категории = число доступных мест/юнитов, для безлимитного GA
-  без юнитов — `capacity − sold − held`.
+  всегда полный; `availability` категории = число свободных мест/юнитов её категории, `0` для
+  закрытой (`is_open=false`) или вне `sale_window_start/end` — категория без мест с миграции
+  0101 не бывает (каждая GA-категория владеет своими юнитами).
 - `price` — цена места: `priceresolve.ForTier(tier)`; `tariffPlanId` всегда `null`,
   `tariffIdMap` всегда `{}` (тарифных планов в arena нет — сайт создаёт вариацию `default-tariff`).
 - Сеанс не в скоупе/не опубликован → `-3`.
@@ -625,12 +642,17 @@ CREATE TABLE customer_import_rows (
   строка с его `system_seat_id`.
 - Валюты: корзина одной сессии — одна валюта; попытка добавить сеанс в другой валюте → `101`
   `bil24.currency_mismatch`.
-- Ошибки: `userId`/`sessionId` не найдены или истекли → `1`; сеанс не в скоупе → `-3`; продажи
-  закрыты (`sale_window` тарифа, сеанс `cancelled`, событие не `published`) → `101`; место
-  `held/sold/blocked` → `101 bil24.seat_taken {sector,row,number}` (сайт шлёт по одному месту,
+- Ошибки: `userId`/`sessionId` не найдены или истекли → `1`; сеанс не в скоупе → `-3`; сеанс
+  `cancelled` или событие не `published` → `101`; **закрытая категория** (`is_open=false`) или
+  вне `sale_window_start/end` → `101 bil24.category_sold_out` с `available:0` (в проводе Bil24
+  нет признака «закрыта» — решение 4 плана 23); место `held/sold/blocked` →
+  `101 bil24.seat_taken {sector,row,number}` (сайт шлёт по одному месту,
   `class-bil24-seat-picker.php:769-797`, так что описание точечное); категория: недостаточно
-  юнитов → `101 bil24.category_sold_out {name, available}`; `pwyw`-тариф → `101
-  bil24.pricing_mode_unsupported`; `seatList` и `categoryList` вместе → `-2`.
+  свободных мест → `101 bil24.category_sold_out {name, available}` с реальным остатком;
+  `pwyw`-тариф → `101 bil24.pricing_mode_unsupported`; `seatList` и `categoryList` вместе → `-2`.
+  Тот же гейт (закрыта/вне окна) стоит на `CREATE_ORDER_EXT` (§7.7); `PAY_ORDER` уже
+  оформленного заказа им не проверяется — решение 1 плана 23, места уже закреплены за
+  покупателем.
 - Существующие проверки конфликтов SEAT-C1 сохраняются; `seat_status_version` растёт при
   каждом изменении — виджет arena видит те же холды.
 
@@ -700,7 +722,8 @@ CREATE TABLE customer_import_rows (
 
 Алгоритм (одна транзакция, `ordering.CreateOrderFromCheckout`):
 
-1. Сессия шлюза (`1`), сеанс в скоупе (`-3`), продажи открыты (`101`).
+1. Сессия шлюза (`1`), сеанс в скоупе (`-3`), продажи открыты — тот же гейт закрытой/вне-окна
+   категории, что и у `RESERVATION` (§7.4): `101 bil24.category_sold_out`.
 2. Reservation корзины для `actionEventId`; нет — создаётся пустой и заполняется по `lines`
    (preflight-сценарий сайта, `bil24_reserve_preflight`).
 3. **Сверка `lines` с корзиной** по `categoryPriceId`: `quantity > held` → дозарезервировать
@@ -1092,7 +1115,13 @@ Admin-web — секция в карточке канала рядом с §5.4.
    `admission_mode` = `assigned_seats` если есть `placement:true` и нет GA-категорий, `hybrid`
    если есть и те и другие, `general_admission` если нет мест.
 5. Тарифы: на каждую категорию — `ticket_tiers` (map `category_price`), `price_amount` из
-   `price`, `capacity` для GA из `availability`, `sale_window_end` из `sellEndTime`.
+   `price`, `sale_window_end` из `sellEndTime`. Количество GA-категории — только при **первом**
+   импорте, из `availability` (это остаток в пакете на момент выгрузки, а не количество;
+   `availability: 0` запрещён для количества категории — создаётся закрытой с количеством 1 и
+   предупреждением `import.category_sold_out`, решение 3/7 плана 23); повторный импорт
+   количество не меняет, только цену/окно/сортировку, и закрывает (не удаляет) категории,
+   пропавшие из пакета. Импортированная GA-категория сразу получает свои места (`session_seats`
+   `kind='ga_unit'`, ключи `ga|t<unit_seq>|<n>`) — импорт больше не создаёт «безместный» сеанс.
 6. Схема: если есть `svg` — `seating.ImportSBTSVG` (§13.3) → `seating_plans` (`plan_type`
    по режиму, `name = seatingPlanName`, `external` в metadata) → версия → bind к сеансу с
    `category_tier_map` по индексу категории; материализация `session_seats` с

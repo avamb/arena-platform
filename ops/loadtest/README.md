@@ -29,6 +29,7 @@ ways arena sells tickets, and checks inventory correctness afterwards.
 | `gateway.js` | The Bil24-compatible gateway (`/compat/bil24/json`) the migrated WordPress sites use. `SCENARIO=flow` (browsers + buyers + abandoned carts, polls tickets), `race` (N buyers for the last tickets), `expiry` (abandoned holds must return to sale after the TTL). |
 | `native.js` | arena's own public API used by the widget: feed → `checkout/start` → payment intent + webhook (`processing`, `succeeded`) → public checkout status. `SCENARIO=flow` or `race`. |
 | `sql/audit.sql` | Read-only inventory audit for one session: ledger vs units vs tickets, double-sold units, expired holds never released. Every "violations" column must be 0. |
+| `quota_admin.js` | One operator VU that edits GA category quotas (plan 08_architecture/23) WHILE `flow` sells tickets on the same session: swings the VIP quantity ±`SWING` every `TICK_SECONDS`, closes/reopens VIP every `CLOSE_EVERY` ticks for `CLOSE_FOR_SECONDS`, adds a "Late release" category once at `ADD_AT_SECONDS`. Run it next to a `flow` scenario (`gateway.js` or `native.js`), against the same `results/fixtures.local.json`. Success = `qa_errors` == 0, `qa_patch_unexpected` == 0 (only 200 or the documented 409 `tier.quantity_below_used` are expected), and the category invariant query (below) holds afterwards. |
 | `bil24/docker-compose.loadtest.yml` | Compose override: mounts the gateway, turns SQL query logging off. |
 
 Defaults model the agreed peak: **200 concurrent visitors, 50 orders/min**, 5 minutes.
@@ -48,6 +49,9 @@ docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.intern
 docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.internal:8080 -e SCENARIO=flow   grafana/k6:0.54.0 run /lt/native.js
 docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.internal:8080 -e SCENARIO=race   grafana/k6:0.54.0 run /lt/native.js
 
+# 3b. Operator swinging GA category quotas on the flow session, run alongside 3
+docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.internal:8080 -e DURATION=3m grafana/k6:0.54.0 run /lt/quota_admin.js
+
 # 4. Audit a session afterwards (session ids are in results/fixtures.local.json)
 docker exec -i arena_postgres psql -U arena -d arena -v session_id=<uuid> < ops/loadtest/sql/audit.sql
 ```
@@ -59,7 +63,32 @@ fold buyers onto N shared email/phone identities and wait before paying, so
 orders of one customer overlap; expect `gw_open_order_refused` > 0 and no
 failed payments, the journey threshold fails by design), `DEBUG=1` (log every
 failed call). Provisioning:
-`FLOW_POOL`, `RACE_POOL`, `EXPIRY_POOL`, `RESERVATION_TTL`.
+`FLOW_POOL`, `RACE_POOL`, `EXPIRY_POOL`, `RESERVATION_TTL`. `quota_admin.js`:
+`TICK_SECONDS` (default 2), `CLOSE_EVERY` ticks (default 10),
+`CLOSE_FOR_SECONDS` (default 4), `ADD_AT_SECONDS` (default 30), `SWING`
+(default 150, the +/- quantity delta around the VIP category's starting
+quantity). It mints its own `platform_superadmin` dev token
+(`POST /v1/dev/auth/token`, the fixtures' org-admin JWT is refused on the
+tier routes — see AGENTS.md on org-scoped roles) and sends `X-Admin-Reason`
+on every write, same as a real operator would.
+
+Post-run invariant for a session touched by `quota_admin.js` (category
+quantities, places and the session-level ledger row must all agree — see
+`docs/ops/bil24_gateway.md` §10.4 for the full explanation):
+
+```sql
+SELECT
+  s.id AS session_id,
+  s.capacity_total,
+  (SELECT count(*) FROM session_seats ss
+     WHERE ss.session_id = s.id AND ss.kind IN ('seat', 'ga_unit')) AS tier_places,
+  (SELECT coalesce(sum(tt.capacity), 0) FROM ticket_tiers tt
+     WHERE tt.session_id = s.id AND tt.deleted_at IS NULL) AS sum_tier_capacity,
+  il.capacity_total AS ledger_capacity_total
+FROM sessions s
+LEFT JOIN inventory_ledger il ON il.session_id = s.id AND il.tier_id IS NULL
+WHERE s.id = :session_id;
+```
 
 Test-design notes learned the hard way:
 - Give every simulated buyer its own email and phone. Customers are matched
