@@ -218,6 +218,13 @@ func createSeatedHoldTx(ctx context.Context, txq *gen.Queries, in SeatedHoldInpu
 		return SeatedHoldResult{}, &SeatConflictsError{Conflicts: conflicts}
 	}
 
+	// Step 2b — a closed or out-of-window category refuses a NEW hold of
+	// its seats too (plan 08_architecture/23, decisions 5 and 10). Reads
+	// ticket_tiers only, so it adds no lock to the order above.
+	if err := CheckSeatCategoriesSellable(ctx, txq, in.SessionID, locked, time.Now().UTC()); err != nil {
+		return SeatedHoldResult{}, err
+	}
+
 	// Step 3 — session-level capacity reserve (nil tier for seated holds).
 	if _, err := txq.ReserveCapacity(ctx, in.SessionID, nil, quantity); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -365,6 +372,17 @@ func createGAHoldTx(ctx context.Context, txq *gen.Queries, in GAHoldInput, total
 		return gen.ReservationRow{}, fmt.Errorf("hcheckout: bump seat_status_version: %w", err)
 	}
 
+	// Step 1b — a closed category or one outside its sale window takes no
+	// NEW hold (plan 08_architecture/23, decisions 4 and 5). Run under the
+	// sessions row lock just taken so a concurrent close cannot slip in.
+	gateIDs := make([]uuid.UUID, 0, len(in.Items))
+	for _, it := range in.Items {
+		gateIDs = append(gateIDs, it.TierID)
+	}
+	if err := CheckCategoriesSellable(ctx, txq, in.SessionID, gateIDs, time.Now().UTC()); err != nil {
+		return gen.ReservationRow{}, err
+	}
+
 	// Step 2 — AB-51: session-level capacity reserve (the same accounting
 	// the seated path uses); concrete ga_unit rows are the per-tier truth.
 	if _, err := txq.ReserveCapacity(ctx, in.SessionID, nil, totalQty); err != nil {
@@ -394,8 +412,7 @@ func createGAHoldTx(ctx context.Context, txq *gen.Queries, in GAHoldInput, total
 		lines = append(lines, GAUnitLine{TierID: &tid, Quantity: in.Items[i].Quantity})
 	}
 	if _, err := AllocateGAUnitsTx(
-		ctx, txq, in.SessionID, res.ID, newVersion,
-		mode.SeatingPlanVersionID != nil, lines,
+		ctx, txq, in.SessionID, res.ID, newVersion, lines,
 	); err != nil {
 		return gen.ReservationRow{}, err
 	}

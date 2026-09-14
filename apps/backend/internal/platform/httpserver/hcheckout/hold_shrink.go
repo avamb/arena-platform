@@ -65,8 +65,10 @@ func ShrinkHoldTx(ctx context.Context, txq *gen.Queries, in HoldMutationInput) (
 	if err != nil {
 		return HoldMutationResult{}, err
 	}
-	mode, err := sessionHoldMode(ctx, txq, res.SessionID)
-	if err != nil {
+	// The session's admission mode is still read so a shrink against a
+	// missing / soft-deleted session fails the same way every other hold
+	// mutation does.
+	if _, err := sessionHoldMode(ctx, txq, res.SessionID); err != nil {
 		return HoldMutationResult{}, err
 	}
 
@@ -91,13 +93,9 @@ func ShrinkHoldTx(ctx context.Context, txq *gen.Queries, in HoldMutationInput) (
 		freed = append(freed, units...)
 	}
 
-	// Plan-less GA pools stamp the tier onto units at hold time; released
-	// units must rejoin the NULL-tier pool or it fragments across tiers.
-	if len(freed) > 0 && mode.AdmissionMode != admissionAssignedSeats && mode.SeatingPlanVersionID == nil {
-		if _, err := txq.ResetAvailableGAPoolTierStamps(ctx, res.SessionID); err != nil {
-			return HoldMutationResult{}, fmt.Errorf("hcheckout: reset GA pool tier stamps: %w", err)
-		}
-	}
+	// A released GA place keeps its category: since migration 0101 the
+	// category owns it, so there is nothing to un-stamp (the pre-0101
+	// fungible pool needed a ResetAvailableGAPoolTierStamps sweep here).
 
 	removed := int32(len(freed)) //nolint:gosec // bounded by the reservation's own seat count
 

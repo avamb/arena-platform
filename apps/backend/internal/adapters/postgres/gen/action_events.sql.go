@@ -173,6 +173,13 @@ type ActionEventTierRow struct {
 	IsGA             bool          `json:"is_ga"`
 	GAUnitsTotal     int32         `json:"ga_units_total"`
 	GAUnitsAvailable int32         `json:"ga_units_available"`
+	// SeatsTotal / SeatsAvailable are the coordinate-bearing seats
+	// (kind='seat') this category owns on a plan-bound session. A seated
+	// category's remaining count is SeatsAvailable, and the session-level
+	// remainder is the sum over open, on-sale categories of BOTH kinds
+	// (hbil24.sessionAvailability).
+	SeatsTotal     int32 `json:"seats_total"`
+	SeatsAvailable int32 `json:"seats_available"`
 }
 
 const listActionEventTiersByOrg = `-- name: ListActionEventTiersByOrg :many
@@ -197,7 +204,18 @@ SELECT tt.id, tt.session_id, tt.name, tt.pricing_mode, tt.price_amount,
           WHERE  ss.session_id = tt.session_id
             AND  ss.tier_id    = tt.id
             AND  ss.kind       = 'ga_unit'
-            AND  ss.status     = 'available')::int    AS ga_units_available
+            AND  ss.status     = 'available')::int    AS ga_units_available,
+       (SELECT count(*)
+          FROM   session_seats ss
+          WHERE  ss.session_id = tt.session_id
+            AND  ss.tier_id    = tt.id
+            AND  ss.kind       = 'seat')::int         AS seats_total,
+       (SELECT count(*)
+          FROM   session_seats ss
+          WHERE  ss.session_id = tt.session_id
+            AND  ss.tier_id    = tt.id
+            AND  ss.kind       = 'seat'
+            AND  ss.status     = 'available')::int    AS seats_available
 FROM   ticket_tiers tt
 JOIN   sessions s ON s.id = tt.session_id
 JOIN   events   e ON e.id = s.event_id
@@ -249,6 +267,8 @@ func (q *Queries) ListActionEventTiersByOrg(ctx context.Context, orgID uuid.UUID
 			&r.IsGA,
 			&r.GAUnitsTotal,
 			&r.GAUnitsAvailable,
+			&r.SeatsTotal,
+			&r.SeatsAvailable,
 		); err != nil {
 			return nil, err
 		}

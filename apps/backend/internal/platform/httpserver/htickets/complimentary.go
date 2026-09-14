@@ -7,7 +7,11 @@
 //
 // Inventory is decremented atomically: ReserveCapacity + ConfirmCapacity are
 // called in a single transaction so complimentary tickets consume capacity the
-// same way paid tickets do, preventing over-issuance.
+// same way paid tickets do, preventing over-issuance. Both run at SESSION
+// level (nil tier) - per-category inventory_ledger rows do not exist since
+// migration 0101, and a free ticket on a General Admission session consumes
+// one of its category's own PLACES, stamped onto the ticket's seat_key
+// exactly as a sold ticket's is (plan 08_architecture/23, decision 6).
 //
 // Ticket creation (step 4) inserts one ticket row per recipient (or qty
 // anonymous tickets when recipients is empty). Tickets use the
@@ -34,6 +38,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -42,6 +47,12 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
+
+// admissionAssignedSeats is the sessions.admission_mode value for a
+// strictly seated session — the one shape whose complimentary tickets take
+// no General Admission place. The other two ("general_admission",
+// "hybrid") both sell GA places.
+const admissionAssignedSeats = "assigned_seats"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/organizations/{org_id}/complimentary
@@ -64,8 +75,9 @@ type createComplimentaryIssuanceRequest struct {
 //  2. Check idempotency: if (org_id, batch_id) already exists, return the
 //     existing issuance immediately without touching inventory or tickets.
 //  3. Begin transaction.
-//  4. ReserveCapacity(session_id, tier_id, qty) — check and hold inventory.
-//  5. ConfirmCapacity(session_id, tier_id, qty) — move held → sold.
+//  4. ReserveCapacity(session_id, nil, qty) — check and hold inventory.
+//  5. ConfirmCapacity(session_id, nil, qty) — move held → sold, and take qty
+//     places of the category on a general-admission session.
 //  6. InsertComplimentaryIssuance with status='pending'.
 //  7. InsertComplimentaryTicket × qty (one per recipient, or anonymous when empty).
 //  8. UpdateComplimentaryIssuanceStatus → 'issued'.
@@ -190,8 +202,42 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 	invQ := h.inventoryQueries.WithTx(tx)
 	complQ := h.complimentaryQueries.WithTx(tx)
 
-	// Step 4: ReserveCapacity — check and hold qty units.
-	if _, err := invQ.ReserveCapacity(ctx, sessionID, tierID, req.Qty); err != nil {
+	// Step 3b: on a session that sells General Admission places a free
+	// ticket consumes one of them, so it must name its category — a NULL
+	// tier would drain the session ledger while every place still read
+	// "available" (plan 08_architecture/23, decision 6).
+	gaSession := false
+	if mode, mErr := complQ.GetSessionAdmissionModeByID(ctx, sessionID); mErr == nil {
+		gaSession = mode.AdmissionMode != admissionAssignedSeats
+	} else if !errors.Is(mErr, pgx.ErrNoRows) {
+		h.logger.Error("complimentary: admission lookup failed", slog.String("error", mErr.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"complimentary.admission_lookup_failed", "failed to resolve session admission_mode", r,
+		))
+		return
+	}
+	if gaSession && tierID == nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"tier.required",
+			"tier_id is required to issue complimentary tickets on a general-admission session", r,
+			map[string]any{"field": "tier_id"},
+		))
+		return
+	}
+
+	// Lock order (AGENTS.md): the sessions row (seat_status_version) FIRST,
+	// then inventory_ledger, then the places.
+	statusVersion, err := complQ.IncrementSessionSeatStatusVersion(ctx, sessionID)
+	if err != nil {
+		h.logger.Error("complimentary: bump seat_status_version failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"complimentary.capacity_failed", "failed to reserve inventory capacity", r,
+		))
+		return
+	}
+
+	// Step 4: ReserveCapacity — check and hold qty units at SESSION level.
+	if _, err := invQ.ReserveCapacity(ctx, sessionID, nil, req.Qty); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"complimentary.capacity_overflow",
@@ -210,7 +256,7 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 	}
 
 	// Step 5: ConfirmCapacity — move held → sold (separate from sales counter path).
-	if _, err := invQ.ConfirmCapacity(ctx, sessionID, tierID, req.Qty); err != nil {
+	if _, err := invQ.ConfirmCapacity(ctx, sessionID, nil, req.Qty); err != nil {
 		h.logger.Error("complimentary: confirm capacity failed",
 			slog.String("error", err.Error()),
 		)
@@ -218,6 +264,38 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 			"complimentary.capacity_failed", "failed to confirm inventory capacity", r,
 		))
 		return
+	}
+
+	// Step 5b: take the category's own places, available -> sold, and keep
+	// their keys so every issued ticket carries the concrete place it
+	// consumed. A short take means the category ran out.
+	var placeKeys []string
+	if gaSession && tierID != nil {
+		places, pErr := complQ.TakeGAUnitsForTier(
+			ctx, sessionID, *tierID,
+			gen.SeatStatusAvailable, req.Qty, gen.SeatStatusSold, statusVersion,
+		)
+		if pErr != nil {
+			h.logger.Error("complimentary: take category places failed",
+				slog.String("error", pErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"complimentary.capacity_failed", "failed to take category places", r,
+			))
+			return
+		}
+		if int32(len(places)) != req.Qty { //nolint:gosec // bounded by the LIMIT qty
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+				"tier.sold_out",
+				"the ticket category does not have enough free places for this issuance", r,
+				map[string]any{
+					"tier_id": tierID.String(), "requested": req.Qty, "available": len(places),
+				},
+			))
+			return
+		}
+		for _, pl := range places {
+			placeKeys = append(placeKeys, pl.SeatKey)
+		}
 	}
 
 	// Normalise recipients: nil → empty slice.
@@ -249,8 +327,13 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 			e := recipients[i]
 			holderEmail = &e
 		}
+		var seatKey *string
+		if int(i) < len(placeKeys) {
+			k := placeKeys[i]
+			seatKey = &k
+		}
 		t, err := complQ.InsertComplimentaryTicket(
-			ctx, issuance.ID, sessionID, tierID, holderEmail,
+			ctx, issuance.ID, sessionID, tierID, holderEmail, seatKey,
 		)
 		if err != nil {
 			h.logger.Error("complimentary: insert ticket failed",
@@ -467,7 +550,8 @@ func complimentaryTicketsFromRows(rows []gen.ComplimentaryTicketRow) []map[strin
 //  6. RevokeComplimentaryTickets — bulk UPDATE tickets to 'revoked'.
 //  7. For each revoked ticket: revoke all associated barcodes (if barcodeQueries available).
 //  8. For each revoked ticket: revoke 'qr' and 'pdf' credentials (if credentialQueries available).
-//  9. RestoreSoldCapacity(session_id, tier_id, qty) — restore inventory.
+//  9. RestoreSoldCapacity(session_id, nil, qty) — restore inventory; each
+//     revoked ticket's place returns to its category via its seat_key.
 //
 // 10. UpdateComplimentaryIssuanceStatus → 'revoked'.
 // 11. Commit. Emit structured audit log. Return 200 with the updated issuance.
@@ -601,7 +685,16 @@ func (h *Handler) HandleRevokeComplimentaryIssuance(w http.ResponseWriter, r *ht
 				return
 			}
 		}
-		if _, relErr := complQ.ReleaseSoldSessionSeat(ctx, t.SessionID, *t.SeatKey, compSeatVersion); relErr != nil && !errors.Is(relErr, pgx.ErrNoRows) {
+		// A GA place carries a "ga|" seat_key and the 'seat' query would not
+		// match it (kind mismatch), so branch on the prefix exactly as
+		// ticket cancellation does (ReleaseCancelledTicketInventoryTx).
+		var relErr error
+		if strings.HasPrefix(*t.SeatKey, "ga|") {
+			_, relErr = complQ.ReleaseSoldGAUnitBySeatKey(ctx, t.SessionID, *t.SeatKey, compSeatVersion)
+		} else {
+			_, relErr = complQ.ReleaseSoldSessionSeat(ctx, t.SessionID, *t.SeatKey, compSeatVersion)
+		}
+		if relErr != nil && !errors.Is(relErr, pgx.ErrNoRows) {
 			h.logger.Error("complimentary.revoke: seat release failed",
 				slog.String("ticket_id", t.ID.String()),
 				slog.String("seat_key", *t.SeatKey),
@@ -659,7 +752,9 @@ func (h *Handler) HandleRevokeComplimentaryIssuance(w http.ResponseWriter, r *ht
 	// Step 9: Restore inventory — decrement capacity_sold by the issuance qty.
 	if h.inventoryQueries != nil {
 		invQ := h.inventoryQueries.WithTx(tx)
-		if _, invErr := invQ.RestoreSoldCapacity(ctx, issuance.SessionID, issuance.TierID, issuance.Qty); invErr != nil {
+		// Session level (nil tier), mirroring issuance: per-category ledger
+		// rows do not exist since migration 0101.
+		if _, invErr := invQ.RestoreSoldCapacity(ctx, issuance.SessionID, nil, issuance.Qty); invErr != nil {
 			h.logger.Error("complimentary.revoke: restore capacity failed",
 				slog.String("issuance_id", id.String()),
 				slog.String("error", invErr.Error()),

@@ -165,6 +165,16 @@ export interface Tier {
   pwyw_min?: number | null;
   pwyw_max?: number | null;
   capacity?: number | null;
+  /**
+   * How many places the category still has free — the real upper bound for
+   * the quantity picker (GA category quotas, plan 08_architecture/23 step
+   * 5). 0 when the category is closed or outside its sale window; null /
+   * undefined when the session reports no per-category places, in which
+   * case `capacity` is the only bound there is.
+   */
+  available?: number | null;
+  /** False when an operator closed the category: it takes no new holds. */
+  is_open?: boolean;
   sale_window_start?: string | null;
   sale_window_end?: string | null;
   sort_order: number;

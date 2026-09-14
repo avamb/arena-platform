@@ -49,6 +49,12 @@ type SessionSeatRow struct {
 	UpdatedAt     time.Time  `json:"updated_at"`
 	// AB-50a (migration 0088): stable bigint identity for MACS scanning integration.
 	SystemSeatID int64 `json:"system_seat_id"`
+	// Kind discriminates a coordinate-bearing seat ('seat') from a General
+	// Admission place ('ga_unit'). Since migration 0101 EVERY GA place
+	// carries its category's tier_id, so tier_id alone no longer tells the
+	// two apart — anything deciding "is this a seated hold?" must read this
+	// column (hbil24.orderIsSeated).
+	Kind string `json:"kind"`
 }
 
 // scanSessionSeatRow scans a single session_seats row.
@@ -69,6 +75,7 @@ func scanSessionSeatRow(row interface {
 		&s.StatusVersion,
 		&s.UpdatedAt,
 		&s.SystemSeatID,
+		&s.Kind,
 	)
 	return s, err
 }
@@ -83,7 +90,7 @@ INSERT INTO session_seats (
 )
 VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
-          tier_id, status, reservation_id, status_version, updated_at, system_seat_id`
+          tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind`
 
 // InsertSessionSeat materializes one seat row for a session. status defaults
 // to 'available' via the table default; reservation_id and status_version
@@ -214,7 +221,7 @@ func (q *Queries) DeleteSessionSeatsBySession(ctx context.Context, sessionID uui
 
 const getSessionSeatByID = `-- name: GetSessionSeatByID :one
 SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
-       tier_id, status, reservation_id, status_version, updated_at, system_seat_id
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind
 FROM   session_seats
 WHERE  id         = $1
   AND  session_id = $2`
@@ -232,7 +239,7 @@ func (q *Queries) GetSessionSeatByID(ctx context.Context, id, sessionID uuid.UUI
 
 const getSessionSeatBySystemSeatID = `-- name: GetSessionSeatBySystemSeatID :one
 SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
-       tier_id, status, reservation_id, status_version, updated_at, system_seat_id
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind
 FROM   session_seats
 WHERE  session_id     = $1
   AND  system_seat_id = $2`
@@ -255,7 +262,7 @@ func (q *Queries) GetSessionSeatBySystemSeatID(ctx context.Context, sessionID uu
 
 const getSessionSeatByKey = `-- name: GetSessionSeatByKey :one
 SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
-       tier_id, status, reservation_id, status_version, updated_at, system_seat_id
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind
 FROM   session_seats
 WHERE  session_id = $1
   AND  seat_key   = $2`
@@ -274,7 +281,7 @@ func (q *Queries) GetSessionSeatByKey(ctx context.Context, sessionID uuid.UUID, 
 
 const listSessionSeats = `-- name: ListSessionSeats :many
 SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
-       tier_id, status, reservation_id, status_version, updated_at, system_seat_id
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind
 FROM   session_seats
 WHERE  session_id = $1
 ORDER  BY seat_key ASC, id ASC`
@@ -305,7 +312,7 @@ func (q *Queries) ListSessionSeats(ctx context.Context, sessionID uuid.UUID) ([]
 
 const listSessionSeatsByStatus = `-- name: ListSessionSeatsByStatus :many
 SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
-       tier_id, status, reservation_id, status_version, updated_at, system_seat_id
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind
 FROM   session_seats
 WHERE  session_id = $1
   AND  status     = $2
@@ -337,7 +344,7 @@ func (q *Queries) ListSessionSeatsByStatus(ctx context.Context, sessionID uuid.U
 
 const listSessionSeatsChangedSince = `-- name: ListSessionSeatsChangedSince :many
 SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
-       tier_id, status, reservation_id, status_version, updated_at, system_seat_id
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind
 FROM   session_seats
 WHERE  session_id     = $1
   AND  status_version > $2
@@ -370,7 +377,7 @@ func (q *Queries) ListSessionSeatsChangedSince(ctx context.Context, sessionID uu
 
 const lockSessionSeatsForHold = `-- name: LockSessionSeatsForHold :many
 SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
-       tier_id, status, reservation_id, status_version, updated_at, system_seat_id
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind
 FROM   session_seats
 WHERE  session_id = $1
   AND  seat_key   = ANY($2::text[])
@@ -413,7 +420,7 @@ SET    status         = 'held',
 WHERE  id     = $1
   AND  status = 'available'
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
-          tier_id, status, reservation_id, status_version, updated_at, system_seat_id`
+          tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind`
 
 // HoldSessionSeat performs the conditional 'available' -> 'held' transition
 // under the seat concurrency contract. Returns pgx.ErrNoRows when the seat
@@ -439,7 +446,7 @@ WHERE  id             = $1
   AND  reservation_id = $2
   AND  status         = 'held'
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
-          tier_id, status, reservation_id, status_version, updated_at, system_seat_id`
+          tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind`
 
 // ReleaseSessionSeat performs the conditional 'held' -> 'available'
 // transition scoped by reservation_id. Called from the TTL worker on
@@ -463,7 +470,7 @@ WHERE  id             = $1
   AND  reservation_id = $2
   AND  status         = 'held'
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
-          tier_id, status, reservation_id, status_version, updated_at, system_seat_id`
+          tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind`
 
 // SellSessionSeat performs the conditional 'held' -> 'sold' transition
 // scoped by reservation_id. Called during ticket issuance once the
@@ -485,7 +492,7 @@ SET    status         = 'unavailable',
 WHERE  id     = $1
   AND  status = 'available'
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
-          tier_id, status, reservation_id, status_version, updated_at, system_seat_id`
+          tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind`
 
 // BlockSessionSeat performs the conditional 'available' -> 'unavailable' admin
 // transition. Returns pgx.ErrNoRows when the seat is not available (e.g.
@@ -507,7 +514,7 @@ SET    status         = 'available',
 WHERE  id     = $1
   AND  status = 'unavailable'
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
-          tier_id, status, reservation_id, status_version, updated_at, system_seat_id`
+          tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind`
 
 // UnblockSessionSeat performs the conditional 'unavailable' -> 'available'
 // admin transition. Returns pgx.ErrNoRows when the seat is not unavailable.
@@ -527,7 +534,7 @@ SET    tier_id    = $3,
 WHERE  id         = $1
   AND  session_id = $2
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
-          tier_id, status, reservation_id, status_version, updated_at, system_seat_id`
+          tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind`
 
 // SetSessionSeatTier assigns / re-assigns a ticket_tier to a seat. Not
 // gated by status because tier changes can happen before the session
@@ -733,7 +740,6 @@ const allocateGAUnitsForHold = `-- name: AllocateGAUnitsForHold :many
 UPDATE session_seats ss
 SET    status         = 'held',
        reservation_id = $2,
-       tier_id        = $3,
        status_version = $4,
        updated_at     = now()
 FROM (
@@ -742,33 +748,35 @@ FROM (
     WHERE  session_id = $1
       AND  kind = 'ga_unit'
       AND  status = 'available'
-      AND  tier_id IS NOT DISTINCT FROM $5::uuid
+      AND  tier_id = $3::uuid
     ORDER  BY seat_key
-    LIMIT  $6
+    LIMIT  $5
     FOR UPDATE SKIP LOCKED
 ) picked
 WHERE ss.id = picked.id
 RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
           ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
-          ss.status_version, ss.updated_at, ss.system_seat_id`
+          ss.status_version, ss.updated_at, ss.system_seat_id, ss.kind`
 
-// AllocateGAUnitsForHold atomically claims `limit` available GA units
-// for a reservation (available -> held, reservation + tier stamped,
-// status_version set). unitTierFilter selects the pool: the category
-// tier uuid for plan-bound sessions, nil for plan-less pools (IS NOT
-// DISTINCT FROM semantics). SKIP LOCKED keeps an on-sale burst from
-// serializing; if fewer than limit rows return, the caller MUST roll
-// back the transaction — the pool is over capacity.
+// AllocateGAUnitsForHold atomically claims `limit` available places OF
+// ONE CATEGORY for a reservation (available -> held, reservation stamped,
+// status_version set).
+//
+// Since migration 0101 a General Admission category OWNS its places, so
+// the allocation pool is simply the category's own rows and tierID is both
+// the filter and (already) the stored value — the pre-0101 fungible
+// NULL-tier pool, which had to be stamped on hold and reset on release, is
+// gone. SKIP LOCKED keeps an on-sale burst from serializing; if fewer than
+// limit rows return, the caller MUST roll back the transaction — the
+// category is sold out.
 func (q *Queries) AllocateGAUnitsForHold(
 	ctx context.Context,
-	sessionID, reservationID uuid.UUID,
-	stampTierID *uuid.UUID,
+	sessionID, reservationID, tierID uuid.UUID,
 	statusVersion int64,
-	unitTierFilter *uuid.UUID,
 	limit int32,
 ) ([]SessionSeatRow, error) {
 	rows, err := q.db.Query(ctx, allocateGAUnitsForHold,
-		sessionID, reservationID, stampTierID, statusVersion, unitTierFilter, limit)
+		sessionID, reservationID, tierID, statusVersion, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -782,28 +790,6 @@ func (q *Queries) AllocateGAUnitsForHold(
 		out = append(out, s)
 	}
 	return out, rows.Err()
-}
-
-const resetAvailableGAPoolTierStamps = `-- name: ResetAvailableGAPoolTierStamps :execrows
-UPDATE session_seats
-SET    tier_id    = NULL,
-       updated_at = now()
-WHERE  session_id = $1
-  AND  kind = 'ga_unit'
-  AND  status = 'available'
-  AND  tier_id IS NOT NULL`
-
-// ResetAvailableGAPoolTierStamps returns released plan-less pool units
-// to the NULL-tier pool so the pool does not fragment across tiers.
-// Idempotent; call after release/expiry on plan-less GA sessions only.
-func (q *Queries) ResetAvailableGAPoolTierStamps(
-	ctx context.Context, sessionID uuid.UUID,
-) (int64, error) {
-	tag, err := q.db.Exec(ctx, resetAvailableGAPoolTierStamps, sessionID)
-	if err != nil {
-		return 0, err
-	}
-	return tag.RowsAffected(), nil
 }
 
 const releaseGAUnitsForReservationTier = `-- name: ReleaseGAUnitsForReservationTier :many
@@ -827,16 +813,15 @@ FROM (
 WHERE ss.id = picked.id
 RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
           ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
-          ss.status_version, ss.updated_at, ss.system_seat_id`
+          ss.status_version, ss.updated_at, ss.system_seat_id, ss.kind`
 
 // ReleaseGAUnitsForReservationTier is the inverse of AllocateGAUnitsForHold:
 // it returns up to limit GA units currently held by reservationID for tierID
 // back to 'available'. Used by ShrinkHold (W1-A5a, feature #483) when a cart
 // drops GA quantity. Fewer rows than limit means the reservation held fewer
-// units than requested — the caller clamps. Plan-less sessions must call
-// ResetAvailableGAPoolTierStamps afterwards so the units rejoin the NULL-tier
-// pool. statusVersion comes from IncrementSessionSeatStatusVersion in the same
-// transaction.
+// units than requested — the caller clamps. A released place keeps its
+// category: since migration 0101 the category owns it. statusVersion comes
+// from IncrementSessionSeatStatusVersion in the same transaction.
 func (q *Queries) ReleaseGAUnitsForReservationTier(
 	ctx context.Context,
 	sessionID, reservationID uuid.UUID,
@@ -897,23 +882,6 @@ func (q *Queries) DeleteAvailableGAPoolUnits(
 	return tag.RowsAffected(), nil
 }
 
-const countGAUnitsHeldSoldByTier = `-- name: CountGAUnitsHeldSoldByTier :one
-SELECT COUNT(*)::bigint AS count
-FROM   session_seats
-WHERE  session_id = $1
-  AND  kind = 'ga_unit'
-  AND  tier_id = $2
-  AND  status IN ('held', 'sold')`
-
-// CountGAUnitsHeldSoldByTier reports how many GA units a tier currently
-// occupies (held or sold) — the tier-capacity guard for plan-less pools
-// (AB-51).
-func (q *Queries) CountGAUnitsHeldSoldByTier(ctx context.Context, sessionID, tierID uuid.UUID) (int64, error) {
-	var n int64
-	err := q.db.QueryRow(ctx, countGAUnitsHeldSoldByTier, sessionID, tierID).Scan(&n)
-	return n, err
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // AB-49: post-issuance seat release (ticket cancellation)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -936,7 +904,7 @@ WHERE  ss.session_id = $1
        )
 RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
           ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
-          ss.status_version, ss.updated_at, ss.system_seat_id`
+          ss.status_version, ss.updated_at, ss.system_seat_id, ss.kind`
 
 // ReleaseSoldSessionSeat performs the conditional 'sold' -> 'available'
 // transition — the ONLY legal way a sold seat returns to sale (AB-49;
@@ -970,7 +938,7 @@ FROM (
 WHERE ss.id = picked.id
 RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
           ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
-          ss.status_version, ss.updated_at, ss.system_seat_id`
+          ss.status_version, ss.updated_at, ss.system_seat_id, ss.kind`
 
 // ReleaseSoldGAUnitForReservation releases exactly ONE sold GA unit of
 // the cancelled ticket's reservation + tier (units are fungible within
@@ -1000,7 +968,7 @@ WHERE  ss.session_id = $1
        )
 RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
           ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
-          ss.status_version, ss.updated_at, ss.system_seat_id`
+          ss.status_version, ss.updated_at, ss.system_seat_id, ss.kind`
 
 // ReleaseSoldGAUnitBySeatKey is the ga_unit twin of ReleaseSoldSessionSeat.
 // Since AB-51 issuance stamps the concrete unit's seat_key on the GA

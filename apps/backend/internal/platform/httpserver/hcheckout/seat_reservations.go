@@ -163,6 +163,14 @@ func (h *Handler) createSeatedReservation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Step 2b — a closed category, or one outside its sale window, refuses
+	// a NEW hold of its seats (plan 08_architecture/23, decisions 5 and
+	// 10). Reads ticket_tiers only, so it adds no lock to the order above.
+	if gateErr := CheckSeatCategoriesSellable(ctx, q, in.sessionID, locked, time.Now().UTC()); gateErr != nil {
+		writeCategoryGateError(w, r, gateErr)
+		return
+	}
+
 	// Step 3 — reserve inventory capacity for the seated hold; over-capacity
 	// still surfaces as 409 reservation.over_capacity so downstream clients
 	// have a single canonical over-capacity code.
@@ -408,18 +416,10 @@ func releaseReservationSeatsTx(ctx context.Context, q *gen.Queries, sessionID, r
 		return released, err
 	}
 
-	// AB-51: plan-less GA pools stamp the tier onto units at hold time;
-	// released units must return to the NULL-tier pool or the pool
-	// fragments across tiers. Idempotent, only touches available
-	// ga_unit rows, and skipped entirely for plan-bound sessions.
-	if released > 0 {
-		mode, mErr := q.GetSessionAdmissionModeByID(ctx, sessionID)
-		if mErr == nil && mode.AdmissionMode != "assigned_seats" && mode.SeatingPlanVersionID == nil {
-			if _, rErr := q.ResetAvailableGAPoolTierStamps(ctx, sessionID); rErr != nil {
-				return released, rErr
-			}
-		}
-	}
+	// A released GA place keeps its category — since migration 0101 the
+	// category owns its places, so nothing has to be un-stamped here (the
+	// pre-0101 fungible pool needed a ResetAvailableGAPoolTierStamps
+	// sweep at this point).
 	return released, nil
 }
 

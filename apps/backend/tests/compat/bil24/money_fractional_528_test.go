@@ -223,25 +223,54 @@ func TestCompatBil24_528_FractionalMoneyOnTheWire(t *testing.T) {
 
 // fx528SeedTier adds the fractional tier to the seeded GA session and returns
 // its uuid. The GA session's session-level inventory_ledger row (NULL tier) is
-// what a categoryList hold consumes, so no per-tier ledger row is needed — the
-// Early Bird tier scenario 2 reserves against has none either. The seed's own
-// teardown deletes ticket_tiers by session, so this row needs no cleanup of its
-// own.
+// what a categoryList hold consumes, so no per-tier ledger row is needed.
+//
+// Migration 0101: the category also needs PLACES OF ITS OWN (keyed under its
+// own ga|t<unit_seq> prefix) — a category with none is simply sold out. The
+// seed's own teardown deletes ticket_tiers and session_seats by session, so
+// neither needs cleanup here.
 func fx528SeedTier(t *testing.T, st *harnessState) string {
 	t.Helper()
 	gaSessionID, err := uuid.Parse(st.GAsessID)
 	if err != nil {
 		t.Fatalf("parse GA session uuid %q: %v", st.GAsessID, err)
 	}
+	const fx528Places = 10
 	var tierID uuid.UUID
 	if err := st.Pool.QueryRow(context.Background(),
 		`INSERT INTO ticket_tiers (session_id, name, pricing_mode,
-		     price_amount, currency, sort_order)
-		 VALUES ($1, 'Fractional 528', 'fixed', $2, $3, 9)
+		     price_amount, currency, sort_order, capacity, unit_seq, is_open)
+		 VALUES ($1, 'Fractional 528', 'fixed', $2, $3, 9, $4, 9, true)
 		 RETURNING id`,
-		gaSessionID, fx528PriceMinor, fx528Currency,
+		gaSessionID, fx528PriceMinor, fx528Currency, fx528Places,
 	).Scan(&tierID); err != nil {
 		t.Fatalf("seed the fractional tier on GA session %s: %v", st.GAsessID, err)
+	}
+	if _, err := st.Pool.Exec(context.Background(),
+		`INSERT INTO session_seats
+		     (session_id, seat_key, sector_name, row_name, seat_number,
+		      tier_id, status, kind)
+		 SELECT $1, 'ga|t9|' || lpad(gs::text, 6, '0'), '', '', '',
+		        $2, 'available', 'ga_unit'
+		 FROM generate_series(1, $3::int) gs`,
+		gaSessionID, tierID, fx528Places,
+	); err != nil {
+		t.Fatalf("seed the fractional category's places: %v", err)
+	}
+	// The session ledger caps the whole cart, so it has to grow with the
+	// places the new category adds.
+	if _, err := st.Pool.Exec(context.Background(),
+		`UPDATE inventory_ledger SET capacity_total = capacity_total + $2
+		  WHERE session_id = $1 AND tier_id IS NULL`,
+		gaSessionID, fx528Places,
+	); err != nil {
+		t.Fatalf("grow the GA session ledger for the fractional category: %v", err)
+	}
+	if _, err := st.Pool.Exec(context.Background(),
+		`UPDATE sessions SET capacity_total = capacity_total + $2 WHERE id = $1`,
+		gaSessionID, fx528Places,
+	); err != nil {
+		t.Fatalf("grow the GA session capacity for the fractional category: %v", err)
 	}
 	return tierID.String()
 }

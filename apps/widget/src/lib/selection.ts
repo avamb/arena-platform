@@ -196,6 +196,24 @@ export const GA_MIN_QUANTITY = 1;
 export const GA_MAX_QUANTITY = 20;
 
 /**
+ * The real upper bound of a GA category's quantity picker.
+ *
+ * GA category quotas (plan 08_architecture/23 step 5): a category owns its
+ * places, so what the buyer may still take is `available` — the count of its
+ * FREE places — not the quantity it was declared with. `available` is 0 for a
+ * category that is closed or outside its sale window, which makes its card
+ * un-incrementable; it is null/undefined only when the feed reports no
+ * per-category places at all (a ledger-only session), and the declared
+ * `capacity` is then the only bound there is.
+ */
+export function gaTierUpperBound(tier: {
+  available?: number | null;
+  capacity?: number | null;
+}): number {
+  return tier.available ?? tier.capacity ?? GA_MAX_QUANTITY;
+}
+
+/**
  * Clamp a GA quantity to [GA_MIN_QUANTITY, min(GA_MAX_QUANTITY, zoneCapacity)].
  */
 export function clampGaQuantity(qty: number, zoneCapacity: number): number {

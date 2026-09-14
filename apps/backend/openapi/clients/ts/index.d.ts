@@ -10086,6 +10086,49 @@ export interface components {
              *     changes ("price rises on <date>"); null if unknown.
              */
             next_price_change_at?: string | null;
+            /**
+             * @description Whether the category is open for sale. A closed category
+             *     (false) accepts no NEW holds; places already held or sold are
+             *     untouched and an order already placed can still be paid. Always
+             *     present on both the admin list and the public feed. GA category
+             *     quotas - plan 08_architecture/23 step 5.
+             */
+            is_open?: boolean;
+            /**
+             * @description Admin list endpoint only - whether the category owns places
+             *     from the seating-plan geometry ("seated", quantity read-only)
+             *     or General Admission places of its own ("ga", quantity
+             *     editable). Derived from the places, never stored.
+             */
+            kind?: string | null;
+            /**
+             * Format: int32
+             * @description Admin list endpoint only - how many places the category owns
+             *     (held, sold and available together). Absent for a category that
+             *     owns no place at all.
+             */
+            quantity?: number | null;
+            /**
+             * Format: int32
+             * @description Admin list endpoint only - how many of the category's places are
+             *     currently held by an open reservation.
+             */
+            held?: number | null;
+            /**
+             * Format: int32
+             * @description Admin list endpoint only - how many of the category's places have
+             *     been sold.
+             */
+            sold?: number | null;
+            /**
+             * Format: int32
+             * @description How many places the category still has free - what a buyer may
+             *     still take, and what the widget's quantity picker caps at
+             *     instead of `capacity`. 0 when the category is closed or outside
+             *     its sale window; null when the category owns no place at all
+             *     (then `capacity` is the only bound there is).
+             */
+            available?: number | null;
         };
         /**
          * @description AB-48 scheduled price window (ticket_tier_prices). Windows of one

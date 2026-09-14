@@ -5,10 +5,30 @@
 // atomically when an allocation is activated, and restored when unused quota is
 // returned at reconciliation time.
 //
+// # Inventory model (plan 08_architecture/23, decision 6)
+//
+// Every ledger call here is SESSION level (nil tier): per-category
+// inventory_ledger rows do not exist since migration 0101, and an
+// allocation that names a ticket category additionally blocks that many of
+// the category's own PLACES (session_seats, status 'unavailable' — the
+// admin hold, named 'blocked' before migration 0081 renamed it). Without
+// that the places would keep reading "available" while the ledger was
+// already spoken for, and a buyer's hold would fail on the ledger with
+// seats visibly free. An allocation with NO category stays ledger-only:
+// there is no category whose places it could block.
+//
+// The blocked places are not linked to the allocation row — there is no
+// column that could hold the link (session_seats.reservation_id is an FK to
+// reservations) — so reconciliation takes `consumed` of the category's
+// blocked places to 'sold' and returns the rest to 'available' by count.
+// Two allocations overlapping on one category therefore settle in
+// aggregate, which is the same guarantee the ledger counters give.
+//
 // # Allocation status lifecycle
 //
-//	pending → active      : inventory held (ReserveCapacity)
-//	active  → reconciled  : inventory settled (ConfirmCapacity + ReleaseCapacity)
+//	pending → active      : inventory held (ReserveCapacity + places blocked)
+//	active  → reconciled  : inventory settled (ConfirmCapacity + ReleaseCapacity,
+//	                        blocked places sold / returned)
 //	active  → disputed    : inventory remains held
 //	disputed→ reconciled  : inventory settled (ConfirmCapacity + ReleaseCapacity)
 //
@@ -21,6 +41,7 @@
 package hinventory
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -177,20 +198,7 @@ func (h *Handler) HandleCreateExternalAllocation(w http.ResponseWriter, r *http.
 		invQ := h.inventoryQueries.WithTx(tx)
 		allocQ := h.allocationQueries.WithTx(tx)
 
-		// Reserve capacity — returns pgx.ErrNoRows on over-capacity.
-		if _, err := invQ.ReserveCapacity(ctx, sessionID, tierID, req.QuotaQty); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
-					"allocation.quota_overflow", "insufficient platform inventory for this allocation quota", r,
-				))
-				return
-			}
-			h.logger.Error("external_allocation: reserve capacity failed",
-				slog.String("error", err.Error()),
-			)
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"allocation.capacity_failed", "failed to reserve inventory capacity", r,
-			))
+		if !h.holdAllocationInventory(ctx, w, r, invQ, sessionID, tierID, req.QuotaQty) {
 			return
 		}
 
@@ -454,22 +462,7 @@ func (h *Handler) HandlePatchExternalAllocation(w http.ResponseWriter, r *http.R
 		invQ := h.inventoryQueries.WithTx(tx)
 		allocQ := h.allocationQueries.WithTx(tx)
 
-		// Reserve capacity — returns pgx.ErrNoRows on over-capacity.
-		if _, err := invQ.ReserveCapacity(ctx, current.SessionID, current.TierID, current.QuotaQty); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
-					"allocation.quota_overflow",
-					"insufficient platform inventory for this allocation quota",
-					r,
-				))
-				return
-			}
-			h.logger.Error("external_allocation: reserve capacity failed",
-				slog.String("error", err.Error()),
-			)
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"allocation.capacity_failed", "failed to reserve inventory capacity", r,
-			))
+		if !h.holdAllocationInventory(ctx, w, r, invQ, current.SessionID, current.TierID, current.QuotaQty) {
 			return
 		}
 
@@ -531,9 +524,22 @@ func (h *Handler) HandlePatchExternalAllocation(w http.ResponseWriter, r *http.R
 		invQ := h.inventoryQueries.WithTx(tx)
 		allocQ := h.allocationQueries.WithTx(tx)
 
+		// Lock order (AGENTS.md): the sessions row (seat_status_version)
+		// FIRST, then inventory_ledger, then the places.
+		statusVersion, vErr := invQ.IncrementSessionSeatStatusVersion(ctx, current.SessionID)
+		if vErr != nil {
+			h.logger.Error("external_allocation: bump seat_status_version failed",
+				slog.String("error", vErr.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"allocation.confirm_failed", "failed to settle allocation inventory", r,
+			))
+			return
+		}
+
 		// Confirm consumed capacity (held → sold).
 		if consumed > 0 {
-			if _, err := invQ.ConfirmCapacity(ctx, current.SessionID, current.TierID, consumed); err != nil {
+			if _, err := invQ.ConfirmCapacity(ctx, current.SessionID, nil, consumed); err != nil {
 				h.logger.Error("external_allocation: confirm capacity failed",
 					slog.String("error", err.Error()),
 				)
@@ -547,13 +553,26 @@ func (h *Handler) HandlePatchExternalAllocation(w http.ResponseWriter, r *http.R
 		// Release unused capacity back to available.
 		remainder := current.QuotaQty - consumed
 		if remainder > 0 {
-			if _, err := invQ.ReleaseCapacity(ctx, current.SessionID, current.TierID, remainder); err != nil {
+			if _, err := invQ.ReleaseCapacity(ctx, current.SessionID, nil, remainder); err != nil {
 				h.logger.Error("external_allocation: release capacity failed",
 					slog.String("error", err.Error()),
 				)
 				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 					"allocation.release_failed", "failed to release unused capacity", r,
 				))
+				return
+			}
+		}
+
+		// Settle the blocked places: `consumed` of them become sold, the
+		// rest go back on sale.
+		if current.TierID != nil {
+			if consumed > 0 && !h.moveAllocationPlaces(ctx, w, r, invQ, current, consumed,
+				gen.SeatStatusSold, statusVersion, "allocation.confirm_failed") {
+				return
+			}
+			if remainder > 0 && !h.moveAllocationPlaces(ctx, w, r, invQ, current, remainder,
+				gen.SeatStatusAvailable, statusVersion, "allocation.release_failed") {
 				return
 			}
 		}
@@ -615,6 +634,133 @@ func (h *Handler) HandlePatchExternalAllocation(w http.ResponseWriter, r *http.R
 			"allocation": externalAllocationFromRow(alloc),
 		})
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inventory helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+// allocationInventoryQuerier is the narrow slice of *gen.Queries the two
+// inventory helpers below use. Declared so the helpers read as one unit
+// rather than taking the whole query surface by name.
+type allocationInventoryQuerier interface {
+	IncrementSessionSeatStatusVersion(ctx context.Context, sessionID uuid.UUID) (int64, error)
+	ReserveCapacity(ctx context.Context, sessionID uuid.UUID, tierID *uuid.UUID, quantity int32) (gen.InventoryLedgerRow, error)
+	TakeGAUnitsForTier(ctx context.Context, sessionID, tierID uuid.UUID, fromStatus string, limit int32, toStatus string, statusVersion int64) ([]gen.SessionSeatRow, error)
+}
+
+// holdAllocationInventory puts a quota block on hold: the session-level
+// ledger reserve plus, when the allocation names a category, that many of
+// the category's places moved available -> unavailable (the admin hold).
+// It writes the error envelope itself and reports ok=false when it does;
+// the caller's deferred rollback undoes whatever already succeeded.
+func (h *Handler) holdAllocationInventory(
+	ctx context.Context,
+	w http.ResponseWriter,
+	r *http.Request,
+	invQ allocationInventoryQuerier,
+	sessionID uuid.UUID,
+	tierID *uuid.UUID,
+	qty int32,
+) bool {
+	// Lock order (AGENTS.md): the sessions row (seat_status_version)
+	// FIRST, then inventory_ledger, then the places.
+	statusVersion, vErr := invQ.IncrementSessionSeatStatusVersion(ctx, sessionID)
+	if vErr != nil {
+		h.logger.Error("external_allocation: bump seat_status_version failed",
+			slog.String("error", vErr.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"allocation.capacity_failed", "failed to reserve inventory capacity", r,
+		))
+		return false
+	}
+
+	// Reserve capacity — returns pgx.ErrNoRows on over-capacity.
+	if _, err := invQ.ReserveCapacity(ctx, sessionID, nil, qty); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+				"allocation.quota_overflow",
+				"insufficient platform inventory for this allocation quota", r,
+			))
+			return false
+		}
+		h.logger.Error("external_allocation: reserve capacity failed",
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"allocation.capacity_failed", "failed to reserve inventory capacity", r,
+		))
+		return false
+	}
+
+	if tierID == nil {
+		return true
+	}
+	blocked, bErr := invQ.TakeGAUnitsForTier(
+		ctx, sessionID, *tierID,
+		gen.SeatStatusAvailable, qty, gen.SeatStatusUnavailable, statusVersion,
+	)
+	if bErr != nil {
+		h.logger.Error("external_allocation: block category places failed",
+			slog.String("error", bErr.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"allocation.capacity_failed", "failed to block category places", r,
+		))
+		return false
+	}
+	if int32(len(blocked)) != qty { //nolint:gosec // bounded by the LIMIT qty
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			"allocation.quota_overflow",
+			"the ticket category does not have enough free places for this allocation quota", r,
+			map[string]any{"tier_id": tierID.String(), "requested": qty, "available": len(blocked)},
+		))
+		return false
+	}
+	return true
+}
+
+// moveAllocationPlaces settles `qty` of a category's blocked places into
+// toStatus at reconciliation time. A short move means someone moved the
+// places out from under the allocation (a hand-edited seat map); the whole
+// reconciliation is refused rather than half-applied.
+func (h *Handler) moveAllocationPlaces(
+	ctx context.Context,
+	w http.ResponseWriter,
+	r *http.Request,
+	invQ allocationInventoryQuerier,
+	alloc gen.ExternalAllocationRow,
+	qty int32,
+	toStatus string,
+	statusVersion int64,
+	errCode string,
+) bool {
+	moved, err := invQ.TakeGAUnitsForTier(
+		ctx, alloc.SessionID, *alloc.TierID,
+		gen.SeatStatusUnavailable, qty, toStatus, statusVersion,
+	)
+	if err != nil {
+		h.logger.Error("external_allocation: settle category places failed",
+			slog.String("to_status", toStatus),
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			errCode, "failed to settle the allocation's category places", r,
+		))
+		return false
+	}
+	if int32(len(moved)) != qty { //nolint:gosec // bounded by the LIMIT qty
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			"allocation.places_missing",
+			"the allocation's blocked places are no longer available to settle", r,
+			map[string]any{
+				"tier_id": alloc.TierID.String(), "requested": qty, "found": len(moved),
+			},
+		))
+		return false
+	}
+	return true
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

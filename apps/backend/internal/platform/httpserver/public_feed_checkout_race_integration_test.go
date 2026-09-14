@@ -130,8 +130,9 @@ func newTwoSessionFeedFixture(t *testing.T, ctx context.Context, pool *pgxpool.P
 			f.cleanup()
 			t.Fatalf("newTwoSessionFeedFixture inventory %d insert failed: %v", i, err)
 		}
-		// AB-51: AllocateGAUnitsTx only claims EXISTING available ga_unit rows.
-		if _, err := gen.New(pool).InsertGAUnits(ctx, f.sessionIDs[i], "ga|pool", 0, nil, 5); err != nil {
+		// AB-51: AllocateGAUnitsTx only claims EXISTING available ga_unit
+		// rows. Migration 0101: they belong to the CATEGORY.
+		if _, err := gen.New(pool).InsertGAUnits(ctx, f.sessionIDs[i], "ga|t1", 0, &f.tierIDs[i], 5); err != nil {
 			f.cleanup()
 			t.Fatalf("newTwoSessionFeedFixture InsertGAUnits %d failed: %v", i, err)
 		}

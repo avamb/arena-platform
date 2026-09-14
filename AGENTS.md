@@ -765,6 +765,23 @@ entries short and factual.
   one. Tests: `apps/backend/tests/compat/bil24/order_pay_window_integration_test.go`,
   `apps/backend/internal/platform/ordering/lifecycle_test.go`. Runbook:
   `docs/ops/bil24_gateway.md` §9.2.
+- **Since migration 0101 a GA place with `tier_id IS NULL` is UNSELLABLE.**
+  A General Admission category OWNS its places (plan
+  `08_architecture/23_ga_category_quotas_plan_ru.md`): they are the
+  `session_seats` rows of `kind='ga_unit'` carrying its `tier_id`, keyed
+  `ga|t<ticket_tiers.unit_seq>|<n>`, and `AllocateGAUnitsForHold` filters on
+  `tier_id = $tier` with no NULL fallback. Any fixture that still seeds the
+  pre-0101 fungible `ga|pool|<n>` batch with a NULL tier produces a session
+  that answers "sold out" on every surface — seed a `ticket_tiers` row (with
+  `capacity`, `unit_seq`, `is_open`) and stamp its id on the places instead.
+  Two production paths still create the dead NULL-tier pool and are marked
+  KNOWN GAP in the source until plan steps 3/6 land: `hcatalog/sessions.go`
+  session create and capacity edit. A closed category (`is_open=false`) or
+  one outside `sale_window_start/end` refuses every NEW hold through
+  `hcheckout.CheckCategorySellable` and reports availability 0 on the
+  gateway wire (there is no "closed" flag in the protocol); an order that
+  already exists is unaffected — `ReacquireHoldTx` and PAY_ORDER deliberately
+  skip the gate.
 - **`customers.Resolve` is race-safe via lookup-after-23505 inside a
   SAVEPOINT.** `customer_identities_strong_uq` (migration 0091) is a
   GLOBAL unique index, so two concurrent first-time resolves for the same

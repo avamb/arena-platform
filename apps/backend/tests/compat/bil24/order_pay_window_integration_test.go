@@ -798,3 +798,66 @@ func TestCompatBil24_CreateOrderExt_OpenOrderExistsProtectsLiveHold(t *testing.T
 	}
 	sc5AssertOrderPaid(t, st, orderA, "woo_bank_card")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Decision 1 — closing a category never strands an order that already exists
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestCompatBil24_PayOrder_CategoryClosedAfterOrderStillPays is decision 1 of
+// plan 08_architecture/23: the close/sale-window gate introduced in step 4
+// refuses only NEW holds. An operator who closes a category inside the
+// 20-minute payment window must not strand a buyer whose card the shop has
+// already charged — the places behind that order are already theirs.
+func TestCompatBil24_PayOrder_CategoryClosedAfterOrderStillPays(t *testing.T) {
+	st := setupHarness(t)
+	base := startHarnessServer(t, st)
+
+	actionEventID := mustActionEventID(t, st, st.AssignedSessID)
+	allLabels := sortedSeatLabels(st)
+	if len(allLabels) < 1 {
+		t.Fatalf("seed produced %d seats, need at least 1", len(allLabels))
+	}
+	label := allLabels[0]
+	tierWireID := sc6TierWireID(t, st, st.AssignedTierID)
+
+	sess, user, _, orderID, _, _ := pwNewOrder(
+		t, base, st, actionEventID, tierWireID, "harness-pw-closed@example.test", label, "pw-closed-1")
+	systemID := sc5SystemID(t, st, orderID)
+
+	// The operator closes the category AND puts its sale window in the past
+	// — both halves of the gate at once — after the order exists.
+	if _, err := st.Pool.Exec(context.Background(),
+		`UPDATE ticket_tiers
+		    SET is_open = false, sale_window_end = now() - interval '1 hour'
+		  WHERE id = $1`, st.AssignedTierID,
+	); err != nil {
+		t.Fatalf("close the category: %v", err)
+	}
+
+	resp := pwPay(t, base, st, sess, user, strconv.FormatInt(systemID, 10))
+	if code := numberField(t, resp, "resultCode"); code != 0 {
+		t.Fatalf("PAY_ORDER after the category was closed resultCode = %v, want 0 (description %v)",
+			code, resp["description"])
+	}
+	sc5AssertOrderPaid(t, st, orderID, "woo_bank_card")
+	sc5AssertTickets(t, st, orderID, 1, "harness-pw-closed@example.test")
+
+	// The gate is still armed for NEW business on that category: a fresh
+	// RESERVATION of another seat of the same category is refused.
+	sess2, user2 := createGatewayUser(t, base, st, "harness-pw-closed-2@example.test")
+	blocked := postBil24(t, base, map[string]any{
+		"command":       "RESERVATION",
+		"fid":           st.ChannelFID,
+		"token":         st.ChannelToken,
+		"locale":        "ru-RU",
+		"type":          "RESERVE",
+		"userId":        user2,
+		"sessionId":     sess2,
+		"actionEventId": actionEventID,
+		"seatList":      []any{st.SeatIDs[allLabels[1]]},
+	})
+	if code := numberField(t, blocked, "resultCode"); code == 0 {
+		t.Errorf("RESERVATION on a closed category resultCode = 0, want a refusal (description %v)",
+			blocked["description"])
+	}
+}

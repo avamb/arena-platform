@@ -290,11 +290,12 @@ func TestCompatBil24_499_GetSeatList_WireShape(t *testing.T) {
 					c["categoryPriceName"], v)
 			}
 		}
-		// The seeded GA pool carries tier_id NULL, so neither tier owns units
-		// of its own. Reporting 0 here would contradict GET_ALL_ACTIONS, which
-		// advertises the session-level 50 for the very same tiers.
-		sc1WantNumber(t, early, "availability", 50)
-		sc1WantNumber(t, standard, "availability", 50)
+		// Migration 0101: each category owns half the session's 50 places,
+		// so its remainder is simply the count of its own free rows. The
+		// pre-0101 pool carried tier_id NULL and both categories reported
+		// the same fungible 50.
+		sc1WantNumber(t, early, "availability", 25)
+		sc1WantNumber(t, standard, "availability", 25)
 
 		if seats := sc1Array(t, resp, "seatList"); len(seats) != 0 {
 			t.Errorf("seatList = %#v, want [] on a session with no seating plan", seats)

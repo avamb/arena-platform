@@ -40,6 +40,8 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 )
@@ -171,6 +173,16 @@ type publicFeedTierResponse struct {
 	// changes ("price rises on <date>"), nil when no change is known.
 	CurrentPrice      int64   `json:"current_price"`
 	NextPriceChangeAt *string `json:"next_price_change_at"`
+	// IsOpen is false for a category an operator closed: it accepts no new
+	// holds, so the widget must not offer it (migration 0101, plan
+	// 08_architecture/23 step 5).
+	IsOpen bool `json:"is_open"`
+	// Available is how many places the category still has free — what the
+	// widget's quantity picker must cap at, rather than the declared
+	// Capacity. 0 when the category is closed or outside its sale window;
+	// null when the category owns no place at all (a ledger-only session),
+	// in which case the widget falls back to Capacity as before.
+	Available *int `json:"available"`
 }
 
 func publicFeedTierFromRow(t gen.TicketTierRow) publicFeedTierResponse {
@@ -185,6 +197,7 @@ func publicFeedTierFromRow(t gen.TicketTierRow) publicFeedTierResponse {
 		PwywMax:      t.PwywMax,
 		Capacity:     t.Capacity,
 		SortOrder:    t.SortOrder,
+		IsOpen:       t.IsOpen,
 	}
 	if t.SaleWindowStart != nil {
 		s := t.SaleWindowStart.UTC().Format(time.RFC3339)
@@ -195,6 +208,30 @@ func publicFeedTierFromRow(t gen.TicketTierRow) publicFeedTierResponse {
 		resp.SaleWindowEnd = &s
 	}
 	return resp
+}
+
+// publicFeedTierAvailable is how many places a category still has free, or
+// nil when it owns none at all.
+//
+// A closed category, or one outside its sale window, answers 0 — the exact
+// gate the sales paths apply (hcheckout.CategorySellable), so the widget
+// can never offer a quantity the hold would refuse. A category with no
+// places of its own answers nil rather than 0: a ledger-only session has
+// nothing per-category to count, and 0 there would read as "sold out".
+func publicFeedTierAvailable(t gen.TicketTierRow, stats map[uuid.UUID]gaquota.Stats, now time.Time) *int {
+	if hcheckout.CategorySellable(t, now) != nil {
+		zero := 0
+		return &zero
+	}
+	st, ok := stats[t.ID]
+	if !ok {
+		return nil
+	}
+	n := int(st.Available)
+	if n < 0 {
+		n = 0
+	}
+	return &n
 }
 
 // BuyerFieldItem describes a single buyer-form field that the widget should
@@ -703,6 +740,19 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 							)
 							effPrices = nil
 						}
+						// Per-category remaining places (plan
+						// 08_architecture/23 step 5). Non-fatal: a failure
+						// leaves every `available` null and the widget falls
+						// back to the declared capacity, as it did before.
+						placeStats, statsErr := gaquota.SessionStats(ctx, h.tierQueries, sess.ID)
+						if statsErr != nil {
+							h.logger.Error("public_feed: category place counters failed",
+								slog.String("session_id", sess.ID.String()),
+								slog.String("error", statsErr.Error()),
+							)
+							placeStats = nil
+						}
+						now := time.Now().UTC()
 						for _, tier := range tiers {
 							tr := publicFeedTierFromRow(tier)
 							if eff, ok := effPrices[tier.ID]; ok {
@@ -712,6 +762,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 									tr.NextPriceChangeAt = &s
 								}
 							}
+							tr.Available = publicFeedTierAvailable(tier, placeStats, now)
 							sessResp.Tiers = append(sessResp.Tiers, tr)
 						}
 					}

@@ -397,6 +397,26 @@ func (h *Handler) writeHoldError(ctx context.Context, w http.ResponseWriter, com
 		resp := bil24Error(command, ResultCodeInvalidRequest, "one or more requested seats are not available")
 		resp.Data = map[string]any{"conflicts": conflicts.Conflicts}
 		writeBil24JSON(w, http.StatusOK, resp)
+	case errors.Is(err, hcheckout.ErrCategoryClosed),
+		errors.Is(err, hcheckout.ErrCategoryNotOnSale):
+		// Decision 4 of plan 08_architecture/23: the wire protocol has no
+		// "category closed" flag, so a closed or out-of-window category is
+		// reported to the site exactly as a sold-out one — 101 with a
+		// user-visible description the plugin renders in the basket. Same
+		// treatment as *CapacityError below in writeCartHoldError.
+		resp := bil24Error(command, ResultCodeUserVisible,
+			h.localizeDesc("", "", "bil24.category_sold_out", "Category is sold out",
+				map[string]any{"name": "", "available": 0}))
+		if tid := hcheckout.CategoryGateTierID(err); tid != uuid.Nil {
+			resp.Data = map[string]any{"categoryPriceId": h.compatCategoryPriceID(ctx, tid)}
+		}
+		writeBil24JSON(w, http.StatusOK, resp)
+	case errors.Is(err, hcheckout.ErrCategoryNotFound):
+		resp := bil24Error(command, ResultCodeNotFound, "categoryPriceId not found in this session")
+		if tid := hcheckout.CategoryGateTierID(err); tid != uuid.Nil {
+			resp.Data = map[string]any{"categoryPriceId": h.compatCategoryPriceID(ctx, tid)}
+		}
+		writeBil24JSON(w, http.StatusOK, resp)
 	case errors.As(err, &capErr):
 		resp := bil24Error(command, ResultCodeInvalidRequest, "insufficient capacity for this reservation")
 		detail := map[string]any{"requested": capErr.Requested}

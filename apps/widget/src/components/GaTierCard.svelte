@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { clampGaQuantity, GA_MAX_QUANTITY } from '../lib/selection.js';
+  import { clampGaQuantity, gaTierUpperBound, GA_MAX_QUANTITY } from '../lib/selection.js';
   import { formatPrice } from '../lib/checkout.js';
   import type { Tier } from '../types.js';
 
@@ -10,13 +10,16 @@
   }
   const { tier, quantity, onQuantityChange }: Props = $props();
 
-  const capacity = $derived(tier.capacity ?? GA_MAX_QUANTITY);
+  // The picker's upper bound is what is actually LEFT in the category, not
+  // the quantity it was declared with — see gaTierUpperBound.
+  const remaining = $derived(gaTierUpperBound(tier));
   // AB-48: the effective (scheduled) price is what the buyer pays now.
   const price = $derived(tier.current_price ?? tier.price_amount);
   const nextChange = $derived(
     tier.next_price_change_at ? new Date(tier.next_price_change_at) : null,
   );
-  const canIncrease = $derived(quantity < Math.min(GA_MAX_QUANTITY, capacity));
+  const soldOut = $derived(remaining <= 0);
+  const canIncrease = $derived(quantity < Math.min(GA_MAX_QUANTITY, remaining));
   const canDecrease = $derived(quantity > 0);
 
   function decrement(): void {
@@ -25,7 +28,7 @@
   }
 
   function increment(): void {
-    const newQty = clampGaQuantity(quantity + 1, capacity);
+    const newQty = clampGaQuantity(quantity + 1, remaining);
     onQuantityChange(tier.id, newQty);
   }
 </script>
@@ -37,6 +40,9 @@
       <span class="ga-card-price">{formatPrice(price, tier.currency)}</span>
     {:else}
       <span class="ga-card-price">Free</span>
+    {/if}
+    {#if soldOut}
+      <span class="ga-card-soldout" data-testid="ga-sold-out">Sold out</span>
     {/if}
     {#if nextChange && !Number.isNaN(nextChange.getTime())}
       <span class="ga-card-price-change" data-testid="ga-price-change">
@@ -75,6 +81,7 @@
   .ga-card-info { display: flex; flex-direction: column; gap: 0.125rem; flex: 1; min-width: 0; }
   .ga-card-name { font-weight: 600; font-size: 0.9375rem; color: var(--arena-color-primary, #1a1a1a); }
   .ga-card-price { font-size: 0.875rem; color: var(--arena-color-secondary, #6b7280); }
+  .ga-card-soldout { font-size: 0.8125rem; font-weight: 600; color: var(--arena-color-secondary, #6b7280); }
   .ga-card-stepper { display: flex; align-items: center; gap: 0.625rem; flex-shrink: 0; }
   .step-btn {
     width: 2rem;

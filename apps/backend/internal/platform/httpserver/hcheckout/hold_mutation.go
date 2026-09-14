@@ -302,7 +302,6 @@ func ExtendHoldTx(ctx context.Context, txq *gen.Queries, in HoldMutationInput) (
 	if len(gaLines) > 0 && mode.AdmissionMode == admissionAssignedSeats {
 		return HoldMutationResult{}, ErrHoldQuantityNotSupported
 	}
-	planBound := mode.SeatingPlanVersionID != nil
 
 	// Drop seat keys this reservation already holds so a retried RESERVE
 	// neither conflicts with itself nor double-counts quantity.
@@ -331,6 +330,21 @@ func ExtendHoldTx(ctx context.Context, txq *gen.Queries, in HoldMutationInput) (
 		return HoldMutationResult{}, fmt.Errorf("hcheckout: bump seat_status_version: %w", err)
 	}
 
+	// A closed category, or one outside its sale window, takes no NEW hold
+	// — including an ADDITION to an existing cart (plan 08_architecture/23
+	// step 4). Decision 1 keeps the already-held part of the cart alive:
+	// this refuses the extension, nothing more. The seat branch is gated
+	// inside holdSeatKeysTx, once the seats' categories are known.
+	if len(gaLines) > 0 {
+		gateIDs := make([]uuid.UUID, 0, len(gaLines))
+		for _, l := range gaLines {
+			gateIDs = append(gateIDs, l.TierID)
+		}
+		if err := CheckCategoriesSellable(ctx, txq, res.SessionID, gateIDs, in.now()); err != nil {
+			return HoldMutationResult{}, err
+		}
+	}
+
 	// Capacity first — mirrors CreateSeatedHold / CreateGAHold, where an
 	// over-capacity reservation must never touch seat rows.
 	if _, err := txq.ReserveCapacity(ctx, res.SessionID, nil, added); err != nil {
@@ -349,7 +363,7 @@ func ExtendHoldTx(ctx context.Context, txq *gen.Queries, in HoldMutationInput) (
 		touched = append(touched, seats...)
 	}
 	if len(gaLines) > 0 {
-		units, err := extendGALinesTx(ctx, txq, res, gaLines, planBound, newVersion, in.now())
+		units, err := extendGALinesTx(ctx, txq, res, gaLines, newVersion, in.now())
 		if err != nil {
 			return HoldMutationResult{}, err
 		}
@@ -382,7 +396,6 @@ func extendGALinesTx(
 	txq *gen.Queries,
 	res gen.ReservationRow,
 	gaLines []HoldTierQuantity,
-	planBound bool,
 	statusVersion int64,
 	at time.Time,
 ) ([]gen.SessionSeatRow, error) {
@@ -399,7 +412,7 @@ func extendGALinesTx(
 		tid := gaLines[i].TierID
 		lines = append(lines, GAUnitLine{TierID: &tid, Quantity: gaLines[i].Quantity})
 	}
-	units, err := AllocateGAUnitsTx(ctx, txq, res.SessionID, res.ID, statusVersion, planBound, lines)
+	units, err := AllocateGAUnitsTx(ctx, txq, res.SessionID, res.ID, statusVersion, lines)
 	if err != nil {
 		return nil, err
 	}
@@ -426,6 +439,12 @@ func holdSeatKeysTx(
 	}
 	if conflicts := seatConflicts(seatKeys, locked); len(conflicts) > 0 {
 		return nil, &SeatConflictsError{Conflicts: conflicts}
+	}
+	// A closed / out-of-window category refuses a NEW hold of its seats
+	// too (decision 10). Only reached from ExtendHoldTx — ReacquireHoldTx
+	// re-asserts an EXISTING hold and deliberately skips the gate.
+	if err := CheckSeatCategoriesSellable(ctx, txq, res.SessionID, locked, time.Now().UTC()); err != nil {
+		return nil, err
 	}
 	held := make([]gen.SessionSeatRow, 0, len(locked))
 	for _, s := range locked {

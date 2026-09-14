@@ -120,7 +120,8 @@ func newWebhookWidgetFixture(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	}
 
 	// AB-51: AllocateGAUnitsTx only claims EXISTING available ga_unit rows.
-	if _, err := gen.New(pool).InsertGAUnits(ctx, f.sessionID, "ga|pool", 0, nil, 5); err != nil {
+	// Migration 0101: they belong to the CATEGORY, not to a shared pool.
+	if _, err := gen.New(pool).InsertGAUnits(ctx, f.sessionID, "ga|t1", 0, &f.tierID, 5); err != nil {
 		f.cleanup()
 		t.Fatalf("webhookWidgetFixture InsertGAUnits: %v", err)
 	}

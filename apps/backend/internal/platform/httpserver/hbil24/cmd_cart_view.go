@@ -46,9 +46,14 @@ import (
 // effective unit price, the display name (for the sold-out message), the
 // pricing mode (pwyw is refused by the gateway) and the session currency.
 type cartPricing struct {
-	price    map[uuid.UUID]int64
-	name     map[uuid.UUID]string
-	mode     map[uuid.UUID]string
+	price map[uuid.UUID]int64
+	name  map[uuid.UUID]string
+	mode  map[uuid.UUID]string
+	// avail is how many places each category still has free, so the
+	// sold-out envelope can name the real remainder instead of a hard 0
+	// (plan 08_architecture/23 step 5). Absent when the seat surface is
+	// unwired, which reads as 0.
+	avail    map[uuid.UUID]int
 	currency string
 }
 
@@ -58,6 +63,7 @@ func newCartPricing() cartPricing {
 		price: map[uuid.UUID]int64{},
 		name:  map[uuid.UUID]string{},
 		mode:  map[uuid.UUID]string{},
+		avail: map[uuid.UUID]int{},
 	}
 }
 
@@ -99,7 +105,32 @@ func (h *Handler) cartSessionPricing(ctx context.Context, sessionID uuid.UUID) (
 			p.currency = t.Currency
 		}
 	}
+	p.loadAvailability(ctx, h, sessionID)
 	return p, nil
+}
+
+// loadAvailability counts each category's free places off the session_seats
+// snapshot — the same count GET_SEAT_LIST reports. Best-effort: an unwired
+// or failing seat surface leaves the map empty and the sold-out envelope
+// falls back to 0, which is what it always said before.
+func (p *cartPricing) loadAvailability(ctx context.Context, h *Handler, sessionID uuid.UUID) {
+	if h.seatQ == nil || sessionID == uuid.Nil {
+		return
+	}
+	units, err := h.seatQ.ListSessionSeatsAdmin(ctx, sessionID)
+	if err != nil {
+		h.logger.Warn("bil24_compat: cart: seat snapshot failed; reporting availability 0",
+			slog.String("session_id", sessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+	for _, u := range units {
+		if u.TierID == nil || u.Status != "available" {
+			continue
+		}
+		p.avail[*u.TierID]++
+	}
 }
 
 // cartCurrency reports the currency the cart is already denominated in, or ""
@@ -538,15 +569,29 @@ func (h *Handler) writeCartHoldError(
 				"Seat is already taken", cartSeatParams(conflicts, seatByKey)),
 		))
 	case errors.As(err, &capErr):
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeUserVisible,
+			h.localizeDesc(req.Locale, cc.locale, "bil24.category_sold_out",
+				"Category is sold out", cartSoldOutParams(pricing, capErr.TierID)),
+		))
+	case errors.Is(err, hcheckout.ErrCategoryClosed),
+		errors.Is(err, hcheckout.ErrCategoryNotOnSale):
+		// Decision 4: the wire has no "closed" flag, so a closed category
+		// and one outside its sale window read to the site exactly like a
+		// sold-out one. The remainder reported alongside is deliberately 0
+		// — the places may exist, but none of them is on sale.
+		gateTier := hcheckout.CategoryGateTierID(err)
 		params := map[string]any{"name": "", "available": 0}
-		if capErr.TierID != nil {
-			params["name"] = pricing.name[*capErr.TierID]
+		if gateTier != uuid.Nil {
+			params["name"] = pricing.name[gateTier]
 		}
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeUserVisible,
 			h.localizeDesc(req.Locale, cc.locale, "bil24.category_sold_out",
 				"Category is sold out", params),
 		))
+	case errors.Is(err, hcheckout.ErrCategoryNotFound):
+		h.writeCartNotFound(w, req, cc)
 	case errors.Is(err, hcheckout.ErrHoldPricingModeUnsupported):
 		writeBil24JSON(w, http.StatusOK, bil24Error(
 			req.Command, ResultCodeUserVisible,
@@ -668,4 +713,19 @@ func isRetryablePgError(err error) bool {
 	default:
 		return false
 	}
+}
+
+// cartSoldOutParams builds the bil24.category_sold_out message parameters
+// for a category that ran out: its display name and the number of places it
+// actually has left. Until plan 08_architecture/23 step 5 the remainder was
+// a hard 0, which contradicted GET_SEAT_LIST whenever the buyer had simply
+// asked for more than was left.
+func cartSoldOutParams(pricing cartPricing, tierID *uuid.UUID) map[string]any {
+	params := map[string]any{"name": "", "available": 0}
+	if tierID == nil {
+		return params
+	}
+	params["name"] = pricing.name[*tierID]
+	params["available"] = pricing.avail[*tierID]
+	return params
 }

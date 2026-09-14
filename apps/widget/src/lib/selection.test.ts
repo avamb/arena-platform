@@ -11,6 +11,7 @@ import {
   bestAvailableSeats,
   detectSingleSeatGaps,
   clampGaQuantity,
+  gaTierUpperBound,
   incrementGaQuantity,
   decrementGaQuantity,
   GA_MIN_QUANTITY,
@@ -429,5 +430,28 @@ describe('decrementGaQuantity', () => {
 
   it('does not go below GA_MIN_QUANTITY', () => {
     expect(decrementGaQuantity(GA_MIN_QUANTITY, 100)).toBe(GA_MIN_QUANTITY);
+  });
+});
+
+describe('gaTierUpperBound (GA category quotas)', () => {
+  it('uses the category remainder, not its declared capacity', () => {
+    expect(gaTierUpperBound({ available: 3, capacity: 50 })).toBe(3);
+  });
+
+  it('is zero for a closed or off-sale category', () => {
+    // The feed reports available: 0 for both, which makes the card
+    // un-incrementable instead of offering a quantity the hold would refuse.
+    expect(gaTierUpperBound({ available: 0, capacity: 50 })).toBe(0);
+    expect(clampGaQuantity(1, gaTierUpperBound({ available: 0, capacity: 50 }))).toBe(1);
+    expect(Math.min(GA_MAX_QUANTITY, gaTierUpperBound({ available: 0 }))).toBe(0);
+  });
+
+  it('falls back to capacity when the session reports no per-category places', () => {
+    expect(gaTierUpperBound({ available: null, capacity: 7 })).toBe(7);
+    expect(gaTierUpperBound({ capacity: 7 })).toBe(7);
+  });
+
+  it('falls back to the client-side maximum when neither is known', () => {
+    expect(gaTierUpperBound({})).toBe(GA_MAX_QUANTITY);
   });
 });

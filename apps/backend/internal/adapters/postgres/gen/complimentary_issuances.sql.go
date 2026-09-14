@@ -236,20 +236,27 @@ RETURNING id, org_id, session_id, tier_id, qty, recipients, batch_id, status, is
 // issuance batch. Uses complimentary_issuance_id as the source FK (no checkout
 // session required). Returns a ComplimentaryTicketRow (not TicketRow) because
 // the checkout_session_id column is NULL for complimentary tickets.
+//
+// seatKey stamps the concrete place the ticket consumed, exactly as normal
+// issuance does: since plan 08_architecture/23 decision 6 a free GA ticket
+// takes one of its category's places, and cancellation finds that place
+// back through the stamp (htickets.ReleaseCancelledTicketInventoryTx).
+// Nil for a session with no places behind the category.
 func (q *Queries) InsertComplimentaryTicket(
 	ctx context.Context,
 	complimentaryIssuanceID uuid.UUID,
 	sessionID uuid.UUID,
 	tierID *uuid.UUID,
 	holderEmail *string,
+	seatKey *string,
 ) (ComplimentaryTicketRow, error) {
 	const sql = `
-INSERT INTO tickets (complimentary_issuance_id, session_id, tier_id, holder_email)
-VALUES ($1, $2, $3, $4)
+INSERT INTO tickets (complimentary_issuance_id, session_id, tier_id, holder_email, seat_key)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING id, complimentary_issuance_id, session_id, tier_id, holder_email,
           status, issued_at, created_at, updated_at, seat_key`
 	row := q.db.QueryRow(ctx, sql,
-		complimentaryIssuanceID, sessionID, tierID, holderEmail,
+		complimentaryIssuanceID, sessionID, tierID, holderEmail, seatKey,
 	)
 	return scanComplimentaryTicketRow(row)
 }

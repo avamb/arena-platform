@@ -350,8 +350,7 @@ func newHoldFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool, admis
 	}
 	suffix := f.orgID.String()[:8]
 	// A seated session must be bound to a locked plan version; a pure GA
-	// session must NOT be, or the plan-less-pool branch of the primitives
-	// (tier stamping / ResetAvailableGAPoolTierStamps) is never exercised.
+	// session must NOT be.
 	if admission != "general_admission" {
 		planID, versionID := uuid.New(), uuid.New()
 		f.planID, f.planVersionID = &planID, &versionID
@@ -386,9 +385,10 @@ func newHoldFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool, admis
 		  VALUES ($1, $2, $3, now() + interval '30 days',
 		    now() + interval '30 days 3 hours', $4, 'scheduled', $5, $6, 'EUR', 'override')`,
 			[]any{f.sessionID, f.eventID, f.venueID, capacity, admission, f.planVersionID}},
-		step{`INSERT INTO ticket_tiers (id, session_id, name, pricing_mode, price_amount, currency)
-		  VALUES ($1, $2, 'W1A5a Tier', 'fixed', $3, 'EUR')`,
-			[]any{f.tierID, f.sessionID, holdTierPrice}},
+		step{`INSERT INTO ticket_tiers (id, session_id, name, pricing_mode, price_amount,
+		    currency, capacity, unit_seq, is_open)
+		  VALUES ($1, $2, 'W1A5a Tier', 'fixed', $3, 'EUR', $4, 1, true)`,
+			[]any{f.tierID, f.sessionID, holdTierPrice, capacity}},
 		step{`INSERT INTO inventory_ledger (session_id, tier_id, capacity_total)
 		  VALUES ($1, NULL, $2)`,
 			[]any{f.sessionID, capacity}},
@@ -402,13 +402,17 @@ func newHoldFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool, admis
 		   FROM generate_series(1, $2::int) gs`,
 			[]any{f.sessionID, seatRows, f.tierID}})
 	} else {
+		// Migration 0101: the category OWNS its places, keyed under its
+		// own 'ga|t<unit_seq>' prefix. The pre-0101 fungible
+		// 'ga|pool|<n>' batch with tier_id NULL is gone, and
+		// AllocateGAUnitsForHold would match none of it.
 		steps = append(steps, step{`INSERT INTO session_seats
 		     (session_id, seat_key, sector_name, row_name, seat_number,
 		      tier_id, status, kind)
-		   SELECT $1, 'ga|pool|' || lpad(gs::text, 6, '0'), '', '', '',
-		          NULL, 'available', 'ga_unit'
+		   SELECT $1, 'ga|t1|' || lpad(gs::text, 6, '0'), '', '', '',
+		          $3, 'available', 'ga_unit'
 		   FROM generate_series(1, $2::int) gs`,
-			[]any{f.sessionID, capacity}})
+			[]any{f.sessionID, capacity, f.tierID}})
 	}
 	for i, s := range steps {
 		if _, err := pool.Exec(ctx, s.sql, s.args...); err != nil {

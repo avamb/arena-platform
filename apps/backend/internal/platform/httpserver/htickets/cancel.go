@@ -405,12 +405,17 @@ func ReleaseCancelledTicketInventoryTx(
 			return out, err
 		}
 		// Since AB-51 every GA ticket carries the seat_key of the concrete
-		// ga_unit row it consumed ("ga|pool|000003", "ga|c3|000012"), so a
-		// seat_key alone does not mean an assigned seat. Release exactly
-		// that unit — never a fungible sibling — through the ga_unit twin of
+		// ga_unit row it consumed ("ga|t3|000012", "ga|c3|000012", and the
+		// pre-0101 "ga|pool|000003" keys migration 0101 deliberately did
+		// not rename), so a seat_key alone does not mean an assigned seat.
+		// Release exactly that place through the ga_unit twin of
 		// ReleaseSoldSessionSeat; the 'seat' query would answer ErrNoRows
 		// for it (kind mismatch) and the operator got "ticket.release_failed"
 		// for every GA ticket sold through the site (found live 2026-09-13).
+		//
+		// The place returns to ITS OWN category: ReleaseSoldGAUnitBySeatKey
+		// never touches tier_id, and since migration 0101 the category owns
+		// the row for good. Nothing resets it to a shared pool any more.
 		if strings.HasPrefix(*ticket.SeatKey, "ga|") {
 			if _, err := txq.ReleaseSoldGAUnitBySeatKey(ctx, ticket.SessionID, *ticket.SeatKey, version); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
@@ -447,6 +452,9 @@ func ReleaseCancelledTicketInventoryTx(
 	if err != nil {
 		return out, err
 	}
+	// Legacy shape only: a pre-AB-51 GA ticket carries no seat_key, so the
+	// concrete place has to be found through the reservation. Every ticket
+	// issued since AB-51 takes the seat_key branch above.
 	if _, err := txq.ReleaseSoldGAUnitForReservation(ctx, ticket.SessionID, cs.ReservationID, ticket.TierID, version); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Legacy pre-AB-51 reservation without unit rows: the ledger

@@ -358,15 +358,16 @@ func TestAB49Integration_GAUnit_ReleaseExactlyOne(t *testing.T) {
 	defer f.cleanup()
 	q := gen.New(pool)
 
-	// Materialize 3 pool units; hold+sell 2 under the reservation.
-	if _, err := q.InsertGAUnits(ctx, f.sessionID, "ga|pool", 0, &f.tierID, 3); err != nil {
+	// Materialize 3 places OWNED BY THE CATEGORY (migration 0101 key
+	// shape ga|t<unit_seq>|<n>); hold+sell 2 under the reservation.
+	if _, err := q.InsertGAUnits(ctx, f.sessionID, "ga|t1", 0, &f.tierID, 3); err != nil {
 		t.Fatalf("InsertGAUnits: %v", err)
 	}
 	v, err := q.IncrementSessionSeatStatusVersion(ctx, f.sessionID)
 	if err != nil {
 		t.Fatalf("version bump: %v", err)
 	}
-	held, err := q.AllocateGAUnitsForHold(ctx, f.sessionID, f.resID, &f.tierID, v, &f.tierID, 2)
+	held, err := q.AllocateGAUnitsForHold(ctx, f.sessionID, f.resID, f.tierID, v, 2)
 	if err != nil {
 		t.Fatalf("AllocateGAUnitsForHold: %v", err)
 	}
@@ -412,9 +413,9 @@ func TestAB49Integration_GAUnit_ReleaseExactlyOne(t *testing.T) {
 	}
 
 	// Exactly one unit came back: 1 sold + 2 available.
-	soldLeft, err := q.CountGAUnitsHeldSoldByTier(ctx, f.sessionID, f.tierID)
+	soldLeft, err := countGAPlacesHeldOrSold(ctx, pool, f.sessionID, f.tierID)
 	if err != nil {
-		t.Fatalf("CountGAUnitsHeldSoldByTier: %v", err)
+		t.Fatalf("count held/sold places: %v", err)
 	}
 	if soldLeft != 1 {
 		t.Fatalf("units still held/sold = %d, want 1", soldLeft)
@@ -548,14 +549,14 @@ func TestAB49Integration_GAUnit_ReleaseByTicketSeatKey(t *testing.T) {
 	defer f.cleanup()
 	q := gen.New(pool)
 
-	if _, err := q.InsertGAUnits(ctx, f.sessionID, "ga|pool", 0, &f.tierID, 3); err != nil {
+	if _, err := q.InsertGAUnits(ctx, f.sessionID, "ga|t1", 0, &f.tierID, 3); err != nil {
 		t.Fatalf("InsertGAUnits: %v", err)
 	}
 	v, err := q.IncrementSessionSeatStatusVersion(ctx, f.sessionID)
 	if err != nil {
 		t.Fatalf("version bump: %v", err)
 	}
-	held, err := q.AllocateGAUnitsForHold(ctx, f.sessionID, f.resID, &f.tierID, v, &f.tierID, 2)
+	held, err := q.AllocateGAUnitsForHold(ctx, f.sessionID, f.resID, f.tierID, v, 2)
 	if err != nil {
 		t.Fatalf("AllocateGAUnitsForHold: %v", err)
 	}
@@ -616,11 +617,50 @@ func TestAB49Integration_GAUnit_ReleaseByTicketSeatKey(t *testing.T) {
 	if statusA != "available" || statusB != "sold" {
 		t.Fatalf("unit A = %q (want available), unit B = %q (want sold)", statusA, statusB)
 	}
-	soldLeft, err := q.CountGAUnitsHeldSoldByTier(ctx, f.sessionID, f.tierID)
+
+	// The released place goes back to ITS OWN category, not to a shared
+	// pool: nothing clears tier_id any more (migration 0101). If it did,
+	// the category's remaining count would shrink by one on every refund.
+	var releasedTier uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`SELECT tier_id FROM session_seats WHERE session_id=$1 AND seat_key=$2`,
+		f.sessionID, keyA).Scan(&releasedTier); err != nil {
+		t.Fatalf("read released place tier: %v", err)
+	}
+	if releasedTier != f.tierID {
+		t.Fatalf("released place tier_id = %s, want %s (the place stays in its category)",
+			releasedTier, f.tierID)
+	}
+	var availableForTier int64
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM session_seats
+		 WHERE session_id=$1 AND kind='ga_unit' AND tier_id=$2 AND status='available'`,
+		f.sessionID, f.tierID).Scan(&availableForTier); err != nil {
+		t.Fatalf("count available places: %v", err)
+	}
+	if availableForTier != 2 {
+		t.Fatalf("category has %d available places, want 2 (one never sold + one refunded)",
+			availableForTier)
+	}
+	soldLeft, err := countGAPlacesHeldOrSold(ctx, pool, f.sessionID, f.tierID)
 	if err != nil {
-		t.Fatalf("CountGAUnitsHeldSoldByTier: %v", err)
+		t.Fatalf("count held/sold places: %v", err)
 	}
 	if soldLeft != 1 {
 		t.Fatalf("units still held/sold = %d, want 1", soldLeft)
 	}
+}
+
+// countGAPlacesHeldOrSold reports how many of a category's GA places are
+// held or sold. Replaces the retired CountGAUnitsHeldSoldByTier query,
+// which existed only as the shared-pool capacity guard (migration 0101
+// made a category own its places, so the guard is the row count itself).
+func countGAPlacesHeldOrSold(ctx context.Context, pool *pgxpool.Pool, sessionID, tierID uuid.UUID) (int64, error) {
+	var n int64
+	err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM session_seats
+		 WHERE session_id=$1 AND kind='ga_unit' AND tier_id=$2
+		   AND status IN ('held','sold')`,
+		sessionID, tierID).Scan(&n)
+	return n, err
 }

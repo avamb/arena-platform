@@ -601,6 +601,14 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 	// held). Units ARE the inventory — a failure here must not leave a
 	// session that promises capacity it cannot allocate, so the create
 	// is rolled back via soft-delete.
+	//
+	// KNOWN GAP (plan 08_architecture/23, step 3/6 — not yet wired). Since
+	// migration 0101 a GA category OWNS its places and the sales paths
+	// allocate only from a category's own rows, so THIS pool (tier NULL) is
+	// not sellable: the session's capacity must come from
+	// gaquota.CreateCategory when a category is added, and this block
+	// should create no places at all. Until that lands, a GA session
+	// created through this endpoint sells nothing.
 	if !seated && !hasPlan {
 		if _, err := h.sessionQueries.InsertGAUnits(
 			ctx, sess.ID, "ga|pool", 0, nil, sess.CapacityTotal,
@@ -1017,6 +1025,12 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		// only — if fewer rows were deleted than requested, held/sold
 		// units exceed the new total, which the ledger's own
 		// UpdateCapacityTotal guard also refuses; surface as a warning.
+		//
+		// KNOWN GAP (plan 08_architecture/23, step 3/6 — not yet wired):
+		// in the quota model the session capacity is the SUM of the
+		// category quantities and is never edited on its own, so this whole
+		// block goes away together with the editable capacity field; the
+		// NULL-tier rows it maintains are not sellable.
 		if updated.AdmissionMode == "general_admission" && updated.SeatingPlanVersionID == nil {
 			diff := int64(updated.CapacityTotal) - int64(current.CapacityTotal)
 			switch {

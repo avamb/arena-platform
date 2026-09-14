@@ -284,6 +284,14 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			return
 		}
 
+		// Recovery mints a BRAND-NEW hold, so the category gate applies:
+		// a category closed (or out of its sale window) since the original
+		// checkout started does not take the seats again.
+		if gateErr := hcheckout.CheckSeatCategoriesSellable(ctx, resQ, origRes.SessionID, locked, time.Now().UTC()); gateErr != nil {
+			hcheckout.WriteCategoryGateError(w, r, gateErr)
+			return
+		}
+
 		// Reserve session-level capacity for the seats (nil tier).
 		if _, err := invQ.ReserveCapacity(ctx, origRes.SessionID, nil, seatQty); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -307,7 +315,30 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 	for i := range origGA {
 		gaQty += origGA[i].Quantity
 	}
+	// Lock order (AGENTS.md): sessions.seat_status_version FIRST, then
+	// inventory_ledger, then the places. A pure-GA recovery has not bumped
+	// it in the seated block above, so do it here rather than just before
+	// the allocation in 7e-bis.
+	if newVersion == 0 && (gaQty > 0 || legacyGA) {
+		newVersion, err = resQ.IncrementSessionSeatStatusVersion(ctx, origRes.SessionID)
+		if err != nil {
+			h.logger.Error("public_checkout_recover: increment seat_status_version failed",
+				slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"reservation.status_version_failed", "failed to bump seat_status_version", r,
+			))
+			return
+		}
+	}
 	if gaQty > 0 {
+		gaGateIDs := make([]uuid.UUID, 0, len(origGA))
+		for i := range origGA {
+			gaGateIDs = append(gaGateIDs, origGA[i].TierID)
+		}
+		if gateErr := hcheckout.CheckCategoriesSellable(ctx, resQ, origRes.SessionID, gaGateIDs, time.Now().UTC()); gateErr != nil {
+			hcheckout.WriteCategoryGateError(w, r, gateErr)
+			return
+		}
 		if _, err := invQ.ReserveCapacity(ctx, origRes.SessionID, nil, gaQty); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
@@ -429,31 +460,12 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 	// (AB-51). Legacy pre-0063 reservations have no GA lines and keep the
 	// counter-only accounting from 7c.
 	if len(origGA) > 0 {
-		admission, aErr := resQ.GetSessionAdmissionModeByID(ctx, origRes.SessionID)
-		if aErr != nil {
-			h.logger.Error("public_checkout_recover: admission lookup failed", slog.String("error", aErr.Error()))
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.insert_failed", "failed to recover reservation", r,
-			))
-			return
-		}
 		gaVersion := newVersion
-		if gaVersion == 0 {
-			gaVersion, aErr = resQ.IncrementSessionSeatStatusVersion(ctx, origRes.SessionID)
-			if aErr != nil {
-				h.logger.Error("public_checkout_recover: bump seat_status_version failed", slog.String("error", aErr.Error()))
-				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-					"reservation.status_version_failed", "failed to bump seat_status_version", r,
-				))
-				return
-			}
-		}
 		for i := range origGA {
 			g := origGA[i]
 			tierID := g.TierID
 			if _, uErr := hcheckout.AllocateGAUnitsTx(
 				ctx, resQ, origRes.SessionID, newRes.ID, gaVersion,
-				admission.SeatingPlanVersionID != nil,
 				[]hcheckout.GAUnitLine{{TierID: &tierID, Quantity: g.Quantity}},
 			); uErr != nil {
 				var capErr *hcheckout.CapacityError

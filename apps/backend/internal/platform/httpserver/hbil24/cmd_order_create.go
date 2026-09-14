@@ -442,9 +442,18 @@ func (h *Handler) orderReconcile(
 	return true
 }
 
+// orderIsSeated reports whether a cart's reservation_seats rows are
+// coordinate-bearing seats rather than General Admission places.
+//
+// It decides on session_seats.kind. Before migration 0101 it read
+// "tier_id != nil", which worked only because a GA place drawn from the
+// fungible pool carried no category; now EVERY GA place carries its
+// category's tier_id, so that test would call every GA cart seated and
+// switch orderReconcile off for all of them (plan 08_architecture/23,
+// step 4).
 func orderIsSeated(seats []gen.SessionSeatRow) bool {
 	for _, s := range seats {
-		if s.TierID != nil {
+		if s.Kind == seatKindSeat {
 			return true
 		}
 	}

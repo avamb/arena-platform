@@ -151,8 +151,9 @@ func runScenario01Catalog(t *testing.T, st *harnessState) {
 	if _, ok := ga["seatingPlanName"]; ok {
 		t.Error("GA actionEvent must not carry seatingPlanName")
 	}
-	// 50 ga_unit rows, all available; their tier_id is NULL, so the categories
-	// below fall back to this session-level count rather than reporting 0.
+	// 50 GA places, all available, split 25/25 between the two categories
+	// (migration 0101: a category owns its places). The session count is
+	// the sum over the OPEN, on-sale categories.
 	sc1WantNumber(t, ga, "availability", 50)
 	sc1WantNumber(t, ga, "minPrice", 900)
 
@@ -175,7 +176,9 @@ func runScenario01Catalog(t *testing.T, st *harnessState) {
 		compareKeys(t, "ga categoryList", cat, goldenCats[i])
 		sc1WantString(t, cat, "categoryPriceName", wantNames[i])
 		sc1WantNumber(t, cat, "price", wantPrices[i])
-		sc1WantNumber(t, cat, "availability", 50)
+		// Each category owns half the session's places (25), not the whole
+		// fungible pool the pre-0101 shape reported for both.
+		sc1WantNumber(t, cat, "availability", 25)
 		if placement, ok := cat["placement"].(bool); !ok || placement {
 			t.Errorf("categoryList[%d].placement = %v, want false — a GA category has no seat to choose", i, cat["placement"])
 		}

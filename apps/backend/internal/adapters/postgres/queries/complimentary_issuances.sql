@@ -54,8 +54,8 @@ RETURNING id, org_id, session_id, tier_id, qty, recipients, batch_id, status, is
 -- Inserts a ticket row sourced from a complimentary issuance.
 -- Uses complimentary_issuance_id instead of checkout_session_id (see migration 0036
 -- which makes checkout_session_id nullable and adds the complimentary_issuance_id FK).
-INSERT INTO tickets (complimentary_issuance_id, session_id, tier_id, holder_email)
-VALUES ($1, $2, $3, $4)
+INSERT INTO tickets (complimentary_issuance_id, session_id, tier_id, holder_email, seat_key)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING id, complimentary_issuance_id, session_id, tier_id, holder_email,
           status, issued_at, created_at, updated_at, seat_key;
 

@@ -528,110 +528,89 @@ func TestBil24_476_SeatListCurrency_FirstNonEmpty(t *testing.T) {
 	}
 }
 
-// TestBil24_499_SeatListAvailability_PrecedenceOrder pins spec §7.2's
-// per-category `availability` rule (feature #499). The number the
-// WordPress site renders as "N tickets left" must come from the most
-// specific source that exists, in this order:
+// TestBil24_499_SeatListAvailability_QuotaModel pins spec §7.2's
+// per-category `availability` rule under the GA-quota model (plan
+// 08_architecture/23 step 5, migration 0101).
 //
-//  1. the count of AVAILABLE session_seats rows bound to the tier, when
-//     the tier has materialised units at all — for placed inventory the
-//     seat map is the truth and the ledger is a lagging summary;
-//  2. otherwise the tier's own inventory ledger row (capacity_total −
-//     sold − held);
-//  3. otherwise the SESSION-LEVEL unit pool (session_seats with tier_id
-//     NULL) — a GA pool is very commonly materialised unbound;
-//  4. otherwise the SESSION-LEVEL ledger row (tier_id NULL), which is
-//     spec §7.2's "unlimited GA without units — capacity − sold − held";
-//  5. otherwise the tier's own declared capacity;
-//  6. otherwise 0.
+// A category OWNS its places, so the number the WordPress site renders as
+// "N tickets left" is simply how many of its OWN places are free. The
+// pre-0101 shared-pool arithmetic (add the free NULL-tier pool, cap it by
+// the declared capacity minus what the category already took) is gone.
 //
-// Steps 3–4 keep this command consistent with GET_ALL_ACTIONS, which
-// already reports the session-level remaining count for a tier that owns
-// no inventory of its own. Reporting 0 here while the sibling command
-// reports 50 for the SAME session would be a contradiction on the wire.
+// A CLOSED category and one outside its sale window both report 0: the
+// wire has no "closed" flag, so decision 4 of the plan renders them as
+// sold out. Fallbacks survive only for a category that owns no place at
+// all — a ledger-only session an import never materialised.
 //
 // The clamp at zero is part of the contract: an oversold ledger must not
 // put a negative count on the wire, which legacy clients render as
 // garbage rather than as "sold out".
-func TestBil24_499_SeatListAvailability_PrecedenceOrder(t *testing.T) {
+func TestBil24_499_SeatListAvailability_QuotaModel(t *testing.T) {
 	tierID := uuid.MustParse("00000000-0000-0000-0000-000000000c22")
 	cap32 := int32(120)
-	tier := gen.TicketTierRow{ID: tierID, Name: "Standing", Capacity: &cap32}
+	now := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
+	tier := gen.TicketTierRow{ID: tierID, Name: "Standing", Capacity: &cap32, IsOpen: true}
 
 	ledgerCap := int32(50)
 	ledgers := map[uuid.UUID]gen.InventoryLedgerRow{
 		tierID: {TierID: &tierID, CapacityTotal: &ledgerCap, CapacitySold: 8, CapacityHeld: 2},
 	}
-	withUnits := map[uuid.UUID]tierUnitStats{
-		tierID: {seats: 30, available: 7},
-	}
 
-	t.Run("units win over ledger and tier capacity", func(t *testing.T) {
-		got := seatListAvailability(tier, withUnits, ledgers)
-		if got != 7 {
-			t.Errorf("availability=%d want 7 (count of available unit rows)", got)
+	t.Run("the category's own free places win over ledger and capacity", func(t *testing.T) {
+		own := map[uuid.UUID]tierUnitStats{tierID: {seats: 30, available: 7}}
+		if got := seatListAvailability(tier, own, ledgers, now); got != 7 {
+			t.Errorf("availability=%d want 7 (count of the category's available places)", got)
 		}
 	})
 
-	t.Run("ledger used when the tier has no units", func(t *testing.T) {
-		got := seatListAvailability(tier, nil, ledgers)
-		if got != 40 {
+	// The pool bug this replaces: before migration 0101 a category that had
+	// sold two tickets owned exactly two (stamped) rows and reported 0 while
+	// 56 free pool units sat next to it. Now those 56 belong to a category.
+	t.Run("a category that sold some places still sells the rest", func(t *testing.T) {
+		sold := map[uuid.UUID]tierUnitStats{tierID: {gaUnits: 58, available: 56}}
+		if got := seatListAvailability(tier, sold, nil, now); got != 56 {
+			t.Errorf("availability=%d want 56 (its own free places)", got)
+		}
+	})
+
+	t.Run("a closed category reports zero", func(t *testing.T) {
+		closed := tier
+		closed.IsOpen = false
+		own := map[uuid.UUID]tierUnitStats{tierID: {gaUnits: 60, available: 56}}
+		if got := seatListAvailability(closed, own, nil, now); got != 0 {
+			t.Errorf("availability=%d want 0 (closed reads as sold out — decision 4)", got)
+		}
+	})
+
+	t.Run("a category outside its sale window reports zero", func(t *testing.T) {
+		own := map[uuid.UUID]tierUnitStats{tierID: {gaUnits: 60, available: 56}}
+
+		notYet := tier
+		start := now.Add(24 * time.Hour)
+		notYet.SaleWindowStart = &start
+		if got := seatListAvailability(notYet, own, nil, now); got != 0 {
+			t.Errorf("availability=%d want 0 (sale has not opened — decision 5)", got)
+		}
+
+		over := tier
+		ended := now.Add(-24 * time.Hour)
+		over.SaleWindowEnd = &ended
+		if got := seatListAvailability(over, own, nil, now); got != 0 {
+			t.Errorf("availability=%d want 0 (sale window closed — decision 5)", got)
+		}
+
+		open := tier
+		open.SaleWindowStart = &ended
+		later := now.Add(24 * time.Hour)
+		open.SaleWindowEnd = &later
+		if got := seatListAvailability(open, own, nil, now); got != 56 {
+			t.Errorf("availability=%d want 56 (inside the window)", got)
+		}
+	})
+
+	t.Run("ledger used when the category owns no place", func(t *testing.T) {
+		if got := seatListAvailability(tier, nil, ledgers, now); got != 40 {
 			t.Errorf("availability=%d want 40 (capacity_total 50 - sold 8 - held 2)", got)
-		}
-	})
-
-	t.Run("session-level unit pool used when the tier owns nothing", func(t *testing.T) {
-		pool := map[uuid.UUID]tierUnitStats{
-			uuid.Nil: {gaUnits: 50, available: 44},
-		}
-		got := seatListAvailability(tier, pool, nil)
-		if got != 44 {
-			t.Errorf("availability=%d want 44 (the session's unbound GA pool)", got)
-		}
-	})
-
-	// Staging 2026-09-14: a plan-less pool of 60, two VIP and two Standard
-	// sold. The sold units carry their tier, the free ones are unbound. Both
-	// categories must still offer the 56 free units, not 0.
-	t.Run("tier that sold out of the pool still sells from the pool", func(t *testing.T) {
-		uncapped := tier
-		uncapped.Capacity = nil
-		sold := map[uuid.UUID]tierUnitStats{
-			uuid.Nil: {gaUnits: 56, available: 56},
-			tierID:   {gaUnits: 2, available: 0},
-		}
-		if got := seatListAvailability(uncapped, sold, nil); got != 56 {
-			t.Errorf("availability=%d want 56 (free pool units; the tier's rows are its sales)", got)
-		}
-	})
-
-	t.Run("pool availability is capped by the tier's remaining capacity", func(t *testing.T) {
-		capped := tier
-		small := int32(5)
-		capped.Capacity = &small
-		used := map[uuid.UUID]tierUnitStats{
-			uuid.Nil: {gaUnits: 50, available: 44},
-			tierID:   {gaUnits: 3, available: 0}, // 3 held or sold
-		}
-		if got := seatListAvailability(capped, used, nil); got != 2 {
-			t.Errorf("availability=%d want 2 (capacity 5 - 3 used)", got)
-		}
-		full := map[uuid.UUID]tierUnitStats{
-			uuid.Nil: {gaUnits: 50, available: 44},
-			tierID:   {gaUnits: 6, available: 0},
-		}
-		if got := seatListAvailability(capped, full, nil); got != 0 {
-			t.Errorf("availability=%d want 0 (over capacity clamps at zero)", got)
-		}
-	})
-
-	t.Run("placed seats of a tier are not replaced by a GA pool", func(t *testing.T) {
-		hybrid := map[uuid.UUID]tierUnitStats{
-			uuid.Nil: {gaUnits: 20, available: 20},
-			tierID:   {seats: 30, available: 7},
-		}
-		if got := seatListAvailability(tier, hybrid, nil); got != 7 {
-			t.Errorf("availability=%d want 7 (the tier's own seats)", got)
 		}
 	})
 
@@ -642,33 +621,30 @@ func TestBil24_499_SeatListAvailability_PrecedenceOrder(t *testing.T) {
 		}
 		uncapped := tier
 		uncapped.Capacity = nil
-		got := seatListAvailability(uncapped, nil, sessLedger)
-		if got != 44 {
+		if got := seatListAvailability(uncapped, nil, sessLedger, now); got != 44 {
 			t.Errorf("availability=%d want 44 (session ledger 50 - sold 5 - held 1)", got)
 		}
 	})
 
-	t.Run("tier capacity used when no ledger and no units exist", func(t *testing.T) {
-		got := seatListAvailability(tier, nil, nil)
-		if got != 120 {
-			t.Errorf("availability=%d want 120 (the tier's own capacity)", got)
+	t.Run("category capacity used when no ledger and no places exist", func(t *testing.T) {
+		if got := seatListAvailability(tier, nil, nil, now); got != 120 {
+			t.Errorf("availability=%d want 120 (the category's own capacity)", got)
 		}
 	})
 
-	t.Run("unlimited ledger falls through to tier capacity", func(t *testing.T) {
+	t.Run("unlimited ledger falls through to category capacity", func(t *testing.T) {
 		unlimited := map[uuid.UUID]gen.InventoryLedgerRow{
 			tierID: {TierID: &tierID, CapacityTotal: nil, CapacitySold: 3},
 		}
-		got := seatListAvailability(tier, nil, unlimited)
-		if got != 120 {
+		if got := seatListAvailability(tier, nil, unlimited, now); got != 120 {
 			t.Errorf("availability=%d want 120 (nil capacity_total means unlimited, not zero)", got)
 		}
 	})
 
-	t.Run("uncapped tier with no ledger reports zero", func(t *testing.T) {
+	t.Run("uncapped category with no ledger reports zero", func(t *testing.T) {
 		uncapped := tier
 		uncapped.Capacity = nil
-		if got := seatListAvailability(uncapped, nil, nil); got != 0 {
+		if got := seatListAvailability(uncapped, nil, nil, now); got != 0 {
 			t.Errorf("availability=%d want 0", got)
 		}
 	})
@@ -679,47 +655,103 @@ func TestBil24_499_SeatListAvailability_PrecedenceOrder(t *testing.T) {
 		oversold := map[uuid.UUID]gen.InventoryLedgerRow{
 			tierID: {TierID: &tierID, CapacityTotal: &ledgerCap, CapacitySold: 60, CapacityHeld: 5},
 		}
-		if got := seatListAvailability(uncapped, nil, oversold); got != 0 {
+		if got := seatListAvailability(uncapped, nil, oversold, now); got != 0 {
 			t.Errorf("availability=%d want 0 (never negative on the wire)", got)
 		}
 	})
 }
 
 // TestBil24_GAAllActionsCategoryAvailability pins GET_ALL_ACTIONS'
-// categoryLimitList count for plan-less pools and plan-bound tiers. Staging
-// 2026-09-14: a pool of 60 (Standard 50, VIP 10), two of each sold, both
-// categories came back 0 and the site showed them sold out.
+// categoryLimitList count under the quota model: a category's own free
+// places, 0 when it is closed or outside its sale window, and the
+// session-level count only for a category that owns no place at all.
 func TestBil24_GAAllActionsCategoryAvailability(t *testing.T) {
+	now := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
 	c50, c10 := int32(50), int32(10)
-	std := gen.ActionEventTierRow{Tier: gen.TicketTierRow{Name: "Standard", Capacity: &c50}, IsGA: true, GAUnitsTotal: 2}
-	vip := gen.ActionEventTierRow{Tier: gen.TicketTierRow{Name: "VIP", Capacity: &c10}, IsGA: true, GAUnitsTotal: 2}
-
-	if got := gaCategoryAvailability(std, 56, true); got != 48 {
-		t.Errorf("plan-less Standard=%d want 48 (50 - 2 sold, pool has 56)", got)
+	std := gen.ActionEventTierRow{
+		Tier: gen.TicketTierRow{Name: "Standard", Capacity: &c50, IsOpen: true},
+		IsGA: true, GAUnitsTotal: 50, GAUnitsAvailable: 48,
 	}
-	if got := gaCategoryAvailability(vip, 56, true); got != 8 {
-		t.Errorf("plan-less VIP=%d want 8 (10 - 2 sold)", got)
-	}
-	if got := gaCategoryAvailability(std, 3, true); got != 3 {
-		t.Errorf("plan-less capped by pool=%d want 3", got)
-	}
-	full := vip
-	full.GAUnitsTotal = 11
-	if got := gaCategoryAvailability(full, 56, true); got != 0 {
-		t.Errorf("plan-less over capacity=%d want 0", got)
-	}
-	uncapped := gen.ActionEventTierRow{Tier: gen.TicketTierRow{Name: "Free"}, IsGA: true, GAUnitsTotal: 4}
-	if got := gaCategoryAvailability(uncapped, 56, true); got != 56 {
-		t.Errorf("plan-less uncapped=%d want 56 (the pool)", got)
+	vip := gen.ActionEventTierRow{
+		Tier: gen.TicketTierRow{Name: "VIP", Capacity: &c10, IsOpen: true},
+		IsGA: true, GAUnitsTotal: 10, GAUnitsAvailable: 8,
 	}
 
-	bound := gen.ActionEventTierRow{Tier: gen.TicketTierRow{Name: "Floor", Capacity: &c50}, IsGA: true, GAUnitsTotal: 50, GAUnitsAvailable: 7}
-	if got := gaCategoryAvailability(bound, 90, false); got != 7 {
-		t.Errorf("plan-bound=%d want 7 (its own free units)", got)
+	// The staging shape that produced the pre-0101 bug: 60 places split
+	// 50/10, two sold from each. Both categories must offer what is left.
+	if got := gaCategoryAvailability(std, 56, now); got != 48 {
+		t.Errorf("Standard=%d want 48 (its own free places)", got)
 	}
-	noUnits := gen.ActionEventTierRow{Tier: gen.TicketTierRow{Name: "Extra"}, IsGA: true}
-	if got := gaCategoryAvailability(noUnits, 12, false); got != 12 {
-		t.Errorf("plan-bound tier without units=%d want 12 (session count)", got)
+	if got := gaCategoryAvailability(vip, 56, now); got != 8 {
+		t.Errorf("VIP=%d want 8 (its own free places)", got)
+	}
+
+	soldOut := vip
+	soldOut.GAUnitsAvailable = 0
+	if got := gaCategoryAvailability(soldOut, 56, now); got != 0 {
+		t.Errorf("sold-out category=%d want 0", got)
+	}
+
+	closed := std
+	closed.Tier.IsOpen = false
+	if got := gaCategoryAvailability(closed, 56, now); got != 0 {
+		t.Errorf("closed category=%d want 0 (decision 4)", got)
+	}
+
+	ended := now.Add(-time.Hour)
+	offSale := std
+	offSale.Tier.SaleWindowEnd = &ended
+	if got := gaCategoryAvailability(offSale, 56, now); got != 0 {
+		t.Errorf("off-sale category=%d want 0 (decision 5)", got)
+	}
+
+	noPlaces := gen.ActionEventTierRow{
+		Tier: gen.TicketTierRow{Name: "Extra", IsOpen: true}, IsGA: true,
+	}
+	if got := gaCategoryAvailability(noPlaces, 12, now); got != 12 {
+		t.Errorf("category without places=%d want 12 (session count)", got)
+	}
+}
+
+// TestBil24_SessionAvailability_SumsOpenCategories pins GET_ALL_ACTIONS'
+// session-level `availability` under the quota model: the sum of the free
+// places of the OPEN, on-sale categories, seated and GA alike. A session
+// whose remaining stock all sits in a closed category advertises 0 rather
+// than counting rows nobody may buy.
+func TestBil24_SessionAvailability_SumsOpenCategories(t *testing.T) {
+	now := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
+	sess := gen.ActionEventRow{SeatsTotal: 60, SeatsAvailable: 56, LedgerAvailable: 99}
+
+	ga := gen.ActionEventTierRow{
+		Tier: gen.TicketTierRow{Name: "Standing", IsOpen: true},
+		IsGA: true, GAUnitsTotal: 50, GAUnitsAvailable: 48,
+	}
+	seated := gen.ActionEventTierRow{
+		Tier:       gen.TicketTierRow{Name: "Parter", IsOpen: true},
+		SeatsTotal: 10, SeatsAvailable: 8,
+	}
+	if got := sessionAvailability(sess, []gen.ActionEventTierRow{ga, seated}, now); got != 56 {
+		t.Errorf("availability=%d want 56 (48 GA places + 8 seats)", got)
+	}
+
+	closed := ga
+	closed.Tier.IsOpen = false
+	if got := sessionAvailability(sess, []gen.ActionEventTierRow{closed, seated}, now); got != 8 {
+		t.Errorf("availability=%d want 8 (the closed category contributes nothing)", got)
+	}
+
+	// No category owns a place: keep the pre-0101 session-level answer.
+	noPlaces := []gen.ActionEventTierRow{{Tier: gen.TicketTierRow{Name: "Extra", IsOpen: true}, IsGA: true}}
+	if got := sessionAvailability(sess, noPlaces, now); got != 56 {
+		t.Errorf("availability=%d want 56 (free session_seats fallback)", got)
+	}
+	ledgerOnly := gen.ActionEventRow{SeatsTotal: 0, LedgerAvailable: 42}
+	if got := sessionAvailability(ledgerOnly, noPlaces, now); got != 42 {
+		t.Errorf("availability=%d want 42 (session ledger fallback)", got)
+	}
+	oversold := gen.ActionEventRow{SeatsTotal: 0, LedgerAvailable: -3}
+	if got := sessionAvailability(oversold, nil, now); got != 0 {
+		t.Errorf("availability=%d want 0 (never negative on the wire)", got)
 	}
 }
 
@@ -731,8 +763,10 @@ func TestBil24_GAAllActionsCategoryAvailability(t *testing.T) {
 //	        "is this category placed?" has no answer and the KEY IS ABSENT
 //	        from the JSON (the *bool carries `omitempty`).
 //	false — a GA category living inside a plan (the standing-room block of
-//	        a hybrid session): placed inventory exists, this category just
-//	        is not part of it.
+//	        a hybrid session, INCLUDING one added by hand to a session that
+//	        used to be assigned_seats — decision 10 makes every such
+//	        category GA): placed inventory exists, this category just is
+//	        not part of it.
 //	true  — a seated category.
 //
 // Collapsing nil into false is the tempting bug: it would make a pure-GA

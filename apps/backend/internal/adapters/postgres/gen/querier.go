@@ -418,7 +418,7 @@ type Querier interface {
 	GetComplimentaryIssuanceByID(ctx context.Context, id uuid.UUID) (ComplimentaryIssuanceRow, error)
 	ListComplimentaryIssuancesByOrg(ctx context.Context, orgID uuid.UUID) ([]ComplimentaryIssuanceRow, error)
 	UpdateComplimentaryIssuanceStatus(ctx context.Context, id uuid.UUID, newStatus string) (ComplimentaryIssuanceRow, error)
-	InsertComplimentaryTicket(ctx context.Context, complimentaryIssuanceID uuid.UUID, sessionID uuid.UUID, tierID *uuid.UUID, holderEmail *string) (ComplimentaryTicketRow, error)
+	InsertComplimentaryTicket(ctx context.Context, complimentaryIssuanceID uuid.UUID, sessionID uuid.UUID, tierID *uuid.UUID, holderEmail, seatKey *string) (ComplimentaryTicketRow, error)
 	ListTicketsByComplimentaryIssuance(ctx context.Context, complimentaryIssuanceID uuid.UUID) ([]ComplimentaryTicketRow, error)
 	// Complimentary revocation — feature #150
 	HasScannedTicketsForIssuance(ctx context.Context, complimentaryIssuanceID uuid.UUID) (bool, error)
@@ -500,8 +500,7 @@ type Querier interface {
 	SetSeatingPlanCurrentVersion(ctx context.Context, id, ownerOrgID uuid.UUID, currentVersionID *uuid.UUID) (SeatingPlanRow, error)
 	SetSeatingPlanCategoryNameOverrides(ctx context.Context, id, ownerOrgID uuid.UUID, overrides json.RawMessage) (SeatingPlanRow, error)
 	InsertGAUnits(ctx context.Context, sessionID uuid.UUID, keyPrefix string, startIndex int32, tierID *uuid.UUID, quantity int32) (int64, error)
-	AllocateGAUnitsForHold(ctx context.Context, sessionID, reservationID uuid.UUID, stampTierID *uuid.UUID, statusVersion int64, unitTierFilter *uuid.UUID, limit int32) ([]SessionSeatRow, error)
-	ResetAvailableGAPoolTierStamps(ctx context.Context, sessionID uuid.UUID) (int64, error)
+	AllocateGAUnitsForHold(ctx context.Context, sessionID, reservationID, tierID uuid.UUID, statusVersion int64, limit int32) ([]SessionSeatRow, error)
 	CountGAUnits(ctx context.Context, sessionID uuid.UUID) (int64, error)
 	DeleteAvailableGAPoolUnits(ctx context.Context, sessionID uuid.UUID, limit int32) (int64, error)
 	ArchiveSeatingPlan(ctx context.Context, id, ownerOrgID uuid.UUID) (SeatingPlanRow, error)
@@ -539,7 +538,6 @@ type Querier interface {
 	CountSessionSeatsByTier(ctx context.Context, sessionID uuid.UUID) ([]SessionSeatTierCountRow, error)
 	IncrementSessionSeatStatusVersion(ctx context.Context, sessionID uuid.UUID) (int64, error)
 	GetSessionAdmissionModeByID(ctx context.Context, sessionID uuid.UUID) (SessionAdmissionRow, error)
-	CountGAUnitsHeldSoldByTier(ctx context.Context, sessionID, tierID uuid.UUID) (int64, error)
 
 	// Reservation seats — reservation ↔ session_seats join (feature #305, Wave SEAT-B1)
 	InsertReservationSeat(ctx context.Context, reservationID, sessionSeatID uuid.UUID) error

@@ -32,6 +32,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -67,6 +68,17 @@ func bundle527Fixture(t *testing.T, posterURL string) map[string]any {
 		t.Fatalf("fixture has no venue object: %v", body)
 	}
 	venue["venueName"] = "Harness 527 Venue " + suffix
+
+	// Decision 5 of plan 08_architecture/23 turned ticket_tiers.sale_window_*
+	// into a real gate: a category whose window has not opened takes no hold
+	// and reports availability 0. The static fixture's sellStartTime is a
+	// fixed calendar date, so every scenario that BUYS from the imported
+	// bundle would depend on the wall clock. Pull it into the past here; the
+	// end stays where the fixture put it, and the decode test
+	// (event_bundle_fixture_526_test.go) still reads the file verbatim.
+	if ae, ok := body["actionEvent"].(map[string]any); ok {
+		ae["sellStartTime"] = time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
+	}
 
 	return body
 }

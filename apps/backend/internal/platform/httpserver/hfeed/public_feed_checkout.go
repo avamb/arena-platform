@@ -541,6 +541,21 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			return
 		}
 
+		// A closed category, or one outside its sale window, refuses a NEW
+		// hold — for the seats' own categories (decision 10) and for every
+		// GA line of a mixed cart (plan 08_architecture/23 step 4). Runs
+		// under the sessions row lock taken above, before any inventory
+		// moves.
+		gateNow := time.Now().UTC()
+		if gateErr := hcheckout.CheckSeatCategoriesSellable(ctx, resQ, sessionID, locked, gateNow); gateErr != nil {
+			hcheckout.WriteCategoryGateError(w, r, gateErr)
+			return
+		}
+		if gateErr := hcheckout.CheckCategoriesSellable(ctx, resQ, sessionID, parsedGATierIDs, gateNow); gateErr != nil {
+			hcheckout.WriteCategoryGateError(w, r, gateErr)
+			return
+		}
+
 		// Reserve session-level inventory capacity for the WHOLE cart —
 		// seats plus GA units (AB-51: GA lines no longer take per-tier
 		// ledger reserves; concrete ga_unit rows are the per-tier truth).
@@ -625,7 +640,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		for i, item := range req.GaItems {
 			tierID := parsedGATierIDs[i]
 			if _, err := hcheckout.AllocateGAUnitsTx(
-				ctx, resQ, sessionID, res.ID, newVersion, true,
+				ctx, resQ, sessionID, res.ID, newVersion,
 				[]hcheckout.GAUnitLine{{TierID: &tierID, Quantity: item.Quantity}},
 			); err != nil {
 				var capErr *hcheckout.CapacityError
@@ -747,6 +762,26 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Lock order (AGENTS.md, hcheckout.createGAHoldTx): bump
+	// sessions.seat_status_version FIRST, then inventory_ledger, then the
+	// places. This branch used to reserve capacity before the bump, the
+	// same inversion that deadlocked (40P01) the GA hold path.
+	gaVersion, err := resQ.IncrementSessionSeatStatusVersion(ctx, sessionID)
+	if err != nil {
+		h.logger.Error("public_feed_checkout: bump seat_status_version failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"reservation.insert_failed", "failed to create reservation", r,
+		))
+		return
+	}
+
+	// A closed category, or one outside its sale window, takes no NEW hold
+	// (plan 08_architecture/23 step 4).
+	if gateErr := hcheckout.CheckCategoriesSellable(ctx, resQ, sessionID, parsedGATierIDs, time.Now().UTC()); gateErr != nil {
+		hcheckout.WriteCategoryGateError(w, r, gateErr)
+		return
+	}
+
 	// Reserve session-level capacity for the whole cart (AB-51: per-tier
 	// truth lives in the ga_unit rows allocated below).
 	if _, err := invQ.ReserveCapacity(ctx, sessionID, nil, totalQty); err != nil {
@@ -792,30 +827,13 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Allocate concrete GA units (AB-51) and persist the per-tier GA
+	// Allocate concrete GA places (AB-51) and persist the per-tier GA
 	// lines (migration 0063) in the same transaction so the order-status
 	// and recovery endpoints can reconstruct the cart.
-	admission, err := resQ.GetSessionAdmissionModeByID(ctx, sessionID)
-	if err != nil {
-		h.logger.Error("public_feed_checkout: admission lookup failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"reservation.insert_failed", "failed to create reservation", r,
-		))
-		return
-	}
-	gaVersion, err := resQ.IncrementSessionSeatStatusVersion(ctx, sessionID)
-	if err != nil {
-		h.logger.Error("public_feed_checkout: bump seat_status_version failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"reservation.insert_failed", "failed to create reservation", r,
-		))
-		return
-	}
 	for i, item := range req.GaItems {
 		tierID := parsedGATierIDs[i]
 		if _, err := hcheckout.AllocateGAUnitsTx(
 			ctx, resQ, sessionID, reservation.ID, gaVersion,
-			admission.SeatingPlanVersionID != nil,
 			[]hcheckout.GAUnitLine{{TierID: &tierID, Quantity: item.Quantity}},
 		); err != nil {
 			var capErr *hcheckout.CapacityError

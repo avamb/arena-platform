@@ -23,6 +23,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 )
 
@@ -36,6 +37,12 @@ const admissionGA = "general_admission"
 // unit — a ticketable place with no coordinates. The other value is
 // "seat".
 const seatKindGAUnit = "ga_unit"
+
+// seatKindSeat is the session_seats.kind value for a coordinate-bearing
+// seat. Since migration 0101 every GA place carries its category's
+// tier_id, so kind — not tier_id — is what tells a seated hold from a GA
+// one (hbil24.orderIsSeated).
+const seatKindSeat = "seat"
 
 // tierUnitStats accumulates what the session_seats snapshot says about one
 // ticket tier: how many rows of each kind it owns and how many of them are
@@ -192,7 +199,7 @@ func (h *Handler) handleBil24GetSeatList(w http.ResponseWriter, r *http.Request,
 
 	resp := bil24compat.GetSeatListResponse{
 		Currency:     seatListCurrency(tiers),
-		CategoryList: h.buildSeatListCategories(ctx, sessionID, admissionMode, tiers, stats, priceOf),
+		CategoryList: h.buildSeatListCategories(ctx, sessionID, admissionMode, tiers, stats, priceOf, time.Now().UTC()),
 		SeatList:     h.buildSeatList(ctx, admissionMode, units, tiers, priceOf, req.AvailableOnly),
 	}
 
@@ -261,12 +268,11 @@ func (h *Handler) seatListPricer(ctx context.Context, sessionID uuid.UUID, tiers
 	}
 }
 
-// seatListUnitStats folds the session_seats snapshot into per-tier counts.
-// Units with no tier binding are bucketed under uuid.Nil: a GA pool is very
-// commonly materialised with tier_id NULL, and that pool is the session-level
-// fallback every tier without units of its own reports (see
-// seatListAvailability). A real tier id is never the nil UUID, so the two
-// namespaces cannot collide.
+// seatListUnitStats folds the session_seats snapshot into per-category
+// counts. Places with no category binding are bucketed under uuid.Nil; a
+// real category id is never the nil UUID, so the two namespaces cannot
+// collide. Since migration 0101 every GA place carries a category, so that
+// bucket only ever holds leftovers a hand-edited seat map produced.
 func seatListUnitStats(units []gen.SessionSeatAdminRow) map[uuid.UUID]tierUnitStats {
 	out := make(map[uuid.UUID]tierUnitStats, len(units))
 	for _, u := range units {
@@ -298,6 +304,7 @@ func (h *Handler) buildSeatListCategories(
 	tiers []gen.TicketTierRow,
 	stats map[uuid.UUID]tierUnitStats,
 	priceOf func(gen.TicketTierRow) int64,
+	now time.Time,
 ) []bil24compat.GetSeatListCategory {
 	ledgers := h.seatListLedgers(ctx, sessionID, tiers, stats)
 
@@ -308,7 +315,7 @@ func (h *Handler) buildSeatListCategories(
 			CategoryPriceName: t.Name,
 			// Spec 20 §3: major units on the wire (priceOf is minor).
 			Price:        money.Major(priceOf(t)),
-			Availability: seatListAvailability(t, stats, ledgers),
+			Availability: seatListAvailability(t, stats, ledgers, now),
 			Placement:    seatListPlacement(admissionMode, stats[t.ID]),
 			TariffIDMap:  map[string]any{},
 		})
@@ -358,58 +365,50 @@ func (h *Handler) seatListLedgers(ctx context.Context, sessionID uuid.UUID, tier
 }
 
 // seatListAvailability computes spec §7.2's per-category `availability`
-// (how many tickets remain sellable in this category), in precedence order:
+// (how many tickets remain sellable in this category).
 //
-//  0. a plan-less session's fungible GA pool (unbound ga_unit rows exist) and
-//     a tier with no placed seats of its own: the pool's available units,
-//     capped by what the tier's ticket_tiers.capacity still allows. A hold
-//     stamps the line tier onto the pool units it takes and a release resets
-//     them to NULL (hcheckout.AllocateGAUnitsTx), so the tier's own rows here
-//     are only its held and sold units, never inventory of its own. Counting
-//     them under step 1 reported 0 for every category that had sold a single
-//     ticket while 56 pool units were free (staging, 2026-09-14);
-//  1. the count of available session_seats rows bound to the tier, when the
-//     tier has materialised units — the seat map is the truth for placed
-//     inventory;
-//  2. otherwise the tier's own inventory ledger row: capacity_total − sold
-//     − held, which is what a general-admission tier without unit rows
-//     actually has left;
-//  3. otherwise the session-level GA unit pool (session_seats rows with
-//     tier_id NULL). A GA pool is very commonly materialised unbound, and
-//     every tier of that session sells out of it;
-//  4. otherwise the session-level ledger row (tier_id NULL) — spec §7.2's
+// Since migration 0101 a category OWNS its places (plan
+// 08_architecture/23), so the answer is simply how many of its own places
+// are free — a seated category counts its available seats, a General
+// Admission one its available GA places. The pre-0101 shared-pool branch,
+// which had to add the free NULL-tier pool and cap it by the category's
+// declared capacity, is gone with the pool itself.
+//
+// A category that is CLOSED, or whose sale window does not cover `now`,
+// reports 0: the wire protocol has no "closed" flag, so decision 4 of the
+// plan renders such a category on the site as sold out. This is the same
+// gate the sales paths apply (hcheckout.CategorySellable), so the number
+// shown and the answer a buyer gets cannot disagree.
+//
+// Fallbacks, for a category that owns no place at all (a ledger-only
+// session — an import that never materialised places, an old fixture):
+//
+//  1. the category's own inventory ledger row, capacity_total − sold − held;
+//  2. the session-level ledger row (tier_id NULL) — spec §7.2's
 //     "для безлимитного GA без юнитов — capacity − sold − held";
-//  5. otherwise the tier's own declared capacity;
-//  6. otherwise 0 (an uncapped tier with no ledger row has nothing
-//     countable to report).
+//  3. the category's own declared capacity;
+//  4. otherwise 0.
 //
-// Steps 3–4 are the same rule GET_ALL_ACTIONS applies (cmd_catalog_events.go
-// projectCategories): a tier with no inventory of its own is NOT "sold out",
-// the session-level remaining count is the honest answer. Emitting 0 here
-// while the sibling command reports 50 for the same fixture would be an
-// outright contradiction on the wire.
+// Steps 2–3 are the same rule GET_ALL_ACTIONS applies
+// (cmd_catalog_events.go): a category with no inventory of its own is NOT
+// "sold out", the session-level remaining count is the honest answer.
 //
 // The result is clamped at zero: an oversold ledger must not surface as a
 // negative count, which legacy clients render as garbage.
-func seatListAvailability(t gen.TicketTierRow, stats map[uuid.UUID]tierUnitStats, ledgers map[uuid.UUID]gen.InventoryLedgerRow) int {
-	if pool, ok := stats[uuid.Nil]; ok && pool.gaUnits > 0 && stats[t.ID].seats == 0 {
-		own := stats[t.ID]
-		n := pool.available + own.available
-		if t.Capacity != nil {
-			// Same guard AllocateGAUnitsTx applies: held+sold may not exceed
-			// the tier's capacity.
-			n = min(n, int(*t.Capacity)-(own.gaUnits-own.available))
-		}
-		return clampNonNegative(n)
+func seatListAvailability(
+	t gen.TicketTierRow,
+	stats map[uuid.UUID]tierUnitStats,
+	ledgers map[uuid.UUID]gen.InventoryLedgerRow,
+	now time.Time,
+) int {
+	if hcheckout.CategorySellable(t, now) != nil {
+		return 0
 	}
 	if st, ok := stats[t.ID]; ok {
 		return clampNonNegative(st.available)
 	}
 	if l, ok := ledgers[t.ID]; ok && l.CapacityTotal != nil {
 		return ledgerRemaining(l)
-	}
-	if st, ok := stats[uuid.Nil]; ok {
-		return clampNonNegative(st.available)
 	}
 	if l, ok := ledgers[uuid.Nil]; ok && l.CapacityTotal != nil {
 		return ledgerRemaining(l)
@@ -437,10 +436,12 @@ func clampNonNegative(n int) int {
 //
 //   - nil (key omitted) on a pure general-admission session — there is no
 //     seating plan, so "is this category placed?" has no answer;
-//   - false for a category whose units are all GA units inside a plan
-//     (the standing-room tier of a hybrid session);
+//   - false for a category whose places are all GA places inside a plan —
+//     the standing-room category of a hybrid session, INCLUDING one added
+//     by hand to a session that used to be assigned_seats (plan
+//     08_architecture/23, decision 10: such a category is always GA);
 //   - true otherwise — a seated category, and by default any category of a
-//     placed session that has not materialised units yet.
+//     placed session that has not materialised places yet.
 func seatListPlacement(admissionMode string, st tierUnitStats) *bool {
 	if admissionMode == admissionGA {
 		return nil

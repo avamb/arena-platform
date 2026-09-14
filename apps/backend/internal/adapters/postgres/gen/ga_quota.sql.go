@@ -309,3 +309,91 @@ func (q *Queries) SetSessionAdmissionMode(ctx context.Context, sessionID uuid.UU
 	_, err := q.db.Exec(ctx, setSessionAdmissionMode, sessionID, mode)
 	return err
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Non-reservation place transitions (plan 08_architecture/23, decision 6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Place statuses used by the non-reservation transitions below. They are
+// the session_seats_status_check values; 'unavailable' is the admin hold
+// (renamed from 'blocked' by migration 0081).
+const (
+	SeatStatusAvailable   = "available"
+	SeatStatusHeld        = "held"
+	SeatStatusSold        = "sold"
+	SeatStatusUnavailable = "unavailable"
+)
+
+const takeGAUnitsForTier = `-- name: TakeGAUnitsForTier :many
+UPDATE session_seats ss
+SET    status         = $5::text,
+       status_version = $6,
+       updated_at     = now()
+FROM (
+    SELECT id
+    FROM   session_seats
+    WHERE  session_id = $1
+      AND  kind       = 'ga_unit'
+      AND  tier_id    = $2
+      AND  status     = $3::text
+    ORDER  BY seat_key
+    LIMIT  $4
+    FOR UPDATE SKIP LOCKED
+) picked
+WHERE ss.id = picked.id
+RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
+          ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
+          ss.status_version, ss.updated_at, ss.system_seat_id, ss.kind`
+
+// TakeGAUnitsForTier moves up to `limit` places of ONE category from
+// fromStatus to toStatus, leaving reservation_id alone and stamping the
+// caller's freshly bumped sessions.seat_status_version.
+//
+// It is the non-reservation twin of AllocateGAUnitsForHold: free tickets
+// and partner quotas consume a category's places directly (decision 6 of
+// plan 08_architecture/23 — per-category inventory_ledger rows do not
+// exist in this model), so they have no reservation to stamp. SKIP LOCKED
+// keeps it from serializing against concurrent holds; a short result means
+// the category ran out and the caller MUST roll back.
+func (q *Queries) TakeGAUnitsForTier(
+	ctx context.Context,
+	sessionID, tierID uuid.UUID,
+	fromStatus string,
+	limit int32,
+	toStatus string,
+	statusVersion int64,
+) ([]SessionSeatRow, error) {
+	rows, err := q.db.Query(ctx, takeGAUnitsForTier,
+		sessionID, tierID, fromStatus, limit, toStatus, statusVersion)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SessionSeatRow
+	for rows.Next() {
+		s, err := scanSessionSeatRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+const countGAUnitsForTierByStatus = `-- name: CountGAUnitsForTierByStatus :one
+SELECT COUNT(*)::bigint AS count
+FROM   session_seats
+WHERE  session_id = $1
+  AND  kind       = 'ga_unit'
+  AND  tier_id    = $2
+  AND  status     = $3::text`
+
+// CountGAUnitsForTierByStatus reports how many places of one category
+// currently sit in the given status.
+func (q *Queries) CountGAUnitsForTierByStatus(
+	ctx context.Context, sessionID, tierID uuid.UUID, status string,
+) (int64, error) {
+	var n int64
+	err := q.db.QueryRow(ctx, countGAUnitsForTierByStatus, sessionID, tierID, status).Scan(&n)
+	return n, err
+}

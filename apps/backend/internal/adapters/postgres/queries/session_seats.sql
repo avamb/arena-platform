@@ -26,7 +26,7 @@ INSERT INTO session_seats (
 )
 VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
-          tier_id, status, reservation_id, status_version, updated_at;
+          tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind;
 
 -- name: InsertSessionSeats :execrows
 -- Batch variant of InsertSessionSeat: materializes every seat of a
@@ -81,7 +81,7 @@ WHERE  session_id = $1;
 -- a mismatched session_id receives pgx.ErrNoRows instead of leaking
 -- cross-session existence.
 SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
-       tier_id, status, reservation_id, status_version, updated_at
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind
 FROM   session_seats
 WHERE  id         = $1
   AND  session_id = $2;
@@ -93,7 +93,7 @@ WHERE  id         = $1
 -- RESERVATION seated branch reverse-maps int64 → SessionSeatRow in one
 -- round-trip. Session scope avoids leaking cross-session existence.
 SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
-       tier_id, status, reservation_id, status_version, updated_at, system_seat_id
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind
 FROM   session_seats
 WHERE  session_id     = $1
   AND  system_seat_id = $2;
@@ -103,7 +103,7 @@ WHERE  session_id     = $1
 -- seated-checkout path to translate caller-supplied seat_keys into
 -- session_seats.id values before locking them.
 SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
-       tier_id, status, reservation_id, status_version, updated_at
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind
 FROM   session_seats
 WHERE  session_id = $1
   AND  seat_key   = $2;
@@ -115,7 +115,7 @@ WHERE  session_id = $1
 -- callers who need paginated status-filtered walks should use
 -- ListSessionSeatsByStatus below.
 SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
-       tier_id, status, reservation_id, status_version, updated_at
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind
 FROM   session_seats
 WHERE  session_id = $1
 ORDER  BY seat_key ASC, id ASC;
@@ -124,7 +124,7 @@ ORDER  BY seat_key ASC, id ASC;
 -- Returns seats in a session filtered by status, ordered by seat_key.
 -- Uses session_seats_status_idx.
 SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
-       tier_id, status, reservation_id, status_version, updated_at
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind
 FROM   session_seats
 WHERE  session_id = $1
   AND  status     = $2
@@ -136,7 +136,7 @@ ORDER  BY seat_key ASC, id ASC;
 -- iterating page-by-page get deterministic paging behaviour. Powers
 -- delta seat-status endpoints (§5.2 / §7 SEAT-B4).
 SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
-       tier_id, status, reservation_id, status_version, updated_at
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind
 FROM   session_seats
 WHERE  session_id     = $1
   AND  status_version > $2
@@ -149,7 +149,7 @@ ORDER  BY status_version ASC, seat_key ASC, id ASC;
 -- UPDATEs; any UPDATE returning 0 rows aborts the reservation.
 -- Uses session_seats.UNIQUE(session_id, seat_key).
 SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
-       tier_id, status, reservation_id, status_version, updated_at
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind
 FROM   session_seats
 WHERE  session_id = $1
   AND  seat_key   = ANY($2::text[])
@@ -170,7 +170,7 @@ SET    status         = 'held',
 WHERE  id     = $1
   AND  status = 'available'
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
-          tier_id, status, reservation_id, status_version, updated_at;
+          tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind;
 
 -- name: ReleaseSessionSeat :one
 -- Conditional 'held' -> 'available' transition scoped by
@@ -186,7 +186,7 @@ WHERE  id             = $1
   AND  reservation_id = $2
   AND  status         = 'held'
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
-          tier_id, status, reservation_id, status_version, updated_at;
+          tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind;
 
 -- name: SellSessionSeat :one
 -- Conditional 'held' -> 'sold' transition scoped by reservation_id.
@@ -200,7 +200,7 @@ WHERE  id             = $1
   AND  reservation_id = $2
   AND  status         = 'held'
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
-          tier_id, status, reservation_id, status_version, updated_at;
+          tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind;
 
 -- name: BlockSessionSeat :one
 -- Conditional 'available' -> 'unavailable' transition. Admin withhold
@@ -212,7 +212,7 @@ SET    status         = 'unavailable',
 WHERE  id     = $1
   AND  status = 'available'
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
-          tier_id, status, reservation_id, status_version, updated_at;
+          tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind;
 
 -- name: UnblockSessionSeat :one
 -- Conditional 'unavailable' -> 'available' transition. Admin release.
@@ -223,7 +223,7 @@ SET    status         = 'available',
 WHERE  id     = $1
   AND  status = 'unavailable'
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
-          tier_id, status, reservation_id, status_version, updated_at;
+          tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind;
 
 -- name: SetSessionSeatTier :one
 -- Assigns / re-assigns a ticket_tier to a seat. Called from the
@@ -235,7 +235,7 @@ SET    tier_id    = $3,
 WHERE  id         = $1
   AND  session_id = $2
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
-          tier_id, status, reservation_id, status_version, updated_at;
+          tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind;
 
 -- name: BulkSetSessionSeatTier :execrows
 -- AB-39: bulk assign one tier_id to every seat in seat_keys[] for a session.
@@ -315,17 +315,16 @@ SELECT $1,
 FROM generate_series(1, $5::int) gs;
 
 -- name: AllocateGAUnitsForHold :many
--- Atomically claims `limit` available GA units for a reservation:
--- status available -> held, reservation stamped, tier stamped (no-op
--- for plan-bound units whose tier already matches; stamps pool units so
--- ticket issuance knows the line tier). tier filter: IS NOT DISTINCT
--- FROM so NULL selects pool units. SKIP LOCKED keeps an on-sale burst
--- from serializing on row locks; a short allocation means over-capacity
--- and the caller must roll back.
+-- Atomically claims `limit` available places OF ONE CATEGORY for a
+-- reservation: status available -> held, reservation stamped. Since
+-- migration 0101 a General Admission category owns its places, so the
+-- pool IS the category's own rows (the pre-0101 fungible NULL-tier pool,
+-- stamped on hold and reset on release, is gone). SKIP LOCKED keeps an
+-- on-sale burst from serializing on row locks; a short allocation means
+-- the category is sold out and the caller must roll back.
 UPDATE session_seats ss
 SET    status         = 'held',
        reservation_id = $2,
-       tier_id        = $3,
        status_version = $4,
        updated_at     = now()
 FROM (
@@ -334,27 +333,15 @@ FROM (
     WHERE  session_id = $1
       AND  kind = 'ga_unit'
       AND  status = 'available'
-      AND  tier_id IS NOT DISTINCT FROM $5::uuid
+      AND  tier_id = $3::uuid
     ORDER  BY seat_key
-    LIMIT  $6
+    LIMIT  $5
     FOR UPDATE SKIP LOCKED
 ) picked
 WHERE ss.id = picked.id
 RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
           ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
-          ss.status_version, ss.updated_at;
-
--- name: ResetAvailableGAPoolTierStamps :execrows
--- Plan-less GA sessions treat units as a fungible pool: a released unit
--- must return to the NULL-tier pool or the pool fragments across tiers.
--- Safe to run after any release/expiry on a plan-less session.
-UPDATE session_seats
-SET    tier_id    = NULL,
-       updated_at = now()
-WHERE  session_id = $1
-  AND  kind = 'ga_unit'
-  AND  status = 'available'
-  AND  tier_id IS NOT NULL;
+          ss.status_version, ss.updated_at, ss.system_seat_id, ss.kind;
 
 -- name: CountGAUnits :one
 SELECT COUNT(*) FROM session_seats
@@ -366,8 +353,8 @@ WHERE  session_id = $1 AND kind = 'ga_unit';
 -- 'available'. Used by ShrinkHold when a cart drops GA quantity. The inner
 -- SELECT takes FOR UPDATE (no SKIP LOCKED: these rows belong to the caller's
 -- own reservation, which is already row-locked, so no other transaction may
--- legitimately be mutating them). Plan-less pools additionally need
--- ResetAvailableGAPoolTierStamps afterwards so units rejoin the NULL pool.
+-- legitimately be mutating them). A released place keeps its category:
+-- since migration 0101 the category owns it.
 UPDATE session_seats ss
 SET    status         = 'available',
        reservation_id = NULL,
@@ -388,7 +375,7 @@ FROM (
 WHERE ss.id = picked.id
 RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
           ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
-          ss.status_version, ss.updated_at, ss.system_seat_id;
+          ss.status_version, ss.updated_at, ss.system_seat_id, ss.kind;
 
 -- name: DeleteAvailableGAPoolUnits :execrows
 -- Shrinks a plan-less GA session's pool by removing the highest-
@@ -404,16 +391,6 @@ WHERE id IN (
     ORDER  BY seat_key DESC
     LIMIT  $2
 );
-
--- name: CountGAUnitsHeldSoldByTier :one
--- AB-51: tier-capacity guard for plan-less GA pools — how many units a
--- tier currently occupies (held or sold).
-SELECT COUNT(*)::bigint AS count
-FROM   session_seats
-WHERE  session_id = $1
-  AND  kind = 'ga_unit'
-  AND  tier_id = $2
-  AND  status IN ('held', 'sold');
 
 -- ─────────────────────────────────────────────────────────────────────
 -- AB-49: post-issuance seat release (ticket cancellation)
@@ -447,7 +424,7 @@ WHERE  ss.session_id = $1
        )
 RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
           ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
-          ss.status_version, ss.updated_at;
+          ss.status_version, ss.updated_at, ss.system_seat_id, ss.kind;
 
 -- name: ReleaseSoldGAUnitForReservation :one
 -- AB-49 GA counterpart of ReleaseSoldSessionSeat: releases exactly ONE
@@ -477,7 +454,7 @@ FROM (
 WHERE ss.id = picked.id
 RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
           ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
-          ss.status_version, ss.updated_at;
+          ss.status_version, ss.updated_at, ss.system_seat_id, ss.kind;
 
 -- name: ReleaseSoldGAUnitBySeatKey :one
 -- ga_unit twin of ReleaseSoldSessionSeat. Since AB-51 issuance stamps the
@@ -502,7 +479,7 @@ WHERE  ss.session_id = $1
        )
 RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
           ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
-          ss.status_version, ss.updated_at;
+          ss.status_version, ss.updated_at, ss.system_seat_id, ss.kind;
 
 -- name: CountSessionSeatsByTier :many
 -- AB-48 step 3: per-tier inventory counts for the price forms ("Third:

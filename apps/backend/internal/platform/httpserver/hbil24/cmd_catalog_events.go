@@ -27,6 +27,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 )
 
@@ -144,6 +145,11 @@ func (h *Handler) projectActionEvents(
 	prices map[uuid.UUID]int64,
 	feePercent float64,
 ) map[uuid.UUID]catalogAction {
+	// One instant for the whole projection so a category's sale window
+	// cannot be judged "open" for its availability and "closed" for the
+	// session total within the same response.
+	now := time.Now().UTC()
+
 	bySession := make(map[uuid.UUID][]gen.ActionEventTierRow, len(sessions))
 	for _, t := range tiers {
 		bySession[t.Tier.SessionID] = append(bySession[t.Tier.SessionID], t)
@@ -210,11 +216,11 @@ func (h *Handler) projectActionEvents(
 			entry["seatingPlanId"] = int64(0)
 		}
 
-		sessionAvail := sessionAvailability(s)
+		sessionAvail := sessionAvailability(s, bySession[s.SessionID], now)
 		entry["availability"] = sessionAvail
 
 		catList, minPrice, maxPrice, hasPrice := h.projectCategories(
-			ctx, bySession[s.SessionID], prices, sessionAvail, s.SeatingPlanName == nil,
+			ctx, bySession[s.SessionID], prices, sessionAvail, now,
 		)
 		// categoryLimitList is [] — not [{categoryList: []}] — when the
 		// session sells no GA places. That emptiness is load-bearing: it is
@@ -264,7 +270,7 @@ func (h *Handler) projectCategories(
 	tiers []gen.ActionEventTierRow,
 	prices map[uuid.UUID]int64,
 	sessionAvail int,
-	planLess bool,
+	now time.Time,
 ) (catList []map[string]any, minPrice, maxPrice int64, hasPrice bool) {
 	catList = make([]map[string]any, 0, len(tiers))
 	for _, t := range tiers {
@@ -283,12 +289,17 @@ func (h *Handler) projectCategories(
 		if !t.IsGA {
 			continue
 		}
-		avail := gaCategoryAvailability(t, sessionAvail, planLess)
+		avail := gaCategoryAvailability(t, sessionAvail, now)
 		catList = append(catList, map[string]any{
 			"categoryPriceId":   h.compatCategoryPriceID(ctx, t.Tier.ID),
 			"categoryPriceName": t.Tier.Name,
-			// placement=false marks the row as "no seat to choose". Seated
-			// tiers never reach here, so the key is a constant.
+			// placement=false marks the row as "no seat to choose", which
+			// is what `kind: ga` means (plan 08_architecture/23, decision
+			// 10). Only GA categories reach here — the IsGA filter above
+			// drops the seated ones, whose placement would be true — and a
+			// category added by hand to a session with a seating plan is a
+			// GA one by definition, so it lands here too and is correctly
+			// advertised as "no seat to choose" beside the plan.
 			"placement": false,
 			// Spec 20 §3: major units on the wire, minor units in the DB.
 			"price":        money.Major(price),
@@ -304,37 +315,59 @@ func (h *Handler) projectCategories(
 // gaCategoryAvailability is one GA category's remaining count for
 // categoryLimitList.
 //
-// On a plan-less session every unit sits in one pool with tier_id NULL; a
-// hold stamps the category onto the units it takes and a release resets them
-// (hcheckout.AllocateGAUnitsTx), so a tier's own rows are its held and sold
-// units, not inventory. The answer there is the free pool, capped by what the
-// tier's capacity still allows — the guard the hold itself applies. Reading
-// the stamped rows instead reported 0 for every category that had sold one
-// ticket (staging, 2026-09-14; GET_SEAT_LIST had the same bug).
+// Since migration 0101 a category OWNS its places (plan
+// 08_architecture/23), so the answer is how many of its own places are
+// free. A CLOSED category, or one whose sale window does not cover `now`,
+// reports 0 — the wire has no "closed" flag, so decision 4 renders such a
+// category on the site as sold out, and decision 5 does the same for a
+// window that has not opened or has already closed. The pre-0101 branches
+// (a plan-less session's shared NULL-tier pool, capped by the category's
+// declared capacity) are gone with the pool.
 //
-// A plan-bound tier owns its units from the start, so their free count is
-// the answer; a tier with no units at all falls back to the session count.
-func gaCategoryAvailability(t gen.ActionEventTierRow, sessionAvail int, planLess bool) int {
-	if planLess {
-		n := sessionAvail
-		if t.Tier.Capacity != nil {
-			n = min(n, int(*t.Tier.Capacity)-int(t.GAUnitsTotal-t.GAUnitsAvailable))
-		}
-		return max(n, 0)
+// A category that owns no place at all — a ledger-only session an import
+// never materialised — still falls back to the session count rather than
+// reading as sold out, which is the same fallback GET_SEAT_LIST applies.
+func gaCategoryAvailability(t gen.ActionEventTierRow, sessionAvail int, now time.Time) int {
+	if hcheckout.CategorySellable(t.Tier, now) != nil {
+		return 0
 	}
 	if t.GAUnitsTotal > 0 {
-		return int(t.GAUnitsAvailable)
+		return max(int(t.GAUnitsAvailable), 0)
 	}
-	return sessionAvail
+	return max(sessionAvail, 0)
 }
 
-// sessionAvailability picks the right inventory shape (spec §7.1). A session
-// with a materialised session_seats pool — assigned seats and/or ga_units —
-// counts free rows; one without falls back to the ledger's
-// capacity_total − sold − held. Negative results (an oversold ledger) clamp to
-// 0: the wire has no way to express "less than nothing" and the site would
+// sessionAvailability is how many tickets the session as a whole still has
+// on sale (spec §7.1).
+//
+// Since migration 0101 that is the sum of the free places of its OPEN,
+// on-sale categories — a seated category counts its free seats, a General
+// Admission one its free places — so a session whose only remaining stock
+// sits in a closed category correctly advertises 0 rather than counting
+// rows nobody may buy.
+//
+// A session none of whose categories owns a place (a ledger-only import,
+// an old fixture) keeps the pre-0101 answer: the free session_seats rows if
+// any exist at all, otherwise the session ledger's
+// capacity_total − sold − held. Negative results (an oversold ledger) clamp
+// to 0: the wire cannot express "less than nothing" and the site would
 // render a negative count verbatim.
-func sessionAvailability(s gen.ActionEventRow) int {
+func sessionAvailability(s gen.ActionEventRow, tiers []gen.ActionEventTierRow, now time.Time) int {
+	total, anyPlaces := 0, false
+	for _, t := range tiers {
+		if t.GAUnitsTotal == 0 && t.SeatsTotal == 0 {
+			continue
+		}
+		anyPlaces = true
+		if hcheckout.CategorySellable(t.Tier, now) != nil {
+			continue
+		}
+		total += int(t.GAUnitsAvailable) + int(t.SeatsAvailable)
+	}
+	if anyPlaces {
+		return max(total, 0)
+	}
+
 	var n int32
 	if s.SeatsTotal > 0 {
 		n = s.SeatsAvailable

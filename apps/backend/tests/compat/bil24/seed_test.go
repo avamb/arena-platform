@@ -327,28 +327,38 @@ func seedHarness(t *testing.T) *harnessState {
 	); err != nil {
 		t.Fatalf("seed inventory_ledger: %v", err)
 	}
-	if _, err := pool.Exec(ctx,
-		`INSERT INTO session_seats
-		     (session_id, seat_key, sector_name, row_name, seat_number,
-		      tier_id, status, kind)
-		 SELECT $1, 'ga|pool|' || lpad(gs::text, 6, '0'), '', '', '',
-		        NULL, 'available', 'ga_unit'
-		 FROM generate_series(1, $2::int) gs`,
-		gaSessID, gaCap,
-	); err != nil {
-		t.Fatalf("seed GA session_seats: %v", err)
-	}
 	// Two tiers (Early Bird + Standard), EUR — matches spec §9.3 sample.
 	// Minor units again (spec 20 §5): 90000/125000 → minPrice 900 /
 	// maxPrice 1250 on the wire, the values the goldens pin.
+	//
+	// Migration 0101: a GA category OWNS its places, so the session's
+	// capacity is SPLIT between the two categories (25 each) rather than
+	// pooled — the pre-0101 shape gave both categories the same fungible
+	// 50 and kept the truth about quantity in two places at once. Each
+	// category's places live under its own 'ga|t<unit_seq>' key prefix.
+	gaTierIDs := []uuid.UUID{uuid.New(), uuid.New()}
+	const gaPerTier = gaCap / 2
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO ticket_tiers (session_id, name, pricing_mode,
-		     price_amount, currency, sort_order)
-		 VALUES ($1,'Early Bird','fixed',90000,'EUR',0),
-		        ($1,'Standard','fixed',125000,'EUR',1)`,
-		gaSessID,
+		`INSERT INTO ticket_tiers (id, session_id, name, pricing_mode,
+		     price_amount, currency, sort_order, capacity, unit_seq, is_open)
+		 VALUES ($1,$3,'Early Bird','fixed',90000,'EUR',0,$4,1,true),
+		        ($2,$3,'Standard','fixed',125000,'EUR',1,$4,2,true)`,
+		gaTierIDs[0], gaTierIDs[1], gaSessID, gaPerTier,
 	); err != nil {
 		t.Fatalf("seed ticket_tiers: %v", err)
+	}
+	for i, tierID := range gaTierIDs {
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO session_seats
+			     (session_id, seat_key, sector_name, row_name, seat_number,
+			      tier_id, status, kind)
+			 SELECT $1, $4 || lpad(gs::text, 6, '0'),
+			        '', '', '', $3, 'available', 'ga_unit'
+			 FROM generate_series(1, $2::int) gs`,
+			gaSessID, gaPerTier, tierID, fmt.Sprintf("ga|t%d|", i+1),
+		); err != nil {
+			t.Fatalf("seed GA session_seats for tier %d: %v", i+1, err)
+		}
 	}
 
 	// ── 9. Promo code (spec §7.5 ADD_PROMO_CODES fixture) ────────────────

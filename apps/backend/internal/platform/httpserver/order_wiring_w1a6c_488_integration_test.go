@@ -123,10 +123,9 @@ func newW1A6cFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool) *w1a
 
 	// AB-51: AllocateGAUnitsTx only claims EXISTING available ga_unit rows,
 	// so they must be materialised up front or the endpoint answers 409.
-	// The tier is nil because this session is plan-less: AllocateGAUnitsForHold
-	// filters the pool with `tier_id IS NOT DISTINCT FROM NULL` when the session
-	// has no seating_plan_version, and stamps the tier at hold time.
-	if _, err := gen.New(pool).InsertGAUnits(ctx, f.sessionID, "ga|pool", 0, nil, 5); err != nil {
+	// Migration 0101: the places belong to the CATEGORY, keyed under its
+	// own 'ga|t<unit_seq>' prefix — a NULL-tier pool is not sellable.
+	if _, err := gen.New(pool).InsertGAUnits(ctx, f.sessionID, "ga|t1", 0, &f.tierID, 5); err != nil {
 		f.cleanup()
 		t.Fatalf("W1A6c fixture InsertGAUnits: %v", err)
 	}

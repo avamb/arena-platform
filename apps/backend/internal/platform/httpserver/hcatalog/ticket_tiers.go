@@ -17,6 +17,7 @@ import (
 	catalogdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/catalog"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
@@ -58,6 +59,23 @@ type tierResponse struct {
 	// physical seats with this tier and GA units in this tier's pool.
 	SeatCount   *int64 `json:"seat_count,omitempty"`
 	GAUnitCount *int64 `json:"ga_unit_count,omitempty"`
+	// IsOpen is false for a category an operator closed: it accepts no new
+	// holds, while places already held or sold are untouched and an order
+	// already placed can still be paid (migration 0101, decision 1).
+	IsOpen bool `json:"is_open"`
+	// Kind is "seated" when the category's places come from the plan
+	// geometry (its quantity is read-only) and "ga" when it owns General
+	// Admission places. Derived, never stored. List endpoint only.
+	Kind *string `json:"kind,omitempty"`
+	// Quantity / Held / Sold / Available are the category's own place
+	// counters (plan 08_architecture/23 step 5). Quantity is how many
+	// places it owns — the quota mechanism keeps ticket_tiers.capacity
+	// equal to it. List endpoint only; absent for a category that owns no
+	// place at all.
+	Quantity  *int32 `json:"quantity,omitempty"`
+	Held      *int32 `json:"held,omitempty"`
+	Sold      *int32 `json:"sold,omitempty"`
+	Available *int32 `json:"available,omitempty"`
 }
 
 // TierResponse is the exported alias of tierResponse for use by the httpserver
@@ -81,6 +99,7 @@ func tierFromRow(t gen.TicketTierRow) tierResponse {
 		PwywMax:     t.PwywMax,
 		Capacity:    t.Capacity,
 		SortOrder:   t.SortOrder,
+		IsOpen:      t.IsOpen,
 		CreatedAt:   t.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:   t.UpdatedAt.UTC().Format(time.RFC3339),
 	}
@@ -331,11 +350,35 @@ func (h *Handler) HandleListTiers(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Plan 08_architecture/23 step 5: the admin category table shows what
+	// each category owns and what is left of it. Non-fatal — a failure
+	// leaves the counters absent rather than failing the list.
+	placeStats, statsErr := gaquota.SessionStats(ctx, h.tierQueries, sessionID)
+	if statsErr != nil {
+		h.logger.Warn("tier: category place counters failed (non-fatal)",
+			slog.String("error", statsErr.Error()))
+		placeStats = nil
+	}
+
 	result := make([]tierResponse, 0, len(rows))
 	for _, t := range rows {
 		tr := tierFromRow(t)
 		sc, gc := seatCounts[t.ID], gaCounts[t.ID]
 		tr.SeatCount, tr.GAUnitCount = &sc, &gc
+
+		// A category is SEATED exactly when it owns coordinate-bearing
+		// seats — the same rule gaquota.CategoryKind applies, derived here
+		// from the counts already in hand rather than re-querying per row.
+		kind := string(gaquota.KindGA)
+		if sc > 0 {
+			kind = string(gaquota.KindSeated)
+		}
+		tr.Kind = &kind
+
+		if st, ok := placeStats[t.ID]; ok {
+			quantity, held, sold, available := st.Quantity, st.Held, st.Sold, st.Available
+			tr.Quantity, tr.Held, tr.Sold, tr.Available = &quantity, &held, &sold, &available
+		}
 		result = append(result, tr)
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{

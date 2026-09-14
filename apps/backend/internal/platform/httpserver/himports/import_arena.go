@@ -27,6 +27,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 )
 
 // arenaMatch is the outcome of spec §3.2 steps 1-2: which existing session (if
@@ -81,6 +82,10 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 
 	orderedTiers, err := h.upsertArenaTiers(ctx, q, tx, plan, sessionID, warnings)
 	if err != nil {
+		return importResult{}, err
+	}
+
+	if err := materializeArenaCategoryPlaces(ctx, q, sessionID, orderedTiers); err != nil {
 		return importResult{}, err
 	}
 
@@ -423,17 +428,11 @@ func (h *Handler) upsertArenaSession(
 		if err != nil {
 			return uuid.Nil, false, fmt.Errorf("insert session: %w", err)
 		}
-		// AB-51 (mirrored from hcatalog/sessions.go): a plan-less GA session's
-		// capacity is enforced by a fungible pool of session_seats rows
-		// ("ga|pool|<n>", tier NULL until held), not by inventory_ledger — no
-		// production RESERVATION path reads that table. The event-bundle
-		// importer never binds a seating plan, so every session it creates is
-		// plan-less GA and needs its pool materialized here, or the very first
-		// RESERVATION against it short-allocates and answers "sold out"
-		// regardless of the bundle's declared availability.
-		if _, err := q.InsertGAUnits(ctx, created.ID, "ga|pool", 0, nil, capacity); err != nil {
-			return uuid.Nil, false, fmt.Errorf("materialize general-admission inventory: %w", err)
-		}
+		// The places themselves are minted per CATEGORY once the bundle's
+		// categoryList has been upserted (materializeArenaCategoryPlaces).
+		// Before migration 0101 this spot materialized one fungible
+		// "ga|pool|<n>" batch with tier_id NULL; a category now owns its
+		// places, and such a pool would be unsellable.
 		return created.ID, true, nil
 	}
 
@@ -585,6 +584,58 @@ func (h *Handler) upsertArenaTiers(
 	}
 
 	return ordered, nil
+}
+
+// materializeArenaCategoryPlaces gives every imported category its own GA
+// places, so a freshly imported session can actually sell (plan
+// 08_architecture/23: a category OWNS its places, and the pre-0101
+// fungible NULL-tier pool the importer used to create is unsellable).
+//
+// Decision 7: the FIRST import sets the quantity from the bundle's declared
+// availability; a REPEAT import never changes it — the bundle's
+// `availability` is the source system's REMAINDER, not a quantity, so
+// re-applying it would subtract the source's sales on top of arena's. The
+// "already owns places" guard is exactly that rule, and it also makes the
+// import idempotent.
+//
+// A category without a declared availability gets no places here; it keeps
+// the ledger-only shape the availability projections still fall back to.
+// Full import handling (repeat-import price/window updates, closing
+// categories that vanished from the bundle) is step 7 of the plan.
+func materializeArenaCategoryPlaces(
+	ctx context.Context,
+	q *gen.Queries,
+	sessionID uuid.UUID,
+	tierIDs []uuid.UUID,
+) error {
+	if len(tierIDs) == 0 {
+		return nil
+	}
+	stats, err := gaquota.SessionStats(ctx, q, sessionID)
+	if err != nil {
+		return fmt.Errorf("read category place counters: %w", err)
+	}
+	seen := make(map[uuid.UUID]struct{}, len(tierIDs))
+	for _, tierID := range tierIDs {
+		if _, dup := seen[tierID]; dup {
+			continue
+		}
+		seen[tierID] = struct{}{}
+		if st, ok := stats[tierID]; ok && st.Quantity > 0 {
+			continue // already materialized — a repeat import leaves it alone
+		}
+		tier, tErr := q.GetTicketTierByID(ctx, tierID, sessionID)
+		if tErr != nil {
+			return fmt.Errorf("load imported category: %w", tErr)
+		}
+		if tier.Capacity == nil || *tier.Capacity <= 0 {
+			continue
+		}
+		if err := gaquota.CreateCategory(ctx, q, sessionID, tierID, *tier.Capacity); err != nil {
+			return fmt.Errorf("materialize category places: %w", err)
+		}
+	}
+	return nil
 }
 
 // normalizeTierName is the case- and whitespace-insensitive key spec §3.2 step

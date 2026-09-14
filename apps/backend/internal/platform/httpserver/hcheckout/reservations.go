@@ -447,9 +447,20 @@ func (h *Handler) HandleCreateReservation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// AB-51: allocate concrete GA units for the hold (available -> held,
-	// linked via reservation_seats). Plan-bound sessions allocate from
-	// the tier's category pool; plan-less from the fungible NULL pool.
+	// A GA hold must name its category. Since migration 0101 a category
+	// owns its places, so a NULL tier matches nothing and would surface as
+	// a misleading "sold out" rather than the input error it is.
+	if tierID == nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"reservation.tier_required",
+			"tier_id is required for a quantity (general admission) reservation", r,
+			map[string]any{"field": "tier_id"},
+		))
+		return
+	}
+
+	// AB-51: allocate concrete GA places for the hold (available -> held,
+	// linked via reservation_seats) out of the category's own places.
 	//
 	// Lock order (must match every other hold mutation — see the note on
 	// hcheckout.createGAHoldTx): bump sessions.seat_status_version BEFORE
@@ -458,20 +469,20 @@ func (h *Handler) HandleCreateReservation(w http.ResponseWriter, r *http.Request
 	// ExtendHold / ShrinkHold on the same session taking the two locks in
 	// the opposite order — the same root cause as the CreateGAHold
 	// deadlock. Do not reorder these two calls again.
-	admission, err := resQ.GetSessionAdmissionModeByID(ctx, sessionID)
-	if err != nil {
-		h.logger.Error("reservation: admission lookup failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"reservation.insert_failed", "failed to create reservation", r,
-		))
-		return
-	}
 	newVersion, err := resQ.IncrementSessionSeatStatusVersion(ctx, sessionID)
 	if err != nil {
 		h.logger.Error("reservation: bump seat_status_version failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.insert_failed", "failed to create reservation", r,
 		))
+		return
+	}
+
+	// A closed category, or one outside its sale window, takes no NEW hold
+	// (plan 08_architecture/23 step 4). Runs under the sessions row lock
+	// just taken, before any inventory is touched.
+	if gateErr := CheckCategorySellable(ctx, resQ, sessionID, *tierID, time.Now().UTC()); gateErr != nil {
+		writeCategoryGateError(w, r, gateErr)
 		return
 	}
 
@@ -505,7 +516,6 @@ func (h *Handler) HandleCreateReservation(w http.ResponseWriter, r *http.Request
 
 	if _, err := AllocateGAUnitsTx(
 		ctx, resQ, sessionID, res.ID, newVersion,
-		admission.SeatingPlanVersionID != nil,
 		[]GAUnitLine{{TierID: tierID, Quantity: req.Quantity}},
 	); err != nil {
 		var capErr *CapacityError
@@ -523,15 +533,13 @@ func (h *Handler) HandleCreateReservation(w http.ResponseWriter, r *http.Request
 	}
 
 	// AB-48 step 9: lock the quoted price for the cart's TTL.
-	if tierID != nil {
-		if _, err := WriteReservationPriceLinesTx(ctx, resQ, sessionID, res.ID,
-			map[uuid.UUID]int32{*tierID: req.Quantity}, time.Now().UTC()); err != nil {
-			h.logger.Error("reservation: price lock failed", slog.String("error", err.Error()))
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.price_lock_failed", "failed to lock the quoted price", r,
-			))
-			return
-		}
+	if _, err := WriteReservationPriceLinesTx(ctx, resQ, sessionID, res.ID,
+		map[uuid.UUID]int32{*tierID: req.Quantity}, time.Now().UTC()); err != nil {
+		h.logger.Error("reservation: price lock failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"reservation.price_lock_failed", "failed to lock the quoted price", r,
+		))
+		return
 	}
 
 	if err := tx.Commit(ctx); err != nil {

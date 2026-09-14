@@ -92,7 +92,7 @@ func TestGAUnits_OnSaleBurst_LiveDB(t *testing.T) {
 					return err
 				}
 				units, err := txq.AllocateGAUnitsForHold(ctx, f.sessionID, res.ID,
-					nil, ver, nil, perHold)
+					f.tierID, ver, perHold)
 				if err != nil {
 					return err
 				}
@@ -164,6 +164,7 @@ type gaFixture struct {
 	eventID   uuid.UUID
 	channelID uuid.UUID
 	sessionID uuid.UUID
+	tierID    uuid.UUID
 }
 
 func mustPoolConfig(t *testing.T, dsn string, maxConns int32) *pgxpool.Config {
@@ -183,6 +184,7 @@ func createGAFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool, capa
 		eventID:   uuid.New(),
 		channelID: uuid.New(),
 		sessionID: uuid.New(),
+		tierID:    uuid.New(),
 	}
 	suffix := f.orgID.String()[:8]
 	steps := []struct {
@@ -208,13 +210,23 @@ func createGAFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool, capa
 		{`INSERT INTO inventory_ledger (session_id, tier_id, capacity_total)
 		  VALUES ($1, NULL, $2)`,
 			[]any{f.sessionID, capacity}},
+		// Migration 0101: a GA category OWNS its places. The whole
+		// session capacity belongs to ONE category here, keyed under its
+		// own 'ga|t<unit_seq>' prefix — the pre-0101 fungible
+		// 'ga|pool|<n>' batch with tier_id NULL no longer exists and
+		// AllocateGAUnitsForHold would match none of it.
+		{`INSERT INTO ticket_tiers
+		    (id, session_id, name, pricing_mode, price_amount, currency,
+		     capacity, unit_seq, is_open)
+		  VALUES ($1, $2, 'Burst', 'fixed', 1000, 'EUR', $3, 1, true)`,
+			[]any{f.tierID, f.sessionID, capacity}},
 		{`INSERT INTO session_seats
 		    (session_id, seat_key, sector_name, row_name, seat_number,
 		     tier_id, status, kind)
-		  SELECT $1, 'ga|pool|' || lpad(gs::text, 6, '0'), '', '', '',
-		         NULL, 'available', 'ga_unit'
+		  SELECT $1, 'ga|t1|' || lpad(gs::text, 6, '0'), '', '', '',
+		         $3, 'available', 'ga_unit'
 		  FROM generate_series(1, $2::int) gs`,
-			[]any{f.sessionID, capacity}},
+			[]any{f.sessionID, capacity, f.tierID}},
 	}
 	for i, s := range steps {
 		if _, err := pool.Exec(ctx, s.sql, s.args...); err != nil {
@@ -232,6 +244,7 @@ func (f *gaFixture) cleanup() {
 		   (SELECT id FROM session_seats WHERE session_id = $1)`,
 		`DELETE FROM session_seats WHERE session_id = $1`,
 		`DELETE FROM reservations WHERE session_id = $1`,
+		`DELETE FROM ticket_tiers WHERE session_id = $1`,
 		`DELETE FROM inventory_ledger WHERE session_id = $1`,
 		`DELETE FROM sessions WHERE id = $1`,
 	} {

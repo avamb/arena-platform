@@ -8985,6 +8985,13 @@ type TicketTierEnvelope struct {
 // `price_amount`, `pwyw_min`, and `pwyw_max` are stored in the smallest
 // currency unit (integer cents) for the tier's ISO 4217 `currency`.
 type TicketTierItem struct {
+	// Available How many places the category still has free - what a buyer may
+	// still take, and what the widget's quantity picker caps at
+	// instead of `capacity`. 0 when the category is closed or outside
+	// its sale window; null when the category owns no place at all
+	// (then `capacity` is the only bound there is).
+	Available *int32 `json:"available"`
+
 	// Capacity Optional per-tier capacity cap. When set, must be > 0. `null`
 	// means "no tier-level cap" (only the session-level cap applies).
 	Capacity *int32 `json:"capacity"`
@@ -9006,8 +9013,25 @@ type TicketTierItem struct {
 	// this category's pool, shown beside its price.
 	GaUnitCount *int64 `json:"ga_unit_count"`
 
+	// Held Admin list endpoint only - how many of the category's places are
+	// currently held by an open reservation.
+	Held *int32 `json:"held"`
+
 	// Id UUIDv7 primary key of the ticket-tier row.
 	Id openapi_types.UUID `json:"id"`
+
+	// IsOpen Whether the category is open for sale. A closed category
+	// (false) accepts no NEW holds; places already held or sold are
+	// untouched and an order already placed can still be paid. Always
+	// present on both the admin list and the public feed. GA category
+	// quotas - plan 08_architecture/23 step 5.
+	IsOpen *bool `json:"is_open,omitempty"`
+
+	// Kind Admin list endpoint only - whether the category owns places
+	// from the seating-plan geometry ("seated", quantity read-only)
+	// or General Admission places of its own ("ga", quantity
+	// editable). Derived from the places, never stored.
+	Kind *string `json:"kind"`
 
 	// Name Human-readable tier name. Required; trimmed of whitespace.
 	Name string `json:"name"`
@@ -9031,6 +9055,11 @@ type TicketTierItem struct {
 	// both `pwyw_min` and `pwyw_max` are present, `pwyw_min <= pwyw_max`.
 	PwywMin *int64 `json:"pwyw_min"`
 
+	// Quantity Admin list endpoint only - how many places the category owns
+	// (held, sold and available together). Absent for a category that
+	// owns no place at all.
+	Quantity *int32 `json:"quantity"`
+
 	// SaleWindowEnd Optional sale-window end (RFC 3339, UTC).
 	SaleWindowEnd *time.Time `json:"sale_window_end"`
 
@@ -9046,6 +9075,10 @@ type TicketTierItem struct {
 	// SessionId FK to the owning session. Immutable after creation; the
 	// owner-org check is enforced via the parent session row.
 	SessionId openapi_types.UUID `json:"session_id"`
+
+	// Sold Admin list endpoint only - how many of the category's places have
+	// been sold.
+	Sold *int32 `json:"sold"`
 
 	// SortOrder Display order; lower values render first.
 	SortOrder int32 `json:"sort_order"`
