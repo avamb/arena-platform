@@ -5,14 +5,19 @@
 // session — not the event — owns the venue, the seating bind, and the
 // currency (Bil24 model: only the ActionEvent carries date/venue/currency).
 //
-// Capacity is DERIVED, in this order (AB-36):
+// Capacity is DERIVED, never an editable input (AB-36, reshaped by plan
+// 08_architecture/23 step 6):
 //
 //	bound seating plan version (assigned_seats / hybrid)
-//	  -> capacity_override (operator input)
-//	  -> venues.capacity_default
+//	  -> the sum of the General Admission category quantities
+//	     (from the first category onwards; only the quota mechanism
+//	      changes it)
 //
-// A general-admission session that resolves to none of these is rejected
-// with 422 session.capacity_unresolvable.
+// At CREATE time, before any of those exists, capacity_total needs a
+// positive value for sessions_capacity_total_check: that provisional value
+// comes from capacity_override, else the venue's capacity_default, else 1.
+// On PATCH capacity_override is refused outright
+// (session.capacity_override_not_applicable).
 //
 // Currency resolution (AB-38): venue -> city.currency_override ??
 // country.currency, recorded as currency_source='derived'; an explicit
@@ -429,7 +434,7 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
-	seated := mode != "general_admission"
+	seated := mode != admissionGeneralAdmission
 	hasPlan := req.SeatingPlanVersionID != ""
 	var planVersionID uuid.UUID
 	if seated && !hasPlan {
@@ -499,27 +504,35 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Capacity resolution (AB-36 step 4).
-	var capacityTotal int32
+	// Capacity resolution. Every branch here is PROVISIONAL (plan
+	// 08_architecture/23 step 6): a plan bind recomputes capacity_total
+	// from the plan version, and on a plan-less general-admission session
+	// the first category created through the quota mechanism replaces it
+	// with the sum of the category quantities. The value only has to
+	// satisfy sessions_capacity_total_check (> 0) until then, so a session
+	// with neither an operator override nor a venue default is created
+	// with 1 rather than refused — the admin create form does not ask for
+	// a capacity at all any more.
+	var capacityTotal int32 = 1
 	switch {
-	case seated || hasPlan:
-		// Placeholder satisfying the capacity_total > 0 CHECK; the bind
-		// below recomputes the real value from the plan version.
-		capacityTotal = 1
-		if req.CapacityOverride != nil {
-			capacityTotal = *req.CapacityOverride
-		}
 	case req.CapacityOverride != nil:
 		capacityTotal = *req.CapacityOverride
-	case venueCtx.CapacityDefault != nil && *venueCtx.CapacityDefault > 0:
+	case !seated && !hasPlan && venueCtx.CapacityDefault != nil && *venueCtx.CapacityDefault > 0:
 		capacityTotal = *venueCtx.CapacityDefault
-	default:
-		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
-			"session.capacity_unresolvable",
-			"capacity could not be derived: supply capacity_override or set the venue's capacity_default", r,
-			map[string]any{"field": "capacity_override"},
-		))
-		return
+	}
+
+	// The operator knob is accepted here (it is the only way to give the
+	// CHECK a positive value before a category exists) but it is inert
+	// from the first category onwards, so say so rather than let an
+	// operator believe the session holds 500 places.
+	var warnings []map[string]any
+	if req.CapacityOverride != nil && !seated && !hasPlan {
+		warnings = append(warnings, map[string]any{
+			"code": "session.capacity_is_category_sum",
+			"message": "capacity_override is a provisional value only: the capacity of a " +
+				"general-admission session is the sum of its category quantities from the " +
+				"first category onwards",
+		})
 	}
 
 	// poster_media_id (AB-47): optional session-level poster artwork.
@@ -620,9 +633,13 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 
-	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
+	createBody := map[string]any{
 		"session": SessionFromRow(sess, hasOverlap),
-	})
+	}
+	if len(warnings) > 0 {
+		createBody["warnings"] = warnings
+	}
+	httputil.WriteJSON(w, http.StatusCreated, createBody)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -737,9 +754,13 @@ func (h *Handler) HandleGetSession(w http.ResponseWriter, r *http.Request) {
 
 // updateSessionRequest is the request body for PATCH .../sessions/{id}.
 // All fields are optional; nil/empty values leave the existing value unchanged.
-// capacity_total is not an input — it is re-derived when venue_id or
-// capacity_override change (GA sessions only; plan-bound capacity is owned
-// by the bind path). Setting currency records an explicit override and
+// Neither capacity_total nor capacity_override is editable here (plan
+// 08_architecture/23 step 6): a plan-bound session's capacity is owned by
+// the bind path, a general-admission one's is the sum of its category
+// quantities, and a capacity_override in the body is refused with
+// session.capacity_override_not_applicable. The field is kept on the struct
+// so an older client gets that explicit refusal instead of a silent no-op.
+// Setting currency records an explicit override and
 // cascades to the session's tiers. poster_media_id is an optional session-level
 // poster artwork override (AB-47).
 type updateSessionRequest struct {
@@ -874,25 +895,37 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	seated := current.AdmissionMode != "general_admission"
+	seated := current.AdmissionMode != admissionGeneralAdmission
 
-	// capacity_override is a GA knob only: plan-bound sessions derive their
-	// capacity from the bound version and must not be silently overridden.
-	if req.CapacityOverride != nil && seated {
-		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+	// capacity_override is not an editable knob on ANY session any more
+	// (plan 08_architecture/23 step 6, wave B — wave A still ignored it
+	// with a warning). A plan-bound session derives its capacity from the
+	// bound version; a general-admission one derives it from the sum of
+	// its category quantities, which only the quota mechanism may change.
+	// The two cases carry different statuses deliberately: the plan-bound
+	// refusal is the long-standing 422 (semantically wrong for that
+	// session shape), the general-admission one is a 400 on a field the
+	// endpoint no longer accepts at all.
+	if req.CapacityOverride != nil {
+		if seated {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+				"session.capacity_override_not_applicable",
+				"capacity_override does not apply to plan-bound sessions; the bound seating plan owns the capacity", r,
+				map[string]any{"field": "capacity_override", "reason": "plan_bound"},
+			))
+			return
+		}
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"session.capacity_override_not_applicable",
-			"capacity_override does not apply to plan-bound sessions; the bound seating plan owns the capacity", r,
-			map[string]any{"field": "capacity_override"},
+			"capacity_override cannot be edited: the capacity of a general-admission session is "+
+				"the sum of its category quantities; change a category quantity instead", r,
+			map[string]any{"field": "capacity_override", "reason": "category_sum"},
 		))
 		return
 	}
 
-	// Plan 08_architecture/23 step 3: once a GA category owns places, the
-	// session capacity is the SUM of the category quantities and is never
-	// edited on its own — not through capacity_override, not through a
-	// venue change. Wave-A compatibility (step 6, "Совместимость"): the
-	// admin still sends capacity_override, so the field is IGNORED with a
-	// response warning rather than refused; it becomes a 400 in wave B.
+	// A venue change must not rewrite the capacity of a session whose
+	// categories own their places either.
 	capacityIsCategorySum := false
 	if !seated {
 		var ok bool
@@ -903,21 +936,6 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 			))
 			return
 		}
-	}
-	var warnings []map[string]any
-	if capacityIsCategorySum && (req.CapacityOverride != nil || req.VenueID != nil) {
-		// The venue-change branch only re-derives capacity when the new
-		// venue carries a capacity_default, but the warning is cheap and
-		// the operator needs to know the knob is inert either way.
-		if req.CapacityOverride != nil {
-			warnings = append(warnings, map[string]any{
-				"code": "session.capacity_is_category_sum",
-				"message": "capacity_override was ignored: the capacity of a session whose " +
-					"general-admission categories own their places is the sum of the category " +
-					"quantities; edit the quantities instead",
-			})
-		}
-		req.CapacityOverride = nil
 	}
 
 	// Optional venue change (AB-36): validate ownership and re-derive the
@@ -969,22 +987,22 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		currencySource = "derived"
 	}
 
-	// Re-derive capacity_total for GA sessions when the operator knob or the
-	// venue changed (AB-36 resolution chain: override -> venue default).
+	// Re-derive the provisional capacity_total when a general-admission
+	// session that owns NO category place yet moves to another venue: the
+	// stored operator override still wins, then the new venue's default.
+	// The moment a category owns places the capacity is the sum of the
+	// category quantities and a venue change must not touch it
+	// (capacityIsCategorySum).
 	var newCapacityTotal *int32
-	if !seated && !capacityIsCategorySum && (req.CapacityOverride != nil || venueChanged) {
-		effectiveOverride := current.CapacityOverride
-		if req.CapacityOverride != nil {
-			effectiveOverride = req.CapacityOverride
-		}
+	if !seated && !capacityIsCategorySum && venueChanged {
 		switch {
-		case effectiveOverride != nil:
-			newCapacityTotal = effectiveOverride
-		case venueChanged && venueCtx.CapacityDefault != nil && *venueCtx.CapacityDefault > 0:
+		case current.CapacityOverride != nil:
+			newCapacityTotal = current.CapacityOverride
+		case venueCtx.CapacityDefault != nil && *venueCtx.CapacityDefault > 0:
 			newCapacityTotal = venueCtx.CapacityDefault
-		case venueChanged:
-			// Venue changed, no override anywhere, new venue has no default:
-			// keep the current capacity rather than failing the whole PATCH.
+		default:
+			// The new venue has no default either: keep the current
+			// capacity rather than failing the whole PATCH.
 			newCapacityTotal = nil
 		}
 	}
@@ -1067,13 +1085,9 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	overlapCount, overlapErr := h.sessionQueries.CountOverlappingSessions(ctx, eventID, sessionID, effectiveStart, effectiveEnd)
 	hasOverlap := overlapErr == nil && overlapCount > 0
 
-	respBody := map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"session": SessionFromRow(updated, hasOverlap),
-	}
-	if len(warnings) > 0 {
-		respBody["warnings"] = warnings
-	}
-	httputil.WriteJSON(w, http.StatusOK, respBody)
+	})
 }
 
 // sessionOwnsGAPlaces reports whether any general-admission category of the

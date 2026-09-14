@@ -5,20 +5,22 @@
 // operation goes through the quota mechanism, and the session capacity stops
 // being an operator input the moment a category owns places.
 //
-//   - POST .../sessions creates a plan-less GA session with NO places; the
-//     first category is what materializes them and settles the capacity;
-//   - POST .../tiers takes the quantity from `capacity`, or derives the
-//     wave-A default from the session capacity minus what the other
-//     categories already claim, and refuses with 400 tier.capacity_required
-//     when nothing is left;
+//   - POST .../sessions creates a plan-less GA session with NO places, with
+//     or without a capacity_override; the first category is what
+//     materializes the places and settles the capacity;
+//   - POST .../tiers takes the quantity from `capacity`, which is REQUIRED on
+//     a general_admission / hybrid session (400 tier.capacity_required
+//     without it — wave B, the wave-A "remainder of capacity_override"
+//     default is gone);
 //   - PATCH .../tiers grows / shrinks the quantity (409
-//     tier.quantity_below_used below what the category cannot give up) and
-//     opens / closes the category;
+//     tier.quantity_below_used below what the category cannot give up),
+//     opens / closes the category, refuses `capacity: null` with 400
+//     tier.capacity_required, and CLEARS a nullable field sent as an
+//     explicit null (tri-state);
 //   - DELETE .../tiers removes the category with its places, and answers 409
 //     tier.in_use for one that still holds or has sold a place;
-//   - PATCH .../sessions IGNORES capacity_override on such a session and says
-//     so with a session.capacity_is_category_sum warning (wave-A
-//     compatibility — it becomes a 400 in wave B).
+//   - PATCH .../sessions REFUSES capacity_override on such a session with 400
+//     session.capacity_override_not_applicable.
 //
 // Requires DATABASE_URL against a migrated database (see AGENTS.md).
 package httpserver
@@ -277,16 +279,15 @@ func TestGA46_SessionCreateHasNoPlaces_FirstCategorySetsCapacity(t *testing.T) {
 			"must come from its categories", n)
 	}
 
-	// No capacity in the body: the wave-A default is the whole session
-	// capacity, because no category claims anything yet.
+	// The quantity is always explicit now: it is what mints the places.
 	tier, w := f.createTier(srv, sessionID, map[string]any{
-		"name": "Standing", "pricing_mode": "fixed", "price_amount": 2500,
+		"name": "Standing", "pricing_mode": "fixed", "price_amount": 2500, "capacity": 100,
 	})
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create tier: status = %d, body = %s", w.Code, w.Body.String())
 	}
 	if tier.Tier.Capacity == nil || *tier.Tier.Capacity != 100 {
-		t.Fatalf("tier capacity = %v, want 100 (session capacity minus nothing)", tier.Tier.Capacity)
+		t.Fatalf("tier capacity = %v, want the requested 100", tier.Tier.Capacity)
 	}
 	if !tier.Tier.IsOpen {
 		t.Errorf("a freshly created category is closed, want open")
@@ -310,10 +311,50 @@ func TestGA46_SessionCreateHasNoPlaces_FirstCategorySetsCapacity(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PATCH .../sessions — capacity_override is inert once a category owns places
+// POST .../sessions — the create form no longer has to send a capacity
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestGA46_SessionPatchCapacityOverrideIgnoredWithWarning(t *testing.T) {
+func TestGA46_SessionCreateWithoutCapacityOverride(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f := newGA46Fixture(t, ctx, pool)
+	defer f.cleanup()
+	srv := buildIntegrationResetServer(t, pool)
+
+	// No capacity_override, and the fixture venue carries no
+	// capacity_default either: the session is created with a provisional
+	// capacity of 1 rather than refused, and the first category replaces it.
+	body := ga46SessionBody(f.venueID, 0)
+	delete(body, "capacity_override")
+	sessionID, w := f.createSession(srv, body)
+	if sessionID == uuid.Nil {
+		t.Fatalf("create session without a capacity: status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if n := ga46Int(t, ctx, pool,
+		`SELECT capacity_total FROM sessions WHERE id=$1`, sessionID); n != 1 {
+		t.Errorf("provisional capacity_total = %d, want 1", n)
+	}
+	if n := ga46Int(t, ctx, pool,
+		`SELECT count(*) FROM session_seats WHERE session_id=$1`, sessionID); n != 0 {
+		t.Errorf("a session created without a capacity has %d places, want 0", n)
+	}
+
+	if _, w := f.createTier(srv, sessionID, map[string]any{
+		"name": "Standing", "pricing_mode": "fixed", "price_amount": 2500, "capacity": 42,
+	}); w.Code != http.StatusCreated {
+		t.Fatalf("create tier: status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if n := ga46Int(t, ctx, pool,
+		`SELECT capacity_total FROM sessions WHERE id=$1`, sessionID); n != 42 {
+		t.Errorf("capacity_total after the first category = %d, want 42", n)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH .../sessions — capacity_override is refused outright
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestGA46_SessionPatchCapacityOverrideRefused(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := t.Context()
 	f := newGA46Fixture(t, ctx, pool)
@@ -341,38 +382,28 @@ func TestGA46_SessionPatchCapacityOverrideIgnoredWithWarning(t *testing.T) {
 	})
 	rec := httptest.NewRecorder()
 	srv.catalogHandler().HandleUpdateSession(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("patch session: status = %d, want 200 (wave-A compatibility); body = %s",
-			rec.Code, rec.Body.String())
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("patch session: status = %d, want 400; body = %s", rec.Code, rec.Body.String())
 	}
 
-	var out struct {
-		Session struct {
-			CapacityTotal    int32  `json:"capacity_total"`
-			CapacityOverride *int32 `json:"capacity_override"`
-		} `json:"session"`
-		Warnings []struct {
-			Code string `json:"code"`
-		} `json:"warnings"`
+	var env struct {
+		Error struct {
+			Code    string         `json:"code"`
+			Details map[string]any `json:"details"`
+		} `json:"error"`
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
-		t.Fatalf("decode patch response: %v; body=%s", err, rec.Body.String())
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode patch error: %v; body=%s", err, rec.Body.String())
 	}
-	found := false
-	for _, warn := range out.Warnings {
-		if warn.Code == "session.capacity_is_category_sum" {
-			found = true
-		}
+	if env.Error.Code != "session.capacity_override_not_applicable" {
+		t.Errorf("code = %q, want session.capacity_override_not_applicable", env.Error.Code)
 	}
-	if !found {
-		t.Errorf("warnings = %+v, want session.capacity_is_category_sum", out.Warnings)
-	}
-	if out.Session.CapacityTotal != 40 {
-		t.Errorf("capacity_total = %d, want 40 (the category sum, unchanged)", out.Session.CapacityTotal)
+	if reason, _ := env.Error.Details["reason"].(string); reason != "category_sum" {
+		t.Errorf("details.reason = %q, want category_sum", reason)
 	}
 	if n := ga46Int(t, ctx, pool,
 		`SELECT count(*) FROM session_seats WHERE session_id=$1`, sessionID); n != 40 {
-		t.Errorf("places = %d, want 40 (the PATCH must not resize anything)", n)
+		t.Errorf("places = %d, want 40 (the refused PATCH must not resize anything)", n)
 	}
 	if n := ga46Int(t, ctx, pool,
 		`SELECT capacity_total FROM sessions WHERE id=$1`, sessionID); n != 40 {
@@ -410,31 +441,108 @@ func TestGA46_TierCreateQuantityRules(t *testing.T) {
 		t.Fatalf("capacity_total after the first category = %d, want 10 (its quantity)", n)
 	}
 
-	// No capacity: the remaining 30 − 10 = 20 is the wave-A default.
+	// A second category simply adds its own quantity on top: the session
+	// capacity is the SUM, it does not have to fit inside anything.
 	second, w := f.createTier(srv, sessionID, map[string]any{
-		"name": "Back", "pricing_mode": "fixed", "price_amount": 2500,
+		"name": "Back", "pricing_mode": "fixed", "price_amount": 2500, "capacity": 25,
 	})
 	if w.Code != http.StatusCreated {
 		t.Fatalf("second tier: status = %d, body = %s", w.Code, w.Body.String())
 	}
-	if second.Tier.Capacity == nil || *second.Tier.Capacity != 20 {
-		t.Fatalf("second tier capacity = %v, want the derived default 20", second.Tier.Capacity)
+	if second.Tier.Capacity == nil || *second.Tier.Capacity != 25 {
+		t.Fatalf("second tier capacity = %v, want the requested 25", second.Tier.Capacity)
 	}
 	if n := ga46Int(t, ctx, pool,
-		`SELECT capacity_total FROM sessions WHERE id=$1`, sessionID); n != 30 {
-		t.Fatalf("capacity_total = %d, want 30 (10 + 20)", n)
+		`SELECT capacity_total FROM sessions WHERE id=$1`, sessionID); n != 35 {
+		t.Fatalf("capacity_total = %d, want 35 (10 + 25)", n)
 	}
 
-	// Nothing left to derive from: decision 3 forbids a category without a
-	// quantity, so this is a 400 rather than a silently unsellable category.
+	// Wave B: decision 3 forbids a General Admission category without a
+	// quantity, and there is no default to fall back on — the session
+	// capacity IS the sum of the quantities.
 	_, w = f.createTier(srv, sessionID, map[string]any{
-		"name": "Overflow", "pricing_mode": "fixed", "price_amount": 100,
+		"name": "No quantity", "pricing_mode": "fixed", "price_amount": 100,
 	})
 	if w.Code != http.StatusBadRequest {
-		t.Fatalf("third tier: status = %d, want 400; body = %s", w.Code, w.Body.String())
+		t.Fatalf("tier without a capacity: status = %d, want 400; body = %s", w.Code, w.Body.String())
 	}
 	if code := ga46ErrorCode(t, w); code != "tier.capacity_required" {
-		t.Errorf("third tier error code = %q, want tier.capacity_required", code)
+		t.Errorf("tier without a capacity: code = %q, want tier.capacity_required", code)
+	}
+	if n := ga46Int(t, ctx, pool,
+		`SELECT capacity_total FROM sessions WHERE id=$1`, sessionID); n != 35 {
+		t.Errorf("a refused create changed capacity_total to %d, want 35", n)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH .../tiers — the nullable fields are tri-state, the quantity is not
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestGA46_TierPatchTriStateNullables(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f := newGA46Fixture(t, ctx, pool)
+	defer f.cleanup()
+	srv := buildIntegrationResetServer(t, pool)
+
+	sessionID, w := f.createSession(srv, ga46SessionBody(f.venueID, 20))
+	if sessionID == uuid.Nil {
+		t.Fatalf("create session: status = %d, body = %s", w.Code, w.Body.String())
+	}
+	created, w := f.createTier(srv, sessionID, map[string]any{
+		"name": "Standing", "pricing_mode": "fixed", "price_amount": 2500,
+		"capacity":          20,
+		"sale_window_start": "2026-07-01T00:00:00Z",
+		"sale_window_end":   "2026-08-15T17:59:59Z",
+	})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create tier: status = %d, body = %s", w.Code, w.Body.String())
+	}
+	tierID := uuid.MustParse(created.Tier.ID)
+
+	// An omitted key keeps the stored value.
+	if _, w := f.patchTier(srv, sessionID, tierID, map[string]any{"name": "Standing II"}); w.Code != http.StatusOK {
+		t.Fatalf("rename: status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if n := ga46Int(t, ctx, pool,
+		`SELECT count(*) FROM ticket_tiers WHERE id=$1 AND sale_window_end IS NOT NULL`,
+		tierID); n != 1 {
+		t.Fatalf("an unrelated PATCH cleared sale_window_end")
+	}
+
+	// An explicit null CLEARS it — impossible before wave B.
+	if _, w := f.patchTier(srv, sessionID, tierID, map[string]any{"sale_window_end": nil}); w.Code != http.StatusOK {
+		t.Fatalf("clear sale_window_end: status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if n := ga46Int(t, ctx, pool,
+		`SELECT count(*) FROM ticket_tiers WHERE id=$1 AND sale_window_end IS NULL`,
+		tierID); n != 1 {
+		t.Errorf("sale_window_end survived an explicit null")
+	}
+	if n := ga46Int(t, ctx, pool,
+		`SELECT count(*) FROM ticket_tiers WHERE id=$1 AND sale_window_start IS NOT NULL`,
+		tierID); n != 1 {
+		t.Errorf("clearing sale_window_end also cleared sale_window_start")
+	}
+
+	// The quantity, though, cannot be cleared: a category that owns places
+	// must keep one (decision 3).
+	_, w = f.patchTier(srv, sessionID, tierID, map[string]any{"capacity": nil})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("capacity: null: status = %d, want 400; body = %s", w.Code, w.Body.String())
+	}
+	if code := ga46ErrorCode(t, w); code != "tier.capacity_required" {
+		t.Errorf("capacity: null: code = %q, want tier.capacity_required", code)
+	}
+	if n := ga46Int(t, ctx, pool,
+		`SELECT count(*) FROM session_seats WHERE session_id=$1 AND tier_id=$2`,
+		sessionID, tierID); n != 20 {
+		t.Errorf("a refused clear changed the places to %d, want 20", n)
+	}
+	if n := ga46Int(t, ctx, pool,
+		`SELECT capacity FROM ticket_tiers WHERE id=$1`, tierID); n != 20 {
+		t.Errorf("a refused clear changed the stored quantity to %d, want 20", n)
 	}
 }
 

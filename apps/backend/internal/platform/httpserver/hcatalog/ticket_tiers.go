@@ -23,6 +23,12 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
+// Admission modes the category rules branch on (plan 08_architecture/23).
+const (
+	admissionGeneralAdmission = "general_admission"
+	admissionAssignedSeats    = "assigned_seats"
+)
+
 // ValidPricingModes lists the allowed pricing_mode values.
 var ValidPricingModes = map[string]bool{
 	string(catalogdomain.PricingModeFixed): true,
@@ -338,12 +344,12 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 //   - an explicit `capacity` is the quantity, on every admission mode — on a
 //     seated session it makes the new category a GA one and flips the session
 //     to hybrid (decision 10);
-//   - without one, a general_admission / hybrid session falls back to the
-//     wave-A default: the session's capacity_override (its capacity_total
-//     while no category owns a place yet) minus the quantities already
-//     claimed by its categories. A non-positive remainder is refused with
-//     400 tier.capacity_required — decision 3 forbids a GA category without
-//     a quantity;
+//   - without one on a general_admission / hybrid session the request is
+//     refused with 400 tier.capacity_required. Decision 3 forbids a General
+//     Admission category without a quantity, and since the session capacity
+//     is the SUM of the category quantities there is nothing left to derive
+//     a default from — the wave-A "remainder of capacity_override" fallback
+//     is gone;
 //   - without one on an assigned_seats session the result is 0: the tier is
 //     created as a pure geometry-mapping row, exactly as before.
 //
@@ -369,46 +375,20 @@ func (h *Handler) resolveNewCategoryQuantity(
 		))
 		return 0, false
 	}
-	if sess.AdmissionMode == "assigned_seats" {
+	if sess.AdmissionMode == admissionAssignedSeats {
 		return 0, true
 	}
 
-	stats, err := gaquota.SessionStats(ctx, h.tierQueries, sessionID)
-	if err != nil {
-		h.logger.Error("tier: category place counters failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"tier.insert_failed", "failed to read category quantities", r,
-		))
-		return 0, false
-	}
-	var claimed int32
-	for _, st := range stats {
-		claimed += st.Quantity
-	}
-	var basis int32
-	switch {
-	case sess.CapacityOverride != nil:
-		basis = *sess.CapacityOverride
-	case len(stats) == 0:
-		// Nothing owns a place yet, so capacity_total is still the
-		// provisional value the session was created with.
-		basis = sess.CapacityTotal
-	}
-	if basis-claimed <= 0 {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"tier.capacity_required",
-			"capacity is required: a general-admission category owns its places and "+
-				"the session has no capacity left to derive a default quantity from", r,
-			map[string]any{
-				"field":             "capacity",
-				"session_capacity":  basis,
-				"claimed_by_tiers":  claimed,
-				"remaining_default": basis - claimed,
-			},
-		))
-		return 0, false
-	}
-	return basis - claimed, true
+	httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+		"tier.capacity_required",
+		"capacity is required: a general-admission category owns its places, and the "+
+			"session capacity is the sum of the category quantities", r,
+		map[string]any{
+			"field":          "capacity",
+			"admission_mode": sess.AdmissionMode,
+		},
+	))
+	return 0, false
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -560,16 +540,29 @@ func (h *Handler) HandleGetTier(w http.ResponseWriter, r *http.Request) {
 // updateTierRequest carries the patchable tier fields. Currency is not
 // patchable (AB-38): a tier always carries its session's currency; changing
 // the currency happens on the session and cascades to every tier.
+//
+// The five NULLABLE fields are TRI-STATE (plan 08_architecture/23 step 6):
+// an omitted key keeps the stored value, an explicit JSON `null` CLEARS the
+// column, and a value sets it. Before wave B a `null` was indistinguishable
+// from an omitted key, so a bound or a sale window could never be cleared —
+// the admin sent `null` and nothing happened.
 type updateTierRequest struct {
-	Name            *string `json:"name"`
-	PricingMode     *string `json:"pricing_mode"`
-	PriceAmount     *int64  `json:"price_amount"`
-	PwywMin         *int64  `json:"pwyw_min"`
-	PwywMax         *int64  `json:"pwyw_max"`
-	Capacity        *int32  `json:"capacity"`
-	SaleWindowStart *string `json:"sale_window_start"`
-	SaleWindowEnd   *string `json:"sale_window_end"`
-	SortOrder       *int32  `json:"sort_order"`
+	Name            *string        `json:"name"`
+	PricingMode     *string        `json:"pricing_mode"`
+	PriceAmount     *int64         `json:"price_amount"`
+	PwywMin         optionalInt64  `json:"pwyw_min"`
+	PwywMax         optionalInt64  `json:"pwyw_max"`
+	SaleWindowStart optionalString `json:"sale_window_start"`
+	SaleWindowEnd   optionalString `json:"sale_window_end"`
+	SortOrder       *int32         `json:"sort_order"`
+	// Capacity is the category's QUANTITY: how many places it owns. A
+	// value resizes the category through the quota mechanism (minting or
+	// removing places in the same transaction); `null` is refused with
+	// 400 tier.capacity_required for anything that owns places, because a
+	// General Admission category without a quantity is illegal
+	// (decision 3). Only a pure geometry-mapping row on an assigned_seats
+	// session — one that owns no place at all — can have it cleared.
+	Capacity optionalInt32 `json:"capacity"`
 	// IsOpen opens or closes the category (migration 0101, decision 1): a
 	// closed category accepts no NEW hold while everything already held or
 	// sold stays untouched and an order already placed can still be paid.
@@ -635,7 +628,7 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if req.Capacity != nil && *req.Capacity <= 0 {
+	if req.Capacity.Present && req.Capacity.Value != nil && *req.Capacity.Value <= 0 {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"tier.invalid_capacity", "capacity must be greater than 0", r,
 			map[string]any{"field": "capacity"},
@@ -643,36 +636,16 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var saleStart *time.Time
-	if req.SaleWindowStart != nil {
-		trimmed := strings.TrimSpace(*req.SaleWindowStart)
-		if trimmed != "" {
-			t, parseErr := time.Parse(time.RFC3339, trimmed)
-			if parseErr != nil {
-				httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-					"tier.invalid_sale_window_start", "sale_window_start must be a valid RFC3339 timestamp", r,
-					map[string]any{"field": "sale_window_start"},
-				))
-				return
-			}
-			saleStart = &t
-		}
+	// Tri-state sale window: absent = keep, null or "" = clear, value = set.
+	saleStart, setSaleStart, ok := parseOptionalTime(
+		w, r, req.SaleWindowStart, "sale_window_start", "tier.invalid_sale_window_start")
+	if !ok {
+		return
 	}
-
-	var saleEnd *time.Time
-	if req.SaleWindowEnd != nil {
-		trimmed := strings.TrimSpace(*req.SaleWindowEnd)
-		if trimmed != "" {
-			t, parseErr := time.Parse(time.RFC3339, trimmed)
-			if parseErr != nil {
-				httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-					"tier.invalid_sale_window_end", "sale_window_end must be a valid RFC3339 timestamp", r,
-					map[string]any{"field": "sale_window_end"},
-				))
-				return
-			}
-			saleEnd = &t
-		}
+	saleEnd, setSaleEnd, ok := parseOptionalTime(
+		w, r, req.SaleWindowEnd, "sale_window_end", "tier.invalid_sale_window_end")
+	if !ok {
+		return
 	}
 
 	if saleStart != nil && saleEnd != nil && !saleEnd.After(*saleStart) {
@@ -705,12 +678,12 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 		effectivePrice = *req.PriceAmount
 	}
 	effectivePwywMin := current.PwywMin
-	if req.PwywMin != nil {
-		effectivePwywMin = req.PwywMin
+	if req.PwywMin.Present {
+		effectivePwywMin = req.PwywMin.Value
 	}
 	effectivePwywMax := current.PwywMax
-	if req.PwywMax != nil {
-		effectivePwywMax = req.PwywMax
+	if req.PwywMax.Present {
+		effectivePwywMax = req.PwywMax.Value
 	}
 
 	if errCode, errMsg := ValidatePricingMode(effectiveMode, effectivePrice, effectivePwywMin, effectivePwywMax); errCode != "" {
@@ -729,25 +702,46 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Currency is never patched here — empty string means "keep existing"
-	// in UpdateTicketTier, and the existing value already equals the
-	// session's currency (composite FK invariant, AB-38).
-	//
-	// capacity is deliberately NOT passed to UpdateTicketTier: on a
-	// category that owns places it is the QUANTITY, and only the quota
-	// mechanism may write it (plan 08_architecture/23 step 3) — it has to
-	// mint or remove the matching places in the same transaction.
 	var updated gen.TicketTierRow
 	err = gaquota.InTx(ctx, h.pool, h.tierQueries, func(txq *gen.Queries) error {
-		row, updErr := txq.UpdateTicketTier(ctx,
-			tierID, sessionID,
-			name, pricingMode,
-			req.PriceAmount, "",
-			req.PwywMin, req.PwywMax,
-			nil,
-			saleStart, saleEnd,
-			req.SortOrder,
-		)
+		// An explicit `capacity: null` is a request to CLEAR the quantity,
+		// which only a row that owns no place at all may do.
+		clearCapacity := false
+		if req.Capacity.Present && req.Capacity.Value == nil {
+			allowed, clearErr := categoryQuantityClearable(ctx, txq, sessionID, tierID)
+			if clearErr != nil {
+				return clearErr
+			}
+			if !allowed {
+				return errQuantityRequired
+			}
+			clearCapacity = true
+		}
+
+		row, updErr := txq.UpdateTicketTierFields(ctx, tierID, sessionID, gen.TicketTierUpdate{
+			Name:        name,
+			PricingMode: pricingMode,
+			PriceAmount: req.PriceAmount,
+			// Currency is never patched here — an empty string means
+			// "keep existing", and the existing value already equals the
+			// session's currency (composite FK invariant, AB-38).
+			Currency:   "",
+			PwywMin:    req.PwywMin.Value,
+			SetPwywMin: req.PwywMin.Present,
+			PwywMax:    req.PwywMax.Value,
+			SetPwywMax: req.PwywMax.Present,
+			// A non-null capacity is the QUANTITY and belongs to the quota
+			// mechanism alone (it has to mint or remove the matching places
+			// in the same transaction), so only the clearing case is
+			// written straight through.
+			Capacity:           nil,
+			SetCapacity:        clearCapacity,
+			SaleWindowStart:    saleStart,
+			SetSaleWindowStart: setSaleStart,
+			SaleWindowEnd:      saleEnd,
+			SetSaleWindowEnd:   setSaleEnd,
+			SortOrder:          req.SortOrder,
+		})
 		if updErr != nil {
 			return updErr
 		}
@@ -757,12 +751,12 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
-		if req.Capacity != nil {
-			if err := applyCategoryQuantity(ctx, txq, sessionID, tierID, *req.Capacity); err != nil {
+		if req.Capacity.Present && req.Capacity.Value != nil {
+			if err := applyCategoryQuantity(ctx, txq, sessionID, tierID, *req.Capacity.Value); err != nil {
 				return err
 			}
 		}
-		if req.IsOpen != nil || req.Capacity != nil {
+		if req.IsOpen != nil || req.Capacity.Present {
 			fresh, getErr := txq.GetTicketTierByID(ctx, tierID, sessionID)
 			if getErr != nil {
 				return getErr
@@ -855,11 +849,77 @@ func applyCategoryQuantity(
 	return err
 }
 
+// errQuantityRequired reports a PATCH that tried to clear the quantity of a
+// category that owns places. Mapped to 400 tier.capacity_required.
+var errQuantityRequired = errors.New("hcatalog: a category that owns places must keep its quantity")
+
+// categoryQuantityClearable reports whether `capacity: null` may be applied
+// to this category. Only a pure geometry-mapping row on an assigned_seats
+// session qualifies: it owns no place of any kind, so its capacity is a
+// dormant cap rather than a quantity. Everything else — a General Admission
+// category, a seated one, any session already in general_admission or
+// hybrid mode — must keep a quantity (decision 3).
+func categoryQuantityClearable(
+	ctx context.Context, txq *gen.Queries, sessionID, tierID uuid.UUID,
+) (bool, error) {
+	sess, err := txq.GetSessionAdmissionModeByID(ctx, sessionID)
+	if err != nil {
+		return false, err
+	}
+	if sess.AdmissionMode != admissionAssignedSeats {
+		return false, nil
+	}
+	stats, err := gaquota.CategoryStats(ctx, txq, sessionID, tierID)
+	if err != nil {
+		return false, err
+	}
+	if stats.Quantity > 0 {
+		return false, nil
+	}
+	seats, err := txq.CountSeatRowsForTier(ctx, sessionID, tierID)
+	if err != nil {
+		return false, err
+	}
+	return seats == 0, nil
+}
+
+// parseOptionalTime resolves a tri-state RFC3339 field: absent leaves the
+// column alone (set=false), an explicit null or an empty string clears it
+// (set=true, value nil), anything else is parsed. Returns ok=false after
+// writing the error envelope for an unparseable timestamp.
+func parseOptionalTime(
+	w http.ResponseWriter, r *http.Request, opt optionalString, field, code string,
+) (value *time.Time, set bool, ok bool) {
+	if !opt.Present {
+		return nil, false, true
+	}
+	if opt.Value == nil || strings.TrimSpace(*opt.Value) == "" {
+		return nil, true, true
+	}
+	t, err := time.Parse(time.RFC3339, strings.TrimSpace(*opt.Value))
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			code, field+" must be a valid RFC3339 timestamp", r,
+			map[string]any{"field": field},
+		))
+		return nil, false, false
+	}
+	return &t, true, true
+}
+
 // writeQuotaError maps the typed errors of the quota mechanism onto the
 // ticket-tier error envelope. Returns true when it wrote a response.
 func writeQuotaError(w http.ResponseWriter, r *http.Request, err error) bool {
 	var belowUsed *gaquota.BelowUsedError
 	switch {
+	case errors.Is(err, errQuantityRequired):
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"tier.capacity_required",
+			"capacity cannot be cleared: a category that owns places must keep a quantity, "+
+				"and the session capacity is the sum of the category quantities", r,
+			map[string]any{"field": "capacity"},
+		))
+		return true
 	case errors.As(err, &belowUsed):
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 			"tier.quantity_below_used",

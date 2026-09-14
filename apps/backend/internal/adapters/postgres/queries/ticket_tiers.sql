@@ -53,18 +53,25 @@ ORDER BY sort_order ASC, id ASC;
 -- name: UpdateTicketTier :one
 -- UpdateTicketTier applies a partial update to an active tier scoped by session_id.
 -- Empty string fields leave the existing string values unchanged.
--- NULL optional fields (price_amount, pwyw_min, pwyw_max, capacity, dates, sort_order)
--- keep the existing column values.
+-- NULL price_amount / sort_order / is_open keep the existing column values.
+--
+-- The five NULLABLE columns pwyw_min, pwyw_max, capacity, sale_window_start and
+-- sale_window_end carry an explicit SET FLAG each ($14..$18) instead of
+-- overloading NULL, because NULL is itself a meaningful stored value for them:
+-- with `CASE WHEN $n IS NOT NULL` an operator could never CLEAR a bound or a
+-- sale window — the admin sent `null` and the old value silently survived.
+-- Flag false = leave the column untouched; flag true = write the value given,
+-- NULL included. Same idiom as set_reservation_ttl_override on sales_channels.
 UPDATE ticket_tiers
 SET    name              = COALESCE(NULLIF($3, ''), name),
        pricing_mode      = COALESCE(NULLIF($4, ''), pricing_mode),
        price_amount      = CASE WHEN $5::bigint   IS NOT NULL THEN $5::bigint   ELSE price_amount     END,
        currency          = COALESCE(NULLIF($6, ''), currency),
-       pwyw_min          = CASE WHEN $7::bigint   IS NOT NULL THEN $7::bigint   ELSE pwyw_min         END,
-       pwyw_max          = CASE WHEN $8::bigint   IS NOT NULL THEN $8::bigint   ELSE pwyw_max         END,
-       capacity          = CASE WHEN $9::integer  IS NOT NULL THEN $9::integer  ELSE capacity         END,
-       sale_window_start = CASE WHEN $10::timestamptz IS NOT NULL THEN $10::timestamptz ELSE sale_window_start END,
-       sale_window_end   = CASE WHEN $11::timestamptz IS NOT NULL THEN $11::timestamptz ELSE sale_window_end   END,
+       pwyw_min          = CASE WHEN $14::boolean THEN $7::bigint  ELSE pwyw_min END,
+       pwyw_max          = CASE WHEN $15::boolean THEN $8::bigint  ELSE pwyw_max END,
+       capacity          = CASE WHEN $16::boolean THEN $9::integer ELSE capacity END,
+       sale_window_start = CASE WHEN $17::boolean THEN $10::timestamptz ELSE sale_window_start END,
+       sale_window_end   = CASE WHEN $18::boolean THEN $11::timestamptz ELSE sale_window_end   END,
        sort_order        = CASE WHEN $12::integer IS NOT NULL THEN $12::integer ELSE sort_order       END,
        is_open           = CASE WHEN $13::boolean IS NOT NULL THEN $13::boolean ELSE is_open          END,
        updated_at        = now()

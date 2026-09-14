@@ -248,6 +248,19 @@ export interface TicketTierItem {
   /** AB-48: inventory bound to the category (list endpoint only). */
   readonly seat_count?: number | null;
   readonly ga_unit_count?: number | null;
+  /**
+   * GA category quotas (plan 08_architecture/23). `kind` is "seated" when
+   * the category's places come from the seating-plan geometry (quantity
+   * read-only) and "ga" when it owns General Admission places of its own.
+   * `quantity` is how many places it owns; `held` / `sold` / `available`
+   * split that number. List endpoint only.
+   */
+  readonly kind?: "seated" | "ga" | string | null;
+  readonly is_open?: boolean;
+  readonly quantity?: number | null;
+  readonly held?: number | null;
+  readonly sold?: number | null;
+  readonly available?: number | null;
 }
 
 /** AB-48: one scheduled price window (ticket_tier_prices). */
@@ -678,8 +691,10 @@ export function sessionToForm(s: {
     venue_id: s.venue_id,
     start_at: toLocalDatetimeValue(s.start_at),
     end_at: toLocalDatetimeValue(s.end_at),
-    capacity_override:
-      s.capacity_override !== null ? String(s.capacity_override) : "",
+    // Вместимость сеанса не редактируется (план 08_architecture/23, шаг 6):
+    // у сеанса со схемой ею владеет схема зала, у остальных она равна сумме
+    // количеств категорий. Поле остаётся пустым, чтобы PATCH его не слал.
+    capacity_override: "",
     status: isSessionStatus(s.status) ? s.status : "draft",
     admission_mode: isSessionAdmissionMode(s.admission_mode)
       ? s.admission_mode
@@ -778,7 +793,11 @@ export function buildSessionRequestBody(
     end_at: toRFC3339(v.end_at),
     status: v.status,
   };
-  if (v.capacity_override.trim() !== "") {
+  // capacity_override is a CREATE-only provisional value: on PATCH the
+  // server refuses it outright (session.capacity_override_not_applicable),
+  // because the capacity of a session is the sum of its category
+  // quantities — or, with a seating plan, the plan's own geometry.
+  if (mode === "create" && v.capacity_override.trim() !== "") {
     body.capacity_override = Number(v.capacity_override.trim());
   }
   if (v.currency.trim() !== "") {
@@ -796,6 +815,187 @@ export function buildSessionRequestBody(
 // ---------------------------------------------------------------------------
 // Ticket-tier form helpers (feature #283; exported for unit tests)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Категории и квоты (план 08_architecture/23, шаг 6; exported for unit tests)
+//
+// Категория владеет своими местами: количество — это сколько мест у неё есть,
+// вместимость сеанса — сумма количеств категорий. Помощники ниже переводят
+// ответ списка категорий в то, что показывает таблица, и остаются чистыми
+// функциями, чтобы их покрывали юнит-тесты.
+// ---------------------------------------------------------------------------
+
+export type TierKind = "seated" | "ga";
+
+/**
+ * Вид категории: seated — места приходят из схемы зала и количество только
+ * для чтения; ga — у категории свои места без ряда и номера. Сервер отдаёт
+ * `kind`; для старого ответа вид выводится из числа мест схемы.
+ */
+export function tierKind(t: TicketTierItem): TierKind {
+  if (t.kind === "seated" || t.kind === "ga") {
+    return t.kind;
+  }
+  return (t.seat_count ?? 0) > 0 ? "seated" : "ga";
+}
+
+export function tierKindLabel(t: TicketTierItem): string {
+  return tierKind(t) === "seated" ? "с местами" : "без места";
+}
+
+/** Количество: сколько мест принадлежит категории (null — мест ещё нет). */
+export function tierQuantity(t: TicketTierItem): number | null {
+  if (typeof t.quantity === "number") {
+    return t.quantity;
+  }
+  if (typeof t.capacity === "number") {
+    return t.capacity;
+  }
+  return null;
+}
+
+/** Занято: продано плюс в брони — ниже этого количество не опускается. */
+export function tierUsed(t: TicketTierItem): number {
+  if (typeof t.held === "number" || typeof t.sold === "number") {
+    return (t.held ?? 0) + (t.sold ?? 0);
+  }
+  const quantity = tierQuantity(t);
+  if (quantity !== null && typeof t.available === "number") {
+    return Math.max(0, quantity - t.available);
+  }
+  return 0;
+}
+
+/** Свободно: сколько мест покупатель ещё может взять. */
+export function tierAvailable(t: TicketTierItem): number | null {
+  if (typeof t.available === "number") {
+    return t.available;
+  }
+  const quantity = tierQuantity(t);
+  return quantity === null ? null : Math.max(0, quantity - tierUsed(t));
+}
+
+/** Категория открыта, пока сервер явно не сказал обратное. */
+export function tierIsOpen(t: TicketTierItem): boolean {
+  return t.is_open !== false;
+}
+
+/** Количество редактируется только у категории без мест схемы. */
+export function tierQuantityEditable(t: TicketTierItem): boolean {
+  return tierKind(t) === "ga";
+}
+
+/**
+ * Минимум поля «количество»: занятые места отдать нельзя, а нулевого
+ * количества у категории не бывает.
+ */
+export function tierQuantityMin(t: TicketTierItem): number {
+  return Math.max(1, tierUsed(t));
+}
+
+/** Удалять можно только категорию без проданных и забронированных мест. */
+export function tierCanDelete(t: TicketTierItem): boolean {
+  return tierKind(t) === "ga" && tierUsed(t) === 0;
+}
+
+/** Почему кнопка удаления недоступна — текст подсказки. */
+export function tierDeleteHint(t: TicketTierItem): string | null {
+  if (tierKind(t) === "seated") {
+    return "Количество и удаление этой категории задаёт схема зала.";
+  }
+  if (tierUsed(t) > 0) {
+    return "Есть проданные или забронированные места — закройте категорию.";
+  }
+  return null;
+}
+
+/** Одна строка таблицы категорий — то, что видит оператор. */
+export interface TierQuotaRow {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: TierKind;
+  readonly kindLabel: string;
+  readonly quantity: number | null;
+  readonly quantityText: string;
+  readonly quantityEditable: boolean;
+  readonly quantityMin: number;
+  readonly sold: number;
+  readonly held: number;
+  readonly available: number | null;
+  readonly availableText: string;
+  readonly isOpen: boolean;
+  readonly canDelete: boolean;
+  readonly deleteHint: string | null;
+}
+
+export function tierQuotaRow(t: TicketTierItem): TierQuotaRow {
+  const quantity = tierQuantity(t);
+  const available = tierAvailable(t);
+  return {
+    id: t.id,
+    name: t.name,
+    kind: tierKind(t),
+    kindLabel: tierKindLabel(t),
+    quantity,
+    quantityText: quantity === null ? "—" : quantity.toLocaleString(),
+    quantityEditable: tierQuantityEditable(t),
+    quantityMin: tierQuantityMin(t),
+    sold: t.sold ?? 0,
+    held: t.held ?? 0,
+    available,
+    availableText: available === null ? "—" : available.toLocaleString(),
+    isOpen: tierIsOpen(t),
+    canDelete: tierCanDelete(t),
+    deleteHint: tierDeleteHint(t),
+  };
+}
+
+/** Тело PATCH переключателя «открыта». */
+export function buildTierOpenBody(t: TicketTierItem): { is_open: boolean } {
+  return { is_open: !tierIsOpen(t) };
+}
+
+/** Тело PATCH для нового количества категории. */
+export function buildTierQuantityBody(quantity: number): {
+  capacity: number;
+} {
+  return { capacity: quantity };
+}
+
+/**
+ * Нужно ли количество в форме новой категории. На сеансе со схемой мест
+ * категорию можно завести и как отображение геометрии (без количества),
+ * поэтому обязательным поле становится только там, где категория всегда
+ * владеет своими местами.
+ */
+export function categoryQuantityRequired(session: {
+  admission_mode: string;
+}): boolean {
+  return session.admission_mode !== "assigned_seats";
+}
+
+/**
+ * Пояснение в форме новой категории на сеансе со схемой мест: такая
+ * категория всегда без места, а сеанс после неё становится hybrid.
+ */
+export function addCategoryNote(session: {
+  admission_mode: string;
+  seating_plan_version_id: string | null;
+}): string | null {
+  if (session.seating_plan_version_id === null) {
+    return null;
+  }
+  if (session.admission_mode === "assigned_seats") {
+    return (
+      "Новая категория будет без места: своих мест на схеме зала она не " +
+      "занимает. С указанным количеством сеанс станет смешанным (hybrid)."
+    );
+  }
+  return (
+    "Новая категория будет без места: своих мест на схеме зала она не " +
+    "занимает."
+  );
+}
 
 export const TIER_PRICING_MODES = ["fixed", "free", "pwyw"] as const;
 export type TierPricingMode = (typeof TIER_PRICING_MODES)[number];
@@ -918,7 +1118,10 @@ export function decimalToCents(raw: string): number | null {
  * a session is denominated in the session currency, which the server
  * stamps on create/patch — the editor renders it read-only.
  */
-export function validateTierForm(values: TierFormValues): TierFormErrors {
+export function validateTierForm(
+  values: TierFormValues,
+  opts: { quantityRequired?: boolean } = {},
+): TierFormErrors {
   const errors: { -readonly [K in keyof TierFormErrors]?: string } = {};
 
   if (values.name.trim() === "") {
@@ -973,16 +1176,20 @@ export function validateTierForm(values: TierFormValues): TierFormErrors {
     }
   }
 
-  if (values.capacity.trim() !== "") {
-    if (!/^\d+$/.test(values.capacity.trim())) {
-      errors.capacity = "Capacity must be a whole number.";
-    } else {
-      const cap = Number(values.capacity);
-      if (cap <= 0) {
-        errors.capacity = "Capacity must be greater than zero.";
-      } else if (cap > 2_000_000_000) {
-        errors.capacity = "Capacity is too large.";
-      }
+  if (values.capacity.trim() === "") {
+    // Категория владеет своими местами, поэтому на сеансе без схемы мест
+    // количество обязательно (план 08_architecture/23, решение 3).
+    if (opts.quantityRequired === true) {
+      errors.capacity = "Укажите количество: категория владеет своими местами.";
+    }
+  } else if (!/^\d+$/.test(values.capacity.trim())) {
+    errors.capacity = "Capacity must be a whole number.";
+  } else {
+    const cap = Number(values.capacity);
+    if (cap <= 0) {
+      errors.capacity = "Capacity must be greater than zero.";
+    } else if (cap > 2_000_000_000) {
+      errors.capacity = "Capacity is too large.";
     }
   }
 
@@ -1037,6 +1244,26 @@ export function mapTierError(err: ApiError): string {
       return "Pricing mode must be fixed, free, or pwyw.";
     case "tier.invalid_capacity":
       return "Capacity must be greater than zero.";
+    // Квоты категорий (план 08_architecture/23). Категория владеет своими
+    // местами, поэтому эти отказы говорят о количестве, а не о «лимите».
+    case "tier.capacity_required":
+      return "Укажите количество: категория владеет своими местами.";
+    case "tier.quantity_below_used": {
+      const floor = Number(err.details?.floor);
+      return Number.isFinite(floor)
+        ? `Количество нельзя опустить ниже ${floor}: столько мест уже продано или в брони.`
+        : "Количество нельзя опустить ниже уже проданных и забронированных мест.";
+    }
+    case "tier.seated_category":
+      return (
+        "Места этой категории приходят из схемы зала: количество только для " +
+        "чтения, а саму категорию удалить нельзя."
+      );
+    case "tier.in_use":
+      return (
+        "У категории есть проданные или забронированные места — закройте её " +
+        "вместо удаления."
+      );
     case "tier.invalid_sale_window":
       return "Sale end must be after sale start.";
     case "tier.invalid_sale_window_start":
@@ -3497,31 +3724,27 @@ function SessionEditor({
             </select>
           </label>
         ) : null}
-        {(mode.kind === "create" &&
-          values.admission_mode === "general_admission") ||
-        (mode.kind === "edit" &&
-          mode.session.seating_plan_version_id === null) ? (
-          <label style={editorFieldStyle}>
-            <span style={editorLabelStyle}>Capacity override (optional)</span>
-            <input
-              type="number"
-              min={1}
-              step={1}
-              value={values.capacity_override}
-              onChange={(e) =>
-                setValues({ ...values, capacity_override: e.target.value })
-              }
-              placeholder="venue default"
-              style={editorInputStyle}
-              data-testid="events-session-input-capacity-override"
-            />
+        {/*
+          Вместимость сеанса не редактируется (план 08_architecture/23,
+          шаг 6): у сеанса со схемой ею владеет схема зала, у остальных она
+          равна сумме количеств категорий. Поле ввода убрано; при
+          редактировании показываем текущее значение только для чтения.
+        */}
+        {mode.kind === "edit" ? (
+          <div style={editorFieldStyle}>
+            <span style={editorLabelStyle}>Вместимость</span>
+            <div
+              style={readOnlyValueStyle}
+              data-testid="events-session-capacity-total"
+            >
+              {mode.session.capacity_total.toLocaleString()}
+            </div>
             <span style={mutedHintStyle}>
-              Defaults to the venue capacity when empty.
+              {mode.session.seating_plan_version_id === null
+                ? "Сумма количеств категорий."
+                : "Задаётся схемой зала."}
             </span>
-            {errors.capacity_override !== undefined ? (
-              <span style={fieldErrorStyle}>{errors.capacity_override}</span>
-            ) : null}
-          </label>
+          </div>
         ) : null}
         <label style={editorFieldStyle}>
           <span style={editorLabelStyle}>Status</span>
@@ -3807,10 +4030,12 @@ export function mapSessionError(err: ApiError): string {
         "the venue a default capacity."
       );
     case "session.capacity_override_not_applicable":
-      return (
-        "This session is bound to a seating plan, which owns the capacity — " +
-        "capacity override does not apply."
-      );
+      // Вместимость сеанса больше не редактируется: у сеанса со схемой ею
+      // владеет схема зала, у остальных она равна сумме количеств категорий.
+      return err.details?.reason === "category_sum"
+        ? "Вместимость сеанса — сумма количеств категорий: измените количество категории."
+        : "This session is bound to a seating plan, which owns the capacity — " +
+            "capacity override does not apply.";
     case "permissions.denied":
       return "Your account is missing the permission required for this action.";
     default:
@@ -4575,6 +4800,30 @@ function SessionTiersBlock({
     },
   });
 
+  // Квоты категорий (план 08_architecture/23, шаг 6): количество и
+  // переключатель «открыта» правятся прямо в таблице, одним PATCH на поле.
+  const patchMutation = useMutation<
+    TierEnvelope,
+    ApiError,
+    { id: string; body: Record<string, unknown> }
+  >({
+    mutationFn: ({ id, body }) =>
+      authedFetch<TierEnvelope>({
+        method: "PATCH",
+        path: `/v1/organizations/${event.org_id}/events/${event.id}/sessions/${session.id}/tiers/${id}`,
+        body,
+      }),
+    onSuccess: (data) => {
+      setActionErr(null);
+      setActionOk(`Категория «${data.tier.name}» обновлена.`);
+      void queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err) => {
+      setActionOk(null);
+      setActionErr(mapTierError(err));
+    },
+  });
+
   const tiers = query.data?.ticket_tiers ?? query.data?.tiers ?? [];
   const sortedTiers = useMemo(
     () => [...tiers].sort((a, b) => a.sort_order - b.sort_order),
@@ -4608,7 +4857,7 @@ function SessionTiersBlock({
             disabled={editor.kind !== "closed"}
             data-testid={`events-tier-add-${session.id}`}
           >
-            Add tier
+            Добавить категорию
           </button>
         ) : (
           <span style={mutedHintStyle}>
@@ -4633,6 +4882,17 @@ function SessionTiersBlock({
           data-testid={`events-tier-action-ok-${session.id}`}
         >
           {actionOk}
+        </div>
+      ) : null}
+
+      {editor.kind === "create" &&
+      editor.sessionID === session.id &&
+      addCategoryNote(session) !== null ? (
+        <div
+          style={statusBoxStyle}
+          data-testid={`events-tier-add-note-${session.id}`}
+        >
+          {addCategoryNote(session)}
         </div>
       ) : null}
 
@@ -4671,13 +4931,14 @@ function SessionTiersBlock({
           <table style={tableStyle}>
             <thead>
               <tr>
-                <th scope="col" style={thStyle}>Name</th>
-                <th scope="col" style={thStyle}>Pricing</th>
-                <th scope="col" style={thStyle}>Price</th>
-                <th scope="col" style={thStyle}>Currency</th>
-                <th scope="col" style={thStyle}>Capacity</th>
-                <th scope="col" style={thStyle}>Seats</th>
-                <th scope="col" style={thStyle}>Sort</th>
+                <th scope="col" style={thStyle}>Вид</th>
+                <th scope="col" style={thStyle}>Категория</th>
+                <th scope="col" style={thStyle}>Количество</th>
+                <th scope="col" style={thStyle}>Цена</th>
+                <th scope="col" style={thStyle}>Продано</th>
+                <th scope="col" style={thStyle}>В брони</th>
+                <th scope="col" style={thStyle}>Свободно</th>
+                <th scope="col" style={thStyle}>Открыта</th>
                 <th scope="col" style={thStyle}>Actions</th>
               </tr>
             </thead>
@@ -4686,11 +4947,32 @@ function SessionTiersBlock({
                 const isEditing =
                   editor.kind === "edit" && editor.tier.id === t.id;
                 const isScheduling = scheduleTierID === t.id;
+                const row = tierQuotaRow(t);
                 return (
                   <Fragment key={t.id}>
                     <tr data-testid={`events-tier-${t.id}`}>
+                      <td
+                        style={tdStyle}
+                        data-testid={`events-tier-kind-${t.id}`}
+                      >
+                        {row.kindLabel}
+                      </td>
                       <td style={tdStyle}>{t.name}</td>
-                      <td style={tdStyle}>{t.pricing_mode}</td>
+                      <td style={tdStyle}>
+                        <TierQuantityCell
+                          row={row}
+                          canUpdate={canUpdate}
+                          pending={patchMutation.isPending}
+                          onSave={(quantity) => {
+                            setActionErr(null);
+                            setActionOk(null);
+                            patchMutation.mutate({
+                              id: t.id,
+                              body: buildTierQuantityBody(quantity),
+                            });
+                          }}
+                        />
+                      </td>
                       <td style={tdStyle}>
                         {t.pricing_mode === "free"
                           ? "—"
@@ -4702,21 +4984,43 @@ function SessionTiersBlock({
                               }`
                             : centsToDecimal(t.price_amount)}
                       </td>
-                      <td style={tdStyle}>{t.currency}</td>
+                      <td
+                        style={tdStyle}
+                        data-testid={`events-tier-sold-${t.id}`}
+                      >
+                        {row.sold.toLocaleString()}
+                      </td>
+                      <td
+                        style={tdStyle}
+                        data-testid={`events-tier-held-${t.id}`}
+                      >
+                        {row.held.toLocaleString()}
+                      </td>
+                      <td
+                        style={tdStyle}
+                        data-testid={`events-tier-available-${t.id}`}
+                      >
+                        {row.availableText}
+                      </td>
                       <td style={tdStyle}>
-                        {t.capacity !== null && t.capacity !== undefined
-                          ? t.capacity.toLocaleString()
-                          : "—"}
+                        <button
+                          type="button"
+                          style={refreshButtonStyle}
+                          aria-pressed={row.isOpen}
+                          disabled={!canUpdate || patchMutation.isPending}
+                          onClick={() => {
+                            setActionErr(null);
+                            setActionOk(null);
+                            patchMutation.mutate({
+                              id: t.id,
+                              body: buildTierOpenBody(t),
+                            });
+                          }}
+                          data-testid={`events-tier-open-${t.id}`}
+                        >
+                          {row.isOpen ? "открыта" : "закрыта"}
+                        </button>
                       </td>
-                      <td style={tdStyle} data-testid={`events-tier-seats-${t.id}`}>
-                        {/* AB-48 step 3: inventory beside the price. */}
-                        {(t.seat_count ?? 0) > 0
-                          ? `${(t.seat_count ?? 0).toLocaleString()} seats`
-                          : (t.ga_unit_count ?? 0) > 0
-                            ? `${(t.ga_unit_count ?? 0).toLocaleString()} GA`
-                            : "—"}
-                      </td>
-                      <td style={tdStyle}>{t.sort_order}</td>
                       <td style={tdStyle}>
                         <div style={rowActionsStyle}>
                           {canUpdate ? (
@@ -4760,10 +5064,21 @@ function SessionTiersBlock({
                                 setConfirmDeleteID(t.id);
                               }}
                               data-testid={`events-tier-delete-${t.id}`}
-                              disabled={deleteMutation.isPending}
+                              title={row.deleteHint ?? undefined}
+                              disabled={
+                                deleteMutation.isPending || !row.canDelete
+                              }
                             >
                               Delete
                             </button>
+                          ) : null}
+                          {canDelete && row.deleteHint !== null ? (
+                            <span
+                              style={mutedHintStyle}
+                              data-testid={`events-tier-delete-hint-${t.id}`}
+                            >
+                              {row.deleteHint}
+                            </span>
                           ) : null}
                           {!canUpdate && !canDelete ? (
                             <span style={mutedHintStyle}>read-only</span>
@@ -4773,7 +5088,7 @@ function SessionTiersBlock({
                     </tr>
                     {confirmDeleteID === t.id ? (
                       <tr>
-                        <td colSpan={7} style={tdStyle}>
+                        <td colSpan={9} style={tdStyle}>
                           <div
                             style={confirmDeleteStyle}
                             data-testid={`events-tier-confirm-${t.id}`}
@@ -4809,7 +5124,7 @@ function SessionTiersBlock({
                     ) : null}
                     {isEditing ? (
                       <tr>
-                        <td colSpan={8} style={tdStyle}>
+                        <td colSpan={9} style={tdStyle}>
                           <TierEditor
                             event={event}
                             session={session}
@@ -4831,7 +5146,7 @@ function SessionTiersBlock({
                     ) : null}
                     {isScheduling ? (
                       <tr data-testid={`events-tier-schedule-row-${t.id}`}>
-                        <td colSpan={8} style={tdStyle}>
+                        <td colSpan={9} style={tdStyle}>
                           <PriceScheduleEditor
                             event={event}
                             session={session}
@@ -4862,6 +5177,70 @@ function SessionTiersBlock({
 
 interface TierEnvelope {
   readonly tier: TicketTierItem;
+}
+
+/**
+ * Поле «количество» в таблице категорий.
+ *
+ * У категории со схемой зала количество только для чтения (его задаёт
+ * геометрия). У остальных это число мест, которыми владеет категория:
+ * нижняя граница — уже занятые места, и сервер отвечает 409
+ * tier.quantity_below_used, если попросить меньше.
+ */
+function TierQuantityCell({
+  row,
+  canUpdate,
+  pending,
+  onSave,
+}: {
+  row: TierQuotaRow;
+  canUpdate: boolean;
+  pending: boolean;
+  onSave: (quantity: number) => void;
+}) {
+  const stored = row.quantity === null ? "" : String(row.quantity);
+  const [draft, setDraft] = useState(stored);
+  useEffect(() => {
+    setDraft(stored);
+  }, [stored]);
+
+  if (!canUpdate || !row.quantityEditable) {
+    return (
+      <span data-testid={`events-tier-quantity-${row.id}`}>
+        {row.quantityText}
+      </span>
+    );
+  }
+
+  const parsed = Number(draft.trim());
+  const valid =
+    draft.trim() !== "" &&
+    Number.isInteger(parsed) &&
+    parsed >= row.quantityMin;
+  const dirty = valid && parsed !== row.quantity;
+
+  return (
+    <div style={rowActionsStyle}>
+      <input
+        type="number"
+        min={row.quantityMin}
+        step={1}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        style={quantityInputStyle}
+        data-testid={`events-tier-quantity-${row.id}`}
+      />
+      <button
+        type="button"
+        style={refreshButtonStyle}
+        disabled={!dirty || pending}
+        onClick={() => onSave(parsed)}
+        data-testid={`events-tier-quantity-save-${row.id}`}
+      >
+        Сохранить
+      </button>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -5220,7 +5599,11 @@ function TierEditor({
   const initial =
     mode.kind === "edit" ? tierToForm(mode.tier) : emptyTierForm();
   const [values, setValues] = useState<TierFormValues>(initial);
-  const errors = useMemo(() => validateTierForm(values), [values]);
+  const quantityRequired = categoryQuantityRequired(session);
+  const errors = useMemo(
+    () => validateTierForm(values, { quantityRequired }),
+    [values, quantityRequired],
+  );
 
   const mutation = useMutation<TierEnvelope, ApiError, TierFormValues>({
     mutationFn: (v) => {
@@ -5406,7 +5789,9 @@ function TierEditor({
           </>
         ) : null}
         <label style={editorFieldStyle}>
-          <span style={editorLabelStyle}>Capacity (optional)</span>
+          <span style={editorLabelStyle}>
+            {quantityRequired ? "Количество" : "Количество (необязательно)"}
+          </span>
           <input
             type="number"
             min={1}
@@ -5415,10 +5800,15 @@ function TierEditor({
             onChange={(e) =>
               setValues({ ...values, capacity: e.target.value })
             }
-            placeholder="unlimited"
+            placeholder={quantityRequired ? "например 200" : "из схемы зала"}
             style={editorInputStyle}
             data-testid="events-tier-input-capacity"
           />
+          <span style={mutedHintStyle}>
+            {quantityRequired
+              ? "Сколько мест у категории. Вместимость сеанса — сумма количеств."
+              : "С количеством категория становится категорией без места."}
+          </span>
           {errors.capacity !== undefined ? (
             <span style={fieldErrorStyle}>{errors.capacity}</span>
           ) : null}
@@ -5531,9 +5921,10 @@ export function buildTierRequestBody(v: TierFormValues): Record<string, unknown>
       v.pwyw_max.trim() === "" ? null : (decimalToCents(v.pwyw_max) ?? 0);
   }
 
-  if (v.capacity.trim() === "") {
-    body.capacity = null;
-  } else {
+  // Количество отправляем только когда оно заполнено: с волны B явный
+  // `capacity: null` ЧИСТИТ поле, а категории с местами сервер отвечает на
+  // него 400 tier.capacity_required. Пустое поле должно значить «не трогать».
+  if (v.capacity.trim() !== "") {
     body.capacity = Number(v.capacity);
   }
 
@@ -6741,6 +7132,27 @@ const editorInputStyle: CSSProperties = {
 const fieldErrorStyle: CSSProperties = {
   fontSize: 11,
   color: "#b91c1c",
+};
+
+/** Значение, которое оператор видит, но не редактирует. */
+const readOnlyValueStyle: CSSProperties = {
+  fontSize: 13,
+  padding: "6px 8px",
+  border: "1px solid #e2e8f0",
+  borderRadius: 4,
+  background: "#f8fafc",
+  color: "#334155",
+};
+
+/** Узкое числовое поле «количество» в таблице категорий. */
+const quantityInputStyle: CSSProperties = {
+  fontSize: 13,
+  padding: "4px 6px",
+  border: "1px solid #cbd5e1",
+  borderRadius: 4,
+  background: "#ffffff",
+  color: "#0f172a",
+  width: 88,
 };
 
 const overlapWarningStyle: CSSProperties = {

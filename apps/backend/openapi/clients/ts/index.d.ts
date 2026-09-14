@@ -9567,11 +9567,16 @@ export interface components {
          *     org_id and event_id are taken from the path; the body MUST NOT
          *     repeat them.
          *
-         *     Capacity is DERIVED (AB-36), never supplied directly: a bound
-         *     seating plan version wins; otherwise `capacity_override`;
-         *     otherwise the venue's capacity_default. A general-admission
-         *     session resolving to none of these is rejected with 422
-         *     `session.capacity_unresolvable`.
+         *     Capacity is DERIVED, never supplied directly. A bound seating
+         *     plan version owns it; a general-admission session's capacity is
+         *     the SUM of its General Admission category quantities from the
+         *     first category onwards (GA category quotas — plan
+         *     08_architecture/23). Until a category exists the row still needs
+         *     a positive `capacity_total` for its CHECK constraint, so the
+         *     server writes a PROVISIONAL one: `capacity_override` when given,
+         *     else the venue's capacity_default, else 1. Nothing here has to be
+         *     supplied — a session created with neither is valid and takes its
+         *     real capacity from its first category.
          *
          *     Currency is derived from the venue geography
          *     (city.currency_override → country.currency) unless `currency` is
@@ -9602,9 +9607,15 @@ export interface components {
             end_at: string;
             /**
              * Format: int32
-             * @description Operator capacity for general-admission sessions, overriding
-             *     the venue's capacity_default. Must be > 0 when present (400
-             *     `session.invalid_capacity_override`).
+             * @description PROVISIONAL capacity for a general-admission session created
+             *     without any category yet, overriding the venue's
+             *     capacity_default. Must be > 0 when present (400
+             *     `session.invalid_capacity_override`). It is not the session's
+             *     lasting capacity: the first General Admission category
+             *     replaces it with the sum of the category quantities, and the
+             *     response carries a `session.capacity_is_category_sum`
+             *     warning saying so. Optional — omit it and the server derives
+             *     the provisional value itself.
              * @example 500
              */
             capacity_override?: number | null;
@@ -9656,11 +9667,16 @@ export interface components {
          *     against the session state machine and 422
          *     `session.invalid_transition` is returned for disallowed moves.
          *
-         *     capacity_total is not an input — it is re-derived when venue_id
-         *     or capacity_override change (general-admission sessions only; a
-         *     bound seating plan owns the capacity, and capacity_override on a
-         *     plan-bound session is rejected with 422
-         *     `session.capacity_override_not_applicable`).
+         *     Capacity is not editable here at all. `capacity_total` is never
+         *     an input, and `capacity_override` in the body is REFUSED with
+         *     `session.capacity_override_not_applicable` — 422 for a
+         *     plan-bound session (the bound seating plan owns the capacity,
+         *     `error.details.reason = "plan_bound"`), 400 for a
+         *     general-admission one (its capacity is the sum of its category
+         *     quantities, `error.details.reason = "category_sum"`; change a
+         *     category quantity through the tier endpoints instead). A venue
+         *     change re-derives the provisional capacity only while no
+         *     category owns a place yet.
          */
         UpdateSessionRequest: {
             /**
@@ -9685,10 +9701,12 @@ export interface components {
             end_at?: string | null;
             /**
              * Format: int32
-             * @description New operator capacity for a general-admission session; must
-             *     be > 0. capacity_total is re-derived and the capacity
-             *     propagation hook (inventory ledger sync) fires when it
-             *     changes.
+             * @description Not editable. Present only so an older client gets an
+             *     explicit refusal
+             *     (`session.capacity_override_not_applicable`) instead of a
+             *     silent no-op: the capacity of a general-admission session is
+             *     the sum of its category quantities, and a plan-bound
+             *     session's capacity belongs to the bound plan version.
              */
             capacity_override?: number | null;
             /**
@@ -9737,11 +9755,13 @@ export interface components {
             session: components["schemas"]["SessionItem"];
             /**
              * @description Non-fatal notes about the write, absent when there are none.
-             *     `session.capacity_is_category_sum` reports that
-             *     `capacity_override` was ignored because the session's
-             *     general-admission categories own their places: its capacity is
-             *     the sum of the category quantities and is edited through the
-             *     quantities, not through this field.
+             *     `session.capacity_is_category_sum` is emitted by the CREATE
+             *     endpoint when `capacity_override` was supplied for a
+             *     plan-less general-admission session: the value is accepted as
+             *     the provisional `capacity_total` only, and from the first
+             *     General Admission category onwards the capacity is the sum of
+             *     the category quantities. PATCH never warns about it — there
+             *     the field is refused outright.
              */
             warnings?: components["schemas"]["SessionWarning"][];
         };
@@ -10047,8 +10067,11 @@ export interface components {
             pwyw_max?: number | null;
             /**
              * Format: int32
-             * @description Optional per-tier capacity cap. When set, must be > 0. `null`
-             *     means "no tier-level cap" (only the session-level cap applies).
+             * @description The category's QUANTITY: how many places it owns. Equal to
+             *     `quantity` on the admin list endpoint — the quota mechanism
+             *     keeps the two in step. `null` only for a pure
+             *     geometry-mapping row on an `assigned_seats` session, which
+             *     owns no place of its own.
              * @example 200
              */
             capacity?: number | null;
@@ -10329,7 +10352,21 @@ export interface components {
             pwyw_max?: number | null;
             /**
              * Format: int32
-             * @description Optional per-tier capacity. When set, must be > 0.
+             * @description The category's QUANTITY: how many places it owns. Must be > 0
+             *     (400 `tier.invalid_capacity`).
+             *
+             *     REQUIRED on a `general_admission` or `hybrid` session — a
+             *     General Admission category owns its places, and creating one
+             *     mints exactly this many of them and raises the session's
+             *     capacity_total by the same number. Omitting it there is
+             *     rejected with 400 `tier.capacity_required`
+             *     (`error.details.admission_mode` names the mode).
+             *
+             *     Optional on an `assigned_seats` session: without it the row
+             *     is a pure geometry-mapping category whose places come from
+             *     the seating plan; WITH it the new category is a General
+             *     Admission one (tickets without a seat) and the session turns
+             *     `hybrid` in the same transaction.
              */
             capacity?: number | null;
             /**
@@ -10353,11 +10390,17 @@ export interface components {
         /**
          * @description Partial update for PATCH
          *     /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}.
-         *     All fields are optional; nil / empty fields leave the existing
-         *     value unchanged. When `pricing_mode`, `price_amount`, `pwyw_min`,
-         *     or `pwyw_max` change, the effective combination is re-validated
-         *     against the pricing-mode invariants documented on
+         *     All fields are optional. When `pricing_mode`, `price_amount`,
+         *     `pwyw_min`, or `pwyw_max` change, the effective combination is
+         *     re-validated against the pricing-mode invariants documented on
          *     `CreateTicketTierRequest`.
+         *
+         *     The nullable fields `pwyw_min`, `pwyw_max`, `sale_window_start`
+         *     and `sale_window_end` are TRI-STATE: omitting the key keeps the
+         *     stored value, an explicit `null` CLEARS the column, and a value
+         *     sets it. `capacity` is tri-state in shape only — see its own
+         *     description; it cannot be cleared for a category that owns
+         *     places.
          */
         UpdateTicketTierRequest: {
             /** @description New tier name. When provided, must be non-empty after trim. */
@@ -10376,29 +10419,47 @@ export interface components {
             price_amount?: number | null;
             /**
              * Format: int64
-             * @description New lower bound for `pricing_mode = pwyw` (cents).
+             * @description New lower bound for `pricing_mode = pwyw` (cents). `null`
+             *     clears the bound.
              */
             pwyw_min?: number | null;
             /**
              * Format: int64
-             * @description New upper bound for `pricing_mode = pwyw` (cents).
+             * @description New upper bound for `pricing_mode = pwyw` (cents). `null`
+             *     clears the bound.
              */
             pwyw_max?: number | null;
             /**
              * Format: int32
-             * @description New per-tier capacity. When provided, must be > 0.
+             * @description New QUANTITY for the category: how many places it owns. Must
+             *     be > 0 (400 `tier.invalid_capacity`). Applied through the
+             *     quota mechanism, which mints or removes the difference in the
+             *     same transaction, so it also moves the session's
+             *     capacity_total. A value below what the category cannot give
+             *     up is refused with 409 `tier.quantity_below_used`
+             *     (`error.details.used` / `error.details.floor`), and a
+             *     category whose places come from the seating-plan geometry
+             *     with 409 `tier.seated_category`.
+             *
+             *     `null` is refused with 400 `tier.capacity_required` for
+             *     anything that owns places: a General Admission category
+             *     without a quantity is illegal. Only a pure geometry-mapping
+             *     row on an `assigned_seats` session — one that owns no place
+             *     at all — can have it cleared.
              */
             capacity?: number | null;
             /**
              * Format: date-time
-             * @description New sale-window start (RFC 3339, UTC).
+             * @description New sale-window start (RFC 3339, UTC). `null` (or an empty
+             *     string) clears it, reopening the category's lower bound.
              */
             sale_window_start?: string | null;
             /**
              * Format: date-time
              * @description New sale-window end. When both `sale_window_start` and
              *     `sale_window_end` are set, `sale_window_end` must be strictly
-             *     after `sale_window_start`.
+             *     after `sale_window_start`. `null` (or an empty string) clears
+             *     it, so the category stays on sale with no upper bound.
              */
             sale_window_end?: string | null;
             /**
@@ -24240,7 +24301,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Session created. */
+            /**
+             * @description Session created. `warnings` carries
+             *     `session.capacity_is_category_sum` when `capacity_override`
+             *     was supplied for a plan-less general-admission session: the
+             *     value is accepted as the PROVISIONAL `capacity_total` only,
+             *     and the capacity becomes the sum of the category quantities
+             *     from the first category onwards.
+             */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -24294,8 +24362,7 @@ export interface operations {
             /**
              * @description Semantically invalid. Possible error codes:
              *     `session.venue_org_mismatch`, `session.invalid_currency`,
-             *     `session.currency_unresolvable`,
-             *     `session.capacity_unresolvable`.
+             *     `session.currency_unresolvable`.
              */
             422: {
                 headers: {
@@ -24509,6 +24576,10 @@ export interface operations {
              *     `session.invalid_start_at`, `session.invalid_end_at`,
              *     `session.invalid_date_range`,
              *     `session.invalid_capacity_override`,
+             *     `session.capacity_override_not_applicable` (capacity_override
+             *     sent for a general-admission session, whose capacity is the
+             *     sum of its category quantities;
+             *     `error.details.reason = "category_sum"`),
              *     `session.invalid_venue_id`, `session.venue_not_found`.
              */
             400: {
@@ -24553,7 +24624,8 @@ export interface operations {
              *     `error.details.target_status`),
              *     `session.venue_org_mismatch`, `session.invalid_currency`,
              *     `session.capacity_override_not_applicable` (capacity_override
-             *     sent for a plan-bound session).
+             *     sent for a plan-bound session;
+             *     `error.details.reason = "plan_bound"`).
              */
             422: {
                 headers: {
@@ -25356,7 +25428,10 @@ export interface operations {
              *     `tier.invalid_body`, `tier.empty_body`, `tier.invalid_json`,
              *     `tier.missing_name`, `tier.missing_pricing_mode`,
              *     `tier.invalid_pricing_mode`, `tier.invalid_capacity`,
-             *     `tier.invalid_sale_window_start`,
+             *     `tier.capacity_required` (no `capacity` on a
+             *     `general_admission` / `hybrid` session — a General Admission
+             *     category owns its places and must be created with a
+             *     quantity), `tier.invalid_sale_window_start`,
              *     `tier.invalid_sale_window_end`, `tier.invalid_sale_window`,
              *     and the pricing-mode validators from the catalog domain layer
              *     (e.g. `tier.invalid_price_amount`, `tier.invalid_pwyw_bounds`).
@@ -25380,6 +25455,15 @@ export interface operations {
             };
             /** @description Caller lacks the `tier.create` permission. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Parent session not found (`session.not_found`). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -25784,6 +25868,21 @@ export interface operations {
                 };
             };
             /**
+             * @description The category cannot be removed. Possible error codes:
+             *     `tier.in_use` (it still holds or has sold places, or has an
+             *     active ticket — close it instead of deleting it),
+             *     `tier.seated_category` (its places come from the
+             *     seating-plan geometry).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
              * @description Internal server error. Possible codes:
              *     `tier.delete_failed`, `tier.audit_failed`, `tier.commit_failed`.
              */
@@ -25841,7 +25940,9 @@ export interface operations {
              * @description Body invalid or fields out of range. Possible error codes:
              *     `tier.invalid_body`, `tier.empty_body`, `tier.invalid_json`,
              *     `tier.invalid_name`, `tier.invalid_pricing_mode`,
-             *     `tier.invalid_capacity`, `tier.invalid_sale_window_start`,
+             *     `tier.invalid_capacity`, `tier.capacity_required`
+             *     (`capacity: null` on a category that owns places),
+             *     `tier.invalid_sale_window_start`,
              *     `tier.invalid_sale_window_end`, `tier.invalid_sale_window`,
              *     and the pricing-mode validators from the catalog domain layer.
              */
@@ -25873,6 +25974,25 @@ export interface operations {
             };
             /** @description Ticket tier not found (`tier.not_found`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The quantity change conflicts with what the category already
+             *     owns. Possible error codes:
+             *     `tier.quantity_below_used` (the requested quantity is below
+             *     the places the category cannot give up;
+             *     `error.details.used` is what is held plus sold and
+             *     `error.details.floor` the lowest quantity accepted right
+             *     now), `tier.seated_category` (the category's places come
+             *     from the seating-plan geometry, so its quantity is
+             *     read-only).
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

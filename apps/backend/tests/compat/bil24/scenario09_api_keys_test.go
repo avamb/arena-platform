@@ -185,7 +185,10 @@ func runScenario09APIKeys(t *testing.T, st *harnessState) {
 			"name":         "GA",
 			"pricing_mode": "fixed",
 			"price_amount": 1000,
-			"sort_order":   0,
+			// A General Admission category OWNS its places, so the
+			// quantity is required (plan 08_architecture/23 step 6).
+			"capacity":   20,
+			"sort_order": 0,
 		})
 	if tStatus != 201 {
 		t.Fatalf("POST tiers (service key) status = %d, want 201 (body %v)", tStatus, tResp)

@@ -4188,11 +4188,16 @@ type CreateSeatingPlanVersionRequest struct {
 // org_id and event_id are taken from the path; the body MUST NOT
 // repeat them.
 //
-// Capacity is DERIVED (AB-36), never supplied directly: a bound
-// seating plan version wins; otherwise `capacity_override`;
-// otherwise the venue's capacity_default. A general-admission
-// session resolving to none of these is rejected with 422
-// `session.capacity_unresolvable`.
+// Capacity is DERIVED, never supplied directly. A bound seating
+// plan version owns it; a general-admission session's capacity is
+// the SUM of its General Admission category quantities from the
+// first category onwards (GA category quotas — plan
+// 08_architecture/23). Until a category exists the row still needs
+// a positive `capacity_total` for its CHECK constraint, so the
+// server writes a PROVISIONAL one: `capacity_override` when given,
+// else the venue's capacity_default, else 1. Nothing here has to be
+// supplied — a session created with neither is valid and takes its
+// real capacity from its first category.
 //
 // Currency is derived from the venue geography
 // (city.currency_override → country.currency) unless `currency` is
@@ -4209,9 +4214,15 @@ type CreateSessionRequest struct {
 	// one call.
 	AdmissionMode *CreateSessionRequestAdmissionMode `json:"admission_mode,omitempty"`
 
-	// CapacityOverride Operator capacity for general-admission sessions, overriding
-	// the venue's capacity_default. Must be > 0 when present (400
-	// `session.invalid_capacity_override`).
+	// CapacityOverride PROVISIONAL capacity for a general-admission session created
+	// without any category yet, overriding the venue's
+	// capacity_default. Must be > 0 when present (400
+	// `session.invalid_capacity_override`). It is not the session's
+	// lasting capacity: the first General Admission category
+	// replaces it with the sum of the category quantities, and the
+	// response carries a `session.capacity_is_category_sum`
+	// warning saying so. Optional — omit it and the server derives
+	// the provisional value itself.
 	CapacityOverride *int32 `json:"capacity_override"`
 
 	// Currency Explicit ISO 4217 currency override (AB-38). When omitted the
@@ -4265,7 +4276,21 @@ type CreateSessionRequestStatus string
 // The owning `org_id`, `event_id`, and `session_id` are taken from the
 // path; the body MUST NOT repeat them.
 type CreateTicketTierRequest struct {
-	// Capacity Optional per-tier capacity. When set, must be > 0.
+	// Capacity The category's QUANTITY: how many places it owns. Must be > 0
+	// (400 `tier.invalid_capacity`).
+	//
+	// REQUIRED on a `general_admission` or `hybrid` session — a
+	// General Admission category owns its places, and creating one
+	// mints exactly this many of them and raises the session's
+	// capacity_total by the same number. Omitting it there is
+	// rejected with 400 `tier.capacity_required`
+	// (`error.details.admission_mode` names the mode).
+	//
+	// Optional on an `assigned_seats` session: without it the row
+	// is a pure geometry-mapping category whose places come from
+	// the seating plan; WITH it the new category is a General
+	// Admission one (tickets without a seat) and the session turns
+	// `hybrid` in the same transaction.
 	Capacity *int32 `json:"capacity"`
 
 	// Name Tier name. Required, trimmed of whitespace.
@@ -8576,11 +8601,13 @@ type SessionEnvelope struct {
 	Session SessionItem `json:"session"`
 
 	// Warnings Non-fatal notes about the write, absent when there are none.
-	// `session.capacity_is_category_sum` reports that
-	// `capacity_override` was ignored because the session's
-	// general-admission categories own their places: its capacity is
-	// the sum of the category quantities and is edited through the
-	// quantities, not through this field.
+	// `session.capacity_is_category_sum` is emitted by the CREATE
+	// endpoint when `capacity_override` was supplied for a
+	// plan-less general-admission session: the value is accepted as
+	// the provisional `capacity_total` only, and from the first
+	// General Admission category onwards the capacity is the sum of
+	// the category quantities. PATCH never warns about it — there
+	// the field is refused outright.
 	Warnings *[]SessionWarning `json:"warnings,omitempty"`
 }
 
@@ -9010,8 +9037,11 @@ type TicketTierItem struct {
 	// (then `capacity` is the only bound there is).
 	Available *int32 `json:"available"`
 
-	// Capacity Optional per-tier capacity cap. When set, must be > 0. `null`
-	// means "no tier-level cap" (only the session-level cap applies).
+	// Capacity The category's QUANTITY: how many places it owns. Equal to
+	// `quantity` on the admin list endpoint — the quota mechanism
+	// keeps the two in step. `null` only for a pure
+	// geometry-mapping row on an `assigned_seats` session, which
+	// owns no place of its own.
 	Capacity *int32 `json:"capacity"`
 
 	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
@@ -9602,16 +9632,23 @@ type UpdateSeatingPlanRequestVisibility string
 // against the session state machine and 422
 // `session.invalid_transition` is returned for disallowed moves.
 //
-// capacity_total is not an input — it is re-derived when venue_id
-// or capacity_override change (general-admission sessions only; a
-// bound seating plan owns the capacity, and capacity_override on a
-// plan-bound session is rejected with 422
-// `session.capacity_override_not_applicable`).
+// Capacity is not editable here at all. `capacity_total` is never
+// an input, and `capacity_override` in the body is REFUSED with
+// `session.capacity_override_not_applicable` — 422 for a
+// plan-bound session (the bound seating plan owns the capacity,
+// `error.details.reason = "plan_bound"`), 400 for a
+// general-admission one (its capacity is the sum of its category
+// quantities, `error.details.reason = "category_sum"`; change a
+// category quantity through the tier endpoints instead). A venue
+// change re-derives the provisional capacity only while no
+// category owns a place yet.
 type UpdateSessionRequest struct {
-	// CapacityOverride New operator capacity for a general-admission session; must
-	// be > 0. capacity_total is re-derived and the capacity
-	// propagation hook (inventory ledger sync) fires when it
-	// changes.
+	// CapacityOverride Not editable. Present only so an older client gets an
+	// explicit refusal
+	// (`session.capacity_override_not_applicable`) instead of a
+	// silent no-op: the capacity of a general-admission session is
+	// the sum of its category quantities, and a plan-bound
+	// session's capacity belongs to the bound plan version.
 	CapacityOverride *int32 `json:"capacity_override"`
 
 	// Currency Deliberate ISO 4217 currency change (recorded as
@@ -9662,13 +9699,33 @@ type UpdateSessionRequestStatus string
 
 // UpdateTicketTierRequest Partial update for PATCH
 // /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}.
-// All fields are optional; nil / empty fields leave the existing
-// value unchanged. When `pricing_mode`, `price_amount`, `pwyw_min`,
-// or `pwyw_max` change, the effective combination is re-validated
-// against the pricing-mode invariants documented on
+// All fields are optional. When `pricing_mode`, `price_amount`,
+// `pwyw_min`, or `pwyw_max` change, the effective combination is
+// re-validated against the pricing-mode invariants documented on
 // `CreateTicketTierRequest`.
+//
+// The nullable fields `pwyw_min`, `pwyw_max`, `sale_window_start`
+// and `sale_window_end` are TRI-STATE: omitting the key keeps the
+// stored value, an explicit `null` CLEARS the column, and a value
+// sets it. `capacity` is tri-state in shape only — see its own
+// description; it cannot be cleared for a category that owns
+// places.
 type UpdateTicketTierRequest struct {
-	// Capacity New per-tier capacity. When provided, must be > 0.
+	// Capacity New QUANTITY for the category: how many places it owns. Must
+	// be > 0 (400 `tier.invalid_capacity`). Applied through the
+	// quota mechanism, which mints or removes the difference in the
+	// same transaction, so it also moves the session's
+	// capacity_total. A value below what the category cannot give
+	// up is refused with 409 `tier.quantity_below_used`
+	// (`error.details.used` / `error.details.floor`), and a
+	// category whose places come from the seating-plan geometry
+	// with 409 `tier.seated_category`.
+	//
+	// `null` is refused with 400 `tier.capacity_required` for
+	// anything that owns places: a General Admission category
+	// without a quantity is illegal. Only a pure geometry-mapping
+	// row on an `assigned_seats` session — one that owns no place
+	// at all — can have it cleared.
 	Capacity *int32 `json:"capacity"`
 
 	// IsOpen Open (`true`) or close (`false`) the category. A closed
@@ -9689,18 +9746,22 @@ type UpdateTicketTierRequest struct {
 	// PricingMode New pricing mode. Validated against price / pwyw bounds.
 	PricingMode *UpdateTicketTierRequestPricingMode `json:"pricing_mode"`
 
-	// PwywMax New upper bound for `pricing_mode = pwyw` (cents).
+	// PwywMax New upper bound for `pricing_mode = pwyw` (cents). `null`
+	// clears the bound.
 	PwywMax *int64 `json:"pwyw_max"`
 
-	// PwywMin New lower bound for `pricing_mode = pwyw` (cents).
+	// PwywMin New lower bound for `pricing_mode = pwyw` (cents). `null`
+	// clears the bound.
 	PwywMin *int64 `json:"pwyw_min"`
 
 	// SaleWindowEnd New sale-window end. When both `sale_window_start` and
 	// `sale_window_end` are set, `sale_window_end` must be strictly
-	// after `sale_window_start`.
+	// after `sale_window_start`. `null` (or an empty string) clears
+	// it, so the category stays on sale with no upper bound.
 	SaleWindowEnd *time.Time `json:"sale_window_end"`
 
-	// SaleWindowStart New sale-window start (RFC 3339, UTC).
+	// SaleWindowStart New sale-window start (RFC 3339, UTC). `null` (or an empty
+	// string) clears it, reopening the category's lower bound.
 	SaleWindowStart *time.Time `json:"sale_window_start"`
 
 	// SortOrder New display order.

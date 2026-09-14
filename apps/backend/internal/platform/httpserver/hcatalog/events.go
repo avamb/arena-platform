@@ -69,6 +69,27 @@ func (v *optionalInt32) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// optionalInt64 is the 64-bit analogue of optionalInt32, used by the
+// ticket-tier PATCH for the nullable money bounds (pwyw_min / pwyw_max).
+type optionalInt64 struct {
+	Present bool
+	Value   *int64
+}
+
+func (v *optionalInt64) UnmarshalJSON(data []byte) error {
+	v.Present = true
+	if string(data) == "null" {
+		v.Value = nil
+		return nil
+	}
+	var n int64
+	if err := json.Unmarshal(data, &n); err != nil {
+		return err
+	}
+	v.Value = &n
+	return nil
+}
+
 // resolveStr implements the tri-state merge: if opt was absent keep existing;
 // if opt was present and nil clear; if opt was present and non-nil set.
 func resolveStr(opt optionalString, existing *string) *string {

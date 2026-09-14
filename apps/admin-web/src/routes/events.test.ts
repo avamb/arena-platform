@@ -47,6 +47,21 @@ import {
   mapTierError,
   tierToForm,
   validateTierForm,
+  addCategoryNote,
+  buildTierOpenBody,
+  buildTierQuantityBody,
+  categoryQuantityRequired,
+  tierAvailable,
+  tierCanDelete,
+  tierDeleteHint,
+  tierIsOpen,
+  tierKind,
+  tierKindLabel,
+  tierQuantity,
+  tierQuantityEditable,
+  tierQuantityMin,
+  tierQuotaRow,
+  tierUsed,
   buildPublicationRequestBody,
   deriveDefaultCityID,
   emptyPublicationForm,
@@ -393,7 +408,7 @@ describe("emptySessionForm / sessionToForm", () => {
     expect(f.seating_plan_version_id).toBe("");
     expect(f.currency).toBe("");
   });
-  it("sessionToForm hydrates fields from an existing session row", () => {
+  it("sessionToForm hydrates fields and never re-offers the capacity knob", () => {
     const f = sessionToForm({
       venue_id: "01929d0e-0e47-7000-8000-000000000201",
       start_at: "2026-08-15T18:00:00Z",
@@ -407,7 +422,10 @@ describe("emptySessionForm / sessionToForm", () => {
       venue_id: "01929d0e-0e47-7000-8000-000000000201",
       start_at: "2026-08-15T18:00",
       end_at: "2026-08-15T23:00",
-      capacity_override: "250",
+      // The capacity of a session is the sum of its category quantities
+      // (or the bound plan's geometry); a PATCH carrying capacity_override
+      // is refused, so the form never re-sends the stored value.
+      capacity_override: "",
       status: "scheduled",
       admission_mode: "assigned_seats",
       seating_plan_version_id: "01929d0e-0e47-7000-8000-000000000901",
@@ -950,11 +968,16 @@ describe("buildTierRequestBody", () => {
     expect(body.pwyw_min).toBe(500);
     expect(body.pwyw_max).toBeNull();
   });
-  it("normalises blank capacity to null and number when supplied", () => {
-    expect(
-      buildTierRequestBody({ ...emptyTierForm(), name: "GA", price_amount: "10.00" })
-        .capacity,
-    ).toBeNull();
+  it("omits a blank quantity and sends it as a number when supplied", () => {
+    // A blank quantity means "leave it alone": an explicit null CLEARS the
+    // column since wave B, and the server refuses it with 400
+    // tier.capacity_required for a category that owns places.
+    const blank = buildTierRequestBody({
+      ...emptyTierForm(),
+      name: "GA",
+      price_amount: "10.00",
+    });
+    expect("capacity" in blank).toBe(false);
     expect(
       buildTierRequestBody({
         ...emptyTierForm(),
@@ -1261,5 +1284,266 @@ describe("mapPublicationError", () => {
         new ApiError(500, { code: "boom.something", message: "kaboom" }),
       ),
     ).toBe("kaboom (boom.something)");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Категории и квоты (план 08_architecture/23, шаг 6)
+//
+// Таблица категорий показывает вид, количество, продано, в брони, свободно и
+// переключатель «открыта». Всё это чистые функции над строкой категории,
+// поэтому здесь они и проверяются — DOM не нужен.
+// ---------------------------------------------------------------------------
+
+describe("category quota table helpers", () => {
+  function category(overrides: Partial<TicketTierItem> = {}): TicketTierItem {
+    return {
+      id: "01929d0e-0e47-7000-8000-000000000401",
+      session_id: "01929d0e-0e47-7000-8000-000000000201",
+      name: "Standing",
+      pricing_mode: "fixed",
+      price_amount: 2500,
+      currency: "EUR",
+      pwyw_min: null,
+      pwyw_max: null,
+      capacity: 100,
+      sale_window_start: null,
+      sale_window_end: null,
+      sort_order: 1,
+      kind: "ga",
+      is_open: true,
+      quantity: 100,
+      held: 3,
+      sold: 7,
+      available: 90,
+      ...overrides,
+    };
+  }
+
+  it("renders the counters and the kind of a GA category", () => {
+    const row = tierQuotaRow(category());
+    expect(row.kind).toBe("ga");
+    expect(row.kindLabel).toBe("без места");
+    expect(row.quantityText).toBe((100).toLocaleString());
+    expect(row.sold).toBe(7);
+    expect(row.held).toBe(3);
+    expect(row.availableText).toBe((90).toLocaleString());
+    expect(row.isOpen).toBe(true);
+    expect(row.quantityEditable).toBe(true);
+  });
+
+  it("renders a seated category with a read-only quantity", () => {
+    const row = tierQuotaRow(
+      category({ kind: "seated", seat_count: 120, quantity: 120, held: 0, sold: 0, available: 120 }),
+    );
+    expect(row.kindLabel).toBe("с местами");
+    expect(row.quantityEditable).toBe(false);
+    expect(row.canDelete).toBe(false);
+    expect(row.deleteHint).toMatch(/схем/i);
+  });
+
+  it("derives the kind from the seat count when the server omits it", () => {
+    expect(tierKind(category({ kind: null, seat_count: 12 }))).toBe("seated");
+    expect(tierKind(category({ kind: null, seat_count: 0 }))).toBe("ga");
+    expect(tierKindLabel(category({ kind: null, seat_count: 12 }))).toBe("с местами");
+  });
+
+  it("counts what the category cannot give up as the quantity floor", () => {
+    expect(tierUsed(category())).toBe(10);
+    expect(tierQuantityMin(category())).toBe(10);
+    // Nothing taken yet: a category still may not drop to zero.
+    expect(tierQuantityMin(category({ held: 0, sold: 0, available: 100 }))).toBe(1);
+    // Older response shape: quantity minus available.
+    expect(
+      tierUsed(
+        category({ held: undefined, sold: undefined, quantity: 40, available: 25 }),
+      ),
+    ).toBe(15);
+  });
+
+  it("falls back to capacity and derives available when counters are absent", () => {
+    const legacy = category({
+      quantity: undefined,
+      held: undefined,
+      sold: undefined,
+      available: undefined,
+      capacity: 60,
+    });
+    expect(tierQuantity(legacy)).toBe(60);
+    expect(tierAvailable(legacy)).toBe(60);
+    expect(tierQuotaRow(legacy).availableText).toBe((60).toLocaleString());
+  });
+
+  it("shows a dash for a category that owns no place at all", () => {
+    const mapping = tierQuotaRow(
+      category({ capacity: null, quantity: null, available: null, held: 0, sold: 0 }),
+    );
+    expect(mapping.quantityText).toBe("—");
+    expect(mapping.availableText).toBe("—");
+  });
+
+  it("treats a category as open unless the server says otherwise", () => {
+    expect(tierIsOpen(category())).toBe(true);
+    expect(tierIsOpen(category({ is_open: undefined }))).toBe(true);
+    expect(tierIsOpen(category({ is_open: false }))).toBe(false);
+    expect(tierQuotaRow(category({ is_open: false })).isOpen).toBe(false);
+  });
+
+  it("toggles is_open in the PATCH body", () => {
+    expect(buildTierOpenBody(category())).toEqual({ is_open: false });
+    expect(buildTierOpenBody(category({ is_open: false }))).toEqual({
+      is_open: true,
+    });
+  });
+
+  it("sends the new quantity as capacity", () => {
+    expect(buildTierQuantityBody(180)).toEqual({ capacity: 180 });
+  });
+
+  it("disables delete once the category has sales or holds", () => {
+    expect(tierCanDelete(category({ held: 0, sold: 0, available: 100 }))).toBe(true);
+    expect(tierDeleteHint(category({ held: 0, sold: 0, available: 100 }))).toBeNull();
+    expect(tierCanDelete(category({ held: 0, sold: 1 }))).toBe(false);
+    expect(tierDeleteHint(category({ held: 0, sold: 1 }))).toMatch(/закройте/i);
+    expect(tierCanDelete(category({ held: 2, sold: 0 }))).toBe(false);
+    expect(tierQuantityEditable(category({ kind: "seated", seat_count: 5 }))).toBe(false);
+  });
+});
+
+describe("add-category dialog", () => {
+  it("requires a quantity on a session without a seating plan", () => {
+    expect(categoryQuantityRequired({ admission_mode: "general_admission" })).toBe(true);
+    expect(categoryQuantityRequired({ admission_mode: "hybrid" })).toBe(true);
+    expect(categoryQuantityRequired({ admission_mode: "assigned_seats" })).toBe(false);
+  });
+
+  it("says a category added to a seated session is without a seat", () => {
+    const note = addCategoryNote({
+      admission_mode: "assigned_seats",
+      seating_plan_version_id: "01929d0e-0e47-7000-8000-000000000901",
+    });
+    expect(note).toMatch(/без места/i);
+    expect(note).toMatch(/hybrid/i);
+  });
+
+  it("keeps the without-a-seat note on a hybrid session but drops the mode change", () => {
+    const note = addCategoryNote({
+      admission_mode: "hybrid",
+      seating_plan_version_id: "01929d0e-0e47-7000-8000-000000000901",
+    });
+    expect(note).toMatch(/без места/i);
+    expect(note).not.toMatch(/hybrid/i);
+  });
+
+  it("has nothing to say on a plan-less session", () => {
+    expect(
+      addCategoryNote({
+        admission_mode: "general_admission",
+        seating_plan_version_id: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("blocks the form until a quantity is typed where it is required", () => {
+    const form: TierFormValues = {
+      ...emptyTierForm(),
+      name: "Standing",
+      price_amount: "25.00",
+    };
+    expect(validateTierForm(form, { quantityRequired: true }).capacity).toBeDefined();
+    expect(
+      validateTierForm({ ...form, capacity: "200" }, { quantityRequired: true })
+        .capacity,
+    ).toBeUndefined();
+    expect(validateTierForm(form, { quantityRequired: false }).capacity).toBeUndefined();
+    expect(validateTierForm(form).capacity).toBeUndefined();
+  });
+});
+
+describe("mapTierError — quota codes", () => {
+  it("asks for a quantity", () => {
+    expect(
+      mapTierError(
+        new ApiError(400, { code: "tier.capacity_required", message: "" }),
+      ),
+    ).toMatch(/количество/i);
+  });
+
+  it("names the floor from the error details", () => {
+    expect(
+      mapTierError(
+        new ApiError(409, {
+          code: "tier.quantity_below_used",
+          message: "",
+          details: { used: 10, floor: 12 },
+        }),
+      ),
+    ).toMatch(/12/);
+  });
+
+  it("falls back when the floor is missing", () => {
+    expect(
+      mapTierError(
+        new ApiError(409, { code: "tier.quantity_below_used", message: "" }),
+      ),
+    ).toMatch(/количество/i);
+  });
+
+  it("explains a seated category and one still in use", () => {
+    expect(
+      mapTierError(
+        new ApiError(409, { code: "tier.seated_category", message: "" }),
+      ),
+    ).toMatch(/схем/i);
+    expect(
+      mapTierError(new ApiError(409, { code: "tier.in_use", message: "" })),
+    ).toMatch(/закройте/i);
+  });
+});
+
+describe("mapSessionError — the capacity knob is gone", () => {
+  it("points at the category quantities for a general-admission session", () => {
+    expect(
+      mapSessionError(
+        new ApiError(400, {
+          code: "session.capacity_override_not_applicable",
+          message: "",
+          details: { reason: "category_sum" },
+        }),
+      ),
+    ).toMatch(/сумма количеств категорий/i);
+  });
+
+  it("keeps the plan-bound wording", () => {
+    expect(
+      mapSessionError(
+        new ApiError(422, {
+          code: "session.capacity_override_not_applicable",
+          message: "",
+          details: { reason: "plan_bound" },
+        }),
+      ),
+    ).toMatch(/seating plan/i);
+  });
+});
+
+describe("buildSessionRequestBody — capacity_override is create-only", () => {
+  const base: SessionFormValues = {
+    venue_id: "01929d0e-0e47-7000-8000-000000000201",
+    start_at: "2026-08-15T18:00",
+    end_at: "2026-08-15T23:00",
+    capacity_override: "250",
+    status: "draft",
+    admission_mode: "general_admission",
+    seating_plan_version_id: "",
+    currency: "",
+  };
+
+  it("never sends the knob on a PATCH", () => {
+    expect("capacity_override" in buildSessionRequestBody(base, "edit")).toBe(false);
+  });
+
+  it("still sends the provisional value on create", () => {
+    expect(buildSessionRequestBody(base, "create").capacity_override).toBe(250);
   });
 });

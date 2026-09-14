@@ -225,11 +225,11 @@ SET    name              = COALESCE(NULLIF($3, ''), name),
        pricing_mode      = COALESCE(NULLIF($4, ''), pricing_mode),
        price_amount      = CASE WHEN $5::bigint   IS NOT NULL THEN $5::bigint   ELSE price_amount     END,
        currency          = COALESCE(NULLIF($6, ''), currency),
-       pwyw_min          = CASE WHEN $7::bigint   IS NOT NULL THEN $7::bigint   ELSE pwyw_min         END,
-       pwyw_max          = CASE WHEN $8::bigint   IS NOT NULL THEN $8::bigint   ELSE pwyw_max         END,
-       capacity          = CASE WHEN $9::integer  IS NOT NULL THEN $9::integer  ELSE capacity         END,
-       sale_window_start = CASE WHEN $10::timestamptz IS NOT NULL THEN $10::timestamptz ELSE sale_window_start END,
-       sale_window_end   = CASE WHEN $11::timestamptz IS NOT NULL THEN $11::timestamptz ELSE sale_window_end   END,
+       pwyw_min          = CASE WHEN $14::boolean THEN $7::bigint  ELSE pwyw_min END,
+       pwyw_max          = CASE WHEN $15::boolean THEN $8::bigint  ELSE pwyw_max END,
+       capacity          = CASE WHEN $16::boolean THEN $9::integer ELSE capacity END,
+       sale_window_start = CASE WHEN $17::boolean THEN $10::timestamptz ELSE sale_window_start END,
+       sale_window_end   = CASE WHEN $18::boolean THEN $11::timestamptz ELSE sale_window_end   END,
        sort_order        = CASE WHEN $12::integer IS NOT NULL THEN $12::integer ELSE sort_order       END,
        is_open           = CASE WHEN $13::boolean IS NOT NULL THEN $13::boolean ELSE is_open          END,
        updated_at        = now()
@@ -263,6 +263,11 @@ func (q *Queries) UpdateTicketTier(
 
 // UpdateTicketTierWithOpen is UpdateTicketTier plus the is_open flag
 // (migration 0101). A nil isOpen leaves the stored flag unchanged.
+//
+// Like UpdateTicketTier it cannot CLEAR a nullable column — a nil pwyw
+// bound, capacity or sale-window edge means "keep". Use
+// UpdateTicketTierFields when the caller must distinguish an omitted PATCH
+// field from an explicit JSON null.
 func (q *Queries) UpdateTicketTierWithOpen(
 	ctx context.Context,
 	id, sessionID uuid.UUID,
@@ -275,15 +280,80 @@ func (q *Queries) UpdateTicketTierWithOpen(
 	sortOrder *int32,
 	isOpen *bool,
 ) (TicketTierRow, error) {
+	return q.UpdateTicketTierFields(ctx, id, sessionID, TicketTierUpdate{
+		Name:               name,
+		PricingMode:        pricingMode,
+		PriceAmount:        priceAmount,
+		Currency:           currency,
+		PwywMin:            pwywMin,
+		SetPwywMin:         pwywMin != nil,
+		PwywMax:            pwywMax,
+		SetPwywMax:         pwywMax != nil,
+		Capacity:           capacity,
+		SetCapacity:        capacity != nil,
+		SaleWindowStart:    saleWindowStart,
+		SetSaleWindowStart: saleWindowStart != nil,
+		SaleWindowEnd:      saleWindowEnd,
+		SetSaleWindowEnd:   saleWindowEnd != nil,
+		SortOrder:          sortOrder,
+		IsOpen:             isOpen,
+	})
+}
+
+// TicketTierUpdate is the full input of UpdateTicketTierFields.
+//
+// Name, PricingMode and Currency keep the stored value when empty, and
+// PriceAmount / SortOrder / IsOpen keep it when nil. The five NULLABLE
+// columns each carry their own Set* flag, because NULL is a meaningful
+// stored value for them and overloading it would make an explicit "clear"
+// indistinguishable from "leave alone":
+//
+//	Set* == false → the column is not touched, whatever the value field says;
+//	Set* == true  → the value field is written verbatim, nil (SQL NULL) included.
+type TicketTierUpdate struct {
+	Name        string
+	PricingMode string
+	Currency    string
+	PriceAmount *int64
+	SortOrder   *int32
+	IsOpen      *bool
+
+	PwywMin    *int64
+	SetPwywMin bool
+
+	PwywMax    *int64
+	SetPwywMax bool
+
+	Capacity    *int32
+	SetCapacity bool
+
+	SaleWindowStart    *time.Time
+	SetSaleWindowStart bool
+
+	SaleWindowEnd    *time.Time
+	SetSaleWindowEnd bool
+}
+
+// UpdateTicketTierFields applies a partial update with true tri-state
+// semantics for every nullable column (absent / clear / set).
+// Returns pgx.ErrNoRows when the tier does not exist, belongs to a
+// different session, or has been soft-deleted.
+func (q *Queries) UpdateTicketTierFields(
+	ctx context.Context,
+	id, sessionID uuid.UUID,
+	in TicketTierUpdate,
+) (TicketTierRow, error) {
 	row := q.db.QueryRow(ctx, updateTicketTier,
 		id, sessionID,
-		name, pricingMode,
-		priceAmount, currency,
-		pwywMin, pwywMax,
-		capacity,
-		saleWindowStart, saleWindowEnd,
-		sortOrder,
-		isOpen,
+		in.Name, in.PricingMode,
+		in.PriceAmount, in.Currency,
+		in.PwywMin, in.PwywMax,
+		in.Capacity,
+		in.SaleWindowStart, in.SaleWindowEnd,
+		in.SortOrder,
+		in.IsOpen,
+		in.SetPwywMin, in.SetPwywMax, in.SetCapacity,
+		in.SetSaleWindowStart, in.SetSaleWindowEnd,
 	)
 	return scanTicketTierRow(row)
 }

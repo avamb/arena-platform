@@ -214,6 +214,7 @@ type Querier interface {
 	InsertTierPriceWindow(ctx context.Context, tierID uuid.UUID, validFrom time.Time, validTo *time.Time, priceAmount int64) (TicketTierPriceRow, error)
 	DeleteTierPriceWindowsByTier(ctx context.Context, tierID uuid.UUID) (int64, error)
 	UpdateTicketTier(ctx context.Context, id, sessionID uuid.UUID, name, pricingMode string, priceAmount *int64, currency string, pwywMin, pwywMax *int64, capacity *int32, saleWindowStart, saleWindowEnd *time.Time, sortOrder *int32) (TicketTierRow, error)
+	UpdateTicketTierFields(ctx context.Context, id, sessionID uuid.UUID, in TicketTierUpdate) (TicketTierRow, error)
 	SoftDeleteTicketTier(ctx context.Context, id, sessionID uuid.UUID) (TicketTierRow, error)
 
 	// Pricing calculator — checkout quote (feature #129)
