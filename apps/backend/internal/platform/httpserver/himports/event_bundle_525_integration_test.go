@@ -109,6 +109,11 @@ func (f *bundle525Fixture) cleanup() {
 	exec("compat_map_venues", `DELETE FROM compatibility_id_map WHERE platform_id IN (
 	          SELECT id FROM venues WHERE org_id = $1)`, f.orgID)
 	exec("session_external_refs", `DELETE FROM session_external_refs WHERE org_id = $1`, f.orgID)
+	// session_seats before ticket_tiers/sessions: since plan
+	// 08_architecture/23 an imported category OWNS its places and both FKs
+	// are cascade-less.
+	exec("session_seats", `DELETE FROM session_seats WHERE session_id IN (
+	          SELECT s.id FROM sessions s JOIN events e ON e.id = s.event_id WHERE e.org_id = $1)`, f.orgID)
 	exec("inventory_ledger", `DELETE FROM inventory_ledger WHERE session_id IN (
 	          SELECT s.id FROM sessions s JOIN events e ON e.id = s.event_id WHERE e.org_id = $1)`, f.orgID)
 	exec("ticket_tiers", `DELETE FROM ticket_tiers WHERE session_id IN (

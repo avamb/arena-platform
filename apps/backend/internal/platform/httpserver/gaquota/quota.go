@@ -534,6 +534,44 @@ func DeleteCategory(ctx context.Context, txq *gen.Queries, sessionID, tierID uui
 	return err
 }
 
+// AdoptPlanCategory records a category whose places the CALLER materialized
+// itself — the seating bind and the seating half of an import mint the
+// geometry's General Admission places under the plan's own 'ga|c<index>'
+// keys, which must never be renumbered (migration 0101).
+//
+// It writes the quantity into ticket_tiers.capacity and reserves the
+// category's stable per-session number, so a later quota edit of the same
+// category (SetQuantity) continues under 'ga|t<unit_seq>' instead of
+// competing with the geometry index for a seat_key.
+//
+// It mints nothing and recomputes nothing: the caller already owns the
+// places and ends its own transaction with Recompute.
+func AdoptPlanCategory(ctx context.Context, txq *gen.Queries, sessionID, tierID uuid.UUID, quantity int32) error {
+	if txq == nil {
+		return errors.New("gaquota: nil queries")
+	}
+	tier, err := txq.GetTicketTierByID(ctx, tierID, sessionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrCategoryNotFound
+		}
+		return fmt.Errorf("gaquota: load category: %w", err)
+	}
+	if _, err := ensureUnitSeq(ctx, txq, sessionID, tier); err != nil {
+		return err
+	}
+	if quantity <= 0 {
+		return nil
+	}
+	if _, err := txq.SetTicketTierCapacity(ctx, tierID, sessionID, quantity); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrCategoryNotFound
+		}
+		return fmt.Errorf("gaquota: write category quantity: %w", err)
+	}
+	return nil
+}
+
 // Recompute brings a session's derived capacity back in line with its
 // places: sessions.capacity_total = plan seats + GA places, and the
 // session-level inventory_ledger row (tier_id IS NULL) to the same number,

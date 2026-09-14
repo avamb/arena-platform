@@ -8574,6 +8574,14 @@ type SessionEnvelope struct {
 	// detects overlaps via a count query (CountOverlappingSessions)
 	// rather than a DB-level UNIQUE constraint.
 	Session SessionItem `json:"session"`
+
+	// Warnings Non-fatal notes about the write, absent when there are none.
+	// `session.capacity_is_category_sum` reports that
+	// `capacity_override` was ignored because the session's
+	// general-admission categories own their places: its capacity is
+	// the sum of the category quantities and is edited through the
+	// quantities, not through this field.
+	Warnings *[]SessionWarning `json:"warnings,omitempty"`
 }
 
 // SessionItem A single dated session (time slot) of an event at a venue. Since
@@ -8755,6 +8763,16 @@ type SessionMediaReplaceRequest struct {
 
 // SessionMediaReplaceRequestItemsKind defines model for SessionMediaReplaceRequest.Items.Kind.
 type SessionMediaReplaceRequestItemsKind string
+
+// SessionWarning A non-fatal note about a session write: the request succeeded, but
+// part of it could not be applied verbatim.
+type SessionWarning struct {
+	// Code Stable machine-readable warning code.
+	Code string `json:"code"`
+
+	// Message Human-readable explanation of the warning.
+	Message string `json:"message"`
+}
 
 // StartCheckoutRequest Request body for `POST /v1/checkout/start`. Creates a new checkout
 // session in state `created` linked to an existing reservation. The
@@ -9652,6 +9670,13 @@ type UpdateSessionRequestStatus string
 type UpdateTicketTierRequest struct {
 	// Capacity New per-tier capacity. When provided, must be > 0.
 	Capacity *int32 `json:"capacity"`
+
+	// IsOpen Open (`true`) or close (`false`) the category. A closed
+	// category accepts no NEW hold on any sales path, while places
+	// already held or sold are untouched and an order already
+	// placed can still be paid. Omitting the key leaves the flag
+	// unchanged.
+	IsOpen *bool `json:"is_open"`
 
 	// Name New tier name. When provided, must be non-empty after trim.
 	Name *string `json:"name"`

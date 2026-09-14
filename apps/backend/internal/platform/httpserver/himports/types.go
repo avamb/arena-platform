@@ -59,6 +59,11 @@ const (
 	// hangs off channel → feed token → publication) will never be found
 	// (feature #536, spec 22 §2.2).
 	WarnChannelPublicationSkipped = "import.channel_publication_skipped"
+	// WarnCategorySoldOut — a category was declared with availability 0.
+	// A General Admission category with a quantity of 0 is illegal (plan
+	// 08_architecture/23 decision 3), so arena created it CLOSED with a
+	// quantity of 1; an operator sets the real quantity and opens it.
+	WarnCategorySoldOut = "import.category_sold_out"
 	// WarnFieldIgnoredForSource — a field that only makes sense for the other
 	// source was present and ignored (for source=arena: chargePercent,
 	// seatingPlanId, seatingPlanName — event-bundle spec §3 / §5).

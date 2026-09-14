@@ -26,6 +26,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	catalogdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/catalog"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 )
 
@@ -100,8 +101,19 @@ func (h *Handler) executeImport(ctx context.Context, q *gen.Queries, tx pgx.Tx, 
 	if err != nil {
 		return importResult{}, err
 	}
-	tierIDs, orderedTiers, err := h.upsertTiers(ctx, q, tx, plan, sessionID)
+	tierIDs, orderedTiers, cats, err := h.upsertTiers(ctx, q, tx, plan, sessionID)
 	if err != nil {
+		return importResult{}, err
+	}
+
+	// Plan 08_architecture/23 step 7: a category OWNS its places, so a
+	// freshly imported session only sells once they exist. A package with
+	// an svg gets them from importSeating below (under the plan's own
+	// `ga|c<index>` keys) — minting a second set here would double the
+	// capacity — so this call then only runs the closing sweep.
+	if err := syncImportedCategoryQuotas(
+		ctx, q, sessionID, cats, trimSpace(plan.Request.SVG) == "", warnings,
+	); err != nil {
 		return importResult{}, err
 	}
 
@@ -490,6 +502,22 @@ func (h *Handler) resolveSession(
 // a no-op here rather than as an import failure — the import must not be able
 // to invalidate outstanding holds.
 func (h *Handler) syncInventoryLedger(ctx context.Context, q *gen.Queries, eventID, sessionID uuid.UUID) error {
+	// Plan 08_architecture/23: once the session has places, THEY are the
+	// capacity — seats plus the places the categories own — and the quota
+	// mechanism owns both sessions.capacity_total and the ledger row. The
+	// payload-derived branch below only survives for a session that has no
+	// place at all (a category-less import).
+	places, err := q.CountSessionPlaces(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("count session places: %w", err)
+	}
+	if places > 0 {
+		if err := gaquota.Recompute(ctx, q, sessionID); err != nil {
+			return fmt.Errorf("recompute session capacity: %w", err)
+		}
+		return nil
+	}
+
 	sess, err := q.GetSessionByID(ctx, sessionID, eventID)
 	if err != nil {
 		return fmt.Errorf("read session for inventory ledger: %w", err)
@@ -525,9 +553,10 @@ func (h *Handler) syncInventoryLedger(ctx context.Context, q *gen.Queries, event
 //
 // The second return value is the same tier ids in categoryList ORDER, which is
 // what compat_ids.category_price_ids is built from (event-bundle spec §4).
-func (h *Handler) upsertTiers(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan, sessionID uuid.UUID) (map[string]uuid.UUID, []uuid.UUID, error) {
+func (h *Handler) upsertTiers(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan, sessionID uuid.UUID) (map[string]uuid.UUID, []uuid.UUID, []importedCategory, error) {
 	out := make(map[string]uuid.UUID, len(plan.Request.CategoryList))
 	ordered := make([]uuid.UUID, 0, len(plan.Request.CategoryList))
+	cats := make([]importedCategory, 0, len(plan.Request.CategoryList))
 
 	for i, c := range plan.Request.CategoryList {
 		name := trimSpace(c.CategoryPriceName)
@@ -536,7 +565,7 @@ func (h *Handler) upsertTiers(ctx context.Context, q *gen.Queries, tx pgx.Tx, pl
 		}
 		price := c.PriceMinorUnits()
 		if price < 0 {
-			return nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_price",
+			return nil, nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_price",
 				fmt.Sprintf("categoryList[%d].price must not be negative", i))
 		}
 		mode := "fixed"
@@ -552,38 +581,44 @@ func (h *Handler) upsertTiers(ctx context.Context, q *gen.Queries, tx pgx.Tx, pl
 
 		tierID, err := compatids.Resolve(ctx, tx, compatids.KindCategoryPrice, c.CategoryPriceID)
 		if err != nil && !errors.Is(err, compatids.ErrNotFound) {
-			return nil, nil, fmt.Errorf("resolve category compat id: %w", err)
+			return nil, nil, nil, fmt.Errorf("resolve category compat id: %w", err)
 		}
 
 		if errors.Is(err, compatids.ErrNotFound) {
 			row, insErr := q.InsertTicketTier(ctx, sessionID, name, mode, price, plan.Currency, nil, nil, capacity, plan.SaleWindowStart, plan.SaleWindowEnd, sortOrder)
 			if insErr != nil {
-				return nil, nil, fmt.Errorf("insert ticket tier: %w", insErr)
+				return nil, nil, nil, fmt.Errorf("insert ticket tier: %w", insErr)
 			}
 			if regErr := registerExternal(ctx, tx, compatids.KindCategoryPrice, row.ID, c.CategoryPriceID); regErr != nil {
-				return nil, nil, regErr
+				return nil, nil, nil, regErr
 			}
 			out[externalIDString(c.CategoryPriceID)] = row.ID
 			ordered = append(ordered, row.ID)
+			cats = append(cats, importedCategory{TierID: row.ID, Availability: c.Availability, Created: true})
 			continue
 		}
 
-		updated, updErr := q.UpdateTicketTier(ctx, tierID, sessionID, name, mode, &price, plan.Currency, nil, nil, capacity, plan.SaleWindowStart, plan.SaleWindowEnd, &sortOrder)
+		// capacity is deliberately NOT passed on the UPDATE: on a repeat
+		// import the quantity is arena's, and the package's availability is
+		// only the source system's remainder (plan 08_architecture/23
+		// decision 7). Price, sale window and sort order do keep updating.
+		updated, updErr := q.UpdateTicketTier(ctx, tierID, sessionID, name, mode, &price, plan.Currency, nil, nil, nil, plan.SaleWindowStart, plan.SaleWindowEnd, &sortOrder)
 		if errors.Is(updErr, pgx.ErrNoRows) {
 			// The mapping points at a tier of ANOTHER session — the Bil24
 			// category id was reused across action events. Re-pointing the
 			// mapping would corrupt the other session's outbound ids, so this
 			// is a conflict the operator has to resolve upstream.
-			return nil, nil, failImport(http.StatusConflict, "import.category_bound_elsewhere",
+			return nil, nil, nil, failImport(http.StatusConflict, "import.category_bound_elsewhere",
 				"categoryPriceId "+externalIDString(c.CategoryPriceID)+" is already bound to a ticket tier of a different session")
 		}
 		if updErr != nil {
-			return nil, nil, fmt.Errorf("update ticket tier: %w", updErr)
+			return nil, nil, nil, fmt.Errorf("update ticket tier: %w", updErr)
 		}
 		out[externalIDString(c.CategoryPriceID)] = updated.ID
 		ordered = append(ordered, updated.ID)
+		cats = append(cats, importedCategory{TierID: updated.ID, Availability: c.Availability})
 	}
-	return out, ordered, nil
+	return out, ordered, cats, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

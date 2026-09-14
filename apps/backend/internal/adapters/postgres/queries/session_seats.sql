@@ -76,6 +76,18 @@ WHERE  $1::bigint > (SELECT last_value FROM session_seats_system_id_seq);
 DELETE FROM session_seats
 WHERE  session_id = $1;
 
+-- name: DeleteSeatRowsBySession :execrows
+-- Wipes only the coordinate-bearing seats of a session, leaving every
+-- kind='ga_unit' place alone. It is the rebind wipe of a session whose
+-- GA categories own their places (plan 08_architecture/23 decision 8):
+-- re-binding the SAME plan version re-materializes the geometry seats
+-- but must not re-mint or drop the category places, whose quantity an
+-- operator may have edited since. Any reservation_seats links MUST be
+-- removed first — session_seats is the FK target.
+DELETE FROM session_seats
+WHERE  session_id = $1
+  AND  kind       = 'seat';
+
 -- name: GetSessionSeatByID :one
 -- Fetches a single seat by id, scoped to its session so a caller with
 -- a mismatched session_id receives pgx.ErrNoRows instead of leaking
@@ -279,7 +291,7 @@ WHERE  session_id = $1
 -- branch. Returns pgx.ErrNoRows if the session does not exist or has been
 -- soft-deleted.
 SELECT id, admission_mode, seat_status_version, capacity_total,
-       seating_plan_version_id
+       seating_plan_version_id, capacity_override
 FROM   sessions
 WHERE  id         = $1
   AND  deleted_at IS NULL;
@@ -301,8 +313,9 @@ RETURNING seat_status_version;
 
 -- name: InsertGAUnits :execrows
 -- Materializes `quantity` GA units for a session under the given key
--- prefix ("ga|c3" / "ga|pool") starting at start_index+1. tier_id is
--- the category tier for plan-bound units, NULL for pool units.
+-- prefix ("ga|c3") starting at start_index+1. tier_id is the category
+-- that owns the places. Since migration 0101 every GA place belongs to
+-- a category, so a NULL tier_id would be unsellable inventory.
 INSERT INTO session_seats
     (session_id, seat_key, sector_name, row_name, seat_number,
      tier_id, status, kind)
@@ -376,21 +389,6 @@ WHERE ss.id = picked.id
 RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
           ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
           ss.status_version, ss.updated_at, ss.system_seat_id, ss.kind;
-
--- name: DeleteAvailableGAPoolUnits :execrows
--- Shrinks a plan-less GA session's pool by removing the highest-
--- numbered AVAILABLE units. Held/sold units are never touched — the
--- ledger's UpdateCapacityTotal guard already refuses a total below
--- held+sold.
-DELETE FROM session_seats
-WHERE id IN (
-    SELECT id FROM session_seats
-    WHERE  session_id = $1
-      AND  kind = 'ga_unit'
-      AND  status = 'available'
-    ORDER  BY seat_key DESC
-    LIMIT  $2
-);
 
 -- ─────────────────────────────────────────────────────────────────────
 -- AB-49: post-issuance seat release (ticket cancellation)

@@ -27,7 +27,6 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 )
 
 // arenaMatch is the outcome of spec §3.2 steps 1-2: which existing session (if
@@ -80,12 +79,16 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 		}
 	}
 
-	orderedTiers, err := h.upsertArenaTiers(ctx, q, tx, plan, sessionID, warnings)
+	orderedTiers, cats, err := h.upsertArenaTiers(ctx, q, tx, plan, sessionID, warnings)
 	if err != nil {
 		return importResult{}, err
 	}
 
-	if err := materializeArenaCategoryPlaces(ctx, q, sessionID, orderedTiers); err != nil {
+	// Plan 08_architecture/23 step 7 — the same category-quota rules the
+	// Bil24-format importer follows. An arena bundle never carries an svg,
+	// so every category of the session is a General Admission one and mints
+	// its own places.
+	if err := syncImportedCategoryQuotas(ctx, q, sessionID, cats, true, warnings); err != nil {
 		return importResult{}, err
 	}
 
@@ -481,10 +484,10 @@ func (h *Handler) upsertArenaTiers(
 	plan importPlan,
 	sessionID uuid.UUID,
 	warnings *warningSink,
-) ([]uuid.UUID, error) {
+) ([]uuid.UUID, []importedCategory, error) {
 	existing, err := q.ListTicketTiersBySession(ctx, sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("list ticket tiers: %w", err)
+		return nil, nil, fmt.Errorf("list ticket tiers: %w", err)
 	}
 	byName := make(map[string]gen.TicketTierRow, len(existing))
 	for _, t := range existing {
@@ -495,6 +498,7 @@ func (h *Handler) upsertArenaTiers(
 	}
 
 	ordered := make([]uuid.UUID, 0, len(plan.Request.CategoryList))
+	cats := make([]importedCategory, 0, len(plan.Request.CategoryList))
 	touched := make(map[uuid.UUID]struct{}, len(plan.Request.CategoryList))
 
 	for i, c := range plan.Request.CategoryList {
@@ -504,7 +508,7 @@ func (h *Handler) upsertArenaTiers(
 		}
 		price := c.PriceMinorUnits()
 		if price < 0 {
-			return nil, failImport(http.StatusUnprocessableEntity, "import.invalid_price",
+			return nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_price",
 				fmt.Sprintf("categoryList[%d].price must not be negative", i))
 		}
 		mode := "fixed"
@@ -524,9 +528,9 @@ func (h *Handler) upsertArenaTiers(
 			resolved, resErr := compatids.Resolve(ctx, tx, compatids.KindCategoryPrice, c.CategoryPriceID)
 			switch {
 			case errors.Is(resErr, compatids.ErrNotFound):
-				return nil, errCompatIDUnknown(fmt.Sprintf("categoryList[%d].categoryPriceId", i), c.CategoryPriceID)
+				return nil, nil, errCompatIDUnknown(fmt.Sprintf("categoryList[%d].categoryPriceId", i), c.CategoryPriceID)
 			case resErr != nil:
-				return nil, fmt.Errorf("resolve category compat id: %w", resErr)
+				return nil, nil, fmt.Errorf("resolve category compat id: %w", resErr)
 			}
 			target = resolved
 		default:
@@ -539,27 +543,32 @@ func (h *Handler) upsertArenaTiers(
 			row, insErr := q.InsertTicketTier(ctx, sessionID, name, mode, price, plan.Currency, nil, nil, capacity,
 				plan.SaleWindowStart, plan.SaleWindowEnd, sortOrder)
 			if insErr != nil {
-				return nil, fmt.Errorf("insert ticket tier: %w", insErr)
+				return nil, nil, fmt.Errorf("insert ticket tier: %w", insErr)
 			}
 			ordered = append(ordered, row.ID)
+			cats = append(cats, importedCategory{TierID: row.ID, Availability: c.Availability, Created: true})
 			touched[row.ID] = struct{}{}
 			byName[normalizeTierName(name)] = row
 			continue
 		}
 
-		updated, updErr := q.UpdateTicketTier(ctx, target, sessionID, name, mode, &price, plan.Currency, nil, nil, capacity,
+		// capacity is deliberately NOT passed on the UPDATE: a repeat import
+		// never changes a category's quantity (plan 08_architecture/23
+		// decision 7) — price, sale window and sort order do keep updating.
+		updated, updErr := q.UpdateTicketTier(ctx, target, sessionID, name, mode, &price, plan.Currency, nil, nil, nil,
 			plan.SaleWindowStart, plan.SaleWindowEnd, &sortOrder)
 		if errors.Is(updErr, pgx.ErrNoRows) {
 			// The compat id points at a tier of ANOTHER session. Re-pointing it
 			// would corrupt that session's outbound ids.
-			return nil, failImport(http.StatusConflict, "import.category_bound_elsewhere",
+			return nil, nil, failImport(http.StatusConflict, "import.category_bound_elsewhere",
 				"categoryPriceId "+strconv.FormatInt(c.CategoryPriceID, 10)+
 					" is already bound to a ticket tier of a different session")
 		}
 		if updErr != nil {
-			return nil, fmt.Errorf("update ticket tier: %w", updErr)
+			return nil, nil, fmt.Errorf("update ticket tier: %w", updErr)
 		}
 		ordered = append(ordered, updated.ID)
+		cats = append(cats, importedCategory{TierID: updated.ID, Availability: c.Availability})
 		touched[updated.ID] = struct{}{}
 	}
 
@@ -572,70 +581,19 @@ func (h *Handler) upsertArenaTiers(
 	if len(untouched) > 0 {
 		ids, err := compatids.EnsureMany(ctx, tx, compatids.KindCategoryPrice, untouched)
 		if err != nil {
-			return nil, fmt.Errorf("mint compat ids for untouched tiers: %w", err)
+			return nil, nil, fmt.Errorf("mint compat ids for untouched tiers: %w", err)
 		}
 		labels := make([]string, 0, len(untouched))
 		for _, id := range untouched {
 			labels = append(labels, strconv.FormatInt(ids[id], 10))
 		}
 		warnings.add(WarnTierNotInPayload,
-			"the session carries ticket tiers the bundle did not mention; they were left untouched: "+
+			"the session carries ticket tiers the bundle did not mention; they were closed "+
+				"(never deleted) and keep every place they already sold: "+
 				strings.Join(labels, ", "))
 	}
 
-	return ordered, nil
-}
-
-// materializeArenaCategoryPlaces gives every imported category its own GA
-// places, so a freshly imported session can actually sell (plan
-// 08_architecture/23: a category OWNS its places, and the pre-0101
-// fungible NULL-tier pool the importer used to create is unsellable).
-//
-// Decision 7: the FIRST import sets the quantity from the bundle's declared
-// availability; a REPEAT import never changes it — the bundle's
-// `availability` is the source system's REMAINDER, not a quantity, so
-// re-applying it would subtract the source's sales on top of arena's. The
-// "already owns places" guard is exactly that rule, and it also makes the
-// import idempotent.
-//
-// A category without a declared availability gets no places here; it keeps
-// the ledger-only shape the availability projections still fall back to.
-// Full import handling (repeat-import price/window updates, closing
-// categories that vanished from the bundle) is step 7 of the plan.
-func materializeArenaCategoryPlaces(
-	ctx context.Context,
-	q *gen.Queries,
-	sessionID uuid.UUID,
-	tierIDs []uuid.UUID,
-) error {
-	if len(tierIDs) == 0 {
-		return nil
-	}
-	stats, err := gaquota.SessionStats(ctx, q, sessionID)
-	if err != nil {
-		return fmt.Errorf("read category place counters: %w", err)
-	}
-	seen := make(map[uuid.UUID]struct{}, len(tierIDs))
-	for _, tierID := range tierIDs {
-		if _, dup := seen[tierID]; dup {
-			continue
-		}
-		seen[tierID] = struct{}{}
-		if st, ok := stats[tierID]; ok && st.Quantity > 0 {
-			continue // already materialized — a repeat import leaves it alone
-		}
-		tier, tErr := q.GetTicketTierByID(ctx, tierID, sessionID)
-		if tErr != nil {
-			return fmt.Errorf("load imported category: %w", tErr)
-		}
-		if tier.Capacity == nil || *tier.Capacity <= 0 {
-			continue
-		}
-		if err := gaquota.CreateCategory(ctx, q, sessionID, tierID, *tier.Capacity); err != nil {
-			return fmt.Errorf("materialize category places: %w", err)
-		}
-	}
-	return nil
+	return ordered, cats, nil
 }
 
 // normalizeTierName is the case- and whitespace-insensitive key spec §3.2 step

@@ -103,6 +103,16 @@ func (f *import517Fixture) cleanup() {
 			f.t.Logf("import517Fixture cleanup: %s: %v", label, err)
 		}
 	}
+	// session_seats FIRST: since plan 08_architecture/23 an imported
+	// category OWNS its places, so every imported GA session now carries
+	// session_seats rows whose FKs (session_id, tier_id) have no cascade —
+	// leaving them behind makes the sessions/ticket_tiers deletes below fail
+	// and the organization row survive, which collides with the next test's
+	// fixture on orgs_name_unique_active.
+	exec("session_seats", `DELETE FROM session_seats WHERE session_id IN (
+	          SELECT s.id FROM sessions s JOIN events e ON e.id = s.event_id WHERE e.org_id = $1)`, f.orgID)
+	exec("inventory_ledger", `DELETE FROM inventory_ledger WHERE session_id IN (
+	          SELECT s.id FROM sessions s JOIN events e ON e.id = s.event_id WHERE e.org_id = $1)`, f.orgID)
 	exec("ticket_tiers", `DELETE FROM ticket_tiers WHERE session_id IN (
 	          SELECT s.id FROM sessions s JOIN events e ON e.id = s.event_id WHERE e.org_id = $1)`, f.orgID)
 	exec("sessions", `DELETE FROM sessions WHERE event_id IN (SELECT id FROM events WHERE org_id = $1)`, f.orgID)

@@ -31,6 +31,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 )
 
 // admissionMode → seating_plans.plan_type, mirroring hseating's
@@ -110,6 +111,14 @@ func (h *Handler) importSeating(
 		if err != nil {
 			return seatingOutcome{}, err
 		}
+		// Plan 08_architecture/23 decision 8: a repeat import of the SAME
+		// plan neither re-mints the categories' General Admission places
+		// nor re-derives the capacity from the version's CapacityStanding —
+		// that would undo an operator's quantity edit. The capacity is the
+		// places: plan seats plus what the categories own.
+		if err := gaquota.Recompute(ctx, q, sessionID); err != nil {
+			return seatingOutcome{}, fmt.Errorf("recompute session capacity: %w", err)
+		}
 		return seatingOutcome{PlanVersionID: binding.SeatingPlanVersionID, SeatsMaterialized: seats}, nil
 	}
 
@@ -161,6 +170,13 @@ func (h *Handler) importSeating(
 	}
 	if _, err := q.BindSessionSeatingPlan(ctx, sessionID, eventID, mode, &versionID, capacity); err != nil {
 		return seatingOutcome{}, fmt.Errorf("bind seating plan to session: %w", err)
+	}
+	// The capacity a session really has is its places (plan
+	// 08_architecture/23): the seats just materialized plus the places its
+	// categories own. For a first import that equals the version's declared
+	// capacity; after a quantity edit only this is right.
+	if err := gaquota.Recompute(ctx, q, sessionID); err != nil {
+		return seatingOutcome{}, fmt.Errorf("recompute session capacity: %w", err)
 	}
 
 	if _, err := h.applySeatAvailability(ctx, q, plan, sessionID, warnings); err != nil {
@@ -407,17 +423,28 @@ func (h *Handler) materializeImportedSeats(
 			if cat.Capacity <= 0 || cat.Capacity > math.MaxInt32 {
 				continue
 			}
-			var tierPtr *uuid.UUID
-			if tierID, ok := tierByCategory[cat.Index]; ok {
-				tierPtr = &tierID
+			tierID, ok := tierByCategory[cat.Index]
+			if !ok {
+				// Since migration 0101 a General Admission place belongs to
+				// a category; a NULL-tier batch would be inventory nothing
+				// can sell. The unmapped-category warning above already
+				// tells the operator to price the category, after which the
+				// admin can give it a quantity.
+				continue
 			}
+			quantity := int32(cat.Capacity) //nolint:gosec // bound-checked above
 			inserted, err := q.InsertGAUnits(ctx, sessionID,
-				"ga|c"+strconv.Itoa(cat.Index), 0, tierPtr,
-				int32(cat.Capacity)) //nolint:gosec // bound-checked above
+				"ga|c"+strconv.Itoa(cat.Index), 0, &tierID, quantity)
 			if err != nil {
 				return 0, fmt.Errorf("materialize GA units: %w", err)
 			}
 			materialized += int(inserted)
+			// The places just minted ARE the quantity from now on: record it
+			// on ticket_tiers and reserve the category's own number so a
+			// later quota edit cannot collide with the geometry index.
+			if err := gaquota.AdoptPlanCategory(ctx, q, sessionID, tierID, quantity); err != nil {
+				return 0, fmt.Errorf("record GA category quantity: %w", err)
+			}
 		}
 	}
 	return materialized, nil

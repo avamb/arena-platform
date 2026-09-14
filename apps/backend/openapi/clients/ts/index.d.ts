@@ -9718,10 +9718,32 @@ export interface components {
              */
             status?: "draft" | "scheduled" | "cancelled" | "completed";
         };
+        /**
+         * @description A non-fatal note about a session write: the request succeeded, but
+         *     part of it could not be applied verbatim.
+         */
+        SessionWarning: {
+            /**
+             * @description Stable machine-readable warning code.
+             * @example session.capacity_is_category_sum
+             */
+            code: string;
+            /** @description Human-readable explanation of the warning. */
+            message: string;
+        };
         /** @description Single-session response envelope. */
         SessionEnvelope: {
             /** @description The session row. */
             session: components["schemas"]["SessionItem"];
+            /**
+             * @description Non-fatal notes about the write, absent when there are none.
+             *     `session.capacity_is_category_sum` reports that
+             *     `capacity_override` was ignored because the session's
+             *     general-admission categories own their places: its capacity is
+             *     the sum of the category quantities and is edited through the
+             *     quantities, not through this field.
+             */
+            warnings?: components["schemas"]["SessionWarning"][];
         };
         /**
          * @description List-sessions response envelope. The top-level
@@ -10384,6 +10406,14 @@ export interface components {
              * @description New display order.
              */
             sort_order?: number | null;
+            /**
+             * @description Open (`true`) or close (`false`) the category. A closed
+             *     category accepts no NEW hold on any sales path, while places
+             *     already held or sold are untouched and an order already
+             *     placed can still be paid. Omitting the key leaves the flag
+             *     unchanged.
+             */
+            is_open?: boolean | null;
         };
         /** @description Single ticket-tier response envelope. */
         TicketTierEnvelope: {

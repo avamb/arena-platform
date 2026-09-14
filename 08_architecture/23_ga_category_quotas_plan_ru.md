@@ -234,12 +234,36 @@ WHERE s.deleted_at IS NULL AND s.admission_mode='hybrid' GROUP BY 1,2;
 - импорт пакета в формате Bil24 создаёт продаваемые места; повторный импорт с меньшим `availability` не меняет количество и не роняет его ниже занятого; `availability: 0` при первом импорте — по решению 7;
 - бесплатный билет и внешняя квота с категорией занимают места категории, а не строку ledger.
 
+Сделано в волне A (шаги 3 и 7):
+- `httpserver/ga_quota_admin_46_integration_test.go` — сеанс создаётся без
+  мест; первая категория задаёт вместимость; `capacity_override` в PATCH
+  игнорируется с предупреждением `session.capacity_is_category_sum`;
+  количество по умолчанию и 400 `tier.capacity_required`; рост, сжатие,
+  409 `tier.quantity_below_used`, открытие и закрытие; удаление и 409
+  `tier.in_use`; GA-категория на сеансе со схемой переводит его в `hybrid`,
+  а seated-категория отвечает 409 `tier.seated_category`; сеанс из
+  `arena-seed` продаёт места своей категории;
+- `himports/import_quota_47_integration_test.go` — первый импорт создаёт
+  места, повторный не меняет количество (но обновляет цену), пропавшая
+  категория закрывается, новая создаётся, `availability: 0` даёт закрытую
+  категорию и предупреждение `import.category_sold_out`;
+- `hseating/bind_ga_quota_47_integration_test.go` — первая привязка к
+  сеансу с GA-местами отвечает 409 `seating.session_has_ga_places`;
+  привязка GA-схемы записывает количество и номер категории; повторная
+  привязка той же версии сохраняет правку количества (решение 8);
+- `cmd/arena-seed/main_test.go` — сумма количеств категорий равна
+  вместимости сеанса.
+
 Обновить тесты, построенные на пуле:
 - `gen/ga_units_burst_integration_test.go`;
 - `hcheckout/hold_mutation_concurrency_integration_test.go`, `reservation_expire_sweep_integration_test.go`, `ga_hold_deadlock_race_integration_test.go`;
 - `httpserver/ticket_cancel_ab49_integration_test.go`, `order_wiring_w1a6c_488_integration_test.go`, `public_feed_checkout_race_integration_test.go`, `webhook_widget_completion_integration_test.go`;
 - `hbil24/bil24_476_catalog_test.go`, `seat_d1_312_test.go`;
-- `himports/bil24_session_517_*`, `event_bundle_525_integration_test.go`;
+- `himports/bil24_session_517_*`, `event_bundle_525_integration_test.go`
+  (сделано: их cleanup теперь чистит `session_seats` перед
+  `ticket_tiers`/`sessions` — импортированная категория владеет местами, а
+  оба FK без каскада, иначе организация фикстуры остаётся и следующий тест
+  падает на `orgs_name_unique_active`);
 - `httpserver/sessions_test.go`, `openapi_sessions_264_test.go`, `inventory_130_test.go`;
 - `tests/compat/bil24/`: `seed_test.go`, `scenario01_catalog_test.go`, `scenario02_ga_purchase_test.go`, `seat_list_499_test.go`, `event_bundle_527_integration_test.go`, golden-файлы;
 - `apps/admin-web/src/routes/events.test.ts`.

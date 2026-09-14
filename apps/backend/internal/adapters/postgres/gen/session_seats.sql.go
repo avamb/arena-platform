@@ -657,11 +657,16 @@ type SessionAdmissionRow struct {
 	// SeatingPlanVersionID is non-nil for plan-bound sessions (AB-51:
 	// GA unit allocation filters by tier only when plan-bound).
 	SeatingPlanVersionID *uuid.UUID `json:"seating_plan_version_id"`
+	// CapacityOverride is the operator knob of a plan-less session, nil
+	// when none was ever set. Plan 08_architecture/23 step 3 reads it as
+	// the wave-A default quantity basis for the FIRST GA category of a
+	// session (the admin still sends it until wave B).
+	CapacityOverride *int32 `json:"capacity_override"`
 }
 
 const getSessionAdmissionModeByID = `-- name: GetSessionAdmissionModeByID :one
 SELECT id, admission_mode, seat_status_version, capacity_total,
-       seating_plan_version_id
+       seating_plan_version_id, capacity_override
 FROM   sessions
 WHERE  id         = $1
   AND  deleted_at IS NULL`
@@ -673,7 +678,8 @@ WHERE  id         = $1
 func (q *Queries) GetSessionAdmissionModeByID(ctx context.Context, sessionID uuid.UUID) (SessionAdmissionRow, error) {
 	row := q.db.QueryRow(ctx, getSessionAdmissionModeByID, sessionID)
 	var r SessionAdmissionRow
-	err := row.Scan(&r.ID, &r.AdmissionMode, &r.SeatStatusVersion, &r.CapacityTotal, &r.SeatingPlanVersionID)
+	err := row.Scan(&r.ID, &r.AdmissionMode, &r.SeatStatusVersion, &r.CapacityTotal,
+		&r.SeatingPlanVersionID, &r.CapacityOverride)
 	return r, err
 }
 
@@ -717,9 +723,10 @@ SELECT $1,
 FROM generate_series(1, $5::int) gs`
 
 // InsertGAUnits materializes quantity GA units for a session under the
-// given seat-key prefix ("ga|c3" for a plan category, "ga|pool" for a
-// plan-less pool) starting at startIndex+1. tierID is the category tier
-// for plan-bound units, nil for pool units. Returns the inserted count.
+// given seat-key prefix ("ga|c3" for a plan geometry category) starting at
+// startIndex+1. tierID is the category that owns the places: since
+// migration 0101 every GA place belongs to one, and a nil tier would be
+// inventory no sales path can allocate. Returns the inserted count.
 func (q *Queries) InsertGAUnits(
 	ctx context.Context,
 	sessionID uuid.UUID,
@@ -857,25 +864,21 @@ func (q *Queries) CountGAUnits(ctx context.Context, sessionID uuid.UUID) (int64,
 	return n, err
 }
 
-const deleteAvailableGAPoolUnits = `-- name: DeleteAvailableGAPoolUnits :execrows
+const deleteSeatRowsBySession = `-- name: DeleteSeatRowsBySession :execrows
 DELETE FROM session_seats
-WHERE id IN (
-    SELECT id FROM session_seats
-    WHERE  session_id = $1
-      AND  kind = 'ga_unit'
-      AND  status = 'available'
-    ORDER  BY seat_key DESC
-    LIMIT  $2
-)`
+WHERE  session_id = $1
+  AND  kind       = 'seat'`
 
-// DeleteAvailableGAPoolUnits shrinks a plan-less pool by removing the
-// highest-numbered available units. Returns the deleted count; callers
-// must verify it matches the requested shrink (held/sold units are
-// never deleted).
-func (q *Queries) DeleteAvailableGAPoolUnits(
-	ctx context.Context, sessionID uuid.UUID, limit int32,
-) (int64, error) {
-	tag, err := q.db.Exec(ctx, deleteAvailableGAPoolUnits, sessionID, limit)
+// DeleteSeatRowsBySession wipes only the coordinate-bearing seats of a
+// session, leaving every kind='ga_unit' place alone. It is the rebind
+// wipe of a session whose GA categories own their places (plan
+// 08_architecture/23 decision 8): re-binding the SAME plan version
+// re-materializes the geometry seats but must not re-mint or drop the
+// category places, whose quantity an operator may have edited since.
+// Any reservation_seats links MUST be removed first — session_seats is
+// the FK target. Returns the number of rows deleted.
+func (q *Queries) DeleteSeatRowsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error) {
+	tag, err := q.db.Exec(ctx, deleteSeatRowsBySession, sessionID)
 	if err != nil {
 		return 0, err
 	}

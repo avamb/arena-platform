@@ -4711,6 +4711,21 @@ components:
             is rejected with HTTP 422 and
             `error.code = "session.invalid_transition"`.
 
+    SessionWarning:
+      type: object
+      required: [code, message]
+      description: |
+        A non-fatal note about a session write: the request succeeded, but
+        part of it could not be applied verbatim.
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable warning code.
+          example: session.capacity_is_category_sum
+        message:
+          type: string
+          description: Human-readable explanation of the warning.
+
     SessionEnvelope:
       type: object
       required: [session]
@@ -4719,6 +4734,17 @@ components:
         session:
           description: The session row.
           $ref: "#/components/schemas/SessionItem"
+        warnings:
+          type: array
+          description: |
+            Non-fatal notes about the write, absent when there are none.
+            `session.capacity_is_category_sum` reports that
+            `capacity_override` was ignored because the session's
+            general-admission categories own their places: its capacity is
+            the sum of the category quantities and is edited through the
+            quantities, not through this field.
+          items:
+            $ref: "#/components/schemas/SessionWarning"
 
     SessionListResponse:
       type: object
@@ -5474,6 +5500,14 @@ components:
           type: [integer, "null"]
           format: int32
           description: New display order.
+        is_open:
+          type: [boolean, "null"]
+          description: |
+            Open (`true`) or close (`false`) the category. A closed
+            category accepts no NEW hold on any sales path, while places
+            already held or sold are untouched and an order already
+            placed can still be paid. Omitting the key leaves the flag
+            unchanged.
 
     TicketTierEnvelope:
       type: object

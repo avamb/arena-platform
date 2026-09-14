@@ -329,3 +329,62 @@ func TestBuildSeed_OrgFieldsValid(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildSeed_TiersAreSellableCategories pins the plan
+// 08_architecture/23 step 3 requirement on the seed: since a General
+// Admission category OWNS its places, a seeded session with no category has
+// a capacity and nothing to sell. Every seeded tier must therefore reference
+// a seeded session, declare a positive quantity, and the quantities of a
+// session must add up to exactly its capacity_total — which is what
+// gaquota.CreateCategory recomputes at apply time.
+func TestBuildSeed_TiersAreSellableCategories(t *testing.T) {
+	t.Parallel()
+	s := BuildSeed()
+
+	if len(s.Tiers) == 0 {
+		t.Fatal("no seeded ticket tiers: a seeded stand cannot sell a single ticket")
+	}
+
+	sessionCapacity := make(map[string]int, len(s.Sessions))
+	for _, sess := range s.Sessions {
+		sessionCapacity[sess.ID] = sess.CapacityTotal
+	}
+	claimed := make(map[string]int, len(s.Sessions))
+	ids := make(map[string]bool, len(s.Tiers))
+
+	for _, tier := range s.Tiers {
+		if ids[tier.ID] {
+			t.Errorf("duplicate tier ID %s", tier.ID)
+		}
+		ids[tier.ID] = true
+		if _, ok := sessionCapacity[tier.SessionID]; !ok {
+			t.Errorf("tier %q references unknown session %s", tier.Name, tier.SessionID)
+			continue
+		}
+		if tier.Quantity <= 0 {
+			t.Errorf("tier %q quantity = %d; a GA category with no quantity is illegal",
+				tier.Name, tier.Quantity)
+		}
+		if !ValidSeedPricingModes[tier.PricingMode] {
+			t.Errorf("tier %q pricing_mode = %q; want one of free|fixed|pwyw",
+				tier.Name, tier.PricingMode)
+		}
+		if !strings.HasPrefix(tier.Name, "TEST ") {
+			t.Errorf("tier %q is not obviously test data", tier.Name)
+		}
+		claimed[tier.SessionID] += int(tier.Quantity)
+	}
+
+	for sessionID, total := range claimed {
+		if want := sessionCapacity[sessionID]; total != want {
+			t.Errorf("session %s: category quantities sum to %d, want capacity_total %d — "+
+				"the capacity of a session IS the sum of its categories", sessionID, total, want)
+		}
+	}
+	for sessionID, want := range sessionCapacity {
+		if claimed[sessionID] == 0 {
+			t.Errorf("session %s declares capacity %d but seeds no category, so it sells nothing",
+				sessionID, want)
+		}
+	}
+}

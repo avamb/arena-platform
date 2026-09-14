@@ -66,6 +66,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
@@ -81,6 +82,10 @@ const bindBodyLimit = 64 * 1024
 // (kind='ga_unit') exactly like seats. Plan-less GA sessions keep
 // working without a binding (their pool units are materialized at
 // session create).
+// admissionHybrid is the mode a session carrying both plan seats and GA
+// category places runs in (plan 08_architecture/23 decision 10).
+const admissionHybrid = "hybrid"
+
 var validBindAdmissionModes = map[string]bool{
 	"assigned_seats":    true,
 	"hybrid":            true,
@@ -341,7 +346,27 @@ func (h *Handler) bindSessionSeatingCore(
 		return nil, bindErr(http.StatusInternalServerError,
 			"seating.bind_failed", "failed to bind seating plan", nil)
 	}
+	// How many General Admission places the session already owns, and how
+	// many of them belong to a category. Plan 08_architecture/23 decisions
+	// 8 and 10 both hang off this number, so it is read once, under the
+	// sessions row lock taken above.
+	gaPlaces, err := qtx.CountGAUnits(ctx, sessionID)
+	if err != nil {
+		h.logger.Error("seating: bind GA place count failed", slog.String("error", err.Error()))
+		return nil, bindErr(http.StatusInternalServerError,
+			"seating.bind_failed", "failed to bind seating plan", nil)
+	}
+
+	// Decision 10: a GA category added by hand to a seated session turns it
+	// hybrid while the bound plan stays an assigned_seats one, so a rebind
+	// of that session must accept the pair the AB-40 B5 table forbids.
+	// Every other combination keeps the original cross-check.
+	planTypeAccepted := true
 	if allowed, ok := planTypesForAdmissionMode[req.AdmissionMode]; ok && !allowed[parentPlan.PlanType] {
+		planTypeAccepted = req.AdmissionMode == admissionHybrid &&
+			parentPlan.PlanType == "assigned_seats" && gaPlaces > 0
+	}
+	if !planTypeAccepted {
 		return nil, bindErr(http.StatusBadRequest,
 			"seating.plan_type_mismatch",
 			fmt.Sprintf("a %s plan cannot be bound with admission_mode %q",
@@ -356,6 +381,33 @@ func (h *Handler) bindSessionSeatingCore(
 	// blocks a re-bind (§7 SEAT-B2). GA sessions have no plan binding to
 	// begin with — this handler is not the general-admission code path.
 	rebound := binding.SeatingPlanVersionID != nil
+
+	// A FIRST bind onto a session that already carries General Admission
+	// places would leave those places sitting next to the ones the plan is
+	// about to materialize, double-counting the capacity — and for the
+	// pre-0101 'ga|pool|%' batch the extra places are not even sellable.
+	// Refuse; the operator removes the categories (or creates a new
+	// session) deliberately. A rebind is a different story: it goes through
+	// the wipe path below, which is what decision 8 governs.
+	if !rebound && gaPlaces > 0 {
+		return nil, bindErr(http.StatusConflict,
+			"seating.session_has_ga_places",
+			"session already carries general-admission places; remove its GA categories "+
+				"before binding a seating plan",
+			map[string]any{
+				"ga_places":      gaPlaces,
+				"admission_mode": binding.AdmissionMode,
+			})
+	}
+
+	// Decision 8: after the first bind the geometry is no longer the source
+	// of a category's quantity — the places and ticket_tiers.capacity are.
+	// Re-binding the SAME version therefore re-materializes only the
+	// coordinate-bearing seats and leaves every category place (and every
+	// operator edit to its quantity) exactly where it is.
+	keepGAPlaces := rebound && gaPlaces > 0 &&
+		binding.SeatingPlanVersionID != nil && *binding.SeatingPlanVersionID == planVersionID
+
 	if rebound {
 		// Only enforce the guardrail when actually rebinding (not on the
 		// first bind, where no prior state exists).
@@ -415,7 +467,11 @@ func (h *Handler) bindSessionSeatingCore(
 			return nil, bindErr(http.StatusInternalServerError,
 				"seating.bind_failed", "failed to prepare session for rebind", nil)
 		}
-		if _, err := qtx.DeleteSessionSeatsBySession(ctx, sessionID); err != nil {
+		wipe := qtx.DeleteSessionSeatsBySession
+		if keepGAPlaces {
+			wipe = qtx.DeleteSeatRowsBySession
+		}
+		if _, err := wipe(ctx, sessionID); err != nil {
 			h.logger.Error("seating: bind session_seats wipe failed", slog.String("error", err.Error()))
 			return nil, bindErr(http.StatusInternalServerError,
 				"seating.bind_failed", "failed to prepare session for rebind", nil)
@@ -511,8 +567,12 @@ func (h *Handler) bindSessionSeatingCore(
 	// "ga|c<categoryIndex>|<n>" keys, tier fixed to the category tier.
 	// GA places exist as inventory from setup, not as a by-product of
 	// purchase; they share the seat status machine and transition table.
+	//
+	// Decision 8 (keepGAPlaces): a rebind of the SAME version keeps the
+	// places the categories already own — with whatever quantity an
+	// operator has since set — instead of re-minting the geometry's.
 	gaMaterialized := 0
-	if req.AdmissionMode != "assigned_seats" {
+	if req.AdmissionMode != "assigned_seats" && !keepGAPlaces {
 		for _, cat := range geometry.GACategories() {
 			tierID, hasTier := resolvedMap[cat.Index]
 			if !hasTier {
@@ -527,11 +587,11 @@ func (h *Handler) bindSessionSeatingCore(
 					fmt.Sprintf("GA category %d capacity %d out of range", cat.Index, cat.Capacity),
 					nil)
 			}
+			quantity := int32(cat.Capacity) //nolint:gosec // bound-checked above
 			inserted, err := qtx.InsertGAUnits(
 				ctx, sessionID,
 				fmt.Sprintf("ga|c%d", cat.Index),
-				0, &tierID,
-				int32(cat.Capacity), //nolint:gosec // bound-checked above
+				0, &tierID, quantity,
 			)
 			if err != nil {
 				h.logger.Error("seating: bind GA unit materialize failed",
@@ -541,6 +601,17 @@ func (h *Handler) bindSessionSeatingCore(
 					"seating.bind_failed", "failed to materialize GA units", nil)
 			}
 			gaMaterialized += int(inserted)
+			// Plan 08_architecture/23 step 7: the places just minted ARE
+			// the category's quantity from now on, so record it on the
+			// ticket_tiers row (a caller-supplied tier carries none) and
+			// reserve the category's own number for later quota edits.
+			if err := gaquota.AdoptPlanCategory(ctx, qtx, sessionID, tierID, quantity); err != nil {
+				h.logger.Error("seating: bind GA category adoption failed",
+					slog.String("error", err.Error()),
+				)
+				return nil, bindErr(http.StatusInternalServerError,
+					"seating.bind_failed", "failed to record GA category quantity", nil)
+			}
 		}
 	}
 
@@ -581,6 +652,26 @@ func (h *Handler) bindSessionSeatingCore(
 		return nil, bindErr(http.StatusInternalServerError,
 			"seating.bind_failed", "failed to bind seating plan", nil)
 	}
+
+	// Plan 08_architecture/23: the session capacity is its PLACES — plan
+	// seats plus the places its categories own — and the session-level
+	// inventory ledger mirrors it. For an ordinary bind that is the same
+	// number the version already declared; for a same-version rebind whose
+	// category quantities were edited since (decision 8) it is the only
+	// correct one, and CapacityStanding would undo the operator's edit.
+	if err := gaquota.Recompute(ctx, qtx, sessionID); err != nil {
+		h.logger.Error("seating: bind capacity recompute failed", slog.String("error", err.Error()))
+		return nil, bindErr(http.StatusInternalServerError,
+			"seating.bind_failed", "failed to recompute session capacity", nil)
+	}
+	refreshed, err := qtx.GetSessionSeatingBinding(ctx, sessionID, eventID)
+	if err != nil {
+		h.logger.Error("seating: bind session reload failed", slog.String("error", err.Error()))
+		return nil, bindErr(http.StatusInternalServerError,
+			"seating.bind_failed", "failed to bind seating plan", nil)
+	}
+	updated = refreshed
+	newCapacity = updated.CapacityTotal
 
 	// Stringify the resolved category → tier map once; the same map feeds
 	// both the audit metadata and the response envelope.

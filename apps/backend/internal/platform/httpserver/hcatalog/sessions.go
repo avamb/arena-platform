@@ -56,6 +56,7 @@ import (
 	catalogdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/catalog"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
@@ -596,34 +597,16 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// AB-51: a plan-less GA session materializes its capacity as a
-	// fungible pool of ga_unit rows ("ga|pool|<n>", tier NULL until
-	// held). Units ARE the inventory — a failure here must not leave a
-	// session that promises capacity it cannot allocate, so the create
-	// is rolled back via soft-delete.
-	//
-	// KNOWN GAP (plan 08_architecture/23, step 3/6 — not yet wired). Since
-	// migration 0101 a GA category OWNS its places and the sales paths
-	// allocate only from a category's own rows, so THIS pool (tier NULL) is
-	// not sellable: the session's capacity must come from
-	// gaquota.CreateCategory when a category is added, and this block
-	// should create no places at all. Until that lands, a GA session
-	// created through this endpoint sells nothing.
-	if !seated && !hasPlan {
-		if _, err := h.sessionQueries.InsertGAUnits(
-			ctx, sess.ID, "ga|pool", 0, nil, sess.CapacityTotal,
-		); err != nil {
-			h.logger.Error("session: GA pool materialization failed",
-				slog.String("session_id", sess.ID.String()),
-				slog.String("error", err.Error()),
-			)
-			_, _ = h.sessionQueries.SoftDeleteSession(ctx, sess.ID, eventID)
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"session.ga_pool_failed", "failed to materialize general-admission inventory", r,
-			))
-			return
-		}
-	}
+	// A plan-less general-admission session is created with NO places
+	// (plan 08_architecture/23 step 3). Since migration 0101 a GA category
+	// OWNS its places and the sales paths allocate only from a category's
+	// own rows, so the pre-0101 fungible "ga|pool|<n>" batch this spot used
+	// to mint (tier_id NULL) would be inventory nobody can sell. The
+	// capacity_total written above is therefore PROVISIONAL — it only
+	// satisfies the sessions_capacity_total_check and feeds the wave-A
+	// default quantity of the first category; the moment a category is
+	// created through gaquota the capacity becomes the SUM of the category
+	// quantities and stays that way (gaquota.Recompute).
 
 	// Check for overlapping sessions (allowed but flagged).
 	overlapCount, overlapErr := h.sessionQueries.CountOverlappingSessions(ctx, eventID, uuid.Nil, startAt, endAt)
@@ -904,6 +887,39 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Plan 08_architecture/23 step 3: once a GA category owns places, the
+	// session capacity is the SUM of the category quantities and is never
+	// edited on its own — not through capacity_override, not through a
+	// venue change. Wave-A compatibility (step 6, "Совместимость"): the
+	// admin still sends capacity_override, so the field is IGNORED with a
+	// response warning rather than refused; it becomes a 400 in wave B.
+	capacityIsCategorySum := false
+	if !seated {
+		var ok bool
+		capacityIsCategorySum, ok = h.sessionOwnsGAPlaces(ctx, sessionID)
+		if !ok {
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"session.update_failed", "failed to inspect session inventory", r,
+			))
+			return
+		}
+	}
+	var warnings []map[string]any
+	if capacityIsCategorySum && (req.CapacityOverride != nil || req.VenueID != nil) {
+		// The venue-change branch only re-derives capacity when the new
+		// venue carries a capacity_default, but the warning is cheap and
+		// the operator needs to know the knob is inert either way.
+		if req.CapacityOverride != nil {
+			warnings = append(warnings, map[string]any{
+				"code": "session.capacity_is_category_sum",
+				"message": "capacity_override was ignored: the capacity of a session whose " +
+					"general-admission categories own their places is the sum of the category " +
+					"quantities; edit the quantities instead",
+			})
+		}
+		req.CapacityOverride = nil
+	}
+
 	// Optional venue change (AB-36): validate ownership and re-derive the
 	// currency when the current value was itself derived.
 	var venueID *uuid.UUID
@@ -956,7 +972,7 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	// Re-derive capacity_total for GA sessions when the operator knob or the
 	// venue changed (AB-36 resolution chain: override -> venue default).
 	var newCapacityTotal *int32
-	if !seated && (req.CapacityOverride != nil || venueChanged) {
+	if !seated && !capacityIsCategorySum && (req.CapacityOverride != nil || venueChanged) {
 		effectiveOverride := current.CapacityOverride
 		if req.CapacityOverride != nil {
 			effectiveOverride = req.CapacityOverride
@@ -1016,55 +1032,14 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Capacity propagation hook: fire when capacity_total changed.
+	// Capacity propagation hook: fire when capacity_total changed. The
+	// places themselves are never touched here — a session whose GA
+	// categories own their places took the capacityIsCategorySum branch
+	// above and never reaches a capacity change at all (plan
+	// 08_architecture/23 step 3); a session without categories has no
+	// places to resize.
 	if updated.CapacityTotal != current.CapacityTotal {
 		h.OnCapacityChange(ctx, updated.ID, current.CapacityTotal, updated.CapacityTotal)
-
-		// AB-51: a plan-less GA session's unit pool tracks its capacity.
-		// Growth appends fresh pool units; shrink removes AVAILABLE ones
-		// only — if fewer rows were deleted than requested, held/sold
-		// units exceed the new total, which the ledger's own
-		// UpdateCapacityTotal guard also refuses; surface as a warning.
-		//
-		// KNOWN GAP (plan 08_architecture/23, step 3/6 — not yet wired):
-		// in the quota model the session capacity is the SUM of the
-		// category quantities and is never edited on its own, so this whole
-		// block goes away together with the editable capacity field; the
-		// NULL-tier rows it maintains are not sellable.
-		if updated.AdmissionMode == "general_admission" && updated.SeatingPlanVersionID == nil {
-			diff := int64(updated.CapacityTotal) - int64(current.CapacityTotal)
-			switch {
-			case diff > 0:
-				count, cErr := h.sessionQueries.CountGAUnits(ctx, updated.ID)
-				if cErr == nil {
-					_, cErr = h.sessionQueries.InsertGAUnits(
-						ctx, updated.ID, "ga|pool",
-						int32(count),     //nolint:gosec // pool sizes are session capacities, far below MaxInt32
-						nil, int32(diff), //nolint:gosec // diff bounded by int32 capacities
-					)
-				}
-				if cErr != nil {
-					h.logger.Error("session: GA pool grow failed",
-						slog.String("session_id", updated.ID.String()),
-						slog.String("error", cErr.Error()))
-				}
-			case diff < 0:
-				deleted, dErr := h.sessionQueries.DeleteAvailableGAPoolUnits(
-					ctx, updated.ID,
-					int32(-diff), //nolint:gosec // diff bounded by int32 capacities
-				)
-				if dErr != nil {
-					h.logger.Error("session: GA pool shrink failed",
-						slog.String("session_id", updated.ID.String()),
-						slog.String("error", dErr.Error()))
-				} else if deleted != -diff {
-					h.logger.Warn("session: GA pool shrink partial — held/sold units exceed new capacity",
-						slog.String("session_id", updated.ID.String()),
-						slog.Int64("requested", -diff),
-						slog.Int64("deleted", deleted))
-				}
-			}
-		}
 	}
 
 	// Webhook event catalog (feature S-1): emit v1.session.cancelled exactly
@@ -1092,9 +1067,42 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	overlapCount, overlapErr := h.sessionQueries.CountOverlappingSessions(ctx, eventID, sessionID, effectiveStart, effectiveEnd)
 	hasOverlap := overlapErr == nil && overlapCount > 0
 
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+	respBody := map[string]any{
 		"session": SessionFromRow(updated, hasOverlap),
-	})
+	}
+	if len(warnings) > 0 {
+		respBody["warnings"] = warnings
+	}
+	httputil.WriteJSON(w, http.StatusOK, respBody)
+}
+
+// sessionOwnsGAPlaces reports whether any general-admission category of the
+// session owns places — the state in which sessions.capacity_total is the
+// sum of the category quantities and no longer an operator input (plan
+// 08_architecture/23 step 3). The second return is false when the lookup
+// itself failed, so the caller can refuse rather than silently fall back to
+// the pre-quota behaviour and rewrite a capacity it must not touch.
+func (h *Handler) sessionOwnsGAPlaces(ctx context.Context, sessionID uuid.UUID) (bool, bool) {
+	stats, err := gaquota.SessionStats(ctx, h.sessionQueries, sessionID)
+	if err != nil {
+		h.logger.Error("session: category place counters failed",
+			slog.String("session_id", sessionID.String()),
+			slog.String("error", err.Error()))
+		return false, false
+	}
+	if len(stats) > 0 {
+		return true, true
+	}
+	// A place whose category was soft-deleted is absent from the stats but
+	// still counts: the capacity is still made of places, not of a knob.
+	units, err := h.sessionQueries.CountGAUnits(ctx, sessionID)
+	if err != nil {
+		h.logger.Error("session: GA place count failed",
+			slog.String("session_id", sessionID.String()),
+			slog.String("error", err.Error()))
+		return false, false
+	}
+	return units > 0, true
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

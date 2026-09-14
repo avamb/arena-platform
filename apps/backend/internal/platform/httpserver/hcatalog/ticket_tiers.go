@@ -2,6 +2,7 @@
 package hcatalog
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -274,16 +275,51 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tier, err := h.tierQueries.InsertTicketTier(ctx,
-		sessionID,
-		req.Name, req.PricingMode,
-		req.PriceAmount, sessionCurrency,
-		req.PwywMin, req.PwywMax,
-		req.Capacity,
-		saleStart, saleEnd,
-		req.SortOrder,
-	)
-	if err != nil {
+	// Plan 08_architecture/23 step 3: on a general-admission or hybrid
+	// session a category OWNS its places, so creating one is a quota
+	// operation — the tier row alone sells nothing.
+	quantity, qOK := h.resolveNewCategoryQuantity(w, r, sessionID, req.Capacity)
+	if !qOK {
+		return
+	}
+
+	var tier gen.TicketTierRow
+	insert := func(txq *gen.Queries) error {
+		row, insErr := txq.InsertTicketTier(ctx,
+			sessionID,
+			req.Name, req.PricingMode,
+			req.PriceAmount, sessionCurrency,
+			req.PwywMin, req.PwywMax,
+			req.Capacity,
+			saleStart, saleEnd,
+			req.SortOrder,
+		)
+		if insErr != nil {
+			return insErr
+		}
+		tier = row
+		if quantity <= 0 {
+			// No quantity and none derivable: the tier is a pure pricing /
+			// geometry-mapping row (a seated session's category before its
+			// plan is bound). It owns no place — today's behaviour.
+			return nil
+		}
+		// Same transaction as the INSERT: a category that fails to
+		// materialize its places must not survive as an unsellable row.
+		// CreateCategory also flips an assigned_seats session to hybrid
+		// (decision 10) and recomputes capacity_total + the ledger.
+		if err := gaquota.CreateCategory(ctx, txq, sessionID, row.ID, quantity); err != nil {
+			return err
+		}
+		fresh, getErr := txq.GetTicketTierByID(ctx, row.ID, sessionID)
+		if getErr != nil {
+			return getErr
+		}
+		tier = fresh
+		return nil
+	}
+
+	if err := gaquota.InTx(ctx, h.pool, h.tierQueries, insert); err != nil {
 		h.logger.Error("tier: insert failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"tier.insert_failed", "failed to create ticket tier", r,
@@ -294,6 +330,85 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"tier": tierFromRow(tier),
 	})
+}
+
+// resolveNewCategoryQuantity decides how many places a category created
+// through POST .../tiers should own (plan 08_architecture/23 step 3).
+//
+//   - an explicit `capacity` is the quantity, on every admission mode — on a
+//     seated session it makes the new category a GA one and flips the session
+//     to hybrid (decision 10);
+//   - without one, a general_admission / hybrid session falls back to the
+//     wave-A default: the session's capacity_override (its capacity_total
+//     while no category owns a place yet) minus the quantities already
+//     claimed by its categories. A non-positive remainder is refused with
+//     400 tier.capacity_required — decision 3 forbids a GA category without
+//     a quantity;
+//   - without one on an assigned_seats session the result is 0: the tier is
+//     created as a pure geometry-mapping row, exactly as before.
+//
+// Returns ok=false after writing the error envelope.
+func (h *Handler) resolveNewCategoryQuantity(
+	w http.ResponseWriter, r *http.Request, sessionID uuid.UUID, requested *int32,
+) (int32, bool) {
+	if requested != nil {
+		return *requested, true
+	}
+	ctx := r.Context()
+	sess, err := h.tierQueries.GetSessionAdmissionModeByID(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"session.not_found", "session not found", r,
+			))
+			return 0, false
+		}
+		h.logger.Error("tier: session admission lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"tier.insert_failed", "failed to resolve session admission mode", r,
+		))
+		return 0, false
+	}
+	if sess.AdmissionMode == "assigned_seats" {
+		return 0, true
+	}
+
+	stats, err := gaquota.SessionStats(ctx, h.tierQueries, sessionID)
+	if err != nil {
+		h.logger.Error("tier: category place counters failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"tier.insert_failed", "failed to read category quantities", r,
+		))
+		return 0, false
+	}
+	var claimed int32
+	for _, st := range stats {
+		claimed += st.Quantity
+	}
+	var basis int32
+	switch {
+	case sess.CapacityOverride != nil:
+		basis = *sess.CapacityOverride
+	case len(stats) == 0:
+		// Nothing owns a place yet, so capacity_total is still the
+		// provisional value the session was created with.
+		basis = sess.CapacityTotal
+	}
+	if basis-claimed <= 0 {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"tier.capacity_required",
+			"capacity is required: a general-admission category owns its places and "+
+				"the session has no capacity left to derive a default quantity from", r,
+			map[string]any{
+				"field":             "capacity",
+				"session_capacity":  basis,
+				"claimed_by_tiers":  claimed,
+				"remaining_default": basis - claimed,
+			},
+		))
+		return 0, false
+	}
+	return basis - claimed, true
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -455,6 +570,11 @@ type updateTierRequest struct {
 	SaleWindowStart *string `json:"sale_window_start"`
 	SaleWindowEnd   *string `json:"sale_window_end"`
 	SortOrder       *int32  `json:"sort_order"`
+	// IsOpen opens or closes the category (migration 0101, decision 1): a
+	// closed category accepts no NEW hold while everything already held or
+	// sold stays untouched and an order already placed can still be paid.
+	// Optional — omitting the key leaves the flag alone.
+	IsOpen *bool `json:"is_open"`
 }
 
 func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
@@ -612,16 +732,49 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 	// Currency is never patched here — empty string means "keep existing"
 	// in UpdateTicketTier, and the existing value already equals the
 	// session's currency (composite FK invariant, AB-38).
-	updated, err := h.tierQueries.UpdateTicketTier(ctx,
-		tierID, sessionID,
-		name, pricingMode,
-		req.PriceAmount, "",
-		req.PwywMin, req.PwywMax,
-		req.Capacity,
-		saleStart, saleEnd,
-		req.SortOrder,
-	)
+	//
+	// capacity is deliberately NOT passed to UpdateTicketTier: on a
+	// category that owns places it is the QUANTITY, and only the quota
+	// mechanism may write it (plan 08_architecture/23 step 3) — it has to
+	// mint or remove the matching places in the same transaction.
+	var updated gen.TicketTierRow
+	err = gaquota.InTx(ctx, h.pool, h.tierQueries, func(txq *gen.Queries) error {
+		row, updErr := txq.UpdateTicketTier(ctx,
+			tierID, sessionID,
+			name, pricingMode,
+			req.PriceAmount, "",
+			req.PwywMin, req.PwywMax,
+			nil,
+			saleStart, saleEnd,
+			req.SortOrder,
+		)
+		if updErr != nil {
+			return updErr
+		}
+		updated = row
+		if req.IsOpen != nil && *req.IsOpen != row.IsOpen {
+			if err := gaquota.SetOpen(ctx, txq, sessionID, tierID, *req.IsOpen); err != nil {
+				return err
+			}
+		}
+		if req.Capacity != nil {
+			if err := applyCategoryQuantity(ctx, txq, sessionID, tierID, *req.Capacity); err != nil {
+				return err
+			}
+		}
+		if req.IsOpen != nil || req.Capacity != nil {
+			fresh, getErr := txq.GetTicketTierByID(ctx, tierID, sessionID)
+			if getErr != nil {
+				return getErr
+			}
+			updated = fresh
+		}
+		return nil
+	})
 	if err != nil {
+		if writeQuotaError(w, r, err) {
+			return
+		}
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("tier.not_found", "ticket tier not found", r))
 			return
@@ -665,6 +818,91 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"tier": tierFromRow(updated),
 	})
+}
+
+// applyCategoryQuantity sets a category's quantity to the requested value
+// through the quota mechanism (plan 08_architecture/23 step 3).
+//
+// A category that owns no place yet is CREATED — that is what mints its
+// places, assigns its stable per-session number and, on an assigned_seats
+// session, flips the session to hybrid (decision 10). One that already owns
+// places is RESIZED, which mints or removes the difference. A request that
+// changes nothing is a no-op rather than a second mint: CreateCategory adds
+// places unconditionally, so re-sending the same capacity must not reach it.
+func applyCategoryQuantity(
+	ctx context.Context, txq *gen.Queries, sessionID, tierID uuid.UUID, quantity int32,
+) error {
+	stats, err := gaquota.CategoryStats(ctx, txq, sessionID, tierID)
+	if err != nil {
+		return err
+	}
+	if stats.Quantity == quantity {
+		return nil
+	}
+	if stats.Quantity == 0 {
+		kind, kErr := gaquota.CategoryKind(ctx, txq, sessionID, tierID)
+		if kErr != nil {
+			return kErr
+		}
+		if kind == gaquota.KindSeated {
+			// The category's places are the plan geometry; its quantity is
+			// read-only (decision 10).
+			return gaquota.ErrSeatedCategory
+		}
+		return gaquota.CreateCategory(ctx, txq, sessionID, tierID, quantity)
+	}
+	_, err = gaquota.SetQuantity(ctx, txq, sessionID, tierID, quantity)
+	return err
+}
+
+// writeQuotaError maps the typed errors of the quota mechanism onto the
+// ticket-tier error envelope. Returns true when it wrote a response.
+func writeQuotaError(w http.ResponseWriter, r *http.Request, err error) bool {
+	var belowUsed *gaquota.BelowUsedError
+	switch {
+	case errors.As(err, &belowUsed):
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			"tier.quantity_below_used",
+			"the requested quantity is below the places this category cannot give up", r,
+			map[string]any{
+				"field": "capacity",
+				"used":  belowUsed.Used,
+				"floor": belowUsed.Floor(),
+			},
+		))
+		return true
+	case errors.Is(err, gaquota.ErrSeatedCategory):
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			"tier.seated_category",
+			"this category's places come from the seating plan; its quantity is read-only "+
+				"and it cannot be deleted", r,
+			map[string]any{"field": "capacity"},
+		))
+		return true
+	case errors.Is(err, gaquota.ErrCategoryInUse):
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+			"tier.in_use",
+			"this category still holds or has sold places; close it instead of deleting it", r,
+		))
+		return true
+	case errors.Is(err, gaquota.ErrInvalidQuantity):
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"tier.invalid_capacity", "capacity must be greater than 0", r,
+			map[string]any{"field": "capacity"},
+		))
+		return true
+	case errors.Is(err, gaquota.ErrCategoryNotFound):
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"tier.not_found", "ticket tier not found", r,
+		))
+		return true
+	case errors.Is(err, gaquota.ErrSessionNotFound):
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"session.not_found", "session not found", r,
+		))
+		return true
+	}
+	return false
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -712,10 +950,28 @@ func (h *Handler) HandleDeleteTier(w http.ResponseWriter, r *http.Request) {
 
 	qtx := h.tierQueries.WithTx(tx)
 
-	deleted, err := qtx.SoftDeleteTicketTier(ctx, tierID, sessionID)
+	// Plan 08_architecture/23 step 3: deleting a category also removes the
+	// places it owns and recomputes the session capacity + ledger, and is
+	// refused outright for a seated category or one that still holds or has
+	// sold a place (decision 2). A tier with no place at all — a legacy row
+	// or a pure plan-mapping one — still just soft-deletes.
+	//
+	// The response row is read BEFORE the delete: the soft delete only sets
+	// deleted_at/updated_at, neither of which the envelope carries.
+	deleted, err := qtx.GetTicketTierByID(ctx, tierID, sessionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("tier.not_found", "ticket tier not found", r))
+			return
+		}
+		h.logger.Error("tier: get for delete failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"tier.delete_failed", "failed to delete ticket tier", r,
+		))
+		return
+	}
+	if err := gaquota.DeleteCategory(ctx, qtx, sessionID, tierID); err != nil {
+		if writeQuotaError(w, r, err) {
 			return
 		}
 		h.logger.Error("tier: soft-delete failed", slog.String("error", err.Error()))

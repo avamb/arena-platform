@@ -47,9 +47,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
@@ -120,6 +123,7 @@ func run(args []string) error {
 		"payment_configs", stats.PaymentConfigs,
 		"events", stats.Events,
 		"sessions", stats.Sessions,
+		"ticket_tiers", stats.Tiers,
 		"inventory_ledgers", stats.InventoryLedgers,
 		"already_present", stats.AlreadyPresent,
 	)
@@ -144,6 +148,7 @@ type SeedData struct {
 	PaymentConfigs []SeedPaymentConfig
 	Events         []SeedEvent
 	Sessions       []SeedSession
+	Tiers          []SeedTier
 	Inventories    []SeedInventory
 }
 
@@ -229,6 +234,27 @@ type SeedSession struct {
 	CapacityTotal int
 }
 
+// SeedTier mirrors a ticket_tiers row that is also a General Admission
+// CATEGORY of its session: since migration 0101 a category owns its places
+// (plan 08_architecture/23), so the seed inserts the row and then hands it to
+// the quota mechanism, which mints Quantity places, writes the quantity back
+// to ticket_tiers.capacity and recomputes the session capacity and ledger.
+// Without this a seeded stand has a session but nothing to sell.
+type SeedTier struct {
+	ID          string
+	SessionID   string
+	Name        string
+	PricingMode string // free|fixed|pwyw
+	PriceAmount int64  // minor units
+	Quantity    int32  // places the category owns; must be > 0
+	SortOrder   int32
+}
+
+// ValidSeedPricingModes lists the ticket_tiers.pricing_mode values the
+// database CHECK accepts, so the seed's own tests can pin them without
+// importing the catalog domain package.
+var ValidSeedPricingModes = map[string]bool{"free": true, "fixed": true, "pwyw": true}
+
 // SeedInventory mirrors a row in inventory_ledger for the GA (tier_id NULL)
 // capacity of a seeded session. Without this row ReserveCapacity returns
 // ErrNoRows and the PR2-04/PR2-27 integration proofs cannot run.
@@ -298,6 +324,8 @@ const (
 	EventA1     = "fe0000a1-0000-7000-8000-000000000001"
 	SessionA1   = "fe0000a1-0000-7000-8000-000000000002"
 	InventoryA1 = "fe0000a1-0000-7000-8000-000000000003"
+	TierA1Std   = "fe0000a1-0000-7000-8000-000000000004"
+	TierA1Vip   = "fe0000a1-0000-7000-8000-000000000005"
 )
 
 // SeedPassword is the plaintext password assigned to every seeded user.
@@ -402,6 +430,13 @@ func BuildSeed() SeedData {
 		Sessions: []SeedSession{
 			{ID: SessionA1, EventID: EventA1, VenueID: VenueA1, Status: "scheduled", StartInDays: 30, DurationHrs: 3, CapacityTotal: 100},
 		},
+		// Two GA categories whose quantities add up to the session capacity,
+		// so a seeded stand can actually sell a ticket through the gateway,
+		// the widget and the REST checkout alike.
+		Tiers: []SeedTier{
+			{ID: TierA1Std, SessionID: SessionA1, Name: "TEST Standing", PricingMode: "fixed", PriceAmount: 2500, Quantity: 80, SortOrder: 0},
+			{ID: TierA1Vip, SessionID: SessionA1, Name: "TEST VIP", PricingMode: "fixed", PriceAmount: 7500, Quantity: 20, SortOrder: 1},
+		},
 		Inventories: []SeedInventory{
 			{ID: InventoryA1, SessionID: SessionA1, CapacityTotal: 100},
 		},
@@ -428,6 +463,7 @@ type ApplyStats struct {
 	PaymentConfigs   int
 	Events           int
 	Sessions         int
+	Tiers            int
 	InventoryLedgers int
 	AlreadyPresent   int
 }
@@ -677,7 +713,57 @@ func applyAll(ctx context.Context, tx pgx.Tx, seed SeedData) (ApplyStats, error)
 		}
 	}
 
+	// Ticket tiers LAST: each one is a General Admission category that owns
+	// its places, and the quota mechanism recomputes the session capacity
+	// and the ledger row the loop above just inserted.
+	if err := applyTiers(ctx, tx, seed, &stats); err != nil {
+		return stats, err
+	}
+
 	return stats, nil
+}
+
+// applyTiers inserts the seeded categories and materializes their places
+// through the quota mechanism (plan 08_architecture/23 step 3): a category
+// OWNS its places, so a ticket_tiers row on its own sells nothing.
+//
+// Idempotency works the same way as everywhere else in this file: the INSERT
+// is ON CONFLICT (id) DO NOTHING and the places are only minted for a row
+// this run actually created, so a re-run never doubles a category's places.
+func applyTiers(ctx context.Context, tx pgx.Tx, seed SeedData, stats *ApplyStats) error {
+	q := gen.New(tx)
+	for _, t := range seed.Tiers {
+		sessionID, err := uuid.Parse(t.SessionID)
+		if err != nil {
+			return fmt.Errorf("parse session id %q for tier %q: %w", t.SessionID, t.Name, err)
+		}
+		tierID, err := uuid.Parse(t.ID)
+		if err != nil {
+			return fmt.Errorf("parse tier id %q: %w", t.ID, err)
+		}
+		// The currency follows the session (AB-38); the composite FK
+		// ticket_tiers_currency_matches_session rejects anything else.
+		tag, err := tx.Exec(ctx, `
+			INSERT INTO ticket_tiers (id, session_id, name, pricing_mode, price_amount,
+			                          currency, capacity, sort_order)
+			SELECT $1, $2, $3, $4, $5, s.currency, $6, $7
+			FROM   sessions s
+			WHERE  s.id = $2
+			ON CONFLICT (id) DO NOTHING
+		`, t.ID, t.SessionID, t.Name, t.PricingMode, t.PriceAmount, t.Quantity, t.SortOrder)
+		if err != nil {
+			return fmt.Errorf("insert ticket_tier %q: %w", t.Name, err)
+		}
+		if tag.RowsAffected() == 0 {
+			stats.AlreadyPresent++
+			continue
+		}
+		stats.Tiers++
+		if err := gaquota.CreateCategory(ctx, q, sessionID, tierID, t.Quantity); err != nil {
+			return fmt.Errorf("materialize places of ticket_tier %q: %w", t.Name, err)
+		}
+	}
+	return nil
 }
 
 // printSummary emits a human-readable list of the seed contents to stdout.

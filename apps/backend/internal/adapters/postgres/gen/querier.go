@@ -502,7 +502,7 @@ type Querier interface {
 	InsertGAUnits(ctx context.Context, sessionID uuid.UUID, keyPrefix string, startIndex int32, tierID *uuid.UUID, quantity int32) (int64, error)
 	AllocateGAUnitsForHold(ctx context.Context, sessionID, reservationID, tierID uuid.UUID, statusVersion int64, limit int32) ([]SessionSeatRow, error)
 	CountGAUnits(ctx context.Context, sessionID uuid.UUID) (int64, error)
-	DeleteAvailableGAPoolUnits(ctx context.Context, sessionID uuid.UUID, limit int32) (int64, error)
+	DeleteSeatRowsBySession(ctx context.Context, sessionID uuid.UUID) (int64, error)
 	ArchiveSeatingPlan(ctx context.Context, id, ownerOrgID uuid.UUID) (SeatingPlanRow, error)
 	SoftDeleteSeatingPlan(ctx context.Context, id, ownerOrgID uuid.UUID) (SeatingPlanRow, error)
 	InsertSeatingPlanVersion(ctx context.Context, seatingPlanID uuid.UUID, versionNumber int32, geometry json.RawMessage, geometryChecksum string, svgAssetMediaID *uuid.UUID, capacitySeated, capacityStanding int32) (SeatingPlanVersionRow, error)
