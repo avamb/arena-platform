@@ -46,6 +46,14 @@ type TicketTierRow struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	DeletedAt       *time.Time `json:"deleted_at"`
+	// IsOpen is false for a closed category: it accepts no NEW holds,
+	// while places already held or sold are untouched (migration 0101).
+	IsOpen bool `json:"is_open"`
+	// UnitSeq is the stable per-session category number behind the
+	// seat_key prefix of this category's own GA places (ga|t<seq>|<n>).
+	// Never reused, including after a soft delete. Nil only for a row
+	// written before migration 0101's backfill could reach it.
+	UnitSeq *int32 `json:"unit_seq"`
 }
 
 // scanTicketTierRow scans a single ticket_tiers row into a TicketTierRow.
@@ -69,6 +77,8 @@ func scanTicketTierRow(row interface {
 		&t.CreatedAt,
 		&t.UpdatedAt,
 		&t.DeletedAt,
+		&t.IsOpen,
+		&t.UnitSeq,
 	)
 	return t, err
 }
@@ -80,16 +90,20 @@ func scanTicketTierRow(row interface {
 const insertTicketTier = `-- name: InsertTicketTier :one
 INSERT INTO ticket_tiers (
     session_id, name, pricing_mode, price_amount, currency,
-    pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end, sort_order
+    pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end, sort_order,
+    is_open
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+        COALESCE($12::boolean, true))
 RETURNING id, session_id, name, pricing_mode, price_amount, currency,
           pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end,
-          sort_order, created_at, updated_at, deleted_at`
+          sort_order, created_at, updated_at, deleted_at, is_open, unit_seq`
 
 // InsertTicketTier creates a new pricing tier for the given session.
 // price_amount is in smallest currency units (cents). Use 0 for free tiers.
-// Returns the created row including the uuidv7 PK assigned by the database.
+// The category is created open; use InsertTicketTierWithOpen to create a
+// closed one. Returns the created row including the uuidv7 PK assigned by
+// the database.
 func (q *Queries) InsertTicketTier(
 	ctx context.Context,
 	sessionID uuid.UUID,
@@ -101,9 +115,29 @@ func (q *Queries) InsertTicketTier(
 	saleWindowStart, saleWindowEnd *time.Time,
 	sortOrder int32,
 ) (TicketTierRow, error) {
+	return q.InsertTicketTierWithOpen(ctx, sessionID, name, pricingMode,
+		priceAmount, currency, pwywMin, pwywMax, capacity,
+		saleWindowStart, saleWindowEnd, sortOrder, nil)
+}
+
+// InsertTicketTierWithOpen is InsertTicketTier plus the is_open flag
+// (migration 0101). A nil isOpen takes the column default (open).
+func (q *Queries) InsertTicketTierWithOpen(
+	ctx context.Context,
+	sessionID uuid.UUID,
+	name, pricingMode string,
+	priceAmount int64,
+	currency string,
+	pwywMin, pwywMax *int64,
+	capacity *int32,
+	saleWindowStart, saleWindowEnd *time.Time,
+	sortOrder int32,
+	isOpen *bool,
+) (TicketTierRow, error) {
 	row := q.db.QueryRow(ctx, insertTicketTier,
 		sessionID, name, pricingMode, priceAmount, currency,
 		pwywMin, pwywMax, capacity, saleWindowStart, saleWindowEnd, sortOrder,
+		isOpen,
 	)
 	return scanTicketTierRow(row)
 }
@@ -115,7 +149,7 @@ func (q *Queries) InsertTicketTier(
 const getTicketTierByID = `-- name: GetTicketTierByID :one
 SELECT id, session_id, name, pricing_mode, price_amount, currency,
        pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end,
-       sort_order, created_at, updated_at, deleted_at
+       sort_order, created_at, updated_at, deleted_at, is_open, unit_seq
 FROM   ticket_tiers
 WHERE  id         = $1
   AND  session_id = $2
@@ -135,7 +169,7 @@ func (q *Queries) GetTicketTierByID(ctx context.Context, id, sessionID uuid.UUID
 const getTicketTierByIDGlobal = `-- name: GetTicketTierByIDGlobal :one
 SELECT id, session_id, name, pricing_mode, price_amount, currency,
        pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end,
-       sort_order, created_at, updated_at, deleted_at
+       sort_order, created_at, updated_at, deleted_at, is_open, unit_seq
 FROM   ticket_tiers
 WHERE  id         = $1
   AND  deleted_at IS NULL`
@@ -155,7 +189,7 @@ func (q *Queries) GetTicketTierByIDGlobal(ctx context.Context, id uuid.UUID) (Ti
 const listTicketTiersBySession = `-- name: ListTicketTiersBySession :many
 SELECT id, session_id, name, pricing_mode, price_amount, currency,
        pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end,
-       sort_order, created_at, updated_at, deleted_at
+       sort_order, created_at, updated_at, deleted_at, is_open, unit_seq
 FROM   ticket_tiers
 WHERE  session_id = $1
   AND  deleted_at IS NULL
@@ -197,13 +231,14 @@ SET    name              = COALESCE(NULLIF($3, ''), name),
        sale_window_start = CASE WHEN $10::timestamptz IS NOT NULL THEN $10::timestamptz ELSE sale_window_start END,
        sale_window_end   = CASE WHEN $11::timestamptz IS NOT NULL THEN $11::timestamptz ELSE sale_window_end   END,
        sort_order        = CASE WHEN $12::integer IS NOT NULL THEN $12::integer ELSE sort_order       END,
+       is_open           = CASE WHEN $13::boolean IS NOT NULL THEN $13::boolean ELSE is_open          END,
        updated_at        = now()
 WHERE  id         = $1
   AND  session_id = $2
   AND  deleted_at IS NULL
 RETURNING id, session_id, name, pricing_mode, price_amount, currency,
           pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end,
-          sort_order, created_at, updated_at, deleted_at`
+          sort_order, created_at, updated_at, deleted_at, is_open, unit_seq`
 
 // UpdateTicketTier applies a partial update to an active tier scoped by session_id.
 // Empty string fields leave the existing string values unchanged.
@@ -221,6 +256,25 @@ func (q *Queries) UpdateTicketTier(
 	saleWindowStart, saleWindowEnd *time.Time,
 	sortOrder *int32,
 ) (TicketTierRow, error) {
+	return q.UpdateTicketTierWithOpen(ctx, id, sessionID, name, pricingMode,
+		priceAmount, currency, pwywMin, pwywMax, capacity,
+		saleWindowStart, saleWindowEnd, sortOrder, nil)
+}
+
+// UpdateTicketTierWithOpen is UpdateTicketTier plus the is_open flag
+// (migration 0101). A nil isOpen leaves the stored flag unchanged.
+func (q *Queries) UpdateTicketTierWithOpen(
+	ctx context.Context,
+	id, sessionID uuid.UUID,
+	name, pricingMode string,
+	priceAmount *int64,
+	currency string,
+	pwywMin, pwywMax *int64,
+	capacity *int32,
+	saleWindowStart, saleWindowEnd *time.Time,
+	sortOrder *int32,
+	isOpen *bool,
+) (TicketTierRow, error) {
 	row := q.db.QueryRow(ctx, updateTicketTier,
 		id, sessionID,
 		name, pricingMode,
@@ -229,6 +283,7 @@ func (q *Queries) UpdateTicketTier(
 		capacity,
 		saleWindowStart, saleWindowEnd,
 		sortOrder,
+		isOpen,
 	)
 	return scanTicketTierRow(row)
 }
@@ -246,7 +301,7 @@ WHERE  id         = $1
   AND  deleted_at IS NULL
 RETURNING id, session_id, name, pricing_mode, price_amount, currency,
           pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end,
-          sort_order, created_at, updated_at, deleted_at`
+          sort_order, created_at, updated_at, deleted_at, is_open, unit_seq`
 
 // SoftDeleteTicketTier marks a tier as deleted by setting deleted_at.
 // Scoped by session_id to enforce owner-gated mutation policy.

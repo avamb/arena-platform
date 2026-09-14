@@ -801,3 +801,32 @@ entries short and factual.
   (`httpserver/public_feed_checkout_race_integration_test.go`),
   `TestBil24_CreateUser_ConcurrentSameNewEmail_AllSucceedSameUserID`
   (`tests/compat/bil24/create_user_race_test.go`).
+- **TWO cascade-less FKs point at `session_seats`, not one:
+  `reservation_seats.session_seat_id` AND `order_items.session_seat_id`.**
+  Every "delete a free GA place" path must exclude both, or it dies with
+  23503. The dev database has 32 AVAILABLE `ga_unit` rows across 6 sessions
+  referenced by `order_items` (and 0 referenced by `reservation_seats`), so
+  a guard that only checks `reservation_seats` — as the GA-quota plan
+  originally specified — passes every hand-written query and then fails on
+  real data. Guarded in `queries/ga_quota.sql`
+  (`CountDeletableGAUnitsForTier` / `DeleteAvailableGAUnitsForTier`) and in
+  migration 0101's conversion block. The pre-existing
+  `DeleteAvailableGAPoolUnits` still checks neither.
+- **A quota/inventory mutation must take the `sessions` row lock
+  (`IncrementSessionSeatStatusVersion`) as its literally FIRST statement,
+  before the reads it decides from — not just before the writes.** Under
+  READ COMMITTED, reading the per-category place counts and then bumping
+  the version lets two concurrent editors both decide from the same stale
+  counts and write a quantity the places no longer match (seen 2026-09-14:
+  60 stated against 70 real places in
+  `TestGAQuota_SetQuantityVsGAHold_NoDeadlock`). The bump is both the lock
+  order step 1 AND the serialization point; a later `return err` rolls it
+  back with the rest of the transaction, so taking it early costs nothing.
+- **`webhook_widget_completion_integration_test.go` leaks one
+  `checkout.issue_tickets` row into `worker_jobs`**, and
+  `TestAuthEmailIntegrationPR02_VerificationEmailArrives` (which drains
+  `worker_jobs` generically) then fails with `no handler for job type
+  "checkout.issue_tickets"` on the NEXT run against the same database.
+  It is leftover contamination, not a regression: `DELETE FROM worker_jobs
+  WHERE job_type='checkout.issue_tickets'` and re-run. The AGENTS.md rule
+  about sweeping `worker_jobs` in such fixtures is still not honoured there.

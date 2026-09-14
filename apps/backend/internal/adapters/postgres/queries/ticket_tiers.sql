@@ -8,19 +8,21 @@
 -- Returns the created row including the uuidv7 PK assigned by the database.
 INSERT INTO ticket_tiers (
     session_id, name, pricing_mode, price_amount, currency,
-    pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end, sort_order
+    pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end, sort_order,
+    is_open
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+        COALESCE($12::boolean, true))
 RETURNING id, session_id, name, pricing_mode, price_amount, currency,
           pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end,
-          sort_order, created_at, updated_at, deleted_at;
+          sort_order, created_at, updated_at, deleted_at, is_open, unit_seq;
 
 -- name: GetTicketTierByID :one
 -- GetTicketTierByID fetches an active tier by its UUID primary key scoped to the session.
 -- Returns pgx.ErrNoRows when not found, already deleted, or belongs to a different session.
 SELECT id, session_id, name, pricing_mode, price_amount, currency,
        pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end,
-       sort_order, created_at, updated_at, deleted_at
+       sort_order, created_at, updated_at, deleted_at, is_open, unit_seq
 FROM   ticket_tiers
 WHERE  id         = $1
   AND  session_id = $2
@@ -32,7 +34,7 @@ WHERE  id         = $1
 -- tier_id is known. Returns pgx.ErrNoRows when not found or soft-deleted.
 SELECT id, session_id, name, pricing_mode, price_amount, currency,
        pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end,
-       sort_order, created_at, updated_at, deleted_at
+       sort_order, created_at, updated_at, deleted_at, is_open, unit_seq
 FROM   ticket_tiers
 WHERE  id         = $1
   AND  deleted_at IS NULL;
@@ -42,7 +44,7 @@ WHERE  id         = $1
 -- Ordered by sort_order ASC then id ASC so the display order is stable.
 SELECT id, session_id, name, pricing_mode, price_amount, currency,
        pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end,
-       sort_order, created_at, updated_at, deleted_at
+       sort_order, created_at, updated_at, deleted_at, is_open, unit_seq
 FROM   ticket_tiers
 WHERE  session_id = $1
   AND  deleted_at IS NULL
@@ -64,13 +66,14 @@ SET    name              = COALESCE(NULLIF($3, ''), name),
        sale_window_start = CASE WHEN $10::timestamptz IS NOT NULL THEN $10::timestamptz ELSE sale_window_start END,
        sale_window_end   = CASE WHEN $11::timestamptz IS NOT NULL THEN $11::timestamptz ELSE sale_window_end   END,
        sort_order        = CASE WHEN $12::integer IS NOT NULL THEN $12::integer ELSE sort_order       END,
+       is_open           = CASE WHEN $13::boolean IS NOT NULL THEN $13::boolean ELSE is_open          END,
        updated_at        = now()
 WHERE  id         = $1
   AND  session_id = $2
   AND  deleted_at IS NULL
 RETURNING id, session_id, name, pricing_mode, price_amount, currency,
           pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end,
-          sort_order, created_at, updated_at, deleted_at;
+          sort_order, created_at, updated_at, deleted_at, is_open, unit_seq;
 
 -- name: SoftDeleteTicketTier :one
 -- SoftDeleteTicketTier marks a tier as deleted by setting deleted_at.
@@ -83,4 +86,4 @@ WHERE  id         = $1
   AND  deleted_at IS NULL
 RETURNING id, session_id, name, pricing_mode, price_amount, currency,
           pwyw_min, pwyw_max, capacity, sale_window_start, sale_window_end,
-          sort_order, created_at, updated_at, deleted_at;
+          sort_order, created_at, updated_at, deleted_at, is_open, unit_seq;

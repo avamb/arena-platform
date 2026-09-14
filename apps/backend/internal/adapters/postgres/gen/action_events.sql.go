@@ -179,7 +179,7 @@ const listActionEventTiersByOrg = `-- name: ListActionEventTiersByOrg :many
 SELECT tt.id, tt.session_id, tt.name, tt.pricing_mode, tt.price_amount,
        tt.currency, tt.pwyw_min, tt.pwyw_max, tt.capacity,
        tt.sale_window_start, tt.sale_window_end, tt.sort_order,
-       tt.created_at, tt.updated_at, tt.deleted_at,
+       tt.created_at, tt.updated_at, tt.deleted_at, tt.is_open, tt.unit_seq,
        (s.admission_mode = 'general_admission'
         OR (s.admission_mode = 'hybrid'
             AND EXISTS (SELECT 1
@@ -244,6 +244,8 @@ func (q *Queries) ListActionEventTiersByOrg(ctx context.Context, orgID uuid.UUID
 			&r.Tier.CreatedAt,
 			&r.Tier.UpdatedAt,
 			&r.Tier.DeletedAt,
+			&r.Tier.IsOpen,
+			&r.Tier.UnitSeq,
 			&r.IsGA,
 			&r.GAUnitsTotal,
 			&r.GAUnitsAvailable,

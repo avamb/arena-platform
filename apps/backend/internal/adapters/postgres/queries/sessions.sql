@@ -267,7 +267,7 @@ ORDER BY s.start_at ASC, s.id ASC;
 SELECT tt.id, tt.session_id, tt.name, tt.pricing_mode, tt.price_amount,
        tt.currency, tt.pwyw_min, tt.pwyw_max, tt.capacity,
        tt.sale_window_start, tt.sale_window_end, tt.sort_order,
-       tt.created_at, tt.updated_at, tt.deleted_at,
+       tt.created_at, tt.updated_at, tt.deleted_at, tt.is_open, tt.unit_seq,
        (s.admission_mode = 'general_admission'
         OR (s.admission_mode = 'hybrid'
             AND EXISTS (SELECT 1
