@@ -360,6 +360,14 @@ func (h *Handler) seatListLedgers(ctx context.Context, sessionID uuid.UUID, tier
 // seatListAvailability computes spec §7.2's per-category `availability`
 // (how many tickets remain sellable in this category), in precedence order:
 //
+//  0. a plan-less session's fungible GA pool (unbound ga_unit rows exist) and
+//     a tier with no placed seats of its own: the pool's available units,
+//     capped by what the tier's ticket_tiers.capacity still allows. A hold
+//     stamps the line tier onto the pool units it takes and a release resets
+//     them to NULL (hcheckout.AllocateGAUnitsTx), so the tier's own rows here
+//     are only its held and sold units, never inventory of its own. Counting
+//     them under step 1 reported 0 for every category that had sold a single
+//     ticket while 56 pool units were free (staging, 2026-09-14);
 //  1. the count of available session_seats rows bound to the tier, when the
 //     tier has materialised units — the seat map is the truth for placed
 //     inventory;
@@ -384,6 +392,16 @@ func (h *Handler) seatListLedgers(ctx context.Context, sessionID uuid.UUID, tier
 // The result is clamped at zero: an oversold ledger must not surface as a
 // negative count, which legacy clients render as garbage.
 func seatListAvailability(t gen.TicketTierRow, stats map[uuid.UUID]tierUnitStats, ledgers map[uuid.UUID]gen.InventoryLedgerRow) int {
+	if pool, ok := stats[uuid.Nil]; ok && pool.gaUnits > 0 && stats[t.ID].seats == 0 {
+		own := stats[t.ID]
+		n := pool.available + own.available
+		if t.Capacity != nil {
+			// Same guard AllocateGAUnitsTx applies: held+sold may not exceed
+			// the tier's capacity.
+			n = min(n, int(*t.Capacity)-(own.gaUnits-own.available))
+		}
+		return clampNonNegative(n)
+	}
 	if st, ok := stats[t.ID]; ok {
 		return clampNonNegative(st.available)
 	}

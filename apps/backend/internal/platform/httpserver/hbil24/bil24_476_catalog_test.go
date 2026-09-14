@@ -590,6 +590,51 @@ func TestBil24_499_SeatListAvailability_PrecedenceOrder(t *testing.T) {
 		}
 	})
 
+	// Staging 2026-09-14: a plan-less pool of 60, two VIP and two Standard
+	// sold. The sold units carry their tier, the free ones are unbound. Both
+	// categories must still offer the 56 free units, not 0.
+	t.Run("tier that sold out of the pool still sells from the pool", func(t *testing.T) {
+		uncapped := tier
+		uncapped.Capacity = nil
+		sold := map[uuid.UUID]tierUnitStats{
+			uuid.Nil: {gaUnits: 56, available: 56},
+			tierID:   {gaUnits: 2, available: 0},
+		}
+		if got := seatListAvailability(uncapped, sold, nil); got != 56 {
+			t.Errorf("availability=%d want 56 (free pool units; the tier's rows are its sales)", got)
+		}
+	})
+
+	t.Run("pool availability is capped by the tier's remaining capacity", func(t *testing.T) {
+		capped := tier
+		small := int32(5)
+		capped.Capacity = &small
+		used := map[uuid.UUID]tierUnitStats{
+			uuid.Nil: {gaUnits: 50, available: 44},
+			tierID:   {gaUnits: 3, available: 0}, // 3 held or sold
+		}
+		if got := seatListAvailability(capped, used, nil); got != 2 {
+			t.Errorf("availability=%d want 2 (capacity 5 - 3 used)", got)
+		}
+		full := map[uuid.UUID]tierUnitStats{
+			uuid.Nil: {gaUnits: 50, available: 44},
+			tierID:   {gaUnits: 6, available: 0},
+		}
+		if got := seatListAvailability(capped, full, nil); got != 0 {
+			t.Errorf("availability=%d want 0 (over capacity clamps at zero)", got)
+		}
+	})
+
+	t.Run("placed seats of a tier are not replaced by a GA pool", func(t *testing.T) {
+		hybrid := map[uuid.UUID]tierUnitStats{
+			uuid.Nil: {gaUnits: 20, available: 20},
+			tierID:   {seats: 30, available: 7},
+		}
+		if got := seatListAvailability(tier, hybrid, nil); got != 7 {
+			t.Errorf("availability=%d want 7 (the tier's own seats)", got)
+		}
+	})
+
 	t.Run("session-level ledger used when nothing else exists", func(t *testing.T) {
 		sessCap := int32(50)
 		sessLedger := map[uuid.UUID]gen.InventoryLedgerRow{

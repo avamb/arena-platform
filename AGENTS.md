@@ -556,6 +556,14 @@ entries short and factual.
   would make the plugin loop. Any NEW code opening a transaction that touches BOTH
   `inventory_ledger` and `sessions.seat_status_version` must follow the
   same order and go through (or mirror) `retryOnSerializationFailure`.
+- **On a plan-less GA session a `ga_unit` row's `tier_id` is a sale stamp,
+  not ownership.** `AllocateGAUnitsTx` stamps the line tier onto the NULL-tier
+  pool units it holds and releases reset them to NULL, so a tier's own rows
+  are exactly its held and sold units. Any per-tier availability must count
+  the unbound pool (capped by `ticket_tiers.capacity` minus the tier's
+  held+sold), never "available rows with this tier". `GET_SEAT_LIST` got this
+  wrong and showed every category that had sold one ticket as sold out while
+  56 pool units were free (staging, 2026-09-14).
 - **The public widget API has THREE independent rate limits, not one shared
   bucket, and the per-IP one only works when `TRUSTED_PROXY_COUNT` is set
   correctly.** `PUBLIC_FEED_TOKEN_RATE_LIMIT` (default 20000/min) is
