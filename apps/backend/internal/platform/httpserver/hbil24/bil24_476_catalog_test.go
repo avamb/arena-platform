@@ -685,6 +685,44 @@ func TestBil24_499_SeatListAvailability_PrecedenceOrder(t *testing.T) {
 	})
 }
 
+// TestBil24_GAAllActionsCategoryAvailability pins GET_ALL_ACTIONS'
+// categoryLimitList count for plan-less pools and plan-bound tiers. Staging
+// 2026-09-14: a pool of 60 (Standard 50, VIP 10), two of each sold, both
+// categories came back 0 and the site showed them sold out.
+func TestBil24_GAAllActionsCategoryAvailability(t *testing.T) {
+	c50, c10 := int32(50), int32(10)
+	std := gen.ActionEventTierRow{Tier: gen.TicketTierRow{Name: "Standard", Capacity: &c50}, IsGA: true, GAUnitsTotal: 2}
+	vip := gen.ActionEventTierRow{Tier: gen.TicketTierRow{Name: "VIP", Capacity: &c10}, IsGA: true, GAUnitsTotal: 2}
+
+	if got := gaCategoryAvailability(std, 56, true); got != 48 {
+		t.Errorf("plan-less Standard=%d want 48 (50 - 2 sold, pool has 56)", got)
+	}
+	if got := gaCategoryAvailability(vip, 56, true); got != 8 {
+		t.Errorf("plan-less VIP=%d want 8 (10 - 2 sold)", got)
+	}
+	if got := gaCategoryAvailability(std, 3, true); got != 3 {
+		t.Errorf("plan-less capped by pool=%d want 3", got)
+	}
+	full := vip
+	full.GAUnitsTotal = 11
+	if got := gaCategoryAvailability(full, 56, true); got != 0 {
+		t.Errorf("plan-less over capacity=%d want 0", got)
+	}
+	uncapped := gen.ActionEventTierRow{Tier: gen.TicketTierRow{Name: "Free"}, IsGA: true, GAUnitsTotal: 4}
+	if got := gaCategoryAvailability(uncapped, 56, true); got != 56 {
+		t.Errorf("plan-less uncapped=%d want 56 (the pool)", got)
+	}
+
+	bound := gen.ActionEventTierRow{Tier: gen.TicketTierRow{Name: "Floor", Capacity: &c50}, IsGA: true, GAUnitsTotal: 50, GAUnitsAvailable: 7}
+	if got := gaCategoryAvailability(bound, 90, false); got != 7 {
+		t.Errorf("plan-bound=%d want 7 (its own free units)", got)
+	}
+	noUnits := gen.ActionEventTierRow{Tier: gen.TicketTierRow{Name: "Extra"}, IsGA: true}
+	if got := gaCategoryAvailability(noUnits, 12, false); got != 12 {
+		t.Errorf("plan-bound tier without units=%d want 12 (session count)", got)
+	}
+}
+
 // TestBil24_499_SeatListPlacement_TriState pins spec §7.2's TRI-STATE
 // `placement` flag (feature #499). The three states are semantically
 // distinct and the WordPress plugin branches on all three:

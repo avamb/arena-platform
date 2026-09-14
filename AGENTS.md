@@ -561,9 +561,13 @@ entries short and factual.
   pool units it holds and releases reset them to NULL, so a tier's own rows
   are exactly its held and sold units. Any per-tier availability must count
   the unbound pool (capped by `ticket_tiers.capacity` minus the tier's
-  held+sold), never "available rows with this tier". `GET_SEAT_LIST` got this
-  wrong and showed every category that had sold one ticket as sold out while
-  56 pool units were free (staging, 2026-09-14).
+  held+sold), never "available rows with this tier". `GET_SEAT_LIST` and
+  `GET_ALL_ACTIONS` both got this wrong and showed every category that had
+  sold one ticket as sold out while 56 pool units were free (staging,
+  2026-09-14). The pool itself is being replaced by per-category quotas like
+  Bil24 — plan `08_architecture/23_ga_category_quotas_plan_ru.md`; the WP site
+  caches category availability in product meta, so re-run the catalog sync
+  after a fix before judging the page.
 - **The public widget API has THREE independent rate limits, not one shared
   bucket, and the per-IP one only works when `TRUSTED_PROXY_COUNT` is set
   correctly.** `PUBLIC_FEED_TOKEN_RATE_LIMIT` (default 20000/min) is

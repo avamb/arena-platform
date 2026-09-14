@@ -214,7 +214,7 @@ func (h *Handler) projectActionEvents(
 		entry["availability"] = sessionAvail
 
 		catList, minPrice, maxPrice, hasPrice := h.projectCategories(
-			ctx, bySession[s.SessionID], prices, sessionAvail,
+			ctx, bySession[s.SessionID], prices, sessionAvail, s.SeatingPlanName == nil,
 		)
 		// categoryLimitList is [] — not [{categoryList: []}] — when the
 		// session sells no GA places. That emptiness is load-bearing: it is
@@ -264,6 +264,7 @@ func (h *Handler) projectCategories(
 	tiers []gen.ActionEventTierRow,
 	prices map[uuid.UUID]int64,
 	sessionAvail int,
+	planLess bool,
 ) (catList []map[string]any, minPrice, maxPrice int64, hasPrice bool) {
 	catList = make([]map[string]any, 0, len(tiers))
 	for _, t := range tiers {
@@ -282,14 +283,7 @@ func (h *Handler) projectCategories(
 		if !t.IsGA {
 			continue
 		}
-		// A GA tier with its OWN materialised units reports their free count.
-		// A tier with none is not "sold out" — the session's GA pool is
-		// commonly materialised with tier_id NULL (or tracked purely in the
-		// ledger), so the session-level remaining count is the honest answer.
-		avail := sessionAvail
-		if t.GAUnitsTotal > 0 {
-			avail = int(t.GAUnitsAvailable)
-		}
+		avail := gaCategoryAvailability(t, sessionAvail, planLess)
 		catList = append(catList, map[string]any{
 			"categoryPriceId":   h.compatCategoryPriceID(ctx, t.Tier.ID),
 			"categoryPriceName": t.Tier.Name,
@@ -305,6 +299,33 @@ func (h *Handler) projectCategories(
 		})
 	}
 	return catList, minPrice, maxPrice, hasPrice
+}
+
+// gaCategoryAvailability is one GA category's remaining count for
+// categoryLimitList.
+//
+// On a plan-less session every unit sits in one pool with tier_id NULL; a
+// hold stamps the category onto the units it takes and a release resets them
+// (hcheckout.AllocateGAUnitsTx), so a tier's own rows are its held and sold
+// units, not inventory. The answer there is the free pool, capped by what the
+// tier's capacity still allows — the guard the hold itself applies. Reading
+// the stamped rows instead reported 0 for every category that had sold one
+// ticket (staging, 2026-09-14; GET_SEAT_LIST had the same bug).
+//
+// A plan-bound tier owns its units from the start, so their free count is
+// the answer; a tier with no units at all falls back to the session count.
+func gaCategoryAvailability(t gen.ActionEventTierRow, sessionAvail int, planLess bool) int {
+	if planLess {
+		n := sessionAvail
+		if t.Tier.Capacity != nil {
+			n = min(n, int(*t.Tier.Capacity)-int(t.GAUnitsTotal-t.GAUnitsAvailable))
+		}
+		return max(n, 0)
+	}
+	if t.GAUnitsTotal > 0 {
+		return int(t.GAUnitsAvailable)
+	}
+	return sessionAvail
 }
 
 // sessionAvailability picks the right inventory shape (spec §7.1). A session
