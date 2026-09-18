@@ -161,8 +161,17 @@ func (h *Handler) HandleUpsertMACSWebhook(pool *pgxpool.Pool, w http.ResponseWri
 	// Deactivate any existing active MACS subscriber for this org.
 	_, _ = q.DeactivateMACSSubscriberByOrg(ctx, orgID)
 
+	secret, err := resolveSigningSecret(req.SigningSecret)
+	if err != nil {
+		h.logger.Error("macs-webhook: generate signing secret failed", "error", err.Error())
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"macs.webhook_create_failed", "failed to create MACS webhook subscriber", r,
+		))
+		return
+	}
+
 	// Create the new subscriber.
-	row, err := q.CreateMACSSubscriber(ctx, orgID, req.CallbackURL, req.SigningSecret)
+	row, err := q.CreateMACSSubscriber(ctx, orgID, req.CallbackURL, secret)
 	if err != nil {
 		h.logger.Error("macs-webhook: create subscriber failed", "error", err.Error())
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(

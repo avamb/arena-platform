@@ -236,13 +236,22 @@ func (h *Handler) HandlePutChannelWPWebhook(pool *pgxpool.Pool, w http.ResponseW
 		return
 	}
 
+	secret, err := resolveSigningSecret(req.SigningSecret)
+	if err != nil {
+		h.logger.Error("wp-webhook: generate signing secret failed", "error", err.Error())
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"wp_webhook.create_failed", "failed to create WordPress webhook subscriber", r,
+		))
+		return
+	}
+
 	q := gen.New(pool)
 
 	// Deactivate any existing active bil24_wp subscriber for this channel
 	// (pgx.ErrNoRows on first registration is expected and ignored).
 	_, _ = q.DeactivateWPSubscriberByChannel(ctx, chID)
 
-	row, err := q.CreateWPWebhookSubscriber(ctx, chID, req.CallbackURL, req.SigningSecret)
+	row, err := q.CreateWPWebhookSubscriber(ctx, chID, req.CallbackURL, secret)
 	if err != nil {
 		h.logger.Error("wp-webhook: create subscriber failed", "error", err.Error())
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(

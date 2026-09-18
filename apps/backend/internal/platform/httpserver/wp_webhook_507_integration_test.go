@@ -295,3 +295,55 @@ func TestWPWebhook507Integration_PutGetDeleteLifecycle(t *testing.T) {
 func bodyContains(haystack, needle string) bool {
 	return strings.Contains(haystack, needle)
 }
+
+// TestWPWebhook507Integration_BlankSecretIsGenerated covers the 2026-09-18
+// production defect: the admin form says "generated if left blank", but a
+// blank signing_secret used to be stored as-is — every subscriber had an empty
+// secret, nothing was ever signed, and the "copy it now" box copied "".
+func TestWPWebhook507Integration_BlankSecretIsGenerated(t *testing.T) {
+	pool := wp507IntegrationPool(t)
+	ctx := context.Background()
+	f := newWP507Fixture(t, ctx, pool)
+	defer f.cleanup()
+
+	h := hcatalog.New(nil, nil, nil, gen.New(pool), nil, nil, nil, pool,
+		audit.NewPGWriter(pool), slog.Default(), nil).
+		WithMembershipQueries(gen.New(pool))
+
+	var receivedSig string
+	var receivedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedSig = r.Header.Get("X-Arena-Signature")
+		receivedBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	body, _ := json.Marshal(map[string]string{"callback_url": srv.URL, "signing_secret": "  "})
+	w := httptest.NewRecorder()
+	h.HandlePutChannelWPWebhook(pool, w, wp507Request(http.MethodPut, f.orgID.String(), f.chID.String(), body))
+	if w.Code != http.StatusOK {
+		t.Fatalf("PUT = %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		SigningSecret string `json:"signing_secret"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode PUT response: %v", err)
+	}
+	if len(resp.SigningSecret) != 64 {
+		t.Fatalf("blank secret must be generated (64 hex chars), got %d chars", len(resp.SigningSecret))
+	}
+	var stored string
+	if err := pool.QueryRow(ctx,
+		`SELECT signing_secret FROM webhook_subscribers WHERE channel_id = $1 AND kind = 'bil24_wp' AND active`,
+		f.chID).Scan(&stored); err != nil {
+		t.Fatalf("read stored secret: %v", err)
+	}
+	if stored != resp.SigningSecret {
+		t.Fatal("stored secret must equal the one returned once in the PUT response")
+	}
+	if receivedSig == "" || receivedSig != bil24wire.Sign(receivedBody, resp.SigningSecret) {
+		t.Fatalf("test ping must be signed with the generated secret, got %q", receivedSig)
+	}
+}
