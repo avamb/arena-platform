@@ -3317,40 +3317,12 @@ function SessionsTab({
                               Delete
                             </button>
                           ) : null}
-                          <button
-                            type="button"
-                            style={refreshButtonStyle}
-                            onClick={() => {
-                              // The API needs the Bearer token — a bare <a download>
-                              // would 401. Fetch the JSON and save it client-side.
-                              void authedFetch<unknown>({
-                                method: "GET",
-                                path: `/v1/organizations/${event.org_id}/events/${event.id}/sessions/${s.id}/macs-export`,
-                              })
-                                .then((data) => {
-                                  const blob = new Blob([JSON.stringify(data, null, 2)], {
-                                    type: "application/json",
-                                  });
-                                  const url = URL.createObjectURL(blob);
-                                  const a = document.createElement("a");
-                                  a.href = url;
-                                  a.download = `macs-export-session-${s.id}.json`;
-                                  a.click();
-                                  URL.revokeObjectURL(url);
-                                  setActionOk(`MACS export downloaded for ${formatDateTime(s.start_at)}.`);
-                                })
-                                .catch((err: unknown) => {
-                                  setActionErr(
-                                    err instanceof ApiError
-                                      ? `${err.code}: ${err.message}`
-                                      : "MACS export failed.",
-                                  );
-                                });
-                            }}
-                            data-testid={`events-session-macs-export-${s.id}`}
-                          >
-                            MACS export
-                          </button>
+                          <MACSExportButtons
+                            event={event}
+                            session={s}
+                            onOk={setActionOk}
+                            onErr={setActionErr}
+                          />
                           {!canUpdate && !canDelete ? (
                             <span style={mutedHintStyle}>read-only</span>
                           ) : null}
@@ -3441,6 +3413,198 @@ function SessionsTab({
         </div>
       ) : null}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MACS export (owner decision 2026-09-18)
+//
+// MACS's file importer ignores holderStatus and stores every imported
+// ticket as valid, so exporting refunded/cancelled/revoked tickets alongside
+// active ones lets an already-refunded buyer back in at the door. The
+// backend now supports ?tickets=valid|revoked|all (default "all" for
+// backward compatibility); this UI defaults its primary action to "valid"
+// and offers a separate "revoked" CSV for the operator to manually strike
+// entries MACS already imported, plus the old full export as a secondary
+// action.
+// ---------------------------------------------------------------------------
+
+/** Minimal shape of one ticket in a MACS export order — only the fields the
+ * admin UI reads (counts + the revoked-list CSV). */
+export interface MACSExportTicket {
+  readonly id: number;
+  readonly barcode: string;
+  readonly category?: string;
+  readonly orderId: number;
+  readonly holderStatus: number; // 0 = valid, 3 = refunded/cancelled/revoked
+  readonly refundDate?: string;
+}
+
+export interface MACSExportOrder {
+  readonly ticketList: readonly MACSExportTicket[] | null;
+}
+
+type MACSExportMode = "valid" | "revoked" | "all";
+
+const MACS_EXPORT_MODE_LABELS: Record<MACSExportMode, string> = {
+  valid: "MACS export (valid tickets)",
+  revoked: "Revoked tickets (CSV)",
+  all: "Full export (all statuses)",
+};
+
+/** Escapes one CSV field per RFC 4180 (quote, wrap only when needed). */
+function csvField(value: string): string {
+  if (/[",\n]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function downloadBlob(filename: string, content: string, mime: string): void {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Builds the operator's "remove these" CSV from a ?tickets=revoked export.
+ * Columns: barcode, ticket id, category, order number, status, refund/cancel
+ * date. The MACS wire format collapses every terminal ticket status
+ * (cancelled/revoked/refunded) into holderStatus=3, so "status" reads
+ * "revoked" for every row here; refund/cancel date is blank when the ticket
+ * was cancelled without a refund (the wire payload only carries refundDate).
+ */
+export function buildRevokedCsv(orders: readonly MACSExportOrder[]): string {
+  const header = ["barcode", "ticket_id", "category", "order_number", "status", "refund_or_cancel_date"];
+  const rows: string[] = [header.join(",")];
+  for (const order of orders) {
+    for (const ticket of order.ticketList ?? []) {
+      rows.push(
+        [
+          csvField(ticket.barcode),
+          csvField(String(ticket.id)),
+          csvField(ticket.category ?? ""),
+          csvField(String(ticket.orderId)),
+          csvField("revoked"),
+          csvField(ticket.refundDate ?? ""),
+        ].join(","),
+      );
+    }
+  }
+  return rows.join("\r\n");
+}
+
+export function countMACSTickets(orders: readonly MACSExportOrder[]): { valid: number; revoked: number } {
+  let valid = 0;
+  let revoked = 0;
+  for (const order of orders) {
+    for (const ticket of order.ticketList ?? []) {
+      if (ticket.holderStatus === 0) {
+        valid += 1;
+      } else {
+        revoked += 1;
+      }
+    }
+  }
+  return { valid, revoked };
+}
+
+function MACSExportButtons({
+  event,
+  session,
+  onOk,
+  onErr,
+}: {
+  event: EventItem;
+  session: SessionItem;
+  onOk: (msg: string) => void;
+  onErr: (msg: string) => void;
+}) {
+  const basePath = `/v1/organizations/${event.org_id}/events/${event.id}/sessions/${session.id}/macs-export`;
+
+  // Counts are a nice-to-have, computed from the same "all" export the
+  // legacy full-export button used to fetch. Cached generously and never
+  // surfaced as an error — a failed count fetch just shows nothing.
+  const countsQuery = useQuery<{ valid: number; revoked: number }, ApiError>({
+    queryKey: ["events", "macs-export-counts", session.id],
+    queryFn: async () => {
+      const data = await authedFetch<MACSExportOrder[]>({
+        method: "GET",
+        path: `${basePath}?tickets=all`,
+      });
+      return countMACSTickets(data);
+    },
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const download = (mode: MACSExportMode) => {
+    // The API needs the Bearer token — a bare <a download> would 401.
+    // Fetch the JSON and save it (or a derived CSV) client-side.
+    void authedFetch<MACSExportOrder[]>({
+      method: "GET",
+      path: `${basePath}?tickets=${mode}`,
+    })
+      .then((data) => {
+        if (mode === "revoked") {
+          downloadBlob(
+            `macs-revoked-session-${session.id}.csv`,
+            buildRevokedCsv(data),
+            "text/csv",
+          );
+        } else {
+          downloadBlob(
+            `macs-export-session-${session.id}-${mode}.json`,
+            JSON.stringify(data, null, 2),
+            "application/json",
+          );
+        }
+        onOk(`${MACS_EXPORT_MODE_LABELS[mode]} downloaded for ${formatDateTime(session.start_at)}.`);
+      })
+      .catch((err: unknown) => {
+        onErr(err instanceof ApiError ? `${err.code}: ${err.message}` : "MACS export failed.");
+      });
+  };
+
+  return (
+    <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+      <button
+        type="button"
+        style={refreshButtonStyle}
+        onClick={() => download("valid")}
+        data-testid={`events-session-macs-export-valid-${session.id}`}
+      >
+        MACS export (valid tickets)
+      </button>
+      <button
+        type="button"
+        style={refreshButtonStyle}
+        onClick={() => download("revoked")}
+        data-testid={`events-session-macs-export-revoked-${session.id}`}
+      >
+        Revoked tickets (CSV)
+      </button>
+      <button
+        type="button"
+        style={refreshButtonStyle}
+        onClick={() => download("all")}
+        data-testid={`events-session-macs-export-all-${session.id}`}
+      >
+        Full export (all statuses)
+      </button>
+      {countsQuery.data !== undefined ? (
+        <span
+          style={mutedHintStyle}
+          data-testid={`events-session-macs-counts-${session.id}`}
+        >
+          Valid: {countsQuery.data.valid} · Revoked: {countsQuery.data.revoked}
+        </span>
+      ) : null}
+    </span>
   );
 }
 

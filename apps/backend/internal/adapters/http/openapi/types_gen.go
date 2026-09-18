@@ -907,10 +907,10 @@ const (
 
 // Defines values for ListEventsParamsVisibility.
 const (
-	All      ListEventsParamsVisibility = "all"
-	Private  ListEventsParamsVisibility = "private"
-	Public   ListEventsParamsVisibility = "public"
-	Unlisted ListEventsParamsVisibility = "unlisted"
+	ListEventsParamsVisibilityAll      ListEventsParamsVisibility = "all"
+	ListEventsParamsVisibilityPrivate  ListEventsParamsVisibility = "private"
+	ListEventsParamsVisibilityPublic   ListEventsParamsVisibility = "public"
+	ListEventsParamsVisibilityUnlisted ListEventsParamsVisibility = "unlisted"
 )
 
 // Defines values for PostV1MediaMultipartBodyOwnerType.
@@ -924,6 +924,13 @@ const (
 // Defines values for GetSessionMACSExportParamsDownload.
 const (
 	N1 GetSessionMACSExportParamsDownload = "1"
+)
+
+// Defines values for GetSessionMACSExportParamsTickets.
+const (
+	GetSessionMACSExportParamsTicketsAll     GetSessionMACSExportParamsTickets = "all"
+	GetSessionMACSExportParamsTicketsRevoked GetSessionMACSExportParamsTickets = "revoked"
+	GetSessionMACSExportParamsTicketsValid   GetSessionMACSExportParamsTickets = "valid"
 )
 
 // Defines values for ResolveReconciliationExceptionJSONBodyResolution.
@@ -10326,6 +10333,18 @@ type SuperadminListTicketsParams struct {
 	// Offset Number of rows to skip before returning results.
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 
+	// OrgId Organization UUID filter.
+	OrgId *openapi_types.UUID `form:"org_id,omitempty" json:"org_id,omitempty"`
+
+	// Status Ticket status filter (e.g. "active", "cancelled", "revoked").
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// EventId Event UUID filter (reconciliation console).
+	EventId *openapi_types.UUID `form:"event_id,omitempty" json:"event_id,omitempty"`
+
+	// SessionId Event session UUID filter (reconciliation console).
+	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
+
 	// CheckoutSessionId Checkout session UUID.
 	CheckoutSessionId *openapi_types.UUID `form:"checkout_session_id,omitempty" json:"checkout_session_id,omitempty"`
 }
@@ -10707,10 +10726,25 @@ type ListOrgEventsParams struct {
 type GetSessionMACSExportParams struct {
 	// Download Set to "1" to receive a Content-Disposition attachment.
 	Download *GetSessionMACSExportParamsDownload `form:"download,omitempty" json:"download,omitempty"`
+
+	// Tickets Which tickets to include. Defaults to "all" for backward
+	// compatibility with existing callers; the admin UI's primary
+	// export button uses "valid" instead. See the operation
+	// description for the full contract.
+	Tickets *GetSessionMACSExportParamsTickets `form:"tickets,omitempty" json:"tickets,omitempty"`
+
+	// RevokedSince RFC3339 timestamp. Only valid together with tickets=revoked;
+	// narrows the revoked list to tickets that changed at or after
+	// this instant. Any other combination answers 400
+	// macs.revoked_since_requires_revoked.
+	RevokedSince *time.Time `form:"revoked_since,omitempty" json:"revoked_since,omitempty"`
 }
 
 // GetSessionMACSExportParamsDownload defines parameters for GetSessionMACSExport.
 type GetSessionMACSExportParamsDownload string
+
+// GetSessionMACSExportParamsTickets defines parameters for GetSessionMACSExport.
+type GetSessionMACSExportParamsTickets string
 
 // CreateEventArtistJSONBody defines parameters for CreateEventArtist.
 type CreateEventArtistJSONBody struct {

@@ -273,11 +273,26 @@ func ensureIDs(ctx context.Context, pool *pgxpool.Pool, kind compatids.Kind, ids
 // QueryAndBuildExport fetches all completed tickets for sessionID from the DB
 // and assembles the MACS export document. Returns an empty array (not nil)
 // when the session has no completed tickets.
+//
+// This is the pre-#tickets-modes behaviour (ExportModeAll) kept as its own
+// entry point for the existing callers (webhook dispatcher tests, the
+// pre-mode integration tests) that never asked for filtering.
 func QueryAndBuildExport(ctx context.Context, pool *pgxpool.Pool, sessionID uuid.UUID) (Export, error) {
+	return QueryAndBuildExportFiltered(ctx, pool, sessionID, ExportModeAll, nil)
+}
+
+// QueryAndBuildExportFiltered is QueryAndBuildExport with the ?tickets= mode
+// and (for ExportModeRevoked) an optional ?revoked_since cutoff applied
+// before encoding (owner decision 2026-09-18: MACS's importer ignores
+// holderStatus, so a refunded ticket in an "all" export becomes valid at the
+// door — see ExportMode). Returns an empty array (not nil) when nothing
+// matches.
+func QueryAndBuildExportFiltered(ctx context.Context, pool *pgxpool.Pool, sessionID uuid.UUID, mode ExportMode, revokedSince *time.Time) (Export, error) {
 	orders, err := orderexport.QuerySession(ctx, pool, sessionID)
 	if err != nil {
 		return nil, err
 	}
+	orders = filterOrders(orders, mode, revokedSince)
 	return encodeExport(orders, resolveWireIDs(ctx, pool, orders...)), nil
 }
 

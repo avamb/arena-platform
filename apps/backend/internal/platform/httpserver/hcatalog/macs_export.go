@@ -2,20 +2,55 @@
 // (AB-50b, feature #438).
 //
 // The endpoint produces a MACS-import-compatible JSON document containing
-// all completed tickets for the session. With ?download=1 it sets
-// Content-Disposition: attachment for direct-import use.
+// tickets for the session. With ?download=1 it sets Content-Disposition:
+// attachment for direct-import use.
+//
+// ?tickets=valid|revoked|all (owner decision 2026-09-18) selects which
+// tickets are included, because MACS's file importer ignores holderStatus
+// and stores every imported ticket as valid: "all" (the default, kept for
+// backward compatibility with existing callers) is the pre-existing
+// behaviour; "valid" is the file the operator should actually hand to MACS
+// import; "revoked" is the door "remove these" list, optionally narrowed to
+// only what changed since a previous export via ?revoked_since=<RFC3339>.
 package hcatalog
 
 import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/macs"
 )
+
+// parseMACSExportParams parses and validates ?tickets= and ?revoked_since=
+// from the request query string. It is a pure function (no I/O) so the
+// contract can be unit-tested without a database: on success errCode is "";
+// on failure errCode/errMsg describe the 400 to write and mode/revokedSince
+// are zero-valued.
+func parseMACSExportParams(q url.Values) (mode macs.ExportMode, revokedSince *time.Time, errCode, errMsg string) {
+	mode, ok := macs.ParseExportMode(q.Get("tickets"))
+	if !ok {
+		return "", nil, "macs.invalid_tickets_mode", "tickets must be one of valid, revoked, all"
+	}
+
+	raw := q.Get("revoked_since")
+	if raw == "" {
+		return mode, nil, "", ""
+	}
+	if mode != macs.ExportModeRevoked {
+		return "", nil, "macs.revoked_since_requires_revoked", "revoked_since is only valid with tickets=revoked"
+	}
+	ts, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return "", nil, "macs.invalid_revoked_since", "revoked_since must be an RFC3339 timestamp"
+	}
+	return mode, &ts, "", ""
+}
 
 // HandleMACSExport serves GET /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/macs-export.
 func (h *Handler) HandleMACSExport(pool *pgxpool.Pool, w http.ResponseWriter, r *http.Request) {
@@ -58,7 +93,13 @@ func (h *Handler) HandleMACSExport(pool *pgxpool.Pool, w http.ResponseWriter, r 
 		return
 	}
 
-	export, err := macs.QueryAndBuildExport(r.Context(), pool, sessionID)
+	mode, revokedSince, errCode, errMsg := parseMACSExportParams(r.URL.Query())
+	if errCode != "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(errCode, errMsg, r))
+		return
+	}
+
+	export, err := macs.QueryAndBuildExportFiltered(r.Context(), pool, sessionID, mode, revokedSince)
 	if err != nil {
 		h.logger.Error("macs-export: query failed", "error", err.Error())
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -86,7 +127,7 @@ func (h *Handler) HandleMACSExport(pool *pgxpool.Pool, w http.ResponseWriter, r 
 	download := r.URL.Query().Get("download") == "1"
 	if download {
 		w.Header().Set("Content-Disposition", fmt.Sprintf(
-			`attachment; filename="macs-export-session-%s.json"`, sessionID,
+			`attachment; filename="macs-export-session-%s-%s.json"`, sessionID, mode,
 		))
 	}
 	w.Header().Set("Content-Type", "application/json")

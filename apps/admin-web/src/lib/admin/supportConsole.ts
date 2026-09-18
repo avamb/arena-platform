@@ -87,6 +87,13 @@ export interface SupportFilters {
   readonly statusValue: string;
   readonly limit: number;
   readonly offset: number;
+  /**
+   * Optional event_id / session_id UUID filters. Only the Tickets console
+   * (manual reconciliation, GET /v1/admin/tickets) sets these; orders and
+   * refunds leave them undefined and buildSupportQuery omits them entirely.
+   */
+  readonly eventId?: string;
+  readonly sessionId?: string;
 }
 
 /**
@@ -111,6 +118,14 @@ export function buildSupportQuery(
   if (trimmedStatus !== "") {
     parts.push(`${statusKey}=${encodeURIComponent(trimmedStatus)}`);
   }
+  const trimmedEvent = filters.eventId?.trim() ?? "";
+  if (trimmedEvent !== "" && isValidUuid(trimmedEvent)) {
+    parts.push(`event_id=${encodeURIComponent(trimmedEvent)}`);
+  }
+  const trimmedSession = filters.sessionId?.trim() ?? "";
+  if (trimmedSession !== "" && isValidUuid(trimmedSession)) {
+    parts.push(`session_id=${encodeURIComponent(trimmedSession)}`);
+  }
   parts.push(`limit=${clampLimit(filters.limit)}`);
   parts.push(`offset=${clampOffset(filters.offset)}`);
   return parts.join("&");
@@ -133,11 +148,15 @@ export function readSupportFiltersFromLocation(
   const statusValue = params.get(statusKey) ?? "";
   const limitRaw = params.get("limit");
   const offsetRaw = params.get("offset");
+  const eventId = params.get("event_id") ?? "";
+  const sessionId = params.get("session_id") ?? "";
   return {
     orgId,
     statusValue,
     limit: clampLimit(limitRaw === null ? undefined : Number(limitRaw)),
     offset: clampOffset(offsetRaw === null ? undefined : Number(offsetRaw)),
+    eventId,
+    sessionId,
   };
 }
 

@@ -144,6 +144,7 @@ func newTicket(row Row, orderID int64) Ticket {
 		PlatformStatus: row.TicketStatus,
 		RefundDate:     row.RefundDate,
 		RefundPrice:    row.RefundPrice,
+		CancelledAt:    row.CancelledAt,
 		Event: Event{
 			EventID:        row.EventID,
 			SessionID:      row.SessionID,

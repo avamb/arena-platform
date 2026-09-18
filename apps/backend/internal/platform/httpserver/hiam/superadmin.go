@@ -46,6 +46,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/ean13"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
@@ -370,7 +371,21 @@ func (h *Handler) HandleSuperadminListTickets(w http.ResponseWriter, r *http.Req
 		statusFilter = &v
 	}
 
-	rows, err := h.superadminQueries.ListAllTickets(r.Context(), orgID, statusFilter, limit, offset)
+	// event_id / session_id (reconciliation console, feature TICKET-BOARD):
+	// scope the list to one event or one session so an operator can compare
+	// Arena against a MACS export for exactly the session they are checking
+	// at the door.
+	eventID, ok := parseSuperadminOptionalUUID(w, r, "event_id")
+	if !ok {
+		return
+	}
+	sessionID, ok := parseSuperadminOptionalUUID(w, r, "session_id")
+	if !ok {
+		return
+	}
+
+	rows, err := h.superadminQueries.ListTicketsForReconciliation(
+		r.Context(), orgID, statusFilter, eventID, sessionID, limit, offset)
 	if err != nil {
 		h.logger.Error("superadmin: list tickets failed", slog.Any("error", err))
 		httputil.WriteJSON(w, http.StatusInternalServerError,
@@ -385,6 +400,12 @@ func (h *Handler) HandleSuperadminListTickets(w http.ResponseWriter, r *http.Req
 	if statusFilter != nil {
 		filters["status"] = *statusFilter
 	}
+	if eventID != nil {
+		filters["event_id"] = eventID.String()
+	}
+	if sessionID != nil {
+		filters["session_id"] = sessionID.String()
+	}
 	h.logSuperadminAudit(r, "tickets", reason, filters)
 
 	tickets := make([]map[string]any, 0, len(rows))
@@ -393,6 +414,7 @@ func (h *Handler) HandleSuperadminListTickets(w http.ResponseWriter, r *http.Req
 			"id":                  t.ID.String(),
 			"checkout_session_id": t.CheckoutSessionID.String(),
 			"session_id":          t.SessionID.String(),
+			"event_id":            t.EventID.String(),
 			"status":              t.Status,
 			"issued_at":           t.IssuedAt.Format(time.RFC3339),
 			"created_at":          t.CreatedAt.Format(time.RFC3339),
@@ -403,6 +425,9 @@ func (h *Handler) HandleSuperadminListTickets(w http.ResponseWriter, r *http.Req
 		} else {
 			m["tier_id"] = nil
 		}
+		// category is the ticket tier's display name — nil for an
+		// untiered/GA ticket, matching the MACS export's "category" field.
+		m["category"] = t.TierName
 		if t.HolderEmail != nil {
 			m["holder_email"] = *t.HolderEmail
 		} else {
@@ -418,15 +443,25 @@ func (h *Handler) HandleSuperadminListTickets(w http.ResponseWriter, r *http.Req
 		m["refund_price"] = t.RefundPrice
 		m["review_hold"] = t.ReviewHold
 		m["review_hold_reason"] = t.ReviewHoldReason
-		if t.CancelledAt != nil {
-			m["cancelled_at"] = t.CancelledAt.Format(time.RFC3339)
-		} else {
-			m["cancelled_at"] = nil
-		}
 		if t.RefundID != nil {
 			m["refund_id"] = t.RefundID.String()
 		} else {
 			m["refund_id"] = nil
+		}
+		m["order_system_id"] = t.OrderSystemID
+		// barcode falls back to the derived platform EAN-13 code the same
+		// way the MACS export does, so this column always has a value once
+		// a ticket exists (ean13.PlatformCode is a pure function of the
+		// system_ticket_id, never persisted state).
+		if t.BarcodeStr != nil && *t.BarcodeStr != "" {
+			m["barcode"] = *t.BarcodeStr
+		} else {
+			m["barcode"] = ean13.PlatformCode(t.SystemTicketID)
+		}
+		if t.CancelledAt != nil {
+			m["cancelled_at"] = t.CancelledAt.Format(time.RFC3339)
+		} else {
+			m["cancelled_at"] = nil
 		}
 		if t.RefundDate != nil {
 			m["refund_date"] = t.RefundDate.Format(time.RFC3339)
@@ -442,6 +477,23 @@ func (h *Handler) HandleSuperadminListTickets(w http.ResponseWriter, r *http.Req
 		"limit":   limit,
 		"offset":  offset,
 	})
+}
+
+// parseSuperadminOptionalUUID parses an optional UUID query parameter by
+// name. Returns (nil, true) when absent, (nil, false) with a 400 written
+// when malformed, or (&id, true) when present and valid.
+func parseSuperadminOptionalUUID(w http.ResponseWriter, r *http.Request, name string) (*uuid.UUID, bool) {
+	raw := r.URL.Query().Get(name)
+	if raw == "" {
+		return nil, true
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("superadmin.invalid_"+name,
+			name+" must be a valid UUID", r))
+		return nil, false
+	}
+	return &id, true
 }
 
 // HandleSuperadminListRefunds serves GET /v1/admin/refunds.

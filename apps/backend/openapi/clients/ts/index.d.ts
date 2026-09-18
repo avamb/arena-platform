@@ -2393,11 +2393,26 @@ export interface paths {
         /**
          * Export session tickets in MACS import format
          * @description Returns a MACS-import-compatible JSON array of orders with nested
-         *     ticket lists. All completed tickets for the session are included.
-         *     Requires JWT + session.read permission + org membership.
+         *     ticket lists. Requires JWT + session.read permission + org membership.
          *     Add ?download=1 for a Content-Disposition attachment response suitable
          *     for the MACS Import Tickets action.
          *     AB-50b (feature #438).
+         *
+         *     ?tickets=valid|revoked|all selects which tickets are included
+         *     (owner decision 2026-09-18): MACS's file importer ignores
+         *     holderStatus and stores every imported ticket as valid, so a
+         *     refunded ticket in an "all" export becomes valid again at the door.
+         *     "all" (the default, kept for backward compatibility with existing
+         *     callers) is the pre-existing behaviour: every completed ticket
+         *     regardless of status. "valid" returns only tickets in an active
+         *     platform state and is the file that should actually be handed to
+         *     MACS import; orders left with zero valid tickets are omitted.
+         *     "revoked" returns only refunded/cancelled/revoked tickets — the
+         *     door "remove these" list; orders left with zero revoked tickets are
+         *     omitted. ?revoked_since=<RFC3339> narrows the "revoked" list to
+         *     tickets that changed (refunded or cancelled) at or after that
+         *     instant, so an operator can re-export only what changed since a
+         *     previous pull; it is only accepted together with tickets=revoked.
          */
         get: operations["getSessionMACSExport"];
         put?: never;
@@ -5310,7 +5325,11 @@ export interface paths {
         };
         /**
          * Cross-tenant list of all tickets (superadmin)
-         * @description Cross-tenant list of all tickets (superadmin). Requires the `superadmin.read` permission.
+         * @description Cross-tenant list of all tickets (superadmin). Requires the
+         *     `superadmin.read` permission. Backs the admin Tickets manual
+         *     reconciliation console: `event_id`/`session_id` scope the list to
+         *     one event or session so an operator can compare Arena against a
+         *     MACS export for the session they are checking at the door.
          */
         get: operations["superadminListTickets"];
         put?: never;
@@ -24660,6 +24679,20 @@ export interface operations {
             query?: {
                 /** @description Set to "1" to receive a Content-Disposition attachment. */
                 download?: "1";
+                /**
+                 * @description Which tickets to include. Defaults to "all" for backward
+                 *     compatibility with existing callers; the admin UI's primary
+                 *     export button uses "valid" instead. See the operation
+                 *     description for the full contract.
+                 */
+                tickets?: "valid" | "revoked" | "all";
+                /**
+                 * @description RFC3339 timestamp. Only valid together with tickets=revoked;
+                 *     narrows the revoked list to tickets that changed at or after
+                 *     this instant. Any other combination answers 400
+                 *     macs.revoked_since_requires_revoked.
+                 */
+                revoked_since?: string;
             };
             header?: never;
             path: {
@@ -24681,6 +24714,21 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MACSOrder"][];
+                };
+            };
+            /**
+             * @description `macs.invalid_tickets_mode` - tickets was set to something other
+             *     than valid/revoked/all. `macs.revoked_since_requires_revoked` -
+             *     revoked_since was set without tickets=revoked.
+             *     `macs.invalid_revoked_since` - revoked_since is not a valid
+             *     RFC3339 timestamp.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Missing or invalid JWT. */
@@ -34748,6 +34796,14 @@ export interface operations {
                 limit?: number;
                 /** @description Number of rows to skip before returning results. */
                 offset?: number;
+                /** @description Organization UUID filter. */
+                org_id?: string;
+                /** @description Ticket status filter (e.g. "active", "cancelled", "revoked"). */
+                status?: string;
+                /** @description Event UUID filter (reconciliation console). */
+                event_id?: string;
+                /** @description Event session UUID filter (reconciliation console). */
+                session_id?: string;
                 /** @description Checkout session UUID. */
                 checkout_session_id?: string;
             };
@@ -34769,12 +34825,40 @@ export interface operations {
                             id?: string;
                             /** Format: uuid */
                             checkout_session_id?: string;
+                            /** Format: uuid */
+                            session_id?: string;
+                            /**
+                             * Format: uuid
+                             * @description Owning event UUID (reconciliation console).
+                             */
+                            event_id?: string;
                             status?: string;
                             /** Format: date-time */
                             issued_at?: string;
+                            /** @description Ticket tier display name, null for an untiered/GA ticket. */
+                            category?: string | null;
+                            /**
+                             * Format: int64
+                             * @description orders.system_id, the site-visible order number.
+                             */
+                            order_system_id?: number | null;
+                            /** @description EAN-13 credential, or the derived platform code when none was issued yet. */
+                            barcode?: string;
                         }[];
                         total?: number;
                     };
+                };
+            };
+            /**
+             * @description `superadmin.invalid_event_id` / `superadmin.invalid_session_id` -
+             *     event_id or session_id is not a valid UUID.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Unauthorized. */

@@ -68,7 +68,10 @@ import {
   isUUID,
   mapPublicationError,
   validatePublicationForm,
+  buildRevokedCsv,
+  countMACSTickets,
   type EventItem,
+  type MACSExportOrder,
   type SessionFormValues,
   type TicketTierItem,
   type TierFormValues,
@@ -1545,5 +1548,80 @@ describe("buildSessionRequestBody — capacity_override is create-only", () => {
 
   it("still sends the provisional value on create", () => {
     expect(buildSessionRequestBody(base, "create").capacity_override).toBe(250);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MACS export modes UI helpers (owner decision 2026-09-18)
+// ---------------------------------------------------------------------------
+
+describe("countMACSTickets", () => {
+  it("counts holderStatus 0 as valid and anything else as revoked", () => {
+    const orders: MACSExportOrder[] = [
+      {
+        ticketList: [
+          { id: 1, barcode: "A", orderId: 100, holderStatus: 0 },
+          { id: 2, barcode: "B", orderId: 100, holderStatus: 3 },
+        ],
+      },
+      {
+        ticketList: [{ id: 3, barcode: "C", orderId: 101, holderStatus: 0 }],
+      },
+    ];
+    expect(countMACSTickets(orders)).toEqual({ valid: 2, revoked: 1 });
+  });
+
+  it("treats a null ticketList as zero tickets", () => {
+    const orders: MACSExportOrder[] = [{ ticketList: null }];
+    expect(countMACSTickets(orders)).toEqual({ valid: 0, revoked: 0 });
+  });
+
+  it("returns zero counts for an empty export", () => {
+    expect(countMACSTickets([])).toEqual({ valid: 0, revoked: 0 });
+  });
+});
+
+describe("buildRevokedCsv", () => {
+  it("emits the documented header row even for an empty export", () => {
+    expect(buildRevokedCsv([])).toBe(
+      "barcode,ticket_id,category,order_number,status,refund_or_cancel_date",
+    );
+  });
+
+  it("emits one row per ticket, labelling every row 'revoked'", () => {
+    const orders: MACSExportOrder[] = [
+      {
+        ticketList: [
+          {
+            id: 42,
+            barcode: "4000000000012",
+            category: "VIP",
+            orderId: 1000000501,
+            holderStatus: 3,
+            refundDate: "2026-09-10T12:00:00Z",
+          },
+        ],
+      },
+    ];
+    const lines = buildRevokedCsv(orders).split("\r\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe(
+      "4000000000012,42,VIP,1000000501,revoked,2026-09-10T12:00:00Z",
+    );
+  });
+
+  it("renders a missing category/refundDate as an empty CSV cell, not the literal string 'undefined'", () => {
+    const orders: MACSExportOrder[] = [
+      {
+        ticketList: [{ id: 1, barcode: "X", orderId: 5, holderStatus: 3 }],
+      },
+    ];
+    const cells = buildRevokedCsv(orders).split("\r\n")[1]!.split(",");
+    expect(cells).toEqual(["X", "1", "", "5", "revoked", ""]);
+  });
+
+  it("skips orders with a null ticketList", () => {
+    const orders: MACSExportOrder[] = [{ ticketList: null }];
+    expect(buildRevokedCsv(orders).split("\r\n")).toHaveLength(1);
   });
 });

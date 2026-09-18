@@ -20381,11 +20381,26 @@ paths:
       summary: Export session tickets in MACS import format
       description: |
         Returns a MACS-import-compatible JSON array of orders with nested
-        ticket lists. All completed tickets for the session are included.
-        Requires JWT + session.read permission + org membership.
+        ticket lists. Requires JWT + session.read permission + org membership.
         Add ?download=1 for a Content-Disposition attachment response suitable
         for the MACS Import Tickets action.
         AB-50b (feature #438).
+
+        ?tickets=valid|revoked|all selects which tickets are included
+        (owner decision 2026-09-18): MACS's file importer ignores
+        holderStatus and stores every imported ticket as valid, so a
+        refunded ticket in an "all" export becomes valid again at the door.
+        "all" (the default, kept for backward compatibility with existing
+        callers) is the pre-existing behaviour: every completed ticket
+        regardless of status. "valid" returns only tickets in an active
+        platform state and is the file that should actually be handed to
+        MACS import; orders left with zero valid tickets are omitted.
+        "revoked" returns only refunded/cancelled/revoked tickets — the
+        door "remove these" list; orders left with zero revoked tickets are
+        omitted. ?revoked_since=<RFC3339> narrows the "revoked" list to
+        tickets that changed (refunded or cancelled) at or after that
+        instant, so an operator can re-export only what changed since a
+        previous pull; it is only accepted together with tickets=revoked.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -20418,6 +20433,29 @@ paths:
           schema:
             type: string
             enum: ["1"]
+        - name: tickets
+          in: query
+          required: false
+          description: |
+            Which tickets to include. Defaults to "all" for backward
+            compatibility with existing callers; the admin UI's primary
+            export button uses "valid" instead. See the operation
+            description for the full contract.
+          schema:
+            type: string
+            enum: ["valid", "revoked", "all"]
+            default: "all"
+        - name: revoked_since
+          in: query
+          required: false
+          description: |
+            RFC3339 timestamp. Only valid together with tickets=revoked;
+            narrows the revoked list to tickets that changed at or after
+            this instant. Any other combination answers 400
+            macs.revoked_since_requires_revoked.
+          schema:
+            type: string
+            format: date-time
       responses:
         "200":
           description: MACS export document (array of orders).
@@ -20427,6 +20465,17 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/MACSOrder"
+        "400":
+          description: |
+            `macs.invalid_tickets_mode` - tickets was set to something other
+            than valid/revoked/all. `macs.revoked_since_requires_revoked` -
+            revoked_since was set without tickets=revoked.
+            `macs.invalid_revoked_since` - revoked_since is not a valid
+            RFC3339 timestamp.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           description: Missing or invalid JWT.
           content:
@@ -30561,7 +30610,12 @@ paths:
     get:
       operationId: superadminListTickets
       summary: Cross-tenant list of all tickets (superadmin)
-      description: Cross-tenant list of all tickets (superadmin). Requires the `superadmin.read` permission.
+      description: |
+        Cross-tenant list of all tickets (superadmin). Requires the
+        `superadmin.read` permission. Backs the admin Tickets manual
+        reconciliation console: `event_id`/`session_id` scope the list to
+        one event or session so an operator can compare Arena against a
+        MACS export for the session they are checking at the door.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -30576,6 +30630,26 @@ paths:
           in: query
           required: false
           schema: { type: integer, default: 0 }
+        - name: org_id
+          description: Organization UUID filter.
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: status
+          description: Ticket status filter (e.g. "active", "cancelled", "revoked").
+          in: query
+          required: false
+          schema: { type: string }
+        - name: event_id
+          description: Event UUID filter (reconciliation console).
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: session_id
+          description: Event session UUID filter (reconciliation console).
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
         - name: checkout_session_id
           description: Checkout session UUID.
           in: query
@@ -30596,9 +30670,22 @@ paths:
                       properties:
                         id: { type: string, format: uuid }
                         checkout_session_id: { type: string, format: uuid }
+                        session_id: { type: string, format: uuid }
+                        event_id: { type: string, format: uuid, description: "Owning event UUID (reconciliation console)." }
                         status: { type: string }
                         issued_at: { type: string, format: date-time }
+                        category: { type: [string, "null"], description: "Ticket tier display name, null for an untiered/GA ticket." }
+                        order_system_id: { type: [integer, "null"], format: int64, description: "orders.system_id, the site-visible order number." }
+                        barcode: { type: string, description: "EAN-13 credential, or the derived platform code when none was issued yet." }
                   total: { type: integer }
+        "400":
+          description: |
+            `superadmin.invalid_event_id` / `superadmin.invalid_session_id` -
+            event_id or session_id is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           description: Unauthorized.
           content:

@@ -72,7 +72,12 @@ type Ticket struct {
 	PlatformStatus string
 	RefundDate     *time.Time
 	RefundPrice    *int64
-	Event          Event
+	// CancelledAt is tickets.cancelled_at — set on every cancel/revoke, even
+	// when no refund_date was stamped (e.g. a "none" refund mode). Used by
+	// the MACS revoked-list export to answer "what changed since X" without
+	// requiring a refund to have happened.
+	CancelledAt *time.Time
+	Event       Event
 }
 
 // Event is the denormalized event/session context of a ticket.
