@@ -47,12 +47,12 @@ import {
   clampOffset,
   currentPage,
   formatDateTime,
-  isValidUuid,
   readSupportFiltersFromLocation,
   shortUuid,
   type SupportFilters,
 } from "@/lib/admin/supportConsole";
 import * as S from "@/lib/admin/supportStyles";
+import type { EventItem, SessionItem } from "@/routes/events";
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -97,6 +97,15 @@ export interface AdminTicket {
   readonly refund_price?: number | null;
   readonly review_hold?: boolean;
   readonly review_hold_reason?: string | null;
+  // Reconciliation console (owner decision 2026-09-18): event_id, ticket
+  // tier display name ("category"), the site-visible order number
+  // (orders.system_id) and the ticket's EAN-13/derived barcode. Optional so
+  // older cached responses (or a future backend rollback) don't crash the
+  // table -- missing values render as an em-dash.
+  readonly event_id?: string;
+  readonly category?: string | null;
+  readonly order_system_id?: number | null;
+  readonly barcode?: string;
 }
 
 /** AB-49: refund modes an operator can pick at cancellation. */
@@ -124,6 +133,112 @@ interface TicketsEnvelope {
   readonly offset: number;
 }
 
+// ---------------------------------------------------------------------------
+// Manual reconciliation: org / event / session dropdowns (owner decision
+// 2026-09-18). The operator scopes down organization -> event -> session so
+// the ticket list can be compared against a MACS export for one showing.
+// ---------------------------------------------------------------------------
+
+interface OrgSummary {
+  readonly id: string;
+  readonly name: string;
+}
+
+interface OrgListEnvelope {
+  readonly organizations: readonly OrgSummary[];
+}
+
+interface EventListEnvelope {
+  readonly events: readonly EventItem[];
+}
+
+interface SessionListEnvelope {
+  readonly sessions: readonly SessionItem[];
+}
+
+/** Per-session/per-filter reconciliation counters. */
+export interface TicketCounters {
+  readonly valid: number;
+  readonly refunded: number;
+  readonly cancelled: number;
+  readonly revoked: number;
+  readonly total: number;
+}
+
+export function computeTicketCounters(rows: readonly AdminTicket[]): TicketCounters {
+  let valid = 0;
+  let refunded = 0;
+  let cancelled = 0;
+  let revoked = 0;
+  for (const t of rows) {
+    if (t.status === "active" || t.status === "issued" || t.status === "redeemed") {
+      valid += 1;
+    }
+    if (t.status === "cancelled") {
+      cancelled += 1;
+    }
+    if (t.status === "revoked") {
+      revoked += 1;
+    }
+    if (t.refund_date != null) {
+      refunded += 1;
+    }
+  }
+  return { valid, refunded, cancelled, revoked, total: rows.length };
+}
+
+/** Escapes one CSV field per RFC 4180 (quote, wrap only when needed). */
+export function csvField(value: string): string {
+  if (/[",\n]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+/**
+ * Builds a CSV of the currently filtered/loaded rows for the operator's
+ * manual MACS reconciliation: barcode, category, order number, buyer
+ * e-mail, status, refund/cancel date, issued date.
+ */
+export function buildTicketsCsv(rows: readonly AdminTicket[]): string {
+  const header = [
+    "barcode",
+    "category",
+    "order_number",
+    "buyer_email",
+    "status",
+    "refund_or_cancel_date",
+    "issued_at",
+    "ticket_id",
+  ];
+  const lines: string[] = [header.join(",")];
+  for (const t of rows) {
+    lines.push(
+      [
+        csvField(t.barcode ?? ""),
+        csvField(t.category ?? ""),
+        csvField(t.order_system_id != null ? String(t.order_system_id) : ""),
+        csvField(t.holder_email ?? ""),
+        csvField(t.status),
+        csvField(t.refund_date ?? t.cancelled_at ?? ""),
+        csvField(t.issued_at),
+        csvField(t.id),
+      ].join(","),
+    );
+  }
+  return lines.join("\r\n");
+}
+
+function downloadCsv(filename: string, csv: string): void {
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 const NAV_ENTRY = NAV_BY_PATH["/tickets"];
 if (NAV_ENTRY === undefined) {
   throw new Error("tickets route: NAV_BY_PATH['/tickets'] missing");
@@ -145,6 +260,8 @@ function TicketsConsole() {
     return readSupportFiltersFromLocation(window.location.search, "status");
   }, []);
   const [orgIdInput, setOrgIdInput] = useState(initial.orgId);
+  const [eventIdInput, setEventIdInput] = useState(initial.eventId ?? "");
+  const [sessionIdInput, setSessionIdInput] = useState(initial.sessionId ?? "");
   const [status, setStatus] = useState(initial.statusValue);
   const [limit, setLimit] = useState<number>(initial.limit);
   const [offset, setOffset] = useState<number>(initial.offset);
@@ -152,14 +269,54 @@ function TicketsConsole() {
   const isDesktop = useIsDesktop(true);
   const [filtersOpen, setFiltersOpen] = useState<boolean>(false);
 
-  const orgIdInvalid =
-    orgIdInput.trim() !== "" && !isValidUuid(orgIdInput.trim());
+  // Manual reconciliation (owner decision 2026-09-18): scope down
+  // organization -> event -> session with real dropdowns instead of a raw
+  // UUID text field, so the operator can compare Arena against a MACS
+  // export for one showing without hunting for ids elsewhere.
+  const orgsQuery = useQuery<OrgListEnvelope, ApiError>({
+    queryKey: ["admin", "tickets", "orgs"],
+    queryFn: () =>
+      authedFetch<OrgListEnvelope>({ method: "GET", path: "/v1/organizations" }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const orgs = orgsQuery.data?.organizations ?? [];
+
+  const eventsQuery = useQuery<EventListEnvelope, ApiError>({
+    queryKey: ["admin", "tickets", "events"],
+    queryFn: () =>
+      authedFetch<EventListEnvelope>({ method: "GET", path: "/v1/events?visibility=all" }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const eventsForOrg = useMemo(
+    () =>
+      orgIdInput === ""
+        ? []
+        : (eventsQuery.data?.events ?? []).filter((e) => e.org_id === orgIdInput),
+    [eventsQuery.data, orgIdInput],
+  );
+
+  const sessionsQuery = useQuery<SessionListEnvelope, ApiError>({
+    queryKey: ["admin", "tickets", "sessions", orgIdInput, eventIdInput],
+    queryFn: () =>
+      authedFetch<SessionListEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${orgIdInput}/events/${eventIdInput}/sessions`,
+      }),
+    enabled: orgIdInput !== "" && eventIdInput !== "",
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const sessionsForEvent = sessionsQuery.data?.sessions ?? [];
 
   const filters: SupportFilters = {
-    orgId: orgIdInvalid ? "" : orgIdInput,
+    orgId: orgIdInput,
     statusValue: status,
     limit,
     offset,
+    eventId: eventIdInput,
+    sessionId: sessionIdInput,
   };
 
   const query = useQuery<TicketsEnvelope, ApiError>({
@@ -192,11 +349,35 @@ function TicketsConsole() {
     () => (activeId === null ? null : rows.find((t) => t.id === activeId) ?? null),
     [activeId, rows],
   );
+  const counters = useMemo(() => computeTicketCounters(rows), [rows]);
 
   useEffect(() => {
     setOffset(0);
     setActiveId(null);
-  }, [orgIdInput, status, limit]);
+  }, [orgIdInput, eventIdInput, sessionIdInput, status, limit]);
+
+  // Cascading resets: changing a parent dropdown invalidates the narrower
+  // selections below it (an event from the old org, a session from the old
+  // event) rather than silently keeping a stale filter applied. Skipped on
+  // the very first render so a deep link (?org_id=&event_id=&session_id=)
+  // hydrates all three levels instead of immediately clearing the last two.
+  const orgChangedOnce = useRef(false);
+  useEffect(() => {
+    if (!orgChangedOnce.current) {
+      orgChangedOnce.current = true;
+      return;
+    }
+    setEventIdInput("");
+    setSessionIdInput("");
+  }, [orgIdInput]);
+  const eventChangedOnce = useRef(false);
+  useEffect(() => {
+    if (!eventChangedOnce.current) {
+      eventChangedOnce.current = true;
+      return;
+    }
+    setSessionIdInput("");
+  }, [eventIdInput]);
 
   return (
     <section aria-labelledby="tickets-heading" style={S.pageStyle}>
@@ -206,8 +387,11 @@ function TicketsConsole() {
             Tickets
           </h1>
           <p style={S.subheadingStyle}>
-            Cross-tenant ticket inventory. Filters map directly to the
-            backend's <code>org_id</code>, <code>status</code>,{" "}
+            Cross-tenant ticket inventory for manual MACS reconciliation:
+            pick an organization, event and session to compare Arena
+            against a MACS export for one showing. Filters map to the
+            backend's <code>org_id</code>, <code>event_id</code>,{" "}
+            <code>session_id</code>, <code>status</code>,{" "}
             <code>limit</code>, <code>offset</code> query parameters.
             Cancellation (AB-49) is available from the ticket drawer;
             issue and transfer are not exposed under <code>/v1/admin</code>.
@@ -230,26 +414,59 @@ function TicketsConsole() {
         const toolbar = (
           <div style={S.toolbarStyle}>
             <label style={S.fieldGroupStyle}>
-              <span style={S.fieldLabelStyle}>Organization ID</span>
-              <input
-                type="text"
-                placeholder="UUID (optional)"
+              <span style={S.fieldLabelStyle}>Organization</span>
+              <select
                 value={orgIdInput}
                 onChange={(e) => setOrgIdInput(e.target.value)}
-                style={orgIdInvalid ? S.inputInvalidStyle : S.inputStyle}
+                style={S.selectStyle}
                 data-testid="tickets-org-id"
-                aria-invalid={orgIdInvalid}
-                aria-describedby={orgIdInvalid ? "tickets-org-id-err" : undefined}
-              />
-              {orgIdInvalid ? (
-                <span
-                  id="tickets-org-id-err"
-                  style={{ color: "#7f1d1d", fontSize: 11 }}
-                  data-testid="tickets-org-id-error"
-                >
-                  Must be a valid UUID — filter not applied.
-                </span>
-              ) : null}
+                disabled={orgsQuery.isPending}
+              >
+                <option value="">Any organization</option>
+                {orgs.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={S.fieldGroupStyle}>
+              <span style={S.fieldLabelStyle}>Event</span>
+              <select
+                value={eventIdInput}
+                onChange={(e) => setEventIdInput(e.target.value)}
+                style={S.selectStyle}
+                data-testid="tickets-event-id"
+                disabled={orgIdInput === "" || eventsQuery.isPending}
+              >
+                <option value="">
+                  {orgIdInput === "" ? "Pick an organization first" : "Any event"}
+                </option>
+                {eventsForOrg.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={S.fieldGroupStyle}>
+              <span style={S.fieldLabelStyle}>Session</span>
+              <select
+                value={sessionIdInput}
+                onChange={(e) => setSessionIdInput(e.target.value)}
+                style={S.selectStyle}
+                data-testid="tickets-session-id"
+                disabled={eventIdInput === "" || sessionsQuery.isPending}
+              >
+                <option value="">
+                  {eventIdInput === "" ? "Pick an event first" : "Any session"}
+                </option>
+                {sessionsForEvent.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {formatDateTime(s.start_at)}
+                  </option>
+                ))}
+              </select>
             </label>
             <label style={S.fieldGroupStyle}>
               <span style={S.fieldLabelStyle}>Status</span>
@@ -332,6 +549,49 @@ function TicketsConsole() {
         );
       })()}
 
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          margin: "8px 0",
+        }}
+      >
+        <span
+          style={{ fontSize: 12, color: "#475569" }}
+          data-testid="tickets-counters"
+          aria-live="polite"
+        >
+          Loaded rows — valid: <strong>{counters.valid}</strong> · refunded:{" "}
+          <strong>{counters.refunded}</strong> · cancelled:{" "}
+          <strong>{counters.cancelled}</strong> · revoked:{" "}
+          <strong>{counters.revoked}</strong> · total:{" "}
+          <strong>{counters.total}</strong>
+          {sessionIdInput === "" ? (
+            <>
+              {" "}(pick a session and a large page size to see the full
+              picture)
+            </>
+          ) : null}
+        </span>
+        <button
+          type="button"
+          style={S.buttonStyle}
+          disabled={rows.length === 0}
+          onClick={() =>
+            downloadCsv(
+              `tickets-reconciliation-${new Date().toISOString().slice(0, 10)}.csv`,
+              buildTicketsCsv(rows),
+            )
+          }
+          data-testid="tickets-export-csv"
+        >
+          Export CSV ({rows.length} rows)
+        </button>
+      </div>
+
       <Body
         query={query}
         rows={rows}
@@ -397,13 +657,38 @@ function Body({ query, rows, activeId, onOpen }: BodyProps) {
       ),
     },
     {
+      id: "barcode",
+      header: "Barcode",
+      renderCell: (t) =>
+        t.barcode == null || t.barcode === "" ? (
+          <span style={S.mutedStyle}>—</span>
+        ) : (
+          <code style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12 }}>
+            {t.barcode}
+          </code>
+        ),
+    },
+    {
+      id: "category",
+      header: "Category",
+      renderCell: (t) =>
+        t.category == null || t.category === "" ? (
+          <span style={S.mutedStyle}>—</span>
+        ) : (
+          t.category
+        ),
+    },
+    {
       id: "order",
-      header: "Order (checkout session)",
-      renderCell: (t) => (
-        <span title={t.checkout_session_id}>
-          {shortUuid(t.checkout_session_id)}
-        </span>
-      ),
+      header: "Order #",
+      renderCell: (t) =>
+        t.order_system_id == null ? (
+          <span title={t.checkout_session_id} style={S.mutedStyle}>
+            —
+          </span>
+        ) : (
+          <span title={t.checkout_session_id}>{t.order_system_id}</span>
+        ),
     },
     {
       id: "status",
@@ -413,23 +698,26 @@ function Body({ query, rows, activeId, onOpen }: BodyProps) {
       ),
     },
     {
-      id: "tier",
-      header: "Tier",
-      renderCell: (t) => (
-        <span title={t.tier_id ?? ""}>
-          {t.tier_id === null ? "—" : shortUuid(t.tier_id)}
-        </span>
-      ),
-    },
-    {
       id: "holder",
-      header: "Holder",
+      header: "Buyer e-mail",
       renderCell: (t) =>
         t.holder_email === null ? (
           <span style={S.mutedStyle}>—</span>
         ) : (
           t.holder_email
         ),
+    },
+    {
+      id: "refund_or_cancel",
+      header: "Refund / cancel date",
+      renderCell: (t) => {
+        const when = t.refund_date ?? t.cancelled_at ?? null;
+        return when == null ? (
+          <span style={S.mutedStyle}>—</span>
+        ) : (
+          formatDateTime(when)
+        );
+      },
     },
     {
       id: "issued",

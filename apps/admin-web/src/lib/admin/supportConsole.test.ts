@@ -132,6 +132,37 @@ describe("buildSupportQuery", () => {
     );
     expect(q).toContain(`limit=${SUPPORT_MAX_LIMIT}`);
   });
+
+  it("includes event_id and session_id when both are valid UUIDs (Tickets reconciliation console)", () => {
+    const q = buildSupportQuery(
+      {
+        orgId: "",
+        statusValue: "",
+        limit: 50,
+        offset: 0,
+        eventId: VALID_UUID,
+        sessionId: VALID_UUID,
+      },
+      "status",
+    );
+    expect(q).toBe(
+      `event_id=${encodeURIComponent(VALID_UUID)}&session_id=${encodeURIComponent(VALID_UUID)}&limit=50&offset=0`,
+    );
+  });
+
+  it("omits event_id/session_id when absent or malformed (orders/refunds callers unaffected)", () => {
+    const withoutFields = buildSupportQuery(
+      { orgId: "", statusValue: "", limit: 50, offset: 0 },
+      "state",
+    );
+    expect(withoutFields).toBe("limit=50&offset=0");
+
+    const withMalformed = buildSupportQuery(
+      { orgId: "", statusValue: "", limit: 50, offset: 0, eventId: "not-a-uuid", sessionId: "" },
+      "status",
+    );
+    expect(withMalformed).toBe("limit=50&offset=0");
+  });
 });
 
 describe("readSupportFiltersFromLocation", () => {
@@ -156,7 +187,14 @@ describe("readSupportFiltersFromLocation", () => {
 
   it("falls back to defaults when params are absent", () => {
     const f = readSupportFiltersFromLocation("", "state");
-    expect(f).toEqual({ orgId: "", statusValue: "", limit: 50, offset: 0 });
+    expect(f).toEqual({
+      orgId: "",
+      statusValue: "",
+      limit: 50,
+      offset: 0,
+      eventId: "",
+      sessionId: "",
+    });
   });
 
   it("clamps malformed limit / offset values", () => {
@@ -171,6 +209,15 @@ describe("readSupportFiltersFromLocation", () => {
   it("accepts a query string without a leading '?'", () => {
     const f = readSupportFiltersFromLocation("limit=25", "state");
     expect(f.limit).toBe(25);
+  });
+
+  it("hydrates event_id and session_id from the URL (Tickets deep links)", () => {
+    const f = readSupportFiltersFromLocation(
+      `?event_id=${VALID_UUID}&session_id=${VALID_UUID}`,
+      "status",
+    );
+    expect(f.eventId).toBe(VALID_UUID);
+    expect(f.sessionId).toBe(VALID_UUID);
   });
 });
 
