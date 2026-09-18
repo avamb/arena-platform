@@ -27,6 +27,7 @@ import {
   validateVenueGeoPair,
   validateVenuePostalCode,
   validateVenueTimezone,
+  validateVenueTimezoneRequired,
   validateVenueWebsiteUrl,
   type VenueFormState,
 } from "@/routes/venues";
@@ -166,6 +167,28 @@ describe("validateVenueTimezone", () => {
       expect(validateVenueTimezone(tz)).toMatch(/IANA/);
     },
   );
+});
+
+describe("validateVenueTimezoneRequired", () => {
+  it("rejects blank on create (bug B-3: timezone is mandatory for a new venue)", () => {
+    expect(validateVenueTimezoneRequired("", false, "")).toMatch(/required/i);
+  });
+  it("accepts a value on create", () => {
+    expect(validateVenueTimezoneRequired("Europe/Berlin", false, "")).toBeNull();
+  });
+  it("rejects clearing an existing timezone on edit (bug B-3: forbid clearing)", () => {
+    expect(
+      validateVenueTimezoneRequired("", true, "Europe/Prague"),
+    ).toMatch(/cannot be cleared/i);
+  });
+  it("accepts replacing an existing timezone with another value on edit", () => {
+    expect(
+      validateVenueTimezoneRequired("Europe/Berlin", true, "Europe/Prague"),
+    ).toBeNull();
+  });
+  it("accepts leaving a legacy venue's blank timezone untouched on edit", () => {
+    expect(validateVenueTimezoneRequired("", true, "")).toBeNull();
+  });
 });
 
 describe("validateVenueContactEmail", () => {

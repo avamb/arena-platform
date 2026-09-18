@@ -181,7 +181,7 @@ func run() error {
 	// own webhook vocabulary, routed by the sales channel each site subscribed
 	// to. It shares the same at-least-once contract: non-2xx retries.
 	baseOutboxDispatcher := buildOutboxDispatcher(cfg, logger)
-	macsDispatcher := macs.NewDispatcher(pool.Pool)
+	macsDispatcher := macs.NewDispatcher(pool.Pool, macs.WithLogger(logger))
 	bil24WPDispatcher := bil24wire.NewDispatcher(pool.Pool)
 	outboxDispatcher := &multiDispatcher{dispatchers: []outbox.Dispatcher{
 		baseOutboxDispatcher,

@@ -148,6 +148,12 @@ interface VenueSummary {
   readonly id: string;
   readonly name: string;
   readonly display_number?: number;
+  /**
+   * IANA time zone of the venue (bug B-4). Absent/null on a legacy venue
+   * that predates the requirement (see B-3's venue.timezone_required),
+   * or when the backend response omits the field entirely.
+   */
+  readonly timezone?: string | null;
 }
 
 interface VenueListEnvelope {
@@ -657,6 +663,66 @@ export function toLocalDatetimeValue(iso: string): string {
  */
 export function toRFC3339(value: string): string {
   return `${value}:00Z`;
+}
+
+/**
+ * previewVenueLocalTime (bug B-4) — investigation into the production
+ * incident found the session Start/End inputs are explicitly labelled
+ * "(UTC)" and toRFC3339 stores exactly what the operator types, with no
+ * reference to the selected venue's timezone anywhere in this form. That
+ * contract is intentional and consistent with the rest of the admin app
+ * (tier sale-window fields use the same "(UTC)" convention, and every
+ * table column renders in UTC too) — rewriting session start/end alone to
+ * a venue-local wall-clock input would leave the app internally
+ * inconsistent and touches the overlap-detection and multi-date "extra
+ * starts" code paths for a change well beyond this defect's scope.
+ *
+ * The actual incident (operator typed 19:00 meaning Prague local time,
+ * meant as UTC 17:00, and got a session that shows as 20:00 local instead
+ * of 19:00) happened on a venue that had NO timezone recorded at the time,
+ * which is exactly what bug B-3 now makes impossible for new venues. What
+ * this form was missing is any feedback loop: nothing told the operator
+ * what their typed UTC time actually meant at the venue before they saved
+ * it. previewVenueLocalTime renders that read-only cross-check — "this UTC
+ * time = HH:MM local at the venue" — right under the input, so an
+ * operator who (like the one in the incident) is actually thinking in
+ * venue-local time notices the mismatch before submitting instead of
+ * after tickets are on sale for the wrong hour.
+ *
+ * Returns null when the input is incomplete/unparseable or timeZone is
+ * blank (caller passes the venue's timezone; a legacy venue without one
+ * gets no preview — see the sibling "no timezone configured" warning
+ * instead).
+ */
+export function previewVenueLocalTime(
+  datetimeLocalUTCValue: string,
+  timeZone: string,
+): string | null {
+  if (datetimeLocalUTCValue.trim() === "" || timeZone.trim() === "") {
+    return null;
+  }
+  const d = new Date(toRFC3339(datetimeLocalUTCValue));
+  if (Number.isNaN(d.getTime())) {
+    return null;
+  }
+  try {
+    const formatter = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZoneName: "short",
+    });
+    return formatter.format(d);
+  } catch {
+    // An unrecognized zone string (should not happen — the value comes
+    // from the backend's own time.LoadLocation-validated column) falls
+    // back to no preview rather than crashing the form.
+    return null;
+  }
 }
 
 /** Empty form values suitable for the "Add session" form. */
@@ -3676,6 +3742,20 @@ function SessionEditor({
     refetchOnWindowFocus: false,
   });
 
+  // Bug B-4: read-only venue-local cross-check for the UTC Start/End
+  // inputs below — see previewVenueLocalTime's doc comment for why the
+  // fields themselves stay UTC-labelled.
+  const selectedVenue = (venuesQuery.data?.venues ?? []).find(
+    (v) => v.id === values.venue_id,
+  );
+  const selectedVenueTZ = selectedVenue?.timezone ?? null;
+  const startLocalPreview = selectedVenueTZ
+    ? previewVenueLocalTime(values.start_at, selectedVenueTZ)
+    : null;
+  const endLocalPreview = selectedVenueTZ
+    ? previewVenueLocalTime(values.end_at, selectedVenueTZ)
+    : null;
+
   // Seating-plan-version picker (create mode, seated admission only).
   // Mirrors sessionSeatingBind.tsx: pick a plan from the venue's plan
   // list, probe a version number, and submit the resolved version UUID.
@@ -3836,6 +3916,12 @@ function SessionEditor({
           {errors.venue_id !== undefined ? (
             <span style={fieldErrorStyle}>{errors.venue_id}</span>
           ) : null}
+          {values.venue_id !== "" && selectedVenueTZ === null ? (
+            <span style={fieldHintStyle} data-testid="events-session-venue-no-timezone-warning">
+              This venue has no timezone configured — double-check the
+              Start/End times above are entered in UTC.
+            </span>
+          ) : null}
         </label>
         <label style={editorFieldStyle}>
           <span style={editorLabelStyle}>Start (UTC)</span>
@@ -3850,6 +3936,11 @@ function SessionEditor({
           {errors.start_at !== undefined ? (
             <span style={fieldErrorStyle}>{errors.start_at}</span>
           ) : null}
+          {startLocalPreview !== null ? (
+            <span style={fieldHintStyle} data-testid="events-session-start-local-preview">
+              = {startLocalPreview} at the venue
+            </span>
+          ) : null}
         </label>
         <label style={editorFieldStyle}>
           <span style={editorLabelStyle}>End (UTC)</span>
@@ -3863,6 +3954,11 @@ function SessionEditor({
           />
           {errors.end_at !== undefined ? (
             <span style={fieldErrorStyle}>{errors.end_at}</span>
+          ) : null}
+          {endLocalPreview !== null ? (
+            <span style={fieldHintStyle} data-testid="events-session-end-local-preview">
+              = {endLocalPreview} at the venue
+            </span>
           ) : null}
         </label>
         {mode.kind === "create" ? (
@@ -7296,6 +7392,16 @@ const editorInputStyle: CSSProperties = {
 const fieldErrorStyle: CSSProperties = {
   fontSize: 11,
   color: "#b91c1c",
+};
+
+/**
+ * Informational hint under a field — the venue-local time cross-check and
+ * the "no timezone configured" warning (bug B-4) use this, distinct from
+ * fieldErrorStyle's red because neither blocks submission.
+ */
+const fieldHintStyle: CSSProperties = {
+  fontSize: 11,
+  color: "#64748b",
 };
 
 /** Значение, которое оператор видит, но не редактирует. */

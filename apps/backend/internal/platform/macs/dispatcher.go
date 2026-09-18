@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -86,15 +87,35 @@ type macsEventData struct {
 type Dispatcher struct {
 	pool   *pgxpool.Pool
 	client *http.Client
+	logger *slog.Logger
+}
+
+// DispatcherOption configures optional Dispatcher dependencies without
+// breaking the existing NewDispatcher(pool) call sites (bug B-1 part 3).
+type DispatcherOption func(*Dispatcher)
+
+// WithLogger overrides the Dispatcher's logger. Defaults to slog.Default()
+// when not supplied.
+func WithLogger(logger *slog.Logger) DispatcherOption {
+	return func(d *Dispatcher) {
+		if logger != nil {
+			d.logger = logger
+		}
+	}
 }
 
 // NewDispatcher creates a new MACS Dispatcher backed by the given pool.
 // Uses a 10-second HTTP client timeout for delivery.
-func NewDispatcher(pool *pgxpool.Pool) *Dispatcher {
-	return &Dispatcher{
+func NewDispatcher(pool *pgxpool.Pool, opts ...DispatcherOption) *Dispatcher {
+	d := &Dispatcher{
 		pool:   pool,
 		client: &http.Client{Timeout: 10 * time.Second},
+		logger: slog.Default(),
 	}
+	for _, opt := range opts {
+		opt(d)
+	}
+	return d
 }
 
 // Dispatch implements outbox.Dispatcher.
@@ -144,6 +165,15 @@ func (d *Dispatcher) dispatchOrderPaid(ctx context.Context, ev outbox.Event) err
 	}
 	sub, err := d.getMACSSubscriber(ctx, orgID)
 	if err != nil {
+		// No active MACS subscriber for this org — a scanner feed silently
+		// receiving nothing for this order is otherwise invisible in logs
+		// (bug B-1 part 3). Keep returning nil: a missing subscriber is not
+		// retryable and must not spin the outbox forever.
+		d.logger.Warn("macs.subscriber_missing",
+			slog.String("org_id", orgID.String()),
+			slog.String("event_type", ev.EventType),
+			slog.String("order_id", orderID.String()),
+		)
 		return nil // no subscriber registered for this org
 	}
 
@@ -197,6 +227,13 @@ func (d *Dispatcher) dispatchComplimentaryPaid(ctx context.Context, ev outbox.Ev
 	}
 	sub, err := d.getMACSSubscriber(ctx, orgID)
 	if err != nil {
+		// See dispatchOrderPaid: no active subscriber for this org, log so
+		// the gap is visible, keep skipping (not retryable).
+		d.logger.Warn("macs.subscriber_missing",
+			slog.String("org_id", orgID.String()),
+			slog.String("event_type", ev.EventType),
+			slog.String("ticket_id", ticketID.String()),
+		)
 		return nil
 	}
 
@@ -252,7 +289,13 @@ func (d *Dispatcher) dispatchTicketRefunded(ctx context.Context, ev outbox.Event
 	// Look up active MACS subscriber for org.
 	sub, err := d.getMACSSubscriber(ctx, orgID)
 	if err != nil {
-		// No subscriber registered for this org; nothing to do.
+		// No subscriber registered for this org; nothing to do, but log so
+		// a missing scanner feed is visible (bug B-1 part 3).
+		d.logger.Warn("macs.subscriber_missing",
+			slog.String("org_id", orgID.String()),
+			slog.String("event_type", ev.EventType),
+			slog.String("ticket_id", ticketID.String()),
+		)
 		return nil
 	}
 

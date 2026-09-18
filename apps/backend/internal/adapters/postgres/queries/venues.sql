@@ -2,42 +2,110 @@
 -- All write queries are scoped by org_id to enforce owner-gated mutation policy.
 -- GET queries are NOT scoped by org_id (shared read-only across orgs).
 -- All queries filter WHERE deleted_at IS NULL to respect the soft-delete policy.
+--
+-- V-1 extended fields (migration 0050, bug B-2 fix): every venue query below
+-- projects the full row — address_line1/2, postal_code, country, geo_lat/lng,
+-- timezone, contact_phone/email, website_url, status — not just the original
+-- feature #124 subset. geo_lat/geo_lng are NUMERIC(9,6) on disk and are cast
+-- to float8 in every SELECT/RETURNING list so they scan directly into Go
+-- float64 (mirrors the existing cast in ListActionVenuesByOrg /
+-- GetVenueSessionContext).
 
 -- name: InsertVenue :one
-INSERT INTO venues (org_id, city_id, name, address, capacity_default)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at;
+INSERT INTO venues (
+    org_id, city_id, name, address, capacity_default,
+    address_line1, address_line2, postal_code, country,
+    geo_lat, geo_lng, timezone, contact_phone, contact_email,
+    website_url, status
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+RETURNING id, display_number, org_id, city_id, name, address, capacity_default,
+          address_line1, address_line2, postal_code, country,
+          geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+          contact_phone, contact_email, website_url, status,
+          created_at, updated_at, deleted_at;
 
 -- name: GetVenueByID :one
-SELECT id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, city_id, name, address, capacity_default,
+       address_line1, address_line2, postal_code, country,
+       geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+       contact_phone, contact_email, website_url, status,
+       created_at, updated_at, deleted_at
 FROM   venues
 WHERE  id = $1
   AND  deleted_at IS NULL;
 
+-- name: GetVenueForUpdate :one
+-- GetVenueForUpdate locks the row for the read-modify-write PATCH handler
+-- (bug B-2 fix): scoped by org_id so a non-owner request resolves to the same
+-- pgx.ErrNoRows a wrong org_id already produced against the old single-
+-- statement UPDATE, and FOR UPDATE closes the fetch-then-write race window
+-- between the read and the follow-up UpdateVenue call in the same handler.
+SELECT id, display_number, org_id, city_id, name, address, capacity_default,
+       address_line1, address_line2, postal_code, country,
+       geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+       contact_phone, contact_email, website_url, status,
+       created_at, updated_at, deleted_at
+FROM   venues
+WHERE  id = $1
+  AND  org_id = $2
+  AND  deleted_at IS NULL
+FOR UPDATE;
+
 -- name: ListVenues :many
-SELECT id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, city_id, name, address, capacity_default,
+       address_line1, address_line2, postal_code, country,
+       geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+       contact_phone, contact_email, website_url, status,
+       created_at, updated_at, deleted_at
 FROM   venues
 WHERE  deleted_at IS NULL
 ORDER  BY created_at ASC, id ASC;
 
 -- name: ListVenuesByOrg :many
-SELECT id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, city_id, name, address, capacity_default,
+       address_line1, address_line2, postal_code, country,
+       geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+       contact_phone, contact_email, website_url, status,
+       created_at, updated_at, deleted_at
 FROM   venues
 WHERE  org_id = $1
   AND  deleted_at IS NULL
 ORDER  BY created_at ASC, id ASC;
 
 -- name: UpdateVenue :one
+-- UpdateVenue writes the FULLY RESOLVED post-merge value of every column.
+-- Tri-state PATCH semantics (omitted=keep / null=clear / value=set) are
+-- resolved in Go (HandleUpdateVenue fetches the row via GetVenueForUpdate,
+-- merges the request onto it field by field, then calls this query with the
+-- final value for every column) rather than in SQL — bug B-2 fix. This keeps
+-- the statement a plain unconditional SET list instead of a CASE-WHEN-per-
+-- column dance across sixteen tri-state fields.
 UPDATE venues
-SET    city_id          = CASE WHEN $3::uuid IS NOT NULL THEN $3::uuid ELSE city_id END,
-       name             = COALESCE(NULLIF($4, ''), name),
-       address          = CASE WHEN $5::text IS NOT NULL THEN $5::text ELSE address END,
-       capacity_default = CASE WHEN $6::integer IS NOT NULL THEN $6::integer ELSE capacity_default END,
+SET    city_id          = $3,
+       name             = $4,
+       address          = $5,
+       capacity_default = $6,
+       address_line1    = $7,
+       address_line2    = $8,
+       postal_code      = $9,
+       country          = $10,
+       geo_lat          = $11,
+       geo_lng          = $12,
+       timezone         = $13,
+       contact_phone    = $14,
+       contact_email    = $15,
+       website_url      = $16,
+       status           = $17,
        updated_at       = now()
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, city_id, name, address, capacity_default,
+          address_line1, address_line2, postal_code, country,
+          geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+          contact_phone, contact_email, website_url, status,
+          created_at, updated_at, deleted_at;
 
 -- name: SoftDeleteVenue :one
 UPDATE venues
@@ -46,7 +114,11 @@ SET    deleted_at = now(),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, city_id, name, address, capacity_default,
+          address_line1, address_line2, postal_code, country,
+          geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+          contact_phone, contact_email, website_url, status,
+          created_at, updated_at, deleted_at;
 
 -- name: GetVenueSessionContext :one
 -- GetVenueSessionContext returns the venue attributes the session

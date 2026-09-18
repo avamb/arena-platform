@@ -131,7 +131,7 @@ func (h *Handler) loadActionEvents(
 		}
 	}
 
-	return h.projectActionEvents(ctx, sessions, tiers, prices, feePercent), nil
+	return h.projectActionEvents(ctx, orgID, sessions, tiers, prices, feePercent), nil
 }
 
 // projectActionEvents is the pure projection half of loadActionEvents: rows in,
@@ -140,6 +140,7 @@ func (h *Handler) loadActionEvents(
 // spec §7.1 semantics below are unit-testable from hand-built rows.
 func (h *Handler) projectActionEvents(
 	ctx context.Context,
+	orgID uuid.UUID,
 	sessions []gen.ActionEventRow,
 	tiers []gen.ActionEventTierRow,
 	prices map[uuid.UUID]int64,
@@ -157,7 +158,7 @@ func (h *Handler) projectActionEvents(
 
 	out := make(map[uuid.UUID]catalogAction, len(sessions))
 	for _, s := range sessions {
-		loc := h.venueLocation(s)
+		loc := h.venueLocation(orgID, s)
 		if loc == nil {
 			// Spec §7.1: a session whose venue has no timezone cannot be given
 			// a local calendar day, and a WRONG day is worse than a missing
@@ -384,9 +385,17 @@ func sessionAvailability(s gen.ActionEventRow, tiers []gen.ActionEventTierRow, n
 // when it is missing or unloadable. Both cases are spec §7.1's "skip the
 // session" path — an unknown zone is indistinguishable from no zone as far as
 // producing a correct local day goes.
-func (h *Handler) venueLocation(s gen.ActionEventRow) *time.Location {
+//
+// Bug B-3: the warning now carries org_id and event_id (in addition to the
+// pre-existing venue_id/venue_name/session_id) so a legacy venue missing its
+// timezone is searchable straight from the logs — without them, operations
+// had to cross-reference session_id back to an org/event by hand before they
+// could even find the venue to fix.
+func (h *Handler) venueLocation(orgID uuid.UUID, s gen.ActionEventRow) *time.Location {
 	if s.Timezone == nil || *s.Timezone == "" {
 		h.logger.Warn("bil24.venue_timezone_missing",
+			slog.String("org_id", orgID.String()),
+			slog.String("event_id", s.EventID.String()),
 			slog.String("venue_id", s.VenueID.String()),
 			slog.String("venue_name", s.VenueName),
 			slog.String("session_id", s.SessionID.String()),
@@ -396,6 +405,8 @@ func (h *Handler) venueLocation(s gen.ActionEventRow) *time.Location {
 	loc, err := time.LoadLocation(*s.Timezone)
 	if err != nil {
 		h.logger.Warn("bil24.venue_timezone_missing",
+			slog.String("org_id", orgID.String()),
+			slog.String("event_id", s.EventID.String()),
 			slog.String("venue_id", s.VenueID.String()),
 			slog.String("venue_name", s.VenueName),
 			slog.String("session_id", s.SessionID.String()),

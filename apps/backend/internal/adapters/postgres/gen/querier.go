@@ -103,12 +103,14 @@ type Querier interface {
 	TouchFeedTokenLastUsed(ctx context.Context, token string) error
 	GetFeedTokenByToken(ctx context.Context, token string) (FeedTokenRow, error)
 
-	// Venues — physical event locations (feature #124)
-	InsertVenue(ctx context.Context, orgID uuid.UUID, cityID *uuid.UUID, name string, address *string, capacityDefault *int32) (VenueRow, error)
+	// Venues — physical event locations (feature #124; V-1 extended fields
+	// added by migration 0050, wired through by bug B-2 fix)
+	InsertVenue(ctx context.Context, orgID uuid.UUID, cityID *uuid.UUID, name string, address *string, capacityDefault *int32, addressLine1, addressLine2, postalCode, country *string, geoLat, geoLng *float64, timezone *string, contactPhone, contactEmail, websiteURL *string, status string) (VenueRow, error)
 	GetVenueByID(ctx context.Context, id uuid.UUID) (VenueRow, error)
+	GetVenueForUpdate(ctx context.Context, id, orgID uuid.UUID) (VenueRow, error)
 	ListVenues(ctx context.Context) ([]VenueRow, error)
 	ListVenuesByOrg(ctx context.Context, orgID uuid.UUID) ([]VenueRow, error)
-	UpdateVenue(ctx context.Context, id, orgID uuid.UUID, cityID *uuid.UUID, name string, address *string, capacityDefault *int32) (VenueRow, error)
+	UpdateVenue(ctx context.Context, id, orgID uuid.UUID, cityID *uuid.UUID, name string, address *string, capacityDefault *int32, addressLine1, addressLine2, postalCode, country *string, geoLat, geoLng *float64, timezone *string, contactPhone, contactEmail, websiteURL *string, status string) (VenueRow, error)
 	GetVenueSessionContext(ctx context.Context, id uuid.UUID) (VenueSessionContextRow, error)
 	SoftDeleteVenue(ctx context.Context, id, orgID uuid.UUID) (VenueRow, error)
 	// ListActionVenuesByOrg: Bil24 compat GET_ALL_ACTIONS aggregation

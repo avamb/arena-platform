@@ -889,3 +889,194 @@ func TestVenue124_FullVerification(t *testing.T) {
 		}
 	})
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bug B-2 / B-3 — V-1 extended field validation (pure unit tests, no DB)
+//
+// Every case below fails validation before the handler ever reaches
+// h.venueQueries.InsertVenue / GetVenueForUpdate, so it runs safely against
+// buildVenueServer's dbDownPool exactly like the pre-existing 400 tests
+// above.
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestVenueB3_CreateVenue_MissingTimezoneReturns422(t *testing.T) {
+	s := buildVenueServer(t)
+	tok := venueToken(t, s)
+	orgID := uuid.New()
+	r := httptest.NewRequest(http.MethodPost,
+		"/v1/organizations/"+orgID.String()+"/venues",
+		strings.NewReader(`{"name":"Arena"}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	s.router.ServeHTTP(w, r)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("POST without timezone: want 422, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	m := venueRespJSON(t, w)
+	if got := venueErrorCode(m); got != "venue.timezone_required" {
+		t.Errorf("want code='venue.timezone_required', got %q (body: %s)", got, w.Body.String())
+	}
+}
+
+func TestVenueB3_CreateVenue_InvalidTimezoneReturns422(t *testing.T) {
+	s := buildVenueServer(t)
+	tok := venueToken(t, s)
+	orgID := uuid.New()
+	r := httptest.NewRequest(http.MethodPost,
+		"/v1/organizations/"+orgID.String()+"/venues",
+		strings.NewReader(`{"name":"Arena","timezone":"Not/AZone"}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	s.router.ServeHTTP(w, r)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("POST with invalid timezone: want 422, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	m := venueRespJSON(t, w)
+	if got := venueErrorCode(m); got != "venue.invalid_timezone" {
+		t.Errorf("want code='venue.invalid_timezone', got %q (body: %s)", got, w.Body.String())
+	}
+}
+
+func TestVenueB2_CreateVenue_InvalidCountryReturns422(t *testing.T) {
+	s := buildVenueServer(t)
+	tok := venueToken(t, s)
+	orgID := uuid.New()
+	r := httptest.NewRequest(http.MethodPost,
+		"/v1/organizations/"+orgID.String()+"/venues",
+		strings.NewReader(`{"name":"Arena","timezone":"UTC","country":"Germany"}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	s.router.ServeHTTP(w, r)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("POST with invalid country: want 422, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	m := venueRespJSON(t, w)
+	if got := venueErrorCode(m); got != "venue.invalid_country" {
+		t.Errorf("want code='venue.invalid_country', got %q (body: %s)", got, w.Body.String())
+	}
+}
+
+func TestVenueB2_CreateVenue_UnpairedGeoReturns422(t *testing.T) {
+	s := buildVenueServer(t)
+	tok := venueToken(t, s)
+	orgID := uuid.New()
+	r := httptest.NewRequest(http.MethodPost,
+		"/v1/organizations/"+orgID.String()+"/venues",
+		strings.NewReader(`{"name":"Arena","timezone":"UTC","geo_lat":52.5}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	s.router.ServeHTTP(w, r)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("POST with unpaired geo: want 422, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	m := venueRespJSON(t, w)
+	if got := venueErrorCode(m); got != "venue.invalid_geo" {
+		t.Errorf("want code='venue.invalid_geo', got %q (body: %s)", got, w.Body.String())
+	}
+}
+
+func TestVenueB2_CreateVenue_InvalidContactEmailReturns422(t *testing.T) {
+	s := buildVenueServer(t)
+	tok := venueToken(t, s)
+	orgID := uuid.New()
+	r := httptest.NewRequest(http.MethodPost,
+		"/v1/organizations/"+orgID.String()+"/venues",
+		strings.NewReader(`{"name":"Arena","timezone":"UTC","contact_email":"not-an-email"}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	s.router.ServeHTTP(w, r)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("POST with invalid contact_email: want 422, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	m := venueRespJSON(t, w)
+	if got := venueErrorCode(m); got != "venue.invalid_contact_email" {
+		t.Errorf("want code='venue.invalid_contact_email', got %q (body: %s)", got, w.Body.String())
+	}
+}
+
+func TestVenueB2_CreateVenue_InvalidWebsiteURLReturns422(t *testing.T) {
+	s := buildVenueServer(t)
+	tok := venueToken(t, s)
+	orgID := uuid.New()
+	r := httptest.NewRequest(http.MethodPost,
+		"/v1/organizations/"+orgID.String()+"/venues",
+		strings.NewReader(`{"name":"Arena","timezone":"UTC","website_url":"not a url"}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	s.router.ServeHTTP(w, r)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("POST with invalid website_url: want 422, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	m := venueRespJSON(t, w)
+	if got := venueErrorCode(m); got != "venue.invalid_website_url" {
+		t.Errorf("want code='venue.invalid_website_url', got %q (body: %s)", got, w.Body.String())
+	}
+}
+
+func TestVenueB2_CreateVenue_InvalidStatusReturns422(t *testing.T) {
+	s := buildVenueServer(t)
+	tok := venueToken(t, s)
+	orgID := uuid.New()
+	r := httptest.NewRequest(http.MethodPost,
+		"/v1/organizations/"+orgID.String()+"/venues",
+		strings.NewReader(`{"name":"Arena","timezone":"UTC","status":"published"}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	s.router.ServeHTTP(w, r)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("POST with invalid status: want 422, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	m := venueRespJSON(t, w)
+	if got := venueErrorCode(m); got != "venue.invalid_status" {
+		t.Errorf("want code='venue.invalid_status', got %q (body: %s)", got, w.Body.String())
+	}
+}
+
+func TestVenueB3_UpdateVenue_ClearTimezoneReturns422(t *testing.T) {
+	s := buildVenueServer(t)
+	tok := venueToken(t, s)
+	orgID := uuid.New()
+	venueID := uuid.New()
+	r := httptest.NewRequest(http.MethodPatch,
+		"/v1/organizations/"+orgID.String()+"/venues/"+venueID.String(),
+		strings.NewReader(`{"timezone":null}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	s.router.ServeHTTP(w, r)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("PATCH clearing timezone: want 422, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	m := venueRespJSON(t, w)
+	if got := venueErrorCode(m); got != "venue.timezone_required" {
+		t.Errorf("want code='venue.timezone_required', got %q (body: %s)", got, w.Body.String())
+	}
+}
+
+func TestVenueB3_UpdateVenue_InvalidTimezoneReturns422(t *testing.T) {
+	s := buildVenueServer(t)
+	tok := venueToken(t, s)
+	orgID := uuid.New()
+	venueID := uuid.New()
+	r := httptest.NewRequest(http.MethodPatch,
+		"/v1/organizations/"+orgID.String()+"/venues/"+venueID.String(),
+		strings.NewReader(`{"timezone":"Not/AZone"}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	s.router.ServeHTTP(w, r)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("PATCH with invalid timezone: want 422, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	m := venueRespJSON(t, w)
+	if got := venueErrorCode(m); got != "venue.invalid_timezone" {
+		t.Errorf("want code='venue.invalid_timezone', got %q (body: %s)", got, w.Body.String())
+	}
+}
