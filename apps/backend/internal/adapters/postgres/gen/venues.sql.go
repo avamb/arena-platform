@@ -19,6 +19,13 @@ import (
 // deleted_at is nil for active venues and non-nil for soft-deleted ones.
 // city_id is nil when the venue does not have a specific city reference.
 // capacity_default is nil when the venue capacity is unspecified.
+//
+// V-1 extended fields (migration 0050, bug B-2 fix): address_line1/2,
+// postal_code, country, geo_lat/geo_lng, timezone, contact_phone,
+// contact_email and website_url are all nullable — a legacy venue created
+// before migration 0050 (or one that has never had these fields set) carries
+// nil for every one of them. status is NOT NULL at the DB layer (CHECK
+// constraint + DEFAULT 'active').
 type VenueRow struct {
 	ID              uuid.UUID  `json:"id"`
 	DisplayNumber   int64      `json:"display_number"`
@@ -27,6 +34,17 @@ type VenueRow struct {
 	Name            string     `json:"name"`
 	Address         *string    `json:"address"`
 	CapacityDefault *int32     `json:"capacity_default"`
+	AddressLine1    *string    `json:"address_line1"`
+	AddressLine2    *string    `json:"address_line2"`
+	PostalCode      *string    `json:"postal_code"`
+	Country         *string    `json:"country"`
+	GeoLat          *float64   `json:"geo_lat"`
+	GeoLng          *float64   `json:"geo_lng"`
+	Timezone        *string    `json:"timezone"`
+	ContactPhone    *string    `json:"contact_phone"`
+	ContactEmail    *string    `json:"contact_email"`
+	WebsiteUrl      *string    `json:"website_url"`
+	Status          string     `json:"status"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	DeletedAt       *time.Time `json:"deleted_at"`
@@ -45,6 +63,17 @@ func scanVenueRow(row interface {
 		&v.Name,
 		&v.Address,
 		&v.CapacityDefault,
+		&v.AddressLine1,
+		&v.AddressLine2,
+		&v.PostalCode,
+		&v.Country,
+		&v.GeoLat,
+		&v.GeoLng,
+		&v.Timezone,
+		&v.ContactPhone,
+		&v.ContactEmail,
+		&v.WebsiteUrl,
+		&v.Status,
 		&v.CreatedAt,
 		&v.UpdatedAt,
 		&v.DeletedAt,
@@ -57,15 +86,40 @@ func scanVenueRow(row interface {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const insertVenue = `-- name: InsertVenue :one
-INSERT INTO venues (org_id, city_id, name, address, capacity_default)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at`
+INSERT INTO venues (
+    org_id, city_id, name, address, capacity_default,
+    address_line1, address_line2, postal_code, country,
+    geo_lat, geo_lng, timezone, contact_phone, contact_email,
+    website_url, status
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+RETURNING id, display_number, org_id, city_id, name, address, capacity_default,
+          address_line1, address_line2, postal_code, country,
+          geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+          contact_phone, contact_email, website_url, status,
+          created_at, updated_at, deleted_at`
 
-// InsertVenue creates a new active venue row owned by the given org.
-// Returns the created row including the uuidv7 PK assigned by the database.
-func (q *Queries) InsertVenue(ctx context.Context, orgID uuid.UUID, cityID *uuid.UUID, name string, address *string, capacityDefault *int32) (VenueRow, error) {
+// InsertVenue creates a new active venue row owned by the given org,
+// including the full V-1 extended field set (bug B-2 fix). Returns the
+// created row including the uuidv7 PK assigned by the database.
+func (q *Queries) InsertVenue(
+	ctx context.Context,
+	orgID uuid.UUID,
+	cityID *uuid.UUID,
+	name string,
+	address *string,
+	capacityDefault *int32,
+	addressLine1, addressLine2, postalCode, country *string,
+	geoLat, geoLng *float64,
+	timezone *string,
+	contactPhone, contactEmail, websiteURL *string,
+	status string,
+) (VenueRow, error) {
 	row := q.db.QueryRow(ctx, insertVenue,
 		orgID, cityID, name, address, capacityDefault,
+		addressLine1, addressLine2, postalCode, country,
+		geoLat, geoLng, timezone, contactPhone, contactEmail,
+		websiteURL, status,
 	)
 	return scanVenueRow(row)
 }
@@ -75,7 +129,11 @@ func (q *Queries) InsertVenue(ctx context.Context, orgID uuid.UUID, cityID *uuid
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getVenueByID = `-- name: GetVenueByID :one
-SELECT id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, city_id, name, address, capacity_default,
+       address_line1, address_line2, postal_code, country,
+       geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+       contact_phone, contact_email, website_url, status,
+       created_at, updated_at, deleted_at
 FROM   venues
 WHERE  id = $1
   AND  deleted_at IS NULL`
@@ -89,11 +147,42 @@ func (q *Queries) GetVenueByID(ctx context.Context, id uuid.UUID) (VenueRow, err
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetVenueForUpdate
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getVenueForUpdate = `-- name: GetVenueForUpdate :one
+SELECT id, display_number, org_id, city_id, name, address, capacity_default,
+       address_line1, address_line2, postal_code, country,
+       geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+       contact_phone, contact_email, website_url, status,
+       created_at, updated_at, deleted_at
+FROM   venues
+WHERE  id = $1
+  AND  org_id = $2
+  AND  deleted_at IS NULL
+FOR UPDATE`
+
+// GetVenueForUpdate locks an active venue owned by orgID for the
+// read-modify-write PATCH handler (bug B-2 fix): scoped by org_id (a
+// mismatched org resolves to pgx.ErrNoRows, matching the owner-gated 404 the
+// old single-statement UPDATE produced) and FOR UPDATE so the row cannot
+// change between this read and the caller's follow-up UpdateVenue call
+// within the same transaction.
+func (q *Queries) GetVenueForUpdate(ctx context.Context, id, orgID uuid.UUID) (VenueRow, error) {
+	row := q.db.QueryRow(ctx, getVenueForUpdate, id, orgID)
+	return scanVenueRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ListVenues
 // ─────────────────────────────────────────────────────────────────────────────
 
 const listVenues = `-- name: ListVenues :many
-SELECT id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, city_id, name, address, capacity_default,
+       address_line1, address_line2, postal_code, country,
+       geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+       contact_phone, contact_email, website_url, status,
+       created_at, updated_at, deleted_at
 FROM   venues
 WHERE  deleted_at IS NULL
 ORDER  BY created_at ASC, id ASC`
@@ -123,7 +212,11 @@ func (q *Queries) ListVenues(ctx context.Context) ([]VenueRow, error) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const listVenuesByOrg = `-- name: ListVenuesByOrg :many
-SELECT id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, city_id, name, address, capacity_default,
+       address_line1, address_line2, postal_code, country,
+       geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+       contact_phone, contact_email, website_url, status,
+       created_at, updated_at, deleted_at
 FROM   venues
 WHERE  org_id = $1
   AND  deleted_at IS NULL
@@ -155,24 +248,56 @@ func (q *Queries) ListVenuesByOrg(ctx context.Context, orgID uuid.UUID) ([]Venue
 
 const updateVenue = `-- name: UpdateVenue :one
 UPDATE venues
-SET    city_id          = CASE WHEN $3::uuid IS NOT NULL THEN $3::uuid ELSE city_id END,
-       name             = COALESCE(NULLIF($4, ''), name),
-       address          = CASE WHEN $5::text IS NOT NULL THEN $5::text ELSE address END,
-       capacity_default = CASE WHEN $6::integer IS NOT NULL THEN $6::integer ELSE capacity_default END,
+SET    city_id          = $3,
+       name             = $4,
+       address          = $5,
+       capacity_default = $6,
+       address_line1    = $7,
+       address_line2    = $8,
+       postal_code      = $9,
+       country          = $10,
+       geo_lat          = $11,
+       geo_lng          = $12,
+       timezone         = $13,
+       contact_phone    = $14,
+       contact_email    = $15,
+       website_url      = $16,
+       status           = $17,
        updated_at       = now()
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, city_id, name, address, capacity_default,
+          address_line1, address_line2, postal_code, country,
+          geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+          contact_phone, contact_email, website_url, status,
+          created_at, updated_at, deleted_at`
 
-// UpdateVenue applies a partial update to an active venue.
-// Scoped by org_id to enforce owner-gated mutation policy.
-// Empty string name is ignored (existing value kept). Nil optional fields keep existing value.
-// Returns pgx.ErrNoRows when the venue does not exist, does not belong to the org,
-// or has been soft-deleted.
-func (q *Queries) UpdateVenue(ctx context.Context, id, orgID uuid.UUID, cityID *uuid.UUID, name string, address *string, capacityDefault *int32) (VenueRow, error) {
+// UpdateVenue writes the fully resolved value of every column (bug B-2 fix).
+// Tri-state PATCH semantics (omitted=keep / null=clear / value=set) are
+// resolved by the caller — HandleUpdateVenue fetches the row via
+// GetVenueForUpdate, merges the request onto it field by field, and passes
+// the final value for every column here. Scoped by org_id to enforce the
+// owner-gated mutation policy. Returns pgx.ErrNoRows when the venue does not
+// exist, does not belong to the org, or has been soft-deleted.
+func (q *Queries) UpdateVenue(
+	ctx context.Context,
+	id, orgID uuid.UUID,
+	cityID *uuid.UUID,
+	name string,
+	address *string,
+	capacityDefault *int32,
+	addressLine1, addressLine2, postalCode, country *string,
+	geoLat, geoLng *float64,
+	timezone *string,
+	contactPhone, contactEmail, websiteURL *string,
+	status string,
+) (VenueRow, error) {
 	row := q.db.QueryRow(ctx, updateVenue,
 		id, orgID, cityID, name, address, capacityDefault,
+		addressLine1, addressLine2, postalCode, country,
+		geoLat, geoLng, timezone, contactPhone, contactEmail,
+		websiteURL, status,
 	)
 	return scanVenueRow(row)
 }
@@ -188,7 +313,11 @@ SET    deleted_at = now(),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, display_number, org_id, city_id, name, address, capacity_default, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, city_id, name, address, capacity_default,
+          address_line1, address_line2, postal_code, country,
+          geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+          contact_phone, contact_email, website_url, status,
+          created_at, updated_at, deleted_at`
 
 // SoftDeleteVenue marks a venue as deleted by setting deleted_at.
 // Scoped by org_id to enforce owner-gated mutation policy.

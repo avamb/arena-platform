@@ -9,7 +9,12 @@
 -- instead of a unique-violation that would abort the import transaction.
 
 -- name: GetVenueByBil24ExternalID :one
+-- Column list widened to the full V-1 row (migration 0050, bug B-2 fix) to
+-- keep this query compatible with the shared scanVenueRow / VenueRow scanner.
 SELECT id, display_number, org_id, city_id, name, address, capacity_default,
+       address_line1, address_line2, postal_code, country,
+       geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+       contact_phone, contact_email, website_url, status,
        created_at, updated_at, deleted_at
 FROM   venues
 WHERE  external_bil24_id = $1
@@ -28,6 +33,9 @@ INSERT INTO venues (
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING id, display_number, org_id, city_id, name, address, capacity_default,
+          address_line1, address_line2, postal_code, country,
+          geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+          contact_phone, contact_email, website_url, status,
           created_at, updated_at, deleted_at;
 
 -- name: UpdateImportedVenueGeography :exec

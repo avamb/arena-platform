@@ -36,6 +36,7 @@ import {
   sessionToForm,
   toLocalDatetimeValue,
   toRFC3339,
+  previewVenueLocalTime,
   validateEventForm,
   validateSessionForm,
   TIER_PRICING_MODES,
@@ -376,6 +377,30 @@ describe("parseLocalDatetime / toLocalDatetimeValue / toRFC3339", () => {
     const original = "2026-08-15T18:00:00Z";
     const local = toLocalDatetimeValue(original);
     expect(toRFC3339(local)).toBe(original);
+  });
+});
+
+describe("previewVenueLocalTime (bug B-4)", () => {
+  it("returns null for a blank input or a blank timezone", () => {
+    expect(previewVenueLocalTime("", "Europe/Prague")).toBeNull();
+    expect(previewVenueLocalTime("2026-08-15T18:00", "")).toBeNull();
+  });
+  it("renders the venue-local wall clock for the UTC value entered (summer, UTC+2)", () => {
+    // 17:00 UTC in August is 19:00 in Europe/Prague (CEST, UTC+2).
+    const preview = previewVenueLocalTime("2026-08-15T17:00", "Europe/Prague");
+    expect(preview).not.toBeNull();
+    expect(preview).toContain("19:00");
+  });
+  it("renders the venue-local wall clock for the UTC value entered (winter, UTC+1)", () => {
+    // 17:00 UTC in January is 18:00 in Europe/Prague (CET, UTC+1).
+    const preview = previewVenueLocalTime("2026-01-15T17:00", "Europe/Prague");
+    expect(preview).not.toBeNull();
+    expect(preview).toContain("18:00");
+  });
+  it("matches the UTC value verbatim for the UTC zone itself", () => {
+    const preview = previewVenueLocalTime("2026-08-15T17:00", "UTC");
+    expect(preview).not.toBeNull();
+    expect(preview).toContain("17:00");
   });
 });
 

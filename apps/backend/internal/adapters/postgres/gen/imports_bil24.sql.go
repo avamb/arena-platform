@@ -16,6 +16,9 @@ import (
 
 const getVenueByBil24ExternalID = `-- name: GetVenueByBil24ExternalID :one
 SELECT id, display_number, org_id, city_id, name, address, capacity_default,
+       address_line1, address_line2, postal_code, country,
+       geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+       contact_phone, contact_email, website_url, status,
        created_at, updated_at, deleted_at
 FROM   venues
 WHERE  external_bil24_id = $1
@@ -73,6 +76,9 @@ INSERT INTO venues (
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING id, display_number, org_id, city_id, name, address, capacity_default,
+          address_line1, address_line2, postal_code, country,
+          geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
+          contact_phone, contact_email, website_url, status,
           created_at, updated_at, deleted_at`
 
 // InsertImportedVenue creates a venue carrying the full geography the Bil24

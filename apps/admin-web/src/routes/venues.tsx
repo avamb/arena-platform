@@ -335,6 +335,31 @@ export function validateVenueTimezone(raw: string): string | null {
   return null;
 }
 
+// validateVenueTimezoneRequired enforces bug B-3's requirement: timezone is
+// mandatory on every NEW venue (a venue without one silently drops every one
+// of its sessions from the Bil24 gateway's GET_ALL_ACTIONS catalog), and an
+// existing venue that already has a timezone can never have it cleared back
+// to blank via edit — only replaced with another IANA name. A legacy venue
+// that predates this rule and still has no timezone is left alone: editing
+// some unrelated field does not force the operator to fill this one in.
+// Mirrors the server-side venue.timezone_required check in
+// apps/backend/internal/platform/httpserver/hcatalog/venues.go.
+export function validateVenueTimezoneRequired(
+  timezone: string,
+  isEdit: boolean,
+  initialTimezone: string,
+): string | null {
+  if (timezone.trim() !== "") {
+    return null;
+  }
+  if (isEdit && initialTimezone.trim() === "") {
+    return null;
+  }
+  return isEdit
+    ? "Timezone cannot be cleared once set — choose a replacement instead"
+    : "Timezone is required";
+}
+
 export function validateVenueContactEmail(raw: string): string | null {
   if (raw.trim() === "") {
     return null;
@@ -1068,6 +1093,11 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
   const lngErr = validateVenueGeoLng(geoLng);
   const geoPairErr = validateVenueGeoPair(geoLat, geoLng);
   const tzErr = validateVenueTimezone(timezone);
+  const tzRequiredErr = validateVenueTimezoneRequired(
+    timezone,
+    isEdit,
+    initialTimezone,
+  );
   const emailErr = validateVenueContactEmail(email);
   const phoneErr = validateVenueContactPhone(phone);
   const websiteErr = validateVenueWebsiteUrl(website);
@@ -1085,6 +1115,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
     lngErr === null &&
     geoPairErr === null &&
     tzErr === null &&
+    tzRequiredErr === null &&
     emailErr === null &&
     phoneErr === null &&
     websiteErr === null;
@@ -1683,16 +1714,17 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
           </fieldset>
 
           <FieldRow
-            label="Timezone (IANA)"
+            label="Timezone (IANA) *"
             htmlFor="venue-timezone"
             error={serverErrors.timezone ?? null}
-            localError={timezone.length > 0 ? tzErr : null}
-            hint="Type to autocomplete. Server validates via time.LoadLocation."
+            localError={timezone.length > 0 ? tzErr : tzRequiredErr}
+            hint="Required — a venue without a timezone silently drops its sessions from the Bil24 gateway feed. Type to autocomplete; server validates via time.LoadLocation."
           >
             <input
               id="venue-timezone"
               type="text"
               value={timezone}
+              required
               onChange={(e) => {
                 setTimezone(e.target.value);
                 if (serverErrors.timezone !== undefined) {
