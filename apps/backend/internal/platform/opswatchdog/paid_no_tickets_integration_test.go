@@ -158,6 +158,21 @@ func TestPaidNoTickets_LiveDB_RaiseDedupResolve(t *testing.T) {
 		t.Fatal("expected ops_alerts row to be resolved")
 	}
 
+	// ---- Run 4: the ticket stops being 'active' — it is cancelled, refunded
+	// or scanned at the door. The order still HAS its ticket, so the alert
+	// must stay resolved. The check used to look for an 'active' ticket only
+	// and re-raised a CRITICAL for every such order.
+	if _, err := pool.Exec(ctx, `UPDATE tickets SET status = 'cancelled' WHERE order_id = $1`, orderID); err != nil {
+		t.Fatalf("cancel ticket: %v", err)
+	}
+	before := countContaining(notifier.messages(), orderMarker)
+	if err := handler(ctx, nil); err != nil {
+		t.Fatalf("run 4: %v", err)
+	}
+	if after := countContaining(notifier.messages(), orderMarker); after != before {
+		t.Fatalf("run 4: a cancelled ticket re-raised the alert (%d -> %d messages)", before, after)
+	}
+
 	cleanupOpsAlerts(t, ctx, pool, "paid_no_tickets:"+orderID.String())
 }
 

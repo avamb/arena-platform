@@ -115,8 +115,13 @@ func (r *runner) checkPaidNoTickets(ctx context.Context) error {
 		 WHERE o.status = 'paid'
 		   AND o.paid_at IS NOT NULL
 		   AND o.paid_at < $1
+		   -- ANY ticket counts, whatever its status. Filtering on 'active' made
+		   -- every refunded or cancelled order — and, on the day, every order
+		   -- whose tickets had been scanned at the door — look like "paid but
+		   -- nothing issued" and page a CRITICAL every 30 minutes (first seen on
+		   -- production 2026-09-20 for a cancelled staging order).
 		   AND NOT EXISTS (
-		         SELECT 1 FROM tickets t WHERE t.order_id = o.id AND t.status = 'active'
+		         SELECT 1 FROM tickets t WHERE t.order_id = o.id
 		       )
 		 ORDER BY o.paid_at ASC
 		 LIMIT $2
