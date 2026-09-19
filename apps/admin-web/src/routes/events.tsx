@@ -2848,9 +2848,9 @@ function EventWizard({
               event={event}
               session={session}
               tiers={tiers}
-              onTierAdded={(t) => {
+              onTierAdded={(t, label) => {
                 setTiers((prev) => [...prev, t]);
-                setBanner({ kind: "ok", msg: `Tier "${t.name}" added.` });
+                setBanner({ kind: "ok", msg: label ?? `Tier "${t.name}" added.` });
               }}
               onTierError={(msg) => setBanner({ kind: "err", msg })}
               onPublish={() => {
@@ -2892,7 +2892,7 @@ interface WizardTiersStepProps {
   event: EventItem;
   session: SessionItem;
   tiers: readonly TicketTierItem[];
-  onTierAdded: (t: TicketTierItem) => void;
+  onTierAdded: (t: TicketTierItem, label?: string) => void;
   onTierError: (msg: string) => void;
   onPublish: () => void;
   publishBusy: boolean;
@@ -2912,8 +2912,32 @@ function WizardTiersStep({
   const [showForm, setShowForm] = useState(tiers.length === 0);
   const canPublish = tiers.length > 0;
 
+  // The session step can create several dates at once; each needs tiers
+  // before the event can be published, so the wizard adds every tier to
+  // all of them (F-12).
+  const siblingsQuery = useQuery<SessionListEnvelope, ApiError>({
+    queryKey: ["events", "detail", event.id, "sessions"],
+    queryFn: () =>
+      authedFetch<SessionListEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${event.org_id}/events/${event.id}/sessions`,
+      }),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const otherDates = (siblingsQuery.data?.sessions ?? []).filter(
+    (s) => s.id !== session.id,
+  );
+
   return (
     <div data-testid="events-wizard-step3">
+      {otherDates.length > 0 ? (
+        <p style={mutedHintStyle} data-testid="events-wizard-other-dates">
+          Every tier you add here is also added to the other{" "}
+          {otherDates.length === 1 ? "date" : `${otherDates.length} dates`}:{" "}
+          {otherDates.map((s) => formatDateTime(s.start_at)).join(", ")}.
+        </p>
+      ) : null}
       <p style={mutedHintStyle}>
         Add at least one ticket tier for the session on{" "}
         {formatDateTime(session.start_at)}. Currency is{" "}
@@ -2958,9 +2982,10 @@ function WizardTiersStep({
           event={event}
           session={session}
           mode={{ kind: "create", sessionID: session.id }}
+          alsoCreateOn={otherDates}
           onClose={() => setShowForm(false)}
-          onSaved={(_label, created) => {
-            if (created !== undefined) onTierAdded(created);
+          onSaved={(label, created) => {
+            if (created !== undefined) onTierAdded(created, label);
             setShowForm(false);
           }}
           onError={onTierError}
@@ -5886,6 +5911,19 @@ interface TierEditorProps {
    */
   onSaved: (label: string, tier?: TicketTierItem) => void;
   onError: (msg: string) => void;
+  /**
+   * Create mode only: other sessions of the event that get the same tier.
+   * The wizard passes its "Additional dates" here, so every date it created
+   * can be published (F-12, functional run 2026-09-19). A session that
+   * already has a tier of that name is skipped.
+   */
+  alsoCreateOn?: readonly SessionItem[];
+}
+
+interface TierSaveResult extends TierEnvelope {
+  /** Human-readable failures of the alsoCreateOn copies, if any. */
+  readonly copyFailures: readonly string[];
+  readonly copiedTo: number;
 }
 
 function TierEditor({
@@ -5895,6 +5933,7 @@ function TierEditor({
   onClose,
   onSaved,
   onError,
+  alsoCreateOn = [],
 }: TierEditorProps) {
   const initial =
     mode.kind === "edit" ? tierToForm(mode.tier) : emptyTierForm();
@@ -5905,30 +5944,68 @@ function TierEditor({
     [values, quantityRequired],
   );
 
-  const mutation = useMutation<TierEnvelope, ApiError, TierFormValues>({
-    mutationFn: (v) => {
-      const basePath = `/v1/organizations/${event.org_id}/events/${event.id}/sessions/${session.id}/tiers`;
+  const mutation = useMutation<TierSaveResult, ApiError, TierFormValues>({
+    mutationFn: async (v) => {
+      const tiersPath = (sessionID: string) =>
+        `/v1/organizations/${event.org_id}/events/${event.id}/sessions/${sessionID}/tiers`;
+      const basePath = tiersPath(session.id);
       const body = buildTierRequestBody(v);
-      if (mode.kind === "create") {
-        return authedFetch<TierEnvelope>({
-          method: "POST",
-          path: basePath,
+      if (mode.kind !== "create") {
+        const updated = await authedFetch<TierEnvelope>({
+          method: "PATCH",
+          path: `${basePath}/${mode.tier.id}`,
           body,
         });
+        return { ...updated, copyFailures: [], copiedTo: 0 };
       }
-      return authedFetch<TierEnvelope>({
-        method: "PATCH",
-        path: `${basePath}/${mode.tier.id}`,
+      const created = await authedFetch<TierEnvelope>({
+        method: "POST",
+        path: basePath,
         body,
       });
+      // The first date's tier exists now; a failed copy must not fail the
+      // save, or a retry would create it twice on the first date.
+      const copyFailures: string[] = [];
+      let copiedTo = 0;
+      for (const other of alsoCreateOn) {
+        if (other.id === session.id) continue;
+        try {
+          const existing = await authedFetch<TicketTierListEnvelope>({
+            method: "GET",
+            path: tiersPath(other.id),
+          });
+          const list = existing.ticket_tiers ?? existing.tiers ?? [];
+          if (list.some((t) => t.name.trim() === created.tier.name.trim())) continue;
+          await authedFetch<TierEnvelope>({
+            method: "POST",
+            path: tiersPath(other.id),
+            body,
+          });
+          copiedTo += 1;
+        } catch (err) {
+          const why = err instanceof ApiError ? mapTierError(err) : "request failed";
+          copyFailures.push(`${formatDateTime(other.start_at)}: ${why}`);
+        }
+      }
+      return { ...created, copyFailures, copiedTo };
     },
     onSuccess: (data) => {
+      const copied =
+        data.copiedTo > 0
+          ? ` Also added to ${data.copiedTo} other date${data.copiedTo === 1 ? "" : "s"}.`
+          : "";
       onSaved(
         mode.kind === "create"
-          ? `Created tier "${data.tier.name}".`
+          ? `Created tier "${data.tier.name}".${copied}`
           : `Updated tier "${data.tier.name}".`,
         data.tier,
       );
+      if (data.copyFailures.length > 0) {
+        onError(
+          `Tier "${data.tier.name}" was created, but not on: ${data.copyFailures.join("; ")}. ` +
+            "Add it on the event's Ticket tiers tab.",
+        );
+      }
     },
     onError: (err) => {
       onError(mapTierError(err));
