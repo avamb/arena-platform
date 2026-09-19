@@ -8,7 +8,8 @@
  * page locale onto the widget's smaller set — never hand-roll that mapping
  * elsewhere.
  *
- * Precedence: `?lang=` query parameter -> `navigator.language` (mapped onto
+ * Precedence: `?lang=` query parameter -> the remembered explicit choice
+ * (see main.ts) -> `navigator.language` (mapped onto
  * the supported set by matching the language subtag, e.g. "ru-RU" -> "ru")
  * -> "en".
  */
@@ -54,11 +55,22 @@ function languageSubtag(tag: string): string {
 export function resolveLocale(
   search: string | URLSearchParams,
   navigatorLanguages: readonly string[] = [],
+  remembered: string | null = null,
 ): PageLocale {
   const params = typeof search === 'string' ? new URLSearchParams(search) : search;
   const queryLang = params.get('lang');
   if (queryLang) {
     const subtag = languageSubtag(queryLang);
+    if (isSupportedLocale(subtag)) return subtag;
+  }
+
+  // The language the buyer last chose explicitly. The payment provider sends
+  // the buyer back to a URL arena builds, and arena strips every query
+  // parameter but its own checkout token from it — so `?lang=ru` does not
+  // survive the round trip and the order page would flip to the browser's
+  // language mid-purchase.
+  if (remembered) {
+    const subtag = languageSubtag(remembered);
     if (isSupportedLocale(subtag)) return subtag;
   }
 

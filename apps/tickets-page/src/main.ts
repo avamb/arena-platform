@@ -29,7 +29,12 @@ async function main(): Promise<void> {
   const mainEl = document.getElementById('asa-main');
   if (!mainEl) return;
 
-  const locale = resolveLocale(window.location.search, navigator.languages ?? [navigator.language]);
+  const locale = resolveLocale(
+    window.location.search,
+    navigator.languages ?? [navigator.language],
+    readRememberedLang(),
+  );
+  rememberExplicitLang(window.location.search);
   applyDocumentChrome(locale, null);
 
   const route = parsePath(window.location.pathname);
@@ -84,3 +89,25 @@ async function main(): Promise<void> {
 }
 
 void main();
+
+const LANG_STORAGE_KEY = 'arena.tickets.lang';
+
+/** Storage can throw (private mode, blocked site data) — never let that break the page. */
+function readRememberedLang(): string | null {
+  try {
+    return window.localStorage.getItem(LANG_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Remembers only an EXPLICIT `?lang=` choice, never the browser default. */
+function rememberExplicitLang(search: string): void {
+  const lang = new URLSearchParams(search).get('lang');
+  if (!lang) return;
+  try {
+    window.localStorage.setItem(LANG_STORAGE_KEY, lang);
+  } catch {
+    /* ignore */
+  }
+}

@@ -26,6 +26,7 @@ import (
 	"net/mail"
 	"net/smtp"
 	"net/textproto"
+	"strings"
 )
 
 // Message holds all fields required to send a single transactional email.
@@ -314,6 +315,16 @@ func buildMIMEMessage(from string, msg Message) ([]byte, error) {
 	mw := multipart.NewWriter(&buf)
 	writeRFC5322HeaderWithReplyTo(&buf, from, msg.To, msg.Subject,
 		"multipart/mixed; boundary=\""+mw.Boundary()+"\"", msg.ReplyTo)
+	// The blank line that ends the header block. multipart.Writer does NOT
+	// write it: its first boundary is emitted as "--boundary\r\n" with no
+	// leading CRLF, so without this line the boundary sat directly under
+	// Content-Type and a strict server parsed it as a malformed header —
+	// Brevo answered "554 5.0.0 Header parsing error" and no ticket e-mail
+	// with a PDF attachment could be delivered at all (found on the first
+	// production test purchase, 2026-09-20). The single-part branch above
+	// always wrote its own blank line, which is why attachment-less mail
+	// (password reset, invitations) worked.
+	buf.WriteString("\r\n")
 
 	// text/plain part
 	if msg.TextBody != "" {
@@ -383,7 +394,7 @@ func writeRFC5322HeaderWithReplyTo(buf *bytes.Buffer, from, to, subject, content
 	buf.WriteString("\r\nTo: ")
 	buf.WriteString(to)
 	buf.WriteString("\r\nSubject: ")
-	buf.WriteString(mime.QEncoding.Encode("utf-8", subject))
+	buf.WriteString(encodeHeaderText(subject))
 	if replyTo != "" {
 		buf.WriteString("\r\nReply-To: ")
 		buf.WriteString(replyTo)
@@ -400,4 +411,23 @@ func truncateStr(s string, n int) string {
 		return s
 	}
 	return string(r[:n]) + "…"
+}
+
+// encodeHeaderText RFC 2047-encodes a header value and FOLDS it.
+//
+// mime.WordEncoder splits a long value into several encoded-words but joins
+// them with a bare space, producing one physical line. A localized subject is
+// long once encoded (Cyrillic costs six bytes per letter in Q-encoding), so the
+// line blew past the 78-character recommendation of RFC 5322 §2.1.1 and could
+// reach the hard 998 limit. B-encoding is ~4x more compact for non-Latin text,
+// and each encoded-word goes on its own continuation line.
+func encodeHeaderText(v string) string {
+	encoded := mime.BEncoding.Encode("utf-8", v)
+	if !strings.Contains(encoded, "?= =?") {
+		return encoded
+	}
+	// An encoded-word is up to 75 bytes, so together with the "Subject: "
+	// prefix the first line would already exceed 78: start the value on its
+	// own continuation line as well.
+	return "\r\n " + strings.ReplaceAll(encoded, "?= =?", "?=\r\n =?")
 }

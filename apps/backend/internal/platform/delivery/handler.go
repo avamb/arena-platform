@@ -525,19 +525,34 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		// opts.Sender is guaranteed non-nil and non-dev-only at this point
 		// (the guard at step 2 would have returned early otherwise).
 		if sendErr := opts.Sender.Send(ctx, msg); sendErr != nil {
-			// Transient failure — let the worker retry. The delivery_jobs row
-			// stays in 'processing' state; the worker's retry machinery will
-			// re-invoke this handler. On retry, the ClaimDeliveryJobForProcessing
-			// CAS will see status='processing' (not 'pending') and return
-			// ErrNoRows, causing the handler to skip the send. This means the
-			// effective retry is driven by the worker_jobs table (its own retry
-			// counter and backoff), not by re-sending via the same delivery_job.
-			// A reconciliation job can reset stale 'processing' rows (where
-			// processing_at is older than a configurable threshold) back to
-			// 'pending' for redelivery.
+			// The send failed, so nothing was delivered: hand the delivery_jobs
+			// row back to 'pending' so the worker's retry can claim it again.
+			//
+			// Until 2026-09-20 the row was left in 'processing'. The retry then
+			// hit the claim CAS ("not pending"), skipped the send and reported
+			// SUCCESS — the worker job went 'done', the buyer never got a ticket,
+			// and nothing failed loudly enough for anyone to notice (found on the
+			// first production test purchase, where Brevo answered 554). The
+			// "reconciliation job" the old comment relied on never existed.
+			//
+			// A duplicate is only possible if the server accepted the message and
+			// the error came afterwards; every SMTP error surfaced here happens
+			// before acceptance (connect, auth, RCPT, DATA close).
 			//
 			// NOTE: SMTP credentials and ticket barcodes are NOT included in log
 			// fields — only the ticket_id and sanitised error string.
+			if opts.DeliveryJobQueries != nil && deliveryJobID != uuid.Nil {
+				errText := sendErr.Error()
+				if _, relErr := opts.DeliveryJobQueries.UpdateDeliveryJobStatus(
+					ctx, deliveryJobID, StatusPending, &errText,
+				); relErr != nil {
+					logger.Error("delivery: could not release delivery_job back to pending after a failed send",
+						slog.String("delivery_job_id", deliveryJobID.String()),
+						slog.String("ticket_id", ticketID.String()),
+						slog.String("error", relErr.Error()),
+					)
+				}
+			}
 			logger.Warn("delivery: SMTP send failed; worker will retry",
 				slog.String("ticket_id", ticketID.String()),
 				slog.String("to", recipientEmail),

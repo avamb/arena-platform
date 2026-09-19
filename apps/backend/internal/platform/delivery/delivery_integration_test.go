@@ -416,6 +416,23 @@ func TestDelivery_SMTPRefused(t *testing.T) {
 		t.Fatalf("delivery_jobs.status must not be %q after SMTP refusal; got %q", StatusSent, status)
 	}
 	t.Logf("SMTP refusal: delivery_jobs.status=%q (expected non-sent) ✓", status)
+
+	// A failed send must hand the row back to 'pending'. It used to stay in
+	// 'processing', so the worker's retry failed the claim, skipped the send
+	// and reported success — the buyer never got the ticket (first production
+	// test purchase, 2026-09-20).
+	if status != StatusPending {
+		t.Fatalf("delivery_jobs.status after a failed send = %q, want %q so the retry can claim it", status, StatusPending)
+	}
+
+	// The retry, against a server that now accepts mail, must really send.
+	ok := newSMTPCaptureServer(t)
+	if err := invokeHandler(ctx, t, pool, seed, buildSMTPSender(ok.Addr)); err != nil {
+		t.Fatalf("retry after a failed send returned an error: %v", err)
+	}
+	if got := deliveryJobStatus(ctx, t, pool, seed.DeliveryJobID); got != StatusSent {
+		t.Fatalf("delivery_jobs.status after the retry = %q, want %q", got, StatusSent)
+	}
 }
 
 // TestDelivery_DevSenderProducesDisabled proves that using a dev-only sender

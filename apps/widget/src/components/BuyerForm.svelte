@@ -198,8 +198,11 @@
     border-radius: var(--arena-radius, 8px);
     font-size: 1rem;
     font-family: inherit;
-    color: var(--arena-color-primary, #1a1a1a);
-    background: #fff;
+    /* Own tokens, NOT --arena-color-primary: a dark host theme sets the primary
+       text colour to near-white, which on the hardcoded white field made the
+       buyer's typing invisible (first production page, 2026-09-20). */
+    color: var(--arena-input-color, #1a1a1a);
+    background: var(--arena-input-bg, #fff);
     outline: none;
     transition: border-color 0.15s;
   }

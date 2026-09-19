@@ -70,3 +70,15 @@ describe('toWidgetLocale', () => {
     expect(toWidgetLocale('es')).toBe('en');
   });
 });
+
+describe('resolveLocale — remembered explicit choice', () => {
+  it('prefers the remembered language over the browser when the URL has no lang', () => {
+    expect(resolveLocale('?checkout_token=abc', ['en-US'], 'ru')).toBe('ru');
+  });
+  it('lets an explicit ?lang= win over the remembered one', () => {
+    expect(resolveLocale('?lang=cs', ['en-US'], 'ru')).toBe('cs');
+  });
+  it('ignores an unsupported remembered value', () => {
+    expect(resolveLocale('', ['ru-RU'], 'xx')).toBe('ru');
+  });
+});

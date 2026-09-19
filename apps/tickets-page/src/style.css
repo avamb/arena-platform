@@ -25,7 +25,11 @@
   --arena-font-family: var(--asa-font-family);
   --arena-color-primary: var(--asa-text-primary);
   --arena-color-secondary: var(--asa-text-secondary);
-  --arena-bg: transparent;
+  /* An opaque surface: the widget's cart sheet paints itself with --arena-bg,
+     and "transparent" let the page show through the sheet. */
+  --arena-bg: var(--asa-surface);
+  --arena-input-bg: var(--asa-surface);
+  --arena-input-color: var(--asa-text-primary);
   --arena-accent: var(--asa-accent);
   --arena-radius: var(--asa-radius);
   --arena-border-color: var(--asa-border);
