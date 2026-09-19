@@ -202,6 +202,8 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	if s.publicFeedQueries != nil {
 		r.Get("/public/feeds/{feed_token}/events", s.handlePublicFeedEvents)
 		r.Get("/public/feeds/{feed_token}/events/{event_id}", s.handlePublicFeedEvent)
+		// Hosted sales page resolver (tickets.arenasoldout.com/{org}/{event}).
+		r.Get("/public/pages/{org_slug}/{event_slug}", s.handlePublicPage)
 	}
 	// Funnel telemetry sink — WID-0e (feature #322).
 	// Always mounted; handler self-gates with 503 when funnelQueries is nil.

@@ -4135,6 +4135,117 @@ components:
           description: ISO 8601 / RFC 3339 timestamp of last update.
           example: "2026-06-02T12:34:56Z"
 
+    HostedPageOrg:
+      type: object
+      required: [slug, name]
+      description: |
+        Public-safe organization branding slice returned by
+        GET /v1/public/pages/{org_slug}/{event_slug}. Only columns that are
+        safe to expose to an anonymous visitor are included — never legal,
+        KYB, or contact fields.
+      properties:
+        slug:
+          type: string
+          description: Organization slug, unique among active organizations.
+          example: "arenasoldout"
+        name:
+          type: string
+          description: Organization display name.
+          example: "Arena Sold Out"
+        logo_url:
+          type: [string, "null"]
+          description: Public URL of the organization logo, or null when none is set.
+          example: "https://api.arenasoldout.com/v1/media-files/01929d0e-0e47-7000-8000-000000000099"
+
+    HostedPageEvent:
+      type: object
+      required: [id, slug, title, venue_names]
+      description: |
+        Event slice of the hosted sales page resolve response. Reuses the
+        same locale-resolved name/description projection as `EventItem`
+        where applicable.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the event row.
+          example: "01929d0e-0e47-7000-8000-000000000301"
+        slug:
+          type: string
+          description: Event slug, unique per organization.
+          example: "summer-festival-2026"
+        title:
+          type: string
+          description: Event display name (`events.name`).
+          example: "Summer Festival 2026"
+        description:
+          type: [string, "null"]
+          description: Long-form event description.
+          example: "Open-air festival on the Tel Aviv beachfront."
+        short_description:
+          type: [string, "null"]
+          description: Short teaser description (AB-45c metadata).
+          example: "One night, three stages, unforgettable."
+        image_url:
+          type: [string, "null"]
+          description: Raw `events.image_url`, when set.
+        poster_url:
+          type: [string, "null"]
+          description: |
+            Public URL of the resolved event poster (from
+            `events.poster_media_id`), or null when no cover is set.
+        age_rating:
+          type: [string, "null"]
+          description: Age rating / content advisory for the event, when set.
+          example: "16+"
+        venue_names:
+          type: array
+          description: |
+            Distinct venue names of the event's active sessions (aggregated
+            the same way as `EventItem.venue_names`). Empty when the event
+            has no sessions yet.
+          items:
+            type: string
+          example: ["Forum Karlin"]
+        first_session_at:
+          type: [string, "null"]
+          format: date-time
+          description: Earliest session start (trigger-maintained cache), or null.
+          example: "2026-08-15T18:00:00Z"
+        last_session_at:
+          type: [string, "null"]
+          format: date-time
+          description: Latest session start (trigger-maintained cache), or null.
+          example: "2026-08-15T22:00:00Z"
+
+    HostedPageResponse:
+      type: object
+      required: [org, event, feed_token, default_locale]
+      description: |
+        Response envelope for GET /v1/public/pages/{org_slug}/{event_slug} —
+        the resolver behind the shared hosted sales page
+        (tickets.arenasoldout.com/{org_slug}/{event_slug}). `feed_token` is
+        the newest active, non-revoked feed token of the channel the event
+        is published to with `settings.hosted_page.enabled = true`; pass it
+        straight to the `<arena-tickets feed-token=…>` widget.
+      properties:
+        org:
+          description: Public-safe organization branding.
+          allOf:
+            - $ref: "#/components/schemas/HostedPageOrg"
+        event:
+          description: Event content for the hosted page hero.
+          allOf:
+            - $ref: "#/components/schemas/HostedPageEvent"
+        feed_token:
+          type: string
+          description: Opaque feed token to pass to the `<arena-tickets>` widget.
+          example: "ft_9f8c1e2a3b4d5e6f7a8b9c0d1e2f3a4b"
+        default_locale:
+          type: string
+          description: Organization default locale, used when no `?lang=` is present.
+          example: "en"
+
     CreateEventRequest:
       type: object
       required: [name]
@@ -27672,6 +27783,73 @@ paths:
                     $ref: "#/components/schemas/EventItem"
         "404":
           description: Event not found or not published to this feed token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/pages/{org_slug}/{event_slug}:
+    get:
+      operationId: getPublicPage
+      summary: Resolve the hosted sales page context for an org/event slug pair
+      description: |
+        Backs the shared hosted sales page at
+        `https://tickets.arenasoldout.com/{org_slug}/{event_slug}`. No JWT
+        required — this is the entry point that hands the page its feed
+        token.
+
+        Resolution rule, all in one round trip: active organization by
+        `org_slug` → non-deleted event owned by it, by `event_slug`, with
+        status `published` → an active publication of that event on a
+        sales channel of the SAME organization whose
+        `settings.hosted_page.enabled = true` and which is itself not
+        soft-deleted → the newest active, non-revoked feed token of that
+        channel.
+
+        Any missing link in that chain (unknown org, unknown event, event
+        not published, no channel flagged for the hosted page, revoked
+        token) answers the exact same `404 page.not_found` — the response
+        never reveals which step failed, so the endpoint cannot be used to
+        enumerate slugs or channel configuration.
+
+        Rate-limited per client IP only (there is no feed token in the path
+        to key a site-wide bucket on). Cache-Control is short (30s) since
+        publication/token state can change at any time.
+      tags: [PublicFeed]
+      parameters:
+        - name: org_slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Organization slug (`organizations.slug`).
+        - name: event_slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Event slug (`events.slug`), unique within the organization.
+      responses:
+        "200":
+          description: Resolved hosted-page context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostedPageResponse"
+        "404":
+          description: Page not found (see resolution rule above — one indistinguishable outcome for every miss).
           content:
             application/json:
               schema:

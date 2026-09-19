@@ -5377,6 +5377,82 @@ type HealthzResponse struct {
 // HealthzResponseStatus Always "ok" when the process is alive
 type HealthzResponseStatus string
 
+// HostedPageEvent Event slice of the hosted sales page resolve response. Reuses the
+// same locale-resolved name/description projection as `EventItem`
+// where applicable.
+type HostedPageEvent struct {
+	// AgeRating Age rating / content advisory for the event, when set.
+	AgeRating *string `json:"age_rating"`
+
+	// Description Long-form event description.
+	Description *string `json:"description"`
+
+	// FirstSessionAt Earliest session start (trigger-maintained cache), or null.
+	FirstSessionAt *time.Time `json:"first_session_at"`
+
+	// Id UUIDv7 primary key of the event row.
+	Id openapi_types.UUID `json:"id"`
+
+	// ImageUrl Raw `events.image_url`, when set.
+	ImageUrl *string `json:"image_url"`
+
+	// LastSessionAt Latest session start (trigger-maintained cache), or null.
+	LastSessionAt *time.Time `json:"last_session_at"`
+
+	// PosterUrl Public URL of the resolved event poster (from
+	// `events.poster_media_id`), or null when no cover is set.
+	PosterUrl *string `json:"poster_url"`
+
+	// ShortDescription Short teaser description (AB-45c metadata).
+	ShortDescription *string `json:"short_description"`
+
+	// Slug Event slug, unique per organization.
+	Slug string `json:"slug"`
+
+	// Title Event display name (`events.name`).
+	Title string `json:"title"`
+
+	// VenueNames Distinct venue names of the event's active sessions (aggregated
+	// the same way as `EventItem.venue_names`). Empty when the event
+	// has no sessions yet.
+	VenueNames []string `json:"venue_names"`
+}
+
+// HostedPageOrg Public-safe organization branding slice returned by
+// GET /v1/public/pages/{org_slug}/{event_slug}. Only columns that are
+// safe to expose to an anonymous visitor are included — never legal,
+// KYB, or contact fields.
+type HostedPageOrg struct {
+	// LogoUrl Public URL of the organization logo, or null when none is set.
+	LogoUrl *string `json:"logo_url"`
+
+	// Name Organization display name.
+	Name string `json:"name"`
+
+	// Slug Organization slug, unique among active organizations.
+	Slug string `json:"slug"`
+}
+
+// HostedPageResponse Response envelope for GET /v1/public/pages/{org_slug}/{event_slug} —
+// the resolver behind the shared hosted sales page
+// (tickets.arenasoldout.com/{org_slug}/{event_slug}). `feed_token` is
+// the newest active, non-revoked feed token of the channel the event
+// is published to with `settings.hosted_page.enabled = true`; pass it
+// straight to the `<arena-tickets feed-token=…>` widget.
+type HostedPageResponse struct {
+	// DefaultLocale Organization default locale, used when no `?lang=` is present.
+	DefaultLocale string `json:"default_locale"`
+
+	// Event Event content for the hosted page hero.
+	Event HostedPageEvent `json:"event"`
+
+	// FeedToken Opaque feed token to pass to the `<arena-tickets>` widget.
+	FeedToken string `json:"feed_token"`
+
+	// Org Public-safe organization branding.
+	Org HostedPageOrg `json:"org"`
+}
+
 // ImpersonateRequest defines model for ImpersonateRequest.
 type ImpersonateRequest struct {
 	// DurationSeconds Token lifetime in seconds. Capped at 1800 (30 minutes).

@@ -314,6 +314,12 @@ func (s *Server) handlePublicFeedEvent(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandlePublicFeedEvent(w, r)
 }
 
+// ─── hosted sales page resolver shim ──────────────────────────────────────────
+
+func (s *Server) handlePublicPage(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePublicPage(w, r)
+}
+
 // ─── public feed checkout handler shim ────────────────────────────────────────
 
 func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Request) {
