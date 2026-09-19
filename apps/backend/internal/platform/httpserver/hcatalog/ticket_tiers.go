@@ -431,19 +431,13 @@ func (h *Handler) HandleListTiers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// AB-48 step 3: seat count / GA capacity beside each category.
-	seatCounts := map[uuid.UUID]int64{}
-	gaCounts := map[uuid.UUID]int64{}
-	if counts, cntErr := h.tierQueries.CountSessionSeatsByTier(ctx, sessionID); cntErr != nil {
+	var counts []gen.SessionSeatTierCountRow
+	if c, cntErr := h.tierQueries.CountSessionSeatsByTier(ctx, sessionID); cntErr != nil {
 		h.logger.Warn("tier: seat counts failed (non-fatal)", slog.String("error", cntErr.Error()))
 	} else {
-		for _, c := range counts {
-			if c.Kind == "ga_unit" {
-				gaCounts[c.TierID] += c.Count
-			} else {
-				seatCounts[c.TierID] += c.Count
-			}
-		}
+		counts = c
 	}
+	seatCounts, gaCounts, seatStats := tierInventory(counts)
 
 	// Plan 08_architecture/23 step 5: the admin category table shows what
 	// each category owns and what is left of it. Non-fatal — a failure
@@ -470,7 +464,14 @@ func (h *Handler) HandleListTiers(w http.ResponseWriter, r *http.Request) {
 		}
 		tr.Kind = &kind
 
-		if st, ok := placeStats[t.ID]; ok {
+		st, ok := placeStats[t.ID]
+		if !ok && sc > 0 {
+			// A seated category owns no GA place, so the quota counters
+			// skip it; report its plan seats instead (F-58: the table
+			// showed «sold 0, available —» for sold-out seats).
+			st, ok = seatStats[t.ID]
+		}
+		if ok {
 			quantity, held, sold, available := st.Quantity, st.Held, st.Sold, st.Available
 			tr.Quantity, tr.Held, tr.Sold, tr.Available = &quantity, &held, &sold, &available
 		}
@@ -479,6 +480,34 @@ func (h *Handler) HandleListTiers(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"tiers": result,
 	})
+}
+
+// tierInventory splits the per-(tier, kind) place counts of a session into
+// the seat and GA-unit totals shown beside each category, plus the place
+// counters of SEATED categories. The GA quota counters (gaquota.SessionStats)
+// cover only ga_unit places, so a seated category would otherwise report
+// «sold 0, available —» however many of its seats were sold (F-58). An
+// 'unavailable' (blocked) seat is not for sale: it counts in none of the
+// counters, and the quantity is what can be sold at all.
+func tierInventory(counts []gen.SessionSeatTierCountRow) (seatCounts, gaCounts map[uuid.UUID]int64, seatStats map[uuid.UUID]gaquota.Stats) {
+	seatCounts = map[uuid.UUID]int64{}
+	gaCounts = map[uuid.UUID]int64{}
+	seatStats = map[uuid.UUID]gaquota.Stats{}
+	for _, c := range counts {
+		if c.Kind == "ga_unit" {
+			gaCounts[c.TierID] += c.Count
+			continue
+		}
+		seatCounts[c.TierID] += c.Count
+		st := seatStats[c.TierID]
+		st.TierID = c.TierID
+		st.Held += int32(c.Held)           //nolint:gosec // seat counts per session fit int32
+		st.Sold += int32(c.Sold)           //nolint:gosec // seat counts per session fit int32
+		st.Available += int32(c.Available) //nolint:gosec // seat counts per session fit int32
+		st.Quantity = st.Held + st.Sold + st.Available
+		seatStats[c.TierID] = st
+	}
+	return seatCounts, gaCounts, seatStats
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

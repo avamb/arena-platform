@@ -989,13 +989,19 @@ func (q *Queries) ReleaseSoldGAUnitBySeatKey(ctx context.Context, sessionID uuid
 
 // SessionSeatTierCountRow is one (tier, kind) inventory count.
 type SessionSeatTierCountRow struct {
-	TierID uuid.UUID `json:"tier_id"`
-	Kind   string    `json:"kind"`
-	Count  int64     `json:"count"`
+	TierID    uuid.UUID `json:"tier_id"`
+	Kind      string    `json:"kind"`
+	Count     int64     `json:"count"`
+	Held      int64     `json:"held"`
+	Sold      int64     `json:"sold"`
+	Available int64     `json:"available"`
 }
 
 const countSessionSeatsByTier = `-- name: CountSessionSeatsByTier :many
-SELECT tier_id, kind, COUNT(*)::bigint AS count
+SELECT tier_id, kind, COUNT(*)::bigint AS count,
+       COUNT(*) FILTER (WHERE status = 'held')::bigint      AS held,
+       COUNT(*) FILTER (WHERE status = 'sold')::bigint      AS sold,
+       COUNT(*) FILTER (WHERE status = 'available')::bigint AS available
 FROM   session_seats
 WHERE  session_id = $1
   AND  tier_id IS NOT NULL
@@ -1013,7 +1019,7 @@ func (q *Queries) CountSessionSeatsByTier(ctx context.Context, sessionID uuid.UU
 	var out []SessionSeatTierCountRow
 	for rows.Next() {
 		var r SessionSeatTierCountRow
-		if err := rows.Scan(&r.TierID, &r.Kind, &r.Count); err != nil {
+		if err := rows.Scan(&r.TierID, &r.Kind, &r.Count, &r.Held, &r.Sold, &r.Available); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

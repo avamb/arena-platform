@@ -482,8 +482,13 @@ RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
 -- name: CountSessionSeatsByTier :many
 -- AB-48 step 3: per-tier inventory counts for the price forms ("Third:
 -- EUR 30 · Seats: 260"). Physical seats and GA units are reported
--- separately; rows with NULL tier are skipped.
-SELECT tier_id, kind, COUNT(*)::bigint AS count
+-- separately; rows with NULL tier are skipped. held/sold/available feed the
+-- admin category table for SEATED categories, whose places the GA quota
+-- counters (ListGAUnitStatsBySession) do not cover.
+SELECT tier_id, kind, COUNT(*)::bigint AS count,
+       COUNT(*) FILTER (WHERE status = 'held')::bigint      AS held,
+       COUNT(*) FILTER (WHERE status = 'sold')::bigint      AS sold,
+       COUNT(*) FILTER (WHERE status = 'available')::bigint AS available
 FROM   session_seats
 WHERE  session_id = $1
   AND  tier_id IS NOT NULL
