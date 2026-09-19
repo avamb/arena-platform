@@ -135,7 +135,7 @@ func TestTelegramNotifier_Truncation(t *testing.T) {
 
 func TestTelegramNotifier_RetriesOnFailureThenSucceeds(t *testing.T) {
 	var attempts int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		n := atomic.AddInt32(&attempts, 1)
 		if n < 3 {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -157,7 +157,7 @@ func TestTelegramNotifier_RetriesOnFailureThenSucceeds(t *testing.T) {
 
 func TestTelegramNotifier_AllRetriesFail_SendStillReturnsNil(t *testing.T) {
 	var attempts int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		atomic.AddInt32(&attempts, 1)
 		w.WriteHeader(http.StatusInternalServerError)
 	}))

@@ -57,9 +57,9 @@ func formatSalesDigest(sales []saleLine) string {
 		totals[s.Currency] += s.Total
 		tickets += s.TicketCount
 	}
-	b.WriteString(fmt.Sprintf("\ntickets: %d", tickets))
+	fmt.Fprintf(&b, "\ntickets: %d", tickets)
 	for cur, amt := range totals {
-		b.WriteString(fmt.Sprintf("\ntotal (%s): %s", opsalert.EscapeHTML(cur), opsalert.EscapeHTML(opsalert.FormatMinorUnits(amt, cur))))
+		fmt.Fprintf(&b, "\ntotal (%s): %s", opsalert.EscapeHTML(cur), opsalert.EscapeHTML(opsalert.FormatMinorUnits(amt, cur)))
 	}
 	b.WriteString("\norders: ")
 	nums := make([]string, 0, len(sales))

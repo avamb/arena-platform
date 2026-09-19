@@ -1303,7 +1303,7 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 // provider's multi-day retry schedule and the "your endpoint is failing"
 // mail; identical wording means the response cannot be used to probe whether
 // a given provider id exists in arena.
-func (h *Handler) writeNotOurPayment(w http.ResponseWriter, r *http.Request, eventType string) {
+func (h *Handler) writeNotOurPayment(w http.ResponseWriter, _ *http.Request, eventType string) {
 	h.recordWebhookEvent(eventType, webhookOutcomeNotOurs)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"acknowledged": true,
