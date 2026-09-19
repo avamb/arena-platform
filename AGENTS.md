@@ -847,3 +847,15 @@ entries short and factual.
   It is leftover contamination, not a regression: `DELETE FROM worker_jobs
   WHERE job_type='checkout.issue_tickets'` and re-run. The AGENTS.md rule
   about sweeping `worker_jobs` in such fixtures is still not honoured there.
+- **Every password-setup/reset link goes through ONE path: a
+  `password_reset_tokens` row holding `users.TokenHash(raw)` plus an
+  `auth.password_reset_email` job enqueued with `worker.EnqueueInTx` in the
+  same transaction.** The worker (`authemail.HandlePasswordResetEmail`) builds
+  the link from `APP_PUBLIC_URL`; `Purpose` picks the variant
+  (`password_reset` -> `/reset-password?token=`, `account_setup` /
+  `org_invitation` -> `/accept-invite?token=&email=`). Until 2026-09-19
+  `POST /v1/admin/users` and the new-email branch of
+  `POST /v1/admin/organizations/{org_id}/members` only slog'd a "dev-mode"
+  line with the full token URL, sent nothing, and stored the RAW token, which
+  the confirm endpoint (it hashes before the lookup) could never match. Never
+  log the token or link, never build a link from `r.Host`/`r.TLS`.

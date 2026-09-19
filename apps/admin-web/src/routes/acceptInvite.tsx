@@ -8,12 +8,14 @@ import { mobileFormStyles } from "./login";
 /**
  * Accept-invite route (Wave M-3, feature #296).
  *
- * When an admin creates a new operator (see /v1/admin/users), the backend
- * issues a single-use reset token and surfaces a reset URL of the form
- * `${baseURL}/v1/auth/password-reset/confirm?token=...`. The admin-web
- * sends operators to /accept-invite?token=... which renders a dedicated
- * "welcome / pick your password" UX (different copy from the regular
- * /password-reset confirm screen) but reuses the same backend endpoint.
+ * When an admin creates a new operator (POST /v1/admin/users) or invites a
+ * new email into an organization (POST /v1/admin/organizations/{id}/members),
+ * the backend issues a single-use password-reset token and arena-worker emails
+ * a link of the form `${APP_PUBLIC_URL}/accept-invite?token=...&email=...`
+ * (job auth.password_reset_email, purpose account_setup / org_invitation).
+ * This route renders a dedicated "welcome / pick your password" UX
+ * (different copy from the regular /password-reset confirm screen) but
+ * reuses the same POST /v1/auth/password-reset/confirm backend endpoint.
  *
  * Mobile fitness (M-3):
  *   - >= 44 CSS px inputs / submit; fontSize 16 prevents iOS auto-zoom.

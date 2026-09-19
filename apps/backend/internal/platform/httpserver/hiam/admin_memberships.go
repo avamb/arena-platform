@@ -50,6 +50,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
@@ -207,6 +208,7 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 	invited := false
 	var invitationExpiresAt time.Time
 	var invitationToken string
+	var invitedEmail string
 	if req.UserID != "" {
 		parsed, err := uuid.Parse(req.UserID)
 		if err != nil {
@@ -267,13 +269,16 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 			}
 			userID = created.ID
 			invited = true
+			invitedEmail = created.Email
 			invitationToken, tokenErr = users.GenerateVerificationToken()
 			if tokenErr != nil {
 				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_generation_failed", "failed to generate invitation token", r))
 				return
 			}
 			invitationExpiresAt = time.Now().UTC().Add(passwordResetTokenTTL)
-			if tokenErr = q.InsertPasswordResetToken(ctx, invitationToken, userID, invitationExpiresAt); tokenErr != nil {
+			// Stored as SHA-256(token) like every password_reset_tokens row;
+			// the confirm endpoint hashes the raw token before the lookup.
+			if tokenErr = q.InsertPasswordResetToken(ctx, users.TokenHash(invitationToken), userID, invitationExpiresAt); tokenErr != nil {
 				h.logger.Error("admin_membership: save invitation token failed", slog.String("error", tokenErr.Error()))
 				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.token_insert_failed", "failed to save invitation token", r))
 				return
@@ -306,6 +311,39 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	var invitationJobID string
+	if invited {
+		// Queue the invitation email in the SAME transaction as the invited
+		// user, its token and the membership — the self-service reset delivery
+		// path (auth.password_reset_email, sent by arena-worker with the link
+		// built from APP_PUBLIC_URL).
+		var orgName string
+		if err := tx.QueryRow(ctx, `SELECT name FROM organizations WHERE id = $1`, orgID).Scan(&orgName); err != nil {
+			h.logger.Error("admin_membership: load organization name failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"admin_membership.invite_failed", "failed to queue the invitation email", r,
+			))
+			return
+		}
+		invitationJobID, err = enqueuePasswordSetupEmail(ctx, tx, authemail.PasswordResetEmailPayload{
+			UserID:    userID.String(),
+			Email:     invitedEmail,
+			Token:     invitationToken,
+			ExpiresAt: invitationExpiresAt,
+			Purpose:   authemail.PurposeOrgInvitation,
+			OrgName:   orgName,
+		})
+		if err != nil {
+			h.logger.Error("admin_membership: enqueue invitation email failed",
+				slog.String("user_id", userID.String()),
+				slog.String("error", err.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"admin_membership.invite_failed", "failed to queue the invitation email", r,
+			))
+			return
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		h.logger.Error("admin_membership: commit failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "failed to save membership", r))
@@ -323,11 +361,12 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 		"invited": invited,
 	})
 	if invited {
-		inviteURL := requestBaseURL(r) + "/accept-invite?token=" + invitationToken + "&email=" + req.Email
-		slog.Info("EMAIL DELIVERY (dev-mode): organization member invitation",
-			"to", req.Email, "subject", "You are invited to Arena Platform",
-			"invite_url", inviteURL, "expires_at", invitationExpiresAt.Format(time.RFC3339),
-			"user_id", userID.String(), "org_id", orgID.String(),
+		// Identifiers only — never the token or the link.
+		h.logger.Info("admin_membership: invitation email job enqueued",
+			slog.String("user_id", userID.String()),
+			slog.String("org_id", orgID.String()),
+			slog.String("job_id", invitationJobID),
+			slog.String("expires_at", invitationExpiresAt.Format(time.RFC3339)),
 		)
 	}
 
