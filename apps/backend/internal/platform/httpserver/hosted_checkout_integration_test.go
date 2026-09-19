@@ -122,8 +122,12 @@ func buildHostedCheckoutServer(t *testing.T, pool *pgxpool.Pool, stripeBase stri
 			WidgetPaymentWindowSeconds: 1860,
 			WidgetPaymentGraceSeconds:  120,
 		},
-		Pool:             pool,
-		PgxPool:          pool,
+		Pool:    pool,
+		PgxPool: pool,
+		// Without this the ticket-delivery enqueue silently no-ops
+		// (delivery_enqueue.go returns early when workerPool is nil), so a
+		// test asserting on ticket.deliver jobs would pass on an empty table.
+		WorkerPool:       pool,
 		StripeAPIBaseURL: stripeBase,
 	})
 }
@@ -290,6 +294,10 @@ func (f *hostedOrgFixture) cleanup() {
 		{`DELETE FROM barcodes WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`, f.sessionID},
 		{`DELETE FROM delivery_jobs WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`, f.sessionID},
 		{`DELETE FROM ticket_credentials WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`, f.sessionID},
+		// ticket.deliver jobs are keyed by payload->>'ticket_id', so they must
+		// go BEFORE the tickets they name or nothing can find them again.
+		{`DELETE FROM worker_jobs WHERE payload->>'ticket_id' IN
+		   (SELECT id::text FROM tickets WHERE session_id = $1)`, f.sessionID},
 		{`DELETE FROM tickets WHERE session_id = $1`, f.sessionID},
 		{`DELETE FROM outbox_events WHERE aggregate_id IN (SELECT id::text FROM orders WHERE org_id = $1)`, f.orgID},
 		{`DELETE FROM order_events WHERE order_id IN (SELECT id FROM orders WHERE org_id = $1)`, f.orgID},
@@ -336,6 +344,13 @@ func (f *hostedOrgFixture) cleanup() {
 // startCheckout drives the real public checkout/start endpoint.
 func (f *hostedOrgFixture) startCheckout(t *testing.T, srv *Server, returnURL string) (code int, body []byte) {
 	t.Helper()
+	return f.startCheckoutWithLocale(t, srv, returnURL, "")
+}
+
+// startCheckoutWithLocale is the variant that states the buyer's language,
+// as the widget now does.
+func (f *hostedOrgFixture) startCheckoutWithLocale(t *testing.T, srv *Server, returnURL, locale string) (code int, body []byte) {
+	t.Helper()
 	payload := map[string]any{
 		"session_id": f.sessionID.String(),
 		"tier_id":    f.tierID.String(),
@@ -348,6 +363,9 @@ func (f *hostedOrgFixture) startCheckout(t *testing.T, srv *Server, returnURL st
 	}
 	if returnURL != "" {
 		payload["return_url"] = returnURL
+	}
+	if locale != "" {
+		payload["locale"] = locale
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -800,4 +818,409 @@ type hostedStatusResponse struct {
 	Tickets    []struct {
 		TicketID string `json:"ticket_id"`
 	} `json:"tickets"`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-config webhook route
+// ─────────────────────────────────────────────────────────────────────────────
+
+// configWebhookPath is the organizer's own endpoint URL.
+func (f *hostedOrgFixture) configWebhookPath() string {
+	return "/v1/payment-intents/webhook/" + f.configID.String()
+}
+
+func postSignedWebhookTo(t *testing.T, srv *Server, path string, body []byte, secret string) (int, []byte) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Stripe-Signature", signStripe(secret, body))
+	rec := httptest.NewRecorder()
+	srv.router.ServeHTTP(rec, req)
+	return rec.Code, rec.Body.Bytes()
+}
+
+// countPaymentIntentEvents is how these tests prove "nothing was written":
+// every processed event leaves exactly one idempotency row behind.
+func countPaymentIntentEvents(t *testing.T, ctx context.Context, pool *pgxpool.Pool, providerID string) int {
+	t.Helper()
+	var n int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM payment_intent_events WHERE provider_payment_id = $1`, providerID).Scan(&n); err != nil {
+		t.Fatalf("count payment_intent_events: %v", err)
+	}
+	return n
+}
+
+// TestHostedCheckout_ConfigRoute_ForeignPaymentIsAcknowledged is the reason
+// this route exists. The organizer's Stripe account is shared with their
+// other sites, so events for payments arena never created arrive constantly.
+// On the un-suffixed route they are 404s, and Stripe then retries for days
+// and mails the account owner that our endpoint is broken.
+func TestHostedCheckout_ConfigRoute_ForeignPaymentIsAcknowledged(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	f := newHostedOrgFixture(t, ctx, pool, "cfgforeign")
+	defer f.cleanup()
+
+	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
+
+	// A cs_ id arena has never seen, signed with the org's REAL secret.
+	foreignID := "cs_test_someone_elses_shop_" + uuid.New().String()[:8]
+	event := sessionCompletedEvent(foreignID, "pi_not_ours", "paid")
+
+	code, body := postSignedWebhookTo(t, srv, f.configWebhookPath(), event, f.webhookSecret)
+	if code != http.StatusOK {
+		t.Fatalf("foreign payment on the config route = %d, want 200 so the provider stops retrying; body: %s", code, body)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("decode response: %v (body: %s)", err, body)
+	}
+	if processed, _ := resp["processed"].(bool); processed {
+		t.Errorf("a foreign payment was PROCESSED; body: %s", body)
+	}
+	if acknowledged, _ := resp["acknowledged"].(bool); !acknowledged {
+		t.Errorf("acknowledged = %v, want true; body: %s", resp["acknowledged"], body)
+	}
+	if reason, _ := resp["reason"].(string); reason != "not an arena payment" {
+		t.Errorf("reason = %q; want \"not an arena payment\"", reason)
+	}
+
+	// Nothing may have been written for an id arena does not own.
+	if n := countPaymentIntentEvents(t, ctx, pool, foreignID); n != 0 {
+		t.Errorf("payment_intent_events rows for a foreign id = %d, want 0", n)
+	}
+
+	// The legacy route must keep its old behaviour: with no config id it has
+	// no proof the delivery came from a known account at all.
+	legacyCode, _ := postSignedWebhook(t, srv, event, f.webhookSecret)
+	if legacyCode != http.StatusNotFound && legacyCode != http.StatusUnauthorized {
+		t.Errorf("legacy route for a foreign id = %d; want it unchanged at 404/401", legacyCode)
+	}
+}
+
+// TestHostedCheckout_ConfigRoute_RejectsAnotherOrgsSignature proves the
+// signature is checked against THIS config's secret and nothing else — no
+// environment fallback, no other organizer's key.
+func TestHostedCheckout_ConfigRoute_RejectsAnotherOrgsSignature(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	orgA := newHostedOrgFixture(t, ctx, pool, "cfgsiga")
+	defer orgA.cleanup()
+	orgB := newHostedOrgFixture(t, ctx, pool, "cfgsigb")
+	defer orgB.cleanup()
+
+	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
+	q := gen.New(pool)
+
+	code, body := orgA.startCheckout(t, srv, hostedTicketsBaseURL+"/shows")
+	if code != http.StatusCreated {
+		t.Fatalf("checkout/start = %d, want 201; body: %s", code, body)
+	}
+	var start hostedStartResponse
+	if err := json.Unmarshal(body, &start); err != nil {
+		t.Fatalf("decode checkout/start: %v", err)
+	}
+	csID := uuid.MustParse(start.CheckoutSession.ID)
+	intents, err := q.ListPaymentIntentsByCheckout(ctx, csID)
+	if err != nil || len(intents) != 1 || intents[0].ProviderPaymentID == nil {
+		t.Fatalf("expected one payment intent with a provider id; got %v (err %v)", intents, err)
+	}
+	providerA := *intents[0].ProviderPaymentID
+
+	event := sessionCompletedEvent(providerA, "pi_wrong_secret", "paid")
+
+	// Org A's own event, delivered to org A's URL, but signed with org B's
+	// secret. If this were accepted, any organizer could forge any other's.
+	code, body = postSignedWebhookTo(t, srv, orgA.configWebhookPath(), event, orgB.webhookSecret)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("org B's signature on org A's config URL = %d, want 401; body: %s", code, body)
+	}
+	if n := countPaymentIntentEvents(t, ctx, pool, providerA); n != 0 {
+		t.Errorf("payment_intent_events rows after a rejected signature = %d, want 0", n)
+	}
+	if after, err := q.GetPaymentIntentByProviderID(ctx, providerA); err != nil {
+		t.Fatalf("GetPaymentIntentByProviderID: %v", err)
+	} else if after.State != "created" {
+		t.Errorf("payment intent state = %q after a rejected signature; want created", after.State)
+	}
+
+	// The SAME event with org A's own secret must go through.
+	code, body = postSignedWebhookTo(t, srv, orgA.configWebhookPath(), event, orgA.webhookSecret)
+	if code != http.StatusOK {
+		t.Fatalf("org A's own signature = %d, want 200; body: %s", code, body)
+	}
+	var resp map[string]any
+	_ = json.Unmarshal(body, &resp)
+	if processed, _ := resp["processed"].(bool); !processed {
+		t.Fatalf("org A's own event was not processed; body: %s", body)
+	}
+}
+
+// TestHostedCheckout_ConfigRoute_ForeignOrgIntentIsNotOurs covers the tenant
+// check: a VALID signature from organizer A, delivered to A's own URL, for a
+// payment intent that belongs to organizer B. The signature proves the
+// delivery is A's — it does not make B's order A's.
+func TestHostedCheckout_ConfigRoute_ForeignOrgIntentIsNotOurs(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	orgA := newHostedOrgFixture(t, ctx, pool, "cfgtena")
+	defer orgA.cleanup()
+	orgB := newHostedOrgFixture(t, ctx, pool, "cfgtenb")
+	defer orgB.cleanup()
+
+	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
+	q := gen.New(pool)
+
+	// Give org B a real, pending payment.
+	code, body := orgB.startCheckout(t, srv, hostedTicketsBaseURL+"/shows")
+	if code != http.StatusCreated {
+		t.Fatalf("org B checkout/start = %d, want 201; body: %s", code, body)
+	}
+	var startB hostedStartResponse
+	if err := json.Unmarshal(body, &startB); err != nil {
+		t.Fatalf("decode checkout/start: %v", err)
+	}
+	csB := uuid.MustParse(startB.CheckoutSession.ID)
+	intentsB, err := q.ListPaymentIntentsByCheckout(ctx, csB)
+	if err != nil || len(intentsB) != 1 || intentsB[0].ProviderPaymentID == nil {
+		t.Fatalf("expected one payment intent for org B; got %v (err %v)", intentsB, err)
+	}
+	providerB := *intentsB[0].ProviderPaymentID
+
+	// Org A signs an event for org B's payment with A's own valid secret and
+	// posts it to A's own config URL.
+	event := sessionCompletedEvent(providerB, "pi_cross_tenant", "paid")
+	code, body = postSignedWebhookTo(t, srv, orgA.configWebhookPath(), event, orgA.webhookSecret)
+	if code != http.StatusOK {
+		t.Fatalf("cross-tenant delivery = %d, want 200; body: %s", code, body)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("decode response: %v (body: %s)", err, body)
+	}
+	if processed, _ := resp["processed"].(bool); processed {
+		t.Fatalf("org A moved org B's payment; body: %s", body)
+	}
+	// Indistinguishable from a payment that does not exist at all — the
+	// response must not let a caller probe which ids belong to whom.
+	if reason, _ := resp["reason"].(string); reason != "not an arena payment" {
+		t.Errorf("reason = %q; want the same wording as a non-existent payment", reason)
+	}
+
+	// Org B is untouched.
+	if n := countPaymentIntentEvents(t, ctx, pool, providerB); n != 0 {
+		t.Errorf("payment_intent_events rows for org B = %d, want 0", n)
+	}
+	if piB, err := q.GetPaymentIntentByProviderID(ctx, providerB); err != nil {
+		t.Fatalf("GetPaymentIntentByProviderID(org B): %v", err)
+	} else if piB.State != "created" {
+		t.Errorf("org B payment intent state = %q; want created", piB.State)
+	}
+	if csAfter, err := q.GetCheckoutSessionByID(ctx, csB); err != nil {
+		t.Fatalf("GetCheckoutSessionByID: %v", err)
+	} else if csAfter.State == "completed" {
+		t.Error("org B's checkout was completed by org A's delivery")
+	}
+}
+
+// TestHostedCheckout_ConfigRoute_UnknownAndUnusableConfigsAre404 proves the
+// endpoint cannot be used to enumerate which config ids exist: an unknown id
+// and a deactivated one answer identically.
+func TestHostedCheckout_ConfigRoute_UnknownAndUnusableConfigsAre404(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	f := newHostedOrgFixture(t, ctx, pool, "cfg404")
+	defer f.cleanup()
+
+	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
+	event := sessionCompletedEvent("cs_test_whatever", "pi_whatever", "paid")
+
+	// Unknown id.
+	unknown := "/v1/payment-intents/webhook/" + uuid.New().String()
+	if code, body := postSignedWebhookTo(t, srv, unknown, event, f.webhookSecret); code != http.StatusNotFound {
+		t.Errorf("unknown config id = %d, want 404; body: %s", code, body)
+	}
+
+	// Not a UUID at all.
+	if code, _ := postSignedWebhookTo(t, srv,
+		"/v1/payment-intents/webhook/not-a-uuid", event, f.webhookSecret); code != http.StatusBadRequest {
+		t.Errorf("non-UUID config id = %d, want 400", code)
+	}
+
+	// A real but deactivated config must be indistinguishable from unknown.
+	if _, err := pool.Exec(ctx,
+		`UPDATE payment_provider_configs SET is_active = false WHERE id = $1`, f.configID); err != nil {
+		t.Fatalf("deactivate config: %v", err)
+	}
+	if code, body := postSignedWebhookTo(t, srv, f.configWebhookPath(), event, f.webhookSecret); code != http.StatusNotFound {
+		t.Errorf("deactivated config = %d, want 404; body: %s", code, body)
+	}
+
+	// Re-activate but blank the signing secret: that is a 401, not a 404 —
+	// the endpoint exists, it just cannot authenticate anything.
+	if _, err := pool.Exec(ctx,
+		`UPDATE payment_provider_configs
+		    SET is_active = true, secrets = jsonb_set(secrets, '{webhook_secret}', '""')
+		  WHERE id = $1`, f.configID); err != nil {
+		t.Fatalf("blank the webhook secret: %v", err)
+	}
+	if code, body := postSignedWebhookTo(t, srv, f.configWebhookPath(), event, f.webhookSecret); code != http.StatusUnauthorized {
+		t.Errorf("config with no signing secret = %d, want 401; body: %s", code, body)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Buyer locale
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestHostedCheckout_BuyerLocaleReachesTheTicketEmail follows the language
+// the buyer chose all the way from the checkout request to the ticket.deliver
+// worker payload. Before this, every ticket e-mail arena ever sent rendered
+// in English regardless of what the buyer used.
+func TestHostedCheckout_BuyerLocaleReachesTheTicketEmail(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	f := newHostedOrgFixture(t, ctx, pool, "locale")
+	defer f.cleanup()
+
+	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
+	q := gen.New(pool)
+
+	// A full BCP-47 tag, as a browser reports it — it must fold to "cs".
+	code, body := f.startCheckoutWithLocale(t, srv, hostedTicketsBaseURL+"/shows", "cs-CZ")
+	if code != http.StatusCreated {
+		t.Fatalf("checkout/start = %d, want 201; body: %s", code, body)
+	}
+	var start hostedStartResponse
+	if err := json.Unmarshal(body, &start); err != nil {
+		t.Fatalf("decode checkout/start: %v", err)
+	}
+	csID := uuid.MustParse(start.CheckoutSession.ID)
+
+	cs, err := q.GetCheckoutSessionByID(ctx, csID)
+	if err != nil {
+		t.Fatalf("GetCheckoutSessionByID: %v", err)
+	}
+	if cs.BuyerLocale == nil {
+		t.Fatal("checkout_sessions.buyer_locale is NULL; the buyer's language was not stored")
+	}
+	if *cs.BuyerLocale != "cs" {
+		t.Fatalf("buyer_locale = %q; want cs — the region subtag must be folded", *cs.BuyerLocale)
+	}
+
+	// The customer created by this purchase carries it too.
+	var customerLocale string
+	if err := pool.QueryRow(ctx,
+		`SELECT c.locale FROM customers c
+		   JOIN customer_identities ci ON ci.customer_id = c.id
+		  WHERE ci.value_normalized = $1`, f.buyerMail).Scan(&customerLocale); err != nil {
+		t.Fatalf("read customers.locale: %v", err)
+	}
+	if customerLocale != "cs" {
+		t.Errorf("customers.locale = %q; want cs for a brand-new customer", customerLocale)
+	}
+
+	// Pay, so the checkout completes and tickets can be issued.
+	intents, err := q.ListPaymentIntentsByCheckout(ctx, csID)
+	if err != nil || len(intents) != 1 || intents[0].ProviderPaymentID == nil {
+		t.Fatalf("expected one payment intent; got %v (err %v)", intents, err)
+	}
+	sessionID := *intents[0].ProviderPaymentID
+	paid := sessionCompletedEvent(sessionID, "pi_locale_"+uuid.New().String()[:8], "paid")
+	if code, body := postSignedWebhookTo(t, srv, f.configWebhookPath(), paid, f.webhookSecret); code != http.StatusOK {
+		t.Fatalf("paid webhook = %d, want 200; body: %s", code, body)
+	}
+
+	csAfter, err := q.GetCheckoutSessionByID(ctx, csID)
+	if err != nil {
+		t.Fatalf("GetCheckoutSessionByID after payment: %v", err)
+	}
+	if csAfter.State != "completed" {
+		t.Fatalf("checkout state = %q; want completed", csAfter.State)
+	}
+
+	// Issuance normally runs in the checkout.issue_tickets worker job; the
+	// repo idiom for an integration test is to invoke the same function
+	// inline (see webhook_widget_completion_integration_test.go). It enqueues
+	// the ticket.deliver jobs itself, so calling EnqueueDeliveryJobs here as
+	// well would double them.
+	tickets, err := srv.ticketsHandler().IssueTicketsForCheckout(ctx, csAfter)
+	if err != nil {
+		t.Fatalf("IssueTicketsForCheckout: %v", err)
+	}
+	if len(tickets) == 0 {
+		t.Fatal("no tickets issued")
+	}
+
+	// THE assertion: the enqueued ticket.deliver payload carries the locale.
+	rows, err := pool.Query(ctx,
+		`SELECT payload->>'locale' FROM worker_jobs
+		  WHERE job_type = 'ticket.deliver'
+		    AND payload->>'ticket_id' = ANY($1)`, ticketIDStrings(tickets))
+	if err != nil {
+		t.Fatalf("read ticket.deliver jobs: %v", err)
+	}
+	defer rows.Close()
+	seen := 0
+	for rows.Next() {
+		var locale *string
+		if err := rows.Scan(&locale); err != nil {
+			t.Fatalf("scan job locale: %v", err)
+		}
+		seen++
+		if locale == nil || *locale != "cs" {
+			t.Errorf("ticket.deliver payload locale = %v; want cs — the e-mail would render in English", locale)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate ticket.deliver jobs: %v", err)
+	}
+	if seen != len(tickets) {
+		t.Errorf("ticket.deliver jobs found = %d, want %d", seen, len(tickets))
+	}
+}
+
+// TestHostedCheckout_UnknownLocaleFallsBackSilently proves a language tag can
+// never cost a sale: an unsupported one is dropped and the purchase succeeds.
+func TestHostedCheckout_UnknownLocaleFallsBackSilently(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	f := newHostedOrgFixture(t, ctx, pool, "loc404")
+	defer f.cleanup()
+
+	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
+	q := gen.New(pool)
+
+	code, body := f.startCheckoutWithLocale(t, srv, hostedTicketsBaseURL+"/shows", "klingon")
+	if code != http.StatusCreated {
+		t.Fatalf("checkout/start with an unknown locale = %d, want 201 - a language tag must not fail a sale; body: %s", code, body)
+	}
+	var start hostedStartResponse
+	if err := json.Unmarshal(body, &start); err != nil {
+		t.Fatalf("decode checkout/start: %v", err)
+	}
+	cs, err := q.GetCheckoutSessionByID(ctx, uuid.MustParse(start.CheckoutSession.ID))
+	if err != nil {
+		t.Fatalf("GetCheckoutSessionByID: %v", err)
+	}
+	if cs.BuyerLocale != nil {
+		t.Errorf("buyer_locale = %q; an unshipped locale must be stored as NULL, never passed through", *cs.BuyerLocale)
+	}
+}
+
+// ticketIDStrings turns issued tickets into the text[] the worker_jobs
+// payload lookup needs.
+func ticketIDStrings(tickets []gen.TicketRow) []string {
+	out := make([]string, 0, len(tickets))
+	for _, t := range tickets {
+		out = append(out, t.ID.String())
+	}
+	return out
 }
