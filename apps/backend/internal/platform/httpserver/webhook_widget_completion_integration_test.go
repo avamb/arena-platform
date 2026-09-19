@@ -57,6 +57,7 @@ type webhookWidgetFixture struct {
 	tierID     uuid.UUID
 	channelID  uuid.UUID
 	tokenID    uuid.UUID
+	configID   uuid.UUID
 	feedToken  string
 	buyerMail  string
 	buyerPhone string
@@ -73,6 +74,7 @@ func newWebhookWidgetFixture(t *testing.T, ctx context.Context, pool *pgxpool.Po
 		tierID:    uuid.New(),
 		channelID: uuid.New(),
 		tokenID:   uuid.New(),
+		configID:  uuid.New(),
 	}
 	suffix := f.orgID.String()[:8]
 	f.feedToken = "whwc-feed-" + suffix
@@ -103,9 +105,19 @@ func newWebhookWidgetFixture(t *testing.T, ctx context.Context, pool *pgxpool.Po
 		{`INSERT INTO inventory_ledger (session_id, tier_id, capacity_total)
 		  VALUES ($1, NULL, 100)`,
 			[]any{f.sessionID}},
-		{`INSERT INTO sales_channels (id, org_id, name, fee_percent, collect_name, collect_phone)
-		  VALUES ($1, $2, $3, 1.25, true, true)`,
+		// provider 'stripe' + a configured payment_provider_configs row are
+		// now required for checkout/start to reach 201: a paid cart is no
+		// longer confirmed unless a real hosted payment page can be created
+		// for it (that is the point of the hosted-checkout flow — no more
+		// dead redirect_url).
+		{`INSERT INTO sales_channels (id, org_id, name, provider, fee_percent, collect_name, collect_phone)
+		  VALUES ($1, $2, $3, 'stripe', 1.25, true, true)`,
 			[]any{f.channelID, f.orgID, "WHWC Channel " + suffix}},
+		{`INSERT INTO payment_provider_configs
+		    (id, org_id, provider, mode, secrets, status, is_active)
+		  VALUES ($1, $2, 'stripe', 'test', $3::jsonb, 'configured', true)`,
+			[]any{f.configID, f.orgID,
+				fmt.Sprintf(`{"api_key":"sk_test_%s","webhook_secret":""}`, suffix)}},
 		{`INSERT INTO agent_feed_tokens (id, token, sales_channel_id, label, is_active)
 		  VALUES ($1, $2, $3, 'whwc', true)`,
 			[]any{f.tokenID, f.feedToken, f.channelID}},
@@ -170,6 +182,8 @@ func (f *webhookWidgetFixture) cleanup() {
 		{`DELETE FROM event_publications WHERE event_id = $1`, f.eventID},
 		{`DELETE FROM agent_feed_tokens WHERE id = $1`, f.tokenID},
 		{`DELETE FROM sessions WHERE id = $1`, f.sessionID},
+		{`DELETE FROM payment_provider_configs WHERE org_id = $1`, f.orgID},
+		{`DELETE FROM customer_org_links WHERE org_id = $1`, f.orgID},
 		{`DELETE FROM sales_channels WHERE id = $1`, f.channelID},
 		{`DELETE FROM events WHERE id = $1`, f.eventID},
 		{`DELETE FROM venues WHERE id = $1`, f.venueID},
@@ -197,7 +211,7 @@ func TestWebhookWidgetCompletion_StripeEnvelopeSuccess_CompletesCheckoutAndPaysO
 	f := newWebhookWidgetFixture(t, ctx, pool)
 	defer f.cleanup()
 
-	srv := buildIntegrationResetServer(t, pool)
+	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
 	q := gen.New(pool)
 
 	const qty = 2
@@ -205,6 +219,7 @@ func TestWebhookWidgetCompletion_StripeEnvelopeSuccess_CompletesCheckoutAndPaysO
 	// ── 1. Real endpoint: public-feed checkout start ─────────────────────────
 	startBody, err := json.Marshal(map[string]any{
 		"session_id": f.sessionID.String(),
+		"return_url": hostedTicketsBaseURL + "/embed",
 		"tier_id":    f.tierID.String(),
 		"qty":        qty,
 		"buyer": map[string]any{
@@ -426,13 +441,14 @@ func TestWebhookWidgetCompletion_FlatBodyStillWorksEndToEnd(t *testing.T) {
 	f := newWebhookWidgetFixture(t, ctx, pool)
 	defer f.cleanup()
 
-	srv := buildIntegrationResetServer(t, pool)
+	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
 	q := gen.New(pool)
 
 	const qty = 1
 
 	startBody, err := json.Marshal(map[string]any{
 		"session_id": f.sessionID.String(),
+		"return_url": hostedTicketsBaseURL + "/embed",
 		"tier_id":    f.tierID.String(),
 		"qty":        qty,
 		"buyer": map[string]any{
@@ -518,11 +534,12 @@ func TestWebhookWidgetCompletion_PaymentAfterExpiry_ParksForManualReview(t *test
 	f := newWebhookWidgetFixture(t, ctx, pool)
 	defer f.cleanup()
 
-	srv := buildIntegrationResetServer(t, pool)
+	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
 	q := gen.New(pool)
 
 	startBody, err := json.Marshal(map[string]any{
 		"session_id": f.sessionID.String(),
+		"return_url": hostedTicketsBaseURL + "/embed",
 		"tier_id":    f.tierID.String(),
 		"qty":        1,
 		"buyer": map[string]any{

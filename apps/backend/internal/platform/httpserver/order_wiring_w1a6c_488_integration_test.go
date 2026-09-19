@@ -192,7 +192,8 @@ func TestW1A6c_PublicFeedPurchase_OrderItemsAndOrderPaid(t *testing.T) {
 	f := newW1A6cFixture(t, ctx, pool)
 	defer f.cleanup()
 
-	srv := buildIntegrationResetServer(t, pool)
+	defer enableStripeForChannel(t, ctx, pool, f.orgID, f.channelID)()
+	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
 	q := gen.New(pool)
 
 	const qty = 2
@@ -200,6 +201,7 @@ func TestW1A6c_PublicFeedPurchase_OrderItemsAndOrderPaid(t *testing.T) {
 	// ── 1. Real endpoint: public-feed checkout start ─────────────────────────
 	body, err := json.Marshal(map[string]any{
 		"session_id": f.sessionID.String(),
+		"return_url": hostedTicketsBaseURL + "/embed",
 		"tier_id":    f.tierID.String(),
 		"qty":        qty,
 		"buyer": map[string]any{
