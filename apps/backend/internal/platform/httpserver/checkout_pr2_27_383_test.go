@@ -170,27 +170,32 @@ func TestPR227_Step4_CheckoutConvertHasBothFunctions(t *testing.T) {
 // This ensures: if the inline convertReservationTx call after the commit fails
 // (transient network/db hiccup), the worker picks up the job and retries until
 // conversion succeeds, permanently preventing resale.
+// The enqueue lives in fulfillment.go — the shared tail the webhook and the
+// zero-total public checkout both run — and is executed on the CALLER's
+// transaction, which for the webhook is the same one carrying the idempotency
+// event row and the state UPDATE.
 func TestPR227_Step5_WebhookEnqueuesConvertJobAtomically(t *testing.T) {
-	content := findFileByName(t, "payment_intents.go")
-
-	// Must reference the checkout.convert_reservation job type.
-	if !strings.Contains(content, "checkout.convert_reservation") {
-		t.Error("payment_intents.go must enqueue a 'checkout.convert_reservation' durable job on payment.succeeded (PR2-27)")
-	}
+	content := findFileByName(t, "fulfillment.go")
 
 	// Must use the convertjob package's JobType constant (not a raw string).
 	if !strings.Contains(content, "convertjob.JobType") {
-		t.Error("payment_intents.go must use convertjob.JobType constant for the convert job type string")
+		t.Error("fulfillment.go must use convertjob.JobType constant for the convert job type string")
 	}
 
 	// Must reference convertjob.Payload to build the job payload.
 	if !strings.Contains(content, "convertjob.Payload") {
-		t.Error("payment_intents.go must use convertjob.Payload to marshal the reservation_id into the job payload")
+		t.Error("fulfillment.go must use convertjob.Payload to marshal the reservation_id into the job payload")
 	}
 
-	// Step 4 of the webhook tx block: must document this as PR2-27.
-	if !strings.Contains(content, "PR2-27") {
-		t.Error("payment_intents.go must reference PR2-27 in the durable convert job enqueue comment")
+	// It must run on the caller's transaction, never an auto-commit pool.
+	if !strings.Contains(content, "tx.Exec(ctx, insertWorkerJobSQL, convertjob.JobType") {
+		t.Error("fulfillment.go must enqueue the convert job via tx.Exec on the caller's transaction (PR2-27)")
+	}
+
+	// The webhook must actually call it inside its own transaction.
+	webhook := findFileByName(t, "payment_intents.go")
+	if !strings.Contains(webhook, "FulfillCompletedCheckoutTx(ctx, tx,") {
+		t.Error("payment_intents.go must run the shared fulfilment tail on its own transaction (PR2-27)")
 	}
 }
 

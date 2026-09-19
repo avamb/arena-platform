@@ -243,7 +243,14 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		s.publicFeedRL,
 		hcheckout.PricingRules(s.pricingRules),
 		trustedProxies,
-	).WithMediaSigner(s.signedMediaURL)
+	).WithMediaSigner(s.signedMediaURL).
+		WithPayments(
+			s.hostedPaymentStarter(),
+			s.checkoutReturnURLPolicy(),
+			widgetPaymentWindow(s.cfg),
+			widgetPaymentGrace(s.cfg),
+			s.eventQueries,
+		)
 }
 
 // ─── type aliases ─────────────────────────────────────────────────────────────

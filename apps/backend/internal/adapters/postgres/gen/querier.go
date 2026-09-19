@@ -237,12 +237,13 @@ type Querier interface {
 
 	// Payment intents — SCA-aware payment state machine (feature #137)
 	InsertPaymentIntent(ctx context.Context, checkoutSessionID *uuid.UUID, orgID uuid.UUID, provider string, providerPaymentID *string, amount int64, currency string, initialState string, scaRedirectURL *string, clientSecret *string) (PaymentIntentRow, error)
+	InsertHostedPaymentIntent(ctx context.Context, checkoutSessionID *uuid.UUID, orgID uuid.UUID, provider string, providerPaymentID string, amount int64, currency string, hostedCheckoutURL string) (PaymentIntentRow, error)
 	GetPaymentIntentByID(ctx context.Context, id uuid.UUID) (PaymentIntentRow, error)
 	// GetPaymentIntentByIDForUpdate is the row-locking variant; call inside a tx (feature #361).
 	GetPaymentIntentByIDForUpdate(ctx context.Context, id uuid.UUID) (PaymentIntentRow, error)
 	GetPaymentIntentByProviderID(ctx context.Context, providerPaymentID string) (PaymentIntentRow, error)
 	ListPaymentIntentsByCheckout(ctx context.Context, checkoutSessionID uuid.UUID) ([]PaymentIntentRow, error)
-	UpdatePaymentIntentState(ctx context.Context, id uuid.UUID, newState string, scaRedirectURL *string, clientSecret *string, failureCode *string, failureMessage *string, providerPaymentID *string) (PaymentIntentRow, error)
+	UpdatePaymentIntentState(ctx context.Context, id uuid.UUID, newState string, scaRedirectURL *string, clientSecret *string, failureCode *string, failureMessage *string, providerPaymentID *string, providerChargeRef *string) (PaymentIntentRow, error)
 	InsertPaymentIntentEvent(ctx context.Context, paymentIntentID uuid.UUID, providerPaymentID string, eventType string, eventPayload []byte, resultingState *string) (PaymentIntentEventRow, error)
 	GetPaymentIntentEvent(ctx context.Context, providerPaymentID string, eventType string) (PaymentIntentEventRow, error)
 

@@ -169,6 +169,27 @@ func WebhookSecretFromConfig(cfg gen.PaymentProviderConfigRow) string {
 	return ""
 }
 
+// SecretFieldFromConfig reads one named key out of a provider config's
+// secrets blob (e.g. stripe's "api_key"). Empty when absent or unparsable.
+//
+// Each organizer holds their OWN provider account in this wave — there is no
+// Stripe Connect and no platform key — so every call that talks to a
+// provider on an org's behalf must take its credential from here, never from
+// process env.
+func SecretFieldFromConfig(cfg gen.PaymentProviderConfigRow, field string) string {
+	if len(cfg.Secrets) == 0 {
+		return ""
+	}
+	var m map[string]any
+	if err := json.Unmarshal(cfg.Secrets, &m); err != nil {
+		return ""
+	}
+	if v, ok := m[field].(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return ""
+}
+
 // channelProviderForCheckout resolves the sales channel's provider for a
 // checkout session (the authority on WHICH provider).
 func (h *Handler) channelProviderForCheckout(ctx context.Context, cs gen.CheckoutSessionRow) (string, error) {
@@ -180,6 +201,32 @@ func (h *Handler) channelProviderForCheckout(ctx context.Context, cs gen.Checkou
 		return "", err
 	}
 	return ch.Provider, nil
+}
+
+// providerPaymentIDFromEnvelope pulls `data.object.id` out of a provider
+// event envelope (Stripe's shape — see stripeEventEnvelope in
+// payment_intents.go). Returns "" for anything that is not that shape.
+//
+// This is the id arena stored as payment_intents.provider_payment_id: the
+// pi_… for a direct PaymentIntent flow, the cs_… for a hosted Checkout
+// Session. Either way it resolves the owning organization, and therefore
+// whose webhook signing secret must verify this request.
+func providerPaymentIDFromEnvelope(body []byte) string {
+	var env struct {
+		Type string `json:"type"`
+		Data *struct {
+			Object struct {
+				ID string `json:"id"`
+			} `json:"object"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		return ""
+	}
+	if env.Type == "" || env.Data == nil {
+		return ""
+	}
+	return strings.TrimSpace(env.Data.Object.ID)
 }
 
 // webhookSecretsFromOrgConfig locates the organization behind an inbound
@@ -201,6 +248,25 @@ func (h *Handler) webhookSecretsFromOrgConfig(ctx context.Context, body []byte) 
 	}
 	var orgID uuid.UUID
 	switch {
+	case probe.RefundID == "" && probe.PaymentIntentID == "":
+		// A genuine provider event envelope carries NEITHER of arena's own
+		// ids — only the provider's (data.object.id). Until this branch
+		// existed, every real Stripe webhook fell through to the default
+		// below, the per-org secrets were never consulted, and the request
+		// could only be verified against the process-wide env secret. With
+		// two organizers on two separate Stripe accounts that is not a
+		// degradation but a hard failure: at most one of them can have their
+		// signing secret in the process env, and the other's webhooks are
+		// all rejected 401.
+		id := providerPaymentIDFromEnvelope(body)
+		if id == "" || h.paymentIntentQueries == nil {
+			return "", ""
+		}
+		pi, err := h.paymentIntentQueries.GetPaymentIntentByProviderID(ctx, id)
+		if err != nil {
+			return "", ""
+		}
+		orgID = pi.OrgID
 	case probe.RefundID != "" && h.refundQueries != nil:
 		id, err := uuid.Parse(probe.RefundID)
 		if err != nil {

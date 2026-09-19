@@ -152,4 +152,9 @@ type Server struct {
 	// hbil24/token_cache.go), built once from BIL24_TOKEN_CACHE_TTL and shared
 	// by every per-request hbil24.Handler. nil in bare test Servers.
 	bil24TokenCache *hbil24.TokenCache
+	// stripeAPIBaseURL overrides the Stripe REST endpoint used when starting
+	// a widget purchase's hosted Checkout Session (Options.StripeAPIBaseURL).
+	// Empty means the real api.stripe.com; integration tests point it at a
+	// stub server.
+	stripeAPIBaseURL string
 }

@@ -45,7 +45,11 @@ import (
 // auth_production_integration_test.go) — a full *Server with BOTH the dev
 // StubProvider and the production JWTVerifier wired, so the test can mint a
 // real bearer token and drive the customer.read-gated org routes end to end.
-func buildW1A4dAuthServer(t *testing.T, pool *pgxpool.Pool) (*Server, string, string, string) {
+//
+// stripeBase points the hosted-checkout flow at a stub Stripe: since that
+// flow landed, a paid public checkout is only confirmed when a real hosted
+// payment page can be created for it.
+func buildW1A4dAuthServer(t *testing.T, pool *pgxpool.Pool, stripeBase string) (*Server, string, string, string) {
 	t.Helper()
 	const secret = "w1a4d-482-integration-secret-32b!!"
 	const issuer = "arena-api"
@@ -75,13 +79,19 @@ func buildW1A4dAuthServer(t *testing.T, pool *pgxpool.Pool) (*Server, string, st
 		EnableStubAuth: true,
 		DefaultLocale:  "en",
 		ActiveLocales:  []string{"en"},
+
+		CORSAllowedOrigins:         []string{hostedTicketsBaseURL},
+		PublicTicketsBaseURL:       hostedTicketsBaseURL,
+		WidgetPaymentWindowSeconds: 1860,
+		WidgetPaymentGraceSeconds:  120,
 	}
 	srv := New(Options{
-		Config:   cfg,
-		Pool:     pool,
-		PgxPool:  pool,
-		Auth:     stub,
-		Verifier: verifier,
+		Config:           cfg,
+		Pool:             pool,
+		PgxPool:          pool,
+		Auth:             stub,
+		Verifier:         verifier,
+		StripeAPIBaseURL: stripeBase,
 	})
 	return srv, secret, issuer, audience
 }
@@ -99,7 +109,8 @@ func TestW1A4d_482_PublicFeedCheckoutResolvesCustomerAndOrgSurfaceSeesIt(t *test
 	f := newW1A6cFixture(t, ctx, pool)
 	defer f.cleanup()
 
-	srv, secret, issuer, audience := buildW1A4dAuthServer(t, pool)
+	defer enableStripeForChannel(t, ctx, pool, f.orgID, f.channelID)()
+	srv, secret, issuer, audience := buildW1A4dAuthServer(t, pool, newStubStripe(t).baseURL())
 
 	const qty = 1
 	const buyerName = "Petra Resolve"
@@ -107,6 +118,7 @@ func TestW1A4d_482_PublicFeedCheckoutResolvesCustomerAndOrgSurfaceSeesIt(t *test
 	// ── 1. Real endpoint: public-feed checkout start with a full buyer ───────
 	body, err := json.Marshal(map[string]any{
 		"session_id": f.sessionID.String(),
+		"return_url": hostedTicketsBaseURL + "/embed",
 		"tier_id":    f.tierID.String(),
 		"qty":        qty,
 		"buyer": map[string]any{

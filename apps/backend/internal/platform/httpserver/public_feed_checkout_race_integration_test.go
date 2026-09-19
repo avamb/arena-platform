@@ -195,7 +195,8 @@ func TestPublicFeedCheckout_ConcurrentSameNewBuyer_NoRaceAbortedTx(t *testing.T)
 	f := newTwoSessionFeedFixture(t, ctx, pool)
 	defer f.cleanup()
 
-	srv := buildIntegrationResetServer(t, pool)
+	defer enableStripeForChannel(t, ctx, pool, f.orgID, f.channelID)()
+	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
 
 	const n = 2
 	var wg sync.WaitGroup
@@ -207,6 +208,7 @@ func TestPublicFeedCheckout_ConcurrentSameNewBuyer_NoRaceAbortedTx(t *testing.T)
 			defer wg.Done()
 			body, err := json.Marshal(map[string]any{
 				"session_id": f.sessionIDs[i].String(),
+				"return_url": hostedTicketsBaseURL + "/embed",
 				"tier_id":    f.tierIDs[i].String(),
 				"qty":        1,
 				"buyer": map[string]any{

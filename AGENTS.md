@@ -1013,3 +1013,67 @@ entries short and factual.
   `manual_review` rows from old load-test data (dated 2026-09-13) — that is
   correct behaviour, not a bug in the check; do not "fix" the query to hide
   them.
+- **The widget takes money through a Stripe-HOSTED Checkout Session, and its
+  `payment_intents.provider_payment_id` is the `cs_…` session id, NOT a
+  `pi_…`.** `POST /v1/public/feeds/{token}/checkout/start` used to answer a
+  hardcoded dead `redirect_url` (`/checkout/<uuid>`) and never called a
+  provider at all. It now commits its own transaction first, then — AFTER the
+  commit, never inside it — resolves the channel's provider
+  (`sales_channels.provider`, only `stripe` is supported) and the org's
+  credentials through `hcheckout.ResolveProviderConfig`, builds
+  `stripe.New(...)` PER REQUEST from that row's `secrets.api_key` (every
+  organizer has their OWN Stripe account — no Connect, no application fee),
+  creates the hosted page and stores a `payment_intents` row keyed by the
+  `cs_…`. That is what every `checkout.session.*` webhook event identifies
+  the payment by, so keying it any other way 404s a real payment. The `pi_…`
+  arrives later on `data.object.payment_intent` and is stored in
+  `provider_charge_ref` (migration 0103) because a REFUND must be driven
+  through the `pi_…`; `hosted_checkout_url` on the same row is what
+  `GET /v1/public/checkout/{token}` returns as `payment_url` so a buyer who
+  bounced off Stripe can resume. Failure codes are deliberately distinct:
+  `checkout.payment_provider_unsupported` (422), `checkout.payment_not_configured`
+  (422/503), `checkout.payment_start_failed` (502), `checkout.invalid_return_url`
+  (400). A failure never releases the hold by hand — the existing sweeps do.
+  `checkout.session.completed` is only acted on when `data.object.payment_status
+  == "paid"`; Stripe fires it for async methods long before the money settles,
+  and that gate runs BEFORE the idempotency insert so the later real event is
+  not swallowed as a duplicate. Extend `validWebhookTransitions`, never the
+  strict table.
+- **The widget payment window must outlive the Stripe session, never the
+  other way round.** `WIDGET_PAYMENT_WINDOW_SECONDS` (default 1860 — Stripe
+  refuses a Checkout Session expiry closer than 30 minutes, so never go below
+  1800) is the hosted session's own `expires_at`; the hold / order / checkout
+  expiry is that PLUS `WIDGET_PAYMENT_GRACE_SECONDS` (default 120), set
+  inside the checkout transaction with `hcheckout.SetHoldExpiryTx` exactly as
+  `hbil24`'s CREATE_ORDER_EXT does, so `ordering.CreateOrderFromCheckout`
+  copies `orders.expires_at` off the reservation and the three can never
+  disagree. Invert the two and a buyer pays for seats arena already resold.
+- **Per-org webhook secrets only work because the envelope branch exists.**
+  `webhookSecretsFromOrgConfig` (`hcheckout/provider_config.go`) used to find
+  the org ONLY from a flat body's `refund_id`/`payment_intent_id`. A genuine
+  Stripe event carries neither, so per-org secrets were never consulted and
+  every webhook fell back to the single process-env secret — which at most
+  ONE of two organizers on two Stripe accounts can own. It now also reads
+  `data.object.id` from the envelope (`providerPaymentIDFromEnvelope`) and
+  resolves the org through `GetPaymentIntentByProviderID`. Guarded by
+  `TestHostedCheckout_TwoOrgsUseTheirOwnWebhookSecrets`.
+- **A zero-total public checkout completes inline; both it and the payment
+  webhook run the SAME four writes.** `hcheckout.FulfillCompletedCheckoutTx`
+  (`fulfillment.go`) enqueues `checkout.issue_tickets`, marks the order paid
+  and enqueues `checkout.convert_reservation` on the CALLER's transaction;
+  `CompleteFreeCheckoutTx` wraps it for a free order (payment_provider
+  `'none'`, no payment intent). Any failure there now rolls the whole
+  transaction back and answers 500 so the provider redelivers — the old
+  "log the mark-paid failure and carry on" was never real, because a failed
+  statement had already aborted the pgx transaction and the COMMIT died with
+  25P02 anyway.
+- **An integration test that drives a PAID `checkout/start` now needs a
+  payment provider.** Since the hosted flow landed, a cart with a total above
+  zero is only confirmed when a hosted page can actually be created for it.
+  Such a fixture needs `sales_channels.provider='stripe'`, a configured
+  `payment_provider_configs` row, a `return_url` in the request body, and a
+  Server built with `Options.StripeAPIBaseURL` pointing at a stub — see
+  `enableStripeForChannel` / `newStubStripe` / `buildHostedCheckoutServer` in
+  `httpserver/hosted_checkout_integration_test.go`. `enableStripeForChannel`
+  returns a teardown that must be deferred AFTER the fixture's own (defers are
+  LIFO, so it then runs BEFORE the organization it references is deleted).

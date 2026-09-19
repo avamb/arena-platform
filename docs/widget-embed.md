@@ -123,6 +123,46 @@ The block is server-side rendered — the `save()` function returns `null` and W
 
 ---
 
+## Taking payment
+
+The widget never renders a card form. `POST /v1/public/feeds/{feed_token}/checkout/start`
+returns a `redirect_url` pointing at a **Stripe-hosted Checkout Session**, and
+the widget navigates to it. Card data therefore never touches the embedding
+site or arena.
+
+Each organizer uses their **own Stripe account**: the API key and webhook
+signing secret live per organization in `payment_provider_configs.secrets`
+(`api_key` / `webhook_secret`), managed in the admin Payment Configs screen —
+not in environment variables. The sales channel's `provider` column decides
+which provider is used; only `stripe` can host a checkout page today.
+
+The widget sends `return_url` (`window.location.origin + window.location.pathname`)
+in the checkout/start body. Its **origin** is validated against
+`CORS_ALLOWED_ORIGINS` plus `PUBLIC_TICKETS_BASE_URL`; anything absent or
+refused falls back to `PUBLIC_TICKETS_BASE_URL`, and with neither configured a
+paid checkout is refused with `checkout.invalid_return_url`. Stripe's success
+and cancel URLs are both that value with `?checkout_token=<token>` appended, so
+whichever way the buyer comes back they land on the same page and the widget
+resumes the same order.
+
+| Env var                         | Default | Meaning                                                                            |
+| ------------------------------- | ------- | ---------------------------------------------------------------------------------- |
+| `PUBLIC_TICKETS_BASE_URL`       | *(none)*| Canonical origin of the embedding page: allow-list entry **and** return fallback     |
+| `WIDGET_PAYMENT_WINDOW_SECONDS` | 1860    | How long the hosted page accepts payment. Stripe refuses below 1800 — do not lower |
+| `WIDGET_PAYMENT_GRACE_SECONDS`  | 120     | Added on top for the hold/order expiry, so the seats outlive the Stripe session     |
+
+Enable these events on the organization's Stripe webhook endpoint (pointing at
+`POST /v1/payment-intents/webhook`):
+`checkout.session.completed`, `checkout.session.expired`,
+`checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`.
+A `completed` event whose `payment_status` is not `paid` is acknowledged but
+deliberately not acted on — the money has not settled yet.
+
+While an order is still pending and its window is open,
+`GET /v1/public/checkout/{checkout_token}` includes `payment_url`, so a buyer
+who closed the Stripe tab can be offered "continue to payment" for the same
+session instead of rebuilding their cart.
+
 ## Rate Limits
 
 The public widget API (`/v1/public/feeds/{feed_token}/...` and

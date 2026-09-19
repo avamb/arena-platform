@@ -452,6 +452,22 @@
 
   // ── Checkout ───────────────────────────────────────────────────────────────
 
+  /**
+   * Current page URL without query string or hash, for the hosted payment
+   * provider's success/cancel redirect. Returns null outside a browser (SSR,
+   * prerender), where the checkout cannot run anyway.
+   */
+  function buildReturnUrl(): string | null {
+    try {
+      if (typeof window === 'undefined' || !window.location) return null;
+      const { origin, pathname } = window.location;
+      if (!origin || origin === 'null') return null;
+      return `${origin}${pathname}`;
+    } catch {
+      return null;
+    }
+  }
+
   async function handleCheckout(values: BuyerFormValues): Promise<void> {
     if (!selectedSession || !normFeedToken) return;
     checkoutSubmitting = true;
@@ -466,6 +482,12 @@
         gaItems,
         selectedSession.buyer_fields as import('./lib/checkout.js').BuyerFieldConfig[],
       );
+      // Where the hosted payment page returns the buyer. Origin + pathname
+      // only — the backend appends `?checkout_token=…` itself, which is what
+      // `getCheckoutTokenFromSearch` reads on the next load, so any query
+      // string or hash we sent along would be dropped or would collide.
+      const returnUrl = buildReturnUrl();
+      if (returnUrl) payload.return_url = returnUrl;
       const response = await postCheckoutStart(normFeedToken, payload, resolvedApiBase);
       // Save token in case user returns after the payment page.
       saveCheckoutToken(response.checkout_token);
@@ -473,14 +495,23 @@
       // Store the hold expiry so MiniCart/CartSheet can show the countdown
       // during the brief redirecting stage (WID-S1 fix #3 + #4).
       holdExpiresAt = response.expires_at;
-      stage = 'redirecting';
       // WID-S5: notify host page that payment flow has started.
       dispatchWidgetEvent(host, ARENA_EVENTS.PAYMENT_STARTED, {
         checkoutToken: response.checkout_token,
         sessionId: selectedSession.id,
       });
+      const redirectUrl = (response.redirect_url ?? '').trim();
+      if (!redirectUrl) {
+        // No hosted payment page to send the buyer to (e.g. no return URL is
+        // configured on the channel). Stay put and show the order status for
+        // the token we already hold instead of navigating to "".
+        stage = 'order-status';
+        await loadOrderStatus(response.checkout_token);
+        return;
+      }
+      stage = 'redirecting';
       // Redirect to payment provider.
-      window.location.href = response.redirect_url;
+      window.location.href = redirectUrl;
     } catch (err) {
       // WID-S2: parse nested envelope 409 seat conflicts and surface them on
       // the seat map via the conflictKeys prop (SeatMapView → applyConflictHighlight).

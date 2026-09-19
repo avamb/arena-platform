@@ -9,7 +9,9 @@
    *   failed  → "Payment failed" panel with "Try again" CTA
    *
    * And one transient state:
-   *   pending → spinner with "Processing…" copy
+   *   pending → spinner with "Processing…" copy, plus a "Continue to payment"
+   *             link back to the hosted payment page while the backend still
+   *             reports a `payment_url`
    *
    * All copy is localised (en/ru/cs/he).
    */
@@ -71,6 +73,17 @@
   const holdIsWarning = $derived(isTwoMinWarning(secondsLeft));
   const holdCountdown = $derived(expiresAt && secondsLeft > 0 ? formatCountdown(secondsLeft) : null);
 
+  /**
+   * Hosted payment page for a still-pending order whose payment window is
+   * still open — the backend omits `payment_url` once the order reaches a
+   * terminal state, so this is only ever a link while `status === 'pending'`.
+   */
+  const paymentUrl = $derived(
+    typeof status.payment_url === 'string' && status.payment_url.trim()
+      ? status.payment_url
+      : null,
+  );
+
   function seatLabel(ticket: CheckoutStatusTicketItem): string {
     const parts: string[] = [];
     if (ticket.sector) parts.push(ticket.sector);
@@ -91,6 +104,17 @@
         <p class="hold-countdown" class:warn={holdIsWarning} aria-live="polite" data-testid="hold-countdown">
           ⏱ {holdCountdown} {t.remaining}
         </p>
+      {/if}
+      {#if paymentUrl}
+        <!-- Buyer abandoned the hosted payment page but the window is still
+             open — send them straight back to it. -->
+        <a
+          class="action-btn primary"
+          href={paymentUrl}
+          data-testid="continue-payment"
+        >
+          {t.continue_to_payment}
+        </a>
       {/if}
     </div>
 
@@ -340,6 +364,8 @@
     font-weight: 500;
     cursor: pointer;
     border: none;
+    /* The pending-state "continue to payment" CTA is an <a>, not a <button>. */
+    text-decoration: none;
     transition: opacity 0.15s;
   }
 

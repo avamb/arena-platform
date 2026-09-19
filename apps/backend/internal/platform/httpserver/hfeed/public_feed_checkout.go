@@ -105,6 +105,12 @@ type PublicFeedCheckoutStartRequest struct {
 	// New WID-0d field (feature #321): structured buyer info.
 	// When present, Buyer.Email supersedes HolderEmail.
 	Buyer *PublicBuyerInfo `json:"buyer,omitempty"`
+	// ReturnURL is the embedding page the buyer must be sent back to after
+	// the provider-hosted payment page (widget sends
+	// window.location.origin + pathname). Its ORIGIN is validated against
+	// CORS_ALLOWED_ORIGINS + PUBLIC_TICKETS_BASE_URL; anything absent or
+	// refused falls back to PUBLIC_TICKETS_BASE_URL.
+	ReturnURL string `json:"return_url,omitempty"`
 }
 
 // mintCheckoutToken generates a 32-byte crypto-random hex string (64 chars).
@@ -736,7 +742,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			seatTierPrices[tid] = l.UnitPrice
 		}
 		h.confirmPublicCheckout(ctx, w, r, checkCtx, res.ID, checkoutToken, bd, promoCodeID, expiresAt,
-			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone}, seatTierPrices)
+			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone}, seatTierPrices, req.ReturnURL)
 		return
 	}
 
@@ -892,7 +898,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// Pure GA: reservation_ga_items.unit_price is authoritative for every unit,
 	// so no tier price map is needed.
 	h.confirmPublicCheckout(ctx, w, r, checkCtx, reservation.ID, checkoutToken, bd, promoCodeID, expiresAt,
-		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone}, nil)
+		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone}, nil, req.ReturnURL)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1074,7 +1080,43 @@ func (h *Handler) confirmPublicCheckout(
 	expiresAt time.Time,
 	buyer publicOrderBuyer,
 	tierUnitPrices map[uuid.UUID]int64,
+	returnURL string,
 ) {
+	// ── 0. A paid cart needs a place to send the buyer BACK to, and a
+	// payment window, before anything is written. Resolving the return URL
+	// first means a misconfigured embed fails before it has an order and a
+	// confirmed checkout to abandon.
+	paid := bd.Total > 0
+	var returnBase string
+	if paid {
+		base, rErr := h.returnURLPolicy.Resolve(returnURL)
+		if rErr != nil {
+			pse, _ := AsPaymentStartError(rErr)
+			h.logger.Warn("public_feed_checkout: return_url rejected and no fallback configured",
+				slog.String("return_url", returnURL),
+				slog.String("reservation_id", reservationID.String()),
+			)
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
+				pse.Code, pse.Message, r,
+			))
+			return
+		}
+		returnBase = base
+	}
+
+	// The hold, the order and the checkout must all outlive the hosted
+	// payment page, or the buyer can pay for seats arena has already
+	// released. The payment window is the hosted session's own expiry; the
+	// grace on top is what arena waits before releasing. Mirrors the Bil24
+	// gateway's CREATE_ORDER_EXT contract (hbil24/cmd_order_create.go):
+	// move reservations.expires_at inside the SAME transaction that mints
+	// the order, and ordering.CreateOrderFromCheckout copies orders.expires_at
+	// straight off the reservation it re-reads — so the two cannot disagree.
+	holdExpiresAt := expiresAt
+	if paid && h.paymentWindow > 0 {
+		holdExpiresAt = time.Now().UTC().Add(h.paymentWindow + h.paymentGrace)
+	}
+
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		h.logger.Error("public_feed_checkout: begin checkout tx failed",
@@ -1089,6 +1131,22 @@ func (h *Handler) confirmPublicCheckout(
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	txq := gen.New(tx)
+
+	// Touches only the reservations row — no inventory, no session lock — so
+	// it observes no lock order of its own (AGENTS.md hold-mutation rule).
+	if !holdExpiresAt.Equal(expiresAt) {
+		if _, err := hcheckout.SetHoldExpiryTx(ctx, txq, reservationID, holdExpiresAt); err != nil {
+			h.logger.Error("public_feed_checkout: set payment-window hold expiry failed",
+				slog.String("reservation_id", reservationID.String()),
+				slog.String("error", err.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"checkout.start_failed", "failed to create checkout session", r,
+			))
+			return
+		}
+		expiresAt = holdExpiresAt
+	}
 
 	cs, err := txq.InsertCheckoutSessionWithToken(
 		ctx, checkCtx.OrgID, checkCtx.SalesChannelID, reservationID, nil, checkoutToken,
@@ -1120,7 +1178,8 @@ func (h *Handler) confirmPublicCheckout(
 		return
 	}
 
-	if err := h.createPublicOrder(ctx, tx, txq, checkCtx, cs, buyer, tierUnitPrices); err != nil {
+	orderID, err := h.createPublicOrder(ctx, tx, txq, checkCtx, cs, buyer, tierUnitPrices)
+	if err != nil {
 		h.logger.Error("public_feed_checkout: create order failed",
 			slog.String("checkout_session_id", cs.ID.String()),
 			slog.String("error", err.Error()),
@@ -1129,6 +1188,35 @@ func (h *Handler) confirmPublicCheckout(
 			"checkout.confirm_failed", "failed to confirm checkout session", r,
 		))
 		return
+	}
+
+	// A zero-total cart has nothing to pay, so it is finished right here —
+	// completed, tickets enqueued, order paid, hold queued for conversion,
+	// all in THIS transaction through the same helper the payment webhook
+	// uses. Before this, checkout/start answered a "/checkout/<id>/complete"
+	// URL that no route has ever served: a free order simply never arrived.
+	if !paid {
+		if _, err := hcheckout.CompleteFreeCheckoutTx(ctx, tx, txq, cs.ID); err != nil {
+			h.logger.Error("public_feed_checkout: complete free checkout failed",
+				slog.String("checkout_session_id", cs.ID.String()),
+				slog.String("error", err.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"checkout.confirm_failed", "failed to complete the free order", r,
+			))
+			return
+		}
+		cs, err = txq.GetCheckoutSessionByID(ctx, cs.ID)
+		if err != nil {
+			h.logger.Error("public_feed_checkout: reload completed free checkout failed",
+				slog.String("checkout_session_id", cs.ID.String()),
+				slog.String("error", err.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"checkout.confirm_failed", "failed to complete the free order", r,
+			))
+			return
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -1142,9 +1230,40 @@ func (h *Handler) confirmPublicCheckout(
 		return
 	}
 
-	redirectURL := fmt.Sprintf("/checkout/%s", cs.ID.String())
-	if bd.Total == 0 {
-		redirectURL = fmt.Sprintf("/checkout/%s/complete", cs.ID.String())
+	// ── Free order: the buyer goes straight back to the embedding page,
+	// where the widget resumes on ?checkout_token= and shows the tickets.
+	// The return URL is best-effort here: with none configured a free order
+	// still succeeded, and the widget already holds the token it needs.
+	if !paid {
+		redirectURL := ""
+		if base, rErr := h.returnURLPolicy.Resolve(returnURL); rErr == nil {
+			redirectURL = ReturnURLWithToken(base, checkoutToken)
+		}
+		httputil.WriteJSON(w, http.StatusCreated, map[string]any{
+			"checkout_session": hcheckout.CheckoutSessionFromRow(cs),
+			"redirect_url":     redirectURL,
+			"checkout_token":   checkoutToken,
+			"expires_at":       expiresAt.Format(time.RFC3339),
+			"pricing":          bd,
+		})
+		return
+	}
+
+	// ── Paid order: take the money. This runs AFTER the commit on purpose —
+	// a provider call can hang for seconds and must never hold a transaction
+	// that has seats locked behind it.
+	redirectURL, ok := h.startHostedPayment(ctx, w, r, hostedPaymentInput{
+		CheckCtx:      checkCtx,
+		Session:       cs,
+		CheckoutToken: checkoutToken,
+		OrderID:       orderID,
+		Breakdown:     bd,
+		Buyer:         buyer,
+		ReturnBase:    returnBase,
+		ExpiresAt:     expiresAt,
+	})
+	if !ok {
+		return
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
@@ -1212,6 +1331,10 @@ func (h *Handler) bestEffort(
 // ordering.CreateOrderFromCheckout. Only a genuine order-write failure is
 // returned: identity resolution and the fee-percent audit snapshot both
 // degrade quietly, because neither is worth failing a paid-for cart over.
+//
+// Returns the new order's id so the caller can stamp it onto the payment
+// provider's metadata — a Stripe dashboard row that cannot be traced back to
+// an arena order is useless during a dispute.
 func (h *Handler) createPublicOrder(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -1220,7 +1343,7 @@ func (h *Handler) createPublicOrder(
 	cs gen.CheckoutSessionRow,
 	buyer publicOrderBuyer,
 	tierUnitPrices map[uuid.UUID]int64,
-) error {
+) (*uuid.UUID, error) {
 	var customerID *uuid.UUID
 	if buyer.Email != "" {
 		// Best-effort by design (see the doc comment above), but "log and
@@ -1279,7 +1402,7 @@ func (h *Handler) createPublicOrder(
 
 	if customerID != nil {
 		if err := h.supersedeOpenOrder(ctx, txq, checkCtx, cs, *customerID); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -1290,7 +1413,7 @@ func (h *Handler) createPublicOrder(
 		chargePercentBP = ordering.ChargePercentBP(ch.FeePercent)
 	}
 
-	_, err := ordering.CreateOrderFromCheckout(ctx, txq, ordering.CreateInput{
+	res, err := ordering.CreateOrderFromCheckout(ctx, txq, ordering.CreateInput{
 		CheckoutSessionID: cs.ID,
 		EventID:           checkCtx.EventID,
 		CustomerID:        customerID,
@@ -1302,7 +1425,11 @@ func (h *Handler) createPublicOrder(
 		BuyerPhone:        buyer.Phone,
 		TierUnitPrices:    tierUnitPrices,
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+	orderID := res.Order.ID
+	return &orderID, nil
 }
 
 // supersedeOpenOrder closes the customer's previous pending_payment order on

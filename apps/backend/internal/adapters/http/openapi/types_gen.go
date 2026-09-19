@@ -3493,6 +3493,16 @@ type CheckoutStatusResponse struct {
 	// Items Cart items held at the time of the request.
 	Items []CheckoutStatusItem `json:"items"`
 
+	// PaymentUrl The provider-hosted payment page for this order, present only
+	// while the order is still `pending` and its hold has not expired.
+	//
+	// It lets a buyer who bounced off the payment page — closed the tab,
+	// lost signal, hit back — return to the SAME hosted session instead
+	// of rebuilding their cart. Omitted once the order is paid, expired
+	// or failed, and omitted once the hosted session's own expiry has
+	// passed.
+	PaymentUrl *string `json:"payment_url,omitempty"`
+
 	// PlatformFee Platform service fee; null until pricing_confirmed.
 	PlatformFee *int `json:"platform_fee"`
 
@@ -7234,7 +7244,12 @@ type PaymentIntentWebhookRequest struct {
 	Data *struct {
 		// Object The Stripe payment intent object.
 		Object *struct {
-			// Id Provider-side payment intent id (`pi_...`); mapped to `provider_payment_id`.
+			// Id Provider-side object id, mapped to
+			// `provider_payment_id`. A `payment_intent.*` event
+			// carries the `pi_...`; a `checkout.session.*` event
+			// carries the `cs_...` Checkout Session id, which is
+			// exactly what the widget's hosted-payment flow stored
+			// as `provider_payment_id` when it created the page.
 			Id *string `json:"id,omitempty"`
 
 			// LastPaymentError Present on failure events; `code` / `message` are
@@ -7246,6 +7261,26 @@ type PaymentIntentWebhookRequest struct {
 				// Message Human-readable Stripe error message.
 				Message *string `json:"message,omitempty"`
 			} `json:"last_payment_error"`
+
+			// PaymentIntent `checkout.session.*` events only — the `pi_...`
+			// Stripe minted behind the hosted session. It is null
+			// on the session until the buyer actually pays, so
+			// this is the first event carrying it; it is persisted
+			// as `payment_intents.provider_charge_ref` because a
+			// refund is driven through the `pi_...`, never through
+			// the `cs_...`.
+			PaymentIntent *string `json:"payment_intent,omitempty"`
+
+			// PaymentStatus `checkout.session.*` events only — Stripe's
+			// `payment_status` (`paid`, `unpaid`,
+			// `no_payment_required`). A
+			// `checkout.session.completed` whose value is not
+			// `paid` is acknowledged with `processed: false`: the
+			// buyer finished the hosted page but the money has not
+			// settled, and the matching
+			// `checkout.session.async_payment_succeeded` /
+			// `_failed` event decides the outcome.
+			PaymentStatus *string `json:"payment_status,omitempty"`
 
 			// Status Stripe's own status string for the payment intent object.
 			Status *string `json:"status,omitempty"`
@@ -7261,6 +7296,15 @@ type PaymentIntentWebhookRequest struct {
 	// `payment_intent.payment_failed`,
 	// `payment_intent.requires_action`). Unknown event types are
 	// acknowledged with `processed: false` (no transition).
+	//
+	// The Stripe-hosted Checkout Session flow used by the ticket
+	// widget adds `checkout.session.completed` (→ `succeeded`,
+	// but only when `payment_status` is `paid`),
+	// `checkout.session.async_payment_succeeded` (→ `succeeded`),
+	// `checkout.session.async_payment_failed` (→ `failed`) and
+	// `checkout.session.expired` (→ `failed` with
+	// `failure_code: session_expired`). Every one of these must be
+	// enabled on the organization's Stripe webhook endpoint.
 	EventType *string `json:"event_type,omitempty"`
 
 	// FailureCode Machine-readable provider failure code recorded on failure events.
@@ -7632,6 +7676,22 @@ type PublicFeedCheckoutStartRequest struct {
 	// Qty Deprecated: use ga_items instead.
 	Qty *int32 `json:"qty,omitempty"`
 
+	// ReturnUrl The embedding page the buyer must be returned to after the
+	// provider-hosted payment page. The widget sends
+	// `window.location.origin + window.location.pathname`.
+	//
+	// Only the ORIGIN is validated, against the deployment's
+	// `CORS_ALLOWED_ORIGINS` plus `PUBLIC_TICKETS_BASE_URL`; the path is
+	// preserved and any query or fragment is dropped. An absent or
+	// refused value falls back to `PUBLIC_TICKETS_BASE_URL`, and with
+	// neither configured a paid checkout is rejected with
+	// `checkout.invalid_return_url`.
+	//
+	// The provider's success and cancel URLs are this value with
+	// `?checkout_token=<checkout_token>` appended, so the buyer lands
+	// back on the same page and the widget resumes the same order.
+	ReturnUrl *string `json:"return_url,omitempty"`
+
 	// Seats Seat keys for seated or hybrid sessions.
 	Seats *[]string `json:"seats,omitempty"`
 
@@ -7661,7 +7721,12 @@ type PublicFeedCheckoutStartResponse struct {
 	// CheckoutToken Opaque high-entropy token for WID-0b anonymous order lookup.
 	CheckoutToken string `json:"checkout_token"`
 
-	// ExpiresAt Reservation expiry (RFC 3339 UTC).
+	// ExpiresAt Hold expiry (RFC 3339 UTC).
+	//
+	// For a paid cart this is the payment deadline: it is moved to
+	// `WIDGET_PAYMENT_WINDOW_SECONDS + WIDGET_PAYMENT_GRACE_SECONDS`
+	// from now, so the provider's hosted session always stops accepting
+	// payment BEFORE arena releases the seats.
 	ExpiresAt time.Time `json:"expires_at"`
 
 	// Pricing Itemized result of running the deterministic pricing pipeline
@@ -7673,7 +7738,18 @@ type PublicFeedCheckoutStartResponse struct {
 	//     (subtotal - discount) + platform_fee + provider_fee + tax == total
 	Pricing *PricingBreakdownItem `json:"pricing,omitempty"`
 
-	// RedirectUrl URL to redirect the buyer to for payment or completion.
+	// RedirectUrl Where to send the buyer next.
+	//
+	// For a cart with a total above zero this is the absolute URL of the
+	// payment provider's own hosted checkout page (Stripe Checkout
+	// Session). The widget navigates to it; no card data ever reaches
+	// arena or the embedding site.
+	//
+	// For a zero-total cart the order is already complete and this is
+	// the caller's `return_url` with `?checkout_token=` appended — or an
+	// empty string when the deployment has no return URL configured, in
+	// which case the caller should simply show the order status for the
+	// returned `checkout_token`.
 	RedirectUrl string `json:"redirect_url"`
 }
 

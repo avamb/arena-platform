@@ -153,6 +153,29 @@ type Config struct {
 	PublicAPIIPRateLimit         int `env:"PUBLIC_API_IP_RATE_LIMIT" required:"false" default:"600"`
 
 	// -------------------------------------------------------------------------
+	// Widget hosted payment (Stripe Checkout Session redirect flow)
+	// -------------------------------------------------------------------------
+	// PublicTicketsBaseURL is the canonical origin of the page that embeds the
+	// ticket widget (e.g. https://tickets.example.com). It is BOTH the
+	// fallback return URL after payment and — together with
+	// CORSAllowedOrigins — the allow-list the buyer-supplied return_url's
+	// origin is validated against. Empty means a checkout/start that does not
+	// carry a valid return_url is refused with checkout.invalid_return_url.
+	PublicTicketsBaseURL string `env:"PUBLIC_TICKETS_BASE_URL" required:"false" default:""`
+
+	// WidgetPaymentWindowSeconds is how long a buyer has to pay on the
+	// provider-hosted page, and is the hosted session's own expires_at.
+	// Stripe refuses a Checkout Session expiry closer than 30 minutes, so the
+	// default is 1860s (31 min) — do not lower it below 1800 for Stripe.
+	//
+	// WidgetPaymentGraceSeconds is added ON TOP for the hold / order /
+	// checkout expiry, so the hosted session always dies BEFORE arena
+	// releases the seats. Shipping the grace the other way round would let a
+	// buyer pay for seats that had already been resold.
+	WidgetPaymentWindowSeconds int `env:"WIDGET_PAYMENT_WINDOW_SECONDS" required:"false" default:"1860"`
+	WidgetPaymentGraceSeconds  int `env:"WIDGET_PAYMENT_GRACE_SECONDS" required:"false" default:"120"`
+
+	// -------------------------------------------------------------------------
 	// Database (PostgreSQL 17)
 	// -------------------------------------------------------------------------
 	DatabaseURL       string        `env:"DATABASE_URL"               required:"true"`
@@ -583,6 +606,22 @@ func Load() (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.PublicAPIIPRateLimit = iAPIIPRL
+
+	// PUBLIC_TICKETS_BASE_URL / WIDGET_PAYMENT_WINDOW_SECONDS /
+	// WIDGET_PAYMENT_GRACE_SECONDS — widget hosted-payment redirect flow.
+	cfg.PublicTicketsBaseURL = strings.TrimRight(strings.TrimSpace(getenv("PUBLIC_TICKETS_BASE_URL", "")), "/")
+
+	iPayWindow, err := getenvInt("WIDGET_PAYMENT_WINDOW_SECONDS", 1860)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.WidgetPaymentWindowSeconds = iPayWindow
+
+	iPayGrace, err := getenvInt("WIDGET_PAYMENT_GRACE_SECONDS", 120)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.WidgetPaymentGraceSeconds = iPayGrace
 
 	d, err := getenvDuration("REQUEST_TIMEOUT_SECONDS", 30*time.Second, true)
 	if err != nil {

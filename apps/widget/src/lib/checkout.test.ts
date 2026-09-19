@@ -380,6 +380,8 @@ describe('CHECKOUT_I18N', () => {
     'cart_title', 'cart_details_title', 'cart_empty', 'cart_total_label',
     'cart_back', 'expires_warn', 'ticket_singular', 'ticket_plural',
     'redirecting_to_payment', 'remaining',
+    // Hosted-checkout resume CTA (Stripe Checkout Session redirect flow)
+    'continue_to_payment',
   ];
 
   for (const locale of LOCALES) {

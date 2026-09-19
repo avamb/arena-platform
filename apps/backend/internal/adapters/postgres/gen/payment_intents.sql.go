@@ -39,8 +39,16 @@ type PaymentIntentRow struct {
 	AuthorizedAt      *time.Time `json:"authorized_at"`
 	SucceededAt       *time.Time `json:"succeeded_at"`
 	FailedAt          *time.Time `json:"failed_at"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
+	// HostedCheckoutURL is the buyer-facing provider-hosted payment page
+	// (Stripe Checkout Session `url`, migration 0103). NULL for flows that do
+	// not use a hosted page.
+	HostedCheckoutURL *string `json:"hosted_checkout_url"`
+	// ProviderChargeRef is the provider's charge/payment identifier behind a
+	// hosted checkout session (Stripe pi_…), learned from the webhook. Refunds
+	// are driven through this id, never through the cs_… session id.
+	ProviderChargeRef *string   `json:"provider_charge_ref"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 // scanPaymentIntentRow scans a single payment_intents row into a PaymentIntentRow.
@@ -64,6 +72,8 @@ func scanPaymentIntentRow(row interface {
 		&r.AuthorizedAt,
 		&r.SucceededAt,
 		&r.FailedAt,
+		&r.HostedCheckoutURL,
+		&r.ProviderChargeRef,
 		&r.CreatedAt,
 		&r.UpdatedAt,
 	)
@@ -119,7 +129,8 @@ VALUES (
 )
 RETURNING id, checkout_session_id, org_id, provider, provider_payment_id, amount, currency,
           state, sca_redirect_url, client_secret, failure_code, failure_message,
-          authorized_at, succeeded_at, failed_at, created_at, updated_at`
+          authorized_at, succeeded_at, failed_at, hosted_checkout_url, provider_charge_ref,
+          created_at, updated_at`
 
 // InsertPaymentIntent creates a new payment intent linked to an optional checkout session.
 //
@@ -149,13 +160,57 @@ func (q *Queries) InsertPaymentIntent(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// InsertHostedPaymentIntent
+// ─────────────────────────────────────────────────────────────────────────────
+
+const insertHostedPaymentIntent = `-- name: InsertHostedPaymentIntent :one
+INSERT INTO payment_intents (
+    checkout_session_id, org_id, provider, provider_payment_id, amount, currency,
+    state, hosted_checkout_url
+)
+VALUES ($1, $2, $3, $4, $5, $6, 'created', $7)
+RETURNING id, checkout_session_id, org_id, provider, provider_payment_id, amount, currency,
+          state, sca_redirect_url, client_secret, failure_code, failure_message,
+          authorized_at, succeeded_at, failed_at, hosted_checkout_url, provider_charge_ref,
+          created_at, updated_at`
+
+// InsertHostedPaymentIntent creates a payment intent for a provider-hosted
+// checkout page (migration 0103).
+//
+// providerPaymentID is the HOSTED SESSION id (Stripe cs_…), not the pi_… —
+// that is what every checkout.session.* webhook event identifies the payment
+// by, and it is what GetPaymentIntentByProviderID must find when the webhook
+// arrives. The pi_… is learned later from the webhook and lands in
+// provider_charge_ref via UpdatePaymentIntentState.
+//
+// The row is born in the 'created' state; the hosted page has not been paid
+// yet when this returns.
+func (q *Queries) InsertHostedPaymentIntent(
+	ctx context.Context,
+	checkoutSessionID *uuid.UUID,
+	orgID uuid.UUID,
+	provider string,
+	providerPaymentID string,
+	amount int64,
+	currency string,
+	hostedCheckoutURL string,
+) (PaymentIntentRow, error) {
+	row := q.db.QueryRow(ctx, insertHostedPaymentIntent,
+		checkoutSessionID, orgID, provider, providerPaymentID, amount, currency,
+		hostedCheckoutURL,
+	)
+	return scanPaymentIntentRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GetPaymentIntentByID
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getPaymentIntentByID = `-- name: GetPaymentIntentByID :one
 SELECT id, checkout_session_id, org_id, provider, provider_payment_id, amount, currency,
        state, sca_redirect_url, client_secret, failure_code, failure_message,
-       authorized_at, succeeded_at, failed_at, created_at, updated_at
+       authorized_at, succeeded_at, failed_at, hosted_checkout_url, provider_charge_ref,
+       created_at, updated_at
 FROM   payment_intents
 WHERE  id = $1`
 
@@ -173,7 +228,8 @@ func (q *Queries) GetPaymentIntentByID(ctx context.Context, id uuid.UUID) (Payme
 const getPaymentIntentByIDForUpdate = `-- name: GetPaymentIntentByIDForUpdate :one
 SELECT id, checkout_session_id, org_id, provider, provider_payment_id, amount, currency,
        state, sca_redirect_url, client_secret, failure_code, failure_message,
-       authorized_at, succeeded_at, failed_at, created_at, updated_at
+       authorized_at, succeeded_at, failed_at, hosted_checkout_url, provider_charge_ref,
+       created_at, updated_at
 FROM   payment_intents
 WHERE  id = $1
 FOR UPDATE`
@@ -196,7 +252,8 @@ func (q *Queries) GetPaymentIntentByIDForUpdate(ctx context.Context, id uuid.UUI
 const getPaymentIntentByProviderID = `-- name: GetPaymentIntentByProviderID :one
 SELECT id, checkout_session_id, org_id, provider, provider_payment_id, amount, currency,
        state, sca_redirect_url, client_secret, failure_code, failure_message,
-       authorized_at, succeeded_at, failed_at, created_at, updated_at
+       authorized_at, succeeded_at, failed_at, hosted_checkout_url, provider_charge_ref,
+       created_at, updated_at
 FROM   payment_intents
 WHERE  provider_payment_id = $1`
 
@@ -216,7 +273,8 @@ func (q *Queries) GetPaymentIntentByProviderID(ctx context.Context, providerPaym
 const listPaymentIntentsByCheckout = `-- name: ListPaymentIntentsByCheckout :many
 SELECT id, checkout_session_id, org_id, provider, provider_payment_id, amount, currency,
        state, sca_redirect_url, client_secret, failure_code, failure_message,
-       authorized_at, succeeded_at, failed_at, created_at, updated_at
+       authorized_at, succeeded_at, failed_at, hosted_checkout_url, provider_charge_ref,
+       created_at, updated_at
 FROM   payment_intents
 WHERE  checkout_session_id = $1
 ORDER BY created_at DESC, id DESC`
@@ -257,11 +315,13 @@ SET    state               = $2,
        failed_at           = CASE WHEN $2 = 'failed'     THEN now() ELSE failed_at     END,
        failure_code        = CASE WHEN $2 = 'failed' THEN COALESCE($5, failure_code)    ELSE failure_code    END,
        failure_message     = CASE WHEN $2 = 'failed' THEN COALESCE($6, failure_message) ELSE failure_message END,
-       provider_payment_id = COALESCE(provider_payment_id, $7)
+       provider_payment_id = COALESCE(provider_payment_id, $7),
+       provider_charge_ref = COALESCE(provider_charge_ref, $8)
 WHERE  id = $1
 RETURNING id, checkout_session_id, org_id, provider, provider_payment_id, amount, currency,
           state, sca_redirect_url, client_secret, failure_code, failure_message,
-          authorized_at, succeeded_at, failed_at, created_at, updated_at`
+          authorized_at, succeeded_at, failed_at, hosted_checkout_url, provider_charge_ref,
+          created_at, updated_at`
 
 // UpdatePaymentIntentState advances a payment intent to a new state.
 //
@@ -271,6 +331,8 @@ RETURNING id, checkout_session_id, org_id, provider, provider_payment_id, amount
 //   - failureCode:    set when transitioning to failed for structured error reporting
 //   - failureMessage: set when transitioning to failed for human-readable error
 //   - providerPaymentID: set on first provider callback if not supplied at creation time
+//   - providerChargeRef: the pi_… behind a hosted checkout session (migration
+//     0103), learned from the webhook; the first non-NULL value wins
 //
 // Nil values for optional parameters preserve the existing column values.
 // Returns pgx.ErrNoRows when the payment intent does not exist.
@@ -283,9 +345,11 @@ func (q *Queries) UpdatePaymentIntentState(
 	failureCode *string,
 	failureMessage *string,
 	providerPaymentID *string,
+	providerChargeRef *string,
 ) (PaymentIntentRow, error) {
 	row := q.db.QueryRow(ctx, updatePaymentIntentState,
-		id, newState, scaRedirectURL, clientSecret, failureCode, failureMessage, providerPaymentID,
+		id, newState, scaRedirectURL, clientSecret, failureCode, failureMessage,
+		providerPaymentID, providerChargeRef,
 	)
 	return scanPaymentIntentRow(row)
 }

@@ -127,10 +127,18 @@ func TestPR207_Step2_IssueJobPackageDefinesNewHandler(t *testing.T) {
 // TestPR207_Step2_WorkerJobEnqueuedInSameTxAsState verifies that the worker
 // job INSERT uses the transaction executor (tx.Exec), not the auto-commit pool,
 // so it is atomically committed with the event INSERT and state UPDATE.
+//
+// The enqueue itself moved out of payment_intents.go into fulfillment.go when
+// the zero-total public checkout path started needing the identical four
+// writes; it still runs on the webhook's OWN transaction, which is passed in.
 func TestPR207_Step2_WorkerJobEnqueuedInSameTxAsState(t *testing.T) {
-	content := findFileByName(t, "payment_intents.go")
-	if !strings.Contains(content, "tx.Exec") {
-		t.Error("payment_intents.go: the checkout.issue_tickets worker job must be enqueued via tx.Exec so it is atomically committed with the event row and state change (feature #363)")
+	content := findFileByName(t, "fulfillment.go")
+	if !strings.Contains(content, "tx.Exec(ctx, insertWorkerJobSQL, issuejob.JobType") {
+		t.Error("fulfillment.go: the checkout.issue_tickets worker job must be enqueued via tx.Exec on the caller's transaction so it is atomically committed with the event row and state change (feature #363)")
+	}
+	webhook := findFileByName(t, "payment_intents.go")
+	if !strings.Contains(webhook, "FulfillCompletedCheckoutTx(ctx, tx,") {
+		t.Error("payment_intents.go: the webhook must run the shared fulfilment tail on its OWN transaction (feature #363)")
 	}
 }
 
