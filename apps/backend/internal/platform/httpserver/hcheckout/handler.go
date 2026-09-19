@@ -13,6 +13,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 )
 
 const pgUniqueViolation = "23505"
@@ -266,6 +267,42 @@ type Handler struct {
 	issueTickets      func(ctx context.Context, cs gen.CheckoutSessionRow) ([]gen.TicketRow, error)
 	publishRefunded   func(ctx context.Context, checkoutSessionID, refundID, currency string, amount int64)
 	publishRefundedV1 func(ctx context.Context, ticketIDs []string, checkoutSessionID, refundID, currency string, amount int64)
+
+	// metrics records payment-webhook counters. Nil in bare test handlers —
+	// every recording site must be nil-safe, because a missing metric must
+	// never cost a payment.
+	metrics *observability.Metrics
+}
+
+// WithMetrics wires the Prometheus collectors used by the payment-webhook
+// routes. Returns the receiver for chaining.
+func (h *Handler) WithMetrics(m *observability.Metrics) *Handler {
+	h.metrics = m
+	return h
+}
+
+// recordSignatureFailure counts a webhook rejected for a bad signature.
+// Labelled ONLY by route kind: a label carrying an org or config id would be
+// both unbounded and a disclosure of who our customers are.
+func (h *Handler) recordSignatureFailure(routeKind string) {
+	if h.metrics == nil || h.metrics.PaymentWebhookSignatureFailuresTotal == nil {
+		return
+	}
+	h.metrics.PaymentWebhookSignatureFailuresTotal.WithLabelValues(routeKind).Inc()
+}
+
+// recordWebhookEvent counts an inbound webhook event by its bounded event
+// type and how it resolved. eventType is mapped through
+// observability.PaymentWebhookEventLabel, never passed through raw — Stripe
+// publishes well over a hundred types and an organizer's account is shared
+// with their other sites.
+func (h *Handler) recordWebhookEvent(eventType, outcome string) {
+	if h.metrics == nil || h.metrics.PaymentWebhookEventsTotal == nil {
+		return
+	}
+	h.metrics.PaymentWebhookEventsTotal.WithLabelValues(
+		observability.PaymentWebhookEventLabel(eventType), outcome,
+	).Inc()
 }
 
 // New constructs a Handler from the caller's dependencies.

@@ -47,7 +47,7 @@ func (s *Server) checkoutHandler() *hcheckout.Handler {
 		s.issueTicketsForCheckout,
 		s.publishTicketRefundedEvents,
 		s.publishTicketRefundedV1Events,
-	)
+	).WithMetrics(s.typedMetrics)
 }
 
 // NewReservationProcessor forwards to hcheckout.NewReservationProcessor so
@@ -209,6 +209,10 @@ func (s *Server) handleTransitionPaymentIntent(w http.ResponseWriter, r *http.Re
 
 func (s *Server) handlePaymentIntentWebhook(w http.ResponseWriter, r *http.Request) {
 	s.checkoutHandler().HandlePaymentIntentWebhook(w, r)
+}
+
+func (s *Server) handlePaymentIntentWebhookForConfig(w http.ResponseWriter, r *http.Request) {
+	s.checkoutHandler().HandlePaymentIntentWebhookForConfig(w, r)
 }
 
 // ─── refund handler shims ─────────────────────────────────────────────────────

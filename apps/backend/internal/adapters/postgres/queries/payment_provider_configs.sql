@@ -25,6 +25,20 @@ WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL;
 
+-- name: GetPaymentProviderConfigByIDUnscoped :one
+-- Org-LESS lookup by primary key, for the per-config payment webhook route
+-- POST /v1/payment-intents/webhook/{config_id}. The caller there is the
+-- payment provider, which has no arena identity and cannot supply an org —
+-- the config id in the path IS the routing key, and the org it belongs to is
+-- what this read establishes. A single-row primary-key read, so an
+-- unauthenticated caller cannot make it expensive.
+--
+-- Every other reader must keep using the org-scoped GetPaymentProviderConfigByID.
+SELECT id, org_id, provider, mode, provider_account_id, public_config, secrets, status, is_active, created_at, updated_at, deleted_at
+FROM   payment_provider_configs
+WHERE  id = $1
+  AND  deleted_at IS NULL;
+
 -- name: ListPaymentProviderConfigsByOrg :many
 SELECT id, org_id, provider, mode, provider_account_id, public_config, secrets, status, is_active, created_at, updated_at, deleted_at
 FROM   payment_provider_configs

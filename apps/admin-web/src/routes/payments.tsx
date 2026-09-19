@@ -124,6 +124,47 @@ export function buildStripeWebhookUrl(apiBaseUrl: string): string {
 }
 
 /**
+ * Build the PER-CONFIG payment-intent webhook URL for one saved payment
+ * provider config. Ground truth: POST /v1/payment-intents/webhook/{config_id}
+ * where `config_id` is `payment_provider_configs.id` (mount_commerce.go).
+ *
+ * Every organizer owns their own Stripe account, so each one registers a
+ * Stripe endpoint pointing at THEIR config's URL — that is what lets the
+ * backend pick the right per-org webhook signing secret.
+ *
+ * Returns `null` when the config has no id yet (an unsaved form), so callers
+ * can render a hint instead of a broken, partial URL.
+ */
+export function buildStripeConfigWebhookUrl(
+  apiBaseUrl: string,
+  configID: string,
+): string | null {
+  const id = configID.trim();
+  if (id === "") {
+    return null;
+  }
+  const base = apiBaseUrl.replace(/\/+$/, "");
+  return `${base}/v1/payment-intents/webhook/${id}`;
+}
+
+/**
+ * The ONLY Stripe events an organizer subscribes their per-config endpoint
+ * to. The widget takes money through a hosted Stripe Checkout Session, and
+ * that payment is reported exclusively through `checkout.session.*` — see
+ * hcheckout/payment_intents.go.
+ *
+ * Deliberately a separate, narrower list than STRIPE_WEBHOOK_EVENTS (which
+ * enumerates every type the handler understands, including the legacy
+ * payment_intent.* ones on the shared endpoint).
+ */
+export const STRIPE_CHECKOUT_SESSION_EVENTS: readonly string[] = [
+  "checkout.session.completed",
+  "checkout.session.expired",
+  "checkout.session.async_payment_succeeded",
+  "checkout.session.async_payment_failed",
+];
+
+/**
  * Stripe event types consumed by the platform webhook handler.
  * Derived from webhookEventTypeToState in
  * apps/backend/internal/platform/httpserver/hcheckout/payment_intents.go.
@@ -337,6 +378,11 @@ function PaymentsModule() {
       }),
     [rows],
   );
+  // Only Stripe configs get a per-config webhook endpoint.
+  const stripeConfigs = useMemo(
+    () => sorted.filter((c) => c.provider === "stripe"),
+    [sorted],
+  );
 
   return (
     <section aria-labelledby="payments-heading" style={pageStyle}>
@@ -462,7 +508,10 @@ function PaymentsModule() {
         );
       })()}
 
-      <StripeWebhookSetupPanel apiBaseUrl={appConfig.apiBaseUrl} />
+      <StripeWebhookSetupPanel
+        apiBaseUrl={appConfig.apiBaseUrl}
+        stripeConfigs={stripeConfigs}
+      />
 
       <PaymentsBody
         query={query}
@@ -507,7 +556,13 @@ function PaymentsModule() {
  * The webhook URL is derived from VITE_API_BASE_URL so it automatically
  * reflects the deployment (staging vs. production) without hardcoding.
  */
-function StripeWebhookSetupPanel({ apiBaseUrl }: { apiBaseUrl: string }) {
+function StripeWebhookSetupPanel({
+  apiBaseUrl,
+  stripeConfigs,
+}: {
+  apiBaseUrl: string;
+  stripeConfigs: readonly PaymentConfig[];
+}) {
   const webhookUrl = buildStripeWebhookUrl(apiBaseUrl);
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -587,7 +642,9 @@ function StripeWebhookSetupPanel({ apiBaseUrl }: { apiBaseUrl: string }) {
           </div>
 
           <div style={setupPanelEventBoxStyle}>
-            <div style={setupPanelLabelStyle}>Required event types</div>
+            <div style={setupPanelLabelStyle}>
+              Event types the platform handler understands
+            </div>
             <ul style={setupPanelEventListStyle} data-testid="stripe-webhook-events">
               {STRIPE_WEBHOOK_EVENTS.map((evt) => (
                 <li key={evt} style={setupPanelEventItemStyle}>
@@ -597,6 +654,11 @@ function StripeWebhookSetupPanel({ apiBaseUrl }: { apiBaseUrl: string }) {
             </ul>
           </div>
 
+          <StripeWebhookConfigUrlsView
+            apiBaseUrl={apiBaseUrl}
+            stripeConfigs={stripeConfigs}
+          />
+
           <p style={{ ...setupPanelTextStyle, color: "#854d0e", marginTop: 8 }}>
             <strong>Test vs. live:</strong> Stripe issues separate webhook signing
             secrets for test mode and live mode. Create one Payment Config for
@@ -604,6 +666,142 @@ function StripeWebhookSetupPanel({ apiBaseUrl }: { apiBaseUrl: string }) {
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Per-config webhook endpoints.
+ *
+ * Each organizer runs their own Stripe account, so each Stripe payment config
+ * gets its own endpoint URL — `/v1/payment-intents/webhook/{config_id}` —
+ * and that endpoint is subscribed to ONLY the four hosted-Checkout events in
+ * STRIPE_CHECKOUT_SESSION_EVENTS.
+ *
+ * Presentational and query-free so it can be rendered with
+ * renderToStaticMarkup in the unit suite (venueSeatingPlans *View precedent).
+ */
+export function StripeWebhookConfigUrlsView({
+  apiBaseUrl,
+  stripeConfigs,
+}: {
+  apiBaseUrl: string;
+  stripeConfigs: readonly PaymentConfig[];
+}) {
+  return (
+    <div
+      style={setupPanelEventBoxStyle}
+      data-testid="stripe-webhook-config-urls"
+    >
+      <div style={setupPanelLabelStyle}>
+        Your own webhook endpoint (one per Stripe config)
+      </div>
+      <p style={setupPanelTextStyle}>
+        Register the URL below as a separate endpoint in your Stripe
+        Dashboard and subscribe it to <strong>only</strong> these four
+        events — nothing else. The config id in the path is what lets the
+        platform verify the signature with this organization&rsquo;s own{" "}
+        <code style={monoStyle}>webhook_secret</code>.
+      </p>
+      <ul
+        style={setupPanelEventListStyle}
+        data-testid="stripe-webhook-config-events"
+      >
+        {STRIPE_CHECKOUT_SESSION_EVENTS.map((evt) => (
+          <li key={evt} style={setupPanelEventItemStyle}>
+            <code style={monoStyle}>{evt}</code>
+          </li>
+        ))}
+      </ul>
+      {stripeConfigs.length === 0 ? (
+        <p
+          style={setupPanelTextStyle}
+          data-testid="stripe-webhook-config-url-none"
+        >
+          No Stripe payment config exists for this organization yet. Create
+          and save one — its webhook URL appears here once it is saved.
+        </p>
+      ) : (
+        stripeConfigs.map((config) => (
+          <StripeConfigWebhookUrlRow
+            key={config.id !== "" ? config.id : `unsaved-${config.mode}`}
+            apiBaseUrl={apiBaseUrl}
+            config={config}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
+/** One Stripe config's endpoint URL, with a copy button. */
+function StripeConfigWebhookUrlRow({
+  apiBaseUrl,
+  config,
+}: {
+  apiBaseUrl: string;
+  config: PaymentConfig;
+}) {
+  const url = buildStripeConfigWebhookUrl(apiBaseUrl, config.id);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    if (url === null) return;
+    void navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+    });
+  }, [url]);
+
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  const label = `${config.provider} · ${config.mode}`;
+
+  // Not saved yet: no id, so no URL. Never render a partial path.
+  if (url === null) {
+    return (
+      <div style={setupPanelUrlBoxStyle}>
+        <div style={setupPanelLabelStyle}>{label}</div>
+        <p
+          style={setupPanelTextStyle}
+          data-testid="stripe-webhook-config-url-unsaved"
+        >
+          This config has not been saved yet — its webhook URL appears once
+          you save it.
+        </p>
+      </div>
+    );
+  }
+
+  const inputID = `stripe-webhook-url-${config.id}`;
+  return (
+    <div style={setupPanelUrlBoxStyle}>
+      <label style={setupPanelLabelStyle} htmlFor={inputID}>
+        {label}
+      </label>
+      <div style={setupPanelUrlRowStyle}>
+        <input
+          id={inputID}
+          type="text"
+          readOnly
+          value={url}
+          style={setupPanelUrlInputStyle}
+          data-testid={`stripe-webhook-config-url-${config.id}`}
+        />
+        <button
+          type="button"
+          onClick={handleCopy}
+          style={
+            copied ? setupPanelCopiedButtonStyle : setupPanelCopyButtonStyle
+          }
+          data-testid={`stripe-webhook-config-copy-${config.id}`}
+        >
+          {copied ? "Copied!" : "Copy"}
+        </button>
+      </div>
     </div>
   );
 }
