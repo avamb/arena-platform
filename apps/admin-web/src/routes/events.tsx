@@ -1049,6 +1049,23 @@ export function categoryQuantityRequired(session: {
 }
 
 /**
+ * Нужно ли количество в форме категории. Категория с местами берёт их из
+ * схемы зала, поэтому при её правке количество не спрашивается даже на
+ * гибридном сеансе, где новая категория обязана его иметь (F-42, прогон
+ * 2026-09-19: «Save changes» оставалась неактивной, цену местам задать было
+ * нельзя).
+ */
+export function tierFormQuantityRequired(
+  session: { admission_mode: string },
+  editing: TicketTierItem | null,
+): boolean {
+  if (editing !== null && tierKind(editing) === "seated") {
+    return false;
+  }
+  return categoryQuantityRequired(session);
+}
+
+/**
  * Пояснение в форме новой категории на сеансе со схемой мест: такая
  * категория всегда без места, а сеанс после неё становится hybrid.
  */
@@ -5938,7 +5955,9 @@ function TierEditor({
   const initial =
     mode.kind === "edit" ? tierToForm(mode.tier) : emptyTierForm();
   const [values, setValues] = useState<TierFormValues>(initial);
-  const quantityRequired = categoryQuantityRequired(session);
+  const editingTier = mode.kind === "edit" ? mode.tier : null;
+  const seatedTier = editingTier !== null && tierKind(editingTier) === "seated";
+  const quantityRequired = tierFormQuantityRequired(session, editingTier);
   const errors = useMemo(
     () => validateTierForm(values, { quantityRequired }),
     [values, quantityRequired],
@@ -6167,24 +6186,39 @@ function TierEditor({
         ) : null}
         <label style={editorFieldStyle}>
           <span style={editorLabelStyle}>
-            {quantityRequired ? "Количество" : "Количество (необязательно)"}
+            {seatedTier
+              ? "Количество"
+              : quantityRequired
+                ? "Количество"
+                : "Количество (необязательно)"}
           </span>
           <input
             type="number"
             min={1}
             step={1}
-            value={values.capacity}
+            value={seatedTier ? "" : values.capacity}
             onChange={(e) =>
               setValues({ ...values, capacity: e.target.value })
             }
-            placeholder={quantityRequired ? "например 200" : "из схемы зала"}
+            placeholder={
+              seatedTier
+                ? editingTier !== null
+                  ? String(editingTier.seat_count ?? tierQuantity(editingTier) ?? "")
+                  : ""
+                : quantityRequired
+                  ? "например 200"
+                  : "из схемы зала"
+            }
+            disabled={seatedTier}
             style={editorInputStyle}
             data-testid="events-tier-input-capacity"
           />
           <span style={mutedHintStyle}>
-            {quantityRequired
-              ? "Сколько мест у категории. Вместимость сеанса — сумма количеств."
-              : "С количеством категория становится категорией без места."}
+            {seatedTier
+              ? "Места категории — из схемы зала."
+              : quantityRequired
+                ? "Сколько мест у категории. Вместимость сеанса — сумма количеств."
+                : "С количеством категория становится категорией без места."}
           </span>
           {errors.capacity !== undefined ? (
             <span style={fieldErrorStyle}>{errors.capacity}</span>

@@ -52,6 +52,7 @@ import {
   buildTierOpenBody,
   buildTierQuantityBody,
   categoryQuantityRequired,
+  tierFormQuantityRequired,
   tierAvailable,
   tierCanDelete,
   tierDeleteHint,
@@ -1435,6 +1436,16 @@ describe("category quota table helpers", () => {
     expect(tierDeleteHint(category({ held: 0, sold: 1 }))).toMatch(/закройте/i);
     expect(tierCanDelete(category({ held: 2, sold: 0 }))).toBe(false);
     expect(tierQuantityEditable(category({ kind: "seated", seat_count: 5 }))).toBe(false);
+  });
+
+  it("never asks a seated category for a quantity, even on a hybrid session (F-42)", () => {
+    const hybrid = { admission_mode: "hybrid" };
+    expect(tierFormQuantityRequired(hybrid, category({ kind: "seated", seat_count: 90 }))).toBe(false);
+    expect(tierFormQuantityRequired(hybrid, category({ kind: "ga" }))).toBe(true);
+    expect(tierFormQuantityRequired(hybrid, null)).toBe(true);
+    expect(
+      tierFormQuantityRequired({ admission_mode: "assigned_seats" }, category({ kind: "ga" })),
+    ).toBe(false);
   });
 });
 
