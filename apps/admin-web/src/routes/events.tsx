@@ -6547,7 +6547,9 @@ function PublicationsTab({
     queryFn: () =>
       authedFetch<SessionListEnvelope>({
         method: "GET",
-        path: `/v1/events/${event.id}/sessions`,
+        // There is no /v1/events/{id}/sessions route; the 404 read as "no
+        // sessions" and every publication defaulted to global (F-13).
+        path: `/v1/organizations/${event.org_id}/events/${event.id}/sessions`,
       }),
     enabled: canRead && canCreate,
     retry: false,
@@ -6693,6 +6695,9 @@ function PublicationsTab({
   }
   const pubs = query.data?.publications ?? [];
   const cities = citiesQuery.data?.cities ?? [];
+  // The city scope is shown by name, never by UUID (F-15).
+  const cityLabel = (id: string): string =>
+    cities.find((c) => c.id === id)?.name ?? shortenUUID(id);
   const channels = channelsQuery.data?.channels ?? [];
   const feedTokens = feedTokensQuery.data?.feed_tokens ?? [];
 
@@ -6810,7 +6815,7 @@ function PublicationsTab({
                 data-testid="events-publications-city-derived"
               >
                 {derivedCityID !== ""
-                  ? `Defaulting to the venue city of the event's first session (${shortenUUID(
+                  ? `Defaulting to the venue city of the event's first session (${cityLabel(
                       derivedCityID,
                     )}). Open Advanced to override or make it global.`
                   : "No venue city on the event's sessions — defaulting to global (visible in every geography)."}
@@ -6960,7 +6965,7 @@ function PublicationsTab({
                         <span style={globalScopeBadgeStyle}>global</span>
                       ) : (
                         <span style={scopedBadgeStyle} title={p.city_id}>
-                          city {shortenUUID(p.city_id)}
+                          city {cityLabel(p.city_id)}
                         </span>
                       )}
                     </td>
