@@ -175,6 +175,18 @@ type Config struct {
 	WidgetPaymentWindowSeconds int `env:"WIDGET_PAYMENT_WINDOW_SECONDS" required:"false" default:"1860"`
 	WidgetPaymentGraceSeconds  int `env:"WIDGET_PAYMENT_GRACE_SECONDS" required:"false" default:"120"`
 
+	// StripeAPIBaseURL redirects every hosted Checkout Session call away from
+	// api.stripe.com. It exists for ONE reason: an end-to-end test needs a
+	// real arena-api process to take a real payment path without a real
+	// Stripe account, and the adapter is built per request from each
+	// organizer's own secret key, so there is no object to inject.
+	//
+	// TEST AND DEVELOPMENT ONLY. Validate() refuses a non-empty value under
+	// APP_ENV=production: a deployment that silently posted live checkouts to
+	// somebody else's endpoint would hand that endpoint the organizer's
+	// Stripe key and every buyer who followed the returned URL.
+	StripeAPIBaseURL string `env:"STRIPE_API_BASE_URL" required:"false" default:""`
+
 	// -------------------------------------------------------------------------
 	// Database (PostgreSQL 17)
 	// -------------------------------------------------------------------------
@@ -622,6 +634,9 @@ func Load() (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.WidgetPaymentGraceSeconds = iPayGrace
+
+	// STRIPE_API_BASE_URL — test/dev only, rejected in production by Validate.
+	cfg.StripeAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("STRIPE_API_BASE_URL", "")), "/")
 
 	d, err := getenvDuration("REQUEST_TIMEOUT_SECONDS", 30*time.Second, true)
 	if err != nil {
@@ -1237,6 +1252,19 @@ func (c *Config) validateProduction() []error {
 				pub,
 			))
 		}
+	}
+
+	// 15. STRIPE_API_BASE_URL exists only so an end-to-end test can point a
+	// real arena-api process at a stub. In production it would send every
+	// hosted checkout — with the organizer's own secret key on the request
+	// and the buyer following whatever URL came back — to an endpoint that is
+	// not Stripe. There is no legitimate production reason to set it.
+	if strings.TrimSpace(c.StripeAPIBaseURL) != "" {
+		errs = append(errs, errors.New(
+			"STRIPE_API_BASE_URL must not be set in production;"+
+				" it redirects hosted checkout calls away from api.stripe.com"+
+				" and is for tests and local development only",
+		))
 	}
 
 	return errs

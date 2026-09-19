@@ -18,6 +18,7 @@
 --   ledger parket     fe000007-0000-7000-8000-000000000009
 --   ledger galerie    fe000007-0000-7000-8000-00000000000a
 --   event_publication fe000007-0000-7000-8000-00000000000b
+--   payment cfg       fe000007-0000-7000-8000-00000000000c
 -- =============================================================================
 
 -- ── 1. Event ─────────────────────────────────────────────────────────────────
@@ -347,3 +348,55 @@ SELECT
     'ga_unit'
 FROM generate_series(1, 100) n
 ON CONFLICT (session_id, seat_key) DO NOTHING;
+
+-- ── 12. Payment provider — the E2E channel must be able to take money ────────
+--
+-- Since the hosted-checkout flow landed, POST /v1/public/feeds/{token}/checkout/start
+-- only answers 201 for a cart above zero once a provider has actually created
+-- a hosted payment page. Without a usable config the endpoint answers 422
+-- checkout.payment_not_configured and every purchase test fails.
+--
+-- arena-seed normally supplies both of these for OrgA. They are repeated here
+-- so the fixture stands on its own, and so a change to arena-seed cannot
+-- quietly take the acceptance suite's ability to buy a ticket away.
+--
+-- "Usable" is hcheckout.SelectProviderConfig: deleted_at IS NULL, provider
+-- matching the channel's, is_active, status='configured', and — for mode
+-- 'live' only — a KYB-verified org. Mode 'test' therefore needs no KYB.
+--
+-- The credentials are fake. The acceptance job points arena-api at
+-- scripts/stripe-stub.cjs with STRIPE_API_BASE_URL, and the stub only checks
+-- that SOME bearer token was sent, which is what proves the backend really
+-- loaded the organizer's credentials instead of calling with nothing.
+
+UPDATE sales_channels
+   SET provider = 'stripe'
+ WHERE id = 'fe000005-0000-7000-8000-000000000001'  -- ChannelAStripe
+   AND provider IS DISTINCT FROM 'stripe';
+
+-- The partial unique index payment_provider_configs_unique_active is on
+-- (org_id, provider, mode) WHERE deleted_at IS NULL, so an untargeted
+-- ON CONFLICT DO NOTHING makes this a no-op when arena-seed already ran.
+INSERT INTO payment_provider_configs (
+    id,
+    org_id,
+    provider,
+    mode,
+    provider_account_id,
+    public_config,
+    secrets,
+    status,
+    is_active
+)
+VALUES (
+    'fe000007-0000-7000-8000-00000000000c',
+    'fe000001-0000-7000-8000-000000000001',  -- OrgA
+    'stripe',
+    'test',
+    'acct_TEST_E2E_STUB',
+    '{"statement_descriptor":"E2E ARENA"}'::jsonb,
+    '{"api_key":"sk_test_e2e_stub","webhook_secret":"whsec_test_e2e_stub"}'::jsonb,
+    'configured',
+    true
+)
+ON CONFLICT DO NOTHING;

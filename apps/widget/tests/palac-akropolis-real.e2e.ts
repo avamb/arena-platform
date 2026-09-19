@@ -9,8 +9,20 @@
  *
  * Prerequisites:
  *   1. `npm run build` — widget bundle must exist in dist/v1/
- *   2. Arena backend running on port 8080 (or ARENA_API_URL)
- *   3. arena-seed + seed-palac-e2e.sql applied to the DB
+ *   2. A fake payment provider on port 12111:
+ *        node scripts/stripe-stub.cjs
+ *      Since the hosted-checkout flow landed, a cart above zero is only
+ *      confirmed once a provider has created a hosted payment page. Without
+ *      the stub every purchase test gets 422 checkout.payment_not_configured
+ *      or 502 checkout.payment_start_failed.
+ *   3. Arena backend running on port 8080 (or ARENA_API_URL) with:
+ *        PUBLIC_TICKETS_BASE_URL=http://localhost:4174
+ *        STRIPE_API_BASE_URL=http://localhost:12111/v1
+ *      The first is the fallback return URL — these tests send no return_url,
+ *      and without it checkout/start answers 400 checkout.invalid_return_url.
+ *      The second points the Stripe adapter at the stub and is refused
+ *      outright under APP_ENV=production.
+ *   4. arena-seed + seed-palac-e2e.sql applied to the DB
  *
  * Run with: npx playwright test --config playwright.config.real.ts
  */
@@ -26,6 +38,13 @@ const DEMO_PAGE   = '/demo/palac-akropolis-real.html';
 
 // Galérie tier ID (from seed-palac-e2e.sql)
 const TIER_GALERIE = 'fe000007-0000-7000-8000-000000000006';
+
+// Origin of the fake payment provider (scripts/stripe-stub.cjs). A paid cart
+// is only confirmed once a provider has created a hosted page, so the
+// acceptance run points arena-api here with STRIPE_API_BASE_URL and every
+// redirect_url / payment_url comes back on this origin.
+const STRIPE_STUB_ORIGIN =
+  process.env['STRIPE_STUB_ORIGIN'] ?? 'http://localhost:12111';
 
 // ─── Helper: wait for the SVG seat map to appear ─────────────────────────────
 
@@ -551,9 +570,23 @@ test.describe('4 — Checkout start contract (real backend)', () => {
     expect(typeof detail.checkout_token, 'checkout_token should be a string').toBe('string');
     expect(typeof detail.expires_at, 'expires_at should be a string').toBe('string');
     expect(new Date(detail.expires_at as string).getTime()).toBeGreaterThan(Date.now());
+
+    // redirect_url is now the provider's own hosted payment page, not a path
+    // on arena. Before the hosted-checkout flow it was a hardcoded, dead
+    // "/checkout/<uuid>" that no buyer could ever pay on, and the shape-only
+    // assertion above passed all the same — so pin the contract.
+    const redirect = detail.redirect_url as string;
+    expect(
+      /^https?:\/\//.test(redirect),
+      `redirect_url must be an absolute provider URL, got: ${redirect}`,
+    ).toBe(true);
+    expect(
+      redirect.startsWith(STRIPE_STUB_ORIGIN),
+      `redirect_url must point at the payment provider (${STRIPE_STUB_ORIGIN}), got: ${redirect}`,
+    ).toBe(true);
   });
 
-  test('GET checkout/{token} returns status in [pending, created] before payment', async ({
+  test('GET checkout/{token} returns status in [pending, created] and a payment_url before payment', async ({
     page,
   }) => {
     // Create a fresh hold.
@@ -566,7 +599,11 @@ test.describe('4 — Checkout start contract (real backend)', () => {
       async ({ tok }: { tok: string }) => {
         const res  = await fetch(`/v1/public/checkout/${tok}`);
         const data = (await res.json()) as Record<string, unknown>;
-        return { httpStatus: res.status, status: data['status'] as string };
+        return {
+          httpStatus:  res.status,
+          status:      data['status'] as string,
+          payment_url: data['payment_url'],
+        };
       },
       { tok: token },
     );
@@ -575,6 +612,18 @@ test.describe('4 — Checkout start contract (real backend)', () => {
     expect(
       ['pending', 'created'].includes(checkoutStatus.status),
       `Expected status pending or created, got: ${checkoutStatus.status}`,
+    ).toBe(true);
+
+    // A buyer who bounced off the payment page — closed the tab, lost the
+    // redirect — resumes through this field. An unpaid checkout that cannot
+    // hand its payment page back is a sale lost for no reason.
+    expect(
+      typeof checkoutStatus.payment_url === 'string' && checkoutStatus.payment_url !== '',
+      `payment_url must be present while the checkout is unpaid, got: ${String(checkoutStatus.payment_url)}`,
+    ).toBe(true);
+    expect(
+      (checkoutStatus.payment_url as string).startsWith(STRIPE_STUB_ORIGIN),
+      `payment_url must point at the payment provider (${STRIPE_STUB_ORIGIN})`,
     ).toBe(true);
   });
 

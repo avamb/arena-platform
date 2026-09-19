@@ -72,5 +72,21 @@ func (s *Server) hostedPaymentStarter() hfeed.PaymentStarter {
 	if s.orgQueries == nil || s.channelQueries == nil {
 		return nil
 	}
-	return hfeed.NewStripePaymentStarter(s.orgQueries, s.channelQueries, s.stripeAPIBaseURL)
+	return hfeed.NewStripePaymentStarter(s.orgQueries, s.channelQueries, s.stripeBaseURL())
+}
+
+// stripeBaseURL resolves the Stripe endpoint the hosted-checkout adapter
+// talks to. The in-process Options override wins, because a Go integration
+// test owns its whole server; STRIPE_API_BASE_URL is the seam for a test that
+// runs a real arena-api BINARY against a stub (the widget acceptance job), and
+// config.Validate refuses it outright under APP_ENV=production. Both empty
+// means the real api.stripe.com.
+func (s *Server) stripeBaseURL() string {
+	if s.stripeAPIBaseURL != "" {
+		return s.stripeAPIBaseURL
+	}
+	if s.cfg != nil {
+		return s.cfg.StripeAPIBaseURL
+	}
+	return ""
 }

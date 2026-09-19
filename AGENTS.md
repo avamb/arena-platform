@@ -1079,6 +1079,27 @@ entries short and factual.
   "log the mark-paid failure and carry on" was never real, because a failed
   statement had already aborted the pgx transaction and the COMMIT died with
   25P02 anyway.
+- **The `Widget Acceptance (real backend)` CI job needs BOTH a return-URL
+  fallback and a fake Stripe, because it runs a real `arena-api` BINARY.**
+  Go integration tests inject a stub through `httpserver.Options.
+  StripeAPIBaseURL`; that seam does not exist for a separate process, so
+  the job sets `STRIPE_API_BASE_URL` (env, read in
+  `feed_payment_shims.go`'s `stripeBaseURL` — the Options override still
+  wins) and starts `apps/widget/scripts/stripe-stub.cjs` on port 12111
+  BEFORE arena-api. The value must carry the `/v1` segment: the adapter
+  concatenates `"/checkout/sessions"` onto it. `config.Validate` REFUSES a
+  non-empty `STRIPE_API_BASE_URL` under `APP_ENV=production` — it would
+  otherwise post live checkouts, carrying the organizer's own secret key,
+  to somebody else's endpoint. Separately, the acceptance suite sends no
+  `return_url`, so the job also needs `PUBLIC_TICKETS_BASE_URL=http://
+  localhost:4174` (the origin `serve-demo-real.cjs` serves the demo page
+  from) or every paid `checkout/start` answers 400
+  `checkout.invalid_return_url`. Locally: start the stub, then arena-api
+  with those two variables, then `ARENA_API_URL=http://localhost:<port>
+  npm --prefix apps/widget run test:e2e:real`. The suite hard-codes
+  single-use seats (B01/B02, C0x, D0x) against ~15-minute holds, so a
+  second run on the same database fails with 409 where 201 is expected —
+  recreate the database between runs rather than chasing the "failure".
 - **An integration test that drives a PAID `checkout/start` now needs a
   payment provider.** Since the hosted flow landed, a cart with a total above
   zero is only confirmed when a hosted page can actually be created for it.

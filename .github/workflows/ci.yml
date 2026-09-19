@@ -519,6 +519,17 @@ jobs:
       REDIS_URL: redis://localhost:6379/0
       APP_ENV: development
       JWT_SIGNING_SECRET: ci-test-jwt-secret-at-least-32-bytes-long
+      # The origin serve-demo-real.cjs serves the demo page from. It is the
+      # fallback return URL for a checkout/start that carries no return_url —
+      # which is every request the acceptance suite makes — so without it the
+      # endpoint answers 400 checkout.invalid_return_url.
+      PUBLIC_TICKETS_BASE_URL: http://localhost:4174
+      # Points the hosted-checkout adapter at scripts/stripe-stub.cjs instead
+      # of api.stripe.com. Test and development only: config.Validate refuses
+      # a non-empty value under APP_ENV=production. The trailing /v1 is part
+      # of the contract — the adapter appends "/checkout/sessions".
+      STRIPE_API_BASE_URL: http://localhost:12111/v1
+      STRIPE_STUB_PORT: "12111"
 
     defaults:
       run:
@@ -556,6 +567,32 @@ jobs:
         # (this bit wave 4 pass 1 when the events/sessions schema changed).
         run: |
           psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -f apps/widget/scripts/seed-palac-e2e.sql
+
+      # The Stripe stub must be listening BEFORE arena-api takes its first
+      # checkout, so it is started (and waited for) first. It is dependency-
+      # free on purpose — this runs before `npm ci`.
+      - name: Start Stripe stub in background
+        working-directory: .
+        env:
+          PORT: ${{ env.STRIPE_STUB_PORT }}
+        run: |
+          node apps/widget/scripts/stripe-stub.cjs > /tmp/stripe-stub.log 2>&1 &
+          echo "stripe-stub started with PID $!"
+
+      - name: Wait for the Stripe stub to be healthy
+        working-directory: .
+        run: |
+          for i in $(seq 1 20); do
+            if curl -sf "http://localhost:${STRIPE_STUB_PORT}/healthz" > /dev/null 2>&1; then
+              echo "stripe-stub is healthy after ${i}s"
+              exit 0
+            fi
+            echo "Waiting for stripe-stub... (${i}/20)"
+            sleep 1
+          done
+          echo "ERROR: stripe-stub failed to become healthy within 20 seconds"
+          cat /tmp/stripe-stub.log || true
+          exit 1
 
       - name: Start arena-api in background
         working-directory: .
@@ -611,12 +648,26 @@ jobs:
           path: apps/widget/playwright-report/
           retention-days: 14
 
+      # Printed inline as well as uploaded: a red run should be diagnosable
+      # from the job log without downloading an artifact. The stub logs only
+      # request lines, never a body or a credential.
+      - name: Print backend and stub logs
+        if: failure()
+        working-directory: .
+        run: |
+          echo "───── /tmp/arena-api.log ─────"
+          cat /tmp/arena-api.log || echo "(no arena-api log)"
+          echo "───── /tmp/stripe-stub.log ─────"
+          cat /tmp/stripe-stub.log || echo "(no stripe-stub log)"
+
       - name: Upload arena-api logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: arena-api-logs
-          path: /tmp/arena-api.log
+          path: |
+            /tmp/arena-api.log
+            /tmp/stripe-stub.log
           retention-days: 7
 
   # ─────────────────────────────────────────────────────────────────
