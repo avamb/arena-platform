@@ -1,0 +1,22 @@
+{
+  "name": "@arena/tickets-page",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Arena Sold Out hosted sales page (tickets.arenasoldout.com/{org_slug}/{event_slug}) — resolves an event via the public API and mounts the <arena-tickets> widget.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit --pretty"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.8.3",
+    "vite": "^5.4.8",
+    "vitest": "^2.1.2"
+  }
+}

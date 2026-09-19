@@ -1,0 +1,15 @@
+# Shared security headers, `include`d into every location block in
+# nginx.conf.template that defines its own add_header (Cache-Control,
+# X-Content-Type-Options, …): nginx only inherits add_header directives
+# from an outer context when the current location defines NONE of its own,
+# so a security header set once at the server level silently disappears
+# from any location (or an internal try_files redirect target, like
+# `location = /index.html`) that adds even one header of its own. Repeating
+# these via `include` from one file keeps the policy itself single-sourced
+# even though nginx requires it to be textually repeated per location.
+#
+# __API_ORIGIN__ is replaced at image build time — see Dockerfile.
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "DENY" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self' data:; connect-src 'self' __API_ORIGIN__; form-action 'self' https:; frame-ancestors 'none'; base-uri 'self'" always;

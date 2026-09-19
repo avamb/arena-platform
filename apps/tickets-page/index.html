@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>Arena Sold Out</title>
+    <meta name="description" content="Buy tickets — Arena Sold Out" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="asa-header">
+        <a class="asa-wordmark" href="/" aria-label="Arena Sold Out home">
+          Arena<span class="asa-wordmark-accent">SoldOut</span>
+        </a>
+      </header>
+      <main id="asa-main" class="asa-main" aria-live="polite">
+        <p class="asa-loading" role="status">Loading…</p>
+      </main>
+      <footer class="asa-footer">
+        <p id="asa-footer-text">&copy; Arena Sold Out</p>
+      </footer>
+    </div>
+
+    <!-- The <arena-tickets> widget is loaded dynamically by main.ts (never
+         a static <script src> here) — see loadWidgetScript(): the bundle
+         lives at /widget/v1/arena-tickets.js, served by this same nginx
+         container from the widget build stage (see Dockerfile), and Vite
+         cannot resolve that path at build time since it is not part of
+         this app's own module graph. Never jsDelivr or any third-party CDN
+         for the production hosted page. -->
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

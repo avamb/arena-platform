@@ -4305,6 +4305,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/pages/{org_slug}/{event_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve the hosted sales page context for an org/event slug pair
+         * @description Backs the shared hosted sales page at
+         *     `https://tickets.arenasoldout.com/{org_slug}/{event_slug}`. No JWT
+         *     required — this is the entry point that hands the page its feed
+         *     token.
+         *
+         *     Resolution rule, all in one round trip: active organization by
+         *     `org_slug` → non-deleted event owned by it, by `event_slug`, with
+         *     status `published` → an active publication of that event on a
+         *     sales channel of the SAME organization whose
+         *     `settings.hosted_page.enabled = true` and which is itself not
+         *     soft-deleted → the newest active, non-revoked feed token of that
+         *     channel.
+         *
+         *     Any missing link in that chain (unknown org, unknown event, event
+         *     not published, no channel flagged for the hosted page, revoked
+         *     token) answers the exact same `404 page.not_found` — the response
+         *     never reveals which step failed, so the endpoint cannot be used to
+         *     enumerate slugs or channel configuration.
+         *
+         *     Rate-limited per client IP only (there is no feed token in the path
+         *     to key a site-wide bucket on). Cache-Control is short (30s) since
+         *     publication/token state can change at any time.
+         */
+        get: operations["getPublicPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/feeds/{feed_token}/checkout/start": {
         parameters: {
             query?: never;
@@ -9222,6 +9263,119 @@ export interface components {
              * @example 2026-06-02T12:34:56Z
              */
             updated_at: string;
+        };
+        /**
+         * @description Public-safe organization branding slice returned by
+         *     GET /v1/public/pages/{org_slug}/{event_slug}. Only columns that are
+         *     safe to expose to an anonymous visitor are included — never legal,
+         *     KYB, or contact fields.
+         */
+        HostedPageOrg: {
+            /**
+             * @description Organization slug, unique among active organizations.
+             * @example arenasoldout
+             */
+            slug: string;
+            /**
+             * @description Organization display name.
+             * @example Arena Sold Out
+             */
+            name: string;
+            /**
+             * @description Public URL of the organization logo, or null when none is set.
+             * @example https://api.arenasoldout.com/v1/media-files/01929d0e-0e47-7000-8000-000000000099
+             */
+            logo_url?: string | null;
+        };
+        /**
+         * @description Event slice of the hosted sales page resolve response. Reuses the
+         *     same locale-resolved name/description projection as `EventItem`
+         *     where applicable.
+         */
+        HostedPageEvent: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the event row.
+             * @example 01929d0e-0e47-7000-8000-000000000301
+             */
+            id: string;
+            /**
+             * @description Event slug, unique per organization.
+             * @example summer-festival-2026
+             */
+            slug: string;
+            /**
+             * @description Event display name (`events.name`).
+             * @example Summer Festival 2026
+             */
+            title: string;
+            /**
+             * @description Long-form event description.
+             * @example Open-air festival on the Tel Aviv beachfront.
+             */
+            description?: string | null;
+            /**
+             * @description Short teaser description (AB-45c metadata).
+             * @example One night, three stages, unforgettable.
+             */
+            short_description?: string | null;
+            /** @description Raw `events.image_url`, when set. */
+            image_url?: string | null;
+            /**
+             * @description Public URL of the resolved event poster (from
+             *     `events.poster_media_id`), or null when no cover is set.
+             */
+            poster_url?: string | null;
+            /**
+             * @description Age rating / content advisory for the event, when set.
+             * @example 16+
+             */
+            age_rating?: string | null;
+            /**
+             * @description Distinct venue names of the event's active sessions (aggregated
+             *     the same way as `EventItem.venue_names`). Empty when the event
+             *     has no sessions yet.
+             * @example [
+             *       "Forum Karlin"
+             *     ]
+             */
+            venue_names: string[];
+            /**
+             * Format: date-time
+             * @description Earliest session start (trigger-maintained cache), or null.
+             * @example 2026-08-15T18:00:00Z
+             */
+            first_session_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Latest session start (trigger-maintained cache), or null.
+             * @example 2026-08-15T22:00:00Z
+             */
+            last_session_at?: string | null;
+        };
+        /**
+         * @description Response envelope for GET /v1/public/pages/{org_slug}/{event_slug} —
+         *     the resolver behind the shared hosted sales page
+         *     (tickets.arenasoldout.com/{org_slug}/{event_slug}). `feed_token` is
+         *     the newest active, non-revoked feed token of the channel the event
+         *     is published to with `settings.hosted_page.enabled = true`; pass it
+         *     straight to the `<arena-tickets feed-token=…>` widget.
+         */
+        HostedPageResponse: {
+            /** @description Public-safe organization branding. */
+            org: components["schemas"]["HostedPageOrg"];
+            /** @description Event content for the hosted page hero. */
+            event: components["schemas"]["HostedPageEvent"];
+            /**
+             * @description Opaque feed token to pass to the `<arena-tickets>` widget.
+             * @example ft_9f8c1e2a3b4d5e6f7a8b9c0d1e2f3a4b
+             */
+            feed_token: string;
+            /**
+             * @description Organization default locale, used when no `?lang=` is present.
+             * @example en
+             */
+            default_locale: string;
         };
         /**
          * @description Create-time payload for POST /v1/organizations/{org_id}/events.
@@ -31481,6 +31635,58 @@ export interface operations {
                 };
             };
             /** @description Event not found or not published to this feed token. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization slug (`organizations.slug`). */
+                org_slug: string;
+                /** @description Event slug (`events.slug`), unique within the organization. */
+                event_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resolved hosted-page context. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostedPageResponse"];
+                };
+            };
+            /** @description Page not found (see resolution rule above — one indistinguishable outcome for every miss). */
             404: {
                 headers: {
                     [name: string]: unknown;
