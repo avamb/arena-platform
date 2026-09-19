@@ -12,26 +12,45 @@ VALUES (
 )
 RETURNING id, checkout_session_id, org_id, provider, provider_payment_id, amount, currency,
           state, sca_redirect_url, client_secret, failure_code, failure_message,
-          authorized_at, succeeded_at, failed_at, created_at, updated_at;
+          authorized_at, succeeded_at, failed_at, hosted_checkout_url, provider_charge_ref,
+          created_at, updated_at;
+
+-- name: InsertHostedPaymentIntent :one
+-- Create a payment intent for a provider-hosted checkout page (migration 0103).
+-- provider_payment_id is the hosted session id (Stripe cs_…) — that is what
+-- every checkout.session.* webhook event identifies the payment by.
+-- hosted_checkout_url is the buyer-facing page the caller redirects to.
+INSERT INTO payment_intents (
+    checkout_session_id, org_id, provider, provider_payment_id, amount, currency,
+    state, hosted_checkout_url
+)
+VALUES ($1, $2, $3, $4, $5, $6, 'created', $7)
+RETURNING id, checkout_session_id, org_id, provider, provider_payment_id, amount, currency,
+          state, sca_redirect_url, client_secret, failure_code, failure_message,
+          authorized_at, succeeded_at, failed_at, hosted_checkout_url, provider_charge_ref,
+          created_at, updated_at;
 
 -- name: GetPaymentIntentByID :one
 SELECT id, checkout_session_id, org_id, provider, provider_payment_id, amount, currency,
        state, sca_redirect_url, client_secret, failure_code, failure_message,
-       authorized_at, succeeded_at, failed_at, created_at, updated_at
+       authorized_at, succeeded_at, failed_at, hosted_checkout_url, provider_charge_ref,
+       created_at, updated_at
 FROM   payment_intents
 WHERE  id = $1;
 
 -- name: GetPaymentIntentByProviderID :one
 SELECT id, checkout_session_id, org_id, provider, provider_payment_id, amount, currency,
        state, sca_redirect_url, client_secret, failure_code, failure_message,
-       authorized_at, succeeded_at, failed_at, created_at, updated_at
+       authorized_at, succeeded_at, failed_at, hosted_checkout_url, provider_charge_ref,
+       created_at, updated_at
 FROM   payment_intents
 WHERE  provider_payment_id = $1;
 
 -- name: ListPaymentIntentsByCheckout :many
 SELECT id, checkout_session_id, org_id, provider, provider_payment_id, amount, currency,
        state, sca_redirect_url, client_secret, failure_code, failure_message,
-       authorized_at, succeeded_at, failed_at, created_at, updated_at
+       authorized_at, succeeded_at, failed_at, hosted_checkout_url, provider_charge_ref,
+       created_at, updated_at
 FROM   payment_intents
 WHERE  checkout_session_id = $1
 ORDER BY created_at DESC, id DESC;
@@ -55,11 +74,15 @@ SET    state               = $2,
        failure_code        = CASE WHEN $2 = 'failed' THEN COALESCE($5, failure_code)    ELSE failure_code    END,
        failure_message     = CASE WHEN $2 = 'failed' THEN COALESCE($6, failure_message) ELSE failure_message END,
        -- provider_payment_id — set on first update if not already populated.
-       provider_payment_id = COALESCE(provider_payment_id, $7)
+       provider_payment_id = COALESCE(provider_payment_id, $7),
+       -- provider_charge_ref — the pi_… behind a hosted checkout session,
+       -- learned from the webhook (migration 0103). First non-NULL wins.
+       provider_charge_ref = COALESCE(provider_charge_ref, $8)
 WHERE  id = $1
 RETURNING id, checkout_session_id, org_id, provider, provider_payment_id, amount, currency,
           state, sca_redirect_url, client_secret, failure_code, failure_message,
-          authorized_at, succeeded_at, failed_at, created_at, updated_at;
+          authorized_at, succeeded_at, failed_at, hosted_checkout_url, provider_charge_ref,
+          created_at, updated_at;
 
 -- name: InsertPaymentIntentEvent :one
 -- Record a processed provider webhook event for idempotency.
