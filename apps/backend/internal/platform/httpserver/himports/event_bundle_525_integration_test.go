@@ -361,6 +361,17 @@ func TestEventBundle525_RepeatIsIdempotentOnExternalRef(t *testing.T) {
 	assertRowCount(t, ctx, pool, 2, `SELECT count(*) FROM ticket_tiers WHERE session_id = $1`, first.SessionID)
 	assertRowCount(t, ctx, pool, 1, `SELECT count(*) FROM events WHERE org_id = $1`, f.orgID)
 	assertRowCount(t, ctx, pool, 1, `SELECT count(*) FROM venues WHERE org_id = $1`, f.orgID)
+	// The admin venue form edits the structured address_line1 only, so a
+	// venue created by a bundle must carry its address there too, not just in
+	// the legacy free-form column.
+	var line1 string
+	if err := pool.QueryRow(ctx,
+		`SELECT coalesce(address_line1, '') FROM venues WHERE org_id = $1`, f.orgID).Scan(&line1); err != nil {
+		t.Fatalf("read venue address_line1: %v", err)
+	}
+	if line1 != "1 Test Street" {
+		t.Errorf("venue address_line1 = %q, want %q", line1, "1 Test Street")
+	}
 	if hasWarning(second.Warnings, WarnTierNotInPayload) {
 		t.Errorf("repeat bundle: unexpected %s warning: %+v", WarnTierNotInPayload, second.Warnings)
 	}

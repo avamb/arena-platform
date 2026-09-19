@@ -32,10 +32,10 @@ LIMIT  1;
 -- placeholder there would collide on the global partial-unique index the
 -- moment a second organization imported the same placeholder.
 INSERT INTO venues (
-    org_id, city_id, name, address, timezone,
+    org_id, city_id, name, address, address_line1, timezone,
     geo_lat, geo_lng, country
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8)
 RETURNING id, display_number, org_id, city_id, name, address, capacity_default,
           address_line1, address_line2, postal_code, country,
           geo_lat::float8 AS geo_lat, geo_lng::float8 AS geo_lng, timezone,
