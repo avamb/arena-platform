@@ -88,7 +88,7 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 	// Bil24-format importer follows. An arena bundle never carries an svg,
 	// so every category of the session is a General Admission one and mints
 	// its own places.
-	if err := syncImportedCategoryQuotas(ctx, q, sessionID, cats, true, warnings); err != nil {
+	if err := syncImportedCategoryQuotas(ctx, q, sessionID, cats, true, true, warnings); err != nil {
 		return importResult{}, err
 	}
 

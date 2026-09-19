@@ -451,6 +451,89 @@ func TestEventBundle525_EditByExternalRef(t *testing.T) {
 		`SELECT count(*) FROM ticket_tiers WHERE session_id = $1`, first.SessionID)
 }
 
+// TestEventBundle525_EditAppliesCategoryQuantity: the event center manages the
+// event, so a repeat arena bundle applies a changed category quantity — unlike
+// a Bil24-format package, whose availability is only a remainder. A change
+// below the places already sold is skipped with a warning and must not undo
+// another category's change in the same bundle (functional run 2026-09-19:
+// the site showed the new quantity while arena silently kept the old one).
+func TestEventBundle525_EditAppliesCategoryQuantity(t *testing.T) {
+	pool := import517Pool(t)
+	ctx := context.Background()
+	f := newBundle525Fixture(t, ctx, pool)
+	defer f.cleanup()
+
+	h := newBundle525Handler(t, pool)
+
+	rec, first := f.call(h, f.payload())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first bundle: status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	parterID := first.TierIDs[externalIDString(first.CompatIDs.CategoryPriceIDs[0])]
+	balconyID := first.TierIDs[externalIDString(first.CompatIDs.CategoryPriceIDs[1])]
+
+	places := func(tierID uuid.UUID) (capacity, units int64) {
+		t.Helper()
+		if err := pool.QueryRow(ctx,
+			`SELECT coalesce(capacity, 0),
+			        (SELECT count(*) FROM session_seats
+			          WHERE session_id = $2 AND tier_id = $1 AND kind = 'ga_unit')
+			   FROM ticket_tiers WHERE id = $1`, tierID, first.SessionID,
+		).Scan(&capacity, &units); err != nil {
+			t.Fatalf("read places of %s: %v", tierID, err)
+		}
+		return capacity, units
+	}
+
+	edit := f.payload()
+	edit.Action.ActionID = first.CompatIDs.ActionID
+	edit.ActionEvent.ActionEventID = first.CompatIDs.ActionEventID
+	edit.Venue.VenueID = first.CompatIDs.VenueID
+	withQuantities := func(parter, balcony int32) bil24compat.ImportSessionRequest {
+		e := edit
+		e.CategoryList = []bil24compat.ImportSessionCategory{
+			{CategoryPriceID: first.CompatIDs.CategoryPriceIDs[0], CategoryPriceName: "Parter", Price: 25, Availability: parter},
+			{CategoryPriceID: first.CompatIDs.CategoryPriceIDs[1], CategoryPriceName: "Balcony", Price: 12.5, Availability: balcony},
+		}
+		return e
+	}
+
+	// ── grow Parter 100 → 150 ───────────────────────────────────────────────
+	recGrow, grown := f.call(h, withQuantities(150, 40))
+	if recGrow.Code != http.StatusOK {
+		t.Fatalf("grow bundle: status = %d, want 200; body=%s", recGrow.Code, recGrow.Body.String())
+	}
+	if hasWarning(grown.Warnings, WarnCategoryQuantityBelowUsed) {
+		t.Errorf("grow bundle: unexpected %s warning: %+v", WarnCategoryQuantityBelowUsed, grown.Warnings)
+	}
+	if c, u := places(parterID); c != 150 || u != 150 {
+		t.Errorf("Parter after grow: capacity %d / places %d, want 150 / 150", c, u)
+	}
+
+	// ── sell 30 Balcony places, then ask for 10 while shrinking Parter ──────
+	if _, err := pool.Exec(ctx,
+		`UPDATE session_seats SET status = 'sold'
+		  WHERE id IN (SELECT id FROM session_seats
+		                WHERE session_id = $1 AND tier_id = $2 AND kind = 'ga_unit'
+		                ORDER BY seat_key LIMIT 30)`, first.SessionID, balconyID,
+	); err != nil {
+		t.Fatalf("mark Balcony places sold: %v", err)
+	}
+	recShrink, shrunk := f.call(h, withQuantities(120, 10))
+	if recShrink.Code != http.StatusOK {
+		t.Fatalf("shrink bundle: status = %d, want 200; body=%s", recShrink.Code, recShrink.Body.String())
+	}
+	if !hasWarning(shrunk.Warnings, WarnCategoryQuantityBelowUsed) {
+		t.Errorf("shrink bundle: missing %s warning; got %+v", WarnCategoryQuantityBelowUsed, shrunk.Warnings)
+	}
+	if c, u := places(balconyID); c != 40 || u != 40 {
+		t.Errorf("Balcony below its sold places: capacity %d / places %d, want 40 / 40 kept", c, u)
+	}
+	if c, u := places(parterID); c != 120 || u != 120 {
+		t.Errorf("Parter shrink in the same bundle: capacity %d / places %d, want 120 / 120", c, u)
+	}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §9 scenario 4 — identifier errors
 // ─────────────────────────────────────────────────────────────────────────────

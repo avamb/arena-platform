@@ -64,6 +64,10 @@ const (
 	// 08_architecture/23 decision 3), so arena created it CLOSED with a
 	// quantity of 1; an operator sets the real quantity and opens it.
 	WarnCategorySoldOut = "import.category_sold_out"
+	// WarnCategoryQuantityBelowUsed — an arena-native bundle asked for a
+	// category quantity below the places it has already held or sold; the
+	// previous quantity is kept (plan 08_architecture/23, event-center edits).
+	WarnCategoryQuantityBelowUsed = "import.category_quantity_below_used"
 	// WarnFieldIgnoredForSource — a field that only makes sense for the other
 	// source was present and ignored (for source=arena: chargePercent,
 	// seatingPlanId, seatingPlanName — event-bundle spec §3 / §5).

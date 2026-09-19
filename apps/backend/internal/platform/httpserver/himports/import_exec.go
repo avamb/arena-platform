@@ -112,7 +112,7 @@ func (h *Handler) executeImport(ctx context.Context, q *gen.Queries, tx pgx.Tx, 
 	// `ga|c<index>` keys) — minting a second set here would double the
 	// capacity — so this call then only runs the closing sweep.
 	if err := syncImportedCategoryQuotas(
-		ctx, q, sessionID, cats, trimSpace(plan.Request.SVG) == "", warnings,
+		ctx, q, sessionID, cats, trimSpace(plan.Request.SVG) == "", false, warnings,
 	); err != nil {
 		return importResult{}, err
 	}

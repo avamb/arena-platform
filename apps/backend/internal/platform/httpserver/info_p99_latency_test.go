@@ -541,7 +541,11 @@ func TestInfoP99Latency_FullVerification(t *testing.T) {
 		if p99Quiet > ciP99Limit {
 			t.Errorf("quiet p99 %.2fms exceeds CI limit %.0fms", p99Quiet, ciP99Limit)
 		}
-		if p99Verbose > 0 && p99Quiet > 0 && (p99Verbose/p99Quiet) > 10.0 {
+		// The ratio only means something once verbose logging costs real time:
+		// with a ~1ms quiet p99 a single scheduler hiccup on a shared CI runner
+		// (12ms vs 1ms, 2026-09-19) tripped it without any logging problem.
+		const loggingRatioFloorMs = 20.0
+		if p99Verbose > loggingRatioFloorMs && p99Quiet > 0 && (p99Verbose/p99Quiet) > 10.0 {
 			t.Errorf("logging is the bottleneck: verbose p99 (%.2fms) is >10× quiet p99 (%.2fms)",
 				p99Verbose, p99Quiet)
 		}
