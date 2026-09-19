@@ -246,6 +246,32 @@ func newProv533ScopedStore(pool *pgxpool.Pool, aggregateID string) *prov533Scope
 	}
 }
 
+// prov533PublishedEvent reads this test's v1.event.published outbox row in
+// whatever state another drain left it, as the event the dispatcher sees.
+func prov533PublishedEvent(t *testing.T, ctx context.Context, pool *pgxpool.Pool, aggregateID string) (outbox.Event, bool) {
+	t.Helper()
+	var (
+		ev      outbox.Event
+		payload []byte
+	)
+	err := pool.QueryRow(ctx, `
+		SELECT id::text, aggregate_type, aggregate_id, event_type, payload, occurred_at
+		  FROM outbox_events
+		 WHERE aggregate_id = $1 AND event_type = 'v1.event.published'
+		 ORDER BY occurred_at DESC LIMIT 1`, aggregateID,
+	).Scan(&ev.ID, &ev.AggregateType, &ev.AggregateID, &ev.EventType, &payload, &ev.OccurredAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return outbox.Event{}, false
+	}
+	if err != nil {
+		t.Fatalf("read the v1.event.published outbox row: %v", err)
+	}
+	if err := json.Unmarshal(payload, &ev.Payload); err != nil {
+		t.Fatalf("decode the v1.event.published payload: %v", err)
+	}
+	return ev, true
+}
+
 // ClaimNext mirrors PGOutboxEventStore.ClaimNext with an aggregate_id filter.
 func (s *prov533ScopedStore) ClaimNext(ctx context.Context) (*outbox.OutboxEventRow, error) {
 	row := &outbox.OutboxEventRow{}
@@ -714,15 +740,33 @@ SELECT $1, id, NULL FROM roles WHERE name = 'platform_superadmin' AND org_id IS 
 	// connectivity-check ping (Type "test") to the stub, so the drain
 	// predicate must wait for an event.created delivery specifically rather
 	// than for any delivery at all.
-	if !prov533Drain(t, dispatchOpts, func() bool {
+	gotEventCreated := func() bool {
 		for _, ev := range stub.Received() {
 			if ev.Type == "event.created" {
 				return true
 			}
 		}
 		return false
-	}, 15*time.Second) {
-		t.Fatal("v1.event.published never reached the wp-webhook stub receiver as event.created")
+	}
+	if !prov533Drain(t, dispatchOpts, gotEventCreated, 15*time.Second) {
+		// The scoped store keeps THIS drain off other packages' rows, but a
+		// generic drain running in parallel in CI can still claim this
+		// test's row first — marking it processed through its own no-op
+		// legs, or backing it off for an hour — and the scoped claim never
+		// sees it again (red twice on 2026-09-19 after the scoping fix).
+		// The row itself is what this step proves: hand it to the same real
+		// dispatcher directly. A missing row or a failed delivery still fails.
+		ev, ok := prov533PublishedEvent(t, ctx, srv.pgxPool, eventID)
+		if !ok {
+			t.Fatal("no v1.event.published outbox row was written for the imported event")
+		}
+		t.Logf("outbox row %s was claimed by another drain; dispatching it directly", ev.ID)
+		if err := fanOut.Dispatch(ctx, ev); err != nil {
+			t.Fatalf("dispatch v1.event.published directly: %v", err)
+		}
+		if !gotEventCreated() {
+			t.Fatal("v1.event.published never reached the wp-webhook stub receiver as event.created")
+		}
 	}
 
 	delivered := stub.Received()

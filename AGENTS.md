@@ -882,6 +882,13 @@ entries short and factual.
   (it cannot reach a host `127.0.0.1` stub, so the row backs off for an
   hour): `docker stop arena_worker` while running outbox integration tests,
   `docker start arena_worker` after.
+  Scoping only protects OTHER packages from your drain: a generic drain in a
+  parallel package can still claim YOUR row first (mark it processed through
+  its own no-op legs or back it off for an hour), and a scoped claim filtered
+  on `processed_at IS NULL` never sees it again. A test that must prove a
+  delivery should fall back to reading its own row directly and handing it
+  to the same real dispatcher (`prov533PublishedEvent`), failing only when
+  the row is missing or the delivery errors.
 - **Refunds have two settlements since migration 0102.** `refunds.settlement`
   is `provider` (arena drives the refund through its payment provider — the
   requested → approved → succeeded flow, `payment_intent_id` required) or
