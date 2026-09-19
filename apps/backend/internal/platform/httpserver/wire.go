@@ -340,7 +340,7 @@ func New(opts Options) *Server {
 		deliveryJobQueries:    pickQueries(opts.DeliveryJobQueries, opts.PgxPool),
 		reportQueries:         pickQueries(opts.ReportQueries, opts.PgxPool),
 		billingQueries:        pickQueries(opts.BillingQueries, opts.PgxPool),
-		workerPool:            opts.WorkerPool,
+		workerPool:            pickWorkerPool(opts.WorkerPool, opts.PgxPool),
 		emailSender:           opts.EmailSender,
 		stripeConnect:         opts.StripeConnect,
 		stripeBilling:         opts.StripeBilling,
@@ -381,4 +381,20 @@ func New(opts Options) *Server {
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 	}
 	return s
+}
+
+// pickWorkerPool returns the pool used to enqueue worker_jobs rows from the
+// API process: the explicit override, else the main pool.
+//
+// cmd/arena-api never set Options.WorkerPool, so s.workerPool was nil in
+// production: POST /v1/admin/tickets/{id}/delivery/resend answered 503
+// "delivery store is not available" and htickets.EnqueueDeliveryJobs silently
+// returned without enqueueing anything for tickets issued inside the API
+// process (found on the first production test purchase, 2026-09-20). Only the
+// worker, which builds its own handler, could ever enqueue a ticket e-mail.
+func pickWorkerPool(explicit, fallback *pgxpool.Pool) *pgxpool.Pool {
+	if explicit != nil {
+		return explicit
+	}
+	return fallback
 }
