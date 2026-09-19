@@ -1,7 +1,8 @@
-import type { SupportedLocale } from './locale.ts';
+import type { PageLocale } from './locale.ts';
 
-/** Page-chrome strings (loading / not-found / error / footer). Event content
- * itself is already locale-resolved by the backend and rendered verbatim. */
+/** Page-chrome strings (loading / not-found / error / footer / promoter
+ * page). Event content itself is already locale-resolved by the backend
+ * and rendered verbatim. */
 export interface PageStrings {
   loading: string;
   notFoundTitle: string;
@@ -11,9 +12,18 @@ export interface PageStrings {
   errorBody: string;
   errorRetry: string;
   footerRights: string;
+  /** Promoter landing page (GET /v1/public/pages/{org_slug}): org has a
+   * hosted-page channel but zero currently-visible events. */
+  promoterEmptyTitle: string;
+  promoterEmptyBody: string;
+  /** Label of each event card's link to the per-event page. */
+  ticketsCta: string;
+  /** Back link shown on the per-event page, pointing at the org's
+   * promoter page. */
+  backToPromoter: string;
 }
 
-const STRINGS: Record<SupportedLocale, PageStrings> = {
+const STRINGS: Record<PageLocale, PageStrings> = {
   en: {
     loading: 'Loading event…',
     notFoundTitle: 'Event not found',
@@ -23,6 +33,10 @@ const STRINGS: Record<SupportedLocale, PageStrings> = {
     errorBody: 'We could not load this event right now. Please try again in a moment.',
     errorRetry: 'Retry',
     footerRights: 'Arena Sold Out. All rights reserved.',
+    promoterEmptyTitle: 'No upcoming dates yet',
+    promoterEmptyBody: 'This organizer has not published any events right now. Please check back later.',
+    ticketsCta: 'Tickets',
+    backToPromoter: 'All dates',
   },
   ru: {
     loading: 'Загрузка события…',
@@ -33,6 +47,10 @@ const STRINGS: Record<SupportedLocale, PageStrings> = {
     errorBody: 'Не удалось загрузить событие. Пожалуйста, попробуйте ещё раз через момент.',
     errorRetry: 'Повторить',
     footerRights: 'Arena Sold Out. Все права защищены.',
+    promoterEmptyTitle: 'Пока нет ближайших дат',
+    promoterEmptyBody: 'Этот организатор пока не опубликовал ни одного события. Загляните позже.',
+    ticketsCta: 'Билеты',
+    backToPromoter: 'Все даты',
   },
   cs: {
     loading: 'Načítání akce…',
@@ -43,6 +61,10 @@ const STRINGS: Record<SupportedLocale, PageStrings> = {
     errorBody: 'Akci se nepodařilo načíst. Zkuste to prosím za chvíli znovu.',
     errorRetry: 'Zkusit znovu',
     footerRights: 'Arena Sold Out. Všechna práva vyhrazena.',
+    promoterEmptyTitle: 'Zatím žádné nadcházející termíny',
+    promoterEmptyBody: 'Tento pořadatel zatím nezveřejnil žádnou akci. Zkuste to prosím později.',
+    ticketsCta: 'Vstupenky',
+    backToPromoter: 'Všechny termíny',
   },
   he: {
     loading: 'טוען את האירוע…',
@@ -53,9 +75,27 @@ const STRINGS: Record<SupportedLocale, PageStrings> = {
     errorBody: 'לא הצלחנו לטעון את האירוע כרגע. נסו שוב בעוד רגע.',
     errorRetry: 'נסו שוב',
     footerRights: 'Arena Sold Out. כל הזכויות שמורות.',
+    promoterEmptyTitle: 'אין עדיין תאריכים קרובים',
+    promoterEmptyBody: 'המפיק הזה עדיין לא פרסם אירועים. נסו שוב בקרוב.',
+    ticketsCta: 'כרטיסים',
+    backToPromoter: 'כל התאריכים',
+  },
+  es: {
+    loading: 'Cargando evento…',
+    notFoundTitle: 'Evento no encontrado',
+    notFoundBody: 'No pudimos encontrar la página que buscabas. Puede que se haya despublicado o que el enlace sea incorrecto.',
+    notFoundHome: 'Ir a Arena Sold Out',
+    errorTitle: 'Algo salió mal',
+    errorBody: 'No pudimos cargar este evento en este momento. Inténtalo de nuevo en un momento.',
+    errorRetry: 'Reintentar',
+    footerRights: 'Arena Sold Out. Todos los derechos reservados.',
+    promoterEmptyTitle: 'Aún no hay fechas próximas',
+    promoterEmptyBody: 'Este organizador todavía no ha publicado ningún evento. Vuelve a consultarlo más tarde.',
+    ticketsCta: 'Entradas',
+    backToPromoter: 'Todas las fechas',
   },
 };
 
-export function t(locale: SupportedLocale): PageStrings {
+export function t(locale: PageLocale): PageStrings {
   return STRINGS[locale];
 }

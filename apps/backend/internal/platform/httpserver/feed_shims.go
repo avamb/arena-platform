@@ -327,6 +327,10 @@ func (s *Server) handlePublicPage(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandlePublicPage(w, r)
 }
 
+func (s *Server) handlePublicPromoterPage(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePublicPromoterPage(w, r)
+}
+
 // ─── public feed checkout handler shim ────────────────────────────────────────
 
 func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Request) {

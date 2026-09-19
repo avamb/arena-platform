@@ -64,3 +64,39 @@ func TestHandlePublicPage_EmptySlug_404(t *testing.T) {
 		t.Fatalf("status = %d, want 404 (body: %s)", w.Code, w.Body.String())
 	}
 }
+
+// promoterPageRequest builds a GET request with the org_slug chi URL param
+// pre-populated (one-segment route, no event_slug), mirroring pageRequest.
+func promoterPageRequest(orgSlug string) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, "/v1/public/pages/"+orgSlug, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("org_slug", orgSlug)
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
+	return req.WithContext(ctx)
+}
+
+// TestHandlePublicPromoterPage_NilQueries_503 verifies the promoter-page
+// handler self-gates with a 503 dependency.database_unavailable envelope
+// when publicFeedQueries is nil, matching HandlePublicPage's convention.
+func TestHandlePublicPromoterPage_NilQueries_503(t *testing.T) {
+	t.Parallel()
+	h := unsignedFeed()
+	w := httptest.NewRecorder()
+	h.HandlePublicPromoterPage(w, promoterPageRequest("acme"))
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 (body: %s)", w.Code, w.Body.String())
+	}
+}
+
+// TestHandlePublicPromoterPage_EmptySlug_404 verifies an empty org_slug path
+// segment answers the same page.not_found 404 as every other resolution
+// miss, without ever reaching the database.
+func TestHandlePublicPromoterPage_EmptySlug_404(t *testing.T) {
+	t.Parallel()
+	h := &Handler{publicFeedQueries: gen.New(nil), logger: slog.Default(), rl: allowAllRateLimiter{}}
+	w := httptest.NewRecorder()
+	h.HandlePublicPromoterPage(w, promoterPageRequest(""))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 (body: %s)", w.Code, w.Body.String())
+	}
+}

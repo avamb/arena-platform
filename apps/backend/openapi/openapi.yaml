@@ -4217,6 +4217,15 @@ components:
           format: date-time
           description: Latest session start (trigger-maintained cache), or null.
           example: "2026-08-15T22:00:00Z"
+        first_session_timezone:
+          type: [string, "null"]
+          description: |
+            IANA time zone name (`venues.timezone`) of the venue of the
+            event's earliest active, non-cancelled session — lets the page
+            show the event's own local time rather than the viewer's. Null
+            when the event has no sessions yet or the venue has no timezone
+            configured.
+          example: "Europe/Prague"
 
     HostedPageResponse:
       type: object
@@ -4245,6 +4254,41 @@ components:
           type: string
           description: Organization default locale, used when no `?lang=` is present.
           example: "en"
+
+    HostedPromoterPageResponse:
+      type: object
+      required: [org, default_locale, events]
+      description: |
+        Response envelope for GET /v1/public/pages/{org_slug} — the promoter
+        landing page resolver behind the shared short link
+        (tickets.arenasoldout.com/{org_slug}). Lists every event that would
+        individually resolve on
+        GET /v1/public/pages/{org_slug}/{event_slug}, upcoming first, so a
+        promoter running several one-off dates under one organizer (e.g. six
+        separate master-class sessions) can share a single link. Each item
+        reuses `HostedPageEvent` — `feed_token` is intentionally NOT
+        repeated per item here: the page links each card to the per-event
+        page, which resolves its own token.
+      properties:
+        org:
+          description: Public-safe organization branding.
+          allOf:
+            - $ref: "#/components/schemas/HostedPageOrg"
+        default_locale:
+          type: string
+          description: Organization default locale, used when no `?lang=` is present.
+          example: "en"
+        events:
+          type: array
+          description: |
+            Currently-visible events of the org, ordered upcoming first
+            (`first_session_at` ascending, events with no sessions yet
+            sorted last). An event whose `last_session_at` has already
+            passed is omitted. Capped at 200. Empty when the org has a
+            properly configured hosted-page channel but no visible events
+            (still a 200, not a 404).
+          items:
+            $ref: "#/components/schemas/HostedPageEvent"
 
     CreateEventRequest:
       type: object
@@ -28062,6 +28106,10 @@ paths:
         never reveals which step failed, so the endpoint cannot be used to
         enumerate slugs or channel configuration.
 
+        Both `org_slug` and `event_slug` are matched case-insensitively, so
+        a link printed as `MasterClassTeatro` resolves the same organization
+        as one printed `masterclassteatro`.
+
         Rate-limited per client IP only (there is no feed token in the path
         to key a site-wide bucket on). Cache-Control is short (30s) since
         publication/token state can change at any time.
@@ -28072,13 +28120,15 @@ paths:
           required: true
           schema:
             type: string
-          description: Organization slug (`organizations.slug`).
+          description: Organization slug (`organizations.slug`), matched case-insensitively.
         - name: event_slug
           in: path
           required: true
           schema:
             type: string
-          description: Event slug (`events.slug`), unique within the organization.
+          description: |
+            Event slug (`events.slug`), unique within the organization,
+            matched case-insensitively.
       responses:
         "200":
           description: Resolved hosted-page context.
@@ -28086,6 +28136,74 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HostedPageResponse"
+        "404":
+          description: Page not found (see resolution rule above — one indistinguishable outcome for every miss).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/pages/{org_slug}:
+    get:
+      operationId: getPublicPromoterPage
+      summary: Resolve the promoter landing page for an org slug
+      description: |
+        Backs the shared promoter landing page at
+        `https://tickets.arenasoldout.com/{org_slug}` — a single short link
+        that fans out to every currently-visible event of the organization
+        (e.g. several one-off master-class dates run by the same promoter,
+        each with its own date/time/teacher). No JWT required.
+
+        Lists every event that would individually resolve on
+        `GET /v1/public/pages/{org_slug}/{event_slug}`: non-deleted, status
+        `published`, has a slug, published through an active feed token of a
+        sales channel of the SAME organization whose
+        `settings.hosted_page.enabled = true`. Upcoming first
+        (`first_session_at` ascending; an event with no sessions yet sorts
+        last); an event whose `last_session_at` has already passed is
+        omitted. Capped at 200.
+
+        An org with zero currently-visible events but at least one properly
+        configured hosted-page channel still answers `200` with an empty
+        `events` array — that is not the same as the org not existing. An
+        unknown org, or one with no channel flagged for the hosted page at
+        all, answers the exact same `404 page.not_found` as the per-event
+        endpoint — the response never reveals which case applies.
+
+        `org_slug` is matched case-insensitively, so a link printed as
+        `MasterClassTeatro` resolves the same organization as one printed
+        `masterclassteatro`.
+
+        Rate-limited per client IP only (there is no feed token in the path
+        to key a site-wide bucket on). Cache-Control is short (30s) since
+        publication/token state can change at any time.
+      tags: [PublicFeed]
+      parameters:
+        - name: org_slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Organization slug (`organizations.slug`), matched case-insensitively.
+      responses:
+        "200":
+          description: Resolved promoter-page context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HostedPromoterPageResponse"
         "404":
           description: Page not found (see resolution rule above — one indistinguishable outcome for every miss).
           content:

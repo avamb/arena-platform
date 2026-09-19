@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -227,5 +228,36 @@ func TestPublicPageIntegration_UnknownSlug_404(t *testing.T) {
 	publicPageHandler(pool).HandlePublicPage(w, pageRequest("no-such-org-"+uuid.NewString(), "no-such-event"))
 	if w.Code != 404 {
 		t.Fatalf("status = %d, want 404 (body: %s)", w.Code, w.Body.String())
+	}
+}
+
+// TestPublicPageIntegration_CaseInsensitiveSlugs_200 verifies that BOTH
+// org_slug and event_slug resolve case-insensitively — an organizer printing
+// "MasterClassTeatro" (or a legacy mixed-case event slug written before
+// write-time lowercasing existed on org slugs, which event slugs still never
+// get) must still resolve.
+func TestPublicPageIntegration_CaseInsensitiveSlugs_200(t *testing.T) {
+	pool := publicPageIntegrationPool(t)
+	ctx := context.Background()
+	f := newPublicPageFixture(t, ctx, pool, true)
+
+	upperOrg := strings.ToUpper(f.orgSlug)
+	upperEvent := strings.ToUpper(f.eventSlug)
+
+	w := httptest.NewRecorder()
+	publicPageHandler(pool).HandlePublicPage(w, pageRequest(upperOrg, upperEvent))
+	if w.Code != 200 {
+		t.Fatalf("status = %d, want 200 for uppercased slugs %q/%q (body: %s)", w.Code, upperOrg, upperEvent, w.Body.String())
+	}
+	var body struct {
+		Event struct {
+			ID string `json:"id"`
+		} `json:"event"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v (body: %s)", err, w.Body.String())
+	}
+	if body.Event.ID != f.eventID.String() {
+		t.Errorf("event.id = %q, want %q", body.Event.ID, f.eventID.String())
 	}
 }

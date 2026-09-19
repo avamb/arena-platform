@@ -1,7 +1,7 @@
-import type { SupportedLocale } from './locale.ts';
-import { isRtlLocale } from './locale.ts';
+import type { PageLocale } from './locale.ts';
+import { isRtlLocale, toWidgetLocale } from './locale.ts';
 import { t } from './i18n.ts';
-import type { HostedPageResponse } from './api.ts';
+import type { HostedPageEvent, HostedPageResponse, HostedPromoterPageResponse } from './api.ts';
 
 /** Clears a container's children (avoids innerHTML = '' churn semantics
  * differences and keeps this file free of innerHTML entirely). */
@@ -9,7 +9,14 @@ function clear(el: HTMLElement): void {
   while (el.firstChild) el.removeChild(el.firstChild);
 }
 
-export function renderLoading(container: HTMLElement, locale: SupportedLocale): void {
+/** Preserves every query parameter except none are stripped — used when
+ * linking between the promoter page and its event pages so `?lang=` (and
+ * any future param, e.g. a resumed checkout_token) survives the hop. */
+function currentSearch(): string {
+  return window.location.search;
+}
+
+export function renderLoading(container: HTMLElement, locale: PageLocale): void {
   clear(container);
   const p = document.createElement('p');
   p.className = 'asa-loading';
@@ -18,7 +25,7 @@ export function renderLoading(container: HTMLElement, locale: SupportedLocale): 
   container.appendChild(p);
 }
 
-export function renderNotFound(container: HTMLElement, locale: SupportedLocale): void {
+export function renderNotFound(container: HTMLElement, locale: PageLocale): void {
   clear(container);
   const strings = t(locale);
 
@@ -42,7 +49,7 @@ export function renderNotFound(container: HTMLElement, locale: SupportedLocale):
   container.appendChild(section);
 }
 
-export function renderError(container: HTMLElement, locale: SupportedLocale, onRetry: () => void): void {
+export function renderError(container: HTMLElement, locale: PageLocale, onRetry: () => void): void {
   clear(container);
   const strings = t(locale);
 
@@ -67,11 +74,22 @@ export function renderError(container: HTMLElement, locale: SupportedLocale, onR
   container.appendChild(section);
 }
 
-function formatSessionDate(iso: string, locale: SupportedLocale): string {
+/** Formats an event/session start as "weekday, day month year, HH:MM" in
+ * the given locale. When `timeZone` is known (the event's own venue
+ * timezone, from `first_session_timezone`) the time is shown in THAT zone
+ * rather than the viewer's — a buyer in Madrid checking a Prague master
+ * class should see Prague local time, not their own. Falls back to the
+ * viewer's local zone when unknown. */
+function formatSessionDateTime(iso: string, locale: PageLocale, timeZone?: string | null): string {
   try {
     return new Intl.DateTimeFormat(locale, {
-      dateStyle: 'long',
-      timeStyle: 'short',
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: timeZone ?? undefined,
     }).format(new Date(iso));
   } catch {
     return iso;
@@ -84,17 +102,24 @@ export interface RenderEventOptions {
 }
 
 /**
- * renderEvent mounts the hero (image/title/date/venue/description) and the
- * <arena-tickets> widget for a resolved hosted page. Returns the widget host
- * element so the caller can scroll it into view when resuming a checkout.
+ * renderEvent mounts the hero (image/title/date/venue/description), a back
+ * link to the org's promoter page, and the <arena-tickets> widget for a
+ * resolved hosted page. Returns the widget host element so the caller can
+ * scroll it into view when resuming a checkout.
  */
 export function renderEvent(
   container: HTMLElement,
   data: HostedPageResponse,
-  locale: SupportedLocale,
+  locale: PageLocale,
   options: RenderEventOptions,
 ): HTMLElement {
   clear(container);
+
+  const back = document.createElement('a');
+  back.className = 'asa-back-link';
+  back.href = `/${encodeURIComponent(data.org.slug)}${currentSearch()}`;
+  back.textContent = `← ${t(locale).backToPromoter}`;
+  container.appendChild(back);
 
   const hero = document.createElement('section');
   hero.className = 'asa-hero';
@@ -121,7 +146,7 @@ export function renderEvent(
   meta.className = 'asa-hero-meta';
   const metaParts: string[] = [];
   if (data.event.first_session_at) {
-    metaParts.push(formatSessionDate(data.event.first_session_at, locale));
+    metaParts.push(formatSessionDateTime(data.event.first_session_at, locale, data.event.first_session_timezone));
   }
   if (data.event.venue_names.length > 0) {
     metaParts.push(data.event.venue_names.join(', '));
@@ -153,7 +178,7 @@ export function renderEvent(
   const widget = document.createElement('arena-tickets');
   widget.setAttribute('feed-token', data.feed_token);
   widget.setAttribute('event-id', data.event.id);
-  widget.setAttribute('locale', locale);
+  widget.setAttribute('locale', toWidgetLocale(locale));
   if (options.apiBase) {
     widget.setAttribute('api-base', options.apiBase);
   }
@@ -170,24 +195,142 @@ export function renderEvent(
   return widgetSection;
 }
 
+/** Builds one <li> card for the promoter page's event grid: date/time
+ * FIRST and prominent, then title, short description, venue, an optional
+ * poster thumbnail, and a "tickets" link to the per-event page. The whole
+ * card is one link (a single clear target beats a title link plus a
+ * separate button for both mouse and keyboard/screen-reader users). */
+function renderEventCard(event: HostedPageEvent, orgSlug: string, locale: PageLocale): HTMLLIElement {
+  const li = document.createElement('li');
+  li.className = 'asa-card-item';
+
+  const a = document.createElement('a');
+  a.className = 'asa-card';
+  a.href = `/${encodeURIComponent(orgSlug)}/${encodeURIComponent(event.slug)}${currentSearch()}`;
+
+  const posterURL = event.poster_url ?? event.image_url;
+  if (posterURL) {
+    const img = document.createElement('img');
+    img.className = 'asa-card-image';
+    img.src = posterURL;
+    img.alt = '';
+    img.loading = 'lazy';
+    a.appendChild(img);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'asa-card-body';
+
+  if (event.first_session_at) {
+    const when = document.createElement('p');
+    when.className = 'asa-card-datetime';
+    when.textContent = formatSessionDateTime(event.first_session_at, locale, event.first_session_timezone);
+    body.appendChild(when);
+  }
+
+  const title = document.createElement('h2');
+  title.className = 'asa-card-title';
+  title.textContent = event.title;
+  body.appendChild(title);
+
+  if (event.venue_names.length > 0) {
+    const venue = document.createElement('p');
+    venue.className = 'asa-card-venue';
+    venue.textContent = event.venue_names.join(', ');
+    body.appendChild(venue);
+  }
+
+  const description = event.short_description ?? event.description;
+  if (description) {
+    const desc = document.createElement('p');
+    desc.className = 'asa-card-description';
+    desc.textContent = description;
+    body.appendChild(desc);
+  }
+
+  const cta = document.createElement('span');
+  cta.className = 'asa-button asa-card-cta';
+  cta.setAttribute('aria-hidden', 'true');
+  cta.textContent = t(locale).ticketsCta;
+  body.appendChild(cta);
+
+  a.appendChild(body);
+  li.appendChild(a);
+  return li;
+}
+
+/**
+ * renderPromoterPage mounts the org header (name/logo) and a responsive
+ * grid of event cards, one per currently-visible event, or the localized
+ * empty state when the org has none. Backs `/{org_slug}`.
+ */
+export function renderPromoterPage(container: HTMLElement, data: HostedPromoterPageResponse, locale: PageLocale): void {
+  clear(container);
+  const strings = t(locale);
+
+  const header = document.createElement('section');
+  header.className = 'asa-promoter-header';
+
+  if (data.org.logo_url) {
+    const logo = document.createElement('img');
+    logo.className = 'asa-promoter-logo';
+    logo.src = data.org.logo_url;
+    logo.alt = data.org.name;
+    header.appendChild(logo);
+  }
+
+  const h1 = document.createElement('h1');
+  h1.className = 'asa-promoter-title';
+  h1.textContent = data.org.name;
+  header.appendChild(h1);
+
+  container.appendChild(header);
+
+  if (data.events.length === 0) {
+    const empty = document.createElement('section');
+    empty.className = 'asa-state asa-state--empty';
+
+    const h2 = document.createElement('h2');
+    h2.textContent = strings.promoterEmptyTitle;
+    empty.appendChild(h2);
+
+    const p = document.createElement('p');
+    p.textContent = strings.promoterEmptyBody;
+    empty.appendChild(p);
+
+    container.appendChild(empty);
+    return;
+  }
+
+  const list = document.createElement('ul');
+  list.className = 'asa-event-grid';
+  list.setAttribute('aria-label', `${data.org.name} — upcoming events`);
+  for (const event of data.events) {
+    list.appendChild(renderEventCard(event, data.org.slug, locale));
+  }
+  container.appendChild(list);
+}
+
 /** Sets document-level chrome: <html lang/dir>, <title>, meta description,
  * and the footer copyright line. Called once locale is known (even before
- * the event resolves) and again once event data is available. */
-export function applyDocumentChrome(locale: SupportedLocale, event?: HostedPageResponse['event'] | null): void {
+ * the event resolves) and again once event or org data is available. */
+export function applyDocumentChrome(
+  locale: PageLocale,
+  content?: { title: string; description?: string | null } | null,
+): void {
   document.documentElement.lang = locale;
   document.documentElement.dir = isRtlLocale(locale) ? 'rtl' : 'ltr';
 
-  if (event) {
-    document.title = `${event.title} — Arena Sold Out`;
-    const desc = event.short_description ?? event.description;
-    if (desc) {
+  if (content) {
+    document.title = `${content.title} — Arena Sold Out`;
+    if (content.description) {
       let metaEl = document.querySelector('meta[name="description"]');
       if (!metaEl) {
         metaEl = document.createElement('meta');
         metaEl.setAttribute('name', 'description');
         document.head.appendChild(metaEl);
       }
-      metaEl.setAttribute('content', desc);
+      metaEl.setAttribute('content', content.description);
     }
   }
 

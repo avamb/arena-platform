@@ -4389,11 +4389,63 @@ export interface paths {
          *     never reveals which step failed, so the endpoint cannot be used to
          *     enumerate slugs or channel configuration.
          *
+         *     Both `org_slug` and `event_slug` are matched case-insensitively, so
+         *     a link printed as `MasterClassTeatro` resolves the same organization
+         *     as one printed `masterclassteatro`.
+         *
          *     Rate-limited per client IP only (there is no feed token in the path
          *     to key a site-wide bucket on). Cache-Control is short (30s) since
          *     publication/token state can change at any time.
          */
         get: operations["getPublicPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/pages/{org_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve the promoter landing page for an org slug
+         * @description Backs the shared promoter landing page at
+         *     `https://tickets.arenasoldout.com/{org_slug}` — a single short link
+         *     that fans out to every currently-visible event of the organization
+         *     (e.g. several one-off master-class dates run by the same promoter,
+         *     each with its own date/time/teacher). No JWT required.
+         *
+         *     Lists every event that would individually resolve on
+         *     `GET /v1/public/pages/{org_slug}/{event_slug}`: non-deleted, status
+         *     `published`, has a slug, published through an active feed token of a
+         *     sales channel of the SAME organization whose
+         *     `settings.hosted_page.enabled = true`. Upcoming first
+         *     (`first_session_at` ascending; an event with no sessions yet sorts
+         *     last); an event whose `last_session_at` has already passed is
+         *     omitted. Capped at 200.
+         *
+         *     An org with zero currently-visible events but at least one properly
+         *     configured hosted-page channel still answers `200` with an empty
+         *     `events` array — that is not the same as the org not existing. An
+         *     unknown org, or one with no channel flagged for the hosted page at
+         *     all, answers the exact same `404 page.not_found` as the per-event
+         *     endpoint — the response never reveals which case applies.
+         *
+         *     `org_slug` is matched case-insensitively, so a link printed as
+         *     `MasterClassTeatro` resolves the same organization as one printed
+         *     `masterclassteatro`.
+         *
+         *     Rate-limited per client IP only (there is no feed token in the path
+         *     to key a site-wide bucket on). Cache-Control is short (30s) since
+         *     publication/token state can change at any time.
+         */
+        get: operations["getPublicPromoterPage"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9408,6 +9460,15 @@ export interface components {
              * @example 2026-08-15T22:00:00Z
              */
             last_session_at?: string | null;
+            /**
+             * @description IANA time zone name (`venues.timezone`) of the venue of the
+             *     event's earliest active, non-cancelled session — lets the page
+             *     show the event's own local time rather than the viewer's. Null
+             *     when the event has no sessions yet or the venue has no timezone
+             *     configured.
+             * @example Europe/Prague
+             */
+            first_session_timezone?: string | null;
         };
         /**
          * @description Response envelope for GET /v1/public/pages/{org_slug}/{event_slug} —
@@ -9432,6 +9493,36 @@ export interface components {
              * @example en
              */
             default_locale: string;
+        };
+        /**
+         * @description Response envelope for GET /v1/public/pages/{org_slug} — the promoter
+         *     landing page resolver behind the shared short link
+         *     (tickets.arenasoldout.com/{org_slug}). Lists every event that would
+         *     individually resolve on
+         *     GET /v1/public/pages/{org_slug}/{event_slug}, upcoming first, so a
+         *     promoter running several one-off dates under one organizer (e.g. six
+         *     separate master-class sessions) can share a single link. Each item
+         *     reuses `HostedPageEvent` — `feed_token` is intentionally NOT
+         *     repeated per item here: the page links each card to the per-event
+         *     page, which resolves its own token.
+         */
+        HostedPromoterPageResponse: {
+            /** @description Public-safe organization branding. */
+            org: components["schemas"]["HostedPageOrg"];
+            /**
+             * @description Organization default locale, used when no `?lang=` is present.
+             * @example en
+             */
+            default_locale: string;
+            /**
+             * @description Currently-visible events of the org, ordered upcoming first
+             *     (`first_session_at` ascending, events with no sessions yet
+             *     sorted last). An event whose `last_session_at` has already
+             *     passed is omitted. Capped at 200. Empty when the org has a
+             *     properly configured hosted-page channel but no visible events
+             *     (still a 200, not a 404).
+             */
+            events: components["schemas"]["HostedPageEvent"][];
         };
         /**
          * @description Create-time payload for POST /v1/organizations/{org_id}/events.
@@ -31941,9 +32032,12 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Organization slug (`organizations.slug`). */
+                /** @description Organization slug (`organizations.slug`), matched case-insensitively. */
                 org_slug: string;
-                /** @description Event slug (`events.slug`), unique within the organization. */
+                /**
+                 * @description Event slug (`events.slug`), unique within the organization,
+                 *     matched case-insensitively.
+                 */
                 event_slug: string;
             };
             cookie?: never;
@@ -31957,6 +32051,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HostedPageResponse"];
+                };
+            };
+            /** @description Page not found (see resolution rule above — one indistinguishable outcome for every miss). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicPromoterPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization slug (`organizations.slug`), matched case-insensitively. */
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resolved promoter-page context. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostedPromoterPageResponse"];
                 };
             };
             /** @description Page not found (see resolution rule above — one indistinguishable outcome for every miss). */
