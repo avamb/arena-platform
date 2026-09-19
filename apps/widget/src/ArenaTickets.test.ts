@@ -1,6 +1,7 @@
 /**
  * Unit tests for Arena Tickets widget utilities.
- * Uses vitest — no DOM required; tests pure utility functions.
+ * Uses vitest — no DOM required; tests pure utility functions plus a few
+ * structural assertions on the component source (imported with `?raw`).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -211,5 +212,32 @@ describe('RTL_LOCALES', () => {
     for (const code of RTL_LOCALES) {
       expect(code).toHaveLength(2);
     }
+  });
+});
+
+// ─── checkout/start carries the active locale ────────────────────────────────
+
+describe('ArenaTickets.svelte — checkout/start locale', () => {
+  const source = (): Promise<string> =>
+    import('./ArenaTickets.svelte?raw').then((m: { default: string }) => m.default);
+
+  it('puts the resolved widget locale (normLocale) on the checkout/start payload', async () => {
+    const src = await source();
+    expect(src).toContain('payload.locale = normLocale');
+    // The locale must be the same resolved value the UI renders in, never a
+    // fresh navigator.language read.
+    expect(src).not.toContain('navigator.language');
+  });
+
+  it('only sends the locale when it resolves to a non-empty string', async () => {
+    const src = await source();
+    expect(src).toMatch(
+      /typeof normLocale === 'string' && normLocale\.length > 0[\s\S]{0,120}payload\.locale = normLocale/,
+    );
+  });
+
+  it('assigns the locale before the request is issued', async () => {
+    const src = await source();
+    expect(src).toMatch(/payload\.locale = normLocale[\s\S]{0,400}postCheckoutStart\(normFeedToken, payload/);
   });
 });

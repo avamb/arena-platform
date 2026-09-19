@@ -659,7 +659,7 @@ func (h *Handler) orderPersist(
 		h.orderInternal(w, req, "checkout token minting failed", err)
 		return
 	}
-	cs, err := txq.InsertCheckoutSessionWithToken(ctx, cc.orgID, cc.channel.ID, res.ID, nil, token)
+	cs, err := txq.InsertCheckoutSessionWithToken(ctx, cc.orgID, cc.channel.ID, res.ID, nil, token, nil)
 	if err != nil {
 		h.orderInternal(w, req, "insert checkout session failed", err)
 		return

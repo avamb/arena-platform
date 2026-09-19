@@ -91,6 +91,14 @@ type ResolveInput struct {
 	DeviceToken   string
 	WCCustomerID  string
 	DefaultRegion string // ISO 3166-1 alpha-2 for NormalizePhone
+	// Locale is the language the buyer used, already validated by the
+	// caller against the shipped template locales. It is written to
+	// customers.locale ONLY when this call CREATES the customer — an
+	// existing row is never overwritten, because a customer is shared
+	// across organizations and the most recent purchase's language is not
+	// a better answer than the first one's. Empty is normal and means
+	// "not stated".
+	Locale string
 	// OrgID / Source are used by LinkOrg — the resolver does NOT link on
 	// its own; callers invoke LinkOrg once they know the org the current
 	// operation belongs to.
@@ -319,7 +327,14 @@ func resolveAttempt(ctx context.Context, s Store, in ResolveInput, retriesLeft i
 	// and Resolve re-resolves from scratch, landing on the winner via the
 	// ordinary Step 2 lookup above.
 	return withRace(func(sp Store) (ResolveResult, error) {
-		c, err := sp.InsertCustomer(ctx, in.Name, "")
+		// in.Locale is set ONLY here, on the create path. An already-existing
+		// customer keeps whatever locale they have: the same person can buy
+		// in Czech from one organizer and in English from another, and a
+		// customer row is shared across organizations — letting the most
+		// recent purchase rewrite it would make the column oscillate. The
+		// language a given ticket e-mail renders in comes from that
+		// purchase's checkout session (migration 0105), not from here.
+		c, err := sp.InsertCustomer(ctx, in.Name, in.Locale)
 		if err != nil {
 			return ResolveResult{}, err
 		}

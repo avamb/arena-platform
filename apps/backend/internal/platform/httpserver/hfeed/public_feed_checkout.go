@@ -64,6 +64,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
@@ -111,6 +112,49 @@ type PublicFeedCheckoutStartRequest struct {
 	// CORS_ALLOWED_ORIGINS + PUBLIC_TICKETS_BASE_URL; anything absent or
 	// refused falls back to PUBLIC_TICKETS_BASE_URL.
 	ReturnURL string `json:"return_url,omitempty"`
+	// Locale is the language the buyer is checking out in — the widget's own
+	// active locale. It decides which language their ticket e-mail and PDF
+	// render in, and nothing else; an unknown or hostile value is silently
+	// dropped rather than rejected, because a buyer must never lose a sale
+	// over the language tag their browser reported.
+	Locale string `json:"locale,omitempty"`
+}
+
+// normalizeBuyerLocale validates a caller-supplied locale against the
+// languages arena actually ships e-mail and PDF templates for, returning ""
+// for anything else.
+//
+// It is deliberately forgiving: the value arrives from an embedded widget on
+// someone else's site, and the worst outcome of an unrecognised one is an
+// English e-mail — which is exactly what every buyer got before this existed.
+// Rejecting the checkout instead would trade a cosmetic miss for a lost sale.
+//
+// Region subtags are accepted and folded ("cs-CZ" and "CS" both become "cs"),
+// because a browser reports the full tag and the templates are per-language.
+func normalizeBuyerLocale(raw string) string {
+	candidate := strings.ToLower(strings.TrimSpace(raw))
+	if candidate == "" {
+		return ""
+	}
+	if idx := strings.IndexAny(candidate, "-_"); idx > 0 {
+		candidate = candidate[:idx]
+	}
+	for _, supported := range templates.SupportedLocales {
+		if candidate == supported {
+			return candidate
+		}
+	}
+	return ""
+}
+
+// localePtr turns a normalized locale into the nullable column value:
+// "not stated" must land as NULL, never as an empty string that a later
+// reader would have to special-case.
+func localePtr(locale string) *string {
+	if locale == "" {
+		return nil
+	}
+	return &locale
 }
 
 // mintCheckoutToken generates a 32-byte crypto-random hex string (64 chars).
@@ -191,6 +235,13 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	if req.Buyer != nil && req.Buyer.Email != "" {
 		req.HolderEmail = req.Buyer.Email
 	}
+
+	// ── 4a. Normalise the buyer's language ────────────────────────────────────
+	// Decided here, once, and carried to the checkout session so ticket
+	// issuance can render the e-mail in it. An unrecognised value becomes ""
+	// and the buyer gets English — the behaviour every buyer got before this
+	// existed, and far better than failing a sale over a language tag.
+	buyerLocale := normalizeBuyerLocale(req.Locale)
 
 	// ── 4b. Validate holder_email ─────────────────────────────────────────────
 	if req.HolderEmail == "" {
@@ -742,7 +793,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			seatTierPrices[tid] = l.UnitPrice
 		}
 		h.confirmPublicCheckout(ctx, w, r, checkCtx, res.ID, checkoutToken, bd, promoCodeID, expiresAt,
-			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone}, seatTierPrices, req.ReturnURL)
+			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, seatTierPrices, req.ReturnURL, buyerLocale)
 		return
 	}
 
@@ -898,7 +949,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// Pure GA: reservation_ga_items.unit_price is authoritative for every unit,
 	// so no tier price map is needed.
 	h.confirmPublicCheckout(ctx, w, r, checkCtx, reservation.ID, checkoutToken, bd, promoCodeID, expiresAt,
-		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone}, nil, req.ReturnURL)
+		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, nil, req.ReturnURL, buyerLocale)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1031,6 +1082,10 @@ type publicOrderBuyer struct {
 	Email string
 	Name  *string
 	Phone *string
+	// Locale is the already-normalized buyer language ("" when not stated).
+	// It reaches customers.Resolve, which applies it only when it creates a
+	// brand-new customer row.
+	Locale string
 }
 
 // ptrOrNil turns a possibly-empty string into the *string the order columns
@@ -1081,6 +1136,7 @@ func (h *Handler) confirmPublicCheckout(
 	buyer publicOrderBuyer,
 	tierUnitPrices map[uuid.UUID]int64,
 	returnURL string,
+	buyerLocale string,
 ) {
 	// ── 0. A paid cart needs a place to send the buyer BACK to, and a
 	// payment window, before anything is written. Resolving the return URL
@@ -1150,6 +1206,7 @@ func (h *Handler) confirmPublicCheckout(
 
 	cs, err := txq.InsertCheckoutSessionWithToken(
 		ctx, checkCtx.OrgID, checkCtx.SalesChannelID, reservationID, nil, checkoutToken,
+		localePtr(buyerLocale),
 	)
 	if err != nil {
 		h.logger.Error("public_feed_checkout: insert checkout session failed",
@@ -1377,7 +1434,10 @@ func (h *Handler) createPublicOrder(
 				Phone:     phone,
 				Name:      name,
 				ChannelID: checkCtx.SalesChannelID,
-				Now:       time.Now().UTC(),
+				// Applied only if this CREATES the customer; an existing
+				// row keeps the locale it already has.
+				Locale: buyer.Locale,
+				Now:    time.Now().UTC(),
 			})
 			if resErr != nil {
 				return fmt.Errorf("resolve customer: %w", resErr)

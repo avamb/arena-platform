@@ -18,7 +18,8 @@ const listAllCheckoutSessions = `-- name: ListAllCheckoutSessions :many
 SELECT id, org_id, channel_id, reservation_id, user_id, state,
        subtotal, discount, platform_fee, provider_fee, tax, total, currency,
        promo_code_id, payment_intent_id, payment_provider,
-       completed_at, abandoned_at, expired_at, created_at, updated_at
+       completed_at, abandoned_at, expired_at, created_at, updated_at,
+       checkout_token, buyer_locale
 FROM   checkout_sessions
 WHERE  ($1::uuid IS NULL OR org_id = $1)
   AND  ($2::text  IS NULL OR state  = $2)
