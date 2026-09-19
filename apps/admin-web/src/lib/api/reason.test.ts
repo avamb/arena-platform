@@ -342,6 +342,10 @@ describe("requiresAdminReason()", () => {
       "DELETE",
       true,
     ],
+    // F-40: the session gallery has no org in its URL but is org-gated
+    // server-side, so a superadmin needs the header on GET and PUT.
+    ["/v1/sessions/44444444-4444-4444-4444-444444444444/media", "GET", true],
+    ["/v1/sessions/44444444-4444-4444-4444-444444444444/media", "PUT", true],
   ])("path %s + method %s -> %s", (path, method, expected) => {
     expect(requiresAdminReason(path, method)).toBe(expected);
   });

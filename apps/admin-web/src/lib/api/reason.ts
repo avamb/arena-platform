@@ -115,6 +115,10 @@ const REASON_REQUIRED_REGEX: readonly RegExp[] = [
   /^\/v1\/organizations\/[^/]+\/customers(?:\/.*)?$/,
   /^\/v1\/organizations\/[^/]+\/orders(?:\/.*)?$/,
   /^\/v1\/organizations\/[^/]+\/imports(?:\/.*)?$/,
+  // The session gallery carries no org in its URL; hcatalog resolves the
+  // session's org and demands the header from a superadmin on GET and PUT
+  // (F-40, functional run 2026-09-19 — every read went out bare and 400'd).
+  /^\/v1\/sessions\/[^/]+\/media$/,
 ];
 
 /** HTTP methods treated as mutations for the SAUI-09 gate. */

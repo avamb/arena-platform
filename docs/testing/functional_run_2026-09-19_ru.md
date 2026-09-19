@@ -161,6 +161,19 @@
 - Lampyris staging: ветка `staging/arena-on-main` (origin/main + окно оплаты + все правки
   прогона, 71cf7be, локально, не запушена) выкачена на staging, харнесс 3561/0. Staging сейчас
   смотрит на старый Bil24 (fid 2624), не на Arena.
+- ✅ **F-59 закрыто: новый ключ с каналом.** Причина у владельца — форма выпуска ключа по умолчанию
+  стояла на «No channel»; теперь, если у организации один канал, он выбран сразу (Arena a544ec4).
+  Выпущен ключ `POt7JM5WF9Wk` с каналом #4, владелец вписал его в ивент-центр. Tallinn
+  публикуется в канал без предупреждений; новое мероприятие #12927 «Channel Key Check — Riga
+  Night» — вебхук `event.created` 200, вариативный товар Standard 20 / VIP 50, остатки 100/20,
+  афиша на месте. Единственное предупреждение — `import.venue_matched_by_name`.
+- ✅ **F-48 исправлено (arenasoldout 20e4480).** Заглушка «-» пустого тарифа убирается из названия
+  вариации (`woocommerce_product_variation_title`). Существующие вариации пересохранены: стенд — 18
+  («Channel Key Check — Riga Night - Standard»), staging Lampyris — 6.
+- Lampyris staging переключён на Arena (fid 2, `api.arenasoldout.com`), синк обновил товары 9075,
+  9064, 9053; резерв старой настройки — `/opt/lampyris-staging-bil24_acf_sync-backup-2026-09-19.json`.
+  Ветка `staging/arena-on-main` на 0b32810 (+F-48), выкачена.
+- F-49 (перенос сеанса до MACS и покупателей) — в бэклог как **B-10**, следующая итерация.
 
 ### Покупки и возвраты (сайт ↔ Arena ↔ MACS)
 - **F-20 🔴 (исправлено 22d553b)** После успешного PAY_ORDER `bil24-payment-window.php`

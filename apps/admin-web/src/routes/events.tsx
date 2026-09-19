@@ -68,7 +68,13 @@ import {
   type ReactNode,
 } from "react";
 import { Route as RootRoute } from "./__root";
-import { ApiError, authedFetch, uploadMedia } from "@/lib/api/client";
+import {
+  ApiError,
+  authedFetch,
+  fetchMediaObject,
+  uploadMedia,
+  type MediaObjectWithUrl,
+} from "@/lib/api/client";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth/useAuth";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
@@ -121,6 +127,8 @@ export interface EventItem {
   readonly venue_names: readonly string[];
   readonly visibility: EventVisibility;
   readonly image_url: string | null;
+  /** Event-level default poster (AB-47); sessions without their own inherit it. */
+  readonly poster_media_id?: string | null;
   readonly created_at: string;
   readonly updated_at: string;
 }
@@ -1912,10 +1920,13 @@ function EventsBody({
 }
 
 function PosterThumb({ event }: { event: EventItem }) {
-  if (event.image_url !== null && event.image_url !== "") {
+  const hasImageUrl = event.image_url !== null && event.image_url !== "";
+  const posterUrl = useMediaSignedUrl(hasImageUrl ? null : event.poster_media_id);
+  const src = hasImageUrl ? event.image_url : posterUrl;
+  if (src !== null && src !== "") {
     return (
       <img
-        src={event.image_url}
+        src={src}
         alt=""
         width={40}
         height={40}
@@ -3458,7 +3469,9 @@ function SessionsTab({
                             event={event}
                             session={s}
                             onUploaded={() => {
-                              void queryClient.invalidateQueries({ queryKey });
+                              // "Use for all sessions" rewrites the event row,
+                              // so refresh the list the drawer reads it from.
+                              void queryClient.invalidateQueries({ queryKey: ["events"] });
                             }}
                           />
                         </td>
@@ -4309,6 +4322,34 @@ export function mapSessionError(err: ApiError): string {
   }
 }
 
+/**
+ * Signed download URL of a media object. GET /v1/media-files/{id} answers 401
+ * without the signature, and a bare path would resolve against the admin host
+ * anyway, so an <img> must never point at `/v1/media-files/{id}` directly
+ * (F-40, functional run 2026-09-19). Shares ImageUpload's query key.
+ */
+function useMediaSignedUrl(mediaId: string | null | undefined): string | null {
+  const enabled = typeof mediaId === "string" && mediaId !== "";
+  const query = useQuery<MediaObjectWithUrl, ApiError>({
+    queryKey: ["media", mediaId],
+    queryFn: () => fetchMediaObject(mediaId as string),
+    enabled,
+    // The signature lives 7 minutes; refetch before it runs out.
+    staleTime: 5 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  return enabled ? (query.data?.signed_url ?? null) : null;
+}
+
+function MediaThumb({ mediaId, style }: { mediaId: string; style: CSSProperties }) {
+  const src = useMediaSignedUrl(mediaId);
+  if (src === null) {
+    return <div style={{ ...style, background: "#f3f4f6" }} aria-hidden="true" />;
+  }
+  return <img src={src} alt="" style={style} />;
+}
+
 // ---------------------------------------------------------------------------
 // SessionPosterUpload component (AB-47)
 // ---------------------------------------------------------------------------
@@ -4332,7 +4373,8 @@ interface SessionPosterUploadProps {
  * A checkbox "Apply to all sessions" replaces step 3 with:
  *  3b. PATCH the event with { poster_media_id: "<id>", clear_session_overrides: true }.
  *
- * Current poster is shown as a small thumbnail when poster_media_id is set.
+ * The thumbnail shows the session's own poster, or the event poster it
+ * inherits (sessions.poster_media_id ?? events.poster_media_id).
  */
 function SessionPosterUpload({ event, session, onUploaded }: SessionPosterUploadProps) {
   const [applyToAll, setApplyToAll] = useState(false);
@@ -4423,18 +4465,20 @@ function SessionPosterUpload({ event, session, onUploaded }: SessionPosterUpload
     textAlign: "center",
   };
 
+  const ownPoster = session.poster_media_id ?? null;
+  const shownPoster = ownPoster ?? event.poster_media_id ?? null;
+
   return (
     <div style={posterStyle}>
       <div style={posterRowStyle}>
-        {session.poster_media_id ? (
-          <img
-            src={`/v1/media-files/${session.poster_media_id}`}
-            alt="Session poster"
-            style={imgStyle}
-          />
+        {shownPoster !== null ? (
+          <MediaThumb mediaId={shownPoster} style={imgStyle} />
         ) : (
           <div style={placeholderStyle}>No poster</div>
         )}
+        {shownPoster !== null && ownPoster === null ? (
+          <span style={{ fontSize: "12px", color: "#6b7280" }}>Event poster</span>
+        ) : null}
         <label style={{ cursor: uploading ? "not-allowed" : "pointer" }}>
           <input
             type="file"
@@ -4797,11 +4841,7 @@ function SessionMediaGallery({ session }: { session: SessionItem }) {
                 #{idx}
               </span>
               {it.kind === "poster" && it.media_id ? (
-                <img
-                  src={`/v1/media-files/${it.media_id}`}
-                  alt=""
-                  style={thumbStyle}
-                />
+                <MediaThumb mediaId={it.media_id} style={thumbStyle} />
               ) : (
                 <div
                   style={{
