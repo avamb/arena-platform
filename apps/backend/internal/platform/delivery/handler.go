@@ -698,6 +698,7 @@ func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, brandin
 	}
 	t := pdf.Ticket{
 		TicketID:               ticketID.String(),
+		Locale:                 p.Locale,
 		EventName:              defaultStr(p.EventName, "Arena Event"),
 		SessionStart:           defaultTime(p.SessionStart),
 		SessionTZ:              p.SessionTZ,

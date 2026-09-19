@@ -118,6 +118,8 @@ func renderWithSpec(ticket Ticket, spec layoutSpec) ([]byte, error) {
 		UnitStr:        "pt",
 		Size:           gofpdf.SizeType{Wd: spec.pageW, Ht: spec.pageH},
 	})
+	registerFonts(pdf)
+	labels := labelsFor(ticket.Locale)
 	pdf.SetMargins(spec.margin, spec.margin, spec.margin)
 	pdf.SetAutoPageBreak(false, spec.margin)
 	pdf.SetCompression(false) // deterministic byte output for tests
@@ -142,7 +144,7 @@ func renderWithSpec(ticket Ticket, spec layoutSpec) ([]byte, error) {
 	// ── Event headline + labelled detail rows ─────────────────────────
 	y := spec.margin + spec.headerH + spec.blockGap
 	y = drawHeadline(pdf, ticket, spec, y)
-	y = drawDetails(pdf, ticket, spec.margin, y, spec)
+	y = drawDetails(pdf, ticket, spec.margin, y, spec, labels)
 
 	// ── Hero QR code (centered, high error correction) ────────────────
 	qrPNG, err := qrcode.Encode(ticket.QRPayload, qrcode.High, 512)
@@ -172,15 +174,15 @@ func renderWithSpec(ticket Ticket, spec layoutSpec) ([]byte, error) {
 	// ── EAN-13 number as plain text under the QR/code block (feature #503,
 	// W1-B6b; spec §11) ─────────────────────────────────────────────────
 	if ean := strings.TrimSpace(ticket.EAN13); ean != "" {
-		y = drawEAN13(pdf, ean, spec, y+spec.blockGap/2)
+		y = drawEAN13(pdf, ean, spec, y+spec.blockGap/2, labels.EAN13)
 	}
 
 	// ── Ticket ID under the QR/code block ─────────────────────────────
-	pdf.SetFont("Helvetica", "", spec.idFS)
+	pdf.SetFont(fontFamily, "", spec.idFS)
 	pdf.SetTextColor(102, 102, 102)
 	pdf.SetXY(spec.margin, y+6)
 	pdf.CellFormat(spec.pageW-2*spec.margin, spec.idFS+4,
-		"Ticket ID: "+ticket.TicketID, "", 0, "C", false, 0, "")
+		labels.TicketID+": "+ticket.TicketID, "", 0, "C", false, 0, "")
 	pdf.SetTextColor(0, 0, 0)
 
 	// ── Footer: legal-identification block ────────────────────────────
@@ -192,7 +194,7 @@ func renderWithSpec(ticket Ticket, spec layoutSpec) ([]byte, error) {
 	if len(legalLines) > 0 {
 		legalHeight := float64(len(legalLines)) * spec.legalLineH
 		legalTop := footerY - legalHeight - 6
-		pdf.SetFont("Helvetica", "", spec.legalFS)
+		pdf.SetFont(fontFamily, "", spec.legalFS)
 		pdf.SetTextColor(102, 102, 102)
 		pdf.SetXY(spec.margin, legalTop)
 		for _, ln := range legalLines {
@@ -206,7 +208,7 @@ func renderWithSpec(ticket Ticket, spec layoutSpec) ([]byte, error) {
 	if strings.TrimSpace(fine) == "" {
 		fine = DefaultFinePrint
 	}
-	pdf.SetFont("Helvetica", "I", spec.finePrintFS)
+	pdf.SetFont(fontFamily, "I", spec.finePrintFS)
 	pdf.SetXY(spec.margin, footerY)
 	pdf.MultiCell(spec.pageW-2*spec.margin, spec.finePrintFS+2, fine, "", "C", false)
 
@@ -248,12 +250,12 @@ func drawHeader(pdf *gofpdf.Fpdf, t Ticket, spec layoutSpec) {
 	if orgName == "" {
 		orgName = "Arena E-Ticket"
 	}
-	pdf.SetFont("Helvetica", "B", spec.headerFS)
+	pdf.SetFont(fontFamily, "B", spec.headerFS)
 	pdf.SetXY(spec.margin, spec.margin+spec.headerFS/2)
 	pdf.CellFormat(spec.pageW-2*spec.margin, spec.headerFS+4, orgName, "", 0, "R", false, 0, "")
 
 	if site := strings.TrimSpace(t.OrgWebsiteURL); site != "" {
-		pdf.SetFont("Helvetica", "", spec.siteFS)
+		pdf.SetFont(fontFamily, "", spec.siteFS)
 		pdf.SetTextColor(85, 85, 85)
 		pdf.SetXY(spec.margin, spec.margin+spec.headerFS/2+spec.headerFS+6)
 		pdf.CellFormat(spec.pageW-2*spec.margin, spec.siteFS+2, site, "", 0, "R", false, 0, "")
@@ -269,7 +271,7 @@ func drawHeader(pdf *gofpdf.Fpdf, t Ticket, spec layoutSpec) {
 // drawHeadline prints the event name in large type above the detail
 // block and returns the y cursor below it. Long names wrap.
 func drawHeadline(pdf *gofpdf.Fpdf, t Ticket, spec layoutSpec, y float64) float64 {
-	pdf.SetFont("Helvetica", "B", spec.headlineFS)
+	pdf.SetFont(fontFamily, "B", spec.headlineFS)
 	pdf.SetXY(spec.margin, y)
 	pdf.MultiCell(spec.pageW-2*spec.margin, spec.headlineFS+4, t.EventName, "", "L", false)
 	return pdf.GetY() + spec.blockGap/2
@@ -284,24 +286,24 @@ func drawHeadline(pdf *gofpdf.Fpdf, t Ticket, spec layoutSpec, y float64) float6
 // SEAT-C4 draws them in the seat font size (the most prominent rows of
 // the block, per the mobile-first spec). GA tickets skip the seat block
 // entirely.
-func drawDetails(pdf *gofpdf.Fpdf, t Ticket, x, y float64, spec layoutSpec) float64 {
+func drawDetails(pdf *gofpdf.Fpdf, t Ticket, x, y float64, spec layoutSpec, labels ticketLabels) float64 {
 	type row struct {
 		label, value string
 		seat         bool
 	}
 	rows := []row{
-		{label: "Session", value: formatSessionInVenueTZ(t.SessionStart, t.SessionTZ)},
-		{label: "Venue", value: joinNonEmpty(", ", t.VenueName, t.VenueCity)},
-		{label: "Tier", value: t.TierName},
+		{label: labels.Session, value: formatSessionInVenueTZ(t.SessionStart, t.SessionTZ)},
+		{label: labels.Venue, value: joinNonEmpty(", ", t.VenueName, t.VenueCity)},
+		{label: labels.Tier, value: t.TierName},
 	}
 	if hasSeat(t) {
 		rows = append(rows,
-			row{label: "Sector", value: t.SeatSector, seat: true},
-			row{label: "Row", value: t.SeatRow, seat: true},
-			row{label: "Seat", value: t.SeatNumber, seat: true},
+			row{label: labels.Sector, value: t.SeatSector, seat: true},
+			row{label: labels.Row, value: t.SeatRow, seat: true},
+			row{label: labels.Seat, value: t.SeatNumber, seat: true},
 		)
 	}
-	rows = append(rows, row{label: "Holder", value: t.HolderName})
+	rows = append(rows, row{label: labels.Holder, value: t.HolderName})
 
 	for _, r := range rows {
 		fs, rh := spec.detailFS, spec.detailRowH
@@ -311,9 +313,9 @@ func drawDetails(pdf *gofpdf.Fpdf, t Ticket, x, y float64, spec layoutSpec) floa
 			valueStyle = "B"
 		}
 		pdf.SetXY(x, y)
-		pdf.SetFont("Helvetica", "B", fs)
+		pdf.SetFont(fontFamily, "B", fs)
 		pdf.CellFormat(spec.labelW, rh, r.label+":", "", 0, "L", false, 0, "")
-		pdf.SetFont("Helvetica", valueStyle, fs)
+		pdf.SetFont(fontFamily, valueStyle, fs)
 		pdf.CellFormat(spec.pageW-x-spec.margin-spec.labelW, rh, r.value, "", 0, "L", false, 0, "")
 		y += rh
 	}
@@ -348,11 +350,11 @@ func drawHumanCode(pdf *gofpdf.Fpdf, code string, spec layoutSpec, y float64) fl
 // spec §11) and returns the y cursor below it. Unlike drawHumanCode this is
 // not letter-spaced/manual-entry styled — it is a small identification
 // line, so it reuses the same font size as the "Ticket ID" line below it.
-func drawEAN13(pdf *gofpdf.Fpdf, code string, spec layoutSpec, y float64) float64 {
-	pdf.SetFont("Helvetica", "", spec.idFS)
+func drawEAN13(pdf *gofpdf.Fpdf, code string, spec layoutSpec, y float64, label string) float64 {
+	pdf.SetFont(fontFamily, "", spec.idFS)
 	pdf.SetTextColor(102, 102, 102)
 	pdf.SetXY(spec.margin, y)
-	pdf.CellFormat(spec.pageW-2*spec.margin, spec.idFS+4, "EAN-13: "+code, "", 0, "C", false, 0, "")
+	pdf.CellFormat(spec.pageW-2*spec.margin, spec.idFS+4, label+": "+code, "", 0, "C", false, 0, "")
 	pdf.SetTextColor(0, 0, 0)
 	return y + spec.idFS + 4
 }

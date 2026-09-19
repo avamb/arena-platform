@@ -941,30 +941,6 @@ entries short and factual.
   row is won. Any NEW code path that mints a platform EAN-13 must go
   through `mint.EAN13`, never call `ean13.Random`/`ean13.Encode` and
   `InsertBarcode` directly.
-- **The ticket-delivery PDF cannot render Cyrillic or Czech-diacritic text —
-  it silently produces mojibake, not a clean English fallback.**
-  `delivery/pdf/layout.go` selects `pdf.SetFont("Helvetica", ...)` (a PDF
-  core-14 font) and never calls gofpdf's `AddUTF8Font`, so
-  `f.isCurrentUTF8` stays false and gofpdf writes the Go string's raw UTF-8
-  bytes into the content stream one byte at a time under WinAnsiEncoding
-  (see `github.com/jung-kurt/gofpdf@v1.16.2` `fpdf.go` `GetStringSymbolWidth`
-  / the text-showing path). Confirmed by rendering `EventName: "Концерт"`
-  and `VenueName: "Příliš žluťoučký kůň"`: the raw PDF bytes contain the
-  literal UTF-8 sequence (`d0 9a d0 be d0 bd ...` for "Концерт") inside the
-  `Tj` string literal, which a WinAnsi-encoding PDF viewer renders as
-  garbled Latin-1-lookalike glyphs (classic "UTF-8 shown as cp1252"
-  mojibake), not the intended characters and not blank/dropped. The
-  ticket/invitation EMAIL templates (feature #565, `cs`/`ru` added to
-  `delivery/templates/`) are unaffected — HTML email is UTF-8 native — but
-  `delivery/pdf` has NO locale parameter at all and prints its own labels
-  (Event/Date/Venue/Sector/Row/Seat/Order/etc.) in English regardless of
-  the email's locale; that is intentional and must stay that way until a
-  Unicode TrueType font is embedded via `AddUTF8Font`. Do NOT add cs/ru
-  labels to `pdf.go` and do NOT pass raw Cyrillic/Czech event names or
-  holder names through to the PDF expecting them to render — an
-  organizer's own `EventName`/`HolderName` in Cyrillic or Czech already
-  hits this bug today, independently of the locale work, and is an
-  existing gap, not something feature #565 introduced.
 - **No buyer-facing surface threads a locale into `ticket.deliver`.**
   `delivery.Payload.Locale` is a real field the templates renderer
   honours, but every enqueue call site
@@ -1077,3 +1053,44 @@ entries short and factual.
   `httpserver/hosted_checkout_integration_test.go`. `enableStripeForChannel`
   returns a teardown that must be deferred AFTER the fixture's own (defers are
   LIFO, so it then runs BEFORE the organization it references is deleted).
+- **The ticket-delivery PDF now embeds a UTF-8 TrueType font — do not add a
+  `pdf.SetFont("Helvetica", ...)` call back into
+  `internal/platform/delivery/pdf/{layout,pdf}.go`.** Until 2026-09-19 every
+  layout used gofpdf's built-in Core 14 Helvetica, which is WinAnsi/Latin-1
+  only: Cyrillic, Czech diacritics, Greek and most Hebrew came out as
+  mojibake (a real blocker for the Czech launch — Russian event names,
+  "Příliš žluťoučký kůň"-style venue/address data). Fixed by embedding
+  DejaVu Sans Condensed (Regular/Bold/Oblique) via `//go:embed` +
+  `AddUTF8FontFromBytes` (`internal/platform/delivery/pdf/fonts.go`,
+  constant `fontFamily`); the three TTFs plus `LICENSE-DejaVu.txt` are
+  vendored verbatim from `github.com/jung-kurt/gofpdf@v1.16.2`'s own
+  `font/` directory (Bitstream Vera license — permissive, redistribution
+  allowed — so no network fetch needed, no new go.mod dependency). DejaVu
+  covers Latin Extended, Cyrillic, Greek and the Hebrew base consonants
+  (Aleph..Tav all present, verified by parsing the ttf's own `cmap` in
+  `TestDejaVuSansCondensed_HasHebrewGlyphs`) — but gofpdf's `RTL()`/`LTR()`
+  only reverses character order before left-to-right layout, it is NOT a
+  bidi/shaping engine, so Hebrew renders correct glyphs in a naive
+  right-to-left character order, not proper contextual shaping. The
+  human-entry code (`drawHumanCode`) deliberately stays on the core
+  Courier font — `humancode.Format` output is always Crockford-Base32
+  ASCII, and Courier's fixed advance is what makes the manual per-glyph
+  letter-spacing exact. **Once a layout calls `pdf.SetFont(fontFamily,
+  ...)`, gofpdf switches that text's content-stream encoding from literal
+  Latin-1 bytes to UTF-16BE (2 bytes/rune, no BOM) — a test asserting on
+  raw PDF bytes must build its expected token through `pdfText()`
+  (`pdf_testutil_test.go`), not a plain `[]byte("literal string")`**, or it
+  silently stops matching (this is not a bug, the text just isn't
+  single-byte-encoded anymore). Regression coverage lives in
+  `render_i18n_test.go` — including the actual mojibake signature check
+  (the raw UTF-8 bytes of a Cyrillic string must NOT appear literally in
+  the uncompressed content stream). `Ticket.Locale` (`en`/`ru`/`cs`,
+  default `en`) separately controls the PRINTED FIELD LABELS only
+  (Session/Venue/Sector/Row/Seat/Holder/Ticket ID — see `labels.go`);
+  content values are never translated. `delivery.Handler` threads
+  `Payload.Locale` into `pdf.Ticket.Locale` in `renderTicketPDF`
+  (`handler.go`) — this is independent of `delivery/templates`' own
+  locale/fallback set (en/de/es/he) for the EMAIL BODY: the two locale
+  mechanisms are not unified (different supported-locale lists, different
+  fallback code — `labelsFor` here vs `Renderer.ResolveLocale` there), so
+  don't assume a locale value valid for one is valid for the other.
