@@ -15,6 +15,8 @@ package outbox
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -119,9 +122,51 @@ func cleanupOutboxEvents(t *testing.T, pool *pgxpool.Pool, eventTypePrefix strin
 
 // runDispatcher starts OutboxEventsDispatcher with the given dispatcher, runs
 // it for up to maxWait, then stops it.
+// pr04ScopedStore claims only the rows these tests insert (aggregate_type
+// pr04_test). The plain PGOutboxEventStore claims ANY pending row of the
+// shared database, and CI runs packages in parallel, so another package's row
+// reached this package's stub server and the duplicate-safety test counted it
+// as a re-delivery (CI run 35453526686, 2026-09-19).
+type pr04ScopedStore struct {
+	*PGOutboxEventStore
+	pool *pgxpool.Pool
+}
+
+// ClaimNext mirrors PGOutboxEventStore.ClaimNext with an aggregate_type filter.
+func (s *pr04ScopedStore) ClaimNext(ctx context.Context) (*OutboxEventRow, error) {
+	row := &OutboxEventRow{}
+	var payload []byte
+	err := s.pool.QueryRow(ctx, `
+		WITH next AS (
+			SELECT id FROM outbox_events
+			 WHERE processed_at IS NULL AND dead_lettered_at IS NULL
+			   AND (next_attempt_at IS NULL OR next_attempt_at <= now())
+			   AND aggregate_type = 'pr04_test'
+			 ORDER BY COALESCE(next_attempt_at, occurred_at)
+			   FOR UPDATE SKIP LOCKED
+			 LIMIT 1
+		)
+		UPDATE outbox_events o
+		   SET next_attempt_at = now() + '5 minutes'::interval
+		  FROM next WHERE o.id = next.id
+		RETURNING o.id::text, o.aggregate_type, o.aggregate_id, o.event_type,
+		          o.payload, o.occurred_at, o.attempts`,
+	).Scan(&row.ID, &row.AggregateType, &row.AggregateID, &row.EventType,
+		&payload, &row.OccurredAt, &row.Attempts)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	row.Payload = map[string]any{}
+	_ = json.Unmarshal(payload, &row.Payload)
+	return row, nil
+}
+
 func runPR04Dispatcher(t *testing.T, pool *pgxpool.Pool, dispatcher Dispatcher, maxWait time.Duration) {
 	t.Helper()
-	store := NewPGOutboxEventStore(pool)
+	store := &pr04ScopedStore{PGOutboxEventStore: NewPGOutboxEventStore(pool), pool: pool}
 	d, err := NewOutboxEventsDispatcher(OutboxEventsDispatcherOptions{
 		Store:           store,
 		Dispatcher:      dispatcher,
