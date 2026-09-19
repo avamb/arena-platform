@@ -488,6 +488,12 @@
       // string or hash we sent along would be dropped or would collide.
       const returnUrl = buildReturnUrl();
       if (returnUrl) payload.return_url = returnUrl;
+      // Language for the buyer's ticket e-mail / PDF — the same resolved
+      // locale the widget renders its own copy in. The backend ignores a
+      // locale it has no e-mail template for, so sending it is always safe.
+      if (typeof normLocale === 'string' && normLocale.length > 0) {
+        payload.locale = normLocale;
+      }
       const response = await postCheckoutStart(normFeedToken, payload, resolvedApiBase);
       // Save token in case user returns after the payment page.
       saveCheckoutToken(response.checkout_token);

@@ -48,6 +48,11 @@ type CheckoutSessionRow struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	CheckoutToken   string     `json:"checkout_token"`
+	// BuyerLocale is the language the buyer used at checkout (migration
+	// 0105), validated against templates.SupportedLocales before it was
+	// stored. NULL means not stated — a gateway sale, or a caller that sent
+	// nothing — and ticket delivery then falls back to English.
+	BuyerLocale *string `json:"buyer_locale"`
 }
 
 // scanCheckoutSessionRow scans a single checkout_sessions row.
@@ -78,6 +83,7 @@ func scanCheckoutSessionRow(row interface {
 		&cs.CreatedAt,
 		&cs.UpdatedAt,
 		&cs.CheckoutToken,
+		&cs.BuyerLocale,
 	)
 	return cs, err
 }
@@ -86,7 +92,7 @@ const selectCheckoutSessionColumns = `id, org_id, channel_id, reservation_id, us
        state, subtotal, discount, platform_fee, provider_fee, tax, total, currency,
        promo_code_id, payment_intent_id, payment_provider,
        completed_at, abandoned_at, expired_at, created_at, updated_at,
-       checkout_token`
+       checkout_token, buyer_locale`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // InsertCheckoutSession
@@ -114,22 +120,54 @@ func (q *Queries) InsertCheckoutSession(
 // ─────────────────────────────────────────────────────────────────────────────
 
 const insertCheckoutSessionWithToken = `-- name: InsertCheckoutSessionWithToken :one
-INSERT INTO checkout_sessions (org_id, channel_id, reservation_id, user_id, checkout_token)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO checkout_sessions (org_id, channel_id, reservation_id, user_id, checkout_token, buyer_locale)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING ` + selectCheckoutSessionColumns
 
 // InsertCheckoutSessionWithToken creates a new checkout session in state 'created'
 // with an explicitly supplied checkout_token (minted by the caller via crypto/rand).
 // This is used by the public feed checkout start endpoint (feature #318, WID-0a) so
 // the token is known before the DB round-trip and can be returned to the widget.
+//
+// buyerLocale (migration 0105) is the language the buyer is checking out in,
+// already validated against the shipped template locales. Pass nil when the
+// caller has none — a Bil24 gateway sale, for instance — and ticket delivery
+// falls back to English.
 func (q *Queries) InsertCheckoutSessionWithToken(
 	ctx context.Context,
 	orgID, channelID, reservationID uuid.UUID,
 	userID *uuid.UUID,
 	checkoutToken string,
+	buyerLocale *string,
 ) (CheckoutSessionRow, error) {
-	row := q.db.QueryRow(ctx, insertCheckoutSessionWithToken, orgID, channelID, reservationID, userID, checkoutToken)
+	row := q.db.QueryRow(ctx, insertCheckoutSessionWithToken,
+		orgID, channelID, reservationID, userID, checkoutToken, buyerLocale)
 	return scanCheckoutSessionRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetCheckoutBuyerLocaleByTicketID
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getCheckoutBuyerLocaleByTicketID = `-- name: GetCheckoutBuyerLocaleByTicketID :one
+SELECT cs.buyer_locale
+FROM   tickets cs_t
+JOIN   checkout_sessions cs ON cs.id = cs_t.checkout_session_id
+WHERE  cs_t.id = $1`
+
+// GetCheckoutBuyerLocaleByTicketID returns the language the buyer checked out
+// in for the purchase that issued this ticket (migration 0105), or a nil
+// pointer when the purchase never stated one.
+//
+// It exists for the delivery paths that hold a ticket id but not its checkout
+// session — the complimentary enqueue and the admin resend — so both render
+// the e-mail in the same language as the original ticket e-mail.
+//
+// Returns pgx.ErrNoRows when the ticket does not exist.
+func (q *Queries) GetCheckoutBuyerLocaleByTicketID(ctx context.Context, ticketID uuid.UUID) (*string, error) {
+	var locale *string
+	err := q.db.QueryRow(ctx, getCheckoutBuyerLocaleByTicketID, ticketID).Scan(&locale)
+	return locale, err
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -334,11 +372,7 @@ func (q *Queries) ListCheckoutSessionsByReservation(ctx context.Context, reserva
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getCheckoutSessionByToken = `-- name: GetCheckoutSessionByToken :one
-SELECT id, org_id, channel_id, reservation_id, user_id,
-       state, subtotal, discount, platform_fee, provider_fee, tax, total, currency,
-       promo_code_id, payment_intent_id, payment_provider,
-       completed_at, abandoned_at, expired_at, created_at, updated_at,
-       checkout_token
+SELECT ` + selectCheckoutSessionColumns + `
 FROM   checkout_sessions
 WHERE  checkout_token = $1`
 

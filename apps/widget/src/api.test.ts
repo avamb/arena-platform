@@ -54,6 +54,33 @@ describe('postCheckoutStart — success', () => {
   });
 });
 
+describe('postCheckoutStart — request body', () => {
+  function captureBody(): { calls: () => unknown } {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: () => Promise.resolve({}),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return {
+      calls: () => JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body),
+    };
+  }
+
+  it('serializes the locale so the backend can pick the ticket-email language', async () => {
+    const cap = captureBody();
+    await postCheckoutStart('ft', { ...payload, locale: 'cs' });
+    expect(cap.calls()).toMatchObject({ session_id: 'sess-1', locale: 'cs' });
+  });
+
+  it('omits locale entirely when the caller does not set one', async () => {
+    const cap = captureBody();
+    await postCheckoutStart('ft', payload);
+    expect(cap.calls()).not.toHaveProperty('locale');
+  });
+});
+
 describe('postCheckoutStart — structured errors', () => {
   it('throws an ApiError that is still an Error with the legacy message format', async () => {
     mockFetchResponse({

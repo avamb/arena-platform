@@ -20,9 +20,74 @@ import (
 	"encoding/json"
 	"log/slog"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
 )
+
+// buyerLocaleCache memoises checkout-session → buyer locale lookups for one
+// enqueue batch. Every ticket of a purchase shares its checkout session, so
+// this turns one query per TICKET into one per PURCHASE.
+type buyerLocaleCache map[uuid.UUID]string
+
+// BuyerLocaleFor returns the language the buyer checked out in, or "" when
+// the purchase never stated one.
+//
+// "" is the normal answer for anything sold through the Bil24 gateway, and
+// for every ticket issued before migration 0105 — the renderer then falls
+// back to English, exactly as it always did. A lookup failure degrades to ""
+// as well: the wrong language on an e-mail is a cosmetic miss, refusing to
+// send the ticket is not.
+func (h *Handler) BuyerLocaleFor(ctx context.Context, cache buyerLocaleCache, checkoutSessionID uuid.UUID) string {
+	if h.deliveryJobQueries == nil || checkoutSessionID == uuid.Nil {
+		return ""
+	}
+	if cache != nil {
+		if cached, ok := cache[checkoutSessionID]; ok {
+			return cached
+		}
+	}
+	locale := ""
+	cs, err := h.deliveryJobQueries.GetCheckoutSessionByID(ctx, checkoutSessionID)
+	switch {
+	case err != nil:
+		h.logger.Warn("delivery: buyer locale lookup failed; falling back to the default language",
+			slog.String("checkout_session_id", checkoutSessionID.String()),
+			slog.String("error", err.Error()),
+		)
+	case cs.BuyerLocale != nil:
+		locale = *cs.BuyerLocale
+	}
+	if cache != nil {
+		cache[checkoutSessionID] = locale
+	}
+	return locale
+}
+
+// BuyerLocaleForTicket is the by-ticket variant, for the delivery paths that
+// hold a ticket id but not its checkout session — the complimentary enqueue
+// (gen.ComplimentaryTicketRow does not carry one) and the admin resend.
+//
+// Degrades to "" on any failure, for the same reason as BuyerLocaleFor: the
+// wrong language is a cosmetic miss, a ticket that never leaves is not.
+func (h *Handler) BuyerLocaleForTicket(ctx context.Context, ticketID uuid.UUID) string {
+	if h.deliveryJobQueries == nil || ticketID == uuid.Nil {
+		return ""
+	}
+	locale, err := h.deliveryJobQueries.GetCheckoutBuyerLocaleByTicketID(ctx, ticketID)
+	if err != nil {
+		h.logger.Warn("delivery: buyer locale lookup by ticket failed; falling back to the default language",
+			slog.String("ticket_id", ticketID.String()),
+			slog.String("error", err.Error()),
+		)
+		return ""
+	}
+	if locale == nil {
+		return ""
+	}
+	return *locale
+}
 
 // EnqueueDeliveryJobs creates one delivery_jobs row and one ticket.deliver
 // worker_jobs row for each ticket in the slice.
@@ -35,6 +100,10 @@ func (h *Handler) EnqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketR
 	if h.deliveryJobQueries == nil || h.workerPool == nil {
 		return
 	}
+
+	// Every ticket of one purchase shares its checkout session, so the
+	// buyer-locale lookup happens once per purchase, not once per ticket.
+	localeCache := buyerLocaleCache{}
 
 	for _, t := range tickets {
 		ticketID := t.ID
@@ -53,7 +122,13 @@ func (h *Handler) EnqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketR
 		// denormalized seat coordinates into the payload so the delivery
 		// worker can render Sector / Row / Seat into the PDF and email
 		// without re-joining session_seats at delivery time.
-		p := delivery.Payload{TicketID: ticketID.String()}
+		// The buyer's own language (migration 0105). Empty means "not
+		// stated" — a gateway sale, or a ticket issued before the widget
+		// started sending it — and the renderer falls back to English.
+		p := delivery.Payload{
+			TicketID: ticketID.String(),
+			Locale:   h.BuyerLocaleFor(ctx, localeCache, t.CheckoutSessionID),
+		}
 		if t.SeatSector != nil {
 			p.SeatSector = *t.SeatSector
 		}
@@ -174,6 +249,10 @@ func (h *Handler) EnqueueComplimentaryDeliveryJobs(ctx context.Context, tickets 
 		p := delivery.Payload{
 			TicketID: ticketID.String(),
 			Template: delivery.TemplateInvitation,
+			// gen.ComplimentaryTicketRow carries no checkout session, so
+			// this resolves by ticket instead. An invitation issued by an
+			// operator usually has no buyer locale at all and stays English.
+			Locale: h.BuyerLocaleForTicket(ctx, ticketID),
 		}
 		body, jsonErr := json.Marshal(p)
 		if jsonErr != nil {

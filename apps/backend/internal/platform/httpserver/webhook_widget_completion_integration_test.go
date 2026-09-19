@@ -152,6 +152,12 @@ func (f *webhookWidgetFixture) cleanup() {
 		{`DELETE FROM barcodes WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`, f.sessionID},
 		{`DELETE FROM delivery_jobs WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`, f.sessionID},
 		{`DELETE FROM ticket_credentials WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`, f.sessionID},
+		// ticket.deliver jobs are keyed by payload->>'ticket_id' alone, so
+		// they must go BEFORE the tickets they name or nothing can find them
+		// again and they leak into whichever test next drains worker_jobs
+		// generically (AGENTS.md).
+		{`DELETE FROM worker_jobs WHERE payload->>'ticket_id' IN
+		   (SELECT id::text FROM tickets WHERE session_id = $1)`, f.sessionID},
 		{`DELETE FROM tickets WHERE session_id = $1`, f.sessionID},
 		{`DELETE FROM outbox_events WHERE aggregate_id IN (SELECT id::text FROM orders WHERE org_id = $1)`, f.orgID},
 		{`DELETE FROM order_events WHERE order_id IN (SELECT id FROM orders WHERE org_id = $1)`, f.orgID},

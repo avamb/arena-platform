@@ -34,11 +34,72 @@ const (
 	// project name to avoid clashing with platform metrics (go_*, process_*).
 	MetricsNamespace = "arena"
 
-	subsystemHTTP   = "http"
-	subsystemDB     = "db"
-	subsystemWorker = "worker"
-	subsystemOutbox = "outbox"
+	subsystemHTTP    = "http"
+	subsystemDB      = "db"
+	subsystemWorker  = "worker"
+	subsystemOutbox  = "outbox"
+	subsystemPayment = "payment"
 )
+
+// Payment-webhook label values. They are deliberately a CLOSED set: a
+// Prometheus label fed from anything an outside caller controls is an
+// unbounded-cardinality incident waiting to happen, and a payment webhook is
+// exactly such a caller.
+const (
+	// LabelRouteKind distinguishes the legacy un-suffixed webhook route from
+	// the per-config one. It is NEVER an org id or a config id — those are
+	// high-cardinality AND identify a customer.
+	LabelRouteKind = "route_kind"
+	// LabelEventType is the provider event type, mapped through
+	// PaymentWebhookEventLabel so an unknown one becomes "other".
+	LabelEventType = "event_type"
+	// LabelOutcome is how the webhook resolved: processed, ignored,
+	// not_ours, rejected, error.
+	LabelOutcome = "outcome"
+
+	// RouteKindLegacy is POST /v1/payment-intents/webhook.
+	RouteKindLegacy = "legacy"
+	// RouteKindConfig is POST /v1/payment-intents/webhook/{config_id}.
+	RouteKindConfig = "config"
+
+	// PaymentWebhookEventOther is the catch-all bucket for any event type
+	// outside the known set.
+	PaymentWebhookEventOther = "other"
+)
+
+// knownPaymentWebhookEvents bounds the event_type label. Anything not listed
+// collapses into "other" — Stripe alone publishes well over a hundred event
+// types, and an organizer's account is shared with their other sites, so the
+// endpoint genuinely receives events arena has never heard of.
+var knownPaymentWebhookEvents = map[string]bool{
+	"checkout.session.completed":               true,
+	"checkout.session.expired":                 true,
+	"checkout.session.async_payment_succeeded": true,
+	"checkout.session.async_payment_failed":    true,
+	"payment_intent.succeeded":                 true,
+	"payment_intent.payment_failed":            true,
+	"payment_intent.processing":                true,
+	"payment_intent.requires_action":           true,
+	"payment_intent.amount_capturable":         true,
+	"payment_intent.amount_capturable_updated": true,
+	"payment_intent.manual_review":             true,
+	"mock.requires_action":                     true,
+	"mock.processing":                          true,
+	"mock.authorized":                          true,
+	"mock.succeeded":                           true,
+	"mock.failed":                              true,
+	"mock.manual_review":                       true,
+}
+
+// PaymentWebhookEventLabel maps a provider event type onto the bounded
+// event_type label value. Use it at EVERY call site — passing a raw provider
+// string straight into the counter is how a metrics backend falls over.
+func PaymentWebhookEventLabel(eventType string) string {
+	if knownPaymentWebhookEvents[eventType] {
+		return eventType
+	}
+	return PaymentWebhookEventOther
+}
 
 // LabelNames groups the canonical label keys used by the baseline metrics so
 // call sites stay typo-free.
@@ -128,6 +189,31 @@ type Metrics struct {
 	// of the response status stored. Useful for alerting on replay storms and
 	// for verifying that idempotency deduplication is working in production.
 	IdempotencyReplaysTotal prometheus.Counter
+
+	// PaymentWebhookSignatureFailuresTotal counts inbound payment webhooks
+	// rejected because their HMAC signature did not verify, labelled only by
+	// route kind (legacy / config).
+	//
+	// A sustained non-zero rate on the per-config route means an organizer
+	// pasted the wrong signing secret into their payment config — their
+	// payments are silently not arriving, and nothing else surfaces that.
+	// A spike on either route is someone probing the endpoint.
+	//
+	// Metric name: arena_payment_webhook_signature_failures_total.
+	PaymentWebhookSignatureFailuresTotal *prometheus.CounterVec
+
+	// PaymentWebhookEventsTotal counts inbound payment webhook events by
+	// bounded event type and outcome (processed, ignored, not_ours,
+	// rejected, error).
+	//
+	// `not_ours` is expected traffic, not an error: an organizer's Stripe
+	// account is shared with their other sites, so events for payments arena
+	// never created arrive constantly. Watching its ratio to `processed` is
+	// how an operator tells "the endpoint is fine" from "our events stopped
+	// coming".
+	//
+	// Metric name: arena_payment_webhook_events_total.
+	PaymentWebhookEventsTotal *prometheus.CounterVec
 
 	// IdempotencyCleanupDeletedTotal counts idempotency_keys rows deleted by
 	// the scheduled maintenance job (job_type='idempotency.cleanup'). Each
@@ -270,6 +356,26 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 				Help:      "Total idempotency_keys rows purged by the scheduled idempotency.cleanup maintenance job.",
 			},
 		),
+
+		PaymentWebhookSignatureFailuresTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: MetricsNamespace,
+				Subsystem: subsystemPayment,
+				Name:      "webhook_signature_failures_total",
+				Help:      "Total payment provider webhooks rejected because their HMAC signature did not verify, by route kind.",
+			},
+			[]string{LabelRouteKind},
+		),
+
+		PaymentWebhookEventsTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: MetricsNamespace,
+				Subsystem: subsystemPayment,
+				Name:      "webhook_events_total",
+				Help:      "Total payment provider webhook events received, by bounded event type and outcome.",
+			},
+			[]string{LabelEventType, LabelOutcome},
+		),
 	}
 
 	for _, c := range []prometheus.Collector{
@@ -286,6 +392,8 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 		m.HTTPPanicsTotal,
 		m.IdempotencyReplaysTotal,
 		m.IdempotencyCleanupDeletedTotal,
+		m.PaymentWebhookSignatureFailuresTotal,
+		m.PaymentWebhookEventsTotal,
 	} {
 		if err := reg.Register(c); err != nil {
 			// If a peer test already registered the same metric on the

@@ -78,6 +78,12 @@ func (s *Server) mountPaymentIntentRoutes(r chi.Router) {
 	if s.paymentIntentQueries != nil {
 		// Webhook is intentionally unauthenticated; idempotency handled inside.
 		r.Post("/payment-intents/webhook", s.handlePaymentIntentWebhook)
+		// Per-config variant. The config id names the organizer's own
+		// payment_provider_configs row, so the signature is checked against
+		// exactly that account's secret and an event for a payment arena
+		// never created is acknowledged instead of 404'd — their Stripe
+		// account is shared with their other sites and delivers both.
+		r.Post("/payment-intents/webhook/{config_id}", s.handlePaymentIntentWebhookForConfig)
 	}
 	if s.authEnabled() && s.paymentIntentQueries != nil {
 		r.Group(func(pr chi.Router) {

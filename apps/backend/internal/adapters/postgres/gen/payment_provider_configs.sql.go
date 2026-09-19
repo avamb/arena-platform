@@ -116,6 +116,34 @@ func (q *Queries) GetPaymentProviderConfigByID(ctx context.Context, id, orgID uu
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GetPaymentProviderConfigByIDUnscoped
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getPaymentProviderConfigByIDUnscoped = `-- name: GetPaymentProviderConfigByIDUnscoped :one
+SELECT id, org_id, provider, mode, provider_account_id, public_config, secrets, status, is_active, created_at, updated_at, deleted_at
+FROM   payment_provider_configs
+WHERE  id = $1
+  AND  deleted_at IS NULL`
+
+// GetPaymentProviderConfigByIDUnscoped fetches a config by its UUID primary
+// key WITHOUT an org scope. Returns pgx.ErrNoRows when not found or deleted.
+//
+// It exists for exactly one caller: the per-config payment webhook route
+// POST /v1/payment-intents/webhook/{config_id}. The caller there is the
+// payment provider, which has no arena identity and cannot supply an org —
+// the config id in the path IS the routing key, and the org it belongs to is
+// what this read establishes, so the signature can then be checked against
+// that org's own signing secret.
+//
+// A single-row primary-key read, so an unauthenticated caller cannot make it
+// expensive. Every other reader must keep using the org-scoped
+// GetPaymentProviderConfigByID.
+func (q *Queries) GetPaymentProviderConfigByIDUnscoped(ctx context.Context, id uuid.UUID) (PaymentProviderConfigRow, error) {
+	row := q.db.QueryRow(ctx, getPaymentProviderConfigByIDUnscoped, id)
+	return scanPaymentProviderConfigRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ListPaymentProviderConfigsByOrg
 // ─────────────────────────────────────────────────────────────────────────────
 

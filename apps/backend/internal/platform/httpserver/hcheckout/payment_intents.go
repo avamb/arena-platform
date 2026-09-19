@@ -41,6 +41,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -795,6 +796,24 @@ const (
 	failureCodeSessionExpired = "session_expired"
 )
 
+// Webhook outcome label values for arena_payment_webhook_events_total.
+const (
+	// webhookOutcomeProcessed — the event moved the payment intent.
+	webhookOutcomeProcessed = "processed"
+	// webhookOutcomeIgnored — understood, deliberately not acted on
+	// (unknown type, already terminal, unreachable transition, an unpaid
+	// checkout.session.completed).
+	webhookOutcomeIgnored = "ignored"
+	// webhookOutcomeNotOurs — a verified event for a payment arena did not
+	// create. EXPECTED traffic on a shared provider account, not a fault.
+	webhookOutcomeNotOurs = "not_ours"
+	// webhookOutcomeRejected — the request never got past authentication or
+	// parsing.
+	webhookOutcomeRejected = "rejected"
+	// webhookOutcomeError — arena failed to process an event it should have.
+	webhookOutcomeError = "error"
+)
+
 // WebhookEventTypeToState is the exported form of webhookEventTypeToState, for
 // use by the httpserver shim layer (payment_intents_137_test.go references
 // webhookEventTypeToState from package httpserver via checkout_shims.go).
@@ -845,12 +864,44 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 				slog.String("remote_addr", r.RemoteAddr),
 			)
 		}
+		h.recordSignatureFailure(observability.RouteKindLegacy)
 		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope(
 			"webhook.invalid_signature", "webhook signature verification failed", r,
 		))
 		return
 	}
 
+	h.processPaymentWebhook(w, r, body, webhookRoute{Kind: observability.RouteKindLegacy})
+}
+
+// webhookRoute carries the differences between the two webhook entry points
+// into the shared processing body. The state machine itself is identical —
+// only what a mismatch MEANS differs.
+type webhookRoute struct {
+	// Kind is the metrics label: legacy or config.
+	Kind string
+	// ExpectedOrgID, when set, is the organization the config in the URL
+	// belongs to. A payment intent owned by any OTHER org is not ours, even
+	// though the id resolved: the signature proved the delivery came from
+	// that organizer's provider account, not that the payment is theirs.
+	ExpectedOrgID *uuid.UUID
+	// ForeignEventIsOK turns "no arena payment intent for this provider id"
+	// from a 404 into an acknowledged no-op.
+	//
+	// It is true ONLY on the per-config route, and the difference matters a
+	// great deal: an organizer's provider account is shared with their other
+	// sites, so our endpoint legitimately receives events for payments arena
+	// never created. Answering 404 makes the provider retry for days and mail
+	// the account owner that our endpoint is broken. On the legacy route a
+	// miss stays a 404, because that route has no proof the delivery came
+	// from a known account at all.
+	ForeignEventIsOK bool
+}
+
+// processPaymentWebhook is the shared body of both webhook entry points. The
+// caller has already read the request body and — this is the whole contract —
+// VERIFIED ITS SIGNATURE. Nothing below re-checks authentication.
+func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, body []byte, route webhookRoute) {
 	if h.paymentIntentQueries == nil || h.pool == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
@@ -859,7 +910,8 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 	}
 	ctx := r.Context()
 
-	req, err := parseWebhookPaymentIntentRequest(body)
+	req, parseErr := parseWebhookPaymentIntentRequest(body)
+	err := parseErr
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("webhook.invalid_json", "request body is not valid JSON", r))
 		return
@@ -881,6 +933,7 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 		if !ok {
 			// Unknown event type — acknowledge without processing (common for
 			// provider events we don't handle, e.g. "payment_intent.created").
+			h.recordWebhookEvent(req.EventType, webhookOutcomeIgnored)
 			httputil.WriteJSON(w, http.StatusOK, map[string]any{
 				"acknowledged": true,
 				"event_type":   req.EventType,
@@ -904,6 +957,7 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 	// (provider_payment_id, event_type) key, or the later real event for the
 	// same pair would be swallowed as a duplicate.
 	if req.EventType == eventCheckoutSessionCompleted && req.PaymentStatus != checkoutSessionPaid {
+		h.recordWebhookEvent(req.EventType, webhookOutcomeIgnored)
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"acknowledged": true,
 			"event_type":   req.EventType,
@@ -928,6 +982,16 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 	pi, err := h.paymentIntentQueries.GetPaymentIntentByProviderID(ctx, req.ProviderPaymentID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			if route.ForeignEventIsOK {
+				// Expected traffic, not an error: the organizer's provider
+				// account is shared with their other sites, so events for
+				// payments arena never created arrive constantly. A 404 here
+				// would make the provider retry for days and warn the account
+				// owner that our endpoint is failing.
+				h.writeNotOurPayment(w, r, req.EventType)
+				return
+			}
+			h.recordWebhookEvent(req.EventType, webhookOutcomeNotOurs)
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("webhook.intent_not_found", "no payment intent found for provider_payment_id", r))
 			return
 		}
@@ -935,7 +999,24 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 			slog.String("provider_payment_id", req.ProviderPaymentID),
 			slog.String("error", err.Error()),
 		)
+		h.recordWebhookEvent(req.EventType, webhookOutcomeError)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("webhook.lookup_failed", "failed to locate payment intent", r))
+		return
+	}
+
+	// Tenant check. The signature proved the delivery came from the provider
+	// account behind THIS config — it did not prove the payment belongs to
+	// that organizer. Without this, organizer A could replay a genuine event
+	// of their own account against a provider id belonging to organizer B and
+	// move B's order. Treated as "not ours" rather than 403: the answer must
+	// not tell the caller whether the id exists at all.
+	if route.ExpectedOrgID != nil && pi.OrgID != *route.ExpectedOrgID {
+		h.logger.Warn("webhook: payment intent belongs to a different organization than the config in the URL",
+			slog.String("provider_payment_id", req.ProviderPaymentID),
+			slog.String("config_org_id", route.ExpectedOrgID.String()),
+			slog.String("intent_org_id", pi.OrgID.String()),
+		)
+		h.writeNotOurPayment(w, r, req.EventType)
 		return
 	}
 
@@ -943,6 +1024,7 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 	currentState := pi.State
 	if isTerminalPaymentIntentState(currentState) {
 		// Already terminal — acknowledge without transitioning.
+		h.recordWebhookEvent(req.EventType, webhookOutcomeIgnored)
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"acknowledged": true,
 			"event_type":   req.EventType,
@@ -954,6 +1036,7 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 
 	if !validWebhookTransition(currentState, targetState) {
 		// Transition not valid — acknowledge without transitioning.
+		h.recordWebhookEvent(req.EventType, webhookOutcomeIgnored)
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"acknowledged": true,
 			"event_type":   req.EventType,
@@ -1202,12 +1285,31 @@ func (h *Handler) HandlePaymentIntentWebhook(w http.ResponseWriter, r *http.Requ
 	// tickets; subsequent runs detect the complete set and return them unchanged.
 	// Delivery jobs are enqueued inside IssueTicketsForCheckout (feature #367).
 
+	h.recordWebhookEvent(req.EventType, webhookOutcomeProcessed)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"acknowledged":       true,
 		"event_type":         req.EventType,
 		"processed":          true,
 		"payment_intent":     paymentIntentFromRow(updated),
 		"checkout_completed": checkoutCompleted,
+	})
+}
+
+// writeNotOurPayment answers a verified event that does not belong to arena:
+// either the provider id matches no payment intent, or the one it matches
+// belongs to a different organization than the config the event arrived on.
+//
+// Both cases are answered IDENTICALLY and with 200, on purpose. 200 stops the
+// provider's multi-day retry schedule and the "your endpoint is failing"
+// mail; identical wording means the response cannot be used to probe whether
+// a given provider id exists in arena.
+func (h *Handler) writeNotOurPayment(w http.ResponseWriter, r *http.Request, eventType string) {
+	h.recordWebhookEvent(eventType, webhookOutcomeNotOurs)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"acknowledged": true,
+		"event_type":   eventType,
+		"processed":    false,
+		"reason":       "not an arena payment",
 	})
 }
 

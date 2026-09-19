@@ -160,7 +160,13 @@ func (h *Handler) HandleAdminResendTicketDelivery(w http.ResponseWriter, r *http
 
 	// Build the worker job payload and enqueue it via the same SQL used by
 	// the post-issuance enqueuer so semantics line up exactly.
-	p := delivery.Payload{TicketID: ticketID.String()}
+	// A resend must arrive in the SAME language as the original ticket
+	// e-mail — the buyer asked for their ticket again, not for a different
+	// one. Empty stays English, as before.
+	p := delivery.Payload{
+		TicketID: ticketID.String(),
+		Locale:   h.BuyerLocaleForTicket(r.Context(), ticketID),
+	}
 	body, jsonErr := json.Marshal(p)
 	if jsonErr != nil {
 		h.logger.Error("admin_ticket_delivery: marshal payload failed",

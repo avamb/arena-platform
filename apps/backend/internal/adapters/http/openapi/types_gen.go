@@ -7670,6 +7670,21 @@ type PublicFeedCheckoutStartRequest struct {
 	// when the `buyer` object is present.
 	HolderEmail openapi_types.Email `json:"holder_email"`
 
+	// Locale The language the buyer is checking out in — the widget's own
+	// active locale. It decides which language their ticket e-mail
+	// and PDF render in, and nothing else.
+	//
+	// Validated against the languages arena ships e-mail templates
+	// for (`cs`, `de`, `en`, `es`, `he`, `ru`); a region subtag is
+	// accepted and folded, so `cs-CZ` and `CS` both become `cs`.
+	// Anything unrecognised is silently ignored and the buyer gets
+	// English — a language tag must never cost a sale.
+	//
+	// Stored on the checkout session, not on the customer: the same
+	// person may buy in Czech from one organizer and in English from
+	// another.
+	Locale *string `json:"locale,omitempty"`
+
 	// PromoCode Optional promotional code to apply.
 	PromoCode *string `json:"promo_code"`
 
@@ -11385,6 +11400,9 @@ type CreatePaymentIntentJSONRequestBody = CreatePaymentIntentRequest
 
 // PaymentIntentWebhookJSONRequestBody defines body for PaymentIntentWebhook for application/json ContentType.
 type PaymentIntentWebhookJSONRequestBody = PaymentIntentWebhookRequest
+
+// PaymentIntentWebhookForConfigJSONRequestBody defines body for PaymentIntentWebhookForConfig for application/json ContentType.
+type PaymentIntentWebhookForConfigJSONRequestBody = PaymentIntentWebhookRequest
 
 // TransitionPaymentIntentJSONRequestBody defines body for TransitionPaymentIntent for application/json ContentType.
 type TransitionPaymentIntentJSONRequestBody = TransitionPaymentIntentRequest

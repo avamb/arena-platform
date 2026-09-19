@@ -162,6 +162,17 @@ export interface CheckoutStartPayload {
    * `getCheckoutTokenFromSearch` reads on load.
    */
   return_url?: string;
+  /**
+   * Language the buyer's ticket e-mail and PDF are rendered in.
+   *
+   * The widget sends its currently active locale (the same value that drives
+   * `getCheckoutI18n`). This is NOT the widget's UI language — that stays
+   * entirely client-side; it only tells the backend which e-mail template to
+   * render. The backend accepts the languages it ships templates for
+   * (`cs`, `de`, `en`, `es`, `he`, `ru`) and silently ignores anything else,
+   * so any locale tag is safe to send.
+   */
+  locale?: string;
 }
 
 /** Response from POST /v1/public/feeds/{token}/checkout/start. */

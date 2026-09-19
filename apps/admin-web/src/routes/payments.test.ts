@@ -6,8 +6,12 @@
  *  - Public-config JSON validator
  *  - PROVIDER_REQUIRED_SECRETS catalogue (mirrors requiredSecretFields in Go)
  *  - Server-error mapper (all error codes the backend can emit)
+ *  - Per-config Stripe webhook URL + the four checkout.session.* events the
+ *    organizer must subscribe that endpoint to
  */
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { ApiError } from "@/lib/api/client";
 import {
   UUID_RE,
@@ -20,7 +24,11 @@ import {
   validatePublicConfigJSON,
   mapServerError,
   buildStripeWebhookUrl,
+  buildStripeConfigWebhookUrl,
   STRIPE_WEBHOOK_EVENTS,
+  STRIPE_CHECKOUT_SESSION_EVENTS,
+  StripeWebhookConfigUrlsView,
+  type PaymentConfig,
 } from "./payments";
 
 // ---------------------------------------------------------------------------
@@ -288,5 +296,144 @@ describe("STRIPE_WEBHOOK_EVENTS", () => {
     for (const evt of STRIPE_WEBHOOK_EVENTS) {
       expect(evt).toMatch(/^(payment_intent|checkout\.session)\./);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-config webhook endpoint: POST /v1/payment-intents/webhook/{config_id}
+// ---------------------------------------------------------------------------
+describe("buildStripeConfigWebhookUrl", () => {
+  const CONFIG_ID = "550e8400-e29b-41d4-a716-446655440000";
+
+  it("appends the config id to the webhook path", () => {
+    expect(
+      buildStripeConfigWebhookUrl("https://api.arenasoldout.com", CONFIG_ID),
+    ).toBe(
+      `https://api.arenasoldout.com/v1/payment-intents/webhook/${CONFIG_ID}`,
+    );
+  });
+
+  it("strips trailing slashes from the base before appending", () => {
+    expect(
+      buildStripeConfigWebhookUrl("https://api.example.com//", CONFIG_ID),
+    ).toBe(`https://api.example.com/v1/payment-intents/webhook/${CONFIG_ID}`);
+  });
+
+  it("works with a path-prefixed base URL", () => {
+    expect(
+      buildStripeConfigWebhookUrl("https://api.example.com/arena", CONFIG_ID),
+    ).toBe(
+      `https://api.example.com/arena/v1/payment-intents/webhook/${CONFIG_ID}`,
+    );
+  });
+
+  it("returns null for a config that has no id yet (never a partial URL)", () => {
+    expect(buildStripeConfigWebhookUrl("https://api.example.com", "")).toBeNull();
+    expect(
+      buildStripeConfigWebhookUrl("https://api.example.com", "   "),
+    ).toBeNull();
+  });
+});
+
+describe("STRIPE_CHECKOUT_SESSION_EVENTS", () => {
+  it("is exactly the four hosted-Checkout events the per-config endpoint needs", () => {
+    expect([...STRIPE_CHECKOUT_SESSION_EVENTS]).toEqual([
+      "checkout.session.completed",
+      "checkout.session.expired",
+      "checkout.session.async_payment_succeeded",
+      "checkout.session.async_payment_failed",
+    ]);
+  });
+
+  it("names no payment_intent.* event (those belong to the shared endpoint)", () => {
+    for (const evt of STRIPE_CHECKOUT_SESSION_EVENTS) {
+      expect(evt).toMatch(/^checkout\.session\./);
+    }
+  });
+
+  it("is a subset of the events the handler understands", () => {
+    for (const evt of STRIPE_CHECKOUT_SESSION_EVENTS) {
+      expect(STRIPE_WEBHOOK_EVENTS).toContain(evt);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// StripeWebhookConfigUrlsView — rendered with renderToStaticMarkup because the
+// admin-web Vitest environment is Node-only (venueSeatingPlans precedent).
+// ---------------------------------------------------------------------------
+describe("StripeWebhookConfigUrlsView", () => {
+  const API_BASE = "https://api.arenasoldout.com";
+  const SAVED_ID = "550e8400-e29b-41d4-a716-446655440000";
+
+  function makeConfig(overrides: Partial<PaymentConfig> = {}): PaymentConfig {
+    return {
+      id: SAVED_ID,
+      org_id: "11111111-2222-3333-4444-555555555555",
+      provider: "stripe",
+      mode: "live",
+      provider_account_id: null,
+      public_config: null,
+      secret_fields_set: ["api_key", "webhook_secret"],
+      status: "configured",
+      missing_required_fields: [],
+      is_active: true,
+      created_at: "2026-09-01T00:00:00Z",
+      updated_at: "2026-09-01T00:00:00Z",
+      ...overrides,
+    };
+  }
+
+  function render(stripeConfigs: readonly PaymentConfig[]): string {
+    return renderToStaticMarkup(
+      createElement(StripeWebhookConfigUrlsView, {
+        apiBaseUrl: API_BASE,
+        stripeConfigs,
+      }),
+    );
+  }
+
+  it("renders the saved config's full per-config webhook URL", () => {
+    const html = render([makeConfig()]);
+    expect(html).toContain(
+      `${API_BASE}/v1/payment-intents/webhook/${SAVED_ID}`,
+    );
+  });
+
+  it("names all four checkout.session.* events as the required set", () => {
+    const html = render([makeConfig()]);
+    for (const evt of STRIPE_CHECKOUT_SESSION_EVENTS) {
+      expect(html).toContain(evt);
+    }
+    expect(html).toContain("only");
+  });
+
+  it("does not name a payment_intent.* event in the per-config instructions", () => {
+    expect(render([makeConfig()])).not.toContain("payment_intent.");
+  });
+
+  it("shows a hint instead of a URL for a config that is not saved yet", () => {
+    const html = render([makeConfig({ id: "" })]);
+    expect(html).toContain("stripe-webhook-config-url-unsaved");
+    expect(html).toContain("has not been saved yet");
+    // No partial / broken URL is rendered at all.
+    expect(html).not.toContain("/v1/payment-intents/webhook");
+  });
+
+  it("shows the save-first hint when the organization has no Stripe config", () => {
+    const html = render([]);
+    expect(html).toContain("stripe-webhook-config-url-none");
+    expect(html).toContain("once it is saved");
+    expect(html).not.toContain("/v1/payment-intents/webhook/");
+  });
+
+  it("renders one URL per saved Stripe config (test and live)", () => {
+    const other = "660e8400-e29b-41d4-a716-446655440001";
+    const html = render([
+      makeConfig({ mode: "test" }),
+      makeConfig({ id: other, mode: "live" }),
+    ]);
+    expect(html).toContain(`/v1/payment-intents/webhook/${SAVED_ID}`);
+    expect(html).toContain(`/v1/payment-intents/webhook/${other}`);
   });
 });
