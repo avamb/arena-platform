@@ -317,6 +317,37 @@ type Config struct {
 	MediaS3AccessKeyID     string `env:"MEDIA_S3_ACCESS_KEY_ID"     required:"false" default:""`
 	MediaS3SecretAccessKey string `env:"MEDIA_S3_SECRET_ACCESS_KEY" required:"false" default:""`
 	MediaS3UsePathStyle    bool   `env:"MEDIA_S3_USE_PATH_STYLE"    required:"false" default:"true"`
+
+	// -------------------------------------------------------------------------
+	// Ops watchdog / Telegram alerting (internal/platform/opsalert,
+	// internal/platform/opswatchdog) — sale notifications and early-warning
+	// alerts for the first real ticket sales, with no ops staff on call.
+	// -------------------------------------------------------------------------
+	// OpsTelegramBotToken is the Telegram Bot API token used to send
+	// alert/sale messages. When empty (together with OpsTelegramChatID),
+	// opsalert.NewTelegramNotifier degrades to a logging no-op — this is a
+	// safe default for dev/test/CI, never a startup error.
+	OpsTelegramBotToken string `env:"OPS_TELEGRAM_BOT_TOKEN" required:"false" default:""`
+	// OpsTelegramChatID is the destination chat (owner DM or group) the bot
+	// posts to.
+	OpsTelegramChatID string `env:"OPS_TELEGRAM_CHAT_ID" required:"false" default:""`
+	// OpsAlertEnvLabel is prefixed onto every Telegram message (e.g. "prod",
+	// "staging") so the owner can tell which deployment is talking when more
+	// than one environment shares the same chat.
+	OpsAlertEnvLabel string `env:"OPS_ALERT_ENV_LABEL" required:"false" default:"dev"`
+	// OpsWatchdogHeartbeatHourUTC is the UTC hour (0-23) at which the
+	// ops.watchdog job sends its once-daily "still alive" digest.
+	OpsWatchdogHeartbeatHourUTC int `env:"OPS_WATCHDOG_HEARTBEAT_HOUR_UTC" required:"false" default:"7"`
+
+	// -------------------------------------------------------------------------
+	// Metrics endpoint authentication
+	// -------------------------------------------------------------------------
+	// MetricsBearerToken, when set, requires "Authorization: Bearer <token>"
+	// on GET /metrics (arena-api and the arena-worker metrics sidecar) and
+	// rejects any other request with 401. Empty preserves the previous
+	// unauthenticated behaviour, which stays the default for local compose /
+	// same-network Prometheus scraping.
+	MetricsBearerToken string `env:"METRICS_BEARER_TOKEN" required:"false" default:""`
 }
 
 // DBDSN is an alias for DatabaseURL that matches the terminology used in the
@@ -407,6 +438,10 @@ func (c *Config) LogAttrs() []slog.Attr {
 		slog.String("media_signing_secret", redact(c.MediaSigningSecret)),
 		slog.String("media_s3_access_key_id", redact(c.MediaS3AccessKeyID)),
 		slog.String("media_s3_secret_access_key", redact(c.MediaS3SecretAccessKey)),
+		slog.Bool("ops_telegram_configured", c.OpsTelegramBotToken != "" && c.OpsTelegramChatID != ""),
+		slog.String("ops_alert_env_label", c.OpsAlertEnvLabel),
+		slog.Int("ops_watchdog_heartbeat_hour_utc", c.OpsWatchdogHeartbeatHourUTC),
+		slog.Bool("metrics_bearer_token_configured", c.MetricsBearerToken != ""),
 	}
 }
 
@@ -480,6 +515,12 @@ func Load() (*Config, error) {
 		MediaS3Bucket:          getenv("MEDIA_S3_BUCKET", ""),
 		MediaS3AccessKeyID:     getenv("MEDIA_S3_ACCESS_KEY_ID", ""),
 		MediaS3SecretAccessKey: getenv("MEDIA_S3_SECRET_ACCESS_KEY", ""),
+
+		OpsTelegramBotToken: getenv("OPS_TELEGRAM_BOT_TOKEN", ""),
+		OpsTelegramChatID:   getenv("OPS_TELEGRAM_CHAT_ID", ""),
+		OpsAlertEnvLabel:    getenv("OPS_ALERT_ENV_LABEL", "dev"),
+
+		MetricsBearerToken: getenv("METRICS_BEARER_TOKEN", ""),
 	}
 
 	// Parse errors are collected together with Validate() errors so a single
@@ -724,6 +765,13 @@ func Load() (*Config, error) {
 	}
 	cfg.SMTPUseTLS = b
 
+	// Ops watchdog daily heartbeat hour (UTC, 0-23).
+	iHeartbeatHour, err := getenvInt("OPS_WATCHDOG_HEARTBEAT_HOUR_UTC", 7)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.OpsWatchdogHeartbeatHourUTC = iHeartbeatHour
+
 	if validateErr := cfg.Validate(); validateErr != nil {
 		parseErrs = append(parseErrs, validateErr)
 	}
@@ -935,6 +983,13 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf(
 			"MEDIA_BACKEND %q is invalid (allowed: s3|local or empty for inactive)",
 			c.MediaBackend,
+		))
+	}
+
+	// --- Ops watchdog -----------------------------------------------------
+	if c.OpsWatchdogHeartbeatHourUTC < 0 || c.OpsWatchdogHeartbeatHourUTC > 23 {
+		errs = append(errs, fmt.Errorf(
+			"OPS_WATCHDOG_HEARTBEAT_HOUR_UTC must be 0-23 (got %d)", c.OpsWatchdogHeartbeatHourUTC,
 		))
 	}
 

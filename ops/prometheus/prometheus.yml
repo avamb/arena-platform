@@ -10,12 +10,22 @@ scrape_configs:
       - targets: ['api:8080']
     metrics_path: /metrics
     scrape_interval: 15s
+    # When METRICS_BEARER_TOKEN is set on arena-api (recommended once the
+    # deployment is reachable from outside the compose network — see
+    # docs/ops/monitoring_runbook_ru.md), uncomment and fill in the same
+    # value here so Prometheus can still scrape:
+    # authorization:
+    #   credentials: "<METRICS_BEARER_TOKEN value>"
 
   - job_name: arena-worker
     static_configs:
       - targets: ['worker:9091']
     metrics_path: /metrics
     scrape_interval: 15s
+    # Same METRICS_BEARER_TOKEN guard applies to the worker's own /metrics
+    # sidecar (WORKER_METRICS_ADDR, default :9091):
+    # authorization:
+    #   credentials: "<METRICS_BEARER_TOKEN value>"
 
   # k6 Prometheus remote-write receiver (optional; used during load test runs).
   # k6 pushes metrics via: k6 run --out experimental-prometheus-rw <script>

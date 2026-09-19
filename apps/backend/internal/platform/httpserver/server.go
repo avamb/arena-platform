@@ -27,6 +27,7 @@ package httpserver
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"net/http"
 	"strings"
@@ -124,16 +125,46 @@ func (s *Server) Shutdown(ctx context.Context) error {
 func (s *Server) mountOperationalRoutes() {
 	s.router.Get("/healthz", s.handleHealthz)
 	s.router.Get("/readyz", s.handleReadyz)
-	// /metrics is only mounted when the caller supplies a handler. The
-	// scrape endpoint is intentionally unauthenticated for the foundation
-	// milestone — Dokploy's reverse proxy enforces network-level restriction.
+	// /metrics is only mounted when the caller supplies a handler. When
+	// METRICS_BEARER_TOKEN is set, requireMetricsBearerToken wraps it so a
+	// request without a matching "Authorization: Bearer <token>" header gets
+	// 401 instead of the scrape body — first real sales go live with no ops
+	// staff watching for an exposed metrics endpoint. When the token is
+	// empty (the default for local compose / same-network Prometheus), the
+	// endpoint stays unauthenticated exactly as before.
 	if s.metrics != nil {
-		s.router.Method(http.MethodGet, "/metrics", s.metrics)
+		s.router.Method(http.MethodGet, "/metrics", RequireMetricsBearerToken(s.cfg.MetricsBearerToken, s.metrics))
 	}
 	// Custom 404/405 handlers return the standard JSON error envelope
 	// instead of chi's default plain-text responses (features #12, #13).
 	s.router.NotFound(handleNotFound)
 	s.router.MethodNotAllowed(handleMethodNotAllowed)
+}
+
+// RequireMetricsBearerToken wraps next so that, when token is non-empty, a
+// request must present "Authorization: Bearer <token>" (compared in
+// constant time) or it is rejected with 401 before next ever runs. An empty
+// token disables the check entirely — next is returned unwrapped — so
+// behaviour is unchanged for deployments that have not set
+// METRICS_BEARER_TOKEN.
+//
+// Exported so cmd/arena-worker can apply the identical guard to its own
+// /metrics sidecar endpoint without duplicating the comparison logic.
+func RequireMetricsBearerToken(token string, next http.Handler) http.Handler {
+	if token == "" {
+		return next
+	}
+	want := []byte("Bearer " + token)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got := []byte(r.Header.Get("Authorization"))
+		if len(got) != len(want) || subtle.ConstantTimeCompare(got, want) != 1 {
+			msg := i18n.Localize(r.Context(), "error.unauthorized",
+				"authentication required", nil)
+			writeJSON(w, http.StatusUnauthorized, errorEnvelope("auth_required", msg, r))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // mountCompatRoutes is defined in bil24_shims.go (feature #157).

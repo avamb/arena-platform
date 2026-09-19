@@ -913,3 +913,29 @@ entries short and factual.
   webhooks) shows `totalPrice 0` with discount reason «Приглашение». A
   same-cart re-send cannot flip the flag (answers `-2`
   `bil24.order_kind_changed`): an order never changes its source.
+- **`ops.watchdog` (`internal/platform/opswatchdog`, registered in
+  `cmd/arena-worker/main.go` next to `order.expire_sweep`/
+  `reservation.expire_sweep`, migration 0104) is READ-ONLY on every business
+  table and must stay that way** — it only ever writes its own two tables,
+  `ops_watchdog_state` (per-check cursors) and `ops_alerts` (dedup/lifecycle
+  for standing-condition alerts). Cursor-based checks (sales feed, dead
+  letters, refunds) seed their cursor to `now()` on first use, never
+  replaying pre-existing history — a fixture that inserts a row and THEN
+  calls the handler for the very first time in that process sees its OWN
+  row treated as "history" and skipped (bit the dead-letters integration
+  test; fixed by priming the handler once before seeding, same pattern the
+  sales-feed test already used). Standing-condition checks (paid-no-
+  tickets, payment-succeeded-not-completed, manual_review, lag) dedup by
+  `ops_alerts.fingerprint` via `AlertEngine.Sync` — notify once, re-notify
+  every 30 minutes while it recurs, one "resolved" message when a later run
+  no longer finds it. Alert/sale messages must never carry buyer email,
+  name or phone — only order numbers (`orders.system_id`), amounts,
+  counts, ids; a job's free-form `last_error` is scrubbed
+  (`opsalert.ScrubEmails`) and truncated to 200 chars before it can reach a
+  message. `internal/platform/opsalert.New` degrades to a logging no-op
+  when `OPS_TELEGRAM_BOT_TOKEN`/`OPS_TELEGRAM_CHAT_ID` are empty — never an
+  error, never blocks worker startup. Running the watchdog against the
+  shared local dev-stand surfaces REAL pre-existing `payment_not_completed`/
+  `manual_review` rows from old load-test data (dated 2026-09-13) — that is
+  correct behaviour, not a bug in the check; do not "fix" the query to hide
+  them.
