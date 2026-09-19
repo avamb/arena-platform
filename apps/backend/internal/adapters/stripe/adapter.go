@@ -33,8 +33,11 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 )
 
-// compile-time interface guard
-var _ payments.PaymentProvider = (*Adapter)(nil)
+// compile-time interface guards
+var (
+	_ payments.PaymentProvider        = (*Adapter)(nil)
+	_ payments.HostedCheckoutProvider = (*Adapter)(nil)
+)
 
 const (
 	defaultBaseURL      = "https://api.stripe.com/v1"
@@ -120,6 +123,20 @@ type stripePaymentIntent struct {
 	ClientSecret string            `json:"client_secret"`
 	Status       string            `json:"status"`
 	NextAction   *stripeNextAction `json:"next_action"`
+}
+
+// stripeCheckoutSession is the subset of Stripe's Checkout Session object
+// this adapter reads. `payment_intent` is an expandable field: when not
+// expanded Stripe sends the bare pi_… string, and it is null until the buyer
+// actually starts paying — hence json.RawMessage-free plain string plus the
+// caller treating "" as "not known yet".
+type stripeCheckoutSession struct {
+	ID            string `json:"id"`
+	URL           string `json:"url"`
+	PaymentIntent string `json:"payment_intent"`
+	ExpiresAt     int64  `json:"expires_at"`
+	PaymentStatus string `json:"payment_status"`
+	Status        string `json:"status"`
 }
 
 type stripeRefund struct {
@@ -259,6 +276,77 @@ func (a *Adapter) CreateIntent(ctx context.Context, req payments.CreateIntentReq
 		Metadata:         make(map[string]string),
 	}
 	return resp, nil
+}
+
+// CreateCheckoutSession creates a Stripe-hosted Checkout Session via
+// POST /v1/checkout/sessions and returns the buyer-facing redirect URL.
+//
+// Shape of the request (all form-encoded, like the rest of this adapter):
+//
+//   - mode=payment, payment_method_types[0]=card — cards ONLY. Async methods
+//     (bank debits, vouchers) would let a buyer "complete" the session hours
+//     before the money settles, long after the seat hold has expired.
+//   - a SINGLE inline line item (price_data) carrying the total in minor
+//     units. arena has already computed every per-ticket price, discount and
+//     fee; re-stating the cart line by line would let Stripe's own rounding
+//     disagree with orders.total.
+//   - NO capture_method — automatic capture. The seats are released by
+//     arena's own sweeps if the buyer never pays, so an authorise-then-
+//     capture dance would only add a second failure mode.
+//   - client_reference_id plus metadata on BOTH the session and the
+//     underlying PaymentIntent (payment_intent_data[metadata][…]), so a
+//     webhook of either shape traces back to arena's rows.
+//   - expires_at — Stripe requires it to be at least 30 minutes out. The
+//     caller sizes it so the hosted session always dies BEFORE the seats
+//     are released.
+//
+// The returned SessionID is the cs_… id; PaymentID (pi_…) is normally empty
+// here because Stripe only mints the PaymentIntent once the buyer starts
+// paying, and is learned from the webhook instead.
+func (a *Adapter) CreateCheckoutSession(ctx context.Context, req payments.CreateHostedCheckoutRequest) (*payments.CreateHostedCheckoutResponse, error) {
+	form := url.Values{}
+	form.Set("mode", "payment")
+	form.Set("payment_method_types[0]", "card")
+	form.Set("line_items[0][quantity]", "1")
+	form.Set("line_items[0][price_data][currency]", strings.ToLower(req.Currency))
+	form.Set("line_items[0][price_data][unit_amount]", strconv.FormatInt(req.Amount, 10))
+	form.Set("line_items[0][price_data][product_data][name]", req.ProductName)
+	form.Set("success_url", req.SuccessURL)
+	form.Set("cancel_url", req.CancelURL)
+	if req.ClientReferenceID != "" {
+		form.Set("client_reference_id", req.ClientReferenceID)
+	}
+	if req.CustomerEmail != "" {
+		form.Set("customer_email", req.CustomerEmail)
+	}
+	if req.ExpiresAtUnix > 0 {
+		form.Set("expires_at", strconv.FormatInt(req.ExpiresAtUnix, 10))
+	}
+	for k, v := range req.Metadata {
+		form.Set("metadata["+k+"]", v)
+		form.Set("payment_intent_data[metadata]["+k+"]", v)
+	}
+
+	endpoint := a.cfg.BaseURL + "/checkout/sessions"
+	rawBody, _, err := a.doRequest(ctx, http.MethodPost, endpoint, form, req.IdempotencyKey)
+	if err != nil {
+		return nil, fmt.Errorf("stripe: CreateCheckoutSession: %w", err)
+	}
+
+	var cs stripeCheckoutSession
+	if err := json.Unmarshal(rawBody, &cs); err != nil {
+		return nil, fmt.Errorf("stripe: CreateCheckoutSession: unmarshal response: %w", err)
+	}
+	if cs.ID == "" || cs.URL == "" {
+		return nil, fmt.Errorf("stripe: CreateCheckoutSession: response has no session id or url")
+	}
+
+	return &payments.CreateHostedCheckoutResponse{
+		SessionID:     cs.ID,
+		URL:           cs.URL,
+		PaymentID:     cs.PaymentIntent,
+		ExpiresAtUnix: cs.ExpiresAt,
+	}, nil
 }
 
 // CapturePayment captures a previously authorised Stripe PaymentIntent via
