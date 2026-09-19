@@ -965,28 +965,64 @@ entries short and factual.
   organizer's own `EventName`/`HolderName` in Cyrillic or Czech already
   hits this bug today, independently of the locale work, and is an
   existing gap, not something feature #565 introduced.
-- **No buyer-facing surface threads a locale into `ticket.deliver`.**
-  `delivery.Payload.Locale` is a real field the templates renderer
-  honours, but every enqueue call site
-  (`htickets.EnqueueDeliveryJobs`/`EnqueueComplimentaryDeliveryJobs` in
-  `delivery_enqueue.go`, `HandleAdminResendTicketDelivery` in
-  `admin_ticket_delivery.go`, `hreports/report_delivery_enqueue.go`)
-  constructs `delivery.Payload{...}` without ever setting `Locale`, so
-  every ticket/invitation email renders in English (`templates.DefaultLocale`)
-  today no matter what language the buyer used in the widget.
-  `customers.locale` (migration 0091) and `customers.ResolveInput` in
-  `internal/platform/customers/resolve.go` also carry no locale — new
-  customers are always inserted with `locale=""`
-  (`sp.InsertCustomer(ctx, in.Name, "")` in `resolve.go`), and
-  `hfeed/public_feed_checkout.go`'s `checkoutStartRequest` has no locale
-  field either — the widget (`apps/widget/src/lib/checkout.ts`) tracks
-  `en`/`ru`/`cs`/`he` purely client-side for its own UI strings and never
-  sends it to `POST /v1/public/feeds/{token}/checkout/start`. Wiring this
-  end-to-end needs, at minimum: an optional `locale` field on the
-  checkout-start request struct in `hfeed/public_feed_checkout.go`, a
-  column (or reuse of `checkout_sessions`/`orders`) to persist it, and a
-  read of that value in `htickets.EnqueueDeliveryJobs` to populate
-  `delivery.Payload.Locale`. None of that exists yet.
+- **The buyer's language lives on `checkout_sessions.buyer_locale`, and that
+  column is the ONLY thing that decides a ticket email's language.**
+  The widget sends an optional `locale` on
+  `POST /v1/public/feeds/{token}/checkout/start`;
+  `hfeed.normalizeBuyerLocale` folds case and drops the region subtag
+  (`cs-CZ` -> `cs`) and returns `""` for anything outside
+  `templates.SupportedLocales` — an unknown tag is NEVER an error, because
+  a cosmetic mismatch must not cost a sale, and `localePtr("")` stores
+  NULL. Migration 0105 added the nullable column; since every `gen` query
+  feeding `scanCheckoutSessionRow` must select it, a new checkout-session
+  query has to append `buyer_locale` to `selectCheckoutSessionColumns` or
+  the scan fails on a column count — `ListAllCheckoutSessions`
+  (`superadmin.sql.go`) was already silently short one column before this.
+  `htickets.EnqueueDeliveryJobs` reads it back through a per-call
+  `buyerLocaleCache` (one query per distinct checkout session, not per
+  ticket) and `EnqueueComplimentaryDeliveryJobs` /
+  `HandleAdminResendTicketDelivery` through `BuyerLocaleForTicket` —
+  a resend must arrive in the SAME language as the original. Bil24-gateway
+  orders pass `nil` (`hbil24`'s `InsertCheckoutSessionWithToken`): the
+  selling site owns that buyer's language, arena never learns it.
+  `customers.ResolveInput.Locale` is applied on CREATE only —
+  `customers.locale` is shared across every org that buyer ever bought
+  from, so one purchase must not retitle their existing preference.
+  Note the PDF still prints English labels regardless (see the gotcha
+  above about `delivery/pdf`).
+- **The per-config payment webhook route is the one that may answer 200 to a
+  payment arena does not own.** `POST /v1/payment-intents/webhook/{config_id}`
+  (`hcheckout/payment_webhook_config_route.go`) names a
+  `payment_provider_configs` row, verifies the signature ONLY against THAT
+  row's `secrets.webhook_secret` — never the process-env fallback — and then
+  requires the resolved payment intent to belong to the SAME org as the
+  config. Statuses are deliberate and must not be "simplified": a config id
+  that is not a UUID is 400, one that is unknown OR not usable (inactive,
+  wrong provider) is 404 with no detail so the endpoint cannot be used to
+  enumerate ids, a config with no signing secret is 401 (it exists, it just
+  cannot authenticate anything), a bad signature is 401, and a VERIFIED
+  event whose payment arena does not own — unknown id, or another org's
+  intent — is 200 `{acknowledged:true, processed:false, reason:"not an
+  arena payment"}`. That last one is the whole point: an organizer's Stripe
+  account also serves their other sites, so foreign events arrive
+  constantly and a 404 would make Stripe retry for days and mail the owner
+  that our endpoint is broken. The LEGACY un-suffixed
+  `POST /v1/payment-intents/webhook` keeps its old behaviour exactly
+  (404 for an unknown payment) — it has no config id, so it cannot tell a
+  foreign-but-legitimate event from a probe. Both routes share ONE body,
+  `processPaymentWebhook`, parameterised by a `webhookRoute` struct; never
+  fork the state machine to add a route.
+- **The payment-webhook metrics are fed by an unauthenticated endpoint, so
+  every label is bounded by construction.**
+  `arena_payment_webhook_signature_failures_total{route_kind}` carries only
+  `legacy` or `config` — never an org id, a config id or an IP, all of which
+  an attacker controls the cardinality of.
+  `arena_payment_webhook_events_total{event_type,outcome}` passes
+  `event_type` through `observability.PaymentWebhookEventLabel`, which keeps
+  the handful of types arena actually handles and collapses everything else
+  to `other`. Stripe publishes well over a hundred event types and the body
+  is caller-supplied, so a raw pass-through is a metrics-backend outage
+  waiting to happen. Any new counter on this surface must do the same.
 - **`ops.watchdog` (`internal/platform/opswatchdog`, registered in
   `cmd/arena-worker/main.go` next to `order.expire_sweep`/
   `reservation.expire_sweep`, migration 0104) is READ-ONLY on every business
