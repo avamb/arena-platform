@@ -13,8 +13,10 @@ func TestNew_ParsesAllEmbeddedFiles(t *testing.T) {
 	}
 	got := r.KnownTemplates()
 	want := []string{
-		"invitation.de", "invitation.en", "invitation.es", "invitation.he",
-		"ticket.de", "ticket.en", "ticket.es", "ticket.he",
+		"invitation.cs", "invitation.de", "invitation.en", "invitation.es",
+		"invitation.he", "invitation.ru",
+		"ticket.cs", "ticket.de", "ticket.en", "ticket.es", "ticket.he",
+		"ticket.ru",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("KnownTemplates mismatch:\n got=%v\nwant=%v", got, want)
@@ -350,6 +352,118 @@ func TestRender_Branding_HTMLEscapingAppliesToFooter(t *testing.T) {
 	}
 }
 
+// TestRender_RussianAndCzechMarkers guards the feature #565 locale launch:
+// every supported locale must render without error and the cs/ru bodies
+// must actually contain localized text (not a silent English fallback) and
+// escape HTML in the event name like every other locale.
+func TestRender_RussianAndCzechMarkers(t *testing.T) {
+	r, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		locale       string
+		htmlLangAttr string
+		ticketMarker string
+		inviteMarker string
+	}{
+		{locale: "ru", htmlLangAttr: `lang="ru"`, ticketMarker: "Ваш билет готов", inviteMarker: "Вы приглашены!"},
+		{locale: "cs", htmlLangAttr: `lang="cs"`, ticketMarker: "Vaše vstupenka je připravena", inviteMarker: "Jste pozváni!"},
+	}
+	data := Data{
+		TicketID:       "11111111-2222-3333-4444-555555555555",
+		RecipientEmail: "fan@example.com",
+		HolderName:     "<b>Lena</b>",
+		EventName:      "Symphonic Night <script>alert(1)</script>",
+		SessionStart:   "2026-10-01 20:00 (Europe/Prague)",
+		VenueName:      "Forum Karlín",
+		TierName:       "VIP",
+		Branding: Branding{
+			OrgName:      PlatformOrgName,
+			LogoURL:      PlatformLogoURL,
+			LogoAlt:      PlatformOrgName,
+			LegalName:    PlatformLegalName,
+			ContactEmail: PlatformContactEmail,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.locale, func(t *testing.T) {
+			ticketOut, err := r.Render(TemplateKindTicket, tc.locale, data)
+			if err != nil {
+				t.Fatalf("Render(ticket,%s): %v", tc.locale, err)
+			}
+			if ticketOut.Subject == "" {
+				t.Errorf("ticket/%s: empty subject", tc.locale)
+			}
+			if !strings.Contains(ticketOut.HTMLBody, tc.htmlLangAttr) {
+				t.Errorf("ticket/%s: HTMLBody missing %s", tc.locale, tc.htmlLangAttr)
+			}
+			if !strings.Contains(ticketOut.HTMLBody, tc.ticketMarker) {
+				t.Errorf("ticket/%s: HTMLBody missing localized marker %q:\n%s",
+					tc.locale, tc.ticketMarker, ticketOut.HTMLBody)
+			}
+			if !strings.Contains(ticketOut.HTMLBody, "&lt;script&gt;") {
+				t.Errorf("ticket/%s: HTMLBody did not escape event name: %q", tc.locale, ticketOut.HTMLBody)
+			}
+			if strings.Contains(ticketOut.HTMLBody, "<script>alert(1)</script>") {
+				t.Errorf("ticket/%s: HTMLBody leaked unescaped script tag", tc.locale)
+			}
+
+			inviteOut, err := r.Render(TemplateKindInvitation, tc.locale, data)
+			if err != nil {
+				t.Fatalf("Render(invitation,%s): %v", tc.locale, err)
+			}
+			if inviteOut.Subject == "" {
+				t.Errorf("invitation/%s: empty subject", tc.locale)
+			}
+			if !strings.Contains(inviteOut.HTMLBody, tc.htmlLangAttr) {
+				t.Errorf("invitation/%s: HTMLBody missing %s", tc.locale, tc.htmlLangAttr)
+			}
+			if !strings.Contains(inviteOut.HTMLBody, tc.inviteMarker) {
+				t.Errorf("invitation/%s: HTMLBody missing localized marker %q:\n%s",
+					tc.locale, tc.inviteMarker, inviteOut.HTMLBody)
+			}
+			if !strings.Contains(inviteOut.HTMLBody, "&lt;script&gt;") {
+				t.Errorf("invitation/%s: HTMLBody did not escape event name: %q", tc.locale, inviteOut.HTMLBody)
+			}
+		})
+	}
+}
+
+// TestResolveLocale_LocaleTagVariantsNormalizeToCsRu covers the exact
+// BCP-47 tags a real browser/widget sends: region-qualified tags must
+// resolve to the base language, and Ukrainian/Belarusian — which share a
+// script and some vocabulary with Russian but are distinct languages —
+// must NOT silently be treated as Russian; they fall back to English like
+// any other unsupported locale.
+func TestResolveLocale_LocaleTagVariantsNormalizeToCsRu(t *testing.T) {
+	r, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"ru-RU", "ru"},
+		{"RU", "ru"},
+		{"cs-CZ", "cs"},
+		{"CS", "cs"},
+		{"uk", DefaultLocale},    // Ukrainian must not map to Russian
+		{"uk-UA", DefaultLocale}, // Ukrainian must not map to Russian
+		{"be", DefaultLocale},    // Belarusian must not map to Russian
+		{"be-BY", DefaultLocale}, // Belarusian must not map to Russian
+	}
+	for _, kind := range []string{TemplateKindTicket, TemplateKindInvitation} {
+		for _, tc := range cases {
+			got := r.ResolveLocale(kind, tc.in)
+			if got != tc.want {
+				t.Errorf("%s: ResolveLocale(%q)=%q want %q", kind, tc.in, got, tc.want)
+			}
+		}
+	}
+}
+
 func TestNormalize(t *testing.T) {
 	cases := map[string]string{
 		"":          "",
@@ -360,6 +474,11 @@ func TestNormalize(t *testing.T) {
 		"zh-Hant":   "zh",
 		"HE":        "he",
 		"de-DE-x-y": "de",
+		"ru-RU":     "ru",
+		"RU":        "ru",
+		"cs-CZ":     "cs",
+		"uk-UA":     "uk",
+		"be-BY":     "be",
 	}
 	for in, want := range cases {
 		if got := normalize(in); got != want {
