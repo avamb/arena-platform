@@ -561,6 +561,15 @@
       holdExpiresAt = orderStatus.expires_at ?? null;
       // WID-S5: notify host page about terminal order outcomes.
       const status = orderStatus.status;
+      // A finished order must not follow the buyer around. The stored token
+      // is only there to resume an UNFINISHED checkout; left in place after
+      // 'paid' it made every other event page opened in the same tab show
+      // the old order instead of the ticket picker, so a buyer could not buy
+      // a second master class (first production events, 2026-09-20). The
+      // return page itself keeps working: its token is in the URL.
+      if (status === 'paid' || status === 'failed' || status === 'expired') {
+        clearCheckoutToken();
+      }
       if (status === 'paid') {
         dispatchWidgetEvent(host, ARENA_EVENTS.ORDER_PAID, {
           checkoutToken: token,
