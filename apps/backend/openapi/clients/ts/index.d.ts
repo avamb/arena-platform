@@ -3410,6 +3410,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/payment-intents/webhook/{config_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The organization's own `payment_provider_configs.id`. It is the
+                 *     routing key: it names which provider account this delivery came
+                 *     from, so the signature can be checked against that account's
+                 *     signing secret before anything else happens.
+                 */
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provider webhook ingestion for one payment config
+         * @description The per-organization webhook endpoint. Each organizer points their
+         *     own provider dashboard at their own config's URL.
+         *
+         *     **Why this exists.** An organizer's provider account is shared with
+         *     whatever else they sell online, so this endpoint receives arena's
+         *     events AND events for payments arena has never created. On the
+         *     un-suffixed route a foreign id matches no payment intent, the owning
+         *     organization cannot be resolved, no per-org signing secret can be
+         *     chosen, and the delivery is answered `401`/`404` — which the provider
+         *     treats as a failing endpoint, retrying for days and mailing the
+         *     account owner.
+         *
+         *     Here the config id fixes both halves: the signature is verified
+         *     against exactly one known secret, and a VERIFIED event that turns
+         *     out not to be arena's is acknowledged with `200`
+         *     `{"processed": false, "reason": "not an arena payment"}`.
+         *
+         *     **Security.** Unauthenticated until the signature check, like every
+         *     provider webhook. The signature MUST verify against that config's
+         *     own secret — there is no environment-variable fallback on this
+         *     route. A payment intent that resolves to a DIFFERENT organization
+         *     than the config is treated exactly like one that does not exist, so
+         *     the response cannot be used to probe which ids belong to whom. The
+         *     only work done before the signature check is one primary-key read.
+         *
+         *     Everything after authentication — body shapes, event-type mapping,
+         *     the `payment_status` gate on `checkout.session.completed`,
+         *     idempotency, and the state machine — is identical to
+         *     `POST /v1/payment-intents/webhook`.
+         */
+        post: operations["paymentIntentWebhookForConfig"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tickets/{id}/credential": {
         parameters: {
             query?: {
@@ -12350,6 +12406,22 @@ export interface components {
              *     back on the same page and the widget resumes the same order.
              */
             return_url?: string;
+            /**
+             * @description The language the buyer is checking out in — the widget's own
+             *     active locale. It decides which language their ticket e-mail
+             *     and PDF render in, and nothing else.
+             *
+             *     Validated against the languages arena ships e-mail templates
+             *     for (`cs`, `de`, `en`, `es`, `he`, `ru`); a region subtag is
+             *     accepted and folded, so `cs-CZ` and `CS` both become `cs`.
+             *     Anything unrecognised is silently ignored and the buyer gets
+             *     English — a language tag must never cost a sale.
+             *
+             *     Stored on the checkout session, not on the customer: the same
+             *     person may buy in Czech from one organizer and in English from
+             *     another.
+             */
+            locale?: string;
         };
         PublicFeedCheckoutStartResponse: {
             /** @description The created checkout session with pricing snapshot and state. */
@@ -28934,6 +29006,123 @@ export interface operations {
             /**
              * @description No payment intent matches `provider_payment_id`
              *     (`webhook.intent_not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Internal server error (`webhook.lookup_failed`,
+             *     `webhook.event_record_failed`,
+             *     `webhook.state_update_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Database pool or payment intent queries unavailable
+             *     (`dependency.database_unavailable`).
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    paymentIntentWebhookForConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The organization's own `payment_provider_configs.id`. It is the
+                 *     routing key: it names which provider account this delivery came
+                 *     from, so the signature can be checked against that account's
+                 *     signing secret before anything else happens.
+                 */
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentIntentWebhookRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description Webhook acknowledged. `processed: true` means the state machine
+             *     advanced. `processed: false` with
+             *     `reason: "not an arena payment"` means the signature verified
+             *     but the payment is not arena's — either no payment intent
+             *     matches, or the one that does belongs to another organization.
+             *     Both are normal traffic on a shared provider account.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentIntentWebhookAck"];
+                };
+            };
+            /**
+             * @description Duplicate webhook delivery — the
+             *     `(provider_payment_id, event_type)` pair was already recorded.
+             *     No body.
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Invalid body, or a `config_id` that is not a UUID. Possible
+             *     error codes: `webhook.invalid_body`, `webhook.empty_body`,
+             *     `webhook.invalid_config_id`, `webhook.invalid_json`,
+             *     `webhook.missing_provider_payment_id`,
+             *     `webhook.missing_event_type`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `webhook.invalid_signature` — the signature did not verify
+             *     against this config's secret, the expected signature header was
+             *     absent, or the config has no signing secret stored.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `webhook.config_not_found` — unknown, deleted, inactive or
+             *     not-fully-configured config. Deliberately detail-free and
+             *     identical for every one of those cases, so the endpoint cannot
+             *     be used to enumerate config ids.
              */
             404: {
                 headers: {
