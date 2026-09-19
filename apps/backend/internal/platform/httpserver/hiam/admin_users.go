@@ -17,9 +17,11 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
 const passwordResetTokenTTL = time.Hour
@@ -307,7 +309,11 @@ func (h *Handler) HandleAdminCreateUser(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	resetExpiresAt := time.Now().UTC().Add(passwordResetTokenTTL)
-	if err := q.InsertPasswordResetToken(ctx, resetToken, userRow.ID, resetExpiresAt); err != nil {
+	// password_reset_tokens stores SHA-256(token) (PR2-03), exactly like the
+	// self-service reset: POST /v1/auth/password-reset/confirm hashes the raw
+	// token it receives before the lookup. The raw token travels only inside
+	// the email job payload.
+	if err := q.InsertPasswordResetToken(ctx, users.TokenHash(resetToken), userRow.ID, resetExpiresAt); err != nil {
 		h.logger.Error("admin_user: insert reset token failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"internal.token_insert_failed", "failed to save reset token", r,
@@ -346,6 +352,28 @@ func (h *Handler) HandleAdminCreateUser(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
+	// Enqueue the password-setup email in the SAME transaction as the user and
+	// its token — the delivery path of the self-service reset
+	// (auth.password_reset_email, rendered and sent by arena-worker with the
+	// link built from APP_PUBLIC_URL). No account can exist without its email.
+	jobID, err := enqueuePasswordSetupEmail(ctx, tx, authemail.PasswordResetEmailPayload{
+		UserID:    userRow.ID.String(),
+		Email:     userRow.Email,
+		Token:     resetToken,
+		ExpiresAt: resetExpiresAt,
+		Purpose:   authemail.PurposeAccountSetup,
+	})
+	if err != nil {
+		h.logger.Error("admin_user: enqueue password setup email failed",
+			slog.String("user_id", userRow.ID.String()),
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"admin_user.onboarding_email_failed", "failed to queue the password setup email", r,
+		))
+		return
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		h.logger.Error("admin_user: commit failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
@@ -354,13 +382,11 @@ func (h *Handler) HandleAdminCreateUser(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	resetURL := requestBaseURL(r) + "/v1/auth/password-reset/confirm?token=" + resetToken
-	slog.Info("EMAIL DELIVERY (dev-mode): admin-created user password setup",
-		"to", userRow.Email,
-		"subject", "Set up your Arena Platform password",
-		"reset_url", resetURL,
-		"expires_at", resetExpiresAt.Format(time.RFC3339),
-		"user_id", userRow.ID.String(),
+	// Identifiers only — never the token or the link.
+	h.logger.Info("admin_user: password setup email job enqueued",
+		slog.String("user_id", userRow.ID.String()),
+		slog.String("job_id", jobID),
+		slog.String("expires_at", resetExpiresAt.Format(time.RFC3339)),
 	)
 
 	var orgIDString *string
@@ -450,14 +476,11 @@ func adminCreateUserRoleList() []string {
 	}
 }
 
-func requestBaseURL(r *http.Request) string {
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	host := r.Host
-	if host == "" {
-		host = "localhost:8080"
-	}
-	return scheme + "://" + host
+// passwordSetupEmailMaxAttempts matches the self-service password-reset job.
+const passwordSetupEmailMaxAttempts = 5
+
+// enqueuePasswordSetupEmail queues an auth.password_reset_email job inside tx.
+// The link is built by the worker from APP_PUBLIC_URL, never from the request.
+func enqueuePasswordSetupEmail(ctx context.Context, tx pgx.Tx, payload authemail.PasswordResetEmailPayload) (string, error) {
+	return worker.EnqueueInTx(ctx, tx, authemail.JobTypePasswordResetEmail, payload, passwordSetupEmailMaxAttempts)
 }
