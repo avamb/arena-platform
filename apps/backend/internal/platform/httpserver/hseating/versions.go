@@ -166,6 +166,9 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 	// not leaked to non-members. Superadmins bypass membership with an
 	// audited X-Admin-Reason (requireOrgMembership in authz.go).
 	versionMember, err := requireOrgMembership(w, r, qtx, plan.OwnerOrgID)
+	if errors.Is(err, errResponseWritten) {
+		return
+	}
 	if err != nil {
 		h.logger.Error("seating_plan: version create membership lookup failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(

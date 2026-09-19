@@ -17,12 +17,19 @@
 package hseating
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -263,8 +270,9 @@ func TestAB28_RequireOrgMembership_SuperadminWithoutReason_Rejected(t *testing.T
 	w := httptest.NewRecorder()
 
 	got, err := requireOrgMembership(w, r, q, uuid.New())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	// The gate answered the request itself; the caller must not write again.
+	if !errors.Is(err, errResponseWritten) {
+		t.Fatalf("expected errResponseWritten, got %v", err)
 	}
 	if got {
 		t.Fatal("superadmin without X-Admin-Reason must be rejected (expected false)")
@@ -273,4 +281,52 @@ func TestAB28_RequireOrgMembership_SuperadminWithoutReason_Rejected(t *testing.T
 	if w.Code == http.StatusOK {
 		t.Fatalf("expected an error response when no X-Admin-Reason provided, got 200")
 	}
+}
+
+// A superadmin creating a plan without X-Admin-Reason must get exactly one
+// JSON envelope. Before the fix the handler appended a 403
+// seating_plan.owner_org_forbidden after the 400 missing_reason, and the admin
+// UI could only report "Server returned a non-JSON response".
+func TestCreatePlan_SuperadminWithoutReason_SingleEnvelope(t *testing.T) {
+	t.Parallel()
+	h := &Handler{
+		queries: gen.New(unusedDBTX{t: t}),
+		pool:    unusedTxStarter{t: t},
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	body := `{"owner_org_id":"` + uuid.NewString() + `","name":"Hall","plan_type":"assigned_seats"}`
+	venueID := uuid.NewString()
+	r := httptest.NewRequest(http.MethodPost, "/v1/venues/"+venueID+"/seating-plans", strings.NewReader(body))
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("venue_id", venueID)
+	ctx := context.WithValue(r.Context(), chi.RouteCtxKey, rctx)
+	actor := auth.Actor{ID: uuid.NewString(), Type: auth.ActorTypeUser, Roles: []string{"platform_superadmin"}}
+	ctx = auth.WithSuperadminOrgAccess(auth.WithActor(ctx, actor))
+	r = r.WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	h.HandleCreateSeatingPlan(w, r)
+
+	dec := json.NewDecoder(bytes.NewReader(w.Body.Bytes()))
+	var first map[string]any
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("response is not JSON: %v (%q)", err, w.Body.String())
+	}
+	if dec.More() {
+		t.Fatalf("expected a single JSON envelope, got %q", w.Body.String())
+	}
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 missing_reason, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// unusedTxStarter satisfies TxStarter for handlers that must answer before
+// opening a transaction.
+type unusedTxStarter struct{ t *testing.T }
+
+func (s unusedTxStarter) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) {
+	s.t.Helper()
+	s.t.Error(errDBTXUnused)
+	return nil, errDBTXUnused
 }

@@ -129,6 +129,13 @@ describe("requiresAdminReason()", () => {
     ["/v1/operator-networks/abc", "GET", false],
     ["/v1/admin/networks/abc/users", "GET", false],
     ["/v1/admin/networks/abc/organizers", "GET", false],
+    // Seating-plan mutations (owner org in the body) need a reason; reads do not.
+    ["/v1/venues/abc/seating-plans", "POST", true],
+    ["/v1/seating-plans/abc", "PATCH", true],
+    ["/v1/seating-plans/abc/versions", "POST", true],
+    ["/v1/seating-plans/abc/fork", "POST", true],
+    ["/v1/venues/abc/seating-plans", "GET", false],
+    ["/v1/seating-plans/abc", "GET", false],
     // Method case is normalised.
     ["/v1/operator-networks", "post", true],
     // Superadmin read prefixes always match regardless of method.

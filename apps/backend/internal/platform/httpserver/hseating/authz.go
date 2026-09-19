@@ -18,6 +18,7 @@ package hseating
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -27,13 +28,19 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
+// errResponseWritten tells a caller of requireOrgMembership that the gate has
+// already answered the request (a superadmin without X-Admin-Reason gets
+// 400 superadmin.missing_reason). The caller must return without writing:
+// a second envelope would concatenate two JSON bodies into one response.
+var errResponseWritten = errors.New("hseating: response already written")
+
 // requireOrgMembership applies the same audited superadmin exception as the
 // path-based organization guards. Seating plans carry their owner org in the
 // resource/body rather than the URL, so the gate lives here.
 func requireOrgMembership(w http.ResponseWriter, r *http.Request, q *gen.Queries, orgID uuid.UUID) (bool, error) {
 	if auth.HasSuperadminOrgAccess(r.Context()) {
 		if _, ok := httputil.RequireAdminReason(w, r); !ok {
-			return false, nil
+			return false, errResponseWritten
 		}
 		return true, nil
 	}

@@ -77,7 +77,14 @@ const REASON_REQUIRED_MUTATION_PREFIXES: readonly string[] = [
  * for a real superadmin. Kept empty for now as a documented extension
  * point for any future mutation-only surface.
  */
-const REASON_REQUIRED_MUTATION_REGEX: readonly RegExp[] = [];
+const REASON_REQUIRED_MUTATION_REGEX: readonly RegExp[] = [
+  // Seating plans carry their owner org in the body/resource, not the URL:
+  // hseating.requireOrgMembership demands the header from a superadmin on
+  // create / update / new version / fork (found in the 2026-09-19 functional
+  // run — creating a plan as superadmin failed with missing_reason).
+  /^\/v1\/venues\/[^/]+\/seating-plans$/,
+  /^\/v1\/seating-plans\/[^/]+(?:\/versions|\/fork)?$/,
+];
 
 /**
  * Regex patterns that require X-Admin-Reason on EVERY method, including
