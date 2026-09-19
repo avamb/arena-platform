@@ -69,6 +69,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -80,6 +81,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/bil24wire"
@@ -222,6 +225,59 @@ func (prov533NoopDispatcher) Dispatch(context.Context, outbox.Event) error { ret
 // reports true or the timeout expires, then stops it — same pattern as
 // wp508Drain in tests/compat/bil24/wp_roundtrip_508_integration_test.go,
 // duplicated here because that helper is unexported in a different package.
+// prov533ScopedStore claims ONLY this test's own outbox_events rows. The
+// generic PGOutboxEventStore claims any pending row in the shared database,
+// and this test's fan-out runs no-op dispatchers for the base and MACS legs,
+// so draining through it silently "delivered" other packages' events running
+// in parallel in CI (compat/bil24 04_refund_dedup then saw macs=0), while a
+// foreign drain — or a local dev-stand arena_worker — could claim this test's
+// row first and back it off for an hour (seen 2026-09-19).
+type prov533ScopedStore struct {
+	*outbox.PGOutboxEventStore
+	pool        *pgxpool.Pool
+	aggregateID string
+}
+
+func newProv533ScopedStore(pool *pgxpool.Pool, aggregateID string) *prov533ScopedStore {
+	return &prov533ScopedStore{
+		PGOutboxEventStore: outbox.NewPGOutboxEventStore(pool),
+		pool:               pool,
+		aggregateID:        aggregateID,
+	}
+}
+
+// ClaimNext mirrors PGOutboxEventStore.ClaimNext with an aggregate_id filter.
+func (s *prov533ScopedStore) ClaimNext(ctx context.Context) (*outbox.OutboxEventRow, error) {
+	row := &outbox.OutboxEventRow{}
+	var payload []byte
+	err := s.pool.QueryRow(ctx, `
+		WITH next AS (
+			SELECT id FROM outbox_events
+			 WHERE processed_at IS NULL AND dead_lettered_at IS NULL
+			   AND (next_attempt_at IS NULL OR next_attempt_at <= now())
+			   AND aggregate_id = $1
+			 ORDER BY COALESCE(next_attempt_at, occurred_at)
+			   FOR UPDATE SKIP LOCKED
+			 LIMIT 1
+		)
+		UPDATE outbox_events o
+		   SET next_attempt_at = now() + '5 minutes'::interval
+		  FROM next WHERE o.id = next.id
+		RETURNING o.id::text, o.aggregate_type, o.aggregate_id, o.event_type,
+		          o.payload, o.occurred_at, o.attempts`, s.aggregateID,
+	).Scan(&row.ID, &row.AggregateType, &row.AggregateID, &row.EventType,
+		&payload, &row.OccurredAt, &row.Attempts)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	row.Payload = map[string]any{}
+	_ = json.Unmarshal(payload, &row.Payload)
+	return row, nil
+}
+
 func prov533Drain(t *testing.T, opts outbox.OutboxEventsDispatcherOptions, until func() bool, timeout time.Duration) bool {
 	t.Helper()
 	oed, err := outbox.NewOutboxEventsDispatcher(opts)
@@ -647,7 +703,7 @@ SELECT $1, id, NULL FROM roles WHERE name = 'platform_superadmin' AND org_id IS 
 		wpDispatcher,            // bil24_wp dispatcher
 	}}
 	dispatchOpts := outbox.OutboxEventsDispatcherOptions{
-		Store:        outbox.NewPGOutboxEventStore(srv.pgxPool),
+		Store:        newProv533ScopedStore(srv.pgxPool, eventID),
 		Dispatcher:   fanOut,
 		PollInterval: 20 * time.Millisecond,
 		MaxAttempts:  5,

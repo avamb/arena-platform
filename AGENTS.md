@@ -869,3 +869,16 @@ entries short and factual.
   `api_key.invalid_channel` for a foreign one (found 2026-09-19 — before that
   an org could bind its key to another org's storefront). There is no PATCH:
   rebinding means issuing a new key.
+- **A test that drains `outbox_events` must claim only its own rows.**
+  `PGOutboxEventStore.ClaimNext` takes ANY pending row of the shared
+  database, and CI runs packages in parallel, so a test's drain loop both
+  works through other packages' backlog before reaching its own row and
+  "delivers" their events through whatever dispatchers it wired — a fan-out
+  with no-op MACS legs made `04_refund_dedup` see `macs=0`, and
+  `TestSuperadminOrgProvisioning533_Integration` went red twice on
+  2026-09-19. Wrap the store with an `aggregate_id` filter
+  (`prov533ScopedStore` in that test). Locally, the dev stand's
+  `arena_worker` container also polls `outbox_events` and claims test rows
+  (it cannot reach a host `127.0.0.1` stub, so the row backs off for an
+  hour): `docker stop arena_worker` while running outbox integration tests,
+  `docker start arena_worker` after.
