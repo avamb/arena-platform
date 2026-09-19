@@ -335,6 +335,69 @@ jobs:
           retention-days: 7
 
   # ─────────────────────────────────────────────────────────────────
+  # Job: Tickets page — hosted sales page (tickets.arenasoldout.com)
+  #
+  # Runs on every push/PR: install → type-check → unit tests (vitest,
+  # jsdom) → production build → Docker image build (also compiles
+  # apps/widget as a stage — build context is the repo root) → container
+  # smoke test.
+  # ─────────────────────────────────────────────────────────────────
+  tickets-page-build:
+    name: Tickets page (unit / build / container smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/tickets-page/package-lock.json
+
+      - name: Install dependencies
+        run: npm --prefix apps/tickets-page ci
+
+      - name: Type-check
+        run: npm --prefix apps/tickets-page run type-check
+
+      - name: Unit tests (vitest)
+        run: npm --prefix apps/tickets-page test
+
+      - name: Production build
+        run: npm --prefix apps/tickets-page run build
+
+      - name: Container smoke test
+        run: |
+          docker build \
+            --build-arg VITE_API_BASE_URL=http://localhost:8080 \
+            -t arena-tickets-page:ci \
+            -f apps/tickets-page/Dockerfile \
+            .
+          docker run -d --name arena-tickets-page-smoke -p 8090:8080 arena-tickets-page:ci
+          echo "Waiting for tickets-page container to become healthy..."
+          for i in $(seq 1 60); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' arena-tickets-page-smoke 2>/dev/null || echo "starting")
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Container is healthy after ${i}s"
+              docker rm -f arena-tickets-page-smoke
+              exit 0
+            fi
+            if [ "$i" = "60" ]; then
+              echo "ERROR: Container did not become healthy within 60s"
+              docker logs arena-tickets-page-smoke
+              docker rm -f arena-tickets-page-smoke
+              exit 1
+            fi
+            sleep 1
+          done
+
+  # ─────────────────────────────────────────────────────────────────
   # Job 6: Widget — Svelte 5 custom element (arena-tickets)
   #
   # Runs on every push/PR. Steps: install → type-check → unit tests
