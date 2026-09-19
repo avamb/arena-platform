@@ -3657,7 +3657,11 @@ type ConfirmCheckoutRequest struct {
 
 // CreateApiKeyRequest Request body for POST /v1/organizations/{org_id}/api-keys.
 type CreateApiKeyRequest struct {
-	// ChannelId Optional sales-channel scope for the key.
+	// ChannelId Optional sales channel the key speaks for. Events the key
+	// imports with `publish: true` are published into this
+	// channel's feed, and the channel's site webhooks fire for
+	// them. Must belong to the organization in the path (422
+	// `api_key.invalid_channel` otherwise).
 	ChannelId *openapi_types.UUID `json:"channel_id"`
 
 	// ExpiresAt Optional expiry timestamp.

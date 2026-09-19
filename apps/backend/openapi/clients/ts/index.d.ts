@@ -7582,7 +7582,11 @@ export interface components {
             scopes: string[];
             /**
              * Format: uuid
-             * @description Optional sales-channel scope for the key.
+             * @description Optional sales channel the key speaks for. Events the key
+             *     imports with `publish: true` are published into this
+             *     channel's feed, and the channel's site webhooks fire for
+             *     them. Must belong to the organization in the path (422
+             *     `api_key.invalid_channel` otherwise).
              */
             channel_id?: string | null;
             /**
@@ -18676,8 +18680,10 @@ export interface operations {
                 };
             };
             /**
-             * @description Empty scopes list, or a scope is forbidden (`platform.`/
-             *     `admin.` prefix, or the exact scope `api_key.manage`).
+             * @description Empty scopes list, a scope is forbidden (`platform.`/
+             *     `admin.` prefix, or the exact scope `api_key.manage`), or
+             *     `channel_id` is not a sales channel of this organization
+             *     (`api_key.invalid_channel`).
              */
             422: {
                 headers: {

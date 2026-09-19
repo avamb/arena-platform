@@ -3184,6 +3184,25 @@ interface ChannelsEnvelope {
   readonly channels: readonly ChannelResponse[];
 }
 
+// useOrgChannels shares the Channels tab's cache entry so the api-keys tab can
+// offer and label channels without a second fetch.
+function useOrgChannels(orgId: string) {
+  const { permissions } = useAuth();
+  const canRead = permissions.has("channel.read") || permissions.has("superadmin.read");
+  return useQuery<ChannelsEnvelope, ApiError, readonly ChannelResponse[]>({
+    queryKey: ["admin", "organizations", orgId, "channels"],
+    queryFn: () =>
+      authedFetch<ChannelsEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${orgId}/channels`,
+      }),
+    select: (env) => env.channels,
+    enabled: canRead,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
 function ChannelsTab({ org }: { org: AdminOrganization }) {
   const { permissions } = useAuth();
   const canRead = permissions.has("channel.read") || permissions.has("superadmin.read");
@@ -3439,6 +3458,7 @@ export function validateApiKeyScopes(scopes: readonly string[]): string | null {
 export interface ApiKeyFormErrors {
   name?: string;
   scopes?: string;
+  channel?: string;
   form?: string;
 }
 
@@ -3449,6 +3469,8 @@ export function mapApiKeyServerError(err: ApiError): ApiKeyFormErrors {
     case "api_key.invalid_scopes":
     case "api_key.forbidden_scope":
       return { scopes: err.message };
+    case "api_key.invalid_channel":
+      return { channel: err.message };
     case "superadmin.missing_reason":
       return {
         form:
@@ -3471,6 +3493,7 @@ function ApiKeysTab({ org }: { org: AdminOrganization }) {
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(
     null,
   );
+  const channels = useOrgChannels(org.id);
 
   const query = useQuery<ApiKeysEnvelope, ApiError>({
     queryKey: ["admin", "organizations", org.id, "api-keys"],
@@ -3510,6 +3533,10 @@ function ApiKeysTab({ org }: { org: AdminOrganization }) {
   }
 
   const rows = query.data?.api_keys ?? [];
+  const channelName = (id: string | null | undefined): string => {
+    if (id === null || id === undefined) return "—";
+    return channels.data?.find((c) => c.id === id)?.name ?? id;
+  };
 
   return (
     <section data-testid="orgs-drawer-api-keys">
@@ -3590,6 +3617,7 @@ function ApiKeysTab({ org }: { org: AdminOrganization }) {
               <tr>
                 <th scope="col" style={tabThStyle}>Name</th>
                 <th scope="col" style={tabThStyle}>Prefix</th>
+                <th scope="col" style={tabThStyle}>Channel</th>
                 <th scope="col" style={tabThStyle}>Scopes</th>
                 <th scope="col" style={tabThStyle}>Status</th>
                 <th scope="col" style={tabThStyle}>Last used</th>
@@ -3601,6 +3629,9 @@ function ApiKeysTab({ org }: { org: AdminOrganization }) {
                 <tr key={r.id} data-testid={`api-key-row-${r.id}`}>
                   <td style={tabTdStyle}>{r.name}</td>
                   <td style={tabTdMonoStyle}>{r.key_prefix}</td>
+                  <td style={tabTdStyle} data-testid={`api-key-channel-${r.id}`}>
+                    {channelName(r.channel_id)}
+                  </td>
                   <td style={tabTdStyle}>{r.scopes.join(", ")}</td>
                   <td style={tabTdStyle}>
                     {r.revoked_at !== null && r.revoked_at !== undefined ? (
@@ -3660,7 +3691,9 @@ function ApiKeyIssueForm({
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<readonly string[]>([]);
+  const [channelId, setChannelId] = useState("");
   const [serverErrors, setServerErrors] = useState<ApiKeyFormErrors>({});
+  const channels = useOrgChannels(orgId);
 
   const localErrors: ApiKeyFormErrors = {
     name: validateApiKeyName(name) ?? undefined,
@@ -3673,7 +3706,11 @@ function ApiKeyIssueForm({
       authedFetch<CreateApiKeyEnvelope>({
         method: "POST",
         path: `/v1/organizations/${encodeURIComponent(orgId)}/api-keys`,
-        body: { name: name.trim(), scopes },
+        body: {
+          name: name.trim(),
+          scopes,
+          ...(channelId !== "" ? { channel_id: channelId } : {}),
+        },
       }),
     onSuccess: (resp) => {
       queryClient.invalidateQueries({
@@ -3722,6 +3759,29 @@ function ApiKeyIssueForm({
           maxLength={200}
           data-testid="api-key-name"
         />
+      </FieldRow>
+
+      <FieldRow
+        label="Sales channel"
+        htmlFor="api-key-channel"
+        error={serverErrors.channel ?? null}
+        localError={null}
+        hint="The site channel this key speaks for. Events it imports with publish are published into this channel and its site webhooks fire; without a channel they reach no storefront."
+      >
+        <select
+          id="api-key-channel"
+          value={channelId}
+          onChange={(e) => setChannelId(e.target.value)}
+          style={inputStyle}
+          data-testid="api-key-channel"
+        >
+          <option value="">No channel</option>
+          {(channels.data ?? []).map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
       </FieldRow>
 
       <fieldset style={apiKeyScopeFieldsetStyle}>

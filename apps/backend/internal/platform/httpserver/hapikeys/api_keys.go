@@ -123,6 +123,26 @@ func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The key speaks for its channel: himports publishes every event the key
+	// imports into that channel's feed and delivers the channel's site
+	// webhooks. The FK only proves the channel exists, so without this check
+	// an org could bind its key to another organization's storefront.
+	if req.ChannelID != nil {
+		if _, err := h.queries.GetSalesChannelByID(ctx, *req.ChannelID, orgID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+					"api_key.invalid_channel", "channel_id is not a sales channel of this organization", r,
+				))
+				return
+			}
+			h.logger.Error("api_key: channel lookup failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"api_key.create_failed", "failed to create api key", r,
+			))
+			return
+		}
+	}
+
 	actor, _ := auth.ActorFromContext(ctx)
 	createdBy, err := actorUserID(actor)
 	if err != nil {

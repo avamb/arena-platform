@@ -859,3 +859,13 @@ entries short and factual.
   line with the full token URL, sent nothing, and stored the RAW token, which
   the confirm endpoint (it hashes before the lookup) could never match. Never
   log the token or link, never build a link from `r.Host`/`r.TLS`.
+- **An organization API key speaks for at most one sales channel, and it must
+  be the org's own.** `api_keys.channel_id` is what makes an event-center
+  import with `publish: true` land in the site's feed and fire its
+  `event.created` webhook (`himports/import_publication.go`); a key without a
+  channel only gets `import.channel_publication_skipped`. The FK proves only
+  that the channel exists, so `hapikeys.HandleCreate` checks it with
+  `GetSalesChannelByID(ctx, id, orgID)` and answers 422
+  `api_key.invalid_channel` for a foreign one (found 2026-09-19 — before that
+  an org could bind its key to another org's storefront). There is no PATCH:
+  rebinding means issuing a new key.

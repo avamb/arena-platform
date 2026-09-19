@@ -893,6 +893,11 @@ describe("API keys tab helpers (feature #514, W1-C1c)", () => {
         mapApiKeyServerError(makeErr("api_key.forbidden_scope", "forbidden")).scopes,
       ).toBe("forbidden");
     });
+    it("maps api_key.invalid_channel to the channel field", () => {
+      expect(
+        mapApiKeyServerError(makeErr("api_key.invalid_channel", "foreign channel")).channel,
+      ).toBe("foreign channel");
+    });
     it("maps superadmin.missing_reason to a form-level audit-reason prompt", () => {
       expect(mapApiKeyServerError(makeErr("superadmin.missing_reason")).form).toMatch(
         /audit reason/i,

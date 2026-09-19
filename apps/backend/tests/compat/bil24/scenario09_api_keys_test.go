@@ -138,6 +138,63 @@ func runScenario09APIKeys(t *testing.T, st *harnessState) {
 		}
 	})
 
+	// ── a key may only be bound to a channel of its own organization ───────
+	// himports publishes every event the key imports into the bound
+	// channel's feed, so a foreign channel would put org A's events on org
+	// B's storefront (found in the 2026-09-19 functional run).
+	foreignChannelID := uuid.New()
+	if _, err := st.Pool.Exec(ctx,
+		`INSERT INTO sales_channels (id, org_id, name) VALUES ($1, $2, $3)`,
+		foreignChannelID, orgBID, "W1-514 foreign channel "+suffix,
+	); err != nil {
+		t.Fatalf("seed org B channel: %v", err)
+	}
+	t.Cleanup(func() {
+		if _, err := st.Pool.Exec(context.Background(),
+			`DELETE FROM sales_channels WHERE id = $1`, foreignChannelID); err != nil {
+			t.Logf("cleanup org B channel: %v", err)
+		}
+	})
+	fcStatus, fcResp := restJSON(t, base, "POST", "/v1/organizations/"+st.OrgID+"/api-keys", adminJWT, adminHeaders,
+		map[string]any{
+			"name":       "W1 key bound to a foreign channel",
+			"scopes":     sc9ScopeSet,
+			"channel_id": foreignChannelID.String(),
+		})
+	if fcStatus != 422 {
+		t.Fatalf("POST api-keys with a foreign channel status = %d, want 422 (body %v)", fcStatus, fcResp)
+	}
+	if errObj, _ := fcResp["error"].(map[string]interface{}); errObj == nil || errObj["code"] != "api_key.invalid_channel" {
+		t.Fatalf("POST api-keys with a foreign channel error = %v, want code api_key.invalid_channel", fcResp["error"])
+	}
+
+	var ownChannelID uuid.UUID
+	if err := st.Pool.QueryRow(ctx,
+		`SELECT id FROM sales_channels WHERE display_number = $1`, st.ChannelFID,
+	).Scan(&ownChannelID); err != nil {
+		t.Fatalf("resolve harness channel id: %v", err)
+	}
+	ocStatus, ocResp := restJSON(t, base, "POST", "/v1/organizations/"+st.OrgID+"/api-keys", adminJWT, adminHeaders,
+		map[string]any{
+			"name":       "W1 key bound to the site channel",
+			"scopes":     sc9ScopeSet,
+			"channel_id": ownChannelID.String(),
+		})
+	if ocStatus != 201 {
+		t.Fatalf("POST api-keys with the org's own channel status = %d, want 201 (body %v)", ocStatus, ocResp)
+	}
+	ocKey, _ := ocResp["api_key"].(map[string]interface{})
+	ocKeyID, _ := ocKey["id"].(string)
+	t.Cleanup(func() {
+		if _, err := st.Pool.Exec(context.Background(),
+			`DELETE FROM api_keys WHERE id = $1`, ocKeyID); err != nil {
+			t.Logf("cleanup channel-bound api key: %v", err)
+		}
+	})
+	if got, _ := ocKey["channel_id"].(string); got != ownChannelID.String() {
+		t.Fatalf("channel-bound key channel_id = %q, want %s", got, ownChannelID)
+	}
+
 	// ── §13.4 no-seats flow, driven entirely by the freshly minted key ──────
 	eStatus, eResp := restJSON(t, base, "POST", "/v1/organizations/"+st.OrgID+"/events", rawKey, nil,
 		map[string]any{
