@@ -153,11 +153,28 @@ export interface CheckoutStartPayload {
     name?: string | null;
     phone?: string | null;
   };
+  /**
+   * Page the hosted payment provider returns the buyer to.
+   *
+   * The widget sends `origin + pathname` (no query string, no hash) — the
+   * backend validates its origin and appends `?checkout_token=<token>` to
+   * build Stripe's success_url / cancel_url, which is exactly the parameter
+   * `getCheckoutTokenFromSearch` reads on load.
+   */
+  return_url?: string;
 }
 
 /** Response from POST /v1/public/feeds/{token}/checkout/start. */
 export interface CheckoutStartResponse {
   checkout_session: Record<string, unknown>;
+  /**
+   * Absolute URL of the hosted payment page to send the buyer to.
+   *
+   * For a zero-total order this is the return URL already carrying
+   * `?checkout_token=…`, and it is an empty string when no return URL is
+   * configured — in that case the widget must NOT navigate and should show
+   * the order status for `checkout_token` instead.
+   */
   redirect_url: string;
   checkout_token: string;
   expires_at: string;
@@ -200,6 +217,12 @@ export interface CheckoutStatusResponse {
   tax?: number | null;
   total?: number | null;
   currency?: string | null;
+  /**
+   * Hosted payment page for a still-pending order whose payment window is
+   * still open — lets the buyer resume an abandoned payment. Omitted once the
+   * order is paid, expired or failed.
+   */
+  payment_url?: string | null;
   items: CheckoutStatusItem[];
   tickets: CheckoutStatusTicketItem[];
 }
@@ -527,6 +550,8 @@ export interface CheckoutI18nStrings {
   send_again: string;
   retry_label: string;
   recover_label: string;
+  /** CTA label sending a buyer back to the unfinished hosted payment page. */
+  continue_to_payment: string;
   download_pdf: string;
   // Generic
   loading: string;
@@ -612,6 +637,7 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     send_again: 'Resend tickets',
     retry_label: 'Try again',
     recover_label: 'Reclaim seats',
+    continue_to_payment: 'Continue to payment',
     download_pdf: 'Download PDF',
     loading: 'Loading…',
     error_generic: 'Something went wrong. Please try again.',
@@ -664,6 +690,7 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     send_again: 'Отправить билеты повторно',
     retry_label: 'Попробовать снова',
     recover_label: 'Восстановить бронирование',
+    continue_to_payment: 'Перейти к оплате',
     download_pdf: 'Скачать PDF',
     loading: 'Загрузка…',
     error_generic: 'Произошла ошибка. Пожалуйста, попробуйте ещё раз.',
@@ -717,6 +744,7 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     send_again: 'Odeslat vstupenky znovu',
     retry_label: 'Zkusit znovu',
     recover_label: 'Obnovit rezervaci',
+    continue_to_payment: 'Pokračovat k platbě',
     download_pdf: 'Stáhnout PDF',
     loading: 'Načítání…',
     error_generic: 'Něco se pokazilo. Zkuste to prosím znovu.',
@@ -770,6 +798,7 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     send_again: 'שלח כרטיסים שוב',
     retry_label: 'נסה שוב',
     recover_label: 'שחזר הזמנה',
+    continue_to_payment: 'המשך לתשלום',
     download_pdf: 'הורד PDF',
     loading: 'טוען…',
     error_generic: 'משהו השתבש. אנא נסה שוב.',

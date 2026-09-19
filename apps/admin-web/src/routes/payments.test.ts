@@ -264,6 +264,19 @@ describe("STRIPE_WEBHOOK_EVENTS", () => {
     expect(STRIPE_WEBHOOK_EVENTS).toContain("payment_intent.manual_review");
   });
 
+  it("includes the hosted Checkout Session events", () => {
+    // The widget's Stripe-hosted redirect flow reports the payment through
+    // checkout.session.* rather than payment_intent.* alone.
+    expect(STRIPE_WEBHOOK_EVENTS).toContain("checkout.session.completed");
+    expect(STRIPE_WEBHOOK_EVENTS).toContain("checkout.session.expired");
+    expect(STRIPE_WEBHOOK_EVENTS).toContain(
+      "checkout.session.async_payment_succeeded",
+    );
+    expect(STRIPE_WEBHOOK_EVENTS).toContain(
+      "checkout.session.async_payment_failed",
+    );
+  });
+
   it("does not include mock provider aliases", () => {
     // Mock aliases are test-only shorthands that must not be registered in Stripe
     for (const evt of STRIPE_WEBHOOK_EVENTS) {
@@ -271,9 +284,9 @@ describe("STRIPE_WEBHOOK_EVENTS", () => {
     }
   });
 
-  it("only includes payment_intent.* events (Stripe naming convention)", () => {
+  it("only includes payment_intent.* / checkout.session.* events (Stripe naming convention)", () => {
     for (const evt of STRIPE_WEBHOOK_EVENTS) {
-      expect(evt).toMatch(/^payment_intent\./);
+      expect(evt).toMatch(/^(payment_intent|checkout\.session)\./);
     }
   });
 });

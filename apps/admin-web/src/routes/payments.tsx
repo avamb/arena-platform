@@ -128,6 +128,10 @@ export function buildStripeWebhookUrl(apiBaseUrl: string): string {
  * Derived from webhookEventTypeToState in
  * apps/backend/internal/platform/httpserver/hcheckout/payment_intents.go.
  * Update this list if the Go map is extended.
+ *
+ * The `checkout.session.*` entries belong to the hosted Stripe Checkout
+ * Session redirect flow used by the widget — the payment intent behind a
+ * hosted session is only reported through them.
  */
 export const STRIPE_WEBHOOK_EVENTS: readonly string[] = [
   "payment_intent.succeeded",
@@ -136,6 +140,10 @@ export const STRIPE_WEBHOOK_EVENTS: readonly string[] = [
   "payment_intent.processing",
   "payment_intent.amount_capturable",
   "payment_intent.manual_review",
+  "checkout.session.completed",
+  "checkout.session.expired",
+  "checkout.session.async_payment_succeeded",
+  "checkout.session.async_payment_failed",
 ];
 
 /**
