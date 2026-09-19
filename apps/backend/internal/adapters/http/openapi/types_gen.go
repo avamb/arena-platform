@@ -10301,6 +10301,14 @@ type SuperadminListOrdersParams struct {
 
 	// OrgId Organization UUID that scopes this request (tenant isolation).
 	OrgId *openapi_types.UUID `form:"org_id,omitempty" json:"org_id,omitempty"`
+
+	// State Order status to filter by (pending_payment, paid, cancelled, expired, abandoned, refunded, partially_refunded, manual_review).
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Q Finds an order by its number (`system_id`, exact) or the selling site's
+	// reference (`external_ref`, exact), or by part of the buyer's email, name
+	// or phone (case-insensitive). At most 100 characters.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
 }
 
 // SuperadminListOrganizationsParams defines parameters for SuperadminListOrganizations.

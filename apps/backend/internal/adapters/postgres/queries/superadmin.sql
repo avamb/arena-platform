@@ -42,16 +42,29 @@ LIMIT  $3 OFFSET $4;
 -- GET /v1/admin/orders now reads the `orders` aggregate table instead of
 -- checkout_sessions). Pass NULL for orgID to return orders from all orgs.
 -- Pass NULL for stateFilter to return orders in any status.
-SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
-       checkout_session_id, reservation_id, external_ref, source, status,
-       currency, subtotal, discount, charge, total, charge_percent_bp,
-       promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
-       paid_at, cancelled_at, expires_at, metadata, created_at, updated_at
-FROM   orders
-WHERE  ($1::uuid IS NULL OR org_id = $1)
-  AND  ($2::text  IS NULL OR status = $2)
-ORDER BY created_at DESC, id DESC
-LIMIT  $3 OFFSET $4;
+-- Pass NULL for search to skip it; otherwise it matches the order number
+-- (system_id) or the site's reference exactly, or a substring of the
+-- buyer's email, name or phone, case-insensitively. Each row carries its
+-- organization and event names so support never has to resolve UUIDs.
+SELECT o.id, o.system_id, o.org_id, o.channel_id, o.event_id, o.session_id, o.customer_id,
+       o.checkout_session_id, o.reservation_id, o.external_ref, o.source, o.status,
+       o.currency, o.subtotal, o.discount, o.charge, o.total, o.charge_percent_bp,
+       o.promo_code_id, o.buyer_name, o.buyer_email, o.buyer_phone, o.payment_method,
+       o.paid_at, o.cancelled_at, o.expires_at, o.metadata, o.created_at, o.updated_at,
+       COALESCE(org.name, '') AS org_name, COALESCE(ev.name, '') AS event_name
+FROM   orders o
+LEFT JOIN organizations org ON org.id = o.org_id
+LEFT JOIN events        ev  ON ev.id  = o.event_id
+WHERE  ($1::uuid IS NULL OR o.org_id = $1)
+  AND  ($2::text  IS NULL OR o.status = $2)
+  AND  ($3::text  IS NULL
+        OR o.system_id::text = $3
+        OR o.external_ref = $3
+        OR strpos(lower(COALESCE(o.buyer_email, '')), lower($3)) > 0
+        OR strpos(lower(COALESCE(o.buyer_name,  '')), lower($3)) > 0
+        OR strpos(COALESCE(o.buyer_phone, ''), $3) > 0)
+ORDER BY o.created_at DESC, o.id DESC
+LIMIT  $4 OFFSET $5;
 
 -- name: ListAllRefunds :many
 -- Returns refunds across all organizations.

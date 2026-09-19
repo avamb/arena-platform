@@ -62,6 +62,10 @@ const superadminDefaultLimit = 50
 // superadminMaxLimit is the maximum page size accepted by the superadmin endpoints.
 const superadminMaxLimit = 200
 
+// superadminOrderSearchMaxLen caps GET /v1/admin/orders?q=; an order number,
+// an email or a phone is far shorter.
+const superadminOrderSearchMaxLen = 100
+
 // parseSuperadminPagination extracts limit and offset from the request query
 // parameters. Returns the validated values or writes an error response and
 // returns false for ok.
@@ -286,12 +290,25 @@ func (h *Handler) HandleSuperadminListOrders(w http.ResponseWriter, r *http.Requ
 		stateFilter = &v
 	}
 
+	// q finds an order the way support is asked about it: by the number the
+	// site shows (orders.system_id), the site's own reference, or the buyer's
+	// email, name or phone.
+	var search *string
+	if v := strings.TrimSpace(r.URL.Query().Get("q")); v != "" {
+		if len(v) > superadminOrderSearchMaxLen {
+			httputil.WriteJSON(w, http.StatusBadRequest,
+				httputil.ErrorEnvelope("superadmin.invalid_search", "q must be at most 100 characters", r))
+			return
+		}
+		search = &v
+	}
+
 	// W1-A6d (feature #489, spec §14.2): reads the `orders` aggregate table
 	// instead of checkout_sessions, while preserving the response's JSON
 	// keys for backward compatibility. user_id has no orders analogue (orders
 	// carries customer_id, not a user_id); it is repurposed to surface the
 	// buyer's customer_id, which is the closest equivalent identity.
-	rows, err := h.superadminQueries.ListAllOrders(r.Context(), orgID, stateFilter, limit, offset)
+	rows, err := h.superadminQueries.ListAllOrders(r.Context(), orgID, stateFilter, search, limit, offset)
 	if err != nil {
 		h.logger.Error("superadmin: list orders failed", slog.Any("error", err))
 		httputil.WriteJSON(w, http.StatusInternalServerError,
@@ -306,16 +323,28 @@ func (h *Handler) HandleSuperadminListOrders(w http.ResponseWriter, r *http.Requ
 	if stateFilter != nil {
 		filters["state"] = *stateFilter
 	}
+	if search != nil {
+		filters["q"] = *search
+	}
 	h.logSuperadminAudit(r, "orders", reason, filters)
 
 	orders := make([]map[string]any, 0, len(rows))
 	for _, o := range rows {
 		m := map[string]any{
 			"id":             o.ID.String(),
+			"system_id":      o.SystemID,
 			"org_id":         o.OrgID.String(),
+			"org_name":       o.OrgName,
 			"channel_id":     o.ChannelID.String(),
+			"event_id":       o.EventID.String(),
+			"event_name":     o.EventName,
 			"reservation_id": o.ReservationID.String(),
 			"state":          o.Status,
+			"source":         o.Source,
+			"external_ref":   o.ExternalRef,
+			"buyer_name":     o.BuyerName,
+			"buyer_email":    o.BuyerEmail,
+			"buyer_phone":    o.BuyerPhone,
 			"created_at":     o.CreatedAt.Format(time.RFC3339),
 			"updated_at":     o.UpdatedAt.Format(time.RFC3339),
 			"total":          o.Total,

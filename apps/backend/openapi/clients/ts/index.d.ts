@@ -34776,6 +34776,14 @@ export interface operations {
                 offset?: number;
                 /** @description Organization UUID that scopes this request (tenant isolation). */
                 org_id?: string;
+                /** @description Order status to filter by (pending_payment, paid, cancelled, expired, abandoned, refunded, partially_refunded, manual_review). */
+                state?: string;
+                /**
+                 * @description Finds an order by its number (`system_id`, exact) or the selling site's
+                 *     reference (`external_ref`, exact), or by part of the buyer's email, name
+                 *     or phone (case-insensitive). At most 100 characters.
+                 */
+                q?: string;
             };
             header?: never;
             path?: never;
@@ -34793,16 +34801,49 @@ export interface operations {
                         orders?: {
                             /** Format: uuid */
                             id?: string;
+                            /**
+                             * Format: int64
+                             * @description Order number shown to the buyer and the selling site.
+                             */
+                            system_id?: number;
                             /** Format: uuid */
                             org_id?: string;
-                            status?: string;
+                            /** @description Organization name. */
+                            org_name?: string;
+                            /** Format: uuid */
+                            event_id?: string;
+                            /** @description Event name. */
+                            event_name?: string;
+                            /** @description Order status. */
+                            state?: string;
+                            /** @description Sales path that created the order. */
+                            source?: string;
+                            /** @description Reference the selling site gave the order. */
+                            external_ref?: string | null;
+                            buyer_name?: string | null;
+                            buyer_email?: string | null;
+                            buyer_phone?: string | null;
                             total?: number;
                             currency?: string;
                             /** Format: date-time */
                             created_at?: string;
+                            /**
+                             * Format: date-time
+                             * @description When the order was paid.
+                             */
+                            completed_at?: string | null;
                         }[];
                         total?: number;
                     };
+                };
+            };
+            /** @description Invalid org_id, pagination or search (`superadmin.invalid_search` when q is longer than 100 characters). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Unauthorized. */

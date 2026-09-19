@@ -30618,6 +30618,19 @@ paths:
           in: query
           required: false
           schema: { type: string, format: uuid }
+        - name: state
+          description: Order status to filter by (pending_payment, paid, cancelled, expired, abandoned, refunded, partially_refunded, manual_review).
+          in: query
+          required: false
+          schema: { type: string }
+        - name: q
+          description: |
+            Finds an order by its number (`system_id`, exact) or the selling site's
+            reference (`external_ref`, exact), or by part of the buyer's email, name
+            or phone (case-insensitive). At most 100 characters.
+          in: query
+          required: false
+          schema: { type: string, maxLength: 100 }
       responses:
         "200":
           description: Paginated list of orders across all tenants.
@@ -30632,12 +30645,28 @@ paths:
                       type: object
                       properties:
                         id: { type: string, format: uuid }
+                        system_id: { type: integer, format: int64, description: "Order number shown to the buyer and the selling site." }
                         org_id: { type: string, format: uuid }
-                        status: { type: string }
+                        org_name: { type: string, description: "Organization name." }
+                        event_id: { type: string, format: uuid }
+                        event_name: { type: string, description: "Event name." }
+                        state: { type: string, description: "Order status." }
+                        source: { type: string, description: "Sales path that created the order." }
+                        external_ref: { type: [string, "null"], description: "Reference the selling site gave the order." }
+                        buyer_name: { type: [string, "null"] }
+                        buyer_email: { type: [string, "null"] }
+                        buyer_phone: { type: [string, "null"] }
                         total: { type: integer }
                         currency: { type: string }
                         created_at: { type: string, format: date-time }
+                        completed_at: { type: [string, "null"], format: date-time, description: "When the order was paid." }
                   total: { type: integer }
+        "400":
+          description: Invalid org_id, pagination or search (`superadmin.invalid_search` when q is longer than 100 characters).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           description: Unauthorized.
           content:

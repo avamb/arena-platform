@@ -6,8 +6,11 @@
  *
  *   - requires `superadmin.read` permission;
  *   - requires the `X-Admin-Reason` header (cross-tenant read);
- *   - accepts only `org_id`, `state`, `limit`, `offset` query parameters
- *     -- no free-text search, no created-at range, no channel filter;
+ *   - accepts `org_id`, `state`, `q`, `limit`, `offset` query parameters.
+ *     `q` finds an order by its number (system_id) or the selling site's
+ *     reference exactly, or by part of the buyer's email, name or phone
+ *     (functional run 2026-09-19, F-35); there is no created-at range
+ *     and no channel filter;
  *   - returns the rows along with `total = len(rows)` (NOT a global
  *     count). The pagination UI is therefore offset-only with a
  *     "next available" inferred from a full page.
@@ -20,10 +23,11 @@
  *
  *   org_id UUID input        -> ?org_id=<uuid>
  *   state dropdown           -> ?state=<state>
+ *   search box (on submit)   -> ?q=<text>
  *   page size dropdown       -> ?limit=<n>
  *   prev/next pagination     -> ?offset=<n>
  *
- * Any future filters (channel_id, completed_at range, user_id) require
+ * Any future filters (channel_id, completed_at range) require
  * a corresponding backend change first; the toolbar deliberately does
  * NOT pretend to support them.
  *
@@ -75,6 +79,21 @@ import {
   type SupportFilters,
 } from "@/lib/admin/supportConsole";
 import * as S from "@/lib/admin/supportStyles";
+import { buildOrgContextHref } from "@/lib/routing/orgContext";
+
+/** Query string for GET /v1/admin/orders. Exported for unit testing. */
+export function buildOrdersQuery(filters: SupportFilters, q: string): string {
+  const base = buildSupportQuery(filters, "state");
+  const trimmed = q.trim();
+  return trimmed === "" ? base : `${base}&q=${encodeURIComponent(trimmed)}`;
+}
+
+/** An order's display name: its number, or the short UUID for a row without one. */
+export function orderLabel(o: Pick<AdminOrder, "id" | "system_id">): string {
+  return typeof o.system_id === "number" && o.system_id > 0
+    ? `#${o.system_id}`
+    : shortUuid(o.id);
+}
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -83,8 +102,9 @@ export const Route = createRoute({
 });
 
 /**
- * Known order states. Aligned with `checkout_sessions.state` in
- * apps/backend/internal/platform/persistence/migrations/*.sql.
+ * Known order states. Aligned with the `orders.status` CHECK constraint
+ * (apps/backend/internal/migrations/sql/0092_orders.sql); the endpoint reads
+ * the `orders` table, not checkout sessions.
  *
  * Keeping the dropdown values pinned here means the operator only ever
  * sees server-recognised values. Unknown values would be silently
@@ -93,17 +113,29 @@ export const Route = createRoute({
  * predictable). Adding a new state -> update both ends.
  */
 export const ORDER_STATES: readonly string[] = [
-  "created",
-  "in_progress",
-  "completed",
-  "expired",
+  "pending_payment",
+  "paid",
   "cancelled",
-  "failed",
+  "expired",
+  "abandoned",
+  "refunded",
+  "partially_refunded",
+  "manual_review",
 ];
 
 export interface AdminOrder {
   readonly id: string;
+  /** Order number the buyer and the selling site know the order by. */
+  readonly system_id: number;
   readonly org_id: string;
+  readonly org_name: string;
+  readonly event_id: string;
+  readonly event_name: string;
+  readonly source: string;
+  readonly external_ref: string | null;
+  readonly buyer_name: string | null;
+  readonly buyer_email: string | null;
+  readonly buyer_phone: string | null;
   readonly channel_id: string;
   readonly reservation_id: string;
   readonly state: string;
@@ -144,6 +176,8 @@ function OrdersConsole() {
   }, []);
   const [orgIdInput, setOrgIdInput] = useState(initial.orgId);
   const [state, setState] = useState(initial.statusValue);
+  const [qInput, setQInput] = useState("");
+  const [q, setQ] = useState("");
   const [limit, setLimit] = useState<number>(initial.limit);
   const [offset, setOffset] = useState<number>(initial.offset);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
@@ -162,11 +196,11 @@ function OrdersConsole() {
   };
 
   const query = useQuery<OrdersEnvelope, ApiError>({
-    queryKey: ["admin", "orders", filters],
+    queryKey: ["admin", "orders", filters, q],
     queryFn: () =>
       authedFetch<OrdersEnvelope>({
         method: "GET",
-        path: `/v1/admin/orders?${buildSupportQuery(filters, "state")}`,
+        path: `/v1/admin/orders?${buildOrdersQuery(filters, q)}`,
       }),
     retry: (failureCount, err) => {
       if (err instanceof ApiError) {
@@ -199,7 +233,7 @@ function OrdersConsole() {
   useEffect(() => {
     setOffset(0);
     setActiveOrderId(null);
-  }, [orgIdInput, state, limit]);
+  }, [orgIdInput, state, limit, q]);
 
   return (
     <section aria-labelledby="orders-heading" style={S.pageStyle}>
@@ -209,11 +243,10 @@ function OrdersConsole() {
             Orders
           </h1>
           <p style={S.subheadingStyle}>
-            Cross-tenant checkout sessions. Filters map directly to the
-            backend's <code>org_id</code>, <code>state</code>,{" "}
-            <code>limit</code>, <code>offset</code> query parameters;
-            free-text search is unavailable until the backend exposes
-            it. Read-only; no support write actions are wired here.
+            Orders of every organization. Search by order number, the
+            selling site's reference, or the buyer's email, name or phone.
+            Read-only here; cancel from the organization's
+            orders page.
           </p>
         </div>
         <div style={S.refreshWrapStyle}>
@@ -232,6 +265,34 @@ function OrdersConsole() {
       {(() => {
         const toolbar = (
           <div style={S.toolbarStyle}>
+            <form
+              style={S.fieldGroupStyle}
+              role="search"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setQ(qInput.trim());
+              }}
+            >
+              <span style={S.fieldLabelStyle}>Search</span>
+              <span style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="search"
+                  placeholder="Order #, email, name, phone"
+                  value={qInput}
+                  maxLength={100}
+                  onChange={(e) => {
+                    setQInput(e.target.value);
+                    if (e.target.value === "") setQ("");
+                  }}
+                  style={S.inputStyle}
+                  aria-label="Search orders"
+                  data-testid="orders-search-input"
+                />
+                <button type="submit" style={S.buttonStyle} data-testid="orders-search-submit">
+                  Search
+                </button>
+              </span>
+            </form>
             <label style={S.fieldGroupStyle}>
               <span style={S.fieldLabelStyle}>Organization ID</span>
               <input
@@ -387,7 +448,7 @@ function Body({ query, rows, activeOrderId, onOpen }: BodyProps) {
   const columns: ResponsiveTableColumn<AdminOrder>[] = [
     {
       id: "id",
-      header: "ID",
+      header: "Order",
       primary: true,
       renderCell: (o) => (
         <span data-testid={`orders-row-${o.id}`}>
@@ -395,18 +456,38 @@ function Body({ query, rows, activeOrderId, onOpen }: BodyProps) {
             type="button"
             style={S.rowNameButtonStyle}
             onClick={() => onOpen(o.id)}
-            aria-label={`Open details for order ${o.id}`}
+            aria-label={`Open details for order ${orderLabel(o)}`}
             title={o.id}
           >
-            {shortUuid(o.id)}
+            {orderLabel(o)}
           </button>
         </span>
       ),
     },
     {
       id: "org",
-      header: "Org",
-      renderCell: (o) => <span title={o.org_id}>{shortUuid(o.org_id)}</span>,
+      header: "Organization",
+      renderCell: (o) => (
+        <span title={o.org_id}>{o.org_name || shortUuid(o.org_id)}</span>
+      ),
+    },
+    {
+      id: "event",
+      header: "Event",
+      renderCell: (o) => o.event_name || <span style={S.mutedStyle}>—</span>,
+    },
+    {
+      id: "buyer",
+      header: "Buyer",
+      renderCell: (o) =>
+        o.buyer_email || o.buyer_name ? (
+          <span title={o.buyer_phone ?? undefined}>
+            {o.buyer_name ? <div>{o.buyer_name}</div> : null}
+            {o.buyer_email ? <div style={S.mutedStyle}>{o.buyer_email}</div> : null}
+          </span>
+        ) : (
+          <span style={S.mutedStyle}>—</span>
+        ),
     },
     {
       id: "state",
@@ -425,7 +506,7 @@ function Body({ query, rows, activeOrderId, onOpen }: BodyProps) {
     },
     {
       id: "completed",
-      header: "Completed",
+      header: "Paid",
       renderCell: (o) => formatDateTime(o.completed_at),
     },
     {
@@ -464,13 +545,22 @@ function Body({ query, rows, activeOrderId, onOpen }: BodyProps) {
  * Exported for unit testing.
  */
 export function badgeForState(state: string): CSSProperties {
-  if (state === "completed") {
+  if (state === "paid") {
     return S.successBadgeStyle;
   }
-  if (state === "failed" || state === "cancelled" || state === "expired") {
+  if (
+    state === "cancelled" ||
+    state === "expired" ||
+    state === "abandoned" ||
+    state === "refunded"
+  ) {
     return S.errorBadgeStyle;
   }
-  if (state === "in_progress" || state === "created") {
+  if (
+    state === "pending_payment" ||
+    state === "partially_refunded" ||
+    state === "manual_review"
+  ) {
     return S.warnBadgeStyle;
   }
   return S.statusBadgeStyle;
@@ -495,7 +585,7 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
         <div>
           <div style={S.drawerEyebrowStyle}>Order</div>
           <h2 id="orders-drawer-title" style={S.drawerTitleStyle}>
-            <code style={S.monoStyle}>{order.id}</code>
+            {orderLabel(order)}
           </h2>
         </div>
         <button
@@ -517,7 +607,31 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
         </h3>
         <dl style={S.metaListStyle}>
           <MetaRow k="State" v={<span style={badgeForState(order.state)}>{order.state}</span>} />
-          <MetaRow k="Organization" v={<code style={S.monoStyle}>{order.org_id}</code>} />
+          <MetaRow k="Order ID" v={<code style={S.monoStyle}>{order.id}</code>} />
+          <MetaRow
+            k="Organization"
+            v={
+              <>
+                {order.org_name ? <div>{order.org_name}</div> : null}
+                <code style={S.monoStyle}>{order.org_id}</code>
+              </>
+            }
+          />
+          <MetaRow k="Event" v={order.event_name || <span style={S.mutedStyle}>—</span>} />
+          <MetaRow k="Buyer" v={order.buyer_name || <span style={S.mutedStyle}>—</span>} />
+          <MetaRow k="Email" v={order.buyer_email || <span style={S.mutedStyle}>—</span>} />
+          <MetaRow k="Phone" v={order.buyer_phone || <span style={S.mutedStyle}>—</span>} />
+          <MetaRow k="Sales path" v={order.source} />
+          <MetaRow
+            k="Site reference"
+            v={
+              order.external_ref ? (
+                <code style={S.monoStyle}>{order.external_ref}</code>
+              ) : (
+                <span style={S.mutedStyle}>—</span>
+              )
+            }
+          />
           <MetaRow k="Channel" v={<code style={S.monoStyle}>{order.channel_id}</code>} />
           <MetaRow k="Reservation" v={<code style={S.monoStyle}>{order.reservation_id}</code>} />
           <MetaRow
@@ -533,7 +647,7 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
           <MetaRow k="Total" v={formatMoneyMinor(order.total, order.currency)} />
           <MetaRow k="Created" v={formatDateTime(order.created_at)} />
           <MetaRow k="Updated" v={formatDateTime(order.updated_at)} />
-          <MetaRow k="Completed" v={formatDateTime(order.completed_at)} />
+          <MetaRow k="Paid" v={formatDateTime(order.completed_at)} />
         </dl>
       </section>
 
@@ -542,6 +656,16 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
           Related data
         </h3>
         <div style={S.relatedGridStyle}>
+          <a
+            href={buildOrgContextHref("/org-orders", order.org_id)}
+            style={S.relatedTileStyle}
+            data-testid="orders-related-org-orders"
+          >
+            <span style={S.relatedTileLabelStyle}>Organization orders</span>
+            <span style={S.relatedTileHintStyle}>
+              Full order card with tickets and cancellation
+            </span>
+          </a>
           <Link
             to={"/tickets" as "/"}
             search={{ org_id: order.org_id } as unknown as Record<string, never>}
