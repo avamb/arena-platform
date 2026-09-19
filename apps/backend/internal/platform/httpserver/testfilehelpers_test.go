@@ -412,6 +412,13 @@ func resolveFileInRepo(repoRoot, name string) string {
 		candidates = []string{
 			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "payment_intents.go"),
 		}
+	// The shared post-completion tail (enqueue issue_tickets, mark the order
+	// paid, enqueue convert_reservation) the payment webhook and the
+	// zero-total public checkout both run.
+	case "fulfillment.go":
+		candidates = []string{
+			filepath.Join(repoRoot, "apps", "backend", "internal", "platform", "httpserver", "hcheckout", "fulfillment.go"),
+		}
 	// Tickets — issued entitlements (feature #139)
 	case "0026_tickets.sql":
 		candidates = []string{
