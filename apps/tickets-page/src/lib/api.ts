@@ -1,7 +1,12 @@
 /**
- * api.ts — client for GET /v1/public/pages/{org_slug}/{event_slug}, the
- * hosted-page resolve endpoint. Mirrors the response shape documented in
- * apps/backend/openapi/openapi.yaml (HostedPageResponse).
+ * api.ts — clients for the two hosted-page resolve endpoints:
+ *
+ *   GET /v1/public/pages/{org_slug}/{event_slug} — one event
+ *   GET /v1/public/pages/{org_slug}               — promoter landing page
+ *
+ * Mirrors the response shapes documented in
+ * apps/backend/openapi/openapi.yaml (HostedPageResponse /
+ * HostedPromoterPageResponse).
  */
 
 export interface HostedPageOrg {
@@ -22,6 +27,10 @@ export interface HostedPageEvent {
   venue_names: string[];
   first_session_at: string | null;
   last_session_at: string | null;
+  /** IANA time zone name of the venue of the event's earliest session, or
+   * null when unavailable — lets the page show the event's own local time
+   * instead of the viewer's. */
+  first_session_timezone: string | null;
 }
 
 export interface HostedPageResponse {
@@ -29,6 +38,12 @@ export interface HostedPageResponse {
   event: HostedPageEvent;
   feed_token: string;
   default_locale: string;
+}
+
+export interface HostedPromoterPageResponse {
+  org: HostedPageOrg;
+  default_locale: string;
+  events: HostedPageEvent[];
 }
 
 /** ApiError carries the HTTP status so callers can distinguish "not found"
@@ -61,4 +76,23 @@ export async function fetchHostedPage(
     throw new ApiError(res.status, `request failed with status ${res.status}`);
   }
   return (await res.json()) as HostedPageResponse;
+}
+
+export async function fetchPromoterPage(
+  apiBase: string,
+  orgSlug: string,
+  signal?: AbortSignal,
+): Promise<HostedPromoterPageResponse> {
+  const base = apiBase.replace(/\/$/, '');
+  const url = `${base}/v1/public/pages/${encodeURIComponent(orgSlug)}`;
+  let res: Response;
+  try {
+    res = await fetch(url, { signal, headers: { Accept: 'application/json' } });
+  } catch (err) {
+    throw new ApiError(0, err instanceof Error ? err.message : 'network error');
+  }
+  if (!res.ok) {
+    throw new ApiError(res.status, `request failed with status ${res.status}`);
+  }
+  return (await res.json()) as HostedPromoterPageResponse;
 }

@@ -1,7 +1,7 @@
 import { parsePath } from './lib/route.ts';
 import { resolveLocale } from './lib/locale.ts';
-import { applyDocumentChrome, renderError, renderEvent, renderLoading, renderNotFound } from './lib/render.ts';
-import { ApiError, fetchHostedPage } from './lib/api.ts';
+import { applyDocumentChrome, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from './lib/render.ts';
+import { ApiError, fetchHostedPage, fetchPromoterPage } from './lib/api.ts';
 
 /** Resolved at build time by Vite from the VITE_API_BASE_URL build arg
  * (see Dockerfile / .env). Empty string falls back to same-origin relative
@@ -26,7 +26,6 @@ function loadWidgetScript(): void {
 }
 
 async function main(): Promise<void> {
-  loadWidgetScript();
   const mainEl = document.getElementById('asa-main');
   if (!mainEl) return;
 
@@ -39,13 +38,36 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (route.kind === 'promoter') {
+    const loadPromoter = async (): Promise<void> => {
+      renderLoading(mainEl, locale);
+      try {
+        const data = await fetchPromoterPage(API_BASE, route.orgSlug);
+        applyDocumentChrome(locale, { title: data.org.name });
+        renderPromoterPage(mainEl, data, locale);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          renderNotFound(mainEl, locale);
+          return;
+        }
+        renderError(mainEl, locale, () => {
+          void loadPromoter();
+        });
+      }
+    };
+    await loadPromoter();
+    return;
+  }
+
+  // route.kind === 'event' from here on.
+  loadWidgetScript();
   const resumingCheckout = new URLSearchParams(window.location.search).has('checkout_token');
 
-  const load = async (): Promise<void> => {
+  const loadEvent = async (): Promise<void> => {
     renderLoading(mainEl, locale);
     try {
       const data = await fetchHostedPage(API_BASE, route.orgSlug, route.eventSlug);
-      applyDocumentChrome(locale, data.event);
+      applyDocumentChrome(locale, { title: data.event.title, description: data.event.short_description ?? data.event.description });
       renderEvent(mainEl, data, locale, { apiBase: API_BASE, resumingCheckout });
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
@@ -53,12 +75,12 @@ async function main(): Promise<void> {
         return;
       }
       renderError(mainEl, locale, () => {
-        void load();
+        void loadEvent();
       });
     }
   };
 
-  await load();
+  await loadEvent();
 }
 
 void main();

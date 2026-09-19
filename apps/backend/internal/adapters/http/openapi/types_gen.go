@@ -5400,6 +5400,13 @@ type HostedPageEvent struct {
 	// FirstSessionAt Earliest session start (trigger-maintained cache), or null.
 	FirstSessionAt *time.Time `json:"first_session_at"`
 
+	// FirstSessionTimezone IANA time zone name (`venues.timezone`) of the venue of the
+	// event's earliest active, non-cancelled session — lets the page
+	// show the event's own local time rather than the viewer's. Null
+	// when the event has no sessions yet or the venue has no timezone
+	// configured.
+	FirstSessionTimezone *string `json:"first_session_timezone"`
+
 	// Id UUIDv7 primary key of the event row.
 	Id openapi_types.UUID `json:"id"`
 
@@ -5458,6 +5465,32 @@ type HostedPageResponse struct {
 
 	// FeedToken Opaque feed token to pass to the `<arena-tickets>` widget.
 	FeedToken string `json:"feed_token"`
+
+	// Org Public-safe organization branding.
+	Org HostedPageOrg `json:"org"`
+}
+
+// HostedPromoterPageResponse Response envelope for GET /v1/public/pages/{org_slug} — the promoter
+// landing page resolver behind the shared short link
+// (tickets.arenasoldout.com/{org_slug}). Lists every event that would
+// individually resolve on
+// GET /v1/public/pages/{org_slug}/{event_slug}, upcoming first, so a
+// promoter running several one-off dates under one organizer (e.g. six
+// separate master-class sessions) can share a single link. Each item
+// reuses `HostedPageEvent` — `feed_token` is intentionally NOT
+// repeated per item here: the page links each card to the per-event
+// page, which resolves its own token.
+type HostedPromoterPageResponse struct {
+	// DefaultLocale Organization default locale, used when no `?lang=` is present.
+	DefaultLocale string `json:"default_locale"`
+
+	// Events Currently-visible events of the org, ordered upcoming first
+	// (`first_session_at` ascending, events with no sessions yet
+	// sorted last). An event whose `last_session_at` has already
+	// passed is omitted. Capped at 200. Empty when the org has a
+	// properly configured hosted-page channel but no visible events
+	// (still a 200, not a 404).
+	Events []HostedPageEvent `json:"events"`
 
 	// Org Public-safe organization branding.
 	Org HostedPageOrg `json:"org"`
