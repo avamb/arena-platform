@@ -2,6 +2,69 @@ package ean13
 
 import "testing"
 
+// TestRandom_ProducesValidChecksumValidCodes draws 1000 codes and asserts
+// every one is 13 digits, prefixed "21", and checksum-valid — the same
+// shape guarantee Encode gives, now for the random-body minting path.
+func TestRandom_ProducesValidChecksumValidCodes(t *testing.T) {
+	for i := 0; i < 1000; i++ {
+		code, err := Random()
+		if err != nil {
+			t.Fatalf("Random() error = %v", err)
+		}
+		if len(code) != 13 {
+			t.Fatalf("Random() = %q, want length 13", code)
+		}
+		if code[:2] != PlatformPrefix {
+			t.Fatalf("Random() = %q, want prefix %q", code, PlatformPrefix)
+		}
+		if !Valid(code) {
+			t.Fatalf("Valid(Random()) = false, want true (code=%q)", code)
+		}
+	}
+}
+
+// TestRandom_DistinctAcrossManyDraws proves Random draws from the full
+// 10^10 body space rather than some narrow/degenerate range: 1000 draws
+// should essentially never collide (birthday-bound probability on a 10^10
+// space is astronomically small), so any duplicate signals a broken
+// generator, not bad luck.
+func TestRandom_DistinctAcrossManyDraws(t *testing.T) {
+	seen := make(map[string]struct{}, 1000)
+	for i := 0; i < 1000; i++ {
+		code, err := Random()
+		if err != nil {
+			t.Fatalf("Random() error = %v", err)
+		}
+		if _, dup := seen[code]; dup {
+			t.Fatalf("Random() produced a duplicate code %q within 1000 draws", code)
+		}
+		seen[code] = struct{}{}
+	}
+}
+
+// TestRandom_DoesNotFollowThePlatformCodeFormula proves Random's output is
+// not just PlatformCode in disguise: across many draws, at least one must
+// differ from what the retired deterministic formula would have produced
+// for the same numeric body — otherwise the "random" path would still be
+// fully guessable from a small counter.
+func TestRandom_DoesNotFollowThePlatformCodeFormula(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		code, err := Random()
+		if err != nil {
+			t.Fatalf("Random() error = %v", err)
+		}
+		// The legacy formula zero-pads a small monotonically increasing
+		// system_ticket_id; a body with no leading zeros at all (extremely
+		// likely for a uniform 10-digit draw) could never come from
+		// PlatformCode(n) for any n < 10^9 — the range every real
+		// system_ticket_id has occupied so far.
+		if code[2] != '0' {
+			return
+		}
+	}
+	t.Fatalf("200 draws from Random() all had a leading zero in the body — suspicious for a uniform 10-digit draw")
+}
+
 // TestValid_RealBil24Code pins the checksum algorithm against a real-world
 // EAN-13 code (a Bil24 ticket barcode, spec §11) so a weight/rounding
 // regression in checkDigit is caught even though the platform never mints

@@ -110,13 +110,16 @@ func newTicket(row Row, orderID int64) Ticket {
 		tierName = *row.TierName
 	}
 
-	// The stored EAN-13 credential wins. A ticket issued before feature
-	// #502 has none yet; its code is DERIVED with the very formula the
-	// issuance path and the backfill job mint (prefix + zero-padded
-	// system_ticket_id + check digit), so the export never names a number
-	// that a later backfill would contradict — and never names one whose
-	// check digit fails, which is what makes a WordPress site fall back
-	// from EAN13 to Code128 (spec §10 M4 / §11).
+	// The stored EAN-13 credential wins. Since feature #502 (widened by the
+	// "random EAN-13" change) every issuance and backfill path always
+	// leaves a stored credential, so this DERIVED fallback only fires for
+	// a ticket that predates #502 and has never been backfilled — a legacy
+	// case, not the normal path. It uses the retired deterministic
+	// PlatformCode formula (prefix + zero-padded system_ticket_id + check
+	// digit) rather than a random draw because there is no stored state to
+	// read here: the projection must still emit a checksum-valid number
+	// (never one that would make a WordPress site fall back from EAN13 to
+	// Code128, spec §10 M4 / §11) without minting or persisting anything.
 	barcode := ean13.PlatformCode(row.SystemTicketID)
 	if row.BarcodeStr != nil && *row.BarcodeStr != "" {
 		barcode = *row.BarcodeStr

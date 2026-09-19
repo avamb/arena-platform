@@ -913,3 +913,31 @@ entries short and factual.
   webhooks) shows `totalPrice 0` with discount reason «Приглашение». A
   same-cart re-send cannot flip the flag (answers `-2`
   `bil24.order_kind_changed`): an order never changes its source.
+- **Platform EAN-13 ticket barcodes are random, not sequential, and must
+  stay unique across EVERY barcode authority, not just `platform`.**
+  `ean13.Random()` draws the 10-digit body uniformly from `crypto/rand`
+  (owner-approved "variant A" — the old `"21" + zeroPad10(system_ticket_id)
+  + check` formula made neighbouring tickets' codes guessable and full of
+  zeros). `ean13.PlatformCode` is now LEGACY-ONLY: a pure-function read-time
+  fallback (`orderexport`, `hiam` export helpers) for a ticket that predates
+  this change and has no stored credential — nothing mints through it
+  anymore. Because the owner will later import already-sold tickets from
+  two live clients into the `legacy_bil24` authority, and
+  `GetBarcodeByExternalRefAny` (SCAN_TICKET) searches ALL authorities in
+  one round-trip, a code must never collide across authorities either — the
+  `barcodes` table's own UNIQUE constraint is scoped to `(authority_id,
+  external_ref)` and cannot catch that alone. Both issuance
+  (`htickets.IssueTicketsForCheckout`) and the backfill job
+  (`barcodes/backfill`) mint through the shared
+  `internal/platform/barcodes/mint.EAN13` helper: draw a candidate, try to
+  atomically claim it via `gen.Queries.InsertBarcodeIfUnique` (`INSERT ...
+  WHERE NOT EXISTS (SELECT 1 FROM barcodes WHERE external_ref = $2) ON
+  CONFLICT (authority_id, external_ref) DO NOTHING RETURNING ...`), and
+  redraw on a loss — up to `mint.MaxAttempts` (8) times. A losing attempt
+  is zero rows / no error, NEVER a raw 23505, so it is safe to call inside
+  the ticket-issuance transaction without a SAVEPOINT (AGENTS.md "best
+  effort writes inside a money transaction" — there is nothing to roll
+  back). The `ticket_credentials` row is only written AFTER the barcodes
+  row is won. Any NEW code path that mints a platform EAN-13 must go
+  through `mint.EAN13`, never call `ean13.Random`/`ean13.Encode` and
+  `InsertBarcode` directly.

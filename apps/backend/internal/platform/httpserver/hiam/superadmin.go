@@ -480,8 +480,11 @@ func (h *Handler) HandleSuperadminListTickets(w http.ResponseWriter, r *http.Req
 		m["order_system_id"] = t.OrderSystemID
 		// barcode falls back to the derived platform EAN-13 code the same
 		// way the MACS export does, so this column always has a value once
-		// a ticket exists (ean13.PlatformCode is a pure function of the
-		// system_ticket_id, never persisted state).
+		// a ticket exists. Since the "random EAN-13" change this fallback
+		// only fires for a legacy pre-#502/un-backfilled ticket — every
+		// current issuance path always leaves a stored credential;
+		// PlatformCode is the retired deterministic formula kept only as a
+		// pure function of system_ticket_id, never persisted state.
 		if t.BarcodeStr != nil && *t.BarcodeStr != "" {
 			m["barcode"] = *t.BarcodeStr
 		} else {

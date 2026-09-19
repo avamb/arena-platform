@@ -57,6 +57,28 @@ SELECT id, authority_id, external_ref, ticket_id, status, scanned_at, created_at
 FROM   barcodes
 WHERE  id = $1;
 
+-- name: InsertBarcodeIfUnique :one
+-- Atomically claims a candidate external_ref for a random-minted platform
+-- EAN-13 code (internal/platform/barcodes/mint), enforcing uniqueness
+-- across ALL barcode authorities, not just the target one: the WHERE NOT
+-- EXISTS guards against a collision with a DIFFERENT authority (the
+-- barcodes table's own UNIQUE constraint is scoped to (authority_id,
+-- external_ref) and would not catch that), while ON CONFLICT DO NOTHING
+-- guards the same-authority race. Either guard failing yields zero rows —
+-- never a 23505 — so this is safe to call inside a money/issuance
+-- transaction per AGENTS.md ("best effort writes ... MUST sit behind a
+-- SAVEPOINT" — here there is nothing to roll back, the statement itself
+-- simply inserts nothing and the caller redraws a new candidate).
+-- Returns pgx.ErrNoRows when the candidate collided (caller: redraw and
+-- retry, bounded by mint.MaxAttempts).
+INSERT INTO barcodes (authority_id, external_ref, ticket_id)
+SELECT $1, $2, $3
+WHERE NOT EXISTS (
+    SELECT 1 FROM barcodes WHERE external_ref = $2
+)
+ON CONFLICT (authority_id, external_ref) DO NOTHING
+RETURNING id, authority_id, external_ref, ticket_id, status, scanned_at, created_at, updated_at;
+
 -- name: MarkBarcodeScanned :one
 -- Atomically transitions an 'active' barcode to 'scanned'. Returns the updated
 -- row. Returns pgx.ErrNoRows when the barcode is already scanned or revoked

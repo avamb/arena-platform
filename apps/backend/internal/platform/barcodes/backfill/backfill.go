@@ -12,6 +12,11 @@
 // path: a worker job, not a one-shot CLI, so it can be triggered the same
 // way any other maintenance job is (enqueue a worker_jobs row) and its
 // progress is visible in the existing job-status tooling.
+//
+// Since the "random EAN-13" change, a backfilled ticket gets a RANDOM code
+// through the same internal/platform/barcodes/mint helper issuance uses —
+// nothing minted by this package is ever sequential/derived anymore, even
+// for old pre-#502 tickets.
 package backfill
 
 import (
@@ -22,16 +27,11 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/ean13"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/mint"
 )
 
 // JobType is the worker_jobs.job_type this package handles.
 const JobType = "tickets.backfill_ean13"
-
-// ean13PlatformPrefix mirrors htickets.ean13PlatformPrefix (feature #502):
-// GS1 reserves 20-29 for internal/in-store use, so platform-minted codes
-// can never collide with a real Bil24 barcode ("24…").
-const ean13PlatformPrefix = "21"
 
 // DefaultBatchSize caps how many tickets a single run backfills. Kept
 // small and self-scheduling would be overkill here — the job is meant to
@@ -65,9 +65,12 @@ type Store interface {
 	// don't have one yet, but idempotent regardless.
 	InsertTicketCredential(ctx context.Context, ticketID uuid.UUID, credType string, payload string) error
 
-	// InsertBarcode creates the federation-table row (authority=platform)
-	// backing SCAN_TICKET / /v1/scanner/* lookups for the new code.
-	InsertBarcode(ctx context.Context, authorityID uuid.UUID, externalRef string, ticketID *uuid.UUID) error
+	// InsertBarcodeIfUnique atomically claims a candidate external_ref for
+	// authorityID, enforcing uniqueness across ALL barcode authorities
+	// (see internal/platform/barcodes/mint, which calls this through the
+	// Store's satisfaction of mint.Inserter). ok=false, err=nil means the
+	// candidate collided and nothing was written — the caller redraws.
+	InsertBarcodeIfUnique(ctx context.Context, authorityID uuid.UUID, externalRef string, ticketID *uuid.UUID) (bool, error)
 }
 
 // Options configures the handler returned by NewHandler.
@@ -136,13 +139,13 @@ func Run(ctx context.Context, store Store, batchSize int32) (int, error) {
 			return backfilled, err
 		}
 
-		code := ean13.Encode(ean13PlatformPrefix, t.SystemTicketID)
+		ticketID := t.ID
+		code, err := mint.EAN13(ctx, store, platformAuthorityID, &ticketID, nil)
+		if err != nil {
+			return backfilled, fmt.Errorf("backfill: mint ean13 barcode for ticket %s: %w", t.ID, err)
+		}
 		if err := store.InsertTicketCredential(ctx, t.ID, "ean13", code); err != nil {
 			return backfilled, fmt.Errorf("backfill: insert ean13 credential for ticket %s: %w", t.ID, err)
-		}
-		ticketID := t.ID
-		if err := store.InsertBarcode(ctx, platformAuthorityID, code, &ticketID); err != nil {
-			return backfilled, fmt.Errorf("backfill: insert ean13 barcode for ticket %s: %w", t.ID, err)
 		}
 		backfilled++
 	}
@@ -184,7 +187,6 @@ func (s PGStore) InsertTicketCredential(ctx context.Context, ticketID uuid.UUID,
 	return err
 }
 
-func (s PGStore) InsertBarcode(ctx context.Context, authorityID uuid.UUID, externalRef string, ticketID *uuid.UUID) error {
-	_, err := s.Q.InsertBarcode(ctx, authorityID, externalRef, ticketID)
-	return err
+func (s PGStore) InsertBarcodeIfUnique(ctx context.Context, authorityID uuid.UUID, externalRef string, ticketID *uuid.UUID) (bool, error) {
+	return s.Q.InsertBarcodeIfUnique(ctx, authorityID, externalRef, ticketID)
 }

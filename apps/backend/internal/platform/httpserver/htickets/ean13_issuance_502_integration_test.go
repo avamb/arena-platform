@@ -123,16 +123,22 @@ func TestEAN13Issuance502Integration_WritesCredentialAndBarcode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected an ean13 ticket_credentials row for ticket %s: %v", ticket.ID, err)
 	}
+	if len(payload) != 13 {
+		t.Errorf("ticket_credentials payload %q is not 13 digits", payload)
+	}
 	if !ean13.Valid(payload) {
 		t.Errorf("ticket_credentials payload %q is not a checksum-valid EAN-13 code", payload)
 	}
 	if payload[:2] != "21" {
 		t.Errorf("ticket_credentials payload %q does not have the platform %q prefix", payload, "21")
 	}
-	wantPayload := ean13.Encode("21", ticket.SystemTicketID)
-	if payload != wantPayload {
-		t.Errorf("ticket_credentials payload = %q, want %q (encoded from system_ticket_id=%d)",
-			payload, wantPayload, ticket.SystemTicketID)
+	// "random EAN-13" change: the payload is drawn via ean13.Random /
+	// internal/platform/barcodes/mint, not derived from system_ticket_id,
+	// so it must NOT equal the retired deterministic PlatformCode formula
+	// — otherwise minting would still be fully guessable from the id.
+	if legacy := ean13.PlatformCode(ticket.SystemTicketID); payload == legacy {
+		t.Errorf("ticket_credentials payload %q equals the legacy deterministic PlatformCode(%d) — "+
+			"minting must be random, not derived from system_ticket_id", payload, ticket.SystemTicketID)
 	}
 
 	// ── Verify the barcodes row ────────────────────────────────────────────────

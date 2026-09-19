@@ -344,6 +344,8 @@ type Querier interface {
 	GetBarcodeAuthorityByType(ctx context.Context, authorityType string) (BarcodeAuthorityRow, error)
 	ListBarcodeAuthorities(ctx context.Context) ([]BarcodeAuthorityRow, error)
 	InsertBarcode(ctx context.Context, authorityID uuid.UUID, externalRef string, ticketID *uuid.UUID) (BarcodeRow, error)
+	// InsertBarcodeIfUnique atomically claims a candidate external_ref across ALL authorities (internal/platform/barcodes/mint).
+	InsertBarcodeIfUnique(ctx context.Context, authorityID uuid.UUID, externalRef string, ticketID *uuid.UUID) (bool, error)
 	GetBarcodeByRef(ctx context.Context, authorityID uuid.UUID, externalRef string) (BarcodeRow, error)
 	GetBarcodeByID(ctx context.Context, id uuid.UUID) (BarcodeRow, error)
 	MarkBarcodeScanned(ctx context.Context, id uuid.UUID) (BarcodeRow, error)

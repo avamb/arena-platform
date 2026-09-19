@@ -1,28 +1,73 @@
 // Package ean13 implements the standard GS1 EAN-13 encoder and check-digit
 // validator used to mint the platform's own barcode numbers (feature #502,
-// W1-B6a; spec 08_architecture/18_bil24_compat_wave1_specification_ru.md
-// §11).
+// W1-B6a, widened by the "random EAN-13" change; spec
+// 08_architecture/18_bil24_compat_wave1_specification_ru.md §11).
 //
 // The platform prefixes every generated code with "21" — GS1 reserves the
 // 20-29 prefix range for internal / in-store use — so platform-minted codes
 // can never collide with a real Bil24 barcode (which the spec documents as
-// starting with "24…"). The remaining 10 digits are the zero-padded
-// tickets.system_ticket_id (migration 0088), followed by a single GS1
-// check digit (weights 1/3, computed left to right over the first 12
-// digits).
+// starting with "24…"). Since the "random EAN-13" change, new codes are
+// minted by Random: the 10-digit body is drawn uniformly from crypto/rand,
+// not derived from tickets.system_ticket_id, so neighbouring tickets no
+// longer produce neighbouring (guessable, zero-padded) codes. PlatformCode
+// — the original deterministic Encode(PlatformPrefix, system_ticket_id)
+// formula — remains ONLY as a pure-function fallback for reading tickets
+// issued before this change that have no stored ean13 credential; it must
+// never be used to mint a new code. Every code, old or new, ends with a
+// single GS1 check digit (weights 1/3, computed left to right over the
+// first 12 digits).
 package ean13
 
-import "strconv"
+import (
+	"crypto/rand"
+	"math/big"
+	"strconv"
+)
 
 // PlatformPrefix is the GS1 internal-use prefix every platform-minted code
 // carries (spec §11). It is exported so the READERS of a code — the export
 // projection that has to name a ticket's barcode, the backfill job — derive
-// the same number the issuance path mints instead of each restating the
+// the same prefix the issuance path mints instead of each restating the
 // literal.
 const PlatformPrefix = "21"
 
-// PlatformCode is the platform's own barcode for a ticket: Encode under
-// PlatformPrefix over tickets.system_ticket_id (migration 0088).
+// randomBodyBound is the exclusive upper bound for Random's 10-digit body:
+// uniform over 0..10^10-1.
+var randomBodyBound = big.NewInt(1e10)
+
+// Random mints a NEW platform EAN-13 code: PlatformPrefix followed by 10
+// digits drawn uniformly at random via crypto/rand (0..10^10-1, zero-padded)
+// and the GS1 check digit. This is the platform's current minting rule
+// ("random EAN-13" change, owner-approved variant A) — unlike the retired
+// PlatformCode formula, Random codes carry no relationship to
+// tickets.system_ticket_id, so they are not guessable from a neighbouring
+// ticket's code and are not full of zeros.
+//
+// Random does NOT itself guarantee global uniqueness — two draws could in
+// principle collide, and the owner plans to import already-sold tickets
+// from other authorities that Random cannot see. Callers MUST claim the
+// drawn candidate through internal/platform/barcodes/mint (which checks the
+// barcodes table across ALL authorities and retries on collision) rather
+// than trusting this function's output directly.
+func Random() (string, error) {
+	n, err := rand.Int(rand.Reader, randomBodyBound)
+	if err != nil {
+		return "", err
+	}
+	return Encode(PlatformPrefix, n.Int64()), nil
+}
+
+// PlatformCode is the platform's LEGACY deterministic barcode formula:
+// Encode under PlatformPrefix over tickets.system_ticket_id (migration
+// 0088). It predates the "random EAN-13" change and must NOT be used to
+// mint new codes — issuance (htickets) and the backfill job
+// (barcodes/backfill) mint through internal/platform/barcodes/mint, which
+// calls Random. PlatformCode survives only as the pure-function fallback
+// used when PROJECTING a ticket that was issued before this change and has
+// no stored ean13 credential (orderexport, hiam/superadmin's export
+// helpers) — it needs no stored state and can be recomputed at read time.
+// Already-issued stored codes (random or legacy-deterministic) are never
+// changed.
 func PlatformCode(systemTicketID int64) string {
 	return Encode(PlatformPrefix, systemTicketID)
 }

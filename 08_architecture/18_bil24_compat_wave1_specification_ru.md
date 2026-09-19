@@ -991,14 +991,39 @@ Admin-web — секция в карточке канала рядом с §5.4.
 ## 11. Штрих-коды EAN-13
 
 - Пакет `internal/platform/barcodes/ean13`: `Encode(prefix string, n int64) string`,
-  `Valid(s string) bool` (стандартная контрольная цифра, weights 1/3).
-- Номер: `"21" + zeroPad10(system_ticket_id) + check` — 13 цифр; префикс `21` (GS1
-  «внутреннее использование» 20–29) отличает наши коды от Bil24 (`24…`) — штрих-код в MACS
-  глобально уникален (`17_macs` / отчёт §2.3).
-- При выпуске билета (`IssueTicketsForCheckout`) создаются `ticket_credentials(type='ean13')`
-  и `barcodes(authority=platform, external_ref=<ean13>, ticket_id)`. Существующим билетам —
-  бэкфилл-команда `arena-migrate --backfill-ean13` не нужна на проде (продаж ещё нет), для
-  стенда — job `tickets.backfill_ean13`.
+  `Random() (string, error)`, `Valid(s string) bool` (стандартная контрольная цифра,
+  weights 1/3), `PlatformCode(systemTicketID int64) string` (см. ниже — legacy-only).
+- **Новый номер — случайный, не последовательный** (owner-approved «вариант A»): префикс
+  `"21"` (GS1 «внутреннее использование» 20–29, отличает наши коды от Bil24 `24…`) + 10
+  цифр, равномерно взятых из `crypto/rand` (`rand.Int(rand.Reader, 10^10)`) + контрольная
+  цифра — 13 цифр. Причина смены: старая формула `"21" + zeroPad10(system_ticket_id) +
+  check` делала соседние билеты предсказуемыми (много нулей, номер угадывается по соседнему
+  билету). Старая детерминированная формула осталась в `ean13.PlatformCode` только как
+  read-time fallback для билетов, выпущенных до этого изменения и не имеющих сохранённого
+  `ean13`-credential (`orderexport`, `hiam` export-хелперы) — новые коды через неё больше не
+  минтятся нигде.
+- **Уникальность — глобальная, по ВСЕМ баркод-authority, не только `platform`.** Владелец
+  позже импортирует уже проданные билеты двух живых клиентов в authority `legacy_bil24`, а
+  `GetBarcodeByExternalRefAny` (её использует `SCAN_TICKET`) ищет по всем authority сразу —
+  совпадение `external_ref` в двух authority было бы неоднозначным. UNIQUE-ограничение
+  таблицы `barcodes` — `(authority_id, external_ref)`, оно НЕ ловит кросс-authority
+  коллизию, поэтому минтинг идёт через общий хелпер
+  `internal/platform/barcodes/mint.EAN13`: тянет кандидата, атомарно пытается его занять
+  одним `INSERT ... WHERE NOT EXISTS (SELECT 1 FROM barcodes WHERE external_ref = $2)
+  ON CONFLICT (authority_id, external_ref) DO NOTHING RETURNING ...`
+  (`gen.Queries.InsertBarcodeIfUnique`), и при проигрыше (0 строк, НЕ ошибка) тянет новую
+  случайную попытку — до 8 раз (`mint.MaxAttempts`). Коллизия внутри транзакции выпуска
+  билета никогда не всплывает как `23505` — это обычный «0 строк», а не ошибка (см.
+  AGENTS.md «best effort writes inside a money transaction»), так что вложенный `SAVEPOINT`
+  не требуется: неудачная попытка ничего не пишет и не абортит транзакцию.
+- При выпуске билета (`IssueTicketsForCheckout`) сначала минтится и побеждает строка
+  `barcodes(authority=platform, external_ref=<ean13>, ticket_id)` через `mint.EAN13`, и
+  только ПОСЛЕ этого создаётся `ticket_credentials(type='ean13', payload=<тот же ean13>)`.
+  Уже выпущенные (старые детерминированные или новые случайные) коды никогда не переписываются.
+  Существующим билетам без credential — job `tickets.backfill_ean13`
+  (`internal/platform/barcodes/backfill`), который теперь тоже минтит через `mint.EAN13`
+  (случайный код, не производную от `system_ticket_id`); бэкфилл-команда
+  `arena-migrate --backfill-ean13` на проде не нужна (продаж ещё нет).
 - Используется: `ticketList[].barcode` (сайт, MACS), `SCAN_TICKET`, `GET_TICKETS_BY_ORDER`.
   `static_qr` остаётся для виджета/PDF arena; PDF arena печатает номер EAN-13 текстом под QR
   (открытый вопрос №3 отчёта — читает ли MACS 1D в режиме QR).

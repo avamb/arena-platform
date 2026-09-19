@@ -6,9 +6,11 @@ package gen
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -209,6 +211,41 @@ LIMIT  1`
 func (q *Queries) GetBarcodeByExternalRefAny(ctx context.Context, externalRef string) (BarcodeRow, error) {
 	row := q.db.QueryRow(ctx, getBarcodeByExternalRefAny, externalRef)
 	return scanBarcodeRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// InsertBarcodeIfUnique
+// ─────────────────────────────────────────────────────────────────────────────
+
+const insertBarcodeIfUnique = `-- name: InsertBarcodeIfUnique :one
+INSERT INTO barcodes (authority_id, external_ref, ticket_id)
+SELECT $1, $2, $3
+WHERE NOT EXISTS (
+    SELECT 1 FROM barcodes WHERE external_ref = $2
+)
+ON CONFLICT (authority_id, external_ref) DO NOTHING
+RETURNING id, authority_id, external_ref, ticket_id, status, scanned_at, created_at, updated_at`
+
+// InsertBarcodeIfUnique atomically claims externalRef for authorityID,
+// enforcing uniqueness across ALL barcode authorities (not just
+// authorityID) via the WHERE NOT EXISTS, and the same-authority race via
+// ON CONFLICT DO NOTHING. Both guards fail closed to zero rows rather than
+// a 23505, so this is safe to call inside a transaction that must never
+// abort on collision (see internal/platform/barcodes/mint, the caller).
+//
+// ok=false, err=nil means the candidate collided (under this authority or
+// any other) and nothing was written — the caller should draw a new
+// candidate and retry. A non-nil err is a real failure.
+func (q *Queries) InsertBarcodeIfUnique(ctx context.Context, authorityID uuid.UUID, externalRef string, ticketID *uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, insertBarcodeIfUnique, authorityID, externalRef, ticketID)
+	_, err := scanBarcodeRow(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

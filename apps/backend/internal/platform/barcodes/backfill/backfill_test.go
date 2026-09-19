@@ -64,19 +64,21 @@ func (f *fakeStore) InsertTicketCredential(_ context.Context, ticketID uuid.UUID
 	return nil
 }
 
-func (f *fakeStore) InsertBarcode(_ context.Context, authorityID uuid.UUID, externalRef string, ticketID *uuid.UUID) error {
+func (f *fakeStore) InsertBarcodeIfUnique(_ context.Context, authorityID uuid.UUID, externalRef string, ticketID *uuid.UUID) (bool, error) {
 	if authorityID != f.platformAuthorityID {
-		return errors.New("fakeStore: unexpected authority id")
-	}
-	if _, exists := f.barcodesByRef[externalRef]; exists {
-		return errors.New("fakeStore: duplicate barcode insert for external_ref " + externalRef)
+		return false, errors.New("fakeStore: unexpected authority id")
 	}
 	if ticketID == nil {
-		return errors.New("fakeStore: nil ticketID")
+		return false, errors.New("fakeStore: nil ticketID")
+	}
+	f.insertBarcodeCalls++
+	if _, exists := f.barcodesByRef[externalRef]; exists {
+		// Mirrors the real InsertBarcodeIfUnique: a collision (here, or
+		// under any other authority) is zero rows / no error, not a 23505.
+		return false, nil
 	}
 	f.barcodesByRef[externalRef] = *ticketID
-	f.insertBarcodeCalls++
-	return nil
+	return true, nil
 }
 
 // removeBackfilled simulates the real ListTicketsMissingEAN13 query: once a
@@ -116,18 +118,29 @@ func TestRun_BackfillsAllCandidatesAndIsIdempotent(t *testing.T) {
 		t.Fatalf("expected %d credential+barcode inserts each, got %d credentials, %d barcodes",
 			len(tickets), store.insertCredentialCalls, store.insertBarcodeCalls)
 	}
+	seenPayloads := make(map[string]struct{}, len(tickets))
 	for _, tk := range tickets {
 		payload, ok := store.credentialsByTicket[tk.ID]
 		if !ok {
 			t.Fatalf("ticket %s: no ean13 credential recorded", tk.ID)
 		}
-		want := ean13.Encode(ean13PlatformPrefix, tk.SystemTicketID)
-		if payload != want {
-			t.Errorf("ticket %s: credential payload = %q, want %q", tk.ID, payload, want)
+		// Since the "random EAN-13" change the backfill mints through
+		// mint.EAN13 (ean13.Random), so the payload is no longer a pure
+		// function of SystemTicketID — assert shape + checksum validity
+		// and cross-ticket distinctness instead of an exact formula match.
+		if len(payload) != 13 {
+			t.Errorf("ticket %s: credential payload %q is not 13 digits", tk.ID, payload)
+		}
+		if payload[:2] != "21" {
+			t.Errorf("ticket %s: credential payload %q does not carry the platform prefix", tk.ID, payload)
 		}
 		if !ean13.Valid(payload) {
 			t.Errorf("ticket %s: credential payload %q is not checksum-valid", tk.ID, payload)
 		}
+		if _, dup := seenPayloads[payload]; dup {
+			t.Errorf("ticket %s: credential payload %q was minted for another ticket too", tk.ID, payload)
+		}
+		seenPayloads[payload] = struct{}{}
 		if _, ok := store.barcodesByRef[payload]; !ok {
 			t.Errorf("ticket %s: no barcode recorded for external_ref %q", tk.ID, payload)
 		}
