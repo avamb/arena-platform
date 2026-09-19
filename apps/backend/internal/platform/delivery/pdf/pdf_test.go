@@ -97,12 +97,13 @@ func TestRender_Branding_FooterLegalBlockEmittedWhenLegalNameSet(t *testing.T) {
 		t.Fatalf("PDF suspiciously small: %d bytes", len(out))
 	}
 	// The PDF text-content stream is uncompressed (SetCompression(false))
-	// so the legal-block lines must appear verbatim in the bytes.
+	// so the legal-block lines must appear in the bytes, UTF-16BE encoded
+	// (the layouts use a UTF-8 TrueType font — see pdfText's doc comment).
 	for _, want := range []string{
 		"Globe Theatre", "Globe Theatre Ltd", "21 New Globe Walk",
 		"London", "GB", "Contact: hello@globe.example.com",
 	} {
-		if !bytes.Contains(out, []byte(want)) {
+		if !bytes.Contains(out, pdfText(want)) {
 			t.Errorf("PDF missing branding text %q", want)
 		}
 	}
@@ -128,10 +129,10 @@ func TestRender_Branding_OrgNameOverridesDefaultWordmark(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	if !bytes.Contains(out, []byte("Acme Productions")) {
+	if !bytes.Contains(out, pdfText("Acme Productions")) {
 		t.Error("PDF missing OrgName wordmark")
 	}
-	if bytes.Contains(out, []byte("Arena E-Ticket")) {
+	if bytes.Contains(out, pdfText("Arena E-Ticket")) {
 		t.Error("PDF should not contain default wordmark when OrgName is set")
 	}
 }
@@ -142,7 +143,7 @@ func TestRender_Branding_NoOrgNameFallsBackToDefaultWordmark(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	if !bytes.Contains(out, []byte("Arena E-Ticket")) {
+	if !bytes.Contains(out, pdfText("Arena E-Ticket")) {
 		t.Error("PDF missing default wordmark when OrgName empty")
 	}
 }

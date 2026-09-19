@@ -38,10 +38,27 @@
 // # Library choice
 //
 // The renderer uses github.com/jung-kurt/gofpdf, pinned in the repo's
-// go.mod: it ships the PDF Core 14 fonts built in (no font IO), accepts
-// in-memory image sources (RegisterImageOptionsReader), and its API
-// surface is small, mature, and frozen. QR code rasterisation uses
+// go.mod: it accepts in-memory image AND font sources
+// (RegisterImageOptionsReader, AddUTF8FontFromBytes), and its API surface
+// is small, mature, and frozen. QR code rasterisation uses
 // github.com/skip2/go-qrcode, also a pure-Go in-memory implementation.
+//
+// # Fonts and internationalisation
+//
+// Every layout registers one embedded UTF-8 TrueType family (DejaVu Sans
+// Condensed, see fonts.go) instead of gofpdf's built-in Core 14 fonts
+// (Helvetica etc., which are WinAnsi/Latin-1 only and render anything
+// outside that range as mojibake — the pre-2026-09 bug this doc used to
+// warn about). The human-entry code line still uses the core Courier font
+// deliberately: humancode.Format output is always Crockford-Base32 ASCII,
+// so it never needs Unicode glyphs, and Courier's fixed advance is what
+// makes the manual per-glyph letter-spacing in drawHumanCode exact.
+//
+// Ticket.Locale selects the LABEL language only (see labels.go) —
+// "en"/"ru"/"cs", falling back to "en". Content values (event name, venue,
+// names, addresses) are never translated; they print in whatever script
+// the caller supplied, which is why the font needs broad Unicode coverage
+// independently of the label locale.
 //
 // The renderer deliberately omits any fiscal-receipt block. Issuing a
 // fiscal receipt (Russian Federation 54-FZ workflow) is a downstream
@@ -82,6 +99,15 @@ const (
 type Ticket struct {
 	// TicketID is the printable canonical ticket identifier (UUID string).
 	TicketID string
+
+	// Locale selects the language of the PRINTED FIELD LABELS (Session,
+	// Venue, Sector/Row/Seat, Holder, Ticket ID, EAN-13) — never the
+	// content values themselves, which are organizer/buyer data and are
+	// always printed verbatim. Supported: "en" (default), "ru", "cs".
+	// Empty or any other value falls back to "en"; see labelsFor. This is
+	// deliberately independent of delivery/templates' locale set (the
+	// email body may support more/fewer locales than the PDF labels).
+	Locale string
 
 	// EventName is the human-readable event name.
 	EventName string

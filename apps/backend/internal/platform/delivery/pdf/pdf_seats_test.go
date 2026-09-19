@@ -14,8 +14,11 @@
 //     variants would produce identical PDFs).
 //
 // The renderer's SetCompression(false) + SetCatalogSort(true) knobs mean
-// this test does not need to decompress the content stream; the raw
-// bytes carry the parenthesised operator arguments plainly.
+// this test does not need to decompress the content stream. Since the
+// layouts register a UTF-8 TrueType font (fonts.go), the parenthesised
+// operator arguments are UTF-16BE, not literal ASCII — pdfText (in
+// pdf_testutil_test.go) reproduces gofpdf's encoding so these assertions
+// can still search the raw bytes for a specific label/value token.
 package pdf
 
 import (
@@ -42,10 +45,10 @@ func TestSeatC3_RendersSeatBlock(t *testing.T) {
 		t.Fatalf("Render: %v", err)
 	}
 	for _, want := range []string{
-		"(Sector:)", "(Row:)", "(Seat:)",
-		"(A)", "(3)", "(12)",
+		"Sector:", "Row:", "Seat:",
+		"A", "3", "12",
 	} {
-		if !bytes.Contains(out, []byte(want)) {
+		if !bytes.Contains(out, pdfText(want)) {
 			t.Errorf("seated PDF missing token %q", want)
 		}
 	}
@@ -62,8 +65,8 @@ func TestSeatC3_GATicketOmitsSeatBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	for _, banned := range []string{"(Sector:)", "(Row:)", "(Seat:)"} {
-		if bytes.Contains(out, []byte(banned)) {
+	for _, banned := range []string{"Sector:", "Row:", "Seat:"} {
+		if bytes.Contains(out, pdfText(banned)) {
 			t.Errorf("GA PDF should not contain %q", banned)
 		}
 	}
