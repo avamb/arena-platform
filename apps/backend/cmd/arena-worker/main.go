@@ -54,6 +54,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customerimport"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
@@ -62,6 +63,8 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/macs"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/opsalert"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/opswatchdog"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/reservationexpiry"
@@ -215,9 +218,17 @@ func run() error {
 	//   noop.test         — used by the worker_jobs persistence test (#20)
 	//   placeholder.log   — demonstrates ShouldRunPlaceholderJob (step 3)
 	//   idempotency.cleanup — purges expired idempotency_keys (feature #48)
+	//
+	// opsNotifier degrades to a logging no-op when OPS_TELEGRAM_BOT_TOKEN /
+	// OPS_TELEGRAM_CHAT_ID are unset, so this wiring is always safe in
+	// dev/test/CI. Built here (before the registry) so both the handler
+	// registration below and the startup message at 7e share one instance.
+	opsNotifier := opsalert.New(cfg.OpsTelegramBotToken, cfg.OpsTelegramChatID, cfg.OpsAlertEnvLabel, logger)
+
 	registry := worker.NewRegistry()
 	registerBuiltinHandlers(registry, pool.Pool, cfg, metrics, logger)
 	registerMediaGCHandler(registry, pool.Pool, cfg, logger)
+	registerOpsWatchdogHandler(registry, pool.Pool, cfg, opsNotifier, logger)
 
 	// 7b. Idempotency cleanup startup scheduling (feature #48) ---------------
 	// Enqueue an idempotency.cleanup job immediately if none is already
@@ -260,22 +271,43 @@ func run() error {
 		logger.Info("reservation expire sweep job scheduled at startup")
 	}
 
+	// 7e. Ops watchdog startup scheduling -------------------------------------
+	// ops.watchdog (internal/platform/opswatchdog) is a strictly read-only,
+	// self-scheduling job that turns sales and early-warning conditions into
+	// Telegram messages (internal/platform/opsalert) — built for the first
+	// real ticket sales, which start with no ops staff watching dashboards.
+	if err := opswatchdog.EnsureAllInitialCursors(rootCtx, pool.Pool, time.Now().UTC()); err != nil {
+		// Non-fatal, but logged loudly: without seeded cursors the first
+		// watchdog run would fall back to seeding them itself on first use,
+		// which is equally safe (never replays history) — this call just
+		// does it eagerly and up front.
+		logger.Warn("could not seed initial ops watchdog cursors", "error", err.Error())
+	}
+	if err := opswatchdog.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
+		logger.Warn("could not schedule initial ops watchdog job", "error", err.Error())
+	} else {
+		logger.Info("ops watchdog job scheduled at startup")
+	}
+	opswatchdog.SendStartupMessage(rootCtx, opsNotifier, cfg.AppVersion, cfg.AppCommit)
+
 	// 8. Metrics + healthz HTTP server (feature #109, step 6) ----------------
 	// A lightweight sidecar HTTP server exposes:
 	//   GET /healthz  — liveness probe (always 200 while the process is up)
 	//   GET /metrics  — Prometheus scrape endpoint
 	//
 	// The server is bound to WORKER_METRICS_ADDR (default :9091) so it does
-	// not conflict with arena-api on :8080. Both endpoints are intentionally
-	// unauthenticated because they are expected to sit inside a private
-	// network boundary — the same posture as the arena-api /metrics endpoint.
+	// not conflict with arena-api on :8080. /healthz stays unauthenticated
+	// (it carries no information). /metrics is guarded by
+	// METRICS_BEARER_TOKEN exactly like arena-api's own /metrics
+	// (httpserver.RequireMetricsBearerToken) — when the token is unset
+	// (local compose / same-network Prometheus) behaviour is unchanged.
 	metricsMux := http.NewServeMux()
 	metricsMux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
-	metricsMux.Handle("/metrics", metrics.Handler())
+	metricsMux.Handle("/metrics", httpserver.RequireMetricsBearerToken(cfg.MetricsBearerToken, metrics.Handler()))
 
 	metricsSrv := &http.Server{
 		Addr:         cfg.WorkerMetricsAddr,
@@ -525,6 +557,26 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		Store:  backfill.NewPGStore(queries),
 		Logger: logger,
 	}))
+}
+
+// registerOpsWatchdogHandler registers the self-scheduling ops.watchdog job
+// (internal/platform/opswatchdog). It always registers — unlike
+// registerMediaGCHandler, there is no configuration state under which the
+// watchdog should be entirely absent, since it degrades to a logging no-op
+// notifier rather than needing a feature flag.
+func registerOpsWatchdogHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier opsalert.Notifier, logger *slog.Logger) {
+	reg.Register(opswatchdog.JobType, opswatchdog.NewHandler(opswatchdog.Options{
+		Pool:             pool,
+		Notifier:         notifier,
+		Logger:           logger,
+		Interval:         opswatchdog.DefaultInterval,
+		Scheduler:        opswatchdog.NewPGScheduler(pool),
+		HeartbeatHourUTC: cfg.OpsWatchdogHeartbeatHourUTC,
+	}))
+	logger.Info("ops.watchdog handler registered",
+		"interval", opswatchdog.DefaultInterval.String(),
+		"heartbeat_hour_utc", cfg.OpsWatchdogHeartbeatHourUTC,
+	)
 }
 
 // registerMediaGCHandler registers the media-gc worker handler when the
