@@ -200,10 +200,20 @@
   `/v1/events/{id}/sessions` — 404 выглядел как «нет сеансов», и публикация уходила в global. Теперь
   org-маршрут; область и таблица публикаций показывают название города. Стенд: Nordic Lights —
   «Defaulting to the venue city … (Prague)». Прежние публикации остались global.
-- ✅ **F-31 исправлено (23b3219, стенд Arena ещё не раскатан).** Отмена с решением «none» ставит
+- ✅ **F-31 исправлено (23b3219, стенд Arena e063333).** Отмена с решением «none» ставит
   только `cancelled_at`; вебхук `ticket.refunded`, список билетов заказа и выгрузка MACS отдавали
   `refundDate: null`. Теперь везде дата возврата, а без неё — время отмены
   (`orderexport.Ticket.RefundOrCancelDate`).
+  Стенд: билет 2100000000210 (заказ 1000001651, #12837) отменён из админки с «none» — сайт записал
+  «ticket.refunded … refund amount 0, date 2026-09-19T16:14:14Z».
+- ✅ **F-26 исправлено (arenasoldout 48d6b1c, Lampyris staging dd75fa8).** Тексты ивент-центра
+  (подписи, значки, заметки заказа, статусы, заголовок CSV) берут имя бэкенда
+  `Lops_Help::backend_name()` — «Arena» на сайте со шлюзом Arena, «Bil24» на старом. Email с «+»
+  показывался с пробелом из-за лишнего `urldecode` в карточке заказа. Стенд: backend=Arena,
+  `andreev+decline@…` с плюсом. Осталось: заметки «Bil24 order.paid / ticket.refunded» пишет
+  mu-плагин `bil24-notification-receiver` — не тронут.
+- CI: `TestPR04_DuplicateSafety` краснел от чужой строки outbox из параллельного пакета — тесты PR-04
+  теперь забирают только `aggregate_type='pr04_test'` (e063333, CI зелёный целиком).
 - ✅ **F-45 (ряд) исправлено (arenasoldout 7a69e0b).** Выбранное место подписывается
   «Parter · Row 3 · Seat 5» (Řada/Ряд). Стенд: Berlin Chamber Night — проверено. Одинаковые названия
   товаров у мероприятия с двумя датами — открыто (решение по названиям — владельцу).
