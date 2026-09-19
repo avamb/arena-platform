@@ -12179,6 +12179,23 @@ export interface components {
              * @description Deprecated: use ga_items instead.
              */
             qty?: number;
+            /**
+             * @description The embedding page the buyer must be returned to after the
+             *     provider-hosted payment page. The widget sends
+             *     `window.location.origin + window.location.pathname`.
+             *
+             *     Only the ORIGIN is validated, against the deployment's
+             *     `CORS_ALLOWED_ORIGINS` plus `PUBLIC_TICKETS_BASE_URL`; the path is
+             *     preserved and any query or fragment is dropped. An absent or
+             *     refused value falls back to `PUBLIC_TICKETS_BASE_URL`, and with
+             *     neither configured a paid checkout is rejected with
+             *     `checkout.invalid_return_url`.
+             *
+             *     The provider's success and cancel URLs are this value with
+             *     `?checkout_token=<checkout_token>` appended, so the buyer lands
+             *     back on the same page and the widget resumes the same order.
+             */
+            return_url?: string;
         };
         PublicFeedCheckoutStartResponse: {
             /** @description The created checkout session with pricing snapshot and state. */
@@ -12190,13 +12207,31 @@ export interface components {
              *     Carries per-tier `lines` for seated and mixed carts.
              */
             pricing?: components["schemas"]["PricingBreakdownItem"];
-            /** @description URL to redirect the buyer to for payment or completion. */
+            /**
+             * @description Where to send the buyer next.
+             *
+             *     For a cart with a total above zero this is the absolute URL of the
+             *     payment provider's own hosted checkout page (Stripe Checkout
+             *     Session). The widget navigates to it; no card data ever reaches
+             *     arena or the embedding site.
+             *
+             *     For a zero-total cart the order is already complete and this is
+             *     the caller's `return_url` with `?checkout_token=` appended — or an
+             *     empty string when the deployment has no return URL configured, in
+             *     which case the caller should simply show the order status for the
+             *     returned `checkout_token`.
+             */
             redirect_url: string;
             /** @description Opaque high-entropy token for WID-0b anonymous order lookup. */
             checkout_token: string;
             /**
              * Format: date-time
-             * @description Reservation expiry (RFC 3339 UTC).
+             * @description Hold expiry (RFC 3339 UTC).
+             *
+             *     For a paid cart this is the payment deadline: it is moved to
+             *     `WIDGET_PAYMENT_WINDOW_SECONDS + WIDGET_PAYMENT_GRACE_SECONDS`
+             *     from now, so the provider's hosted session always stops accepting
+             *     payment BEFORE arena releases the seats.
              */
             expires_at: string;
         };
@@ -12308,6 +12343,17 @@ export interface components {
             total?: number | null;
             /** @description ISO 4217 three-letter currency code; null until pricing_confirmed. */
             currency?: string | null;
+            /**
+             * @description The provider-hosted payment page for this order, present only
+             *     while the order is still `pending` and its hold has not expired.
+             *
+             *     It lets a buyer who bounced off the payment page — closed the tab,
+             *     lost signal, hit back — return to the SAME hosted session instead
+             *     of rebuilding their cart. Omitted once the order is paid, expired
+             *     or failed, and omitted once the hosted session's own expiry has
+             *     passed.
+             */
+            payment_url?: string;
             /** @description Cart items held at the time of the request. */
             items: components["schemas"]["CheckoutStatusItem"][];
             /** @description Issued tickets; non-empty only when status is `paid`. */
@@ -12732,10 +12778,39 @@ export interface components {
             data?: {
                 /** @description The Stripe payment intent object. */
                 object?: {
-                    /** @description Provider-side payment intent id (`pi_...`); mapped to `provider_payment_id`. */
+                    /**
+                     * @description Provider-side object id, mapped to
+                     *     `provider_payment_id`. A `payment_intent.*` event
+                     *     carries the `pi_...`; a `checkout.session.*` event
+                     *     carries the `cs_...` Checkout Session id, which is
+                     *     exactly what the widget's hosted-payment flow stored
+                     *     as `provider_payment_id` when it created the page.
+                     */
                     id?: string;
                     /** @description Stripe's own status string for the payment intent object. */
                     status?: string;
+                    /**
+                     * @description `checkout.session.*` events only — Stripe's
+                     *     `payment_status` (`paid`, `unpaid`,
+                     *     `no_payment_required`). A
+                     *     `checkout.session.completed` whose value is not
+                     *     `paid` is acknowledged with `processed: false`: the
+                     *     buyer finished the hosted page but the money has not
+                     *     settled, and the matching
+                     *     `checkout.session.async_payment_succeeded` /
+                     *     `_failed` event decides the outcome.
+                     */
+                    payment_status?: string;
+                    /**
+                     * @description `checkout.session.*` events only — the `pi_...`
+                     *     Stripe minted behind the hosted session. It is null
+                     *     on the session until the buyer actually pays, so
+                     *     this is the first event carrying it; it is persisted
+                     *     as `payment_intents.provider_charge_ref` because a
+                     *     refund is driven through the `pi_...`, never through
+                     *     the `cs_...`.
+                     */
+                    payment_intent?: string;
                     /**
                      * @description Present on failure events; `code` / `message` are
                      *     mapped to `failure_code` / `failure_message`.
@@ -12759,6 +12834,15 @@ export interface components {
              *     `payment_intent.payment_failed`,
              *     `payment_intent.requires_action`). Unknown event types are
              *     acknowledged with `processed: false` (no transition).
+             *
+             *     The Stripe-hosted Checkout Session flow used by the ticket
+             *     widget adds `checkout.session.completed` (→ `succeeded`,
+             *     but only when `payment_status` is `paid`),
+             *     `checkout.session.async_payment_succeeded` (→ `succeeded`),
+             *     `checkout.session.async_payment_failed` (→ `failed`) and
+             *     `checkout.session.expired` (→ `failed` with
+             *     `failure_code: session_expired`). Every one of these must be
+             *     enabled on the organization's Stripe webhook endpoint.
              */
             event_type?: string;
             /**
@@ -31534,7 +31618,11 @@ export interface operations {
                     "application/json": components["schemas"]["PublicFeedCheckoutStartResponse"];
                 };
             };
-            /** @description Invalid body or field. */
+            /**
+             * @description Invalid body or field, or `checkout.invalid_return_url` when the
+             *     supplied `return_url` is not on the allowed-origin list and no
+             *     `PUBLIC_TICKETS_BASE_URL` fallback is configured.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -31564,7 +31652,13 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Admission mode mismatch or unsupported pricing. */
+            /**
+             * @description Admission mode mismatch or unsupported pricing;
+             *     `checkout.payment_provider_unsupported` when the sales channel's
+             *     provider cannot host a payment page; or
+             *     `checkout.payment_not_configured` when the organization has no
+             *     usable payment provider config for it.
+             */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31575,6 +31669,19 @@ export interface operations {
             };
             /** @description Rate limited (feed.rate_limited). */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `checkout.payment_start_failed` — the payment provider refused to
+             *     create the hosted checkout page. Nothing was charged and no
+             *     redirect URL exists; the hold expires on its own.
+             */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
