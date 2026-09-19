@@ -310,6 +310,36 @@ func TestEncodeOrder_RefundedTicketCarriesDateAndPrice(t *testing.T) {
 	}
 }
 
+// F-31: a cancellation with refund mode "none" stamps only cancelled_at. The
+// site still needs to know when the ticket stopped being valid.
+func TestEncode_CancelledWithoutRefundDateCarriesCancellationTime(t *testing.T) {
+	cancelled := time.Date(2026, 9, 19, 14, 5, 0, 0, time.UTC)
+	o := twoSeatedTickets()
+	o.Tickets[0].PlatformStatus = "cancelled"
+	o.Tickets[0].CancelledAt = &cancelled
+
+	tk := EncodeOrder(o, testContext()).TicketList[0]
+	if tk.RefundDate == nil || *tk.RefundDate != "2026-09-19T14:05:00Z" {
+		t.Errorf("order ticket refundDate = %v, want the cancellation time", tk.RefundDate)
+	}
+	if tk.RefundPrice != nil {
+		t.Errorf("refundPrice = %v, want null without a refund", *tk.RefundPrice)
+	}
+	got := EncodeTicketRefunded(o.Tickets[0], testContext())
+	if got.RefundDate == nil || *got.RefundDate != "2026-09-19T14:05:00Z" {
+		t.Errorf("ticket.refunded refundDate = %v, want the cancellation time", got.RefundDate)
+	}
+
+	stamped := time.Date(2026, 9, 19, 15, 0, 0, 0, time.UTC)
+	o.Tickets[0].RefundDate = &stamped
+	if tk := EncodeOrder(o, testContext()).TicketList[0]; *tk.RefundDate != "2026-09-19T15:00:00Z" {
+		t.Errorf("refundDate = %v, want the stamped refund date to win", *tk.RefundDate)
+	}
+	if tk := EncodeOrder(o, testContext()).TicketList[1]; tk.RefundDate != nil {
+		t.Errorf("a valid ticket has refundDate %v, want null", *tk.RefundDate)
+	}
+}
+
 func TestEncodeOrderHeader_OmitsTicketList(t *testing.T) {
 	full := EncodeOrder(twoSeatedTickets(), testContext())
 	header := EncodeOrderHeader(twoSeatedTickets(), testContext())

@@ -99,8 +99,5 @@ func ticketMatchesMode(t orderexport.Ticket, mode ExportMode, revokedSince *time
 // the refund date when one was stamped, otherwise the cancellation time (a
 // "none" refund-mode cancellation has no refund_date but still changed).
 func revokedChangeTime(t orderexport.Ticket) *time.Time {
-	if t.RefundDate != nil {
-		return t.RefundDate
-	}
-	return t.CancelledAt
+	return t.RefundOrCancelDate()
 }

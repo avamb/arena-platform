@@ -80,6 +80,19 @@ type Ticket struct {
 	Event       Event
 }
 
+// RefundOrCancelDate is when the ticket stopped being valid: the refund date
+// when one was stamped, otherwise the cancellation time. A cancellation with
+// refund mode "none" stamps only cancelled_at, yet every wire that carries a
+// refundDate (site webhooks, MACS) must still say when it happened — the site
+// showed "date ?" and the MACS CSV an empty date (functional run 2026-09-19,
+// F-31). Nil for a ticket that is still valid.
+func (t Ticket) RefundOrCancelDate() *time.Time {
+	if t.RefundDate != nil {
+		return t.RefundDate
+	}
+	return t.CancelledAt
+}
+
 // Event is the denormalized event/session context of a ticket.
 type Event struct {
 	EventID uuid.UUID

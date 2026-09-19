@@ -187,7 +187,7 @@ func EncodeTicketRefunded(t orderexport.Ticket, ec EncodeContext) RefundedTicket
 		SeatID:       t.SeatID,
 		Barcode:      t.Barcode,
 		RefundPrice:  money.MajorPtr(t.RefundPrice),
-		RefundDate:   nullableTime(t.RefundDate),
+		RefundDate:   nullableTime(t.RefundOrCancelDate()),
 		Category:     t.TierName,
 		HolderStatus: HolderStatusRefund,
 		ActionEvent:  encodeActionEvent(t, ec),
@@ -218,7 +218,7 @@ func encodeTicket(t orderexport.Ticket, ec EncodeContext, charge int64) Ticket {
 		BarcodeFormat:  BarcodeFormat{ID: barcodeFormatEAN13ID, Name: barcodeFormatEAN13Name},
 		ActionEvent:    encodeActionEvent(t, ec),
 		HolderStatus:   holderStatus(t.PlatformStatus),
-		RefundDate:     nullableTime(t.RefundDate),
+		RefundDate:     nullableTime(t.RefundOrCancelDate()),
 		RefundPrice:    money.MajorPtr(t.RefundPrice),
 	}
 }

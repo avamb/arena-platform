@@ -162,10 +162,18 @@ func TestMACS_ExportModes_Integration(t *testing.T) {
 	if got := countTickets(sinceExport); got != 1 {
 		t.Errorf("revoked+since mode: got %d tickets, want 1 (only the ticket cancelled after the cutoff)", got)
 	}
+	// The survivor carries its cancellation time as refundDate (F-31: a
+	// "none" cancellation still tells MACS when it happened), which is
+	// after the cutoff; the refunded ticket's date is before it.
 	for _, o := range sinceExport {
 		for _, tk := range o.TicketList {
-			if tk.RefundDate != nil {
-				t.Errorf("revoked+since mode: expected the no-refund ticket to survive, got one with a refund date")
+			if tk.RefundDate == nil {
+				t.Errorf("revoked+since mode: the no-refund ticket has no refundDate, want its cancellation time")
+				continue
+			}
+			when, err := time.Parse(time.RFC3339, *tk.RefundDate)
+			if err != nil || !when.After(cutoff) {
+				t.Errorf("revoked+since mode: refundDate %q, want the cancellation time after the cutoff", *tk.RefundDate)
 			}
 		}
 	}

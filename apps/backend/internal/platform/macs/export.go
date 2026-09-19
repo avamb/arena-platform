@@ -183,8 +183,8 @@ func encodeOrder(o orderexport.Order, ids wireIDs) Order {
 // format) is applied HERE and nowhere else.
 func encodeTicket(t orderexport.Ticket, ids wireIDs) Ticket {
 	var refundDate *string
-	if t.RefundDate != nil {
-		s := t.RefundDate.UTC().Format(time.RFC3339)
+	if d := t.RefundOrCancelDate(); d != nil {
+		s := d.UTC().Format(time.RFC3339)
 		refundDate = &s
 	}
 
