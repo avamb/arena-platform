@@ -1094,3 +1094,27 @@ entries short and factual.
   mechanisms are not unified (different supported-locale lists, different
   fallback code — `labelsFor` here vs `Renderer.ResolveLocale` there), so
   don't assume a locale value valid for one is valid for the other.
+- **The EAN-13 barcode on the e-ticket PDF is hand-drawn, not rasterized —
+  `internal/platform/delivery/pdf/ean13_symbol.go`** (`ean13Pattern`/
+  `ean13Bars` pure functions, `drawEAN13Symbol` draws them with
+  `gofpdf.Rect(...,"F")`). Bars are pure black filled rectangles on white,
+  never given a grey fill or turned into a raster image — a grey/AA'd bar
+  is not reliably scannable by the venue's laser/handheld scanners. The
+  quiet zones (`eanQuietLeftModules`/`eanQuietRightModules`, 11/7 modules)
+  must stay completely untouched: no bar, no text, nothing drawn there —
+  the human-readable leading digit is deliberately positioned to the LEFT
+  of the quiet zone, not inside it. `drawEAN13Symbol` shrinks
+  `eanBarH`/`eanGuardExtra` (never below `eanMinBarHeightPt`) or skips the
+  symbol entirely — no empty placeholder box — when a page's other content
+  leaves too little room before the footer; never "fix" a tight layout by
+  drawing a barcode below that floor.
+- **`drawDetails`'s label column width is computed per-render, not a fixed
+  `layoutSpec.labelW`.** `layoutSpec.labelW` is only the format's baseline/
+  minimum; `computeLabelWidth` (`layout.go`) measures the active locale's
+  actual widest label (both detail-row and seat-row font sizes) and grows
+  the column to fit, capped at `labelColumnMaxFraction` of the content
+  width. Before this, a fixed `labelW` tuned for English overlapped the
+  value on cs ("Místo konání:Divadlo…", first letter of the value lost
+  under the wider Czech label) — any new label added to `ticketLabels`
+  needs no manual width tuning, `computeLabelWidth` picks it up
+  automatically.

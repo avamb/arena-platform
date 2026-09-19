@@ -281,9 +281,14 @@ func validate(t Ticket) error {
 // of the legal fields are populated, in which case the renderer omits
 // the block entirely (the FinePrint disclaimer still prints).
 //
+// contactLabel is the localized "Contact" word (labels.Contact — English
+// "Contact", Russian "Контакт", Czech "Kontakt") prefixed to the
+// ContactEmail line; the caller resolves it once via labelsFor so every
+// call site agrees with the ticket's locale.
+//
 // Lines: LegalName, address-line1, address-line2, "<postal> <city>",
-// country, "Contact: <email>".
-func buildLegalLines(t Ticket) []string {
+// country, "<contactLabel>: <email>".
+func buildLegalLines(t Ticket, contactLabel string) []string {
 	out := []string{}
 	if name := strings.TrimSpace(t.LegalName); name != "" {
 		out = append(out, name)
@@ -308,7 +313,7 @@ func buildLegalLines(t Ticket) []string {
 		out = append(out, v)
 	}
 	if v := strings.TrimSpace(t.ContactEmail); v != "" {
-		out = append(out, "Contact: "+v)
+		out = append(out, contactLabel+": "+v)
 	}
 	return out
 }
@@ -324,11 +329,17 @@ func hasSeat(t Ticket) bool {
 }
 
 // formatSessionInVenueTZ converts the UTC session start into the venue's
-// local clock time and returns a "YYYY-MM-DD HH:MM (ZoneName)" string.
+// local clock time and returns a locale-formatted
+// "<localized date>, HH:MM (ZoneName)" string — see formatDatePart
+// (labels.go) for the per-locale date form, e.g.
+// "Sat, 3 Oct 2026, 21:00 (Europe/Prague)" (en),
+// "сб, 3 октября 2026, 21:00 (Europe/Prague)" (ru),
+// "so 3. 10. 2026, 21:00 (Europe/Prague)" (cs).
 //
 // If tz is empty or LoadLocation fails, the time is rendered in UTC and
-// the zone label is "UTC" — the renderer never panics on a bad zone.
-func formatSessionInVenueTZ(t time.Time, tz string) string {
+// the zone label is "UTC" — the renderer never panics on a bad zone. An
+// unsupported/empty locale falls back to the English date form.
+func formatSessionInVenueTZ(t time.Time, tz, locale string) string {
 	loc := time.UTC
 	zoneLabel := "UTC"
 	if strings.TrimSpace(tz) != "" {
@@ -338,9 +349,10 @@ func formatSessionInVenueTZ(t time.Time, tz string) string {
 		}
 	}
 	local := t.In(loc)
-	// Human-facing PDF ticket text rendered in the venue-local timezone;
-	// allow:timeformat: deliberately not an RFC3339 API timestamp.
-	return fmt.Sprintf("%s (%s)", local.Format("2006-01-02 15:04"), zoneLabel)
+	// Human-facing PDF ticket text rendered in the venue-local timezone and
+	// the ticket's label locale; allow:timeformat: deliberately not an
+	// RFC3339 API timestamp.
+	return fmt.Sprintf("%s, %02d:%02d (%s)", formatDatePart(local, locale), local.Hour(), local.Minute(), zoneLabel)
 }
 
 // joinNonEmpty joins the non-empty arguments with sep.

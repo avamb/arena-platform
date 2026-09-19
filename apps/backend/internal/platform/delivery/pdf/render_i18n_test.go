@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"strings"
 	"testing"
 )
 
@@ -121,9 +122,10 @@ func TestRender_UnicodeContent_LongAddressWraps(t *testing.T) {
 }
 
 // TestRender_EAN13AndHumanCode_StillRenderWithUnicodeContent guards that
-// the EAN-13 caption and the human-entry code — both still ASCII, drawn
-// via the Ticket-ID font (UTF-8 DejaVu) and Courier (core) respectively —
-// keep rendering correctly on a ticket whose OTHER fields are non-Latin-1.
+// the EAN-13 barcode symbol's human-readable digits and the human-entry
+// code — both still ASCII, drawn via the UTF-8 DejaVu font and Courier
+// (core) respectively — keep rendering correctly on a ticket whose OTHER
+// fields are non-Latin-1.
 func TestRender_EAN13AndHumanCode_StillRenderWithUnicodeContent(t *testing.T) {
 	tk := i18nTicket(t)
 	tk.EAN13 = "4006381333931"
@@ -132,8 +134,14 @@ func TestRender_EAN13AndHumanCode_StillRenderWithUnicodeContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	if !bytes.Contains(out, pdfText("EAN-13: "+tk.EAN13)) {
-		t.Error("PDF missing EAN-13 caption")
+	// The symbol's human-readable digits print in the conventional 1+6+6
+	// grouping (drawEAN13Symbol) via the UTF-8 font, so — like every other
+	// piece of body text once fontFamily is loaded — they are UTF-16BE
+	// encoded, not literal ASCII bytes.
+	for _, want := range []string{tk.EAN13[:1], tk.EAN13[1:7], tk.EAN13[7:13]} {
+		if !bytes.Contains(out, pdfText(want)) {
+			t.Errorf("PDF missing EAN-13 human-readable digit group %q", want)
+		}
 	}
 	// drawHumanCode draws one glyph per Text() call in the Courier core
 	// font, so each letter is its own single-byte "(X)Tj" token, not one
@@ -301,9 +309,10 @@ func TestRender_LocaleSelectsPrintedLabels(t *testing.T) {
 	}
 }
 
-// TestRender_LocaleAffectsTicketIDAndEAN13Prefixes covers the two plain
-// "Label: value" lines drawn outside drawDetails (Ticket ID and EAN-13),
-// which are wired through labels.TicketID / labels.EAN13 separately.
+// TestRender_LocaleAffectsTicketIDAndEAN13Prefixes covers the localized
+// "Label: value" Ticket ID line, and confirms the EAN-13 symbol's
+// human-readable digits print the same regardless of locale (a barcode
+// standard's digits are not prose — there is no "Russian EAN-13").
 func TestRender_LocaleAffectsTicketIDAndEAN13Prefixes(t *testing.T) {
 	tk := validTicket(t)
 	tk.EAN13 = "4006381333931"
@@ -315,10 +324,194 @@ func TestRender_LocaleAffectsTicketIDAndEAN13Prefixes(t *testing.T) {
 	if !bytes.Contains(out, pdfText("Номер билета: "+tk.TicketID)) {
 		t.Error("PDF missing localized Ticket ID prefix")
 	}
-	// EAN-13 keeps the same caption in every locale (it is a barcode
-	// standard's name, not prose).
-	if !bytes.Contains(out, pdfText("EAN-13: "+tk.EAN13)) {
-		t.Error("PDF missing EAN-13 caption")
+	for _, want := range []string{tk.EAN13[:1], tk.EAN13[1:7], tk.EAN13[7:13]} {
+		if !bytes.Contains(out, pdfText(want)) {
+			t.Errorf("PDF missing EAN-13 human-readable digit group %q", want)
+		}
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Dynamic label column width (fixes the cs "Místo konání:" overlap).
+// ──────────────────────────────────────────────────────────────────────
+
+// TestComputeLabelWidth_FitsWidestLabelForLocale asserts computeLabelWidth
+// returns a column at least as wide as the widest label+colon string for
+// each locale's dictionary, at the font size that label actually draws at
+// (seat labels are bigger than the regular ones) — both for the mobile
+// and the A4 spec, since the two formats have different fonts/margins.
+func TestComputeLabelWidth_FitsWidestLabelForLocale(t *testing.T) {
+	for _, specName := range []string{"mobile", "a4"} {
+		spec := mobileSpec
+		if specName == "a4" {
+			spec = a4Spec
+		}
+		for _, locale := range []string{"en", "ru", "cs"} {
+			t.Run(specName+"/"+locale, func(t *testing.T) {
+				pdfDoc := newTestPDFForEAN(t)
+				labels := labelsFor(locale)
+				got := computeLabelWidth(pdfDoc, labels, spec)
+
+				widest := 0.0
+				measure := func(s string, fs float64) {
+					pdfDoc.SetFont(fontFamily, "B", fs)
+					if w := pdfDoc.GetStringWidth(s + ":"); w > widest {
+						widest = w
+					}
+				}
+				measure(labels.Session, spec.detailFS)
+				measure(labels.Venue, spec.detailFS)
+				measure(labels.Tier, spec.detailFS)
+				measure(labels.Holder, spec.detailFS)
+				measure(labels.Sector, spec.seatFS)
+				measure(labels.Row, spec.seatFS)
+				measure(labels.Seat, spec.seatFS)
+
+				if got < widest {
+					t.Errorf("computeLabelWidth = %v, narrower than the widest label %v", got, widest)
+				}
+				if got < spec.labelW {
+					t.Errorf("computeLabelWidth = %v, below the format baseline %v", got, spec.labelW)
+				}
+			})
+		}
+	}
+}
+
+// TestRender_CS_VenueLabelDoesNotOverlapValue is the direct regression
+// test for the reported defect: in cs, "Místo konání:" (Venue) used to be
+// wider than the old fixed labelW and overprinted the value's first
+// letter ("Místo konání:Divadlo…"). With a dynamic label column, the
+// value's own leading letter must still be present as its own token, not
+// merged into a garbled run with the label.
+func TestRender_CS_VenueLabelDoesNotOverlapValue(t *testing.T) {
+	tk := validTicket(t)
+	tk.Locale = "cs"
+	tk.VenueName = "Divadlo Na Zábradlí"
+	tk.VenueCity = ""
+	out, err := Render(context.Background(), tk)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !bytes.Contains(out, pdfText(labelsCS.Venue+":")) {
+		t.Error("PDF missing the cs Venue label")
+	}
+	if !bytes.Contains(out, pdfText(tk.VenueName)) {
+		t.Error("PDF missing the venue value as its own token (would be merged/garbled if the label column were too narrow)")
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Localized "Contact" footer label and default fine print.
+// ──────────────────────────────────────────────────────────────────────
+
+func TestBuildLegalLines_LocalizedContactLabel(t *testing.T) {
+	tk := Ticket{LegalName: "X s.r.o.", ContactEmail: "hi@x.example"}
+	cases := []struct {
+		locale string
+		want   string
+	}{
+		{"en", "Contact: hi@x.example"},
+		{"ru", "Контакт: hi@x.example"},
+		{"cs", "Kontakt: hi@x.example"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.locale, func(t *testing.T) {
+			labels := labelsFor(tc.locale)
+			got := buildLegalLines(tk, labels.Contact)
+			last := got[len(got)-1]
+			if last != tc.want {
+				t.Errorf("got %q want %q", last, tc.want)
+			}
+		})
+	}
+}
+
+func TestRender_FooterContactLabelIsLocalized(t *testing.T) {
+	cases := []struct {
+		locale string
+		want   string
+		banned []string
+	}{
+		{"ru", "Контакт: hi@x.example", []string{"Contact:", "Kontakt:"}},
+		{"cs", "Kontakt: hi@x.example", []string{"Contact:", "Контакт:"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.locale, func(t *testing.T) {
+			tk := validTicket(t)
+			tk.Locale = tc.locale
+			tk.LegalName = "X s.r.o."
+			tk.ContactEmail = "hi@x.example"
+			out, err := Render(context.Background(), tk)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			if !bytes.Contains(out, pdfText(tc.want)) {
+				t.Errorf("PDF missing localized contact line %q", tc.want)
+			}
+			for _, banned := range tc.banned {
+				if bytes.Contains(out, pdfText(banned+" hi@x.example")) {
+					t.Errorf("PDF should not contain a different locale's contact prefix %q", banned)
+				}
+			}
+		})
+	}
+}
+
+// TestDefaultFinePrintFor_LocalizesAndKeepsNoFiscalReceiptDisclosure
+// mirrors TestDefaultFinePrint_NoFiscalReceiptLanguage (pdf_test.go) for
+// the ru/cs fallbacks: each must still disclose that the document is not
+// a fiscal receipt, in its own language, and must not accidentally pull
+// in fiscal-receipt boilerplate.
+func TestDefaultFinePrintFor_LocalizesAndKeepsNoFiscalReceiptDisclosure(t *testing.T) {
+	if defaultFinePrintFor("en") != DefaultFinePrint {
+		t.Error("en should return the English DefaultFinePrint verbatim")
+	}
+	if defaultFinePrintFor("fr") != DefaultFinePrint {
+		t.Error("unsupported locale should fall back to DefaultFinePrint")
+	}
+	if got := defaultFinePrintFor("ru"); got != DefaultFinePrintRU {
+		t.Errorf("ru got %q want DefaultFinePrintRU", got)
+	}
+	if got := defaultFinePrintFor("cs"); got != DefaultFinePrintCS {
+		t.Errorf("cs got %q want DefaultFinePrintCS", got)
+	}
+	if !strings.Contains(DefaultFinePrintRU, "фискальным чеком") {
+		t.Error("Russian fine print must disclose it is not a fiscal receipt")
+	}
+	if !strings.Contains(DefaultFinePrintCS, "daňovým dokladem") {
+		t.Error("Czech fine print must disclose it is not a fiscal receipt")
+	}
+}
+
+// TestRender_UnsetFinePrint_UsesLocalizedDefault checks for each locale's
+// distinctive last sentence rather than the whole disclaimer: MultiCell
+// word-wraps the fine print across several lines, each drawn as its own
+// separate text-show operator, so the full un-wrapped Go string constant
+// never appears as one contiguous run in the content stream — only a
+// substring that actually fits on a single rendered line can be searched
+// for this way (see pdf_testutil_test.go's pdfText doc comment).
+func TestRender_UnsetFinePrint_UsesLocalizedDefault(t *testing.T) {
+	cases := []struct {
+		locale string
+		want   string
+	}{
+		{"ru", "каналов организатора может привести к аннулированию билета. Этот документ не является фискальным чеком."},
+		{"cs", "vstupenku znehodnotit. Tento dokument není daňovým dokladem."},
+		{"", "document is not a fiscal receipt."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.locale, func(t *testing.T) {
+			tk := validTicket(t)
+			tk.Locale = tc.locale
+			out, err := Render(context.Background(), tk)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			if !bytes.Contains(out, pdfText(tc.want)) {
+				t.Errorf("PDF missing the localized default fine print's closing sentence for locale %q", tc.locale)
+			}
+		})
 	}
 }
 

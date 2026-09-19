@@ -202,7 +202,7 @@ func TestBuildLegalLines_AssemblesAddressBlock(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := buildLegalLines(tc.in)
+			got := buildLegalLines(tc.in, "Contact")
 			if len(got) != len(tc.want) {
 				t.Fatalf("len=%d want %d (%v)", len(got), len(tc.want), got)
 			}
@@ -272,28 +272,58 @@ func TestRender_RespectsContextCancellation(t *testing.T) {
 }
 
 func TestFormatSessionInVenueTZ(t *testing.T) {
+	// 2026-05-12 is a Tuesday.
 	utcSession := time.Date(2026, 5, 12, 18, 30, 0, 0, time.UTC)
 
 	t.Run("known zone shifts time", func(t *testing.T) {
-		got := formatSessionInVenueTZ(utcSession, "Europe/Moscow")
+		got := formatSessionInVenueTZ(utcSession, "Europe/Moscow", "en")
 		// Moscow is UTC+3 year-round.
-		want := "2026-05-12 21:30 (Europe/Moscow)"
+		want := "Tue, 12 May 2026, 21:30 (Europe/Moscow)"
 		if got != want {
 			t.Fatalf("got %q want %q", got, want)
 		}
 	})
 
 	t.Run("empty tz falls back to UTC", func(t *testing.T) {
-		got := formatSessionInVenueTZ(utcSession, "")
-		want := "2026-05-12 18:30 (UTC)"
+		got := formatSessionInVenueTZ(utcSession, "", "en")
+		want := "Tue, 12 May 2026, 18:30 (UTC)"
 		if got != want {
 			t.Fatalf("got %q want %q", got, want)
 		}
 	})
 
 	t.Run("invalid tz falls back to UTC, never panics", func(t *testing.T) {
-		got := formatSessionInVenueTZ(utcSession, "Not/A/Real/Zone")
-		want := "2026-05-12 18:30 (UTC)"
+		got := formatSessionInVenueTZ(utcSession, "Not/A/Real/Zone", "en")
+		want := "Tue, 12 May 2026, 18:30 (UTC)"
+		if got != want {
+			t.Fatalf("got %q want %q", got, want)
+		}
+	})
+
+	// 2026-10-03 is a Saturday — matches the format examples in the
+	// per-locale date-formatting requirement.
+	t.Run("ru locale uses weekday abbr + genitive month", func(t *testing.T) {
+		s := time.Date(2026, 10, 3, 21, 0, 0, 0, time.UTC)
+		got := formatSessionInVenueTZ(s, "", "ru")
+		want := "сб, 3 октября 2026, 21:00 (UTC)"
+		if got != want {
+			t.Fatalf("got %q want %q", got, want)
+		}
+	})
+
+	t.Run("cs locale uses numeric day.month.year", func(t *testing.T) {
+		s := time.Date(2026, 10, 3, 21, 0, 0, 0, time.UTC)
+		got := formatSessionInVenueTZ(s, "", "cs")
+		want := "so 3. 10. 2026, 21:00 (UTC)"
+		if got != want {
+			t.Fatalf("got %q want %q", got, want)
+		}
+	})
+
+	t.Run("unsupported locale falls back to en", func(t *testing.T) {
+		s := time.Date(2026, 10, 3, 21, 0, 0, 0, time.UTC)
+		got := formatSessionInVenueTZ(s, "", "fr")
+		want := "Sat, 3 Oct 2026, 21:00 (UTC)"
 		if got != want {
 			t.Fatalf("got %q want %q", got, want)
 		}
