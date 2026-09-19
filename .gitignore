@@ -119,3 +119,7 @@ apps/backend/.envprobe.env
 apps/admin-web/e2e-verify-*.mjs
 apps/admin-web/test-results/
 09_autoforge/__pycache__/
+
+# Local secrets dropped into the repo root by the owner - never commit
+ArenaSupportBot.txt
+*.secret.txt
