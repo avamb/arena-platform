@@ -35,7 +35,13 @@ const priceCategoryTextID = "PriceCategoryText"
 // hexColorRE is the canonical short/long hex-colour matcher applied to
 // the seat-and-category "fill:#rrggbb" style. Longform is what the
 // Bil24 Editor emits; shortform is preserved defensively.
-var hexColorRE = regexp.MustCompile(`(?i)#([0-9a-f]{3}|[0-9a-f]{6})`)
+//
+// The six-digit form MUST come first: RE2 alternation is leftmost-first,
+// so with {3} first "#e53935" matched only "e53" and was widened to
+// "#ee5533" — and normalizeColor runs again on every Canonicalize, so a
+// bound plan served #eeeeee / #111111 for red / blue (functional run
+// 2026-09-19, F-43).
+var hexColorRE = regexp.MustCompile(`(?i)#([0-9a-f]{6}|[0-9a-f]{3})`)
 
 // sectorPrefixRE strips the leading "Сектор"/"Sector" word from a §6
 // sector label ("#Сектор Parter" → "Parter"). It is case-insensitive
