@@ -81,6 +81,9 @@ other = "doba pro platbu této objednávky vypršela"
 ["bil24.open_order_exists"]
 other = "na tuto akci již máte nezaplacenou objednávku, nejprve ji dokončete nebo zrušte"
 
+["bil24.order_kind_changed"]
+other = "objednávku nelze přepnout mezi placenou a pozvánkou, rezervujte znovu"
+
 ["bil24.order_not_found"]
 other = "objednávka nenalezena"
 

@@ -178,9 +178,17 @@ func (h *Handler) handleBil24CreateOrderExtSession(w http.ResponseWriter, r *htt
 		return
 	}
 
-	discount, promoCodeID, ok := h.orderPromoDiscount(ctx, w, req, cc, units)
-	if !ok {
-		return
+	// An invitation takes no promo code: it is discounted in full below.
+	var (
+		discount    int64
+		promoCodeID *uuid.UUID
+	)
+	if !req.Complimentary {
+		var ok bool
+		discount, promoCodeID, ok = h.orderPromoDiscount(ctx, w, req, cc, units)
+		if !ok {
+			return
+		}
 	}
 
 	bd := hcheckout.ComputePricingLines(
@@ -199,6 +207,9 @@ func (h *Handler) handleBil24CreateOrderExtSession(w http.ResponseWriter, r *htt
 	// own 19.86 would be recorded as an amount_mismatch. The gateway therefore
 	// re-states the fee with the cart's rounding before anything is persisted.
 	bd = applyGatewayCharge(bd, cartFeePercent(cc.channel))
+	if req.Complimentary {
+		bd = complimentaryBreakdown(bd)
+	}
 
 	h.orderPersist(ctx, w, req, cc, sess, res, units, bd, promoCodeID)
 }
@@ -662,14 +673,18 @@ func (h *Handler) orderPersist(
 		return
 	}
 
+	source, chargeBP := ordering.SourceBil24Gateway, ordering.ChargePercentBP(cc.channel.FeePercent)
+	if req.Complimentary {
+		source, chargeBP = ordering.SourceComplimentary, 0
+	}
 	in := ordering.CreateInput{
 		CheckoutSessionID: cs.ID,
 		EventID:           sess.EventID,
 		CustomerID:        &customerID,
-		Source:            ordering.SourceBil24Gateway,
+		Source:            source,
 		Actor:             orderActor(req),
 		ExternalRef:       &req.OrderID,
-		ChargePercentBP:   ordering.ChargePercentBP(cc.channel.FeePercent),
+		ChargePercentBP:   chargeBP,
 		BuyerName:         optionalString(req.FullName),
 		BuyerEmail:        optionalString(req.Email),
 		BuyerPhone:        optionalString(req.Phone),
@@ -688,6 +703,14 @@ func (h *Handler) orderPersist(
 				req.Command, ResultCodeUserVisible,
 				h.localizeDesc(req.Locale, cc.locale, "bil24.open_order_exists",
 					"you already have an unpaid order for this event, complete or cancel it first", nil),
+			))
+			return
+		}
+		if errors.Is(err, errOrderKindChanged) {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInvalidRequest,
+				h.localizeDesc(req.Locale, cc.locale, "bil24.order_kind_changed",
+					"an order cannot switch between a paid order and an invitation, reserve again", nil),
 			))
 			return
 		}
@@ -749,6 +772,27 @@ func (h *Handler) orderPersist(
 // inserted, rolls back.
 var errOpenOrderExists = errors.New("hbil24: customer already has a live open order for this session")
 
+// errOrderKindChanged is returned by orderWriteAggregate when a same-cart
+// CREATE_ORDER_EXT re-send flips the complimentary flag. An order never
+// changes its source (ordering.UpdateOrderFromCheckout keeps it), so letting
+// the update through would leave a paid order priced at 0 or an invitation
+// carrying a price. The caller answers -2 and writes nothing.
+var errOrderKindChanged = errors.New("hbil24: order cannot switch between paid and complimentary")
+
+// complimentaryBreakdown turns a priced cart into an invitation: every
+// ticket keeps its face value (subtotal and the per-line prices stay, so
+// order_items still say what the seat is worth), the whole subtotal is
+// discounted, and no service charge, provider fee or tax applies. The total
+// the buyer owes — and PAY_ORDER expects — is 0.
+func complimentaryBreakdown(bd hcheckout.PricingBreakdown) hcheckout.PricingBreakdown {
+	bd.Discount = bd.Subtotal
+	bd.PlatformFee = 0
+	bd.ProviderFee = 0
+	bd.Tax = 0
+	bd.Total = 0
+	return bd
+}
+
 // orderWriteAggregate is spec §7.7 step 5, the one-open-order rule. The
 // customer may hold at most one pending_payment order per event session
 // (orders_one_pending_per_customer_session_uq), so a repeat CREATE_ORDER_EXT
@@ -771,6 +815,9 @@ func (h *Handler) orderWriteAggregate(
 		// The SAME gateway cart re-sending CREATE_ORDER_EXT (bounced off
 		// WooCommerce payment, edited the basket, came back) — always
 		// update in place, unaffected by the live-hold check below.
+		if (existing.Source == ordering.SourceComplimentary) != (in.Source == ordering.SourceComplimentary) {
+			return gen.OrderRow{}, errOrderKindChanged
+		}
 		out, err := ordering.UpdateOrderFromCheckout(ctx, txq, ordering.UpdateInput{
 			OrderID: existing.ID, OrgID: existing.OrgID, CreateInput: in,
 		})

@@ -154,6 +154,13 @@ type Request struct {
 	// the channel's configured TTL either way; the flag is decoded so the
 	// envelope does not surprise us later.
 	LongReservation bool
+	// Complimentary marks the order as an invitation: the selling site
+	// charges the buyer nothing. arena keeps each ticket's face value,
+	// discounts it in full, adds no service charge and records the order
+	// with source 'complimentary', so its total — and PAY_ORDER's expected
+	// amount — is 0. Not part of the Bil24 protocol: an arena extension the
+	// site opts into. Decoded flexibly (true / 1 / "1" / "true").
+	Complimentary bool
 
 	// ── REFUND_TICKET fields (feature #509, spec §7.13) ──────────────────
 
@@ -236,6 +243,7 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 		ExpectedPrice   json.RawMessage `json:"expectedPrice"`
 		Amount          json.RawMessage `json:"amount"`
 		TicketIDList    json.RawMessage `json:"ticketIdList"`
+		Complimentary   json.RawMessage `json:"complimentary"`
 	}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -269,7 +277,28 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	// for the same reason ticketId is (clients that stored the id in a text
 	// column quote it on the way back).
 	r.TicketIDList = flexWireInt64List(aux.TicketIDList)
+	// PHP clients serialise booleans as true, 1, "1" or "true" depending on
+	// where the value came from; all of them mean yes.
+	r.Complimentary = flexWireBool(aux.Complimentary)
 	return nil
+}
+
+// flexWireBool renders a raw JSON scalar as a bool: JSON true/false, the
+// numbers 1/0 and the strings "1"/"true"/"yes" (case-insensitive). Anything
+// else — null, absent, "0", "false", objects — is false.
+func flexWireBool(raw json.RawMessage) bool {
+	if len(raw) == 0 || string(raw) == "null" {
+		return false
+	}
+	var b bool
+	if err := json.Unmarshal(raw, &b); err == nil {
+		return b
+	}
+	switch strings.ToLower(strings.TrimSpace(flexWireString(raw))) {
+	case "1", "true", "yes":
+		return true
+	}
+	return false
 }
 
 // flexWireInt64List normalises a JSON array of int64 ids that legacy clients

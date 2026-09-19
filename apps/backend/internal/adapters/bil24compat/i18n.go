@@ -141,6 +141,9 @@ var Bil24DescriptionKeys = []string{
 	// steal a customer's still-live open order for the same session when a
 	// second CREATE_ORDER_EXT arrives pointing at a different reservation.
 	"bil24.open_order_exists",
+	// bil24.order_kind_changed: a same-cart CREATE_ORDER_EXT re-send flipped
+	// the complimentary flag of an existing order.
+	"bil24.order_kind_changed",
 	"bil24.order_not_found",
 	"bil24.currency_mismatch",
 	"bil24.pricing_mode_unsupported",

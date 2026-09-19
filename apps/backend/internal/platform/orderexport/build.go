@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/ean13"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
 )
 
 // Build groups rows by checkout session and assembles the order/ticket
@@ -163,10 +164,15 @@ func newTicket(row Row, orderID int64) Ticket {
 }
 
 // discountReason is the human-readable cause of a discount:
+//   - invitation order         → "Приглашение" (orders.source complimentary:
+//     the ticket keeps its face value, discounted in full)
 //   - promo applied            → "Промокод {code}" (the MACS report format)
 //   - no promo, no provider    → "Внешняя система" (comp / externally settled)
 //   - ordinary paid purchase   → ""
 func discountReason(row Row) string {
+	if row.OrderSource != nil && *row.OrderSource == ordering.SourceComplimentary {
+		return "Приглашение"
+	}
 	if row.PromoCodeName != nil {
 		return "Промокод " + *row.PromoCodeName
 	}

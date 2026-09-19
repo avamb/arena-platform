@@ -90,6 +90,9 @@ other = "payment time for this order has expired"
 ["bil24.open_order_exists"]
 other = "you already have an unpaid order for this event, complete or cancel it first"
 
+["bil24.order_kind_changed"]
+other = "an order cannot switch between a paid order and an invitation, reserve again"
+
 ["bil24.order_not_found"]
 other = "order not found"
 

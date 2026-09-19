@@ -63,6 +63,9 @@ type Row struct {
 	SoldPrice         int64
 	PromoCodeName     *string
 	VenueTimezone     *string
+	// OrderSource is orders.source (NULL for legacy tickets without an
+	// orders row); 'complimentary' marks an invitation.
+	OrderSource *string
 }
 
 const sessionQuery = `
@@ -113,7 +116,8 @@ SELECT
     tt.price_amount AS tier_price,
     COALESCE(gi.unit_price, tt.price_amount, 0) AS sold_price,
     pc.code AS promo_code_name,
-    v.timezone AS venue_timezone
+    v.timezone AS venue_timezone,
+    ord.source AS order_source
 FROM tickets t
 LEFT JOIN orders ord ON ord.id = t.order_id
 JOIN checkout_sessions cs ON cs.id = t.checkout_session_id
@@ -265,6 +269,7 @@ func query(ctx context.Context, pool *pgxpool.Pool, sql string, id uuid.UUID) ([
 			&r.SoldPrice,
 			&r.PromoCodeName,
 			&r.VenueTimezone,
+			&r.OrderSource,
 		); err != nil {
 			return nil, fmt.Errorf("orderexport scan: %w", err)
 		}
