@@ -56,6 +56,7 @@ import {
   validateTaxId,
   // Feature #514 — W1-C1c API keys tab helpers.
   mapApiKeyServerError,
+  defaultApiKeyChannel,
   validateApiKeyName,
   validateApiKeyScopes,
   type AdminOrganization,
@@ -876,6 +877,17 @@ describe("API keys tab helpers (feature #514, W1-C1c)", () => {
     });
     it("accepts at least one scope", () => {
       expect(validateApiKeyScopes(["event.read"])).toBeNull();
+    });
+  });
+
+  describe("defaultApiKeyChannel", () => {
+    it("picks the organization's only channel", () => {
+      expect(defaultApiKeyChannel([{ id: "c1" }])).toBe("c1");
+    });
+    it("leaves the choice to the operator when there are several or none", () => {
+      expect(defaultApiKeyChannel([{ id: "c1" }, { id: "c2" }])).toBe("");
+      expect(defaultApiKeyChannel([])).toBe("");
+      expect(defaultApiKeyChannel(undefined)).toBe("");
     });
   });
 

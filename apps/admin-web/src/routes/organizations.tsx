@@ -3679,6 +3679,19 @@ function ApiKeysTab({ org }: { org: AdminOrganization }) {
   );
 }
 
+/**
+ * The channel an API key is issued for when the operator has not picked one:
+ * the organization's only channel, or none when it has several (or none).
+ * Found in the functional run 2026-09-19 (F-59): the select defaulted to
+ * «No channel», so a key meant for the event center was issued unbound and
+ * its imports never reached the site. Exported for tests.
+ */
+export function defaultApiKeyChannel(
+  channels: readonly { readonly id: string }[] | undefined,
+): string {
+  return channels !== undefined && channels.length === 1 ? channels[0].id : "";
+}
+
 function ApiKeyIssueForm({
   orgId,
   onIssued,
@@ -3692,8 +3705,12 @@ function ApiKeyIssueForm({
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<readonly string[]>([]);
   const [channelId, setChannelId] = useState("");
+  const [channelTouched, setChannelTouched] = useState(false);
   const [serverErrors, setServerErrors] = useState<ApiKeyFormErrors>({});
   const channels = useOrgChannels(orgId);
+  useEffect(() => {
+    if (!channelTouched) setChannelId(defaultApiKeyChannel(channels.data));
+  }, [channels.data, channelTouched]);
 
   const localErrors: ApiKeyFormErrors = {
     name: validateApiKeyName(name) ?? undefined,
@@ -3771,7 +3788,10 @@ function ApiKeyIssueForm({
         <select
           id="api-key-channel"
           value={channelId}
-          onChange={(e) => setChannelId(e.target.value)}
+          onChange={(e) => {
+            setChannelTouched(true);
+            setChannelId(e.target.value);
+          }}
           style={inputStyle}
           data-testid="api-key-channel"
         >
