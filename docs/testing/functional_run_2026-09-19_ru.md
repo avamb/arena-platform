@@ -132,6 +132,13 @@
   сервисного сбора, итог 0; PAY_ORDER на 0 проходит без `amount_mismatch`; MACS получает
   `totalPrice 0` и причину скидки «Приглашение». Сайт шлёт флаг для заказов-приглашений только на
   Arena (фильтр `bil24_create_order_ext_payload`).
+- ✅ F-61/F-62 на стенде (Arena e6868d0, arenasoldout 66f2df2). Возврат билета #23 заказа #12898
+  (Таллин, 45,45 €) из ивент-центра: Stripe `re_3UHMt0…`, в Arena строка реестра «Refunds» —
+  succeeded, «Settled by: Selling site», 45.45 EUR, заказ и билет указаны, `gateway:4`; заказ Arena
+  PARTIALLY_REFUNDED; `ticket.refunded` вернулся с суммой 45.45 — сайт сверил без пометки о
+  расхождении; MACS «Билет 2100000000234 возвращён». Приглашение из ивент-центра на Baltic Strings,
+  Premium 45 € (#12922): заказ Arena PAID 0.00 EUR, `order.paid` пришёл с `sum=45, discount=45,
+  charge=0, totalSum=0`, билет ушёл письмом и попал в MACS (Premium, 2100000000289).
 
 ### Покупки и возвраты (сайт ↔ Arena ↔ MACS)
 - **F-20 🔴 (исправлено 22d553b)** После успешного PAY_ORDER `bil24-payment-window.php`
