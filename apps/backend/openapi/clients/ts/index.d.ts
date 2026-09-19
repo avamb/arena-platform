@@ -14822,6 +14822,20 @@ export interface components {
              *     ]
              */
             category_price_ids: number[];
+            /**
+             * @description How many places each category owns after the import, aligned
+             *     POSITIONALLY with the request's categoryList like
+             *     category_price_ids. This is arena's answer, not an echo: when a
+             *     reduction below the held and sold places is refused
+             *     (warning import.category_quantity_below_used) the previous
+             *     quantity is reported, so the caller can show the real value.
+             *     null for a category whose places come from a seating plan.
+             * @example [
+             *       250,
+             *       80
+             *     ]
+             */
+            category_quantities?: (number | null)[];
         };
         /**
          * @description The sales-channel binding the import performed on the caller's behalf

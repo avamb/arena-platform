@@ -5692,6 +5692,15 @@ type ImportCompatIDs struct {
 	// category.
 	CategoryPriceIds []int64 `json:"category_price_ids"`
 
+	// CategoryQuantities How many places each category owns after the import, aligned
+	// POSITIONALLY with the request's categoryList like
+	// category_price_ids. This is arena's answer, not an echo: when a
+	// reduction below the held and sold places is refused
+	// (warning import.category_quantity_below_used) the previous
+	// quantity is reported, so the caller can show the real value.
+	// null for a category whose places come from a seating plan.
+	CategoryQuantities *[]int32 `json:"category_quantities,omitempty"`
+
 	// VenueId Compat id of the arena venue — venue.venueId, minted or echoed.
 	VenueId int64 `json:"venue_id"`
 }

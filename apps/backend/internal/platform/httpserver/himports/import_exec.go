@@ -213,6 +213,22 @@ func ensureCompatIDs(ctx context.Context, tx pgx.Tx, eventID, sessionID, venueID
 	for _, tierID := range tierIDs {
 		out.CategoryPriceIDs = append(out.CategoryPriceIDs, minted[tierID])
 	}
+
+	// The quantities the site should now show are arena's, not the ones it
+	// asked for: a refused reduction keeps the previous quantity (F-56).
+	stats, err := gaquota.SessionStats(ctx, gen.New(tx), sessionID)
+	if err != nil {
+		return ImportCompatIDs{}, fmt.Errorf("category quantities: %w", err)
+	}
+	out.CategoryQuantities = make([]*int32, 0, len(tierIDs))
+	for _, tierID := range tierIDs {
+		var q *int32
+		if st, ok := stats[tierID]; ok {
+			n := st.Quantity
+			q = &n
+		}
+		out.CategoryQuantities = append(out.CategoryQuantities, q)
+	}
 	return out, nil
 }
 

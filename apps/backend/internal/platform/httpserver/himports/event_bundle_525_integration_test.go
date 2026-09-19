@@ -532,6 +532,25 @@ func TestEventBundle525_EditAppliesCategoryQuantity(t *testing.T) {
 	if c, u := places(parterID); c != 120 || u != 120 {
 		t.Errorf("Parter shrink in the same bundle: capacity %d / places %d, want 120 / 120", c, u)
 	}
+	// The response reports arena's quantities, not the requested ones, so the
+	// site can show what really stands (F-56): Parter 120 applied, Balcony
+	// kept at 40 although 10 was asked for.
+	gotQty := shrunk.CompatIDs.CategoryQuantities
+	if len(gotQty) != 2 || gotQty[0] == nil || gotQty[1] == nil || *gotQty[0] != 120 || *gotQty[1] != 40 {
+		t.Errorf("compat_ids.category_quantities = %v, want [120 40]", derefQuantities(gotQty))
+	}
+}
+
+func derefQuantities(qs []*int32) []any {
+	out := make([]any, 0, len(qs))
+	for _, q := range qs {
+		if q == nil {
+			out = append(out, nil)
+			continue
+		}
+		out = append(out, *q)
+	}
+	return out
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

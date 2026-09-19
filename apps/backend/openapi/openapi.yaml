@@ -10600,6 +10600,20 @@ components:
             type: integer
             format: int64
           example: [1000000012, 1000000013]
+        category_quantities:
+          type: array
+          description: |
+            How many places each category owns after the import, aligned
+            POSITIONALLY with the request's categoryList like
+            category_price_ids. This is arena's answer, not an echo: when a
+            reduction below the held and sold places is refused
+            (warning import.category_quantity_below_used) the previous
+            quantity is reported, so the caller can show the real value.
+            null for a category whose places come from a seating plan.
+          items:
+            type: [integer, "null"]
+            format: int32
+          example: [250, 80]
     ImportPublication:
       type: object
       description: |

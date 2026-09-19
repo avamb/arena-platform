@@ -139,6 +139,12 @@ type ImportCompatIDs struct {
 	ActionEventID    int64   `json:"action_event_id"`
 	VenueID          int64   `json:"venue_id"`
 	CategoryPriceIDs []int64 `json:"category_price_ids"`
+	// CategoryQuantities is aligned the same way: how many places each
+	// category owns AFTER the import — arena's answer, which differs from the
+	// requested quantity when a reduction was refused
+	// (import.category_quantity_below_used). nil for a category whose places
+	// come from a seating plan. Never nil itself.
+	CategoryQuantities []*int32 `json:"category_quantities"`
 }
 
 // warningSink accumulates warnings in emission order while de-duplicating on
