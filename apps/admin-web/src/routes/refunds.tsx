@@ -74,8 +74,16 @@ export const REFUND_STATES: readonly string[] = [
 
 export interface AdminRefund {
   readonly id: string;
-  readonly payment_intent_id: string;
+  /** Null for an external refund — the selling site returned the money. */
+  readonly payment_intent_id: string | null;
   readonly org_id: string;
+  /**
+   * `provider` — arena drives the refund through its payment provider;
+   * `external` — the selling site returned the money and arena books it.
+   */
+  readonly settlement?: string;
+  readonly order_id?: string | null;
+  readonly ticket_id?: string | null;
   readonly amount: number;
   readonly currency: string;
   readonly state: string;
@@ -376,6 +384,11 @@ function Body({ query, rows, activeId, onOpen }: BodyProps) {
       ),
     },
     {
+      id: "settlement",
+      header: "Settled by",
+      renderCell: (r) => refundSettlementLabel(r.settlement),
+    },
+    {
       id: "amount",
       header: "Amount",
       renderCell: (r) => formatMoneyMinor(r.amount, r.currency),
@@ -417,6 +430,16 @@ function Body({ query, rows, activeId, onOpen }: BodyProps) {
       />
     </div>
   );
+}
+
+/**
+ * Human label for `refunds.settlement`. Exported for tests.
+ */
+export function refundSettlementLabel(settlement: string | undefined): string {
+  if (settlement === "external") {
+    return "Selling site";
+  }
+  return "Payment provider";
 }
 
 /**
@@ -491,9 +514,36 @@ function RefundDrawer({
           />
           <MetaRow k="Amount" v={formatMoneyMinor(refund.amount, refund.currency)} />
           <MetaRow k="Organization" v={<code style={S.monoStyle}>{refund.org_id}</code>} />
+          <MetaRow k="Settled by" v={refundSettlementLabel(refund.settlement)} />
           <MetaRow
             k="Payment intent"
-            v={<code style={S.monoStyle}>{refund.payment_intent_id}</code>}
+            v={
+              refund.payment_intent_id === null ? (
+                <span style={S.mutedStyle}>—</span>
+              ) : (
+                <code style={S.monoStyle}>{refund.payment_intent_id}</code>
+              )
+            }
+          />
+          <MetaRow
+            k="Order"
+            v={
+              refund.order_id == null ? (
+                <span style={S.mutedStyle}>—</span>
+              ) : (
+                <code style={S.monoStyle}>{refund.order_id}</code>
+              )
+            }
+          />
+          <MetaRow
+            k="Ticket"
+            v={
+              refund.ticket_id == null ? (
+                <span style={S.mutedStyle}>—</span>
+              ) : (
+                <code style={S.monoStyle}>{refund.ticket_id}</code>
+              )
+            }
           />
           <MetaRow
             k="Provider refund ID"

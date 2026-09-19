@@ -546,14 +546,26 @@ func (h *Handler) HandleSuperadminListRefunds(w http.ResponseWriter, r *http.Req
 	for _, rf := range rows {
 		m := map[string]any{
 			"id":                rf.ID.String(),
-			"payment_intent_id": rf.PaymentIntentID.String(),
+			"payment_intent_id": nil,
 			"org_id":            rf.OrgID.String(),
+			"settlement":        rf.Settlement,
+			"order_id":          nil,
+			"ticket_id":         nil,
 			"amount":            rf.Amount,
 			"currency":          rf.Currency,
 			"state":             rf.State,
 			"requested_at":      rf.RequestedAt.Format(time.RFC3339),
 			"created_at":        rf.CreatedAt.Format(time.RFC3339),
 			"updated_at":        rf.UpdatedAt.Format(time.RFC3339),
+		}
+		if rf.PaymentIntentID != nil {
+			m["payment_intent_id"] = rf.PaymentIntentID.String()
+		}
+		if rf.OrderID != nil {
+			m["order_id"] = rf.OrderID.String()
+		}
+		if rf.TicketID != nil {
+			m["ticket_id"] = rf.TicketID.String()
 		}
 		if rf.Reason != nil {
 			m["reason"] = *rf.Reason

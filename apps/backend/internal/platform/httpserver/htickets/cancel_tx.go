@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -50,6 +51,31 @@ type CancelTicketParams struct {
 	// "gateway:<fid>", spec §7.13). It cannot live in actor_id, so it is
 	// recorded as audit metadata "actor" instead. Empty for operator calls.
 	ActorLabel string
+	// Refund, when non-nil, is the refund decision recorded INSIDE the
+	// cancellation transaction: the ticket's refund record and, for a
+	// positive amount, the external row in the refunds registry. A
+	// cancelled ticket and the money arena says went back can then never
+	// disagree, and the v1.ticket.cancelled consumers (the site webhook
+	// carries refund_price) never observe the ticket without its amount.
+	Refund *CancelRefundRecord
+}
+
+// CancelRefundRecord is the refund decision CancelTicketTx records with the
+// cancellation. The money itself was returned outside arena (settlement
+// 'external'); arena books the fact.
+type CancelRefundRecord struct {
+	// Date is stamped on tickets.refund_date.
+	Date time.Time
+	// Price is the refunded amount in MINOR units, or nil when the amount
+	// is not decided yet. Zero is a decided "nothing to return" (a free
+	// ticket): stamped on the ticket, but no registry row is written.
+	Price *int64
+	// OrgID is the organization the caller is scoped to; the owning order
+	// must belong to it.
+	OrgID uuid.UUID
+	// Reason and RequestedBy are copied onto the refunds row.
+	Reason      string
+	RequestedBy string
 }
 
 // CancelTicketOutcome reports what the committed transaction changed.
@@ -178,6 +204,23 @@ func (h *Handler) CancelTicketTx(ctx context.Context, p CancelTicketParams) (Can
 	// Revoke barcodes + credentials so the ticket stops admitting.
 	RevokeTicketArtifactsTx(ctx, h.logger, h.barcodeQueries, h.credentialQueries, tx, []gen.TicketRow{cancelled})
 
+	if p.Refund != nil {
+		recorded, recErr := recordCancelRefundTx(ctx, txq, cancelled, *p.Refund)
+		if recErr != nil {
+			h.logger.Error("ticket.cancel: refund record failed",
+				slog.String("id", p.TicketID.String()),
+				slog.String("error", recErr.Error()),
+			)
+			return out, &CancelTicketError{
+				Status:  http.StatusInternalServerError,
+				Code:    "ticket.refund_record_failed",
+				Message: "failed to record the refund",
+				Err:     recErr,
+			}
+		}
+		cancelled = recorded
+	}
+
 	// Audit: who cancelled what, when, why, and the refund decision.
 	if h.audit != nil {
 		meta := map[string]any{
@@ -235,6 +278,43 @@ func (h *Handler) CancelTicketTx(ctx context.Context, p CancelTicketParams) (Can
 	return out, nil
 }
 
+// recordCancelRefundTx books the refund decision of a cancelled ticket
+// inside the cancellation transaction: a positive amount becomes an
+// external, already-succeeded row in the refunds registry (linked from
+// tickets.refund_id), and the ticket gets its refund_date/refund_price.
+//
+// The registry row names the owning order and takes its currency. A ticket
+// with no orders row (pre-#488 legacy data) keeps only the ticket-level
+// record — there is no order to attribute the money to.
+func recordCancelRefundTx(ctx context.Context, txq *gen.Queries, t gen.TicketRow, r CancelRefundRecord) (gen.TicketRow, error) {
+	var refundID *uuid.UUID
+	if r.Price != nil && *r.Price > 0 {
+		order, err := txq.GetOrderByCheckoutSession(ctx, t.CheckoutSessionID)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			// Legacy ticket without an order aggregate.
+		case err != nil:
+			return gen.TicketRow{}, fmt.Errorf("order lookup: %w", err)
+		case order.OrgID != r.OrgID:
+			return gen.TicketRow{}, fmt.Errorf("order %s belongs to another organization", order.ID)
+		default:
+			reason, requestedBy := r.Reason, r.RequestedBy
+			row, iErr := txq.InsertExternalRefund(ctx, r.OrgID, &order.ID, t.ID, *r.Price, order.Currency, &reason, &requestedBy)
+			switch {
+			case iErr == nil:
+				refundID = &row.ID
+			case errors.Is(iErr, pgx.ErrNoRows):
+				// Already booked for this ticket — the cancellation
+				// itself cannot run twice, so this is a leftover row.
+			default:
+				return gen.TicketRow{}, fmt.Errorf("insert external refund: %w", iErr)
+			}
+		}
+	}
+	date := r.Date
+	return txq.SetTicketRefundRecord(ctx, t.ID, refundID, &date, r.Price)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // REFUND_TICKET gateway entry point (feature #509, W1-B8, spec §7.13)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -275,9 +355,12 @@ type GatewayRefundResult struct {
 // then the refund record on the ticket, then the ORDER-aggregate projection.
 //
 // refund_mode=manual is deliberate and never negotiable here: the money is
-// returned by the organizer in WooCommerce/the PSP dashboard, so the platform
-// records an OUTSTANDING OBLIGATION (refund_date, optional refund_price) and
-// performs no financial operation of its own.
+// returned by the selling site in WooCommerce/the PSP dashboard, so the
+// platform performs no financial operation of its own. It books the fact in
+// the cancellation transaction: refund_date and the optional refund_price on
+// the ticket, plus — for a positive amount — an 'external' row in the refunds
+// registry (migration 0102). A failure there rolls the cancellation back, so
+// the site retries instead of arena forgetting the money.
 //
 // The order projection is best-effort: an orders-side failure must never undo
 // a committed cancellation (the seat is already back on sale). Failures are
@@ -285,34 +368,34 @@ type GatewayRefundResult struct {
 func (h *Handler) RefundTicketForGateway(ctx context.Context, p GatewayRefundParams) (GatewayRefundResult, error) {
 	var res GatewayRefundResult
 
+	now := time.Now().UTC()
 	outcome, cErr := h.CancelTicketTx(ctx, CancelTicketParams{
 		TicketID:   p.TicketID,
 		Reason:     p.Reason,
 		RefundMode: RefundModeManual,
 		ActorType:  "system",
 		// actor_id is a uuid column; the gateway principal is a label.
-		ActorLabel: p.Actor,
+		ActorLabel:   p.Actor,
+		RefundAmount: p.RefundPrice,
+		// The site returned the money itself; arena books the fact — the
+		// ticket's refund record and, for a positive amount, the external
+		// row in the refunds registry — in the cancellation transaction.
+		Refund: &CancelRefundRecord{
+			Date:        now,
+			Price:       p.RefundPrice,
+			OrgID:       p.OrgID,
+			Reason:      p.Reason,
+			RequestedBy: p.Actor,
+		},
 	})
 	if cErr != nil {
 		return res, cErr
 	}
-	cancelled := outcome.Ticket
 
-	// Outstanding obligation: stamp the date the obligation was taken and,
-	// when the caller supplied one, the amount owed.
-	now := time.Now().UTC()
+	res.Ticket = outcome.Ticket
 	res.RefundDate = now
-	res.Ticket = cancelled
-	if updated, recErr := h.ticketQueries.SetTicketRefundRecord(ctx, cancelled.ID, nil, &now, p.RefundPrice); recErr != nil {
-		h.logger.Warn("bil24.refund_ticket: refund record failed — ticket stays cancelled",
-			slog.String("ticket_id", cancelled.ID.String()),
-			slog.String("error", recErr.Error()),
-		)
-	} else {
-		res.Ticket = updated
-		if updated.RefundDate != nil {
-			res.RefundDate = updated.RefundDate.UTC()
-		}
+	if outcome.Ticket.RefundDate != nil {
+		res.RefundDate = outcome.Ticket.RefundDate.UTC()
 	}
 
 	res.OrderStatus = h.projectRefundOntoOrder(ctx, res.Ticket, p, res.RefundDate)

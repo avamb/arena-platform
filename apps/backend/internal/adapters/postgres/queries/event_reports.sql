@@ -106,20 +106,34 @@ WHERE  s.event_id  = $1
   AND  COALESCE(cs.total, 0) = 0;
 
 -- name: AggregateRefundsForEvent :one
--- Counts succeeded refunds linked to tickets for an event.
--- Joins refunds → payment_intents → checkout_sessions → tickets → sessions.
+-- Counts succeeded refunds linked to tickets for an event: provider refunds
+-- through refunds → payment_intents → checkout_sessions → tickets, and
+-- external refunds (settled by the selling site) through refunds.ticket_id.
+-- Each refund counts once, however many tickets its checkout carried.
 SELECT
-    COUNT(DISTINCT r.id)::bigint                       AS quantity,
+    COUNT(*)::bigint                                   AS quantity,
     COALESCE(SUM(r.amount), 0)::bigint                 AS gross_amount,
     COALESCE(SUM(r.amount), 0)::bigint                 AS net_amount,
     COALESCE(MAX(r.currency), 'usd')                   AS currency
-FROM   refunds r
-JOIN   payment_intents pi ON r.payment_intent_id = pi.id
-JOIN   checkout_sessions cs ON pi.checkout_session_id = cs.id
-JOIN   tickets t  ON t.checkout_session_id = cs.id
-JOIN   sessions s ON t.session_id          = s.id
-WHERE  s.event_id = $1
-  AND  r.state    = 'succeeded';
+FROM (
+    SELECT DISTINCT pr.id, pr.amount, pr.currency
+    FROM   refunds pr
+    JOIN   payment_intents pi ON pr.payment_intent_id = pi.id
+    JOIN   checkout_sessions cs ON pi.checkout_session_id = cs.id
+    JOIN   tickets t  ON t.checkout_session_id = cs.id
+    JOIN   sessions s ON t.session_id          = s.id
+    WHERE  s.event_id    = $1
+      AND  pr.state      = 'succeeded'
+      AND  pr.settlement = 'provider'
+    UNION
+    SELECT er.id, er.amount, er.currency
+    FROM   refunds er
+    JOIN   tickets t  ON t.id         = er.ticket_id
+    JOIN   sessions s ON t.session_id = s.id
+    WHERE  s.event_id    = $1
+      AND  er.state      = 'succeeded'
+      AND  er.settlement = 'external'
+) r;
 
 -- name: AggregateScansForEvent :one
 -- Counts successfully scanned barcodes for tickets in an event.

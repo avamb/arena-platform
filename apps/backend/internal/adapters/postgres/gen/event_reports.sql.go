@@ -358,17 +358,29 @@ func (q *Queries) AggregateComplimentaryForEvent(
 
 const aggregateRefundsForEvent = `-- name: AggregateRefundsForEvent :one
 SELECT
-    COUNT(DISTINCT r.id)::bigint                       AS quantity,
+    COUNT(*)::bigint                                   AS quantity,
     COALESCE(SUM(r.amount), 0)::bigint                 AS gross_amount,
     COALESCE(SUM(r.amount), 0)::bigint                 AS net_amount,
     COALESCE(MAX(r.currency), 'usd')                   AS currency
-FROM   refunds r
-JOIN   payment_intents pi ON r.payment_intent_id = pi.id
-JOIN   checkout_sessions cs ON pi.checkout_session_id = cs.id
-JOIN   tickets t  ON t.checkout_session_id = cs.id
-JOIN   sessions s ON t.session_id          = s.id
-WHERE  s.event_id = $1
-  AND  r.state    = 'succeeded'`
+FROM (
+    SELECT DISTINCT pr.id, pr.amount, pr.currency
+    FROM   refunds pr
+    JOIN   payment_intents pi ON pr.payment_intent_id = pi.id
+    JOIN   checkout_sessions cs ON pi.checkout_session_id = cs.id
+    JOIN   tickets t  ON t.checkout_session_id = cs.id
+    JOIN   sessions s ON t.session_id          = s.id
+    WHERE  s.event_id    = $1
+      AND  pr.state      = 'succeeded'
+      AND  pr.settlement = 'provider'
+    UNION
+    SELECT er.id, er.amount, er.currency
+    FROM   refunds er
+    JOIN   tickets t  ON t.id         = er.ticket_id
+    JOIN   sessions s ON t.session_id = s.id
+    WHERE  s.event_id    = $1
+      AND  er.state      = 'succeeded'
+      AND  er.settlement = 'external'
+) r`
 
 // AggregateRefundsForEvent computes succeeded refunds for an event.
 // Returns quantity (distinct refund count), gross_amount = net_amount (total refunded).

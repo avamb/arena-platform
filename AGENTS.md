@@ -882,3 +882,27 @@ entries short and factual.
   (it cannot reach a host `127.0.0.1` stub, so the row backs off for an
   hour): `docker stop arena_worker` while running outbox integration tests,
   `docker start arena_worker` after.
+- **Refunds have two settlements since migration 0102.** `refunds.settlement`
+  is `provider` (arena drives the refund through its payment provider — the
+  requested → approved → succeeded flow, `payment_intent_id` required) or
+  `external` (a selling site returned the money itself and said so through
+  REFUND_TICKET's `refundPrice`; the row is born `succeeded`, names
+  `order_id` + `ticket_id`, has no payment intent, one per ticket).
+  `htickets.CancelTicketTx` books it through `CancelTicketParams.Refund`
+  INSIDE the cancellation transaction, together with the ticket's
+  `refund_date`/`refund_price`, so the `ticket.refunded` webhook can never
+  read a cancelled ticket without its amount. Anything summing or approving
+  refunds by payment intent must stay on `settlement='provider'` (a nil
+  `PaymentIntentID` is an external refund, never dereference it). Fixtures
+  that delete refunded tickets must break the cycle first — `tickets.refund_id`
+  and `refunds.ticket_id` point at each other: `UPDATE tickets SET
+  refund_id=NULL`, then `DELETE FROM refunds WHERE ticket_id=ANY(...)`, then
+  the tickets (see `scenario04_refund_test.go`).
+- **An invitation is priced by arena, not by the selling site.**
+  CREATE_ORDER_EXT's `complimentary` flag (arena extension, decoded from
+  true/1/"1"/"true") keeps each ticket's face value, discounts the whole
+  subtotal, drops the service charge and writes the order with source
+  `complimentary`, total 0 — so PAY_ORDER expects 0 and the export (MACS,
+  webhooks) shows `totalPrice 0` with discount reason «Приглашение». A
+  same-cart re-send cannot flip the flag (answers `-2`
+  `bil24.order_kind_changed`): an order never changes its source.

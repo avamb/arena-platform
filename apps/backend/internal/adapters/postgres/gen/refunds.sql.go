@@ -24,9 +24,15 @@ import (
 //
 // ProviderRefundID is non-nil only after the refund has been submitted to the provider.
 // FailureReason is non-nil when the refund transitions to 'failed'.
+//
+// Settlement (migration 0102) is 'provider' for a refund arena drives through
+// its own payment provider — PaymentIntentID is then always set — and
+// 'external' for money a selling site already returned itself (gateway
+// REFUND_TICKET with a refundPrice): born 'succeeded', no payment intent,
+// TicketID always set.
 type RefundRow struct {
 	ID               uuid.UUID  `json:"id"`
-	PaymentIntentID  uuid.UUID  `json:"payment_intent_id"`
+	PaymentIntentID  *uuid.UUID `json:"payment_intent_id"`
 	OrgID            uuid.UUID  `json:"org_id"`
 	Amount           int64      `json:"amount"`
 	Currency         string     `json:"currency"`
@@ -41,7 +47,16 @@ type RefundRow struct {
 	FailedAt         *time.Time `json:"failed_at"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
+	Settlement       string     `json:"settlement"`
+	OrderID          *uuid.UUID `json:"order_id"`
+	TicketID         *uuid.UUID `json:"ticket_id"`
 }
+
+// Refund settlement kinds (refunds.settlement, migration 0102).
+const (
+	RefundSettlementProvider = "provider"
+	RefundSettlementExternal = "external"
+)
 
 // scanRefundRow scans a single refunds row into a RefundRow.
 func scanRefundRow(row interface {
@@ -65,6 +80,9 @@ func scanRefundRow(row interface {
 		&r.FailedAt,
 		&r.CreatedAt,
 		&r.UpdatedAt,
+		&r.Settlement,
+		&r.OrderID,
+		&r.TicketID,
 	)
 	return r, err
 }
@@ -115,7 +133,8 @@ VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, payment_intent_id, org_id, amount, currency, reason, requested_by,
           state, provider_refund_id, failure_reason,
           requested_at, approved_at, succeeded_at, failed_at,
-          created_at, updated_at`
+          created_at, updated_at,
+          settlement, order_id, ticket_id`
 
 // InsertRefund creates a new refund request in the 'requested' state.
 //
@@ -138,6 +157,42 @@ func (q *Queries) InsertRefund(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// InsertExternalRefund
+// ─────────────────────────────────────────────────────────────────────────────
+
+const insertExternalRefund = `-- name: InsertExternalRefund :one
+INSERT INTO refunds (
+    settlement, org_id, order_id, ticket_id, amount, currency, reason, requested_by,
+    state, approved_at, succeeded_at
+)
+VALUES ('external', $1, $2, $3, $4, $5, $6, $7, 'succeeded', now(), now())
+ON CONFLICT (ticket_id) WHERE settlement = 'external' DO NOTHING
+RETURNING id, payment_intent_id, org_id, amount, currency, reason, requested_by,
+          state, provider_refund_id, failure_reason,
+          requested_at, approved_at, succeeded_at, failed_at,
+          created_at, updated_at,
+          settlement, order_id, ticket_id`
+
+// InsertExternalRefund records money a selling site has ALREADY returned to
+// the buyer for one ticket (settlement 'external', born 'succeeded'). It is
+// idempotent per ticket: a replay returns pgx.ErrNoRows and writes nothing.
+func (q *Queries) InsertExternalRefund(
+	ctx context.Context,
+	orgID uuid.UUID,
+	orderID *uuid.UUID,
+	ticketID uuid.UUID,
+	amount int64,
+	currency string,
+	reason *string,
+	requestedBy *string,
+) (RefundRow, error) {
+	row := q.db.QueryRow(ctx, insertExternalRefund,
+		orgID, orderID, ticketID, amount, currency, reason, requestedBy,
+	)
+	return scanRefundRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GetRefundByID
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -145,7 +200,8 @@ const getRefundByID = `-- name: GetRefundByID :one
 SELECT id, payment_intent_id, org_id, amount, currency, reason, requested_by,
        state, provider_refund_id, failure_reason,
        requested_at, approved_at, succeeded_at, failed_at,
-       created_at, updated_at
+       created_at, updated_at,
+       settlement, order_id, ticket_id
 FROM   refunds
 WHERE  id = $1`
 
@@ -164,7 +220,8 @@ const listRefundsByPaymentIntent = `-- name: ListRefundsByPaymentIntent :many
 SELECT id, payment_intent_id, org_id, amount, currency, reason, requested_by,
        state, provider_refund_id, failure_reason,
        requested_at, approved_at, succeeded_at, failed_at,
-       created_at, updated_at
+       created_at, updated_at,
+       settlement, order_id, ticket_id
 FROM   refunds
 WHERE  payment_intent_id = $1
 ORDER BY created_at DESC, id DESC`
@@ -207,7 +264,8 @@ WHERE  id = $1
 RETURNING id, payment_intent_id, org_id, amount, currency, reason, requested_by,
           state, provider_refund_id, failure_reason,
           requested_at, approved_at, succeeded_at, failed_at,
-          created_at, updated_at`
+          created_at, updated_at,
+          settlement, order_id, ticket_id`
 
 // UpdateRefundState advances a refund to a new state.
 //

@@ -328,6 +328,7 @@ type Querier interface {
 
 	// Refunds — state machine for payment reversals (feature #138)
 	InsertRefund(ctx context.Context, paymentIntentID uuid.UUID, orgID uuid.UUID, amount int64, currency string, reason *string, requestedBy *string) (RefundRow, error)
+	InsertExternalRefund(ctx context.Context, orgID uuid.UUID, orderID *uuid.UUID, ticketID uuid.UUID, amount int64, currency string, reason *string, requestedBy *string) (RefundRow, error)
 	GetRefundByID(ctx context.Context, id uuid.UUID) (RefundRow, error)
 	ListRefundsByPaymentIntent(ctx context.Context, paymentIntentID uuid.UUID) ([]RefundRow, error)
 	UpdateRefundState(ctx context.Context, id uuid.UUID, newState string, providerRefundID *string, failureReason *string) (RefundRow, error)

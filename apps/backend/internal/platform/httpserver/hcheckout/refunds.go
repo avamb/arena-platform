@@ -98,8 +98,11 @@ func IsTerminalRefundState(state string) bool { return isTerminalRefundState(sta
 // refundResponse is the JSON representation of a refunds row.
 type refundResponse struct {
 	ID               string  `json:"id"`
-	PaymentIntentID  string  `json:"payment_intent_id"`
+	PaymentIntentID  *string `json:"payment_intent_id"`
 	OrgID            string  `json:"org_id"`
+	Settlement       string  `json:"settlement"`
+	OrderID          *string `json:"order_id"`
+	TicketID         *string `json:"ticket_id"`
 	Amount           int64   `json:"amount"`
 	Currency         string  `json:"currency"`
 	Reason           *string `json:"reason"`
@@ -119,8 +122,11 @@ type refundResponse struct {
 func refundFromRow(r gen.RefundRow) refundResponse {
 	resp := refundResponse{
 		ID:               r.ID.String(),
-		PaymentIntentID:  r.PaymentIntentID.String(),
+		PaymentIntentID:  uuidPtrString(r.PaymentIntentID),
 		OrgID:            r.OrgID.String(),
+		Settlement:       r.Settlement,
+		OrderID:          uuidPtrString(r.OrderID),
+		TicketID:         uuidPtrString(r.TicketID),
 		Amount:           r.Amount,
 		Currency:         r.Currency,
 		Reason:           r.Reason,
@@ -145,6 +151,15 @@ func refundFromRow(r gen.RefundRow) refundResponse {
 		resp.FailedAt = &s
 	}
 	return resp
+}
+
+// uuidPtrString renders an optional uuid as an optional string.
+func uuidPtrString(id *uuid.UUID) *string {
+	if id == nil {
+		return nil
+	}
+	s := id.String()
+	return &s
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -503,8 +518,19 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Guard: an external refund was settled by the selling site and has no
+	// arena payment intent to drive. It is born 'succeeded', so the state
+	// guard above already refuses it; this keeps the invariant explicit.
+	if refund.PaymentIntentID == nil {
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+			"refund.not_provider_settled", "refund was settled outside arena and cannot be approved", r,
+		))
+		return
+	}
+	piID := *refund.PaymentIntentID
+
 	// Lock the payment intent row to serialise concurrent approve operations.
-	pi, piErr := txq.GetPaymentIntentByIDForUpdate(ctx, refund.PaymentIntentID)
+	pi, piErr := txq.GetPaymentIntentByIDForUpdate(ctx, piID)
 	if piErr != nil {
 		if errors.Is(piErr, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
@@ -514,7 +540,7 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 		}
 		h.logger.Error("refund: approve PI lookup failed",
 			slog.String("refund_id", id.String()),
-			slog.String("payment_intent_id", refund.PaymentIntentID.String()),
+			slog.String("payment_intent_id", piID.String()),
 			slog.String("error", piErr.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -551,7 +577,7 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 	// Re-validate: total non-failed refunds (including this 'requested' one)
 	// must not exceed the payment intent amount. This closes the TOCTOU window
 	// where two concurrent approvals could both pass independently.
-	totalNonFailed, sumErr := txq.SumNonFailedRefundsByIntent(ctx, refund.PaymentIntentID)
+	totalNonFailed, sumErr := txq.SumNonFailedRefundsByIntent(ctx, piID)
 	if sumErr != nil {
 		h.logger.Error("refund: approve sum failed",
 			slog.String("refund_id", id.String()),
@@ -991,8 +1017,8 @@ func (h *Handler) HandleRefundWebhook(w http.ResponseWriter, r *http.Request) {
 	//     which tickets the organizer meant — flag the order's tickets
 	//     for human review and escalate loudly (owner decision
 	//     2026-08-01: the hold flags, never blocks admission).
-	if updated.State == "succeeded" && h.paymentIntentQueries != nil {
-		pi, piErr := h.paymentIntentQueries.GetPaymentIntentByID(ctx, updated.PaymentIntentID)
+	if updated.State == "succeeded" && h.paymentIntentQueries != nil && updated.PaymentIntentID != nil {
+		pi, piErr := h.paymentIntentQueries.GetPaymentIntentByID(ctx, *updated.PaymentIntentID)
 		if piErr != nil {
 			h.logger.Error("refund_webhook: payment intent lookup failed for ticket cancellation",
 				slog.String("refund_id", updated.ID.String()),

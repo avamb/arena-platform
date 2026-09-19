@@ -598,6 +598,12 @@ const (
 	Ready    ReadyzResponseStatus = "ready"
 )
 
+// Defines values for RefundItemSettlement.
+const (
+	External RefundItemSettlement = "external"
+	Provider RefundItemSettlement = "provider"
+)
+
 // Defines values for RefundItemState.
 const (
 	RefundItemStateApproved        RefundItemState = "approved"
@@ -7763,6 +7769,11 @@ type RefundItem struct {
 	// Id UUIDv7 of the refund row.
 	Id openapi_types.UUID `json:"id"`
 
+	// OrderId Order the refunded money belongs to. Always set for an
+	// `external` refund of an order-backed ticket; `null` on
+	// `provider` refunds created before migration 0102.
+	OrderId *openapi_types.UUID `json:"order_id"`
+
 	// OrgId Organization that owns the refund. Copied from the parent
 	// payment intent at creation time.
 	OrgId openapi_types.UUID `json:"org_id"`
@@ -7770,7 +7781,8 @@ type RefundItem struct {
 	// PaymentIntentId Payment intent this refund is associated with. Resolves the
 	// `org_id`, currency, and (optionally) the linked checkout
 	// session whose tickets are cancelled on a successful refund.
-	PaymentIntentId openapi_types.UUID `json:"payment_intent_id"`
+	// `null` for an `external` refund, which has no arena payment.
+	PaymentIntentId *openapi_types.UUID `json:"payment_intent_id"`
 
 	// ProviderRefundId Provider-side refund identifier (e.g. Stripe's `re_…`
 	// string). `null` until the provider webhook carries it.
@@ -7787,6 +7799,15 @@ type RefundItem struct {
 	// the refund (admin user id, support ticket id, etc.).
 	RequestedBy *string `json:"requested_by"`
 
+	// Settlement Who returned the money. `provider` — arena drives the refund
+	// through its payment provider (the requested → approved →
+	// succeeded flow of this state machine). `external` — the
+	// selling site returned the money itself and reported it through
+	// the gateway's `REFUND_TICKET`; arena books the fact and the row
+	// is created already `succeeded`. Only `provider` refunds can be
+	// approved.
+	Settlement RefundItemSettlement `json:"settlement"`
+
 	// State Current state in the refund state machine. Valid
 	// transitions:
 	// `requested` → {`approved`, `rejected`};
@@ -7800,9 +7821,22 @@ type RefundItem struct {
 	// SucceededAt RFC3339 timestamp when the refund reached `succeeded`.
 	SucceededAt *time.Time `json:"succeeded_at"`
 
+	// TicketId Ticket an `external` refund was booked for — one ticket has at
+	// most one external refund. `null` for `provider` refunds.
+	TicketId *openapi_types.UUID `json:"ticket_id"`
+
 	// UpdatedAt RFC3339 last-update timestamp.
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// RefundItemSettlement Who returned the money. `provider` — arena drives the refund
+// through its payment provider (the requested → approved →
+// succeeded flow of this state machine). `external` — the
+// selling site returned the money itself and reported it through
+// the gateway's `REFUND_TICKET`; arena books the fact and the row
+// is created already `succeeded`. Only `provider` refunds can be
+// approved.
+type RefundItemSettlement string
 
 // RefundItemState Current state in the refund state machine. Valid
 // transitions:

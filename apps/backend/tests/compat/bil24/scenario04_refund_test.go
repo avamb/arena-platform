@@ -166,6 +166,46 @@ func runScenario04Refund(t *testing.T, st *harnessState) {
 			evPayload, sc4RefundReason)
 	}
 
+	// The money the site returned is booked in arena's refunds registry:
+	// one external, already-succeeded row naming the order and the ticket,
+	// linked back from tickets.refund_id, in the order's currency.
+	var (
+		rfID, rfOrderID, rfTicketRefundID *uuid.UUID
+		rfSettlement, rfState, rfCurrency string
+		rfAmount                          int64
+		rfPaymentIntentID                 *uuid.UUID
+		orderCurrency                     string
+	)
+	if err := st.Pool.QueryRow(ctx,
+		`SELECT r.id, r.order_id, r.settlement, r.state, r.amount, r.currency,
+		        r.payment_intent_id, t.refund_id, o.currency
+		 FROM refunds r
+		 JOIN tickets t ON t.id = r.ticket_id
+		 JOIN orders o  ON o.id = $2
+		 WHERE r.ticket_id = $1`, fx.TicketIDs[0], fx.OrderID,
+	).Scan(&rfID, &rfOrderID, &rfSettlement, &rfState, &rfAmount, &rfCurrency,
+		&rfPaymentIntentID, &rfTicketRefundID, &orderCurrency); err != nil {
+		t.Fatalf("read refunds registry row for the refunded ticket: %v", err)
+	}
+	if rfSettlement != "external" || rfState != "succeeded" {
+		t.Errorf("refund settlement/state = %s/%s, want external/succeeded", rfSettlement, rfState)
+	}
+	if rfAmount != sc4RefundMinor {
+		t.Errorf("refunds.amount = %d, want %d minor units", rfAmount, sc4RefundMinor)
+	}
+	if rfCurrency != orderCurrency {
+		t.Errorf("refunds.currency = %q, want the order's %q", rfCurrency, orderCurrency)
+	}
+	if rfOrderID == nil || *rfOrderID != fx.OrderID {
+		t.Errorf("refunds.order_id = %v, want %s", rfOrderID, fx.OrderID)
+	}
+	if rfPaymentIntentID != nil {
+		t.Errorf("refunds.payment_intent_id = %s, want NULL for an external refund", rfPaymentIntentID)
+	}
+	if rfTicketRefundID == nil || rfID == nil || *rfTicketRefundID != *rfID {
+		t.Errorf("tickets.refund_id = %v, want the registry row %v", rfTicketRefundID, rfID)
+	}
+
 	// ── step 3: the fan-out — wpstub AND MACS stub, once each ───────────────
 	fanOut := &wp508MultiDispatcher{dispatchers: []outbox.Dispatcher{
 		bil24wire.NewDispatcher(st.Pool),
@@ -194,6 +234,12 @@ func runScenario04Refund(t *testing.T, st *harnessState) {
 	}
 	if got := len(macsRecv.EventsByType("ticket.refunded")); got != 1 {
 		t.Errorf("MACS stub saw ticket.refunded %d time(s), want exactly 1", got)
+	}
+	// The site hears back the amount it refunded, in major units.
+	if ev, ok := wp508Last(wpRecv, bil24wire.SiteEventTicketRefunded); ok {
+		if got, _ := ev.Data["refundPrice"].(float64); got != sc4RefundMajor {
+			t.Errorf("ticket.refunded refundPrice = %v, want %v", ev.Data["refundPrice"], sc4RefundMajor)
+		}
 	}
 
 	// ── step 4: the replay is a no-op (spec §7.13: already cancelled → 0) ───
@@ -234,6 +280,15 @@ func runScenario04Refund(t *testing.T, st *harnessState) {
 	}
 	if refundedCount != 1 {
 		t.Errorf("cancelled tickets = %d, want 1 (the replay must not cancel a sibling)", refundedCount)
+	}
+	var registryRows int
+	if err := st.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM refunds WHERE order_id=$1`, fx.OrderID,
+	).Scan(&registryRows); err != nil {
+		t.Fatalf("count refunds registry rows: %v", err)
+	}
+	if registryRows != 1 {
+		t.Errorf("refunds rows for the order = %d, want 1 (the replay must not book the money twice)", registryRows)
 	}
 
 	// ── step 5: a ticket outside the channel's org is -3, payload-free ──────
@@ -341,8 +396,11 @@ func sc4Seed(t *testing.T, st *harnessState, count int, unitPrice int64, buyerEm
 		_, _ = st.Pool.Exec(c, `DELETE FROM outbox_events WHERE aggregate_id = ANY($1)`, ids)
 		_, _ = st.Pool.Exec(c, `DELETE FROM order_events WHERE order_id = ANY($1)`,
 			[]uuid.UUID{fx.OrderID, fOrderID})
-		_, _ = st.Pool.Exec(c, `DELETE FROM tickets WHERE id = ANY($1)`,
-			append(append([]uuid.UUID{}, fx.TicketIDs...), fTicketID))
+		allTickets := append(append([]uuid.UUID{}, fx.TicketIDs...), fTicketID)
+		// tickets.refund_id and refunds.ticket_id point at each other.
+		_, _ = st.Pool.Exec(c, `UPDATE tickets SET refund_id = NULL WHERE id = ANY($1)`, allTickets)
+		_, _ = st.Pool.Exec(c, `DELETE FROM refunds WHERE ticket_id = ANY($1)`, allTickets)
+		_, _ = st.Pool.Exec(c, `DELETE FROM tickets WHERE id = ANY($1)`, allTickets)
 		_, _ = st.Pool.Exec(c, `DELETE FROM orders WHERE id = ANY($1)`,
 			[]uuid.UUID{fx.OrderID, fOrderID})
 		_, _ = st.Pool.Exec(c, `DELETE FROM checkout_sessions WHERE id = ANY($1)`,

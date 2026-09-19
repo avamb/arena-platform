@@ -12844,14 +12844,39 @@ export interface components {
              * @description Payment intent this refund is associated with. Resolves the
              *     `org_id`, currency, and (optionally) the linked checkout
              *     session whose tickets are cancelled on a successful refund.
+             *     `null` for an `external` refund, which has no arena payment.
              */
-            payment_intent_id: string;
+            payment_intent_id: string | null;
             /**
              * Format: uuid
              * @description Organization that owns the refund. Copied from the parent
              *     payment intent at creation time.
              */
             org_id: string;
+            /**
+             * @description Who returned the money. `provider` — arena drives the refund
+             *     through its payment provider (the requested → approved →
+             *     succeeded flow of this state machine). `external` — the
+             *     selling site returned the money itself and reported it through
+             *     the gateway's `REFUND_TICKET`; arena books the fact and the row
+             *     is created already `succeeded`. Only `provider` refunds can be
+             *     approved.
+             * @enum {string}
+             */
+            settlement: "provider" | "external";
+            /**
+             * Format: uuid
+             * @description Order the refunded money belongs to. Always set for an
+             *     `external` refund of an order-backed ticket; `null` on
+             *     `provider` refunds created before migration 0102.
+             */
+            order_id: string | null;
+            /**
+             * Format: uuid
+             * @description Ticket an `external` refund was booked for — one ticket has at
+             *     most one external refund. `null` for `provider` refunds.
+             */
+            ticket_id: string | null;
             /**
              * Format: int64
              * @description Refund amount in minor currency units. Must be a positive
@@ -34922,6 +34947,17 @@ export interface operations {
                             id?: string;
                             /** Format: uuid */
                             checkout_session_id?: string;
+                            /** Format: uuid */
+                            payment_intent_id?: string | null;
+                            /** Format: uuid */
+                            org_id?: string;
+                            /** @enum {string} */
+                            settlement?: "provider" | "external";
+                            /** Format: uuid */
+                            order_id?: string | null;
+                            /** Format: uuid */
+                            ticket_id?: string | null;
+                            state?: string;
                             status?: string;
                             amount?: number;
                             currency?: string;

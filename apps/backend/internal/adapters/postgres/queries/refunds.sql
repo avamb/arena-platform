@@ -11,13 +11,15 @@ VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, payment_intent_id, org_id, amount, currency, reason, requested_by,
           state, provider_refund_id, failure_reason,
           requested_at, approved_at, succeeded_at, failed_at,
-          created_at, updated_at;
+          created_at, updated_at,
+          settlement, order_id, ticket_id;
 
 -- name: GetRefundByID :one
 SELECT id, payment_intent_id, org_id, amount, currency, reason, requested_by,
        state, provider_refund_id, failure_reason,
        requested_at, approved_at, succeeded_at, failed_at,
-       created_at, updated_at
+       created_at, updated_at,
+       settlement, order_id, ticket_id
 FROM   refunds
 WHERE  id = $1;
 
@@ -25,7 +27,8 @@ WHERE  id = $1;
 SELECT id, payment_intent_id, org_id, amount, currency, reason, requested_by,
        state, provider_refund_id, failure_reason,
        requested_at, approved_at, succeeded_at, failed_at,
-       created_at, updated_at
+       created_at, updated_at,
+       settlement, order_id, ticket_id
 FROM   refunds
 WHERE  payment_intent_id = $1
 ORDER BY created_at DESC, id DESC;
@@ -43,7 +46,8 @@ WHERE  id = $1
 RETURNING id, payment_intent_id, org_id, amount, currency, reason, requested_by,
           state, provider_refund_id, failure_reason,
           requested_at, approved_at, succeeded_at, failed_at,
-          created_at, updated_at;
+          created_at, updated_at,
+          settlement, order_id, ticket_id;
 
 -- name: InsertRefundEvent :one
 INSERT INTO refund_events (
@@ -85,3 +89,17 @@ RETURNING id, checkout_session_id, session_id, tier_id, holder_email,
           seat_key, seat_sector, seat_row, seat_number, ordinal,
           cancelled_at, cancellation_reason, refund_mode, refund_id,
           refund_date, refund_price, review_hold, review_hold_reason;
+
+-- name: InsertExternalRefund :one
+-- Records money a selling site already returned for one ticket (migration 0102).
+INSERT INTO refunds (
+    settlement, org_id, order_id, ticket_id, amount, currency, reason, requested_by,
+    state, approved_at, succeeded_at
+)
+VALUES ('external', $1, $2, $3, $4, $5, $6, $7, 'succeeded', now(), now())
+ON CONFLICT (ticket_id) WHERE settlement = 'external' DO NOTHING
+RETURNING id, payment_intent_id, org_id, amount, currency, reason, requested_by,
+          state, provider_refund_id, failure_reason,
+          requested_at, approved_at, succeeded_at, failed_at,
+          created_at, updated_at,
+          settlement, order_id, ticket_id;

@@ -59,7 +59,7 @@ LIMIT  $3 OFFSET $4;
 -- Pass NULL for stateFilter to return refunds in any state.
 SELECT id, payment_intent_id, org_id, amount, currency, reason, requested_by,
        state, provider_refund_id, failure_reason,
-       requested_at, approved_at, succeeded_at, failed_at, created_at, updated_at
+       requested_at, approved_at, succeeded_at, failed_at, created_at, updated_at, settlement, order_id, ticket_id
 FROM   refunds
 WHERE  ($1::uuid IS NULL OR org_id = $1)
   AND  ($2::text  IS NULL OR state  = $2)

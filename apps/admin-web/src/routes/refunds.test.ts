@@ -2,7 +2,11 @@
  * Unit tests for the SuperAdmin Refunds support console (SAUI-10).
  */
 import { describe, it, expect } from "vitest";
-import { badgeForRefundState, REFUND_STATES } from "./refunds";
+import {
+  badgeForRefundState,
+  REFUND_STATES,
+  refundSettlementLabel,
+} from "./refunds";
 
 describe("badgeForRefundState", () => {
   it("renders succeeded as success", () => {
@@ -34,5 +38,15 @@ describe("REFUND_STATES", () => {
       "failed",
       "cancelled",
     ]);
+  });
+});
+
+describe("refundSettlementLabel", () => {
+  it("names the selling site for an external refund", () => {
+    expect(refundSettlementLabel("external")).toBe("Selling site");
+  });
+  it("defaults to the payment provider", () => {
+    expect(refundSettlementLabel("provider")).toBe("Payment provider");
+    expect(refundSettlementLabel(undefined)).toBe("Payment provider");
   });
 });
