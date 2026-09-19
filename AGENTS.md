@@ -913,3 +913,49 @@ entries short and factual.
   webhooks) shows `totalPrice 0` with discount reason «Приглашение». A
   same-cart re-send cannot flip the flag (answers `-2`
   `bil24.order_kind_changed`): an order never changes its source.
+- **The ticket-delivery PDF cannot render Cyrillic or Czech-diacritic text —
+  it silently produces mojibake, not a clean English fallback.**
+  `delivery/pdf/layout.go` selects `pdf.SetFont("Helvetica", ...)` (a PDF
+  core-14 font) and never calls gofpdf's `AddUTF8Font`, so
+  `f.isCurrentUTF8` stays false and gofpdf writes the Go string's raw UTF-8
+  bytes into the content stream one byte at a time under WinAnsiEncoding
+  (see `github.com/jung-kurt/gofpdf@v1.16.2` `fpdf.go` `GetStringSymbolWidth`
+  / the text-showing path). Confirmed by rendering `EventName: "Концерт"`
+  and `VenueName: "Příliš žluťoučký kůň"`: the raw PDF bytes contain the
+  literal UTF-8 sequence (`d0 9a d0 be d0 bd ...` for "Концерт") inside the
+  `Tj` string literal, which a WinAnsi-encoding PDF viewer renders as
+  garbled Latin-1-lookalike glyphs (classic "UTF-8 shown as cp1252"
+  mojibake), not the intended characters and not blank/dropped. The
+  ticket/invitation EMAIL templates (feature #565, `cs`/`ru` added to
+  `delivery/templates/`) are unaffected — HTML email is UTF-8 native — but
+  `delivery/pdf` has NO locale parameter at all and prints its own labels
+  (Event/Date/Venue/Sector/Row/Seat/Order/etc.) in English regardless of
+  the email's locale; that is intentional and must stay that way until a
+  Unicode TrueType font is embedded via `AddUTF8Font`. Do NOT add cs/ru
+  labels to `pdf.go` and do NOT pass raw Cyrillic/Czech event names or
+  holder names through to the PDF expecting them to render — an
+  organizer's own `EventName`/`HolderName` in Cyrillic or Czech already
+  hits this bug today, independently of the locale work, and is an
+  existing gap, not something feature #565 introduced.
+- **No buyer-facing surface threads a locale into `ticket.deliver`.**
+  `delivery.Payload.Locale` is a real field the templates renderer
+  honours, but every enqueue call site
+  (`htickets.EnqueueDeliveryJobs`/`EnqueueComplimentaryDeliveryJobs` in
+  `delivery_enqueue.go`, `HandleAdminResendTicketDelivery` in
+  `admin_ticket_delivery.go`, `hreports/report_delivery_enqueue.go`)
+  constructs `delivery.Payload{...}` without ever setting `Locale`, so
+  every ticket/invitation email renders in English (`templates.DefaultLocale`)
+  today no matter what language the buyer used in the widget.
+  `customers.locale` (migration 0091) and `customers.ResolveInput` in
+  `internal/platform/customers/resolve.go` also carry no locale — new
+  customers are always inserted with `locale=""`
+  (`sp.InsertCustomer(ctx, in.Name, "")` in `resolve.go`), and
+  `hfeed/public_feed_checkout.go`'s `checkoutStartRequest` has no locale
+  field either — the widget (`apps/widget/src/lib/checkout.ts`) tracks
+  `en`/`ru`/`cs`/`he` purely client-side for its own UI strings and never
+  sends it to `POST /v1/public/feeds/{token}/checkout/start`. Wiring this
+  end-to-end needs, at minimum: an optional `locale` field on the
+  checkout-start request struct in `hfeed/public_feed_checkout.go`, a
+  column (or reuse of `checkout_sessions`/`orders`) to persist it, and a
+  read of that value in `htickets.EnqueueDeliveryJobs` to populate
+  `delivery.Payload.Locale`. None of that exists yet.

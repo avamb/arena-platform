@@ -4,7 +4,9 @@
 // Templates live next to this file as <name>.<locale>.tmpl, where:
 //
 //   - name   ∈ {"ticket", "invitation"}  (the email kind)
-//   - locale ∈ {"en", "de", "es", "he"}  (the AllPay markets baseline)
+//   - locale ∈ {"en", "de", "es", "he", "cs", "ru"}  (the AllPay markets
+//     baseline plus cs/ru, added for the Czech-market launch — feature
+//     #565 — where many buyers are Russian-speaking)
 //
 // Each .tmpl file defines three blocks via Go's html/template "define" syntax:
 //
@@ -42,7 +44,7 @@ const DefaultLocale = "en"
 
 // SupportedLocales lists the locales that this package ships templates for.
 // Order is alphabetical; tests assert this list matches the embedded files.
-var SupportedLocales = []string{"de", "en", "es", "he"}
+var SupportedLocales = []string{"cs", "de", "en", "es", "he", "ru"}
 
 // TemplateKindTicket is the standard paid/free-checkout ticket delivery email.
 const TemplateKindTicket = "ticket"

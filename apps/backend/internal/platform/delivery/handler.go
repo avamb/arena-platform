@@ -92,7 +92,11 @@ type Payload struct {
 	Template string `json:"template,omitempty"`
 	// Locale selects the language for subject + body. Falls back to
 	// templates.DefaultLocale when empty or unknown. Examples: "en", "de",
-	// "es", "he".
+	// "es", "he", "cs", "ru". Nothing in the enqueue path (delivery_enqueue.go,
+	// admin_ticket_delivery.go, report_delivery_enqueue.go) sets this field
+	// today, so every email currently renders in English regardless of the
+	// buyer's widget locale — see the AGENTS.md gotcha on threading a buyer
+	// locale from the widget checkout into this payload.
 	Locale string `json:"locale,omitempty"`
 	// EventName, SessionStart, VenueName, TierName, HolderName are
 	// optional presentation hints baked into the job at enqueue time so
