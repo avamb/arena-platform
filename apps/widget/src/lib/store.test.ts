@@ -17,6 +17,7 @@ import {
   buildCategoryByIndex,
   buildTierById,
   identifyGaTiers,
+  planlessGaTiers,
   identifyGaAreas,
 } from './store.js';
 import type { Geometry, CategoryPrice, Tier, FeedSession } from '../types.js';
@@ -480,5 +481,28 @@ describe('identifyGaAreas', () => {
       { index: 1, name: 'Line', color: '#10b981', tier_id: 't1' },
     ];
     expect(identifyGaAreas(geom, cps)).toHaveLength(0);
+  });
+});
+
+// ─── planlessGaTiers ─────────────────────────────────────────────────────────
+
+describe('planlessGaTiers', () => {
+  const tier = (id: string): Tier => ({ id, name: id, price_amount: 5000, currency: 'EUR' }) as Tier;
+
+  it('returns every tier for a session without a schema_url', () => {
+    const tiers = [tier('a'), tier('b')];
+    expect(planlessGaTiers({ tiers })).toEqual(tiers);
+    expect(planlessGaTiers({ schema_url: null, tiers })).toEqual(tiers);
+    expect(planlessGaTiers({ schema_url: '', tiers })).toEqual(tiers);
+  });
+
+  it('returns null for a session that has a schema, so schema-driven state is kept', () => {
+    expect(planlessGaTiers({ schema_url: '/v1/event-sessions/x/schema', tiers: [tier('a')] })).toBeNull();
+  });
+
+  it('returns null for no session and [] for a plan-less session without tiers', () => {
+    expect(planlessGaTiers(null)).toBeNull();
+    expect(planlessGaTiers(undefined)).toBeNull();
+    expect(planlessGaTiers({ tiers: null })).toEqual([]);
   });
 });

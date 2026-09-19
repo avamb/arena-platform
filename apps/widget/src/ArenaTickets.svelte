@@ -36,6 +36,7 @@
     buildCategoryByIndex,
     buildTierById,
     identifyGaTiers,
+    planlessGaTiers,
     identifyGaAreas,
     buildGaItems,
     totalSelectionCount,
@@ -131,6 +132,23 @@
   // taps one of these areas.
   let gaAreas = $state<GaArea[]>([]);
   let openGaAreaTierId = $state<string | null>(null);
+
+  // A plan-less general-admission session has no schema_url, so SeatMapView is
+  // never mounted and onSchemaLoaded never fires — yet that callback was the
+  // only place gaTiers/tierById were filled. The widget then rendered the
+  // session chip and the price legend above an EMPTY body: nothing to buy.
+  // (Found on the first production GA events, 2026-09-20; every earlier test
+  // used a hall with a schema.) Without a schema every tier of the session is
+  // a GA tier, so derive the cards straight from the session.
+  $effect(() => {
+    const tiers = planlessGaTiers(selectedSession);
+    if (tiers === null) return;
+    tierById = buildTierById(tiers);
+    gaTiers = tiers;
+    gaAreas = [];
+    seatCategoryIndex = new Map();
+    categoryByCategoryIndex = new Map();
+  });
 
   // ── Checkout state ─────────────────────────────────────────────────────────
 

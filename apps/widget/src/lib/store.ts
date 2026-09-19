@@ -103,6 +103,23 @@ export function identifyGaTiers(sessionTiers: Tier[], categoryPrices: CategoryPr
 }
 
 /**
+ * GA tiers of a PLAN-LESS session, or null when the session has a schema.
+ *
+ * A session without `schema_url` never mounts the seat map, so the
+ * schema-loaded callback that normally calls identifyGaTiers never fires.
+ * Without a schema there are no seated categories at all: every tier of the
+ * session is a general-admission tier and must render as a quantity card.
+ * Returning null (not []) for a session WITH a schema tells the caller to
+ * leave the schema-driven state alone.
+ */
+export function planlessGaTiers(
+  session: { schema_url?: string | null; tiers?: Tier[] | null } | null | undefined,
+): Tier[] | null {
+  if (!session || session.schema_url) return null;
+  return session.tiers ?? [];
+}
+
+/**
  * A GA area that renders as a clickable polygon on the seat map (AB-40D).
  *
  * The widget spec (08_architecture/16_ticket_widget_ux_and_technology_ru.md
