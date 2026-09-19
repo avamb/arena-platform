@@ -19,6 +19,7 @@
 package hfeed
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"log/slog"
@@ -88,19 +89,30 @@ type checkoutStatusTicketResponse struct {
 // checkoutStatusResponse is the full JSON envelope returned by the anonymous
 // order-status endpoint.
 type checkoutStatusResponse struct {
-	Status            string                         `json:"status"`
-	CheckoutToken     string                         `json:"checkout_token"`
-	CheckoutSessionID string                         `json:"checkout_session_id"`
-	ExpiresAt         *string                        `json:"expires_at,omitempty"`
-	Subtotal          *int64                         `json:"subtotal,omitempty"`
-	Discount          *int64                         `json:"discount,omitempty"`
-	PlatformFee       *int64                         `json:"platform_fee,omitempty"`
-	ProviderFee       *int64                         `json:"provider_fee,omitempty"`
-	Tax               *int64                         `json:"tax,omitempty"`
-	Total             *int64                         `json:"total,omitempty"`
-	Currency          *string                        `json:"currency,omitempty"`
-	Items             []checkoutStatusItemResponse   `json:"items"`
-	Tickets           []checkoutStatusTicketResponse `json:"tickets"`
+	Status            string  `json:"status"`
+	CheckoutToken     string  `json:"checkout_token"`
+	CheckoutSessionID string  `json:"checkout_session_id"`
+	ExpiresAt         *string `json:"expires_at,omitempty"`
+	Subtotal          *int64  `json:"subtotal,omitempty"`
+	Discount          *int64  `json:"discount,omitempty"`
+	PlatformFee       *int64  `json:"platform_fee,omitempty"`
+	ProviderFee       *int64  `json:"provider_fee,omitempty"`
+	Tax               *int64  `json:"tax,omitempty"`
+	Total             *int64  `json:"total,omitempty"`
+	Currency          *string `json:"currency,omitempty"`
+	// PaymentURL is the provider-hosted payment page for a still-pending
+	// order whose window has not closed. A buyer who bounced off the Stripe
+	// page — closed the tab, lost signal, hit "back" — used to have no way
+	// back to it: their seats stayed held and they had to build the cart
+	// again. With this the widget can offer "continue to payment" for the
+	// SAME hosted session.
+	//
+	// Omitted once the order is paid, expired or failed, and once the hold's
+	// expires_at has passed (the hosted session itself is already dead by
+	// then — its own expiry is set to fire before arena releases the seats).
+	PaymentURL *string                        `json:"payment_url,omitempty"`
+	Items      []checkoutStatusItemResponse   `json:"items"`
+	Tickets    []checkoutStatusTicketResponse `json:"tickets"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -206,6 +218,13 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 		Currency:          cs.Currency,
 		Items:             []checkoutStatusItemResponse{},
 		Tickets:           []checkoutStatusTicketResponse{},
+	}
+
+	// ── 3b. Offer the hosted payment page back while it can still be paid ────
+	if publicStatus == "pending" && reservation.ExpiresAt.After(time.Now().UTC()) {
+		if url := h.pendingPaymentURL(ctx, cs.ID); url != "" {
+			resp.PaymentURL = &url
+		}
 	}
 
 	// ── 4. Load held cart items (pending only) ────────────────────────────────
@@ -349,6 +368,42 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
+// pendingPaymentURL returns the hosted payment page of the newest payment
+// intent on this checkout that is still open, or "" when there is none.
+//
+// "Still open" means the intent has not reached a terminal state: a
+// succeeded one needs no payment, and a failed one (card declined, or the
+// hosted session hit its own expires_at and Stripe sent
+// checkout.session.expired) points at a page that will refuse the buyer.
+// Offering either would be worse than offering nothing.
+//
+// Best-effort throughout: the order status must render even when the payment
+// lookup fails.
+func (h *Handler) pendingPaymentURL(ctx context.Context, checkoutSessionID uuid.UUID) string {
+	if h.checkoutQueries == nil {
+		return ""
+	}
+	intents, err := h.checkoutQueries.ListPaymentIntentsByCheckout(ctx, checkoutSessionID)
+	if err != nil {
+		h.logger.Warn("public_checkout_status: payment intent lookup failed",
+			slog.String("checkout_session_id", checkoutSessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		return ""
+	}
+	// ListPaymentIntentsByCheckout returns newest first; a retry after a
+	// failure adds a row rather than replacing one.
+	for _, pi := range intents {
+		if pi.State == "succeeded" || pi.State == "failed" {
+			continue
+		}
+		if pi.HostedCheckoutURL != nil && *pi.HostedCheckoutURL != "" {
+			return *pi.HostedCheckoutURL
+		}
+	}
+	return ""
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

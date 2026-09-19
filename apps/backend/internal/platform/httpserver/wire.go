@@ -83,6 +83,13 @@ type Options struct {
 	// default (5 minutes).
 	Bil24TokenCacheTTL time.Duration
 
+	// StripeAPIBaseURL overrides the Stripe REST endpoint used when creating
+	// a hosted Checkout Session for a widget purchase. Empty means the real
+	// api.stripe.com. Integration tests point it at a stub server — there is
+	// no other seam, because the adapter is built per request from each
+	// organizer's OWN secret key and never injected as an object.
+	StripeAPIBaseURL string
+
 	// Per-domain sqlc *Queries. See struct docs above.
 	SuperadminQueries     *gen.Queries
 	AllocationQueries     *gen.Queries
@@ -299,6 +306,7 @@ func New(opts Options) *Server {
 		debugSlowDelay:              opts.DebugSlowDelay,
 		bil24Enabled:                opts.Bil24CompatEnabled,
 		bil24RequireToken:           opts.Bil24RequireToken,
+		stripeAPIBaseURL:            opts.StripeAPIBaseURL,
 		bil24TokenCache:             hbil24.NewTokenCache(opts.Bil24TokenCacheTTL),
 
 		geoQueries:            pickQueries(opts.GeoQueries, opts.PgxPool),

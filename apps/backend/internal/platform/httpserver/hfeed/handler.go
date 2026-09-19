@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -93,6 +94,39 @@ type Handler struct {
 	// entirely and uses the TCP peer address — correct only when this
 	// process is reachable directly, not behind Traefik/nginx/etc.
 	trustedProxies int
+	// paymentStarter creates the provider-hosted payment page after the
+	// checkout transaction has committed. Nil means this deployment cannot
+	// take money for a paid cart: checkout/start then answers
+	// checkout.payment_not_configured rather than a dead redirect.
+	paymentStarter PaymentStarter
+	// returnURLPolicy validates the buyer-supplied return_url and supplies
+	// the PUBLIC_TICKETS_BASE_URL fallback.
+	returnURLPolicy ReturnURLPolicy
+	// paymentWindow / paymentGrace size the hosted session's own expiry and
+	// the hold/order/checkout expiry respectively: the hosted session always
+	// dies FIRST (window), the seats are released only after the grace.
+	paymentWindow time.Duration
+	paymentGrace  time.Duration
+	// eventQueries resolves the event title used as the hosted page's line
+	// item label. Optional: a lookup failure degrades to a generic label
+	// rather than failing the sale.
+	eventQueries *gen.Queries
+}
+
+// WithPayments wires the hosted-payment dependencies. Returns the receiver
+// for chaining, matching WithMediaSigner.
+func (h *Handler) WithPayments(
+	starter PaymentStarter,
+	policy ReturnURLPolicy,
+	window, grace time.Duration,
+	eventQ *gen.Queries,
+) *Handler {
+	h.paymentStarter = starter
+	h.returnURLPolicy = policy
+	h.paymentWindow = window
+	h.paymentGrace = grace
+	h.eventQueries = eventQ
+	return h
 }
 
 // MediaURLSigner builds a publicly fetchable URL for a media object id,
