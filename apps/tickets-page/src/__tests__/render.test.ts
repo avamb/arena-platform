@@ -236,10 +236,15 @@ describe('renderPromoterPage', () => {
     expect(widget?.getAttribute('feed-token')).toBe('ft_abc123');
     expect(widget?.getAttribute('event-id')).toBe(eventWithPoster.id);
     expect(widget?.getAttribute('api-base')).toBe('https://api.example.com');
-    // The buyer no longer sees the event page, so its words come along.
+    // What the event is about is the one thing the row header does not
+    // say, so it stays. The artwork and the date do not: both are already
+    // on screen, above the row and in it.
     expect(panel.querySelector('.asa-date-panel__description')?.textContent).toBe(
       'An intensive one-day acting workshop.',
     );
+    expect(widget?.getAttribute('cover')).toBe('hidden');
+    expect(widget?.getAttribute('sessions')).toBe('hidden');
+    expect(panel.querySelector('img')).toBeNull();
   });
 
   it('keeps the widget mounted when a row is closed and reopened', async () => {

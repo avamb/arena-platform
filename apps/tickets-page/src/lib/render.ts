@@ -472,6 +472,11 @@ async function mountTicketPicker(
 
   clear(panel);
 
+  // What the event is about is the one thing the row header does NOT say,
+  // so it stays. The artwork and the date do not: the season's poster is
+  // at the top of the page and the date is in the row itself, and showing
+  // either again inside the row is what made the old event page feel like
+  // a pointless extra step.
   const description = data.event.short_description ?? data.event.description;
   if (description) {
     const p = document.createElement('p');
@@ -483,6 +488,8 @@ async function mountTicketPicker(
   const widget = document.createElement('arena-tickets');
   widget.setAttribute('feed-token', data.feed_token);
   widget.setAttribute('event-id', data.event.id);
+  widget.setAttribute('cover', 'hidden');
+  widget.setAttribute('sessions', 'hidden');
   widget.setAttribute('locale', toWidgetLocale(locale));
   if (options.apiBase) {
     widget.setAttribute('api-base', options.apiBase);

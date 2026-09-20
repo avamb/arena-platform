@@ -7,6 +7,8 @@
       sessionId: { type: 'String', attribute: 'session-id' },
       locale: { type: 'String', attribute: 'locale' },
       apiBase: { type: 'String', attribute: 'api-base' },
+      cover: { type: 'String', attribute: 'cover' },
+      sessions: { type: 'String', attribute: 'sessions' },
     },
   }}
 />
@@ -67,9 +69,20 @@
      * attribute on mount. Falls back to relative URLs (same-origin proxy).
      */
     apiBase?: string;
+    /** 'hidden' drops the poster cover. The hosted promoter page already
+     * shows the season's artwork above the date list, so repeating it
+     * inside every opened row is the same picture twice on one screen.
+     * Anything else (or absent) keeps the cover. */
+    cover?: string;
+    /** 'hidden' drops the session date chips WHEN THE EVENT HAS ONLY ONE
+     * session — the hosted promoter page already prints that date in the
+     * row the picker opens under. With two or more sessions the chips are
+     * the only way to choose between them, so they are always shown and
+     * this attribute is ignored. */
+    sessions?: string;
   }
 
-  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '' }: Props = $props();
+  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '' }: Props = $props();
 
   /**
    * Host element reference for CustomEvent dispatch (WID-S5).
@@ -83,6 +96,9 @@
   const normFeedToken = $derived(parseFeedToken(feedToken));
   const normEventId = $derived(parseSessionId(eventId)); // reuse UUID parser
   const normSessionId = $derived(parseSessionId(sessionId));
+  // Case- and space-insensitive so cover="Hidden" behaves; any other value
+  // keeps the cover, since a typo must not silently strip the artwork.
+  const coverHidden = $derived(cover.trim().toLowerCase() === 'hidden');
 
   /**
    * Scope for the stored checkout token (see `checkoutTokenKey`).
@@ -128,6 +144,11 @@
   let selectedSession = $state<FeedSession | null>(null);
   let loading = $state(false);
   let loadError = $state<string | null>(null);
+
+  // Never hides a real choice: with more than one session the chips stay.
+  const sessionsHidden = $derived(
+    sessions.trim().toLowerCase() === 'hidden' && (event?.sessions.length ?? 0) <= 1,
+  );
 
   // ── Widget stage ───────────────────────────────────────────────────────────
 
@@ -754,7 +775,7 @@
       {:else if loadError}
         <div class="arena-tickets-error" role="alert">{loadError}</div>
       {:else if event && event.sessions.length > 0}
-        {#if selectedSession?.poster_url ?? event.poster_url}
+        {#if coverHidden ? false : (selectedSession?.poster_url ?? event.poster_url)}
           <!-- AB-47c: resolved poster cover (session ?? event fallback).
                The gallery beyond the cover lives in the data layer
                (selectedSession.media_gallery) — see FeedSession type. -->
@@ -772,6 +793,7 @@
           </div>
         {/if}
         <!-- Session date chips + legend -->
+        {#if !sessionsHidden}
         <SessionList
           sessions={event.sessions}
           locale={normLocale}
@@ -792,6 +814,7 @@
             selectedSession = s;
           }}
         />
+        {/if}
         <!-- Seat map (only for sessions with schema_url) -->
         {#if selectedSession && selectedSession.schema_url}
           <div class="arena-tickets-map-wrap">
