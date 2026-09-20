@@ -16,8 +16,14 @@ export interface PageStrings {
    * hosted-page channel but zero currently-visible events. */
   promoterEmptyTitle: string;
   promoterEmptyBody: string;
+  /** Heading over the promoter page's date list, and the label of the
+   * poster block's button that jumps down to it. */
+  promoterPickDate: string;
   /** Label of each event card's link to the per-event page. */
   ticketsCta: string;
+  /** Replaces the tickets label on a date that has already happened. The
+   * row stays a link — the event page still shows what took place. */
+  eventPast: string;
   /** Back link shown on the per-event page, pointing at the org's
    * promoter page. */
   backToPromoter: string;
@@ -35,7 +41,9 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     footerRights: 'Arena Sold Out. All rights reserved.',
     promoterEmptyTitle: 'No upcoming dates yet',
     promoterEmptyBody: 'This organizer has not published any events right now. Please check back later.',
+    promoterPickDate: 'Choose a date',
     ticketsCta: 'Tickets',
+    eventPast: 'Took place',
     backToPromoter: 'All dates',
   },
   ru: {
@@ -49,7 +57,9 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     footerRights: 'Arena Sold Out. Все права защищены.',
     promoterEmptyTitle: 'Пока нет ближайших дат',
     promoterEmptyBody: 'Этот организатор пока не опубликовал ни одного события. Загляните позже.',
+    promoterPickDate: 'Выберите дату',
     ticketsCta: 'Билеты',
+    eventPast: 'Уже прошло',
     backToPromoter: 'Все даты',
   },
   cs: {
@@ -63,7 +73,9 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     footerRights: 'Arena Sold Out. Všechna práva vyhrazena.',
     promoterEmptyTitle: 'Zatím žádné nadcházející termíny',
     promoterEmptyBody: 'Tento pořadatel zatím nezveřejnil žádnou akci. Zkuste to prosím později.',
+    promoterPickDate: 'Vyberte termín',
     ticketsCta: 'Vstupenky',
+    eventPast: 'Již proběhlo',
     backToPromoter: 'Všechny termíny',
   },
   he: {
@@ -77,7 +89,9 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     footerRights: 'Arena Sold Out. כל הזכויות שמורות.',
     promoterEmptyTitle: 'אין עדיין תאריכים קרובים',
     promoterEmptyBody: 'המפיק הזה עדיין לא פרסם אירועים. נסו שוב בקרוב.',
+    promoterPickDate: 'בחרו תאריך',
     ticketsCta: 'כרטיסים',
+    eventPast: 'כבר התקיים',
     backToPromoter: 'כל התאריכים',
   },
   es: {
@@ -91,7 +105,9 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     footerRights: 'Arena Sold Out. Todos los derechos reservados.',
     promoterEmptyTitle: 'Aún no hay fechas próximas',
     promoterEmptyBody: 'Este organizador todavía no ha publicado ningún evento. Vuelve a consultarlo más tarde.',
+    promoterPickDate: 'Elige una fecha',
     ticketsCta: 'Entradas',
+    eventPast: 'Ya se celebró',
     backToPromoter: 'Todas las fechas',
   },
 };

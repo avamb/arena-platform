@@ -240,11 +240,22 @@ a {
 }
 
 /* :not(:disabled) so a disabled control never lights up under the pointer.
-   .asa-card-cta is a <span> inside the card link, hence the card-hover rule. */
+   .asa-date-row__cta is a <span> inside the row link, hence the row-hover
+   rule — the pill has no hover of its own to give. */
 .asa-button:hover:not(:disabled),
-.asa-card:hover .asa-card-cta,
-.asa-card:focus-visible .asa-card-cta {
+.asa-date-row:hover .asa-date-row__cta,
+.asa-date-row:focus-visible .asa-date-row__cta {
   background: var(--asa-btn-bg-hover);
+}
+
+/* A date that has already happened still links to its event page, but must
+   not look like something to buy: outline, not fill. */
+.asa-button--ghost,
+.asa-date-row:hover .asa-button--ghost {
+  background: transparent;
+  color: var(--asa-text-secondary);
+  border: 1.5px solid var(--asa-border);
+  font-weight: 600;
 }
 
 .asa-button:active:not(:disabled) {
@@ -272,13 +283,21 @@ a {
   padding-top: 24px;
 }
 
+/* A poster is artwork, not a decorative banner: it is NEVER cropped. The
+   earlier `object-fit: cover` with a 420px ceiling sliced the top off every
+   portrait poster — on the first client's festival artwork it cut the title
+   line clean away, which is the one part of the image that has to survive.
+   So: scale the whole image down to fit, centre it, and let its own aspect
+   ratio decide the height. The height cap is in vh, not px, so a tall
+   portrait poster still leaves the date/ticket block visible without a
+   scroll on a phone. */
 .asa-hero-image {
-  width: 100%;
-  max-height: 420px;
-  object-fit: cover;
-  border-radius: var(--asa-radius);
   display: block;
-  margin-bottom: 24px;
+  width: auto;
+  max-width: 100%;
+  max-height: 70vh;
+  margin: 0 auto 24px;
+  border-radius: var(--asa-radius);
 }
 
 .asa-hero-body {
@@ -347,11 +366,26 @@ a {
   text-decoration: underline;
 }
 
-/* ── Promoter landing page (GET /v1/public/pages/{org_slug}) ──────────── */
+/* ── Promoter landing page (GET /v1/public/pages/{org_slug}) ──────────────
+   Built as a "tour": the season's one poster at the top, then the list of
+   dates. The geometry is ported from the owner's production tour page
+   (lampyrisevents, mu-plugins/lampyris-tours.css) — the 380px poster
+   column, the 84px date column and the 8px row gap all come from there. */
 
 .asa-promoter-header {
   padding-top: 32px;
   text-align: center;
+}
+
+/* The poster IS the first screen on a phone: whole, uncropped, at its own
+   aspect ratio. A poster already carries the season's name and dates, so
+   cropping it to a banner destroys exactly the part that does the work. */
+.asa-promoter-poster {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--asa-radius);
+  margin-bottom: 16px;
 }
 
 .asa-promoter-logo {
@@ -366,98 +400,156 @@ a {
   margin: 0 0 8px;
 }
 
-.asa-event-grid {
+.asa-promoter-range {
+  margin: 0;
+  color: var(--asa-text-secondary);
+}
+
+/* Desktop: poster left at a fixed 380px, text beside it — a portrait
+   poster blown up to 1140px would push the dates off the screen. */
+@media (min-width: 768px) {
+  .asa-promoter-header--poster {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 36px;
+    align-items: start;
+    text-align: start;
+  }
+
+  .asa-promoter-header--poster .asa-promoter-poster {
+    margin-bottom: 0;
+  }
+
+  .asa-promoter-header--poster .asa-promoter-logo {
+    margin-inline: 0;
+  }
+}
+
+.asa-dates {
+  margin-top: 36px;
+  scroll-margin-top: 16px;
+}
+
+.asa-dates__head {
+  margin: 0 0 14px;
+}
+
+.asa-date-list {
   list-style: none;
-  margin: 32px 0 0;
+  margin: 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 20px;
-}
-
-@media (min-width: 640px) {
-  .asa-event-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (min-width: 960px) {
-  .asa-event-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-.asa-card-item {
-  display: flex;
-}
-
-.asa-card {
   display: flex;
   flex-direction: column;
-  width: 100%;
-  text-decoration: none;
-  color: inherit;
+  gap: 8px;
+}
+
+/* One row per date: date block, what is on, action. `auto` on the last
+   column lets the pill keep its natural width while the title takes the
+   slack. */
+.asa-date-row {
+  display: grid;
+  grid-template-columns: 84px 1fr auto;
+  gap: 18px;
+  align-items: center;
+  padding: 14px 18px;
   background: var(--asa-surface);
   border: 1px solid var(--asa-border);
   border-radius: var(--asa-radius);
-  overflow: hidden;
-  transition: transform 0.15s ease, border-color 0.15s ease;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease;
 }
 
-.asa-card:hover {
+.asa-date-row:hover {
   border-color: var(--asa-accent);
 }
 
-.asa-card:focus-visible {
+.asa-date-row:focus-visible {
   outline: 3px solid var(--asa-focus-ring);
   outline-offset: 2px;
 }
 
-.asa-card-image {
-  width: 100%;
-  height: 160px;
-  object-fit: cover;
-  display: block;
+.asa-date-row--past {
+  opacity: 0.55;
 }
 
-.asa-card-body {
-  padding: 16px;
+.asa-date-row__when {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  flex: 1;
+  align-items: center;
+  text-align: center;
+  /* Lining figures so a column of day numbers aligns. */
+  font-variant-numeric: tabular-nums;
 }
 
-.asa-card-datetime {
-  margin: 0;
+.asa-date-row__day {
+  font-size: 30px;
   font-weight: 700;
-  color: var(--asa-accent);
-  font-size: 0.9rem;
+  line-height: 1.1;
 }
 
-/* A grid card's title is deliberately off the page scale — h2 at 24px would
-   swamp a three-up card. */
-.asa-card-title {
-  margin: 0;
-  font-size: 1.15rem;
-}
-
-.asa-card-venue {
-  margin: 0;
+.asa-date-row__month {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: var(--asa-text-secondary);
-  font-size: 0.9rem;
 }
 
-.asa-card-description {
-  margin: 0;
+.asa-date-row__time {
+  font-size: 11px;
   color: var(--asa-text-secondary);
-  font-size: 0.9rem;
-  flex: 1;
 }
 
-.asa-card-cta {
-  align-self: flex-start;
-  margin-top: 8px;
-  padding: 8px 18px;
+.asa-date-row__what {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.asa-date-row__title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.asa-date-row__venue {
   font-size: 0.9rem;
+  color: var(--asa-text-secondary);
+}
+
+.asa-date-row__cta {
+  min-width: 122px;
+  padding: 11px 18px;
+  border-radius: 40px;
+  font-size: 0.95rem;
+}
+
+/* Narrow phones: the pill no longer fits beside the title, so the row
+   folds into two lines — date + what, then the action across the bottom. */
+@media (max-width: 559px) {
+  .asa-date-row {
+    grid-template-columns: 64px 1fr;
+    grid-template-areas:
+      'when what'
+      'cta cta';
+    gap: 12px;
+  }
+
+  .asa-date-row__when {
+    grid-area: when;
+  }
+
+  .asa-date-row__what {
+    grid-area: what;
+  }
+
+  .asa-date-row__cta {
+    grid-area: cta;
+    width: 100%;
+  }
+
+  .asa-date-row__day {
+    font-size: 24px;
+  }
 }

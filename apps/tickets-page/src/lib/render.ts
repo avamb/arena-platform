@@ -195,95 +195,230 @@ export function renderEvent(
   return widgetSection;
 }
 
-/** Builds one <li> card for the promoter page's event grid: date/time
- * FIRST and prominent, then title, short description, venue, an optional
- * poster thumbnail, and a "tickets" link to the per-event page. The whole
- * card is one link (a single clear target beats a title link plus a
- * separate button for both mouse and keyboard/screen-reader users). */
-function renderEventCard(event: HostedPageEvent, orgSlug: string, locale: PageLocale): HTMLLIElement {
-  const li = document.createElement('li');
-  li.className = 'asa-card-item';
+/** The artwork that stands for the WHOLE promoter page, or null when the
+ * events do not agree on one.
+ *
+ * This is what turns a flat list of events into the owner's "tour" shape:
+ * a promoter runs a season off one announcement image (the first live
+ * client's six master classes all carry the same one), so that image
+ * belongs at the top of the page, once, at full size — not repeated as a
+ * thumbnail on every row, which made six different classes look like the
+ * same thing six times. The moment two events carry DIFFERENT artwork the
+ * page is not a tour any more and no poster is promoted: showing one
+ * event's poster over another event's row would be a lie. Events with no
+ * image of their own do not veto the shared one — a season where only the
+ * first date was given the artwork is still one season. */
+function sharedPosterURL(events: HostedPageEvent[]): string | null {
+  let shared: string | null = null;
+  for (const event of events) {
+    const url = event.poster_url ?? event.image_url;
+    if (!url) continue;
+    if (shared === null) shared = url;
+    else if (shared !== url) return null;
+  }
+  return shared;
+}
 
+/** Earliest start and latest end across the page's events, as a localized
+ * range ("16–18 October 2026"), or "" when no event carries a date.
+ * `formatRange` collapses the shared parts itself; the catch covers both
+ * an unparseable date and an engine without `formatRange`. */
+function formatSpanOfDates(events: HostedPageEvent[], locale: PageLocale): string {
+  const starts: number[] = [];
+  const ends: number[] = [];
+  for (const event of events) {
+    const start = event.first_session_at ? Date.parse(event.first_session_at) : NaN;
+    if (!Number.isNaN(start)) starts.push(start);
+    const endISO = event.last_session_at ?? event.first_session_at;
+    const end = endISO ? Date.parse(endISO) : NaN;
+    if (!Number.isNaN(end)) ends.push(end);
+  }
+  if (starts.length === 0) return '';
+  const from = new Date(Math.min(...starts));
+  const to = new Date(Math.max(...ends, ...starts));
+  try {
+    const fmt = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long', year: 'numeric' });
+    return fmt.formatRange(from, to);
+  } catch {
+    return '';
+  }
+}
+
+/** True once the event's last session is over. Such a date stays on the
+ * page (the public feed has no cutoff) but must not offer tickets. */
+function isPast(event: HostedPageEvent, now: number): boolean {
+  const endISO = event.last_session_at ?? event.first_session_at;
+  if (!endISO) return false;
+  const end = Date.parse(endISO);
+  return !Number.isNaN(end) && end < now;
+}
+
+interface DateParts {
+  /** Day number, or "16–18" when the event spans several days. */
+  day: string;
+  month: string;
+  /** Weekday and clock time — empty for a multi-day event, which has no
+   * single start a buyer could rely on. */
+  time: string;
+}
+
+function dateParts(event: HostedPageEvent, locale: PageLocale): DateParts | null {
+  if (!event.first_session_at) return null;
+  const tz = event.first_session_timezone ?? undefined;
+  const start = new Date(event.first_session_at);
+  const endISO = event.last_session_at ?? event.first_session_at;
+  const end = new Date(endISO);
+  try {
+    const dayFmt = new Intl.DateTimeFormat(locale, { day: 'numeric', timeZone: tz });
+    const monthFmt = new Intl.DateTimeFormat(locale, { month: 'short', timeZone: tz });
+    const dayKeyFmt = new Intl.DateTimeFormat('en-CA', { dateStyle: 'short', timeZone: tz });
+    const multiDay = dayKeyFmt.format(start) !== dayKeyFmt.format(end);
+
+    const day = multiDay ? `${dayFmt.format(start)}–${dayFmt.format(end)}` : dayFmt.format(start);
+    const month = monthFmt.format(start).replace(/\.$/, '');
+    const time = multiDay
+      ? ''
+      : new Intl.DateTimeFormat(locale, {
+          weekday: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: tz,
+        }).format(start);
+    return { day, month, time };
+  } catch {
+    return null;
+  }
+}
+
+/** One row of the date list: a date block, then what is on that date, then
+ * the action. The whole row is a single link — one clear target beats a
+ * title link plus a separate button for mouse, keyboard and screen-reader
+ * users alike — with the tickets pill drawn inside it and hidden from the
+ * accessibility tree, since the row's own text already names the target.
+ *
+ * Unlike the tour page this is modelled on, the row leads with the DATE
+ * and then names the event: on that site every date of a tour is the same
+ * show in a different city, so the city distinguished them; here the six
+ * master classes have different titles and different teachers, so the
+ * title has to be first-class. */
+function renderDateRow(
+  event: HostedPageEvent,
+  orgSlug: string,
+  locale: PageLocale,
+  now: number,
+): HTMLLIElement {
+  const li = document.createElement('li');
+  li.className = 'asa-date-item';
+
+  const past = isPast(event, now);
   const a = document.createElement('a');
-  a.className = 'asa-card';
+  a.className = past ? 'asa-date-row asa-date-row--past' : 'asa-date-row';
   a.href = `/${encodeURIComponent(orgSlug)}/${encodeURIComponent(event.slug)}${currentSearch()}`;
 
-  const posterURL = event.poster_url ?? event.image_url;
-  if (posterURL) {
-    const img = document.createElement('img');
-    img.className = 'asa-card-image';
-    img.src = posterURL;
-    img.alt = '';
-    img.loading = 'lazy';
-    a.appendChild(img);
+  const parts = dateParts(event, locale);
+  if (parts) {
+    const when = document.createElement('span');
+    when.className = 'asa-date-row__when';
+
+    const day = document.createElement('span');
+    day.className = 'asa-date-row__day';
+    day.textContent = parts.day;
+    when.appendChild(day);
+
+    const month = document.createElement('span');
+    month.className = 'asa-date-row__month';
+    month.textContent = parts.month;
+    when.appendChild(month);
+
+    if (parts.time) {
+      const time = document.createElement('span');
+      time.className = 'asa-date-row__time';
+      time.textContent = parts.time;
+      when.appendChild(time);
+    }
+
+    a.appendChild(when);
   }
 
-  const body = document.createElement('div');
-  body.className = 'asa-card-body';
+  const what = document.createElement('span');
+  what.className = 'asa-date-row__what';
 
-  if (event.first_session_at) {
-    const when = document.createElement('p');
-    when.className = 'asa-card-datetime';
-    when.textContent = formatSessionDateTime(event.first_session_at, locale, event.first_session_timezone);
-    body.appendChild(when);
-  }
-
-  const title = document.createElement('h2');
-  title.className = 'asa-card-title';
+  const title = document.createElement('span');
+  title.className = 'asa-date-row__title';
   title.textContent = event.title;
-  body.appendChild(title);
+  what.appendChild(title);
 
   if (event.venue_names.length > 0) {
-    const venue = document.createElement('p');
-    venue.className = 'asa-card-venue';
+    const venue = document.createElement('span');
+    venue.className = 'asa-date-row__venue';
     venue.textContent = event.venue_names.join(', ');
-    body.appendChild(venue);
+    what.appendChild(venue);
   }
 
-  const description = event.short_description ?? event.description;
-  if (description) {
-    const desc = document.createElement('p');
-    desc.className = 'asa-card-description';
-    desc.textContent = description;
-    body.appendChild(desc);
-  }
+  a.appendChild(what);
 
   const cta = document.createElement('span');
-  cta.className = 'asa-button asa-card-cta';
+  cta.className = past ? 'asa-button asa-date-row__cta asa-button--ghost' : 'asa-button asa-date-row__cta';
   cta.setAttribute('aria-hidden', 'true');
-  cta.textContent = t(locale).ticketsCta;
-  body.appendChild(cta);
+  cta.textContent = past ? t(locale).eventPast : t(locale).ticketsCta;
+  a.appendChild(cta);
 
-  a.appendChild(body);
   li.appendChild(a);
   return li;
 }
 
 /**
- * renderPromoterPage mounts the org header (name/logo) and a responsive
- * grid of event cards, one per currently-visible event, or the localized
- * empty state when the org has none. Backs `/{org_slug}`.
+ * renderPromoterPage mounts the page in the shape of a tour: the season's
+ * one poster at the top, whole and uncropped, and beneath it the list of
+ * dates a buyer picks from — or the localized empty state when the org has
+ * none. Backs `/{org_slug}`.
  */
 export function renderPromoterPage(container: HTMLElement, data: HostedPromoterPageResponse, locale: PageLocale): void {
   clear(container);
   const strings = t(locale);
+  const poster = sharedPosterURL(data.events);
 
   const header = document.createElement('section');
-  header.className = 'asa-promoter-header';
+  header.className = poster ? 'asa-promoter-header asa-promoter-header--poster' : 'asa-promoter-header';
+
+  if (poster) {
+    const img = document.createElement('img');
+    img.className = 'asa-promoter-poster';
+    img.src = poster;
+    img.alt = data.org.name;
+    header.appendChild(img);
+  }
+
+  const headerText = document.createElement('div');
+  headerText.className = 'asa-promoter-header__text';
 
   if (data.org.logo_url) {
     const logo = document.createElement('img');
     logo.className = 'asa-promoter-logo';
     logo.src = data.org.logo_url;
     logo.alt = data.org.name;
-    header.appendChild(logo);
+    headerText.appendChild(logo);
   }
 
   const h1 = document.createElement('h1');
   h1.className = 'asa-promoter-title';
   h1.textContent = data.org.name;
-  header.appendChild(h1);
+  headerText.appendChild(h1);
 
+  const span = formatSpanOfDates(data.events, locale);
+  if (span) {
+    const range = document.createElement('p');
+    range.className = 'asa-promoter-range';
+    range.textContent = span;
+    headerText.appendChild(range);
+  }
+
+  // The tour page this is modelled on also carries a "choose a date ↓"
+  // button here, because its hero is a full-bleed 88vh image and the list
+  // is genuinely far below. Ours is a bounded poster with the labelled
+  // list immediately under it, so the button would only repeat the
+  // heading a finger-width away. Left out on purpose.
+  header.appendChild(headerText);
   container.appendChild(header);
 
   if (data.events.length === 0) {
@@ -302,13 +437,26 @@ export function renderPromoterPage(container: HTMLElement, data: HostedPromoterP
     return;
   }
 
-  const list = document.createElement('ul');
-  list.className = 'asa-event-grid';
-  list.setAttribute('aria-label', `${data.org.name} — upcoming events`);
-  for (const event of data.events) {
-    list.appendChild(renderEventCard(event, data.org.slug, locale));
+  const section = document.createElement('section');
+  section.className = 'asa-dates';
+  section.id = 'asa-dates';
+
+  if (data.events.length > 1) {
+    const h2 = document.createElement('h2');
+    h2.className = 'asa-dates__head';
+    h2.textContent = strings.promoterPickDate;
+    section.appendChild(h2);
   }
-  container.appendChild(list);
+
+  const now = Date.now();
+  const list = document.createElement('ul');
+  list.className = 'asa-date-list';
+  list.setAttribute('aria-label', `${data.org.name} — ${strings.promoterPickDate}`);
+  for (const event of data.events) {
+    list.appendChild(renderDateRow(event, data.org.slug, locale, now));
+  }
+  section.appendChild(list);
+  container.appendChild(section);
 }
 
 /** Sets document-level chrome: <html lang/dir>, <title>, meta description,

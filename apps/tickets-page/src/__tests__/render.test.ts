@@ -174,46 +174,113 @@ describe('renderPromoterPage', () => {
     expect(logo?.src).toBe('https://example.com/logo.png');
   });
 
-  it('renders one card per event, linking to the per-event page', () => {
+  it('renders one date row per event, linking to the per-event page', () => {
     const container = freshContainer();
     renderPromoterPage(container, sampleData, 'en');
-    const cards = container.querySelectorAll('a.asa-card');
-    expect(cards.length).toBe(2);
-    expect(cards[0].getAttribute('href')).toBe('/masterclassteatro/masterclass-day-1');
-    expect(cards[1].getAttribute('href')).toBe('/masterclassteatro/masterclass-day-2');
+    const rows = container.querySelectorAll('a.asa-date-row');
+    expect(rows.length).toBe(2);
+    expect(rows[0].getAttribute('href')).toBe('/masterclassteatro/masterclass-day-1');
+    expect(rows[1].getAttribute('href')).toBe('/masterclassteatro/masterclass-day-2');
   });
 
-  it('renders a poster thumbnail when present', () => {
+  // A promoter runs a season off ONE artwork, so it belongs at the top of
+  // the page once, at full size — not repeated on every row, which made
+  // six different master classes look like the same thing six times.
+  it('promotes the one shared poster to the top and shows none on a row', () => {
     const container = freshContainer();
     renderPromoterPage(container, sampleData, 'en');
-    const img = container.querySelector('a.asa-card img.asa-card-image') as HTMLImageElement | null;
-    expect(img?.src).toBe('https://example.com/day1.jpg');
+    const poster = container.querySelector('.asa-promoter-poster') as HTMLImageElement | null;
+    expect(poster?.src).toBe('https://example.com/day1.jpg');
+    expect(container.querySelector('a.asa-date-row img')).toBeNull();
   });
 
-  it('renders without a poster thumbnail when none is set', () => {
+  // Two different pictures mean this is not one season, and showing one
+  // event's poster over another event's row would be a lie.
+  it('promotes no poster when the events carry different artwork', () => {
     const container = freshContainer();
-    renderPromoterPage(container, sampleData, 'en');
-    const cards = container.querySelectorAll('a.asa-card');
-    const secondCard = cards[1];
-    expect(secondCard.querySelector('img.asa-card-image')).toBeNull();
+    renderPromoterPage(
+      container,
+      {
+        ...sampleData,
+        events: [eventWithPoster, { ...eventWithoutPoster, poster_url: 'https://example.com/other.jpg' }],
+      },
+      'en',
+    );
+    expect(container.querySelector('.asa-promoter-poster')).toBeNull();
   });
 
-  it('shows the date/time before the title in each card', () => {
+  it('shows the day, month and time of each date before the event title', () => {
     const container = freshContainer();
     renderPromoterPage(container, sampleData, 'en');
-    const firstBody = container.querySelectorAll('a.asa-card')[0].querySelector('.asa-card-body');
-    const children = Array.from(firstBody?.children ?? []);
-    const dateIndex = children.findIndex((el) => el.classList.contains('asa-card-datetime'));
-    const titleIndex = children.findIndex((el) => el.classList.contains('asa-card-title'));
-    expect(dateIndex).toBeGreaterThanOrEqual(0);
-    expect(titleIndex).toBeGreaterThan(dateIndex);
+    const row = container.querySelectorAll('a.asa-date-row')[0];
+    const children = Array.from(row.children);
+    const whenIndex = children.findIndex((el) => el.classList.contains('asa-date-row__when'));
+    const whatIndex = children.findIndex((el) => el.classList.contains('asa-date-row__what'));
+    expect(whenIndex).toBeGreaterThanOrEqual(0);
+    expect(whatIndex).toBeGreaterThan(whenIndex);
+    // 17:00 UTC on 1 October is 19:00 in Prague — the event's own zone.
+    expect(row.querySelector('.asa-date-row__day')?.textContent).toBe('1');
+    expect(row.querySelector('.asa-date-row__time')?.textContent).toContain('07:00 PM');
+    expect(row.querySelector('.asa-date-row__title')?.textContent).toBe('Master Class — Day 1');
+  });
+
+  it('shows a multi-day event as a span of days with no single start time', () => {
+    const container = freshContainer();
+    renderPromoterPage(
+      container,
+      {
+        ...sampleData,
+        events: [
+          {
+            ...eventWithPoster,
+            first_session_at: '2026-10-16T10:00:00Z',
+            last_session_at: '2026-10-18T20:00:00Z',
+          },
+        ],
+      },
+      'en',
+    );
+    expect(container.querySelector('.asa-date-row__day')?.textContent).toBe('16–18');
+    expect(container.querySelector('.asa-date-row__time')).toBeNull();
+  });
+
+  it('offers no tickets on a date that has already happened', () => {
+    const container = freshContainer();
+    renderPromoterPage(
+      container,
+      {
+        ...sampleData,
+        events: [
+          {
+            ...eventWithPoster,
+            first_session_at: '2020-03-01T17:00:00Z',
+            last_session_at: '2020-03-01T20:00:00Z',
+          },
+        ],
+      },
+      'en',
+    );
+    const row = container.querySelector('a.asa-date-row');
+    expect(row?.classList.contains('asa-date-row--past')).toBe(true);
+    expect(row?.querySelector('.asa-date-row__cta')?.textContent).toBe('Took place');
+  });
+
+  it('heads the list only when there is a choice of dates to make', () => {
+    const many = freshContainer();
+    renderPromoterPage(many, sampleData, 'en');
+    expect(many.querySelector('.asa-dates__head')?.textContent).toBe('Choose a date');
+
+    const one = freshContainer();
+    renderPromoterPage(one, { ...sampleData, events: [eventWithPoster] }, 'en');
+    expect(one.querySelector('.asa-dates__head')).toBeNull();
+    expect(one.querySelectorAll('a.asa-date-row').length).toBe(1);
   });
 
   it('renders the localized empty state when there are no events', () => {
     const container = freshContainer();
     renderPromoterPage(container, { ...sampleData, events: [] }, 'en');
     expect(container.querySelector('.asa-state--empty h2')?.textContent).toBe('No upcoming dates yet');
-    expect(container.querySelectorAll('a.asa-card').length).toBe(0);
+    expect(container.querySelectorAll('a.asa-date-row').length).toBe(0);
   });
 
   it('localizes the empty state for es', () => {
