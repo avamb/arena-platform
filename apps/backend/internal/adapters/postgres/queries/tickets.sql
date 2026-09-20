@@ -172,3 +172,35 @@ WHERE  c.id IS NULL
   AND  t.status = 'active'
 ORDER BY t.id ASC
 LIMIT $1;
+
+-- name: GetTicketPresentationByID :one
+-- The presentation projection a ticket e-mail / PDF needs: the human-facing
+-- ticket number plus the event / session / venue / category / holder values
+-- the buyer actually reads. Resolved at RENDER time by the delivery worker
+-- (delivery.Payload's enqueue-time hints were never populated by any
+-- production enqueuer, so every live ticket PDF printed "Arena Event" and
+-- blank Venue / Category / Holder rows until 2026-09-20).
+--
+-- Every join below is a LEFT JOIN on purpose: a ticket whose venue row was
+-- soft-deleted, whose tier is NULL (GA), or which predates the orders
+-- aggregate must still resolve everything else. The query returns exactly
+-- one row for an existing ticket, with NULL for whatever is unavailable.
+SELECT t.system_ticket_id,
+       e.name                        AS event_name,
+       s.start_at                    AS session_start_at,
+       v.name                        AS venue_name,
+       COALESCE(t_en.value, ci.slug) AS venue_city,
+       v.timezone                    AS venue_timezone,
+       tt.name                       AS tier_name,
+       COALESCE(NULLIF(btrim(ord.buyer_name), ''), cu.display_name) AS holder_name
+FROM       tickets t
+LEFT JOIN  sessions      s  ON s.id  = t.session_id
+LEFT JOIN  events        e  ON e.id  = s.event_id
+LEFT JOIN  venues        v  ON v.id  = s.venue_id
+LEFT JOIN  cities        ci ON ci.id = v.city_id
+LEFT JOIN  i18n_text     t_en ON t_en.namespace = 'geo.cities'
+       AND t_en.key = ci.slug AND t_en.locale = 'en'
+LEFT JOIN  ticket_tiers  tt ON tt.id = t.tier_id
+LEFT JOIN  orders       ord ON ord.id = t.order_id
+LEFT JOIN  customers     cu ON cu.id = ord.customer_id
+WHERE  t.id = $1;

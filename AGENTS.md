@@ -1239,3 +1239,75 @@ entries short and factual.
   synthetic-event stub that was deliberately reintroduced later as the PR2-21
   fallback). Check the reported test-file COUNT after adding a suite, not just
   that the run is green.
+- **`delivery.Payload`'s presentation fields are HINTS, resolved at render
+  time — never re-add them to an enqueuer.** `EventName`, `SessionStart`,
+  `SessionTZ`, `VenueName`, `VenueCity`, `TierName`, `HolderName` and
+  `TicketNumber` were declared in feature #141 as "baked in at enqueue
+  time"; no enqueuer ever set them
+  (`htickets/delivery_enqueue.go` sends `{TicketID, Locale}` plus the seat
+  fields, the complimentary path adds `Template`, the admin resend sends
+  `{TicketID, Locale}`), so every live e-ticket printed the
+  `defaultStr(p.EventName, "Arena Event")` placeholder with blank Venue /
+  Category / Holder rows and a UTC session time — found on the first
+  production client 2026-09-20. The worker now resolves them from the
+  ticket's own rows in step 8c
+  (`internal/platform/delivery/presentation.go` ->
+  `gen.GetTicketPresentationByID`), beside the existing render-time
+  resolutions of the recipient address (step 5) and the EAN-13 credential
+  (step 8b). A hint that IS set still wins, so tests and any future caller
+  keep control; resolution is best effort (a failed lookup logs and the
+  ticket still ships). Holder name is `orders.buyer_name` falling back to
+  `customers.display_name`; venue city is the `i18n_text` English name
+  falling back to `cities.slug`, the same projection `orderexport` uses.
+  Add new presentation data to that ONE query, not to three enqueuers.
+- **The buyer never sees a ticket UUID.** The printed "Ticket ID" line, the
+  PDF document title, the e-mail body and the attachment filename all carry
+  `pdf.DisplayNumber(...)` — `tickets.system_ticket_id` (migration 0088),
+  falling back to the first 8 hex digits of the UUID, uppercased, for a
+  pre-0088 row. `pdf.Ticket.TicketID` is still required but is only an
+  in-document image-resource map key, which gofpdf never writes to the
+  output. A test asserting "no UUID in the PDF" must check BOTH the plain
+  bytes and the UTF-16BE form (`utf16beEscaped`), and note that gofpdf's
+  `SetTitle(..., true)` adds a `\xFE\xFF` BOM that page text does not have.
+- **`internal/platform/delivery`'s integration tests come in two flavours
+  and only one runs on this host.** `delivery_integration_test.go` uses
+  `internal/tests/pgtest` (testcontainers — panics on Windows);
+  `presentation_integration_test.go` connects to `DATABASE_URL` and skips
+  when it is unset, the pattern the `gen` package's live-DB tests use.
+  Select with `-run` when running the package locally, and point
+  `DATABASE_URL` at a FRESH scratch database (the CI-Integration recipe
+  above), never the shared dev stand. That file's fixture needs
+  `arena-migrate` only — it seeds its own org/venue/event/session/order and
+  relies on migration 0006's `tallinn` city plus its English `i18n_text`
+  row — but the `htickets` live-DB tests in the same sweep DO need
+  `arena-seed` ("no (org, channel, session) triple with GA inventory
+  found").
+- **The e-ticket layout is a PORT — its spec lives outside this repo.**
+  `internal/platform/delivery/pdf` reproduces the design the owner already
+  ships from the WordPress sites: `bil24-ticket-mailer/templates/ticket.php`
+  (the CSS and the millimetre geometry, with comments explaining WHY) and
+  `includes/class-btm-renderer.php` (the string table, the localized
+  month/weekday tables, the page-size rationale). Read those before changing
+  a constant in `layout.go`. The three constraints they encode: the page is
+  105x297 mm (half of A4 lengthwise, NOT A5 — one code block per phone
+  screen, and it prints on A4 at 100%), the code block is absolutely
+  anchored at 140 mm so nothing above can push it, and long values SHRINK
+  their font (title 13.5→11.5pt past 55 runes, info values 10.5→9pt past 28)
+  rather than reflow. Two deliberate arena departures: the QR carries the
+  EAN-13 digits — the same value as the barcode, never the ticket UUID —
+  and the accent colour is a `Ticket` field (`DefaultAccentColor`, the Arena
+  Sold Out indigo) so Lampyris' yellow can be restored per organization.
+- **gofpdf gotchas that cost time in that package.** (1) Byte-determinism
+  breaks when a document holds two images of the SAME pixel width:
+  `putimages` sorts image objects by width under `SetCatalogSort` and breaks
+  the tie with Go's randomized map iteration. A fixture with a logo and a
+  poster must give them different widths or the determinism tests are flaky
+  — and it passes in isolation, so it looks like test pollution. (2) Cells
+  carry a 1 mm margin by default; `SetCellMargin(0)` is required before any
+  geometry ported from CSS lines up. (3) There is no character-spacing
+  operator, so letter-spaced text (the uppercase info labels) is drawn one
+  glyph per show operator and never appears as a single run in the content
+  stream — assert on the glyphs, or on a value drawn with `MultiCell`. (4) A
+  value that wraps is several runs, so a raw-bytes assertion on it must
+  match a PREFIX (`pdfTextPrefix`), not the whole string. (5) `ImageInfoType.i`
+  — the `/I<id> Do` name — is a SHA-1 hex digest, not an index.

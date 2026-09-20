@@ -302,6 +302,9 @@ type Querier interface {
 	InsertTicket(ctx context.Context, checkoutSessionID uuid.UUID, sessionID uuid.UUID, tierID *uuid.UUID, holderEmail *string, seatKey *string, seatSector *string, seatRow *string, seatNumber *string, ordinal int32) (TicketRow, error)
 	ListTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) ([]TicketRow, error)
 	GetTicketByID(ctx context.Context, id uuid.UUID) (TicketRow, error)
+	// GetTicketPresentationByID resolves the event / session / venue / tier /
+	// holder values the ticket e-mail and PDF print, at render time.
+	GetTicketPresentationByID(ctx context.Context, ticketID uuid.UUID) (TicketPresentationRow, error)
 	CancelTicket(ctx context.Context, id uuid.UUID, reason string, refundMode string) (TicketRow, error)
 	SetTicketRefundRecord(ctx context.Context, id uuid.UUID, refundID *uuid.UUID, refundDate *time.Time, refundPrice *int64) (TicketRow, error)
 	SetTicketsReviewHoldByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID, reason string) (int64, error)

@@ -17,7 +17,11 @@
 //  6. If no email address found, update delivery_jobs to 'skipped' and return nil.
 //  7. Atomically claim delivery_jobs for processing (pending → processing).
 //     If claim fails (row not pending), return nil — another worker claimed it.
-//  8. Resolve organisation branding and generate PDF credential.
+//  8. Resolve organisation branding, the ticket's EAN-13 credential and
+//     the presentation values the buyer reads — event name, session start,
+//     venue name/city/timezone, category, holder name and the human-facing
+//     ticket number — from the ticket's own rows (presentation.go), then
+//     generate the PDF credential.
 //  9. Render transactional email (localised, feature #289 T-2).
 //  10. Send via the injected email.Sender (real SMTP).
 //     On transient failure: return error — worker retries. Status stays 'processing'
@@ -92,16 +96,26 @@ type Payload struct {
 	Template string `json:"template,omitempty"`
 	// Locale selects the language for subject + body. Falls back to
 	// templates.DefaultLocale when empty or unknown. Examples: "en", "de",
-	// "es", "he", "cs", "ru". Nothing in the enqueue path (delivery_enqueue.go,
-	// admin_ticket_delivery.go, report_delivery_enqueue.go) sets this field
-	// today, so every email currently renders in English regardless of the
-	// buyer's widget locale — see the AGENTS.md gotcha on threading a buyer
-	// locale from the widget checkout into this payload.
+	// "es", "he", "cs", "ru". The enqueue paths populate it from
+	// checkout_sessions.buyer_locale (migration 0105) — empty means the
+	// purchase never stated a language (a gateway sale, or a ticket issued
+	// before 0105) and the renderer falls back to English.
 	Locale string `json:"locale,omitempty"`
-	// EventName, SessionStart, VenueName, TierName, HolderName are
-	// optional presentation hints baked into the job at enqueue time so
-	// the worker does not need to re-join across events/sessions/venues.
-	// All five are safe to omit; the template renders blanks accordingly.
+	// EventName, SessionStart, SessionTZ, VenueName, VenueCity, TierName,
+	// HolderName and TicketNumber are optional presentation hints that an
+	// enqueuer MAY bake into the job. All are safe to omit: the handler
+	// resolves whatever is missing from the ticket's own rows at render
+	// time (see presentation.go / step 8c below) exactly as it resolves
+	// the recipient address and the EAN-13 credential.
+	//
+	// A hint that IS set always wins over the resolved value, so an
+	// enqueuer that knows better (or a test that wants fixed content)
+	// keeps control.
+	//
+	// Historical note: no production enqueuer has ever set any of these,
+	// which is why every live ticket PDF printed "Arena Event" with blank
+	// Venue / Category / Holder rows and a UTC session time until the
+	// render-time resolution landed (2026-09-20).
 	EventName    string    `json:"event_name,omitempty"`
 	SessionStart time.Time `json:"session_start,omitempty"`
 	SessionTZ    string    `json:"session_tz,omitempty"`
@@ -109,6 +123,12 @@ type Payload struct {
 	VenueCity    string    `json:"venue_city,omitempty"`
 	TierName     string    `json:"tier_name,omitempty"`
 	HolderName   string    `json:"holder_name,omitempty"`
+	// TicketNumber is the human-facing ticket number shown to the buyer
+	// (tickets.system_ticket_id rendered as decimal). Resolved at render
+	// time; the PDF falls back to a short reference derived from the
+	// ticket UUID when a legacy ticket has no system id. The buyer never
+	// sees the UUID itself.
+	TicketNumber string `json:"ticket_number,omitempty"`
 	// SeatSector / SeatRow / SeatNumber (SEAT-C3, feature #311) are the
 	// denormalized seat coordinates copied from the ticket's
 	// seat_sector / seat_row / seat_number columns onto the delivery
@@ -419,6 +439,17 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			}
 		}
 
+		// ── 8c. Resolve the presentation values ───────────────────────────
+		// Event name, session start, venue name/city/timezone, category and
+		// holder name, plus the human-facing ticket number. Enqueuers may
+		// bake these into the payload but none do; whatever is missing is
+		// read from the ticket's own rows here, with a payload hint always
+		// winning. Best effort — a failure logs and the ticket still ships
+		// (see presentation.go).
+		if opts.TicketQueries != nil {
+			resolvePresentation(ctx, opts.TicketQueries, ticketID, &p, logger)
+		}
+
 		// ── 9. Generate PDF credential ────────────────────────────────────────
 		// Prefer the T-1 PDF renderer (apps/backend/internal/platform/delivery/pdf)
 		// so the attached document carries the QR code and full ticket detail.
@@ -477,10 +508,15 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			kind = templates.TemplateKindInvitation
 		}
 
+		// The buyer-facing number, never the internal UUID — the body's
+		// "Ticket ID" line and the attachment filename are what a buyer
+		// quotes back to support, and the PDF prints the same value.
+		ticketNumber := pdf.DisplayNumber(p.TicketNumber, ticketID.String())
+
 		var htmlBody, textBody, subject string
 		if renderer != nil {
 			out, rErr := renderer.Render(kind, p.Locale, templates.Data{
-				TicketID:       ticketID.String(),
+				TicketID:       ticketNumber,
 				RecipientEmail: recipientEmail,
 				HolderName:     p.HolderName,
 				EventName:      defaultStr(p.EventName, "Arena Event"),
@@ -500,12 +536,12 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		} else {
 			switch p.Template {
 			case TemplateInvitation:
-				htmlBody = renderInvitationEmailHTML(ticketID.String(), recipientEmail)
-				textBody = renderInvitationEmailText(ticketID.String(), recipientEmail)
+				htmlBody = renderInvitationEmailHTML(ticketNumber, recipientEmail)
+				textBody = renderInvitationEmailText(ticketNumber, recipientEmail)
 				subject = "You're invited — Arena Platform"
 			default:
-				htmlBody = renderTicketEmailHTML(ticketID.String(), recipientEmail)
-				textBody = renderTicketEmailText(ticketID.String(), recipientEmail)
+				htmlBody = renderTicketEmailHTML(ticketNumber, recipientEmail)
+				textBody = renderTicketEmailText(ticketNumber, recipientEmail)
 				subject = "Your ticket — Arena Platform"
 			}
 		}
@@ -514,7 +550,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		if len(pdfBytes) > 0 {
 			msg.Attachments = []email.Attachment{
 				{
-					Filename:    fmt.Sprintf("ticket-%s.pdf", ticketID.String()[:8]),
+					Filename:    fmt.Sprintf("ticket-%s.pdf", ticketNumber),
 					ContentType: "application/pdf",
 					Data:        pdfBytes,
 				},
@@ -634,7 +670,7 @@ func isTerminalOrProcessing(status string) bool {
 // ──────────────────────────────────────────────────────────────────────────────
 
 // renderTicketEmailHTML returns a minimal HTML body for the ticket delivery email.
-func renderTicketEmailHTML(ticketID, recipientEmail string) string {
+func renderTicketEmailHTML(ticketNumber, recipientEmail string) string {
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><title>Your Ticket</title></head>
@@ -647,24 +683,24 @@ func renderTicketEmailHTML(ticketID, recipientEmail string) string {
   <hr>
   <p style="font-size:11px;color:#999">Arena Platform — automated delivery</p>
 </body>
-</html>`, ticketID, recipientEmail)
+</html>`, ticketNumber, recipientEmail)
 }
 
 // renderTicketEmailText returns a plain-text fallback body for the ticket delivery email.
-func renderTicketEmailText(ticketID, recipientEmail string) string {
+func renderTicketEmailText(ticketNumber, recipientEmail string) string {
 	return fmt.Sprintf(
 		"Your ticket is ready\n\nHello,\n\n"+
 			"Your ticket has been issued. Please find the PDF attached to this email.\n\n"+
 			"Ticket ID: %s\n"+
 			"Delivered to: %s\n\n"+
 			"Arena Platform — automated delivery\n",
-		ticketID, recipientEmail,
+		ticketNumber, recipientEmail,
 	)
 }
 
 // renderInvitationEmailHTML returns the HTML body for complimentary invitation emails.
 // Used when Payload.Template == TemplateInvitation (feature #149).
-func renderInvitationEmailHTML(ticketID, recipientEmail string) string {
+func renderInvitationEmailHTML(ticketNumber, recipientEmail string) string {
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><title>You're Invited</title></head>
@@ -678,12 +714,12 @@ func renderInvitationEmailHTML(ticketID, recipientEmail string) string {
   <hr>
   <p style="font-size:11px;color:#999">Arena Platform — automated invitation delivery</p>
 </body>
-</html>`, ticketID, recipientEmail)
+</html>`, ticketNumber, recipientEmail)
 }
 
 // renderInvitationEmailText returns the plain-text fallback body for complimentary
 // invitation emails. Used when Payload.Template == TemplateInvitation (feature #149).
-func renderInvitationEmailText(ticketID, recipientEmail string) string {
+func renderInvitationEmailText(ticketNumber, recipientEmail string) string {
 	return fmt.Sprintf(
 		"You're invited!\n\nHello,\n\n"+
 			"You have been issued a complimentary invitation ticket. "+
@@ -693,7 +729,7 @@ func renderInvitationEmailText(ticketID, recipientEmail string) string {
 			"Ticket ID: %s\n"+
 			"Delivered to: %s\n\n"+
 			"Arena Platform — automated invitation delivery\n",
-		ticketID, recipientEmail,
+		ticketNumber, recipientEmail,
 	)
 }
 
@@ -707,12 +743,13 @@ func renderInvitationEmailText(ticketID, recipientEmail string) string {
 // organisation has no logo_media_id. When logoBytes is empty the PDF
 // header simply omits the image slot and prints the OrgName wordmark.
 func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, branding templates.Branding, logoBytes []byte) ([]byte, error) {
-	qr := p.QRPayload
-	if qr == "" {
-		qr = ticketID.String()
-	}
+	// NOTE: Payload.QRPayload is no longer passed through. The PDF's QR code
+	// now carries the ticket's EAN-13 digits — the same value as the printed
+	// barcode, and the only value entrance control can resolve. It used to
+	// encode the ticket UUID, which nothing could scan into anything.
 	t := pdf.Ticket{
 		TicketID:               ticketID.String(),
+		TicketNumber:           p.TicketNumber,
 		Locale:                 p.Locale,
 		EventName:              defaultStr(p.EventName, "Arena Event"),
 		SessionStart:           defaultTime(p.SessionStart),
@@ -724,7 +761,6 @@ func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, brandin
 		SeatSector:             p.SeatSector,
 		SeatRow:                p.SeatRow,
 		SeatNumber:             p.SeatNumber,
-		QRPayload:              qr,
 		EAN13:                  p.EAN13,
 		OrgLogo:                logoBytes,
 		OrgName:                branding.OrgName,
@@ -743,8 +779,9 @@ func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, brandin
 	}
 	// On any validation/render failure, keep delivery moving with the
 	// legacy minimal PDF — the worker is not the right place to block on
-	// a missing event name.
-	return renderMinimalPDF(ticketID.String(), time.Now().UTC()), nil
+	// a missing event name. It prints the same buyer-facing number as the
+	// real layout, never the internal UUID.
+	return renderMinimalPDF(pdf.DisplayNumber(p.TicketNumber, ticketID.String()), time.Now().UTC()), nil
 }
 
 // resolveBrandingResult bundles the branding fields and the optional
@@ -882,12 +919,12 @@ func joinNonEmpty(sep string, parts ...string) string {
 // This is a lightweight alternative to loading the full credential generation
 // code; the worker uses this when CredentialQueries is nil or when generating
 // on-the-fly without a DB write.
-func renderMinimalPDF(ticketID string, issuedAt time.Time) []byte {
+func renderMinimalPDF(ticketNumber string, issuedAt time.Time) []byte {
 	cs := fmt.Sprintf(
 		"BT\n/F1 14 Tf\n72 720 Td\n(Arena Platform Ticket) Tj\n"+
 			"/F1 10 Tf\n0 -30 Td\n(Ticket ID: %s) Tj\n"+
 			"0 -20 Td\n(Issued: %s) Tj\nET",
-		ticketID,
+		ticketNumber,
 		issuedAt.Format(time.RFC3339),
 	)
 

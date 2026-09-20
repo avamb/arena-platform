@@ -27,10 +27,11 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/ean13"
 )
 
-// eanMMToPt converts a length in millimetres to PDF points (1 mm = 72/25.4
-// pt), matching the "pt" unit every layoutSpec geometry constant in this
-// package is expressed in (see layout.go's gofpdf.InitType{UnitStr: "pt"}).
-const eanMMToPt = 72.0 / 25.4
+// eanMMToPt converts a length in millimetres to PDF points, matching the
+// "pt" unit every layoutSpec geometry constant in this package is expressed
+// in (see layout.go's gofpdf.InitType{UnitStr: "pt"}). It is layout.go's
+// mmToPt under the name this file's constants were written against.
+const eanMMToPt = mmToPt
 
 // eanMinBarHeightPt is the scannability floor: below this the renderer
 // skips the symbol entirely rather than drawing a barcode too short to

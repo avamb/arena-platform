@@ -345,8 +345,8 @@ func TestRender_EmptyEAN13_DrawsNothingNoError(t *testing.T) {
 	if len(out) == 0 {
 		t.Fatal("expected non-empty PDF")
 	}
-	// Rest of the layout (ticket id, footer) must still be intact.
-	if !bytes.Contains(out, pdfText(labelsEN.TicketID+": "+tk.TicketID)) {
+	// Rest of the layout (ticket number, footer) must still be intact.
+	if !bytes.Contains(out, pdfText(stringsFor("en").TicketNo+" "+displayTicketNumber(tk))) {
 		t.Error("PDF missing Ticket ID line when EAN13 is empty")
 	}
 }
@@ -360,7 +360,7 @@ func newTestPDFForEAN(t *testing.T) *gofpdf.Fpdf {
 	pdf := gofpdf.NewCustom(&gofpdf.InitType{
 		OrientationStr: "P",
 		UnitStr:        "pt",
-		Size:           gofpdf.SizeType{Wd: mobileSpec.pageW, Ht: mobileSpec.pageH},
+		Size:           gofpdf.SizeType{Wd: ticketSpec.pageW, Ht: ticketSpec.pageH},
 	})
 	registerFonts(pdf)
 	pdf.AddPage()
@@ -374,7 +374,7 @@ func TestDrawEAN13Symbol_ZeroCeiling_DrawsNothing(t *testing.T) {
 	code := ean13.Encode(ean13.PlatformPrefix, 1122334455)
 	pdfDoc := newTestPDFForEAN(t)
 	const y = 100.0
-	got := drawEAN13Symbol(pdfDoc, code, mobileSpec, y, y)
+	got := drawEAN13Symbol(pdfDoc, code, ticketSpec, y, y)
 	if got != y {
 		t.Errorf("expected y unchanged (%v) when there is no room, got %v", y, got)
 	}
@@ -383,7 +383,7 @@ func TestDrawEAN13Symbol_ZeroCeiling_DrawsNothing(t *testing.T) {
 func TestDrawEAN13Symbol_InvalidCode_DrawsNothing(t *testing.T) {
 	pdfDoc := newTestPDFForEAN(t)
 	const y = 100.0
-	got := drawEAN13Symbol(pdfDoc, "1234567890123", mobileSpec, y, y+500)
+	got := drawEAN13Symbol(pdfDoc, "1234567890123", ticketSpec, y, y+500)
 	if got != y {
 		t.Errorf("expected y unchanged (%v) for an invalid code, got %v", y, got)
 	}

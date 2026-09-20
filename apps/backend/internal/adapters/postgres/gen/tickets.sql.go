@@ -399,3 +399,83 @@ func (q *Queries) ListTicketsMissingEAN13(ctx context.Context, limit int32) ([]T
 	}
 	return tickets, rows.Err()
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetTicketPresentationByID
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getTicketPresentationByID = `-- name: GetTicketPresentationByID :one
+SELECT t.system_ticket_id,
+       e.name                        AS event_name,
+       s.start_at                    AS session_start_at,
+       v.name                        AS venue_name,
+       COALESCE(t_en.value, ci.slug) AS venue_city,
+       v.timezone                    AS venue_timezone,
+       tt.name                       AS tier_name,
+       COALESCE(NULLIF(btrim(ord.buyer_name), ''), cu.display_name) AS holder_name
+FROM       tickets t
+LEFT JOIN  sessions      s  ON s.id  = t.session_id
+LEFT JOIN  events        e  ON e.id  = s.event_id
+LEFT JOIN  venues        v  ON v.id  = s.venue_id
+LEFT JOIN  cities        ci ON ci.id = v.city_id
+LEFT JOIN  i18n_text     t_en ON t_en.namespace = 'geo.cities'
+       AND t_en.key = ci.slug AND t_en.locale = 'en'
+LEFT JOIN  ticket_tiers  tt ON tt.id = t.tier_id
+LEFT JOIN  orders       ord ON ord.id = t.order_id
+LEFT JOIN  customers     cu ON cu.id = ord.customer_id
+WHERE  t.id = $1`
+
+// TicketPresentationRow is everything the ticket e-mail body and the PDF
+// e-ticket print about a ticket that does not live on the tickets row
+// itself: the event name, the session start, the venue (name, city and
+// IANA timezone), the price-tier / category name and the buyer's name.
+//
+// Every field except SystemTicketID is a pointer because the underlying
+// query LEFT JOINs each table — a ticket must stay renderable when its
+// venue row is gone, its tier is NULL (general admission) or it predates
+// the orders aggregate. The delivery worker treats each nil as "print
+// nothing here", never as an error.
+type TicketPresentationRow struct {
+	// SystemTicketID is tickets.system_ticket_id (migration 0088) — the
+	// platform's own bigint identity for the ticket and the number the
+	// buyer sees, instead of the internal UUID.
+	SystemTicketID int64      `json:"system_ticket_id"`
+	EventName      *string    `json:"event_name"`
+	SessionStartAt *time.Time `json:"session_start_at"`
+	VenueName      *string    `json:"venue_name"`
+	// VenueCity is the English city name from i18n_text, falling back to
+	// the cities.slug — the same projection the MACS/webhook order export
+	// uses (orderexport.Row.CityName).
+	VenueCity *string `json:"venue_city"`
+	// VenueTimezone is the venue's IANA timezone name (venues.timezone,
+	// migration 0050), e.g. "Europe/Prague". NULL for a venue that never
+	// had one configured; the renderer then falls back to UTC.
+	VenueTimezone *string `json:"venue_timezone"`
+	TierName      *string `json:"tier_name"`
+	// HolderName is orders.buyer_name, falling back to the linked
+	// customers.display_name. NULL when neither is known.
+	HolderName *string `json:"holder_name"`
+}
+
+// GetTicketPresentationByID resolves the presentation values for one
+// ticket. Returns pgx.ErrNoRows when the ticket does not exist.
+//
+// Used by the ticket.deliver worker at RENDER time: delivery.Payload
+// carries the same fields as optional enqueue-time hints, but no
+// production enqueuer ever set them, so every live e-ticket printed
+// "Arena Event" with blank venue / category / holder rows until this
+// lookup was added (2026-09-20).
+func (q *Queries) GetTicketPresentationByID(ctx context.Context, ticketID uuid.UUID) (TicketPresentationRow, error) {
+	var p TicketPresentationRow
+	err := q.db.QueryRow(ctx, getTicketPresentationByID, ticketID).Scan(
+		&p.SystemTicketID,
+		&p.EventName,
+		&p.SessionStartAt,
+		&p.VenueName,
+		&p.VenueCity,
+		&p.VenueTimezone,
+		&p.TierName,
+		&p.HolderName,
+	)
+	return p, err
+}

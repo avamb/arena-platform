@@ -1,29 +1,18 @@
-// pdf_seats_test.go — SEAT-C3 (feature #311) PDF renderer contract tests.
+// pdf_seats_test.go — the seat coordinates on the page.
 //
-// The renderer draws PDF operators as text streams; the resulting bytes
-// contain the labelled detail-block strings verbatim inside the
-// content-stream operators (BT...ET blocks). This lets us assert that:
+// The ported design prints the seat as ONE info cell ("A, row 3, seat 12")
+// rather than the three separate labelled rows the pre-port layout used, and
+// composes it from whichever of sector/row/number are actually present — the
+// old all-or-nothing rule silently dropped a seat that knew its row but not
+// its sector.
 //
-//  1. A seated ticket (SeatSector/SeatRow/SeatNumber all populated)
-//     causes the renderer to emit the "Sector:", "Row:", and "Seat:"
-//     label rows alongside the seat values.
-//  2. A GA ticket (all three empty) omits the seat block entirely: no
-//     "Sector:" / "Row:" / "Seat:" labels appear anywhere in the PDF.
-//  3. The seated and GA outputs are byte-different (regression guard —
-//     if the drawDetails switch is ever removed by accident, both
-//     variants would produce identical PDFs).
-//
-// The renderer's SetCompression(false) + SetCatalogSort(true) knobs mean
-// this test does not need to decompress the content stream. Since the
-// layouts register a UTF-8 TrueType font (fonts.go), the parenthesised
-// operator arguments are UTF-16BE, not literal ASCII — pdfText (in
-// pdf_testutil_test.go) reproduces gofpdf's encoding so these assertions
-// can still search the raw bytes for a specific label/value token.
+// The renderer's SetCompression(false) means these assertions can search the
+// raw content stream directly; pdfText reproduces gofpdf's UTF-16BE encoding
+// so a specific value token can still be found.
 package pdf
 
 import (
 	"bytes"
-	"context"
 	"testing"
 )
 
@@ -36,76 +25,72 @@ func seatedTicket(t *testing.T) Ticket {
 	return tk
 }
 
-// TestSeatC3_RendersSeatBlock pins the seated-ticket contract: the
-// rendered PDF bytes contain literal Sector / Row / Seat labels (with
-// the trailing colon drawn by drawDetails) plus the actual seat values.
-func TestSeatC3_RendersSeatBlock(t *testing.T) {
-	out, err := Render(context.Background(), seatedTicket(t))
-	if err != nil {
-		t.Fatalf("Render: %v", err)
-	}
-	for _, want := range []string{
-		"Sector:", "Row:", "Seat:",
-		"A", "3", "12",
-	} {
-		if !bytes.Contains(out, pdfText(want)) {
-			t.Errorf("seated PDF missing token %q", want)
-		}
-	}
+func gaTicket(t *testing.T) Ticket {
+	t.Helper()
+	tk := validTicket(t)
+	tk.SeatSector, tk.SeatRow, tk.SeatNumber = "", "", ""
+	return tk
 }
 
-// TestSeatC3_GATicketOmitsSeatBlock pins the negative case: a
-// general-admission ticket (all three seat fields empty) must not draw
-// the seat block. Since "Row" / "Seat" could plausibly appear inside
-// the default fine-print disclaimer as prose, we probe the exact
-// operator token drawDetails emits — "(Sector:)" etc. — which only
-// appears when the label cell is drawn.
-func TestSeatC3_GATicketOmitsSeatBlock(t *testing.T) {
-	out, err := Render(context.Background(), validTicket(t))
-	if err != nil {
-		t.Fatalf("Render: %v", err)
-	}
-	for _, banned := range []string{"Sector:", "Row:", "Seat:"} {
-		if bytes.Contains(out, pdfText(banned)) {
-			t.Errorf("GA PDF should not contain %q", banned)
-		}
-	}
-}
-
-// TestSeatC3_SeatedVsGA_DifferByteOutput guards against a regression
-// where the seat-block switch is removed and both variants collapse to
-// the same PDF. Two Renders of the same seed with different SeatSector
-// values MUST produce different bytes.
-func TestSeatC3_SeatedVsGA_DifferByteOutput(t *testing.T) {
-	seated, err := Render(context.Background(), seatedTicket(t))
-	if err != nil {
-		t.Fatalf("Render seated: %v", err)
-	}
-	ga, err := Render(context.Background(), validTicket(t))
-	if err != nil {
-		t.Fatalf("Render GA: %v", err)
-	}
-	if bytes.Equal(seated, ga) {
-		t.Fatalf("seated and GA PDFs are byte-identical (expected difference)")
-	}
-}
-
-// TestSeatC3_SeatedRenderIsDeterministic re-runs the seated render
-// twice against the same input and asserts byte-identical output.
-// Determinism is a hard contract of pdf.Render (used by tests + audit
-// hashing) — new seat block must not accidentally introduce non-determinism.
-func TestSeatC3_SeatedRenderIsDeterministic(t *testing.T) {
+// TestSeat_RendersOneComposedCell pins the seated contract: the composed
+// value prints, under an uppercase SEAT label.
+func TestSeat_RendersOneComposedCell(t *testing.T) {
 	tk := seatedTicket(t)
-	a, err := Render(context.Background(), tk)
-	if err != nil {
-		t.Fatalf("Render a: %v", err)
+	if got := seatValue(tk, stringsFor("en")); got != "A, row 3, seat 12" {
+		t.Fatalf("seatValue = %q", got)
 	}
-	b, err := Render(context.Background(), tk)
-	if err != nil {
-		t.Fatalf("Render b: %v", err)
+	out := render(t, tk)
+	// Three cells share the content width, so the composed value wraps per
+	// word — match the start of the first wrapped line.
+	if !bytes.Contains(out, pdfTextPrefix("A, row 3,")) {
+		t.Error("seated PDF missing the composed seat value")
 	}
-	if !bytes.Equal(a, b) {
-		t.Fatalf("seated Render is not deterministic (%d vs %d bytes differ)",
-			len(a), len(b))
+	if !pdfHasTracked(out, "SEAT") {
+		t.Error("seated PDF missing the SEAT label")
+	}
+}
+
+// TestSeat_GATicketOmitsTheCell pins the negative case: a general-admission
+// ticket has no seat cell at all.
+func TestSeat_GATicketOmitsTheCell(t *testing.T) {
+	out := render(t, gaTicket(t))
+	if bytes.Contains(out, pdfTextPrefix("A, row 3,")) {
+		t.Error("GA PDF should not contain a seat value")
+	}
+	cells := infoCells(gaTicket(t), stringsFor("en"))
+	for _, c := range cells {
+		if c.label == stringsFor("en").Seat {
+			t.Error("GA ticket should have no Seat info cell")
+		}
+	}
+}
+
+// TestSeat_PartialCoordinatesStillPrint is the behaviour change from the
+// pre-port layout, which required all three fields before drawing any of
+// them and therefore printed nothing for a ticket that knew only its row.
+func TestSeat_PartialCoordinatesStillPrint(t *testing.T) {
+	tk := gaTicket(t)
+	tk.SeatRow = "3"
+	out := render(t, tk)
+	if !bytes.Contains(out, pdfText("row 3")) {
+		t.Error("a ticket that knows only its row should still print it")
+	}
+}
+
+// TestSeat_SeatedVsGA_DifferByteOutput guards against a regression where the
+// seat cell stops being conditional and both variants collapse to the same
+// page.
+func TestSeat_SeatedVsGA_DifferByteOutput(t *testing.T) {
+	if bytes.Equal(render(t, seatedTicket(t)), render(t, gaTicket(t))) {
+		t.Fatal("seated and GA PDFs are byte-identical (expected difference)")
+	}
+}
+
+// TestSeat_SeatedRenderIsDeterministic — determinism is a hard contract of
+// Render (tests and audit hashing rely on it).
+func TestSeat_SeatedRenderIsDeterministic(t *testing.T) {
+	tk := seatedTicket(t)
+	if !bytes.Equal(render(t, tk), render(t, tk)) {
+		t.Fatal("seated Render is not deterministic")
 	}
 }
