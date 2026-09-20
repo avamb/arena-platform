@@ -14,7 +14,7 @@
  *      Since the hosted-checkout flow landed, a cart above zero is only
  *      confirmed once a provider has created a hosted payment page. Without
  *      the stub every purchase test gets 422 checkout.payment_not_configured
- *      or 502 checkout.payment_start_failed.
+ *      or 503 checkout.payment_start_failed.
  *   3. Arena backend running on port 8080 (or ARENA_API_URL) with:
  *        PUBLIC_TICKETS_BASE_URL=http://localhost:4174
  *        STRIPE_API_BASE_URL=http://localhost:12111/v1

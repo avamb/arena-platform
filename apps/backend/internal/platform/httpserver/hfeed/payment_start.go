@@ -207,6 +207,22 @@ type HostedCheckoutResult struct {
 // standing up a fake Stripe, and so a future provider joins without the
 // handler learning about it.
 type PaymentStarter interface {
+	// CheckPaymentConfigured reports whether a hosted payment COULD be
+	// created for this org on this sales channel, from CONFIGURATION ALONE —
+	// it must never call the provider or any other network service.
+	//
+	// It exists so the checkout handler can refuse a paid cart while its
+	// hold transaction is still open. Before it, a missing or unusable
+	// Stripe config was only discovered after the commit, and every buyer
+	// attempt left a real hold that only the ~31-minute TTL sweep released:
+	// a handful of failed attempts "sold out" a small session (observed
+	// live 2026-09-20, availability 15 → 12 from three failures).
+	//
+	// It returns the SAME *PaymentStartError StartHostedCheckout would have
+	// returned for the same configuration, so both paths answer identical
+	// codes and statuses.
+	CheckPaymentConfigured(ctx context.Context, orgID, channelID uuid.UUID) error
+
 	StartHostedCheckout(ctx context.Context, req HostedCheckoutRequest) (*HostedCheckoutResult, error)
 }
 
@@ -238,20 +254,34 @@ func NewStripePaymentStarter(orgQ, channelQ *gen.Queries, baseURL string) *Strip
 // in this wave.
 const supportedHostedProvider = "stripe"
 
-// StartHostedCheckout resolves the channel's provider and the org's usable
-// config, then creates the hosted page.
-func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req HostedCheckoutRequest) (*HostedCheckoutResult, error) {
+// hostedPaymentConfig is what the configuration checks yield: the provider
+// the channel names and the org's own credential for it.
+type hostedPaymentConfig struct {
+	provider string
+	apiKey   string
+}
+
+// resolveConfig is the ONE implementation of "can this org take money on this
+// channel?": the channel's provider, that provider being one arena can host a
+// page with, the org's usable payment_provider_configs row (active,
+// configured, KYB-cleared for live), and a non-empty api_key on it.
+//
+// It reads configuration only — no provider call, no network — which is what
+// lets the checkout handler run it as a pre-flight inside an open
+// transaction. Both CheckPaymentConfigured and StartHostedCheckout go through
+// it, so the pre-flight can never drift from the real thing.
+func (s *StripePaymentStarter) resolveConfig(ctx context.Context, orgID, channelID uuid.UUID) (hostedPaymentConfig, error) {
 	if s == nil || s.orgQueries == nil || s.channelQueries == nil {
-		return nil, &PaymentStartError{
+		return hostedPaymentConfig{}, &PaymentStartError{
 			Code:    ErrCodePaymentNotConfigured,
 			Message: "payment provider configuration is not available",
 			Status:  503,
 		}
 	}
 
-	ch, err := s.channelQueries.GetSalesChannelByID(ctx, req.ChannelID, req.OrgID)
+	ch, err := s.channelQueries.GetSalesChannelByID(ctx, channelID, orgID)
 	if err != nil {
-		return nil, &PaymentStartError{
+		return hostedPaymentConfig{}, &PaymentStartError{
 			Code:    ErrCodePaymentNotConfigured,
 			Message: "failed to resolve the sales channel's payment provider",
 			Status:  503,
@@ -259,7 +289,7 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 	}
 	provider := strings.ToLower(strings.TrimSpace(ch.Provider))
 	if provider != supportedHostedProvider {
-		return nil, &PaymentStartError{
+		return hostedPaymentConfig{}, &PaymentStartError{
 			Code: ErrCodePaymentProviderUnsupported,
 			Message: fmt.Sprintf(
 				"sales channel payment provider %q cannot host a checkout page; only %q is supported",
@@ -268,9 +298,9 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 		}
 	}
 
-	cfg, cfgErr := hcheckout.ResolveProviderConfig(ctx, s.orgQueries, req.OrgID, provider)
+	cfg, cfgErr := hcheckout.ResolveProviderConfig(ctx, s.orgQueries, orgID, provider)
 	if cfgErr != nil {
-		return nil, &PaymentStartError{
+		return hostedPaymentConfig{}, &PaymentStartError{
 			Code:    ErrCodePaymentNotConfigured,
 			Message: cfgErr.Message,
 			Status:  422,
@@ -278,14 +308,31 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 	}
 	apiKey := hcheckout.SecretFieldFromConfig(cfg, "api_key")
 	if apiKey == "" {
-		return nil, &PaymentStartError{
+		return hostedPaymentConfig{}, &PaymentStartError{
 			Code:    ErrCodePaymentNotConfigured,
 			Message: "the organization's stripe config has no api_key",
 			Status:  422,
 		}
 	}
+	return hostedPaymentConfig{provider: provider, apiKey: apiKey}, nil
+}
 
-	adapter := stripe.New(stripe.Config{SecretKey: apiKey, BaseURL: s.baseURL})
+// CheckPaymentConfigured implements the PaymentStarter pre-flight: the
+// configuration half of StartHostedCheckout, and nothing else.
+func (s *StripePaymentStarter) CheckPaymentConfigured(ctx context.Context, orgID, channelID uuid.UUID) error {
+	_, err := s.resolveConfig(ctx, orgID, channelID)
+	return err
+}
+
+// StartHostedCheckout resolves the channel's provider and the org's usable
+// config, then creates the hosted page.
+func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req HostedCheckoutRequest) (*HostedCheckoutResult, error) {
+	cfg, err := s.resolveConfig(ctx, req.OrgID, req.ChannelID)
+	if err != nil {
+		return nil, err
+	}
+
+	adapter := stripe.New(stripe.Config{SecretKey: cfg.apiKey, BaseURL: s.baseURL})
 
 	metadata := map[string]string{
 		"arena_checkout_session_id": req.CheckoutSessionID.String(),
@@ -328,6 +375,103 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 // ─────────────────────────────────────────────────────────────────────────────
 // Handler glue
 // ─────────────────────────────────────────────────────────────────────────────
+
+// preflightPaidCheckout is the configuration-only go/no-go for a cart that
+// will have to be paid for. On failure it writes the HTTP error itself and
+// reports false; the caller must return immediately, which lets its deferred
+// tx.Rollback release everything the request had taken.
+//
+// WHY IT LIVES HERE, after pricing and before the hold transaction commits,
+// rather than before the transaction opens:
+//
+//   - Only the total decides whether a provider is needed at all, and the
+//     total is only known once pricing has run. A seated cart is priced from
+//     the tier bindings of the seats it has just locked, so the answer cannot
+//     be had any earlier without pricing twice.
+//   - Nothing the request has written is durable until the caller's commit,
+//     so "after pricing, before commit" is the narrowest point at which a
+//     refusal costs the session nothing — and it needs no undo path of its
+//     own beyond the rollback the caller already defers. Releasing a
+//     committed hold by hand would be a second write path for the same
+//     thing, and a second way to get it wrong.
+//   - A zero-total cart returns true without looking at anything: a free
+//     checkout has no provider and must keep working for an organization
+//     that has never connected one.
+//
+// It answers exactly the codes and statuses the post-commit payment step
+// answers, because PaymentStarter.CheckPaymentConfigured runs exactly the
+// checks StartHostedCheckout runs first (StripePaymentStarter.resolveConfig
+// is the single implementation of both).
+func (h *Handler) preflightPaidCheckout(
+	ctx context.Context,
+	w http.ResponseWriter,
+	r *http.Request,
+	checkCtx gen.PublicCheckoutContextRow,
+	total int64,
+	returnURL string,
+) bool {
+	if total <= 0 {
+		return true
+	}
+
+	// A buyer with nowhere to be sent back to cannot complete a payment
+	// either, and that failure burns inventory in exactly the same way. It
+	// used to be caught after the hold had committed; the code and status
+	// are unchanged, only the timing.
+	if _, err := h.returnURLPolicy.Resolve(returnURL); err != nil {
+		h.writePaymentStartError(w, r, err, checkCtx,
+			"public_feed_checkout: refusing a paid cart before it takes inventory (return_url)")
+		return false
+	}
+
+	if h.paymentStarter == nil {
+		// Loud on purpose: a deployment that confirms carts it cannot charge
+		// is misconfigured, and every buyer hitting this loses their seats.
+		h.logger.Error("public_feed_checkout: no payment starter is wired; a paid checkout cannot be completed",
+			slog.String("org_id", checkCtx.OrgID.String()),
+			slog.String("session_id", checkCtx.SessionID.String()),
+		)
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			ErrCodePaymentNotConfigured, "payments are not configured for this deployment", r,
+		))
+		return false
+	}
+
+	if err := h.paymentStarter.CheckPaymentConfigured(ctx, checkCtx.OrgID, checkCtx.SalesChannelID); err != nil {
+		h.writePaymentStartError(w, r, err, checkCtx,
+			"public_feed_checkout: refusing a paid cart before it takes inventory (payment config)")
+		return false
+	}
+	return true
+}
+
+// writePaymentStartError logs and answers a typed payment-start failure. An
+// untyped error cannot be attributed to a specific misconfiguration, so it
+// degrades to the "this deployment cannot take money" answer rather than
+// leaking an internal message to a public caller.
+func (h *Handler) writePaymentStartError(
+	w http.ResponseWriter,
+	r *http.Request,
+	err error,
+	checkCtx gen.PublicCheckoutContextRow,
+	logMessage string,
+) {
+	pse, isTyped := AsPaymentStartError(err)
+	if !isTyped || pse == nil {
+		pse = &PaymentStartError{
+			Code:    ErrCodePaymentNotConfigured,
+			Message: "the payment configuration for this sales channel could not be resolved",
+			Status:  http.StatusServiceUnavailable,
+		}
+	}
+	h.logger.Error(logMessage,
+		slog.String("code", pse.Code),
+		slog.String("org_id", checkCtx.OrgID.String()),
+		slog.String("session_id", checkCtx.SessionID.String()),
+		slog.String("error", err.Error()),
+	)
+	httputil.WriteJSON(w, pse.Status, httputil.ErrorEnvelope(pse.Code, pse.Message, r))
+}
 
 // hostedPaymentInput carries everything the payment step needs from the
 // just-committed checkout transaction.
@@ -398,7 +542,15 @@ func (h *Handler) startHostedPayment(
 			slog.String("org_id", in.CheckCtx.OrgID.String()),
 			slog.String("error", err.Error()),
 		)
-		httputil.WriteJSON(w, http.StatusBadGateway, httputil.ErrorEnvelope(
+		// 503, NOT 502, and that is not a cosmetic choice: this endpoint is
+		// public and sits behind Cloudflare, which REPLACES an origin 502
+		// with its own 16-byte "error code: 502" text/plain page. The JSON
+		// envelope — and therefore the error code the widget shows the buyer
+		// — never survives the hop. Verified 2026-09-20 by curling the origin
+		// directly with --resolve: correct JSON at the origin, Cloudflare's
+		// stub on the public URL. A 503 is passed through untouched. Do not
+		// "fix" this back to 502.
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			ErrCodePaymentStartFailed, "the payment provider could not start this payment", r,
 		))
 		return "", false

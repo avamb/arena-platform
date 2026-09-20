@@ -32197,6 +32197,10 @@ export interface operations {
              *     provider cannot host a payment page; or
              *     `checkout.payment_not_configured` when the organization has no
              *     usable payment provider config for it.
+             *
+             *     For a cart with a total above zero both payment codes are decided
+             *     BEFORE the reservation becomes durable, so a refused checkout
+             *     leaves no hold, no held seats and no reserved capacity behind.
              */
             422: {
                 headers: {
@@ -32216,19 +32220,16 @@ export interface operations {
                 };
             };
             /**
-             * @description `checkout.payment_start_failed` — the payment provider refused to
+             * @description Database unavailable (dependency.database_unavailable), or
+             *     `checkout.payment_start_failed` — the payment provider refused to
              *     create the hosted checkout page. Nothing was charged and no
              *     redirect URL exists; the hold expires on its own.
+             *
+             *     `checkout.payment_start_failed` is answered with 503 rather than
+             *     502 on purpose: this endpoint is public and fronted by Cloudflare,
+             *     which replaces an origin 502 with its own plain-text stub page, so
+             *     the JSON error envelope never reaches the widget or the buyer.
              */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Database unavailable (dependency.database_unavailable). */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -760,6 +760,20 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			return
 		}
 
+		// Priced BEFORE the commit on purpose: ComputePricingLines is pure, and
+		// the total it yields is what decides whether this cart needs a payment
+		// provider at all.
+		bd := hcheckout.ComputePricingLines(lines, discount, currency, h.pricingRules)
+
+		// A paid cart that could never have been charged must not survive this
+		// request. Returning here lets the deferred tx.Rollback release the
+		// seats, the GA units and the reserved capacity that would otherwise
+		// sit held until the TTL sweep (~31 min) — which is how three failed
+		// attempts "sold out" a 15-seat master class on 2026-09-20.
+		if !h.preflightPaidCheckout(ctx, w, r, checkCtx, bd.Total, req.ReturnURL) {
+			return
+		}
+
 		// Commit the reservation transaction before creating the checkout session
 		// (matches the original #153 pattern: reservation tx committed first so that
 		// a checkout-session-insert failure does not roll back the seat holds).
@@ -769,8 +783,6 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			))
 			return
 		}
-
-		bd := hcheckout.ComputePricingLines(lines, discount, currency, h.pricingRules)
 
 		h.logger.Info("public_feed_checkout: seated session priced",
 			slog.String("feed_token", feedToken),
@@ -920,6 +932,24 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// Pricing for GA items — always through the multi-line pipeline. A single
+	// line produces totals identical to the original feature #153 single-tier
+	// path (see TestSeatC2_ComputePricingLines_SingleLine_MatchesSingleTier).
+	// Computed BEFORE the commit so the pre-flight below can still roll the
+	// hold back.
+	currency := ""
+	if len(pricedGA) > 0 {
+		currency = pricedGA[0].currency
+	}
+	bd := hcheckout.ComputePricingLines(gaLines, discount, currency, h.pricingRules)
+
+	// A paid cart that could never have been charged must not survive this
+	// request: the deferred tx.Rollback releases the GA units and the
+	// reserved capacity instead of leaving them held until the TTL sweep.
+	if !h.preflightPaidCheckout(ctx, w, r, checkCtx, bd.Total, req.ReturnURL) {
+		return
+	}
+
 	// Commit the reservation transaction before creating the checkout session
 	// (matches the original #153 pattern: reservation tx committed first).
 	if err := tx.Commit(ctx); err != nil {
@@ -928,15 +958,6 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		))
 		return
 	}
-
-	// Pricing for GA items — always through the multi-line pipeline. A single
-	// line produces totals identical to the original feature #153 single-tier
-	// path (see TestSeatC2_ComputePricingLines_SingleLine_MatchesSingleTier).
-	currency := ""
-	if len(pricedGA) > 0 {
-		currency = pricedGA[0].currency
-	}
-	bd := hcheckout.ComputePricingLines(gaLines, discount, currency, h.pricingRules)
 
 	h.logger.Info("public_feed_checkout: GA session priced",
 		slog.String("feed_token", feedToken),

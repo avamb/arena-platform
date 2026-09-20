@@ -1044,8 +1044,34 @@ entries short and factual.
   `GET /v1/public/checkout/{token}` returns as `payment_url` so a buyer who
   bounced off Stripe can resume. Failure codes are deliberately distinct:
   `checkout.payment_provider_unsupported` (422), `checkout.payment_not_configured`
-  (422/503), `checkout.payment_start_failed` (502), `checkout.invalid_return_url`
-  (400). A failure never releases the hold by hand — the existing sweeps do.
+  (422/503), `checkout.payment_start_failed` (**503, never 502 — see below**),
+  `checkout.invalid_return_url` (400). A failure never releases the hold by
+  hand — the existing sweeps do.
+  **`checkout.payment_start_failed` must stay 503.** `api.arenasoldout.com`
+  is fronted by Cloudflare, which REPLACES an origin 502 with its own 16-byte
+  `error code: 502` text/plain page, so the JSON error envelope — and the
+  error code the widget shows the buyer — never survives the hop (verified
+  2026-09-20 by curling the origin directly with `--resolve`: correct JSON at
+  the origin, Cloudflare's stub on the public URL). A 503 is passed through
+  untouched. Any NEW public, Cloudflare-fronted route must pick 503 over 502
+  for the same reason; the remaining 502s in the repo
+  (`hbilling/stripe_connect.go`, `hbilling/stripe_billing.go`,
+  `sender_identity.go`) are authenticated admin routes whose body nobody
+  parses, and were deliberately left alone.
+  **A paid cart is refused BEFORE it takes inventory.** The provider call
+  itself still runs after the commit (never inside the money transaction),
+  but the CONFIGURATION half — channel provider, `ResolveProviderConfig`,
+  a non-empty `secrets.api_key` — now also runs as a pre-flight
+  (`PaymentStarter.CheckPaymentConfigured`, implemented once in
+  `StripePaymentStarter.resolveConfig` and called by `StartHostedCheckout`
+  too, so the two cannot drift) from `hfeed.preflightPaidCheckout`, after
+  pricing and before the hold transaction commits. Until 2026-09-20 a
+  misconfigured org failed only after the commit, so every buyer attempt left
+  a real hold that only the ~31-minute TTL sweep released — three failed
+  attempts "sold out" a live 15-seat master class (availability fell 15 → 12).
+  A zero-total cart skips the pre-flight entirely: a free checkout has no
+  provider. The `return_url` check moved into the same pre-flight for the
+  same reason; its code and status (400) are unchanged.
   `checkout.session.completed` is only acted on when `data.object.payment_status
   == "paid"`; Stripe fires it for async methods long before the money settles,
   and that gate runs BEFORE the idempotency insert so the later real event is

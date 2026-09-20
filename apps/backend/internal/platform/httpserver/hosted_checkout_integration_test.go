@@ -765,9 +765,69 @@ func TestHostedCheckout_RefusedReturnURLFallsBackToTheConfiguredBase(t *testing.
 	}
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// A misconfigured provider must not burn inventory
+// ─────────────────────────────────────────────────────────────────────────────
+
+// holdFootprint is everything a checkout/start leaves behind when it takes
+// inventory: the reservation rows, the GA places / seats moved out of
+// 'available', and the session-level capacity reserved in the ledger.
+//
+// A request that could never have been charged must change NONE of it.
+type holdFootprint struct {
+	reservations int
+	unavailable  int
+	capacityHeld int64
+}
+
+func (f *hostedOrgFixture) footprint(t *testing.T, ctx context.Context) holdFootprint {
+	t.Helper()
+	var out holdFootprint
+	if err := f.pool.QueryRow(ctx,
+		`SELECT count(*) FROM reservations WHERE session_id = $1`, f.sessionID).Scan(&out.reservations); err != nil {
+		t.Fatalf("count reservations: %v", err)
+	}
+	if err := f.pool.QueryRow(ctx,
+		`SELECT count(*) FROM session_seats WHERE session_id = $1 AND status <> 'available'`,
+		f.sessionID).Scan(&out.unavailable); err != nil {
+		t.Fatalf("count non-available session_seats: %v", err)
+	}
+	if err := f.pool.QueryRow(ctx,
+		`SELECT coalesce(sum(capacity_held), 0) FROM inventory_ledger WHERE session_id = $1`,
+		f.sessionID).Scan(&out.capacityHeld); err != nil {
+		t.Fatalf("sum inventory_ledger.capacity_held: %v", err)
+	}
+	return out
+}
+
+// assertNoInventoryTaken is the regression that matters: it proves the
+// refused checkout left the session exactly as it found it.
+func (f *hostedOrgFixture) assertNoInventoryTaken(t *testing.T, ctx context.Context, before holdFootprint) {
+	t.Helper()
+	after := f.footprint(t, ctx)
+	if after.reservations != before.reservations {
+		t.Errorf("reservations = %d, want %d — a refused checkout created a hold that only the TTL sweep would release",
+			after.reservations, before.reservations)
+	}
+	if after.unavailable != before.unavailable {
+		t.Errorf("non-available session_seats = %d, want %d — places were held for a cart that could never be paid for",
+			after.unavailable, before.unavailable)
+	}
+	if after.capacityHeld != before.capacityHeld {
+		t.Errorf("inventory_ledger.capacity_held = %d, want %d — capacity was reserved for a cart that could never be paid for",
+			after.capacityHeld, before.capacityHeld)
+	}
+}
+
 // TestHostedCheckout_UnconfiguredOrgIsRefusedLoudly proves an organizer who
 // has not finished connecting Stripe gets a specific error instead of a dead
-// redirect — the exact failure this wave exists to remove.
+// redirect — the exact failure this wave exists to remove — AND that the
+// refusal costs the session nothing.
+//
+// Until 2026-09-20 the configuration was only resolved AFTER the hold
+// transaction had committed, so every buyer attempt left a real reservation
+// behind for the ~31-minute TTL. Three failed attempts on a live 15-seat
+// master class dropped its availability to 12 with nothing sold.
 func TestHostedCheckout_UnconfiguredOrgIsRefusedLoudly(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := t.Context()
@@ -783,6 +843,7 @@ func TestHostedCheckout_UnconfiguredOrgIsRefusedLoudly(t *testing.T) {
 
 	stripe := newStubStripe(t)
 	srv := buildHostedCheckoutServer(t, pool, stripe.baseURL())
+	before := f.footprint(t, ctx)
 
 	code, body := f.startCheckout(t, srv, hostedTicketsBaseURL+"/shows")
 	if code != http.StatusUnprocessableEntity {
@@ -793,6 +854,190 @@ func TestHostedCheckout_UnconfiguredOrgIsRefusedLoudly(t *testing.T) {
 	}
 	if len(stripe.sessions) != 0 {
 		t.Error("a hosted session was created for an org with no usable payment config")
+	}
+	f.assertNoInventoryTaken(t, ctx, before)
+}
+
+// TestHostedCheckout_NoPaymentConfigTakesNoInventory covers the live shape of
+// the defect: the organizer has no payment_provider_configs row at all.
+//
+// Repeating the attempt must be free of charge to the session — the whole
+// point is that a buyer retrying a broken storefront cannot sell it out.
+func TestHostedCheckout_NoPaymentConfigTakesNoInventory(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	f := newHostedOrgFixture(t, ctx, pool, "nocfg")
+	defer f.cleanup()
+
+	if _, err := pool.Exec(ctx,
+		`DELETE FROM payment_provider_configs WHERE org_id = $1`, f.orgID); err != nil {
+		t.Fatalf("delete payment config: %v", err)
+	}
+
+	stripe := newStubStripe(t)
+	srv := buildHostedCheckoutServer(t, pool, stripe.baseURL())
+	before := f.footprint(t, ctx)
+
+	// Three attempts, exactly as the live buyers made.
+	for attempt := 1; attempt <= 3; attempt++ {
+		code, body := f.startCheckout(t, srv, hostedTicketsBaseURL+"/shows")
+		if code != http.StatusUnprocessableEntity {
+			t.Fatalf("attempt %d: checkout/start with no payment config = %d, want 422; body: %s", attempt, code, body)
+		}
+		if !strings.Contains(string(body), "checkout.payment_not_configured") {
+			t.Errorf("attempt %d: error body = %s; want the checkout.payment_not_configured code", attempt, body)
+		}
+	}
+	if len(stripe.sessions) != 0 {
+		t.Error("the provider was called for an org with no payment config at all")
+	}
+	f.assertNoInventoryTaken(t, ctx, before)
+
+	// And the session is still fully sellable: nothing was consumed.
+	var available int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM session_seats WHERE session_id = $1 AND status = 'available'`,
+		f.sessionID).Scan(&available); err != nil {
+		t.Fatalf("count available places: %v", err)
+	}
+	if available != 5 {
+		t.Errorf("available GA places = %d, want all 5 — the failed attempts consumed inventory", available)
+	}
+}
+
+// TestHostedCheckout_EmptyAPIKeyTakesNoInventory is the same regression for a
+// config row that exists and looks configured but carries no usable
+// credential. It is the easiest way for an organizer to half-finish setup,
+// and it used to fail only after the commit.
+func TestHostedCheckout_EmptyAPIKeyTakesNoInventory(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	f := newHostedOrgFixture(t, ctx, pool, "nokey")
+	defer f.cleanup()
+
+	if _, err := pool.Exec(ctx,
+		`UPDATE payment_provider_configs
+		    SET secrets = jsonb_set(secrets, '{api_key}', '""')
+		  WHERE org_id = $1`, f.orgID); err != nil {
+		t.Fatalf("blank the api_key: %v", err)
+	}
+
+	stripe := newStubStripe(t)
+	srv := buildHostedCheckoutServer(t, pool, stripe.baseURL())
+	before := f.footprint(t, ctx)
+
+	code, body := f.startCheckout(t, srv, hostedTicketsBaseURL+"/shows")
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("checkout/start with an empty api_key = %d, want 422; body: %s", code, body)
+	}
+	if !strings.Contains(string(body), "checkout.payment_not_configured") {
+		t.Errorf("error body = %s; want the checkout.payment_not_configured code", body)
+	}
+	if len(stripe.sessions) != 0 {
+		t.Error("the provider was called with an empty api_key")
+	}
+	f.assertNoInventoryTaken(t, ctx, before)
+}
+
+// TestHostedCheckout_UnsupportedProviderTakesNoInventory covers the other
+// pre-flight verdict: the channel names a provider arena cannot host a page
+// with. It must be refused with its own code, and equally cost nothing.
+func TestHostedCheckout_UnsupportedProviderTakesNoInventory(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	f := newHostedOrgFixture(t, ctx, pool, "badprov")
+	defer f.cleanup()
+
+	// allpay is a real, CHECK-allowed sales_channels.provider value that
+	// cannot host a Stripe-style checkout page.
+	if _, err := pool.Exec(ctx,
+		`UPDATE sales_channels SET provider = 'allpay' WHERE id = $1`, f.channelID); err != nil {
+		t.Fatalf("set an unsupported provider: %v", err)
+	}
+
+	stripe := newStubStripe(t)
+	srv := buildHostedCheckoutServer(t, pool, stripe.baseURL())
+	before := f.footprint(t, ctx)
+
+	code, body := f.startCheckout(t, srv, hostedTicketsBaseURL+"/shows")
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("checkout/start on an unsupported provider = %d, want 422; body: %s", code, body)
+	}
+	if !strings.Contains(string(body), "checkout.payment_provider_unsupported") {
+		t.Errorf("error body = %s; want the checkout.payment_provider_unsupported code", body)
+	}
+	f.assertNoInventoryTaken(t, ctx, before)
+}
+
+// TestHostedCheckout_FreeCartNeedsNoProvider is the guard on the pre-flight's
+// own blast radius: a zero-total cart has no payment to configure, so it must
+// still complete for an organization that has never connected a provider.
+//
+// Without this, "check the payment config before the hold" would silently
+// break every free event.
+func TestHostedCheckout_FreeCartNeedsNoProvider(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	f := newHostedOrgFixture(t, ctx, pool, "free")
+	defer f.cleanup()
+
+	// A free category, and an organization with no payment provider at all.
+	if _, err := pool.Exec(ctx,
+		`UPDATE ticket_tiers SET pricing_mode = 'free', price_amount = 0 WHERE id = $1`, f.tierID); err != nil {
+		t.Fatalf("make the tier free: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`DELETE FROM payment_provider_configs WHERE org_id = $1`, f.orgID); err != nil {
+		t.Fatalf("delete payment config: %v", err)
+	}
+
+	stripe := newStubStripe(t)
+	srv := buildHostedCheckoutServer(t, pool, stripe.baseURL())
+	q := gen.New(pool)
+
+	code, body := f.startCheckout(t, srv, hostedTicketsBaseURL+"/shows")
+	if code != http.StatusCreated {
+		t.Fatalf("free checkout/start = %d, want 201 — a free order needs no payment provider; body: %s", code, body)
+	}
+	var start hostedStartResponse
+	if err := json.Unmarshal(body, &start); err != nil {
+		t.Fatalf("decode checkout/start: %v", err)
+	}
+	if len(stripe.sessions) != 0 {
+		t.Error("a hosted payment page was created for a zero-total cart")
+	}
+
+	csID := uuid.MustParse(start.CheckoutSession.ID)
+	cs, err := q.GetCheckoutSessionByID(ctx, csID)
+	if err != nil {
+		t.Fatalf("GetCheckoutSessionByID: %v", err)
+	}
+	if cs.Total == nil || *cs.Total != 0 {
+		t.Fatalf("checkout total = %v; want 0", cs.Total)
+	}
+	if cs.State != "completed" {
+		t.Errorf("free checkout state = %q; want completed — a free order finishes inline", cs.State)
+	}
+	order, err := q.GetOrderByCheckoutSession(ctx, csID)
+	if err != nil {
+		t.Fatalf("GetOrderByCheckoutSession: %v", err)
+	}
+	if order.Status != "paid" {
+		t.Errorf("free order status = %q; want paid", order.Status)
+	}
+
+	// The hold it legitimately DID take is still there — the pre-flight must
+	// not have rolled a good checkout back.
+	after := f.footprint(t, ctx)
+	if after.reservations != 1 {
+		t.Errorf("reservations = %d, want 1 for a successful free checkout", after.reservations)
+	}
+	if after.unavailable != 2 {
+		t.Errorf("non-available places = %d, want 2 (the qty this checkout bought)", after.unavailable)
 	}
 }
 
