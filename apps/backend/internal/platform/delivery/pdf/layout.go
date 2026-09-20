@@ -9,21 +9,25 @@
 // The three constraints the original encodes, repeated here because breaking
 // any of them is silent and expensive:
 //
-//   - ONE CODE BLOCK PER PHONE SCREEN. The page is 105x297 mm — half of A4
-//     lengthwise, NOT A5 — and the code block is absolutely positioned at
-//     bottomTop (140 mm) on every page. ONE PDF CARRIES A WHOLE ORDER, one
+//   - ONE CODE BLOCK PER PHONE SCREEN, AND IT IS THE PAGE HEIGHT THAT
+//     GUARANTEES IT — never the anchor's position. The page is 105x297 mm —
+//     half of A4 lengthwise, NOT A5. ONE PDF CARRIES A WHOLE ORDER, one
 //     ticket per page, so the page before and the page after this one are
-//     other people's live tickets, not blanks: the page length is the only
-//     thing that keeps two consecutive tickets' codes further apart than a
-//     fit-to-width viewport can show (a 21:9 phone tops out around 245 mm of
-//     a 105 mm-wide page; consecutive codes sit ~290 mm apart). Making the
-//     QR the primary, LARGE mark makes this MORE load-bearing, not less: a
-//     60 mm QR resolves from further away, further off-axis and at a
-//     coarser camera focus than the old 32 mm one did, so the neighbouring
-//     ticket's QR drifting into frame is now a realistic mis-scan rather
-//     than a theoretical one, and page length is what prevents it. The page
-//     height equals A4's, so the sheet also prints at exactly 100% and "2
-//     pages per sheet" tiles two tickets onto one A4.
+//     other people's live tickets, not blanks, and the page length is the
+//     only thing that keeps two consecutive tickets' codes further apart
+//     than a fit-to-width viewport can show (a 21:9 phone tops out around
+//     245 mm of a 105 mm-wide page). Consecutive pages' code blocks sit
+//     EXACTLY ONE PAGE APART wherever bottomTop happens to be, because every
+//     page anchors its block at the same offset — so moving the anchor UP to
+//     buy room for bigger codes is safe and costs this guarantee nothing,
+//     while SHORTENING THE PAGE would destroy it outright. 297 mm is not
+//     negotiable; 130 mm is. Big codes make the page height more
+//     load-bearing, not less: a 66 mm QR and an 80 mm barcode resolve from
+//     further away, further off-axis and at a coarser camera focus than the
+//     old 32 mm marks did, so a neighbouring ticket drifting into frame is a
+//     realistic mis-scan rather than a theoretical one. The page height
+//     equals A4's, so the sheet also prints at exactly 100% and "2 pages per
+//     sheet" tiles two tickets onto one A4.
 //   - THE FLOWING TOP CAN NEVER PUSH THE BOTTOM. Everything above bottomTop
 //     flows; the code block does not. A long title or a long address eats
 //     its own slack, never the codes' position — which is precisely what
@@ -131,6 +135,12 @@ type layoutSpec struct {
 	// ticket that would be torn at the gate; these tickets live on a phone
 	// screen and nobody tears them, so the rule was removed rather than
 	// kept as decoration.
+	//
+	// bottomTop is the same on every page, which is what keeps consecutive
+	// tickets' codes a fixed distance apart; its VALUE, though, is just a
+	// budget split between the flowing details above and the codes below
+	// (see the package comment), and it was moved up from 140 mm to 130 mm
+	// to pay for the reference-sized barcode.
 	bottomTop float64
 	// qrSize is the nominal QR edge; qrMinSize is how far fitQRSize may
 	// shrink it when an unusually tall footer squeezes the block.
@@ -159,30 +169,53 @@ type layoutSpec struct {
 
 // ticketSpec is the one page geometry this renderer has.
 //
-// # Which code is the primary one
+// # Both codes are wide
 //
 // The QR is what the buyer holds up to the gate and what entrance control
 // (MACS) actually reads, and a QR resolves off a phone screen — backlit,
 // smudged, at an angle, at whatever brightness the buyer left the phone on —
-// far more reliably than a barcode does. It is therefore drawn FIRST, CENTRED
-// and LARGE (qrSize, 60 mm). The barcode is the secondary aid: deliberately
-// narrower (~56 mm against the old 96 mm) and shorter, so that at a glance it
-// reads as an accessory to the QR rather than as a second, competing mark.
-// Its human-readable digits stay large enough to read aloud and type, because
-// those digits — not the bars — are the real fallback when a scanner fails.
+// far more reliably than a barcode does, so it is drawn FIRST, CENTRED and
+// LARGE. But the barcode is not an accessory: the production ticket these
+// buyers already know prints an 81.5 x 50 mm symbol with 23 pt digits, that
+// is the weight of mark venue staff look for, and an earlier revision that
+// shrank it to ~56 x 15 mm was wrong. BOTH marks are now wide. Both carry
+// EXACTLY the same value (the EAN-13 digits), so it never matters which one
+// a scanner happens to catch.
 //
-// Both codes carry EXACTLY the same value (the EAN-13 digits), so it never
-// matters which one a scanner happens to catch.
+// # The block budget, and what it cost
+//
+// The block is anchored, so everything in it has to fit between bottomTop
+// and the footer sitting above bottomSafety. At the old 140 mm anchor there
+// was ~147 mm; a reference-sized barcode under a barcode-width QR needs
+// ~176 mm. The anchor therefore moved UP to 130 mm — which the package
+// comment explains is free, because it is the PAGE HEIGHT, not the anchor's
+// position, that keeps two tickets' codes off one phone screen. It could not
+// move further: the flowing block above it (header, title, rule, the 48 mm
+// poster, the date/venue column, the CATEGORY/PRICE row and the HOLDER row)
+// ends at ~126 mm on the most crowded realistic ticket even after
+// distributeFlowSlack has compressed every gap to flowGapMinScale, and the
+// details must keep flowGutterMin clear of the QR's opaque raster.
+//
+// 130 mm still does not buy everything, so, in the order the owner set:
+//
+//   - QR WIDTH was traded first: 66 mm nominal, not the barcode's 80 mm.
+//   - BAR HEIGHT second: 48 mm against the reference's 50.
+//   - ONE GAP last: qrGapBelow 7 -> 6 mm.
+//
+// Bar WIDTH was not traded — it is what makes the symbol read like the
+// reference — and neither was the poster nor the page length.
 //
 // 13 numeric characters at the highest error-correction level fit in a
-// version-1 symbol (21x21 modules), so at 60 mm a module is ~2.8 mm — an
+// version-1 symbol (21x21 modules), so at 66 mm a module is ~3.1 mm — an
 // order of magnitude above the practical floor, with the error correction
 // left at its maximum so a thumb-smudged or partly-glared code still
-// resolves. The size is bounded not by legibility but by the block budget:
-// the code block must still fit between bottomTop and the footer sitting
-// above the bottom safety margin. fitQRSize gives back QR edge before
+// resolves. fitQRSize gives back QR edge (never below qrMinSize) before
 // anything is allowed to overflow, because a 40 mm QR still scans perfectly
-// while a footer printed off the bottom of the page is simply broken.
+// while a footer printed off the bottom of the page is simply broken; a
+// ticket with a tall footer — a full legal identification block, or a
+// four-line closing note — therefore prints a somewhat smaller QR than one
+// with a short footer. Every ticket of one ORDER shares a footer, so the
+// codes never vary from page to page inside a PDF.
 var ticketSpec = layoutSpec{
 	pageW: mm(105), pageH: mm(297),
 
@@ -231,10 +264,10 @@ var ticketSpec = layoutSpec{
 	infoValueLineH:         1.3,
 	infoRowGap:             mm(1),
 
-	bottomTop:      mm(140),
-	qrSize:         mm(60),
+	bottomTop:      mm(130),
+	qrSize:         mm(66),
 	qrMinSize:      mm(40),
-	qrGapBelow:     mm(7),
+	qrGapBelow:     mm(6),
 	ticketNoFS:     9.5,
 	ticketNoLineH:  1.3,
 	ticketNoGap:    mm(2.4),
@@ -244,29 +277,44 @@ var ticketSpec = layoutSpec{
 	footLineH:      1.55,
 	bottomSafety:   mm(10),
 
-	// The barcode is the SECONDARY mark, and these numbers are what make it
-	// read that way. 0.465 mm modules put the 95-module symbol, its quiet
-	// zones and the leading digit inside ~56 mm — a little over half the old
-	// 96 mm, and narrower than the 60 mm QR above it, which is the whole
-	// point: whatever the buyer's eye lands on first must be the QR.
+	// These are the reference ticket's own barcode proportions, within what
+	// the page can hold with the quiet zones intact.
 	//
-	// 0.465 mm is ~140% of the GS1 nominal X dimension (0.33 mm), so the
-	// symbol is still comfortably above spec on paper at 100%; on a phone,
-	// where the page is rendered at roughly two thirds of its printed width,
-	// it lands near nominal. That is an acceptable trade now that the
-	// barcode is no longer the mark a gate is expected to read — and the
-	// human-readable digits below it (eanDigitFS 12pt, well above the 9.5pt
-	// ticket-number line) stay the real manual fallback.
+	// WIDTH is the one number that was not traded: 95 modules span 80 mm
+	// (the reference measures 81.5 mm), which is what makes the symbol read
+	// as the same weight of element the buyer sees on the production
+	// ticket. The missing 1.5 mm buys margin, because unlike the reference
+	// this layout actually reserves the GS1 quiet zones: the leading digit,
+	// the 11-module left zone, the symbol and the 7-module right zone come
+	// to ~285 pt on a 297.64 pt page, leaving ~2.2 mm of page either side.
+	// At 81.5 mm that margin falls to ~1.3 mm, which a printer's unprintable
+	// edge would start eating into the left quiet zone.
 	//
-	// eanBarH 15 mm truncates the symbol relative to its GS1-proportional
-	// height for this width: deliberate, standard practice for a secondary
-	// in-line barcode, and still 3 mm of shrink headroom above
-	// eanMinBarHeightPt before drawEAN13Symbol would drop the symbol.
-	eanModuleW:    mm(0.465),
-	eanBarH:       mm(15),
+	// The reference prints a ">" light-margin indicator after the symbol.
+	// It is deliberately NOT drawn here: it exists to show a scanner
+	// operator where the right quiet zone ends, and the reference needs it
+	// precisely because it leaves no right quiet zone at all (its bars end
+	// 1.8 pt from the ">"). This layout reserves the full 7 modules, so the
+	// mark would be redundant — and at 23 pt it is 6 mm wide, which is more
+	// page than exists to the right of a quiet zone that is actually there.
+	//
+	// 0.842 mm modules are ~255% of the GS1 nominal X dimension (0.33 mm),
+	// so the symbol is far above spec on paper at 100% and still well above
+	// it on a phone, where the page renders at roughly two thirds of its
+	// printed width.
+	//
+	// eanBarH 48 mm is 2 mm under the reference's 50 — the second trade the
+	// block budget demanded (see the doc comment above) — and leaves 36 mm
+	// of shrink headroom above eanMinBarHeightPt before drawEAN13Symbol
+	// would drop the symbol. eanDigitFS 23 pt matches the reference's 23.44
+	// and is more than twice the 9.5 pt ticket-number line under it, which
+	// is the point: those digits, not the bars, are what staff read aloud
+	// and type when a scanner fails.
+	eanModuleW:    mm(80.0 / 95.0),
+	eanBarH:       mm(48),
 	eanGuardExtra: mm(1.2),
-	eanDigitFS:    12,
-	eanLeadGap:    3,
+	eanDigitFS:    23,
+	eanLeadGap:    2,
 }
 
 // specFor maps a Format to its geometry. Both formats resolve to the same
@@ -285,14 +333,14 @@ func specFor(f Format) (layoutSpec, error) {
 func (s layoutSpec) contentW() float64 { return s.pageW - 2*s.sideMargin }
 
 // qrPixelSize is the raster size of the QR image handed to gofpdf. It has to
-// stay ahead of the size the QR is DRAWN at (ticketSpec.qrSize, 60 mm): the
+// stay ahead of the size the QR is DRAWN at (ticketSpec.qrSize, 66 mm): the
 // PNG is always scaled DOWN into the page box, never up, so no resampling can
-// soften a module edge and the symbol prints crisp at 300 dpi. go-qrcode
-// rounds this up to a whole number of pixels per module, so the source image
-// is module-aligned by construction. It was 512 while the QR was 32 mm; a
-// 60 mm QR needs more, and the PNG compresses to a couple of kilobytes either
-// way because it is two flat colours.
-const qrPixelSize = 768
+// soften a module edge and the symbol prints crisp at 300 dpi — where 66 mm
+// is 780 px, which is why 768 was no longer enough. go-qrcode rounds this up
+// to a whole number of pixels per module, so the source image is
+// module-aligned by construction. The PNG compresses to a couple of kilobytes
+// at any of these sizes because it is two flat colours.
+const qrPixelSize = 1024
 
 // newDoc builds the empty, page-less document every render (and every
 // measuring pass) starts from.
@@ -382,9 +430,11 @@ const (
 // flowGutterTarget is the white distributeFlowSlack AIMS to leave between the
 // last line of the details and the top of the code block when the ticket has
 // room to spare. flowGutterMin is the hard floor it will compress the details
-// to reach when they do not: a 60 mm QR is read by pointing a camera at it,
-// and text crowding — let alone overprinting — its top edge is a scan
-// failure, not a cosmetic blemish.
+// to reach when they do not: the QR is read by pointing a camera at it, and
+// text crowding — let alone overprinting — its top edge is a scan failure,
+// not a cosmetic blemish. It is also the floor the 130 mm anchor was chosen
+// against: the most crowded realistic ticket ends its details at ~126 mm even
+// fully compressed, so the anchor cannot move any further up.
 var (
 	flowGutterTarget = mm(14)
 	flowGutterMin    = mm(4)
@@ -395,10 +445,11 @@ var (
 // code block — opened up when the ticket has little to say, closed down when
 // it has too much.
 //
-// The anchor is NOT negotiable (see the package comment: it is what keeps
-// every ticket's codes one full page from its neighbours' in an order-wide
-// PDF). So a ticket with little above it — no poster, a one-line title, no
-// seat — used to leave a 60 mm dead band in the middle of the page, and both
+// The anchor does not move per ticket — every page puts its code block at
+// the same offset, which is what keeps every ticket's codes one full page
+// from its neighbours' in an order-wide PDF. So a ticket with little above
+// it — no poster, a one-line title, no seat — used to leave a wide dead
+// band in the middle of the page, and both
 // of the first live clients' tickets look exactly like that, making it the
 // common case rather than the exception. At the other end, a ticket with a
 // poster AND a five-line title AND a wrapped address used to run straight
@@ -769,21 +820,23 @@ func drawTracked(doc *gofpdf.Fpdf, s string, x, baseline, fs, tracking float64) 
 }
 
 // eanTextBlockH is the vertical room drawEAN13Symbol needs below the bars
-// for the human-readable digits (gap + cap height + descender buffer).
+// for the human-readable digits (gap + cap height + descender buffer). It
+// must stay in step with the baseline drawEAN13Symbol actually computes.
 func eanTextBlockH(spec layoutSpec) float64 {
-	return eanTextGapPt + spec.eanDigitFS + eanTextDescentPt
+	return eanTextGapPt + spec.eanDigitFS*eanDigitCapRatio + eanTextDescentPt
 }
 
 // fitQRSize returns the QR edge to draw given `available` pt of room between
 // the top of the code block and the highest y the codes may reach.
 //
-// The QR is the primary mark, so it is drawn at its nominal size whenever the
-// page can hold the nominal barcode under it, and shrinks — never below
-// spec.qrMinSize — only when an unusually tall footer (a full legal
-// identification block plus a wrapped organizer note) would otherwise push
-// the block off the bottom of the page. Below qrMinSize it stops yielding and
-// drawEAN13Symbol's own shrink-then-skip takes over: a 40 mm QR that scans is
-// worth more than a barcode nobody will point a camera at.
+// The barcode is drawn at the reference's proportions and the QR takes what
+// is left, so the QR is the one that yields: it prints at its nominal size
+// whenever the page can hold the nominal barcode under it, and shrinks —
+// never below spec.qrMinSize — when a tall footer (a full legal
+// identification block, or a note that wraps to four lines) would otherwise
+// push the block off the bottom of the page. Below qrMinSize it stops
+// yielding and drawEAN13Symbol's own shrink-then-skip takes over: a 40 mm QR
+// that scans is worth more than a barcode nobody will point a camera at.
 func fitQRSize(spec layoutSpec, available float64) float64 {
 	below := spec.qrGapBelow + spec.eanBarH + spec.eanGuardExtra + eanTextBlockH(spec)
 	size := available - below
@@ -804,12 +857,13 @@ func fitQRSize(spec layoutSpec, available float64) float64 {
 // carrying a whole order it is what keeps every ticket's codes exactly one
 // page apart from its neighbours'.
 //
-// Order of marks, largest first: the QR is centred at the very top of the
-// block because it is the thing the buyer holds up and the thing entrance
-// control reads. The barcode follows, narrower and shorter, as a secondary
-// aid — and its human-readable digits beneath it are the manual-entry
-// fallback staff type when a scanner fails, which is why they are set well
-// above the ticket-number line's size.
+// The QR is centred at the very top of the block because it is the thing the
+// buyer holds up and the thing entrance control reads. The barcode follows,
+// at the width and bar height of the production ticket buyers already know —
+// not as an accessory to the QR but as the second wide mark on the page — and
+// its human-readable digits beneath it are the manual-entry fallback staff
+// type when a scanner fails, which is why they are set at more than twice the
+// ticket-number line's size.
 //
 // There is no tear line: the ported original's dashed rule belonged to a
 // paper ticket somebody would tear at the gate, and these are read off a

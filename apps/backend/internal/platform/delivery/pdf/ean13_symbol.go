@@ -51,8 +51,19 @@ const (
 )
 
 // eanTextGapPt is the vertical gap between the bottom of the (tallest)
-// guard bars and the baseline area of the human-readable digits.
+// guard bars and the CAP TOP of the human-readable digits.
 const eanTextGapPt = 2.0
+
+// eanDigitCapRatio is the cap height of the embedded DejaVu Sans Condensed
+// digits as a fraction of the font size. The digits are positioned by their
+// cap top, not by the full em box: reserving a whole em above the baseline
+// would leave a quarter of the font size — 6 pt at the 23 pt the digits are
+// now set in — of dead white between the bars and the numbers they belong
+// to. The reference ticket tucks its digits directly under the bars, and on
+// a page whose code block is 10 mm short of its budget that 2 mm is not
+// decoration to spend. Digits have no descenders, so eanTextDescentPt below
+// the baseline is pure clearance for the ticket-number line that follows.
+const eanDigitCapRatio = 0.73
 
 // eanTextDescentPt is a small buffer reserved below the human-readable
 // digits' baseline for descenders, so the returned y cursor never sits
@@ -288,7 +299,7 @@ func drawEAN13Symbol(pdf *gofpdf.Fpdf, code string, spec layoutSpec, y, footerLi
 	}
 
 	maxBarH := barH + guardExtra
-	baselineY := y + maxBarH + eanTextGapPt + spec.eanDigitFS
+	baselineY := y + maxBarH + eanTextGapPt + spec.eanDigitFS*eanDigitCapRatio
 	pdf.SetTextColor(0, 0, 0)
 	pdf.Text(startX, baselineY, lead)
 	leftHalfX := originX + 3*spec.eanModuleW

@@ -151,7 +151,7 @@ func TestBottomBlock_IsAnchoredRegardlessOfTitleLength(t *testing.T) {
 		t.Errorf("the QR moved with the title length: %+v vs %+v", shortQR, longQR)
 	}
 	if diff := shortQR.top - ticketSpec.bottomTop; diff > 0.05 || diff < -0.05 {
-		t.Errorf("the QR starts at %.2fpt, want the anchor %.2fpt (140 mm from the top)",
+		t.Errorf("the QR starts at %.2fpt, want the anchor %.2fpt (130 mm from the top)",
 			shortQR.top, ticketSpec.bottomTop)
 	}
 	if diff := shortQR.x - (ticketSpec.pageW-shortQR.w)/2; diff > 0.05 || diff < -0.05 {
@@ -177,81 +177,122 @@ func TestBottomBlock_HasNoTearLine(t *testing.T) {
 	}
 }
 
-// TestCodeBlock_QRIsPrimaryBarcodeIsSecondary is the owner's first two
-// changes, as geometry. Entrance control (MACS) scans the QR, and a QR reads
-// off a phone screen far more reliably than a barcode does, so the QR is the
-// mark the buyer holds up: centred, and big. The barcode is demoted to an
-// aid — narrower, shorter, below — while its human-readable digits stay large
-// enough to read aloud and type, because those digits are the manual fallback
-// when a scanner fails.
-func TestCodeBlock_QRIsPrimaryBarcodeIsSecondary(t *testing.T) {
+// barsSpan is the width the printed BARS occupy — the measurement taken off
+// the owner's production ticket (38.2 -> 269.2 pt, 81.5 mm), and therefore
+// the one worth comparing against it. It excludes the quiet zones and the
+// leading human-readable digit, which barcodeFootprint adds back.
+func barsSpan(bars []box) (left, right float64) {
+	left, right = bars[0].x, bars[0].right()
+	for _, b := range bars {
+		if b.x < left {
+			left = b.x
+		}
+		if b.right() > right {
+			right = b.right()
+		}
+	}
+	return left, right
+}
+
+// TestCodeBlock_BothCodesAreWide replaces an earlier assertion that the
+// barcode must be strictly narrower and shorter than the QR. That invariant
+// was wrong: the owner compared the page against the production ticket his
+// buyers already hold — an 81.5 x 50 mm symbol with 23.4 pt digits — and
+// asked for BOTH marks wide, not one demoted to an accessory. A regression
+// back to the ~56 x 15 mm barcode must fail here.
+//
+// What is actually worth guarding, then, is that each mark stays big enough
+// to do its own job: the barcode at the reference's proportions, the QR still
+// large enough to read off a phone at arm's length, and the human-readable
+// digits far above the ticket-number line, since those digits are what staff
+// type when every scanner has failed.
+func TestCodeBlock_BothCodesAreWide(t *testing.T) {
 	tk := noArt(validTicket(t))
 	out := render(t, tk)
 
 	qr := theQR(t, out)
-	if qr.w < mm(50) {
-		t.Errorf("the QR is %.1f mm across; the owner asked for 50 mm or more", qr.w/mmToPt)
-	}
 	if diff := qr.w - qr.h; diff > 0.05 || diff < -0.05 {
 		t.Errorf("the QR is not square: %.2f x %.2f", qr.w, qr.h)
 	}
 
 	bars := barcodeBars(t, out, qr)
+	barsLeft, barsRight := barsSpan(bars)
+	barW := barsRight - barsLeft
 	left, right, top, bottom := barcodeFootprint(t, bars, leadDigitWidth(t, tk.EAN13))
-	barW, barH := right-left, bottom-top
+	barH := bottom - top
 
-	// Narrower AND shorter than the QR, in both directions, so that whatever
-	// the buyer's eye lands on first is the QR.
-	if barW >= qr.w {
-		t.Errorf("the barcode (%.1f mm wide) is not narrower than the QR (%.1f mm)",
-			barW/mmToPt, qr.w/mmToPt)
+	// The reference measures 81.5 mm of bars; this layout draws 80 and
+	// spends the difference on keeping the quiet zones on the page. The
+	// bounds are loose enough for a deliberate tweak and tight enough that
+	// neither the demoted ~56 mm symbol nor the pre-port full-bleed ~96 mm
+	// one passes.
+	if barW < mm(78) || barW > mm(85) {
+		t.Errorf("the barcode's bars span %.1f mm, want roughly 78-85 mm "+
+			"(the reference ticket measures 81.5 mm)", barW/mmToPt)
 	}
-	if barH >= qr.h {
-		t.Errorf("the barcode (%.1f mm tall) is not shorter than the QR (%.1f mm)",
-			barH/mmToPt, qr.h/mmToPt)
+	// ...and 50 mm of bar height in the reference, against which 15 mm was
+	// the demotion this test exists to prevent coming back.
+	if barH < mm(45) || barH > mm(55) {
+		t.Errorf("the bars are %.1f mm tall, want roughly 45-55 mm "+
+			"(the reference ticket measures 50 mm)", barH/mmToPt)
 	}
-	// The owner asked for roughly 55-65 mm; the bounds are loose enough that
-	// a deliberate tweak passes and a regression back to the old full-width
-	// (~96 mm) symbol does not.
-	if barW < mm(50) || barW > mm(68) {
-		t.Errorf("the barcode is %.1f mm wide, want roughly 55-65 mm", barW/mmToPt)
-	}
-	// The bars must still be tall enough to scan.
 	if barH < eanMinBarHeightPt {
 		t.Errorf("the bars are %.1f mm tall, below the %.1f mm scannability floor",
 			barH/mmToPt, eanMinBarHeightPt/mmToPt)
 	}
-	// ...and the digits under them must stay the legible manual fallback:
-	// larger than the ticket-number line they sit above.
-	if ticketSpec.eanDigitFS <= ticketSpec.ticketNoFS {
-		t.Errorf("the human-readable digits (%.1fpt) are no larger than the ticket number (%.1fpt)",
-			ticketSpec.eanDigitFS, ticketSpec.ticketNoFS)
+	// Everything the symbol needs — the leading digit, both quiet zones and
+	// the bars — has to be ON the page. At this width that is what limits it.
+	if left < 0 || right > ticketSpec.pageW {
+		t.Errorf("the barcode's footprint runs off the page: %.1f..%.1f mm of %.1f mm",
+			left/mmToPt, right/mmToPt, ticketSpec.pageW/mmToPt)
+	}
+
+	// The QR gives up width first when the block budget is tight (see
+	// fitQRSize), so it is the smaller of the two marks — but "wide" is the
+	// whole point of the owner's correction, and it must not slide back
+	// towards the 32 mm it started life at.
+	if qr.w < mm(65) {
+		t.Errorf("the QR is %.1f mm across; the owner asked for a wide QR too "+
+			"(at least 65 mm on a typical ticket)", qr.w/mmToPt)
+	}
+	// A useful scale-free check that survives a future re-budget: whatever
+	// the two marks trade, the QR's edge stays at least the barcode's bar
+	// height, so neither reads as an afterthought beside the other.
+	if qr.w < barH {
+		t.Errorf("the QR (%.1f mm) is narrower than the barcode is tall (%.1f mm)",
+			qr.w/mmToPt, barH/mmToPt)
+	}
+
+	// The digits under the bars are the manual-entry fallback, so they are
+	// set appreciably larger than the ticket-number line below them — the
+	// reference prints them at 23.4 pt against a 9.5 pt number.
+	if ticketSpec.eanDigitFS < 2*ticketSpec.ticketNoFS {
+		t.Errorf("the human-readable digits (%.1fpt) are not appreciably larger "+
+			"than the ticket number (%.1fpt)", ticketSpec.eanDigitFS, ticketSpec.ticketNoFS)
 	}
 	if !usesFontSize(out, ticketSpec.eanDigitFS) {
 		t.Errorf("the human-readable digits were not drawn at %.1fpt", ticketSpec.eanDigitFS)
 	}
 }
 
-// TestCodeBlock_QuietZonesStayBlank guards the GS1 requirement that survives
-// the barcode's demotion: narrowing the symbol narrows its quiet zones with
-// it, and anything drawn into them stops a scanner finding the symbol's
-// edges. The leading human-readable digit is deliberately printed to the LEFT
-// of the left quiet zone, not inside it.
+// TestCodeBlock_QuietZonesStayBlank guards the GS1 requirement the whole
+// width budget was fought over: at 80 mm of bars the symbol, its quiet zones
+// and the leading digit occupy all but ~2 mm of the page either side, so
+// anything that creeps into a quiet zone — a wider digit, a light-margin ">",
+// a stray rule — stops a scanner finding the symbol's edges. The leading
+// human-readable digit is deliberately printed to the LEFT of the left quiet
+// zone, not inside it. (The reference ticket prints a ">" hard against its
+// bars precisely BECAUSE it reserves no right quiet zone at all; this layout
+// reserves the full 7 modules instead and omits the mark.)
 func TestCodeBlock_QuietZonesStayBlank(t *testing.T) {
 	tk := noArt(validTicket(t))
 	out := render(t, tk)
 
 	qr := theQR(t, out)
 	bars := barcodeBars(t, out, qr)
-	barsLeft, barsRight := bars[0].x, bars[0].right()
+	barsLeft, barsRight := barsSpan(bars)
 	barsBottom := bars[0].bottom()
 	for _, b := range bars {
-		if b.x < barsLeft {
-			barsLeft = b.x
-		}
-		if b.right() > barsRight {
-			barsRight = b.right()
-		}
 		if b.bottom() > barsBottom {
 			barsBottom = b.bottom()
 		}
@@ -277,11 +318,12 @@ func TestCodeBlock_QuietZonesStayBlank(t *testing.T) {
 	}
 }
 
-// TestCodeBlock_FitsThePageWithoutOverflow is the counterweight to making the
-// QR big: the block is anchored, so everything it grew into has to come out
-// of the room below it. The worst realistic ticket carries a full legal
-// identification block AND a long organizer note, which together wrap the
-// footer to a dozen lines.
+// TestCodeBlock_FitsThePageWithoutOverflow is the counterweight to making
+// BOTH marks big: the block is anchored, so everything the codes grew into
+// has to come out of the room below them. The worst realistic ticket carries
+// a full legal identification block AND a long organizer note, which together
+// wrap the footer to a dozen lines — and on that page the QR is expected to
+// be sitting on its floor with the bars shrunk under it, still complete.
 func TestCodeBlock_FitsThePageWithoutOverflow(t *testing.T) {
 	long := noArt(validTicket(t))
 	long.LegalName = "Actorre Producciones Sociedad Limitada"
