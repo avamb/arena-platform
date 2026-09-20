@@ -7,6 +7,7 @@
    * as colored swatches below the chips.
    */
   import type { FeedSession, Tier } from '../types.js';
+  import { sessionChipLabel } from '../lib/session-label.js';
 
   interface Props {
     sessions: FeedSession[];
@@ -16,31 +17,6 @@
   }
 
   const { sessions, selectedSession, onSelectSession, locale = 'en' }: Props = $props();
-
-  /** Format a session start_at ISO string as a short date chip label. */
-  function formatDate(isoDate: string, locale: string): string {
-    try {
-      return new Date(isoDate).toLocaleDateString(locale, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-      });
-    } catch {
-      return isoDate.slice(0, 10);
-    }
-  }
-
-  /** Format a session start_at ISO string as a short time label. */
-  function formatTime(isoDate: string, locale: string): string {
-    try {
-      return new Date(isoDate).toLocaleTimeString(locale, {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return isoDate.slice(11, 16);
-    }
-  }
 
   /** Format a price for the legend chip. */
   function formatPrice(tier: Tier): string {
@@ -61,6 +37,7 @@
   <div class="chips-row" role="tablist" aria-label="Event sessions">
     {#each sessions as session (session.id)}
       {@const isSelected = selectedSession?.id === session.id}
+      {@const label = sessionChipLabel(session.start_at, session.end_at, locale)}
       <button
         role="tab"
         aria-selected={isSelected}
@@ -70,8 +47,10 @@
         onclick={() => onSelectSession(session)}
         disabled={session.status === 'cancelled'}
       >
-        <span class="chip-date">{formatDate(session.start_at, locale)}</span>
-        <span class="chip-time">{formatTime(session.start_at, locale)}</span>
+        <span class="chip-date">{label.date}</span>
+        {#if label.time}
+          <span class="chip-time">{label.time}</span>
+        {/if}
       </button>
     {/each}
   </div>
