@@ -406,13 +406,19 @@ func (q *Queries) ListTicketsMissingEAN13(ctx context.Context, limit int32) ([]T
 
 const getTicketPresentationByID = `-- name: GetTicketPresentationByID :one
 SELECT t.system_ticket_id,
+       ord.system_id                 AS order_number,
        e.name                        AS event_name,
        s.start_at                    AS session_start_at,
        v.name                        AS venue_name,
+       COALESCE(NULLIF(btrim(v.address_line1), ''),
+                NULLIF(btrim(v.address),       '')) AS venue_address,
        COALESCE(t_en.value, ci.slug) AS venue_city,
        v.timezone                    AS venue_timezone,
        tt.name                       AS tier_name,
-       COALESCE(NULLIF(btrim(ord.buyer_name), ''), cu.display_name) AS holder_name
+       COALESCE(NULLIF(btrim(ord.buyer_name), ''), cu.display_name) AS holder_name,
+       oi.total                      AS price_minor,
+       NULLIF(btrim(ord.currency), '') AS price_currency,
+       COALESCE(s.poster_media_id, e.poster_media_id) AS poster_media_id
 FROM       tickets t
 LEFT JOIN  sessions      s  ON s.id  = t.session_id
 LEFT JOIN  events        e  ON e.id  = s.event_id
@@ -423,12 +429,15 @@ LEFT JOIN  i18n_text     t_en ON t_en.namespace = 'geo.cities'
 LEFT JOIN  ticket_tiers  tt ON tt.id = t.tier_id
 LEFT JOIN  orders       ord ON ord.id = t.order_id
 LEFT JOIN  customers     cu ON cu.id = ord.customer_id
+LEFT JOIN  order_items   oi ON oi.ticket_id = t.id
 WHERE  t.id = $1`
 
 // TicketPresentationRow is everything the ticket e-mail body and the PDF
 // e-ticket print about a ticket that does not live on the tickets row
-// itself: the event name, the session start, the venue (name, city and
-// IANA timezone), the price-tier / category name and the buyer's name.
+// itself: the order number, the event name, the session start, the venue
+// (name, street address, city and IANA timezone), the price-tier /
+// category name, the buyer's name, the price actually paid and the id of
+// the poster artwork to print.
 //
 // Every field except SystemTicketID is a pointer because the underlying
 // query LEFT JOINs each table — a ticket must stay renderable when its
@@ -439,10 +448,19 @@ type TicketPresentationRow struct {
 	// SystemTicketID is tickets.system_ticket_id (migration 0088) — the
 	// platform's own bigint identity for the ticket and the number the
 	// buyer sees, instead of the internal UUID.
-	SystemTicketID int64      `json:"system_ticket_id"`
+	SystemTicketID int64 `json:"system_ticket_id"`
+	// OrderNumber is orders.system_id — the buyer-facing order reference
+	// ("Order 9096" in the PDF footer) and the same integer the Bil24 wire
+	// calls orderId. NULL for a ticket with no order row (a legacy ticket,
+	// or an admin-issued complimentary one).
+	OrderNumber    *int64     `json:"order_number"`
 	EventName      *string    `json:"event_name"`
 	SessionStartAt *time.Time `json:"session_start_at"`
 	VenueName      *string    `json:"venue_name"`
+	// VenueAddress is the venue's structured street line (venues.address_line1,
+	// migration 0050), falling back to the legacy free-form venues.address
+	// (migration 0012) for a venue that was never re-entered structurally.
+	VenueAddress *string `json:"venue_address"`
 	// VenueCity is the English city name from i18n_text, falling back to
 	// the cities.slug — the same projection the MACS/webhook order export
 	// uses (orderexport.Row.CityName).
@@ -455,6 +473,20 @@ type TicketPresentationRow struct {
 	// HolderName is orders.buyer_name, falling back to the linked
 	// customers.display_name. NULL when neither is known.
 	HolderName *string `json:"holder_name"`
+	// PriceMinor is order_items.total for this ticket's own unit, in MINOR
+	// units — what the buyer actually paid for it, after its share of the
+	// order discount and of the service charge. NOT the tier's list price.
+	// NULL for a ticket with no order item; 0 for an invitation, whose
+	// whole subtotal is discounted (hbil24.complimentaryBreakdown).
+	PriceMinor *int64 `json:"price_minor"`
+	// PriceCurrency is orders.currency (ISO-4217) — the currency PriceMinor
+	// is denominated in. NULL exactly when the ticket has no order.
+	PriceCurrency *string `json:"price_currency"`
+	// PosterMediaID is the media_objects id of the artwork to print beside
+	// the date block: sessions.poster_media_id when the session overrides
+	// it, events.poster_media_id otherwise (migration 0082's documented
+	// resolution order). NULL when neither carries one.
+	PosterMediaID *uuid.UUID `json:"poster_media_id"`
 }
 
 // GetTicketPresentationByID resolves the presentation values for one
@@ -469,13 +501,18 @@ func (q *Queries) GetTicketPresentationByID(ctx context.Context, ticketID uuid.U
 	var p TicketPresentationRow
 	err := q.db.QueryRow(ctx, getTicketPresentationByID, ticketID).Scan(
 		&p.SystemTicketID,
+		&p.OrderNumber,
 		&p.EventName,
 		&p.SessionStartAt,
 		&p.VenueName,
+		&p.VenueAddress,
 		&p.VenueCity,
 		&p.VenueTimezone,
 		&p.TierName,
 		&p.HolderName,
+		&p.PriceMinor,
+		&p.PriceCurrency,
+		&p.PosterMediaID,
 	)
 	return p, err
 }

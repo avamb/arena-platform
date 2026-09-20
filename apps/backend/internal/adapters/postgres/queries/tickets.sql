@@ -185,14 +185,31 @@ LIMIT $1;
 -- soft-deleted, whose tier is NULL (GA), or which predates the orders
 -- aggregate must still resolve everything else. The query returns exactly
 -- one row for an existing ticket, with NULL for whatever is unavailable.
+--
+-- price_minor is order_items.total — what the buyer actually paid for THIS
+-- unit (unit_price minus its share of the order discount plus its share of
+-- the service charge), NOT ticket_tiers.price_amount, which is the list
+-- price the category happens to carry today. An invitation
+-- (orders.source='complimentary') discounts the whole subtotal, so its
+-- items total 0 and the renderer drops the price cell rather than printing
+-- "0" — see pdf.priceValue.
+--
+-- poster_media_id follows the documented resolution order of migration
+-- 0082: the session's own override first, the event's poster otherwise.
 SELECT t.system_ticket_id,
+       ord.system_id                 AS order_number,
        e.name                        AS event_name,
        s.start_at                    AS session_start_at,
        v.name                        AS venue_name,
+       COALESCE(NULLIF(btrim(v.address_line1), ''),
+                NULLIF(btrim(v.address),       '')) AS venue_address,
        COALESCE(t_en.value, ci.slug) AS venue_city,
        v.timezone                    AS venue_timezone,
        tt.name                       AS tier_name,
-       COALESCE(NULLIF(btrim(ord.buyer_name), ''), cu.display_name) AS holder_name
+       COALESCE(NULLIF(btrim(ord.buyer_name), ''), cu.display_name) AS holder_name,
+       oi.total                      AS price_minor,
+       NULLIF(btrim(ord.currency), '') AS price_currency,
+       COALESCE(s.poster_media_id, e.poster_media_id) AS poster_media_id
 FROM       tickets t
 LEFT JOIN  sessions      s  ON s.id  = t.session_id
 LEFT JOIN  events        e  ON e.id  = s.event_id
@@ -203,4 +220,5 @@ LEFT JOIN  i18n_text     t_en ON t_en.namespace = 'geo.cities'
 LEFT JOIN  ticket_tiers  tt ON tt.id = t.tier_id
 LEFT JOIN  orders       ord ON ord.id = t.order_id
 LEFT JOIN  customers     cu ON cu.id = ord.customer_id
+LEFT JOIN  order_items   oi ON oi.ticket_id = t.id
 WHERE  t.id = $1;

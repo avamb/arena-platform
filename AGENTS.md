@@ -1260,6 +1260,22 @@ entries short and factual.
   `customers.display_name`; venue city is the `i18n_text` English name
   falling back to `cities.slug`, the same projection `orderexport` uses.
   Add new presentation data to that ONE query, not to three enqueuers.
+  The same day, the four remaining fields the ported layout draws joined
+  it: `OrderNumber` (`orders.system_id`, the footer's "Order <n>"),
+  `VenueAddress` (`venues.address_line1` falling back to the legacy
+  free-form `venues.address`), `PriceMinor`/`Currency` and
+  `PosterMediaID` (`COALESCE(sessions.poster_media_id,
+  events.poster_media_id)`, migration 0082's order). **Price is
+  `order_items.total`, never `ticket_tiers.price_amount`** — what the
+  buyer paid for THAT unit after its share of the discount and of the
+  service charge; the tier column is only today's list price. A resolved
+  0 is deliberately left UNSET, which is the invitation case
+  (`complimentaryBreakdown` discounts the whole subtotal, so every item
+  totals 0) and makes `pdf.priceValue` drop the cell instead of printing
+  "0 EUR" on a gift. The poster's BYTES come from `resolvePoster`, which
+  goes through the same `MediaResolver` as the org logo, bounds the fetch
+  (5s, 8 MiB) and drops the artwork — never the e-mail — when it is
+  missing, slow, oversized or not a format `pdf.SupportsImage` accepts.
 - **The buyer never sees a ticket UUID.** The printed "Ticket ID" line, the
   PDF document title, the e-mail body and the attachment filename all carry
   `pdf.DisplayNumber(...)` — `tickets.system_ticket_id` (migration 0088),
@@ -1309,5 +1325,24 @@ entries short and factual.
   glyph per show operator and never appears as a single run in the content
   stream — assert on the glyphs, or on a value drawn with `MultiCell`. (4) A
   value that wraps is several runs, so a raw-bytes assertion on it must
-  match a PREFIX (`pdfTextPrefix`), not the whole string. (5) `ImageInfoType.i`
+  match a PREFIX (`pdfTextPrefix`), not the whole string — or, as
+  `presentation_integration_test.go` now does, extract ALL of the page's
+  text first (`pdfDrawnText` scans every `Td (<utf-16be>)Tj` run, joins
+  them and collapses whitespace) and assert against that. A fixture value
+  carrying a random nonce is exactly long enough to wrap, so the older
+  whole-string byte assertions in that file were failing against a fresh
+  database before this. (5) `ImageInfoType.i`
   — the `/I<id> Do` name — is a SHA-1 hex digest, not an index.
+- **`cmd/arena-worker` builds the `ticket.deliver` handler with NO
+  `MediaResolver`, so no organizer artwork reaches a production e-ticket
+  yet.** `delivery.HandlerOptions.Media` is left nil there (main.go, next
+  to `TicketQueries`/`Sender`), and `resolveBranding` / `resolvePoster`
+  both degrade silently: the e-mail header falls back to
+  `templates.PlatformLogoURL` and the PDF prints neither the org logo nor
+  the event poster, whatever `organizations.logo_media_id` /
+  `events.poster_media_id` say. The worker DOES build a `mediastore.Repo`
+  already, but only inside the `MEDIA_BACKEND`-gated `registerMediaGC`
+  helper and WITHOUT `SigningSecret`/`DownloadURLBase` — so wiring it into
+  delivery also means giving the worker those two config values, or the
+  e-mail's `<img src>` would come back empty. Until that lands, poster and
+  logo support is proven by tests only.

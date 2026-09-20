@@ -101,12 +101,13 @@ type Payload struct {
 	// purchase never stated a language (a gateway sale, or a ticket issued
 	// before 0105) and the renderer falls back to English.
 	Locale string `json:"locale,omitempty"`
-	// EventName, SessionStart, SessionTZ, VenueName, VenueCity, TierName,
-	// HolderName and TicketNumber are optional presentation hints that an
-	// enqueuer MAY bake into the job. All are safe to omit: the handler
-	// resolves whatever is missing from the ticket's own rows at render
-	// time (see presentation.go / step 8c below) exactly as it resolves
-	// the recipient address and the EAN-13 credential.
+	// EventName, SessionStart, SessionTZ, VenueName, VenueAddress,
+	// VenueCity, TierName, HolderName, TicketNumber, OrderNumber,
+	// PriceMinor/Currency and PosterMediaID are optional presentation
+	// hints that an enqueuer MAY bake into the job. All are safe to omit:
+	// the handler resolves whatever is missing from the ticket's own rows
+	// at render time (see presentation.go / step 8c below) exactly as it
+	// resolves the recipient address and the EAN-13 credential.
 	//
 	// A hint that IS set always wins over the resolved value, so an
 	// enqueuer that knows better (or a test that wants fixed content)
@@ -123,6 +124,29 @@ type Payload struct {
 	VenueCity    string    `json:"venue_city,omitempty"`
 	TierName     string    `json:"tier_name,omitempty"`
 	HolderName   string    `json:"holder_name,omitempty"`
+	// OrderNumber is the buyer-facing order reference printed in the PDF
+	// footer ("Order 9096") — orders.system_id, the same integer the Bil24
+	// wire calls orderId. Resolved at render time; empty drops the line.
+	OrderNumber string `json:"order_number,omitempty"`
+	// VenueAddress is the street line printed under the venue name.
+	// Resolved at render time from venues.address_line1 (falling back to
+	// the legacy free-form venues.address).
+	VenueAddress string `json:"venue_address,omitempty"`
+	// PriceMinor is what the buyer paid for THIS ticket, in minor units
+	// (order_items.total — not the tier's list price). nil means "not
+	// known"; the PDF then prints no price cell at all, which is also what
+	// an invitation gets, because printing "0" on a gift ticket reads as a
+	// pricing bug. Currency is the ISO code it is denominated in.
+	PriceMinor *int64 `json:"price_minor,omitempty"`
+	Currency   string `json:"currency,omitempty"`
+	// PosterMediaID is the media_objects id of the event/session poster
+	// drawn beside the date block — sessions.poster_media_id when the
+	// session overrides it, events.poster_media_id otherwise. Resolved at
+	// render time exactly like the presentation strings; the BYTES are then
+	// fetched through the same MediaResolver the org logo uses (step 8d),
+	// best effort, and a poster that cannot be fetched or is not an image
+	// format gofpdf accepts simply does not appear on the ticket.
+	PosterMediaID string `json:"poster_media_id,omitempty"`
 	// TicketNumber is the human-facing ticket number shown to the buyer
 	// (tickets.system_ticket_id rendered as decimal). Resolved at render
 	// time; the PDF falls back to a short reference derived from the
@@ -220,9 +244,13 @@ type HandlerOptions struct {
 }
 
 // MediaResolver is the narrow interface the delivery handler uses to
-// resolve an organisation logo_media_id (a UUID string) into the bytes
-// that go into the PDF and the signed URL used by the email
-// <img src> tag.
+// resolve a media id (a UUID string) into the bytes that go into the PDF
+// and the signed URL used by the email <img src> tag.
+//
+// Two media ids go through it: the organisation logo_media_id (the signed
+// URL is used by the e-mail header, the bytes by the PDF header band) and
+// the event/session poster (bytes only — see resolvePoster). The method
+// name predates the second caller; it resolves any media object.
 //
 // Implementations are expected to:
 //   - Return an error wrapping ErrLogoNotFound when the media id does
@@ -440,12 +468,13 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		}
 
 		// ── 8c. Resolve the presentation values ───────────────────────────
-		// Event name, session start, venue name/city/timezone, category and
-		// holder name, plus the human-facing ticket number. Enqueuers may
-		// bake these into the payload but none do; whatever is missing is
-		// read from the ticket's own rows here, with a payload hint always
-		// winning. Best effort — a failure logs and the ticket still ships
-		// (see presentation.go).
+		// Event name, session start, venue name/address/city/timezone,
+		// category and holder name, the human-facing ticket and order
+		// numbers, the price the buyer paid for this ticket and the id of
+		// the poster to print. Enqueuers may bake these into the payload
+		// but none do; whatever is missing is read from the ticket's own
+		// rows here, with a payload hint always winning. Best effort — a
+		// failure logs and the ticket still ships (see presentation.go).
 		if opts.TicketQueries != nil {
 			resolvePresentation(ctx, opts.TicketQueries, ticketID, &p, logger)
 		}
@@ -465,7 +494,16 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 						ticketID, credErr)
 				}
 				// Generate and store a new PDF credential.
-				pdfPayload, prErr := renderTicketPDF(ctx, ticketID, p, branding, brand.LogoBytes)
+				//
+				// ── 8d. Poster bytes ─────────────────────────────────
+				// Fetched only on the path that actually renders, so a
+				// ticket whose PDF credential already exists costs the
+				// media store nothing. Best effort and bounded: a poster
+				// that is missing, too large, slow or not a drawable
+				// image format yields nil and the page simply has no
+				// poster column (see resolvePoster).
+				poster := resolvePoster(ctx, opts.Media, p.PosterMediaID, logger)
+				pdfPayload, prErr := renderTicketPDF(ctx, ticketID, p, branding, brand.LogoBytes, poster)
 				if prErr != nil {
 					return fmt.Errorf("delivery: render pdf for ticket %s: %w",
 						ticketID, prErr)
@@ -488,7 +526,8 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			}
 		} else {
 			// No credential store — render on the fly so we still attach a PDF.
-			pdfPayload, prErr := renderTicketPDF(ctx, ticketID, p, branding, brand.LogoBytes)
+			poster := resolvePoster(ctx, opts.Media, p.PosterMediaID, logger)
+			pdfPayload, prErr := renderTicketPDF(ctx, ticketID, p, branding, brand.LogoBytes, poster)
 			if prErr != nil {
 				logger.Warn("delivery: render pdf failed; sending without attachment",
 					slog.String("ticket_id", ticketID.String()),
@@ -742,7 +781,11 @@ func renderInvitationEmailText(ticketNumber, recipientEmail string) string {
 // (the worker handler) to apply the platform-logo fallback when the
 // organisation has no logo_media_id. When logoBytes is empty the PDF
 // header simply omits the image slot and prints the OrgName wordmark.
-func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, branding templates.Branding, logoBytes []byte) ([]byte, error) {
+//
+// posterBytes is the optional event/session poster, already fetched and
+// validated by resolvePoster. Empty means the date/venue block spans the
+// full page width — no placeholder, no reserved gutter.
+func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, branding templates.Branding, logoBytes, posterBytes []byte) ([]byte, error) {
 	// NOTE: Payload.QRPayload is no longer passed through. The PDF's QR code
 	// now carries the ticket's EAN-13 digits — the same value as the printed
 	// barcode, and the only value entrance control can resolve. It used to
@@ -750,19 +793,24 @@ func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, brandin
 	t := pdf.Ticket{
 		TicketID:               ticketID.String(),
 		TicketNumber:           p.TicketNumber,
+		OrderNumber:            p.OrderNumber,
 		Locale:                 p.Locale,
 		EventName:              defaultStr(p.EventName, "Arena Event"),
 		SessionStart:           defaultTime(p.SessionStart),
 		SessionTZ:              p.SessionTZ,
 		VenueName:              p.VenueName,
+		VenueAddress:           p.VenueAddress,
 		VenueCity:              p.VenueCity,
 		TierName:               p.TierName,
 		HolderName:             p.HolderName,
 		SeatSector:             p.SeatSector,
 		SeatRow:                p.SeatRow,
 		SeatNumber:             p.SeatNumber,
+		PriceMinor:             p.PriceMinor,
+		Currency:               p.Currency,
 		EAN13:                  p.EAN13,
 		OrgLogo:                logoBytes,
+		PosterImage:            posterBytes,
 		OrgName:                branding.OrgName,
 		OrgWebsiteURL:          branding.WebsiteURL,
 		LegalName:              branding.LegalName,

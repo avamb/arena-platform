@@ -542,6 +542,20 @@ func decodeImageInfo(b []byte) (imageInfo, bool) {
 	return imageInfo{}, false
 }
 
+// SupportsImage reports whether b is an image this renderer can actually
+// draw — a decodable PNG or JPEG.
+//
+// It exists so a caller that FETCHES artwork (the delivery worker pulling
+// an event poster out of the media store) can ask the renderer itself
+// instead of trusting a media_objects.content_type column or duplicating
+// the format list. A false answer means "there is no image here", never an
+// error: OrgLogo and PosterImage are both optional, and the page prints
+// without them.
+func SupportsImage(b []byte) bool {
+	_, ok := decodeImageInfo(b)
+	return ok
+}
+
 // fitBox scales a (w,h) pixel image into a boxW x boxH box, preserving the
 // aspect ratio (letterboxing rather than cropping). The ported WordPress
 // renderer centre-CROPS the poster to a fixed 320:335 ratio before handing it
