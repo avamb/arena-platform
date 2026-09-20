@@ -884,6 +884,26 @@
     --_text-muted: var(--arena-color-secondary, #6b7280);
     /* Focus ring — defaults to accent colour. Override with --arena-focus-ring. */
     --_focus-ring: var(--arena-focus-ring, var(--arena-accent, #4f46e5));
+
+    /* Primary-action palette, kept SEPARATE from --arena-accent on purpose:
+       the accent still colours links, selected chips and focus rings, while
+       the one control a buyer presses to spend money can be given its own
+       colour. A yellow CTA converts better, and dark-on-yellow (#101010 on
+       #fcdc54, ≈13:1) is the only readable pairing — never white text there.
+
+       The DEFAULT here stays the embedder's accent, NOT the yellow: this
+       widget is embedded on customers' own sites (the Lampyris and Vino&Co
+       WordPress storefronts), and a default change would repaint their live
+       buy button on the next deploy without anyone asking them. Arena's own
+       hosted page opts in by setting --arena-button-* (see
+       apps/tickets-page/src/style.css); any embedder can do the same.
+       The disabled pair falls back to the host's own border/muted tokens so
+       it stays visibly dead under any theme, light or dark. */
+    --_btn-bg: var(--arena-button-bg, var(--arena-accent, #4f46e5));
+    --_btn-bg-hover: var(--arena-button-bg-hover, var(--arena-accent-hover, var(--arena-accent, #4338ca)));
+    --_btn-text: var(--arena-button-text, var(--arena-accent-contrast, #ffffff));
+    --_btn-disabled-bg: var(--arena-button-disabled-bg, var(--arena-border-color, #e5e7eb));
+    --_btn-disabled-text: var(--arena-button-disabled-text, var(--arena-color-secondary, #6b7280));
   }
 
   /* Global focus-visible rule for all focusable children. */

@@ -20,6 +20,29 @@
   --asa-focus-ring: #4f46e5;
   --asa-font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
+  /* Page box. ONE definition of the boxed-content geometry: header, main and
+     footer all wear .asa-container and therefore share these two numbers.
+     1140px is the site-wide container of the owner's production Lampyris
+     Elementor kit; 20px / 16px are that site's pay-page gutters. */
+  --asa-container-width: 1140px;
+  --asa-gutter: 16px;
+
+  /* Primary action button — deliberately NOT --asa-accent. The reference site
+     keeps its button colour separate from its link colour so that links stay
+     recognisably "link coloured" while the one thing a buyer must press is
+     the brand yellow. Same split here: links/selected chips stay Arena
+     indigo, the CTA is yellow with near-black text (≈13:1 contrast). */
+  --asa-btn-bg: #fcdc54;
+  --asa-btn-bg-hover: #f5d23a;
+  --asa-btn-text: #101010;
+  --asa-btn-disabled-bg: var(--asa-border);
+  --asa-btn-disabled-text: var(--asa-text-secondary);
+
+  /* Type scale (Lampyris proportions). Mobile values; the desktop step-up
+     lives in the min-width block below. */
+  --asa-font-size-h1: 26px;
+  --asa-font-size-h2: 22px;
+
   /* Passed straight through to <arena-tickets> so the widget matches the
      page (see docs/widget-embed.md and apps/widget/src/lib/tokens.ts). */
   --arena-font-family: var(--asa-font-family);
@@ -34,8 +57,24 @@
   --arena-radius: var(--asa-radius);
   --arena-border-color: var(--asa-border);
   --arena-focus-ring: var(--asa-focus-ring);
+  /* The widget ships the same yellow by default; forwarding the tokens keeps
+     the two in lockstep if either side is re-themed, and hands the widget the
+     page's own theme-aware disabled colours. */
+  --arena-button-bg: var(--asa-btn-bg);
+  --arena-button-bg-hover: var(--asa-btn-bg-hover);
+  --arena-button-text: var(--asa-btn-text);
+  --arena-button-disabled-bg: var(--asa-btn-disabled-bg);
+  --arena-button-disabled-text: var(--asa-btn-disabled-text);
 
   color-scheme: light;
+}
+
+@media (min-width: 901px) {
+  :root {
+    --asa-gutter: 20px;
+    --asa-font-size-h1: 32px;
+    --asa-font-size-h2: 24px;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -78,8 +117,26 @@ body {
   background: var(--asa-bg);
   color: var(--asa-text-primary);
   font-family: var(--asa-font-family);
+  font-size: 16px;
   line-height: 1.5;
   min-height: 100vh;
+}
+
+/* ── Type scale ────────────────────────────────────────────────────────────
+   Element selectors only, so the existing headings pick it up without new
+   markup. Anything that needs a different size (a card title inside the
+   promoter grid) overrides by class, which always wins on specificity. */
+
+h1 {
+  font-size: var(--asa-font-size-h1);
+  line-height: 1.15;
+  font-weight: 700;
+}
+
+h2 {
+  font-size: var(--asa-font-size-h2);
+  line-height: 1.25;
+  font-weight: 600;
 }
 
 a {
@@ -97,10 +154,29 @@ a {
   min-height: 100vh;
 }
 
+/* The one boxed-content rule. The bars (header/footer) stay full-bleed so
+   their background and rule still span the viewport, but everything INSIDE
+   them is centred on the same column as the page body — without this the
+   header and footer ran edge to edge while the content was capped, which is
+   what read as "stretched" on a wide desktop. */
+.asa-container {
+  width: 100%;
+  max-width: var(--asa-container-width);
+  margin-inline: auto;
+  padding-inline: var(--asa-gutter);
+}
+
 .asa-header {
-  padding: 16px;
   border-bottom: 1px solid var(--asa-border);
   background: var(--asa-surface);
+}
+
+.asa-header__in {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-block: 16px;
 }
 
 .asa-wordmark {
@@ -115,12 +191,10 @@ a {
   color: var(--asa-accent);
 }
 
+/* Geometry comes from .asa-container (index.html carries both classes). */
 .asa-main {
   flex: 1;
-  width: 100%;
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 0 16px 48px;
+  padding-bottom: 48px;
 }
 
 .asa-loading {
@@ -137,7 +211,6 @@ a {
 }
 
 .asa-state h1 {
-  font-size: 1.5rem;
   margin-bottom: 12px;
 }
 
@@ -146,17 +219,53 @@ a {
   margin-bottom: 24px;
 }
 
+/* Primary action. Yellow background, near-black label — never white text on
+   the yellow, which would fail contrast badly. */
 .asa-button {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 10px 20px;
   border-radius: var(--asa-radius);
-  background: var(--asa-accent);
-  color: var(--asa-accent-contrast);
+  background: var(--asa-btn-bg);
+  color: var(--asa-btn-text);
   border: none;
+  font-family: inherit;
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: 700;
+  line-height: 1.2;
   text-decoration: none;
   cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+/* :not(:disabled) so a disabled control never lights up under the pointer.
+   .asa-card-cta is a <span> inside the card link, hence the card-hover rule. */
+.asa-button:hover:not(:disabled),
+.asa-card:hover .asa-card-cta,
+.asa-card:focus-visible .asa-card-cta {
+  background: var(--asa-btn-bg-hover);
+}
+
+.asa-button:active:not(:disabled) {
+  background: var(--asa-btn-bg-hover);
+}
+
+/* opacity:1 on purpose — a faded yellow still reads as "press me". The
+   disabled state changes the FILL to the neutral border colour, which flips
+   with the theme, so it is visibly dead in light and dark mode alike. */
+.asa-button:disabled,
+.asa-button[aria-disabled='true'] {
+  background: var(--asa-btn-disabled-bg);
+  color: var(--asa-btn-disabled-text);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+/* The reference has no focus ring on this button; we keep ours. */
+.asa-button:focus-visible {
+  outline: 3px solid var(--asa-focus-ring);
+  outline-offset: 2px;
 }
 
 .asa-hero {
@@ -177,7 +286,6 @@ a {
 }
 
 .asa-hero-title {
-  font-size: 1.75rem;
   margin: 0 0 8px;
 }
 
@@ -193,23 +301,36 @@ a {
   max-width: 70ch;
 }
 
+/* The purchase step reads as its own card, not as a section rule — same
+   recipe as the reference pay page's panels. Tokens only: the surface and
+   border both flip in dark mode. */
 .asa-widget-wrap {
-  border-top: 1px solid var(--asa-border);
-  padding-top: 24px;
+  margin-top: 24px;
+  background: var(--asa-surface);
+  border: 1px solid var(--asa-border);
+  border-radius: var(--asa-radius);
+  padding: 16px;
   scroll-margin-top: 16px;
 }
 
 .asa-footer {
-  padding: 24px 16px;
   text-align: center;
   color: var(--asa-text-secondary);
   font-size: 0.85rem;
   border-top: 1px solid var(--asa-border);
 }
 
-@media (min-width: 640px) {
-  .asa-hero-title {
-    font-size: 2.25rem;
+.asa-footer__in {
+  padding-block: 24px;
+}
+
+.asa-footer__in p {
+  margin: 0;
+}
+
+@media (min-width: 901px) {
+  .asa-widget-wrap {
+    padding: 24px;
   }
 }
 
@@ -242,7 +363,6 @@ a {
 }
 
 .asa-promoter-title {
-  font-size: 1.75rem;
   margin: 0 0 8px;
 }
 
@@ -315,6 +435,8 @@ a {
   font-size: 0.9rem;
 }
 
+/* A grid card's title is deliberately off the page scale — h2 at 24px would
+   swamp a three-up card. */
 .asa-card-title {
   margin: 0;
   font-size: 1.15rem;

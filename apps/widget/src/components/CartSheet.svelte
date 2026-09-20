@@ -249,23 +249,31 @@
     font-weight: 600;
     font-size: 1rem;
   }
+  /* Checkout CTA — yellow, like every other primary action (see the --_btn-*
+     block on :host in ArenaTickets.svelte). */
   .cta-btn {
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 0.75rem 1.5rem;
-    background: var(--_accent, #4f46e5);
-    color: #fff;
+    background: var(--_btn-bg, #fcdc54);
+    color: var(--_btn-text, #101010);
     border: none;
     border-radius: var(--arena-radius, 8px);
     font-size: 1rem;
     font-family: inherit;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
     width: 100%;
-    transition: opacity 0.15s;
+    transition: background-color 0.15s;
   }
-  .cta-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .cta-btn:hover:not(:disabled) { background: var(--_btn-bg-hover, #f5d23a); }
+  .cta-btn:disabled {
+    background: var(--_btn-disabled-bg, #e5e7eb);
+    color: var(--_btn-disabled-text, #6b7280);
+    opacity: 1;
+    cursor: not-allowed;
+  }
   .submit-error {
     font-size: 0.875rem;
     color: #b91c1c;

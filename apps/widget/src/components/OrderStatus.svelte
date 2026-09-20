@@ -366,14 +366,26 @@
     border: none;
     /* The pending-state "continue to payment" CTA is an <a>, not a <button>. */
     text-decoration: none;
-    transition: opacity 0.15s;
+    transition: opacity 0.15s, background-color 0.15s;
   }
 
   .action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
+  /* "Continue to payment" / "Download tickets" — primary, so yellow. */
   .action-btn.primary {
-    background: var(--arena-accent, #4f46e5);
-    color: #fff;
+    background: var(--_btn-bg, #fcdc54);
+    color: var(--_btn-text, #101010);
+    font-weight: 700;
+  }
+
+  .action-btn.primary:hover:not(:disabled) {
+    background: var(--_btn-bg-hover, #f5d23a);
+  }
+
+  .action-btn.primary:disabled {
+    background: var(--_btn-disabled-bg, #e5e7eb);
+    color: var(--_btn-disabled-text, #6b7280);
+    opacity: 1;
   }
 
   .action-btn.secondary {

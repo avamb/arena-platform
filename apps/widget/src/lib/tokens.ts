@@ -38,6 +38,7 @@
  *  - `--arena-color-primary` (#1a1a1a) on white → ≥18:1
  *  - `--arena-color-secondary` (#6b7280) on white → ≥4.6:1
  *  - White text on `--arena-accent` (#4f46e5) → ≥6.3:1
+ *  - `--arena-button-text` (#101010) on `--arena-button-bg` (#fcdc54) → ≥13:1
  *  - `--arena-focus-ring` provides a clearly visible 3px offset outline
  *
  * When overriding token values, ensure the new combination maintains at least
@@ -88,6 +89,46 @@ export const TOKEN_DEFAULTS = {
   '--arena-accent': '#4f46e5',
 
   /**
+   * Primary-action button background — the buy / checkout / pay CTA, the
+   * sticky mini-cart bar and the GA popover's confirm button.
+   *
+   * Deliberately NOT derived from `--arena-accent`: the accent stays the
+   * link / selected-chip / focus colour while the control a buyer presses to
+   * spend money is the brand yellow, which converts better. Override this
+   * alone to re-brand the CTA without disturbing anything else.
+   * @default #fcdc54
+   */
+  '--arena-button-bg': '#fcdc54',
+
+  /**
+   * Primary-action button background on hover.
+   * @default #f5d23a
+   */
+  '--arena-button-bg-hover': '#f5d23a',
+
+  /**
+   * Primary-action button label colour. Must be DARK on the yellow default —
+   * white text on `#fcdc54` is roughly 1.5:1 and unreadable. Keep ≥4.5:1
+   * against whatever `--arena-button-bg` is set to.
+   * @default #101010
+   */
+  '--arena-button-text': '#101010',
+
+  /**
+   * Disabled primary-action fill. Disabled buttons change COLOUR rather than
+   * fading, so a dimmed yellow can never still look pressable; falls back to
+   * the border colour, which follows the host theme into dark mode.
+   * @default var(--arena-border-color, #e5e7eb)
+   */
+  '--arena-button-disabled-bg': 'var(--arena-border-color, #e5e7eb)',
+
+  /**
+   * Disabled primary-action label colour.
+   * @default var(--arena-color-secondary, #6b7280)
+   */
+  '--arena-button-disabled-text': 'var(--arena-color-secondary, #6b7280)',
+
+  /**
    * Border radius applied to cards, buttons, inputs, and chip elements.
    * Set to `0` for a sharp-cornered look; increase for a pill style.
    * @default 8px
@@ -129,6 +170,11 @@ export const TYPOGRAPHY_TOKENS: ReadonlyArray<DesignToken> = [
 export const COLOR_TOKENS: ReadonlyArray<DesignToken> = [
   '--arena-bg',
   '--arena-accent',
+  '--arena-button-bg',
+  '--arena-button-bg-hover',
+  '--arena-button-text',
+  '--arena-button-disabled-bg',
+  '--arena-button-disabled-text',
   '--arena-border-color',
   '--arena-focus-ring',
 ] as const;
@@ -182,7 +228,13 @@ export const arenaThemeNeutral: Partial<Record<DesignToken, string>> = {
   '--arena-radius': '6px',
 } as const;
 
-/** All built-in theme presets keyed by name. */
+/**
+ * All built-in theme presets keyed by name.
+ *
+ * Note that no preset touches `--arena-button-*`: the primary CTA keeps its
+ * yellow under every preset by design. Re-colour it explicitly if an embed
+ * needs a different action colour.
+ */
 export const ARENA_THEMES = {
   indigo: arenaThemeIndigo,
   rose: arenaThemeRose,

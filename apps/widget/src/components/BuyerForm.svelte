@@ -243,21 +243,27 @@
     margin-left: 0.25rem;
   }
 
+  /* The pay button — the primary CTA of the whole widget. Yellow fill, dark
+     label; see the --_btn-* block on :host in ArenaTickets.svelte. */
   .submit-btn {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
     padding: 0.625rem 1.25rem;
-    background: var(--arena-accent, #4f46e5);
-    color: #fff;
+    background: var(--_btn-bg, #fcdc54);
+    color: var(--_btn-text, #101010);
     border: none;
     border-radius: var(--arena-radius, 8px);
     font-size: 1rem;
     font-family: inherit;
-    font-weight: 500;
+    font-weight: 700;
     cursor: pointer;
-    transition: opacity 0.15s;
+    transition: background-color 0.15s;
+  }
+
+  .submit-btn:hover:not(:disabled) {
+    background: var(--_btn-bg-hover, #f5d23a);
   }
 
   .submit-btn:focus-visible {
@@ -265,8 +271,12 @@
     outline-offset: 3px;
   }
 
+  /* opacity stays 1: a washed-out yellow still looks pressable, so the fill
+     itself goes neutral instead. */
   .submit-btn:disabled {
-    opacity: 0.6;
+    background: var(--_btn-disabled-bg, #e5e7eb);
+    color: var(--_btn-disabled-text, #6b7280);
+    opacity: 1;
     cursor: not-allowed;
   }
 
@@ -283,8 +293,10 @@
     display: inline-block;
     width: 1em;
     height: 1em;
-    border: 2px solid rgba(255, 255, 255, 0.4);
-    border-top-color: #fff;
+    /* currentColor, not white: the spinner sits on the yellow button and
+       inherits its dark label colour. */
+    border: 2px solid color-mix(in srgb, currentColor 35%, transparent);
+    border-top-color: currentColor;
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
   }

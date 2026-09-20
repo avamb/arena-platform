@@ -179,16 +179,23 @@
     font-weight: 600;
     font-size: 1rem;
   }
+  /* The popover's confirm button — primary action, so yellow like the rest. */
   .ga-popover-done {
     align-self: stretch;
     padding: 0.5rem 0.75rem;
-    border: 1px solid var(--arena-accent, #4f46e5);
+    border: 1px solid var(--_btn-bg, #fcdc54);
     border-radius: var(--arena-radius, 8px);
-    background: var(--arena-accent, #4f46e5);
-    color: #ffffff;
-    font-weight: 600;
+    background: var(--_btn-bg, #fcdc54);
+    color: var(--_btn-text, #101010);
+    font-weight: 700;
     cursor: pointer;
     font-family: inherit;
     font-size: 0.875rem;
+    transition: background-color 0.15s, border-color 0.15s;
+  }
+
+  .ga-popover-done:hover {
+    background: var(--_btn-bg-hover, #f5d23a);
+    border-color: var(--_btn-bg-hover, #f5d23a);
   }
 </style>

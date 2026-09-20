@@ -59,11 +59,16 @@
     left: 0;
     right: 0;
     z-index: 20;
-    background: var(--_accent, #4f46e5);
-    color: #fff;
+    /* The sticky bar IS the "go to checkout" control, so it wears the primary
+       yellow (see the --_btn-* block on :host in ArenaTickets.svelte) rather
+       than the accent. Dark label on both the yellow and the amber warning
+       fill — white on #d97706 was only ~3:1 and failed AA. */
+    background: var(--_btn-bg, #fcdc54);
+    color: var(--_btn-text, #101010);
     box-shadow: 0 -2px 8px rgba(0,0,0,0.18);
   }
   .mini-cart.warning { background: #d97706; }
+  .mini-cart-btn:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
   .mini-cart-btn {
     display: flex;
     align-items: center;
@@ -80,7 +85,8 @@
     text-align: left;
   }
   .mini-cart-count {
-    background: rgba(255,255,255,0.25);
+    /* Tinted with the label colour, not white — invisible on yellow. */
+    background: color-mix(in srgb, currentColor 18%, transparent);
     border-radius: 50%;
     min-width: 1.75rem;
     height: 1.75rem;

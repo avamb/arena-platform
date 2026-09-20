@@ -78,8 +78,18 @@ export const THEME_CSS_VARS = [
   '--arena-color-secondary',
   /** Widget background colour (default: transparent). */
   '--arena-bg',
-  /** Accent / brand colour used for buttons, links, and selected states (default: #4f46e5). */
+  /** Accent / brand colour used for links, selected states and focus rings (default: #4f46e5). */
   '--arena-accent',
+  /** Primary-action (buy / checkout / pay) button fill — separate from the accent (default: #fcdc54). */
+  '--arena-button-bg',
+  /** Primary-action button fill on hover (default: #f5d23a). */
+  '--arena-button-bg-hover',
+  /** Primary-action button label — must stay dark on the yellow default (default: #101010). */
+  '--arena-button-text',
+  /** Disabled primary-action fill — defaults to the border colour, so it follows a dark theme. */
+  '--arena-button-disabled-bg',
+  /** Disabled primary-action label — defaults to the secondary text colour. */
+  '--arena-button-disabled-text',
   /** Border radius for cards, buttons, and inputs (default: 8px). */
   '--arena-radius',
   /** Border and divider colour (default: #e5e7eb). */

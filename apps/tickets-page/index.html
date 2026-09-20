@@ -10,16 +10,23 @@
   </head>
   <body>
     <div id="app">
+      <!-- The bars stay full-bleed (background + rule span the viewport); the
+           .asa-container wrapper inside each one keeps their contents on the
+           same centred column as <main>. -->
       <header class="asa-header">
-        <a class="asa-wordmark" href="/" aria-label="Arena Sold Out home">
-          Arena<span class="asa-wordmark-accent">SoldOut</span>
-        </a>
+        <div class="asa-header__in asa-container">
+          <a class="asa-wordmark" href="/" aria-label="Arena Sold Out home">
+            Arena<span class="asa-wordmark-accent">SoldOut</span>
+          </a>
+        </div>
       </header>
-      <main id="asa-main" class="asa-main" aria-live="polite">
+      <main id="asa-main" class="asa-main asa-container" aria-live="polite">
         <p class="asa-loading" role="status">Loading…</p>
       </main>
       <footer class="asa-footer">
-        <p id="asa-footer-text">&copy; Arena Sold Out</p>
+        <div class="asa-footer__in asa-container">
+          <p id="asa-footer-text">&copy; Arena Sold Out</p>
+        </div>
       </footer>
     </div>
 
