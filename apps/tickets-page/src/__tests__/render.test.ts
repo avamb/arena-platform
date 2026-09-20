@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from '../lib/render.ts';
+import type { PromoterPageOptions } from '../lib/render.ts';
 import type { HostedPageEvent, HostedPageResponse, HostedPromoterPageResponse } from '../lib/api.ts';
 
 function freshContainer(): HTMLElement {
@@ -130,6 +131,36 @@ describe('renderEvent', () => {
 });
 
 describe('renderPromoterPage', () => {
+  /** Slugs the page asked to resolve, in order — proof that a row fetches
+   * exactly when it is opened and never twice. */
+  let resolvedSlugs: string[] = [];
+
+  beforeEach(() => {
+    resolvedSlugs = [];
+  });
+
+  /** Lets the awaited resolve and the render that follows it settle. */
+  async function flush(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
+  }
+
+  function pageOptions(): PromoterPageOptions {
+    return {
+      apiBase: 'https://api.example.com',
+      resolveEvent: (slug) => {
+        resolvedSlugs.push(slug);
+        const event = sampleData.events.find((e) => e.slug === slug) ?? sampleData.events[0];
+        return Promise.resolve({
+          org: sampleData.org,
+          event,
+          feed_token: 'ft_abc123',
+          default_locale: 'en',
+        });
+      },
+    };
+  }
+
   const eventWithPoster: HostedPageEvent = {
     id: '01929d0e-0e47-7000-8000-000000000401',
     slug: 'masterclass-day-1',
@@ -168,19 +199,96 @@ describe('renderPromoterPage', () => {
 
   it('renders the org name and logo', () => {
     const container = freshContainer();
-    renderPromoterPage(container, sampleData, 'en');
+    renderPromoterPage(container, sampleData, 'en', pageOptions());
     expect(container.querySelector('.asa-promoter-title')?.textContent).toBe('Master Class Teatro');
     const logo = container.querySelector('.asa-promoter-logo') as HTMLImageElement | null;
     expect(logo?.src).toBe('https://example.com/logo.png');
   });
 
-  it('renders one date row per event, linking to the per-event page', () => {
+  it('renders one date row per event', () => {
     const container = freshContainer();
-    renderPromoterPage(container, sampleData, 'en');
-    const rows = container.querySelectorAll('a.asa-date-row');
+    renderPromoterPage(container, sampleData, 'en', pageOptions());
+    const rows = container.querySelectorAll('.asa-date-row');
     expect(rows.length).toBe(2);
-    expect(rows[0].getAttribute('href')).toBe('/masterclassteatro/masterclass-day-1');
-    expect(rows[1].getAttribute('href')).toBe('/masterclassteatro/masterclass-day-2');
+    expect(rows[0].getAttribute('aria-expanded')).toBe('false');
+  });
+
+  // The whole point of the list: a buyer picks a quantity here, and the
+  // per-event page never enters the flow.
+  it('opens the ticket picker inside the row it belongs to', async () => {
+    const container = freshContainer();
+    const options = pageOptions();
+    renderPromoterPage(container, sampleData, 'en', options);
+
+    const row = container.querySelectorAll('.asa-date-row')[0] as HTMLButtonElement;
+    const panel = container.querySelector('.asa-date-panel') as HTMLElement;
+    expect(panel.hidden).toBe(true);
+
+    row.click();
+    await flush();
+
+    expect(row.getAttribute('aria-expanded')).toBe('true');
+    expect(row.getAttribute('aria-controls')).toBe(panel.id);
+    expect(panel.hidden).toBe(false);
+    expect(resolvedSlugs).toEqual(['masterclass-day-1']);
+
+    const widget = panel.querySelector('arena-tickets');
+    expect(widget?.getAttribute('feed-token')).toBe('ft_abc123');
+    expect(widget?.getAttribute('event-id')).toBe(eventWithPoster.id);
+    expect(widget?.getAttribute('api-base')).toBe('https://api.example.com');
+    // The buyer no longer sees the event page, so its words come along.
+    expect(panel.querySelector('.asa-date-panel__description')?.textContent).toBe(
+      'An intensive one-day acting workshop.',
+    );
+  });
+
+  it('keeps the widget mounted when a row is closed and reopened', async () => {
+    const container = freshContainer();
+    renderPromoterPage(container, sampleData, 'en', pageOptions());
+    const row = container.querySelectorAll('.asa-date-row')[0] as HTMLButtonElement;
+
+    row.click();
+    await flush();
+    row.click();
+    expect(row.getAttribute('aria-expanded')).toBe('false');
+    expect((container.querySelector('.asa-date-panel') as HTMLElement).hidden).toBe(true);
+
+    row.click();
+    await flush();
+    // Reopening must not fetch again, or a buyer toggling the row would
+    // throw away the cart they had already started.
+    expect(resolvedSlugs).toEqual(['masterclass-day-1']);
+    expect(container.querySelectorAll('arena-tickets').length).toBe(1);
+  });
+
+  // Two open carts on one page means two live seat holds.
+  it('closes the other rows when one is opened', async () => {
+    const container = freshContainer();
+    renderPromoterPage(container, sampleData, 'en', pageOptions());
+    const rows = container.querySelectorAll('.asa-date-row');
+
+    (rows[0] as HTMLButtonElement).click();
+    await flush();
+    (rows[1] as HTMLButtonElement).click();
+    await flush();
+
+    expect(rows[0].getAttribute('aria-expanded')).toBe('false');
+    expect(rows[1].getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('offers a retry when the ticket picker cannot be loaded', async () => {
+    const container = freshContainer();
+    const options = pageOptions();
+    options.resolveEvent = () => Promise.reject(new Error('offline'));
+    renderPromoterPage(container, sampleData, 'en', options);
+
+    (container.querySelector('.asa-date-row') as HTMLButtonElement).click();
+    await flush();
+
+    const panel = container.querySelector('.asa-date-panel') as HTMLElement;
+    expect(panel.querySelector('.asa-date-panel__error')).not.toBeNull();
+    expect(panel.querySelector('arena-tickets')).toBeNull();
+    expect(panel.querySelector('button.asa-button')?.textContent).toBe('Retry');
   });
 
   // A promoter runs a season off ONE artwork, so it belongs at the top of
@@ -188,7 +296,7 @@ describe('renderPromoterPage', () => {
   // six different master classes look like the same thing six times.
   it('promotes the one shared poster to the top and shows none on a row', () => {
     const container = freshContainer();
-    renderPromoterPage(container, sampleData, 'en');
+    renderPromoterPage(container, sampleData, 'en', pageOptions());
     const poster = container.querySelector('.asa-promoter-poster') as HTMLImageElement | null;
     expect(poster?.src).toBe('https://example.com/day1.jpg');
     expect(container.querySelector('a.asa-date-row img')).toBeNull();
@@ -205,14 +313,15 @@ describe('renderPromoterPage', () => {
         events: [eventWithPoster, { ...eventWithoutPoster, poster_url: 'https://example.com/other.jpg' }],
       },
       'en',
+      pageOptions(),
     );
     expect(container.querySelector('.asa-promoter-poster')).toBeNull();
   });
 
   it('shows the day, month and time of each date before the event title', () => {
     const container = freshContainer();
-    renderPromoterPage(container, sampleData, 'en');
-    const row = container.querySelectorAll('a.asa-date-row')[0];
+    renderPromoterPage(container, sampleData, 'en', pageOptions());
+    const row = container.querySelectorAll('.asa-date-row')[0];
     const children = Array.from(row.children);
     const whenIndex = children.findIndex((el) => el.classList.contains('asa-date-row__when'));
     const whatIndex = children.findIndex((el) => el.classList.contains('asa-date-row__what'));
@@ -239,6 +348,7 @@ describe('renderPromoterPage', () => {
         ],
       },
       'en',
+      pageOptions(),
     );
     expect(container.querySelector('.asa-date-row__day')?.textContent).toBe('16–18');
     expect(container.querySelector('.asa-date-row__time')).toBeNull();
@@ -259,33 +369,34 @@ describe('renderPromoterPage', () => {
         ],
       },
       'en',
+      pageOptions(),
     );
-    const row = container.querySelector('a.asa-date-row');
+    const row = container.querySelector('.asa-date-row');
     expect(row?.classList.contains('asa-date-row--past')).toBe(true);
     expect(row?.querySelector('.asa-date-row__cta')?.textContent).toBe('Took place');
   });
 
   it('heads the list only when there is a choice of dates to make', () => {
     const many = freshContainer();
-    renderPromoterPage(many, sampleData, 'en');
+    renderPromoterPage(many, sampleData, 'en', pageOptions());
     expect(many.querySelector('.asa-dates__head')?.textContent).toBe('Choose a date');
 
     const one = freshContainer();
-    renderPromoterPage(one, { ...sampleData, events: [eventWithPoster] }, 'en');
+    renderPromoterPage(one, { ...sampleData, events: [eventWithPoster] }, 'en', pageOptions());
     expect(one.querySelector('.asa-dates__head')).toBeNull();
-    expect(one.querySelectorAll('a.asa-date-row').length).toBe(1);
+    expect(one.querySelectorAll('.asa-date-row').length).toBe(1);
   });
 
   it('renders the localized empty state when there are no events', () => {
     const container = freshContainer();
-    renderPromoterPage(container, { ...sampleData, events: [] }, 'en');
+    renderPromoterPage(container, { ...sampleData, events: [] }, 'en', pageOptions());
     expect(container.querySelector('.asa-state--empty h2')?.textContent).toBe('No upcoming dates yet');
-    expect(container.querySelectorAll('a.asa-date-row').length).toBe(0);
+    expect(container.querySelectorAll('.asa-date-row').length).toBe(0);
   });
 
   it('localizes the empty state for es', () => {
     const container = freshContainer();
-    renderPromoterPage(container, { ...sampleData, events: [] }, 'es');
+    renderPromoterPage(container, { ...sampleData, events: [] }, 'es', pageOptions());
     expect(container.querySelector('.asa-state--empty h2')?.textContent).toBe('Aún no hay fechas próximas');
   });
 });

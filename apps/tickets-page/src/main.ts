@@ -44,12 +44,18 @@ async function main(): Promise<void> {
   }
 
   if (route.kind === 'promoter') {
+    // The date rows open the ticket picker in place, so the widget bundle
+    // is needed here too — not only on a per-event page.
+    loadWidgetScript();
     const loadPromoter = async (): Promise<void> => {
       renderLoading(mainEl, locale);
       try {
         const data = await fetchPromoterPage(API_BASE, route.orgSlug);
         applyDocumentChrome(locale, { title: data.org.name });
-        renderPromoterPage(mainEl, data, locale);
+        renderPromoterPage(mainEl, data, locale, {
+          apiBase: API_BASE,
+          resolveEvent: (eventSlug) => fetchHostedPage(API_BASE, route.orgSlug, eventSlug),
+        });
       } catch (err) {
         if (err instanceof ApiError && err.status === 404) {
           renderNotFound(mainEl, locale);

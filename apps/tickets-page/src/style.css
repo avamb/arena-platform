@@ -451,13 +451,45 @@ a {
   grid-template-columns: 84px 1fr auto;
   gap: 18px;
   align-items: center;
+  width: 100%;
   padding: 14px 18px;
   background: var(--asa-surface);
   border: 1px solid var(--asa-border);
   border-radius: var(--asa-radius);
   text-decoration: none;
+  text-align: start;
   color: inherit;
+  font-family: inherit;
+  font-size: 1rem;
+  cursor: pointer;
   transition: border-color 0.15s ease;
+}
+
+/* An open row and its panel read as one block. */
+.asa-date-row[aria-expanded='true'] {
+  border-color: var(--asa-accent);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.asa-date-panel {
+  padding: 16px 18px 18px;
+  background: var(--asa-surface);
+  border: 1px solid var(--asa-accent);
+  border-top: none;
+  border-bottom-left-radius: var(--asa-radius);
+  border-bottom-right-radius: var(--asa-radius);
+}
+
+.asa-date-panel__description {
+  margin: 0 0 16px;
+  color: var(--asa-text-secondary);
+  max-width: 70ch;
+}
+
+.asa-date-panel__error {
+  margin: 0 0 12px;
+  color: var(--asa-text-secondary);
 }
 
 .asa-date-row:hover {

@@ -290,11 +290,25 @@ function dateParts(event: HostedPageEvent, locale: PageLocale): DateParts | null
   }
 }
 
+/** Everything a date row needs to open its own ticket picker in place. */
+export interface PromoterPageOptions {
+  apiBase: string;
+  /** Resolves one event's hosted page — the promoter response carries no
+   * feed token, and the widget cannot be mounted without one. Injected so
+   * the renderer stays free of network code (and testable). */
+  resolveEvent: (eventSlug: string) => Promise<HostedPageResponse>;
+}
+
 /** One row of the date list: a date block, then what is on that date, then
- * the action. The whole row is a single link — one clear target beats a
- * title link plus a separate button for mouse, keyboard and screen-reader
- * users alike — with the tickets pill drawn inside it and hidden from the
- * accessibility tree, since the row's own text already names the target.
+ * the action — and, once pressed, the ticket picker itself unfolded
+ * directly underneath.
+ *
+ * The row used to be a link to a per-event page, which is where the buyer
+ * chose a quantity. That page is gone from the flow: a promoter's date
+ * list IS the shop, and making someone load a second page to say "two,
+ * please" loses buyers for nothing. Direct links to /{org}/{event} still
+ * work and still render the full page — the list simply no longer routes
+ * through it.
  *
  * Unlike the tour page this is modelled on, the row leads with the DATE
  * and then names the event: on that site every date of a tour is the same
@@ -306,14 +320,22 @@ function renderDateRow(
   orgSlug: string,
   locale: PageLocale,
   now: number,
+  options: PromoterPageOptions,
 ): HTMLLIElement {
   const li = document.createElement('li');
   li.className = 'asa-date-item';
 
   const past = isPast(event, now);
-  const a = document.createElement('a');
+  // A past date keeps its link to the event page — there is nothing to
+  // pick, and the page is where a buyer checks what they attended.
+  const a = document.createElement(past ? 'a' : 'button') as HTMLElement;
   a.className = past ? 'asa-date-row asa-date-row--past' : 'asa-date-row';
-  a.href = `/${encodeURIComponent(orgSlug)}/${encodeURIComponent(event.slug)}${currentSearch()}`;
+  if (past) {
+    (a as HTMLAnchorElement).href = `/${encodeURIComponent(orgSlug)}/${encodeURIComponent(event.slug)}${currentSearch()}`;
+  } else {
+    (a as HTMLButtonElement).type = 'button';
+    a.setAttribute('aria-expanded', 'false');
+  }
 
   const parts = dateParts(event, locale);
   if (parts) {
@@ -364,7 +386,108 @@ function renderDateRow(
   a.appendChild(cta);
 
   li.appendChild(a);
+  if (past) return li;
+
+  const panel = document.createElement('div');
+  panel.className = 'asa-date-panel';
+  panel.id = `asa-panel-${event.id}`;
+  panel.hidden = true;
+  a.setAttribute('aria-controls', panel.id);
+  li.appendChild(panel);
+
+  let mounted = false;
+  a.addEventListener('click', () => {
+    const open = a.getAttribute('aria-expanded') === 'true';
+    if (open) {
+      a.setAttribute('aria-expanded', 'false');
+      panel.hidden = true;
+      cta.textContent = t(locale).ticketsCta;
+      return;
+    }
+    // One picker at a time: two open carts on one page means two live
+    // seat holds and a buyer wondering which total is theirs.
+    collapseOpenRows(li);
+    a.setAttribute('aria-expanded', 'true');
+    panel.hidden = false;
+    cta.textContent = t(locale).hideCta;
+    if (!mounted) {
+      mounted = true;
+      void mountTicketPicker(panel, event, locale, options);
+    }
+  });
+
   return li;
+}
+
+/** Closes every other open row in the same list. */
+function collapseOpenRows(except: HTMLLIElement): void {
+  const list = except.parentElement;
+  if (!list) return;
+  for (const item of Array.from(list.children)) {
+    if (item === except) continue;
+    const toggle = item.querySelector('.asa-date-row[aria-expanded="true"]');
+    if (toggle instanceof HTMLElement) toggle.click();
+  }
+}
+
+/** Fills an open row's panel: the event's own words, then the widget.
+ * The feed token comes from the per-event endpoint, which is why this is
+ * fetched on first open rather than rendered upfront — mounting six
+ * widgets a buyer may never touch would cost six requests and six carts. */
+async function mountTicketPicker(
+  panel: HTMLElement,
+  event: HostedPageEvent,
+  locale: PageLocale,
+  options: PromoterPageOptions,
+): Promise<void> {
+  const strings = t(locale);
+  clear(panel);
+
+  const status = document.createElement('p');
+  status.className = 'asa-loading';
+  status.setAttribute('role', 'status');
+  status.textContent = strings.loading;
+  panel.appendChild(status);
+
+  let data: HostedPageResponse;
+  try {
+    data = await options.resolveEvent(event.slug);
+  } catch {
+    clear(panel);
+    const failed = document.createElement('p');
+    failed.className = 'asa-date-panel__error';
+    failed.textContent = strings.errorBody;
+    panel.appendChild(failed);
+
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'asa-button';
+    retry.textContent = strings.errorRetry;
+    retry.addEventListener('click', () => {
+      void mountTicketPicker(panel, event, locale, options);
+    });
+    panel.appendChild(retry);
+    return;
+  }
+
+  clear(panel);
+
+  const description = data.event.short_description ?? data.event.description;
+  if (description) {
+    const p = document.createElement('p');
+    p.className = 'asa-date-panel__description';
+    p.textContent = description;
+    panel.appendChild(p);
+  }
+
+  const widget = document.createElement('arena-tickets');
+  widget.setAttribute('feed-token', data.feed_token);
+  widget.setAttribute('event-id', data.event.id);
+  widget.setAttribute('locale', toWidgetLocale(locale));
+  if (options.apiBase) {
+    widget.setAttribute('api-base', options.apiBase);
+  }
+  panel.appendChild(widget);
 }
 
 /**
@@ -373,7 +496,12 @@ function renderDateRow(
  * dates a buyer picks from — or the localized empty state when the org has
  * none. Backs `/{org_slug}`.
  */
-export function renderPromoterPage(container: HTMLElement, data: HostedPromoterPageResponse, locale: PageLocale): void {
+export function renderPromoterPage(
+  container: HTMLElement,
+  data: HostedPromoterPageResponse,
+  locale: PageLocale,
+  options: PromoterPageOptions,
+): void {
   clear(container);
   const strings = t(locale);
   const poster = sharedPosterURL(data.events);
@@ -453,7 +581,7 @@ export function renderPromoterPage(container: HTMLElement, data: HostedPromoterP
   list.className = 'asa-date-list';
   list.setAttribute('aria-label', `${data.org.name} — ${strings.promoterPickDate}`);
   for (const event of data.events) {
-    list.appendChild(renderDateRow(event, data.org.slug, locale, now));
+    list.appendChild(renderDateRow(event, data.org.slug, locale, now, options));
   }
   section.appendChild(list);
   container.appendChild(section);

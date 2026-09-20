@@ -19,8 +19,11 @@ export interface PageStrings {
   /** Heading over the promoter page's date list, and the label of the
    * poster block's button that jumps down to it. */
   promoterPickDate: string;
-  /** Label of each event card's link to the per-event page. */
+  /** Label of each date row's button, which opens the ticket picker
+   * inline — the buyer never leaves the list. */
   ticketsCta: string;
+  /** The same button once its row is open. */
+  hideCta: string;
   /** Replaces the tickets label on a date that has already happened. The
    * row stays a link — the event page still shows what took place. */
   eventPast: string;
@@ -43,6 +46,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     promoterEmptyBody: 'This organizer has not published any events right now. Please check back later.',
     promoterPickDate: 'Choose a date',
     ticketsCta: 'Tickets',
+    hideCta: 'Hide',
     eventPast: 'Took place',
     backToPromoter: 'All dates',
   },
@@ -59,6 +63,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     promoterEmptyBody: 'Этот организатор пока не опубликовал ни одного события. Загляните позже.',
     promoterPickDate: 'Выберите дату',
     ticketsCta: 'Билеты',
+    hideCta: 'Свернуть',
     eventPast: 'Уже прошло',
     backToPromoter: 'Все даты',
   },
@@ -75,6 +80,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     promoterEmptyBody: 'Tento pořadatel zatím nezveřejnil žádnou akci. Zkuste to prosím později.',
     promoterPickDate: 'Vyberte termín',
     ticketsCta: 'Vstupenky',
+    hideCta: 'Skrýt',
     eventPast: 'Již proběhlo',
     backToPromoter: 'Všechny termíny',
   },
@@ -91,6 +97,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     promoterEmptyBody: 'המפיק הזה עדיין לא פרסם אירועים. נסו שוב בקרוב.',
     promoterPickDate: 'בחרו תאריך',
     ticketsCta: 'כרטיסים',
+    hideCta: 'הסתרה',
     eventPast: 'כבר התקיים',
     backToPromoter: 'כל התאריכים',
   },
@@ -107,6 +114,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     promoterEmptyBody: 'Este organizador todavía no ha publicado ningún evento. Vuelve a consultarlo más tarde.',
     promoterPickDate: 'Elige una fecha',
     ticketsCta: 'Entradas',
+    hideCta: 'Ocultar',
     eventPast: 'Ya se celebró',
     backToPromoter: 'Todas las fechas',
   },
