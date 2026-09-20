@@ -121,6 +121,78 @@ func strokedLineYs(out []byte) []float64 {
 	return ys
 }
 
+// box is one drawn thing in the LAYOUT's own frame — the same top-down
+// millimetre-derived point frame every layoutSpec constant is written in, so
+// a test can compare a drawn position against the spec directly instead of
+// mentally flipping the page every time. top is the upper edge, measured down
+// from the top of the page.
+type box struct{ x, top, w, h float64 }
+
+func (b box) right() float64  { return b.x + b.w }
+func (b box) bottom() float64 { return b.top + b.h }
+
+// filledRects returns every filled rectangle in the layout frame — the accent
+// bar, the title rule, the info hairline, and every bar of the EAN-13 symbol.
+// gofpdf's Rect(x, y, w, h, "F") emits "x (pageH-y) w -h re f", i.e. the y it
+// writes is the rectangle's TOP in user space and the height is negative.
+var rectOpRe = regexp.MustCompile(`(-?[0-9.]+) (-?[0-9.]+) (-?[0-9.]+) (-?[0-9.]+) re f`)
+
+func filledRects(t *testing.T, out []byte) []box {
+	t.Helper()
+	got := []box{}
+	for _, m := range rectOpRe.FindAllSubmatch(out, -1) {
+		top := mustFloat(t, m[2])
+		h := mustFloat(t, m[4])
+		got = append(got, box{
+			x: mustFloat(t, m[1]), w: mustFloat(t, m[3]),
+			top: ticketSpec.pageH - top, h: -h,
+		})
+	}
+	return got
+}
+
+// drawnBoxes returns every drawn image in the layout frame.
+func drawnBoxes(t *testing.T, out []byte) []box {
+	t.Helper()
+	got := []box{}
+	for _, p := range drawnImages(t, out) {
+		got = append(got, box{x: p.x, w: p.w, h: p.h, top: ticketSpec.pageH - (p.y + p.h)})
+	}
+	return got
+}
+
+// textBaselines returns the position of every text-show operator in the
+// layout frame. gofpdf writes "BT <x> <y> Td (<text>)Tj ET".
+var tdOpRe = regexp.MustCompile(`BT (-?[0-9.]+) (-?[0-9.]+) Td`)
+
+func textBaselines(t *testing.T, out []byte) []box {
+	t.Helper()
+	got := []box{}
+	for _, m := range tdOpRe.FindAllSubmatch(out, -1) {
+		got = append(got, box{x: mustFloat(t, m[1]), top: ticketSpec.pageH - mustFloat(t, m[2])})
+	}
+	return got
+}
+
+// lowestInk is how far down the page anything is drawn at all: the lowest
+// filled rectangle, image or text baseline, in the layout frame. It is what
+// the "nothing runs off the bottom of the page" assertions measure.
+func lowestInk(t *testing.T, out []byte) float64 {
+	t.Helper()
+	low := 0.0
+	for _, b := range append(filledRects(t, out), drawnBoxes(t, out)...) {
+		if b.bottom() > low {
+			low = b.bottom()
+		}
+	}
+	for _, b := range textBaselines(t, out) {
+		if b.top > low {
+			low = b.top
+		}
+	}
+	return low
+}
+
 // placement is one drawn image: its size and its lower-left corner, in PDF
 // user space (y from the page bottom).
 type placement struct{ w, h, x, y float64 }

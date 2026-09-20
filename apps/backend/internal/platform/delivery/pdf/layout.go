@@ -11,14 +11,25 @@
 //
 //   - ONE CODE BLOCK PER PHONE SCREEN. The page is 105x297 mm — half of A4
 //     lengthwise, NOT A5 — and the code block is absolutely positioned at
-//     bottomTop (140 mm) on every page. Two consecutive tickets' codes stay a
-//     full page apart, further than a fit-to-width viewport can show even on
-//     a 21:9 phone, so an entrance scanner cannot grab the neighbouring
-//     ticket. The page height equals A4's, so the sheet also prints at exactly
-//     100% and "2 pages per sheet" tiles two tickets onto one A4.
-//   - THE FLOWING TOP CAN NEVER PUSH THE BOTTOM. Everything above the tear
-//     line flows; the bottom block does not. A long title or a long address
-//     eats its own slack, never the barcode's position.
+//     bottomTop (140 mm) on every page. ONE PDF CARRIES A WHOLE ORDER, one
+//     ticket per page, so the page before and the page after this one are
+//     other people's live tickets, not blanks: the page length is the only
+//     thing that keeps two consecutive tickets' codes further apart than a
+//     fit-to-width viewport can show (a 21:9 phone tops out around 245 mm of
+//     a 105 mm-wide page; consecutive codes sit ~290 mm apart). Making the
+//     QR the primary, LARGE mark makes this MORE load-bearing, not less: a
+//     60 mm QR resolves from further away, further off-axis and at a
+//     coarser camera focus than the old 32 mm one did, so the neighbouring
+//     ticket's QR drifting into frame is now a realistic mis-scan rather
+//     than a theoretical one, and page length is what prevents it. The page
+//     height equals A4's, so the sheet also prints at exactly 100% and "2
+//     pages per sheet" tiles two tickets onto one A4.
+//   - THE FLOWING TOP CAN NEVER PUSH THE BOTTOM. Everything above bottomTop
+//     flows; the code block does not. A long title or a long address eats
+//     its own slack, never the codes' position — which is precisely what
+//     keeps consecutive pages' codes a FIXED distance apart no matter how
+//     long the event names, venue addresses and footers of the tickets in
+//     one order happen to run.
 //   - LONG VALUES SHRINK, THEY DO NOT REFLOW. Title 13.5pt, 11.5pt past 55
 //     characters; info values 10.5pt, 9pt past 28. Measured in RUNES, not
 //     bytes — see runeLen.
@@ -53,7 +64,6 @@ var (
 	colorWeekday  = rgb{r: 122, g: 135, b: 144} // #7a8790 — the weekday under the date
 	colorLabel    = rgb{r: 147, g: 160, b: 168} // #93a0a8 — info labels, footer
 	colorHairline = rgb{r: 227, g: 231, b: 233} // #e3e7e9 — the rule above the info row
-	colorTear     = rgb{r: 185, g: 194, b: 200} // #b9c2c8 — the dashed tear line
 )
 
 // layoutSpec is the page geometry. All lengths are PDF points; every *LineH
@@ -116,13 +126,16 @@ type layoutSpec struct {
 	infoValueLineH         float64
 	infoRowGap             float64
 
-	// The anchored bottom block: tear line, QR, barcode, number, footer.
-	bottomTop      float64
-	tearLineW      float64
-	tearDashOn     float64
-	tearDashOff    float64
-	tearGapBelow   float64
+	// The anchored bottom block: QR, barcode, number, footer. There is no
+	// tear line — the ported original had a dashed rule here, for a paper
+	// ticket that would be torn at the gate; these tickets live on a phone
+	// screen and nobody tears them, so the rule was removed rather than
+	// kept as decoration.
+	bottomTop float64
+	// qrSize is the nominal QR edge; qrMinSize is how far fitQRSize may
+	// shrink it when an unusually tall footer squeezes the block.
 	qrSize         float64
+	qrMinSize      float64
 	qrGapBelow     float64
 	ticketNoFS     float64
 	ticketNoLineH  float64
@@ -146,16 +159,30 @@ type layoutSpec struct {
 
 // ticketSpec is the one page geometry this renderer has.
 //
-// The QR sizing (qrSize) deserves its own note. 13 numeric characters at the
-// highest error-correction level fit in a version-1 symbol — 21x21 modules —
-// so at 32 mm each module is ~1.5 mm, several times the practical floor for a
-// phone screen or a printed sheet, with the error correction left at its
-// maximum so a thumb-smudged or partly-glared code still resolves. 32 mm is
-// also small enough to keep the QR and the barcode within ~60 mm of each
-// other: the two codes of ONE ticket may be read interchangeably (they carry
-// the same value), but the nearest pair belonging to DIFFERENT tickets stays
-// ~295 mm apart, still well beyond what a fit-to-width phone viewport shows.
-// Growing the QR much past this would start eating that margin.
+// # Which code is the primary one
+//
+// The QR is what the buyer holds up to the gate and what entrance control
+// (MACS) actually reads, and a QR resolves off a phone screen — backlit,
+// smudged, at an angle, at whatever brightness the buyer left the phone on —
+// far more reliably than a barcode does. It is therefore drawn FIRST, CENTRED
+// and LARGE (qrSize, 60 mm). The barcode is the secondary aid: deliberately
+// narrower (~56 mm against the old 96 mm) and shorter, so that at a glance it
+// reads as an accessory to the QR rather than as a second, competing mark.
+// Its human-readable digits stay large enough to read aloud and type, because
+// those digits — not the bars — are the real fallback when a scanner fails.
+//
+// Both codes carry EXACTLY the same value (the EAN-13 digits), so it never
+// matters which one a scanner happens to catch.
+//
+// 13 numeric characters at the highest error-correction level fit in a
+// version-1 symbol (21x21 modules), so at 60 mm a module is ~2.8 mm — an
+// order of magnitude above the practical floor, with the error correction
+// left at its maximum so a thumb-smudged or partly-glared code still
+// resolves. The size is bounded not by legibility but by the block budget:
+// the code block must still fit between bottomTop and the footer sitting
+// above the bottom safety margin. fitQRSize gives back QR edge before
+// anything is allowed to overflow, because a 40 mm QR still scans perfectly
+// while a footer printed off the bottom of the page is simply broken.
 var ticketSpec = layoutSpec{
 	pageW: mm(105), pageH: mm(297),
 
@@ -205,12 +232,9 @@ var ticketSpec = layoutSpec{
 	infoRowGap:             mm(1),
 
 	bottomTop:      mm(140),
-	tearLineW:      mm(0.4),
-	tearDashOn:     2,
-	tearDashOff:    2,
-	tearGapBelow:   mm(3.5),
-	qrSize:         mm(32),
-	qrGapBelow:     mm(4),
+	qrSize:         mm(60),
+	qrMinSize:      mm(40),
+	qrGapBelow:     mm(7),
 	ticketNoFS:     9.5,
 	ticketNoLineH:  1.3,
 	ticketNoGap:    mm(2.4),
@@ -220,16 +244,29 @@ var ticketSpec = layoutSpec{
 	footLineH:      1.55,
 	bottomSafety:   mm(10),
 
-	// 0.78 mm modules put the whole symbol plus its quiet zones and the
-	// leading digit inside ~96 mm, i.e. roughly 4.5 mm clear of each paper
-	// edge — wide bars scan off a phone screen far better than nominal ones,
-	// which is the whole reason the original stretches the barcode to the
-	// content width too.
-	eanModuleW:    mm(0.78),
-	eanBarH:       mm(18),
-	eanGuardExtra: mm(1.5),
-	eanDigitFS:    20,
-	eanLeadGap:    4,
+	// The barcode is the SECONDARY mark, and these numbers are what make it
+	// read that way. 0.465 mm modules put the 95-module symbol, its quiet
+	// zones and the leading digit inside ~56 mm — a little over half the old
+	// 96 mm, and narrower than the 60 mm QR above it, which is the whole
+	// point: whatever the buyer's eye lands on first must be the QR.
+	//
+	// 0.465 mm is ~140% of the GS1 nominal X dimension (0.33 mm), so the
+	// symbol is still comfortably above spec on paper at 100%; on a phone,
+	// where the page is rendered at roughly two thirds of its printed width,
+	// it lands near nominal. That is an acceptable trade now that the
+	// barcode is no longer the mark a gate is expected to read — and the
+	// human-readable digits below it (eanDigitFS 12pt, well above the 9.5pt
+	// ticket-number line) stay the real manual fallback.
+	//
+	// eanBarH 15 mm truncates the symbol relative to its GS1-proportional
+	// height for this width: deliberate, standard practice for a secondary
+	// in-line barcode, and still 3 mm of shrink headroom above
+	// eanMinBarHeightPt before drawEAN13Symbol would drop the symbol.
+	eanModuleW:    mm(0.465),
+	eanBarH:       mm(15),
+	eanGuardExtra: mm(1.2),
+	eanDigitFS:    12,
+	eanLeadGap:    3,
 }
 
 // specFor maps a Format to its geometry. Both formats resolve to the same
@@ -247,15 +284,21 @@ func specFor(f Format) (layoutSpec, error) {
 // contentW is the width between the side margins.
 func (s layoutSpec) contentW() float64 { return s.pageW - 2*s.sideMargin }
 
-// qrPixelSize is the raster size of the QR image handed to gofpdf. It is
-// deliberately far larger than the 32 mm it is drawn at: the PNG is scaled
-// DOWN into the page box, so every module lands on a whole number of source
-// pixels and no resampling can soften a module edge.
-const qrPixelSize = 512
+// qrPixelSize is the raster size of the QR image handed to gofpdf. It has to
+// stay ahead of the size the QR is DRAWN at (ticketSpec.qrSize, 60 mm): the
+// PNG is always scaled DOWN into the page box, never up, so no resampling can
+// soften a module edge and the symbol prints crisp at 300 dpi. go-qrcode
+// rounds this up to a whole number of pixels per module, so the source image
+// is module-aligned by construction. It was 512 while the QR was 32 mm; a
+// 60 mm QR needs more, and the PNG compresses to a couple of kilobytes either
+// way because it is two flat colours.
+const qrPixelSize = 768
 
-// renderWithSpec draws the page and returns the finished PDF bytes.
+// newDoc builds the empty, page-less document every render (and every
+// measuring pass) starts from.
+//
 // Deterministic: compression off, catalog sort on, timestamps pinned.
-func renderWithSpec(t Ticket, spec layoutSpec) ([]byte, error) {
+func newDoc(t Ticket, spec layoutSpec) *gofpdf.Fpdf {
 	doc := gofpdf.NewCustom(&gofpdf.InitType{
 		OrientationStr: "P",
 		UnitStr:        "pt",
@@ -285,15 +328,32 @@ func renderWithSpec(t Ticket, spec layoutSpec) ([]byte, error) {
 	// UUID — a PDF title shows in the reader's window chrome and survives
 	// into anything the buyer forwards.
 	doc.SetTitle(fmt.Sprintf("Ticket %s", displayTicketNumber(t)), true)
-	doc.AddPage()
+	return doc
+}
 
-	str := stringsFor(t.Locale)
-	accent := accentColor(t)
-
+// drawFlow draws everything ABOVE the anchored code block — the header band,
+// the title and its accent rule, the poster / date / venue column and the
+// info rows — and returns the y cursor below the last of them.
+//
+// It is one function because the layout has to be able to MEASURE the
+// flowing block (see distributeFlowSlack) with exactly the drawing code that
+// will later produce it, into a throwaway document.
+func drawFlow(doc *gofpdf.Fpdf, t Ticket, spec layoutSpec, s ticketStrings, accent rgb) float64 {
 	y := drawHeader(doc, t, spec, accent)
 	y = drawTitle(doc, t, spec, accent, y+spec.bodyPadTop)
 	y = drawWhenWhere(doc, t, spec, y)
-	drawInfo(doc, t, spec, str, y)
+	return drawInfo(doc, t, spec, s, y)
+}
+
+// renderWithSpec draws the page and returns the finished PDF bytes.
+func renderWithSpec(t Ticket, spec layoutSpec) ([]byte, error) {
+	spec = distributeFlowSlack(t, spec)
+
+	doc := newDoc(t, spec)
+	doc.AddPage()
+
+	str := stringsFor(t.Locale)
+	drawFlow(doc, t, spec, str, accentColor(t))
 	if err := drawBottom(doc, t, spec, str); err != nil {
 		return nil, err
 	}
@@ -303,6 +363,126 @@ func renderWithSpec(t Ticket, spec layoutSpec) ([]byte, error) {
 		return nil, fmt.Errorf("pdf: output: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// flowGapMaxScale caps how far distributeFlowSlack may OPEN the flowing
+// block's gaps. Three times the ported rhythm is already a very airy page;
+// past that the details stop reading as one block and start reading as
+// unrelated fragments, which is worse than the white it would have absorbed.
+//
+// flowGapMinScale is the matching floor for CLOSING them. A third of the
+// nominal rhythm is tight but still legibly separated, and it is only ever
+// reached by a ticket that would otherwise print its holder's name on top of
+// the QR.
+const (
+	flowGapMaxScale = 3.0
+	flowGapMinScale = 0.35
+)
+
+// flowGutterTarget is the white distributeFlowSlack AIMS to leave between the
+// last line of the details and the top of the code block when the ticket has
+// room to spare. flowGutterMin is the hard floor it will compress the details
+// to reach when they do not: a 60 mm QR is read by pointing a camera at it,
+// and text crowding — let alone overprinting — its top edge is a scan
+// failure, not a cosmetic blemish.
+var (
+	flowGutterTarget = mm(14)
+	flowGutterMin    = mm(4)
+)
+
+// distributeFlowSlack returns a copy of spec whose flowing-block gaps have
+// been scaled so the details end a comfortable distance above the anchored
+// code block — opened up when the ticket has little to say, closed down when
+// it has too much.
+//
+// The anchor is NOT negotiable (see the package comment: it is what keeps
+// every ticket's codes one full page from its neighbours' in an order-wide
+// PDF). So a ticket with little above it — no poster, a one-line title, no
+// seat — used to leave a 60 mm dead band in the middle of the page, and both
+// of the first live clients' tickets look exactly like that, making it the
+// common case rather than the exception. At the other end, a ticket with a
+// poster AND a five-line title AND a wrapped address used to run straight
+// into the code block and have its last line clipped by the QR's opaque
+// raster. Rather than move the anchor or invent filler, the surplus (or the
+// deficit) is taken from the gaps the design already has, in proportion to
+// their nominal sizes, so the page keeps its rhythm and only its breathing
+// changes.
+//
+// A ticket that already lands between the two gutters gets no adjustment at
+// all, after a single measuring pass.
+//
+// The measurement is EXACT rather than iterative. Nothing in the flowing
+// block wraps on y — auto page break is off and every MultiCell width is
+// independent of the cursor — so the block's end is an AFFINE function of the
+// gap scale. One measuring pass at the nominal scale plus one at the relevant
+// limit determine it, and the answer is then arithmetic.
+func distributeFlowSlack(t Ticket, spec layoutSpec) layoutSpec {
+	s := stringsFor(t.Locale)
+	accent := accentColor(t)
+	measure := func(sp layoutSpec) float64 {
+		scratch := newDoc(t, sp)
+		scratch.AddPage()
+		return drawFlow(scratch, t, sp, s, accent)
+	}
+
+	atNominal := measure(spec)
+	switch {
+	case atNominal < spec.bottomTop-flowGutterTarget:
+		return fitFlowGaps(spec, measure, atNominal, spec.bottomTop-flowGutterTarget, flowGapMaxScale)
+	case atNominal > spec.bottomTop-flowGutterMin:
+		return fitFlowGaps(spec, measure, atNominal, spec.bottomTop-flowGutterMin, flowGapMinScale)
+	default:
+		return spec
+	}
+}
+
+// fitFlowGaps solves for the gap scale that lands the flowing block's end on
+// target, given its measured end at the nominal scale and one more measurement
+// at limitScale (above 1 to expand, below 1 to contract). The result is
+// clamped to the [1, limitScale] interval, so the returned spec is never
+// scaled further than the caller allowed and never scaled the wrong way.
+func fitFlowGaps(spec layoutSpec, measure func(layoutSpec) float64, atNominal, target, limitScale float64) layoutSpec {
+	atLimit := measure(scaleFlowGaps(spec, limitScale))
+	// end(k) = atNominal + (k-1)*slope, and slope > 0 whenever the block has
+	// any gaps at all to give or take.
+	slope := (atLimit - atNominal) / (limitScale - 1)
+	if slope <= 0 {
+		return spec
+	}
+	k := 1 + (target-atNominal)/slope
+	lo, hi := limitScale, 1.0
+	if limitScale > 1 {
+		lo, hi = 1.0, limitScale
+	}
+	if k < lo {
+		k = lo
+	}
+	if k > hi {
+		k = hi
+	}
+	return scaleFlowGaps(spec, k)
+}
+
+// scaleFlowGaps multiplies every vertical gap in the flowing block by k. It
+// deliberately touches only the GAPS — never a font size, a line height or a
+// rule thickness — so a distributed page is the ported design with more air,
+// not a different design.
+func scaleFlowGaps(spec layoutSpec, k float64) layoutSpec {
+	out := spec
+	for _, g := range []*float64{
+		&out.headerPadBottom,
+		&out.bodyPadTop,
+		&out.titleRuleGap,
+		&out.ruleGapBelow,
+		&out.posterBottomGap,
+		&out.whereGap,
+		&out.infoTopGap,
+		&out.infoCellPadTop,
+		&out.infoRowGap,
+	} {
+		*g *= k
+	}
+	return out
 }
 
 // setText / setFill are the two colour setters, kept as helpers so no call
@@ -588,28 +768,60 @@ func drawTracked(doc *gofpdf.Fpdf, s string, x, baseline, fs, tracking float64) 
 	}
 }
 
-// drawBottom draws the anchored block: tear line, QR, barcode symbol with
-// its human-readable digits, the ticket number, and the footer.
+// eanTextBlockH is the vertical room drawEAN13Symbol needs below the bars
+// for the human-readable digits (gap + cap height + descender buffer).
+func eanTextBlockH(spec layoutSpec) float64 {
+	return eanTextGapPt + spec.eanDigitFS + eanTextDescentPt
+}
+
+// fitQRSize returns the QR edge to draw given `available` pt of room between
+// the top of the code block and the highest y the codes may reach.
+//
+// The QR is the primary mark, so it is drawn at its nominal size whenever the
+// page can hold the nominal barcode under it, and shrinks — never below
+// spec.qrMinSize — only when an unusually tall footer (a full legal
+// identification block plus a wrapped organizer note) would otherwise push
+// the block off the bottom of the page. Below qrMinSize it stops yielding and
+// drawEAN13Symbol's own shrink-then-skip takes over: a 40 mm QR that scans is
+// worth more than a barcode nobody will point a camera at.
+func fitQRSize(spec layoutSpec, available float64) float64 {
+	below := spec.qrGapBelow + spec.eanBarH + spec.eanGuardExtra + eanTextBlockH(spec)
+	size := available - below
+	if size > spec.qrSize {
+		size = spec.qrSize
+	}
+	if size < spec.qrMinSize {
+		size = spec.qrMinSize
+	}
+	return size
+}
+
+// drawBottom draws the anchored block: the QR, the barcode symbol with its
+// human-readable digits, the ticket number, and the footer.
 //
 // The block's top is spec.bottomTop on every page, independent of everything
-// above it — that is the whole point of the design. The QR sits directly
-// under the tear line because it is what entrance control actually scans;
-// the barcode follows immediately, with its digits beneath, because those
-// digits are the manual-entry fallback when a scanner fails.
+// above it — that is the whole point of the design, and with one PDF now
+// carrying a whole order it is what keeps every ticket's codes exactly one
+// page apart from its neighbours'.
+//
+// Order of marks, largest first: the QR is centred at the very top of the
+// block because it is the thing the buyer holds up and the thing entrance
+// control reads. The barcode follows, narrower and shorter, as a secondary
+// aid — and its human-readable digits beneath it are the manual-entry
+// fallback staff type when a scanner fails, which is why they are set well
+// above the ticket-number line's size.
+//
+// There is no tear line: the ported original's dashed rule belonged to a
+// paper ticket somebody would tear at the gate, and these are read off a
+// phone.
 func drawBottom(doc *gofpdf.Fpdf, t Ticket, spec layoutSpec, s ticketStrings) error {
 	y := spec.bottomTop
 
-	doc.SetDrawColor(colorTear.r, colorTear.g, colorTear.b)
-	doc.SetLineWidth(spec.tearLineW)
-	doc.SetDashPattern([]float64{spec.tearDashOn, spec.tearDashOff}, 0)
-	doc.Line(spec.sideMargin, y, spec.pageW-spec.sideMargin, y)
-	doc.SetDashPattern(nil, 0)
-	y += spec.tearGapBelow
-
 	footLines := footerLines(doc, t, spec, s)
-	// Everything below the barcode has a fixed height, so the symbol's
-	// ceiling is known before it is drawn. drawEAN13Symbol shrinks or skips
-	// itself against this rather than overprinting the footer.
+	// Everything below the barcode has a fixed height, so the ceiling both
+	// codes share is known before either is drawn. The QR sizes itself
+	// against it (fitQRSize) and drawEAN13Symbol shrinks or skips itself
+	// against it, rather than either overprinting the footer.
 	footerH := spec.footPadTop + float64(len(footLines))*spec.footFS*spec.footLineH
 	ceiling := spec.pageH - spec.bottomSafety - footerH -
 		spec.ticketNoGap - spec.ticketNoFS*spec.ticketNoLineH
@@ -624,6 +836,7 @@ func drawBottom(doc *gofpdf.Fpdf, t Ticket, spec layoutSpec, s ticketStrings) er
 		if err != nil {
 			return fmt.Errorf("pdf: encode qr: %w", err)
 		}
+		qrSize := fitQRSize(spec, ceiling-y)
 		name := "qr-" + t.TicketID
 		doc.RegisterImageOptionsReader(
 			name,
@@ -631,10 +844,10 @@ func drawBottom(doc *gofpdf.Fpdf, t Ticket, spec layoutSpec, s ticketStrings) er
 			bytes.NewReader(qrPNG),
 		)
 		doc.ImageOptions(
-			name, (spec.pageW-spec.qrSize)/2, y, spec.qrSize, spec.qrSize,
+			name, (spec.pageW-qrSize)/2, y, qrSize, qrSize,
 			false, gofpdf.ImageOptions{ImageType: "PNG"}, 0, "",
 		)
-		y += spec.qrSize + spec.qrGapBelow
+		y += qrSize + spec.qrGapBelow
 
 		setText(doc, colorBody)
 		y = drawEAN13Symbol(doc, code, spec, y, ceiling)

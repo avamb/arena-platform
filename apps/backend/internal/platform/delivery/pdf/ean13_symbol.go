@@ -257,7 +257,7 @@ func drawEAN13Symbol(pdf *gofpdf.Fpdf, code string, spec layoutSpec, y, footerLi
 	if !ean13.Valid(code) {
 		return y
 	}
-	textBlockH := eanTextGapPt + spec.eanDigitFS + eanTextDescentPt
+	textBlockH := eanTextBlockH(spec)
 	barH, guardExtra, ok := fitEANBarHeight(spec.eanBarH, spec.eanGuardExtra, textBlockH, footerLimit-y)
 	if !ok {
 		return y
