@@ -54,6 +54,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customerimport"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/mediaresolver"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
@@ -225,9 +226,17 @@ func run() error {
 	// registration below and the startup message at 7e share one instance.
 	opsNotifier := opsalert.New(cfg.OpsTelegramBotToken, cfg.OpsTelegramChatID, cfg.OpsAlertEnvLabel, logger)
 
+	// The media store is built ONCE here and shared by every handler that
+	// needs it: media-gc and customer.import (which used to build it inside
+	// their own registration function) and — since 2026-09-20 — ticket
+	// delivery, which needs it to put the organizer logo and the event
+	// poster on the e-ticket. nil when MEDIA_BACKEND is unset or storage
+	// cannot be opened; every consumer degrades on its own terms.
+	mediaRepo := buildMediaRepo(pool.Pool, cfg, logger)
+
 	registry := worker.NewRegistry()
-	registerBuiltinHandlers(registry, pool.Pool, cfg, metrics, logger)
-	registerMediaGCHandler(registry, pool.Pool, cfg, logger)
+	registerBuiltinHandlers(registry, pool.Pool, cfg, metrics, mediaRepo, logger)
+	registerMediaGCHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerOpsWatchdogHandler(registry, pool.Pool, cfg, opsNotifier, logger)
 
 	// 7b. Idempotency cleanup startup scheduling (feature #48) ---------------
@@ -412,7 +421,10 @@ func run() error {
 
 // registerBuiltinHandlers attaches every job type the foundation
 // milestone ships with.
-func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, metrics *observability.Metrics, logger *slog.Logger) {
+//
+// mediaRepo may be nil (MEDIA_BACKEND unset): ticket delivery then renders
+// exactly as it did before media storage existed — platform logo, no poster.
+func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, metrics *observability.Metrics, mediaRepo *mediastore.Repo, logger *slog.Logger) {
 	// noop.test exists for feature #20 (worker job persistence) and for
 	// any future smoke test that wants to prove the queue plumbing
 	// without exercising business code. It always succeeds.
@@ -466,15 +478,14 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	// issued tickets. Feature #141.
 	// In development (no SMTP configured), a LogSender writes emails to
 	// the structured logger instead of delivering them.
+	// The dependencies are assembled by buildDeliveryHandlerOptions so the
+	// wiring is unit-testable — this is the ONLY place in the platform where
+	// a delivery handler is built, so a dependency missing here (Media was,
+	// for every ticket ever sent) is invisible everywhere else.
 	queries := gen.New(pool)
-	reg.Register(delivery.JobType, delivery.NewHandler(delivery.HandlerOptions{
-		TicketQueries:      queries,
-		DeliveryJobQueries: queries,
-		CredentialQueries:  queries,
-		Sender:             buildEmailSender(cfg, logger),
-		FromAddress:        coalesce(getEmailFrom(cfg), "tickets@arena.example.com"),
-		Logger:             logger,
-	}))
+	reg.Register(delivery.JobType, delivery.NewHandler(buildDeliveryHandlerOptions(
+		cfg, queries, buildDeliveryMediaResolver(mediaRepo, cfg, logger), logger,
+	)))
 
 	// auth.email_verification and auth.password_reset_email deliver
 	// account-management emails for the registration and password-reset flows.
@@ -579,15 +590,18 @@ func registerOpsWatchdogHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *c
 	)
 }
 
-// registerMediaGCHandler registers the media-gc worker handler when the
-// media storage backend is configured. When MEDIA_BACKEND is unset the
-// handler is not registered — any media-gc job sitting in the queue
-// fails fast with worker.ErrUnknownJobType, surfacing the
-// misconfiguration to operators instead of silently leaking bytes.
-func registerMediaGCHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) {
+// buildMediaRepo opens the media storage backend and wraps it in a
+// mediastore.Repo, or returns nil when MEDIA_BACKEND is unset or the backend
+// cannot be opened. Never fatal: a worker that cannot reach media storage
+// must still deliver tickets, run the sweeps and drain the outbox.
+//
+// SigningSecret mirrors arena-api (cmd/arena-api/main.go): the two processes
+// must sign /v1/media-files/{id} with the SAME key, or a URL this worker
+// puts in an e-mail is rejected by the API that serves it.
+func buildMediaRepo(pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) *mediastore.Repo {
 	if cfg.MediaBackend == "" {
-		logger.Info("media-gc handler skipped (MEDIA_BACKEND not set)")
-		return
+		logger.Info("media storage not configured (MEDIA_BACKEND not set)")
+		return nil
 	}
 	st, err := storage.NewFromConfig(storage.Config{
 		Backend:           storage.Backend(cfg.MediaBackend),
@@ -600,12 +614,70 @@ func registerMediaGCHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *confi
 		S3UsePathStyle:    cfg.MediaS3UsePathStyle,
 	})
 	if err != nil {
-		logger.Error("media-gc handler init failed", "error", err.Error())
-		return
+		logger.Error("media storage init failed", "error", err.Error())
+		return nil
 	}
-	repo, err := mediastore.New(mediastore.Options{Pool: pool, Storage: st})
+	repo, err := mediastore.New(mediastore.Options{
+		Pool:          pool,
+		Storage:       st,
+		SigningSecret: cfg.MediaSigningKey(),
+	})
 	if err != nil {
-		logger.Error("media-gc repo init failed", "error", err.Error())
+		logger.Error("media repo init failed", "error", err.Error())
+		return nil
+	}
+	logger.Info("media storage configured", "backend", cfg.MediaBackend)
+	return repo
+}
+
+// buildDeliveryMediaResolver adapts the shared media repo to the narrow
+// resolver the ticket-delivery handler uses for the organizer logo and the
+// event poster. A nil repo yields a nil resolver, which is exactly the
+// pre-fix behaviour: platform logo in the e-mail, no poster on the PDF.
+//
+// The API's public origin is needed because the signed download path is
+// host-relative and an e-mail <img src> must be absolute; it is the same
+// value the API builds its own site-facing links on (API_PUBLIC_URL,
+// falling back to APP_PUBLIC_URL). Unset is tolerated — the logo <img> is
+// then simply dropped by the template rather than pointing nowhere.
+func buildDeliveryMediaResolver(repo *mediastore.Repo, cfg *config.Config, logger *slog.Logger) delivery.MediaResolver {
+	if repo == nil {
+		return nil
+	}
+	base := cfg.APIPublicBaseURL()
+	if base == "" {
+		logger.Warn("ticket delivery: neither API_PUBLIC_URL nor APP_PUBLIC_URL is set; " +
+			"the e-ticket PDF still embeds the organizer logo but the e-mail header cannot link to it")
+	}
+	return mediaresolver.New(repo, base, logger)
+}
+
+// buildDeliveryHandlerOptions assembles the ticket.deliver handler's
+// dependencies. Extracted from registerBuiltinHandlers so the wiring —
+// specifically, that Media is actually populated — is testable without a
+// database: arena-worker is the ONLY process that renders live ticket
+// e-mails, and it shipped with Media nil, so no organizer logo ever reached
+// a real ticket.
+func buildDeliveryHandlerOptions(cfg *config.Config, queries *gen.Queries, media delivery.MediaResolver, logger *slog.Logger) delivery.HandlerOptions {
+	return delivery.HandlerOptions{
+		TicketQueries:      queries,
+		DeliveryJobQueries: queries,
+		CredentialQueries:  queries,
+		Sender:             buildEmailSender(cfg, logger),
+		FromAddress:        coalesce(getEmailFrom(cfg), "tickets@arena.example.com"),
+		Media:              media,
+		Logger:             logger,
+	}
+}
+
+// registerMediaGCHandler registers the media-gc worker handler when the
+// media storage backend is configured. When MEDIA_BACKEND is unset the
+// handler is not registered — any media-gc job sitting in the queue
+// fails fast with worker.ErrUnknownJobType, surfacing the
+// misconfiguration to operators instead of silently leaking bytes.
+func registerMediaGCHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, repo *mediastore.Repo, logger *slog.Logger) {
+	if repo == nil {
+		logger.Info("media-gc handler skipped (media storage not configured)")
 		return
 	}
 	reg.Register(mediastore.JobType, mediastore.NewGCHandler(mediastore.GCHandlerOptions{

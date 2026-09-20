@@ -1298,6 +1298,23 @@ entries short and factual.
   row — but the `htickets` live-DB tests in the same sweep DO need
   `arena-seed` ("no (org, channel, session) triple with GA inventory
   found").
+- **`arena-worker` is the ONLY process that constructs
+  `delivery.NewHandler` — `httpserver` never does, despite owning the
+  enqueuers.** Anything `delivery.HandlerOptions` needs must be wired in
+  `cmd/arena-worker/main.go` or it degrades silently on every live ticket;
+  there is no API-side reference wiring to copy. This is how
+  `HandlerOptions.Media` stayed nil from feature #290 until 2026-09-20, so no
+  organizer logo ever reached a real e-ticket. The media store is now built
+  once in `run()` (`buildMediaRepo`, `SigningSecret: cfg.MediaSigningKey()` —
+  it MUST match arena-api's key or the API rejects the URLs this worker
+  signs) and shared by media-gc, customer.import and delivery;
+  `internal/platform/delivery/mediaresolver` is the only implementation of
+  `delivery.MediaResolver` and absolutizes the host-relative signed
+  `/v1/media-files/{id}` path onto `cfg.APIPublicBaseURL()` exactly as
+  `httpserver.Server.signedMediaURL` does (a relative URL is useless in an
+  e-mail `<img src>`). Options go through `buildDeliveryHandlerOptions`, a
+  seam whose unit test (`cmd/arena-worker/delivery_wiring_test.go`) is the
+  regression guard — keep the registration going through it.
 - **The e-ticket layout is a PORT — its spec lives outside this repo.**
   `internal/platform/delivery/pdf` reproduces the design the owner already
   ships from the WordPress sites: `bil24-ticket-mailer/templates/ticket.php`
