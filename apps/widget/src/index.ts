@@ -146,6 +146,7 @@ export {
   saveCheckoutToken,
   restoreCheckoutToken,
   clearCheckoutToken,
+  checkoutTokenKey,
   getCheckoutTokenFromSearch,
   totalSelectionCount,
   buildGaItems,

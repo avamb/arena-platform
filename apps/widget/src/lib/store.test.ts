@@ -10,6 +10,7 @@ import {
   saveCheckoutToken,
   restoreCheckoutToken,
   clearCheckoutToken,
+  checkoutTokenKey,
   totalSelectionCount,
   buildGaItems,
   buildCartFromSelection,
@@ -158,6 +159,41 @@ describe('storage helpers', () => {
   it('clearCheckoutToken is idempotent when nothing stored', () => {
     expect(() => clearCheckoutToken(storage)).not.toThrow();
     expect(restoreCheckoutToken(storage)).toBeNull();
+  });
+
+  // tickets.arenasoldout.com serves every promoter's every event from ONE
+  // origin. Without a scope, a checkout finished on one event resumed on the
+  // next event the buyer opened in the same tab, showing them the previous
+  // order's status screen instead of that event's ticket picker.
+  it('a token saved for one event is not visible to another event', () => {
+    saveCheckoutToken('tok-event-a', storage, 'event-a');
+    expect(restoreCheckoutToken(storage, 'event-b')).toBeNull();
+    expect(restoreCheckoutToken(storage, 'event-a')).toBe('tok-event-a');
+  });
+
+  it('two events keep independent tokens', () => {
+    saveCheckoutToken('tok-a', storage, 'event-a');
+    saveCheckoutToken('tok-b', storage, 'event-b');
+    expect(restoreCheckoutToken(storage, 'event-a')).toBe('tok-a');
+    expect(restoreCheckoutToken(storage, 'event-b')).toBe('tok-b');
+  });
+
+  it('clearing one event does not clear another', () => {
+    saveCheckoutToken('tok-a', storage, 'event-a');
+    saveCheckoutToken('tok-b', storage, 'event-b');
+    clearCheckoutToken(storage, 'event-a');
+    expect(restoreCheckoutToken(storage, 'event-a')).toBeNull();
+    expect(restoreCheckoutToken(storage, 'event-b')).toBe('tok-b');
+  });
+
+  it('an empty scope keeps the legacy unscoped key', () => {
+    saveCheckoutToken('tok-legacy', storage, '');
+    expect(restoreCheckoutToken(storage)).toBe('tok-legacy');
+    expect(checkoutTokenKey('')).toBe(checkoutTokenKey(undefined));
+  });
+
+  it('a scoped key is distinct from the unscoped one', () => {
+    expect(checkoutTokenKey('event-a')).not.toBe(checkoutTokenKey());
   });
 });
 

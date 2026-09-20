@@ -237,7 +237,7 @@ describe('Step 2: fetchFeedEvent returns tiers and buyer_fields', () => {
     const urlPromise = captureUrl();
     void fetchFeedEvent('ft', 'ev-1', 'https://tickets.arena-platform.ru');
     const url = await urlPromise;
-    expect(url).toStartWith('https://tickets.arena-platform.ru/');
+    expect(url.startsWith('https://tickets.arena-platform.ru/')).toBe(true);
     expect(url).toContain('/v1/public/feeds/ft/events/ev-1');
   });
 
@@ -289,9 +289,17 @@ describe('Step 3: ArenaTickets module exports and resume-token contract', () => 
     );
     // Real feed load is called from onMount.
     expect(src).toContain('loadFromFeed(normFeedToken, normEventId)');
-    // Synthetic stub event with empty tiers must NOT exist.
-    expect(src).not.toContain("tiers: [],");
-    expect(src).not.toContain("buyer_fields: [],");
+    // The event detail actually rendered comes from the feed, never from a
+    // stub built in the normal path.
+    expect(src).toContain('applyFeedEvent(await fetchFeedEvent(');
+    // A synthetic single-session event still exists, but ONLY as the named
+    // PR2-21 fallback for a feed-token + session-id embed whose feed listing
+    // is unreachable — it must stay confined to that one function.
+    const syntheticFn = src.slice(src.indexOf('function applySyntheticSessionEvent'));
+    expect(syntheticFn).toContain('tiers: [],');
+    expect(src.slice(0, src.indexOf('function applySyntheticSessionEvent'))).not.toContain(
+      'tiers: [],',
+    );
   });
 
   it('ArenaTickets.svelte sets loadError on 401 recovery failure', async () => {
@@ -311,7 +319,8 @@ describe('Step 3: ArenaTickets module exports and resume-token contract', () => 
       (m: { default: string }) => m.default,
     );
     expect(src).toContain('apiErr?.status === 404');
-    expect(src).toContain('clearCheckoutToken()');
+    // Clearing goes through the event-scoped wrapper (see `checkoutTokenKey`).
+    expect(src).toContain('forgetCheckoutToken()');
     // Widget re-loads event data after clearing a dead 404 token.
     expect(src).toMatch(/status === 404[\s\S]{1,400}loadFromFeed/);
   });

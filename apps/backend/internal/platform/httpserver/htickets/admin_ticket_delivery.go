@@ -14,9 +14,10 @@
 // fallback is enforced via the application Checker (a future RBAC
 // engine can grant either permission; AllowAll() passes both today).
 //
-// The resend endpoint inserts a new `delivery_jobs` row (status='pending')
-// and a companion `worker_jobs` row of type "ticket.deliver" so the
-// existing worker handler picks the job up on its normal poll cycle.
+// The resend endpoint resets the ticket's `delivery_jobs` row back to
+// status='pending' (RequeueDeliveryJob) and writes a companion `worker_jobs`
+// row of type "ticket.deliver" so the existing worker handler picks the job
+// up on its normal poll cycle.
 // Both writes are best-effort and individually logged so a partial
 // failure is observable but does not panic the request.
 package htickets
@@ -145,8 +146,18 @@ func (h *Handler) HandleAdminResendTicketDelivery(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Insert a fresh delivery_jobs row with the latest known recipient email.
-	dj, err := h.deliveryJobQueries.InsertDeliveryJob(ctx, ticketID, t.HolderEmail)
+	// Reset the ticket's delivery_jobs row back to 'pending' with the latest
+	// known recipient email.
+	//
+	// This MUST be RequeueDeliveryJob, not InsertDeliveryJob: `delivery_jobs`
+	// holds at most one row per ticket, and InsertDeliveryJob is deliberately
+	// a no-op on conflict so a replayed payment webhook cannot mail the same
+	// ticket twice. Every ticket this endpoint is ever pressed on already has
+	// a row in a terminal ('sent'/'failed'/'skipped'/'disabled') or stuck
+	// 'processing' state, and the worker's claim step only ever transitions
+	// 'pending' → 'processing' — so with InsertDeliveryJob the resend answered
+	// 202, enqueued a worker job, and that job silently skipped the send.
+	dj, err := h.deliveryJobQueries.RequeueDeliveryJob(ctx, ticketID, t.HolderEmail)
 	if err != nil {
 		h.logger.Error("admin_ticket_delivery: insert delivery_job failed",
 			slog.String("ticket_id", ticketID.String()),

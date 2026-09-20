@@ -1175,3 +1175,41 @@ entries short and factual.
   under the wider Czech label) — any new label added to `ticketLabels`
   needs no manual width tuning, `computeLabelWidth` picks it up
   automatically.
+- **`delivery_jobs` holds at most ONE row per ticket, so "enqueue another
+  delivery" is `RequeueDeliveryJob`, never `InsertDeliveryJob`.**
+  `InsertDeliveryJob`'s `ON CONFLICT (ticket_id) DO UPDATE SET ticket_id =
+  EXCLUDED.ticket_id` is a deliberate no-op so a replayed payment webhook
+  cannot mail the same ticket twice; `RequeueDeliveryJob` is the opposite
+  intent and resets `status='pending'`, `attempts=0`, `last_error`,
+  `sent_at`, `processing_at`, `queued_at`. `HandleAdminResendTicketDelivery`
+  used the former, and since the worker's `ClaimDeliveryJobForProcessing`
+  only ever transitions `pending` → `processing`, the admin "resend" button
+  answered 202, wrote a `worker_jobs` row, and that job silently skipped the
+  send for EVERY ticket it would ever be pressed on — they all already carry
+  a terminal (`sent`/`failed`/`skipped`/`disabled`) or stuck `processing`
+  row (found on prod 2026-09-20, first production events). A row stuck in
+  `processing` is unclaimable forever, so any future "retry this delivery"
+  path must requeue, not insert. Guarded by
+  `TestAdminResendTicketDeliveryIntegration_ResetsTerminalJobToPending`.
+- **The widget's stored checkout token must be scoped to the event.**
+  `tickets.arenasoldout.com` serves every promoter's every event from ONE
+  origin, and `sessionStorage` is per-origin, so the flat
+  `arena_checkout_token` key made a checkout finished on one event resume on
+  the next event opened in the same tab: the buyer saw their previous order's
+  "payment succeeded" screen instead of that event's ticket picker, and could
+  not buy a second master class. `store.ts`'s `checkoutTokenKey(scope)`
+  appends the scope and `ArenaTickets.svelte` passes `normEventId ||
+  normSessionId || ''` through the `rememberCheckoutToken` /
+  `forgetCheckoutToken` wrappers — always use those, never the raw helpers.
+  An empty scope keeps the legacy unscoped key, so a single-event embed on a
+  customer's own domain is unaffected. Clearing the token on a terminal
+  status is NOT sufficient on its own: the stale screen still rendered once
+  before the clear ran.
+- **A test file must be named `*.test.ts` or vitest never runs it.**
+  `apps/widget/src/widget_377_test.ts` (Go-style `_test` suffix) sat outside
+  `vitest.config.ts`'s `include: ['src/**/*.test.ts']` and had never executed;
+  when renamed, 2 of its 23 assertions were long stale (a `toStartWith`
+  matcher chai does not have, and a `not.toContain` guarding against a
+  synthetic-event stub that was deliberately reintroduced later as the PR2-21
+  fallback). Check the reported test-file COUNT after adding a suite, not just
+  that the run is green.

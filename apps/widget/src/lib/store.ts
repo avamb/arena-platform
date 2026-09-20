@@ -9,16 +9,45 @@ export type WidgetStage = 'selecting' | 'buyer-form' | 'redirecting' | 'order-st
 
 const CHECKOUT_TOKEN_KEY = 'arena_checkout_token';
 
-export function saveCheckoutToken(token: string, storage: Storage = sessionStorage): void {
-  try { storage.setItem(CHECKOUT_TOKEN_KEY, token); } catch { /* unavailable */ }
+/**
+ * Storage key for one widget's checkout token.
+ *
+ * The key is SCOPED to the event (or, lacking an event id, the session) the
+ * widget was mounted for, because `sessionStorage` is shared by the whole
+ * origin: `tickets.arenasoldout.com` serves every promoter's every event from
+ * one origin, so an unscoped key made a checkout started on one event page
+ * resume on a different one — a buyer who finished an order and then opened
+ * another event was shown their previous order's "payment succeeded" screen
+ * instead of that event's ticket picker.
+ *
+ * An empty scope keeps the legacy unscoped key, so a single-event embed on a
+ * customer's own domain behaves exactly as before.
+ */
+export function checkoutTokenKey(scope?: string | null): string {
+  const s = (scope ?? '').trim();
+  return s ? `${CHECKOUT_TOKEN_KEY}:${s}` : CHECKOUT_TOKEN_KEY;
 }
 
-export function restoreCheckoutToken(storage: Storage = sessionStorage): string | null {
-  try { return storage.getItem(CHECKOUT_TOKEN_KEY); } catch { return null; }
+export function saveCheckoutToken(
+  token: string,
+  storage: Storage = sessionStorage,
+  scope?: string | null,
+): void {
+  try { storage.setItem(checkoutTokenKey(scope), token); } catch { /* unavailable */ }
 }
 
-export function clearCheckoutToken(storage: Storage = sessionStorage): void {
-  try { storage.removeItem(CHECKOUT_TOKEN_KEY); } catch { /* ignore */ }
+export function restoreCheckoutToken(
+  storage: Storage = sessionStorage,
+  scope?: string | null,
+): string | null {
+  try { return storage.getItem(checkoutTokenKey(scope)); } catch { return null; }
+}
+
+export function clearCheckoutToken(
+  storage: Storage = sessionStorage,
+  scope?: string | null,
+): void {
+  try { storage.removeItem(checkoutTokenKey(scope)); } catch { /* ignore */ }
 }
 
 export function getCheckoutTokenFromSearch(search: string): string | null {

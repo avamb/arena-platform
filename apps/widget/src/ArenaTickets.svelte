@@ -83,6 +83,25 @@
   const normFeedToken = $derived(parseFeedToken(feedToken));
   const normEventId = $derived(parseSessionId(eventId)); // reuse UUID parser
   const normSessionId = $derived(parseSessionId(sessionId));
+
+  /**
+   * Scope for the stored checkout token (see `checkoutTokenKey`).
+   *
+   * `tickets.arenasoldout.com` serves every promoter's every event from ONE
+   * origin, so an origin-wide sessionStorage key let one event's checkout
+   * resume on another event's page. Scoping by the mounted event (or session)
+   * keeps each page's checkout to itself; an embed that sets neither keeps the
+   * legacy unscoped key.
+   */
+  const tokenScope = $derived(normEventId || normSessionId || '');
+
+  function rememberCheckoutToken(token: string): void {
+    saveCheckoutToken(token, undefined, tokenScope);
+  }
+
+  function forgetCheckoutToken(): void {
+    clearCheckoutToken(undefined, tokenScope);
+  }
   const hasToken = $derived(normFeedToken !== '');
   const dir = $derived(isRtlLocale(normLocale) ? 'rtl' : 'ltr');
   const t = $derived(getCheckoutI18n(normLocale));
@@ -236,7 +255,7 @@
 
     // Check for checkout_token in URL or sessionStorage first.
     const urlToken = getCheckoutTokenFromSearch(window.location.search);
-    const storedToken = restoreCheckoutToken();
+    const storedToken = restoreCheckoutToken(undefined, tokenScope);
     const resumeToken = urlToken ?? storedToken;
 
     if (resumeToken) {
@@ -514,7 +533,7 @@
       }
       const response = await postCheckoutStart(normFeedToken, payload, resolvedApiBase);
       // Save token in case user returns after the payment page.
-      saveCheckoutToken(response.checkout_token);
+      rememberCheckoutToken(response.checkout_token);
       checkoutToken = response.checkout_token;
       // Store the hold expiry so MiniCart/CartSheet can show the countdown
       // during the brief redirecting stage (WID-S1 fix #3 + #4).
@@ -568,7 +587,7 @@
       // a second master class (first production events, 2026-09-20). The
       // return page itself keeps working: its token is in the URL.
       if (status === 'paid' || status === 'failed' || status === 'expired') {
-        clearCheckoutToken();
+        forgetCheckoutToken();
       }
       if (status === 'paid') {
         dispatchWidgetEvent(host, ARENA_EVENTS.ORDER_PAID, {
@@ -592,7 +611,7 @@
           holdExpiresAt = recovered.expires_at;
           const newToken = recovered.checkout_token;
           checkoutToken = newToken;
-          saveCheckoutToken(newToken);
+          rememberCheckoutToken(newToken);
           dispatchWidgetEvent(host, ARENA_EVENTS.RECOVERY, {
             checkoutToken: newToken,
             expiresAt: recovered.expires_at,
@@ -603,7 +622,7 @@
         } catch (recoveryErr) {
           // Recovery also failed — clear token, set visible error, fall back
           // to normal init so the user can start a fresh checkout.
-          clearCheckoutToken();
+          forgetCheckoutToken();
           checkoutToken = null;
           loadError =
             recoveryErr instanceof Error ? recoveryErr.message : t.error_recovery;
@@ -617,7 +636,7 @@
       }
       // 404 = token doesn't exist in the backend; clear and reset to normal init.
       if (apiErr?.status === 404) {
-        clearCheckoutToken();
+        forgetCheckoutToken();
         checkoutToken = null;
         loadError = err instanceof Error ? err.message : t.error_order_status;
         stage = 'selecting';
@@ -679,7 +698,7 @@
 
   function handleRetry(): void {
     // Clear token and return to selecting stage.
-    clearCheckoutToken();
+    forgetCheckoutToken();
     checkoutToken = null;
     orderStatus = null;
     selectedSeatKeys = new Set();
