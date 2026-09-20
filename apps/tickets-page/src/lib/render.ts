@@ -322,6 +322,33 @@ export function eventIDWithOpenCheckout(
   return null;
 }
 
+/** Takes `checkout_token` out of the page URL, returning what it held.
+ *
+ * Stripe returns a buyer to `…/{org}?checkout_token=…`, and the widget
+ * reads that parameter itself. On a single-event page that is right. On
+ * the date list it is not: the token names a checkout, not an event, so
+ * EVERY row that opened afterwards mounted a widget that found it and
+ * showed that order — a buyer who had just paid saw "payment successful"
+ * on every other master class and could not buy a second one. Reloading
+ * did not help, because the token was still in the address.
+ *
+ * So the list consumes it once, before any widget mounts, and the widget
+ * resumes from the copy it stored under the event it belongs to. History
+ * is replaced rather than pushed: the buyer must not be able to go "back"
+ * into the stale URL. */
+export function consumeCheckoutTokenFromURL(loc: Location, history: History): string | null {
+  try {
+    const url = new URL(loc.href);
+    const token = url.searchParams.get('checkout_token');
+    if (!token) return null;
+    url.searchParams.delete('checkout_token');
+    history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    return token;
+  } catch {
+    return null;
+  }
+}
+
 /** Everything a date row needs to open its own ticket picker in place. */
 export interface PromoterPageOptions {
   apiBase: string;

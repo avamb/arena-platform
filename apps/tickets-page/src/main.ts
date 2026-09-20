@@ -1,6 +1,6 @@
 import { parsePath } from './lib/route.ts';
 import { resolveLocale } from './lib/locale.ts';
-import { applyDocumentChrome, eventIDWithOpenCheckout, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from './lib/render.ts';
+import { applyDocumentChrome, consumeCheckoutTokenFromURL, eventIDWithOpenCheckout, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from './lib/render.ts';
 import { ApiError, fetchHostedPage, fetchPromoterPage } from './lib/api.ts';
 
 /** Resolved at build time by Vite from the VITE_API_BASE_URL build arg
@@ -44,6 +44,11 @@ async function main(): Promise<void> {
   }
 
   if (route.kind === 'promoter') {
+    // BEFORE the widget bundle loads: a checkout token left in the address
+    // is not scoped to an event, so every row that opened would mount a
+    // widget that found it and showed that one order. Taken out here; the
+    // widget resumes from its own event-scoped copy instead.
+    consumeCheckoutTokenFromURL(window.location, window.history);
     // The date rows open the ticket picker in place, so the widget bundle
     // is needed here too — not only on a per-event page.
     loadWidgetScript();

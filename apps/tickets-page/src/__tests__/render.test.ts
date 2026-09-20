@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { eventIDWithOpenCheckout, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from '../lib/render.ts';
+import { consumeCheckoutTokenFromURL, eventIDWithOpenCheckout, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from '../lib/render.ts';
 import type { PromoterPageOptions } from '../lib/render.ts';
 import type { HostedPageEvent, HostedPageResponse, HostedPromoterPageResponse } from '../lib/api.ts';
 
@@ -419,6 +419,30 @@ describe('renderPromoterPage', () => {
         },
       } as unknown as Storage;
       expect(eventIDWithOpenCheckout(sampleData.events, throwing)).toBeNull();
+    });
+
+    // The token names a checkout, not an event. Left in the address it
+    // made every row that opened afterwards show that one paid order, and
+    // reloading could not clear it.
+    it('takes the checkout token out of the address, once', () => {
+      const originalHref = window.location.href;
+      window.history.replaceState(null, '', '/masterclassteatro?checkout_token=ct_abc&lang=ru');
+
+      expect(consumeCheckoutTokenFromURL(window.location, window.history)).toBe('ct_abc');
+      expect(window.location.search).toBe('?lang=ru');
+      // A second pass has nothing left to take.
+      expect(consumeCheckoutTokenFromURL(window.location, window.history)).toBeNull();
+      expect(window.location.search).toBe('?lang=ru');
+
+      window.history.replaceState(null, '', originalHref);
+    });
+
+    it('leaves an address without a token exactly as it was', () => {
+      const originalHref = window.location.href;
+      window.history.replaceState(null, '', '/masterclassteatro?lang=cs');
+      expect(consumeCheckoutTokenFromURL(window.location, window.history)).toBeNull();
+      expect(window.location.search).toBe('?lang=cs');
+      window.history.replaceState(null, '', originalHref);
     });
 
     it('opens that row by itself so the buyer sees the outcome', async () => {
