@@ -192,6 +192,10 @@ type HostedCheckoutRequest struct {
 	BuyerEmail        string
 	ReturnURL         string
 	ExpiresAtUnix     int64
+	// BuyerLocale is the language the buyer is shopping in, as stored on
+	// checkout_sessions.buyer_locale. Forwarded so the provider's hosted
+	// page speaks it too; empty leaves the provider to guess.
+	BuyerLocale string
 }
 
 // HostedCheckoutResult is the provider's answer: where to send the buyer and
@@ -357,6 +361,7 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 		SuccessURL:    returnWithToken,
 		CancelURL:     returnWithToken,
 		ExpiresAtUnix: req.ExpiresAtUnix,
+		Locale:        req.BuyerLocale,
 		// One hosted session per arena checkout: a retry of this call for the
 		// same checkout must return the SAME cs_ id, never charge twice.
 		IdempotencyKey: req.CheckoutSessionID.String(),
@@ -525,6 +530,7 @@ func (h *Handler) startHostedPayment(
 		BuyerEmail:        in.Buyer.Email,
 		ReturnURL:         in.ReturnBase,
 		ExpiresAtUnix:     in.ExpiresAt.Add(-h.paymentGrace).Unix(),
+		BuyerLocale:       in.Buyer.Locale,
 	})
 	if err != nil {
 		if pse, isTyped := AsPaymentStartError(err); isTyped {

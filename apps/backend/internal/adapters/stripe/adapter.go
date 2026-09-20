@@ -299,10 +299,43 @@ func (a *Adapter) CreateIntent(ctx context.Context, req payments.CreateIntentReq
 //   - expires_at — Stripe requires it to be at least 30 minutes out. The
 //     caller sizes it so the hosted session always dies BEFORE the seats
 //     are released.
+//   - locale — only when Stripe itself lists the tag (see
+//     checkoutLocaleSupported). Stripe REJECTS an unknown locale outright,
+//     which would turn a cosmetic mismatch into a lost sale, so an
+//     unrecognised tag is simply omitted and Stripe falls back to the
+//     browser's own language.
 //
 // The returned SessionID is the cs_… id; PaymentID (pi_…) is normally empty
 // here because Stripe only mints the PaymentIntent once the buyer starts
 // paying, and is learned from the webhook instead.
+// stripeCheckoutLocales are the language tags Stripe Checkout accepts. Stripe
+// answers 400 for anything outside this set, so an unknown tag must be
+// dropped rather than forwarded — the buyer would otherwise lose the sale
+// over a cosmetic preference. Kept to the bare two-letter tags arena can
+// actually produce; Stripe's regional variants (en-GB, pt-BR, zh-TW…) are
+// deliberately absent because nothing upstream emits them.
+var stripeCheckoutLocales = map[string]struct{}{
+	"bg": {}, "cs": {}, "da": {}, "de": {}, "el": {}, "en": {}, "es": {},
+	"et": {}, "fi": {}, "fr": {}, "hr": {}, "hu": {}, "id": {}, "it": {},
+	"ja": {}, "ko": {}, "lt": {}, "lv": {}, "ms": {}, "mt": {}, "nb": {},
+	"nl": {}, "pl": {}, "pt": {}, "ro": {}, "ru": {}, "sk": {}, "sl": {},
+	"sv": {}, "th": {}, "tr": {}, "vi": {}, "zh": {},
+}
+
+// checkoutLocale normalises a buyer locale to a tag Stripe Checkout will
+// accept, or "" when Stripe does not know it. A region subtag is dropped
+// ("ru-RU" -> "ru") because that is the shape arena stores.
+func checkoutLocale(raw string) string {
+	tag := strings.ToLower(strings.TrimSpace(raw))
+	if i := strings.IndexAny(tag, "-_"); i > 0 {
+		tag = tag[:i]
+	}
+	if _, ok := stripeCheckoutLocales[tag]; !ok {
+		return ""
+	}
+	return tag
+}
+
 func (a *Adapter) CreateCheckoutSession(ctx context.Context, req payments.CreateHostedCheckoutRequest) (*payments.CreateHostedCheckoutResponse, error) {
 	form := url.Values{}
 	form.Set("mode", "payment")
@@ -321,6 +354,9 @@ func (a *Adapter) CreateCheckoutSession(ctx context.Context, req payments.Create
 	}
 	if req.ExpiresAtUnix > 0 {
 		form.Set("expires_at", strconv.FormatInt(req.ExpiresAtUnix, 10))
+	}
+	if loc := checkoutLocale(req.Locale); loc != "" {
+		form.Set("locale", loc)
 	}
 	for k, v := range req.Metadata {
 		form.Set("metadata["+k+"]", v)

@@ -48,6 +48,16 @@ type CreateHostedCheckoutRequest struct {
 	ExpiresAtUnix int64
 	// IdempotencyKey de-duplicates retries of this creation call.
 	IdempotencyKey string
+	// Locale is the buyer's language as a bare two-letter tag ("ru", "cs"),
+	// used to render the provider's hosted page. Empty leaves the provider
+	// to guess from the browser, which is what it did before this existed —
+	// a Russian-speaking buyer of a Russian-language event was shown an
+	// English payment page (first production clients, 2026-09-20).
+	//
+	// A provider that does not recognise the tag must be sent nothing rather
+	// than a value it would reject: a cosmetic mismatch must never cost a
+	// sale.
+	Locale string
 }
 
 // CreateHostedCheckoutResponse is returned by
