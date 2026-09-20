@@ -263,6 +263,14 @@ const supportedHostedProvider = "stripe"
 type hostedPaymentConfig struct {
 	provider string
 	apiKey   string
+	// Which payment_provider_configs row this came from. Carried only so a
+	// failure can name it: an org has one row per (provider, mode) and
+	// SelectProviderConfig prefers an active `live` row over an active
+	// `test` one, so "the provider rejected our key" is ambiguous until you
+	// know WHICH key was used. Diagnosing that on production cost an hour
+	// of guessing (2026-09-20). Never log the key itself.
+	configID string
+	mode     string
 }
 
 // resolveConfig is the ONE implementation of "can this org take money on this
@@ -318,7 +326,12 @@ func (s *StripePaymentStarter) resolveConfig(ctx context.Context, orgID, channel
 			Status:  422,
 		}
 	}
-	return hostedPaymentConfig{provider: provider, apiKey: apiKey}, nil
+	return hostedPaymentConfig{
+		provider: provider,
+		apiKey:   apiKey,
+		configID: cfg.ID.String(),
+		mode:     cfg.Mode,
+	}, nil
 }
 
 // CheckPaymentConfigured implements the PaymentStarter pre-flight: the
@@ -367,7 +380,11 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 		IdempotencyKey: req.CheckoutSessionID.String(),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("stripe hosted checkout: %w", err)
+		// Name the config the key came from. An org keeps one row per
+		// (provider, mode) and an active `live` row is preferred over an
+		// active `test` one, so "the provider rejected our key" does not
+		// say WHICH key — on production that ambiguity cost an hour.
+		return nil, fmt.Errorf("stripe hosted checkout (config %s, mode %s): %w", cfg.configID, cfg.mode, err)
 	}
 
 	return &HostedCheckoutResult{
