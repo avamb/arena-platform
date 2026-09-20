@@ -230,11 +230,16 @@ func TestCodeBlock_BothCodesAreWide(t *testing.T) {
 		t.Errorf("the barcode's bars span %.1f mm, want roughly 78-85 mm "+
 			"(the reference ticket measures 81.5 mm)", barW/mmToPt)
 	}
-	// ...and 50 mm of bar height in the reference, against which 15 mm was
-	// the demotion this test exists to prevent coming back.
-	if barH < mm(45) || barH > mm(55) {
-		t.Errorf("the bars are %.1f mm tall, want roughly 45-55 mm "+
-			"(the reference ticket measures 50 mm)", barH/mmToPt)
+	// Height is deliberately HALF the reference's 50 mm. Seeing a real
+	// ticket, the owner ruled that the QR is what a buyer presents and the
+	// barcode is only the fallback for a scanner that cannot read it — so
+	// the bars gave up half their height to let the QR take the full block
+	// width. What a laser resolves is the module WIDTH, guarded above; a
+	// truncated symbol scans. The lower bound is what stops the bars
+	// sliding back to the ~15 mm accessory this test exists to prevent.
+	if barH < mm(20) || barH > mm(30) {
+		t.Errorf("the bars are %.1f mm tall, want roughly 20-30 mm "+
+			"(half the reference ticket's 50 mm, by the owner's call)", barH/mmToPt)
 	}
 	if barH < eanMinBarHeightPt {
 		t.Errorf("the bars are %.1f mm tall, below the %.1f mm scannability floor",
@@ -247,20 +252,19 @@ func TestCodeBlock_BothCodesAreWide(t *testing.T) {
 			left/mmToPt, right/mmToPt, ticketSpec.pageW/mmToPt)
 	}
 
-	// The QR gives up width first when the block budget is tight (see
-	// fitQRSize), so it is the smaller of the two marks — but "wide" is the
-	// whole point of the owner's correction, and it must not slide back
-	// towards the 32 mm it started life at.
-	if qr.w < mm(65) {
-		t.Errorf("the QR is %.1f mm across; the owner asked for a wide QR too "+
-			"(at least 65 mm on a typical ticket)", qr.w/mmToPt)
+	// The QR is the code the buyer actually presents, so it is now the
+	// LARGER mark and spans the same width as the bars. It still gives up
+	// width first when the block budget is tight (see fitQRSize), hence a
+	// bound rather than an equality — but it must never slide back towards
+	// the 32 mm it started life at, nor below the barcode it leads.
+	if qr.w < mm(75) {
+		t.Errorf("the QR is %.1f mm across; it is the code buyers present and "+
+			"should span the block (at least 75 mm on a typical ticket)", qr.w/mmToPt)
 	}
-	// A useful scale-free check that survives a future re-budget: whatever
-	// the two marks trade, the QR's edge stays at least the barcode's bar
-	// height, so neither reads as an afterthought beside the other.
-	if qr.w < barH {
-		t.Errorf("the QR (%.1f mm) is narrower than the barcode is tall (%.1f mm)",
-			qr.w/mmToPt, barH/mmToPt)
+	if qr.w < barW-mm(1) {
+		t.Errorf("the QR (%.1f mm) is narrower than the barcode (%.1f mm); the "+
+			"fallback must not out-size the code buyers actually present",
+			qr.w/mmToPt, barW/mmToPt)
 	}
 
 	// The digits under the bars are the manual-entry fallback, so they are

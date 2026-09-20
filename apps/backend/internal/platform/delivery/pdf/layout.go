@@ -22,7 +22,7 @@
 //     buy room for bigger codes is safe and costs this guarantee nothing,
 //     while SHORTENING THE PAGE would destroy it outright. 297 mm is not
 //     negotiable; 130 mm is. Big codes make the page height more
-//     load-bearing, not less: a 66 mm QR and an 80 mm barcode resolve from
+//     load-bearing, not less: an 80 mm QR and an 80 mm barcode resolve from
 //     further away, further off-axis and at a coarser camera focus than the
 //     old 32 mm marks did, so a neighbouring ticket drifting into frame is a
 //     realistic mis-scan rather than a theoretical one. The page height
@@ -202,6 +202,16 @@ type layoutSpec struct {
 //   - BAR HEIGHT second: 48 mm against the reference's 50.
 //   - ONE GAP last: qrGapBelow 7 -> 6 mm.
 //
+// Both trades were then REVERSED, and the QR given the width it wanted,
+// once the owner saw a real ticket: the QR is the code the buyer actually
+// presents and the barcode is only the fallback for when a scanner cannot
+// read it, so the QR takes the barcode's 80 mm and the bars give up half
+// their height (48 -> 24 mm). Halving the bars costs nothing a fallback
+// needs — a truncated EAN-13 scans, the module WIDTH is what a laser
+// resolves, and 24 mm is still twice eanMinBarHeightPt — while the QR
+// gains the full width of the block. Net the block got ~10 mm SHORTER
+// than it was at 66/48.
+//
 // Bar WIDTH was not traded — it is what makes the symbol read like the
 // reference — and neither was the poster nor the page length.
 //
@@ -265,7 +275,7 @@ var ticketSpec = layoutSpec{
 	infoRowGap:             mm(1),
 
 	bottomTop:      mm(130),
-	qrSize:         mm(66),
+	qrSize:         mm(80),
 	qrMinSize:      mm(40),
 	qrGapBelow:     mm(6),
 	ticketNoFS:     9.5,
@@ -303,15 +313,16 @@ var ticketSpec = layoutSpec{
 	// it on a phone, where the page renders at roughly two thirds of its
 	// printed width.
 	//
-	// eanBarH 48 mm is 2 mm under the reference's 50 — the second trade the
-	// block budget demanded (see the doc comment above) — and leaves 36 mm
-	// of shrink headroom above eanMinBarHeightPt before drawEAN13Symbol
-	// would drop the symbol. eanDigitFS 23 pt matches the reference's 23.44
+	// eanBarH 24 mm is half the reference's 50: the owner's call once he
+	// saw a real ticket, and the reason the QR could take the full 80 mm
+	// (see the doc comment above). The bars stay 12 mm above
+	// eanMinBarHeightPt, so drawEAN13Symbol still has room to shrink them
+	// on a ticket with a tall footer before it would drop the symbol. eanDigitFS 23 pt matches the reference's 23.44
 	// and is more than twice the 9.5 pt ticket-number line under it, which
 	// is the point: those digits, not the bars, are what staff read aloud
 	// and type when a scanner fails.
 	eanModuleW:    mm(80.0 / 95.0),
-	eanBarH:       mm(48),
+	eanBarH:       mm(24),
 	eanGuardExtra: mm(1.2),
 	eanDigitFS:    23,
 	eanLeadGap:    2,
@@ -333,10 +344,11 @@ func specFor(f Format) (layoutSpec, error) {
 func (s layoutSpec) contentW() float64 { return s.pageW - 2*s.sideMargin }
 
 // qrPixelSize is the raster size of the QR image handed to gofpdf. It has to
-// stay ahead of the size the QR is DRAWN at (ticketSpec.qrSize, 66 mm): the
+// stay ahead of the size the QR is DRAWN at (ticketSpec.qrSize, 80 mm): the
 // PNG is always scaled DOWN into the page box, never up, so no resampling can
-// soften a module edge and the symbol prints crisp at 300 dpi — where 66 mm
-// is 780 px, which is why 768 was no longer enough. go-qrcode rounds this up
+// soften a module edge and the symbol prints crisp at 300 dpi — where 80 mm
+// is 945 px, which is why 768 was no longer enough and why 1024 still has
+// room over the widened QR. go-qrcode rounds this up
 // to a whole number of pixels per module, so the source image is
 // module-aligned by construction. The PNG compresses to a couple of kilobytes
 // at any of these sizes because it is two flat colours.
