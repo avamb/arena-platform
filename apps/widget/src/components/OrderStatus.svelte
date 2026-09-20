@@ -34,6 +34,16 @@
     onRetry?: () => void;
     /** Called when buyer clicks "Resend tickets" (paid state). */
     onSendAgain?: () => void;
+    /** Called when the buyer is finished with a paid order and wants the
+     * ticket picker back. Without it a success panel is a dead end: the
+     * widget stays mounted on this view and the same buyer cannot start a
+     * second purchase for this event. */
+    onDone?: () => void;
+    /** Base URL of the Arena API, used to resolve the relative pdf_url the
+     * API returns. Resolving it against the PAGE origin instead sent the
+     * buyer to the hosted page's own router, which answered "event not
+     * found" — the download simply never happened. */
+    apiBase?: string;
     /** Whether a recovery or resend action is in flight. */
     actionLoading?: boolean;
     /** Error from a recovery or resend action. */
@@ -47,6 +57,8 @@
     onRecover,
     onRetry,
     onSendAgain,
+    onDone,
+    apiBase = '',
     actionLoading = false,
     actionError = null,
   }: Props = $props();
@@ -89,7 +101,18 @@
     if (ticket.sector) parts.push(ticket.sector);
     if (ticket.row) parts.push(`Row ${ticket.row}`);
     if (ticket.number) parts.push(`Seat ${ticket.number}`);
-    return parts.join(', ') || ticket.ticket_id;
+    // A general-admission ticket has no seat at all. It used to fall back to
+    // the ticket UUID, which is an internal identifier no buyer should ever
+    // be shown (and which told them nothing) — the human code and the PDF
+    // below it are what they actually need.
+    return parts.join(', ');
+  }
+
+  /** The PDF endpoint, made absolute against the API. */
+  function pdfHref(url: string): string {
+    if (!url.startsWith('/')) return url;
+    const base = (apiBase ?? '').trim().replace(/\/$/, '');
+    return base ? base + url : url;
   }
 </script>
 
@@ -137,7 +160,9 @@
           <ul class="ticket-list" role="list">
             {#each status.tickets as ticket (ticket.ticket_id)}
               <li class="ticket-item">
-                <div class="ticket-seat">{seatLabel(ticket)}</div>
+                {#if seatLabel(ticket)}
+                  <div class="ticket-seat">{seatLabel(ticket)}</div>
+                {/if}
                 {#if ticket.human_code}
                   <div class="ticket-code">
                     <span class="code-label">{t.human_code_label}:</span>
@@ -147,7 +172,7 @@
                 {#if ticket.pdf_url}
                   <a
                     class="pdf-link"
-                    href={ticket.pdf_url}
+                    href={pdfHref(ticket.pdf_url)}
                     target="_blank"
                     rel="noopener noreferrer"
                     data-testid="pdf-link"
@@ -174,6 +199,17 @@
           aria-busy={actionLoading}
         >
           {t.send_again}
+        </button>
+      {/if}
+
+      {#if onDone}
+        <button
+          type="button"
+          class="action-btn secondary"
+          onclick={onDone}
+          data-testid="buy-more"
+        >
+          {t.buy_more}
         </button>
       {/if}
     </div>

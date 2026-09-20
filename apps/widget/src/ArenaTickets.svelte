@@ -730,6 +730,32 @@
     cartSheetOpen = false;
   }
 
+  /**
+   * Leaves a PAID order's success panel and shows the picker again.
+   *
+   * Without it the success panel is a dead end: the widget stays mounted on
+   * that view, so the same buyer could not start a second purchase for this
+   * event — on the hosted page, where a date row keeps its widget alive, the
+   * only way out was reloading the page (first production purchases,
+   * 2026-09-20). The stored token is already gone by then (loadOrderStatus
+   * forgets it on any terminal status), so this only resets the view and the
+   * cart it was built from; the availability the picker shows is reloaded so
+   * the seats just sold are not offered again.
+   */
+  function handleDone(): void {
+    checkoutToken = null;
+    orderStatus = null;
+    selectedSeatKeys = new Set();
+    gaQuantities = new Map();
+    holdExpiresAt = null;
+    conflictKeys = new Set();
+    checkoutError = null;
+    orderActionError = null;
+    cartSheetOpen = false;
+    stage = 'selecting';
+    if (normFeedToken) void resolveAndLoadFromFeed(normFeedToken);
+  }
+
   // Import Tier type for use inside the script
   type Tier = import('./types.js').Tier;
 </script>
@@ -756,6 +782,8 @@
         expiresAt={holdExpiresAt}
         onRecover={handleRecover}
         onRetry={handleRetry}
+        onDone={orderStatus.status === 'paid' ? handleDone : undefined}
+        apiBase={resolvedApiBase}
         actionLoading={orderActionLoading}
         actionError={orderActionError}
       />

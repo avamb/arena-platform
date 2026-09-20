@@ -559,6 +559,8 @@ export interface CheckoutI18nStrings {
   ticket_heading: string;
   human_code_label: string;
   send_again: string;
+  /** Leaves a finished order's success panel and shows the picker again. */
+  buy_more: string;
   retry_label: string;
   recover_label: string;
   /** CTA label sending a buyer back to the unfinished hosted payment page. */
@@ -646,6 +648,7 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     ticket_heading: 'Your tickets',
     human_code_label: 'Code',
     send_again: 'Resend tickets',
+    buy_more: 'Buy more tickets',
     retry_label: 'Try again',
     recover_label: 'Reclaim seats',
     continue_to_payment: 'Continue to payment',
@@ -699,6 +702,7 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     ticket_heading: 'Ваши билеты',
     human_code_label: 'Код',
     send_again: 'Отправить билеты повторно',
+    buy_more: 'Купить ещё билеты',
     retry_label: 'Попробовать снова',
     recover_label: 'Восстановить бронирование',
     continue_to_payment: 'Перейти к оплате',
@@ -753,6 +757,7 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     ticket_heading: 'Vaše vstupenky',
     human_code_label: 'Kód',
     send_again: 'Odeslat vstupenky znovu',
+    buy_more: 'Koupit další vstupenky',
     retry_label: 'Zkusit znovu',
     recover_label: 'Obnovit rezervaci',
     continue_to_payment: 'Pokračovat k platbě',
@@ -807,6 +812,7 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     ticket_heading: 'הכרטיסים שלך',
     human_code_label: 'קוד',
     send_again: 'שלח כרטיסים שוב',
+    buy_more: 'לרכוש כרטיסים נוספים',
     retry_label: 'נסה שוב',
     recover_label: 'שחזר הזמנה',
     continue_to_payment: 'המשך לתשלום',
