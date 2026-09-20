@@ -769,7 +769,14 @@
 
   {:else if hasToken}
     <!-- ── Selecting / cart stage ─────────────────────────────────────────── -->
-    <div class="arena-tickets-frame">
+    <!-- The 400px floor exists so a seat map has room to draw. A session
+         with no map (every general-admission event) has nothing to fill it
+         with, and the reserved space showed up as a hole under the
+         category list — so the floor applies only when a map is shown. -->
+    <div
+      class="arena-tickets-frame"
+      class:arena-tickets-frame--flat={!(selectedSession && selectedSession.schema_url)}
+    >
       {#if loading}
         <div class="arena-tickets-loading" aria-live="polite" aria-busy="true">{t.loading}</div>
       {:else if loadError}
@@ -836,10 +843,6 @@
                 onClose={closeGaAreaPopover}
               />
             {/if}
-          </div>
-        {:else if selectedSession}
-          <div class="arena-tickets-ga" aria-label="General admission session">
-            <!-- GA tier list -->
           </div>
         {/if}
 
@@ -951,6 +954,10 @@
     overflow: hidden;
   }
 
+  .arena-tickets-frame--flat {
+    min-height: 0;
+  }
+
   .arena-tickets-cover {
     display: block;
     width: 100%;
@@ -980,11 +987,6 @@
     background: #fef2f2;
     border-radius: var(--_radius);
     margin: 1rem;
-  }
-
-  .arena-tickets-ga {
-    flex: 1;
-    padding: 1rem;
   }
 
   /* AB-40D: positioning context for the GA area popover overlay. The
