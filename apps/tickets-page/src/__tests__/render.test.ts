@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from '../lib/render.ts';
+import { eventIDWithOpenCheckout, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from '../lib/render.ts';
 import type { PromoterPageOptions } from '../lib/render.ts';
 import type { HostedPageEvent, HostedPageResponse, HostedPromoterPageResponse } from '../lib/api.ts';
 
@@ -390,6 +390,62 @@ describe('renderPromoterPage', () => {
     renderPromoterPage(one, { ...sampleData, events: [eventWithPoster] }, 'en', pageOptions());
     expect(one.querySelector('.asa-dates__head')).toBeNull();
     expect(one.querySelectorAll('.asa-date-row').length).toBe(1);
+  });
+
+  // Stripe sends a buyer back to the list, not to the row they bought
+  // from, and the return URL carries no event id. Without this they land
+  // on closed rows with nothing saying the payment went through — which
+  // is what happened on the first real purchase.
+  describe('returning from the payment page', () => {
+    function storageWith(entries: Record<string, string>): Storage {
+      return {
+        getItem: (k: string) => entries[k] ?? null,
+      } as unknown as Storage;
+    }
+
+    it('finds the event whose checkout the widget left open', () => {
+      const storage = storageWith({
+        [`arena_checkout_token:${eventWithoutPoster.id}`]: 'ct_abc',
+      });
+      expect(eventIDWithOpenCheckout(sampleData.events, storage)).toBe(eventWithoutPoster.id);
+    });
+
+    it('finds nothing when no checkout is open, and survives unusable storage', () => {
+      expect(eventIDWithOpenCheckout(sampleData.events, storageWith({}))).toBeNull();
+      expect(eventIDWithOpenCheckout(sampleData.events, null)).toBeNull();
+      const throwing = {
+        getItem: () => {
+          throw new Error('blocked');
+        },
+      } as unknown as Storage;
+      expect(eventIDWithOpenCheckout(sampleData.events, throwing)).toBeNull();
+    });
+
+    it('opens that row by itself so the buyer sees the outcome', async () => {
+      const container = freshContainer();
+      const options = pageOptions();
+      options.openEventID = eventWithoutPoster.id;
+      renderPromoterPage(container, sampleData, 'en', options);
+      await flush();
+
+      const rows = container.querySelectorAll('.asa-date-row');
+      expect(rows[0].getAttribute('aria-expanded')).toBe('false');
+      expect(rows[1].getAttribute('aria-expanded')).toBe('true');
+      expect(resolvedSlugs).toEqual([eventWithoutPoster.slug]);
+    });
+
+    it('leaves every row closed when the id names nothing on the page', async () => {
+      const container = freshContainer();
+      const options = pageOptions();
+      options.openEventID = 'not-on-this-page';
+      renderPromoterPage(container, sampleData, 'en', options);
+      await flush();
+
+      for (const row of container.querySelectorAll('.asa-date-row')) {
+        expect(row.getAttribute('aria-expanded')).toBe('false');
+      }
+      expect(resolvedSlugs).toEqual([]);
+    });
   });
 
   it('renders the localized empty state when there are no events', () => {

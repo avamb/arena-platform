@@ -1,6 +1,6 @@
 import { parsePath } from './lib/route.ts';
 import { resolveLocale } from './lib/locale.ts';
-import { applyDocumentChrome, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from './lib/render.ts';
+import { applyDocumentChrome, eventIDWithOpenCheckout, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from './lib/render.ts';
 import { ApiError, fetchHostedPage, fetchPromoterPage } from './lib/api.ts';
 
 /** Resolved at build time by Vite from the VITE_API_BASE_URL build arg
@@ -55,6 +55,10 @@ async function main(): Promise<void> {
         renderPromoterPage(mainEl, data, locale, {
           apiBase: API_BASE,
           resolveEvent: (eventSlug) => fetchHostedPage(API_BASE, route.orgSlug, eventSlug),
+          // Stripe returns the buyer to this list, not to the row they
+          // bought from, and the return URL carries no event id — so the
+          // row is found by the checkout the widget left behind.
+          openEventID: eventIDWithOpenCheckout(data.events, safeSessionStorage()),
         });
       } catch (err) {
         if (err instanceof ApiError && err.status === 404) {
@@ -95,6 +99,16 @@ async function main(): Promise<void> {
 }
 
 void main();
+
+/** sessionStorage, or null where it throws (private mode, blocked site
+ * data). Reading it must never be able to break the page. */
+function safeSessionStorage(): Storage | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
 
 const LANG_STORAGE_KEY = 'arena.tickets.lang';
 

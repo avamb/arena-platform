@@ -290,6 +290,38 @@ function dateParts(event: HostedPageEvent, locale: PageLocale): DateParts | null
   }
 }
 
+/** sessionStorage key under which the widget keeps the checkout it is in
+ * the middle of, scoped to the event it was mounted for.
+ *
+ * Duplicated from `apps/widget/src/lib/store.ts` (`CHECKOUT_TOKEN_KEY` +
+ * `checkoutTokenKey`) on purpose: the widget ships as its own bundle and
+ * this page cannot import from it. Keep the two in step — the coupling is
+ * what lets the page find which row a buyer was paying for when Stripe
+ * sends them back here, since the return URL carries no event id. */
+const WIDGET_CHECKOUT_TOKEN_PREFIX = 'arena_checkout_token:';
+
+/** The event on this page the buyer has a checkout open for, or null.
+ *
+ * Stripe returns a buyer to the page they left, which is the whole date
+ * list — not the row they were buying from. Without this the buyer lands
+ * on a list of closed rows and nothing tells them the payment went
+ * through, which is exactly what happened to the first real purchase. */
+export function eventIDWithOpenCheckout(
+  events: HostedPageEvent[],
+  storage: Storage | null,
+): string | null {
+  if (!storage) return null;
+  for (const event of events) {
+    try {
+      if (storage.getItem(WIDGET_CHECKOUT_TOKEN_PREFIX + event.id)) return event.id;
+    } catch {
+      // Private mode, blocked site data: no resume, just the plain list.
+      return null;
+    }
+  }
+  return null;
+}
+
 /** Everything a date row needs to open its own ticket picker in place. */
 export interface PromoterPageOptions {
   apiBase: string;
@@ -297,6 +329,9 @@ export interface PromoterPageOptions {
    * feed token, and the widget cannot be mounted without one. Injected so
    * the renderer stays free of network code (and testable). */
   resolveEvent: (eventSlug: string) => Promise<HostedPageResponse>;
+  /** Id of the event whose row should open by itself and scroll into
+   * view — a buyer coming back from the payment page. */
+  openEventID?: string | null;
 }
 
 /** One row of the date list: a date block, then what is on that date, then
@@ -592,6 +627,27 @@ export function renderPromoterPage(
   }
   section.appendChild(list);
   container.appendChild(section);
+
+  // A buyer returning from the payment page: open their row for them and
+  // put it on screen, so the order's outcome is the first thing they see
+  // rather than a list that behaves as if nothing happened.
+  if (options.openEventID) {
+    const row = list.querySelector(`.asa-date-row[aria-controls="asa-panel-${cssEscape(options.openEventID)}"]`);
+    if (row instanceof HTMLElement) {
+      row.click();
+      requestAnimationFrame(() => {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+  }
+}
+
+/** Escapes a value for use inside an attribute selector. Event ids are
+ * UUIDs today, but a selector built from data must never be able to break
+ * out of it. */
+function cssEscape(value: string): string {
+  const api = (window as unknown as { CSS?: { escape?: (s: string) => string } }).CSS;
+  return api?.escape ? api.escape(value) : value.replace(/["\\]/g, '\\$&');
 }
 
 /** Sets document-level chrome: <html lang/dir>, <title>, meta description,
