@@ -29,6 +29,8 @@ import {
   STRIPE_WEBHOOK_EVENTS,
   STRIPE_CHECKOUT_SESSION_EVENTS,
   StripeWebhookConfigUrlsView,
+  STRIPE_API_KEY_PERMISSIONS,
+  StripeApiKeyPermissionsView,
   normalizeVerificationStatus,
   PaymentConfigFormDialog,
   type PaymentConfig,
@@ -554,5 +556,61 @@ describe("PaymentConfigFormDialog secrets", () => {
     expect(html).not.toContain('data-testid="payments-form-replace-api_key"');
     const apiKeyInput = html.slice(html.indexOf('id="payment-secret-api_key"'));
     expect(apiKeyInput.slice(0, apiKeyInput.indexOf(">"))).not.toContain("readonly");
+  });
+
+  // The whole point of the hint is that it sits where the key is pasted.
+  // Defining the component but forgetting to mount it would leave the
+  // operator asking the same question again.
+  it("offers the API-key hint beside the secret fields of a Stripe config", () => {
+    const html = renderDialog({ kind: "create" });
+    expect(html).toContain('data-testid="stripe-api-key-help-panel"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// StripeApiKeyPermissionsView — the answer to "what do I tick in Stripe?",
+// kept in the admin so nobody has to ask.
+// ---------------------------------------------------------------------------
+describe("StripeApiKeyPermissionsView", () => {
+  function render(): string {
+    return renderToStaticMarkup(createElement(StripeApiKeyPermissionsView));
+  }
+
+  it("names every permission with its access level and endpoint", () => {
+    const html = render();
+    for (const p of STRIPE_API_KEY_PERMISSIONS) {
+      expect(html).toContain(`${p.resource} — ${p.access}`);
+      expect(html).toContain(p.endpoint);
+    }
+  });
+
+  // These two are what a restricted key must carry TODAY: one creates the
+  // hosted page, the other is what the Connection check calls. A key
+  // missing Balance sells fine and still shows red, which is exactly the
+  // confusion this list exists to prevent.
+  it("marks the two permissions the current flow depends on as required", () => {
+    const required = STRIPE_API_KEY_PERMISSIONS.filter(
+      (p) => p.need === "required",
+    );
+    expect(required.map((p) => p.resource).sort()).toEqual([
+      "Balance",
+      "Checkout Sessions",
+    ]);
+    expect(
+      required.find((p) => p.resource === "Checkout Sessions")?.endpoint,
+    ).toBe("POST /v1/checkout/sessions");
+    expect(required.find((p) => p.resource === "Balance")?.endpoint).toBe(
+      "GET /v1/balance",
+    );
+  });
+
+  it("says plainly that the rest can stay off, and that mode must match", () => {
+    const html = render();
+    expect(html).toContain("can stay");
+    expect(html).toContain("None");
+    expect(html).toContain("mode has to match");
+    // The key's scope and the signing secret are unrelated; conflating them
+    // is how an operator ends up granting Webhook Endpoints access.
+    expect(html).toContain("webhook_secret");
   });
 });

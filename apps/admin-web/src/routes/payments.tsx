@@ -165,6 +165,57 @@ export const STRIPE_CHECKOUT_SESSION_EVENTS: readonly string[] = [
 ];
 
 /**
+ * What an organizer's Stripe API key must be allowed to do.
+ *
+ * Ground truth is the set of endpoints the adapter actually calls —
+ * apps/backend/internal/adapters/stripe/adapter.go. Add a row here when the
+ * adapter learns a new endpoint, or an organizer who pasted a restricted key
+ * finds out the hard way, mid-purchase, that it cannot do the thing.
+ *
+ * `need: "required"` means selling (or the Connection check) breaks without
+ * it today; `"future"` is a call that exists in the adapter but nothing in
+ * the widget flow reaches yet.
+ */
+export interface StripeKeyPermission {
+  readonly resource: string;
+  readonly access: "Read" | "Write";
+  readonly endpoint: string;
+  readonly need: "required" | "future";
+  readonly why: string;
+}
+
+export const STRIPE_API_KEY_PERMISSIONS: readonly StripeKeyPermission[] = [
+  {
+    resource: "Checkout Sessions",
+    access: "Write",
+    endpoint: "POST /v1/checkout/sessions",
+    need: "required",
+    why: "creates the hosted payment page every purchase goes through",
+  },
+  {
+    resource: "Balance",
+    access: "Read",
+    endpoint: "GET /v1/balance",
+    need: "required",
+    why: "the call behind Check; without it Connection reads rejected even though selling works",
+  },
+  {
+    resource: "Refunds",
+    access: "Write",
+    endpoint: "POST /v1/refunds",
+    need: "future",
+    why: "refunds, once they have an admin surface",
+  },
+  {
+    resource: "PaymentIntents",
+    access: "Write",
+    endpoint: "POST /v1/payment_intents, …/capture",
+    need: "future",
+    why: "direct and two-step payments; the widget does not use either",
+  },
+];
+
+/**
  * Stripe event types consumed by the platform webhook handler.
  * Derived from webhookEventTypeToState in
  * apps/backend/internal/platform/httpserver/hcheckout/payment_intents.go.
@@ -700,6 +751,95 @@ function StripeWebhookSetupPanel({
             secrets for test mode and live mode. Create one Payment Config for
             each mode and store the matching signing secret.
           </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Stripe API key help
+// ---------------------------------------------------------------------------
+
+/**
+ * StripeApiKeyPermissionsView is the body of the API-key hint shown next to
+ * the secret fields. Presentational and query-free so it can be rendered
+ * with renderToStaticMarkup in the unit suite (StripeWebhookConfigUrlsView
+ * precedent).
+ */
+export function StripeApiKeyPermissionsView() {
+  return (
+    // Its own stack: setupPanelBodyStyle's gap applies to the panel's flex
+    // children, and this whole view is a single one of them.
+    <div style={apiKeyHelpStackStyle} data-testid="stripe-api-key-help-body">
+      <p style={setupPanelTextStyle}>
+        <strong>Stripe Dashboard → Developers → API keys.</strong> A standard
+        secret key (<code style={monoStyle}>sk_test_…</code> /{" "}
+        <code style={monoStyle}>sk_live_…</code>) already covers everything
+        below — paste it and you are done.
+      </p>
+      <p style={setupPanelTextStyle}>
+        To hand over a <strong>restricted key</strong> (
+        <code style={monoStyle}>rk_…</code>) instead, use{" "}
+        <strong>Create restricted key</strong> and grant exactly these:
+      </p>
+      <ul
+        style={setupPanelEventListStyle}
+        data-testid="stripe-api-key-permissions"
+      >
+        {STRIPE_API_KEY_PERMISSIONS.map((p) => (
+          <li key={p.resource} style={setupPanelEventItemStyle}>
+            <code style={monoStyle}>
+              {p.resource} — {p.access}
+            </code>{" "}
+            <span style={mutedHintStyle}>
+              {p.need === "required" ? "required" : "not needed yet"} —{" "}
+              {p.why} (<code style={monoStyle}>{p.endpoint}</code>)
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p style={setupPanelTextStyle}>
+        Everything else — Customers, Products, Invoices, Subscriptions,
+        Webhook Endpoints, Connect — can stay <strong>None</strong>. What the
+        key may do has nothing to do with{" "}
+        <code style={monoStyle}>webhook_secret</code>, which is a signature,
+        not an access grant.
+      </p>
+      <p style={{ ...setupPanelTextStyle, color: "#854d0e" }}>
+        <strong>The mode has to match.</strong> A test config takes a test key
+        (<code style={monoStyle}>sk_test_</code> /{" "}
+        <code style={monoStyle}>rk_test_</code>), a live config a live one.
+        The form refuses the other mode rather than storing a key that would
+        quietly take no money — or real money.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The collapsible wrapper around StripeApiKeyPermissionsView, rendered next
+ * to the secret fields of a Stripe config. Closed by default: it is
+ * reference material for the one day somebody issues a key, not something to
+ * read past on every edit.
+ */
+function StripeApiKeyHelpPanel() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={setupPanelWrapStyle} data-testid="stripe-api-key-help-panel">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={setupPanelToggleStyle}
+        aria-expanded={open}
+        data-testid="stripe-api-key-help-toggle"
+      >
+        {open ? "▾" : "▸"} Which Stripe key to paste, and what it must be
+        allowed to do
+      </button>
+      {open && (
+        <div style={setupPanelBodyStyle}>
+          <StripeApiKeyPermissionsView />
         </div>
       )}
     </div>
@@ -1646,6 +1786,7 @@ export function PaymentConfigFormDialog({
                 — values are masked on read; leave blank to keep existing
               </span>
             </legend>
+            {provider === "stripe" ? <StripeApiKeyHelpPanel /> : null}
             {allKnownKeys.length === 0 ? (
               <p style={fieldHintStyle}>
                 The {provider} provider has no required secret fields.
@@ -2431,6 +2572,12 @@ const setupPanelToggleStyle: CSSProperties = {
   fontWeight: 600,
   color: "#0369a1",
   textAlign: "left",
+};
+
+const apiKeyHelpStackStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
 };
 
 const setupPanelBodyStyle: CSSProperties = {
