@@ -73,6 +73,76 @@ for (const c of catalog.cityList || []) {
   for (const v of c.venueList || []) venues.set(v.venueId, { ...v, cityId: c.cityId, countryId: c.countryId });
 }
 
+// ── seat coordinates ────────────────────────────────────────────────────────
+// A Bil24 plan places every row with a transform on its <g> (all 90 seats of
+// Palac Akropolis share one cy; the rows are rotated and shifted groups). The
+// arena importer reads a seat's cx/cy as they are written and ignores ancestor
+// transforms, so an untouched plan renders as one line of stacked seats.
+// bakeSeatTransforms writes the absolute position into each seat circle and
+// gives the circle the INVERSE of its ancestors' transform, so the result is
+// right for a parser that ignores transforms and for one that applies them.
+const IDENTITY = [1, 0, 0, 1, 0, 0];
+const mul = (m, n) => [
+  m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1],
+  m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3],
+  m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5],
+];
+function parseTransform(value) {
+  let m = IDENTITY;
+  for (const [, fn, raw] of String(value || '').matchAll(/(\w+)\s*\(([^)]*)\)/g)) {
+    const a = raw.split(/[\s,]+/).filter(Boolean).map(Number);
+    const rad = ((a[0] || 0) * Math.PI) / 180;
+    let t = IDENTITY;
+    if (fn === 'matrix' && a.length === 6) t = a;
+    else if (fn === 'translate') t = [1, 0, 0, 1, a[0] || 0, a[1] || 0];
+    else if (fn === 'scale') t = [a[0], 0, 0, a.length > 1 ? a[1] : a[0], 0, 0];
+    else if (fn === 'rotate') {
+      const r = [Math.cos(rad), Math.sin(rad), -Math.sin(rad), Math.cos(rad), 0, 0];
+      t = a.length >= 3 ? mul(mul([1, 0, 0, 1, a[1], a[2]], r), [1, 0, 0, 1, -a[1], -a[2]]) : r;
+    } else if (fn === 'skewX') t = [1, 0, Math.tan(rad), 1, 0, 0];
+    else if (fn === 'skewY') t = [1, Math.tan(rad), 0, 1, 0, 0];
+    m = mul(m, t);
+  }
+  return m;
+}
+const attrOf = (attrs, name) => (attrs.match(new RegExp(`(?:^|\\s)${name}\\s*=\\s*"([^"]*)"`)) || [])[1];
+const num = (v) => Number(v.toFixed(5));
+function bakeSeatTransforms(svg) {
+  const stack = [IDENTITY];
+  const tag = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<\/[\w:.-]+\s*>|<([\w:.-]+)((?:"[^"]*"|'[^']*'|[^>"'])*?)(\/?)>/g;
+  return svg.replace(tag, (whole, name, attrs, selfClose) => {
+    if (!name) {
+      if (whole.startsWith('</') && stack.length > 1) stack.pop();
+      return whole;
+    }
+    const parent = stack[stack.length - 1];
+    const isSeat = /circle$/.test(name) && attrOf(attrs, 'sbt:id') !== undefined && attrOf(attrs, 'sbt:state') !== undefined;
+    if (!isSeat) {
+      if (!selfClose) stack.push(mul(parent, parseTransform(attrOf(attrs, 'transform'))));
+      return whole;
+    }
+    if (!selfClose) stack.push(parent);
+    const m = mul(parent, parseTransform(attrOf(attrs, 'transform')));
+    const cx = Number(attrOf(attrs, 'cx') || 0);
+    const cy = Number(attrOf(attrs, 'cy') || 0);
+    const r = Number(attrOf(attrs, 'r') || 0);
+    const det = parent[0] * parent[3] - parent[1] * parent[2];
+    const set = (src, key, value) => (new RegExp(`(^|\\s)${key}\\s*=\\s*"[^"]*"`).test(src)
+      ? src.replace(new RegExp(`(^|\\s)${key}\\s*=\\s*"[^"]*"`), `$1${key}="${value}"`)
+      : `${src} ${key}="${value}"`);
+    let out = attrs.replace(/(^|\s)transform\s*=\s*"[^"]*"/, '$1');
+    out = set(out, 'cx', num(m[0] * cx + m[2] * cy + m[4]));
+    out = set(out, 'cy', num(m[1] * cx + m[3] * cy + m[5]));
+    out = set(out, 'r', num(r * Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]))));
+    if (det !== 0 && parent.some((v, i) => Math.abs(v - IDENTITY[i]) > 1e-9)) {
+      const inv = [parent[3] / det, -parent[1] / det, -parent[2] / det, parent[0] / det,
+        (parent[2] * parent[5] - parent[3] * parent[4]) / det, (parent[1] * parent[4] - parent[0] * parent[5]) / det];
+      out = `${out} transform="matrix(${inv.map((v) => Number(v.toFixed(8))).join(',')})"`;
+    }
+    return `<${name}${out}${selfClose}>`;
+  });
+}
+
 function buildBundle(action, ae) {
   const dir = `sessions/${ae.actionEventId}`;
   const seatFile = path.join(DUMP, dir, 'GET_SEAT_LIST.json');
@@ -83,7 +153,7 @@ function buildBundle(action, ae) {
   // arena releases before the parser fix only read <sbt:category> as a direct
   // child of <metadata>. Unwrapping is harmless for a fixed parser.
   const svg = existsSync(svgFile)
-    ? readFileSync(svgFile, 'utf8').replace(/<sbt:categories\b[^>]*>/g, '').replace(/<\/sbt:categories>/g, '')
+    ? bakeSeatTransforms(readFileSync(svgFile, 'utf8').replace(/<sbt:categories\b[^>]*>/g, '').replace(/<\/sbt:categories>/g, ''))
     : '';
 
   const placed = (seats.seatList || []).filter((s) => s.placement);
