@@ -56,7 +56,7 @@
  * Mock data: NONE. Everything in this module hits the live backend.
  * No globalThis / devStore / mockDb.
  */
-import { createRoute } from "@tanstack/react-router";
+import { createRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Fragment,
@@ -3406,6 +3406,20 @@ function SessionsTab({
                       <td style={tdStyle}>{s.status}</td>
                       <td style={tdStyle}>
                         <div style={rowActionsStyle}>
+                          {/* The seat map — sold / held / withheld seats and
+                              the block / unblock actions — has no other entry
+                              point in the UI. A session without a bound plan
+                              has no seats to show. */}
+                          {s.seating_plan_version_id !== null ? (
+                            <Link
+                              to="/organizations/$orgId/events/$eventId/sessions/$sessionId/seats"
+                              params={{ orgId: event.org_id, eventId: event.id, sessionId: s.id }}
+                              style={{ ...refreshButtonStyle, textDecoration: "none", display: "inline-block" }}
+                              data-testid={`events-session-seats-${s.id}`}
+                            >
+                              Seats
+                            </Link>
+                          ) : null}
                           {canUpdate ? (
                             <button
                               type="button"

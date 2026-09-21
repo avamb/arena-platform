@@ -36,7 +36,7 @@
  * Mock data: NONE. Every read + write goes to the live backend. All pure
  * helpers below are exported for unit tests in sessionSeats.test.ts.
  */
-import { createRoute, useParams } from "@tanstack/react-router";
+import { createRoute, Link, useParams } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
@@ -814,6 +814,9 @@ export function SessionSeatsScreen({
       data-session-id={sessionId}
     >
       <header style={headerStyle}>
+        <Link to="/events" data-testid="session-seats-back">
+          ← Events and sessions
+        </Link>
         <h1 style={h1Style}>Seat management</h1>
         <p style={subtitleStyle}>
           Session <code>{sessionId}</code> • Event <code>{eventId}</code>
