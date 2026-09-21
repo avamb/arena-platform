@@ -12,6 +12,7 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api/client";
 import {
   UUID_RE,
@@ -29,6 +30,7 @@ import {
   STRIPE_CHECKOUT_SESSION_EVENTS,
   StripeWebhookConfigUrlsView,
   normalizeVerificationStatus,
+  PaymentConfigFormDialog,
   type PaymentConfig,
 } from "./payments";
 
@@ -464,5 +466,93 @@ describe("normalizeVerificationStatus", () => {
     expect(normalizeVerificationStatus("pending_review")).toBe("unverified");
     expect(normalizeVerificationStatus("OK")).toBe("unverified");
     expect(normalizeVerificationStatus("configured")).toBe("unverified");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stored secrets are locked against a password manager (2026-09-21)
+// ---------------------------------------------------------------------------
+//
+// The dialog reads as a login form to Chrome — an e-mail in "Provider account
+// ID", a type="password" input directly beneath it — so it filled api_key
+// with a saved password. An autofill dispatches a real, trusted input event,
+// so watching for changes cannot tell it from typing: the field has to be
+// read-only until the operator asks to replace it.
+
+describe("PaymentConfigFormDialog secrets", () => {
+  const ORG = "11111111-2222-3333-4444-555555555555";
+
+  function storedConfig(): PaymentConfig {
+    return {
+      id: "550e8400-e29b-41d4-a716-446655440000",
+      org_id: ORG,
+      provider: "stripe",
+      mode: "test",
+      provider_account_id: "andreev@example.com",
+      public_config: {},
+      secret_fields_set: ["api_key", "webhook_secret"],
+      status: "configured",
+      missing_required_fields: [],
+      is_active: true,
+      created_at: "2026-09-21T00:00:00Z",
+      updated_at: "2026-09-21T00:00:00Z",
+      verification_status: "ok",
+      verified_at: "2026-09-21T12:00:00Z",
+      verification_error: null,
+    };
+  }
+
+  function renderDialog(mode: Parameters<typeof PaymentConfigFormDialog>[0]["mode"]) {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    return renderToStaticMarkup(
+      createElement(
+        QueryClientProvider,
+        { client },
+        createElement(PaymentConfigFormDialog, {
+          mode,
+          orgID: ORG,
+          onClose: () => {},
+        }),
+      ),
+    );
+  }
+
+  it("renders at all", () => {
+    // Guards a real defect caught before release: `dirty` called
+    // isSecretLocked, which reads a const declared further down, so every
+    // render threw a temporal-dead-zone ReferenceError. tsc does not see it.
+    expect(() => renderDialog({ kind: "edit", config: storedConfig() })).not.toThrow();
+    expect(() => renderDialog({ kind: "create" })).not.toThrow();
+  });
+
+  it("locks an already-stored secret and offers Replace", () => {
+    const html = renderDialog({ kind: "edit", config: storedConfig() });
+    expect(html).toContain('data-testid="payments-form-replace-api_key"');
+    expect(html).toContain("press Replace to change");
+    // readOnly is what makes the field not an autofill target in the first
+    // place; React serialises it as the `readonly` attribute.
+    const apiKeyInput = html.slice(html.indexOf('id="payment-secret-api_key"'));
+    expect(apiKeyInput.slice(0, apiKeyInput.indexOf(">"))).toContain("readonly");
+  });
+
+  it("asks the browser not to treat secret fields as a login", () => {
+    const html = renderDialog({ kind: "edit", config: storedConfig() });
+    // Matched case-insensitively: react-dom/server emits the React prop
+    // spelling (autoComplete), and HTML attribute names are case-insensitive
+    // so the browser reads it either way.
+    const lower = html.toLowerCase();
+    // "new-password" rather than "off": Chrome ignores "off" on a form it
+    // has decided is a login.
+    expect(lower).toContain('autocomplete="new-password"');
+    expect(lower).toContain('autocomplete="off"');
+  });
+
+  it("leaves a not-yet-stored secret editable on create", () => {
+    const html = renderDialog({ kind: "create" });
+    expect(html).not.toContain('data-testid="payments-form-replace-api_key"');
+    const apiKeyInput = html.slice(html.indexOf('id="payment-secret-api_key"'));
+    expect(apiKeyInput.slice(0, apiKeyInput.indexOf(">"))).not.toContain("readonly");
   });
 });

@@ -1288,7 +1288,11 @@ interface FormDialogProps {
   onClose: () => void;
 }
 
-function PaymentConfigFormDialog({ mode, orgID, onClose }: FormDialogProps) {
+export function PaymentConfigFormDialog({
+  mode,
+  orgID,
+  onClose,
+}: FormDialogProps) {
   const queryClient = useQueryClient();
   const isEdit = mode.kind === "edit";
 
@@ -1318,6 +1322,27 @@ function PaymentConfigFormDialog({ mode, orgID, onClose }: FormDialogProps) {
   );
   // Tracks which keys the user explicitly chose to clear via "Clear".
   const [clearedKeys, setClearedKeys] = useState<Set<string>>(new Set());
+  /**
+   * Stored keys the operator has explicitly asked to replace.
+   *
+   * A stored secret's input is READ-ONLY until its key is in here, and a
+   * key that is not in here is never sent — so a credential can only be
+   * overwritten by someone who pressed "Replace" first.
+   *
+   * This exists because of a browser password manager, not because of the
+   * operator. The dialog reads as a login form — an e-mail in "Provider
+   * account ID", a type="password" input directly under it — so Chrome
+   * fills the first secret with a saved password. It cannot be caught by
+   * watching for changes: an autofill dispatches a real, trusted input
+   * event, indistinguishable from typing. So a save that only meant to
+   * untick "Active" silently rewrote the credential, and every later visit
+   * to the form re-filled it — which is why replacing the key by hand
+   * appeared not to stick. A read-only input is not a fill target, and an
+   * un-unlocked key is not submittable even if one gets through.
+   */
+  const [unlockedSecretKeys, setUnlockedSecretKeys] = useState<Set<string>>(
+    new Set(),
+  );
   const [serverErrors, setServerErrors] = useState<ServerFieldErrors>({});
 
   const providerErr = validateProvider(provider);
@@ -1325,15 +1350,6 @@ function PaymentConfigFormDialog({ mode, orgID, onClose }: FormDialogProps) {
   const publicConfigErr = validatePublicConfigJSON(publicConfig);
   const localValid =
     providerErr === null && modeErr === null && publicConfigErr === null;
-
-  // For edit, allow submission when at least one field changed.
-  const dirty =
-    !isEdit ||
-    accountID.trim() !== initialAccountID ||
-    publicConfig.trim() !== initialPublicConfig.trim() ||
-    isActive !== initialIsActive ||
-    Object.values(secretInputs).some((v) => v.trim() !== "") ||
-    clearedKeys.size > 0;
 
   const requiredSecrets = PROVIDER_REQUIRED_SECRETS[provider] ?? [];
   const storedKeys = isEdit ? mode.config.secret_fields_set : [];
@@ -1346,6 +1362,46 @@ function PaymentConfigFormDialog({ mode, orgID, onClose }: FormDialogProps) {
     }
     return [...set].sort();
   }, [requiredSecrets, storedKeys]);
+
+  /**
+   * True when this key's stored value is protected from being overwritten:
+   * it exists on the row, has not been cleared, and nobody pressed
+   * "Replace". Such a field renders read-only and is never submitted.
+   */
+  function isSecretLocked(key: string): boolean {
+    return (
+      storedKeys.includes(key) &&
+      !clearedKeys.has(key) &&
+      !unlockedSecretKeys.has(key)
+    );
+  }
+
+  function unlockSecretField(key: string) {
+    setUnlockedSecretKeys((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+    // Start from empty rather than from whatever the field holds — the
+    // only thing that could be in there is an autofill.
+    setSecretInputs((prev) => ({ ...prev, [key]: "" }));
+  }
+
+  // For edit, allow submission when at least one field changed. Declared
+  // after isSecretLocked because it calls it, and that function reads
+  // storedKeys — a const, so an earlier call would hit its temporal dead
+  // zone and throw on every render.
+  const dirty =
+    !isEdit ||
+    accountID.trim() !== initialAccountID ||
+    publicConfig.trim() !== initialPublicConfig.trim() ||
+    isActive !== initialIsActive ||
+    // Locked keys excluded for the same reason they are excluded from the
+    // patch: an autofill must not make the form look edited.
+    Object.entries(secretInputs).some(
+      ([k, v]) => !isSecretLocked(k) && v.trim() !== "",
+    ) ||
+    clearedKeys.size > 0;
 
   function setSecretField(key: string, value: string) {
     setSecretInputs((prev) => ({ ...prev, [key]: value }));
@@ -1377,6 +1433,12 @@ function PaymentConfigFormDialog({ mode, orgID, onClose }: FormDialogProps) {
       // preserves the existing value.
       const secretsPatch: Record<string, string> = {};
       for (const [k, v] of Object.entries(secretInputs)) {
+        // A locked key is never sent, whatever its input holds. That input
+        // is read-only, so anything in it arrived from a password manager
+        // rather than from the operator.
+        if (isSecretLocked(k)) {
+          continue;
+        }
         const trimmed = v.trim();
         if (trimmed !== "") {
           secretsPatch[k] = trimmed;
@@ -1476,7 +1538,16 @@ function PaymentConfigFormDialog({ mode, orgID, onClose }: FormDialogProps) {
             ×
           </button>
         </header>
-        <form onSubmit={onSubmit} style={formStyle} noValidate>
+        {/*
+          autoComplete="off" on the form, and "new-password" on every secret
+          input below, because a browser password manager treats this dialog
+          as a login form: "Provider account ID" holds an e-mail, the next
+          field is type="password", and that is the exact shape Chrome fills.
+          It silently wrote a saved password into api_key — see the
+          touched-key guard in the submit handler, which is the part that
+          holds even when a browser ignores these hints.
+        */}
+        <form onSubmit={onSubmit} style={formStyle} noValidate autoComplete="off">
           <FieldRow
             label="Provider"
             htmlFor="payment-provider"
@@ -1583,7 +1654,12 @@ function PaymentConfigFormDialog({ mode, orgID, onClose }: FormDialogProps) {
               allKnownKeys.map((key) => {
                 const stored = storedKeys.includes(key);
                 const cleared = clearedKeys.has(key);
-                const value = secretInputs[key] ?? "";
+                const locked = isSecretLocked(key);
+                // A locked field shows nothing at all, never the input's
+                // own state: the only thing that could be in there is an
+                // autofill, and rendering it would make a password look
+                // like the stored credential.
+                const value = locked ? "" : (secretInputs[key] ?? "");
                 return (
                   <div key={key} style={secretRowStyle}>
                     <label
@@ -1604,17 +1680,36 @@ function PaymentConfigFormDialog({ mode, orgID, onClose }: FormDialogProps) {
                       value={value}
                       onChange={(e) => setSecretField(key, e.target.value)}
                       style={inputMonoStyle}
+                      readOnly={locked}
                       placeholder={
-                        stored && !cleared
-                          ? "••• stored (leave blank to keep)"
-                          : "(not set)"
+                        locked
+                          ? "••• stored — press Replace to change"
+                          : stored && !cleared
+                            ? "••• stored (leave blank to keep)"
+                            : "(not set)"
                       }
+                      // "new-password", not "off": Chrome ignores "off" on
+                      // anything it has decided is a login form, but honours
+                      // this one. No `name` either — a named password field
+                      // is what a manager matches a saved entry against.
+                      autoComplete="new-password"
                       autoCapitalize="off"
                       autoCorrect="off"
                       spellCheck={false}
                       disabled={cleared}
                       data-testid={`payments-form-secret-${key}`}
                     />
+                    {locked ? (
+                      <button
+                        type="button"
+                        onClick={() => unlockSecretField(key)}
+                        style={secretClearButtonStyle}
+                        title="Unlock this field to enter a new value. Until then the stored credential cannot be overwritten."
+                        data-testid={`payments-form-replace-${key}`}
+                      >
+                        Replace
+                      </button>
+                    ) : null}
                     {stored ? (
                       <button
                         type="button"
