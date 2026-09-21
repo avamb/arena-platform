@@ -131,34 +131,8 @@ describe('renderEvent', () => {
 });
 
 describe('renderPromoterPage', () => {
-  /** Slugs the page asked to resolve, in order — proof that a row fetches
-   * exactly when it is opened and never twice. */
-  let resolvedSlugs: string[] = [];
-
-  beforeEach(() => {
-    resolvedSlugs = [];
-  });
-
-  /** Lets the awaited resolve and the render that follows it settle. */
-  async function flush(): Promise<void> {
-    await Promise.resolve();
-    await Promise.resolve();
-  }
-
   function pageOptions(): PromoterPageOptions {
-    return {
-      apiBase: 'https://api.example.com',
-      resolveEvent: (slug) => {
-        resolvedSlugs.push(slug);
-        const event = sampleData.events.find((e) => e.slug === slug) ?? sampleData.events[0];
-        return Promise.resolve({
-          org: sampleData.org,
-          event,
-          feed_token: 'ft_abc123',
-          default_locale: 'en',
-        });
-      },
-    };
+    return { apiBase: 'https://api.example.com' };
   }
 
   const eventWithPoster: HostedPageEvent = {
@@ -174,6 +148,7 @@ describe('renderPromoterPage', () => {
     first_session_at: '2026-10-01T17:00:00Z',
     last_session_at: '2026-10-01T20:00:00Z',
     first_session_timezone: 'Europe/Prague',
+    feed_token: 'ft_abc123',
   };
 
   const eventWithoutPoster: HostedPageEvent = {
@@ -189,6 +164,7 @@ describe('renderPromoterPage', () => {
     first_session_at: null,
     last_session_at: null,
     first_session_timezone: null,
+    feed_token: 'ft_abc123',
   };
 
   const sampleData: HostedPromoterPageResponse = {
@@ -205,95 +181,70 @@ describe('renderPromoterPage', () => {
     expect(logo?.src).toBe('https://example.com/logo.png');
   });
 
-  it('renders one date row per event', () => {
+  it('renders one date card per event', () => {
     const container = freshContainer();
     renderPromoterPage(container, sampleData, 'en', pageOptions());
-    const rows = container.querySelectorAll('.asa-date-row');
-    expect(rows.length).toBe(2);
-    expect(rows[0].getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelectorAll('.asa-date-item').length).toBe(2);
+    expect(container.querySelectorAll('.asa-date-row').length).toBe(2);
   });
 
-  // The whole point of the list: a buyer picks a quantity here, and the
-  // per-event page never enters the flow.
-  it('opens the ticket picker inside the row it belongs to', async () => {
+  // The whole point of the list: a buyer picks a quantity here, with
+  // nothing to press first and the per-event page never in the flow.
+  it('renders every ticket picker open, with no control to unfold it', () => {
     const container = freshContainer();
-    const options = pageOptions();
-    renderPromoterPage(container, sampleData, 'en', options);
+    renderPromoterPage(container, sampleData, 'en', pageOptions());
 
-    const row = container.querySelectorAll('.asa-date-row')[0] as HTMLButtonElement;
-    const panel = container.querySelector('.asa-date-panel') as HTMLElement;
-    expect(panel.hidden).toBe(true);
+    const panels = container.querySelectorAll('.asa-date-panel');
+    expect(panels.length).toBe(2);
+    for (const panel of panels) {
+      expect((panel as HTMLElement).hidden).toBe(false);
+      expect(panel.querySelector('arena-tickets')).not.toBeNull();
+    }
+    // Nothing toggles any more — no button, no expanded state, no CTA on
+    // a live date. The picker under it is the action.
+    expect(container.querySelector('.asa-date-row button')).toBeNull();
+    expect(container.querySelector('[aria-expanded]')).toBeNull();
+    expect(container.querySelector('.asa-date-row:not(.asa-date-row--past) .asa-date-row__cta')).toBeNull();
 
-    row.click();
-    await flush();
-
-    expect(row.getAttribute('aria-expanded')).toBe('true');
-    expect(row.getAttribute('aria-controls')).toBe(panel.id);
-    expect(panel.hidden).toBe(false);
-    expect(resolvedSlugs).toEqual(['masterclass-day-1']);
+    const panel = panels[0] as HTMLElement;
+    expect(panel.id).toBe(`asa-panel-${eventWithPoster.id}`);
 
     const widget = panel.querySelector('arena-tickets');
+    // The token now travels with the list, so the card mounts its picker
+    // without resolving the event's own page first.
     expect(widget?.getAttribute('feed-token')).toBe('ft_abc123');
     expect(widget?.getAttribute('event-id')).toBe(eventWithPoster.id);
     expect(widget?.getAttribute('api-base')).toBe('https://api.example.com');
-    // What the event is about is the one thing the row header does not
+    // What the event is about is the one thing the card header does not
     // say, so it stays. The artwork and the date do not: both are already
-    // on screen, above the row and in it.
+    // on screen, above the card and in it.
     expect(panel.querySelector('.asa-date-panel__description')?.textContent).toBe(
       'An intensive one-day acting workshop.',
     );
     expect(widget?.getAttribute('cover')).toBe('hidden');
     expect(widget?.getAttribute('sessions')).toBe('hidden');
+    // The card is already a box; without this the picker draws a second
+    // one inside it and one date reads as two separate things.
+    expect(widget?.getAttribute('frame')).toBe('hidden');
     expect(panel.querySelector('img')).toBeNull();
   });
 
-  it('keeps the widget mounted when a row is closed and reopened', async () => {
+  // Should not happen — the list only returns events resolved THROUGH a
+  // token — but the field is optional in the schema, and a card that
+  // silently offers nothing is worse than one that sends the buyer on.
+  it('falls back to the event page when a date carries no feed token', () => {
     const container = freshContainer();
-    renderPromoterPage(container, sampleData, 'en', pageOptions());
-    const row = container.querySelectorAll('.asa-date-row')[0] as HTMLButtonElement;
-
-    row.click();
-    await flush();
-    row.click();
-    expect(row.getAttribute('aria-expanded')).toBe('false');
-    expect((container.querySelector('.asa-date-panel') as HTMLElement).hidden).toBe(true);
-
-    row.click();
-    await flush();
-    // Reopening must not fetch again, or a buyer toggling the row would
-    // throw away the cart they had already started.
-    expect(resolvedSlugs).toEqual(['masterclass-day-1']);
-    expect(container.querySelectorAll('arena-tickets').length).toBe(1);
-  });
-
-  // Two open carts on one page means two live seat holds.
-  it('closes the other rows when one is opened', async () => {
-    const container = freshContainer();
-    renderPromoterPage(container, sampleData, 'en', pageOptions());
-    const rows = container.querySelectorAll('.asa-date-row');
-
-    (rows[0] as HTMLButtonElement).click();
-    await flush();
-    (rows[1] as HTMLButtonElement).click();
-    await flush();
-
-    expect(rows[0].getAttribute('aria-expanded')).toBe('false');
-    expect(rows[1].getAttribute('aria-expanded')).toBe('true');
-  });
-
-  it('offers a retry when the ticket picker cannot be loaded', async () => {
-    const container = freshContainer();
-    const options = pageOptions();
-    options.resolveEvent = () => Promise.reject(new Error('offline'));
-    renderPromoterPage(container, sampleData, 'en', options);
-
-    (container.querySelector('.asa-date-row') as HTMLButtonElement).click();
-    await flush();
-
+    renderPromoterPage(
+      container,
+      { ...sampleData, events: [{ ...eventWithPoster, feed_token: undefined }] },
+      'en',
+      pageOptions(),
+    );
     const panel = container.querySelector('.asa-date-panel') as HTMLElement;
-    expect(panel.querySelector('.asa-date-panel__error')).not.toBeNull();
     expect(panel.querySelector('arena-tickets')).toBeNull();
-    expect(panel.querySelector('button.asa-button')?.textContent).toBe('Retry');
+    const link = panel.querySelector('a.asa-button') as HTMLAnchorElement | null;
+    expect(link?.textContent).toBe('Tickets');
+    expect(link?.getAttribute('href')).toContain('/masterclassteatro/masterclass-day-1');
   });
 
   // A promoter runs a season off ONE artwork, so it belongs at the top of
@@ -379,6 +330,9 @@ describe('renderPromoterPage', () => {
     const row = container.querySelector('.asa-date-row');
     expect(row?.classList.contains('asa-date-row--past')).toBe(true);
     expect(row?.querySelector('.asa-date-row__cta')?.textContent).toBe('Took place');
+    // No picker under a date that is over — there is nothing to sell.
+    expect(container.querySelector('.asa-date-panel')).toBeNull();
+    expect(container.querySelector('arena-tickets')).toBeNull();
   });
 
   it('heads the list only when there is a choice of dates to make', () => {
@@ -445,30 +399,53 @@ describe('renderPromoterPage', () => {
       window.history.replaceState(null, '', originalHref);
     });
 
-    it('opens that row by itself so the buyer sees the outcome', async () => {
+    // Every card is open already, so the only thing left to do is put
+    // theirs on screen.
+    it('scrolls their card into view so the buyer sees the outcome', () => {
       const container = freshContainer();
-      const options = pageOptions();
-      options.openEventID = eventWithoutPoster.id;
-      renderPromoterPage(container, sampleData, 'en', options);
-      await flush();
+      const scrolled: Element[] = [];
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = function scrollIntoViewStub(this: Element) {
+        scrolled.push(this);
+      };
+      const frames: FrameRequestCallback[] = [];
+      const originalRaf = window.requestAnimationFrame;
+      window.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+        frames.push(cb);
+        return 0;
+      }) as typeof window.requestAnimationFrame;
 
-      const rows = container.querySelectorAll('.asa-date-row');
-      expect(rows[0].getAttribute('aria-expanded')).toBe('false');
-      expect(rows[1].getAttribute('aria-expanded')).toBe('true');
-      expect(resolvedSlugs).toEqual([eventWithoutPoster.slug]);
+      try {
+        const options = pageOptions();
+        options.openEventID = eventWithoutPoster.id;
+        renderPromoterPage(container, sampleData, 'en', options);
+        for (const cb of frames) cb(0);
+      } finally {
+        Element.prototype.scrollIntoView = original;
+        window.requestAnimationFrame = originalRaf;
+      }
+
+      expect(scrolled.length).toBe(1);
+      expect(scrolled[0].querySelector('.asa-date-panel')?.id).toBe(
+        `asa-panel-${eventWithoutPoster.id}`,
+      );
     });
 
-    it('leaves every row closed when the id names nothing on the page', async () => {
+    it('scrolls nothing when the id names no date on the page', () => {
       const container = freshContainer();
-      const options = pageOptions();
-      options.openEventID = 'not-on-this-page';
-      renderPromoterPage(container, sampleData, 'en', options);
-      await flush();
-
-      for (const row of container.querySelectorAll('.asa-date-row')) {
-        expect(row.getAttribute('aria-expanded')).toBe('false');
+      const scrolled: Element[] = [];
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = function scrollIntoViewStub(this: Element) {
+        scrolled.push(this);
+      };
+      try {
+        const options = pageOptions();
+        options.openEventID = 'not-on-this-page';
+        renderPromoterPage(container, sampleData, 'en', options);
+      } finally {
+        Element.prototype.scrollIntoView = original;
       }
-      expect(resolvedSlugs).toEqual([]);
+      expect(scrolled).toEqual([]);
     });
   });
 

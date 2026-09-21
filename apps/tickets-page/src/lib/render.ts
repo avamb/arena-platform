@@ -349,30 +349,25 @@ export function consumeCheckoutTokenFromURL(loc: Location, history: History): st
   }
 }
 
-/** Everything a date row needs to open its own ticket picker in place. */
+/** Everything a date card needs to render its own ticket picker. */
 export interface PromoterPageOptions {
   apiBase: string;
-  /** Resolves one event's hosted page — the promoter response carries no
-   * feed token, and the widget cannot be mounted without one. Injected so
-   * the renderer stays free of network code (and testable). */
-  resolveEvent: (eventSlug: string) => Promise<HostedPageResponse>;
-  /** Id of the event whose row should open by itself and scroll into
-   * view — a buyer coming back from the payment page. */
+  /** Id of the event whose card should scroll into view — a buyer coming
+   * back from the payment page. */
   openEventID?: string | null;
 }
 
-/** One row of the date list: a date block, then what is on that date, then
- * the action — and, once pressed, the ticket picker itself unfolded
- * directly underneath.
+/** One card of the date list: when and what at the top, the event's own
+ * words under it, and its ticket picker already open at the bottom — one
+ * block per date, nothing to press before a quantity can be chosen.
  *
- * The row used to be a link to a per-event page, which is where the buyer
- * chose a quantity. That page is gone from the flow: a promoter's date
- * list IS the shop, and making someone load a second page to say "two,
- * please" loses buyers for nothing. Direct links to /{org}/{event} still
- * work and still render the full page — the list simply no longer routes
- * through it.
+ * The card used to be a link to a per-event page, then a row that unfolded
+ * a picker when pressed. Both are gone: a promoter's date list IS the
+ * shop, so every step between arriving and saying "two, please" is a step
+ * that loses buyers. Direct links to /{org}/{event} still work and still
+ * render the full page — the list simply no longer routes through it.
  *
- * Unlike the tour page this is modelled on, the row leads with the DATE
+ * Unlike the tour page this is modelled on, the card leads with the DATE
  * and then names the event: on that site every date of a tour is the same
  * show in a different city, so the city distinguished them; here the six
  * master classes have different titles and different teachers, so the
@@ -389,14 +384,12 @@ function renderDateRow(
 
   const past = isPast(event, now);
   // A past date keeps its link to the event page — there is nothing to
-  // pick, and the page is where a buyer checks what they attended.
-  const a = document.createElement(past ? 'a' : 'button') as HTMLElement;
+  // pick, and the page is where a buyer checks what they attended. A live
+  // one is not a control at all any more: the picker below it is.
+  const a = document.createElement(past ? 'a' : 'div') as HTMLElement;
   a.className = past ? 'asa-date-row asa-date-row--past' : 'asa-date-row';
   if (past) {
     (a as HTMLAnchorElement).href = `/${encodeURIComponent(orgSlug)}/${encodeURIComponent(event.slug)}${currentSearch()}`;
-  } else {
-    (a as HTMLButtonElement).type = 'button';
-    a.setAttribute('aria-expanded', 'false');
   }
 
   const parts = dateParts(event, locale);
@@ -441,105 +434,50 @@ function renderDateRow(
 
   a.appendChild(what);
 
-  const cta = document.createElement('span');
-  cta.className = past ? 'asa-button asa-date-row__cta asa-button--ghost' : 'asa-button asa-date-row__cta';
-  cta.setAttribute('aria-hidden', 'true');
-  cta.textContent = past ? t(locale).eventPast : t(locale).ticketsCta;
-  a.appendChild(cta);
+  if (past) {
+    const cta = document.createElement('span');
+    cta.className = 'asa-button asa-date-row__cta asa-button--ghost';
+    cta.setAttribute('aria-hidden', 'true');
+    cta.textContent = t(locale).eventPast;
+    a.appendChild(cta);
+    li.className = 'asa-date-item asa-date-item--past';
+    li.appendChild(a);
+    return li;
+  }
 
   li.appendChild(a);
-  if (past) return li;
 
   const panel = document.createElement('div');
   panel.className = 'asa-date-panel';
   panel.id = `asa-panel-${event.id}`;
-  panel.hidden = true;
-  a.setAttribute('aria-controls', panel.id);
   li.appendChild(panel);
-
-  let mounted = false;
-  a.addEventListener('click', () => {
-    const open = a.getAttribute('aria-expanded') === 'true';
-    if (open) {
-      a.setAttribute('aria-expanded', 'false');
-      panel.hidden = true;
-      cta.textContent = t(locale).ticketsCta;
-      return;
-    }
-    // One picker at a time: two open carts on one page means two live
-    // seat holds and a buyer wondering which total is theirs.
-    collapseOpenRows(li);
-    a.setAttribute('aria-expanded', 'true');
-    panel.hidden = false;
-    cta.textContent = t(locale).hideCta;
-    if (!mounted) {
-      mounted = true;
-      void mountTicketPicker(panel, event, locale, options);
-    }
-  });
+  mountTicketPicker(panel, event, orgSlug, locale, options);
 
   return li;
 }
 
-/** Closes every other open row in the same list. */
-function collapseOpenRows(except: HTMLLIElement): void {
-  const list = except.parentElement;
-  if (!list) return;
-  for (const item of Array.from(list.children)) {
-    if (item === except) continue;
-    const toggle = item.querySelector('.asa-date-row[aria-expanded="true"]');
-    if (toggle instanceof HTMLElement) toggle.click();
-  }
-}
-
-/** Fills an open row's panel: the event's own words, then the widget.
- * The feed token comes from the per-event endpoint, which is why this is
- * fetched on first open rather than rendered upfront — mounting six
- * widgets a buyer may never touch would cost six requests and six carts. */
-async function mountTicketPicker(
+/** Fills a card's lower half: the event's own words, then its picker.
+ *
+ * No fetch of its own — `feed_token` arrives with the promoter list, so a
+ * six-date season renders from ONE request. It used to be resolved per
+ * event, which is why the picker was behind a button: six dates meant six
+ * requests to open six pickers. With the token in hand there is nothing
+ * left to defer, and nothing left to press. */
+function mountTicketPicker(
   panel: HTMLElement,
   event: HostedPageEvent,
+  orgSlug: string,
   locale: PageLocale,
   options: PromoterPageOptions,
-): Promise<void> {
-  const strings = t(locale);
+): void {
   clear(panel);
 
-  const status = document.createElement('p');
-  status.className = 'asa-loading';
-  status.setAttribute('role', 'status');
-  status.textContent = strings.loading;
-  panel.appendChild(status);
-
-  let data: HostedPageResponse;
-  try {
-    data = await options.resolveEvent(event.slug);
-  } catch {
-    clear(panel);
-    const failed = document.createElement('p');
-    failed.className = 'asa-date-panel__error';
-    failed.textContent = strings.errorBody;
-    panel.appendChild(failed);
-
-    const retry = document.createElement('button');
-    retry.type = 'button';
-    retry.className = 'asa-button';
-    retry.textContent = strings.errorRetry;
-    retry.addEventListener('click', () => {
-      void mountTicketPicker(panel, event, locale, options);
-    });
-    panel.appendChild(retry);
-    return;
-  }
-
-  clear(panel);
-
-  // What the event is about is the one thing the row header does NOT say,
+  // What the event is about is the one thing the card header does NOT say,
   // so it stays. The artwork and the date do not: the season's poster is
-  // at the top of the page and the date is in the row itself, and showing
-  // either again inside the row is what made the old event page feel like
-  // a pointless extra step.
-  const description = data.event.short_description ?? data.event.description;
+  // at the top of the page and the date is in the header a line above, and
+  // showing either again here is what made the old event page feel like a
+  // pointless extra step.
+  const description = event.short_description ?? event.description;
   if (description) {
     const p = document.createElement('p');
     p.className = 'asa-date-panel__description';
@@ -547,11 +485,28 @@ async function mountTicketPicker(
     panel.appendChild(p);
   }
 
+  // An event published through no token we can see cannot be sold from
+  // here. That should not happen — the list only returns events resolved
+  // THROUGH a token — but the field is optional in the schema, and a card
+  // that silently offers nothing is worse than one that sends the buyer
+  // to the page that does work.
+  if (!event.feed_token) {
+    const fallback = document.createElement('a');
+    fallback.className = 'asa-button';
+    fallback.href = `/${encodeURIComponent(orgSlug)}/${encodeURIComponent(event.slug)}${currentSearch()}`;
+    fallback.textContent = t(locale).ticketsCta;
+    panel.appendChild(fallback);
+    return;
+  }
+
   const widget = document.createElement('arena-tickets');
-  widget.setAttribute('feed-token', data.feed_token);
-  widget.setAttribute('event-id', data.event.id);
+  widget.setAttribute('feed-token', event.feed_token);
+  widget.setAttribute('event-id', event.id);
   widget.setAttribute('cover', 'hidden');
   widget.setAttribute('sessions', 'hidden');
+  // The card is already a box. Without this the picker draws a second one
+  // inside it, and one date reads as two separate things.
+  widget.setAttribute('frame', 'hidden');
   widget.setAttribute('locale', toWidgetLocale(locale));
   if (options.apiBase) {
     widget.setAttribute('api-base', options.apiBase);
@@ -655,15 +610,16 @@ export function renderPromoterPage(
   section.appendChild(list);
   container.appendChild(section);
 
-  // A buyer returning from the payment page: open their row for them and
-  // put it on screen, so the order's outcome is the first thing they see
-  // rather than a list that behaves as if nothing happened.
+  // A buyer returning from the payment page: put their card on screen, so
+  // the order's outcome is the first thing they see rather than a list
+  // that behaves as if nothing happened. Every card is open already —
+  // only the scroll is left to do.
   if (options.openEventID) {
-    const row = list.querySelector(`.asa-date-row[aria-controls="asa-panel-${cssEscape(options.openEventID)}"]`);
-    if (row instanceof HTMLElement) {
-      row.click();
+    const panel = list.querySelector(`#asa-panel-${cssEscape(options.openEventID)}`);
+    const card = panel?.closest('.asa-date-item');
+    if (card instanceof HTMLElement) {
       requestAnimationFrame(() => {
-        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
     }
   }

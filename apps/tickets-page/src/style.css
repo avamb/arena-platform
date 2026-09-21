@@ -440,69 +440,77 @@ a {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
-/* One row per date: date block, what is on, action. `auto` on the last
-   column lets the pill keep its natural width while the title takes the
-   slack. */
+/* The CARD is the date — header, the event's own words, and its ticket
+   picker, in one box. Nothing inside draws a second outline (the widget
+   is mounted with frame="hidden" for exactly this reason): nested boxes
+   are what made a single date read as two separate things. */
+.asa-date-item {
+  background: var(--asa-surface);
+  border: 1px solid var(--asa-border);
+  border-radius: var(--asa-radius);
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+/* Lights up while the buyer is working inside it — the picker, the
+   quantity stepper, the buyer form are all focusable children. */
+.asa-date-item:focus-within {
+  border-color: var(--asa-accent);
+}
+
+/* A date that has already happened is dimmed, but must still be readable
+   under the pointer: it is a link to the page that shows what took place. */
+.asa-date-item--past {
+  opacity: 0.55;
+}
+
+.asa-date-item--past:hover {
+  opacity: 1;
+  border-color: var(--asa-accent);
+}
+
+/* Header of the card: date block, then what is on. `auto` on a third
+   column carries the "Took place" pill — a live date has no action of its
+   own up here, because the picker below it IS the action. */
 .asa-date-row {
   display: grid;
-  grid-template-columns: 84px 1fr auto;
+  grid-template-columns: 84px 1fr;
   gap: 18px;
   align-items: center;
   width: 100%;
   padding: 14px 18px;
-  background: var(--asa-surface);
-  border: 1px solid var(--asa-border);
-  border-radius: var(--asa-radius);
   text-decoration: none;
   text-align: start;
   color: inherit;
   font-family: inherit;
   font-size: 1rem;
-  cursor: pointer;
-  transition: border-color 0.15s ease;
-}
-
-/* An open row and its panel read as one block. */
-.asa-date-row[aria-expanded='true'] {
-  border-color: var(--asa-accent);
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-}
-
-.asa-date-panel {
-  padding: 16px 18px 18px;
-  background: var(--asa-surface);
-  border: 1px solid var(--asa-accent);
-  border-top: none;
-  border-bottom-left-radius: var(--asa-radius);
-  border-bottom-right-radius: var(--asa-radius);
-}
-
-.asa-date-panel__description {
-  margin: 0 0 16px;
-  color: var(--asa-text-secondary);
-  max-width: 70ch;
-}
-
-.asa-date-panel__error {
-  margin: 0 0 12px;
-  color: var(--asa-text-secondary);
-}
-
-.asa-date-row:hover {
-  border-color: var(--asa-accent);
-}
-
-.asa-date-row:focus-visible {
-  outline: 3px solid var(--asa-focus-ring);
-  outline-offset: 2px;
 }
 
 .asa-date-row--past {
-  opacity: 0.55;
+  grid-template-columns: 84px 1fr auto;
+  cursor: pointer;
+}
+
+/* Inset so the ring stays inside the card's own rounded corner. */
+.asa-date-row:focus-visible {
+  outline: 3px solid var(--asa-focus-ring);
+  outline-offset: -3px;
+}
+
+/* Lower half of the card. The hairline is the only separator it gets —
+   a second border here would rebuild the box we just removed. */
+.asa-date-panel {
+  padding: 14px 18px 16px;
+  border-top: 1px solid var(--asa-border);
+}
+
+.asa-date-panel__description {
+  margin: 0 0 14px;
+  color: var(--asa-text-secondary);
+  max-width: 70ch;
 }
 
 .asa-date-row__when {
@@ -557,26 +565,33 @@ a {
   font-size: 0.95rem;
 }
 
-/* Narrow phones: the pill no longer fits beside the title, so the row
-   folds into two lines — date + what, then the action across the bottom. */
+/* Narrow phones: the "Took place" pill no longer fits beside the title, so
+   a past date's header folds into two lines. A live header is already two
+   columns and only tightens. */
 @media (max-width: 559px) {
   .asa-date-row {
+    grid-template-columns: 64px 1fr;
+    gap: 12px;
+  }
+
+  .asa-date-row--past {
     grid-template-columns: 64px 1fr;
     grid-template-areas:
       'when what'
       'cta cta';
-    gap: 12px;
   }
 
-  .asa-date-row__when {
+  /* Scoped to the past variant: those are ITS template areas, and naming
+     an area no grid declares would misplace the cell on a live header. */
+  .asa-date-row--past .asa-date-row__when {
     grid-area: when;
   }
 
-  .asa-date-row__what {
+  .asa-date-row--past .asa-date-row__what {
     grid-area: what;
   }
 
-  .asa-date-row__cta {
+  .asa-date-row--past .asa-date-row__cta {
     grid-area: cta;
     width: 100%;
   }

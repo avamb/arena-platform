@@ -9469,6 +9469,19 @@ export interface components {
              * @example Europe/Prague
              */
             first_session_timezone?: string | null;
+            /**
+             * @description Opaque feed token the event is published through — the same
+             *     value `HostedPageResponse.feed_token` carries for that event on
+             *     its own page. Present ONLY on the items of
+             *     `HostedPromoterPageResponse.events`, where every date renders
+             *     its own ticket picker and a picker cannot be mounted without
+             *     one; omitted on the single-event response, whose token lives on
+             *     the envelope instead of being repeated. It is per event rather
+             *     than per page because two events of one organization can be
+             *     published through different channels.
+             * @example ft_9f8c1e2a3b4d5e6f7a8b9c0d1e2f3a4b
+             */
+            feed_token?: string;
         };
         /**
          * @description Response envelope for GET /v1/public/pages/{org_slug}/{event_slug} —
@@ -9502,9 +9515,10 @@ export interface components {
          *     GET /v1/public/pages/{org_slug}/{event_slug}, upcoming first, so a
          *     promoter running several one-off dates under one organizer (e.g. six
          *     separate master-class sessions) can share a single link. Each item
-         *     reuses `HostedPageEvent` — `feed_token` is intentionally NOT
-         *     repeated per item here: the page links each card to the per-event
-         *     page, which resolves its own token.
+         *     reuses `HostedPageEvent` and, unlike the single-event response,
+         *     carries its own `feed_token`: the page renders a ticket picker
+         *     under every date, so a six-date season resolves in ONE request
+         *     instead of one per date.
          */
         HostedPromoterPageResponse: {
             /** @description Public-safe organization branding. */

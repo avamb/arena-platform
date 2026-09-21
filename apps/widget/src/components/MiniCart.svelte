@@ -8,8 +8,19 @@
     expiresAt?: string | null;
     locale?: string;
     onOpen: () => void;
+    /**
+     * Optional verb for the bar, e.g. "Continue to payment".
+     *
+     * The bar IS the control that opens the buyer form, but on its own it
+     * only states what is in the cart ("1 ticket  €50") — which, directly
+     * under a row that already says the same thing, reads as a duplicate
+     * line rather than as the next step. A caller whose layout puts the
+     * two next to each other passes the verb; every existing embed passes
+     * nothing and keeps the bar exactly as it was.
+     */
+    cta?: string | null;
   }
-  const { lines, expiresAt, locale = 'en', onOpen }: Props = $props();
+  const { lines, expiresAt, locale = 'en', onOpen, cta = null }: Props = $props();
 
   const t = $derived(getCheckoutI18n(locale));
 
@@ -41,7 +52,14 @@
   <div class="mini-cart" class:warning={isWarning} role="status" aria-label="Cart: {count} items">
     <button class="mini-cart-btn" onclick={onOpen} aria-label="Open cart ({count} items)">
       <span class="mini-cart-count">{count}</span>
-      <span class="mini-cart-label">{pluralizeTickets(count, locale, t)}</span>
+      {#if cta}
+        <span class="mini-cart-label">
+          <span class="mini-cart-cta">{cta}</span>
+          <span class="mini-cart-sub">{pluralizeTickets(count, locale, t)}</span>
+        </span>
+      {:else}
+        <span class="mini-cart-label">{pluralizeTickets(count, locale, t)}</span>
+      {/if}
       {#if total.currency}
         <span class="mini-cart-total">{formatPrice(total.amount, total.currency)}</span>
       {/if}
@@ -98,6 +116,11 @@
     flex-shrink: 0;
   }
   .mini-cart-label { flex: 1; }
+  /* With a verb the bar carries two lines: the action, then what it acts
+     on. The second is deliberately quieter — it restates the row above and
+     must not compete with the thing the buyer is meant to press. */
+  .mini-cart-cta { display: block; }
+  .mini-cart-sub { display: block; font-size: 0.8125rem; font-weight: 500; opacity: 0.75; }
   .mini-cart-total { font-weight: 500; }
   .mini-cart-countdown { font-size: 0.875rem; opacity: 0.9; }
 </style>

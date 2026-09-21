@@ -49,8 +49,8 @@ async function main(): Promise<void> {
     // widget that found it and showed that one order. Taken out here; the
     // widget resumes from its own event-scoped copy instead.
     consumeCheckoutTokenFromURL(window.location, window.history);
-    // The date rows open the ticket picker in place, so the widget bundle
-    // is needed here too — not only on a per-event page.
+    // Every date carries its ticket picker open, so the widget bundle is
+    // needed here too — not only on a per-event page.
     loadWidgetScript();
     const loadPromoter = async (): Promise<void> => {
       renderLoading(mainEl, locale);
@@ -59,10 +59,9 @@ async function main(): Promise<void> {
         applyDocumentChrome(locale, { title: data.org.name });
         renderPromoterPage(mainEl, data, locale, {
           apiBase: API_BASE,
-          resolveEvent: (eventSlug) => fetchHostedPage(API_BASE, route.orgSlug, eventSlug),
-          // Stripe returns the buyer to this list, not to the row they
+          // Stripe returns the buyer to this list, not to the card they
           // bought from, and the return URL carries no event id — so the
-          // row is found by the checkout the widget left behind.
+          // card is found by the checkout the widget left behind.
           openEventID: eventIDWithOpenCheckout(data.events, safeSessionStorage()),
         });
       } catch (err) {

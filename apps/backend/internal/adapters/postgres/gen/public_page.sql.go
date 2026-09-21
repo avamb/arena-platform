@@ -164,15 +164,22 @@ type HostedPromoterPageEventRow struct {
 	FirstSessionAt        *time.Time
 	LastSessionAt         *time.Time
 	FirstSessionTimezone  *string
+	// FeedToken is the active feed token the event is published through —
+	// the same value GetHostedPageResolution returns on the event's own
+	// page. The promoter page mounts a ticket picker per date and cannot
+	// do it without one.
+	FeedToken string
 }
 
 const listHostedPromoterPageEvents = `-- name: ListHostedPromoterPageEvents :many
 SELECT id, slug, name, short_description, image_url, poster_media_id,
-       age_rating, first_session_at, last_session_at, first_session_timezone
+       age_rating, first_session_at, last_session_at, first_session_timezone,
+       feed_token
 FROM (
     SELECT DISTINCT ON (e.id)
         e.id, e.slug, e.name, e.short_description, e.image_url,
         e.poster_media_id, e.age_rating, e.first_session_at, e.last_session_at,
+        ft.token AS feed_token,
         (
             SELECT v.timezone
             FROM   sessions s
@@ -196,7 +203,7 @@ FROM (
       AND sc.settings #>> '{hosted_page,enabled}' = 'true'
       AND ft.is_active  = true
       AND (e.last_session_at IS NULL OR e.last_session_at >= now())
-    ORDER BY e.id
+    ORDER BY e.id, ft.created_at DESC
 ) matched
 ORDER BY first_session_at ASC NULLS LAST, id ASC
 LIMIT 200`
@@ -219,6 +226,7 @@ func (q *Queries) ListHostedPromoterPageEvents(ctx context.Context, orgID uuid.U
 			&r.EventID, &r.EventSlug, &r.EventName, &r.EventShortDescription,
 			&r.EventImageURL, &r.EventPosterMediaID, &r.EventAgeRating,
 			&r.FirstSessionAt, &r.LastSessionAt, &r.FirstSessionTimezone,
+			&r.FeedToken,
 		); err != nil {
 			return nil, err
 		}

@@ -46,6 +46,7 @@ type promoterPageFixture struct {
 	orgSlug  string
 	chID     uuid.UUID
 	tokenID  uuid.UUID
+	token    string
 	venueID  uuid.UUID
 	eventIDs []uuid.UUID
 }
@@ -83,7 +84,7 @@ func newPromoterPageFixture(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 	f := &promoterPageFixture{
 		t: t, pool: pool, q: q,
 		orgID: org.ID, orgSlug: org.Slug,
-		chID: ch.ID, tokenID: ft.ID, venueID: venue.ID,
+		chID: ch.ID, tokenID: ft.ID, token: ft.Token, venueID: venue.ID,
 	}
 	t.Cleanup(func() {
 		cleanupCtx := context.Background()
@@ -170,6 +171,7 @@ type promoterPageBody struct {
 		Title                string  `json:"title"`
 		FirstSessionAt       *string `json:"first_session_at"`
 		FirstSessionTimezone *string `json:"first_session_timezone"`
+		FeedToken            string  `json:"feed_token"`
 	} `json:"events"`
 }
 
@@ -209,6 +211,13 @@ func TestPublicPromoterPageIntegration_ListsOnlyFutureVisibleEvents(t *testing.T
 	}
 	if body.Events[0].FirstSessionTimezone == nil || *body.Events[0].FirstSessionTimezone != "Europe/Prague" {
 		t.Errorf("events[0].first_session_timezone = %v, want Europe/Prague", body.Events[0].FirstSessionTimezone)
+	}
+	// The page mounts a ticket picker under every date, and a picker cannot
+	// be mounted without the token the event is published through. Without
+	// it here the page has to resolve each date's own page first, which is
+	// one extra request per date on every visit.
+	if body.Events[0].FeedToken != f.token {
+		t.Errorf("events[0].feed_token = %q, want %q", body.Events[0].FeedToken, f.token)
 	}
 	if cc := w.Header().Get("Cache-Control"); cc == "" {
 		t.Errorf("Cache-Control header missing")

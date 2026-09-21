@@ -52,8 +52,13 @@ type hostedPageOrgResponse struct {
 // hostedPageEventResponse is the event slice of the hosted page response.
 // Reused as-is (not duplicated) for each item of the promoter page's
 // events[] list — Description/FirstSessionAt/LastSessionAt are always
-// populated there too; only FeedToken lives on the outer envelope, since the
-// promoter page links to the per-event page rather than embedding a widget.
+// populated there too.
+//
+// FeedToken is populated ONLY on the promoter page's items, where each date
+// carries its own ticket picker and a picker cannot be mounted without one.
+// The single-event response keeps its token on the outer envelope, where it
+// has always been, so the field is omitted there rather than duplicated —
+// see hostedPromoterPageResponse.
 type hostedPageEventResponse struct {
 	ID                   string   `json:"id"`
 	Slug                 string   `json:"slug"`
@@ -67,6 +72,7 @@ type hostedPageEventResponse struct {
 	FirstSessionAt       *string  `json:"first_session_at"`
 	LastSessionAt        *string  `json:"last_session_at"`
 	FirstSessionTimezone *string  `json:"first_session_timezone"`
+	FeedToken            string   `json:"feed_token,omitempty"`
 }
 
 // hostedPageResponse is the full JSON envelope for GET
@@ -317,6 +323,7 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 			ImageURL:             e.EventImageURL,
 			VenueNames:           []string{},
 			FirstSessionTimezone: e.FirstSessionTimezone,
+			FeedToken:            e.FeedToken,
 		}
 		if e.EventSlug != nil {
 			item.Slug = *e.EventSlug

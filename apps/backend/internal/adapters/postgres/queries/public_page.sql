@@ -104,12 +104,24 @@ WHERE lower(o.slug) = lower($1)
 -- the existing ListEventVenueNames batch query (same pattern
 -- HandlePublicPage already uses), so the venue-name aggregation logic lives
 -- in exactly one place.
+--
+-- feed_token is the token the event is published through — the SAME value
+-- GetHostedPageResolution returns for that event on its own page, resolved
+-- the same way (newest active token wins, hence the ft.created_at DESC tie-
+-- break on the DISTINCT ON). The promoter page carries a ticket picker per
+-- date now, and a picker cannot be mounted without one; resolving it here
+-- is what keeps a six-date season at ONE request instead of one per date.
+-- It is per EVENT and not per page on purpose: two events of the same org
+-- can legitimately be published through different channels, and a cart may
+-- never span two tokens.
 SELECT id, slug, name, short_description, image_url, poster_media_id,
-       age_rating, first_session_at, last_session_at, first_session_timezone
+       age_rating, first_session_at, last_session_at, first_session_timezone,
+       feed_token
 FROM (
     SELECT DISTINCT ON (e.id)
         e.id, e.slug, e.name, e.short_description, e.image_url,
         e.poster_media_id, e.age_rating, e.first_session_at, e.last_session_at,
+        ft.token AS feed_token,
         (
             SELECT v.timezone
             FROM   sessions s
@@ -133,7 +145,7 @@ FROM (
       AND sc.settings #>> '{hosted_page,enabled}' = 'true'
       AND ft.is_active  = true
       AND (e.last_session_at IS NULL OR e.last_session_at >= now())
-    ORDER BY e.id
+    ORDER BY e.id, ft.created_at DESC
 ) matched
 ORDER BY first_session_at ASC NULLS LAST, id ASC
 LIMIT 200;

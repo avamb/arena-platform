@@ -5397,6 +5397,17 @@ type HostedPageEvent struct {
 	// Description Long-form event description.
 	Description *string `json:"description"`
 
+	// FeedToken Opaque feed token the event is published through — the same
+	// value `HostedPageResponse.feed_token` carries for that event on
+	// its own page. Present ONLY on the items of
+	// `HostedPromoterPageResponse.events`, where every date renders
+	// its own ticket picker and a picker cannot be mounted without
+	// one; omitted on the single-event response, whose token lives on
+	// the envelope instead of being repeated. It is per event rather
+	// than per page because two events of one organization can be
+	// published through different channels.
+	FeedToken *string `json:"feed_token,omitempty"`
+
 	// FirstSessionAt Earliest session start (trigger-maintained cache), or null.
 	FirstSessionAt *time.Time `json:"first_session_at"`
 
@@ -5477,9 +5488,10 @@ type HostedPageResponse struct {
 // GET /v1/public/pages/{org_slug}/{event_slug}, upcoming first, so a
 // promoter running several one-off dates under one organizer (e.g. six
 // separate master-class sessions) can share a single link. Each item
-// reuses `HostedPageEvent` — `feed_token` is intentionally NOT
-// repeated per item here: the page links each card to the per-event
-// page, which resolves its own token.
+// reuses `HostedPageEvent` and, unlike the single-event response,
+// carries its own `feed_token`: the page renders a ticket picker
+// under every date, so a six-date season resolves in ONE request
+// instead of one per date.
 type HostedPromoterPageResponse struct {
 	// DefaultLocale Organization default locale, used when no `?lang=` is present.
 	DefaultLocale string `json:"default_locale"`

@@ -9,6 +9,7 @@
       apiBase: { type: 'String', attribute: 'api-base' },
       cover: { type: 'String', attribute: 'cover' },
       sessions: { type: 'String', attribute: 'sessions' },
+      frame: { type: 'String', attribute: 'frame' },
     },
   }}
 />
@@ -80,9 +81,16 @@
      * the only way to choose between them, so they are always shown and
      * this attribute is ignored. */
     sessions?: string;
+    /** 'hidden' drops the widget's own outer border and rounded corners.
+     * The hosted promoter page draws one card per date and mounts the
+     * picker INSIDE it, so the widget's frame is a second box around the
+     * first — nested outlines are what made one date read as two separate
+     * things. Anything else (or absent) keeps the frame, which is what a
+     * standalone embed on someone else's site wants. */
+    frame?: string;
   }
 
-  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '' }: Props = $props();
+  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '' }: Props = $props();
 
   /**
    * Host element reference for CustomEvent dispatch (WID-S5).
@@ -99,6 +107,7 @@
   // Case- and space-insensitive so cover="Hidden" behaves; any other value
   // keeps the cover, since a typo must not silently strip the artwork.
   const coverHidden = $derived(cover.trim().toLowerCase() === 'hidden');
+  const frameHidden = $derived(frame.trim().toLowerCase() === 'hidden');
 
   /**
    * Scope for the stored checkout token (see `checkoutTokenKey`).
@@ -804,6 +813,7 @@
     <div
       class="arena-tickets-frame"
       class:arena-tickets-frame--flat={!(selectedSession && selectedSession.schema_url)}
+      class:arena-tickets-frame--bare={frameHidden}
     >
       {#if loading}
         <div class="arena-tickets-loading" aria-live="polite" aria-busy="true">{t.loading}</div>
@@ -894,6 +904,7 @@
             expiresAt={holdExpiresAt}
             locale={normLocale}
             onOpen={openCartSheet}
+            cta={frameHidden ? t.continue_to_payment : null}
           />
         {/if}
 
@@ -984,6 +995,27 @@
 
   .arena-tickets-frame--flat {
     min-height: 0;
+  }
+
+  /* frame="hidden": the embedder has already drawn the box — the hosted
+     promoter page's date card. Only the outer outline goes; the children
+     keep their own borders, so the category row and the stepper stay as
+     legible as in a standalone embed. */
+  .arena-tickets-frame--bare {
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+  }
+
+  /* In a frame of its own the category list needs its own gutter and a rule
+     separating it from the cover and the date chips above. Inside someone
+     else's card it needs neither: the card supplies the gutter, and the
+     second hairline only indented the category row away from the text it
+     belongs to. */
+  .arena-tickets-frame--bare .ga-tiers-section {
+    padding-inline: 0;
+    padding-top: 0;
+    border-top: none;
   }
 
   .arena-tickets-cover {

@@ -31,6 +31,11 @@ export interface HostedPageEvent {
    * null when unavailable — lets the page show the event's own local time
    * instead of the viewer's. */
   first_session_timezone: string | null;
+  /** Feed token the event is published through. Present only on the
+   * promoter page's items, where every date renders its own ticket picker
+   * and a picker cannot be mounted without one; the single-event response
+   * keeps its token on the envelope instead. */
+  feed_token?: string;
 }
 
 export interface HostedPageResponse {
