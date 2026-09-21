@@ -503,6 +503,33 @@ func (q *Queries) BlockSessionSeat(ctx context.Context, id uuid.UUID, statusVers
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MarkSessionSeatSoldUpstream
+// ─────────────────────────────────────────────────────────────────────────────
+
+const markSessionSeatSoldUpstream = `-- name: MarkSessionSeatSoldUpstream :one
+UPDATE session_seats
+SET    status         = 'sold',
+       status_version = $2,
+       updated_at     = now()
+WHERE  id             = $1
+  AND  kind           = 'seat'
+  AND  status         IN ('available', 'unavailable')
+  AND  reservation_id IS NULL
+RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
+          tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind`
+
+// MarkSessionSeatSoldUpstream records a seat that was sold in the system a
+// session was imported from: 'available' or 'unavailable' -> 'sold' with NO
+// reservation behind it. Such a row is told apart from an arena sale by its
+// NULL reservation_id. It is never on sale and the operator unblock action
+// skips it like any other sold seat. Returns pgx.ErrNoRows when the seat is
+// held, already sold, or not a plan seat.
+func (q *Queries) MarkSessionSeatSoldUpstream(ctx context.Context, id uuid.UUID, statusVersion int64) (SessionSeatRow, error) {
+	row := q.db.QueryRow(ctx, markSessionSeatSoldUpstream, id, statusVersion)
+	return scanSessionSeatRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // UnblockSessionSeat
 // ─────────────────────────────────────────────────────────────────────────────
 

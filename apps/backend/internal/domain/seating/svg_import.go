@@ -103,7 +103,10 @@ func ImportSVG(raw []byte) (Geometry, []ValidationError, ValidationErrors) {
 	// before row groups so the shared "#" prefix never classifies a GA
 	// area as a sector.
 	gaNodes := collectGAAreas(root, priceCatGroup, legendGroup)
-	gaErrs := applyGAAreas(gaNodes, categories, catByColor)
+	// Every coordinate is resolved through its ancestors' transforms: an
+	// Inkscape plan places whole rows with a transform on the group.
+	transforms := resolveTransforms(root)
+	gaErrs := applyGAAreas(gaNodes, categories, catByColor, transforms)
 	errs = append(errs, gaErrs...)
 
 	// Row groups: any element with inkscape:label="#..." that is NOT a
@@ -112,7 +115,7 @@ func ImportSVG(raw []byte) (Geometry, []ValidationError, ValidationErrors) {
 	// not be treated as sectors.
 	rowNodes := collectRowGroups(root, priceCatGroup, legendGroup)
 
-	sections, seatErrs := parseSections(rowNodes, catByColor)
+	sections, seatErrs := parseSections(rowNodes, catByColor, transforms)
 	errs = append(errs, seatErrs...)
 
 	decor := renderDecorSVG(root, priceCatGroup, legendGroup, append(append([]*xmlNode(nil), rowNodes...), gaNodes...))
@@ -161,7 +164,7 @@ func collectGAAreas(root, price, legend *xmlNode) []*xmlNode {
 // general-admission with the capacity from the element's <title> and the
 // polygon derived from its shape (AB-40 B2). categories is mutated in
 // place. Supported shapes: <rect> and <polygon>/<polyline>.
-func applyGAAreas(nodes []*xmlNode, categories []Category, catByColor map[string]int) ValidationErrors {
+func applyGAAreas(nodes []*xmlNode, categories []Category, catByColor map[string]int, transforms map[*xmlNode]affine) ValidationErrors {
 	var errs ValidationErrors
 	for _, n := range nodes {
 		label := inkscapeLabel(n)
@@ -205,6 +208,12 @@ func applyGAAreas(nodes []*xmlNode, categories []Category, catByColor map[string
 		if shapeErr != nil {
 			errs = append(errs, *shapeErr)
 			continue
+		}
+		if m, ok := transforms[n]; ok && m != identityAffine {
+			for i, pt := range polygon {
+				x, y := m.apply(pt.X, pt.Y)
+				polygon[i] = Point{X: roundCoord(x), Y: roundCoord(y)}
+			}
 		}
 
 		cat.Kind = KindGeneralAdmission
@@ -485,7 +494,7 @@ func collectRowGroups(root, price, legend *xmlNode) []*xmlNode {
 // []Section: rows are grouped by section-key (derived from the
 // inkscape:label), seats are extracted from the circles inside each
 // group. §6 rules 2/3/4/7/8 are enforced here.
-func parseSections(rows []*xmlNode, catByColor map[string]int) ([]Section, ValidationErrors) {
+func parseSections(rows []*xmlNode, catByColor map[string]int, transforms map[*xmlNode]affine) ([]Section, ValidationErrors) {
 	var errs ValidationErrors
 	// Section aggregation state: sectionKey → *Section (order-preserving
 	// via parallel slice).
@@ -572,9 +581,7 @@ func parseSections(rows []*xmlNode, catByColor map[string]int) ([]Section, Valid
 			}
 			seen[dedupeKey] = true
 
-			cx := parseDimAttr(attr(el, "cx"))
-			cy := parseDimAttr(attr(el, "cy"))
-			r := parseDimAttr(attr(el, "r"))
+			cx, cy, r := placeCircle(transforms, el)
 			seats = append(seats, Seat{
 				Key:           SeatKey(secKey, rowKey, seatNumber),
 				Number:        seatNumber,

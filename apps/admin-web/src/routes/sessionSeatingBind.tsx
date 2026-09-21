@@ -243,7 +243,7 @@ export function mapBindError(err: ApiError): string {
       return "Every geometry category must be mapped, or auto-create must be enabled.";
     case "seating.rebind_forbidden":
       return (
-        "This session already has reservations or tickets and cannot be rebound. " +
+        "This session already has reservations, tickets or sold seats and cannot be rebound. " +
         "Create a new session to bind a different plan."
       );
     case "permissions.denied":

@@ -107,7 +107,7 @@ func (h *Handler) importSeating(
 	}
 
 	if unchanged {
-		seats, err := h.applySeatAvailability(ctx, q, plan, sessionID, warnings)
+		seats, err := h.applySeatAvailability(ctx, q, plan, sbt.SoldSeatIDs, sessionID, warnings)
 		if err != nil {
 			return seatingOutcome{}, err
 		}
@@ -179,7 +179,7 @@ func (h *Handler) importSeating(
 		return seatingOutcome{}, fmt.Errorf("recompute session capacity: %w", err)
 	}
 
-	if _, err := h.applySeatAvailability(ctx, q, plan, sessionID, warnings); err != nil {
+	if _, err := h.applySeatAvailability(ctx, q, plan, sbt.SoldSeatIDs, sessionID, warnings); err != nil {
 		return seatingOutcome{}, err
 	}
 	return seatingOutcome{PlanVersionID: &versionID, SeatsMaterialized: materialized}, nil
@@ -459,6 +459,13 @@ func (h *Handler) materializeImportedSeats(
 // a seat Bil24 already holds. It returns the number of session_seats rows the
 // session carries, which is what the response reports on the reuse path.
 //
+// A seat the svg plan marks sbt:state="4" was SOLD upstream, not withheld, and
+// becomes 'sold' with no reservation behind it: the hall shows it in the sold
+// colour and the operator unblock action can never put it back on sale — which
+// matters because an organizer routinely withholds part of a hall and reopens
+// it later, right next to seats whose tickets live in the old system. A seat
+// imported as blocked earlier is upgraded the same way.
+//
 // Only the available → unavailable direction is applied. Re-opening a seat is
 // deliberately NOT automated: arena cannot tell an operator block apart from a
 // stale upstream flag, and silently unblocking would resurrect seats an
@@ -467,6 +474,7 @@ func (h *Handler) applySeatAvailability(
 	ctx context.Context,
 	q *gen.Queries,
 	plan importPlan,
+	soldUpstream []int64,
 	sessionID uuid.UUID,
 	warnings *warningSink,
 ) (int, error) {
@@ -474,18 +482,40 @@ func (h *Handler) applySeatAvailability(
 	if err != nil {
 		return 0, fmt.Errorf("list session seats: %w", err)
 	}
-	if len(plan.Request.SeatList) == 0 {
-		return len(seats), nil
-	}
 
 	bySystemID := make(map[int64]gen.SessionSeatRow, len(seats))
 	for _, s := range seats {
 		bySystemID[s.SystemSeatID] = s
 	}
 
+	sold := 0
+	soldNow := make(map[int64]bool, len(soldUpstream))
+	for _, seatID := range soldUpstream {
+		row, ok := bySystemID[seatID]
+		if !ok || (row.Status != "available" && row.Status != "unavailable") {
+			continue
+		}
+		version, incErr := q.IncrementSessionSeatStatusVersion(ctx, sessionID)
+		if incErr != nil {
+			return 0, fmt.Errorf("bump seat status version: %w", incErr)
+		}
+		if _, soldErr := q.MarkSessionSeatSoldUpstream(ctx, row.ID, version); soldErr != nil {
+			if errors.Is(soldErr, pgx.ErrNoRows) {
+				continue
+			}
+			return 0, fmt.Errorf("mark seat %d sold upstream: %w", seatID, soldErr)
+		}
+		soldNow[seatID] = true
+		sold++
+	}
+	if sold > 0 {
+		warnings.add(WarnSeatsSoldUpstream, fmt.Sprintf(
+			"%d seat(s) sold in Bil24 were imported as sold and cannot be reopened for sale", sold))
+	}
+
 	blocked, missing := 0, 0
 	for _, s := range plan.Request.SeatList {
-		if s.Available {
+		if s.Available || soldNow[s.SeatID] {
 			continue
 		}
 		row, ok := bySystemID[s.SeatID]

@@ -59,6 +59,7 @@ type sc8Fixture struct {
 	gaCatID       int64
 	seatIDs       []int64 // the four placed seats, in svg order
 	blockedSeat   int64   // seatIDs[3] — imported with available:false
+	soldSeat      int64   // seatIDs[2] — sbt:state="4": sold in Bil24, not merely withheld
 }
 
 func sc8NewFixture() sc8Fixture {
@@ -76,6 +77,7 @@ func sc8NewFixture() sc8Fixture {
 		f.seatIDs = append(f.seatIDs, base+int64(100+i))
 	}
 	f.blockedSeat = f.seatIDs[3]
+	f.soldSeat = f.seatIDs[2]
 	return f
 }
 
@@ -85,9 +87,17 @@ func sc8NewFixture() sc8Fixture {
 func sc8SVG(f sc8Fixture) string {
 	var seats strings.Builder
 	for i, id := range f.seatIDs {
+		// BSS state codes: 1 available, 0 inaccessible, 4 occupied (sold).
+		state := 1
+		switch id {
+		case f.blockedSeat:
+			state = 0
+		case f.soldSeat:
+			state = 4
+		}
 		fmt.Fprintf(&seats,
-			`      <circle sbt:id="%d" sbt:state="1" sbt:cat="1" sbt:seat="%d" cx="%d" cy="20" r="6" fill="#e53935"/>`+"\n",
-			id, i+1, 20+i*30)
+			`      <circle sbt:id="%d" sbt:state="%d" sbt:cat="1" sbt:seat="%d" cx="%d" cy="20" r="6" fill="#e53935"/>`+"\n",
+			id, state, i+1, 20+i*30)
 	}
 	return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:sbt="` + sbtNamespaceForTest + `" viewBox="0 0 200 100" sbt:statusVersion="1">
   <metadata>
@@ -124,7 +134,7 @@ func sc8Payload(f sc8Fixture, st *harnessState) map[string]any {
 			// The last seat arrives sold-out from Bil24 and must land as a
 			// blocked ('unavailable') arena seat plus an import.seats_blocked
 			// warning — never as a silently on-sale seat.
-			"available": id != f.blockedSeat,
+			"available": id != f.blockedSeat && id != f.soldSeat,
 		})
 	}
 	return map[string]any{
@@ -220,6 +230,24 @@ func runScenario08Import(t *testing.T, st *harnessState) {
 	if !sc8HasWarning(first, "import.seats_blocked") {
 		t.Errorf("first import warnings = %v, want an import.seats_blocked entry for the available:false seat", first["warnings"])
 	}
+	// The seat Bil24 SOLD (sbt:state="4") is told apart from the one the
+	// organizer merely withheld: it lands as 'sold' with no reservation, so
+	// the operator unblock action can never put it back on sale.
+	if !sc8HasWarning(first, "import.seats_sold_upstream") {
+		t.Errorf("first import warnings = %v, want an import.seats_sold_upstream entry for the sbt:state=4 seat", first["warnings"])
+	}
+	for id, want := range map[int64]string{f.soldSeat: "sold", f.blockedSeat: "unavailable", f.seatIDs[0]: "available"} {
+		var status string
+		var noReservation bool
+		if err := st.Pool.QueryRow(context.Background(),
+			`SELECT status, reservation_id IS NULL FROM session_seats WHERE session_id = $1 AND system_seat_id = $2`,
+			sessionID, id).Scan(&status, &noReservation); err != nil {
+			t.Fatalf("read imported seat %d: %v", id, err)
+		}
+		if status != want || !noReservation {
+			t.Errorf("imported seat %d status = %q with reservation_id NULL = %v, want %q with no reservation", id, status, noReservation, want)
+		}
+	}
 	tierIDs, _ := first["tier_ids"].(map[string]interface{})
 	for _, want := range []int64{f.seatedCatID, f.gaCatID} {
 		if _, ok := tierIDs[strconv.FormatInt(want, 10)]; !ok {
@@ -289,7 +317,7 @@ func runScenario08Import(t *testing.T, st *harnessState) {
 				"must preserve the upstream identity (got %v)", id, seatResp["seatList"])
 			continue
 		}
-		want := id != f.blockedSeat
+		want := id != f.blockedSeat && id != f.soldSeat
 		if got != want {
 			t.Errorf("GET_SEAT_LIST seat %d available = %v, want %v", id, got, want)
 		}

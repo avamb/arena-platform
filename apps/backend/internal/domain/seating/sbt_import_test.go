@@ -114,15 +114,15 @@ func TestImportSBTSVG_PalacAkropolis(t *testing.T) {
 		t.Fatalf("seat with sbt:id=10000 not imported")
 	}
 	// The document's first circle: <g sbt:sect="Balcony center"><g sbt:row="1">
-	// <circle sbt:id="10000" sbt:cat="3" sbt:seat="1" cx="-69.301842" …/>
+	// <circle sbt:id="10000" sbt:cat="3" sbt:seat="1" cx="82.07934" …/>
 	if got, want := byExternal10000.Key, SeatKey("balcony-center", "1", "1"); got != want {
 		t.Errorf("seat 10000 key = %q, want %q", got, want)
 	}
 	if byExternal10000.CategoryIndex != 3 {
 		t.Errorf("seat 10000 category = %d, want 3", byExternal10000.CategoryIndex)
 	}
-	if byExternal10000.X != -69.301842 {
-		t.Errorf("seat 10000 cx = %v, want -69.301842", byExternal10000.X)
+	if byExternal10000.X != 82.07934 {
+		t.Errorf("seat 10000 cx = %v, want 82.07934", byExternal10000.X)
 	}
 
 	// ── decor keeps the backdrop and drops the sector subtrees ──────────

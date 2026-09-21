@@ -47,9 +47,11 @@
 //   - a duplicate sbt:id is a validation error: system_seat_id is the
 //     wire identity and must be injective.
 //   - everything that is not <metadata> and not a sector subtree is
-//     decor, re-serialised verbatim (no consolidate-transform pass —
-//     arena renders its own SVG from geometry and only needs the
-//     backdrop bytes).
+//     decor, re-serialised verbatim (its transforms stay where they
+//     are — the browser applies them to the backdrop).
+//   - a seat's cx/cy/r are resolved through every ancestor transform
+//     (transform.go): Bil24 positions whole rows with a transform on
+//     the group, and arena renders seats from the stored geometry.
 //
 // Canvas size is deliberately NOT capped here (MaxCanvasDimension is a
 // §6 authoring rule for plans drawn for arena). A Bil24 plan is an
@@ -61,6 +63,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -98,6 +101,12 @@ type SBTCategory struct {
 type SBTPlan struct {
 	Geometry   Geometry
 	Categories []SBTCategory
+	// SoldSeatIDs lists the sbt:id of every seat the source marks
+	// sbt:state="4" (occupied): sold upstream, as opposed to merely
+	// withheld (state 0). It lives OUTSIDE Geometry on purpose — a seat
+	// being sold must not change the geometry checksum, or every upstream
+	// sale would look like a new plan. Ascending order.
+	SoldSeatIDs []int64
 	// StatusVersion is the sbt:statusVersion cursor of the source
 	// document, or 0 when absent. Informational: arena maintains its own
 	// seat_status_version once the plan is bound to a session.
@@ -163,6 +172,7 @@ func ImportSBTSVG(raw []byte) (SBTPlan, []ValidationError, ValidationErrors) {
 	return SBTPlan{
 		Geometry:      Canonicalize(g),
 		Categories:    cats,
+		SoldSeatIDs:   collectSBTSoldSeatIDs(root),
 		StatusVersion: parseInt64Attr(sbtAttr(root, "statusVersion")),
 	}, warnings, errs
 }
@@ -341,6 +351,7 @@ func parseSBTSections(root *xmlNode, catByIndex map[int]SBTCategory) ([]Section,
 		}
 	}
 	walk(root, "", "")
+	transforms := resolveTransforms(root)
 
 	// Sections and rows are accumulated through pointer maps with parallel
 	// order slices: appending to a []Row while holding a *Row into it
@@ -448,12 +459,13 @@ func parseSBTSections(root *xmlNode, catByIndex map[int]SBTCategory) ([]Section,
 			rowByKey[secKey+"|"+rowKey] = row
 			rowOrder[secKey] = append(rowOrder[secKey], rowKey)
 		}
+		x, y, radius := placeCircle(transforms, el)
 		row.Seats = append(row.Seats, Seat{
 			Key:           key,
 			Number:        number,
-			X:             parseDimAttr(attr(el, "cx")),
-			Y:             parseDimAttr(attr(el, "cy")),
-			Radius:        parseDimAttr(attr(el, "r")),
+			X:             x,
+			Y:             y,
+			Radius:        radius,
 			CategoryIndex: catIdx,
 			BarcodeHint:   nil,
 			ExternalID:    externalID,
@@ -469,6 +481,37 @@ func parseSBTSections(root *xmlNode, catByIndex map[int]SBTCategory) ([]Section,
 		out = append(out, sec)
 	}
 	return out, errs
+}
+
+// sbtStateOccupied is the sbt:state of a seat sold upstream (the BSS code
+// table: 0 inaccessible, 1 available, 3 reserved, 4 occupied).
+const sbtStateOccupied = "4"
+
+// collectSBTSoldSeatIDs returns the sbt:id of every seat circle in state 4.
+func collectSBTSoldSeatIDs(root *xmlNode) []int64 {
+	var out []int64
+	var walk func(n *xmlNode)
+	walk = func(n *xmlNode) {
+		if n == nil || n.Name.Local == "metadata" {
+			return
+		}
+		if isSBTSeat(n) {
+			if strings.TrimSpace(sbtAttr(n, "state")) == sbtStateOccupied {
+				if id := parseInt64Attr(sbtAttr(n, "id")); id > 0 {
+					out = append(out, id)
+				}
+			}
+			return
+		}
+		for _, ch := range n.Children {
+			if ch.element != nil {
+				walk(ch.element)
+			}
+		}
+	}
+	walk(root)
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }
 
 // isSBTSeat reports whether n is a seat circle: a <circle> carrying both

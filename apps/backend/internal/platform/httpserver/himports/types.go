@@ -15,6 +15,10 @@ const (
 	// WarnSeatsBlocked — seatList entries with available:false were imported
 	// as blocked ('unavailable') seats and are not on sale.
 	WarnSeatsBlocked = "import.seats_blocked"
+	// WarnSeatsSoldUpstream — seats the svg plan marks sbt:state="4" were
+	// imported as sold: taken in the source system, never on sale here and
+	// not reopenable by the operator unblock action.
+	WarnSeatsSoldUpstream = "import.seats_sold_upstream"
 	// WarnSeatNotInPlan — a seatList entry referenced a seat id the svg
 	// seating plan does not contain; the entry was ignored.
 	WarnSeatNotInPlan = "import.seat_not_in_plan"

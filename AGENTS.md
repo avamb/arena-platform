@@ -1376,3 +1376,28 @@ entries short and factual.
   delivery also means giving the worker those two config values, or the
   e-mail's `<img src>` would come back empty. Until that lands, poster and
   logo support is proven by tests only.
+- **A seat's cx/cy in a plan SVG is NOT its position — the ancestors'
+  `transform` is.** Inkscape sources and the sbt plan Bil24 serves place a
+  whole row with a transform on its `<g>` (all 90 seats of Palác Akropolis
+  share one `cy`). Both importers (`seating.ImportSVG`, `ImportSBTSVG`)
+  ignored transforms until 2026-09-21 and arena — which renders seats from
+  the stored geometry — drew the hall as one line of stacked seats; nobody
+  noticed because no test looked at coordinates. `seating/transform.go`
+  (`resolveTransforms` + `placeCircle`) now resolves every seat and GA
+  polygon to root coordinates; ground truth for a Bil24 plan is its own
+  `GET_SCHEMA` (x/y per seatId). The harness golden
+  `tests/compat/bil24/testdata/wp/svg/palac_akropolis.sbt.svg` is rendered
+  THROUGH the importer, so a geometry change means regenerating it
+  (`ARENA_REGEN_SBT_GOLDEN=1`, then put the disclaimer comment back).
+- **A 'sold' `session_seats` row with `reservation_id IS NULL` is a seat sold
+  in the system the session was imported from.** The Bil24 import marks
+  every `sbt:state="4"` seat that way (`MarkSessionSeatSoldUpstream`,
+  warning `import.seats_sold_upstream`), while `state="0"` / `available:false`
+  stays an operator-reopenable 'unavailable' block — an organizer withholds
+  most of a hall and reopens it later, right next to seats whose tickets live
+  in the old system. The state list travels as `SBTPlan.SoldSeatIDs`, outside
+  `Geometry`, so an upstream sale never changes the geometry checksum. No
+  ticket, order or `inventory_ledger.capacity_sold` stands behind such a row:
+  guards that ask "does this session have sales" by counting tickets miss it,
+  which is why the manual re-bind guard (`hseating/bind.go`) also counts sold
+  seats. There is no operator action to release one yet.

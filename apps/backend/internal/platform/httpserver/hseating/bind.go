@@ -423,13 +423,24 @@ func (h *Handler) bindSessionSeatingCore(
 			return nil, bindErr(http.StatusInternalServerError,
 				"seating.bind_failed", "failed to bind seating plan", nil)
 		}
-		if resCount > 0 || tktCount > 0 {
+		// A seat sold in the system the session was imported from is 'sold'
+		// with no ticket or reservation in arena; re-materializing would put
+		// it back on sale. Only a repeat import can replace such a plan — it
+		// marks the same seats sold again from the source's own state.
+		soldCount, err := qtx.CountSessionSeatsByStatus(ctx, sessionID, "sold")
+		if err != nil {
+			h.logger.Error("seating: bind sold seat count failed", slog.String("error", err.Error()))
+			return nil, bindErr(http.StatusInternalServerError,
+				"seating.bind_failed", "failed to bind seating plan", nil)
+		}
+		if resCount > 0 || tktCount > 0 || soldCount > 0 {
 			return nil, bindErr(http.StatusConflict,
 				"seating.rebind_forbidden",
-				"session already has reservations or tickets; create a new session to change the seating plan",
+				"session already has reservations, tickets or sold seats; create a new session to change the seating plan",
 				map[string]any{
 					"reservations": resCount,
 					"tickets":      tktCount,
+					"sold_seats":   soldCount,
 				})
 		}
 	}

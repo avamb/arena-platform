@@ -226,6 +226,20 @@ WHERE  id     = $1
 RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
           tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind;
 
+-- name: MarkSessionSeatSoldUpstream :one
+-- A seat sold in the system the session was imported from: no reservation
+-- stands behind it, which is what tells it apart from an arena sale.
+UPDATE session_seats
+SET    status         = 'sold',
+       status_version = $2,
+       updated_at     = now()
+WHERE  id             = $1
+  AND  kind           = 'seat'
+  AND  status         IN ('available', 'unavailable')
+  AND  reservation_id IS NULL
+RETURNING id, session_id, seat_key, sector_name, row_name, seat_number,
+          tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind;
+
 -- name: UnblockSessionSeat :one
 -- Conditional 'unavailable' -> 'available' transition. Admin release.
 UPDATE session_seats
