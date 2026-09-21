@@ -5642,6 +5642,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/sessions/{session_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One-screen overview of a session
+         * @description Returns everything about one session at a glance: places by status
+         *     (telling a seat sold here from one sold in the system the session was
+         *     imported from), categories with what was paid for them, the money per
+         *     currency, orders, tickets and refunds. Read-only and free of buyer
+         *     data. The session must belong to this org, a session of another
+         *     organization is invisible. Requires the `order.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/orders/{id}/cancel": {
         parameters: {
             query?: never;
@@ -8418,6 +8443,236 @@ export interface components {
             tickets: components["schemas"]["OrderTicketSummary"][];
             /** @description Audit-trail events recorded against the order. */
             events: components["schemas"]["OrderEventSummary"][];
+        };
+        /** @description Places of a session, or of one category, by status. */
+        SessionPlaceCounts: {
+            /**
+             * Format: int64
+             * @description Every place counted here, whatever its status.
+             */
+            total: number;
+            /**
+             * Format: int64
+             * @description Places free for sale right now.
+             */
+            available: number;
+            /**
+             * Format: int64
+             * @description Places held by an open cart or an unpaid order.
+             */
+            held: number;
+            /**
+             * Format: int64
+             * @description Places sold, including the ones sold upstream.
+             */
+            sold: number;
+            /**
+             * Format: int64
+             * @description The part of sold that was sold in the system the session was imported from. No ticket, order or money stands behind it here.
+             */
+            sold_upstream: number;
+            /**
+             * Format: int64
+             * @description Places withheld from sale by an operator.
+             */
+            unavailable: number;
+        };
+        /**
+         * @description One-screen overview of a session: places by status, categories with
+         *     what was paid for them, the money per currency, orders, tickets and
+         *     refunds. Read-only. Carries no buyer data, only counts, amounts in
+         *     minor units and ids.
+         */
+        SessionSummary: {
+            /** @description The session the summary is about. */
+            session: {
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the session.
+                 */
+                id: string;
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the event the session belongs to.
+                 */
+                event_id: string;
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the owning organization.
+                 */
+                org_id: string;
+                /** @description Name of the event. */
+                event_name: string;
+                /**
+                 * Format: date-time
+                 * @description Start of the session, RFC3339 in UTC.
+                 */
+                start_at: string;
+                /** @description Session status (draft, scheduled, cancelled, completed). */
+                status: string;
+                /**
+                 * Format: int32
+                 * @description Stated capacity of the session.
+                 */
+                capacity_total: number;
+                /** @description True when a seating plan is bound to the session. */
+                has_seating_plan: boolean;
+                /** @description Name of the venue, null when the session has none. */
+                venue_name: string | null;
+                /** @description IANA timezone of the venue, null when unknown. */
+                venue_timezone: string | null;
+            };
+            /** @description Places of the whole session, split by kind. */
+            places: {
+                /** @description Seats of the seating plan. */
+                seats: components["schemas"]["SessionPlaceCounts"];
+                /** @description General admission places. */
+                ga: components["schemas"]["SessionPlaceCounts"];
+            };
+            /** @description Categories of the session in display order. */
+            tiers: {
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the category.
+                 */
+                id: string;
+                /** @description Name of the category. */
+                name: string;
+                /** @description seated when the category owns plan seats, ga otherwise. */
+                kind: string;
+                /**
+                 * Format: int64
+                 * @description Current list price in minor units.
+                 */
+                price_amount: number;
+                /** @description ISO 4217 currency of the list price. */
+                currency: string;
+                /** @description False when the category accepts no new hold. */
+                is_open: boolean;
+                /** @description Places of this category by status. */
+                places: components["schemas"]["SessionPlaceCounts"];
+                /**
+                 * Format: int64
+                 * @description Order lines of this category in orders that were paid.
+                 */
+                paid_items: number;
+                /**
+                 * Format: int64
+                 * @description What buyers paid for this category in minor units, after discounts and with the service charge.
+                 */
+                paid_revenue: number;
+            }[];
+            /** @description The bottom line, one entry per currency. */
+            money: {
+                /** @description ISO 4217 currency. */
+                currency: string;
+                /**
+                 * Format: int64
+                 * @description Orders that were paid, including ones refunded later.
+                 */
+                paid_orders: number;
+                /**
+                 * Format: int64
+                 * @description Total of those orders.
+                 */
+                paid: number;
+                /**
+                 * Format: int64
+                 * @description Service charge included in paid.
+                 */
+                service_charge: number;
+                /**
+                 * Format: int64
+                 * @description Discounts already deducted from paid.
+                 */
+                discount: number;
+                /**
+                 * Format: int64
+                 * @description Succeeded refunds.
+                 */
+                refunded: number;
+                /**
+                 * Format: int64
+                 * @description paid minus refunded.
+                 */
+                net: number;
+                /**
+                 * Format: int64
+                 * @description Orders still waiting for payment.
+                 */
+                pending_orders: number;
+                /**
+                 * Format: int64
+                 * @description Total of the orders still waiting for payment.
+                 */
+                pending: number;
+            }[];
+            /** @description Order totals grouped by status, source and currency. */
+            orders: {
+                /** @description Order status. */
+                status: string;
+                /** @description Where the order came from (bil24_gateway, public_feed, checkout_api, complimentary). */
+                source: string;
+                /** @description ISO 4217 currency. */
+                currency: string;
+                /**
+                 * Format: int64
+                 * @description Number of orders in the group.
+                 */
+                orders: number;
+                /**
+                 * Format: int64
+                 * @description Sum of the order totals, minor units.
+                 */
+                total: number;
+            }[];
+            /** @description Tickets of the session by status. */
+            tickets: {
+                /**
+                 * Format: int64
+                 * @description Valid tickets.
+                 */
+                active: number;
+                /**
+                 * Format: int64
+                 * @description Cancelled tickets.
+                 */
+                cancelled: number;
+                /**
+                 * Format: int64
+                 * @description Tickets transferred to another holder.
+                 */
+                transferred: number;
+                /**
+                 * Format: int64
+                 * @description Valid tickets already scanned at the door.
+                 */
+                used: number;
+                /**
+                 * Format: int64
+                 * @description Valid tickets issued as invitations.
+                 */
+                complimentary: number;
+            };
+            /** @description Refund totals grouped by settlement, state and currency. */
+            refunds: {
+                /** @description provider when arena drives the refund, external when the selling site returned the money itself. */
+                settlement: string;
+                /** @description Refund state. */
+                state: string;
+                /** @description ISO 4217 currency. */
+                currency: string;
+                /**
+                 * Format: int64
+                 * @description Number of refunds in the group.
+                 */
+                refunds: number;
+                /**
+                 * Format: int64
+                 * @description Sum of the refund amounts, minor units.
+                 */
+                amount: number;
+            }[];
         };
         /**
          * @description A single active venue (physical event location owned by one organization).
@@ -36155,6 +36410,85 @@ export interface operations {
                 };
             };
             /** @description Order not found, or not linked to this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionSummary"];
+                };
+            };
+            /** @description org_id or session_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization. */
             404: {
                 headers: {
                     [name: string]: unknown;

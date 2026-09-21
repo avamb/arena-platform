@@ -817,6 +817,14 @@ export function SessionSeatsScreen({
         <Link to="/events" data-testid="session-seats-back">
           ← Events and sessions
         </Link>
+        {" · "}
+        <Link
+          to="/organizations/$orgId/events/$eventId/sessions/$sessionId/overview"
+          params={{ orgId, eventId, sessionId }}
+          data-testid="session-seats-overview"
+        >
+          Session overview
+        </Link>
         <h1 style={h1Style}>Seat management</h1>
         <p style={subtitleStyle}>
           Session <code>{sessionId}</code> • Event <code>{eventId}</code>

@@ -3406,6 +3406,16 @@ function SessionsTab({
                       <td style={tdStyle}>{s.status}</td>
                       <td style={tdStyle}>
                         <div style={rowActionsStyle}>
+                          {/* Everything about the session on one screen:
+                              money, hall, categories, tickets, refunds. */}
+                          <Link
+                            to="/organizations/$orgId/events/$eventId/sessions/$sessionId/overview"
+                            params={{ orgId: event.org_id, eventId: event.id, sessionId: s.id }}
+                            style={{ ...refreshButtonStyle, textDecoration: "none", display: "inline-block" }}
+                            data-testid={`events-session-overview-${s.id}`}
+                          >
+                            Overview
+                          </Link>
                           {/* The seat map — sold / held / withheld seats and
                               the block / unblock actions — has no other entry
                               point in the UI. A session without a bound plan

@@ -251,6 +251,10 @@ const NON_NAV_ROUTE_IDS: ReadonlySet<string> = new Set([
   // from the backend PATCH endpoint; direct URLs 403 with the standard
   // envelope when the operator lacks the permission.
   "SessionSeatsRoute",
+  // Session overview: reached only from the Overview button of a session
+  // row (and from the seat screen). Inherits its gate (order.read) from the
+  // backend summary endpoint; a direct URL without it shows the 403 envelope.
+  "SessionOverviewRoute",
 ]);
 
 /**

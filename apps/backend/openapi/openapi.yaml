@@ -3096,6 +3096,257 @@ components:
               items:
                 $ref: "#/components/schemas/OrderEventSummary"
 
+    SessionPlaceCounts:
+      type: object
+      required: [total, available, held, sold, sold_upstream, unavailable]
+      description: Places of a session, or of one category, by status.
+      properties:
+        total:
+          type: integer
+          format: int64
+          description: Every place counted here, whatever its status.
+        available:
+          type: integer
+          format: int64
+          description: Places free for sale right now.
+        held:
+          type: integer
+          format: int64
+          description: Places held by an open cart or an unpaid order.
+        sold:
+          type: integer
+          format: int64
+          description: Places sold, including the ones sold upstream.
+        sold_upstream:
+          type: integer
+          format: int64
+          description: The part of sold that was sold in the system the session was imported from. No ticket, order or money stands behind it here.
+        unavailable:
+          type: integer
+          format: int64
+          description: Places withheld from sale by an operator.
+
+    SessionSummary:
+      type: object
+      required: [session, places, tiers, money, orders, tickets, refunds]
+      description: |
+        One-screen overview of a session: places by status, categories with
+        what was paid for them, the money per currency, orders, tickets and
+        refunds. Read-only. Carries no buyer data, only counts, amounts in
+        minor units and ids.
+      properties:
+        session:
+          type: object
+          required: [id, event_id, org_id, event_name, start_at, status, capacity_total, has_seating_plan, venue_name, venue_timezone]
+          description: The session the summary is about.
+          properties:
+            id:
+              type: string
+              format: uuid
+              description: UUIDv7 of the session.
+            event_id:
+              type: string
+              format: uuid
+              description: UUIDv7 of the event the session belongs to.
+            org_id:
+              type: string
+              format: uuid
+              description: UUIDv7 of the owning organization.
+            event_name:
+              type: string
+              description: Name of the event.
+            start_at:
+              type: string
+              format: date-time
+              description: Start of the session, RFC3339 in UTC.
+            status:
+              type: string
+              description: Session status (draft, scheduled, cancelled, completed).
+            capacity_total:
+              type: integer
+              format: int32
+              description: Stated capacity of the session.
+            has_seating_plan:
+              type: boolean
+              description: True when a seating plan is bound to the session.
+            venue_name:
+              type: [string, "null"]
+              description: Name of the venue, null when the session has none.
+            venue_timezone:
+              type: [string, "null"]
+              description: IANA timezone of the venue, null when unknown.
+        places:
+          type: object
+          required: [seats, ga]
+          description: Places of the whole session, split by kind.
+          properties:
+            seats:
+              description: Seats of the seating plan.
+              allOf:
+                - $ref: "#/components/schemas/SessionPlaceCounts"
+            ga:
+              description: General admission places.
+              allOf:
+                - $ref: "#/components/schemas/SessionPlaceCounts"
+        tiers:
+          type: array
+          description: Categories of the session in display order.
+          items:
+            type: object
+            required: [id, name, kind, price_amount, currency, is_open, places, paid_items, paid_revenue]
+            description: One category with its places and what was paid for it.
+            properties:
+              id:
+                type: string
+                format: uuid
+                description: UUIDv7 of the category.
+              name:
+                type: string
+                description: Name of the category.
+              kind:
+                type: string
+                description: seated when the category owns plan seats, ga otherwise.
+              price_amount:
+                type: integer
+                format: int64
+                description: Current list price in minor units.
+              currency:
+                type: string
+                description: ISO 4217 currency of the list price.
+              is_open:
+                type: boolean
+                description: False when the category accepts no new hold.
+              places:
+                description: Places of this category by status.
+                allOf:
+                  - $ref: "#/components/schemas/SessionPlaceCounts"
+              paid_items:
+                type: integer
+                format: int64
+                description: Order lines of this category in orders that were paid.
+              paid_revenue:
+                type: integer
+                format: int64
+                description: What buyers paid for this category in minor units, after discounts and with the service charge.
+        money:
+          type: array
+          description: The bottom line, one entry per currency.
+          items:
+            type: object
+            required: [currency, paid_orders, paid, service_charge, discount, refunded, net, pending_orders, pending]
+            description: Money of one currency in minor units.
+            properties:
+              currency:
+                type: string
+                description: ISO 4217 currency.
+              paid_orders:
+                type: integer
+                format: int64
+                description: Orders that were paid, including ones refunded later.
+              paid:
+                type: integer
+                format: int64
+                description: Total of those orders.
+              service_charge:
+                type: integer
+                format: int64
+                description: Service charge included in paid.
+              discount:
+                type: integer
+                format: int64
+                description: Discounts already deducted from paid.
+              refunded:
+                type: integer
+                format: int64
+                description: Succeeded refunds.
+              net:
+                type: integer
+                format: int64
+                description: paid minus refunded.
+              pending_orders:
+                type: integer
+                format: int64
+                description: Orders still waiting for payment.
+              pending:
+                type: integer
+                format: int64
+                description: Total of the orders still waiting for payment.
+        orders:
+          type: array
+          description: Order totals grouped by status, source and currency.
+          items:
+            type: object
+            required: [status, source, currency, orders, total]
+            description: One group of orders.
+            properties:
+              status:
+                type: string
+                description: Order status.
+              source:
+                type: string
+                description: Where the order came from (bil24_gateway, public_feed, checkout_api, complimentary).
+              currency:
+                type: string
+                description: ISO 4217 currency.
+              orders:
+                type: integer
+                format: int64
+                description: Number of orders in the group.
+              total:
+                type: integer
+                format: int64
+                description: Sum of the order totals, minor units.
+        tickets:
+          type: object
+          required: [active, cancelled, transferred, used, complimentary]
+          description: Tickets of the session by status.
+          properties:
+            active:
+              type: integer
+              format: int64
+              description: Valid tickets.
+            cancelled:
+              type: integer
+              format: int64
+              description: Cancelled tickets.
+            transferred:
+              type: integer
+              format: int64
+              description: Tickets transferred to another holder.
+            used:
+              type: integer
+              format: int64
+              description: Valid tickets already scanned at the door.
+            complimentary:
+              type: integer
+              format: int64
+              description: Valid tickets issued as invitations.
+        refunds:
+          type: array
+          description: Refund totals grouped by settlement, state and currency.
+          items:
+            type: object
+            required: [settlement, state, currency, refunds, amount]
+            description: One group of refunds.
+            properties:
+              settlement:
+                type: string
+                description: provider when arena drives the refund, external when the selling site returned the money itself.
+              state:
+                type: string
+                description: Refund state.
+              currency:
+                type: string
+                description: ISO 4217 currency.
+              refunds:
+                type: integer
+                format: int64
+                description: Number of refunds in the group.
+              amount:
+                type: integer
+                format: int64
+                description: Sum of the refund amounts, minor units.
+
     VenueItem:
       type: object
       required: [id, org_id, name, status, created_at, updated_at]
@@ -31840,6 +32091,75 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Order not found, or not linked to this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Order queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/sessions/{session_id}/summary:
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdSummary
+      summary: One-screen overview of a session
+      description: |
+        Returns everything about one session at a glance: places by status
+        (telling a seat sold here from one sold in the system the session was
+        imported from), categories with what was paid for them, the money per
+        currency, orders, tickets and refunds. Read-only and free of buyer
+        data. The session must belong to this org, a session of another
+        organization is invisible. Requires the `order.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The session summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionSummary"
+        "400":
+          description: org_id or session_id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`order.read`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization.
           content:
             application/json:
               schema:

@@ -33,6 +33,13 @@ func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
 	s.ordersHandler().HandleGet(w, r)
 }
 
+func (s *Server) handleSessionSummary(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.ordersHandler().HandleSessionSummary(w, r)
+}
+
 func (s *Server) handleCancelOrder(w http.ResponseWriter, r *http.Request) {
 	if !s.enforceOrgMembership(w, r, "org_id") {
 		return

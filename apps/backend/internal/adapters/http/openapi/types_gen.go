@@ -9106,6 +9106,189 @@ type SessionMediaReplaceRequest struct {
 // SessionMediaReplaceRequestItemsKind defines model for SessionMediaReplaceRequest.Items.Kind.
 type SessionMediaReplaceRequestItemsKind string
 
+// SessionPlaceCounts Places of a session, or of one category, by status.
+type SessionPlaceCounts struct {
+	// Available Places free for sale right now.
+	Available int64 `json:"available"`
+
+	// Held Places held by an open cart or an unpaid order.
+	Held int64 `json:"held"`
+
+	// Sold Places sold, including the ones sold upstream.
+	Sold int64 `json:"sold"`
+
+	// SoldUpstream The part of sold that was sold in the system the session was imported from. No ticket, order or money stands behind it here.
+	SoldUpstream int64 `json:"sold_upstream"`
+
+	// Total Every place counted here, whatever its status.
+	Total int64 `json:"total"`
+
+	// Unavailable Places withheld from sale by an operator.
+	Unavailable int64 `json:"unavailable"`
+}
+
+// SessionSummary One-screen overview of a session: places by status, categories with
+// what was paid for them, the money per currency, orders, tickets and
+// refunds. Read-only. Carries no buyer data, only counts, amounts in
+// minor units and ids.
+type SessionSummary struct {
+	// Money The bottom line, one entry per currency.
+	Money []struct {
+		// Currency ISO 4217 currency.
+		Currency string `json:"currency"`
+
+		// Discount Discounts already deducted from paid.
+		Discount int64 `json:"discount"`
+
+		// Net paid minus refunded.
+		Net int64 `json:"net"`
+
+		// Paid Total of those orders.
+		Paid int64 `json:"paid"`
+
+		// PaidOrders Orders that were paid, including ones refunded later.
+		PaidOrders int64 `json:"paid_orders"`
+
+		// Pending Total of the orders still waiting for payment.
+		Pending int64 `json:"pending"`
+
+		// PendingOrders Orders still waiting for payment.
+		PendingOrders int64 `json:"pending_orders"`
+
+		// Refunded Succeeded refunds.
+		Refunded int64 `json:"refunded"`
+
+		// ServiceCharge Service charge included in paid.
+		ServiceCharge int64 `json:"service_charge"`
+	} `json:"money"`
+
+	// Orders Order totals grouped by status, source and currency.
+	Orders []struct {
+		// Currency ISO 4217 currency.
+		Currency string `json:"currency"`
+
+		// Orders Number of orders in the group.
+		Orders int64 `json:"orders"`
+
+		// Source Where the order came from (bil24_gateway, public_feed, checkout_api, complimentary).
+		Source string `json:"source"`
+
+		// Status Order status.
+		Status string `json:"status"`
+
+		// Total Sum of the order totals, minor units.
+		Total int64 `json:"total"`
+	} `json:"orders"`
+
+	// Places Places of the whole session, split by kind.
+	Places struct {
+		// Ga General admission places.
+		Ga SessionPlaceCounts `json:"ga"`
+
+		// Seats Seats of the seating plan.
+		Seats SessionPlaceCounts `json:"seats"`
+	} `json:"places"`
+
+	// Refunds Refund totals grouped by settlement, state and currency.
+	Refunds []struct {
+		// Amount Sum of the refund amounts, minor units.
+		Amount int64 `json:"amount"`
+
+		// Currency ISO 4217 currency.
+		Currency string `json:"currency"`
+
+		// Refunds Number of refunds in the group.
+		Refunds int64 `json:"refunds"`
+
+		// Settlement provider when arena drives the refund, external when the selling site returned the money itself.
+		Settlement string `json:"settlement"`
+
+		// State Refund state.
+		State string `json:"state"`
+	} `json:"refunds"`
+
+	// Session The session the summary is about.
+	Session struct {
+		// CapacityTotal Stated capacity of the session.
+		CapacityTotal int32 `json:"capacity_total"`
+
+		// EventId UUIDv7 of the event the session belongs to.
+		EventId openapi_types.UUID `json:"event_id"`
+
+		// EventName Name of the event.
+		EventName string `json:"event_name"`
+
+		// HasSeatingPlan True when a seating plan is bound to the session.
+		HasSeatingPlan bool `json:"has_seating_plan"`
+
+		// Id UUIDv7 of the session.
+		Id openapi_types.UUID `json:"id"`
+
+		// OrgId UUIDv7 of the owning organization.
+		OrgId openapi_types.UUID `json:"org_id"`
+
+		// StartAt Start of the session, RFC3339 in UTC.
+		StartAt time.Time `json:"start_at"`
+
+		// Status Session status (draft, scheduled, cancelled, completed).
+		Status string `json:"status"`
+
+		// VenueName Name of the venue, null when the session has none.
+		VenueName *string `json:"venue_name"`
+
+		// VenueTimezone IANA timezone of the venue, null when unknown.
+		VenueTimezone *string `json:"venue_timezone"`
+	} `json:"session"`
+
+	// Tickets Tickets of the session by status.
+	Tickets struct {
+		// Active Valid tickets.
+		Active int64 `json:"active"`
+
+		// Cancelled Cancelled tickets.
+		Cancelled int64 `json:"cancelled"`
+
+		// Complimentary Valid tickets issued as invitations.
+		Complimentary int64 `json:"complimentary"`
+
+		// Transferred Tickets transferred to another holder.
+		Transferred int64 `json:"transferred"`
+
+		// Used Valid tickets already scanned at the door.
+		Used int64 `json:"used"`
+	} `json:"tickets"`
+
+	// Tiers Categories of the session in display order.
+	Tiers []struct {
+		// Currency ISO 4217 currency of the list price.
+		Currency string `json:"currency"`
+
+		// Id UUIDv7 of the category.
+		Id openapi_types.UUID `json:"id"`
+
+		// IsOpen False when the category accepts no new hold.
+		IsOpen bool `json:"is_open"`
+
+		// Kind seated when the category owns plan seats, ga otherwise.
+		Kind string `json:"kind"`
+
+		// Name Name of the category.
+		Name string `json:"name"`
+
+		// PaidItems Order lines of this category in orders that were paid.
+		PaidItems int64 `json:"paid_items"`
+
+		// PaidRevenue What buyers paid for this category in minor units, after discounts and with the service charge.
+		PaidRevenue int64 `json:"paid_revenue"`
+
+		// Places Places of this category by status.
+		Places SessionPlaceCounts `json:"places"`
+
+		// PriceAmount Current list price in minor units.
+		PriceAmount int64 `json:"price_amount"`
+	} `json:"tiers"`
+}
+
 // SessionWarning A non-fatal note about a session write: the request succeeded, but
 // part of it could not be applied verbatim.
 type SessionWarning struct {

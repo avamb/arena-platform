@@ -17,6 +17,8 @@ func (s *Server) mountOrderRoutes(r chi.Router) {
 		s.applyAuth(pr, "order.read", "orders")
 		pr.Get("/organizations/{org_id}/orders", s.handleListOrders)
 		pr.Get("/organizations/{org_id}/orders/{id}", s.handleGetOrder)
+		// One-screen session overview: places, categories, money, tickets, refunds.
+		pr.Get("/organizations/{org_id}/sessions/{session_id}/summary", s.handleSessionSummary)
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "order.write", "orders")

@@ -1401,3 +1401,22 @@ entries short and factual.
   guards that ask "does this session have sales" by counting tickets miss it,
   which is why the manual re-bind guard (`hseating/bind.go`) also counts sold
   seats. There is no operator action to release one yet.
+- **An inline `enum` in openapi.yaml can silently RENAME existing Go
+  constants.** oapi-codegen emits an unprefixed constant per enum value
+  (`External`, `Provider`) and prefixes them with the type name only once two
+  enums share a value — so adding a second `enum: [provider, external]`
+  anywhere turned `openapi.External` into `RefundItemSettlementExternal`
+  (2026-09-22). After `gen-openapi`, check that `git diff types_gen.go` has no
+  removed lines; for a read-only aggregate, a plain `type: string` with the
+  values named in the description is enough. Same spec rules the tests
+  enforce: no `nullable:` (OAS 3.1 — write `type: [string, "null"]`).
+- **The one-screen session overview is `GET
+  /v1/organizations/{org_id}/sessions/{session_id}/summary`** (`order.read`,
+  `horders/session_summary.go`, queries in `session_summary.sql`). Add new
+  per-session numbers THERE, not as another client-side rollup: money is
+  `orders.total` over orders that were ever paid (paid / partially_refunded /
+  refunded) minus SUCCEEDED refunds, per currency; category revenue is
+  `order_items.total`; `sold_upstream` is the 'sold' + NULL-reservation rows.
+  A new admin-web route reachable only by a link must be listed in
+  `NON_NAV_ROUTE_IDS` (`src/smoke/saui14_smoke.test.ts`) or the route-tree /
+  nav parity test fails.
