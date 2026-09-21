@@ -431,7 +431,7 @@ const (
 
 // Defines values for HealthzResponseStatus.
 const (
-	Ok HealthzResponseStatus = "ok"
+	HealthzResponseStatusOk HealthzResponseStatus = "ok"
 )
 
 // Defines values for ImportEventBundleRequestSource.
@@ -573,6 +573,13 @@ const (
 const (
 	Configured            PaymentProviderConfigItemStatus = "configured"
 	MissingRequiredFields PaymentProviderConfigItemStatus = "missing_required_fields"
+)
+
+// Defines values for PaymentProviderConfigItemVerificationStatus.
+const (
+	PaymentProviderConfigItemVerificationStatusFailed     PaymentProviderConfigItemVerificationStatus = "failed"
+	PaymentProviderConfigItemVerificationStatusOk         PaymentProviderConfigItemVerificationStatus = "ok"
+	PaymentProviderConfigItemVerificationStatusUnverified PaymentProviderConfigItemVerificationStatus = "unverified"
 )
 
 // Defines values for PromoCodeDeleteResponseDeleted.
@@ -7394,6 +7401,14 @@ type PaymentIntentWebhookRequestTargetState string
 // secret-jsonb keys currently populated (no values). The status field is
 // derived from the stored secrets vs. the provider's required-secret
 // catalogue (see internal/platform/httpserver/payment_configs.go).
+//
+// `status` and `verification_status` answer DIFFERENT questions and a UI
+// must not confuse them. `status` is a shape check on the form — are the
+// required fields non-empty — and any string at all satisfies it.
+// `verification_status` is what the provider itself said when the
+// credential was last sent to it. A config can be `configured` and hold
+// a key the provider has never accepted; build a "connected" indicator
+// on `verification_status`, never on `status`.
 type PaymentProviderConfigItem struct {
 	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
@@ -7438,6 +7453,29 @@ type PaymentProviderConfigItem struct {
 
 	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update.
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// VerificationError The provider's own wording of the most recent refusal or of the
+	// reason a check could not be completed, truncated to 500
+	// characters. Null when the credential was accepted or has never
+	// been checked. Operator-facing only — never surfaced on an
+	// unauthenticated route.
+	VerificationError *string `json:"verification_error"`
+
+	// VerificationStatus What the PROVIDER answered the last time this credential was sent
+	// to it. `ok` — accepted. `failed` — refused; see
+	// `verification_error`. `unverified` — never checked, the credential
+	// has changed since the last check, the provider could not be
+	// reached, or arena has no way to verify this provider. Treat
+	// `unverified` as "unknown", never as a pass.
+	//
+	// Set automatically whenever the secrets are saved, and on demand
+	// via POST /v1/organizations/{org_id}/payment-configs/{id}/verify.
+	VerificationStatus PaymentProviderConfigItemVerificationStatus `json:"verification_status"`
+
+	// VerifiedAt When the provider last ACCEPTED this credential, or null if it
+	// never has. Deliberately survives a later failure, so an operator
+	// can see that a key worked until a given moment.
+	VerifiedAt *time.Time `json:"verified_at"`
 }
 
 // PaymentProviderConfigItemMode Operating mode for the credential set.
@@ -7446,6 +7484,17 @@ type PaymentProviderConfigItemMode string
 // PaymentProviderConfigItemStatus `configured` when every required secret for the provider is
 // populated; otherwise `missing_required_fields`.
 type PaymentProviderConfigItemStatus string
+
+// PaymentProviderConfigItemVerificationStatus What the PROVIDER answered the last time this credential was sent
+// to it. `ok` — accepted. `failed` — refused; see
+// `verification_error`. `unverified` — never checked, the credential
+// has changed since the last check, the provider could not be
+// reached, or arena has no way to verify this provider. Treat
+// `unverified` as "unknown", never as a pass.
+//
+// Set automatically whenever the secrets are saved, and on demand
+// via POST /v1/organizations/{org_id}/payment-configs/{id}/verify.
+type PaymentProviderConfigItemVerificationStatus string
 
 // PriceBreakdownEnvelope Top-level response envelope returned by
 // `GET /v1/checkout/{id}/price-breakdown`.

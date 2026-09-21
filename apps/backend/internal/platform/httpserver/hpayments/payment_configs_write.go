@@ -136,6 +136,18 @@ func (h *Handler) HandleCreatePaymentConfig(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
+	// Secrets: drop pasted whitespace, then refuse anything that cannot be a
+	// credential for this provider in this mode. Catching it here is the
+	// whole point — the alternative is a buyer discovering it at the pay
+	// button hours later.
+	req.Secrets = normalizeSecretPatch(req.Secrets)
+	if err := ValidateSecretFormats(req.Provider, req.Mode, req.Secrets); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
+			"payment_config.invalid_secrets", err.Error(), r,
+		))
+		return
+	}
+
 	// Build the secrets jsonb from the patch map (empty patch -> '{}').
 	secretsJSON, _, err := MergeSecrets(nil, req.Secrets)
 	if err != nil {
@@ -175,11 +187,16 @@ func (h *Handler) HandleCreatePaymentConfig(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Same as on update: the credential is tried against the provider now,
+	// while the operator is still on the screen that can fix it.
+	row = h.verifyAndRecord(ctx, row)
+
 	h.writePaymentConfigAudit(ctx, r, "v1.payment_config.create", row.ID.String(), map[string]any{
-		"org_id":   orgID.String(),
-		"provider": req.Provider,
-		"mode":     req.Mode,
-		"status":   status,
+		"org_id":              orgID.String(),
+		"provider":            req.Provider,
+		"mode":                req.Mode,
+		"status":              status,
+		"verification_status": row.VerificationStatus,
 	})
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
@@ -272,6 +289,17 @@ func (h *Handler) HandleUpdatePaymentConfig(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// The mode comes from the STORED row, not the body: a config's mode
+	// cannot be changed by editing it, so this is the mode the credential
+	// will actually be used in.
+	req.Secrets = normalizeSecretPatch(req.Secrets)
+	if err := ValidateSecretFormats(existing.Provider, existing.Mode, req.Secrets); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
+			"payment_config.invalid_secrets", err.Error(), r,
+		))
+		return
+	}
+
 	mergedSecrets, secretsChanged, err := MergeSecrets(existing.Secrets, req.Secrets)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
@@ -301,13 +329,22 @@ func (h *Handler) HandleUpdatePaymentConfig(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// A changed credential is checked against the provider right away, so the
+	// operator sees the verdict on the screen they are already looking at.
+	// Waiting for a buyer to discover it is what this whole mechanism exists
+	// to stop. Never blocks or fails the save — see verifyAndRecord.
+	if secretsChanged {
+		row = h.verifyAndRecord(ctx, row)
+	}
+
 	h.writePaymentConfigAudit(ctx, r, "v1.payment_config.update", row.ID.String(), map[string]any{
-		"org_id":          orgID.String(),
-		"provider":        row.Provider,
-		"mode":            row.Mode,
-		"status":          status,
-		"secrets_changed": secretsChanged,
-		"is_active_set":   req.IsActive != nil,
+		"org_id":              orgID.String(),
+		"provider":            row.Provider,
+		"mode":                row.Mode,
+		"status":              status,
+		"secrets_changed":     secretsChanged,
+		"is_active_set":       req.IsActive != nil,
+		"verification_status": row.VerificationStatus,
 	})
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{

@@ -536,3 +536,39 @@ func (a *Adapter) ConnectExchangeCode(ctx context.Context, code string) (account
 
 	return tokenResp.StripeUserID, nil
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Credential verification
+// ─────────────────────────────────────────────────────────────────────────────
+
+// VerifyCredentials proves the configured secret key by asking Stripe for the
+// account balance — GET /v1/balance, the call Stripe's own documentation
+// offers for exactly this. It reads one number, moves no money and creates
+// nothing, so it is safe to run on every save and on an operator's "check
+// again".
+//
+// The two failure modes are kept apart deliberately (see
+// payments.ErrCredentialRefused / ErrProviderUnreachable): a 401 or 403 is a
+// verdict on the KEY and belongs on screen as a red state, while a transport
+// failure or a 5xx is a verdict on the connection and must never be recorded
+// as "this key is bad". Stripe's own wording is carried through so an
+// operator reads "Invalid API Key provided" rather than a code of ours.
+//
+// Implements payments.CredentialVerifier.
+func (a *Adapter) VerifyCredentials(ctx context.Context) error {
+	_, status, err := a.doRequest(ctx, http.MethodGet, a.cfg.BaseURL+"/balance", nil, "")
+	if err == nil {
+		return nil
+	}
+	switch {
+	case status == http.StatusUnauthorized || status == http.StatusForbidden:
+		return fmt.Errorf("%w: %s", payments.ErrCredentialRefused, err.Error())
+	case status == 0 || status >= 500:
+		return fmt.Errorf("%w: %s", payments.ErrProviderUnreachable, err.Error())
+	default:
+		// Any other 4xx is Stripe telling us this request was wrong, not that
+		// the key is. Reported as unreachable so a bad request of ours can
+		// never paint an operator's working key red.
+		return fmt.Errorf("%w: %s", payments.ErrProviderUnreachable, err.Error())
+	}
+}

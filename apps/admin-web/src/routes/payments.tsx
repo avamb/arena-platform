@@ -217,6 +217,42 @@ export interface PaymentConfig {
   readonly is_active: boolean;
   readonly created_at: string;
   readonly updated_at: string;
+  /**
+   * What the PROVIDER said about the stored credential, as opposed to
+   * `status`, which only reports that the required fields are non-empty.
+   *
+   * These are not interchangeable and the green state belongs to THIS one.
+   * On 2026-09-21 a live organization's Stripe config showed `configured`
+   * all day while holding a string that was not a key: every sale failed
+   * with a 503 on the pay button and nothing on this screen said so.
+   *
+   * Optional because a backend older than migration 0107 omits it; absent
+   * is read as "unverified", never as a pass.
+   */
+  readonly verification_status?: VerificationStatus | string;
+  readonly verified_at?: string | null;
+  readonly verification_error?: string | null;
+}
+
+export type VerificationStatus = "unverified" | "ok" | "failed";
+
+/**
+ * Reads a row's verification state, defaulting ANYTHING it does not
+ * recognise to "unverified".
+ *
+ * The default is the whole point. A backend older than migration 0107 omits
+ * the field, and a future backend may grow a state this build has never
+ * heard of; in both cases the honest answer is "we do not know", and the one
+ * outcome that must be impossible is an unknown value falling through to the
+ * green light.
+ */
+export function normalizeVerificationStatus(
+  status: string | undefined | null,
+): VerificationStatus {
+  if (status === "ok" || status === "failed") {
+    return status;
+  }
+  return "unverified";
 }
 
 interface PaymentConfigListEnvelope {
@@ -879,9 +915,20 @@ function PaymentsBody({
     },
     {
       id: "status",
-      header: "Status",
+      header: "Fields",
       renderCell: (c) => (
         <StatusBadge status={c.status} missing={c.missing_required_fields} />
+      ),
+    },
+    {
+      id: "connection",
+      header: "Connection",
+      renderCell: (c) => (
+        <VerificationBadge
+          status={c.verification_status}
+          error={c.verification_error}
+          verifiedAt={c.verified_at}
+        />
       ),
     },
     {
@@ -920,6 +967,7 @@ function PaymentsBody({
               Edit
             </button>
           ) : null}
+          {canWrite ? <VerifyButton config={c} /> : null}
           {canWrite ? (
             <button
               type="button"
@@ -978,13 +1026,20 @@ function StatusBadge({
       <span
         style={{
           ...badgeBaseStyle,
-          background: "#dcfce7",
-          color: "#166534",
-          borderColor: "#bbf7d0",
+          // Deliberately NOT green. This badge means "the required fields
+          // are filled in" — a shape check that any string satisfies — and
+          // wearing the success colour is what let a config with a garbage
+          // key read as ready all day. Green on this screen belongs to the
+          // Connection column, which is the only one that has asked the
+          // provider anything.
+          background: "#e2e8f0",
+          color: "#334155",
+          borderColor: "#cbd5e1",
         }}
+        title="Every required field holds a value. This does not mean the provider has accepted it — see Connection."
         data-testid="payments-status-configured"
       >
-        configured
+        complete
       </span>
     );
   }
@@ -1004,6 +1059,130 @@ function StatusBadge({
       data-testid="payments-status-missing"
     >
       missing required fields
+    </span>
+  );
+}
+
+/**
+ * Re-asks the provider about a credential that has not changed.
+ *
+ * Saving already runs the same check, so this is for the cases where the
+ * answer can change on its own: a key revoked at the provider, an account
+ * that has since been activated, a check that could not be completed
+ * earlier because the provider was unreachable.
+ *
+ * It never reports its own success — the row's Connection badge is the
+ * result, and it refreshes with the list.
+ */
+function VerifyButton({ config }: { config: PaymentConfig }) {
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<ApiError | null>(null);
+
+  const mutation = useMutation<PaymentConfigEnvelope, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<PaymentConfigEnvelope>({
+        method: "POST",
+        path: `/v1/organizations/${config.org_id}/payment-configs/${config.id}/verify`,
+      }),
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ["payment_configs"] });
+    },
+    // A failed REQUEST is not a failed credential: the verdict lives on the
+    // row, and this only reports that we could not ask.
+    onError: (err) => setError(err),
+  });
+
+  return (
+    <button
+      type="button"
+      style={rowActionButtonStyle}
+      onClick={() => mutation.mutate()}
+      disabled={mutation.isPending}
+      title={
+        error
+          ? `Could not run the check: ${error.message}`
+          : "Ask the provider whether this credential works"
+      }
+      data-testid={`payments-verify-${config.id}`}
+    >
+      {mutation.isPending ? "Checking…" : "Check"}
+    </button>
+  );
+}
+
+/**
+ * The only green light on this screen: the provider itself accepted the
+ * stored credential.
+ *
+ * Three states, and the middle one matters most. `unverified` is rendered as
+ * plainly unknown rather than as anything reassuring — it covers "never
+ * checked", "the key changed since the last check" and "we could not reach
+ * the provider", none of which is evidence that payments will work.
+ */
+function VerificationBadge({
+  status,
+  error,
+  verifiedAt,
+}: {
+  status?: string;
+  error?: string | null;
+  verifiedAt?: string | null;
+}) {
+  const state = normalizeVerificationStatus(status);
+  if (state === "ok") {
+    return (
+      <span
+        style={{
+          ...badgeBaseStyle,
+          background: "#dcfce7",
+          color: "#166534",
+          borderColor: "#bbf7d0",
+        }}
+        title={
+          verifiedAt
+            ? `Provider accepted this credential on ${formatDate(verifiedAt)}`
+            : "Provider accepted this credential"
+        }
+        data-testid="payments-verification-ok"
+      >
+        connected
+      </span>
+    );
+  }
+  if (state === "failed") {
+    return (
+      <span
+        style={{
+          ...badgeBaseStyle,
+          background: "#fee2e2",
+          color: "#7f1d1d",
+          borderColor: "#fecaca",
+        }}
+        // The provider's own words. An operator reading "Invalid API Key
+        // provided" knows what to do; a code of ours would send them to us.
+        title={error ?? "The provider refused this credential"}
+        data-testid="payments-verification-failed"
+      >
+        rejected
+      </span>
+    );
+  }
+  return (
+    <span
+      style={{
+        ...badgeBaseStyle,
+        background: "#f1f5f9",
+        color: "#475569",
+        borderColor: "#e2e8f0",
+      }}
+      title={
+        error ??
+        "Nobody has asked the provider about this credential yet, or it changed since the last check. Press Check."
+      }
+      data-testid="payments-verification-unverified"
+    >
+      not checked
     </span>
   );
 }

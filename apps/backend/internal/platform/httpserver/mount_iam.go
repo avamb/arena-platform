@@ -117,6 +117,9 @@ func (s *Server) mountPaymentConfigRoutes(r chi.Router) {
 		pr.Post("/organizations/{org_id}/payment-configs", s.handleCreatePaymentConfig)
 		pr.Patch("/organizations/{org_id}/payment-configs/{id}", s.handleUpdatePaymentConfig)
 		pr.Delete("/organizations/{org_id}/payment-configs/{id}", s.handleDeletePaymentConfig)
+		// Gated on write, not read: it makes an outbound call on the org's
+		// behalf and stores the verdict on the row.
+		pr.Post("/organizations/{org_id}/payment-configs/{id}/verify", s.handleVerifyPaymentConfig)
 	})
 }
 

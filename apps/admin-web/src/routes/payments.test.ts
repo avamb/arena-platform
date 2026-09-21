@@ -28,6 +28,7 @@ import {
   STRIPE_WEBHOOK_EVENTS,
   STRIPE_CHECKOUT_SESSION_EVENTS,
   StripeWebhookConfigUrlsView,
+  normalizeVerificationStatus,
   type PaymentConfig,
 } from "./payments";
 
@@ -435,5 +436,33 @@ describe("StripeWebhookConfigUrlsView", () => {
     ]);
     expect(html).toContain(`/v1/payment-intents/webhook/${SAVED_ID}`);
     expect(html).toContain(`/v1/payment-intents/webhook/${other}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Verification state (2026-09-21)
+// ---------------------------------------------------------------------------
+//
+// A live organization's Stripe config read "configured" all day while its
+// api_key held a string that was not a key: every sale died with a 503 on
+// the pay button and this screen said nothing. `status` is a shape check on
+// the form; only `verification_status` reports what the provider said.
+
+describe("normalizeVerificationStatus", () => {
+  it("passes through the two states the provider actually answered", () => {
+    expect(normalizeVerificationStatus("ok")).toBe("ok");
+    expect(normalizeVerificationStatus("failed")).toBe("failed");
+  });
+
+  it("treats anything it does not recognise as unverified", () => {
+    // An older backend omits the field; a newer one may grow a state this
+    // build has never heard of. Neither may fall through to the green light.
+    expect(normalizeVerificationStatus(undefined)).toBe("unverified");
+    expect(normalizeVerificationStatus(null)).toBe("unverified");
+    expect(normalizeVerificationStatus("")).toBe("unverified");
+    expect(normalizeVerificationStatus("unverified")).toBe("unverified");
+    expect(normalizeVerificationStatus("pending_review")).toBe("unverified");
+    expect(normalizeVerificationStatus("OK")).toBe("unverified");
+    expect(normalizeVerificationStatus("configured")).toBe("unverified");
   });
 });

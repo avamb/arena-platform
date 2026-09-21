@@ -90,6 +90,20 @@ type PaymentConfigResponse struct {
 	IsActive              bool            `json:"is_active"`
 	CreatedAt             string          `json:"created_at"`
 	UpdatedAt             string          `json:"updated_at"`
+	// VerificationStatus is what the PROVIDER said about the stored
+	// credential — "unverified", "ok" or "failed" — as opposed to Status,
+	// which only reports that the required fields are non-empty. A UI must
+	// build its green state on THIS, never on Status: a config can be
+	// "configured" and hold a key the provider has never accepted, which is
+	// precisely how a live organization sold nothing for a day.
+	VerificationStatus string `json:"verification_status"`
+	// VerifiedAt is when the provider last accepted the credential, or null
+	// if it never has. It survives a later failure on purpose, so an
+	// operator can see "this worked until today".
+	VerifiedAt *string `json:"verified_at"`
+	// VerificationError is the provider's own wording of a refusal. Shown to
+	// an authenticated operator of the owning org and nowhere else.
+	VerificationError *string `json:"verification_error"`
 }
 
 // PaymentConfigFromRow renders a row into the response shape, stripping
@@ -108,6 +122,19 @@ func PaymentConfigFromRow(p gen.PaymentProviderConfigRow) PaymentConfigResponse 
 		IsActive:              p.IsActive,
 		CreatedAt:             p.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:             p.UpdatedAt.UTC().Format(time.RFC3339),
+		VerificationStatus:    p.VerificationStatus,
+		VerificationError:     p.VerificationError,
+	}
+	if p.VerifiedAt != nil {
+		at := p.VerifiedAt.UTC().Format(time.RFC3339)
+		resp.VerifiedAt = &at
+	}
+	// A row written before migration 0107 (or by a test fixture that builds
+	// the struct by hand) carries an empty string here. Report it as the
+	// honest "nobody has checked this", never as a blank that a UI might
+	// render as a pass.
+	if resp.VerificationStatus == "" {
+		resp.VerificationStatus = VerificationUnverified
 	}
 	// MissingRequiredFields should be an empty slice (never nil) so JSON
 	// callers always see a deterministic [] shape.
@@ -221,4 +248,25 @@ func MergeSecrets(existing json.RawMessage, patch map[string]string) (json.RawMe
 		return nil, false, fmt.Errorf("marshal merged secrets: %w", err)
 	}
 	return out, changed, nil
+}
+
+// storedSecretValue reads one secret value out of the secrets jsonb.
+//
+// The ONLY function in this package that returns a secret VALUE — everything
+// else deliberately exposes keys alone (see ExtractStoredSecretKeys). It
+// exists so a credential can be handed to the provider for verification, and
+// its result must never reach a response, a log or an audit payload.
+func storedSecretValue(raw json.RawMessage, field string) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return ""
+	}
+	s, ok := m[field].(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(s)
 }

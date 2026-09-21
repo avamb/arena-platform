@@ -19,7 +19,11 @@ func (s *Server) paymentsHandler() *hpayments.Handler {
 		s.pool,
 		s.audit,
 		s.logger,
-	).WithMembershipQueries(s.membershipQueries)
+	).WithMembershipQueries(s.membershipQueries).
+		// Same Stripe root the hosted checkout uses, so a stand that points
+		// checkout at a stub verifies credentials against that same stub
+		// rather than reaching out to the real Stripe.
+		WithStripeBaseURL(s.stripeBaseURL())
 }
 
 // ─── type aliases ─────────────────────────────────────────────────────────────
@@ -76,6 +80,10 @@ func (s *Server) handleCreatePaymentConfig(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) handleUpdatePaymentConfig(w http.ResponseWriter, r *http.Request) {
 	s.paymentsHandler().HandleUpdatePaymentConfig(w, r)
+}
+
+func (s *Server) handleVerifyPaymentConfig(w http.ResponseWriter, r *http.Request) {
+	s.paymentsHandler().HandleVerifyPaymentConfig(w, r)
 }
 
 func (s *Server) handleDeletePaymentConfig(w http.ResponseWriter, r *http.Request) {

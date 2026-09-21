@@ -38,6 +38,17 @@ type PaymentProviderConfigRow struct {
 	CreatedAt         time.Time       `json:"created_at"`
 	UpdatedAt         time.Time       `json:"updated_at"`
 	DeletedAt         *time.Time      `json:"deleted_at"`
+	// VerificationStatus is what the PROVIDER said about this credential the
+	// last time we sent it one: 'unverified' (never asked, or the secret has
+	// changed since), 'ok', or 'failed'. Status above is only a shape check —
+	// "every required field holds something" — and says nothing about whether
+	// the something is a usable key.
+	VerificationStatus string     `json:"verification_status"`
+	VerifiedAt         *time.Time `json:"verified_at"`
+	// VerificationError is the provider's own wording of the refusal, kept so
+	// an operator reads "Invalid API Key provided" instead of a code of ours.
+	// Operator-facing: never expose it on an unauthenticated surface.
+	VerificationError *string `json:"verification_error"`
 }
 
 // scanPaymentProviderConfigRow scans a single payment_provider_configs row.
@@ -58,6 +69,9 @@ func scanPaymentProviderConfigRow(row interface {
 		&p.CreatedAt,
 		&p.UpdatedAt,
 		&p.DeletedAt,
+		&p.VerificationStatus,
+		&p.VerifiedAt,
+		&p.VerificationError,
 	)
 	return p, err
 }
@@ -77,7 +91,7 @@ VALUES (
     COALESCE($6::jsonb, '{}'::jsonb),
     $7, $8
 )
-RETURNING id, org_id, provider, mode, provider_account_id, public_config, secrets, status, is_active, created_at, updated_at, deleted_at`
+RETURNING id, org_id, provider, mode, provider_account_id, public_config, secrets, status, is_active, created_at, updated_at, deleted_at, verification_status, verified_at, verification_error`
 
 // InsertPaymentProviderConfig creates a new active payment_provider_configs row.
 // Pass publicConfig = nil or secrets = nil to use the database default '{}'::jsonb.
@@ -102,7 +116,7 @@ func (q *Queries) InsertPaymentProviderConfig(
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getPaymentProviderConfigByID = `-- name: GetPaymentProviderConfigByID :one
-SELECT id, org_id, provider, mode, provider_account_id, public_config, secrets, status, is_active, created_at, updated_at, deleted_at
+SELECT id, org_id, provider, mode, provider_account_id, public_config, secrets, status, is_active, created_at, updated_at, deleted_at, verification_status, verified_at, verification_error
 FROM   payment_provider_configs
 WHERE  id = $1
   AND  org_id = $2
@@ -120,7 +134,7 @@ func (q *Queries) GetPaymentProviderConfigByID(ctx context.Context, id, orgID uu
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getPaymentProviderConfigByIDUnscoped = `-- name: GetPaymentProviderConfigByIDUnscoped :one
-SELECT id, org_id, provider, mode, provider_account_id, public_config, secrets, status, is_active, created_at, updated_at, deleted_at
+SELECT id, org_id, provider, mode, provider_account_id, public_config, secrets, status, is_active, created_at, updated_at, deleted_at, verification_status, verified_at, verification_error
 FROM   payment_provider_configs
 WHERE  id = $1
   AND  deleted_at IS NULL`
@@ -148,7 +162,7 @@ func (q *Queries) GetPaymentProviderConfigByIDUnscoped(ctx context.Context, id u
 // ─────────────────────────────────────────────────────────────────────────────
 
 const listPaymentProviderConfigsByOrg = `-- name: ListPaymentProviderConfigsByOrg :many
-SELECT id, org_id, provider, mode, provider_account_id, public_config, secrets, status, is_active, created_at, updated_at, deleted_at
+SELECT id, org_id, provider, mode, provider_account_id, public_config, secrets, status, is_active, created_at, updated_at, deleted_at, verification_status, verified_at, verification_error
 FROM   payment_provider_configs
 WHERE  org_id = $1
   AND  deleted_at IS NULL
@@ -185,16 +199,24 @@ SET    provider_account_id = CASE WHEN $3::text  IS NOT NULL THEN $3::text  ELSE
        secrets             = CASE WHEN $5::jsonb IS NOT NULL THEN $5::jsonb ELSE secrets END,
        status              = COALESCE(NULLIF($6, ''), status),
        is_active           = COALESCE($7, is_active),
+       verification_status = CASE WHEN $5::jsonb IS NOT NULL THEN 'unverified' ELSE verification_status END,
+       verified_at         = CASE WHEN $5::jsonb IS NOT NULL THEN NULL         ELSE verified_at         END,
+       verification_error  = CASE WHEN $5::jsonb IS NOT NULL THEN NULL         ELSE verification_error  END,
        updated_at          = now()
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, provider, mode, provider_account_id, public_config, secrets, status, is_active, created_at, updated_at, deleted_at`
+RETURNING id, org_id, provider, mode, provider_account_id, public_config, secrets, status, is_active, created_at, updated_at, deleted_at, verification_status, verified_at, verification_error`
 
 // UpdatePaymentProviderConfig applies a partial update to an active config.
 // Pass providerAccountID = nil, publicConfig = nil, or secrets = nil to leave
 // the existing value untouched. status defaults to existing when empty.
 // isActive = nil keeps the existing flag.
+//
+// Passing a non-nil secrets ALSO clears the verification verdict back to
+// 'unverified': what the provider said about the previous credential tells
+// us nothing about the new one, and a stale green badge over an untried key
+// is the exact failure this column exists to prevent.
 func (q *Queries) UpdatePaymentProviderConfig(
 	ctx context.Context,
 	id, orgID uuid.UUID,
@@ -220,12 +242,46 @@ SET    deleted_at = now(),
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
-RETURNING id, org_id, provider, mode, provider_account_id, public_config, secrets, status, is_active, created_at, updated_at, deleted_at`
+RETURNING id, org_id, provider, mode, provider_account_id, public_config, secrets, status, is_active, created_at, updated_at, deleted_at, verification_status, verified_at, verification_error`
 
 // SoftDeletePaymentProviderConfig marks a config as deleted. Returns
 // pgx.ErrNoRows when the row does not exist, does not belong to the org,
 // or has already been deleted.
 func (q *Queries) SoftDeletePaymentProviderConfig(ctx context.Context, id, orgID uuid.UUID) (PaymentProviderConfigRow, error) {
 	row := q.db.QueryRow(ctx, softDeletePaymentProviderConfig, id, orgID)
+	return scanPaymentProviderConfigRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SetPaymentProviderConfigVerification
+// ─────────────────────────────────────────────────────────────────────────────
+
+const setPaymentProviderConfigVerification = `-- name: SetPaymentProviderConfigVerification :one
+UPDATE payment_provider_configs
+SET    verification_status = $3,
+       verified_at         = CASE WHEN $3 = 'ok' THEN now() ELSE verified_at END,
+       verification_error  = NULLIF($4, '')
+WHERE  id = $1
+  AND  org_id = $2
+  AND  deleted_at IS NULL
+RETURNING id, org_id, provider, mode, provider_account_id, public_config, secrets, status, is_active, created_at, updated_at, deleted_at, verification_status, verified_at, verification_error`
+
+// SetPaymentProviderConfigVerification records what the provider answered
+// when the credential was last sent to it.
+//
+// status is 'unverified', 'ok' or 'failed'; detail is the provider's own
+// wording of a refusal and is stored as NULL when empty. verified_at moves
+// only on 'ok', so a later failure leaves "last known good" readable beside
+// the failure itself. updated_at is deliberately untouched — that column
+// means an operator edited the row, and a verification is not an edit.
+//
+// Returns pgx.ErrNoRows when the row does not exist, belongs to another org,
+// or has been soft-deleted.
+func (q *Queries) SetPaymentProviderConfigVerification(
+	ctx context.Context,
+	id, orgID uuid.UUID,
+	status, detail string,
+) (PaymentProviderConfigRow, error) {
+	row := q.db.QueryRow(ctx, setPaymentProviderConfigVerification, id, orgID, status, detail)
 	return scanPaymentProviderConfigRow(row)
 }

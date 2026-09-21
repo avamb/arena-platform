@@ -33,6 +33,11 @@ type Handler struct {
 	pool                 TxStarter
 	audit                audit.Writer
 	logger               *slog.Logger
+	// stripeBaseURL overrides the Stripe API root used when VERIFYING a
+	// stored credential. Empty means the real Stripe. It exists so a test
+	// can point the check at a stub without a network call; see
+	// WithStripeBaseURL.
+	stripeBaseURL string
 }
 
 // New constructs a Handler from the caller's dependencies. Nil queries and a
@@ -58,5 +63,17 @@ func New(
 // tests that omit it will have membership checks silently skip.
 func (h *Handler) WithMembershipQueries(q *gen.Queries) *Handler {
 	h.membershipQueries = q
+	return h
+}
+
+// WithStripeBaseURL points credential verification at a different Stripe API
+// root. Empty (the default) means the real one.
+//
+// The same seam hfeed's hosted checkout already has, and for the same reason:
+// the verification makes a real outbound call, so a test that wants to prove
+// the accepted/refused branches must be able to answer it. The value must
+// carry the /v1 segment — the adapter concatenates endpoints onto it.
+func (h *Handler) WithStripeBaseURL(base string) *Handler {
+	h.stripeBaseURL = base
 	return h
 }

@@ -66,6 +66,7 @@ type Querier interface {
 	ListPaymentProviderConfigsByOrg(ctx context.Context, orgID uuid.UUID) ([]PaymentProviderConfigRow, error)
 	UpdatePaymentProviderConfig(ctx context.Context, id, orgID uuid.UUID, providerAccountID *string, publicConfig, secrets json.RawMessage, status string, isActive *bool) (PaymentProviderConfigRow, error)
 	SoftDeletePaymentProviderConfig(ctx context.Context, id, orgID uuid.UUID) (PaymentProviderConfigRow, error)
+	SetPaymentProviderConfigVerification(ctx context.Context, id, orgID uuid.UUID, status, detail string) (PaymentProviderConfigRow, error)
 
 	// Organization bank accounts — per-org banking coordinates (feature #255)
 	InsertOrganizationBankAccount(ctx context.Context, orgID uuid.UUID, bankName *string, holderName string, iban, bic, accountNumber, routingNumber *string, currency, country string, isPrimary bool) (OrganizationBankAccountRow, error)

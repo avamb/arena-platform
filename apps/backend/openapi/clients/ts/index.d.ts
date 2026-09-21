@@ -1772,6 +1772,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/payment-configs/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask the provider whether the stored credential works
+         * @description Sends the stored credential to the provider on a read-only call and
+         *     records the answer on the row, then returns the config in its new
+         *     state. Moves no money and changes no configuration.
+         *
+         *     Answers `200` whatever the verdict was — the verdict is the payload,
+         *     not the HTTP status. Read `verification_status`: `ok` means the
+         *     provider accepted the credential, `failed` means it refused it (see
+         *     `verification_error`), and `unverified` means the check could not be
+         *     completed — the provider was unreachable, or arena has no way to
+         *     verify this provider at all. An `unverified` result is not a pass.
+         *
+         *     The same check runs automatically whenever a config's secrets are
+         *     saved, so this endpoint is for re-checking a credential that has not
+         *     changed (a key revoked at the provider, an account that has since
+         *     been activated). Requires `payment_config.write`: it makes an
+         *     outbound call on the organization's behalf and writes to the row.
+         */
+        post: operations["verifyPaymentProviderConfig"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/payment-configs/{id}": {
         parameters: {
             query?: never;
@@ -8734,6 +8769,14 @@ export interface components {
          *     secret-jsonb keys currently populated (no values). The status field is
          *     derived from the stored secrets vs. the provider's required-secret
          *     catalogue (see internal/platform/httpserver/payment_configs.go).
+         *
+         *     `status` and `verification_status` answer DIFFERENT questions and a UI
+         *     must not confuse them. `status` is a shape check on the form — are the
+         *     required fields non-empty — and any string at all satisfies it.
+         *     `verification_status` is what the provider itself said when the
+         *     credential was last sent to it. A config can be `configured` and hold
+         *     a key the provider has never accepted; build a "connected" indicator
+         *     on `verification_status`, never on `status`.
          */
         PaymentProviderConfigItem: {
             /**
@@ -8817,6 +8860,37 @@ export interface components {
              * @example 2024-01-01T00:00:00Z
              */
             updated_at: string;
+            /**
+             * @description What the PROVIDER answered the last time this credential was sent
+             *     to it. `ok` — accepted. `failed` — refused; see
+             *     `verification_error`. `unverified` — never checked, the credential
+             *     has changed since the last check, the provider could not be
+             *     reached, or arena has no way to verify this provider. Treat
+             *     `unverified` as "unknown", never as a pass.
+             *
+             *     Set automatically whenever the secrets are saved, and on demand
+             *     via POST /v1/organizations/{org_id}/payment-configs/{id}/verify.
+             * @example ok
+             * @enum {string}
+             */
+            verification_status: "unverified" | "ok" | "failed";
+            /**
+             * Format: date-time
+             * @description When the provider last ACCEPTED this credential, or null if it
+             *     never has. Deliberately survives a later failure, so an operator
+             *     can see that a key worked until a given moment.
+             * @example 2026-09-21T14:30:00Z
+             */
+            verified_at?: string | null;
+            /**
+             * @description The provider's own wording of the most recent refusal or of the
+             *     reason a check could not be completed, truncated to 500
+             *     characters. Null when the credential was accepted or has never
+             *     been checked. Operator-facing only — never surfaced on an
+             *     unauthenticated route.
+             * @example stripe: API error (status 401, type invalid_request_error, code ): Invalid API Key provided: sk_test_****abcd
+             */
+            verification_error?: string | null;
         };
         /**
          * @description Request body for POST /v1/organizations/{org_id}/payment-configs.
@@ -22315,6 +22389,78 @@ export interface operations {
              *     configs are unrestricted.
              */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    verifyPaymentProviderConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 primary key of the resource being addressed. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The config with the verification verdict applied */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        payment_config: components["schemas"]["PaymentProviderConfigItem"];
+                    };
+                };
+            };
+            /** @description Malformed org_id or id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks payment_config.write */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not found or owned by another org */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
