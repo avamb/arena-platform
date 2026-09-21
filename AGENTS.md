@@ -344,6 +344,19 @@ entries short and factual.
 - **A bash `for f in ...; do ...; done` loop is rejected by the allowlist**
   with a bogus "Command 'f' is not allowed". Enumerate paths explicitly
   instead of looping.
+- **Editing a source file with a `python ... str.replace` heredoc FAILS
+  SILENTLY on the many CRLF files in this repo**, and line endings are mixed
+  per file (`apps/widget/src/ArenaTickets.svelte` is CRLF,
+  `apps/tickets-page/src/lib/render.ts` is LF — check with `file <path>`, not
+  by eye: the Bash tool's `cat -A` showed no `^M` on a file that `python`
+  proved was CRLF). A multi-line pattern written with `\n` matches nothing,
+  `str.replace` returns the string unchanged, and the script still prints its
+  success line — so the edit looks applied and is not. A `re.sub` whose
+  pattern starts `\n\s*` is worse: on CRLF it eats the previous line's `\n`
+  and leaves a bare `\r`, producing a file with "CRLF, CR line terminators"
+  that git then warns about on `add`. Use the Edit tool for source files; if a
+  scripted sweep is genuinely needed, assert the match (`assert old in s`)
+  and re-run `file <path>` afterwards.
 - **Bil24 harness: `{{categoryPriceId}}` resolves to a platform UUID by
   default, and a UUID on the wire answers `-2`.** `resolveGolden`'s fallback
   for that placeholder is `st.AssignedTierID` (a UUID), but since feature #476
