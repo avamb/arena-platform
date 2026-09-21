@@ -218,9 +218,21 @@ func parseSBTCategories(root *xmlNode) ([]SBTCategory, map[int]SBTCategory, Vali
 		}}
 	}
 
+	// The spec example (sbt 1.0) puts <sbt:category> straight under
+	// <metadata>; the plan Bil24 actually serves (sbt 1.1) wraps them in one
+	// <sbt:categories sbt:currency=… sbt:sold=…> container. Both are read.
+	var candidates []xmlChild
+	for _, ch := range meta.Children {
+		if ch.element != nil && ch.element.Name.Local == "categories" {
+			candidates = append(candidates, ch.element.Children...)
+			continue
+		}
+		candidates = append(candidates, ch)
+	}
+
 	byIndex := map[int]SBTCategory{}
 	var cats []SBTCategory
-	for _, ch := range meta.Children {
+	for _, ch := range candidates {
 		el := ch.element
 		if el == nil || el.Name.Local != "category" {
 			continue

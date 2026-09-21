@@ -348,6 +348,37 @@ func TestImportSBTSVG_RowFromTitle(t *testing.T) {
 	}
 }
 
+// TestImportSBTSVG_CategoriesWrapper: the plan Bil24 really serves is sbt 1.1,
+// where <metadata> holds <sbt:document/> and ONE <sbt:categories> container
+// around the <sbt:category> entries — not the bare list of the spec example.
+// Found on the first import of a live Bil24 plan (2026-09-21): every seat was
+// rejected with sbt_seat_category_missing.
+func TestImportSBTSVG_CategoriesWrapper(t *testing.T) {
+	t.Parallel()
+	svg := sbtDoc(`viewBox="0 0 100 100"`,
+		sbtMetadata(`<sbt:document sbt:version="1.1"/>`+
+			`<sbt:categories sbt:currency="CZK" sbt:sold="0">`+
+			`<sbt:category sbt:class="cat1" sbt:color="#ff0000" sbt:id="93924675" sbt:index="1" sbt:name="First" sbt:price="300" sbt:used="1"/>`+
+			`<sbt:category sbt:class="cat2" sbt:color="#ffa000" sbt:id="93924676" sbt:index="2" sbt:name="Second" sbt:price="500" sbt:used="1"/>`+
+			`</sbt:categories>`),
+		sbtSector("Balcony", "1",
+			`<circle sbt:id="2874571138" sbt:state="0" sbt:cat="1" sbt:seat="1" cx="1" cy="2" r="3"/>`+
+				`<circle sbt:id="2874571139" sbt:state="0" sbt:cat="2" sbt:seat="2" cx="5" cy="2" r="3"/>`))
+	plan, _, errs := ImportSBTSVG([]byte(svg))
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if len(plan.Categories) != 2 {
+		t.Fatalf("categories = %d, want 2", len(plan.Categories))
+	}
+	if plan.Categories[0].ExternalID != 93924675 || plan.Categories[1].PriceMinor != 50000 {
+		t.Errorf("categories read wrong: %+v", plan.Categories)
+	}
+	if got := plan.Geometry.SeatCount(); got != 2 {
+		t.Errorf("seat count = %d, want 2", got)
+	}
+}
+
 // TestImportSBTSVG_DecorCircleIsNotASeat: a plain <circle> without the
 // sbt attributes belongs to the backdrop, never to a row.
 func TestImportSBTSVG_DecorCircleIsNotASeat(t *testing.T) {
