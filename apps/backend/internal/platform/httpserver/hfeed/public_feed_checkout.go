@@ -439,7 +439,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			))
 			return
 		}
-		unitPrice, priceErr := h.publicTierUnitPrice(ctx, tier)
+		unitPrice, priceErr := h.publicTierUnitPrice(ctx, h.tierQueries, tier)
 		if priceErr != "" {
 			h.writePricingError(w, r, priceErr)
 			return
@@ -502,6 +502,47 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 
 	expiresAt := time.Now().UTC().Add(hcheckout.DefaultReservationTTL)
 
+	// ── 9b. Everything the hold does not need the sessions row for ───────────
+	// The server load test of 2026-09-22 (docs/loadtest/2026-09-22_server_step2_ru.md
+	// §4.4) found the widget's first ceiling here, not in the CPU: this
+	// handler used to read the payment configuration, the promo usage
+	// counts and the seat tier prices FROM THE POOL while its own
+	// transaction already held the sessions row lock. Every such read is a
+	// second pool connection taken by a request that is blocking the next
+	// hold; under a browsing crowd the pool (20) filled with requests
+	// waiting for each other and the whole api stood still until the
+	// client's timeout. So: whatever can be known before the lock is
+	// gathered here on the pool, and whatever must be read under the lock
+	// goes through the transaction's own connection (see 10).
+	gaMayBePaid := false
+	for _, g := range pricedGA {
+		if g.unitPrice > 0 {
+			gaMayBePaid = true
+			break
+		}
+	}
+	var gaDiscount int64
+	var gaPromoCodeID *uuid.UUID
+	if !hasSeats {
+		// Validate the promo against the platform-computed GA subtotal.
+		gaCurrency := ""
+		if len(pricedGA) > 0 {
+			gaCurrency = pricedGA[0].currency
+		}
+		gaPromoLines := hcheckout.TierLinesForSession(gaLines, sessionID.String(), gaCurrency)
+		var promoErrCode string
+		gaDiscount, gaPromoCodeID, promoErrCode = h.applyPromoDiscount(ctx, h.promoQueries, promoRow, gaPromoLines, req.HolderEmail)
+		if promoErrCode != "" {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+				promoErrCode, "promo code is not applicable", r,
+			))
+			return
+		}
+	}
+	// A seated cart is priced from the tier bindings of the seats it locks,
+	// so it may turn out paid; a GA cart only when a priced line exists.
+	preflight := h.preparePaymentPreflight(ctx, checkCtx, req.ReturnURL, hasSeats || gaMayBePaid)
+
 	// ── 10. Begin transaction ─────────────────────────────────────────────────
 	if h.inventoryQueries == nil || h.pool == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
@@ -521,6 +562,16 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 
 	invQ := h.inventoryQueries.WithTx(tx)
 	resQ := h.reservationQueries.WithTx(tx)
+	// The seat tier prices and the seated cart's promo caps are read after
+	// the seats are locked, because the tier bindings come from the locked
+	// rows — but through THIS connection, never through the pool (see 9b).
+	var tierQ, promoQ *gen.Queries
+	if h.tierQueries != nil {
+		tierQ = h.tierQueries.WithTx(tx)
+	}
+	if h.promoQueries != nil {
+		promoQ = h.promoQueries.WithTx(tx)
+	}
 
 	// ── 11. Seated branch ─────────────────────────────────────────────────────
 	if hasSeats {
@@ -730,7 +781,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		// session_seats.tier_id bindings, plus the GA lines. Seats without a
 		// bound tier price at 0. Runs inside the hold transaction so a pricing
 		// rejection (e.g. pwyw tier) rolls the holds back cleanly.
-		seatLines, seatCurrency, errCode := h.seatPricingLines(ctx, sessionID, locked)
+		seatLines, seatCurrency, errCode := h.seatPricingLines(ctx, tierQ, sessionID, locked)
 		if errCode != "" {
 			h.writePricingError(w, r, errCode)
 			return
@@ -749,7 +800,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		// every line is priced. A rejection rolls back the holds via the
 		// deferred tx.Rollback.
 		promoLines := hcheckout.TierLinesForSession(lines, sessionID.String(), currency)
-		discount, promoCodeID, promoErrCode := h.applyPromoDiscount(ctx, promoRow, promoLines, req.HolderEmail)
+		discount, promoCodeID, promoErrCode := h.applyPromoDiscount(ctx, promoQ, promoRow, promoLines, req.HolderEmail)
 		if promoErrCode != "" {
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
 				promoErrCode, "promo code is not applicable", r,
@@ -766,8 +817,10 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		// request. Returning here lets the deferred tx.Rollback release the
 		// seats, the GA units and the reserved capacity that would otherwise
 		// sit held until the TTL sweep (~31 min) — which is how three failed
-		// attempts "sold out" a 15-seat master class on 2026-09-20.
-		if !h.preflightPaidCheckout(ctx, w, r, checkCtx, bd.Total, req.ReturnURL) {
+		// attempts "sold out" a 15-seat master class on 2026-09-20. The
+		// answer was gathered before the transaction opened (9b); only the
+		// decision is taken here, once the total is known.
+		if !h.applyPaymentPreflight(ctx, w, r, checkCtx, bd.Total, preflight) {
 			return
 		}
 
@@ -815,19 +868,9 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		totalQty += g.Quantity
 	}
 
-	// Validate the promo against the platform-computed GA subtotal.
-	gaCurrency := ""
-	if len(pricedGA) > 0 {
-		gaCurrency = pricedGA[0].currency
-	}
-	gaPromoLines := hcheckout.TierLinesForSession(gaLines, sessionID.String(), gaCurrency)
-	discount, promoCodeID, promoErrCode := h.applyPromoDiscount(ctx, promoRow, gaPromoLines, req.HolderEmail)
-	if promoErrCode != "" {
-		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
-			promoErrCode, "promo code is not applicable", r,
-		))
-		return
-	}
+	// The promo was validated against the GA subtotal before the
+	// transaction opened (9b): nothing here depends on the hold.
+	discount, promoCodeID := gaDiscount, gaPromoCodeID
 
 	// Lock order (AGENTS.md, hcheckout.createGAHoldTx): bump
 	// sessions.seat_status_version FIRST, then inventory_ledger, then the
@@ -944,7 +987,8 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// A paid cart that could never have been charged must not survive this
 	// request: the deferred tx.Rollback releases the GA units and the
 	// reserved capacity instead of leaving them held until the TTL sweep.
-	if !h.preflightPaidCheckout(ctx, w, r, checkCtx, bd.Total, req.ReturnURL) {
+	// The configuration was read before the transaction opened (9b).
+	if !h.applyPaymentPreflight(ctx, w, r, checkCtx, bd.Total, preflight) {
 		return
 	}
 
@@ -996,12 +1040,20 @@ func resolvePublicTierUnitPrice(tier gen.TicketTierRow) (int64, string) {
 // resolvePublicTierUnitPrice: fixed-mode tiers resolve their scheduled
 // price window at "now" through the ONE resolver (priceresolve →
 // domain/pricing). The mode gating stays identical.
-func (h *Handler) publicTierUnitPrice(ctx context.Context, tier gen.TicketTierRow) (int64, string) {
+//
+// q is the handle the price windows are read through: the pool before a
+// hold transaction opens, the transaction's own Queries (WithTx) inside
+// one — a pool read from inside an open transaction is a second
+// connection held while the first one holds the sessions row lock.
+func (h *Handler) publicTierUnitPrice(ctx context.Context, q *gen.Queries, tier gen.TicketTierRow) (int64, string) {
 	unit, errCode := resolvePublicTierUnitPrice(tier)
 	if errCode != "" || tier.PricingMode != "fixed" {
 		return unit, errCode
 	}
-	eff, err := priceresolve.ForTier(ctx, h.tierQueries, tier, time.Now().UTC())
+	if q == nil {
+		return 0, "dependency.tier_unavailable"
+	}
+	eff, err := priceresolve.ForTier(ctx, q, tier, time.Now().UTC())
 	if err != nil {
 		h.logger.Error("public_feed_checkout: price window lookup failed",
 			slog.String("tier_id", tier.ID.String()), slog.String("error", err.Error()))
@@ -1015,8 +1067,14 @@ func (h *Handler) publicTierUnitPrice(ctx context.Context, tier gen.TicketTierRo
 // (tier_id, unit_price) group, via the shared SEAT-C2 helper. Seats without
 // a bound tier price at 0. Also returns the currency of the first priced
 // tier ("" when no seat has a tier) and an error code ("" on success).
+//
+// q must be the hold transaction's own Queries (tierQueries.WithTx): the
+// seats are already locked when this runs, and a pool read here is exactly
+// the second-connection-under-the-lock pattern the 2026-09-22 load test
+// traced the widget's first ceiling to.
 func (h *Handler) seatPricingLines(
 	ctx context.Context,
+	q *gen.Queries,
 	sessionID uuid.UUID,
 	seats []gen.SessionSeatRow,
 ) ([]hcheckout.PricingLineInput, string, string) {
@@ -1030,10 +1088,10 @@ func (h *Handler) seatPricingLines(
 		if _, done := tierPrice[key]; done {
 			continue
 		}
-		if h.tierQueries == nil {
+		if q == nil {
 			return nil, "", "dependency.tier_unavailable"
 		}
-		tier, err := h.tierQueries.GetTicketTierByID(ctx, *s.TierID, sessionID)
+		tier, err := q.GetTicketTierByID(ctx, *s.TierID, sessionID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, "", "checkout.tier_not_found"
@@ -1044,7 +1102,7 @@ func (h *Handler) seatPricingLines(
 			)
 			return nil, "", "checkout.tier_lookup_failed"
 		}
-		unit, errCode := h.publicTierUnitPrice(ctx, tier)
+		unit, errCode := h.publicTierUnitPrice(ctx, q, tier)
 		if errCode != "" {
 			return nil, "", errCode
 		}
@@ -1082,7 +1140,11 @@ func (h *Handler) writePricingError(w http.ResponseWriter, r *http.Request, code
 // applyPromoDiscount validates the pre-fetched promo row against the
 // platform-computed order lines. Returns (discount, promoCodeID, errCode);
 // errCode is "" when no promo was supplied or the promo is applicable.
-func (h *Handler) applyPromoDiscount(ctx context.Context, promoRow *gen.PromoCodeRow, lines []hcheckout.TierLine, buyerEmail string) (int64, *uuid.UUID, string) {
+//
+// q is where the usage caps are counted: the pool when this runs before the
+// hold transaction (GA carts), the transaction's own Queries inside it
+// (seated carts, whose subtotal is only known once the seats are locked).
+func (h *Handler) applyPromoDiscount(ctx context.Context, q *gen.Queries, promoRow *gen.PromoCodeRow, lines []hcheckout.TierLine, buyerEmail string) (int64, *uuid.UUID, string) {
 	if promoRow == nil {
 		return 0, nil, ""
 	}
@@ -1093,7 +1155,13 @@ func (h *Handler) applyPromoDiscount(ctx context.Context, promoRow *gen.PromoCod
 	// The usage caps, for the buyer this cart names. A counting failure is
 	// logged and the code is refused — a cap the platform cannot verify is
 	// not one it may wave through.
-	limitErr, err := hcheckout.CheckPromoLimits(ctx, h.promoQueries, *promoRow, nil, buyerEmail)
+	// A nil *gen.Queries must stay a nil interface, or CheckPromoLimits
+	// would call through a typed nil.
+	var limits hcheckout.PromoLimitQuerier
+	if q != nil {
+		limits = q
+	}
+	limitErr, err := hcheckout.CheckPromoLimits(ctx, limits, *promoRow, nil, buyerEmail)
 	if err != nil {
 		h.logger.Error("public_feed_checkout: promo usage count failed",
 			slog.String("promo_code_id", promoRow.ID.String()), slog.String("error", err.Error()))

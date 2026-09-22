@@ -227,6 +227,12 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 
 	invQ := h.inventoryQueries.WithTx(tx)
 	resQ := h.reservationQueries.WithTx(tx)
+	// Re-pricing reads tiers and price windows after the places are locked:
+	// through this connection, never the pool (public_feed_checkout.go 9b).
+	var tierQ *gen.Queries
+	if h.tierQueries != nil {
+		tierQ = h.tierQueries.WithTx(tx)
+	}
 
 	var (
 		locked     []gen.SessionSeatRow
@@ -499,7 +505,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 	currency := ""
 
 	if hasSeats {
-		seatLines, seatCurrency, errCode := h.seatPricingLines(ctx, origRes.SessionID, locked)
+		seatLines, seatCurrency, errCode := h.seatPricingLines(ctx, tierQ, origRes.SessionID, locked)
 		if errCode != "" {
 			h.writePricingError(w, r, errCode)
 			return
@@ -514,9 +520,9 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 	for i := range origGA {
 		g := origGA[i]
 		unit := g.UnitPrice
-		if h.tierQueries != nil {
-			if tier, terr := h.tierQueries.GetTicketTierByID(ctx, g.TierID, origRes.SessionID); terr == nil {
-				if fresh, errCode := h.publicTierUnitPrice(ctx, tier); errCode == "" {
+		if tierQ != nil {
+			if tier, terr := tierQ.GetTicketTierByID(ctx, g.TierID, origRes.SessionID); terr == nil {
+				if fresh, errCode := h.publicTierUnitPrice(ctx, tierQ, tier); errCode == "" {
 					unit = fresh
 				}
 				if currency == "" {
@@ -545,9 +551,9 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		tierIDStr := ""
 		if origRes.TierID != nil {
 			tierIDStr = origRes.TierID.String()
-			if h.tierQueries != nil {
-				if tier, terr := h.tierQueries.GetTicketTierByID(ctx, *origRes.TierID, origRes.SessionID); terr == nil {
-					if fresh, errCode := h.publicTierUnitPrice(ctx, tier); errCode == "" {
+			if tierQ != nil {
+				if tier, terr := tierQ.GetTicketTierByID(ctx, *origRes.TierID, origRes.SessionID); terr == nil {
+					if fresh, errCode := h.publicTierUnitPrice(ctx, tierQ, tier); errCode == "" {
 						unit = fresh
 					}
 					if currency == "" {

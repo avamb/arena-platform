@@ -25,12 +25,27 @@
  *   LT_DIR           ops/loadtest path as the docker host sees it (default: this file's dir)
  *   K6_IMAGE         default grafana/k6:0.54.0
  *   EXTRA_ENV        extra "-e K=V -e K=V" for k6 (e.g. SHARED_IP=1)
+ *   STAND_EXEC       how to run a shell command on the stand host: empty for the
+ *                    local stand (docker on this machine), "ssh arena-loadtest"
+ *                    for a server copy. Enables the stand-side evidence below.
+ *   STAND_API_CONTAINER / STAND_PG_CONTAINER   default arena_api / arena_postgres
+ *   STAND_PG_USER / STAND_PG_DB                default arena / arena
+ *
+ * Stand-side evidence (when the containers are visible locally or through
+ * STAND_EXEC): at 60 % of every step a pg_stat_activity snapshot (backends
+ * waiting on a lock, idle-in-transaction holders, longest open transaction)
+ * and, after the step, the api's own request log for the step window
+ * (completed, 5xx, slower than 5 s). k6 alone cannot tell "the request never
+ * reached the stand" from "the stand answered after the client gave up":
+ * the 2026-09-22 server run showed 0 x 5xx on the k6 side while the api log
+ * had 8 203 responses slower than 5 s and 20/20 pool connections queued on
+ * the sessions row lock. The verdict names the stand when the log says so.
  *
  * The flow pool must be large enough for the whole staircase: the default
  * steps buy about 2300 tickets (sum of rates × 3 min × ~2 tickets) — re-run
  * provision.mjs with FLOW_POOL sized for your STEPS before a long staircase.
  */
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync, existsSync, writeFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,6 +67,84 @@ const K6_IMAGE = process.env.K6_IMAGE || 'grafana/k6:0.54.0';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LT_DIR = process.env.LT_DIR || HERE;
 const EXTRA_ENV = (process.env.EXTRA_ENV || '').split(/\s+/).filter(Boolean);
+const STAND_EXEC = (process.env.STAND_EXEC || '').trim();
+const STAND_API = process.env.STAND_API_CONTAINER || 'arena_api';
+const STAND_PG = process.env.STAND_PG_CONTAINER || 'arena_postgres';
+const STAND_PG_USER = process.env.STAND_PG_USER || 'arena';
+const STAND_PG_DB = process.env.STAND_PG_DB || 'arena';
+
+// Run a shell command on the stand host (locally, or through STAND_EXEC) and
+// return stdout, or null when the stand cannot be reached that way.
+function standSh(cmd, timeoutMs = 30000) {
+  const full = STAND_EXEC ? `${STAND_EXEC} ${JSON.stringify(cmd)}` : cmd;
+  const res = spawnSync(full, { encoding: 'utf8', shell: true, timeout: timeoutMs, env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
+  return res.status === 0 ? String(res.stdout) : null;
+}
+
+let standAvailable = null;
+function standReachable() {
+  if (standAvailable === null) {
+    const out = standSh(`docker inspect -f "{{.State.Running}}" ${STAND_API} ${STAND_PG}`);
+    standAvailable = out !== null && out.split(/\s+/).filter(Boolean).every((v) => v === 'true');
+    if (!standAvailable) console.log(`   (stand-side evidence off: cannot see ${STAND_API}/${STAND_PG}${STAND_EXEC ? ' through ' + STAND_EXEC : ' locally'})`);
+  }
+  return standAvailable;
+}
+
+const SNAPSHOT_SQL = "select count(*) filter (where wait_event_type='Lock'), count(*) filter (where state='idle in transaction'), count(*) filter (where state<>'idle'), coalesce(max(extract(epoch from now()-xact_start)) filter (where state<>'idle'),0)::int from pg_stat_activity where datname=current_database() and backend_type='client backend'";
+
+// Fire the mid-step snapshot in the background (k6 blocks this process),
+// have it write a file, read the file back after the step.
+function startSnapshot(rate) {
+  const file = join(HERE, 'results', `snapshot-${ENTRY}-${rate}.txt`);
+  rmSync(file, { force: true });
+  const delay = Math.max(5, Math.round(STEP_SECONDS * 0.6));
+  const psql = `docker exec ${STAND_PG} psql -U ${STAND_PG_USER} -d ${STAND_PG_DB} -At -F , -c "${SNAPSHOT_SQL}"`;
+  const remote = STAND_EXEC ? `${STAND_EXEC} ${JSON.stringify(psql)}` : psql;
+  // A node child does the waiting: cmd.exe's `timeout` refuses to run
+  // without a console, and this must work on the Windows laptop too.
+  const script = `setTimeout(() => { const r = require('node:child_process').spawnSync(${JSON.stringify(remote)}, { shell: true, encoding: 'utf8' }); require('node:fs').writeFileSync(${JSON.stringify(file)}, r.status === 0 ? r.stdout : ''); }, ${delay * 1000});`;
+  const child = spawn(process.execPath, ['-e', script], { stdio: 'ignore', env: { ...process.env, MSYS_NO_PATHCONV: '1' } });
+  child.unref();
+  return file;
+}
+
+function readSnapshot(file) {
+  try {
+    const parts = readFileSync(file, 'utf8').trim().split(',').map((x) => parseInt(x, 10));
+    if (parts.length < 4 || parts.some((x) => Number.isNaN(x))) return null;
+    return { lock_waiters: parts[0], idle_in_tx: parts[1], active: parts[2], longest_tx_s: parts[3] };
+  } catch (e) { return null; }
+}
+
+// The api's own view of the step: what it completed, and how much of it late.
+// Through STAND_EXEC the counting stays on the stand host (grep); on a local
+// stand the log comes here and is counted in JS, so a Windows shell works too.
+const API_PATTERNS = {
+  api_completed: /http\.request\.completed/,
+  api_5xx: /http\.request\.completed.*"status":5[0-9][0-9]/,
+  api_slow_5s: /http\.request\.completed.*"latency_ms":([5-9][0-9]{3}|[0-9]{5,})/,
+};
+function apiLog(sinceIso, untilIso) {
+  const logArgs = ['logs', '--since', sinceIso, '--until', untilIso, STAND_API];
+  if (STAND_EXEC) {
+    const base = `docker ${logArgs.join(' ')} 2>&1`;
+    const out = {};
+    for (const [key, re] of Object.entries(API_PATTERNS)) {
+      const txt = standSh(`${base} | grep -c -E '${re.source.replace(/\\\./g, '.')}'`);
+      if (txt === null) return null;
+      const n = parseInt(txt.trim(), 10);
+      out[key] = Number.isNaN(n) ? null : n;
+    }
+    return out;
+  }
+  const res = spawnSync('docker', logArgs, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  if (res.status !== 0) return null;
+  const lines = `${res.stdout}\n${res.stderr}`.split('\n');
+  const out = {};
+  for (const [key, re] of Object.entries(API_PATTERNS)) out[key] = lines.reduce((n, l) => n + (re.test(l) ? 1 : 0), 0);
+  return out;
+}
 
 const fixturesPath = join(HERE, 'results', 'fixtures.local.json');
 if (!existsSync(fixturesPath)) {
@@ -78,9 +171,15 @@ function runStep(rate) {
   // previous step must never be read as this step's result.
   const summaryPath = join(HERE, 'results', `${ENTRY}-flow-${FIX.run_id}.json`);
   rmSync(summaryPath, { force: true });
+  const evidence = standReachable();
+  const snapshotFile = evidence ? startSnapshot(rate) : null;
   const t0 = Date.now();
   const res = spawnSync('docker', args, { encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' }, maxBuffer: 64 * 1024 * 1024 });
-  const seconds = Math.round((Date.now() - t0) / 1000);
+  const t1 = Date.now();
+  const seconds = Math.round((t1 - t0) / 1000);
+  // The api may still be answering requests k6 already abandoned: give its
+  // log window the k6 client timeout (30 s) of slack.
+  const stand = evidence ? { ...(readSnapshot(snapshotFile) || {}), ...(apiLog(new Date(t0).toISOString(), new Date(t1 + 30000).toISOString()) || {}) } : {};
   let m = null;
   try { m = JSON.parse(readFileSync(summaryPath, 'utf8')).metrics; } catch (e) { /* no summary: k6 died */ }
   const val = (name, key) => {
@@ -106,6 +205,7 @@ function runStep(rate) {
     issuance_p95_ms: val(`${PREFIX}_ticket_issuance_ms`, 'p(95)'),
     not_shown: val(ENTRY === 'gateway' ? 'gw_tickets_not_issued' : 'nat_paid_but_not_shown_to_buyer', 'count'),
     dropped_iterations: val('dropped_iterations', 'count'),
+    ...stand,
   };
   if (m === null) row.k6_tail = String(res.stderr || res.stdout).split('\n').slice(-8).join(' | ');
   return row;
@@ -121,8 +221,16 @@ function broke(row) {
   // usual ceiling. 5xx is the stand itself.
   if (row.errors_5xx) reasons.push(`${row.errors_5xx} responses 5xx (the stand)`);
   if (row.errors_transport && !row.errors_5xx && (row.purchases_failed || (row.error_rate !== null && row.error_rate > MAX_ERROR_RATE))) {
-    reasons.push(`${row.errors_transport} transport failures, 0 × 5xx (requests never reached the stand: generator / NAT / proxy, not arena)`);
+    const standLate = (row.api_slow_5s || 0) + (row.api_5xx || 0);
+    if (standLate > 0) {
+      reasons.push(`${row.errors_transport} transport failures on the k6 side, but the api log says the stand: ${row.api_slow_5s || 0} responses slower than 5 s and ${row.api_5xx || 0} × 5xx during the step (the client gave up first)`);
+    } else if (row.api_completed !== undefined && row.api_completed !== null) {
+      reasons.push(`${row.errors_transport} transport failures, 0 × 5xx, and the api log shows nothing late (${row.api_completed} completed): generator / NAT / proxy, not arena`);
+    } else {
+      reasons.push(`${row.errors_transport} transport failures, 0 × 5xx (no stand-side log to check — set STAND_EXEC; probably generator / NAT / proxy, not arena)`);
+    }
   }
+  if (row.lock_waiters) reasons.push(`lock queue on the stand: ${row.lock_waiters} backends waiting on a lock, ${row.idle_in_tx} idle in transaction, longest open transaction ${row.longest_tx_s} s at 60 % of the step`);
   if (row.journey_p95_ms !== null && row.journey_p95_ms > MAX_P95_MS) reasons.push(`journey p95 ${Math.round(row.journey_p95_ms)} ms > ${MAX_P95_MS} ms`);
   if (row.purchases_failed) reasons.push(`${row.purchases_failed} failed purchases`);
   if (row.not_shown) reasons.push(`${row.not_shown} paid but tickets not shown`);
@@ -144,6 +252,10 @@ for (const rate of STEPS) {
   rows.push(row);
   console.log(`   ok=${fmt(row.purchases_ok)} failed=${fmt(row.purchases_failed)} sold_out=${fmt(row.sold_out)} errors=${fmt(row.error_rate === null ? null : row.error_rate * 100, 2)}% `
     + `journey p95=${fmt(row.journey_p95_ms)}ms p99=${fmt(row.journey_p99_ms)}ms checkout p95=${fmt(row.checkout_p95_ms)}ms rps=${fmt(row.rps, 1)}`);
+  if (row.api_completed !== undefined) {
+    console.log(`   stand: api completed ${fmt(row.api_completed)}, 5xx ${fmt(row.api_5xx)}, slower than 5 s ${fmt(row.api_slow_5s)}; `
+      + `pg at 60 %: ${fmt(row.lock_waiters)} waiting on lock, ${fmt(row.idle_in_tx)} idle in tx, ${fmt(row.active)} active, longest tx ${fmt(row.longest_tx_s)} s`);
+  }
   if (row.broke.length) {
     console.log(`   BROKE: ${row.broke.join('; ')}`);
     break;

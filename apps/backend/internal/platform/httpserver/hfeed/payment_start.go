@@ -398,55 +398,94 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 // Handler glue
 // ─────────────────────────────────────────────────────────────────────────────
 
-// preflightPaidCheckout is the configuration-only go/no-go for a cart that
-// will have to be paid for. On failure it writes the HTTP error itself and
-// reports false; the caller must return immediately, which lets its deferred
-// tx.Rollback release everything the request had taken.
+// paymentPreflight is the configuration-only go/no-go for a cart that may
+// have to be paid for, gathered BEFORE the hold transaction opens and
+// decided AFTER pricing, inside it.
 //
-// WHY IT LIVES HERE, after pricing and before the hold transaction commits,
-// rather than before the transaction opens:
+// The two halves are split on purpose. The decision needs the total, and
+// the total is only known once pricing has run — a seated cart is priced
+// from the tier bindings of the seats it has just locked. But the READS
+// the decision rests on (return-URL policy, channel provider, the org's
+// usable config) depend only on the channel and the organization, both
+// known before the transaction. Until 2026-09-22 they ran inside the
+// transaction, on the POOL, while it held the sessions row lock; the
+// server load test traced the widget's first ceiling to exactly that: a
+// request holding the lock waited for a pool connection that the requests
+// queued behind it were holding (docs/loadtest/2026-09-22_server_step2_ru.md
+// §4.4). Nothing here touches the transaction any more.
 //
-//   - Only the total decides whether a provider is needed at all, and the
-//     total is only known once pricing has run. A seated cart is priced from
-//     the tier bindings of the seats it has just locked, so the answer cannot
-//     be had any earlier without pricing twice.
-//   - Nothing the request has written is durable until the caller's commit,
-//     so "after pricing, before commit" is the narrowest point at which a
-//     refusal costs the session nothing — and it needs no undo path of its
-//     own beyond the rollback the caller already defers. Releasing a
-//     committed hold by hand would be a second write path for the same
-//     thing, and a second way to get it wrong.
-//   - A zero-total cart returns true without looking at anything: a free
-//     checkout has no provider and must keep working for an organization
-//     that has never connected one.
-//
-// It answers exactly the codes and statuses the post-commit payment step
-// answers, because PaymentStarter.CheckPaymentConfigured runs exactly the
-// checks StartHostedCheckout runs first (StripePaymentStarter.resolveConfig
-// is the single implementation of both).
-func (h *Handler) preflightPaidCheckout(
+// A zero-total cart still passes without looking at anything: a free
+// checkout has no provider and must keep working for an organization that
+// has never connected one. The codes and statuses are the ones the
+// post-commit payment step answers, because PaymentStarter.CheckPaymentConfigured
+// runs exactly the checks StartHostedCheckout runs first
+// (StripePaymentStarter.resolveConfig is the single implementation of both).
+type paymentPreflight struct {
+	// gathered is false when the caller knew the cart cannot be paid (no
+	// priced line, no seats) and skipped the reads; applyPaymentPreflight
+	// then gathers late in the impossible case that a total shows up.
+	gathered       bool
+	returnURL      string
+	returnURLErr   error
+	starterMissing bool
+	configErr      error
+}
+
+// preparePaymentPreflight runs the configuration reads on the pool, before
+// the hold transaction. mayBePaid lets a cart that cannot have a total skip
+// them (a free GA cart) — the reads are three queries per checkout.
+func (h *Handler) preparePaymentPreflight(
+	ctx context.Context,
+	checkCtx gen.PublicCheckoutContextRow,
+	returnURL string,
+	mayBePaid bool,
+) paymentPreflight {
+	pre := paymentPreflight{returnURL: returnURL}
+	if !mayBePaid {
+		return pre
+	}
+	pre.gathered = true
+	// A buyer with nowhere to be sent back to cannot complete a payment
+	// either, and that failure burns inventory in exactly the same way.
+	if _, err := h.returnURLPolicy.Resolve(returnURL); err != nil {
+		pre.returnURLErr = err
+	}
+	if h.paymentStarter == nil {
+		pre.starterMissing = true
+		return pre
+	}
+	pre.configErr = h.paymentStarter.CheckPaymentConfigured(ctx, checkCtx.OrgID, checkCtx.SalesChannelID)
+	return pre
+}
+
+// applyPaymentPreflight takes the decision once the total is known. On
+// failure it writes the HTTP error itself and reports false; the caller must
+// return immediately, which lets its deferred tx.Rollback release everything
+// the request had taken — "after pricing, before commit" is the narrowest
+// point at which a refusal costs the session nothing, and it needs no undo
+// path beyond the rollback the caller already defers.
+func (h *Handler) applyPaymentPreflight(
 	ctx context.Context,
 	w http.ResponseWriter,
 	r *http.Request,
 	checkCtx gen.PublicCheckoutContextRow,
 	total int64,
-	returnURL string,
+	pre paymentPreflight,
 ) bool {
 	if total <= 0 {
 		return true
 	}
+	if !pre.gathered {
+		pre = h.preparePaymentPreflight(ctx, checkCtx, pre.returnURL, true)
+	}
 
-	// A buyer with nowhere to be sent back to cannot complete a payment
-	// either, and that failure burns inventory in exactly the same way. It
-	// used to be caught after the hold had committed; the code and status
-	// are unchanged, only the timing.
-	if _, err := h.returnURLPolicy.Resolve(returnURL); err != nil {
-		h.writePaymentStartError(w, r, err, checkCtx,
+	if pre.returnURLErr != nil {
+		h.writePaymentStartError(w, r, pre.returnURLErr, checkCtx,
 			"public_feed_checkout: refusing a paid cart before it takes inventory (return_url)")
 		return false
 	}
 
-	if h.paymentStarter == nil {
+	if pre.starterMissing {
 		// Loud on purpose: a deployment that confirms carts it cannot charge
 		// is misconfigured, and every buyer hitting this loses their seats.
 		h.logger.Error("public_feed_checkout: no payment starter is wired; a paid checkout cannot be completed",
@@ -459,8 +498,8 @@ func (h *Handler) preflightPaidCheckout(
 		return false
 	}
 
-	if err := h.paymentStarter.CheckPaymentConfigured(ctx, checkCtx.OrgID, checkCtx.SalesChannelID); err != nil {
-		h.writePaymentStartError(w, r, err, checkCtx,
+	if pre.configErr != nil {
+		h.writePaymentStartError(w, r, pre.configErr, checkCtx,
 			"public_feed_checkout: refusing a paid cart before it takes inventory (payment config)")
 		return false
 	}

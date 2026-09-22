@@ -1497,6 +1497,21 @@ entries short and factual.
   shared-core limit (prod 4 + copy + generator) — move the generator to
   `ccx` before rescaling the copy; `pkill -f <script>` inside an
   `ssh host '…'` line kills its own shell.
+  **Fixed 2026-09-23:** `hfeed` checkout/start and checkout recover now
+  read seat tier prices, price windows and promo caps through the hold
+  transaction's own Queries (`h.tierQueries.WithTx(tx)` /
+  `h.promoQueries.WithTx(tx)`), the GA promo check and the payment
+  pre-flight reads run BEFORE `BeginTx` (`preparePaymentPreflight`, decided
+  after pricing by `applyPaymentPreflight`), and migration 0109 adds
+  `session_seats_ga_tier_status_idx (session_id, tier_id, status, seat_key)
+  WHERE kind='ga_unit'` — GA allocation on a 66k-place session went from
+  150 ms / 2130 buffers to 0.2 ms / 9. **Rule: inside an open pgx
+  transaction never call a `*gen.Queries` bound to the pool** (every
+  `h.<x>Queries` field is one) — use `.WithTx(tx)` or move the read before
+  `BeginTx`; a pool acquire while holding a row lock is a distributed
+  deadlock waiting for a full pool. `publicTierUnitPrice`,
+  `seatPricingLines` and `applyPromoDiscount` take the handle explicitly
+  for that reason.
 - **The one-screen session overview is `GET
   /v1/organizations/{org_id}/sessions/{session_id}/summary`** (`order.read`,
   `horders/session_summary.go`, queries in `session_summary.sql`). Add new
