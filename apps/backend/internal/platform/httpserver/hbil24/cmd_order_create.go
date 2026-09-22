@@ -555,11 +555,23 @@ func orderPricingLines(units []orderUnit) []hcheckout.PricingLineInput {
 	return out
 }
 
-// orderPromoDiscount picks the FIRST applicable code out of the request's
-// promoCodes unioned with the codes already attached to the gateway session
-// (spec §7.7 step 6). A code that does not apply is silently skipped rather
-// than failing the order: ADD_PROMO_CODES is where a buyer learns a code is
-// invalid, and refusing checkout over it would strand the sale.
+// orderPromoDiscount picks the FIRST applicable code for the order (spec §7.7
+// step 6). A request that carries the documented `promoCodeList` key — even
+// as an empty list — is the whole truth: only those codes are evaluated, and
+// `[]` means "no discount", whatever ADD_PROMO_CODES attached to the gateway
+// session earlier. The session's `promo_codes` array only ever grows (there
+// is no REMOVE command in the protocol), so a buyer who applied a code in the
+// picker and then took it off again would otherwise still be discounted; the
+// WordPress plugin sends the picker's current code, or `[]`, as
+// `promoCodeList` with every CREATE_ORDER_EXT since 2026-09-22. Without that
+// key the legacy behaviour stands: the plugin's older `promoCodes` spelling
+// (which it always sent as `[]`, see the `CREATE_ORDER_EXT/ga` fixture)
+// unioned with the codes already attached to the gateway session — that is
+// what every site on the older plugin relies on, so `promoCodes: []` must
+// keep meaning "use the session". A code that does not apply is silently
+// skipped rather than failing the order: ADD_PROMO_CODES is where a buyer
+// learns a code is invalid, and refusing checkout over it would strand the
+// sale.
 func (h *Handler) orderPromoDiscount(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -568,7 +580,12 @@ func (h *Handler) orderPromoDiscount(
 	units []orderUnit,
 	currency string,
 ) (int64, *uuid.UUID, bool) {
-	codes := mergePromoCodes(req.PromoCodes, cc.gw.PromoCodes)
+	var codes []string
+	if req.PromoCodeList != nil {
+		codes = mergePromoCodes(req.PromoCodeList)
+	} else {
+		codes = mergePromoCodes(req.PromoCodes, cc.gw.PromoCodes)
+	}
 	if len(codes) == 0 || h.promoQ == nil {
 		return 0, nil, true
 	}

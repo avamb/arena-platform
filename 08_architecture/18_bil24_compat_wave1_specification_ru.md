@@ -753,8 +753,14 @@ CREATE TABLE customer_import_rows (
    строки и суммы (заказ не дублируется, WC может создавать свои pending-заказы). Если
    reservation истекла — старый заказ → `expired`, создаётся новый.
 6. `checkout_sessions`: `InsertCheckoutSessionWithToken` + `ConfirmCheckoutSession`
-   (`pricing_confirmed`) с `PricingRules{PlatformFeeBP: fee_percent×100}` и промокодом
-   (первый валидный из `promoCodes` запроса ∪ `gateway_sessions.promo_codes`).
+   (`pricing_confirmed`) с `PricingRules{PlatformFeeBP: fee_percent×100}` и промокодом:
+   если в запросе ЕСТЬ документированный ключ `promoCodeList` (даже пустой `[]`) — первый
+   валидный только из него, `[]` = без скидки, что бы ни лежало в
+   `gateway_sessions.promo_codes` (массив сессии только растёт, команды «снять код» в
+   протоколе нет, а покупатель мог снять код в пикере — плагин с 2026-09-22 шлёт текущий код
+   пикера или `[]`); без этого ключа — старое поведение: первый валидный из `promoCodes`
+   запроса ∪ `gateway_sessions.promo_codes` (старый плагин всегда шлёт `promoCodes: []` и
+   рассчитывает на сессию).
 7. `orders` + `order_items` (одна строка на юнит/место, `unit_price` из
    `reservation_ga_items.unit_price`), `status='pending_payment'`, `expires_at =
    reservation.expires_at`, `external_ref = orderId` запроса, `source='bil24_gateway'`.

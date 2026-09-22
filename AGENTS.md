@@ -1456,6 +1456,15 @@ entries short and factual.
   picker uses (`checkKDPQuote`, spec 18 §7.6): it answers resultCode 0 with
   `promoApplied` false and the reason in `description` when the code does not
   apply — do not "fix" that into a 101, the picker needs the money either way.
+  **`gateway_sessions.promo_codes` only ever grows** (ADD_PROMO_CODES appends,
+  the protocol has no remove), so CREATE_ORDER_EXT treats the documented
+  `promoCodeList` key as the whole truth when it is PRESENT — `[]` means no
+  discount even though the session still carries the code the buyer removed
+  in the picker (`orderPromoDiscount`, `cmd_order_create.go`). The older
+  `promoCodes: []` spelling (what the `CREATE_ORDER_EXT/ga` fixture and every
+  site on the older plugin send) must keep meaning "use the session codes";
+  scenario 02 guards that, `promo_order_explicit_list_test.go` guards the
+  override.
   A new `bil24.*` description key must be added to
   `bil24compat.Bil24DescriptionKeys` AND to all four locale toml files
   (`internal/platform/i18n/locales/{en,ru,cs,he}.toml`) or the completeness
