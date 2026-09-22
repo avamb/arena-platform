@@ -1,0 +1,8 @@
+# Traefik file provider for docker-compose.traefik.yml. Copied to
+# /opt/arena-loadtest/traefik-dynamic.yml on the copy server.
+http:
+  middlewares:
+    redirect-to-https:
+      redirectScheme:
+        scheme: https
+        permanent: true

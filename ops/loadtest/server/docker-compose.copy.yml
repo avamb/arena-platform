@@ -29,8 +29,15 @@ x-arena-env: &arena-env
   BIL24_REQUIRE_TOKEN: "true"
   EMAIL_MODE: log
   OUTBOX_MODE: noop
-  TRUSTED_PROXY_COUNT: "1"
+  # 1 behind Traefik alone (as on prod). The load generator is ONE address
+  # that sends a distinct X-Forwarded-For per simulated visitor, so on the
+  # copy it must count as a proxy hop too: 2 for a grey-cloud run, 3 for the
+  # run through Cloudflare (§5). Otherwise every visitor is the generator's IP
+  # and PUBLIC_API_IP_RATE_LIMIT (600/min) throttles the whole test.
+  TRUSTED_PROXY_COUNT: "${TRUSTED_PROXY_COUNT:-1}"
   DB_LOG_QUERIES: "false"
+  # Config experiment knob (runbook §3а): prod runs the default 20.
+  DB_POOL_MAX_CONNS: "${DB_POOL_MAX_CONNS:-20}"
   MEDIA_BACKEND: local
   MEDIA_LOCAL_ROOT: /data/media
   MEDIA_SIGNING_SECRET: ${MEDIA_SIGNING_SECRET}

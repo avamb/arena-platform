@@ -123,3 +123,4 @@ apps/admin-web/test-results/
 # Local secrets dropped into the repo root by the owner - never commit
 ArenaSupportBot.txt
 *.secret.txt
+/api-token-*.txt

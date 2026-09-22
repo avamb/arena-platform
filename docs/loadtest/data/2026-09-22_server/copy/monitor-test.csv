@@ -1,0 +1,5 @@
+ts,arena-loadtest-api-1_cpu,arena-loadtest-api-1_mem_mib,arena-loadtest-worker-1_cpu,arena-loadtest-worker-1_mem_mib,arena-loadtest-db-1_cpu,arena-loadtest-db-1_mem_mib,arena-loadtest-stripe_stub-1_cpu,arena-loadtest-stripe_stub-1_mem_mib,arena-loadtest-traefik-1_cpu,arena-loadtest-traefik-1_mem_mib,conns,active,waiting_on_lock,longest_tx_s,deadlocks_total,outbox_backlog,jobs_pending,delivery_pending,dead_letters,expired_unreleased,db_mb
+2026-09-22T17:56:14.539Z,1.94,27.9,0.40,10.0,15.63,202.8,0.00,9.3,1.41,21.9,23,1,0,0,0,0,4,0,0,0,36
+2026-09-22T17:56:21.732Z,3.07,27.5,0.13,10.1,12.82,203.2,0.80,9.6,1.47,22.0,23,1,0,0,0,0,6,0,0,0,36
+2026-09-22T17:56:26.734Z,3.80,27.5,0.22,10.1,0.20,203.3,0.00,9.4,0.00,21.9,23,1,0,0,0,0,4,0,0,0,36
+# stopped after 3 samples

@@ -26,8 +26,16 @@
 
 | Роль | Тип | Что на нём |
 |------|-----|------------|
-| копия стенда `arena-loadtest-1` | CX33 (как прод: 4 vCPU, 8 ГБ) | postgres, redis, arena-api, arena-worker, stripe-stub, Traefik |
-| генератор `arena-loadgen-1` | CX22 | k6 (docker), Prometheus + Grafana из `ops/`, psql |
+| копия стенда `arena-loadtest-1` | CPX22 → CPX32 (как прод) → CPX42 через Rescale | postgres, redis, arena-api, arena-worker, stripe-stub, Traefik |
+| генератор `arena-loadgen-1` | CPX22 | k6 (docker), monitor/capacity (node), psql |
+
+Факты 22.09 при создании (API Hetzner): прод `arena-platform-prod-1` — это
+**cpx32** (AMD, 4 vCPU, 8 ГБ, 160 ГБ), а не CX33; линейка CX22/CX23/CX33/CX43
+в fsn1/nbg1/hel1 в тот день не размещалась вовсе («error during
+placement»), поэтому лестница идёт по линейке прода: cpx22 (2 vCPU/4 ГБ,
+€0.031/ч) → cpx32 (€0.057/ч) → cpx42 (8 vCPU/16 ГБ, €0.111/ч). Серверы
+созданы в **nbg1** (в fsn1 не размещался и cpx22). Rescale без увеличения
+диска обратим.
 
 Стоимость: CX33 около €0.014/час, CX22 около €0.007/час — день прогонов
 дешевле одного билета. Серверы создаются с SSH-ключом владельца (на копии
@@ -66,8 +74,52 @@ Dokploy.
    (db 1 ГБ, api/worker по 512 МБ). Так копия проходит через тот же
    Traefik, что и прод, и `TRUSTED_PROXY_COUNT=1` проверяется в
    настоящих условиях.
-2. Голый `docker compose` на сервере без Traefik — проще, но без прокси и
-   без TLS; допустимо только как запасной вариант.
+2. Голый `docker compose` на сервере **со своим Traefik** —
+   `ops/loadtest/server/docker-compose.traefik.yml` поверх
+   `docker-compose.copy.yml` (Traefik v3 на 80/443, Let's Encrypt http-01,
+   middleware `redirect-to-https@file` из `traefik-dynamic.yml`, сеть
+   `dokploy-network` создаётся руками). Так прошёл прогон 22.09: одноразовую
+   копию не хотелось цеплять к боевой панели. Тот же hop прокси и тот же
+   TLS, что на проде.
+
+   Подводные камни, найденные 22.09:
+   - Docker 29 из `get.docker.com` отказывает API-клиентам ниже 1.40, а
+     Traefik жёстко просит 1.24 и переменную `DOCKER_API_VERSION` не
+     читает — «client version 1.24 is too old», ни одного роутера. Лечится
+     на демоне: `"min-api-version": "1.24"` в `/etc/docker/daemon.json` и
+     `systemctl restart docker`.
+   - Traefik затирает входящий `X-Forwarded-For`, если пир не в
+     `forwardedHeaders.trustedIPs`. Генератор — один адрес, а k6 шлёт по
+     адресу на посетителя, поэтому генератор (v4 и v6) обязан быть в
+     `TRAEFIK_TRUSTED_IPS`, а на api `TRUSTED_PROXY_COUNT=2` (Traefik +
+     генератор; через Cloudflare — 3 и диапазоны Cloudflare в trustedIPs).
+     Иначе все посетители = IP генератора, и `PUBLIC_API_IP_RATE_LIMIT`
+     (600/мин) режет 429-ми весь тест виджета (98 × 429 на 20 заказах/мин).
+   - Образ `grafana/k6` работает не под root: каталог `results/` на
+     генераторе нужен с правом записи (`chmod 777`), иначе сводка не
+     пишется и `capacity.mjs` видит «k6 did not finish».
+   - **Лимит общих ядер проекта Hetzner.** Rescale копии cpx22 → cpx32
+     ответил `resource_limit_exceeded: shared core limit exceeded`: прод
+     (4) + копия (2) + генератор (2) = весь лимит. Выход без обращения в
+     поддержку — генератор на выделенные ядра (`ccx13`, отдельный лимит),
+     тогда копия влезает в cpx32; для точки «8 vCPU» копию тоже придётся
+     делать `ccx33` (выделенные ядра быстрее общих — оговорить в отчёте).
+     После `change_type` сервер остаётся выключенным — `poweron` руками.
+   - **Повторный `provision.mjs` перевыпускает `webhook_secret`** общей
+     платёжной конфигурации организации (409 → PATCH), и все более ранние
+     наборы fixtures начинают получать 401 на вебхуке — 0 покупок при
+     здоровом checkout/start. Два набора для двух сеансов: после второго
+     provisioning скопировать `native.webhook_secret` и
+     `native.payment_config_id` из последнего набора в остальные.
+   - **Неоплаченный чекаут виджета держит места 33 минуты**
+     (`WIDGET_PAYMENT_WINDOW_SECONDS` 1860 + грейс), а не 2 минуты TTL
+     брони: после сломанного прогона пул «исчезает» на полчаса (409
+     sold_out при полном на вид пуле). Между опытами — свежий
+     provisioning, а не тот же пул.
+   - `pkill -f monitor.mjs` внутри `ssh host '…; node monitor.mjs …'`
+     убивает собственную оболочку: паттерн совпадает с командной строкой
+     самого ssh-сеанса. Останавливать отдельным вызовом с
+     `pkill -f "^node .*monitor.mjs"`.
 
 Отличия окружения копии от прода (ставятся в Raw-compose копии, остальное
 как на проде):
@@ -150,7 +202,17 @@ UPDATE customers SET email = 'lt+' || id || '@example.test', phone = NULL;
   прогон — через оранжевое облако (§5).
 - Файрвол Hetzner копии: 443/80 с IP генератора и с адресов Cloudflare;
   22 — с IP владельца. На проде 443 открыт только для Cloudflare — на копии
-  так же плюс генератор.
+  так же плюс генератор. 22.09 создан через API как `arena-loadtest-lab`
+  (применяется по метке `purpose=disposable-loadtest` к обоим серверам):
+  icmp — любой; 22 — адреса владельца (v4 + v6 /64) и хост панели Dokploy;
+  80 — любой (http-01 Let's Encrypt приходит с непубликуемых адресов);
+  443 — владелец, генератор, копия, 22 диапазона Cloudflare; 3000/9090 —
+  владелец. Боевой файрвол `edge-access` не трогается.
+- Три A-записи (`loadtest-api`, `loadtest-worker`, `loadtest-tickets`)
+  созданы через API Cloudflare с комментарием «disposable load-test copy,
+  delete after the run», TTL 60, серое облако. Токен: Zone→DNS→Edit +
+  Zone→Zone→Read, только зона `arenasoldout.com`, фильтр по IP владельца
+  (v4 **и** v6 — `curl` с рабочей машины уходит по v6, браузер тоже).
 - `provision.mjs` отказывается работать с `api.arenasoldout.com`,
   `tickets.arenasoldout.com`, `app.arenasoldout.com` даже при
   `ALLOW_REMOTE=1` — защита от перепутанного `BASE_URL`.

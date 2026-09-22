@@ -1,0 +1,38 @@
+{
+  "entry": "native",
+  "base_url": "https://loadtest-api.arenasoldout.com",
+  "step_seconds": 180,
+  "max_error_rate": 0.005,
+  "max_p95_ms": 1000,
+  "rows": [
+    {
+      "rate": 200,
+      "browsers": 500,
+      "seconds": 211,
+      "k6_exit": 99,
+      "requests": 4648,
+      "rps": 22.13311469863209,
+      "error_rate": 0.548407917383821,
+      "errors_5xx": 0,
+      "errors_transport": 2549,
+      "throttled": 0,
+      "purchases_ok": 11,
+      "purchases_failed": 590,
+      "sold_out": 0,
+      "journey_p95_ms": 34556,
+      "journey_p99_ms": 35284.8,
+      "checkout_p95_ms": 30000.906337,
+      "issuance_p95_ms": 25293.6,
+      "not_shown": 1,
+      "dropped_iterations": 0,
+      "broke": [
+        "errors 54.84% > 0.50%",
+        "2549 transport failures, 0 × 5xx (requests never reached the stand: generator / NAT / proxy, not arena)",
+        "journey p95 34556 ms > 1000 ms",
+        "590 failed purchases",
+        "1 paid but tickets not shown"
+      ]
+    }
+  ],
+  "capacity_orders_per_min": null
+}

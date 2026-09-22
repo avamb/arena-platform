@@ -1,0 +1,48 @@
+# Overlay for docker-compose.copy.yml when the copy is NOT attached to the
+# Dokploy panel (runbook §1.1, path 2 — chosen for the 2026-09-22 run so the
+# disposable copy never touches the production panel). It adds the same
+# proxy hop the production stack has: Traefik v3 on 80/443, Let's Encrypt
+# http-01, the `redirect-to-https@file` middleware the copy's labels expect,
+# and it owns the `dokploy-network` the copy's services join.
+#
+#   docker network create dokploy-network
+#   docker compose -f docker-compose.copy.yml -f docker-compose.traefik.yml up -d
+services:
+  traefik:
+    image: traefik:v3.5
+    restart: always
+    # Docker 29 (get.docker.com, 2026-09) refuses API clients below 1.40 and
+    # Traefik pins 1.24 regardless of DOCKER_API_VERSION, so it never sees the
+    # containers ("client version 1.24 is too old"). The fix is on the daemon:
+    #   /etc/docker/daemon.json  ->  "min-api-version": "1.24"   + systemctl restart docker
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=dokploy-network
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # Traefik drops a client-supplied X-Forwarded-For unless the peer is
+      # trusted. The generator's k6 sends one address per simulated visitor,
+      # so the generator (and, for the §5 run, Cloudflare) must be listed here
+      # — together with TRUSTED_PROXY_COUNT=2 (3 via Cloudflare) on the api.
+      - --entrypoints.websecure.forwardedHeaders.trustedIPs=${TRAEFIK_TRUSTED_IPS}
+      - --entrypoints.web.forwardedHeaders.trustedIPs=${TRAEFIK_TRUSTED_IPS}
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --log.level=INFO
+      - --accesslog=false
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - arena-lt-letsencrypt:/letsencrypt
+      - /opt/arena-loadtest/traefik-dynamic.yml:/etc/traefik/dynamic.yml:ro
+    networks:
+      - dokploy-network
+    mem_limit: 256m
+
+volumes:
+  arena-lt-letsencrypt: null

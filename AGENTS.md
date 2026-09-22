@@ -1469,6 +1469,34 @@ entries short and factual.
   `bil24compat.Bil24DescriptionKeys` AND to all four locale toml files
   (`internal/platform/i18n/locales/{en,ru,cs,he}.toml`) or the completeness
   test fails.
+- **Server load test 2026-09-22 (docs/loadtest/2026-09-22_server_step2_ru.md)
+  — what sizes the stand and what only looks like it.** (1) The widget's
+  hold transaction (`hcheckout` checkout/start) holds the `sessions` row
+  lock (`IncrementSessionSeatStatusVersion`) while the Go code runs between
+  statements; under a 1000-visitor browse crowd on 2 vCPU that gap grows,
+  the queue on the row outgrows `DB_POOL_MAX_CONNS` (20) and EVERYTHING
+  stalls until the client's 30 s timeout — `context canceled` on every
+  route, 20/20 conns busy, CPU idle. `DB_POOL_MAX_CONNS=60` turned 11 ok /
+  590 failed into 1202/1202 on the same server; a real fix is to shorten
+  the hold tx (customer resolve, pricing, payment pre-flight BEFORE the
+  lock) and never acquire a second pool conn inside it. (2) GA gateway
+  commands scale with the category's place count: a 60k-place session made
+  RESERVATION 443 ms vs 56 ms at 2k (`session_seats` scan per hold /
+  count). (3) Gateway browse must be modelled as the WP plugin (few
+  server-side catalog readers), not one GET_ALL_ACTIONS per visitor —
+  ~50 ms of DB CPU each. (4) `provision.mjs` re-keys the org's shared
+  payment config on 409, so older fixture sets get 401 on the webhook;
+  unpaid widget checkouts hold places for 33 min (payment window), not the
+  2-min reservation TTL. (5) Behind a real proxy Traefik drops the
+  client's X-Forwarded-For unless the peer is in
+  `forwardedHeaders.trustedIPs`; the generator (and Cloudflare for the
+  orange-cloud run) must be listed and `TRUSTED_PROXY_COUNT` raised to 2
+  (3 via Cloudflare), or every visitor is one IP and the 600/min per-IP
+  limit 429s the whole test. Docker 29 needs `"min-api-version": "1.24"`
+  in daemon.json for Traefik's docker provider; Hetzner projects have a
+  shared-core limit (prod 4 + copy + generator) — move the generator to
+  `ccx` before rescaling the copy; `pkill -f <script>` inside an
+  `ssh host '…'` line kills its own shell.
 - **The one-screen session overview is `GET
   /v1/organizations/{org_id}/sessions/{session_id}/summary`** (`order.read`,
   `horders/session_summary.go`, queries in `session_summary.sql`). Add new

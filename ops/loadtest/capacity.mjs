@@ -42,6 +42,9 @@ const BASE_URL = process.env.BASE_URL || 'http://host.docker.internal:8080';
 const STEPS = (process.env.STEPS || '25,50,100,200,400').split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => n > 0);
 const STEP_SECONDS = parseInt(process.env.STEP_SECONDS || '180', 10);
 const VISITORS_PER_ORDER = parseFloat(process.env.VISITORS_PER_ORDER || '2');
+// Cap on concurrent browsing visitors: a small generator (2 vCPU / 4 GB) holds
+// ~1000 k6 VUs; above that the generator, not the stand, is what gives out.
+const MAX_VISITORS = parseInt(process.env.MAX_VISITORS || '0', 10) || Infinity;
 const MAX_ERROR_RATE = parseFloat(process.env.MAX_ERROR_RATE || '0.005');
 const MAX_P95_MS = parseFloat(process.env.MAX_P95_MS || '1000');
 const PAUSE_SECONDS = parseInt(process.env.PAUSE_SECONDS || '60', 10);
@@ -58,7 +61,7 @@ if (!existsSync(fixturesPath)) {
 const FIX = JSON.parse(readFileSync(fixturesPath, 'utf8'));
 
 function runStep(rate) {
-  const browsers = Math.max(10, Math.round(rate * VISITORS_PER_ORDER));
+  const browsers = Math.min(MAX_VISITORS, Math.max(10, Math.round(rate * VISITORS_PER_ORDER)));
   const env = [
     '-e', `BASE_URL=${BASE_URL}`,
     '-e', 'SCENARIO=flow',
@@ -135,7 +138,7 @@ function fmt(v, digits = 0) {
 const rows = [];
 console.log(`capacity staircase: entry=${ENTRY} base=${BASE_URL} steps=${STEPS.join(',')} orders/min, ${STEP_SECONDS}s each, break at errors>${MAX_ERROR_RATE} or journey p95>${MAX_P95_MS}ms`);
 for (const rate of STEPS) {
-  console.log(`\n== step ${rate} orders/min (${Math.round(rate * VISITORS_PER_ORDER)} visitors) ==`);
+  console.log(`\n== step ${rate} orders/min (${Math.min(MAX_VISITORS, Math.max(10, Math.round(rate * VISITORS_PER_ORDER)))} visitors) ==`);
   const row = runStep(rate);
   row.broke = broke(row);
   rows.push(row);

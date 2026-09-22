@@ -1,0 +1,57 @@
+{
+  "entry": "gateway",
+  "base_url": "https://loadtest-api.arenasoldout.com",
+  "step_seconds": 120,
+  "max_error_rate": 0.005,
+  "max_p95_ms": 1000,
+  "rows": [
+    {
+      "rate": 200,
+      "browsers": 10,
+      "seconds": 126,
+      "k6_exit": 0,
+      "requests": 2772,
+      "rps": 22.077771799898585,
+      "error_rate": 0,
+      "errors_5xx": 0,
+      "errors_transport": 0,
+      "throttled": 0,
+      "purchases_ok": 401,
+      "purchases_failed": 0,
+      "sold_out": 0,
+      "journey_p95_ms": 277,
+      "journey_p99_ms": 300,
+      "checkout_p95_ms": 66.707891,
+      "issuance_p95_ms": 20,
+      "not_shown": 0,
+      "dropped_iterations": 0,
+      "broke": []
+    },
+    {
+      "rate": 400,
+      "browsers": 10,
+      "seconds": 129,
+      "k6_exit": 99,
+      "requests": 5094,
+      "rps": 39.827447067681724,
+      "error_rate": 0.002552021986650962,
+      "errors_5xx": 0,
+      "errors_transport": 13,
+      "throttled": 0,
+      "purchases_ok": 790,
+      "purchases_failed": 11,
+      "sold_out": 0,
+      "journey_p95_ms": 222,
+      "journey_p99_ms": 249.44000000000005,
+      "checkout_p95_ms": 55.81275084999999,
+      "issuance_p95_ms": 15,
+      "not_shown": 0,
+      "dropped_iterations": 0,
+      "broke": [
+        "13 transport failures, 0 × 5xx (requests never reached the stand: generator / NAT / proxy, not arena)",
+        "11 failed purchases"
+      ]
+    }
+  ],
+  "capacity_orders_per_min": 200
+}

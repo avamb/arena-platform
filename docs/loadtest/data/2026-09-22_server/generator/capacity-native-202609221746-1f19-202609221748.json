@@ -1,0 +1,35 @@
+{
+  "entry": "native",
+  "base_url": "https://loadtest-api.arenasoldout.com",
+  "step_seconds": 60,
+  "max_error_rate": 0.005,
+  "max_p95_ms": 1000,
+  "rows": [
+    {
+      "rate": 20,
+      "browsers": 40,
+      "seconds": 71,
+      "k6_exit": 99,
+      "requests": null,
+      "rps": null,
+      "error_rate": null,
+      "errors_5xx": null,
+      "errors_transport": null,
+      "throttled": null,
+      "purchases_ok": null,
+      "purchases_failed": null,
+      "sold_out": null,
+      "journey_p95_ms": null,
+      "journey_p99_ms": null,
+      "checkout_p95_ms": null,
+      "issuance_p95_ms": null,
+      "not_shown": null,
+      "dropped_iterations": null,
+      "k6_tail": "time=\"2026-09-22T17:48:00Z\" level=error msg=\"failed to handle the end-of-test summary\" error=\"Could not save some summary information:\\n\\t- could not open '/lt/results/native-flow-202609221746-1f19.json': open /lt/results/native-flow-202609221746-1f19.json: permission denied\" | time=\"2026-09-22T17:48:01Z\" level=error msg=\"thresholds on metrics 'nat_purchases_failed, nat_throttled_429' have been crossed\" | ",
+      "broke": [
+        "k6 did not finish"
+      ]
+    }
+  ],
+  "capacity_orders_per_min": null
+}
