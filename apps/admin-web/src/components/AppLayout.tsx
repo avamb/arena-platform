@@ -310,11 +310,42 @@ function NavItem({
   readonly onNavigate?: () => void;
 }) {
   const { t, locale } = useTranslation();
+  const { activeScope } = useScope();
   // Resolve label via i18n: explicit labelKey > nav.<id> convention > raw label.
   const key = entry.labelKey ?? `nav.${entry.id}`;
   const translated = t(key);
   // If t() falls back to the raw key (missing translation), use entry.label.
   const label = translated === key ? entry.label : translated;
+
+  // Some org-scoped entries (e.g. Promo codes) route through a URL that
+  // carries the organization id as a path param rather than a query param
+  // / in-page picker (unlike Orders/Customers). The sidebar can only build
+  // a working link for these once an organization scope is actually
+  // active -- with no org id to fill in there is nothing sensible to link
+  // to, so the entry is hidden from the sidebar (the page itself remains
+  // reachable via a direct URL or a contextual link, e.g. from the session
+  // overview screen) rather than rendering a broken href.
+  if (entry.to.includes("$orgId")) {
+    if (activeScope?.kind !== "organization" || activeScope.id === null) {
+      return null;
+    }
+    return (
+      <Link
+        to={entry.to as "/organizations/$orgId/promo-codes"}
+        params={{ orgId: activeScope.id }}
+        style={navLinkStyle}
+        activeProps={{ style: navLinkActiveStyle }}
+        data-testid={`nav-${entry.id}`}
+        data-nav-id={entry.id}
+        data-nav-locale={locale}
+        title={entry.purpose}
+        onClick={onNavigate}
+      >
+        {label}
+      </Link>
+    );
+  }
+
   return (
     <Link
       to={entry.to as "/"}

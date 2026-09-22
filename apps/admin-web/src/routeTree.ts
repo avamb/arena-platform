@@ -31,6 +31,7 @@ import { Route as AcceptInviteRoute } from "@/routes/acceptInvite";
 import { Route as SessionSeatsRoute } from "@/routes/sessionSeats";
 import { Route as SessionOverviewRoute } from "@/routes/sessionOverview";
 import { Route as CustomerImportsRoute } from "@/routes/customerImports";
+import { Route as PromoCodesRoute } from "@/routes/promoCodes";
 
 /**
  * Manually-assembled route tree.
@@ -75,4 +76,5 @@ export const routeTree = RootRoute.addChildren([
   SessionSeatsRoute,
   SessionOverviewRoute,
   CustomerImportsRoute,
+  PromoCodesRoute,
 ]);

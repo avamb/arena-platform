@@ -224,6 +224,10 @@ const ROUTE_REGISTRY: Readonly<
     routeId: "CustomerImportsRoute",
     file: "customerImports.tsx",
   },
+  "/organizations/$orgId/promo-codes": {
+    routeId: "PromoCodesRoute",
+    file: "promoCodes.tsx",
+  },
 };
 
 /**

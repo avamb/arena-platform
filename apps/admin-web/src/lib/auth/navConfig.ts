@@ -63,7 +63,8 @@ export type NavRoutePath =
   | "/observability"
   | "/geo"
   | "/webhooks"
-  | "/customer-imports";
+  | "/customer-imports"
+  | "/organizations/$orgId/promo-codes";
 
 export type PermissionRule =
   | "always"
@@ -259,6 +260,15 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
       "Org-scoped order list (number, buyer, session, status, total) with a detail drawer (items, timeline) and cancel action. Requires order.read; cancel requires order.write.",
+  },
+  {
+    id: "promo_codes",
+    label: "Promo codes",
+    to: "/organizations/$orgId/promo-codes",
+    permission: { anyOf: ["promo.read"] },
+    scopeKinds: ["global", "platform", "network", "organization"],
+    purpose:
+      "Org-scoped discount vouchers (list, create, pause/activate, delete) and their redemption usage report. Requires promo.read; create/update/delete require promo.create / promo.update / promo.delete. Reached from an organization context (e.g. the session overview's \"Manage promo codes\" link) since the URL carries the organization id.",
   },
   {
     id: "reports",

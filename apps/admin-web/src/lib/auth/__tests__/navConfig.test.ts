@@ -70,6 +70,8 @@ const platformSuperadmin = fixture(
     "customer.read",
     // Feature #490, W1-A6e — org-scoped Orders list/detail/cancel.
     "order.read",
+    // Promo codes screen — org-scoped discount vouchers.
+    "promo.read",
   ],
   ["global", "network:0193f01a-0001-7000-8000-000000000001"],
 );
@@ -163,6 +165,7 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
       "payments",
       "customers",
       "org-orders",
+      "promo_codes",
       "reports",
       "notifications_content",
       "pos",

@@ -292,6 +292,38 @@ describe("requiresAdminReason()", () => {
       "POST",
       true,
     ],
+    // Promo codes screen: gated on every method, including GET (list, and
+    // the redemptions usage report / CSV download).
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/promo-codes",
+      "GET",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/promo-codes",
+      "POST",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/promo-codes/22222222-2222-2222-2222-222222222222",
+      "PATCH",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/promo-codes/22222222-2222-2222-2222-222222222222",
+      "DELETE",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/promo-code-redemptions",
+      "GET",
+      true,
+    ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/promo-code-redemptions?format=csv",
+      "GET",
+      true,
+    ],
     // Query strings are stripped before matching.
     [
       "/v1/organizations/11111111-1111-1111-1111-111111111111/venues?limit=20",

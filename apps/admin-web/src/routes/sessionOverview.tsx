@@ -190,6 +190,11 @@ export function ticketsLink(orgId: string, eventId: string, sessionId: string): 
   return `/tickets?org_id=${encodeURIComponent(orgId)}&event_id=${encodeURIComponent(eventId)}&session_id=${encodeURIComponent(sessionId)}`;
 }
 
+/** Deep link into the org's Promo codes screen. */
+export function promoCodesLink(orgId: string): string {
+  return `/organizations/${encodeURIComponent(orgId)}/promo-codes`;
+}
+
 // ---------------------------------------------------------------------------
 // Route component
 // ---------------------------------------------------------------------------
@@ -333,7 +338,7 @@ export function SessionOverviewBody({
         <OrdersByStatusSection orders={data.orders} />
       </div>
       <RefundsSection refunds={data.refunds} />
-      <PromosSection promos={data.promos} />
+      <PromosSection promos={data.promos} orgId={data.session.org_id} />
       <LatestOrdersSection orders={latestOrders} loading={ordersLoading} error={ordersError} />
     </>
   );
@@ -343,15 +348,20 @@ export function SessionOverviewBody({
 // Sections
 // ---------------------------------------------------------------------------
 
-function Section({ title, hint, children, testId }: {
+function Section({ title, hint, children, testId, action }: {
   title: string;
   hint?: string;
   children: ReactNode;
   testId: string;
+  /** Optional link/button rendered next to the title (e.g. "Manage X"). */
+  action?: ReactNode;
 }): JSX.Element {
   return (
     <section style={sectionStyle} data-testid={testId}>
-      <h2 style={sectionTitleStyle}>{title}</h2>
+      <div style={sectionTitleRowStyle}>
+        <h2 style={sectionTitleStyle}>{title}</h2>
+        {action ?? null}
+      </div>
       {hint ? <p style={hintStyle}>{hint}</p> : null}
       {children}
     </section>
@@ -581,12 +591,21 @@ function RefundsSection({ refunds }: { refunds: SessionSummary["refunds"] }): JS
   );
 }
 
-function PromosSection({ promos }: { promos: SessionSummary["promos"] }): JSX.Element {
+function PromosSection({ promos, orgId }: { promos: SessionSummary["promos"]; orgId: string }): JSX.Element {
   return (
     <Section
       title="Promo codes"
       hint="Codes the paid orders of this session used. Discount is what those orders did not pay; it is already inside Discounts under Money."
       testId="session-overview-promos"
+      action={
+        <a
+          href={promoCodesLink(orgId)}
+          style={linkButtonStyle}
+          data-testid="session-overview-promo-codes-link"
+        >
+          Manage promo codes
+        </a>
+      }
     >
       {promos.length === 0 ? (
         <p style={mutedStyle}>No promo codes used.</p>
@@ -684,6 +703,14 @@ const sectionStyle: CSSProperties = {
 };
 
 const sectionTitleStyle: CSSProperties = { margin: "0 0 4px 0", fontSize: 15, fontWeight: 600 };
+
+const sectionTitleRowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  flexWrap: "wrap",
+};
 
 const hintStyle: CSSProperties = { margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.45, maxWidth: 900 };
 

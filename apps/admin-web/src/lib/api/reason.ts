@@ -115,6 +115,12 @@ const REASON_REQUIRED_REGEX: readonly RegExp[] = [
   /^\/v1\/organizations\/[^/]+\/customers(?:\/.*)?$/,
   /^\/v1\/organizations\/[^/]+\/orders(?:\/.*)?$/,
   /^\/v1\/organizations\/[^/]+\/imports(?:\/.*)?$/,
+  // Promo codes screen (superadmin cross-tenant discount voucher
+  // management + usage report, including the CSV download): the promo-code
+  // rows and their redemptions are org-scoped commerce data, same class as
+  // orders/customers above.
+  /^\/v1\/organizations\/[^/]+\/promo-codes(?:\/.*)?$/,
+  /^\/v1\/organizations\/[^/]+\/promo-code-redemptions(?:\/.*)?$/,
   // The session gallery carries no org in its URL; hcatalog resolves the
   // session's org and demands the header from a superadmin on GET and PUT
   // (F-40, functional run 2026-09-19 — every read went out bare and 400'd).
