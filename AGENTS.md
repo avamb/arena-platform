@@ -1410,6 +1410,31 @@ entries short and factual.
   removed lines; for a read-only aggregate, a plain `type: string` with the
   values named in the description is enough. Same spec rules the tests
   enforce: no `nullable:` (OAS 3.1 — write `type: [string, "null"]`).
+- **The sales-path load-test suite (`ops/loadtest`) needs the Stripe stub,
+  and its native scenario pays through the organizer's own webhook route.**
+  Since the hosted-checkout flow, a paid `checkout/start` only answers 201
+  once a Checkout Session exists, so `bil24/docker-compose.loadtest.yml`
+  runs `apps/widget/scripts/stripe-stub.cjs` as the `stripe_stub` service
+  (`HOST=0.0.0.0` — the stub binds 127.0.0.1 by default) and points
+  `STRIPE_API_BASE_URL` at it; the stub also answers `GET /v1/balance` so a
+  stub-backed payment config verifies `ok`. `provision.mjs` creates that
+  stripe/test config (re-keys an existing one on 409) and writes
+  `native.payment_config_id` + `native.webhook_secret` into the fixtures;
+  `native.js` parses the `cs_…` id out of `redirect_url`, posts a
+  `checkout.session.completed` (`payment_status: paid`) to
+  `/v1/payment-intents/webhook/{config_id}` signed with `k6/crypto` HMAC,
+  and refuses fixtures that predate this (re-run provisioning). A compose
+  bind-mount path in an overlay file is resolved against the PROJECT
+  directory (repo root), not the overlay's own directory —
+  `../../../apps/...` silently became `C:\apps\...` and the container
+  crash-looped on MODULE_NOT_FOUND. `provision.mjs` refuses non-local hosts
+  unless `ALLOW_REMOTE=1`, and refuses the production hostnames outright;
+  `ABORT_ON_FAIL=1` turns the error-rate/journey thresholds of `gateway.js`
+  and `native.js` into run-aborting ones. Server runs: only on a disposable
+  copy, `docs/loadtest/server_run_runbook_ru.md`. The shared local stand
+  had migration 0103 skipped (0104 applied first): `migrate up` refuses with
+  "found 1 missing migrations" — apply its Up block by hand per the goose
+  gotcha above before provisioning there.
 - **The one-screen session overview is `GET
   /v1/organizations/{org_id}/sessions/{session_id}/summary`** (`order.read`,
   `horders/session_summary.go`, queries in `session_summary.sql`). Add new

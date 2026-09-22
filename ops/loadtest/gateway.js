@@ -114,11 +114,20 @@ const scenarios = {
   },
 };
 
+// ABORT_ON_FAIL=1: the error-rate / journey thresholds abort the whole run
+// once breached (after DELAY_ABORT_EVAL, default 30s) — the k6-side kill
+// switch for a run against a server rather than a laptop.
+const ABORT_ON_FAIL = __ENV.ABORT_ON_FAIL === '1';
+const DELAY_ABORT_EVAL = __ENV.DELAY_ABORT_EVAL || '30s';
+function breaker(expr) {
+  return ABORT_ON_FAIL ? { threshold: expr, abortOnFail: true, delayAbortEval: DELAY_ABORT_EVAL } : expr;
+}
+
 export const options = {
   scenarios: scenarios[SCENARIO],
   thresholds: SCENARIO === 'race'
     ? {
-      gw_errors: ['rate<0.001'],
+      gw_errors: [breaker('rate<0.001')],
       gw_purchases_failed: ['count==0'],
     }
     : SCENARIO === 'expiry' ? {
@@ -131,7 +140,7 @@ export const options = {
       gw_late_pay_refused: ['rate==1'],
       gw_expired_holds_released: ['rate==1'],
     } : {
-      gw_errors: ['rate<0.005'],
+      gw_errors: [breaker('rate<0.005')],
       gw_get_all_actions_ms: ['p(95)<500'],
       gw_create_user_ms: ['p(95)<300'],
       gw_reservation_ms: ['p(95)<400'],

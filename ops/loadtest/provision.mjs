@@ -2,12 +2,17 @@
 /**
  * ops/loadtest/provision.mjs — fixtures for the arena load-test suite.
  *
- * LOCAL STAND ONLY. Refuses any BASE_URL that is not localhost / docker host,
- * because it mints dev JWTs (ENABLE_DEV_AUTH) and creates channels, API keys
- * and events.
+ * LOCAL STAND ONLY by default. Refuses any BASE_URL that is not localhost /
+ * docker host, because it mints dev JWTs (ENABLE_DEV_AUTH) and creates
+ * channels, API keys, payment configs and events. ALLOW_REMOTE=1 lifts the
+ * guard for a DISPOSABLE copy of the stand (docs/loadtest/server_run_runbook_ru.md)
+ * — never for production: production runs ENABLE_DEV_AUTH=false, so the very
+ * first call would fail there anyway, but do not find that out the hard way.
  *
  * Creates, in the seeded org OrgA:
  *   - a sales channel "LOADTEST <runId>" with a Bil24 gateway credential (fid/token)
+ *   - a stripe/test payment config with a stub-backed api_key and a fresh
+ *     webhook_secret (native.js signs its checkout.session.completed with it)
  *   - an org API key bound to that channel (event-bundle import)
  *   - events imported through POST /imports/event-bundle, one per scenario:
  *       flow  : large GA pool   (purchase journeys, both entry points)
@@ -22,7 +27,10 @@
  * Usage (repo root, stand up with ops/loadtest/bil24/docker-compose.loadtest.yml):
  *   node ops/loadtest/provision.mjs
  * Env: BASE_URL (default http://localhost:8080), FLOW_POOL (default 20000),
- *      RACE_POOL (default 10), EXPIRY_POOL (default 20), RESERVATION_TTL seconds (default 120)
+ *      RACE_POOL (default 10), EXPIRY_POOL (default 20), RESERVATION_TTL seconds (default 120),
+ *      RETURN_URL (default http://localhost:4174/ — must be an origin the stand
+ *      allows: CORS_ALLOWED_ORIGINS or PUBLIC_TICKETS_BASE_URL),
+ *      ALLOW_REMOTE=1 (disposable copy of the stand only)
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -31,9 +39,20 @@ import { randomUUID } from 'node:crypto';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:8080';
 const host = new URL(BASE_URL).hostname;
-if (!['localhost', '127.0.0.1', 'host.docker.internal'].includes(host)) {
-  console.error(`refusing to provision against ${BASE_URL}: local stand only`);
-  process.exit(2);
+const LOCAL_HOSTS = ['localhost', '127.0.0.1', 'host.docker.internal'];
+if (!LOCAL_HOSTS.includes(host)) {
+  if (process.env.ALLOW_REMOTE !== '1') {
+    console.error(`refusing to provision against ${BASE_URL}: local stand only (ALLOW_REMOTE=1 for a disposable copy of the stand)`);
+    process.exit(2);
+  }
+  // A production host would refuse the dev-auth mint below, but the names
+  // arena serves under are the one thing a tired operator can mix up.
+  const PRODUCTION_HOSTS = ['api.arenasoldout.com', 'tickets.arenasoldout.com', 'app.arenasoldout.com'];
+  if (PRODUCTION_HOSTS.includes(host.toLowerCase())) {
+    console.error(`refusing to provision against ${BASE_URL}: this is a production hostname`);
+    process.exit(2);
+  }
+  console.warn(`ALLOW_REMOTE=1: provisioning a REMOTE stand at ${BASE_URL} — this must be a disposable copy`);
 }
 
 // Seeded by cmd/arena-seed.
@@ -155,6 +174,41 @@ async function main() {
     throw new Error(`payment window not applied or gateway credential lost: ${JSON.stringify(gwSettings)}`);
   }
 
+  // Payment config for the widget path. Since the hosted-checkout flow
+  // landed, a paid checkout/start is only confirmed once a Stripe Checkout
+  // Session exists for it, and the payment is completed by a webhook signed
+  // with THIS org's webhook_secret on THIS config's own route
+  // (/v1/payment-intents/webhook/{config_id}). The api_key only has to look
+  // like a Stripe key: the stand points STRIPE_API_BASE_URL at the stub,
+  // which accepts any bearer token. One stripe/test config per org is
+  // allowed, so a leftover from an earlier run is re-keyed instead.
+  const webhookSecret = `whsec_loadtest_${runId}_${randomUUID().replace(/-/g, '')}`;
+  const stripeSecrets = { api_key: `sk_test_loadtest_${runId}_${randomUUID().replace(/-/g, '')}`, webhook_secret: webhookSecret };
+  let paymentConfig;
+  const created = await call('POST', `/v1/organizations/${ORG_ID}/payment-configs`, {
+    token, expect: [201, 409],
+    body: { provider: 'stripe', mode: 'test', secrets: stripeSecrets, is_active: true },
+  });
+  if (created.payment_config) {
+    paymentConfig = created.payment_config;
+  } else {
+    const list = await call('GET', `/v1/organizations/${ORG_ID}/payment-configs`, { token });
+    const existing = (list.payment_configs || list.items || []).find((c) => c.provider === 'stripe' && c.mode === 'test');
+    if (!existing) throw new Error('payment config exists (409) but is not listed');
+    const patched = await call('PATCH', `/v1/organizations/${ORG_ID}/payment-configs/${existing.id}`, {
+      token, body: { secrets: stripeSecrets, is_active: true },
+    });
+    paymentConfig = patched.payment_config;
+  }
+  if (!paymentConfig || !paymentConfig.id) throw new Error(`payment config not returned: ${JSON.stringify(paymentConfig)}`);
+  if (paymentConfig.verification_status !== 'ok') {
+    // The stub answers GET /v1/balance, so anything else means arena is not
+    // talking to it (STRIPE_API_BASE_URL unset or pointing elsewhere). A
+    // real Stripe would refuse the fake key and every paid checkout would
+    // 503 — better to learn it here than in the k6 summary.
+    throw new Error(`payment config verification is "${paymentConfig.verification_status}" (${paymentConfig.verification_error || 'no detail'}): is STRIPE_API_BASE_URL pointing at the stub?`);
+  }
+
   const key = await call('POST', `/v1/organizations/${ORG_ID}/api-keys`, {
     token,
     body: {
@@ -192,8 +246,9 @@ async function main() {
   }
 
   // Native entry point (widget): a public feed token on the same channel,
-  // every scenario event published to it, and an org-admin JWT for the
-  // payment-intent step that stands in for the payment provider.
+  // every scenario event published to it. The org-admin JWT is kept for
+  // ad-hoc admin calls; the payment itself needs only the config id and
+  // webhook secret written above.
   const { feed_token: feed } = await call('POST', `/v1/organizations/${ORG_ID}/channels/${channel.id}/feed-tokens`, {
     token, body: { label: `loadtest ${runId}` },
   });
@@ -217,7 +272,14 @@ async function main() {
     reservation_ttl_seconds: RESERVATION_TTL,
     payment_window_seconds: PAYMENT_WINDOW,
     payment_grace_seconds: PAYMENT_GRACE,
-    native: { feed_token: feed.token, feed_token_id: feed.id, org_jwt: orgJwt },
+    native: {
+      feed_token: feed.token,
+      feed_token_id: feed.id,
+      org_jwt: orgJwt,
+      payment_config_id: paymentConfig.id,
+      webhook_secret: webhookSecret,
+      return_url: process.env.RETURN_URL || 'http://localhost:4174/',
+    },
     events,
     created_at: new Date().toISOString(),
   };
@@ -231,6 +293,7 @@ async function main() {
   summary.api_key = '<redacted>';
   summary.native.feed_token = '<redacted>';
   summary.native.org_jwt = '<redacted>';
+  summary.native.webhook_secret = '<redacted>';
   console.log(JSON.stringify(summary, null, 2));
   console.log(`fixtures written to ${out}`);
 }

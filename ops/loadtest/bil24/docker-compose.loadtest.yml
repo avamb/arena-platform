@@ -1,8 +1,37 @@
-# Local load-test overrides for the Bil24 gateway suite.
+# Load-test overrides for the sales-path suite (gateway.js + native.js).
 # Usage, from the repo root:
 #   docker compose -f docker-compose.yml -f ops/loadtest/bil24/docker-compose.loadtest.yml up -d --build api worker
+# (stripe_stub starts on its own through api's depends_on.)
 services:
+  # The widget's paid checkout only answers 201 once a hosted payment page
+  # exists (hfeed.StripePaymentStarter), so a load test needs a Stripe to
+  # talk to. This is the same dependency-free stub the widget acceptance CI
+  # job uses; it answers POST /v1/checkout/sessions and GET /v1/balance and
+  # nothing else. native.js parses the cs_… id out of the redirect_url and
+  # completes the payment with a signed checkout.session.completed webhook.
+  stripe_stub:
+    image: node:20-alpine
+    container_name: arena_stripe_stub
+    restart: unless-stopped
+    command: ["node", "/stub/stripe-stub.cjs"]
+    volumes:
+      # Relative to the PROJECT directory (the repo root the first -f file
+      # lives in), not to this overlay file.
+      - ./apps/widget/scripts/stripe-stub.cjs:/stub/stripe-stub.cjs:ro
+    environment:
+      PORT: "12111"
+      HOST: "0.0.0.0"
+      PUBLIC_URL: "http://localhost:12111"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:12111/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   api:
+    depends_on:
+      stripe_stub:
+        condition: service_healthy
     environment:
       BIL24_COMPAT_ENABLED: "true"
       BIL24_REQUIRE_TOKEN: "true"
@@ -10,3 +39,11 @@ services:
       # native.js sends "X-Forwarded-For: <visitor>" as one reverse proxy would
       # append it, so the per-IP limit keys on distinct simulated visitors.
       TRUSTED_PROXY_COUNT: "1"
+      # Hosted checkout against the stub. The value must carry the /v1
+      # segment: the adapter appends "/checkout/sessions" to it.
+      # config.Validate refuses this variable under APP_ENV=production —
+      # a load-test copy of the stand must run as development/staging.
+      STRIPE_API_BASE_URL: "http://stripe_stub:12111/v1"
+      # Where a buyer is sent back after paying. native.js sends this same
+      # origin as return_url; the fallback covers a request without one.
+      PUBLIC_TICKETS_BASE_URL: "http://localhost:4174"

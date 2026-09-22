@@ -11,11 +11,18 @@
  * emulator and must never be reachable from anything but a test.
  *
  *   POST /v1/checkout/sessions   create a Checkout Session (form-encoded in)
+ *   GET  /v1/balance             what arena's credential verification calls
  *   GET  /pay/:id                a stand-in for the hosted payment page
  *   GET  /healthz                readiness probe for CI
  *
  * Environment:
- *   PORT   listen port (default 12111)
+ *   PORT        listen port (default 12111)
+ *   HOST        listen address (default 127.0.0.1). The load-test compose
+ *               overlay runs this stub as its own container and sets 0.0.0.0
+ *               so arena-api can reach it over the compose network.
+ *   PUBLIC_URL  origin used in the hosted-page url handed back to arena
+ *               (default http://localhost:<PORT>). Nothing ever opens that
+ *               page in a load test; k6 only parses the cs_… id out of it.
  *
  * Run: node scripts/stripe-stub.cjs
  *
@@ -29,6 +36,8 @@ const http = require('http');
 const crypto = require('crypto');
 
 const PORT = parseInt(process.env['PORT'] ?? '12111', 10);
+const HOST = process.env['HOST'] ?? '127.0.0.1';
+const PUBLIC_URL = (process.env['PUBLIC_URL'] ?? `http://localhost:${PORT}`).replace(/\/+$/, '');
 
 /**
  * Created sessions, by id.
@@ -121,6 +130,27 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Credential verification: arena asks GET /v1/balance when a payment
+  // config is saved (hpayments/payment_config_verify.go) and paints the
+  // "Connection" badge from the answer. Any bearer token is "valid" here, so
+  // a stub-backed config reads ok, exactly as a real one would on a live key.
+  if (method === 'GET' && urlPath === '/v1/balance') {
+    const auth = req.headers['authorization'];
+    if (typeof auth !== 'string' || !/^Bearer\s+\S/i.test(auth)) {
+      sendJSON(res, 401, {
+        error: { type: 'invalid_request_error', message: 'stripe-stub: missing or malformed Authorization bearer token' },
+      });
+      return;
+    }
+    sendJSON(res, 200, {
+      object: 'balance',
+      available: [{ amount: 0, currency: 'eur' }],
+      pending: [{ amount: 0, currency: 'eur' }],
+      livemode: false,
+    });
+    return;
+  }
+
   // The stand-in for Stripe's hosted page. The acceptance suite only checks
   // that the buyer is sent somewhere real, so this is deliberately inert — it
   // never completes a payment, because a payment is completed by a webhook.
@@ -169,8 +199,7 @@ const server = http.createServer((req, res) => {
         }
       }
 
-      const baseURL = `http://localhost:${PORT}`;
-      const session = createSession(body, baseURL);
+      const session = createSession(body, PUBLIC_URL);
       const id = /** @type {string} */ (session['id']);
       sessions.set(id, session);
       if (typeof key === 'string' && key !== '') {
@@ -210,6 +239,6 @@ function shutdown() {
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
-server.listen(PORT, '127.0.0.1', () => {
-  process.stdout.write(`[stripe-stub] Listening on http://127.0.0.1:${PORT}\n`);
+server.listen(PORT, HOST, () => {
+  process.stdout.write(`[stripe-stub] Listening on http://${HOST}:${PORT} (hosted url base ${PUBLIC_URL})\n`);
 });

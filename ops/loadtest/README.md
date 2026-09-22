@@ -25,12 +25,12 @@ ways arena sells tickets, and checks inventory correctness afterwards.
 
 | File | What it does |
 |------|--------------|
-| `provision.mjs` | Local-only fixtures: channel with a short hold TTL, gateway credential (fid/token), import API key, three events (`flow` 20k+2k GA, `race` 10 GA, `expiry` 20 GA), public feed token with the events published, org JWT. Writes `results/fixtures.local.json` (gitignored, holds local secrets). |
-| `gateway.js` | The Bil24-compatible gateway (`/compat/bil24/json`) the migrated WordPress sites use. `SCENARIO=flow` (browsers + buyers + abandoned carts, polls tickets), `race` (N buyers for the last tickets), `expiry` (abandoned holds must return to sale after the TTL). |
-| `native.js` | arena's own public API used by the widget: feed → `checkout/start` → payment intent + webhook (`processing`, `succeeded`) → public checkout status. `SCENARIO=flow` or `race`. |
+| `provision.mjs` | Fixtures for the stand (local by default, `ALLOW_REMOTE=1` for a disposable copy — never production): channel with a short hold TTL, gateway credential (fid/token), a stripe/test payment config with a stub-backed key and a fresh webhook secret, import API key, four events (`flow` 20k+2k GA, `race` 10 GA, `expiry` 20 GA, `paywindow` 20 GA), public feed token with the events published, org JWT. Writes `results/fixtures.local.json` (gitignored, holds the stand's secrets). |
+| `gateway.js` | The Bil24-compatible gateway (`/compat/bil24/json`) the migrated WordPress sites use. `SCENARIO=flow` (browsers + buyers + abandoned carts, polls tickets), `race` (N buyers for the last tickets), `expiry` (abandoned holds must return to sale after the TTL), `paywindow` (late payments refused, units back on sale). |
+| `native.js` | arena's own public API used by the widget: feed → `checkout/start` (hosted Stripe Checkout Session on the stub) → signed `checkout.session.completed` webhook on the organizer's own route → public checkout status. `SCENARIO=flow` or `race`. |
+| `bil24/docker-compose.loadtest.yml` | Compose override: mounts the gateway, turns SQL query logging off, starts the Stripe stub (`apps/widget/scripts/stripe-stub.cjs`) and points `STRIPE_API_BASE_URL` at it. |
 | `sql/audit.sql` | Read-only inventory audit for one session: ledger vs units vs tickets, double-sold units, expired holds never released. Every "violations" column must be 0. |
 | `quota_admin.js` | One operator VU that edits GA category quotas (plan 08_architecture/23) WHILE `flow` sells tickets on the same session: swings the VIP quantity ±`SWING` every `TICK_SECONDS`, closes/reopens VIP every `CLOSE_EVERY` ticks for `CLOSE_FOR_SECONDS`, adds a "Late release" category once at `ADD_AT_SECONDS`. Run it next to a `flow` scenario (`gateway.js` or `native.js`), against the same `results/fixtures.local.json`. Success = `qa_errors` == 0, `qa_patch_unexpected` == 0 (only 200 or the documented 409 `tier.quantity_below_used` are expected), and the category invariant query (below) holds afterwards. |
-| `bil24/docker-compose.loadtest.yml` | Compose override: mounts the gateway, turns SQL query logging off. |
 
 Defaults model the agreed peak: **200 concurrent visitors, 50 orders/min**, 5 minutes.
 
@@ -46,6 +46,7 @@ node ops/loadtest/provision.mjs
 docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.internal:8080 -e SCENARIO=flow   grafana/k6:0.54.0 run /lt/gateway.js
 docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.internal:8080 -e SCENARIO=race   grafana/k6:0.54.0 run /lt/gateway.js
 docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.internal:8080 -e SCENARIO=expiry grafana/k6:0.54.0 run /lt/gateway.js
+docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.internal:8080 -e SCENARIO=paywindow grafana/k6:0.54.0 run /lt/gateway.js
 docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.internal:8080 -e SCENARIO=flow   grafana/k6:0.54.0 run /lt/native.js
 docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.internal:8080 -e SCENARIO=race   grafana/k6:0.54.0 run /lt/native.js
 
@@ -62,8 +63,13 @@ visitors from one IP), `SHARED_BUYERS=N` and `PAY_DELAY_SECONDS=N` (gateway:
 fold buyers onto N shared email/phone identities and wait before paying, so
 orders of one customer overlap; expect `gw_open_order_refused` > 0 and no
 failed payments, the journey threshold fails by design), `DEBUG=1` (log every
-failed call). Provisioning:
-`FLOW_POOL`, `RACE_POOL`, `EXPIRY_POOL`, `RESERVATION_TTL`. `quota_admin.js`:
+failed call), `ABORT_ON_FAIL=1` (gateway/native: the error-rate and journey
+thresholds abort the run as soon as they are breached, evaluated after
+`DELAY_ABORT_EVAL`, default 30s — always set it for a run against a server),
+`RETURN_URL` (native: the origin the buyer returns to, default from the
+fixtures). Provisioning:
+`FLOW_POOL`, `RACE_POOL`, `EXPIRY_POOL`, `PAYWINDOW_POOL`, `RESERVATION_TTL`,
+`PAYMENT_WINDOW`, `PAYMENT_GRACE`, `RETURN_URL`, `ALLOW_REMOTE=1`. `quota_admin.js`:
 `TICK_SECONDS` (default 2), `CLOSE_EVERY` ticks (default 10),
 `CLOSE_FOR_SECONDS` (default 4), `ADD_AT_SECONDS` (default 30), `SWING`
 (default 150, the +/- quantity delta around the VIP category's starting
@@ -89,6 +95,10 @@ FROM sessions s
 LEFT JOIN inventory_ledger il ON il.session_id = s.id AND il.tier_id IS NULL
 WHERE s.id = :session_id;
 ```
+
+Running the suite against a server (a disposable copy of production, never
+production itself — monitoring, insurance and abort criteria):
+`docs/loadtest/server_run_runbook_ru.md`.
 
 Test-design notes learned the hard way:
 - Give every simulated buyer its own email and phone. Customers are matched
