@@ -72,6 +72,7 @@ const summary: SessionSummary = {
   orders: [{ status: "paid", source: "bil24_gateway", currency: "CZK", orders: 1, total: 109000 }],
   tickets: { active: 2, cancelled: 0, transferred: 0, used: 1, complimentary: 0 },
   refunds: [],
+  promos: [{ id: "p1", code: "ARENA10", currency: "CZK", orders: 1, discount: 4500 }],
 };
 
 const latest: readonly OrderRow[] = [
@@ -132,15 +133,22 @@ describe("SessionOverviewBody", () => {
     expect(html).toContain("buyer@example.test");
   });
 
+  it("lists the promo codes the paid orders used", () => {
+    const html = markup();
+    expect(html).toContain('data-testid="session-overview-promo-ARENA10"');
+    expect(html).toContain("45.00 CZK");
+  });
+
   it("says so plainly when a session has nothing yet", () => {
     const zero = { total: 0, available: 0, held: 0, sold: 0, sold_upstream: 0, unavailable: 0 };
     const html = markup(
-      { ...summary, places: { seats: zero, ga: zero }, tiers: [], money: [], orders: [], refunds: [] },
+      { ...summary, places: { seats: zero, ga: zero }, tiers: [], money: [], orders: [], refunds: [], promos: [] },
       [],
     );
     expect(html).toContain("This session has no places yet.");
     expect(html).toContain("No categories.");
     expect(html).toContain("No refunds.");
+    expect(html).toContain("No promo codes used.");
     expect(html).not.toContain("session-overview-seats-row");
   });
 });

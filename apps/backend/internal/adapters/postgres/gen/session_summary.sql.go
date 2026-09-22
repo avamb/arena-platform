@@ -279,3 +279,42 @@ func (q *Queries) ListSessionSummaryRefunds(ctx context.Context, sessionID uuid.
 	}
 	return items, rows.Err()
 }
+
+const listSessionSummaryPromos = `-- name: ListSessionSummaryPromos :many
+SELECT p.id AS promo_code_id, p.code, o.currency,
+       count(*)::bigint                     AS orders,
+       COALESCE(sum(o.discount), 0)::bigint AS discount
+FROM   orders o
+JOIN   promo_codes p ON p.id = o.promo_code_id
+WHERE  o.session_id = $1
+  AND  o.status IN ('paid', 'partially_refunded', 'refunded')
+GROUP  BY p.id, p.code, o.currency`
+
+// SessionSummaryPromoRow is one promo code's share of a session's paid
+// orders: how many used it and the discount they took, in minor units.
+type SessionSummaryPromoRow struct {
+	PromoCodeID uuid.UUID `json:"promo_code_id"`
+	Code        string    `json:"code"`
+	Currency    string    `json:"currency"`
+	Orders      int64     `json:"orders"`
+	Discount    int64     `json:"discount"`
+}
+
+// ListSessionSummaryPromos returns the promo codes used by a session's paid
+// orders.
+func (q *Queries) ListSessionSummaryPromos(ctx context.Context, sessionID uuid.UUID) ([]SessionSummaryPromoRow, error) {
+	rows, err := q.db.Query(ctx, listSessionSummaryPromos, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SessionSummaryPromoRow
+	for rows.Next() {
+		var i SessionSummaryPromoRow
+		if err := rows.Scan(&i.PromoCodeID, &i.Code, &i.Currency, &i.Orders, &i.Discount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	return items, rows.Err()
+}

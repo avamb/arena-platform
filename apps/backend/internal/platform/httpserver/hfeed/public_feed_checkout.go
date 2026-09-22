@@ -748,11 +748,8 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		// Validate the promo against the FULL subtotal (seats + GA) now that
 		// every line is priced. A rejection rolls back the holds via the
 		// deferred tx.Rollback.
-		promoLines := make([]hcheckout.TierLine, 0, len(lines))
-		for _, l := range lines {
-			promoLines = append(promoLines, hcheckout.TierLine{TierID: l.TierID, Amount: l.UnitPrice * int64(l.Quantity)})
-		}
-		discount, promoCodeID, promoErrCode := h.applyPromoDiscount(promoRow, promoLines)
+		promoLines := hcheckout.TierLinesForSession(lines, sessionID.String(), currency)
+		discount, promoCodeID, promoErrCode := h.applyPromoDiscount(ctx, promoRow, promoLines, req.HolderEmail)
 		if promoErrCode != "" {
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
 				promoErrCode, "promo code is not applicable", r,
@@ -819,11 +816,12 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	}
 
 	// Validate the promo against the platform-computed GA subtotal.
-	gaPromoLines := make([]hcheckout.TierLine, 0, len(gaLines))
-	for _, l := range gaLines {
-		gaPromoLines = append(gaPromoLines, hcheckout.TierLine{TierID: l.TierID, Amount: l.UnitPrice * int64(l.Quantity)})
+	gaCurrency := ""
+	if len(pricedGA) > 0 {
+		gaCurrency = pricedGA[0].currency
 	}
-	discount, promoCodeID, promoErrCode := h.applyPromoDiscount(promoRow, gaPromoLines)
+	gaPromoLines := hcheckout.TierLinesForSession(gaLines, sessionID.String(), gaCurrency)
+	discount, promoCodeID, promoErrCode := h.applyPromoDiscount(ctx, promoRow, gaPromoLines, req.HolderEmail)
 	if promoErrCode != "" {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
 			promoErrCode, "promo code is not applicable", r,
@@ -1084,13 +1082,25 @@ func (h *Handler) writePricingError(w http.ResponseWriter, r *http.Request, code
 // applyPromoDiscount validates the pre-fetched promo row against the
 // platform-computed order lines. Returns (discount, promoCodeID, errCode);
 // errCode is "" when no promo was supplied or the promo is applicable.
-func (h *Handler) applyPromoDiscount(promoRow *gen.PromoCodeRow, lines []hcheckout.TierLine) (int64, *uuid.UUID, string) {
+func (h *Handler) applyPromoDiscount(ctx context.Context, promoRow *gen.PromoCodeRow, lines []hcheckout.TierLine, buyerEmail string) (int64, *uuid.UUID, string) {
 	if promoRow == nil {
 		return 0, nil, ""
 	}
 	d, errCode := hcheckout.ValidatePromoForLines(*promoRow, lines, time.Now().UTC())
 	if errCode != "" {
 		return 0, nil, errCode
+	}
+	// The usage caps, for the buyer this cart names. A counting failure is
+	// logged and the code is refused — a cap the platform cannot verify is
+	// not one it may wave through.
+	limitErr, err := hcheckout.CheckPromoLimits(ctx, h.promoQueries, *promoRow, nil, buyerEmail)
+	if err != nil {
+		h.logger.Error("public_feed_checkout: promo usage count failed",
+			slog.String("promo_code_id", promoRow.ID.String()), slog.String("error", err.Error()))
+		return 0, nil, "checkout.promo_lookup_failed"
+	}
+	if limitErr != "" {
+		return 0, nil, limitErr
 	}
 	return d, &promoRow.ID, ""
 }

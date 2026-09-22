@@ -185,7 +185,7 @@ func (h *Handler) handleBil24CreateOrderExtSession(w http.ResponseWriter, r *htt
 	)
 	if !req.Complimentary {
 		var ok bool
-		discount, promoCodeID, ok = h.orderPromoDiscount(ctx, w, req, cc, units)
+		discount, promoCodeID, ok = h.orderPromoDiscount(ctx, w, req, cc, units, currency)
 		if !ok {
 			return
 		}
@@ -566,15 +566,16 @@ func (h *Handler) orderPromoDiscount(
 	req bil24Request,
 	cc cartCtx,
 	units []orderUnit,
+	currency string,
 ) (int64, *uuid.UUID, bool) {
 	codes := mergePromoCodes(req.PromoCodes, cc.gw.PromoCodes)
 	if len(codes) == 0 || h.promoQ == nil {
 		return 0, nil, true
 	}
 
-	snap := cartSnapshot{lines: make([]cartLine, 0, len(units))}
+	snap := cartSnapshot{lines: make([]cartLine, 0, len(units)), currency: currency}
 	for _, u := range units {
-		snap.lines = append(snap.lines, cartLine{price: u.price, tierID: u.tierID})
+		snap.lines = append(snap.lines, cartLine{price: u.price, tierID: u.tierID, sessionID: cc.sessionID})
 		snap.sum += u.price
 	}
 

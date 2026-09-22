@@ -280,6 +280,13 @@ func (s *Server) handleDeletePromoCode(w http.ResponseWriter, r *http.Request) {
 	s.checkoutHandler().HandleDeletePromoCode(w, r)
 }
 
+func (s *Server) handleListPromoRedemptions(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.checkoutHandler().HandleListPromoRedemptions(w, r)
+}
+
 func (s *Server) handleValidatePromoCode(w http.ResponseWriter, r *http.Request) {
 	s.checkoutHandler().HandleValidatePromoCode(w, r)
 }

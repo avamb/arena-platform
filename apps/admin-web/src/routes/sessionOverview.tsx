@@ -100,6 +100,13 @@ export interface SessionSummary {
     readonly refunds: number;
     readonly amount: number;
   }>;
+  readonly promos: ReadonlyArray<{
+    readonly id: string;
+    readonly code: string;
+    readonly currency: string;
+    readonly orders: number;
+    readonly discount: number;
+  }>;
 }
 
 export interface OrderRow {
@@ -326,6 +333,7 @@ export function SessionOverviewBody({
         <OrdersByStatusSection orders={data.orders} />
       </div>
       <RefundsSection refunds={data.refunds} />
+      <PromosSection promos={data.promos} />
       <LatestOrdersSection orders={latestOrders} loading={ordersLoading} error={ordersError} />
     </>
   );
@@ -564,6 +572,39 @@ function RefundsSection({ refunds }: { refunds: SessionSummary["refunds"] }): JS
                 <td style={tdStyle}>{r.state}</td>
                 <td style={tdNumStyle}>{r.refunds}</td>
                 <td style={tdNumStyle}>{formatMoneyMinor(r.amount, r.currency)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Section>
+  );
+}
+
+function PromosSection({ promos }: { promos: SessionSummary["promos"] }): JSX.Element {
+  return (
+    <Section
+      title="Promo codes"
+      hint="Codes the paid orders of this session used. Discount is what those orders did not pay; it is already inside Discounts under Money."
+      testId="session-overview-promos"
+    >
+      {promos.length === 0 ? (
+        <p style={mutedStyle}>No promo codes used.</p>
+      ) : (
+        <table style={tableStyle}>
+          <thead>
+            <tr>
+              <th style={thStyle}>Code</th>
+              <th style={thNumStyle}>Orders</th>
+              <th style={thNumStyle}>Discount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {promos.map((p) => (
+              <tr key={`${p.id}|${p.currency}`} data-testid={`session-overview-promo-${p.code}`}>
+                <td style={tdStyle}>{p.code}</td>
+                <td style={tdNumStyle}>{p.orders}</td>
+                <td style={tdNumStyle}>{formatMoneyMinor(p.discount, p.currency)}</td>
               </tr>
             ))}
           </tbody>

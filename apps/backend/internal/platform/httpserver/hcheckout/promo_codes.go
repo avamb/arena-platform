@@ -19,6 +19,7 @@
 package hcheckout
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -40,44 +41,58 @@ import (
 // Response type
 // ─────────────────────────────────────────────────────────────────────────────
 
-// promoCodeResponse is the JSON representation of a single promo code.
+// promoCodeResponse is the JSON representation of a single promo code,
+// together with its usage so far (uses, discount_total, last_used_at — the
+// organizer's report starts here).
 type promoCodeResponse struct {
-	ID                 string   `json:"id"`
-	OrgID              string   `json:"org_id"`
-	Code               string   `json:"code"`
-	DiscountType       string   `json:"discount_type"`
-	DiscountValue      int64    `json:"discount_value"`
-	AppliesToTierIDs   []string `json:"applies_to_tier_ids"`
-	MaxUses            *int32   `json:"max_uses"`
-	MaxUsesPerCustomer *int32   `json:"max_uses_per_customer"`
-	ValidFrom          *string  `json:"valid_from"`
-	ValidUntil         *string  `json:"valid_until"`
-	MinOrderAmount     int64    `json:"min_order_amount"`
-	Status             string   `json:"status"`
-	CreatedAt          string   `json:"created_at"`
-	UpdatedAt          string   `json:"updated_at"`
+	ID                  string   `json:"id"`
+	OrgID               string   `json:"org_id"`
+	Code                string   `json:"code"`
+	DiscountType        string   `json:"discount_type"`
+	DiscountValue       int64    `json:"discount_value"`
+	Currency            *string  `json:"currency"`
+	AppliesToTierIDs    []string `json:"applies_to_tier_ids"`
+	AppliesToSessionIDs []string `json:"applies_to_session_ids"`
+	MaxUses             *int32   `json:"max_uses"`
+	MaxUsesPerCustomer  *int32   `json:"max_uses_per_customer"`
+	ValidFrom           *string  `json:"valid_from"`
+	ValidUntil          *string  `json:"valid_until"`
+	MinOrderAmount      int64    `json:"min_order_amount"`
+	Status              string   `json:"status"`
+	Uses                int32    `json:"uses"`
+	DiscountTotal       int64    `json:"discount_total"`
+	LastUsedAt          *string  `json:"last_used_at"`
+	CreatedAt           string   `json:"created_at"`
+	UpdatedAt           string   `json:"updated_at"`
 }
 
-// promoCodeFromRow converts a PromoCodeRow to a promoCodeResponse.
-// Ensures AppliesToTierIDs is never nil in JSON output.
-func promoCodeFromRow(pc gen.PromoCodeRow) promoCodeResponse {
+// promoCodeFromRow converts a PromoCodeRow to a promoCodeResponse. usage is
+// the code's tally when the caller has one; nil reads as never used.
+// Ensures the id arrays are never nil in JSON output.
+func promoCodeFromRow(pc gen.PromoCodeRow, usage *gen.PromoCodeUsageRow) promoCodeResponse {
 	tierIDs := pc.AppliesToTierIDs
 	if tierIDs == nil {
 		tierIDs = []string{}
 	}
+	sessionIDs := pc.AppliesToSessionIDs
+	if sessionIDs == nil {
+		sessionIDs = []string{}
+	}
 	resp := promoCodeResponse{
-		ID:                 pc.ID.String(),
-		OrgID:              pc.OrgID.String(),
-		Code:               pc.Code,
-		DiscountType:       pc.DiscountType,
-		DiscountValue:      pc.DiscountValue,
-		AppliesToTierIDs:   tierIDs,
-		MaxUses:            pc.MaxUses,
-		MaxUsesPerCustomer: pc.MaxUsesPerCustomer,
-		MinOrderAmount:     pc.MinOrderAmount,
-		Status:             pc.Status,
-		CreatedAt:          pc.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:          pc.UpdatedAt.UTC().Format(time.RFC3339),
+		ID:                  pc.ID.String(),
+		OrgID:               pc.OrgID.String(),
+		Code:                pc.Code,
+		DiscountType:        pc.DiscountType,
+		DiscountValue:       pc.DiscountValue,
+		Currency:            pc.Currency,
+		AppliesToTierIDs:    tierIDs,
+		AppliesToSessionIDs: sessionIDs,
+		MaxUses:             pc.MaxUses,
+		MaxUsesPerCustomer:  pc.MaxUsesPerCustomer,
+		MinOrderAmount:      pc.MinOrderAmount,
+		Status:              pc.Status,
+		CreatedAt:           pc.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:           pc.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	if pc.ValidFrom != nil {
 		s := pc.ValidFrom.UTC().Format(time.RFC3339)
@@ -87,7 +102,31 @@ func promoCodeFromRow(pc gen.PromoCodeRow) promoCodeResponse {
 		s := pc.ValidUntil.UTC().Format(time.RFC3339)
 		resp.ValidUntil = &s
 	}
+	if usage != nil {
+		resp.Uses = usage.Uses
+		resp.DiscountTotal = usage.DiscountTotal
+		if usage.LastUsedAt != nil {
+			s := usage.LastUsedAt.UTC().Format(time.RFC3339)
+			resp.LastUsedAt = &s
+		}
+	}
 	return resp
+}
+
+// promoUsageByID loads the organization's usage tallies keyed by code id.
+// A lookup failure is logged and yields an empty map: the list must not fail
+// because the report could not be read.
+func (h *Handler) promoUsageByID(ctx context.Context, orgID uuid.UUID) map[uuid.UUID]*gen.PromoCodeUsageRow {
+	out := map[uuid.UUID]*gen.PromoCodeUsageRow{}
+	rows, err := h.promoQueries.ListPromoCodeUsageByOrg(ctx, orgID)
+	if err != nil {
+		h.logger.Error("promo: usage lookup failed", slog.String("error", err.Error()))
+		return out
+	}
+	for i := range rows {
+		out[rows[i].PromoCodeID] = &rows[i]
+	}
+	return out
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,18 +142,32 @@ func computeDiscount(discountType string, discountValue, orderAmount int64) int6
 	return ticketsdomain.ComputeDiscount(discountType, discountValue, orderAmount)
 }
 
-// TierLine represents one pricing line for tier-aware promo computation.
-// TierID is the UUID string of the ticket tier; Amount is the total for this line (unitPrice * qty).
-// Pass TierID="" for an untiered GA line or a validate-endpoint call without tier context.
+// TierLine represents one pricing line for promo computation.
+// TierID is the UUID string of the ticket tier; Amount is the total for this
+// line (unitPrice * qty); SessionID is the UUID string of the event session
+// the line sells and Currency its ISO-4217 code. Pass TierID="" for an
+// untiered GA line. SessionID and Currency may be empty only where the caller
+// genuinely does not know them (the legacy REST checkout, the pre-flight
+// validate endpoint) — a session-scoped or currency-bound code then does not
+// apply to that line, it is never waved through.
 type TierLine struct {
-	TierID string
-	Amount int64
+	TierID    string
+	Amount    int64
+	SessionID string
+	Currency  string
 }
 
-// ValidatePromoForLines checks whether a promo code is applicable to the given order lines
-// and returns the discount limited to the eligible-tier subtotal.
-// When applies_to_tier_ids is empty every line is eligible (unrestricted code).
-// When the promo is restricted but no provided line's tier matches, returns "promo.tier_not_applicable".
+// ValidatePromoForLines checks whether a promo code is applicable to the
+// given order lines and returns the discount limited to the eligible subtotal.
+//
+// A line is eligible when it passes every restriction the code carries:
+//   - applies_to_session_ids (empty = any session of the organization);
+//     no eligible line → "promo.session_not_applicable";
+//   - currency, for a fixed_amount code that names one (nil = any);
+//     no eligible line → "promo.currency_mismatch";
+//   - applies_to_tier_ids (empty = any tier);
+//     no eligible line → "promo.tier_not_applicable".
+//
 // The min_order_amount check applies to the eligible subtotal only.
 func ValidatePromoForLines(pc gen.PromoCodeRow, lines []TierLine, now time.Time) (int64, string) {
 	if pc.Status != "active" {
@@ -127,39 +180,77 @@ func ValidatePromoForLines(pc gen.PromoCodeRow, lines []TierLine, now time.Time)
 		return 0, "promo.expired"
 	}
 
-	var eligibleSubtotal int64
-	if len(pc.AppliesToTierIDs) == 0 {
-		for _, l := range lines {
-			eligibleSubtotal += l.Amount
+	eligible := lines
+	if len(pc.AppliesToSessionIDs) > 0 {
+		eligible = linesWhere(eligible, pc.AppliesToSessionIDs, func(l TierLine) string { return l.SessionID })
+		if len(eligible) == 0 {
+			return 0, "promo.session_not_applicable"
 		}
-	} else {
-		allowed := make(map[string]struct{}, len(pc.AppliesToTierIDs))
-		for _, tid := range pc.AppliesToTierIDs {
-			allowed[tid] = struct{}{}
+	}
+	if pc.DiscountType == "fixed_amount" && pc.Currency != nil && *pc.Currency != "" {
+		eligible = linesWhere(eligible, []string{*pc.Currency}, func(l TierLine) string { return l.Currency })
+		if len(eligible) == 0 {
+			return 0, "promo.currency_mismatch"
 		}
-		for _, l := range lines {
-			if _, ok := allowed[l.TierID]; ok {
-				eligibleSubtotal += l.Amount
-			}
-		}
-		if eligibleSubtotal == 0 {
+	}
+	if len(pc.AppliesToTierIDs) > 0 {
+		eligible = linesWhere(eligible, pc.AppliesToTierIDs, func(l TierLine) string { return l.TierID })
+		if len(eligible) == 0 {
 			return 0, "promo.tier_not_applicable"
 		}
 	}
 
+	var eligibleSubtotal int64
+	for _, l := range eligible {
+		eligibleSubtotal += l.Amount
+	}
+	if len(pc.AppliesToTierIDs) > 0 && eligibleSubtotal == 0 {
+		// Pre-0108 contract: a tier-restricted code with nothing priced on
+		// its tiers is "not applicable", not "below the minimum".
+		return 0, "promo.tier_not_applicable"
+	}
 	if eligibleSubtotal < pc.MinOrderAmount {
 		return 0, "promo.invalid_order_amount"
 	}
 	return computeDiscount(pc.DiscountType, pc.DiscountValue, eligibleSubtotal), ""
 }
 
+// linesWhere keeps the lines whose key is in allowed. A line with an empty
+// key never matches: an unknown session or currency cannot satisfy a scope.
+func linesWhere(lines []TierLine, allowed []string, key func(TierLine) string) []TierLine {
+	set := make(map[string]struct{}, len(allowed))
+	for _, a := range allowed {
+		set[a] = struct{}{}
+	}
+	out := make([]TierLine, 0, len(lines))
+	for _, l := range lines {
+		if k := key(l); k != "" {
+			if _, ok := set[k]; ok {
+				out = append(out, l)
+			}
+		}
+	}
+	return out
+}
+
 // TierLinesFromPricingLines converts priced checkout lines into the
 // tier-aware promo input — the ONLY way the confirm/recovery paths may
 // feed ValidatePromoForLines (real per-line amounts, never a split).
+// The lines carry no session or currency; prefer TierLinesForSession
+// wherever the caller knows them.
 func TierLinesFromPricingLines(lines []PricingLineInput) []TierLine {
+	return TierLinesForSession(lines, "", "")
+}
+
+// TierLinesForSession is TierLinesFromPricingLines for lines that all sell
+// one event session in one currency — every checkout the platform prices.
+func TierLinesForSession(lines []PricingLineInput, sessionID, currency string) []TierLine {
 	out := make([]TierLine, 0, len(lines))
 	for _, l := range lines {
-		out = append(out, TierLine{TierID: l.TierID, Amount: l.UnitPrice * int64(l.Quantity)})
+		out = append(out, TierLine{
+			TierID: l.TierID, Amount: l.UnitPrice * int64(l.Quantity),
+			SessionID: sessionID, Currency: currency,
+		})
 	}
 	return out
 }
@@ -170,16 +261,18 @@ func TierLinesFromPricingLines(lines []PricingLineInput) []TierLine {
 
 // createPromoCodeRequest is the request body for POST /v1/organizations/{org_id}/promo-codes.
 type createPromoCodeRequest struct {
-	Code               string   `json:"code"`
-	DiscountType       string   `json:"discount_type"`
-	DiscountValue      int64    `json:"discount_value"`
-	AppliesToTierIDs   []string `json:"applies_to_tier_ids"`
-	MaxUses            *int32   `json:"max_uses"`
-	MaxUsesPerCustomer *int32   `json:"max_uses_per_customer"`
-	ValidFrom          *string  `json:"valid_from"`
-	ValidUntil         *string  `json:"valid_until"`
-	MinOrderAmount     int64    `json:"min_order_amount"`
-	Status             string   `json:"status"`
+	Code                string   `json:"code"`
+	DiscountType        string   `json:"discount_type"`
+	DiscountValue       int64    `json:"discount_value"`
+	Currency            string   `json:"currency"`
+	AppliesToTierIDs    []string `json:"applies_to_tier_ids"`
+	AppliesToSessionIDs []string `json:"applies_to_session_ids"`
+	MaxUses             *int32   `json:"max_uses"`
+	MaxUsesPerCustomer  *int32   `json:"max_uses_per_customer"`
+	ValidFrom           *string  `json:"valid_from"`
+	ValidUntil          *string  `json:"valid_until"`
+	MinOrderAmount      int64    `json:"min_order_amount"`
+	Status              string   `json:"status"`
 }
 
 // HandleCreatePromoCode serves POST /v1/organizations/{org_id}/promo-codes.
@@ -248,8 +341,19 @@ func (h *Handler) HandleCreatePromoCode(w http.ResponseWriter, r *http.Request) 
 	if req.AppliesToTierIDs == nil {
 		req.AppliesToTierIDs = []string{}
 	}
+	if req.AppliesToSessionIDs == nil {
+		req.AppliesToSessionIDs = []string{}
+	}
 	if req.Status == "" {
 		req.Status = "active"
+	}
+
+	scope, ok := h.checkPromoScope(ctx, w, r, orgID, promoScopeInput{
+		DiscountType: req.DiscountType, Currency: &req.Currency,
+		SessionIDs: req.AppliesToSessionIDs, TierIDs: req.AppliesToTierIDs,
+	})
+	if !ok {
+		return
 	}
 
 	var validFrom, validUntil *time.Time
@@ -278,7 +382,8 @@ func (h *Handler) HandleCreatePromoCode(w http.ResponseWriter, r *http.Request) 
 
 	pc, err := h.promoQueries.InsertPromoCode(ctx,
 		orgID, req.Code, req.DiscountType, req.DiscountValue,
-		req.AppliesToTierIDs, req.MaxUses, req.MaxUsesPerCustomer,
+		req.AppliesToTierIDs, req.AppliesToSessionIDs, *scope.Currency,
+		req.MaxUses, req.MaxUsesPerCustomer,
 		validFrom, validUntil, req.MinOrderAmount, req.Status,
 	)
 	if err != nil {
@@ -299,7 +404,7 @@ func (h *Handler) HandleCreatePromoCode(w http.ResponseWriter, r *http.Request) 
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
-		"promo_code": promoCodeFromRow(pc),
+		"promo_code": promoCodeFromRow(pc, nil),
 	})
 }
 
@@ -332,9 +437,10 @@ func (h *Handler) HandleListPromoCodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	usage := h.promoUsageByID(ctx, orgID)
 	result := make([]promoCodeResponse, 0, len(rows))
 	for _, pc := range rows {
-		result = append(result, promoCodeFromRow(pc))
+		result = append(result, promoCodeFromRow(pc, usage[pc.ID]))
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"promo_codes": result})
 }
@@ -377,7 +483,7 @@ func (h *Handler) HandleGetPromoCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"promo_code": promoCodeFromRow(pc),
+		"promo_code": promoCodeFromRow(pc, h.promoUsageByID(ctx, orgID)[pc.ID]),
 	})
 }
 
@@ -388,15 +494,17 @@ func (h *Handler) HandleGetPromoCode(w http.ResponseWriter, r *http.Request) {
 // updatePromoCodeRequest is the request body for PATCH .../promo-codes/{id}.
 // All fields are optional; empty/nil values leave the existing value unchanged.
 type updatePromoCodeRequest struct {
-	DiscountType       string   `json:"discount_type"`
-	DiscountValue      *int64   `json:"discount_value"`
-	AppliesToTierIDs   []string `json:"applies_to_tier_ids"`
-	MaxUses            *int32   `json:"max_uses"`
-	MaxUsesPerCustomer *int32   `json:"max_uses_per_customer"`
-	ValidFrom          *string  `json:"valid_from"`
-	ValidUntil         *string  `json:"valid_until"`
-	MinOrderAmount     *int64   `json:"min_order_amount"`
-	Status             string   `json:"status"`
+	DiscountType        string   `json:"discount_type"`
+	DiscountValue       *int64   `json:"discount_value"`
+	Currency            *string  `json:"currency"`
+	AppliesToTierIDs    []string `json:"applies_to_tier_ids"`
+	AppliesToSessionIDs []string `json:"applies_to_session_ids"`
+	MaxUses             *int32   `json:"max_uses"`
+	MaxUsesPerCustomer  *int32   `json:"max_uses_per_customer"`
+	ValidFrom           *string  `json:"valid_from"`
+	ValidUntil          *string  `json:"valid_until"`
+	MinOrderAmount      *int64   `json:"min_order_amount"`
+	Status              string   `json:"status"`
 }
 
 // HandleUpdatePromoCode serves PATCH /v1/organizations/{org_id}/promo-codes/{id}.
@@ -468,9 +576,44 @@ func (h *Handler) HandleUpdatePromoCode(w http.ResponseWriter, r *http.Request) 
 		validUntil = &t
 	}
 
+	// The scope check needs the discount type the row will END UP with: a
+	// PATCH that turns a percent code into fixed_amount must name a currency.
+	current, err := h.promoQueries.GetPromoCodeByID(ctx, pcID, orgID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("promo.not_found", "promo code not found", r))
+			return
+		}
+		h.logger.Error("promo: update lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"promo.update_failed", "failed to update promo code", r,
+		))
+		return
+	}
+	effectiveType := req.DiscountType
+	if effectiveType == "" {
+		effectiveType = current.DiscountType
+	}
+	effectiveCurrency := req.Currency
+	if effectiveCurrency == nil && effectiveType != current.DiscountType {
+		// Type changed without a currency in the body: judge the stored one.
+		stored := ""
+		if current.Currency != nil {
+			stored = *current.Currency
+		}
+		effectiveCurrency = &stored
+	}
+	scope, ok := h.checkPromoScope(ctx, w, r, orgID, promoScopeInput{
+		DiscountType: effectiveType, Currency: effectiveCurrency,
+		SessionIDs: req.AppliesToSessionIDs, TierIDs: req.AppliesToTierIDs,
+	})
+	if !ok {
+		return
+	}
+
 	updated, err := h.promoQueries.UpdatePromoCode(ctx,
 		pcID, orgID,
-		req.DiscountType, req.DiscountValue, req.AppliesToTierIDs,
+		req.DiscountType, req.DiscountValue, req.AppliesToTierIDs, req.AppliesToSessionIDs, scope.Currency,
 		req.MaxUses, req.MaxUsesPerCustomer,
 		validFrom, validUntil,
 		req.MinOrderAmount, req.Status,
@@ -488,7 +631,7 @@ func (h *Handler) HandleUpdatePromoCode(w http.ResponseWriter, r *http.Request) 
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"promo_code": promoCodeFromRow(updated),
+		"promo_code": promoCodeFromRow(updated, h.promoUsageByID(ctx, orgID)[updated.ID]),
 	})
 }
 
@@ -531,7 +674,7 @@ func (h *Handler) HandleDeletePromoCode(w http.ResponseWriter, r *http.Request) 
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"promo_code": promoCodeFromRow(deleted),
+		"promo_code": promoCodeFromRow(deleted, nil),
 		"deleted":    true,
 	})
 }
@@ -546,7 +689,9 @@ type validatePromoCodeRequest struct {
 	Code        string   `json:"code"`
 	OrderAmount int64    `json:"order_amount"`
 	UserID      string   `json:"user_id"`
-	TierIDs     []string `json:"tier_ids"` // optional; UUIDs of tiers in cart
+	TierIDs     []string `json:"tier_ids"`   // optional; UUIDs of tiers in cart
+	SessionID   string   `json:"session_id"` // optional; the session the cart sells
+	Currency    string   `json:"currency"`   // optional; the cart's currency
 }
 
 // HandleValidatePromoCode serves POST /v1/checkout/promo-validate.
@@ -641,7 +786,10 @@ func (h *Handler) HandleValidatePromoCode(w http.ResponseWriter, r *http.Request
 			lineTier = "__no_eligible_tier__"
 		}
 	}
-	discountAmount, errCode := ValidatePromoForLines(pc, []TierLine{{TierID: lineTier, Amount: req.OrderAmount}}, time.Now().UTC())
+	discountAmount, errCode := ValidatePromoForLines(pc, []TierLine{{
+		TierID: lineTier, Amount: req.OrderAmount,
+		SessionID: strings.TrimSpace(req.SessionID), Currency: strings.ToUpper(strings.TrimSpace(req.Currency)),
+	}}, time.Now().UTC())
 	if errCode != "" {
 		var msg string
 		switch errCode {
@@ -655,6 +803,10 @@ func (h *Handler) HandleValidatePromoCode(w http.ResponseWriter, r *http.Request
 			msg = "order amount does not meet the minimum required for this promo code"
 		case "promo.tier_not_applicable":
 			msg = "promo code is not applicable to the selected ticket tiers"
+		case "promo.session_not_applicable":
+			msg = "promo code is not valid for this event session"
+		case "promo.currency_mismatch":
+			msg = "promo code is in a different currency than this order"
 		default:
 			msg = "promo code cannot be applied to this order"
 		}
@@ -711,6 +863,6 @@ func (h *Handler) HandleValidatePromoCode(w http.ResponseWriter, r *http.Request
 		"valid":           true,
 		"discount_amount": discountAmount,
 		"final_amount":    finalAmount,
-		"promo_code":      promoCodeFromRow(pc),
+		"promo_code":      promoCodeFromRow(pc, nil),
 	})
 }

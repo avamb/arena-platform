@@ -72,6 +72,18 @@ other = "קוד ההטבה אינו חל על הכרטיסים שבסל"
 ["bil24.promo_min_order"]
 other = "סכום ההזמנה נמוך מהמינימום הנדרש לקוד ההטבה"
 
+["bil24.promo_wrong_session"]
+other = "קוד ההטבה אינו תקף לאירוע זה"
+
+["bil24.promo_currency_mismatch"]
+other = "קוד ההטבה הונפק במטבע אחר"
+
+["bil24.promo_exhausted"]
+other = "קוד ההטבה כבר נוצל במלואו"
+
+["bil24.promo_per_customer_limit"]
+other = "כבר השתמשתם בקוד הטבה זה"
+
 ["bil24.hold_expired"]
 other = "השמירה פגה, יש לבצע הזמנה מחדש"
 

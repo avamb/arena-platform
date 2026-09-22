@@ -165,7 +165,16 @@ func (h *Handler) completeCheckoutWithPromoTx(
 	// ── Record promo redemption (when promo was applied) ─────────────────────
 	if promoFound {
 		rid := reservationID
-		if _, insErr := txQ.InsertPromoCodeRedemption(ctx, pc.ID, userID, &rid, discountAmount, orderAmount); insErr != nil {
+		// The order, customer and channel of this checkout are stamped on
+		// the redemption when the order row exists (migration 0108); a
+		// session that predates the order aggregate keeps the reservation
+		// as its only link.
+		var orderID, customerID, channelID *uuid.UUID
+		if ord, oerr := txQ.GetOrderByCheckoutSession(ctx, cs.ID); oerr == nil {
+			oid, chid := ord.ID, ord.ChannelID
+			orderID, customerID, channelID = &oid, ord.CustomerID, &chid
+		}
+		if insErr := txQ.InsertPromoCodeRedemption(ctx, pc.ID, userID, &rid, discountAmount, orderAmount, orderID, customerID, channelID); insErr != nil {
 			h.logger.Error("promo: insert redemption failed (checkout completion will still succeed)",
 				slog.String("promo_code_id", pc.ID.String()),
 				slog.String("checkout_reservation_id", rid.String()),

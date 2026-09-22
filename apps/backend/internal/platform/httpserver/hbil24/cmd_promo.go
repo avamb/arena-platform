@@ -34,6 +34,7 @@ package hbil24
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -42,6 +43,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat/money"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 )
@@ -58,6 +60,10 @@ const MaxPromoCodesPerRequest = 10
 type PromoQuerier interface {
 	GetPromoCodeByCodeCI(ctx context.Context, orgID uuid.UUID, code string) (gen.PromoCodeRow, error)
 	AppendGatewaySessionPromoCode(ctx context.Context, id uuid.UUID, promoCodes []string) error
+	// The usage counters behind max_uses / max_uses_per_customer
+	// (hcheckout.CheckPromoLimits): a buyer learns that a code is used up
+	// when they type it, not after the site has taken their money.
+	hcheckout.PromoLimitQuerier
 }
 
 // WithPromoCodes wires the spec §7.6 promo surface used by ADD_PROMO_CODES,
@@ -82,6 +88,11 @@ var promoErrorKeys = map[string]struct {
 	"promo.expired":              {"bil24.promo_expired", "promo code has expired"},
 	"promo.tier_not_applicable":  {"bil24.promo_not_applicable", "promo code does not apply to the tickets in your cart"},
 	"promo.invalid_order_amount": {"bil24.promo_min_order", "the order total is below the minimum for this promo code"},
+	// Migration 0108: session scope, currency and both usage caps.
+	"promo.session_not_applicable":     {"bil24.promo_wrong_session", "promo code is not valid for this event"},
+	"promo.currency_mismatch":          {"bil24.promo_currency_mismatch", "promo code is in a different currency"},
+	hcheckout.PromoErrExhausted:        {"bil24.promo_exhausted", "promo code has already been used up"},
+	hcheckout.PromoErrPerCustomerLimit: {"bil24.promo_per_customer_limit", "you have already used this promo code"},
 }
 
 // promoNotFoundKey is the refusal used when no promo_codes row matches the
@@ -235,15 +246,31 @@ func (h *Handler) evaluatePromoCode(ctx context.Context, pc promoCtx, code strin
 		return promoVerdict{}, err
 	}
 
+	v := promoVerdict{row: row}
 	if len(pc.snap.lines) == 0 {
-		if code := promoWindowError(row, now); code != "" {
-			return promoVerdict{row: row, errCode: code}, nil
-		}
-		return promoVerdict{row: row}, nil
+		v.errCode = promoWindowError(row, now)
+	} else {
+		v.discount, v.errCode = hcheckout.ValidatePromoForLines(row, promoTierLines(pc.snap), now)
+	}
+	if v.errCode != "" {
+		return v, nil
 	}
 
-	discount, errCode := hcheckout.ValidatePromoForLines(row, promoTierLines(pc.snap), now)
-	return promoVerdict{row: row, discount: discount, errCode: errCode}, nil
+	// The usage caps, judged for the buyer this gateway session belongs to.
+	// Checked last: an expired code is "expired", not "used up".
+	customerID := pc.cc.gw.CustomerID
+	limitErr, err := hcheckout.CheckPromoLimits(ctx, h.promoQ, row, &customerID, "")
+	if err != nil {
+		h.logger.Error("bil24_compat: promo usage count failed",
+			slog.String("promo_code_id", row.ID.String()),
+			slog.String("error", err.Error()),
+		)
+		return promoVerdict{}, err
+	}
+	if limitErr != "" {
+		v.discount, v.errCode = 0, limitErr
+	}
+	return v, nil
 }
 
 // promoWindowError applies only the code-intrinsic checks — status and the
@@ -263,16 +290,21 @@ func promoWindowError(pc gen.PromoCodeRow, now time.Time) string {
 	return ""
 }
 
-// promoTierLines projects the cart snapshot onto the tier-aware promo input.
-// One TierLine per held unit: the per-line price is already the unit total.
+// promoTierLines projects the cart snapshot onto the promo input. One
+// TierLine per held unit: the per-line price is already the unit total; the
+// unit's session and the cart currency are what a session-scoped or
+// currency-bound code is checked against.
 func promoTierLines(snap cartSnapshot) []hcheckout.TierLine {
 	lines := make([]hcheckout.TierLine, 0, len(snap.lines))
 	for _, l := range snap.lines {
-		tid := ""
+		tid, sid := "", ""
 		if l.tierID != uuid.Nil {
 			tid = l.tierID.String()
 		}
-		lines = append(lines, hcheckout.TierLine{TierID: tid, Amount: l.price})
+		if l.sessionID != uuid.Nil {
+			sid = l.sessionID.String()
+		}
+		lines = append(lines, hcheckout.TierLine{TierID: tid, Amount: l.price, SessionID: sid, Currency: snap.currency})
 	}
 	return lines
 }
@@ -403,6 +435,14 @@ func (h *Handler) handleBil24CheckKDP(w http.ResponseWriter, r *http.Request, re
 		return
 	}
 
+	// Arena extension: with `actionEventId` + `lines` the probe prices a
+	// cart that does NOT exist yet, so the site's ticket picker can show
+	// the discounted total the moment the buyer applies the code.
+	if len(req.Lines) > 0 {
+		h.checkKDPQuote(ctx, w, req, pc, code)
+		return
+	}
+
 	v, err := h.evaluatePromoCode(ctx, pc, code, time.Now().UTC())
 	if err != nil {
 		h.writeCartTransient(w, req, pc.cc)
@@ -418,6 +458,130 @@ func (h *Handler) handleBil24CheckKDP(w http.ResponseWriter, r *http.Request, re
 
 	resp := bil24OK(req.Command, nil)
 	resp.Description = h.localizeDesc(req.Locale, pc.cc.locale, "bil24.ok", "OK", nil)
+	writeBil24JSON(w, http.StatusOK, resp)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHECK_KDP quote — the picker's "what would this cart cost with the code"
+// ─────────────────────────────────────────────────────────────────────────────
+
+// checkKDPQuote answers CHECK_KDP for a hypothetical cart: `actionEventId`
+// names the session, `lines` the (categoryPriceId, quantity) pairs, exactly
+// as CREATE_ORDER_EXT spells them. Nothing is held and nothing is stored.
+//
+// The money is produced by the same evaluation the real cart will go
+// through — the session's AB-48 tier prices, ValidatePromoForLines, the
+// GET_CART proration and the channel's rounded fee — so the figure the buyer
+// sees in the picker is the figure PAY_ORDER will expect. An unusable code
+// still answers resultCode 0 with the undiscounted money and a
+// `promoError` description, so the picker can show the price AND the reason.
+func (h *Handler) checkKDPQuote(ctx context.Context, w http.ResponseWriter, req bil24Request, pc promoCtx, code string) {
+	if strings.TrimSpace(req.ActionEventID) == "" {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInvalidRequest, "actionEventId is required with lines",
+		))
+		return
+	}
+	sessionID, err := h.resolveActionEventID(ctx, req.ActionEventID)
+	if err != nil {
+		writeBil24JSON(w, http.StatusOK, bil24Error(
+			req.Command, ResultCodeInvalidRequest, "actionEventId must be a valid action event identifier",
+		))
+		return
+	}
+	if h.resDeps.CtxQ != nil {
+		octx, err := h.resDeps.CtxQ.GetSessionOrgContext(ctx, sessionID)
+		if err != nil || (pc.cc.orgID != uuid.Nil && octx.OrgID != pc.cc.orgID) {
+			h.writeCartNotFound(w, req, pc.cc)
+			return
+		}
+	}
+	pricing, err := h.cartSessionPricing(ctx, sessionID)
+	if err != nil {
+		h.writeCartTransient(w, req, pc.cc)
+		return
+	}
+
+	// One cartLine per unit, as collectCart would build them for real holds.
+	type quoteLine struct {
+		raw   string
+		tier  uuid.UUID
+		qty   int
+		price int64
+	}
+	quote := make([]quoteLine, 0, len(req.Lines))
+	snap := cartSnapshot{lines: make([]cartLine, 0, len(req.Lines)), currency: pricing.currency}
+	for i, l := range req.Lines {
+		tierID, err := h.resolveCategoryPriceID(ctx, l.CategoryPriceID)
+		if err != nil || l.Quantity <= 0 {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInvalidRequest,
+				fmt.Sprintf("lines[%d] must name a category price and a quantity >= 1", i),
+			))
+			return
+		}
+		price, known := pricing.price[tierID]
+		if !known && len(pricing.price) > 0 {
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeUserVisible,
+				h.localizeDesc(req.Locale, pc.cc.locale, "bil24.line_wrong_session",
+					"this ticket category belongs to another event", nil),
+			))
+			return
+		}
+		quote = append(quote, quoteLine{raw: l.CategoryPriceID, tier: tierID, qty: l.Quantity, price: price})
+		for n := 0; n < l.Quantity; n++ {
+			snap.lines = append(snap.lines, cartLine{price: price, tierID: tierID, sessionID: sessionID})
+			snap.sum += price
+		}
+	}
+
+	v, err := h.evaluatePromoCode(ctx, promoCtx{cc: pc.cc, snap: snap}, code, time.Now().UTC())
+	if err != nil {
+		h.writeCartTransient(w, req, pc.cc)
+		return
+	}
+	disc := cartDiscount{perLine: make([]int64, len(snap.lines))}
+	if v.errCode == "" && v.discount > 0 {
+		disc = prorateDiscount(snap, v.discount)
+	}
+
+	// Fold the per-unit proration back onto the request's lines.
+	lines := make([]map[string]any, 0, len(quote))
+	unit := 0
+	for _, q := range quote {
+		var lineDiscount int64
+		for n := 0; n < q.qty; n++ {
+			lineDiscount += disc.perLine[unit]
+			unit++
+		}
+		lines = append(lines, map[string]any{
+			"categoryPriceId": q.raw,
+			"quantity":        q.qty,
+			"price":           money.Major(q.price),
+			"discount":        money.Major(lineDiscount),
+			"sum":             money.Major(q.price*int64(q.qty) - lineDiscount),
+		})
+	}
+
+	feePercent := cartFeePercent(pc.cc.channel)
+	charge := feeChargeMinor(snap.sum-disc.total, feePercent)
+	resp := bil24OK(req.Command, map[string]any{
+		"promoCode":      code,
+		"promoApplied":   v.errCode == "" && disc.total > 0,
+		"currency":       snap.currency,
+		"sum":            money.Major(snap.sum),
+		"discountAmount": money.Major(disc.total),
+		"chargePercent":  int64(feePercent),
+		"chargeAmount":   money.Major(charge),
+		"totalSum":       money.Major(snap.sum - disc.total + charge),
+		"lines":          lines,
+	})
+	if v.errCode != "" {
+		resp.Description = h.promoRefusalDescription(req, pc.cc, v.errCode)
+	} else {
+		resp.Description = h.localizeDesc(req.Locale, pc.cc.locale, "bil24.ok", "OK", nil)
+	}
 	writeBil24JSON(w, http.StatusOK, resp)
 }
 

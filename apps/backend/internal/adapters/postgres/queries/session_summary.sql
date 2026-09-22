@@ -83,3 +83,14 @@ LEFT JOIN payment_intents pi ON pi.id = r.payment_intent_id
 LEFT JOIN orders          po ON po.checkout_session_id = pi.checkout_session_id
 WHERE  COALESCE(ro.session_id, rt.session_id, po.session_id) = $1
 GROUP  BY r.settlement, r.state, r.currency;
+
+-- name: ListSessionSummaryPromos :many
+-- Which promo codes the paid orders of this session used, and what they cost.
+SELECT p.id AS promo_code_id, p.code, o.currency,
+       count(*)::bigint                     AS orders,
+       COALESCE(sum(o.discount), 0)::bigint AS discount
+FROM   orders o
+JOIN   promo_codes p ON p.id = o.promo_code_id
+WHERE  o.session_id = $1
+  AND  o.status IN ('paid', 'partially_refunded', 'refunded')
+GROUP  BY p.id, p.code, o.currency;

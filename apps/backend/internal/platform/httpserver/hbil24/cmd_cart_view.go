@@ -316,6 +316,9 @@ type cartLine struct {
 	// hcheckout.TierLine set that decides whether a tier-restricted code
 	// applies to this cart (feature #491).
 	tierID uuid.UUID
+	// sessionID is the PLATFORM event session of this unit — the scope a
+	// session-bound promo code is checked against (migration 0108).
+	sessionID uuid.UUID
 }
 
 // cartSnapshot is the whole cart of one gateway session, read once and shared
@@ -437,6 +440,7 @@ func (h *Handler) collectCart(ctx context.Context, cc cartCtx) (cartSnapshot, er
 				categoryPriceID: categoryPriceID,
 				price:           price,
 				tierID:          tierID,
+				sessionID:       res.SessionID,
 			})
 		}
 

@@ -9,6 +9,8 @@ func (s *Server) mountPromoRoutes(r chi.Router) {
 			s.applyAuth(pr, "promo.read", "promo-codes")
 			pr.Get("/organizations/{org_id}/promo-codes", s.handleListPromoCodes)
 			pr.Get("/organizations/{org_id}/promo-codes/{id}", s.handleGetPromoCode)
+			// The usage report, JSON or ?format=csv (plan 25 §3.1 A2/A9).
+			pr.Get("/organizations/{org_id}/promo-code-redemptions", s.handleListPromoRedemptions)
 		})
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "promo.validate", "promo-codes")

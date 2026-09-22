@@ -2990,6 +2990,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/promo-code-redemptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The promo code usage report of an organization
+         * @description Every redemption of the organization's promo codes, newest first,
+         *     each joined to the order it paid for (order number, status,
+         *     buyer e-mail, sales channel, session). `promo_code_id` narrows the
+         *     report to one code. `format=csv` answers the same rows as a
+         *     `text/csv` attachment with money in decimal major units, for a
+         *     spreadsheet.
+         *
+         *     Requires JWT + the `promo.read` permission.
+         */
+        get: operations["listPromoCodeRedemptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/promo-codes/{id}": {
         parameters: {
             query?: never;
@@ -8479,9 +8506,9 @@ export interface components {
         };
         /**
          * @description One-screen overview of a session: places by status, categories with
-         *     what was paid for them, the money per currency, orders, tickets and
-         *     refunds. Read-only. Carries no buyer data, only counts, amounts in
-         *     minor units and ids.
+         *     what was paid for them, the money per currency, orders, tickets,
+         *     refunds and the promo codes used. Read-only. Carries no buyer data,
+         *     only counts, amounts in minor units and ids.
          */
         SessionSummary: {
             /** @description The session the summary is about. */
@@ -8672,6 +8699,28 @@ export interface components {
                  * @description Sum of the refund amounts, minor units.
                  */
                 amount: number;
+            }[];
+            /** @description Promo codes the paid orders of the session used, sorted by code. */
+            promos: {
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the promo code.
+                 */
+                id: string;
+                /** @description The code string. */
+                code: string;
+                /** @description ISO 4217 currency of the orders. */
+                currency: string;
+                /**
+                 * Format: int64
+                 * @description Paid orders that used the code.
+                 */
+                orders: number;
+                /**
+                 * Format: int64
+                 * @description Discount those orders took, minor units.
+                 */
+                discount: number;
             }[];
         };
         /**
@@ -12131,6 +12180,34 @@ export interface components {
              */
             applies_to_tier_ids: string[];
             /**
+             * @description The event sessions the code is for (owner decision 2026-09-22:
+             *     a promo code applies to a session). Empty array means any
+             *     session of the organization. Narrowed further by
+             *     `applies_to_tier_ids` when both are set.
+             */
+            applies_to_session_ids: string[];
+            /**
+             * @description ISO 4217 code a `fixed_amount` discount is expressed in; the
+             *     code applies only to carts in that currency. `null` on a code
+             *     created before migration 0108 means any currency.
+             */
+            currency: string | null;
+            /**
+             * Format: int32
+             * @description How many orders have redeemed the code so far.
+             */
+            uses: number;
+            /**
+             * Format: int64
+             * @description Sum of the discounts those orders took, in minor units.
+             */
+            discount_total: number;
+            /**
+             * Format: date-time
+             * @description When the code was last redeemed; `null` when never.
+             */
+            last_used_at: string | null;
+            /**
              * Format: int32
              * @description Total redemption cap across all customers. `null` means
              *     unlimited. When the cap is reached, `promo-validate` returns
@@ -12214,6 +12291,78 @@ export interface components {
             deleted: true;
         };
         /**
+         * @description One redemption of a promo code, joined to the order it paid for.
+         *     Money is in minor units of `currency`. The order fields are `null`
+         *     for a redemption whose order was deleted, or one recorded before
+         *     migration 0108 whose order could not be derived.
+         */
+        PromoRedemptionItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the redemption row.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The promo code that was redeemed.
+             */
+            promo_code_id: string;
+            /** @description The code string, as the organizer spelled it. */
+            code: string;
+            /**
+             * Format: date-time
+             * @description When the order that used the code was paid.
+             */
+            redeemed_at: string;
+            /**
+             * Format: int64
+             * @description Discount the order took, in minor units.
+             */
+            discount_amount: number;
+            /**
+             * Format: int64
+             * @description The order's subtotal before the discount, in minor units.
+             */
+            order_amount: number;
+            /**
+             * Format: uuid
+             * @description Platform id of the order.
+             */
+            order_id: string | null;
+            /**
+             * Format: int64
+             * @description The order's `system_id` — the number the buyer and the selling site know.
+             */
+            order_number: number | null;
+            /** @description Current order status (`paid`, `refunded`, ...). */
+            order_status: string | null;
+            /** @description ISO 4217 currency of the order. */
+            currency: string | null;
+            /** @description E-mail the order was bought under. */
+            buyer_email: string | null;
+            /**
+             * Format: uuid
+             * @description The event session the order sold.
+             */
+            session_id: string | null;
+            /**
+             * Format: uuid
+             * @description The sales channel the order came through.
+             */
+            channel_id: string | null;
+            /** @description Display name of that channel (the selling site or the widget). */
+            channel_name: string | null;
+        };
+        /**
+         * @description Envelope returned by
+         *     `GET /v1/organizations/{org_id}/promo-code-redemptions` — the
+         *     organizer's usage report, newest first.
+         */
+        PromoRedemptionListResponse: {
+            /** @description Every redemption of the organization's codes, optionally narrowed to one code. */
+            redemptions: components["schemas"]["PromoRedemptionItem"][];
+        };
+        /**
          * @description Body for `POST /v1/organizations/{org_id}/promo-codes`. Validates
          *     `code` (trimmed, non-empty), `discount_type`
          *     (`percent` | `fixed_amount`), `discount_value` (> 0; 1-100 when
@@ -12242,6 +12391,18 @@ export interface components {
              *     normalised to an empty array server-side.
              */
             applies_to_tier_ids?: string[];
+            /**
+             * @description The event sessions the code is for; every one must belong to
+             *     the organization (422 `promo.invalid_session` otherwise).
+             *     Omitted/null is normalised to an empty array — any session.
+             */
+            applies_to_session_ids?: string[];
+            /**
+             * @description ISO 4217 code of a `fixed_amount` discount — required for that
+             *     type (400 `promo.currency_required`), optional for `percent`.
+             *     Malformed values are rejected with 400 `promo.invalid_currency`.
+             */
+            currency?: string;
             /**
              * Format: int32
              * @description Total redemption cap; null = unlimited.
@@ -12300,6 +12461,19 @@ export interface components {
              *     Empty array makes the code apply order-wide.
              */
             applies_to_tier_ids?: string[];
+            /**
+             * @description New set of event sessions the code is for; each must belong to
+             *     the organization (422 `promo.invalid_session`). Empty array
+             *     means any session.
+             */
+            applies_to_session_ids?: string[];
+            /**
+             * @description New ISO 4217 currency of a `fixed_amount` discount. Omitted
+             *     keeps the stored value; `""` clears it (any currency). A
+             *     `fixed_amount` code cannot end up without one
+             *     (400 `promo.currency_required`).
+             */
+            currency?: string | null;
             /**
              * Format: int32
              * @description New total redemption cap. `null` means unlimited.
@@ -12365,6 +12539,18 @@ export interface components {
              *     the per-customer counter.
              */
             user_id?: string;
+            /**
+             * Format: uuid
+             * @description Optional event session the cart sells. A session-scoped code
+             *     answers 422 `promo.session_not_applicable` for any other
+             *     session — and for a call that omits this field.
+             */
+            session_id?: string;
+            /**
+             * @description Optional ISO 4217 currency of the cart. A `fixed_amount` code
+             *     in another currency answers 422 `promo.currency_mismatch`.
+             */
+            currency?: string;
             /**
              * @description Ticket-tier UUIDs present in the cart, for tier-restricted
              *     codes. A restricted code is applicable when at least one
@@ -15870,6 +16056,20 @@ export interface components {
             sessionId: string;
             /** @description Single promo code to validate (not persisted). */
             promoCode: string;
+            /**
+             * Format: int64
+             * @description Arena extension (plan 25): with `lines`, the session to
+             *     price a not-yet-held cart against, so the site's ticket
+             *     picker shows the discounted total the moment the code is
+             *     applied. Required when `lines` is present.
+             */
+            actionEventId?: number;
+            /**
+             * @description Arena extension: the cart to quote, one entry per
+             *     (categoryPriceId, quantity) exactly as `CREATE_ORDER_EXT`
+             *     spells it. Nothing is held or stored.
+             */
+            lines?: components["schemas"]["Bil24OrderLine"][];
         };
         /** @description One line of a `CREATE_ORDER_EXT` request's `lines` array. */
         Bil24OrderLine: {
@@ -16758,10 +16958,50 @@ export interface components {
          */
         Bil24RespCancelOrder: components["schemas"]["Bil24ResponseEnvelope"];
         /**
-         * @description Success payload of `CHECK_KDP` (spec §7.6): envelope only, no
-         *     extra payload keys.
+         * @description Success payload of `CHECK_KDP` (spec §7.6): envelope only for the
+         *     plain probe. With the arena extension `actionEventId` + `lines`
+         *     the envelope carries the quote below — the money the picker shows
+         *     before any hold exists, produced by the same pricing, proration and
+         *     fee rounding as `GET_CART`, in MAJOR currency units (spec 20).
          */
-        Bil24RespCheckKdp: components["schemas"]["Bil24ResponseEnvelope"];
+        Bil24RespCheckKdp: components["schemas"]["Bil24ResponseEnvelope"] & {
+            /** @description The code that was quoted, as typed. */
+            promoCode?: string;
+            /**
+             * @description `true` when the code yielded a discount on these lines.
+             *     `false` keeps the undiscounted money and names the reason
+             *     in the envelope's `description`.
+             */
+            promoApplied?: boolean;
+            /** @description ISO 4217 currency of the session. */
+            currency?: string;
+            /** @description Ticket sum before the discount, major units. */
+            sum?: number;
+            /** @description Discount the code yields on these lines, major units. */
+            discountAmount?: number;
+            /**
+             * Format: int64
+             * @description The channel's service-fee percent, truncated.
+             */
+            chargePercent?: number;
+            /** @description Service charge on the discounted sum, major units. */
+            chargeAmount?: number;
+            /** @description What the buyer would pay — sum − discount + charge, major units. */
+            totalSum?: number;
+            /** @description The request's lines, priced, with each line's share of the discount. */
+            lines?: {
+                /** @description Echo of the request's `categoryPriceId`. */
+                categoryPriceId?: string;
+                /** @description Echo of the request's `quantity`. */
+                quantity?: number;
+                /** @description Unit price, major units. */
+                price?: number;
+                /** @description This line's share of the discount, major units. */
+                discount?: number;
+                /** @description quantity × price − discount, major units. */
+                sum?: number;
+            }[];
+        };
         /** @description Success payload of `REFUND_TICKET` (arena extension, spec §7.13), merged into the envelope. */
         Bil24RespRefundTicket: components["schemas"]["Bil24ResponseEnvelope"] & {
             /**
@@ -27974,7 +28214,9 @@ export interface operations {
              *     `promo.invalid_json`, `promo.invalid_code`,
              *     `promo.invalid_discount_type`,
              *     `promo.invalid_discount_value`,
-             *     `promo.invalid_valid_from`, `promo.invalid_valid_until`.
+             *     `promo.invalid_valid_from`, `promo.invalid_valid_until`,
+             *     `promo.invalid_tier_id`, `promo.invalid_session_id`,
+             *     `promo.invalid_currency`, `promo.currency_required`.
              */
             400: {
                 headers: {
@@ -28014,6 +28256,18 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description A session in `applies_to_session_ids` does not belong to this
+             *     organization (`promo.invalid_session`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal server error (`promo.insert_failed`). */
             500: {
                 headers: {
@@ -28027,6 +28281,80 @@ export interface operations {
              * @description Database pool or promo queries unavailable
              *     (`dependency.database_unavailable`).
              */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listPromoCodeRedemptions: {
+        parameters: {
+            query?: {
+                /** @description Narrow the report to one promo code (UUID). */
+                promo_code_id?: string;
+                /** @description `csv` for a text/csv attachment instead of JSON; any other value answers JSON. */
+                format?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The report, as JSON or as CSV when `format=csv`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoRedemptionListResponse"];
+                    "text/csv": string;
+                };
+            };
+            /** @description `promo_code_id` is not a UUID (`promo.invalid_promo_code_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `promo.read` permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`promo.report_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Promo queries unavailable (`dependency.database_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -28211,7 +28539,9 @@ export interface operations {
              * @description Invalid body or field. Possible error codes:
              *     `promo.invalid_body`, `promo.empty_body`,
              *     `promo.invalid_json`, `promo.invalid_discount_type`,
-             *     `promo.invalid_valid_from`, `promo.invalid_valid_until`.
+             *     `promo.invalid_valid_from`, `promo.invalid_valid_until`,
+             *     `promo.invalid_tier_id`, `promo.invalid_session_id`,
+             *     `promo.invalid_currency`, `promo.currency_required`.
              */
             400: {
                 headers: {
@@ -28241,6 +28571,18 @@ export interface operations {
             };
             /** @description Promo code not found (`promo.not_found`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description A session in `applies_to_session_ids` does not belong to this
+             *     organization (`promo.invalid_session`).
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -1435,6 +1435,31 @@ entries short and factual.
   had migration 0103 skipped (0104 applied first): `migrate up` refuses with
   "found 1 missing migrations" — apply its Up block by hand per the goose
   gotcha above before provisioning there.
+- **Promo codes are platform-owned and have ONE validation path:
+  `hcheckout.ValidatePromoForLines` (scope: sessions, currency, tiers, window,
+  minimum) followed by `hcheckout.CheckPromoLimits` (max_uses,
+  max_uses_per_customer) — every surface calls both BEFORE money moves:** the
+  gateway's ADD_PROMO_CODES / CHECK_KDP / GET_CART / CREATE_ORDER_EXT
+  (`hbil24.evaluatePromoCode`), the widget's `checkout/start`
+  (`hfeed.applyPromoDiscount`) and the org validate endpoint. Since migration
+  0108 a `TierLine` carries `SessionID` and `Currency`; a line without them
+  never satisfies a session-scoped or currency-bound code, so build lines with
+  `TierLinesForSession`, never bare `{TierID, Amount}`. Recording usage is
+  `InsertPromoCodeRedemption` with the ORDER id (unique per order — replays
+  are no-ops), written by PAY_ORDER (`payRedeemPromo`) and by
+  `FulfillCompletedCheckoutTx` (`recordPromoRedemptionTx`) for the widget's
+  webhook and free-order paths; until 2026-09-22 the widget never recorded a
+  redemption, so its limits were never enforced. Per-customer counting is by
+  `customer_id` where a customer exists (gateway session, paid order) and by
+  `orders.buyer_email` where only the e-mail is known (widget pricing).
+  CHECK_KDP with `actionEventId` + `lines` is the price quote the site's
+  picker uses (`checkKDPQuote`, spec 18 §7.6): it answers resultCode 0 with
+  `promoApplied` false and the reason in `description` when the code does not
+  apply — do not "fix" that into a 101, the picker needs the money either way.
+  A new `bil24.*` description key must be added to
+  `bil24compat.Bil24DescriptionKeys` AND to all four locale toml files
+  (`internal/platform/i18n/locales/{en,ru,cs,he}.toml`) or the completeness
+  test fails.
 - **The one-screen session overview is `GET
   /v1/organizations/{org_id}/sessions/{session_id}/summary`** (`order.read`,
   `horders/session_summary.go`, queries in `session_summary.sql`). Add new

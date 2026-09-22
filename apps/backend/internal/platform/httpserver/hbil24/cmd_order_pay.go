@@ -755,9 +755,10 @@ func (h *Handler) payRedeemPromo(ctx context.Context, txq *gen.Queries, order ge
 			)
 		}
 	}
-	reservationID := order.ReservationID
-	if _, err := txq.InsertPromoCodeRedemption(
+	reservationID, orderID, channelID := order.ReservationID, order.ID, order.ChannelID
+	if err := txq.InsertPromoCodeRedemption(
 		ctx, promo.ID, nil, &reservationID, order.Discount, order.Subtotal,
+		&orderID, order.CustomerID, &channelID,
 	); err != nil {
 		return fmt.Errorf("promo redemption %s: %w", promo.ID.String(), err)
 	}

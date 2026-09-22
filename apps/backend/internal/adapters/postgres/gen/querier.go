@@ -283,16 +283,21 @@ type Querier interface {
 	UpdateReservationCustomer(ctx context.Context, id uuid.UUID, customerID uuid.UUID) error
 
 	// Promo codes — discount codes for checkout (feature #128)
-	InsertPromoCode(ctx context.Context, orgID uuid.UUID, code, discountType string, discountValue int64, appliesToTierIDs []string, maxUses, maxUsesPerCustomer *int32, validFrom, validUntil *time.Time, minOrderAmount int64, status string) (PromoCodeRow, error)
+	InsertPromoCode(ctx context.Context, orgID uuid.UUID, code, discountType string, discountValue int64, appliesToTierIDs, appliesToSessionIDs []string, currency string, maxUses, maxUsesPerCustomer *int32, validFrom, validUntil *time.Time, minOrderAmount int64, status string) (PromoCodeRow, error)
 	GetPromoCodeByID(ctx context.Context, id, orgID uuid.UUID) (PromoCodeRow, error)
 	GetPromoCodeByCode(ctx context.Context, orgID uuid.UUID, code string) (PromoCodeRow, error)
 	GetPromoCodeByCodeCI(ctx context.Context, orgID uuid.UUID, code string) (PromoCodeRow, error)
 	ListPromoCodesByOrg(ctx context.Context, orgID uuid.UUID) ([]PromoCodeRow, error)
-	UpdatePromoCode(ctx context.Context, id, orgID uuid.UUID, discountType string, discountValue *int64, appliesToTierIDs []string, maxUses, maxUsesPerCustomer *int32, validFrom, validUntil *time.Time, minOrderAmount *int64, status string) (PromoCodeRow, error)
+	UpdatePromoCode(ctx context.Context, id, orgID uuid.UUID, discountType string, discountValue *int64, appliesToTierIDs, appliesToSessionIDs []string, currency *string, maxUses, maxUsesPerCustomer *int32, validFrom, validUntil *time.Time, minOrderAmount *int64, status string) (PromoCodeRow, error)
 	SoftDeletePromoCode(ctx context.Context, id, orgID uuid.UUID) (PromoCodeRow, error)
 	CountPromoCodeRedemptions(ctx context.Context, promoCodeID uuid.UUID) (int32, error)
 	CountUserRedemptions(ctx context.Context, promoCodeID, userID uuid.UUID) (int32, error)
-	InsertPromoCodeRedemption(ctx context.Context, promoCodeID uuid.UUID, userID, reservationID *uuid.UUID, discountAmount, orderAmount int64) (PromoCodeRedemptionRow, error)
+	CountPromoRedemptionsByCustomer(ctx context.Context, promoCodeID, customerID uuid.UUID) (int32, error)
+	CountPromoRedemptionsByBuyerEmail(ctx context.Context, promoCodeID uuid.UUID, email string) (int32, error)
+	// InsertPromoCodeRedemption is idempotent per order (migration 0108).
+	InsertPromoCodeRedemption(ctx context.Context, promoCodeID uuid.UUID, userID, reservationID *uuid.UUID, discountAmount, orderAmount int64, orderID, customerID, channelID *uuid.UUID) error
+	ListPromoCodeUsageByOrg(ctx context.Context, orgID uuid.UUID) ([]PromoCodeUsageRow, error)
+	ListPromoCodeRedemptionsByOrg(ctx context.Context, orgID uuid.UUID, promoCodeID *uuid.UUID) ([]PromoCodeRedemptionReportRow, error)
 	// GetPromoCodeByIDForUpdate locks the promo row FOR UPDATE inside an explicit
 	// transaction, serialising concurrent redemption count-checks (feature #368 — PR2-12).
 	GetPromoCodeByIDForUpdate(ctx context.Context, id uuid.UUID) (PromoCodeRow, error)

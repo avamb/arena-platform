@@ -698,6 +698,22 @@ CREATE TABLE customer_import_rows (
   задокументировать в `BEHAVIOR_DIFFERENCES.md`). Redemption пишется в `PAY_ORDER`.
 - `CHECK_KDP`: валиден → `0`, иначе `101` с причиной. Порядок `RESERVATION → ADD_PROMO_CODES →
   CREATE_ORDER_EXT` не обязателен (движок пересчитывает по текущей корзине), но поддерживается.
+- **Расширение arena (2026-09-22, план 25): `CHECK_KDP` с `actionEventId` + `lines`** — расчёт
+  корзины, которой ещё нет, чтобы пикер сайта показал итог со скидкой сразу после ввода кода.
+  `lines` — как в `CREATE_ORDER_EXT` (`categoryPriceId`, `quantity`). Брони не создаёт, ничего не
+  хранит. Ответ всегда `0` с денежным блоком в MAJOR-единицах: `promoCode`, `promoApplied`,
+  `currency`, `sum`, `discountAmount`, `chargePercent`, `chargeAmount`, `totalSum`,
+  `lines[]{categoryPriceId, quantity, price, discount, sum}`; если код не подошёл —
+  `promoApplied=false`, скидка 0 и `description` с причиной (как у `ADD_PROMO_CODES`). Цены,
+  проверка кода, пропорция скидки по строкам и округление сбора — те же функции, что у
+  `GET_CART`/`CREATE_ORDER_EXT`, поэтому цифра в пикере совпадает с ожидаемой в `PAY_ORDER`.
+- **Область и лимиты (миграция 0108).** Код может быть ограничен сеансами
+  (`applies_to_session_ids`) и валютой (`currency` у `fixed_amount`); `max_uses` и
+  `max_uses_per_customer` проверяются уже при `ADD_PROMO_CODES`/`CHECK_KDP`/`CREATE_ORDER_EXT`
+  (покупатель — `customer_id` gateway-сессии), а не только записываются при `PAY_ORDER`. Новые
+  причины отказа: `bil24.promo_wrong_session`, `bil24.promo_currency_mismatch`,
+  `bil24.promo_exhausted`, `bil24.promo_per_customer_limit`. Использование пишется одной строкой на
+  заказ (`promo_code_redemptions.order_id` уникален) — повтор `PAY_ORDER` не удваивает счётчик.
 
 ### 7.7 `CREATE_ORDER_EXT`
 

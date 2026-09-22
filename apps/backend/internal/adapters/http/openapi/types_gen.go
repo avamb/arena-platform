@@ -1995,12 +1995,23 @@ type Bil24ReqCancelReservationCommand string
 
 // Bil24ReqCheckKdp defines model for Bil24ReqCheckKdp.
 type Bil24ReqCheckKdp struct {
+	// ActionEventId Arena extension (plan 25): with `lines`, the session to
+	// price a not-yet-held cart against, so the site's ticket
+	// picker shows the discounted total the moment the code is
+	// applied. Required when `lines` is present.
+	ActionEventId *int64 `json:"actionEventId,omitempty"`
+
 	// Command Fixed command discriminator for this request shape.
 	Command Bil24ReqCheckKdpCommand `json:"command"`
 
 	// Fid Sales-channel credential (`sales_channels.display_number`).
 	// Accepted as a JSON number or a numeric string on the wire.
 	Fid string `json:"fid"`
+
+	// Lines Arena extension: the cart to quote, one entry per
+	// (categoryPriceId, quantity) exactly as `CREATE_ORDER_EXT`
+	// spells it. Nothing is held or stored.
+	Lines *[]Bil24OrderLine `json:"lines,omitempty"`
 
 	// Locale Optional. Language of localized `description` text in the
 	// response (`ru`, `he`, `cs`, …). Defaults to the channel's
@@ -2573,16 +2584,62 @@ type Bil24RespCancelOrder = Bil24ResponseEnvelope
 // when `resultCode` is `0`.
 type Bil24RespCancelReservation = Bil24ResponseEnvelope
 
-// Bil24RespCheckKdp Fields common to every `/compat/bil24/json` response, success or
-// error. `resultCode` is the real outcome signal — the HTTP status is
-// always 200 (spec §6): `0` OK, `1` stale gateway session, `101`
-// user-visible business error (localized `description`), `-1`
-// transient, `-2` invalid request, `-3` not found / out of org
-// scope, `-4` auth, `-5` not implemented, `-99` dependency
-// unavailable. Per-command payload fields are added by the more
-// specific `Bil24Resp*` schemas via `allOf`, and are present only
-// when `resultCode` is `0`.
-type Bil24RespCheckKdp = Bil24ResponseEnvelope
+// Bil24RespCheckKdp defines model for Bil24RespCheckKdp.
+type Bil24RespCheckKdp struct {
+	// ChargeAmount Service charge on the discounted sum, major units.
+	ChargeAmount *float32 `json:"chargeAmount,omitempty"`
+
+	// ChargePercent The channel's service-fee percent, truncated.
+	ChargePercent *int64 `json:"chargePercent,omitempty"`
+
+	// Command Echo of the request's `command`.
+	Command string `json:"command"`
+
+	// Currency ISO 4217 currency of the session.
+	Currency *string `json:"currency,omitempty"`
+
+	// Description Human-readable outcome text, localized per the request's
+	// `locale` when `resultCode != 0`. `"OK"` on success.
+	Description string `json:"description"`
+
+	// DiscountAmount Discount the code yields on these lines, major units.
+	DiscountAmount *float32 `json:"discountAmount,omitempty"`
+
+	// Lines The request's lines, priced, with each line's share of the discount.
+	Lines *[]struct {
+		// CategoryPriceId Echo of the request's `categoryPriceId`.
+		CategoryPriceId *string `json:"categoryPriceId,omitempty"`
+
+		// Discount This line's share of the discount, major units.
+		Discount *float32 `json:"discount,omitempty"`
+
+		// Price Unit price, major units.
+		Price *float32 `json:"price,omitempty"`
+
+		// Quantity Echo of the request's `quantity`.
+		Quantity *int `json:"quantity,omitempty"`
+
+		// Sum quantity × price − discount, major units.
+		Sum *float32 `json:"sum,omitempty"`
+	} `json:"lines,omitempty"`
+
+	// PromoApplied `true` when the code yielded a discount on these lines.
+	// `false` keeps the undiscounted money and names the reason
+	// in the envelope's `description`.
+	PromoApplied *bool `json:"promoApplied,omitempty"`
+
+	// PromoCode The code that was quoted, as typed.
+	PromoCode *string `json:"promoCode,omitempty"`
+
+	// ResultCode Outcome code; see the schema description for the full table.
+	ResultCode int `json:"resultCode"`
+
+	// Sum Ticket sum before the discount, major units.
+	Sum *float32 `json:"sum,omitempty"`
+
+	// TotalSum What the buyer would pay — sum − discount + charge, major units.
+	TotalSum *float32 `json:"totalSum,omitempty"`
+}
 
 // Bil24RespCreateOrder defines model for Bil24RespCreateOrder.
 type Bil24RespCreateOrder struct {
@@ -4052,6 +4109,11 @@ type CreatePaymentProviderConfigRequestMode string
 // (`percent` | `fixed_amount`), `discount_value` (> 0; 1-100 when
 // type is `percent`), and the optional RFC3339 date window.
 type CreatePromoCodeRequest struct {
+	// AppliesToSessionIds The event sessions the code is for; every one must belong to
+	// the organization (422 `promo.invalid_session` otherwise).
+	// Omitted/null is normalised to an empty array — any session.
+	AppliesToSessionIds *[]openapi_types.UUID `json:"applies_to_session_ids,omitempty"`
+
 	// AppliesToTierIds Optional ticket-tier UUID whitelist. Omitted/null is
 	// normalised to an empty array server-side.
 	AppliesToTierIds *[]openapi_types.UUID `json:"applies_to_tier_ids,omitempty"`
@@ -4059,6 +4121,11 @@ type CreatePromoCodeRequest struct {
 	// Code The redeemable code string. Trimmed and required; empty
 	// after trim returns 400 `promo.invalid_code`.
 	Code string `json:"code"`
+
+	// Currency ISO 4217 code of a `fixed_amount` discount — required for that
+	// type (400 `promo.currency_required`), optional for `percent`.
+	// Malformed values are rejected with 400 `promo.invalid_currency`.
+	Currency *string `json:"currency,omitempty"`
 
 	// DiscountType Either `percent` or `fixed_amount`. Other values are
 	// rejected with 400 `promo.invalid_discount_type`.
@@ -7659,6 +7726,12 @@ type PromoCodeEnvelope struct {
 // total usage limits, per-customer usage limits, a validity date
 // window, and a minimum order amount.
 type PromoCodeItem struct {
+	// AppliesToSessionIds The event sessions the code is for (owner decision 2026-09-22:
+	// a promo code applies to a session). Empty array means any
+	// session of the organization. Narrowed further by
+	// `applies_to_tier_ids` when both are set.
+	AppliesToSessionIds []openapi_types.UUID `json:"applies_to_session_ids"`
+
 	// AppliesToTierIds Optional whitelist of ticket-tier UUIDs the code applies to.
 	// Empty array means the code applies order-wide.
 	AppliesToTierIds []openapi_types.UUID `json:"applies_to_tier_ids"`
@@ -7669,6 +7742,14 @@ type PromoCodeItem struct {
 
 	// CreatedAt ISO 8601 / RFC 3339 timestamp of row creation.
 	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 code a `fixed_amount` discount is expressed in; the
+	// code applies only to carts in that currency. `null` on a code
+	// created before migration 0108 means any currency.
+	Currency *string `json:"currency"`
+
+	// DiscountTotal Sum of the discounts those orders took, in minor units.
+	DiscountTotal int64 `json:"discount_total"`
 
 	// DiscountType Either `percent` (1-100) or `fixed_amount`. Other values are
 	// rejected with 400 `promo.invalid_discount_type`.
@@ -7681,6 +7762,9 @@ type PromoCodeItem struct {
 
 	// Id UUIDv7 of the promo code.
 	Id openapi_types.UUID `json:"id"`
+
+	// LastUsedAt When the code was last redeemed; `null` when never.
+	LastUsedAt *time.Time `json:"last_used_at"`
 
 	// MaxUses Total redemption cap across all customers. `null` means
 	// unlimited. When the cap is reached, `promo-validate` returns
@@ -7708,6 +7792,9 @@ type PromoCodeItem struct {
 	// UpdatedAt ISO 8601 / RFC 3339 timestamp of last update.
 	UpdatedAt time.Time `json:"updated_at"`
 
+	// Uses How many orders have redeemed the code so far.
+	Uses int32 `json:"uses"`
+
 	// ValidFrom RFC3339 start of the validity window. `null` means no lower
 	// bound. Validation returns 422 `promo.not_yet_valid` for
 	// requests before this instant.
@@ -7734,6 +7821,62 @@ type PromoCodeItemStatus string
 type PromoCodeListResponse struct {
 	// PromoCodes All promo codes owned by the organization.
 	PromoCodes []PromoCodeItem `json:"promo_codes"`
+}
+
+// PromoRedemptionItem One redemption of a promo code, joined to the order it paid for.
+// Money is in minor units of `currency`. The order fields are `null`
+// for a redemption whose order was deleted, or one recorded before
+// migration 0108 whose order could not be derived.
+type PromoRedemptionItem struct {
+	// BuyerEmail E-mail the order was bought under.
+	BuyerEmail *string `json:"buyer_email"`
+
+	// ChannelId The sales channel the order came through.
+	ChannelId *openapi_types.UUID `json:"channel_id"`
+
+	// ChannelName Display name of that channel (the selling site or the widget).
+	ChannelName *string `json:"channel_name"`
+
+	// Code The code string, as the organizer spelled it.
+	Code string `json:"code"`
+
+	// Currency ISO 4217 currency of the order.
+	Currency *string `json:"currency"`
+
+	// DiscountAmount Discount the order took, in minor units.
+	DiscountAmount int64 `json:"discount_amount"`
+
+	// Id UUIDv7 of the redemption row.
+	Id openapi_types.UUID `json:"id"`
+
+	// OrderAmount The order's subtotal before the discount, in minor units.
+	OrderAmount int64 `json:"order_amount"`
+
+	// OrderId Platform id of the order.
+	OrderId *openapi_types.UUID `json:"order_id"`
+
+	// OrderNumber The order's `system_id` — the number the buyer and the selling site know.
+	OrderNumber *int64 `json:"order_number"`
+
+	// OrderStatus Current order status (`paid`, `refunded`, ...).
+	OrderStatus *string `json:"order_status"`
+
+	// PromoCodeId The promo code that was redeemed.
+	PromoCodeId openapi_types.UUID `json:"promo_code_id"`
+
+	// RedeemedAt When the order that used the code was paid.
+	RedeemedAt time.Time `json:"redeemed_at"`
+
+	// SessionId The event session the order sold.
+	SessionId *openapi_types.UUID `json:"session_id"`
+}
+
+// PromoRedemptionListResponse Envelope returned by
+// `GET /v1/organizations/{org_id}/promo-code-redemptions` — the
+// organizer's usage report, newest first.
+type PromoRedemptionListResponse struct {
+	// Redemptions Every redemption of the organization's codes, optionally narrowed to one code.
+	Redemptions []PromoRedemptionItem `json:"redemptions"`
 }
 
 // PublicBuyerInfo Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
@@ -9128,9 +9271,9 @@ type SessionPlaceCounts struct {
 }
 
 // SessionSummary One-screen overview of a session: places by status, categories with
-// what was paid for them, the money per currency, orders, tickets and
-// refunds. Read-only. Carries no buyer data, only counts, amounts in
-// minor units and ids.
+// what was paid for them, the money per currency, orders, tickets,
+// refunds and the promo codes used. Read-only. Carries no buyer data,
+// only counts, amounts in minor units and ids.
 type SessionSummary struct {
 	// Money The bottom line, one entry per currency.
 	Money []struct {
@@ -9188,6 +9331,24 @@ type SessionSummary struct {
 		// Seats Seats of the seating plan.
 		Seats SessionPlaceCounts `json:"seats"`
 	} `json:"places"`
+
+	// Promos Promo codes the paid orders of the session used, sorted by code.
+	Promos []struct {
+		// Code The code string.
+		Code string `json:"code"`
+
+		// Currency ISO 4217 currency of the orders.
+		Currency string `json:"currency"`
+
+		// Discount Discount those orders took, minor units.
+		Discount int64 `json:"discount"`
+
+		// Id UUIDv7 of the promo code.
+		Id openapi_types.UUID `json:"id"`
+
+		// Orders Paid orders that used the code.
+		Orders int64 `json:"orders"`
+	} `json:"promos"`
 
 	// Refunds Refund totals grouped by settlement, state and currency.
 	Refunds []struct {
@@ -10057,9 +10218,20 @@ type UpdatePaymentProviderConfigRequest struct {
 // All fields are optional; omitted fields leave the corresponding
 // column unchanged. Validation rules mirror create.
 type UpdatePromoCodeRequest struct {
+	// AppliesToSessionIds New set of event sessions the code is for; each must belong to
+	// the organization (422 `promo.invalid_session`). Empty array
+	// means any session.
+	AppliesToSessionIds *[]openapi_types.UUID `json:"applies_to_session_ids,omitempty"`
+
 	// AppliesToTierIds New whitelist of ticket-tier UUIDs the code applies to.
 	// Empty array makes the code apply order-wide.
 	AppliesToTierIds *[]openapi_types.UUID `json:"applies_to_tier_ids,omitempty"`
+
+	// Currency New ISO 4217 currency of a `fixed_amount` discount. Omitted
+	// keeps the stored value; `""` clears it (any currency). A
+	// `fixed_amount` code cannot end up without one
+	// (400 `promo.currency_required`).
+	Currency *string `json:"currency"`
 
 	// DiscountType Optional new discount type. Values outside the enum are
 	// rejected with 400 `promo.invalid_discount_type`.
@@ -10365,6 +10537,10 @@ type ValidatePromoCodeRequest struct {
 	// after trim returns 400 `promo.invalid_code`.
 	Code string `json:"code"`
 
+	// Currency Optional ISO 4217 currency of the cart. A `fixed_amount` code
+	// in another currency answers 422 `promo.currency_mismatch`.
+	Currency *string `json:"currency,omitempty"`
+
 	// OrderAmount Order subtotal in minor units used to compute the discount
 	// and enforce `min_order_amount`.
 	OrderAmount int64 `json:"order_amount"`
@@ -10372,6 +10548,11 @@ type ValidatePromoCodeRequest struct {
 	// OrgId Organization that owns the promo code. Non-UUID values are
 	// rejected with 400 `promo.invalid_org_id`.
 	OrgId openapi_types.UUID `json:"org_id"`
+
+	// SessionId Optional event session the cart sells. A session-scoped code
+	// answers 422 `promo.session_not_applicable` for any other
+	// session — and for a call that omits this field.
+	SessionId *openapi_types.UUID `json:"session_id,omitempty"`
 
 	// TierIds Ticket-tier UUIDs present in the cart, for tier-restricted
 	// codes. A restricted code is applicable when at least one
@@ -11321,6 +11502,15 @@ type GetV1OrganizationsOrgIdOrdersParams struct {
 type PostV1OrganizationsOrgIdOrdersIdCancelJSONBody struct {
 	// Reason Optional free-text reason recorded on the cancellation audit event.
 	Reason *string `json:"reason,omitempty"`
+}
+
+// ListPromoCodeRedemptionsParams defines parameters for ListPromoCodeRedemptions.
+type ListPromoCodeRedemptionsParams struct {
+	// PromoCodeId Narrow the report to one promo code (UUID).
+	PromoCodeId *openapi_types.UUID `form:"promo_code_id,omitempty" json:"promo_code_id,omitempty"`
+
+	// Format `csv` for a text/csv attachment instead of JSON; any other value answers JSON.
+	Format *string `form:"format,omitempty" json:"format,omitempty"`
 }
 
 // ListPublicFeedEventsParams defines parameters for ListPublicFeedEvents.

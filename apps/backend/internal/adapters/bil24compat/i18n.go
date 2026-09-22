@@ -130,6 +130,12 @@ var Bil24DescriptionKeys = []string{
 	"bil24.promo_not_yet_valid",
 	"bil24.promo_not_applicable",
 	"bil24.promo_min_order",
+	// Migration 0108: a code is for a session, worth a currency, and both
+	// usage caps are refused when the buyer types the code.
+	"bil24.promo_wrong_session",
+	"bil24.promo_currency_mismatch",
+	"bil24.promo_exhausted",
+	"bil24.promo_per_customer_limit",
 	"bil24.hold_expired",
 	// bil24.order_expired (payment-window contract, owner decision
 	// 2026-09-13): PAY_ORDER answers this when the buyer's fixed payment

@@ -108,6 +108,14 @@ func FulfillCompletedCheckoutTx(
 			return out, fmt.Errorf("mark order paid: %w", paidErr)
 		}
 		out.OrderMarkedPaid = true
+
+		// ── 2b. Promo redemption (bookkeeping) ───────────────────────────────
+		// The money has moved, so an over-limit code is recorded, not refused
+		// — same stance as PAY_ORDER's payRedeemPromo. One row per order
+		// (migration 0108), so a replayed webhook is a no-op here too.
+		if err := recordPromoRedemptionTx(ctx, txq, ord); err != nil {
+			return out, fmt.Errorf("promo redemption: %w", err)
+		}
 	}
 
 	// ── 3. Reservation conversion job (non-fatal) ────────────────────────────
@@ -155,3 +163,25 @@ func CompleteFreeCheckoutTx(
 // freeCheckoutProvider is recorded as checkout_sessions.payment_provider for
 // a zero-total order: no provider was ever involved.
 const freeCheckoutProvider = "none"
+
+// recordPromoRedemptionTx writes the redemption of a paid order's promo code
+// on the caller's transaction. A promo deleted since the cart was priced is
+// not an error — the discount was honoured, there is just no row to count it
+// against. Nothing is written for an order without a code.
+func recordPromoRedemptionTx(ctx context.Context, txq *gen.Queries, ord gen.OrderRow) error {
+	if ord.PromoCodeID == nil {
+		return nil
+	}
+	promo, err := txq.GetPromoCodeByIDForUpdate(ctx, *ord.PromoCodeID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("promo lookup %s: %w", ord.PromoCodeID.String(), err)
+	}
+	reservationID, orderID, channelID := ord.ReservationID, ord.ID, ord.ChannelID
+	return txq.InsertPromoCodeRedemption(
+		ctx, promo.ID, nil, &reservationID, ord.Discount, ord.Subtotal,
+		&orderID, ord.CustomerID, &channelID,
+	)
+}

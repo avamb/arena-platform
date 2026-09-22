@@ -102,6 +102,15 @@ type summaryRefunds struct {
 	Amount     int64  `json:"amount"`
 }
 
+// summaryPromo is one promo code's share of the session's paid orders.
+type summaryPromo struct {
+	ID       string `json:"id"`
+	Code     string `json:"code"`
+	Currency string `json:"currency"`
+	Orders   int64  `json:"orders"`
+	Discount int64  `json:"discount"`
+}
+
 type sessionSummary struct {
 	Session summarySession               `json:"session"`
 	Places  summaryPlaces                `json:"places"`
@@ -110,6 +119,7 @@ type sessionSummary struct {
 	Orders  []summaryOrders              `json:"orders"`
 	Tickets gen.SessionSummaryTicketsRow `json:"tickets"`
 	Refunds []summaryRefunds             `json:"refunds"`
+	Promos  []summaryPromo               `json:"promos"`
 }
 
 // orderWasPaid reports whether an order of this status took the buyer's money
@@ -127,6 +137,7 @@ func buildSessionSummary(
 	orders []gen.SessionSummaryOrdersRow,
 	tickets gen.SessionSummaryTicketsRow,
 	refunds []gen.SessionSummaryRefundsRow,
+	promos []gen.SessionSummaryPromoRow,
 ) sessionSummary {
 	out := sessionSummary{
 		Session: summarySession{
@@ -146,7 +157,21 @@ func buildSessionSummary(
 		Orders:  make([]summaryOrders, 0, len(orders)),
 		Tickets: tickets,
 		Refunds: make([]summaryRefunds, 0, len(refunds)),
+		Promos:  make([]summaryPromo, 0, len(promos)),
 	}
+	for _, p := range promos {
+		out.Promos = append(out.Promos, summaryPromo{
+			ID: p.PromoCodeID.String(), Code: p.Code, Currency: p.Currency,
+			Orders: p.Orders, Discount: p.Discount,
+		})
+	}
+	sort.Slice(out.Promos, func(i, j int) bool {
+		a, b := out.Promos[i], out.Promos[j]
+		if a.Code != b.Code {
+			return a.Code < b.Code
+		}
+		return a.Currency < b.Currency
+	})
 
 	type tierPlaces struct {
 		counts   placeCounts
@@ -316,7 +341,12 @@ func (h *Handler) HandleSessionSummary(w http.ResponseWriter, r *http.Request) {
 		fail("refunds", err)
 		return
 	}
+	promos, err := h.queries.ListSessionSummaryPromos(ctx, sessionID)
+	if err != nil {
+		fail("promos", err)
+		return
+	}
 
 	httputil.WriteJSON(w, http.StatusOK,
-		buildSessionSummary(header, places, tiers, orders, tickets, refunds))
+		buildSessionSummary(header, places, tiers, orders, tickets, refunds, promos))
 }

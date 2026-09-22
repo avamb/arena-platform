@@ -579,7 +579,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		if promo, perr := h.promoQueries.GetPromoCodeByID(ctx, *cs.PromoCodeID, cs.OrgID); perr == nil {
 			// AB-45b: tier-restricted codes apply to eligible lines only —
 			// same helper as confirm / public checkout (pass-7 review).
-			if d, errCode := hcheckout.ValidatePromoForLines(promo, hcheckout.TierLinesFromPricingLines(lines), time.Now().UTC()); errCode == "" {
+			if d, errCode := hcheckout.ValidatePromoForLines(promo, hcheckout.TierLinesForSession(lines, newRes.SessionID.String(), currency), time.Now().UTC()); errCode == "" {
 				discount = d
 				promoCodeID = cs.PromoCodeID
 			} else {
