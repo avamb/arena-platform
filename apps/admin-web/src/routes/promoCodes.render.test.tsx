@@ -118,7 +118,7 @@ describe("PromoCodesTable", () => {
     expect(row).toContain("2026-06-01 00:00Z – 2026-08-31 23:59Z"); // Valid
     expect(row).toContain(">active<"); // Status badge
     expect(row).toContain(">3<"); // Uses
-    expect(row).toContain(">0<"); // Discount total (no currency -> bare number)
+    expect(row).toContain(">0.00<"); // Discount total (no currency -> "0.00")
     expect(row).toContain(">—<"); // Last used: never
   });
 

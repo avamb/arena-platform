@@ -11,6 +11,7 @@ import {
   buildSessionOptions,
   buildStatusPatchBody,
   discountLabel,
+  discountTotalCellLabel,
   emptyPromoForm,
   limitLabel,
   localDatetimeToRFC3339,
@@ -70,6 +71,26 @@ describe("discountLabel", () => {
     expect(
       discountLabel({ discount_type: "fixed_amount", discount_value: 5000, currency: "CZK" }),
     ).toBe("50.00 CZK");
+  });
+});
+
+describe("discountTotalCellLabel", () => {
+  it("formats minor units with a currency suffix", () => {
+    expect(discountTotalCellLabel(135000, "CZK")).toBe("1350.00 CZK");
+  });
+  it("formats minor units without a currency (percent codes)", () => {
+    expect(discountTotalCellLabel(45000, null)).toBe("450.00");
+    expect(discountTotalCellLabel(45000, undefined)).toBe("450.00");
+    expect(discountTotalCellLabel(45000, "")).toBe("450.00");
+  });
+  it("renders zero as 0.00, with or without a currency", () => {
+    expect(discountTotalCellLabel(0, "CZK")).toBe("0.00 CZK");
+    expect(discountTotalCellLabel(0, null)).toBe("0.00");
+  });
+  it("renders — when discount_total is missing", () => {
+    expect(discountTotalCellLabel(null, "CZK")).toBe("—");
+    expect(discountTotalCellLabel(undefined, "CZK")).toBe("—");
+    expect(discountTotalCellLabel(undefined, null)).toBe("—");
   });
 });
 

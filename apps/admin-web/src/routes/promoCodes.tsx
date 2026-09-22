@@ -166,6 +166,29 @@ export function discountLabel(code: {
   return formatMoneyMinor(code.discount_value, code.currency);
 }
 
+/**
+ * "1350.00 CZK" for a code with a currency, "450.00" (two decimals, no
+ * currency suffix) for a percent code, "—" when discount_total is missing.
+ * Mirrors formatMoneyMinor's minor-unit conversion for the currency case;
+ * a percent code has no currency to report so it prints the bare amount.
+ */
+export function discountTotalCellLabel(
+  discountTotal: number | null | undefined,
+  currency: string | null | undefined,
+): string {
+  if (
+    discountTotal === null ||
+    discountTotal === undefined ||
+    !Number.isFinite(discountTotal)
+  ) {
+    return "—";
+  }
+  if (currency !== null && currency !== undefined && currency.trim() !== "") {
+    return formatMoneyMinor(discountTotal, currency);
+  }
+  return (discountTotal / 100).toFixed(2);
+}
+
 /** "2026-06-01 00:00Z – 2026-08-31 23:59Z" / "always" / one-sided ranges. */
 export function validityLabel(
   validFrom: string | null,
@@ -1142,9 +1165,7 @@ export function PromoCodesTable({
                 </td>
                 <td style={tdNumStyle}>{code.uses}</td>
                 <td style={tdNumStyle}>
-                  {code.currency !== null
-                    ? formatMoneyMinor(code.discount_total, code.currency)
-                    : code.discount_total}
+                  {discountTotalCellLabel(code.discount_total, code.currency)}
                 </td>
                 <td style={tdStyle}>
                   {code.last_used_at !== null ? formatDateTime(code.last_used_at) : "—"}
