@@ -1,0 +1,196 @@
+# Disposable COPY of the arena production stack for the server load test.
+# docs/loadtest/server_run_runbook_ru.md §1.1. Derived from the backend-prod
+# Raw compose in Dokploy (2026-09-22) with the load-test differences applied:
+#   - APP_ENV=staging (prod runs staging too — config.Validate would refuse
+#     STRIPE_API_BASE_URL under production)
+#   - ENABLE_DEV_AUTH=true            provision.mjs mints dev JWTs
+#   - STRIPE_API_BASE_URL → stripe_stub   hosted checkout on the stub
+#   - EMAIL_MODE=log                  nothing leaves the copy
+#   - OPS_TELEGRAM_*                  empty: the watchdog only logs
+#   - OUTBOX_MODE as on prod (noop)
+# Fill the ${...} values through the Dokploy compose Environment tab or a .env
+# next to this file (see .env.example). Never paste production secrets here.
+x-arena-env: &arena-env
+  APP_ENV: staging
+  APP_VERSION: 0.1.0
+  APP_COMMIT: ${ARENA_IMAGE_TAG}
+  DATABASE_URL: postgres://arena:${POSTGRES_PASSWORD}@db:5432/arena?sslmode=disable
+  REDIS_URL: redis://redis:6379/0
+  LOG_LEVEL: info
+  LOG_FORMAT: json
+  JWT_SIGNING_SECRET: ${JWT_SIGNING_SECRET}
+  JWT_ISSUER: arena-api
+  JWT_AUDIENCE: arena-api
+  ENABLE_DEV_AUTH: "true"
+  CORS_ALLOWED_ORIGINS: ${TICKETS_ORIGIN}
+  APP_PUBLIC_URL: ${TICKETS_ORIGIN}
+  API_PUBLIC_URL: https://${API_HOST}
+  BIL24_COMPAT_ENABLED: "true"
+  BIL24_REQUIRE_TOKEN: "true"
+  EMAIL_MODE: log
+  OUTBOX_MODE: noop
+  TRUSTED_PROXY_COUNT: "1"
+  DB_LOG_QUERIES: "false"
+  MEDIA_BACKEND: local
+  MEDIA_LOCAL_ROOT: /data/media
+  MEDIA_SIGNING_SECRET: ${MEDIA_SIGNING_SECRET}
+  PUBLIC_TICKETS_BASE_URL: ${TICKETS_ORIGIN}
+  OPS_ALERT_ENV_LABEL: loadtest
+  OPS_TELEGRAM_CHAT_ID: ""
+  OPS_TELEGRAM_BOT_TOKEN: ""
+  METRICS_BEARER_TOKEN: ${METRICS_BEARER_TOKEN}
+  # The /v1 segment is required: the adapter appends /checkout/sessions.
+  STRIPE_API_BASE_URL: http://stripe_stub:12111/v1
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: arena
+      POSTGRES_USER: arena
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - arena-lt-db-data:/var/lib/postgresql/data
+    # Loopback only. The image ships no arena-seed binary, so the seed and
+    # the SQL snapshot run from the operator's machine over an SSH tunnel:
+    #   ssh -L 55433:127.0.0.1:5432 arena-loadtest
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U arena -d arena
+      interval: 5s
+      timeout: 3s
+      retries: 24
+    # Same limits as production: the test must hit the same ceilings.
+    mem_limit: 1g
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+    volumes:
+      - arena-lt-redis-data:/data
+    mem_limit: 192m
+
+  # apps/widget/scripts/stripe-stub.cjs, copied to the server by hand
+  # (scp). Answers POST /v1/checkout/sessions and GET /v1/balance only.
+  stripe_stub:
+    image: node:20-alpine
+    restart: always
+    command:
+      - node
+      - /stub/stripe-stub.cjs
+    volumes:
+      - /opt/arena-loadtest/stripe-stub.cjs:/stub/stripe-stub.cjs:ro
+    environment:
+      PORT: "12111"
+      HOST: "0.0.0.0"
+      PUBLIC_URL: http://stripe-stub.invalid
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --no-verbose
+        - --tries=1
+        - --spider
+        - http://127.0.0.1:12111/healthz
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    image: ghcr.io/avamb/arena-api:${ARENA_IMAGE_TAG}
+    restart: "no"
+    entrypoint:
+      - /app/arena-migrate
+    command:
+      - up
+    healthcheck:
+      disable: true
+    environment:
+      <<: *arena-env
+      APP_NAME: arena-migrate
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    image: ghcr.io/avamb/arena-api:${ARENA_IMAGE_TAG}
+    restart: always
+    environment:
+      <<: *arena-env
+      APP_NAME: arena-api
+      HTTP_LISTEN_ADDR: :8080
+      HEALTH_ADDR: http://localhost:8080
+    volumes:
+      - arena-lt-media:/data/media
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      stripe_stub:
+        condition: service_healthy
+    networks:
+      - default
+      - dokploy-network
+    mem_limit: 512m
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.arena-lt-api-web.rule=Host(`${API_HOST}`)
+      - traefik.http.routers.arena-lt-api-web.entrypoints=web
+      - traefik.http.routers.arena-lt-api-web.middlewares=redirect-to-https@file
+      - traefik.http.routers.arena-lt-api-web.service=arena-lt-api
+      - traefik.http.routers.arena-lt-api-websecure.rule=Host(`${API_HOST}`)
+      - traefik.http.routers.arena-lt-api-websecure.entrypoints=websecure
+      - traefik.http.routers.arena-lt-api-websecure.tls.certresolver=letsencrypt
+      - traefik.http.routers.arena-lt-api-websecure.service=arena-lt-api
+      - traefik.http.services.arena-lt-api.loadbalancer.server.port=8080
+
+  worker:
+    image: ghcr.io/avamb/arena-api:${ARENA_IMAGE_TAG}
+    restart: always
+    entrypoint:
+      - /app/arena-worker
+    environment:
+      <<: *arena-env
+      APP_NAME: arena-worker
+      WORKER_METRICS_ADDR: :9091
+      HEALTH_ADDR: http://localhost:9091
+    volumes:
+      - arena-lt-media:/data/media
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    networks:
+      - default
+      - dokploy-network
+    mem_limit: 512m
+    # The worker's /metrics is reached through Traefik on a second host so
+    # the generator's Prometheus can scrape both with the same bearer token.
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.arena-lt-worker-websecure.rule=Host(`${WORKER_METRICS_HOST}`)
+      - traefik.http.routers.arena-lt-worker-websecure.entrypoints=websecure
+      - traefik.http.routers.arena-lt-worker-websecure.tls.certresolver=letsencrypt
+      - traefik.http.routers.arena-lt-worker-websecure.service=arena-lt-worker
+      - traefik.http.services.arena-lt-worker.loadbalancer.server.port=9091
+
+networks:
+  dokploy-network:
+    external: true
+
+volumes:
+  arena-lt-db-data: null
+  arena-lt-redis-data: null
+  arena-lt-media: null

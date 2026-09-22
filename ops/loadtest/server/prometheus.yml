@@ -1,0 +1,37 @@
+# Prometheus on the load GENERATOR server, scraping the copy of the stand
+# over its public hostnames (docs/loadtest/server_run_runbook_ru.md §2).
+# Run from the repo root on the generator:
+#   docker run -d --name lt_prometheus -p 9090:9090 \
+#     -v "$PWD/ops/loadtest/server/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+#     -v lt_prometheus_data:/prometheus \
+#     prom/prometheus:v2.51.2 --config.file=/etc/prometheus/prometheus.yml \
+#     --storage.tsdb.retention.time=7d --web.enable-remote-write-receiver
+# Grafana next to it with ops/grafana provisioning + dashboards (see runbook).
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+  external_labels:
+    environment: loadtest
+
+scrape_configs:
+  - job_name: arena-api
+    scheme: https
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['loadtest-api.arenasoldout.com']
+    authorization:
+      credentials: "<METRICS_BEARER_TOKEN>"
+
+  - job_name: arena-worker
+    scheme: https
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['loadtest-worker.arenasoldout.com']
+    authorization:
+      credentials: "<METRICS_BEARER_TOKEN>"
+
+  # k6 pushes its metrics here (remote write):
+  #   K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9090/api/v1/write
+  #   k6 run --out experimental-prometheus-rw ...
+  # They land as k6_* series and show on the "Load Test Results" row of the
+  # arena_platform_overview dashboard.

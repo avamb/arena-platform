@@ -20,7 +20,9 @@
 
 ## 1. Что поднимаем
 
-Два сервера Hetzner в одном регионе (fsn1):
+Два сервера Hetzner в одном регионе (fsn1). Прод `arena-platform-prod-1`
+проверен 22.09: CX33, `fsn1-dc14`, 4 vCPU, 7.7 ГБ, Ubuntu 24.04, образ
+`ghcr.io/avamb/arena-api:d84a4de`, и он уже работает с `APP_ENV=staging`.
 
 | Роль | Тип | Что на нём |
 |------|-----|------------|
@@ -28,8 +30,24 @@
 | генератор `arena-loadgen-1` | CX22 | k6 (docker), Prometheus + Grafana из `ops/`, psql |
 
 Стоимость: CX33 около €0.014/час, CX22 около €0.007/час — день прогонов
-дешевле одного билета. Серверы создаются с SSH-ключом владельца (на прод
-ключа нет, на копии он нужен: `docker stats`, дампы, psql).
+дешевле одного билета. Серверы создаются с SSH-ключом владельца (на копии
+он нужен: `docker stats`, дампы, psql).
+
+Создание — в Hetzner Cloud Console (проект, где живёт
+`arena-platform-prod-1`) или `hcloud` с API-токеном проекта (на рабочей
+машине токена нет и `hcloud` не установлен — сессия агента без них
+создать серверы не может):
+
+```bash
+hcloud server create --name arena-loadtest-1 --type cx33 --location fsn1 --image ubuntu-24.04 --ssh-key arena-platform
+hcloud server create --name arena-loadgen-1  --type cx22 --location fsn1 --image ubuntu-24.04 --ssh-key arena-platform
+```
+
+Ключ `arena-platform` = `~/.ssh/arena-platform.pub`; если в проекте его
+нет, добавить перед созданием (`hcloud ssh-key create --name arena-platform
+--public-key-from-file ~/.ssh/arena-platform.pub`). После создания —
+записи в `~/.ssh/config`: `Host arena-loadtest` и `Host arena-loadgen`,
+`User root`, `IdentityFile ~/.ssh/arena-platform`, `IdentitiesOnly yes`.
 
 Первичная настройка обоих: `bash ops/server-bootstrap/bootstrap.sh <hostname>`
 (ключи вместо паролей, ufw, fail2ban, swap 2 ГБ, Docker). Скрипт НЕ ставит
@@ -40,10 +58,14 @@ Dokploy.
 Два пути, выбираем первый:
 
 1. **Подключить копию к существующей панели Dokploy** (Settings → Servers →
-   Add) и создать там compose `backend-loadtest`, скопировав Raw-compose
-   `backend-prod` с тем же тегом образа `ghcr.io/avamb/arena-api:<sha>`.
-   Так копия проходит через тот же Traefik, что и прод, и
-   `TRUSTED_PROXY_COUNT=1` проверяется в настоящих условиях.
+   Add) и создать там compose `backend-loadtest` из готового
+   `ops/loadtest/server/docker-compose.copy.yml` (Raw compose) с
+   переменными из `ops/loadtest/server/.env.example` во вкладке
+   Environment. Файл выведен из Raw-compose `backend-prod` (снят по SSH
+   22.09) с отличиями из таблицы ниже, лимиты памяти те же, что на проде
+   (db 1 ГБ, api/worker по 512 МБ). Так копия проходит через тот же
+   Traefik, что и прод, и `TRUSTED_PROXY_COUNT=1` проверяется в
+   настоящих условиях.
 2. Голый `docker compose` на сервере без Traefik — проще, но без прокси и
    без TLS; допустимо только как запасной вариант.
 
@@ -86,7 +108,21 @@ Dokploy.
 
 ### 1.2. База копии
 
-По умолчанию — **свежая база**: `arena-migrate up` + `arena-seed`.
+По умолчанию — **свежая база**: миграции накатывает сервис `migrate` из
+compose при первом запуске, а `arena-seed` в образ не входит (Dockerfile
+собирает только api/worker/migrate/healthcheck), поэтому seed запускается с
+рабочей машины через SSH-туннель к loopback-порту базы копии
+(`ports: 127.0.0.1:5432` в compose):
+
+```powershell
+ssh -N -L 55433:127.0.0.1:5432 arena-loadtest
+```
+
+```powershell
+$env:DATABASE_URL = "postgres://arena:<POSTGRES_PASSWORD>@localhost:55433/arena?sslmode=disable"; $env:JWT_SIGNING_SECRET = "x"; $env:APP_ENV = "development"; go run ./apps/backend/cmd/arena-seed
+```
+
+Тот же туннель обслуживает SQL-снимок из §2 и `audit.sql` из §3.
 `provision.mjs` заводит всё остальное сам (канал, шлюзовый токен, платёжную
 конфигурацию, события, фид-токен) в сидированной org `OrgA`.
 
