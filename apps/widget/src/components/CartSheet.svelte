@@ -158,6 +158,23 @@
     box-shadow: 0 -4px 24px rgba(0,0,0,0.2);
     overflow: hidden;
   }
+  /* A full-bleed bottom sheet is right on a phone and wrong on a monitor:
+     stretched to 1900px the cart becomes one line of text with the price a
+     metre away from it, and the buyer form turns into full-width inputs for
+     an e-mail address. Past the phone width the same sheet becomes a card of
+     readable width, still docked at the bottom so nothing about the flow or
+     the entrance changes. */
+  @media (min-width: 720px) {
+    .sheet {
+      left: 50%;
+      right: auto;
+      transform: translateX(-50%);
+      bottom: 24px;
+      width: min(560px, calc(100vw - 3rem));
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.24);
+    }
+  }
   .sheet-header {
     display: flex;
     align-items: center;
