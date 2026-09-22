@@ -55,6 +55,10 @@ for (const c of ['GET_ALL_ACTIONS', 'CREATE_USER', 'RESERVATION', 'UN_RESERVE_AL
   cmdLatency[c] = new Trend(`gw_${c.toLowerCase()}_ms`, true);
 }
 const gwErrors = new Rate('gw_errors');                 // transport, HTTP≠200, resultCode<0 or unexpected
+// The two halves of gw_errors that name the culprit: a 5xx is the stand,
+// a status-0 request never reached it (generator, NAT, proxy, network).
+const gwErrors5xx = new Counter('gw_errors_5xx');
+const gwErrorsTransport = new Counter('gw_errors_transport');
 const purchaseOk = new Counter('gw_purchases_ok');
 const purchaseSoldOut = new Counter('gw_purchases_sold_out');
 const purchaseFailed = new Counter('gw_purchases_failed');
@@ -170,6 +174,8 @@ function gw(command, fields, { metric = command, okCodes = [0] } = {}) {
   const code = data && typeof data.resultCode === 'number' ? data.resultCode : null;
   const ok = res.status === 200 && code !== null && okCodes.includes(code);
   gwErrors.add(!ok);
+  if (res.status === 0) gwErrorsTransport.add(1);
+  else if (res.status >= 500) gwErrors5xx.add(1);
   if (!ok && __ENV.DEBUG) {
     console.warn(`${metric} status=${res.status} resultCode=${code} ${String(res.body).slice(0, 200)}`);
   }

@@ -29,6 +29,8 @@ ways arena sells tickets, and checks inventory correctness afterwards.
 | `gateway.js` | The Bil24-compatible gateway (`/compat/bil24/json`) the migrated WordPress sites use. `SCENARIO=flow` (browsers + buyers + abandoned carts, polls tickets), `race` (N buyers for the last tickets), `expiry` (abandoned holds must return to sale after the TTL), `paywindow` (late payments refused, units back on sale). |
 | `native.js` | arena's own public API used by the widget: feed → `checkout/start` (hosted Stripe Checkout Session on the stub) → signed `checkout.session.completed` webhook on the organizer's own route → public checkout status. `SCENARIO=flow` or `race`. |
 | `bil24/docker-compose.loadtest.yml` | Compose override: mounts the gateway, turns SQL query logging off, starts the Stripe stub (`apps/widget/scripts/stripe-stub.cjs`) and points `STRIPE_API_BASE_URL` at it. |
+| `capacity.mjs` | The staircase: one 3-minute k6 run per order rate (`STEPS`, default 25,50,100,200,400 orders/min, visitors ×2), a pause between steps, stop at the first step that breaks (errors > 0.5 %, journey p95 > 1 s, failed purchases, tickets not shown, or k6 dropping iterations = the generator is the bottleneck). Prints the table and the last clean step = this server's capacity for `ENTRY=native` or `ENTRY=gateway`. Size `FLOW_POOL` for the whole staircase first. |
+| `monitor.mjs` | One CSV row per `INTERVAL` seconds: docker stats of the arena containers + a Postgres snapshot (connections, lock waits, longest tx, deadlocks, outbox/worker/delivery backlogs, dead letters, expired-but-unreleased holds, DB size). `--summary <csv>` prints first / peak / last per column — a column that ends above where it started is a leak or a queue that never drained. |
 | `sql/audit.sql` | Read-only inventory audit for one session: ledger vs units vs tickets, double-sold units, expired holds never released. Every "violations" column must be 0. |
 | `quota_admin.js` | One operator VU that edits GA category quotas (plan 08_architecture/23) WHILE `flow` sells tickets on the same session: swings the VIP quantity ±`SWING` every `TICK_SECONDS`, closes/reopens VIP every `CLOSE_EVERY` ticks for `CLOSE_FOR_SECONDS`, adds a "Late release" category once at `ADD_AT_SECONDS`. Run it next to a `flow` scenario (`gateway.js` or `native.js`), against the same `results/fixtures.local.json`. Success = `qa_errors` == 0, `qa_patch_unexpected` == 0 (only 200 or the documented 409 `tier.quantity_below_used` are expected), and the category invariant query (below) holds afterwards. |
 
@@ -52,6 +54,13 @@ docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.intern
 
 # 3b. Operator swinging GA category quotas on the flow session, run alongside 3
 docker run --rm -v "$PWD/ops/loadtest:/lt" -e BASE_URL=http://host.docker.internal:8080 -e DURATION=3m grafana/k6:0.54.0 run /lt/quota_admin.js
+
+# 3c. Where is the ceiling? Staircase per entry point, with the resource monitor alongside
+#     (re-provision with FLOW_POOL=60000 first — the default steps buy ~2300 tickets, larger steps more)
+node ops/loadtest/monitor.mjs &
+ENTRY=native  node ops/loadtest/capacity.mjs
+ENTRY=gateway node ops/loadtest/capacity.mjs
+node ops/loadtest/monitor.mjs --summary ops/loadtest/results/monitor-<ts>.csv
 
 # 4. Audit a session afterwards (session ids are in results/fixtures.local.json)
 docker exec -i arena_postgres psql -U arena -d arena -v session_id=<uuid> < ops/loadtest/sql/audit.sql

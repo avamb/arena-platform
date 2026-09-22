@@ -62,6 +62,10 @@ for (const k of ['events_list', 'event_detail', 'checkout_start', 'payment_webho
   latency[k] = new Trend(`nat_${k}_ms`, true);
 }
 const natErrors = new Rate('nat_errors');           // 5xx, transport, unexpected status
+// The two halves of nat_errors that name the culprit: a 5xx is the stand,
+// a status-0 request never reached it (generator, NAT, proxy, network).
+const errors5xx = new Counter('nat_errors_5xx');
+const errorsTransport = new Counter('nat_errors_transport');
 const throttled = new Counter('nat_throttled_429');
 const purchaseOk = new Counter('nat_purchases_ok');
 const purchaseSoldOut = new Counter('nat_purchases_sold_out');
@@ -135,6 +139,8 @@ function req(method, name, path, body, { token, okStatus = [200, 201], headers: 
   });
   latency[name].add(res.timings.duration);
   if (res.status === 429) throttled.add(1);
+  if (res.status === 0) errorsTransport.add(1);
+  else if (res.status >= 500) errors5xx.add(1);
   const ok = okStatus.includes(res.status);
   natErrors.add(res.status === 0 || res.status >= 500 || (!ok && res.status !== 429 && res.status !== 409 && res.status !== 422));
   if (!ok && __ENV.DEBUG) console.warn(`${name} ${res.status} ${String(res.body).slice(0, 200)}`);
