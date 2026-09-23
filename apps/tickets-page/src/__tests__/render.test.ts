@@ -92,6 +92,23 @@ describe('renderEvent', () => {
     expect(widget?.getAttribute('api-base')).toBe('https://api.example.com');
   });
 
+  // The hero already shows the poster; a second, cropped copy inside the
+  // widget is what buyers saw as a stray duplicate.
+  it('hides the widget cover when the hero shows the poster, and keeps it otherwise', () => {
+    const withPoster = freshContainer();
+    renderEvent(withPoster, sampleData, 'en', { apiBase: '', resumingCheckout: false });
+    expect(withPoster.querySelector('arena-tickets')?.getAttribute('cover')).toBe('hidden');
+
+    const noPoster = freshContainer();
+    renderEvent(
+      noPoster,
+      { ...sampleData, event: { ...sampleData.event, poster_url: null, image_url: null } },
+      'en',
+      { apiBase: '', resumingCheckout: false },
+    );
+    expect(noPoster.querySelector('arena-tickets')?.hasAttribute('cover')).toBe(false);
+  });
+
   it('maps the page-only es locale onto en for the widget locale attribute', () => {
     const container = freshContainer();
     renderEvent(container, sampleData, 'es', { apiBase: '', resumingCheckout: false });

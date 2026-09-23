@@ -178,6 +178,11 @@ export function renderEvent(
   const widget = document.createElement('arena-tickets');
   widget.setAttribute('feed-token', data.feed_token);
   widget.setAttribute('event-id', data.event.id);
+  // The hero above already shows the poster whole; the widget's own cover
+  // would print the same picture a second time, cropped.
+  if (imageURL) {
+    widget.setAttribute('cover', 'hidden');
+  }
   widget.setAttribute('locale', toWidgetLocale(locale));
   if (options.apiBase) {
     widget.setAttribute('api-base', options.apiBase);
