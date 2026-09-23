@@ -315,6 +315,8 @@ a {
 }
 
 .asa-hero-description {
+  /* Paragraph breaks typed into the description survive. */
+  white-space: pre-line;
   color: var(--asa-text-secondary);
   margin: 0 0 24px;
   max-width: 70ch;

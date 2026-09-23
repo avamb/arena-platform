@@ -159,7 +159,9 @@ export function renderEvent(
     heroBody.appendChild(meta);
   }
 
-  const description = data.event.short_description ?? data.event.description;
+  // The event's own full description leads; the short one is the card blurb
+  // and only stands in when nothing longer was written.
+  const description = data.event.description ?? data.event.short_description;
   if (description) {
     const p = document.createElement('p');
     p.className = 'asa-hero-description';

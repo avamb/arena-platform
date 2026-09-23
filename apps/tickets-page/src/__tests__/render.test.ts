@@ -121,7 +121,11 @@ describe('renderEvent', () => {
     renderEvent(container, sampleData, 'en', { apiBase: '', resumingCheckout: false });
 
     expect(container.querySelector('.asa-hero-title')?.textContent).toBe('Summer Festival 2026');
-    expect(container.querySelector('.asa-hero-description')?.textContent).toBe('One night, three stages.');
+    expect(container.querySelector('.asa-hero-description')?.textContent).toBe('Open-air festival.');
+    // The short blurb only stands in when there is no full description.
+    const short = freshContainer();
+    renderEvent(short, { ...sampleData, event: { ...sampleData.event, description: null } }, 'en', { apiBase: '', resumingCheckout: false });
+    expect(short.querySelector('.asa-hero-description')?.textContent).toBe('One night, three stages.');
     const img = container.querySelector('.asa-hero-image') as HTMLImageElement | null;
     expect(img?.src).toBe('https://example.com/poster.jpg');
   });
