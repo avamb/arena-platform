@@ -858,6 +858,10 @@ describe("API keys tab helpers (feature #514, W1-C1c)", () => {
       "media.write",
       "media.read",
       "import.bil24_session",
+      "promo.read",
+      "promo.create",
+      "promo.update",
+      "promo.delete",
     ]);
   });
 

@@ -3445,6 +3445,12 @@ export const API_KEY_SCOPE_CATALOG = [
   "media.write",
   "media.read",
   "import.bil24_session",
+  // The event center's "Promo codes" tab (Lops_Promo) creates, lists,
+  // pauses and deletes the organization's codes and reads their usage.
+  "promo.read",
+  "promo.create",
+  "promo.update",
+  "promo.delete",
 ] as const;
 
 export function validateApiKeyName(raw: string): string | null {
