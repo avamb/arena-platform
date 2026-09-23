@@ -3496,6 +3496,9 @@ function ApiKeysTab({ org }: { org: AdminOrganization }) {
   const [justIssued, setJustIssued] = useState<
     (ApiKeyItem & { api_key: string }) | null
   >(null);
+  // "copied" / "failed" feedback for the one-time secret: a silent Copy button
+  // left the owner unsure whether the key had reached the clipboard (2026-09-23).
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(
     null,
   );
@@ -3573,24 +3576,37 @@ function ApiKeysTab({ org }: { org: AdminOrganization }) {
               style={tabRowButtonStyle}
               onClick={() => {
                 if (
-                  typeof navigator !== "undefined" &&
-                  navigator.clipboard?.writeText
+                  typeof navigator === "undefined" ||
+                  !navigator.clipboard?.writeText
                 ) {
-                  void navigator.clipboard.writeText(justIssued.api_key);
+                  setCopyState("failed");
+                  return;
                 }
+                navigator.clipboard
+                  .writeText(justIssued.api_key)
+                  .then(() => setCopyState("copied"))
+                  .catch(() => setCopyState("failed"));
               }}
               data-testid="api-key-secret-copy"
             >
-              Copy
+              {copyState === "copied" ? "Copied ✓" : "Copy"}
             </button>
           </div>
+          {copyState === "failed" ? (
+            <p data-testid="api-key-secret-copy-failed">
+              The browser refused the clipboard — select the key above and copy it manually.
+            </p>
+          ) : null}
           <button
             type="button"
             style={tabRowButtonStyle}
-            onClick={() => setJustIssued(null)}
+            onClick={() => {
+              setJustIssued(null);
+              setCopyState("idle");
+            }}
             data-testid="api-key-secret-dismiss"
           >
-            Dismiss
+            Close (the key stays active)
           </button>
         </div>
       ) : null}
