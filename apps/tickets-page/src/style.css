@@ -600,3 +600,93 @@ a {
     font-size: 24px;
   }
 }
+
+/* ── Poster catalog ───────────────────────────────────────────────────────
+   The promoter page when the organizer runs several separate shows, each
+   with its own artwork. A card is a link to the show's own page — nothing
+   to buy here. The poster is shown whole at its own aspect ratio: it
+   already carries the title and the dates, so cropping it defeats it. */
+
+.asa-card-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.asa-card-item--past {
+  opacity: 0.55;
+}
+
+.asa-card-item--past:hover {
+  opacity: 1;
+}
+
+.asa-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--asa-surface);
+  border: 1px solid var(--asa-border);
+  border-radius: var(--asa-radius);
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease;
+}
+
+.asa-card:hover,
+.asa-card:focus-visible {
+  border-color: var(--asa-accent);
+}
+
+.asa-card:focus-visible {
+  outline: 3px solid var(--asa-focus-ring);
+  outline-offset: -3px;
+}
+
+.asa-card__poster {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.asa-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  padding: 14px 16px 16px;
+}
+
+.asa-card__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.asa-card__when {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.asa-card__venue {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--asa-text-secondary);
+}
+
+.asa-card__cta {
+  margin-top: auto;
+  align-self: flex-start;
+}
+
+@media (max-width: 520px) {
+  .asa-card-grid {
+    grid-template-columns: 1fr;
+  }
+}

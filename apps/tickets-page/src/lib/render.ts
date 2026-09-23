@@ -219,6 +219,24 @@ function sharedPosterURL(events: HostedPageEvent[]): string | null {
   return shared;
 }
 
+/** True when the page should be a poster catalog rather than a tour.
+ *
+ * A tour is one season off one artwork (the master classes): the dates ARE
+ * the shop, so every picker is open on the page. A catalog is several
+ * separate shows, each with its own artwork (a festival next to a one-night
+ * reading): a buyer there first picks WHICH show, and every show has its
+ * own page with its own sessions. The two are told apart by the artwork
+ * itself — two or more different pictures mean separate shows — so an
+ * organizer needs no setting and a tour keeps its shape untouched. */
+export function isPosterCatalog(events: HostedPageEvent[]): boolean {
+  const posters = new Set<string>();
+  for (const event of events) {
+    const url = event.poster_url ?? event.image_url;
+    if (url) posters.add(url);
+  }
+  return events.length >= 2 && posters.size >= 2;
+}
+
 /** Earliest start and latest end across the page's events, as a localized
  * range ("16–18 October 2026"), or "" when no event carries a date.
  * `formatRange` collapses the shared parts itself; the catch covers both
@@ -514,6 +532,67 @@ function mountTicketPicker(
   panel.appendChild(widget);
 }
 
+/** One poster card of the catalog: the artwork, the title, when and where,
+ * and nothing to buy — the whole card is a link to the event's own page,
+ * where its sessions and ticket picker live. */
+function renderCatalogCard(
+  event: HostedPageEvent,
+  orgSlug: string,
+  locale: PageLocale,
+  now: number,
+): HTMLLIElement {
+  const past = isPast(event, now);
+  const li = document.createElement('li');
+  li.className = past ? 'asa-card-item asa-card-item--past' : 'asa-card-item';
+
+  const a = document.createElement('a');
+  a.className = 'asa-card';
+  a.href = `/${encodeURIComponent(orgSlug)}/${encodeURIComponent(event.slug)}${currentSearch()}`;
+
+  const imageURL = event.poster_url ?? event.image_url;
+  if (imageURL) {
+    const img = document.createElement('img');
+    img.className = 'asa-card__poster';
+    img.src = imageURL;
+    img.alt = event.title;
+    img.loading = 'lazy';
+    a.appendChild(img);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'asa-card__body';
+
+  const title = document.createElement('h3');
+  title.className = 'asa-card__title';
+  title.textContent = event.title;
+  body.appendChild(title);
+
+  const parts = dateParts(event, locale);
+  if (parts) {
+    const when = document.createElement('p');
+    when.className = 'asa-card__when';
+    when.textContent = [`${parts.day} ${parts.month}`, parts.time].filter(Boolean).join(' · ');
+    body.appendChild(when);
+  }
+
+  if (event.venue_names.length > 0) {
+    const venue = document.createElement('p');
+    venue.className = 'asa-card__venue';
+    venue.textContent = event.venue_names.join(', ');
+    body.appendChild(venue);
+  }
+
+  const cta = document.createElement('span');
+  cta.className = past ? 'asa-button asa-button--ghost asa-card__cta' : 'asa-button asa-card__cta';
+  cta.setAttribute('aria-hidden', 'true');
+  cta.textContent = past ? t(locale).eventPast : t(locale).ticketsCta;
+  body.appendChild(cta);
+
+  a.appendChild(body);
+  li.appendChild(a);
+  return li;
+}
+
 /**
  * renderPromoterPage mounts the page in the shape of a tour: the season's
  * one poster at the top, whole and uncropped, and beneath it the list of
@@ -596,11 +675,24 @@ export function renderPromoterPage(
   if (data.events.length > 1) {
     const h2 = document.createElement('h2');
     h2.className = 'asa-dates__head';
-    h2.textContent = strings.promoterPickDate;
+    h2.textContent = isPosterCatalog(data.events) ? strings.promoterPickEvent : strings.promoterPickDate;
     section.appendChild(h2);
   }
 
   const now = Date.now();
+
+  if (isPosterCatalog(data.events)) {
+    const grid = document.createElement('ul');
+    grid.className = 'asa-card-grid';
+    grid.setAttribute('aria-label', `${data.org.name} — ${strings.promoterPickEvent}`);
+    for (const event of data.events) {
+      grid.appendChild(renderCatalogCard(event, data.org.slug, locale, now));
+    }
+    section.appendChild(grid);
+    container.appendChild(section);
+    return;
+  }
+
   const list = document.createElement('ul');
   list.className = 'asa-date-list';
   list.setAttribute('aria-label', `${data.org.name} — ${strings.promoterPickDate}`);

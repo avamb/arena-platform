@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { consumeCheckoutTokenFromURL, eventIDWithOpenCheckout, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from '../lib/render.ts';
+import { consumeCheckoutTokenFromURL, eventIDWithOpenCheckout, isPosterCatalog, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from '../lib/render.ts';
 import type { PromoterPageOptions } from '../lib/render.ts';
 import type { HostedPageEvent, HostedPageResponse, HostedPromoterPageResponse } from '../lib/api.ts';
 
@@ -272,6 +272,85 @@ describe('renderPromoterPage', () => {
       pageOptions(),
     );
     expect(container.querySelector('.asa-promoter-poster')).toBeNull();
+  });
+
+  // Separate shows (each with its own artwork) are picked from a poster
+  // catalog, and every show has its own page — nothing is bought here.
+  describe('poster catalog', () => {
+    const otherShow: HostedPageEvent = {
+      ...eventWithPoster,
+      id: '01929d0e-0e47-7000-8000-000000000403',
+      slug: 'one-night-reading',
+      title: 'One-night reading',
+      poster_url: 'https://example.com/reading.jpg',
+      first_session_at: '2026-11-17T18:30:00Z',
+      last_session_at: '2026-11-17T20:30:00Z',
+      first_session_timezone: 'Europe/Madrid',
+    };
+    const catalog: HostedPromoterPageResponse = {
+      ...sampleData,
+      org: { slug: 'actorre', name: 'Actorre', logo_url: null },
+      events: [eventWithPoster, otherShow],
+    };
+
+    it('is chosen only when the events carry two or more different posters', () => {
+      expect(isPosterCatalog(catalog.events)).toBe(true);
+      // One shared artwork is a tour, and an event without artwork does not
+      // turn it into a catalog.
+      expect(isPosterCatalog(sampleData.events)).toBe(false);
+      expect(isPosterCatalog([eventWithPoster, { ...otherShow, poster_url: eventWithPoster.poster_url }])).toBe(false);
+      expect(isPosterCatalog([eventWithPoster])).toBe(false);
+      expect(isPosterCatalog([])).toBe(false);
+    });
+
+    it('renders one poster card per event, each linking to its own page', () => {
+      const container = freshContainer();
+      renderPromoterPage(container, catalog, 'en', pageOptions());
+      const cards = container.querySelectorAll('a.asa-card');
+      expect(cards.length).toBe(2);
+      expect(cards[0].getAttribute('href')).toBe('/actorre/masterclass-day-1');
+      expect(cards[1].getAttribute('href')).toBe('/actorre/one-night-reading');
+      expect((cards[1].querySelector('img') as HTMLImageElement).src).toBe('https://example.com/reading.jpg');
+      expect(cards[1].querySelector('.asa-card__title')?.textContent).toBe('One-night reading');
+      expect(cards[1].querySelector('.asa-card__venue')?.textContent).toBe('Studio A');
+      expect(cards[1].querySelector('.asa-card__cta')?.textContent).toBe('Tickets');
+    });
+
+    it('mounts no ticket picker and promotes no single poster', () => {
+      const container = freshContainer();
+      renderPromoterPage(container, catalog, 'en', pageOptions());
+      expect(container.querySelector('arena-tickets')).toBeNull();
+      expect(container.querySelector('.asa-date-panel')).toBeNull();
+      expect(container.querySelector('.asa-promoter-poster')).toBeNull();
+    });
+
+    it('shows the date and time in the venue time zone, and keeps the language query', () => {
+      const container = freshContainer();
+      window.history.replaceState(null, '', '/actorre?lang=ru');
+      renderPromoterPage(container, catalog, 'en', pageOptions());
+      const card = container.querySelectorAll('a.asa-card')[1];
+      expect(card.querySelector('.asa-card__when')?.textContent).toBe('17 Nov · Tue 07:30 PM');
+      expect(card.getAttribute('href')).toBe('/actorre/one-night-reading?lang=ru');
+      window.history.replaceState(null, '', '/');
+    });
+
+    it('offers no tickets on a show that has already happened', () => {
+      const container = freshContainer();
+      renderPromoterPage(
+        container,
+        { ...catalog, events: [{ ...otherShow, first_session_at: '2020-01-01T10:00:00Z', last_session_at: '2020-01-01T12:00:00Z' }, eventWithPoster] },
+        'en',
+        pageOptions(),
+      );
+      const past = container.querySelector('.asa-card-item--past');
+      expect(past?.querySelector('.asa-card__cta')?.textContent).toBe('Took place');
+    });
+
+    it('headings the list with the localized choose-an-event prompt', () => {
+      const container = freshContainer();
+      renderPromoterPage(container, catalog, 'ru', pageOptions());
+      expect(container.querySelector('.asa-dates__head')?.textContent).toBe('Выберите событие');
+    });
   });
 
   it('shows the day, month and time of each date before the event title', () => {

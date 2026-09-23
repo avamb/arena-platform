@@ -19,6 +19,8 @@ export interface PageStrings {
   /** Heading over the promoter page's date list, and the label of the
    * poster block's button that jumps down to it. */
   promoterPickDate: string;
+  /** Heading over the poster catalog, where the choice is a show, not a date. */
+  promoterPickEvent: string;
   /** Fallback link on a date the list could not mount a picker for,
    * pointing at the event's own page. Every date normally carries its
    * picker open, so this is the exception, not the usual control. */
@@ -44,6 +46,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     promoterEmptyTitle: 'No upcoming dates yet',
     promoterEmptyBody: 'This organizer has not published any events right now. Please check back later.',
     promoterPickDate: 'Choose a date',
+    promoterPickEvent: 'Choose an event',
     ticketsCta: 'Tickets',
     eventPast: 'Took place',
     backToPromoter: 'All dates',
@@ -60,6 +63,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     promoterEmptyTitle: 'Пока нет ближайших дат',
     promoterEmptyBody: 'Этот организатор пока не опубликовал ни одного события. Загляните позже.',
     promoterPickDate: 'Выберите дату',
+    promoterPickEvent: 'Выберите событие',
     ticketsCta: 'Билеты',
     eventPast: 'Уже прошло',
     backToPromoter: 'Все даты',
@@ -76,6 +80,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     promoterEmptyTitle: 'Zatím žádné nadcházející termíny',
     promoterEmptyBody: 'Tento pořadatel zatím nezveřejnil žádnou akci. Zkuste to prosím později.',
     promoterPickDate: 'Vyberte termín',
+    promoterPickEvent: 'Vyberte akci',
     ticketsCta: 'Vstupenky',
     eventPast: 'Již proběhlo',
     backToPromoter: 'Všechny termíny',
@@ -92,6 +97,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     promoterEmptyTitle: 'אין עדיין תאריכים קרובים',
     promoterEmptyBody: 'המפיק הזה עדיין לא פרסם אירועים. נסו שוב בקרוב.',
     promoterPickDate: 'בחרו תאריך',
+    promoterPickEvent: 'בחרו אירוע',
     ticketsCta: 'כרטיסים',
     eventPast: 'כבר התקיים',
     backToPromoter: 'כל התאריכים',
@@ -108,6 +114,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     promoterEmptyTitle: 'Aún no hay fechas próximas',
     promoterEmptyBody: 'Este organizador todavía no ha publicado ningún evento. Vuelve a consultarlo más tarde.',
     promoterPickDate: 'Elige una fecha',
+    promoterPickEvent: 'Elige un evento',
     ticketsCta: 'Entradas',
     eventPast: 'Ya se celebró',
     backToPromoter: 'Todas las fechas',
