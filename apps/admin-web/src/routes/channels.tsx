@@ -1552,7 +1552,8 @@ function WPWebhookSection({
   channelId: string;
 }) {
   const queryClient = useQueryClient();
-  const [callbackUrl, setCallbackUrl] = useState("");
+  // null = not edited: the field shows the registered URL, so Re-register keeps it by default.
+  const [callbackEdit, setCallbackEdit] = useState<string | null>(null);
   const [signingSecret, setSigningSecret] = useState("");
   const [justRegistered, setJustRegistered] = useState<ChannelWPWebhookRegistered | null>(null);
   const [copied, setCopied] = useState(false);
@@ -1567,6 +1568,7 @@ function WPWebhookSection({
     retry: false,
   });
   const notConfigured = error instanceof ApiError && error.status === 404;
+  const callbackUrl = callbackEdit ?? summary?.callback_url ?? "";
 
   const registerMut = useMutation<ChannelWPWebhookRegistered, ApiError, void>({
     mutationFn: () =>
@@ -1579,7 +1581,7 @@ function WPWebhookSection({
       setJustRegistered(data);
       setCopied(false);
       setActionError(null);
-      setCallbackUrl("");
+      setCallbackEdit(null);
       setSigningSecret("");
       queryClient.invalidateQueries({ queryKey });
     },
@@ -1711,7 +1713,7 @@ function WPWebhookSection({
           type="text"
           style={inputStyle}
           value={callbackUrl}
-          onChange={(e) => setCallbackUrl(e.target.value)}
+          onChange={(e) => setCallbackEdit(e.target.value)}
           placeholder="https://example.com/wp-json/bil24-compat/v1/webhook"
           data-testid="channels-wpwebhook-callback-input"
         />
