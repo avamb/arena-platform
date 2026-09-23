@@ -1,0 +1,36 @@
+{
+  "entry": "gateway",
+  "base_url": "https://loadtest-api.arenasoldout.com",
+  "step_seconds": 40,
+  "max_error_rate": 0.005,
+  "max_p95_ms": 1000,
+  "rows": [
+    {
+      "rate": 20,
+      "browsers": 10,
+      "seconds": 49,
+      "k6_exit": 0,
+      "requests": 217,
+      "rps": 4.455295393527501,
+      "error_rate": 0,
+      "errors_5xx": 0,
+      "errors_transport": 0,
+      "throttled": 0,
+      "purchases_ok": 14,
+      "purchases_failed": 0,
+      "sold_out": 0,
+      "journey_p95_ms": 295.2499999999999,
+      "journey_p99_ms": 427.8499999999998,
+      "checkout_p95_ms": 36.8509554,
+      "issuance_p95_ms": 13.35,
+      "not_shown": 0,
+      "dropped_iterations": 0,
+      "lock_waiters": 0,
+      "idle_in_tx": 0,
+      "active": 1,
+      "longest_tx_s": 0,
+      "broke": []
+    }
+  ],
+  "capacity_orders_per_min": 20
+}

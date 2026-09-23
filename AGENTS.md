@@ -1512,6 +1512,21 @@ entries short and factual.
   deadlock waiting for a full pool. `publicTierUnitPrice`,
   `seatPricingLines` and `applyPromoDiscount` take the handle explicitly
   for that reason.
+  **Rerun 2026-09-23 (`docs/loadtest/2026-09-23_server_step2_rerun_ru.md`)
+  on the fixed image confirmed it is the code, not the pool:** cpx22 with
+  `DB_POOL_MAX_CONNS=20` went from 19 ok / 1 182 failed to 1 138 / 0 at
+  400 orders/min + 1 000 visitors, zero lock waiters on every step. On
+  2 vCPU a pool of 60 is NOT better — a step-start burst (1 000 visitors
+  arriving at once) then runs straight into Postgres (13–35 holds queued
+  on the sessions row, 120 % CPU) instead of queueing cheaply for a pool
+  slot inside the api, so the run's p95 grows to ~0.9 s; on cpx32 (prod,
+  4 vCPU) the burst is invisible and 60 is fine. Two tooling traps from
+  that night: the owner's Cloudflare token is IP-filtered to their IPv4,
+  and Python `urllib` may pick IPv6 for `api.cloudflare.com` — zone
+  calls then answer 401 code 10000 while `/user/tokens/verify` still
+  says 200 (force `AF_INET`); and killing a background `bash script.sh`
+  wrapper kills only the outer shell — the script keeps running, so a
+  long orchestrator needs a stop-file check (or `pkill -f script.sh`).
 - **The one-screen session overview is `GET
   /v1/organizations/{org_id}/sessions/{session_id}/summary`** (`order.read`,
   `horders/session_summary.go`, queries in `session_summary.sql`). Add new

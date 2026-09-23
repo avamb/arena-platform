@@ -1,0 +1,44 @@
+start 2026-09-23T02:26:31Z label=c22-p60 entry=native steps=10,25,50,100,200,400 step=180s vpo=5
+capacity staircase: entry=native base=https://loadtest-api.arenasoldout.com steps=10,25,50,100,200,400 orders/min, 180s each, break at errors>0.005 or journey p95>1000ms
+
+== step 10 orders/min (50 visitors) ==
+   ok=31 failed=0 sold_out=0 errors=0.00% journey p95=92ms p99=389ms checkout p95=46ms rps=13.6
+   stand: api completed 2586, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 1 active, longest tx 0 s
+   resting 45s
+
+== step 25 orders/min (125 visitors) ==
+   ok=75 failed=0 sold_out=0 errors=0.00% journey p95=87ms p99=296ms checkout p95=48ms rps=33.7
+   stand: api completed 6417, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 1 active, longest tx 0 s
+   resting 45s
+
+== step 50 orders/min (250 visitors) ==
+   ok=150 failed=0 sold_out=0 errors=0.00% journey p95=90ms p99=170ms checkout p95=55ms rps=66.9
+   stand: api completed 12764, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 2 active, longest tx 0 s
+   resting 45s
+
+== step 100 orders/min (500 visitors) ==
+   ok=301 failed=0 sold_out=0 errors=0.00% journey p95=78ms p99=1037ms checkout p95=47ms rps=132.6
+   stand: api completed 25318, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 1 active, longest tx 0 s
+   resting 45s
+
+== step 200 orders/min (1000 visitors) ==
+   ok=601 failed=0 sold_out=0 errors=0.00% journey p95=129ms p99=4284ms checkout p95=80ms rps=261.7
+   stand: api completed 41709, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 2 active, longest tx 0 s
+   resting 45s
+
+== step 400 orders/min (1000 visitors) ==
+   ok=1161 failed=0 sold_out=40 errors=0.00% journey p95=801ms p99=5858ms checkout p95=260ms rps=273.9
+   stand: api completed 40418, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 1 active, longest tx 0 s
+
+== staircase result ==
+orders/min | visitors | ok | failed | errors% | 5xx | transport | journey p95 | journey p99 | checkout p95 | issuance p95 | rps | verdict
+        10 |       50 |   31 |      0 |    0.00 |   0 |         0 |       92 ms |      389 ms |        46 ms |      1011 ms |   13.6 | ok
+        25 |      125 |   75 |      0 |    0.00 |   0 |         0 |       87 ms |      296 ms |        48 ms |      1014 ms |   33.7 | ok
+        50 |      250 |  150 |      0 |    0.00 |   0 |         0 |       90 ms |      170 ms |        55 ms |      1016 ms |   66.9 | ok
+       100 |      500 |  301 |      0 |    0.00 |   0 |         0 |       78 ms |     1037 ms |        47 ms |      1014 ms |  132.6 | ok
+       200 |     1000 |  601 |      0 |    0.00 |   0 |         0 |      129 ms |     4284 ms |        80 ms |      1014 ms |  261.7 | ok
+       400 |     1000 | 1161 |      0 |    0.00 |   0 |         0 |      801 ms |     5858 ms |       260 ms |      5033 ms |  273.9 | ok
+
+capacity of this stand (native): 400 orders/min at 1000 visitors — last clean step
+written /opt/arena-loadtest/loadtest/results/capacity-native-202609230226-0d35-202609230249.json
+end 2026-09-23T02:49:48Z rc=0

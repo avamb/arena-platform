@@ -1,0 +1,12 @@
+capacity staircase: entry=native base=https://loadtest-api.arenasoldout.com steps=800 orders/min, 120s each, break at errors>0.005 or journey p95>1000ms
+
+== step 800 orders/min (1000 visitors) ==
+   ok=1601 failed=0 sold_out=0 errors=0.00% journey p95=70ms p99=2648ms checkout p95=41ms rps=295.3
+   stand: api completed 38657, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 2 active, longest tx 0 s
+
+== staircase result ==
+orders/min | visitors | ok | failed | errors% | 5xx | transport | journey p95 | journey p99 | checkout p95 | issuance p95 | rps | verdict
+       800 |     1000 | 1601 |      0 |    0.00 |   0 |         0 |       70 ms |     2648 ms |        41 ms |      1010 ms |  295.3 | ok
+
+capacity of this stand (native): 800 orders/min at 1000 visitors — last clean step
+written /opt/arena-loadtest/loadtest/results/capacity-native-202609230304-d312-202609230307.json

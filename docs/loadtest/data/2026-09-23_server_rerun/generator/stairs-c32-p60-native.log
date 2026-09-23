@@ -1,0 +1,26 @@
+start 2026-09-23T02:55:34Z label=c32-p60 entry=native steps=200,400,600 step=120s vpo=5
+capacity staircase: entry=native base=https://loadtest-api.arenasoldout.com steps=200,400,600 orders/min, 120s each, break at errors>0.005 or journey p95>1000ms
+
+== step 200 orders/min (1000 visitors) ==
+   ok=401 failed=0 sold_out=0 errors=0.00% journey p95=94ms p99=2226ms checkout p95=63ms rps=258.4
+   stand: api completed 33979, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 2 active, longest tx 0 s
+   resting 45s
+
+== step 400 orders/min (1000 visitors) ==
+   ok=801 failed=0 sold_out=0 errors=0.00% journey p95=85ms p99=2156ms checkout p95=54ms rps=272.3
+   stand: api completed 35697, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 1 active, longest tx 0 s
+   resting 45s
+
+== step 600 orders/min (1000 visitors) ==
+   ok=1130 failed=0 sold_out=70 errors=0.00% journey p95=70ms p99=2036ms checkout p95=38ms rps=281.0
+   stand: api completed 35230, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 2 active, longest tx 0 s
+
+== staircase result ==
+orders/min | visitors | ok | failed | errors% | 5xx | transport | journey p95 | journey p99 | checkout p95 | issuance p95 | rps | verdict
+       200 |     1000 |  401 |      0 |    0.00 |   0 |         0 |       94 ms |     2226 ms |        63 ms |      2007 ms |  258.4 | ok
+       400 |     1000 |  801 |      0 |    0.00 |   0 |         0 |       85 ms |     2156 ms |        54 ms |      1011 ms |  272.3 | ok
+       600 |     1000 | 1130 |      0 |    0.00 |   0 |         0 |       70 ms |     2036 ms |        38 ms |      1010 ms |  281.0 | ok
+
+capacity of this stand (native): 600 orders/min at 1000 visitors — last clean step
+written /opt/arena-loadtest/loadtest/results/capacity-native-202609230255-0d16-202609230303.json
+end 2026-09-23T03:03:51Z rc=0

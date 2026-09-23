@@ -1,0 +1,144 @@
+[2026-09-23T00:59:22Z] === PHASE cpx22 pool 20 (same as 22.09 baseline) ===
+DB_POOL_MAX_CONNS=20
+monitor c22-p20 started
+fixtures written to /opt/arena-loadtest/loadtest/results/fixtures.local.json
+[2026-09-23T00:59:41Z] stairs c22-p20 native steps=10,25,50,100,200,400 180s vpo=5
+        10 |       50 |   31 |      0 |    0.00 |   0 |         0 |      133 ms |      315 ms |        87 ms |      1023 ms |   13.6 | ok
+        25 |      125 |   75 |      0 |    0.00 |   0 |         0 |      105 ms |      309 ms |        64 ms |      1018 ms |   33.5 | ok
+        50 |      250 |  151 |      0 |    0.00 |   0 |         0 |       94 ms |      131 ms |        61 ms |      1018 ms |   66.9 | ok
+       100 |      500 |  301 |      0 |    0.00 |   0 |         0 |       81 ms |      640 ms |        55 ms |      1017 ms |  132.7 | ok
+       200 |     1000 |  601 |      0 |    0.00 |   0 |         0 |       81 ms |     3073 ms |        51 ms |      1013 ms |  263.3 | ok
+       400 |     1000 | 1138 |      0 |    0.00 |   0 |         0 |      101 ms |     3335 ms |        63 ms |      1016 ms |  274.0 | ok
+[2026-09-23T01:22:54Z] rest 60 s
+fixtures written to /opt/arena-loadtest/loadtest/results/fixtures.local.json
+[2026-09-23T01:23:58Z] stairs c22-p20-pervisitor gateway steps=10,25,50,100 180s vpo=5
+        10 |       50 |   31 |      0 |    0.00 |   0 |         0 |      305 ms |      832 ms |        46 ms |        18 ms |   11.7 | ok
+        25 |      125 |   76 |      0 |    0.00 |   0 |         0 |      252 ms |      714 ms |        57 ms |        14 ms |   27.0 | ok
+        50 |      250 |  151 |      0 |    0.00 |   0 |         0 |      363 ms |     1434 ms |        95 ms |        22 ms |   52.0 | ok
+       100 |      500 |  301 |      0 |    0.00 |   0 |         0 |     7479 ms |     7987 ms |      1886 ms |       764 ms |  100.6 | BROKE: journey p95 7479 ms > 1000 ms
+[2026-09-23T01:39:08Z] rest 60 s
+fixtures written to /opt/arena-loadtest/loadtest/results/fixtures.local.json
+[2026-09-23T01:40:11Z] stairs c22-p20-wp gateway steps=10,25,50,100,200,400 180s vpo=0.01
+        10 |       10 |   31 |      0 |    0.00 |   0 |         0 |      340 ms |      408 ms |        55 ms |        13 ms |    3.9 | ok
+        25 |       10 |   75 |      0 |    0.00 |   0 |         0 |      251 ms |      387 ms |        50 ms |        13 ms |    5.1 | ok
+        50 |       10 |  151 |      0 |    0.00 |   0 |         0 |      238 ms |      298 ms |        44 ms |        12 ms |    7.6 | ok
+       100 |       10 |  301 |      0 |    0.00 |   0 |         0 |      239 ms |      257 ms |        44 ms |        11 ms |   12.4 | ok
+       200 |       10 |  601 |      0 |    0.00 |   0 |         0 |      234 ms |      254 ms |        44 ms |         9 ms |   22.4 | ok
+       400 |       10 | 1175 |      0 |    0.00 |   0 |         0 |      240 ms |      407 ms |        55 ms |        17 ms |   40.5 | ok
+[2026-09-23T02:03:15Z] rest 60 s
+fixtures written to /opt/arena-loadtest/loadtest/results/fixtures.local.json
+[2026-09-23T02:04:18Z] single c22-p20 native rate=400 180s vpo=0.01 dir=/opt/arena-loadtest/loadtest
+   stand: api completed 5161, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 1 active, longest tx 0 s
+       400 |       10 | 1157 |      0 |    0.00 |   0 |         0 |       78 ms |       87 ms |        40 ms |      1012 ms |   27.7 | ok
+[2026-09-23T02:07:30Z] rest 60 s
+fixtures written to /opt/arena-loadtest/loadtest/results/fixtures.local.json
+[2026-09-23T02:08:34Z] single c22-p20 native rate=300 180s vpo=5 dir=/opt/arena-loadtest/loadtest
+   stand: api completed 46055, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 1 active, longest tx 0 s
+       300 |     1000 |  901 |      0 |    0.00 |   0 |         0 |      112 ms |     3268 ms |        76 ms |      1012 ms |  268.5 | ok
+[2026-09-23T02:11:52Z] rest 60 s
+fixtures written to /opt/arena-loadtest/loadtest/results/fixtures.local.json
+fixtures written to /opt/arena-loadtest/loadtestB/results/fixtures.local.json
+aligned 202609230212-0a2a 202609230212-bed0
+[2026-09-23T02:12:58Z] rest 30 s
+[2026-09-23T02:13:29Z] two sessions c22-p20 rate=200 180s vpo=2.5
+       200 |      500 |  601 |      0 |    0.00 |   0 |         0 |       86 ms |     3475 ms |        49 ms |      1013 ms |  137.7 | ok
+       200 |      500 |  601 |      0 |    0.00 |   0 |         0 |       94 ms |     3403 ms |        54 ms |      1013 ms |  137.4 | ok
+[2026-09-23T02:16:51Z] === PHASE cpx22 pool 60 (new prod config) ===
+DB_POOL_MAX_CONNS=60
+monitor c22-p60 started
+fixtures written to /opt/arena-loadtest/loadtest/results/fixtures.local.json
+fixtures written to /opt/arena-loadtest/loadtestB/results/fixtures.local.json
+aligned 202609230217-1dee 202609230217-e870
+[2026-09-23T02:17:13Z] rest 30 s
+[2026-09-23T02:17:43Z] two sessions c22-p60 rate=200 180s vpo=2.5
+       200 |      500 |  601 |      0 |    0.00 |   0 |         0 |      925 ms |     7016 ms |       503 ms |      2062 ms |  137.6 | ok
+       200 |      500 |  601 |      0 |    0.00 |   0 |         0 |      889 ms |     7548 ms |       506 ms |      2020 ms |  137.1 | ok
+[2026-09-23T02:21:05Z] rest 60 s
+fixtures written to /opt/arena-loadtest/loadtest/results/fixtures.local.json
+[2026-09-23T02:22:09Z] single c22-p60 native rate=400 180s vpo=5 dir=/opt/arena-loadtest/loadtest
+   stand: api completed 52054, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 1 active, longest tx 0 s
+       400 |     1000 | 1122 |      0 |    0.00 |   0 |         0 |      132 ms |     4506 ms |        78 ms |      2013 ms |  274.1 | ok
+[2026-09-23T02:25:26Z] rest 60 s
+fixtures written to /opt/arena-loadtest/loadtest/results/fixtures.local.json
+[2026-09-23T02:26:29Z] stairs c22-p60 native steps=10,25,50,100,200,400 180s vpo=5
+        10 |       50 |   31 |      0 |    0.00 |   0 |         0 |       92 ms |      389 ms |        46 ms |      1011 ms |   13.6 | ok
+        25 |      125 |   75 |      0 |    0.00 |   0 |         0 |       87 ms |      296 ms |        48 ms |      1014 ms |   33.7 | ok
+        50 |      250 |  150 |      0 |    0.00 |   0 |         0 |       90 ms |      170 ms |        55 ms |      1016 ms |   66.9 | ok
+       100 |      500 |  301 |      0 |    0.00 |   0 |         0 |       78 ms |     1037 ms |        47 ms |      1014 ms |  132.6 | ok
+       200 |     1000 |  601 |      0 |    0.00 |   0 |         0 |      129 ms |     4284 ms |        80 ms |      1014 ms |  261.7 | ok
+       400 |     1000 | 1161 |      0 |    0.00 |   0 |         0 |      801 ms |     5858 ms |       260 ms |      5033 ms |  273.9 | ok
+[2026-09-23T02:49:47Z] === PHASE rescale -> cpx32 ===
+current: arena-loadtest-1 cpx22 running
+  stop_server success None
+  change_server_type success None
+now: arena-loadtest-1 cpx32 running
+4
+4
+[2026-09-23T02:50:39Z] === PHASE cpx32 ===
+DB_POOL_MAX_CONNS=20
+monitor c32 started
+fixtures written to /opt/arena-loadtest/loadtest/results/fixtures.local.json
+[2026-09-23T02:50:58Z] single c32-p20 native rate=300 180s vpo=5 dir=/opt/arena-loadtest/loadtest
+   stand: api completed 52112, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 1 active, longest tx 0 s
+       300 |     1000 |  891 |      0 |    0.00 |   0 |         0 |       69 ms |     1468 ms |        39 ms |      1012 ms |  273.4 | ok
+[2026-09-23T02:54:15Z] rest 60 s
+DB_POOL_MAX_CONNS=60
+fixtures written to /opt/arena-loadtest/loadtest/results/fixtures.local.json
+[2026-09-23T02:55:32Z] stairs c32-p60 native steps=200,400,600 120s vpo=5
+       200 |     1000 |  401 |      0 |    0.00 |   0 |         0 |       94 ms |     2226 ms |        63 ms |      2007 ms |  258.4 | ok
+       400 |     1000 |  801 |      0 |    0.00 |   0 |         0 |       85 ms |     2156 ms |        54 ms |      1011 ms |  272.3 | ok
+       600 |     1000 | 1130 |      0 |    0.00 |   0 |         0 |       70 ms |     2036 ms |        38 ms |      1010 ms |  281.0 | ok
+[2026-09-23T03:03:51Z] rest 60 s
+fixtures written to /opt/arena-loadtest/loadtest/results/fixtures.local.json
+[2026-09-23T03:04:54Z] single c32-p60 native rate=800 120s vpo=5 dir=/opt/arena-loadtest/loadtest
+   stand: api completed 38657, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 2 active, longest tx 0 s
+       800 |     1000 | 1601 |      0 |    0.00 |   0 |         0 |       70 ms |     2648 ms |        41 ms |      1010 ms |  295.3 | ok
+[2026-09-23T03:07:12Z] rest 60 s
+fixtures written to /opt/arena-loadtest/loadtest/results/fixtures.local.json
+[2026-09-23T03:08:15Z] stairs c32-p60-wp gateway steps=200,400,800 120s vpo=0.01
+       200 |       10 |  401 |      0 |    0.00 |   0 |         0 |      282 ms |      325 ms |        68 ms |        25 ms |   21.9 | ok
+       400 |       10 |  801 |      0 |    0.00 |   0 |         0 |      221 ms |      247 ms |        55 ms |        15 ms |   40.7 | ok
+       800 |       10 | 1472 |      0 |    0.00 |   0 |         0 |      259 ms |      454 ms |        62 ms |        20 ms |   75.1 | ok
+[2026-09-23T03:16:20Z] === PHASE cloudflare ===
+Traceback (most recent call last):
+  File "C:\Users\andre\AppData\Local\Temp\claude\C--Projects-arena-new\b0f47f5b-7ab6-471d-a36f-22de3f5837e9\scratchpad\cf_toggle.py", line 7, in <module>
+    for r in call("GET", f"/zones/{zone}/dns_records?name=loadtest-api.arenasoldout.com")["result"]:
+             ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\andre\AppData\Local\Temp\claude\C--Projects-arena-new\b0f47f5b-7ab6-471d-a36f-22de3f5837e9\scratchpad\cf_toggle.py", line 6, in call
+    with urllib.request.urlopen(req, timeout=30) as r: return json.load(r)
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Python\Lib\urllib\request.py", line 189, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python\Lib\urllib\request.py", line 495, in open
+    response = meth(req, response)
+  File "C:\Python\Lib\urllib\request.py", line 604, in http_response
+    response = self.parent.error(
+        'http', request, response, code, msg, hdrs)
+  File "C:\Python\Lib\urllib\request.py", line 533, in error
+    return self._call_chain(*args)
+           ~~~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Python\Lib\urllib\request.py", line 466, in _call_chain
+    result = func(*args)
+  File "C:\Python\Lib\urllib\request.py", line 613, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 401: Unauthorized
+[2026-09-23T03:16:41Z] rest 60 s
+probe 404 via=128.140.12.240
+"remote_addr":"172.18.0.2"
+fixtures written to /opt/arena-loadtest/loadtest/results/fixtures.local.json
+[2026-09-23T03:17:46Z] single c32-cf native rate=200 120s vpo=5 dir=/opt/arena-loadtest/loadtest
+Terminated
+[2026-09-23T03:18:06Z] rest 30 s
+[2026-09-23T03:18:37Z] single c32-cf gateway rate=200 120s vpo=0.01 dir=/opt/arena-loadtest/loadtest
+   stand: api completed 19168, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 5 active, longest tx 0 s
+       200 |       10 |  401 |      0 |    0.00 |   0 |         0 |      410 ms |      490 ms |        88 ms |        63 ms |   22.2 | ok
+[2026-09-23T03:20:46Z] === ALL PHASES DONE ===
+44Z] single c32-cf native rate=200 120s vpo=5 dir=/opt/arena-loadtest/loadtest
+   stand: api completed 35119, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 2 active, longest tx 0 s
+       200 |     1000 |  401 |      0 |    0.00 |   0 |         0 |      163 ms |      948 ms |        78 ms |      1077 ms |  258.5 | ok
+[2026-09-23T03:22:01Z] rest 30 s
+[2026-09-23T03:22:31Z] single c32-cf gateway rate=200 120s vpo=0.01 dir=/opt/arena-loadtest/loadtest
+   stand: api completed 2774, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 2 active, longest tx 0 s
+       200 |       10 |  401 |      0 |    0.00 |   0 |         0 |      393 ms |      428 ms |        85 ms |        53 ms |   21.0 | ok
+[2026-09-23T03:24:49Z] === ALL PHASES DONE ===

@@ -131,7 +131,8 @@ function apiLog(sinceIso, untilIso) {
     const base = `docker ${logArgs.join(' ')} 2>&1`;
     const out = {};
     for (const [key, re] of Object.entries(API_PATTERNS)) {
-      const txt = standSh(`${base} | grep -c -E '${re.source.replace(/\\\./g, '.')}'`);
+      // grep -c exits 1 when it counted nothing; that is a zero, not a failure.
+      const txt = standSh(`${base} | grep -c -E '${re.source.replace(/\\\./g, '.')}' || true`);
       if (txt === null) return null;
       const n = parseInt(txt.trim(), 10);
       out[key] = Number.isNaN(n) ? null : n;

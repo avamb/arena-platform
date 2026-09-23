@@ -1,0 +1,33 @@
+start 2026-09-23T01:23:59Z label=c22-p20-pervisitor entry=gateway steps=10,25,50,100 step=180s vpo=5
+capacity staircase: entry=gateway base=https://loadtest-api.arenasoldout.com steps=10,25,50,100 orders/min, 180s each, break at errors>0.005 or journey p95>1000ms
+
+== step 10 orders/min (50 visitors) ==
+   ok=31 failed=0 sold_out=0 errors=0.00% journey p95=305ms p99=832ms checkout p95=46ms rps=11.7
+   stand: api completed 2184, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 1 active, longest tx 0 s
+   resting 45s
+
+== step 25 orders/min (125 visitors) ==
+   ok=76 failed=0 sold_out=0 errors=0.00% journey p95=252ms p99=714ms checkout p95=57ms rps=27.0
+   stand: api completed 5118, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 1 active, longest tx 0 s
+   resting 45s
+
+== step 50 orders/min (250 visitors) ==
+   ok=151 failed=0 sold_out=0 errors=0.00% journey p95=363ms p99=1434ms checkout p95=95ms rps=52.0
+   stand: api completed 10035, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 2 active, longest tx 0 s
+   resting 45s
+
+== step 100 orders/min (500 visitors) ==
+   ok=301 failed=0 sold_out=0 errors=0.00% journey p95=7479ms p99=7987ms checkout p95=1886ms rps=100.6
+   stand: api completed 18894, 5xx 0, slower than 5 s 0; pg at 60 %: 0 waiting on lock, 0 idle in tx, 1 active, longest tx 0 s
+   BROKE: journey p95 7479 ms > 1000 ms
+
+== staircase result ==
+orders/min | visitors | ok | failed | errors% | 5xx | transport | journey p95 | journey p99 | checkout p95 | issuance p95 | rps | verdict
+        10 |       50 |   31 |      0 |    0.00 |   0 |         0 |      305 ms |      832 ms |        46 ms |        18 ms |   11.7 | ok
+        25 |      125 |   76 |      0 |    0.00 |   0 |         0 |      252 ms |      714 ms |        57 ms |        14 ms |   27.0 | ok
+        50 |      250 |  151 |      0 |    0.00 |   0 |         0 |      363 ms |     1434 ms |        95 ms |        22 ms |   52.0 | ok
+       100 |      500 |  301 |      0 |    0.00 |   0 |         0 |     7479 ms |     7987 ms |      1886 ms |       764 ms |  100.6 | BROKE: journey p95 7479 ms > 1000 ms
+
+capacity of this stand (gateway): 50 orders/min at 250 visitors — last clean step
+written /opt/arena-loadtest/loadtest/results/capacity-gateway-202609230123-1e4d-202609230139.json
+end 2026-09-23T01:39:08Z rc=0
