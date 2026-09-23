@@ -137,3 +137,16 @@ func TestPromoRedemptionsCSV(t *testing.T) {
 		t.Fatalf("row without an order: %q", lines[2])
 	}
 }
+
+func TestValidPromoStatus_IsTheAPIContract(t *testing.T) {
+	for _, s := range []string{"active", "paused"} {
+		if !validPromoStatus(s) {
+			t.Errorf("validPromoStatus(%q) = false, want true", s)
+		}
+	}
+	for _, s := range []string{"", "inactive", "expired", "exhausted", "Paused", "deleted"} {
+		if validPromoStatus(s) {
+			t.Errorf("validPromoStatus(%q) = true, want false", s)
+		}
+	}
+}

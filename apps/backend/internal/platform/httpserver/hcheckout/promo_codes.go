@@ -344,8 +344,13 @@ func (h *Handler) HandleCreatePromoCode(w http.ResponseWriter, r *http.Request) 
 	if req.AppliesToSessionIDs == nil {
 		req.AppliesToSessionIDs = []string{}
 	}
+	req.Status = strings.TrimSpace(req.Status)
 	if req.Status == "" {
 		req.Status = "active"
+	}
+	if !validPromoStatus(req.Status) {
+		writeInvalidPromoStatus(w, r)
+		return
 	}
 
 	scope, ok := h.checkPromoScope(ctx, w, r, orgID, promoScopeInput{
@@ -540,6 +545,12 @@ func (h *Handler) HandleUpdatePromoCode(w http.ResponseWriter, r *http.Request) 
 	var req updatePromoCodeRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("promo.invalid_json", "request body is not valid JSON", r))
+		return
+	}
+
+	req.Status = strings.TrimSpace(req.Status)
+	if req.Status != "" && !validPromoStatus(req.Status) {
+		writeInvalidPromoStatus(w, r)
 		return
 	}
 

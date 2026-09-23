@@ -179,3 +179,18 @@ func CheckPromoLimits(
 	}
 	return "", nil
 }
+
+// validPromoStatus is the API contract's lifecycle set (openapi.yaml:
+// `status: active | paused`). Anything else used to reach the column CHECK
+// and answer a bare 500 promo.update_failed; migration 0110 added 'paused'
+// to that CHECK, and this guard keeps an unknown value a 400.
+func validPromoStatus(s string) bool {
+	return s == "active" || s == "paused"
+}
+
+func writeInvalidPromoStatus(w http.ResponseWriter, r *http.Request) {
+	httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+		"promo.invalid_status", "status must be 'active' or 'paused'", r,
+		map[string]any{"field": "status"},
+	))
+}
