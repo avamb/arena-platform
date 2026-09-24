@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/opswatchdog"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 )
 
 const (
@@ -76,7 +76,7 @@ func TestFormatSale_EnglishAndNoBuyerData(t *testing.T) {
 
 func TestFormatRefund_UnknownZoneFallsBackToLabelledUTC(t *testing.T) {
 	start := time.Date(2026, 10, 1, 17, 0, 0, 0, time.UTC)
-	msg := FormatRefund(Refund{OrgName: "Vino&Co", EventName: "Quiz", StartAt: &start,
+	msg := FormatRefund(Refund{OrgName: "Vino&Co", EventName: "Quiz", StartAt: start,
 		OrderNumber: 1000155528, TicketNumber: 73, Currency: "ILS", Amount: 13500})
 	for _, want := range []string{"↩️ <b>Refund</b>", "Thu 01 Oct 2026, 17:00 UTC", "Order #1000155528 · ticket #73", "Amount: <b>135.00 ILS</b>"} {
 		if !strings.Contains(msg, want) {
@@ -85,34 +85,46 @@ func TestFormatRefund_UnknownZoneFallsBackToLabelledUTC(t *testing.T) {
 	}
 }
 
-// ── RunOnce with fakes ──────────────────────────────────────────────────
+// ── Dispatcher with fakes ───────────────────────────────────────────────
 
 type fakeStore struct {
+	mu       sync.Mutex
 	subs     []Subscription
-	sales    []Sale
-	refunds  []Refund
+	sales    map[string]Sale
+	refunds  map[string]Refund
+	claimed  map[string]bool
 	chatIDs  map[string]string
 	lastErrs map[string]string
 }
 
-func (f *fakeStore) Subscriptions(context.Context) ([]Subscription, error) { return f.subs, nil }
-func (f *fakeStore) SalesSince(_ context.Context, ts time.Time, id string, _ int) ([]Sale, error) {
-	var out []Sale
-	for _, s := range f.sales {
-		if s.At.After(ts) || (s.At.Equal(ts) && s.ID > id) {
-			out = append(out, s)
-		}
-	}
-	return out, nil
+func newFakeStore(subs ...Subscription) *fakeStore {
+	return &fakeStore{subs: subs, sales: map[string]Sale{}, refunds: map[string]Refund{},
+		claimed: map[string]bool{}, chatIDs: map[string]string{}, lastErrs: map[string]string{}}
 }
-func (f *fakeStore) RefundsSince(_ context.Context, ts time.Time, id string, _ int) ([]Refund, error) {
-	var out []Refund
-	for _, r := range f.refunds {
-		if r.At.After(ts) || (r.At.Equal(ts) && r.ID > id) {
-			out = append(out, r)
-		}
+
+func (f *fakeStore) Subscriptions(context.Context) ([]Subscription, error) { return f.subs, nil }
+func (f *fakeStore) SaleByOrder(_ context.Context, id string) (Sale, error) {
+	s, ok := f.sales[id]
+	if !ok {
+		return Sale{}, ErrNotFound
 	}
-	return out, nil
+	return s, nil
+}
+func (f *fakeStore) RefundByTicket(_ context.Context, id string) (Refund, error) {
+	r, ok := f.refunds[id]
+	if !ok {
+		return Refund{}, ErrNotFound
+	}
+	return r, nil
+}
+func (f *fakeStore) Claim(_ context.Context, key string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.claimed[key] {
+		return false, nil
+	}
+	f.claimed[key] = true
+	return true, nil
 }
 func (f *fakeStore) UpdateChatID(_ context.Context, id, chat string) error {
 	f.chatIDs[id] = chat
@@ -120,20 +132,6 @@ func (f *fakeStore) UpdateChatID(_ context.Context, id, chat string) error {
 }
 func (f *fakeStore) RecordDelivery(_ context.Context, id, lastErr string) error {
 	f.lastErrs[id] = lastErr
-	return nil
-}
-
-type memCursors struct{ m map[string]opswatchdog.Cursor }
-
-func (c *memCursors) Get(_ context.Context, k string) (*opswatchdog.Cursor, error) {
-	v, ok := c.m[k]
-	if !ok {
-		return nil, nil
-	}
-	return &v, nil
-}
-func (c *memCursors) Set(_ context.Context, k string, v opswatchdog.Cursor) error {
-	c.m[k] = v
 	return nil
 }
 
@@ -155,111 +153,106 @@ func (s *fakeSender) Send(_ context.Context, chat, text string) error {
 	return nil
 }
 
-func TestRunOnce_FirstRunNeverReplaysHistoryThenDeliversPerOrg(t *testing.T) {
-	t0 := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
-	store := &fakeStore{
-		subs: []Subscription{
-			{ID: "op", Name: "operator", ChatID: "-100", OnOrderPaid: true, OnTicketRefunded: true},
-			{ID: "vino", OrgID: orgVino, Name: "Vino&Co", ChatID: "-200", OnOrderPaid: true, OnTicketRefunded: true},
-		},
-		sales:    []Sale{{ID: "a", At: t0.Add(-time.Hour), OrgID: orgVino, OrderNumber: 1}},
-		chatIDs:  map[string]string{},
-		lastErrs: map[string]string{},
-	}
-	cur := &memCursors{m: map[string]opswatchdog.Cursor{}}
+func paidEvent(orderID string) outbox.Event {
+	return outbox.Event{ID: "ev-" + orderID, AggregateType: "order", AggregateID: orderID,
+		EventType: EventOrderPaid, Payload: map[string]any{"order_id": orderID}}
+}
+
+func TestDispatcher_RoutesPerOrganizationAndPostsOnce(t *testing.T) {
+	store := newFakeStore(
+		Subscription{ID: "op", Name: "operator", ChatID: "-100", OnOrderPaid: true, OnTicketRefunded: true},
+		Subscription{ID: "vino", OrgID: orgVino, Name: "Vino&Co", ChatID: "-200", OnOrderPaid: true, OnTicketRefunded: true},
+	)
+	store.sales["o-vino"] = Sale{OrgID: orgVino, OrgName: "Vino&Co", OrderNumber: 2}
+	store.sales["o-lamp"] = Sale{OrgID: orgLampyris, OrgName: "Lampyris", OrderNumber: 3}
+	store.refunds["t-1"] = Refund{OrgID: orgVino, OrgName: "Vino&Co", OrderNumber: 2, TicketNumber: 73, Currency: "ILS"}
 	snd := &fakeSender{}
-	now := t0
-	opts := Options{Store: store, Cursors: cur, Sender: snd, Now: func() time.Time { return now }}
+	d := NewDispatcher(store, snd, nil)
+	ctx := context.Background()
 
-	if err := RunOnce(context.Background(), opts); err != nil {
-		t.Fatal(err)
-	}
-	if len(snd.sent) != 0 {
-		t.Fatalf("first run replayed history: %v", snd.sent)
-	}
+	d.Handle(ctx, paidEvent("o-vino"))
+	d.Handle(ctx, paidEvent("o-lamp"))
+	// The outbox retries the whole event when another leg fails.
+	d.Handle(ctx, paidEvent("o-vino"))
+	// A provider refund raises both events for one ticket; the amount only
+	// travels on the refunded one.
+	d.Handle(ctx, outbox.Event{EventType: EventTicketCancelled, AggregateID: "t-1", Payload: map[string]any{"ticket_id": "t-1"}})
+	d.Handle(ctx, outbox.Event{EventType: EventTicketRefunded, AggregateID: "t-1", Payload: map[string]any{"ticket_id": "t-1", "amount": float64(13500)}})
 
-	store.sales = append(store.sales,
-		Sale{ID: "b", At: t0.Add(time.Minute), OrgID: orgVino, OrderNumber: 2},
-		Sale{ID: "c", At: t0.Add(2 * time.Minute), OrgID: orgLampyris, OrderNumber: 3})
-	store.refunds = []Refund{{ID: "r", At: t0.Add(3 * time.Minute), OrgID: orgVino, OrderNumber: 2, Amount: 100}}
-	if err := RunOnce(context.Background(), opts); err != nil {
-		t.Fatal(err)
-	}
-	byChat := map[string]int{}
+	byChat := map[string][]string{}
 	for _, s := range snd.sent {
-		byChat[s.chat]++
-		if s.chat == "-200" && strings.Contains(s.text, "#3") {
-			t.Fatalf("Vino chat received a Lampyris sale: %s", s.text)
+		byChat[s.chat] = append(byChat[s.chat], s.text)
+	}
+	if len(byChat["-100"]) != 3 || len(byChat["-200"]) != 2 {
+		t.Fatalf("deliveries: operator %d (want 3), Vino %d (want 2)", len(byChat["-100"]), len(byChat["-200"]))
+	}
+	for _, m := range byChat["-200"] {
+		if strings.Contains(m, "Lampyris") {
+			t.Fatalf("Vino chat received a Lampyris sale: %s", m)
 		}
 	}
-	if byChat["-100"] != 3 || byChat["-200"] != 2 {
-		t.Fatalf("deliveries per chat = %v, want operator 3 and Vino 2", byChat)
-	}
-
-	snd.sent = nil
-	if err := RunOnce(context.Background(), opts); err != nil {
-		t.Fatal(err)
-	}
-	if len(snd.sent) != 0 {
-		t.Fatalf("second pass resent: %v", snd.sent)
+	if !strings.Contains(byChat["-200"][1], "Ticket cancelled") {
+		t.Fatalf("the first event of the refund decides the message: %s", byChat["-200"][1])
 	}
 }
 
-func TestRunOnce_FollowsSupergroupMigrationAndRecordsBrokenChats(t *testing.T) {
-	t0 := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
-	store := &fakeStore{
-		subs: []Subscription{
-			{ID: "vino", OrgID: orgVino, Name: "Vino&Co", ChatID: "-200", OnOrderPaid: true},
-			{ID: "lamp", OrgID: orgVino, Name: "gone", ChatID: "-300", OnOrderPaid: true},
-		},
-		sales:    []Sale{{ID: "b", At: t0.Add(time.Minute), OrgID: orgVino, OrderNumber: 2}},
-		chatIDs:  map[string]string{},
-		lastErrs: map[string]string{},
+func TestDispatcher_RefundAmountFromEventWhenTicketHasNone(t *testing.T) {
+	store := newFakeStore(Subscription{ID: "vino", OrgID: orgVino, ChatID: "-200", OnTicketRefunded: true})
+	store.refunds["t-2"] = Refund{OrgID: orgVino, OrgName: "Vino&Co", OrderNumber: 2, TicketNumber: 74, Currency: "ILS"}
+	snd := &fakeSender{}
+	NewDispatcher(store, snd, nil).Handle(context.Background(),
+		outbox.Event{EventType: EventTicketRefunded, AggregateID: "t-2", Payload: map[string]any{"ticket_id": "t-2", "amount": float64(13500)}})
+	if len(snd.sent) != 1 || !strings.Contains(snd.sent[0].text, "Amount: <b>135.00 ILS</b>") {
+		t.Fatalf("got %v", snd.sent)
 	}
-	past := t0
-	cur := &memCursors{m: map[string]opswatchdog.Cursor{cursorSales: {TS: &past}, cursorRefunds: {TS: &past}}}
+}
+
+func TestDispatcher_FollowsSupergroupMigrationAndRecordsBrokenChats(t *testing.T) {
+	store := newFakeStore(
+		Subscription{ID: "vino", OrgID: orgVino, Name: "Vino&Co", ChatID: "-200", OnOrderPaid: true},
+		Subscription{ID: "gone", OrgID: orgVino, Name: "gone", ChatID: "-300", OnOrderPaid: true},
+	)
+	store.sales["o-1"] = Sale{OrgID: orgVino, OrderNumber: 2}
 	snd := &fakeSender{failFor: map[string]error{
 		"-200": &MigratedError{NewChatID: "-1002001"},
 		"-300": &PermanentError{Code: 403, Description: "Forbidden: bot was kicked from the group chat"},
 	}}
-	if err := RunOnce(context.Background(), Options{Store: store, Cursors: cur, Sender: snd, Now: func() time.Time { return t0 }}); err != nil {
-		t.Fatal(err)
-	}
+	NewDispatcher(store, snd, nil).Handle(context.Background(), paidEvent("o-1"))
 	if store.chatIDs["vino"] != "-1002001" {
 		t.Fatalf("migrated chat id not stored: %v", store.chatIDs)
 	}
 	if len(snd.sent) != 1 || snd.sent[0].chat != "-1002001" {
 		t.Fatalf("message not resent to the supergroup: %v", snd.sent)
 	}
-	if !strings.Contains(store.lastErrs["lamp"], "kicked") || store.lastErrs["vino"] != "" {
+	if !strings.Contains(store.lastErrs["gone"], "kicked") || store.lastErrs["vino"] != "" {
 		t.Fatalf("last errors = %v", store.lastErrs)
-	}
-	if c := cur.m[cursorSales]; c.ID != "b" {
-		t.Fatalf("a broken chat must not hold the cursor back, cursor = %+v", c)
 	}
 }
 
-func TestRunOnce_BurstBecomesOneDigestPerChat(t *testing.T) {
-	t0 := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
-	store := &fakeStore{
-		subs:     []Subscription{{ID: "vino", OrgID: orgVino, ChatID: "-200", OnOrderPaid: true}},
-		chatIDs:  map[string]string{},
-		lastErrs: map[string]string{},
+func TestDispatcher_NeverFailsTheOutboxAndIgnoresOtherEvents(t *testing.T) {
+	store := newFakeStore(Subscription{ID: "op", ChatID: "-100", OnOrderPaid: true})
+	d := NewDispatcher(store, &fakeSender{}, nil)
+	for _, ev := range []outbox.Event{
+		{EventType: "v1.event.published", AggregateID: "e"},
+		paidEvent("missing-order"),
+	} {
+		if err := d.Dispatch(context.Background(), ev); err != nil {
+			t.Fatalf("Dispatch(%s) = %v, want nil", ev.EventType, err)
+		}
 	}
-	for i := 0; i < digestThreshold+2; i++ {
-		store.sales = append(store.sales, Sale{ID: string(rune('a' + i)), At: t0.Add(time.Duration(i+1) * time.Second),
-			OrgID: orgVino, OrderNumber: int64(i + 1), Currency: "ILS", Total: 1000,
-			Categories: []CategoryCount{{Name: "Entry", Count: 1}}})
+	if len(d.queue) != 1 {
+		t.Fatalf("queued %d events, want only the order.paid one", len(d.queue))
 	}
-	past := t0
-	cur := &memCursors{m: map[string]opswatchdog.Cursor{cursorSales: {TS: &past}, cursorRefunds: {TS: &past}}}
-	snd := &fakeSender{}
-	if err := RunOnce(context.Background(), Options{Store: store, Cursors: cur, Sender: snd, Now: func() time.Time { return t0 }}); err != nil {
-		t.Fatal(err)
+	// An unknown order is dropped quietly, never claimed.
+	d.Handle(context.Background(), <-d.queue)
+	if len(store.claimed) != 0 {
+		t.Fatalf("claimed %v for a missing order", store.claimed)
 	}
-	if len(snd.sent) != 1 || !strings.Contains(snd.sent[0].text, "12 new sales</b>, 12 tickets") ||
-		!strings.Contains(snd.sent[0].text, "120.00 ILS") {
-		t.Fatalf("want one digest, got %v", snd.sent)
+	// Without a bot token nothing is queued at all.
+	off := NewDispatcher(store, nil, nil)
+	_ = off.Dispatch(context.Background(), paidEvent("x"))
+	if len(off.queue) != 0 {
+		t.Fatal("a disabled notifier must not queue")
 	}
 }
 

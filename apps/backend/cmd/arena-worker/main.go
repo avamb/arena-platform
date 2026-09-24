@@ -188,7 +188,13 @@ func run() error {
 	baseOutboxDispatcher := buildOutboxDispatcher(cfg, logger)
 	macsDispatcher := macs.NewDispatcher(pool.Pool, macs.WithLogger(logger))
 	bil24WPDispatcher := bil24wire.NewDispatcher(pool.Pool)
+	// The Telegram sales notifier goes FIRST: it only queues and never
+	// fails, so it is reached even while a later leg keeps failing, and it
+	// can neither delay nor re-trigger the webhooks (internal/platform/salesnotify).
+	salesNotifier := buildSalesNotifier(pool.Pool, cfg, logger)
+	go salesNotifier.Run(rootCtx)
 	outboxDispatcher := &multiDispatcher{dispatchers: []outbox.Dispatcher{
+		salesNotifier,
 		baseOutboxDispatcher,
 		macsDispatcher,
 		bil24WPDispatcher,
@@ -239,7 +245,6 @@ func run() error {
 	registerBuiltinHandlers(registry, pool.Pool, cfg, metrics, mediaRepo, logger)
 	registerMediaGCHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerOpsWatchdogHandler(registry, pool.Pool, cfg, opsNotifier, logger)
-	registerSalesNotifyHandler(registry, pool.Pool, cfg, logger)
 
 	// 7b. Idempotency cleanup startup scheduling (feature #48) ---------------
 	// Enqueue an idempotency.cleanup job immediately if none is already
@@ -300,17 +305,6 @@ func run() error {
 		logger.Info("ops watchdog job scheduled at startup")
 	}
 	opswatchdog.SendStartupMessage(rootCtx, opsNotifier, cfg.AppVersion, cfg.AppCommit)
-
-	// 7f. Sales notifications to organizers' Telegram groups ---------------
-	// sales.notify (internal/platform/salesnotify) follows the same cursor
-	// scheme as the watchdog; the cursors are seeded at "now" so turning it
-	// on never replays past sales into a client's chat.
-	if err := salesnotify.EnsureInitialCursors(rootCtx, pool.Pool, time.Now().UTC()); err != nil {
-		logger.Warn("could not seed initial sales notify cursors", "error", err.Error())
-	}
-	if err := salesnotify.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
-		logger.Warn("could not schedule initial sales notify job", "error", err.Error())
-	}
 
 	// 8. Metrics + healthz HTTP server (feature #109, step 6) ----------------
 	// A lightweight sidecar HTTP server exposes:
@@ -603,21 +597,15 @@ func registerOpsWatchdogHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *c
 	)
 }
 
-// registerSalesNotifyHandler registers sales.notify. Without
-// SALES_TELEGRAM_BOT_TOKEN the job still runs and advances its cursors, so
-// adding the token later starts from that moment, not from a backlog.
-func registerSalesNotifyHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) {
-	opts := salesnotify.Options{
-		Store:     salesnotify.NewPGStore(pool),
-		Cursors:   opswatchdog.NewPGCursorStore(pool),
-		Scheduler: salesnotify.NewPGScheduler(pool),
-		Logger:    logger,
-	}
+// buildSalesNotifier builds the outbox leg that posts sales and refunds to
+// organizers' Telegram groups. Without SALES_TELEGRAM_BOT_TOKEN it is a no-op.
+func buildSalesNotifier(pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) *salesnotify.Dispatcher {
+	var sender salesnotify.Sender
 	if cfg.SalesTelegramBotToken != "" {
-		opts.Sender = salesnotify.NewTelegramSender(cfg.SalesTelegramBotToken, "")
+		sender = salesnotify.NewTelegramSender(cfg.SalesTelegramBotToken, "")
 	}
-	reg.Register(salesnotify.JobType, salesnotify.NewHandler(opts))
-	logger.Info("sales.notify handler registered", "telegram_configured", opts.Sender != nil)
+	logger.Info("sales notifier built", "telegram_configured", sender != nil)
+	return salesnotify.NewDispatcher(salesnotify.NewPGStore(pool), sender, logger)
 }
 
 // buildMediaRepo opens the media storage backend and wraps it in a

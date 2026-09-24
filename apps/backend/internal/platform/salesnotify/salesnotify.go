@@ -6,12 +6,17 @@
 // in sales_notification_subscriptions (migration 0111). A subscription with
 // no org_id is an operator one and receives every organization's events.
 //
-// Like the ops watchdog it is a self-scheduling worker job that follows
-// cursors in ops_watchdog_state (keys salesnotify.*) and never replays
-// history: the first run starts from "now". It uses its own bot
-// (SALES_TELEGRAM_BOT_TOKEN), so organizers never see the operator alerts
-// the watchdog's bot sends. Delivery is best effort: a chat the bot was
-// removed from is recorded in last_error and never stops the cursor.
+// It is event-driven: Dispatcher is a leg of arena-worker's outbox fan-out,
+// next to the WordPress and MACS webhooks, so a message follows
+// v1.order.paid / v1.ticket.refunded / v1.ticket.cancelled within seconds.
+// The leg never fails the fan-out — it queues the event and returns nil, so
+// a slow or broken Telegram can neither delay nor re-trigger the webhooks a
+// site or the scanner depend on. Because the fan-out still retries an event
+// whenever ANOTHER leg fails, every announcement is claimed once in
+// sales_notification_deliveries ('paid:<order>', 'refund:<ticket>').
+//
+// It posts through its own bot (SALES_TELEGRAM_BOT_TOKEN), so organizers
+// never see the operator alerts the ops watchdog's bot sends.
 package salesnotify
 
 import (
@@ -19,29 +24,20 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/abhteam/arena_new/apps/backend/internal/platform/opswatchdog"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 )
 
-// JobType is the worker_jobs.job_type of the self-scheduling notifier.
-const JobType = "sales.notify"
-
-// DefaultInterval is the gap between runs.
-const DefaultInterval = 30 * time.Second
-
+// Outbox event types this leg announces.
 const (
-	cursorSales   = "salesnotify.sales"
-	cursorRefunds = "salesnotify.refunds"
-
-	// rowLimit bounds one run's query; the rest follows on the next run.
-	rowLimit = 200
-	// digestThreshold: more messages than this for one chat in one run are
-	// sent as a single summary instead.
-	digestThreshold = 10
+	EventOrderPaid       = "v1.order.paid"
+	EventTicketRefunded  = "v1.ticket.refunded"
+	EventTicketCancelled = "v1.ticket.cancelled"
 )
+
+// queueSize bounds the events waiting for Telegram. A burst beyond it is
+// dropped with a log line rather than blocking the outbox.
+const queueSize = 1024
 
 // Trigger names an event a subscription can opt into.
 type Trigger int
@@ -61,9 +57,6 @@ type Subscription struct {
 	OnTicketRefunded bool
 }
 
-// Operator reports whether the subscription receives every organization.
-func (s Subscription) Operator() bool { return s.OrgID == "" }
-
 // Route returns the subscriptions that must receive trigger for orgID.
 func Route(subs []Subscription, orgID string, trigger Trigger) []Subscription {
 	var out []Subscription
@@ -79,11 +72,16 @@ func Route(subs []Subscription, orgID string, trigger Trigger) []Subscription {
 	return out
 }
 
-// Store is what the job reads and writes.
+// ErrNotFound: the order or ticket an event names does not exist (any more).
+var ErrNotFound = errors.New("salesnotify: not found")
+
+// Store is what the notifier reads and writes.
 type Store interface {
 	Subscriptions(ctx context.Context) ([]Subscription, error)
-	SalesSince(ctx context.Context, ts time.Time, id string, limit int) ([]Sale, error)
-	RefundsSince(ctx context.Context, ts time.Time, id string, limit int) ([]Refund, error)
+	SaleByOrder(ctx context.Context, orderID string) (Sale, error)
+	RefundByTicket(ctx context.Context, ticketID string) (Refund, error)
+	// Claim records key and reports whether this call was the first.
+	Claim(ctx context.Context, key string) (bool, error)
 	// UpdateChatID follows a group upgraded to a supergroup.
 	UpdateChatID(ctx context.Context, subscriptionID, chatID string) error
 	// RecordDelivery stores the last delivery error ("" clears it).
@@ -95,217 +93,161 @@ type Sender interface {
 	Send(ctx context.Context, chatID, text string) error
 }
 
-// Scheduler enqueues the next run.
-type Scheduler interface {
-	ScheduleNext(ctx context.Context, at time.Time) error
+// Dispatcher is the outbox leg. Construct with NewDispatcher and start Run.
+type Dispatcher struct {
+	store  Store
+	sender Sender
+	logger *slog.Logger
+	queue  chan outbox.Event
 }
 
-// Options configures NewHandler.
-type Options struct {
-	Store     Store
-	Cursors   opswatchdog.CursorStore
-	Sender    Sender // nil: the job only advances its cursors
-	Scheduler Scheduler
-	Interval  time.Duration
-	Now       func() time.Time
-	Logger    *slog.Logger
+// NewDispatcher returns the leg; a nil sender (no bot token configured)
+// makes Dispatch a no-op.
+func NewDispatcher(store Store, sender Sender, logger *slog.Logger) *Dispatcher {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Dispatcher{store: store, sender: sender, logger: logger, queue: make(chan outbox.Event, queueSize)}
 }
 
-func (o Options) withDefaults() Options {
-	if o.Logger == nil {
-		o.Logger = slog.Default()
-	}
-	if o.Interval <= 0 {
-		o.Interval = DefaultInterval
-	}
-	if o.Now == nil {
-		o.Now = time.Now
-	}
-	return o
-}
-
-// NewHandler returns the worker handler for JobType. It always succeeds:
-// a failed run is logged and retried on the next tick.
-func NewHandler(opts Options) func(ctx context.Context, payload []byte) error {
-	opts = opts.withDefaults()
-	return func(ctx context.Context, _ []byte) error {
-		if err := RunOnce(ctx, opts); err != nil {
-			opts.Logger.Warn("sales.notify: run failed", "error", err.Error())
-		}
-		if opts.Scheduler != nil {
-			if err := opts.Scheduler.ScheduleNext(ctx, opts.Now().Add(opts.Interval)); err != nil {
-				return fmt.Errorf("salesnotify: schedule next run: %w", err)
-			}
-		}
+// Dispatch implements outbox.Dispatcher. It only queues the event and never
+// returns an error — see the package doc.
+func (d *Dispatcher) Dispatch(_ context.Context, ev outbox.Event) error {
+	if d == nil || d.sender == nil {
 		return nil
 	}
-}
-
-// RunOnce processes every sale and refund past the cursors.
-func RunOnce(ctx context.Context, opts Options) error {
-	opts = opts.withDefaults()
-	subs, err := opts.Store.Subscriptions(ctx)
-	if err != nil {
-		return fmt.Errorf("load subscriptions: %w", err)
+	switch ev.EventType {
+	case EventOrderPaid, EventTicketRefunded, EventTicketCancelled:
+	default:
+		return nil
 	}
-	d := &dispatcher{opts: opts, outbox: map[string]*chatBatch{}}
-	errSales := d.collectSales(ctx, subs)
-	errRefunds := d.collectRefunds(ctx, subs)
-	d.flush(ctx)
-	// Cursors move only after delivery was attempted, so a crash in the
-	// middle repeats a message rather than losing one.
-	if err := d.saveCursors(ctx); err != nil {
-		return err
-	}
-	return errors.Join(errSales, errRefunds)
-}
-
-type chatBatch struct {
-	sub      Subscription
-	messages []string
-	sales    []Sale
-	refunds  []Refund
-}
-
-type dispatcher struct {
-	opts    Options
-	outbox  map[string]*chatBatch
-	order   []string
-	cursors []cursorUpdate
-}
-
-type cursorUpdate struct {
-	key string
-	ts  time.Time
-	id  string
-}
-
-func (d *dispatcher) batch(s Subscription) *chatBatch {
-	b, ok := d.outbox[s.ID]
-	if !ok {
-		b = &chatBatch{sub: s}
-		d.outbox[s.ID] = b
-		d.order = append(d.order, s.ID)
-	}
-	return b
-}
-
-func (d *dispatcher) loadCursor(ctx context.Context, key string) (time.Time, string, error) {
-	c, err := d.opts.Cursors.Get(ctx, key)
-	if err != nil {
-		return time.Time{}, "", err
-	}
-	if c == nil || c.TS == nil {
-		now := d.opts.Now().UTC()
-		if err := d.opts.Cursors.Set(ctx, key, opswatchdog.Cursor{TS: &now}); err != nil {
-			return time.Time{}, "", err
-		}
-		return now, "", nil
-	}
-	return *c.TS, c.ID, nil
-}
-
-func (d *dispatcher) collectSales(ctx context.Context, subs []Subscription) error {
-	ts, id, err := d.loadCursor(ctx, cursorSales)
-	if err != nil {
-		return fmt.Errorf("sales cursor: %w", err)
-	}
-	sales, err := d.opts.Store.SalesSince(ctx, ts, id, rowLimit)
-	if err != nil {
-		return fmt.Errorf("sales query: %w", err)
-	}
-	for _, s := range sales {
-		for _, sub := range Route(subs, s.OrgID, TriggerOrderPaid) {
-			b := d.batch(sub)
-			b.sales = append(b.sales, s)
-			b.messages = append(b.messages, FormatSale(s))
-		}
-	}
-	if n := len(sales); n > 0 {
-		d.cursors = append(d.cursors, cursorUpdate{cursorSales, sales[n-1].At, sales[n-1].ID})
+	select {
+	case d.queue <- ev:
+	default:
+		d.logger.Warn("sales.notify: queue full, notification dropped",
+			"event_type", ev.EventType, "aggregate_id", ev.AggregateID)
 	}
 	return nil
 }
 
-func (d *dispatcher) collectRefunds(ctx context.Context, subs []Subscription) error {
-	ts, id, err := d.loadCursor(ctx, cursorRefunds)
-	if err != nil {
-		return fmt.Errorf("refunds cursor: %w", err)
-	}
-	refunds, err := d.opts.Store.RefundsSince(ctx, ts, id, rowLimit)
-	if err != nil {
-		return fmt.Errorf("refunds query: %w", err)
-	}
-	for _, r := range refunds {
-		for _, sub := range Route(subs, r.OrgID, TriggerTicketRefunded) {
-			b := d.batch(sub)
-			b.refunds = append(b.refunds, r)
-			b.messages = append(b.messages, FormatRefund(r))
-		}
-	}
-	if n := len(refunds); n > 0 {
-		d.cursors = append(d.cursors, cursorUpdate{cursorRefunds, refunds[n-1].At, refunds[n-1].ID})
-	}
-	return nil
-}
-
-func (d *dispatcher) flush(ctx context.Context) {
-	if d.opts.Sender == nil {
+// Run delivers queued events until ctx ends.
+func (d *Dispatcher) Run(ctx context.Context) {
+	if d == nil || d.sender == nil {
 		return
 	}
-	for _, id := range d.order {
-		b := d.outbox[id]
-		msgs := b.messages
-		if len(msgs) > digestThreshold {
-			msgs = []string{FormatDigest(b.sales, b.refunds)}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ev := <-d.queue:
+			d.Handle(ctx, ev)
 		}
-		d.deliver(ctx, b.sub, msgs)
 	}
 }
 
-// deliver sends msgs to one chat, following a supergroup migration once and
-// recording the outcome on the subscription.
-func (d *dispatcher) deliver(ctx context.Context, sub Subscription, msgs []string) {
-	chat := sub.ChatID
-	lastErr := ""
-	for _, m := range msgs {
-		err := d.opts.Sender.Send(ctx, chat, m)
-		var mig *MigratedError
-		if errors.As(err, &mig) {
-			d.opts.Logger.Info("sales.notify: chat upgraded to a supergroup",
-				"subscription", sub.Name, "from", chat, "to", mig.NewChatID)
-			if uerr := d.opts.Store.UpdateChatID(ctx, sub.ID, mig.NewChatID); uerr != nil {
-				d.opts.Logger.Warn("sales.notify: could not store the new chat id", "subscription", sub.Name, "error", uerr.Error())
-			}
-			chat = mig.NewChatID
-			err = d.opts.Sender.Send(ctx, chat, m)
+// Handle announces one event synchronously. Failures are logged, never
+// returned: a notification is best effort.
+func (d *Dispatcher) Handle(ctx context.Context, ev outbox.Event) {
+	defer func() {
+		if r := recover(); r != nil {
+			d.logger.Error("sales.notify: panic while handling event", "event_type", ev.EventType, "panic", fmt.Sprint(r))
 		}
+	}()
+	key, trigger, text, orgID, err := d.compose(ctx, ev)
+	if err != nil {
+		if !errors.Is(err, ErrNotFound) {
+			d.logger.Warn("sales.notify: could not build notification",
+				"event_type", ev.EventType, "aggregate_id", ev.AggregateID, "error", err.Error())
+		}
+		return
+	}
+	subs, err := d.store.Subscriptions(ctx)
+	if err != nil {
+		d.logger.Warn("sales.notify: load subscriptions", "error", err.Error())
+		return
+	}
+	targets := Route(subs, orgID, trigger)
+	if len(targets) == 0 {
+		return
+	}
+	first, err := d.store.Claim(ctx, key)
+	if err != nil {
+		d.logger.Warn("sales.notify: claim", "key", key, "error", err.Error())
+		return
+	}
+	if !first {
+		return // an outbox retry, or the sibling event of the same refund
+	}
+	for _, sub := range targets {
+		d.deliver(ctx, sub, text)
+	}
+}
+
+// compose loads what the event is about and renders the message.
+func (d *Dispatcher) compose(ctx context.Context, ev outbox.Event) (key string, trigger Trigger, text, orgID string, err error) {
+	switch ev.EventType {
+	case EventOrderPaid:
+		id := payloadString(ev.Payload, "order_id", ev.AggregateID)
+		sale, err := d.store.SaleByOrder(ctx, id)
 		if err != nil {
-			lastErr = err.Error()
-			d.opts.Logger.Warn("sales.notify: delivery failed", "subscription", sub.Name, "error", lastErr)
-			var perm *PermanentError
-			if errors.As(err, &perm) {
-				break // bot removed / chat gone: the rest would fail the same way
+			return "", 0, "", "", err
+		}
+		return "paid:" + id, TriggerOrderPaid, FormatSale(sale), sale.OrgID, nil
+	default: // v1.ticket.refunded / v1.ticket.cancelled
+		id := payloadString(ev.Payload, "ticket_id", ev.AggregateID)
+		r, err := d.store.RefundByTicket(ctx, id)
+		if err != nil {
+			return "", 0, "", "", err
+		}
+		// A provider refund names its amount on the event before the ticket
+		// row carries it.
+		if r.Amount == 0 {
+			if amt, ok := payloadInt(ev.Payload, "amount"); ok {
+				r.Amount = amt
 			}
 		}
-	}
-	if rerr := d.opts.Store.RecordDelivery(ctx, sub.ID, lastErr); rerr != nil {
-		d.opts.Logger.Warn("sales.notify: could not record delivery", "subscription", sub.Name, "error", rerr.Error())
+		return "refund:" + id, TriggerTicketRefunded, FormatRefund(r), r.OrgID, nil
 	}
 }
 
-func (d *dispatcher) saveCursors(ctx context.Context) error {
-	for _, c := range d.cursors {
-		ts := c.ts
-		if err := d.opts.Cursors.Set(ctx, c.key, opswatchdog.Cursor{TS: &ts, ID: c.id}); err != nil {
-			return fmt.Errorf("save cursor %s: %w", c.key, err)
+// deliver sends text to one chat, following a supergroup migration once and
+// recording the outcome on the subscription.
+func (d *Dispatcher) deliver(ctx context.Context, sub Subscription, text string) {
+	err := d.sender.Send(ctx, sub.ChatID, text)
+	var mig *MigratedError
+	if errors.As(err, &mig) {
+		d.logger.Info("sales.notify: chat upgraded to a supergroup",
+			"subscription", sub.Name, "from", sub.ChatID, "to", mig.NewChatID)
+		if uerr := d.store.UpdateChatID(ctx, sub.ID, mig.NewChatID); uerr != nil {
+			d.logger.Warn("sales.notify: could not store the new chat id", "subscription", sub.Name, "error", uerr.Error())
 		}
+		err = d.sender.Send(ctx, mig.NewChatID, text)
 	}
-	return nil
+	lastErr := ""
+	if err != nil {
+		lastErr = err.Error()
+		d.logger.Warn("sales.notify: delivery failed", "subscription", sub.Name, "error", lastErr)
+	}
+	if rerr := d.store.RecordDelivery(ctx, sub.ID, lastErr); rerr != nil {
+		d.logger.Warn("sales.notify: could not record delivery", "subscription", sub.Name, "error", rerr.Error())
+	}
 }
 
-// EnsureInitialCursors seeds both cursors at now, so enabling the job never
-// replays past sales.
-func EnsureInitialCursors(ctx context.Context, pool *pgxpool.Pool, now time.Time) error {
-	return opswatchdog.EnsureInitialCursors(ctx, pool, []string{cursorSales, cursorRefunds}, now)
+func payloadString(p map[string]any, key, fallback string) string {
+	if v, ok := p[key].(string); ok && v != "" {
+		return v
+	}
+	return fallback
+}
+
+func payloadInt(p map[string]any, key string) (int64, bool) {
+	switch v := p[key].(type) {
+	case float64:
+		return int64(v), true
+	case int64:
+		return v, true
+	case int:
+		return int64(v), true
+	}
+	return 0, false
 }

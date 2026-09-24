@@ -14,9 +14,9 @@ import (
 )
 
 // TestPGStore_SubscriptionsQueriesAndBookkeeping_LiveDB proves the store's
-// SQL against the migrated schema: allowed-only subscriptions, the sales
-// and refunds queries (joins, JSON category rollup, settle lag), and the
-// chat-id / last-error bookkeeping. Needs DATABASE_URL.
+// SQL against the migrated schema: allowed-only subscriptions, the order and
+// ticket lookups, the once-only claim and the chat-id / last-error
+// bookkeeping. Needs DATABASE_URL.
 func TestPGStore_SubscriptionsQueriesAndBookkeeping_LiveDB(t *testing.T) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -73,22 +73,37 @@ func TestPGStore_SubscriptionsQueriesAndBookkeeping_LiveDB(t *testing.T) {
 		t.Fatalf("allowed subscriptions = %+v", mine)
 	}
 
-	// The queries must run against the real schema; history may or may not
-	// hold rows, so only the shape is asserted.
-	sales, err := st.SalesSince(ctx, time.Now().Add(-365*24*time.Hour), "", 5)
-	if err != nil {
-		t.Fatalf("sales query: %v", err)
-	}
-	for _, s := range sales {
-		if s.OrderNumber == 0 || s.OrgName == "" || s.EventName == "" {
-			t.Fatalf("incomplete sale row: %+v", s)
-		}
-		if !s.At.Before(time.Now().Add(-9 * time.Second)) {
-			t.Fatalf("settle lag not applied: %v", s.At)
+	// The lookups run against whatever the database holds; a fresh one has
+	// no orders, which only skips the shape checks.
+	var orderID, ticketID string
+	_ = pool.QueryRow(ctx, `SELECT id::text FROM orders WHERE paid_at IS NOT NULL ORDER BY paid_at DESC LIMIT 1`).Scan(&orderID)
+	_ = pool.QueryRow(ctx, `SELECT id::text FROM tickets ORDER BY issued_at DESC LIMIT 1`).Scan(&ticketID)
+	if orderID != "" {
+		sale, err := st.SaleByOrder(ctx, orderID)
+		if err != nil || sale.OrderNumber == 0 || sale.OrgName == "" || sale.EventName == "" || sale.Tickets() == 0 {
+			t.Fatalf("SaleByOrder(%s) = %+v, %v", orderID, sale, err)
 		}
 	}
-	if _, err := st.RefundsSince(ctx, time.Now().Add(-365*24*time.Hour), "", 5); err != nil {
-		t.Fatalf("refunds query: %v", err)
+	if ticketID != "" {
+		r, err := st.RefundByTicket(ctx, ticketID)
+		if err != nil || r.TicketNumber == 0 || r.OrgID == "" {
+			t.Fatalf("RefundByTicket(%s) = %+v, %v", ticketID, r, err)
+		}
+	}
+	if _, err := st.SaleByOrder(ctx, "01a0cdf2-0000-7000-8000-000000000000"); err != ErrNotFound {
+		t.Fatalf("unknown order: %v, want ErrNotFound", err)
+	}
+	if _, err := st.RefundByTicket(ctx, "not-a-uuid"); err != ErrNotFound {
+		t.Fatalf("malformed ticket id: %v, want ErrNotFound", err)
+	}
+
+	key := "paid:test-" + nonce
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM sales_notification_deliveries WHERE key = $1`, key) }()
+	if first, err := st.Claim(ctx, key); err != nil || !first {
+		t.Fatalf("first claim = %v, %v", first, err)
+	}
+	if again, err := st.Claim(ctx, key); err != nil || again {
+		t.Fatalf("second claim = %v, %v — a retry must not post twice", again, err)
 	}
 
 	if err := st.RecordDelivery(ctx, subID, "telegram 403: Forbidden"); err != nil {

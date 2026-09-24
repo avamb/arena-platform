@@ -3,17 +3,13 @@ package salesnotify
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-// settleLag keeps the cursor behind rows whose transaction may still be
-// committing: paid_at / succeeded_at are stamped inside the transaction, so
-// a slow commit could otherwise land a row behind a cursor that already
-// moved past it.
-const settleLag = "10 seconds"
 
 // PGStore is the production Store.
 type PGStore struct{ pool *pgxpool.Pool }
@@ -42,11 +38,15 @@ func (s *PGStore) Subscriptions(ctx context.Context) ([]Subscription, error) {
 	return out, rows.Err()
 }
 
-func (s *PGStore) SalesSince(ctx context.Context, ts time.Time, id string, limit int) ([]Sale, error) {
-	// Every order that was ever paid counts, even if it is already refunded
-	// by the time the job looks — the sale did happen.
-	rows, err := s.pool.Query(ctx, `
-		SELECT o.id::text, o.paid_at, o.org_id::text, org.name, ev.name,
+func (s *PGStore) SaleByOrder(ctx context.Context, orderID string) (Sale, error) {
+	id, err := uuid.Parse(orderID)
+	if err != nil {
+		return Sale{}, ErrNotFound
+	}
+	var sale Sale
+	var cats []byte
+	err = s.pool.QueryRow(ctx, `
+		SELECT o.org_id::text, org.name, ev.name,
 		       COALESCE(v.name, ''), s.start_at, COALESCE(v.timezone, ''),
 		       o.system_id, o.source, COALESCE(ch.name, ''), o.currency, o.total,
 		       COALESCE(pc.code, ''),
@@ -63,69 +63,57 @@ func (s *PGStore) SalesSince(ctx context.Context, ts time.Time, id string, limit
 		  LEFT JOIN venues v ON v.id = s.venue_id
 		  LEFT JOIN sales_channels ch ON ch.id = o.channel_id
 		  LEFT JOIN promo_codes pc ON pc.id = o.promo_code_id
-		 WHERE o.paid_at IS NOT NULL
-		   AND o.paid_at <= now() - interval '`+settleLag+`'
-		   AND (o.paid_at > $1 OR (o.paid_at = $1 AND o.id::text > $2))
-		 ORDER BY o.paid_at, o.id
-		 LIMIT $3`, ts, id, limit)
+		 WHERE o.id = $1`, id).Scan(&sale.OrgID, &sale.OrgName, &sale.EventName,
+		&sale.VenueName, &sale.StartAt, &sale.TimeZone, &sale.OrderNumber, &sale.Source,
+		&sale.ChannelName, &sale.Currency, &sale.Total, &sale.PromoCode, &cats)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Sale{}, ErrNotFound
+	}
 	if err != nil {
-		return nil, err
+		return Sale{}, err
 	}
-	defer rows.Close()
-	var out []Sale
-	for rows.Next() {
-		var sale Sale
-		var cats []byte
-		if err := rows.Scan(&sale.ID, &sale.At, &sale.OrgID, &sale.OrgName, &sale.EventName,
-			&sale.VenueName, &sale.StartAt, &sale.TimeZone, &sale.OrderNumber, &sale.Source,
-			&sale.ChannelName, &sale.Currency, &sale.Total, &sale.PromoCode, &cats); err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal(cats, &sale.Categories); err != nil {
-			return nil, fmt.Errorf("decode categories: %w", err)
-		}
-		out = append(out, sale)
+	if err := json.Unmarshal(cats, &sale.Categories); err != nil {
+		return Sale{}, fmt.Errorf("decode categories: %w", err)
 	}
-	return out, rows.Err()
+	return sale, nil
 }
 
-func (s *PGStore) RefundsSince(ctx context.Context, ts time.Time, id string, limit int) ([]Refund, error) {
-	// An external refund (a selling site's REFUND_TICKET) names its order and
-	// ticket; a provider refund only its payment intent, whose checkout
-	// session identifies the order.
-	rows, err := s.pool.Query(ctx, `
-		SELECT r.id::text, r.succeeded_at, r.org_id::text, org.name,
-		       COALESCE(ev.name, ''), COALESCE(v.name, ''), s.start_at, COALESCE(v.timezone, ''),
-		       COALESCE(o.system_id, 0), COALESCE(t.system_ticket_id, 0), r.currency, r.amount
-		  FROM refunds r
-		  JOIN organizations org ON org.id = r.org_id
-		  LEFT JOIN tickets t ON t.id = r.ticket_id
-		  LEFT JOIN payment_intents pi ON pi.id = r.payment_intent_id
-		  LEFT JOIN orders o ON o.id = COALESCE(r.order_id, t.order_id,
-		        (SELECT o2.id FROM orders o2 WHERE o2.checkout_session_id = pi.checkout_session_id))
-		  LEFT JOIN events ev ON ev.id = o.event_id
-		  LEFT JOIN sessions s ON s.id = o.session_id
-		  LEFT JOIN venues v ON v.id = s.venue_id
-		 WHERE r.state = 'succeeded'
-		   AND r.succeeded_at IS NOT NULL
-		   AND r.succeeded_at <= now() - interval '`+settleLag+`'
-		   AND (r.succeeded_at > $1 OR (r.succeeded_at = $1 AND r.id::text > $2))
-		 ORDER BY r.succeeded_at, r.id
-		 LIMIT $3`, ts, id, limit)
+func (s *PGStore) RefundByTicket(ctx context.Context, ticketID string) (Refund, error) {
+	id, err := uuid.Parse(ticketID)
 	if err != nil {
-		return nil, err
+		return Refund{}, ErrNotFound
 	}
-	defer rows.Close()
-	var out []Refund
-	for rows.Next() {
-		var r Refund
-		if err := rows.Scan(&r.ID, &r.At, &r.OrgID, &r.OrgName, &r.EventName, &r.VenueName,
-			&r.StartAt, &r.TimeZone, &r.OrderNumber, &r.TicketNumber, &r.Currency, &r.Amount); err != nil {
-			return nil, err
-		}
-		out = append(out, r)
+	// The amount is the ticket's own refund_price (written with the
+	// cancellation), else a succeeded external refund naming the ticket.
+	var r Refund
+	err = s.pool.QueryRow(ctx, `
+		SELECT ev.org_id::text, org.name, ev.name, COALESCE(v.name, ''), s.start_at, COALESCE(v.timezone, ''),
+		       COALESCE(o.system_id, 0), t.system_ticket_id, COALESCE(o.currency, ''),
+		       COALESCE(t.refund_price,
+		                (SELECT rf.amount FROM refunds rf
+		                  WHERE rf.ticket_id = t.id AND rf.state = 'succeeded'
+		                  ORDER BY rf.succeeded_at DESC LIMIT 1), 0)
+		  FROM tickets t
+		  JOIN sessions s ON s.id = t.session_id
+		  JOIN events ev ON ev.id = s.event_id
+		  JOIN organizations org ON org.id = ev.org_id
+		  LEFT JOIN venues v ON v.id = s.venue_id
+		  LEFT JOIN orders o ON o.id = t.order_id
+		 WHERE t.id = $1`, id).Scan(&r.OrgID, &r.OrgName, &r.EventName, &r.VenueName,
+		&r.StartAt, &r.TimeZone, &r.OrderNumber, &r.TicketNumber, &r.Currency, &r.Amount)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Refund{}, ErrNotFound
 	}
-	return out, rows.Err()
+	return r, err
+}
+
+func (s *PGStore) Claim(ctx context.Context, key string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
+		INSERT INTO sales_notification_deliveries (key) VALUES ($1) ON CONFLICT (key) DO NOTHING`, key)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 func (s *PGStore) UpdateChatID(ctx context.Context, subscriptionID, chatID string) error {
@@ -141,35 +129,5 @@ func (s *PGStore) RecordDelivery(ctx context.Context, subscriptionID, lastError 
 		   SET last_error = NULLIF($2, ''), updated_at = now()
 		 WHERE id = $1 AND last_error IS DISTINCT FROM NULLIF($2, '')`,
 		subscriptionID, lastError)
-	return err
-}
-
-// PGScheduler enqueues the next run into worker_jobs.
-type PGScheduler struct{ pool *pgxpool.Pool }
-
-// NewPGScheduler wraps a pool.
-func NewPGScheduler(pool *pgxpool.Pool) *PGScheduler { return &PGScheduler{pool: pool} }
-
-func (s *PGScheduler) ScheduleNext(ctx context.Context, at time.Time) error {
-	_, err := s.pool.Exec(ctx, `
-		INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
-		VALUES ($1, '{}', 3, 'pending', $2)`, JobType, at)
-	return err
-}
-
-// ScheduleInitialJob enqueues the first run unless one is already queued.
-func ScheduleInitialJob(ctx context.Context, pool *pgxpool.Pool) error {
-	var n int64
-	if err := pool.QueryRow(ctx, `
-		SELECT count(*) FROM worker_jobs WHERE job_type = $1 AND status IN ('pending', 'claimed')`,
-		JobType).Scan(&n); err != nil {
-		return fmt.Errorf("salesnotify: check initial job: %w", err)
-	}
-	if n > 0 {
-		return nil
-	}
-	_, err := pool.Exec(ctx, `
-		INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
-		VALUES ($1, '{}', 3, 'pending', now())`, JobType)
 	return err
 }

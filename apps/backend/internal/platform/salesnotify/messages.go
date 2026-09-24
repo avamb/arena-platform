@@ -2,7 +2,6 @@ package salesnotify
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -12,8 +11,6 @@ import (
 // Sale is one paid order, as the notification shows it. It never carries
 // the buyer's name, e-mail or phone.
 type Sale struct {
-	ID          string // orders.id — cursor tiebreak
-	At          time.Time
 	OrgID       string
 	OrgName     string
 	EventName   string
@@ -44,20 +41,18 @@ func (s Sale) Tickets() int {
 	return n
 }
 
-// Refund is one succeeded refund.
+// Refund is one refunded or cancelled ticket.
 type Refund struct {
-	ID           string
-	At           time.Time
 	OrgID        string
 	OrgName      string
 	EventName    string
 	VenueName    string
-	StartAt      *time.Time
+	StartAt      time.Time
 	TimeZone     string
 	OrderNumber  int64 // 0 = unknown
-	TicketNumber int64 // 0 = the whole order / unknown
+	TicketNumber int64
 	Currency     string
-	Amount       int64
+	Amount       int64 // 0 = cancelled without money back
 }
 
 // sourceLabel names where the sale came from.
@@ -74,6 +69,9 @@ func sourceLabel(source string) string {
 	}
 }
 
+// humanTimeLayout is how a session start reads in a chat message.
+const humanTimeLayout = "Mon 02 Jan 2006, 15:04"
+
 // sessionTime renders the session start in the venue's own zone, the way
 // the buyer's ticket shows it; an unknown zone falls back to UTC, labelled.
 func sessionTime(t time.Time, tz string) string {
@@ -87,13 +85,18 @@ func sessionTime(t time.Time, tz string) string {
 	return t.UTC().Format(humanTimeLayout) + " UTC"
 }
 
-// humanTimeLayout is how a session start reads in a chat message.
-const humanTimeLayout = "Mon 02 Jan 2006, 15:04"
-
 func esc(s string) string { return opsalert.EscapeHTML(s) }
 
 func money(amount int64, currency string) string {
 	return opsalert.FormatMinorUnits(amount, strings.TrimSpace(currency))
+}
+
+func whenWhere(start time.Time, tz, venue string) string {
+	s := sessionTime(start, tz)
+	if venue != "" {
+		s += " · " + venue
+	}
+	return s
 }
 
 // FormatSale renders one sale.
@@ -101,11 +104,7 @@ func FormatSale(s Sale) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "🎟 <b>New sale</b> · %s\n", esc(s.OrgName))
 	fmt.Fprintf(&b, "<b>%s</b>\n", esc(s.EventName))
-	when := sessionTime(s.StartAt, s.TimeZone)
-	if s.VenueName != "" {
-		when += " · " + s.VenueName
-	}
-	fmt.Fprintf(&b, "%s\n", esc(when))
+	fmt.Fprintf(&b, "%s\n", esc(whenWhere(s.StartAt, s.TimeZone, s.VenueName)))
 	src := sourceLabel(s.Source)
 	if s.ChannelName != "" {
 		src += " · " + s.ChannelName
@@ -127,71 +126,26 @@ func FormatSale(s Sale) string {
 	return b.String()
 }
 
-// FormatRefund renders one refund.
+// FormatRefund renders one refunded ticket; one cancelled without money
+// back says so instead of showing a zero amount.
 func FormatRefund(r Refund) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "↩️ <b>Refund</b> · %s\n", esc(r.OrgName))
-	if r.EventName != "" {
-		fmt.Fprintf(&b, "<b>%s</b>\n", esc(r.EventName))
+	title := "Refund"
+	if r.Amount == 0 {
+		title = "Ticket cancelled"
 	}
-	if r.StartAt != nil {
-		when := sessionTime(*r.StartAt, r.TimeZone)
-		if r.VenueName != "" {
-			when += " · " + r.VenueName
-		}
-		fmt.Fprintf(&b, "%s\n", esc(when))
-	}
-	switch {
-	case r.OrderNumber != 0 && r.TicketNumber != 0:
+	fmt.Fprintf(&b, "↩️ <b>%s</b> · %s\n", title, esc(r.OrgName))
+	fmt.Fprintf(&b, "<b>%s</b>\n", esc(r.EventName))
+	fmt.Fprintf(&b, "%s\n", esc(whenWhere(r.StartAt, r.TimeZone, r.VenueName)))
+	if r.OrderNumber != 0 {
 		fmt.Fprintf(&b, "Order #%d · ticket #%d\n", r.OrderNumber, r.TicketNumber)
-	case r.OrderNumber != 0:
-		fmt.Fprintf(&b, "Order #%d\n", r.OrderNumber)
+	} else {
+		fmt.Fprintf(&b, "Ticket #%d\n", r.TicketNumber)
 	}
-	fmt.Fprintf(&b, "Amount: <b>%s</b>", esc(money(r.Amount, r.Currency)))
-	return b.String()
-}
-
-// FormatDigest summarises a burst for one chat in a single message.
-func FormatDigest(sales []Sale, refunds []Refund) string {
-	var b strings.Builder
-	if len(sales) > 0 {
-		tickets := 0
-		totals := map[string]int64{}
-		for _, s := range sales {
-			tickets += s.Tickets()
-			totals[strings.TrimSpace(s.Currency)] += s.Total
-		}
-		fmt.Fprintf(&b, "🎟 <b>%d new sales</b>, %d tickets", len(sales), tickets)
-		for _, cur := range sortedKeys(totals) {
-			fmt.Fprintf(&b, "\nTotal: <b>%s</b>", esc(money(totals[cur], cur)))
-		}
-		nums := make([]string, 0, len(sales))
-		for _, s := range sales {
-			nums = append(nums, fmt.Sprintf("#%d", s.OrderNumber))
-		}
-		fmt.Fprintf(&b, "\nOrders: %s", strings.Join(nums, ", "))
-	}
-	if len(refunds) > 0 {
-		if b.Len() > 0 {
-			b.WriteString("\n\n")
-		}
-		totals := map[string]int64{}
-		for _, r := range refunds {
-			totals[strings.TrimSpace(r.Currency)] += r.Amount
-		}
-		fmt.Fprintf(&b, "↩️ <b>%d refunds</b>", len(refunds))
-		for _, cur := range sortedKeys(totals) {
-			fmt.Fprintf(&b, "\nAmount: <b>%s</b>", esc(money(totals[cur], cur)))
-		}
+	if r.Amount == 0 {
+		b.WriteString("No money returned")
+	} else {
+		fmt.Fprintf(&b, "Amount: <b>%s</b>", esc(money(r.Amount, r.Currency)))
 	}
 	return b.String()
-}
-
-func sortedKeys(m map[string]int64) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }

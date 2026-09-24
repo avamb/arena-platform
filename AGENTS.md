@@ -1537,18 +1537,20 @@ entries short and factual.
   A new admin-web route reachable only by a link must be listed in
   `NON_NAV_ROUTE_IDS` (`src/smoke/saui14_smoke.test.ts`) or the route-tree /
   nav parity test fails.
-- **Organizer Telegram sales notifications are `sales.notify`
-  (`internal/platform/salesnotify`), NOT the ops watchdog.** Rows of
+- **Organizer Telegram sales notifications are the FIRST leg of the outbox
+  fan-out (`internal/platform/salesnotify`), not the ops watchdog.** Rows of
   `sales_notification_subscriptions` (migration 0111) map a chat to an org
   (`org_id NULL` = operator, every org) with `on_order_paid` /
-  `on_ticket_refunded` / `allowed`, like Bil24's Notifications tab. It uses
-  its OWN bot, `SALES_TELEGRAM_BOT_TOKEN` (the ops bot also sends operator
-  alerts organizers must not see), messages are English, and it never
-  carries buyer name/e-mail/phone. Cursors live in `ops_watchdog_state`
-  (`salesnotify.sales` / `salesnotify.refunds`), seeded at now; queries keep
-  a 10 s settle lag behind `paid_at`/`succeeded_at` so a slow commit is not
-  skipped. A group upgraded to a supergroup answers `migrate_to_chat_id` —
-  the job rewrites `chat_id` itself; a chat the bot is not in lands in
-  `last_error` and never holds the cursor. The bot must be a member of the
-  group before its first message (`getChat` answers `chat not found`
-  otherwise). There is no admin screen yet: subscriptions are SQL rows.
+  `on_ticket_refunded` / `allowed`, like Bil24's Notifications tab. The leg
+  reacts to `v1.order.paid`, `v1.ticket.refunded`, `v1.ticket.cancelled`,
+  only QUEUES and always returns nil, so Telegram can never delay or
+  re-trigger the WordPress/MACS webhooks; because `multiDispatcher` still
+  re-runs every leg when ANY other leg fails, each announcement is claimed
+  once in `sales_notification_deliveries` (`paid:<order>` /
+  `refund:<ticket>` — the latter also collapses the refunded+cancelled pair
+  of one provider refund). Own bot `SALES_TELEGRAM_BOT_TOKEN` (the ops bot
+  also sends operator alerts organizers must not see), English text, never
+  buyer name/e-mail/phone. A supergroup upgrade (`migrate_to_chat_id`) is
+  followed automatically; a chat the bot is not in lands in `last_error`.
+  The bot must be a member of the group first (`getChat` answers `chat not
+  found` otherwise). No admin screen yet: subscriptions are SQL rows.
