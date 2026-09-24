@@ -1,0 +1,224 @@
+<title>Стоимость рекламной аналитики</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Prata&family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --ground:#fbf8f6; --paper:#ffffff; --ink:#221a1c; --muted:#6e6164; --line:#e9dfdd; --soft:#f4ecea;
+  --wine:#822121; --wine-soft:#f3e2e0; --grape:#5b3a6e; --good:#2f7a4f; --warn:#b36b12; --bad:#b3261e;
+  --bar:#822121; --bar2:#c79a8f; --grid:#eee4e2;
+  --display:"Prata",Georgia,"Times New Roman",serif; --body:"Onest",system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark; --ground:#171213; --paper:#1f191a; --ink:#f1e9e8; --muted:#b3a4a6; --line:#3a2f31; --soft:#2a2123;
+  --wine:#e0716b; --wine-soft:#3a2224; --grape:#c4a0d8; --good:#6cc794; --warn:#e3a54f; --bad:#f08a80; --bar:#d8645e; --bar2:#7d5a55; --grid:#2f2628;}}
+:root[data-theme="dark"]{
+  color-scheme:dark; --ground:#171213; --paper:#1f191a; --ink:#f1e9e8; --muted:#b3a4a6; --line:#3a2f31; --soft:#2a2123;
+  --wine:#e0716b; --wine-soft:#3a2224; --grape:#c4a0d8; --good:#6cc794; --warn:#e3a54f; --bad:#f08a80; --bar:#d8645e; --bar2:#7d5a55; --grid:#2f2628;}
+body{background:var(--ground);color:var(--ink);font:15px/1.6 var(--body);padding-inline:16px;padding-block:28px 64px}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:44px}
+header{display:flex;flex-direction:column;gap:10px;max-width:760px}
+.eyebrow{font:600 12px/1 var(--body);letter-spacing:.12em;text-transform:uppercase;color:var(--wine)}
+h1{font:400 clamp(30px,4.4vw,44px)/1.15 var(--display);margin:0;text-wrap:balance}
+h2{font:400 26px/1.25 var(--display);margin:0 0 14px;text-wrap:balance}
+h3{font:600 16px/1.35 var(--body);margin:18px 0 8px}
+p{margin:0 0 10px;max-width:70ch}
+.lead{font-size:17px;color:var(--muted)}
+.meta{font-size:13px;color:var(--muted)}
+section{display:flex;flex-direction:column}
+ul,ol{margin:0 0 10px;padding-left:22px;max-width:72ch} li{margin:3px 0}
+code{font:13px var(--mono);background:var(--soft);padding:1px 5px;border-radius:4px}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--paper)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--soft)}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.p-now{background:var(--wine-soft);color:var(--wine)} .p-ok{background:color-mix(in srgb,var(--good) 15%,transparent);color:var(--good)}
+.p-miss{background:color-mix(in srgb,var(--bad) 13%,transparent);color:var(--bad)} .p-part{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+.note{border-left:3px solid var(--wine);background:var(--paper);padding:12px 16px;border-radius:0 8px 8px 0;max-width:80ch}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+.card h3{margin-top:0}
+
+/* ── mockup ── */
+.mock{border:1px solid var(--line);border-radius:12px;background:var(--paper);overflow:hidden;box-shadow:0 10px 30px -18px rgba(60,20,20,.35)}
+.mock-top{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--soft);border-bottom:1px solid var(--line);font-size:13px;color:var(--muted);flex-wrap:wrap}
+.tabs{display:flex;gap:4px;flex-wrap:wrap}
+.tab{padding:6px 12px;border-radius:6px;font-weight:500}
+.tab.on{background:var(--paper);color:var(--ink);box-shadow:0 1px 0 var(--line)}
+.sample{margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--warn);border:1px dashed var(--warn);padding:2px 8px;border-radius:4px}
+.mock-body{padding:18px;display:flex;flex-direction:column;gap:18px}
+.filters{display:flex;flex-wrap:wrap;gap:8px}
+.f{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.f select{font:14px var(--body);color:var(--ink);background:var(--ground);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:150px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--ground)}
+.kpi b{display:block;font:600 22px/1.2 var(--body);font-variant-numeric:tabular-nums}
+.kpi span{font-size:12px;color:var(--muted)}
+.kpi small{font-size:12px;color:var(--good);font-weight:600}
+.grid2{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:18px}
+@media (max-width:820px){.grid2{grid-template-columns:1fr}}
+.panel{border:1px solid var(--line);border-radius:8px;padding:14px;background:var(--paper)}
+.panel h4{margin:0 0 10px;font:600 13px var(--body);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.fun{display:flex;flex-direction:column;gap:7px}
+.frow{display:grid;grid-template-columns:150px 1fr 64px;align-items:center;gap:10px;font-size:13px}
+.frow .lbl{color:var(--ink)}
+.track{height:22px;background:var(--soft);border-radius:4px;position:relative}
+.fill{height:100%;background:var(--bar);border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:6px;color:#fff;font:600 12px var(--body);font-variant-numeric:tabular-nums;min-width:34px;box-sizing:border-box}
+.conv{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+@media (max-width:520px){.frow{grid-template-columns:104px 1fr 50px}}
+.loss{display:flex;flex-direction:column;gap:8px;font-size:13px}
+.lrow{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed var(--line);padding-bottom:6px}
+.lrow:last-child{border-bottom:0}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}
+svg text{fill:var(--muted);font:11px var(--body)}
+.roas-hi{color:var(--good);font-weight:600}.roas-mid{color:var(--warn);font-weight:600}
+footer{font-size:13px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
+</style>
+<div class="wrap">
+<header>
+  <div class="eyebrow">Vino&amp;Co · Lampyris · стоимость · 24.09.2026</div>
+  <h1>Сколько стоит навести порядок в рекламной аналитике</h1>
+  <p class="lead">Часы и деньги на исправления и воронку из документа «Рекламная аналитика: что сломано и как видеть всю воронку». Оценка в масштабе малого бизнеса, а не по агентским ставкам.</p>
+  <p class="meta">Ориентир по размеру: у Vino&amp;Co 100–130 оплаченных заказов и ₪46–64 тыс. выручки в месяц (май, август, сентябрь 2026). Lampyris только переходит на продажи через свой сайт.</p>
+</header>
+
+<section>
+  <h2>Рыночные ориентиры для малого бизнеса</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Что</th><th>Как покупают небольшие магазины</th><th class="num">Цена</th></tr></thead>
+    <tbody>
+      <tr><td>Пиксель Meta + Conversions API</td><td>гиг на Fiverr, установка по шаблону через GTM или плагин</td><td class="num">$10–120 разово</td></tr>
+      <tr><td>Надёжная серверная отправка в Meta для WooCommerce</td><td>PixelYourSite Pro: CAPI, дедупликация, расширенное сопоставление</td><td class="num">$199 в год, 1 сайт</td></tr>
+      <tr><td>Дашборд расходов и окупаемости</td><td>Looker Studio (бесплатно) + коннектор Meta Ads, например Porter Metrics</td><td class="num">$0–15 в месяц</td></tr>
+      <tr><td>Настройка дашборда Looker Studio</td><td>фрилансер, 8–15 ч</td><td class="num">≈ $300–700</td></tr>
+      <tr><td>Час разработчика WordPress/WooCommerce</td><td>фрилансер на небольших заказах (наш ориентир)</td><td class="num">$30–50</td></tr>
+      <tr><td>Для сравнения: senior WordPress в Восточной Европе</td><td>по данным площадок найма</td><td class="num">$27–45/ч</td></tr>
+      <tr><td>Для сравнения: студии WordPress в Израиле</td><td>медианная ставка</td><td class="num">≈ $75/ч</td></tr>
+    </tbody>
+  </table></div>
+  <p class="meta" style="margin-top:10px">Дешёвые гиги ставят только стандартные события WooCommerce. Шагов выбора мест, брони в Arena, окна оплаты и отказов карты они не видят.</p>
+</section>
+
+<section>
+  <h2>Vino&amp;Co</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Работа</th><th class="num">Часы</th><th class="num">При $30–50/ч</th><th>Подписки</th></tr></thead>
+    <tbody>
+      <tr><td>Вернуть источник заказа (UTM) в WooCommerce, оставить одно «Начало оформления»</td><td class="num">2–4</td><td class="num">$60–200</td><td>—</td></tr>
+      <tr><td>Серверные события в Meta с расширенным сопоставлением через PixelYourSite Pro</td><td class="num">1–2</td><td class="num">$30–100</td><td>$199 в год</td></tr>
+      <tr><td>Промежуточные шаги воронки как события пикселя и GA4: выбор мест, бронь, уход на оплату, отказ карты</td><td class="num">6–10</td><td class="num">$180–500</td><td>—</td></tr>
+      <tr><td>Дашборд Looker Studio: расход Meta по кампаниям, заказы по UTM, воронка, ROAS, цена заказа</td><td class="num">8–15</td><td class="num">$240–750</td><td>$0–15 в месяц</td></tr>
+      <tr><td><b>Минимум</b> (первые две строки)</td><td class="num"><b>3–6</b></td><td class="num"><b>$90–300</b></td><td>$199 в год</td></tr>
+      <tr><td><b>Полный пакет</b> (все четыре строки)</td><td class="num"><b>17–31</b></td><td class="num"><b>$510–1 550</b></td><td>$199–380 в год</td></tr>
+    </tbody>
+  </table></div>
+  <p class="meta" style="margin-top:10px">Минимум даёт главное для четырёх идущих кампаний: какая кампания привела какой заказ, и лучшие данные для оптимизации в Meta.</p>
+</section>
+
+<section>
+  <h2>Lampyris</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Работа</th><th class="num">Часы</th><th class="num">При $30–50/ч</th><th>Подписки</th></tr></thead>
+    <tbody>
+      <tr><td>Один источник пикселя; покупка один раз, с суммой, валютой, ID события и серверной копией; проверка CAPI на реальной покупке</td><td class="num">3–5</td><td class="num">$90–250</td><td>—</td></tr>
+      <tr><td>События «просмотр события», «выбор билетов», «начало оформления» в GTM из данных GTM4WP</td><td class="num">2–4</td><td class="num">$60–200</td><td>—</td></tr>
+      <tr><td>Вернуть источник заказа (UTM) в WooCommerce</td><td class="num">1</td><td class="num">$30–50</td><td>—</td></tr>
+      <tr><td>Баннер согласия с кнопкой отказа и Consent Mode v2 (GDPR)</td><td class="num">2–4</td><td class="num">$60–200</td><td>бесплатный тариф CMP или платный, по выбору</td></tr>
+      <tr><td>Подключить Lampyris к общему дашборду Looker Studio</td><td class="num">4–6</td><td class="num">$120–300</td><td>+1 аккаунт коннектора</td></tr>
+      <tr><td><b>Итого</b></td><td class="num"><b>12–20</b></td><td class="num"><b>$360–1 000</b></td><td>до ~$15 в месяц</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>Оба сайта вместе</h2>
+  <div class="cols">
+    <div class="card">
+      <h3>Минимум на обоих</h3>
+      <p>Исправления, которые снимают потери данных и риск GDPR. Промежуточных шагов и дашборда в этом варианте нет.</p>
+      <p><b>≈ 11–20 ч · $330–1 000</b> + PixelYourSite Pro $199 в год</p>
+    </div>
+    <div class="card">
+      <h3>Полный пакет на обоих</h3>
+      <p>Исправления, серверные события, промежуточные шаги и общий дашборд Looker Studio с расходами Meta и ROAS.</p>
+      <p><b>≈ 29–51 ч · $870–2 550</b> + подписки ≈ $200–400 в год</p>
+    </div>
+    <div class="card">
+      <h3>Поддержка</h3>
+      <p>После запуска закладывают 1–3 часа в месяц на сайт: обновления плагинов и WooCommerce, изменения API Meta, проверка, что покупки доходят.</p>
+      <p><b>≈ $30–150 в месяц на сайт</b></p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Вариант: общая аналитика в Arena</h2>
+  <p>Воронка, расходы Meta и сравнение между сайтами на вкладке ивент-центра Arena, для всех организаторов сразу. Это не услуга одному клиенту, а разработка платформы: стоимость делится на всех, кто будет ею пользоваться.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Часть</th><th class="num">Часы</th></tr></thead>
+    <tbody>
+      <tr><td>Приём верхних шагов воронки с сайтов и виджета (заходы, метки, просмотры) и склейка с тем, что Arena уже видит: брони, заказы, оплаты, возвраты</td><td class="num">30–50</td></tr>
+      <tr><td>Серверная отправка в пиксель каждого организатора (Arena как отправитель CAPI)</td><td class="num">15–25</td></tr>
+      <tr><td>Импорт расходов из Meta по каждой организации</td><td class="num">12–20</td></tr>
+      <tr><td>Вкладка «Воронка» в ивент-центре, как в макете</td><td class="num">30–50</td></tr>
+      <tr><td>Сравнение с похожими организаторами (медианы по группам, минимум 5 организаторов в группе) и тревоги при падении конверсии</td><td class="num">20–35</td></tr>
+      <tr><td>Проверка, выкладка, пункт об обезличенных агрегатах в договоре с организаторами</td><td class="num">10–20</td></tr>
+      <tr><td><b>Итого</b></td><td class="num"><b>≈ 120–200</b></td></tr>
+    </tbody>
+  </table></div>
+  <p style="margin-top:12px">При $30–50/ч это ≈ $3 600–10 000 вложений в платформу. Имеет смысл, когда организаторов на Arena хотя бы 5–10: тогда появляется сравнение между сайтами, и функцию можно продавать как часть тарифа. Быстрые исправления на сайтах из пакетов выше нужны в любом случае — это данные, которые потом пойдут в Arena.</p>
+</section>
+
+<section>
+  <h2>Сценарий: чужой сайт с виджетом Arena</h2>
+  <p>Сайт организатора не под нашим управлением, мы только ставим виджет. Работа делается в Arena один раз и дальше работает на всех таких сайтах, поэтому это тоже вложение в платформу, а не счёт одному клиенту.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Часть</th><th class="num">Часы</th><th>Общее с «Общей аналитикой в Arena»</th></tr></thead>
+    <tbody>
+      <tr><td>Виджет читает метки кампании (<code>utm_*</code>, <code>fbclid</code>, <code>gclid</code>, откуда пришёл), при согласии — <code>_fbp</code>/<code>_fbc</code>/<code>_ga</code>; проверка согласия через Consent Mode, TCF или атрибут виджета</td><td class="num">4–8</td><td>нет, только для виджета</td></tr>
+      <tr><td>Передача меток с оформлением и хранение кампании в заказе Arena; кампания в Telegram-уведомлении</td><td class="num">3–6</td><td>частично</td></tr>
+      <tr><td>Вариант 1: события GA4-электронной торговли в <code>dataLayer</code> сайта по галочке, с ID события для каждого</td><td class="num">3–6</td><td>нет, только для виджета</td></tr>
+      <tr><td>Вариант 2: события страницы для разработчиков</td><td class="num">0</td><td>уже есть в виджете</td></tr>
+      <tr><td>Вариант 3: серверная отправка покупки в Meta CAPI и GA4 Measurement Protocol от имени организатора</td><td class="num">15–25</td><td>да, та же работа</td></tr>
+      <tr><td>Вариант 4: импорт расходов Meta (и при желании трафика GA4) по доступу организатора</td><td class="num">12–20 (+10–15 за GA4)</td><td>да, та же работа (GA4 — сверху)</td></tr>
+      <tr><td>Инструкция для организатора: как включить варианты 1–4, текст для их баннера согласия</td><td class="num">2–4</td><td>нет</td></tr>
+      <tr><td><b>Сверх «Общей аналитики в Arena»</b></td><td class="num"><b>≈ 12–24</b></td><td>метки, dataLayer, инструкция; плюс 10–15 ч, если нужен трафик из GA4</td></tr>
+      <tr><td><b>Только этот сценарий, без остальной аналитики в Arena</b></td><td class="num"><b>≈ 40–70</b></td><td>метки, dataLayer, серверная отправка, расходы Meta, инструкция</td></tr>
+    </tbody>
+  </table></div>
+  <p style="margin-top:12px">Если делать сценарий вместе с общей аналитикой, это ≈ 12–24 ч сверху, то есть ≈ $360–1 200 при $30–50/ч. Отдельно, без остальной аналитики: ≈ 40–70 ч, ≈ $1 200–3 500. Для организатора подключение бесплатно, если ограничиться вариантами 1–2. Варианты 3–4 требуют только его ID пикселя, токенов и доступа на чтение.</p>
+</section>
+
+<section>
+  <h2>Контроль отслеживания</h2>
+  <p>Сторож, который сообщает о поломке отслеживания в тот же день, а не через пять месяцев. Тревоги идут в операторскую группу Telegram через уже работающего бота Arena.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Уровень</th><th class="num">Часы</th><th class="num">При $30–50/ч</th><th>Подписки</th></tr></thead>
+    <tbody>
+      <tr><td>1. Ежедневная сверка заказов с отметками Meta, GA4 и UTM, тревога и утренняя сводка в Telegram — Vino&amp;Co</td><td class="num">4–6</td><td class="num">$120–300</td><td>—</td></tr>
+      <tr><td>То же для Lampyris (переиспользуем)</td><td class="num">2–3</td><td class="num">$60–150</td><td>—</td></tr>
+      <tr><td>2. Сверка со стороны Meta: покупки пикселя за сутки и качество сопоставления через API</td><td class="num">6–10</td><td class="num">$180–500</td><td>— (токен на чтение, тот же, что для расходов)</td></tr>
+      <tr><td>3. Ночной проход роботом по сайту с эталоном тегов и событий; запуск после каждого деплоя</td><td class="num">8–14</td><td class="num">$240–700</td><td>— (работает на нашем сервере)</td></tr>
+      <tr><td>4. Автотест в репозиториях сайтов против отключения аналитики на оформлении</td><td class="num">2–4</td><td class="num">$60–200</td><td>—</td></tr>
+      <tr><td><b>Все уровни, оба сайта</b></td><td class="num"><b>≈ 22–37</b></td><td class="num"><b>$660–1 850</b></td><td>—</td></tr>
+      <tr><td><b>Минимум: уровень 1 на обоих сайтах</b></td><td class="num"><b>≈ 6–9</b></td><td class="num"><b>$180–450</b></td><td>—</td></tr>
+    </tbody>
+  </table></div>
+  <p style="margin-top:12px">Уровень 1 — самое дешёвое и самое полезное: апрельская поломка у Vino&amp;Co была бы замечена на следующий день. Если аналитика уходит в Arena, для сайтов с виджетом контроль встроен в серверную отправку. Нужны только правило тревоги и сводка, ≈ 4–6 ч в составе «Общей аналитики в Arena».</p>
+</section>
+
+<section>
+  <h2>Рекомендация</h2>
+  <ol>
+    <li><b>Сейчас, ночью:</b> минимум на обоих сайтах, ≈ 11–20 ч. Больше всего пользы для идущих кампаний Vino&amp;Co и снятый риск GDPR у Lampyris.</li>
+    <li><b>Сразу за ним:</b> контроль отслеживания уровня 1, ≈ 6–9 ч, чтобы исправленное снова не сломалось незаметно.</li>
+    <li><b>Следом:</b> дашборд Looker Studio с расходами Meta — за ≈ $500–1 000 полная картина «расход → заказ → ROAS» по обоим сайтам.</li>
+    <li><b>Параллельно решить про Arena:</b> если аналитика станет частью платформы, промежуточные шаги и вкладку «Воронка» строим сразу там, а не на сайтах.</li>
+    <li><b>Чужие сайты с виджетом:</b> метки кампании в заказе и события в <code>dataLayer</code> — самая дешёвая часть (≈ 10–20 ч), но нужна каждому новому организатору с первого дня. Её стоит сделать раньше остального.</li>
+  </ol>
+</section>
+
+<footer>Цены сервисов — с сайтов поставщиков на сентябрь 2026. Ставка $30–50/ч — наш ориентир для небольших заказов, отдельно не проверялась. Курс для пересчёта ≈ 1 $ = 3,7 ₪. Источники: Fiverr (гиги по Pixel + CAPI), pixelyoursite.com, portermetrics.com, datastudio-experts.com, wpnearme.com, goodfirms.co. Документ — исходник для будущего видения и предложения; проблемы и решение — в отдельном документе.</footer>
+</div>

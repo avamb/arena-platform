@@ -1,0 +1,447 @@
+<title>Рекламная аналитика Vino и Lampyris</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Prata&family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --ground:#fbf8f6; --paper:#ffffff; --ink:#221a1c; --muted:#6e6164; --line:#e9dfdd; --soft:#f4ecea;
+  --wine:#822121; --wine-soft:#f3e2e0; --grape:#5b3a6e; --good:#2f7a4f; --warn:#b36b12; --bad:#b3261e;
+  --bar:#822121; --bar2:#c79a8f; --grid:#eee4e2;
+  --display:"Prata",Georgia,"Times New Roman",serif; --body:"Onest",system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  color-scheme:dark; --ground:#171213; --paper:#1f191a; --ink:#f1e9e8; --muted:#b3a4a6; --line:#3a2f31; --soft:#2a2123;
+  --wine:#e0716b; --wine-soft:#3a2224; --grape:#c4a0d8; --good:#6cc794; --warn:#e3a54f; --bad:#f08a80; --bar:#d8645e; --bar2:#7d5a55; --grid:#2f2628;}}
+:root[data-theme="dark"]{
+  color-scheme:dark; --ground:#171213; --paper:#1f191a; --ink:#f1e9e8; --muted:#b3a4a6; --line:#3a2f31; --soft:#2a2123;
+  --wine:#e0716b; --wine-soft:#3a2224; --grape:#c4a0d8; --good:#6cc794; --warn:#e3a54f; --bad:#f08a80; --bar:#d8645e; --bar2:#7d5a55; --grid:#2f2628;}
+body{background:var(--ground);color:var(--ink);font:15px/1.6 var(--body);padding-inline:16px;padding-block:28px 64px}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:44px}
+header{display:flex;flex-direction:column;gap:10px;max-width:760px}
+.eyebrow{font:600 12px/1 var(--body);letter-spacing:.12em;text-transform:uppercase;color:var(--wine)}
+h1{font:400 clamp(30px,4.4vw,44px)/1.15 var(--display);margin:0;text-wrap:balance}
+h2{font:400 26px/1.25 var(--display);margin:0 0 14px;text-wrap:balance}
+h3{font:600 16px/1.35 var(--body);margin:18px 0 8px}
+p{margin:0 0 10px;max-width:70ch}
+.lead{font-size:17px;color:var(--muted)}
+.meta{font-size:13px;color:var(--muted)}
+section{display:flex;flex-direction:column}
+ul,ol{margin:0 0 10px;padding-left:22px;max-width:72ch} li{margin:3px 0}
+code{font:13px var(--mono);background:var(--soft);padding:1px 5px;border-radius:4px}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--paper)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--soft)}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.p-now{background:var(--wine-soft);color:var(--wine)} .p-ok{background:color-mix(in srgb,var(--good) 15%,transparent);color:var(--good)}
+.p-miss{background:color-mix(in srgb,var(--bad) 13%,transparent);color:var(--bad)} .p-part{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+.note{border-left:3px solid var(--wine);background:var(--paper);padding:12px 16px;border-radius:0 8px 8px 0;max-width:80ch}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+.card h3{margin-top:0}
+
+/* ── mockup ── */
+.mock{border:1px solid var(--line);border-radius:12px;background:var(--paper);overflow:hidden;box-shadow:0 10px 30px -18px rgba(60,20,20,.35)}
+.mock-top{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--soft);border-bottom:1px solid var(--line);font-size:13px;color:var(--muted);flex-wrap:wrap}
+.tabs{display:flex;gap:4px;flex-wrap:wrap}
+.tab{padding:6px 12px;border-radius:6px;font-weight:500}
+.tab.on{background:var(--paper);color:var(--ink);box-shadow:0 1px 0 var(--line)}
+.sample{margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--warn);border:1px dashed var(--warn);padding:2px 8px;border-radius:4px}
+.mock-body{padding:18px;display:flex;flex-direction:column;gap:18px}
+.filters{display:flex;flex-wrap:wrap;gap:8px}
+.f{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.f select{font:14px var(--body);color:var(--ink);background:var(--ground);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:150px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--ground)}
+.kpi b{display:block;font:600 22px/1.2 var(--body);font-variant-numeric:tabular-nums}
+.kpi span{font-size:12px;color:var(--muted)}
+.kpi small{font-size:12px;color:var(--good);font-weight:600}
+.grid2{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:18px}
+@media (max-width:820px){.grid2{grid-template-columns:1fr}}
+.panel{border:1px solid var(--line);border-radius:8px;padding:14px;background:var(--paper)}
+.panel h4{margin:0 0 10px;font:600 13px var(--body);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.fun{display:flex;flex-direction:column;gap:7px}
+.frow{display:grid;grid-template-columns:150px 1fr 64px;align-items:center;gap:10px;font-size:13px}
+.frow .lbl{color:var(--ink)}
+.track{height:22px;background:var(--soft);border-radius:4px;position:relative}
+.fill{height:100%;background:var(--bar);border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:6px;color:#fff;font:600 12px var(--body);font-variant-numeric:tabular-nums;min-width:34px;box-sizing:border-box}
+.conv{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+@media (max-width:520px){.frow{grid-template-columns:104px 1fr 50px}}
+.loss{display:flex;flex-direction:column;gap:8px;font-size:13px}
+.lrow{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed var(--line);padding-bottom:6px}
+.lrow:last-child{border-bottom:0}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}
+svg text{fill:var(--muted);font:11px var(--body)}
+.roas-hi{color:var(--good);font-weight:600}.roas-mid{color:var(--warn);font-weight:600}
+footer{font-size:13px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Vino&amp;Co · Lampyris · проблемы и решение · 24.09.2026</div>
+  <h1>Рекламная аналитика: что сломано и как видеть всю воронку</h1>
+  <p class="lead">Что сейчас видит реклама на сайтах Vino&amp;Co и Lampyris, где данные теряются и как показать весь путь покупателя от объявления в Facebook и Instagram до оплаченного билета, с расходами и окупаемостью, на вкладке ивент-центра.</p>
+  <p class="meta">Масштаб — малый бизнес: сотни заказов в месяц. На сайтах сейчас ничего не меняется: у Vino&amp;Co идут четыре кампании в Meta. Все работы только ночью и по команде. Стоимость — в отдельном документе.</p>
+</header>
+
+<section>
+  <h2>Vino&amp;Co: что есть сейчас</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Что</th><th>Состояние</th><th>Комментарий</th></tr></thead>
+    <tbody>
+      <tr><td>Meta Pixel <code>1352226752766944</code></td><td><span class="pill p-ok">работает</span></td><td>PixelYourSite Free 11.4 с Conversions API. Покупка отмечена на 127 из 133 оплаченных заказов сентября; остальные 6 — 5 приглашений и 1 заказ без отметки.</td></tr>
+      <tr><td>«Начало оформления» в Meta</td><td><span class="pill p-part">дубли</span></td><td>Уходит до трёх раз на одну покупку, часть раз с суммой 0. Воронка в Meta завышена.</td></tr>
+      <tr><td>Расширенное сопоставление Meta</td><td><span class="pill p-miss">выключено</span></td><td>Хешированные почта и телефон не передаются, поэтому Meta хуже связывает покупку с показом.</td></tr>
+      <tr><td>GA4 <code>G-M5HFQ11W7V</code></td><td><span class="pill p-miss">без покупок</span></td><td>Просмотры идут, а покупок нет с 12.04.2026: Site Kit не узнаёт страницу «Оплата прошла».</td></tr>
+      <tr><td>Источник заказа (UTM) в WooCommerce</td><td><span class="pill p-miss">не пишется</span></td><td>Пусто у всех заказов с 12.04.2026: скрипты атрибуции отключены на странице оформления.</td></tr>
+      <tr><td>Промежуточные шаги (выбор мест, бронь, уход на оплату, отказ карты)</td><td><span class="pill p-miss">нигде</span></td><td>Разбросаны по заметкам заказов, в цифры не сводятся.</td></tr>
+      <tr><td>Расходы на рекламу</td><td><span class="pill p-miss">только в Ads Manager</span></td><td>С продажами сайта не сопоставляются.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>Lampyris: что есть сейчас</h2>
+  <p>Сайт lampyrisevents.com, Чехия. Аналитика подключена иначе, чем у Vino&amp;Co: через Google Tag Manager (<code>GTM-KMKLKRZR</code>, плагин GTM4WP) и официальный плагин Meta для WordPress.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Что</th><th>Состояние</th><th>Комментарий</th></tr></thead>
+    <tbody>
+      <tr><td>Meta Pixel <code>638076141953680</code></td><td><span class="pill p-part">дважды</span></td><td>Пиксель ставят и официальный плагин Meta, и GTM, поэтому просмотр страницы уходит в Meta два раза.</td></tr>
+      <tr><td>Покупка в Meta</td><td><span class="pill p-miss">без суммы</span></td><td>В GTM один тег <code>fbq("track","Purchase")</code> на любом адресе с <code>payment-success</code>: без суммы, валюты и ID события. Meta не может оптимизировать по выручке и считать ROAS, а перезагрузка страницы даёт вторую «покупку».</td></tr>
+      <tr><td>Conversions API</td><td><span class="pill p-part">под вопросом</span></td><td>Включён в официальном плагине Meta. Но по коду покупку этот плагин отправляет со стандартной страницы WooCommerce, а Lampyris ведёт покупателя на свою страницу <code>payment-success</code>. Проверить на первой ночной покупке.</td></tr>
+      <tr><td>Промежуточные события (просмотр события, корзина, оформление)</td><td><span class="pill p-miss">нет</span></td><td>В GTM таких тегов нет. GTM4WP кладёт данные в dataLayer, но ни один тег их не читает.</td></tr>
+      <tr><td>Google Analytics 4</td><td><span class="pill p-miss">нет</span></td><td>Не подключён ни в GTM, ни плагином.</td></tr>
+      <tr><td>Источник заказа (UTM) в WooCommerce</td><td><span class="pill p-miss">не пишется</span></td><td>Тот же код ускорения оформления, что у Vino&amp;Co, отключает скрипты атрибуции: источник есть у 0 из 5 заказов с августа.</td></tr>
+      <tr><td>Согласие на cookie (GDPR)</td><td><span class="pill p-miss">риск</span></td><td>Баннер Cookie Notice только информирует: кнопки «Отказаться» нет, а GTM и пиксель грузятся сразу, до согласия. Для сайта в ЕС это нарушение ePrivacy/GDPR. Google Consent Mode v2 тоже не настроен.</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Что делать на Lampyris</h3>
+  <ul>
+    <li>Оставить один источник пикселя.</li>
+    <li>Отправлять покупку один раз: с суммой, валютой, ID события и серверной копией через CAPI.</li>
+    <li>Добавить события «просмотр события», «выбор билетов», «начало оформления».</li>
+    <li>Вернуть источник заказа в WooCommerce — та же правка, что у Vino&amp;Co.</li>
+    <li>Поставить баннер согласия с кнопкой отказа и Consent Mode v2, чтобы теги ждали согласия.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Шаги воронки</h2>
+  <p>Все шаги, кроме первых двух, и так проходят через сервер: сайт, AllPay или Arena. Их нужно только записывать под одним идентификатором посетителя.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Шаг</th><th>Где фиксируется</th><th>Что записываем</th></tr></thead>
+    <tbody>
+      <tr><td>Заход на сайт</td><td>сайт, отметка со страницы</td><td>метки кампании (<code>utm_*</code>, <code>fbclid</code>), откуда пришёл, язык, устройство, первая страница</td></tr>
+      <tr><td>Страница события</td><td>сайт, отметка со страницы</td><td>товар и сеанс</td></tr>
+      <tr><td>Открыт выбор мест или билетов</td><td>сайт, запрос схемы зала</td><td>сеанс</td></tr>
+      <tr><td>Бронь</td><td>сайт ↔ Arena (<code>RESERVATION</code>)</td><td>поставлена или отказ (места заняты, сбой), число билетов</td></tr>
+      <tr><td>Заказ создан</td><td>сайт ↔ Arena (<code>CREATE_ORDER_EXT</code>)</td><td>номер заказа, сумма, промокод; с этого шага сессия привязана к заказу</td></tr>
+      <tr><td>Переход на оплату</td><td>сайт, ссылка AllPay</td><td>время, крайний срок оплаты</td></tr>
+      <tr><td>Итог оплаты</td><td>ответ AllPay, модуль окна оплаты</td><td>оплачено / отказ карты / вернулся без оплаты / истекло окно</td></tr>
+      <tr><td>Билеты выданы, возвраты</td><td>вебхуки Arena</td><td>число билетов, сумма возврата</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Как склеиваются шаги</h3>
+  <ul>
+    <li>При первом заходе сайт ставит собственный cookie со случайным ID посетителя на 1 год. Сессия длится 30 минут без активности; метки кампании записываются в сессию.</li>
+    <li>При создании заказа сессия привязывается к заказу. Так у каждой продажи появляются кампания, группа объявлений и объявление.</li>
+    <li>Атрибуция по последнему рекламному заходу за 7 дней: если человек пришёл с объявления, а купил через три дня, зайдя напрямую, продажа всё равно засчитывается кампании. Окно 7 дней совпадает с настройкой по умолчанию в Meta, поэтому цифры сопоставимы.</li>
+  </ul>
+  <div class="note"><b>Кэш.</b> Страницы Vino отдаются из кэша WP Super Cache и Cloudflare, и серверный код при просмотре не выполняется. Поэтому первые два шага отмечаются коротким запросом со страницы на некэшируемый адрес сайта. Записывает их всё равно сервер сайта, поэтому блокировщики рекламы и iOS такой учёт не режут. Боты отсеиваются по User-Agent и по отсутствию второго шага.</div>
+</section>
+
+<section>
+  <h2>Передача в Meta (Conversions API)</h2>
+  <p>Кампании в Meta, поэтому точность серверных событий напрямую влияет на то, как Meta оптимизирует показы.</p>
+  <ul>
+    <li><b>Какие события:</b> просмотр события, начало оформления (одно, с суммой) и покупка. Отправляются с сервера сайта.</li>
+    <li><b>Без двойного счёта:</b> тот же ID события, что у пикселя в браузере.</li>
+    <li><b>Метки Meta:</b> <code>fbc</code> из <code>fbclid</code>, <code>fbp</code> из cookie пикселя.</li>
+    <li><b>Расширенное сопоставление:</b> SHA-256 от почты и телефона покупателя; сами данные в Meta не уходят.</li>
+    <li><b>Лишние события:</b> три «Начала оформления» сводим в одно.</li>
+  </ul>
+  <p>Два пути. Готовый плагин: PixelYourSite Pro для Vino&amp;Co, официальный плагин Meta с исправленной страницей покупки для Lampyris. Или своя отправка. Готовый плагин быстрее и дешевле на старте, а своя отправка переедет в Arena вместе с воронкой.</p>
+</section>
+
+<section>
+  <h2>Расходы из Meta</h2>
+  <div class="cols">
+    <div class="card">
+      <h3>Откуда берём</h3>
+      <p>Meta Marketing API, Insights: каждый день расход, показы, клики и охват по кампании, группе объявлений и объявлению. В 06:00 по Израилю забираем вчерашний день целиком, а раз в час — сегодняшний день, чтобы видеть его до вечера. Валюта — валюта рекламного кабинета.</p>
+      <p>Нужен токен системного пользователя Business Manager с правом <code>ads_read</code> на рекламный кабинет Vino&amp;Co. Его вписывает владелец, в журналах он не появляется.</p>
+    </div>
+    <div class="card">
+      <h3>Как связываем с продажами</h3>
+      <p>По ID кампании и объявления. Сейчас в ссылках уже стоят номера: <code>utm_campaign=120249830503480307</code>. Это как раз удобно: номер из ссылки один в один совпадает с номером в отчёте о расходах, а названия подтянем из API.</p>
+      <p>Чтобы видеть и группу объявлений, стоит проверить во всех четырёх кампаниях параметры URL: <code>utm_campaign={{campaign.id}}</code>, <code>utm_term={{adset.id}}</code>, <code>utm_content={{ad.id}}</code>.</p>
+    </div>
+  </div>
+  <p style="margin-top:14px">Из расходов и продаж считаем цену заказа (расход ÷ оплаченные заказы), окупаемость ROAS (выручка ÷ расход) и цену брони.</p>
+  <p>Быстрый вариант без своей разработки — бесплатный Looker Studio с коннектором Meta Ads и выгрузкой заказов WooCommerce. Цифры те же, но отдельным отчётом, а не на вкладке ивент-центра.</p>
+</section>
+
+<section>
+  <h2>Макет вкладки «Воронка» в ивент-центре</h2>
+  <p class="meta">Цифры ниже — пример для макета, а не реальные данные Vino&amp;Co.</p>
+
+  <div class="mock" role="img" aria-label="Макет вкладки Воронка в ивент-центре">
+    <div class="mock-top">
+      <div class="tabs"><span class="tab">Продажи</span><span class="tab">Возвраты</span><span class="tab">Промокоды</span><span class="tab">Arena</span><span class="tab on">Воронка</span></div>
+      <span class="sample">пример данных</span>
+    </div>
+    <div class="mock-body">
+      <div class="filters">
+        <label class="f">Период<select id="m-period"><option>17–23 сентября</option></select></label>
+        <label class="f">Событие<select id="m-event"><option>Все события</option></select></label>
+        <label class="f">Кампания<select id="m-camp"><option>Все кампании</option></select></label>
+        <label class="f">Язык<select id="m-lang"><option>ru · he · en</option></select></label>
+        <label class="f">Устройство<select id="m-dev"><option>Все</option></select></label>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><span>Расход Meta</span><b>₪9 400</b></div>
+        <div class="kpi"><span>Выручка</span><b>₪71 300</b><small>268 заказов</small></div>
+        <div class="kpi"><span>Выручка с рекламы</span><b>₪59 319</b><small>248 заказов</small></div>
+        <div class="kpi"><span>ROAS кампаний</span><b>6,3</b></div>
+        <div class="kpi"><span>Цена заказа</span><b>₪37,9</b></div>
+        <div class="kpi"><span>Конверсия захода</span><b>5,6%</b></div>
+      </div>
+
+      <div class="grid2">
+        <div class="panel">
+          <h4>Воронка · 17–23 сентября</h4>
+          <div class="fun">
+            <div class="frow"><span class="lbl">Заходы</span><div class="track"><div class="fill" style="width:100%">4 820</div></div><span class="conv">100%</span></div>
+            <div class="frow"><span class="lbl">Страница события</span><div class="track"><div class="fill" style="width:65.4%">3 150</div></div><span class="conv">65,4%</span></div>
+            <div class="frow"><span class="lbl">Выбор мест</span><div class="track"><div class="fill" style="width:25.7%">1 240</div></div><span class="conv">39,4%</span></div>
+            <div class="frow"><span class="lbl">Бронь</span><div class="track"><div class="fill" style="width:12.7%">610</div></div><span class="conv">49,2%</span></div>
+            <div class="frow"><span class="lbl">Заказ создан</span><div class="track"><div class="fill" style="width:8.7%">420</div></div><span class="conv">68,9%</span></div>
+            <div class="frow"><span class="lbl">Ушёл на оплату</span><div class="track"><div class="fill" style="width:8.2%">395</div></div><span class="conv">94,0%</span></div>
+            <div class="frow"><span class="lbl">Оплачено</span><div class="track"><div class="fill" style="width:5.6%">268</div></div><span class="conv">67,8%</span></div>
+          </div>
+          <p class="meta" style="margin:10px 0 0">Процент справа — переход с предыдущего шага.</p>
+        </div>
+        <div class="panel">
+          <h4>Где теряем на оплате · 395 переходов</h4>
+          <div class="loss">
+            <div class="lrow"><span><i class="sw" style="background:var(--good)"></i>Оплачено</span><b>268 · 67,8%</b></div>
+            <div class="lrow"><span><i class="sw" style="background:var(--warn)"></i>Вернулся с AllPay без оплаты</span><b>58 · 14,7%</b></div>
+            <div class="lrow"><span><i class="sw" style="background:var(--grape)"></i>Истекло окно оплаты</span><b>38 · 9,6%</b></div>
+            <div class="lrow"><span><i class="sw" style="background:var(--bad)"></i>Отказ карты и ушёл</span><b>31 · 7,8%</b></div>
+          </div>
+          <h4 style="margin-top:16px">Отказы брони · 630 попыток</h4>
+          <div class="loss">
+            <div class="lrow"><span>Места заняты, пока выбирал</span><b>14</b></div>
+            <div class="lrow"><span>Сбой связи с Arena</span><b>6</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4>Расход и выручка по дням</h4>
+        <svg viewBox="0 0 640 220" width="100%" role="img" aria-label="Столбцы расхода и линия выручки по дням">
+          <g stroke="var(--grid)" stroke-width="1">
+            <line x1="56" y1="190" x2="628" y2="190"/><line x1="56" y1="145" x2="628" y2="145"/><line x1="56" y1="100" x2="628" y2="100"/><line x1="56" y1="55" x2="628" y2="55"/><line x1="56" y1="10" x2="628" y2="10"/>
+          </g>
+          <g text-anchor="end"><text x="48" y="194">0</text><text x="48" y="149">₪3k</text><text x="48" y="104">₪6k</text><text x="48" y="59">₪9k</text><text x="48" y="14">₪12k</text></g>
+          <g fill="var(--bar2)">
+            <rect x="80" y="173.5" width="34" height="16.5"/><rect x="161" y="171.25" width="34" height="18.75"/><rect x="242" y="170.5" width="34" height="19.5"/><rect x="323" y="169" width="34" height="21"/><rect x="404" y="168.25" width="34" height="21.75"/><rect x="485" y="169" width="34" height="21"/><rect x="566" y="167.5" width="34" height="22.5"/>
+          </g>
+          <polyline fill="none" stroke="var(--bar)" stroke-width="2.5" points="97,73 178,53.5 259,34 340,22 421,31 502,20.5 583,26.5"/>
+          <g fill="var(--bar)"><circle cx="97" cy="73" r="3.5"/><circle cx="178" cy="53.5" r="3.5"/><circle cx="259" cy="34" r="3.5"/><circle cx="340" cy="22" r="3.5"/><circle cx="421" cy="31" r="3.5"/><circle cx="502" cy="20.5" r="3.5"/><circle cx="583" cy="26.5" r="4.5"/></g>
+          <g text-anchor="middle"><text x="97" y="210">17.09</text><text x="178" y="210">18.09</text><text x="259" y="210">19.09</text><text x="340" y="210">20.09</text><text x="421" y="210">21.09</text><text x="502" y="210">22.09</text><text x="583" y="210">23.09</text></g>
+        </svg>
+        <p class="meta" style="margin:4px 0 0"><i class="sw" style="background:var(--bar2)"></i>расход Meta &nbsp; <i class="sw" style="background:var(--bar)"></i>выручка</p>
+      </div>
+
+      <div class="panel" style="padding:0">
+        <h4 style="padding:14px 14px 0">Кампании</h4>
+        <div class="tbl" style="border:0;border-radius:0">
+          <table>
+            <thead><tr><th>Кампания</th><th class="num">Расход</th><th class="num">Заходы</th><th class="num">Брони</th><th class="num">Оплачено</th><th class="num">Выручка</th><th class="num">Цена заказа</th><th class="num">ROAS</th></tr></thead>
+            <tbody>
+              <tr><td>Премьера вина — Беэр-Шева</td><td class="num">₪3 100</td><td class="num">1 480</td><td class="num">205</td><td class="num">92</td><td class="num">₪23 000</td><td class="num">₪33,7</td><td class="num roas-hi">7,4</td></tr>
+              <tr><td>Премьера вина — Тель-Авив</td><td class="num">₪2 700</td><td class="num">1 390</td><td class="num">180</td><td class="num">81</td><td class="num">₪20 250</td><td class="num">₪33,3</td><td class="num roas-hi">7,5</td></tr>
+              <tr><td>Винный квиз на крыше</td><td class="num">₪1 900</td><td class="num">910</td><td class="num">102</td><td class="num">44</td><td class="num">₪9 900</td><td class="num">₪43,2</td><td class="num roas-mid">5,2</td></tr>
+              <tr><td>Море, опера, вино и джаз</td><td class="num">₪1 700</td><td class="num">640</td><td class="num">73</td><td class="num">31</td><td class="num">₪6 169</td><td class="num">₪54,8</td><td class="num roas-mid">3,6</td></tr>
+              <tr><td>Без кампании (прямые, поиск, соцсети)</td><td class="num">—</td><td class="num">400</td><td class="num">50</td><td class="num">20</td><td class="num">₪11 981</td><td class="num">—</td><td class="num">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="meta" style="margin:0;padding:10px 14px 14px">Клик по кампании раскрывает группы объявлений и объявления. Названия приходят из Meta, связь с продажами — по ID из ссылки.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Где это живёт</h2>
+  <ul>
+    <li><b>Сейчас — сайт Vino&amp;Co.</b> Данные пишутся в таблицы сайта, вкладка «Воронка» стоит в ивент-центре рядом с «Продажами» и «Промокодами». Это самый быстрый путь, и та же вкладка потом подойдёт Lampyris: у сайтов общий код ивент-центра.</li>
+    <li><b>Потом — Arena.</b> Сайт передаёт ID сессии и метки в <code>CREATE_ORDER_EXT</code>, и заказ в Arena знает свою кампанию. Тогда:
+      <ul>
+        <li>Telegram-бот пишет в уведомлении «Source: Meta · &lt;кампания&gt;»;</li>
+        <li>такая же воронка появляется у продаж через виджет Arena и у всех организаторов.</li>
+      </ul>
+    </li>
+  </ul>
+  <h3>Данные и приватность</h3>
+  <ul>
+    <li><b>Что храним в воронке:</b> случайный ID посетителя, метки кампании, шаги, номер заказа и сумму. Имён, почты и телефонов нет. IP обрезаем до сети (/24), User-Agent сводим к типу устройства.</li>
+    <li><b>Сколько храним:</b> сырые события — 13 месяцев, дневные итоги — бессрочно.</li>
+    <li><b>Что уходит в Meta:</b> только хеши почты и телефона, по протоколу CAPI.</li>
+    <li><b>Проверить:</b> cookie-баннер Cookie Notice на соответствие поправке 13 к израильскому закону о защите приватности (с августа 2025): упоминает ли он аналитику.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Этапы</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Этап</th><th>Что даёт</th></tr></thead>
+    <tbody>
+      <tr><td>1. Быстрые исправления на обоих сайтах: источник заказа в WooCommerce; одно «Начало оформления» (Vino&amp;Co); одна покупка с суммой и один пиксель (Lampyris); баннер согласия (Lampyris)</td><td>продажи по кампаниям видны прямо в заказах; чистые данные в Meta; снят риск GDPR</td></tr>
+      <tr><td>2. Серверные события в Meta с расширенным сопоставлением</td><td>Meta лучше находит покупателей в текущих кампаниях</td></tr>
+      <tr><td>3. Промежуточные шаги воронки</td><td>видно, где уходят: выбор мест, бронь, оплата, отказ карты</td></tr>
+      <tr><td>4. Расходы из Meta и отчёт: сначала Looker Studio, потом вкладка ивент-центра</td><td>цена заказа и ROAS по кампании, группе объявлений и объявлению</td></tr>
+      <tr><td>5. Сбор воронки в Arena (см. ниже)</td><td>одна система для всех сайтов и виджета, сравнение между сайтами</td></tr>
+    </tbody>
+  </table></div>
+  <p class="meta" style="margin-top:10px">Каждый этап выкатывается ночью, после проверки на staging. Часы и стоимость — в отдельном документе.</p>
+</section>
+
+<section>
+  <h2>Направление: общая аналитика в Arena</h2>
+  <p>Идея: не строить воронку на каждом сайте отдельно, а собирать её в Arena, через которую уже идут продажи всех сайтов и виджета. Тогда появляется то, чего не даст ни один сайт в одиночку.</p>
+  <div class="cols">
+    <div class="card">
+      <h3>Что Arena видит уже сейчас</h3>
+      <p>Без правок на сайтах: брони, заказы, окно оплаты, оплаты и возвраты по каждому сайту и виджету, прямо на сервере. Это нижняя, самая денежная половина воронки. От сайтов нужен только верх: заходы, метки кампании, просмотры событий.</p>
+    </div>
+    <div class="card">
+      <h3>Что даёт сравнение между сайтами</h3>
+      <ul>
+        <li>Медиана и разброс конверсии каждого шага у похожих организаторов, например: «у вас бронь → оплата 62%, у похожих 78%».</li>
+        <li>Сравнение платёжных провайдеров и окон оплаты: где чаще отказ карты и где чаще истекает окно.</li>
+        <li>Кривые продаж по дням до события, влияние промокодов и цены.</li>
+        <li>Тревога, когда конверсия сайта падает относительно остальных. Поломку вроде апрельской у Vino&amp;Co заметили бы за дни, а не за пять месяцев.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Ограничения</h3>
+      <ul>
+        <li>Сравнение честное, только когда в группе не меньше 5 похожих организаторов. До этого показываем только собственную воронку.</li>
+        <li>Организатор видит свои цифры и обезличенные медианы группы, но никогда — цифры конкретного конкурента.</li>
+        <li>Право использовать обезличенные агрегаты для сравнений нужно прописать в договоре с организаторами. Персональные данные покупателей в сравнения не попадают.</li>
+        <li>Для верха воронки на сайтах по-прежнему нужно согласие на cookie там, где его требует закон: в ЕС и в Израиле.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Arena как отправитель в Meta</h3>
+      <p>Как Shopify отправляет события за своих продавцов, так Arena может отправлять серверные события в пиксель каждого организатора. ID пикселя и токен хранятся в настройках организации. Тогда одинаково качественные данные получают все сайты и продажи через виджет, без плагинов на каждом сайте.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Сценарий: чужой сайт, мы только ставим виджет</h2>
+  <p>Сайт организатора не под нашим управлением: мы не можем править его код, плагины и баннер согласия, только вставить виджет Arena. Виджет — web component прямо в DOM страницы, а не iframe, поэтому ему видны адрес страницы и её аналитика.</p>
+
+  <h3>Что Arena получает сама, без помощи сайта</h3>
+  <p>Всё, что проходит через виджет, идёт через API Arena и видно на сервере при любом сайте:</p>
+  <ul>
+    <li>показ виджета на странице (загрузка афиши сеанса);</li>
+    <li>выбор мест и билетов, бронь;</li>
+    <li>начало оформления, переход на оплату;</li>
+    <li>итог оплаты: оплачено, отказ, истекло окно, брошено;</li>
+    <li>возвраты.</li>
+  </ul>
+  <p>Это вся воронка от «увидел виджет» до «оплатил». Не видно только то, что было выше виджета: какие страницы чужого сайта человек смотрел до него.</p>
+  <div class="note"><b>Для сравнения между сайтами это лучшие данные.</b> Виджет везде одинаковый, значит воронка у всех организаторов одна и та же, шаг в шаг. Разница в конверсии говорит о событии, цене, аудитории и трафике, а не о разной вёрстке сайтов.</div>
+
+  <h3>Метки кампании со страницы</h3>
+  <ul>
+    <li><b>Адрес страницы:</b> виджет читает <code>utm_*</code>, <code>fbclid</code>, <code>gclid</code>.</li>
+    <li><b>Откуда пришёл:</b> <code>document.referrer</code>.</li>
+    <li><b>Cookie рекламных систем на домене сайта:</b> <code>_fbp</code>/<code>_fbc</code> для Meta, <code>_ga</code> для Google — только при согласии посетителя.</li>
+    <li><b>Где хранится:</b> всё это передаётся с оформлением и сохраняется в заказе Arena. У каждой продажи через виджет видна кампания, а Telegram-уведомление может писать «Source: Meta · &lt;кампания&gt;».</li>
+  </ul>
+  <p><b>Граница.</b> На чужом сайте за cookie и согласие отвечает владелец сайта, а Arena обрабатывает данные от его имени. Поэтому рекламные cookie виджет читает только при согласии: через Google Consent Mode, стандарт TCF или атрибут виджета вроде <code>consent="granted"</code>, который выставляет их баннер. Метки в адресе не персональные, их можно брать всегда.</p>
+
+  <h3>Как пользоваться их аналитикой</h3>
+  <p>Варианты по возрастанию участия владельца сайта.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Вариант</th><th>Что делает владелец сайта</th><th>Что получает</th></tr></thead>
+    <tbody>
+      <tr><td>1. События в их dataLayer</td><td>ставит галочку (атрибут виджета)</td><td>Виджет кладёт стандартные события электронной торговли GA4 — <code>view_item</code>, <code>add_to_cart</code>, <code>begin_checkout</code>, <code>purchase</code> — в их <code>dataLayer</code>. Их GTM, GA4 и пиксель Meta подхватывают их без программиста.</td></tr>
+      <tr><td>2. События страницы для разработчиков</td><td>его разработчик подписывается на события</td><td>Уже есть в виджете: <code>arena:seat_selected</code>, <code>arena:cart_opened</code>, <code>arena:payment_started</code>, <code>arena:order_paid</code>, <code>arena:order_failed</code>, с суммой и валютой. Отправить можно куда угодно.</td></tr>
+      <tr><td>3. Серверная отправка от Arena</td><td>вписывает в кабинет Arena ID пикселя и токен CAPI Meta, API secret GA4</td><td>Arena сама отправляет покупку с сервера. Она засчитывается, даже если человек не вернулся со страницы оплаты на их сайт или у него блокировщик рекламы. ID события тот же, что у пикселя в браузере, поэтому двойного счёта нет.</td></tr>
+      <tr><td>4. Доступ к их кабинетам</td><td>даёт Arena доступ на чтение к рекламному кабинету Meta, при желании к GA4</td><td>Расходы и ROAS по кампаниям в ивент-центре Arena. Из GA4 — трафик сайта до виджета, то есть верх воронки.</td></tr>
+    </tbody>
+  </table></div>
+  <p style="margin-top:12px">Для малого бизнеса почти всё закрывают варианты 1 и 3. Первый ничего не стоит владельцу сайта. Третий даёт надёжные покупки в рекламе, а это главное для их кампаний. Четвёртый нужен тем, кто хочет видеть окупаемость рекламы в Arena.</p>
+
+  <h3>Чего без владельца сайта не будет</h3>
+  <ul>
+    <li>Страницы его сайта до виджета: что смотрели и сколько времени. Видны только через вариант 4 (GA4).</li>
+    <li>Собственные пиксели и cookie Arena на его сайте. Ставить их без его согласия и без его баннера нельзя, да и не нужно: всё нужное дают варианты 1–3.</li>
+  </ul>
+
+  <h3>Что для этого доделать в Arena</h3>
+  <ul>
+    <li><b>Метки и согласие:</b> виджет пока не читает метки кампании и не проверяет согласие. Нужно чтение меток и cookie при согласии и передача их с оформлением заказа.</li>
+    <li><b>dataLayer:</b> по галочке виджет должен класть события в <code>dataLayer</code>, со своим ID события для каждого.</li>
+    <li><b>Хранение:</b> кампания и метки сохраняются в заказе Arena.</li>
+    <li><b>Отправка и расходы:</b> серверная отправка в Meta и GA4 от имени организатора и импорт расходов — это общая часть с «Общей аналитикой в Arena».</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Контроль отслеживания</h2>
+  <p>Поломки из этого документа нашлись только потому, что мы решили проверить. Источник заказов в WooCommerce и покупки в GA4 у Vino&amp;Co не записываются с 12 апреля — пять месяцев. Нужен сторож, который сообщает о поломке в тот же день.</p>
+
+  <h3>Почему таргетолог этого не видит</h3>
+  <p>Таргетолог смотрит на сайт через Ads Manager. Покупки в Meta у Vino&amp;Co доходят, кампании оптимизируются, отчёт выглядит нормально. GA4 и админку WooCommerce он обычно не открывает. Дубли «Начала оформления» и низкая оценка качества сопоставления (Event Match Quality) видны в Events Manager, но кампании они не ломают, а тихо ухудшают, и их легко пропустить. Вопросы таргетологу:</p>
+  <ul>
+    <li>какая оценка Event Match Quality у события Purchase;</li>
+    <li>есть ли предупреждения на вкладке «Диагностика»;</li>
+    <li>какие параметры URL стоят в объявлениях.</li>
+  </ul>
+
+  <h3>Четыре уровня проверки</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Уровень</th><th>Что проверяет</th><th>Когда поймает</th></tr></thead>
+    <tbody>
+      <tr><td>1. Сверка заказов с отметками</td><td>Каждый оплаченный заказ сайта должен иметь отметку «покупка ушла в Meta», отметку GA4 (если он подключён) и источник (UTM). Если за сутки доля ниже порога, например 90%, приходит тревога: «Vino&amp;Co: источник заказа есть у 0 из 7 заказов за 24 ч».</td><td>на следующий день после поломки</td></tr>
+      <tr><td>2. Сверка со стороны Meta</td><td>Через API Meta: сколько покупок получил пиксель за сутки и с каким качеством сопоставления. Сравниваем с числом заказов на сайте; расхождение больше порога — тревога.</td><td>на следующий день; ловит и то, что сайт «думает, что отправил», а Meta не приняла</td></tr>
+      <tr><td>3. Ночной проход роботом</td><td>Браузер без экрана открывает страницу события, выбор мест и оформление. Загруженные теги и отправленные события сверяются с эталоном: нет ли второго пикселя, не пропал ли GTM, нет ли событий с суммой 0. Тот же прогон запускается после каждой выкладки сайта.</td><td>в ночь поломки или сразу после деплоя, до первого заказа</td></tr>
+      <tr><td>4. Защита в коде</td><td>Автотест в репозитории сайта: на странице оформления нельзя отключать скрипты атрибуции и пиксель, страница «Оплата прошла» должна отдавать покупку. Именно так сломалось в апреле: код ускорения оформления вырезал скрипты.</td><td>до выкладки</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Куда приходят тревоги</h3>
+  <ul>
+    <li><b>Немедленно:</b> тревога в операторскую группу Telegram через уже работающего бота Arena.</li>
+    <li><b>Каждое утро:</b> короткая сводка «здоровье отслеживания: Vino&amp;Co ✅, Lampyris ⚠️ источник заказа 0/3».</li>
+    <li><b>Организатору и таргетологу:</b> по желанию — в их группу, как уведомления о продажах.</li>
+  </ul>
+
+  <h3>Для сайтов с виджетом Arena</h3>
+  <p>Проверка встроена сама. Arena знает каждую оплату и видит ответ Meta и GA4 на каждую серверную отправку. Тревога — если по организатору за сутки есть оплаты, а подтверждённых отправок меньше порога, или если Meta отвечает ошибкой (например, токен отозван).</p>
+</section>
+
+<section>
+  <h2>Что нужно от владельца</h2>
+  <ol>
+    <li>Решить, строим ли воронку сразу в Arena (общая аналитика) или сначала на сайтах.</li>
+    <li>Для чужих сайтов с виджетом: какие из вариантов 1–4 предлагать организаторам по умолчанию и что прописать в договоре о согласии и обработке данных.</li>
+    <li>Для контроля отслеживания: пороги тревог, и нужно ли слать сводку организатору и таргетологу, а не только в операторскую группу.</li>
+    <li>Токен системного пользователя Business Manager с <code>ads_read</code> на рекламный кабинет Vino&amp;Co (для этапа 4).</li>
+    <li>Проверить параметры URL во всех четырёх кампаниях: <code>{{campaign.id}}</code>, <code>{{adset.id}}</code>, <code>{{ad.id}}</code>.</li>
+    <li>Сказать, можно ли в воронке считать продажу рекламной в течение 7 дней после клика: так же считает Meta.</li>
+  </ol>
+</section>
+
+<footer>Подготовлено 24.09.2026 по состоянию сайтов vinoandco.events и lampyrisevents.com (только чтение): код страниц, контейнер GTM, настройки плагинов и заказы WooCommerce. Возможности виджета — по коду <code>apps/widget</code> (события <code>src/lib/events.ts</code>). Документ — исходник для будущего видения и предложения; цены — в отдельном документе.</footer>
+</div>
