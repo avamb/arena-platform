@@ -370,6 +370,12 @@ type Config struct {
 	// "staging") so the owner can tell which deployment is talking when more
 	// than one environment shares the same chat.
 	OpsAlertEnvLabel string `env:"OPS_ALERT_ENV_LABEL" required:"false" default:"dev"`
+
+	// SalesTelegramBotToken is the bot that posts sales and refunds to the
+	// organizers' own Telegram groups (internal/platform/salesnotify,
+	// sales_notification_subscriptions). A separate bot from the ops one, so
+	// organizers never see operator alerts. Empty disables the deliveries.
+	SalesTelegramBotToken string `env:"SALES_TELEGRAM_BOT_TOKEN" required:"false" default:""`
 	// OpsWatchdogHeartbeatHourUTC is the UTC hour (0-23) at which the
 	// ops.watchdog job sends its once-daily "still alive" digest.
 	OpsWatchdogHeartbeatHourUTC int `env:"OPS_WATCHDOG_HEARTBEAT_HOUR_UTC" required:"false" default:"7"`
@@ -475,6 +481,7 @@ func (c *Config) LogAttrs() []slog.Attr {
 		slog.String("media_s3_secret_access_key", redact(c.MediaS3SecretAccessKey)),
 		slog.Bool("ops_telegram_configured", c.OpsTelegramBotToken != "" && c.OpsTelegramChatID != ""),
 		slog.String("ops_alert_env_label", c.OpsAlertEnvLabel),
+		slog.Bool("sales_telegram_configured", c.SalesTelegramBotToken != ""),
 		slog.Int("ops_watchdog_heartbeat_hour_utc", c.OpsWatchdogHeartbeatHourUTC),
 		slog.Bool("metrics_bearer_token_configured", c.MetricsBearerToken != ""),
 	}
@@ -554,6 +561,8 @@ func Load() (*Config, error) {
 		OpsTelegramBotToken: getenv("OPS_TELEGRAM_BOT_TOKEN", ""),
 		OpsTelegramChatID:   getenv("OPS_TELEGRAM_CHAT_ID", ""),
 		OpsAlertEnvLabel:    getenv("OPS_ALERT_ENV_LABEL", "dev"),
+
+		SalesTelegramBotToken: getenv("SALES_TELEGRAM_BOT_TOKEN", ""),
 
 		MetricsBearerToken: getenv("METRICS_BEARER_TOKEN", ""),
 	}
