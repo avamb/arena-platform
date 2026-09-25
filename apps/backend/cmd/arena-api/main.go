@@ -38,6 +38,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
@@ -230,7 +231,17 @@ func run() error {
 		return fmt.Errorf("init media storage: %w", err)
 	}
 
+	// The Bil24 gateway answers in the locale each site sends (spec §6); without
+	// a bundle every refusal ("promo code was not found"...) came back English.
+	// A load failure only costs the translations, never the listener.
+	gatewayBundle, err := i18n.NewBundle()
+	if err != nil {
+		logger.Warn("i18n bundle unavailable, gateway answers in English", "error", err.Error())
+		gatewayBundle = nil
+	}
+
 	srv := httpserver.New(httpserver.Options{
+		GatewayBundle:               gatewayBundle,
 		Config:                      cfg,
 		Logger:                      logger,
 		DB:                          pool,

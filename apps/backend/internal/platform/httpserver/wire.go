@@ -155,10 +155,14 @@ type Options struct {
 	WorkerPool           *pgxpool.Pool
 	EmailSender          email.Sender
 
-	Bundle      *i18n.Bundle
-	Outbox      outbox.Writer
-	Permissions permissions.Checker
-	Clock       clock.Clock
+	Bundle *i18n.Bundle
+	// GatewayBundle localizes only the Bil24 gateway's wire descriptions
+	// (spec §6: answer in the request's locale). Unlike Bundle it does not
+	// switch on the REST locale middleware. Bundle wins when both are set.
+	GatewayBundle *i18n.Bundle
+	Outbox        outbox.Writer
+	Permissions   permissions.Checker
+	Clock         clock.Clock
 
 	StripeConnect                stripeConnectHelper
 	StripeBilling                stripeBillingHelper
@@ -359,6 +363,7 @@ func New(opts Options) *Server {
 		media:                 opts.Media,
 		pgxPool:               opts.PgxPool,
 		bundle:                opts.Bundle,
+		gatewayBundle:         opts.GatewayBundle,
 	}
 
 	// Production verifier fallback: when no explicit Verifier is supplied,
