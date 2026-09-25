@@ -1465,6 +1465,11 @@ entries short and factual.
   site on the older plugin send) must keep meaning "use the session codes";
   scenario 02 guards that, `promo_order_explicit_list_test.go` guards the
   override.
+  The gateway only localizes when the Server has a bundle: production
+  arena-api passes `Options.GatewayBundle` (gateway only — `Options.Bundle`
+  would also switch on the REST locale middleware). Until 2026-09-25 it
+  passed neither and every wire description was English whatever `locale`
+  the site sent; unit tests without a bundle still see English on purpose.
   A new `bil24.*` description key must be added to
   `bil24compat.Bil24DescriptionKeys` AND to all four locale toml files
   (`internal/platform/i18n/locales/{en,ru,cs,he}.toml`) or the completeness
