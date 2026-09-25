@@ -55,7 +55,14 @@ func (s *PGStore) SaleByOrder(ctx context.Context, orderID string) (Sale, error)
 		                           FROM order_items oi
 		                           JOIN ticket_tiers tt ON tt.id = oi.tier_id
 		                          WHERE oi.order_id = o.id
-		                          GROUP BY tt.name) x), '[]'::json)
+		                          GROUP BY tt.name) x), '[]'::json),
+		       COALESCE(NULLIF(o.buyer_name, ''), c.display_name, ''),
+		       COALESCE(NULLIF(o.buyer_email, ''), (SELECT ci.value_normalized FROM customer_identities ci
+		                  WHERE ci.customer_id = o.customer_id AND ci.kind = 'email'
+		                  ORDER BY ci.last_seen_at DESC NULLS LAST LIMIT 1), ''),
+		       COALESCE(NULLIF(o.buyer_phone, ''), (SELECT ci.value_normalized FROM customer_identities ci
+		                  WHERE ci.customer_id = o.customer_id AND ci.kind = 'phone'
+		                  ORDER BY ci.last_seen_at DESC NULLS LAST LIMIT 1), '')
 		  FROM orders o
 		  JOIN organizations org ON org.id = o.org_id
 		  JOIN events ev ON ev.id = o.event_id
@@ -63,9 +70,11 @@ func (s *PGStore) SaleByOrder(ctx context.Context, orderID string) (Sale, error)
 		  LEFT JOIN venues v ON v.id = s.venue_id
 		  LEFT JOIN sales_channels ch ON ch.id = o.channel_id
 		  LEFT JOIN promo_codes pc ON pc.id = o.promo_code_id
+		  LEFT JOIN customers c ON c.id = o.customer_id
 		 WHERE o.id = $1`, id).Scan(&sale.OrgID, &sale.OrgName, &sale.EventName,
 		&sale.VenueName, &sale.StartAt, &sale.TimeZone, &sale.OrderNumber, &sale.Source,
-		&sale.ChannelName, &sale.Currency, &sale.Total, &sale.PromoCode, &cats)
+		&sale.ChannelName, &sale.Currency, &sale.Total, &sale.PromoCode, &cats,
+		&sale.Buyer.Name, &sale.Buyer.Email, &sale.Buyer.Phone)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Sale{}, ErrNotFound
 	}
@@ -92,15 +101,24 @@ func (s *PGStore) RefundByTicket(ctx context.Context, ticketID string) (Refund, 
 		       COALESCE(t.refund_price,
 		                (SELECT rf.amount FROM refunds rf
 		                  WHERE rf.ticket_id = t.id AND rf.state = 'succeeded'
-		                  ORDER BY rf.succeeded_at DESC LIMIT 1), 0)
+		                  ORDER BY rf.succeeded_at DESC LIMIT 1), 0),
+		       COALESCE(NULLIF(o.buyer_name, ''), c.display_name, ''),
+		       COALESCE(NULLIF(o.buyer_email, ''), (SELECT ci.value_normalized FROM customer_identities ci
+		                  WHERE ci.customer_id = o.customer_id AND ci.kind = 'email'
+		                  ORDER BY ci.last_seen_at DESC NULLS LAST LIMIT 1), ''),
+		       COALESCE(NULLIF(o.buyer_phone, ''), (SELECT ci.value_normalized FROM customer_identities ci
+		                  WHERE ci.customer_id = o.customer_id AND ci.kind = 'phone'
+		                  ORDER BY ci.last_seen_at DESC NULLS LAST LIMIT 1), '')
 		  FROM tickets t
 		  JOIN sessions s ON s.id = t.session_id
 		  JOIN events ev ON ev.id = s.event_id
 		  JOIN organizations org ON org.id = ev.org_id
 		  LEFT JOIN venues v ON v.id = s.venue_id
 		  LEFT JOIN orders o ON o.id = t.order_id
+		  LEFT JOIN customers c ON c.id = o.customer_id
 		 WHERE t.id = $1`, id).Scan(&r.OrgID, &r.OrgName, &r.EventName, &r.VenueName,
-		&r.StartAt, &r.TimeZone, &r.OrderNumber, &r.TicketNumber, &r.Currency, &r.Amount)
+		&r.StartAt, &r.TimeZone, &r.OrderNumber, &r.TicketNumber, &r.Currency, &r.Amount,
+		&r.Buyer.Name, &r.Buyer.Email, &r.Buyer.Phone)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Refund{}, ErrNotFound
 	}

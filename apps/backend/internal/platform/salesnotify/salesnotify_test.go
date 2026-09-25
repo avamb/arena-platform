@@ -44,7 +44,7 @@ func TestRoute_OrganizationChatsOnlySeeTheirOwnSales(t *testing.T) {
 	}
 }
 
-func TestFormatSale_EnglishAndNoBuyerData(t *testing.T) {
+func TestFormatSale_EventOrderAndBuyerBlocks(t *testing.T) {
 	msg := FormatSale(Sale{
 		OrgName:     "Vino&Co",
 		EventName:   "Sea, opera <wine>",
@@ -57,16 +57,16 @@ func TestFormatSale_EnglishAndNoBuyerData(t *testing.T) {
 		Currency:    "ILS",
 		Total:       50000,
 		PromoCode:   "VINO10",
-		Categories:  []CategoryCount{{Name: "Entry", Count: 2}},
+		Categories:  []CategoryCount{{Name: "Entry", Count: 2}, {Name: "VIP", Count: 1}},
+		Buyer:       Buyer{Name: "Инна <P>", Email: "inna@example.com", Phone: "+972501234567"},
 	})
 	for _, want := range []string{
-		"🎟 <b>New sale</b> · Vino&amp;Co",
-		"<b>Sea, opera &lt;wine&gt;</b>",
-		"Thu 29 Oct 2026, 20:00 · Ashdod Yam", // venue time, not UTC
-		"Order #2602726 · website · Vino&amp;Co WP",
-		"Tickets: 2 (Entry × 2)",
-		"Promo code: VINO10",
-		"Total: <b>500.00 ILS</b>",
+		"🎟 <b>New sale</b> — Vino&amp;Co\n\n<b>Sea, opera &lt;wine&gt;</b>\n",
+		"📅 Thu 29 Oct 2026, 20:00\n📍 Ashdod Yam\n", // venue time, not UTC
+		"🧾 Order #2602726 · website (Vino&amp;Co WP)\n",
+		"🎫 2 × Entry\n🎫 1 × VIP\n",
+		"🏷 Promo code: <code>VINO10</code>\n",
+		"💰 Total: <b>500.00 ILS</b>\n\n👤 Инна &lt;P&gt;\n✉️ inna@example.com\n📞 +972501234567",
 	} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("sale message lacks %q:\n%s", want, msg)
@@ -74,11 +74,25 @@ func TestFormatSale_EnglishAndNoBuyerData(t *testing.T) {
 	}
 }
 
+func TestFormatSale_PartialOrNoContact(t *testing.T) {
+	msg := FormatSale(Sale{OrgName: "Vino&Co", EventName: "Quiz", Currency: "ILS", Total: 100,
+		Categories: []CategoryCount{{Name: "Entry", Count: 1}}, Buyer: Buyer{Email: "only@example.com"}})
+	if !strings.HasSuffix(msg, "<b>1.00 ILS</b>\n\n✉️ only@example.com") || strings.Contains(msg, "👤") || strings.Contains(msg, "📞") {
+		t.Errorf("partial contact rendered wrong:\n%s", msg)
+	}
+	bare := FormatSale(Sale{OrgName: "Vino&Co", EventName: "Quiz", Currency: "ILS", Total: 100})
+	if !strings.HasSuffix(bare, "💰 Total: <b>1.00 ILS</b>") {
+		t.Errorf("no contact should end at the total:\n%s", bare)
+	}
+}
+
 func TestFormatRefund_UnknownZoneFallsBackToLabelledUTC(t *testing.T) {
 	start := time.Date(2026, 10, 1, 17, 0, 0, 0, time.UTC)
 	msg := FormatRefund(Refund{OrgName: "Vino&Co", EventName: "Quiz", StartAt: start,
-		OrderNumber: 1000155528, TicketNumber: 73, Currency: "ILS", Amount: 13500})
-	for _, want := range []string{"↩️ <b>Refund</b>", "Thu 01 Oct 2026, 17:00 UTC", "Order #1000155528 · ticket #73", "Amount: <b>135.00 ILS</b>"} {
+		OrderNumber: 1000155528, TicketNumber: 73, Currency: "ILS", Amount: 13500,
+		Buyer: Buyer{Name: "Anna", Phone: "+420777000111"}})
+	for _, want := range []string{"↩️ <b>Refund</b> — Vino&amp;Co", "📅 Thu 01 Oct 2026, 17:00 UTC", "🧾 Order #1000155528 · ticket #73",
+		"💸 Refunded: <b>135.00 ILS</b>\n\n👤 Anna\n📞 +420777000111"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("refund message lacks %q:\n%s", want, msg)
 		}
@@ -202,7 +216,7 @@ func TestDispatcher_RefundAmountFromEventWhenTicketHasNone(t *testing.T) {
 	snd := &fakeSender{}
 	NewDispatcher(store, snd, nil).Handle(context.Background(),
 		outbox.Event{EventType: EventTicketRefunded, AggregateID: "t-2", Payload: map[string]any{"ticket_id": "t-2", "amount": float64(13500)}})
-	if len(snd.sent) != 1 || !strings.Contains(snd.sent[0].text, "Amount: <b>135.00 ILS</b>") {
+	if len(snd.sent) != 1 || !strings.Contains(snd.sent[0].text, "Refunded: <b>135.00 ILS</b>") {
 		t.Fatalf("got %v", snd.sent)
 	}
 }

@@ -1549,8 +1549,11 @@ entries short and factual.
   once in `sales_notification_deliveries` (`paid:<order>` /
   `refund:<ticket>` — the latter also collapses the refunded+cancelled pair
   of one provider refund). Own bot `SALES_TELEGRAM_BOT_TOKEN` (the ops bot
-  also sends operator alerts organizers must not see), English text, never
-  buyer name/e-mail/phone. A supergroup upgrade (`migrate_to_chat_id`) is
+  also sends operator alerts organizers must not see), English text. Since
+  2026-09-25 (owner decision) sale and refund messages DO carry the buyer's
+  name, e-mail and phone — `orders.buyer_*`, falling back to the customer's
+  `display_name` / latest `customer_identities` value — so the organizer can
+  reach the buyer; the ops watchdog alerts still never do. A supergroup upgrade (`migrate_to_chat_id`) is
   followed automatically; a chat the bot is not in lands in `last_error`.
   The bot must be a member of the group first (`getChat` answers `chat not
   found` otherwise). No admin screen yet: subscriptions are SQL rows.
