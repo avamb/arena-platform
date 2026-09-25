@@ -103,8 +103,6 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 	// substring expectations.
 	if s.bundle != nil {
 		h = h.WithBundle(s.bundle)
-	} else if s.gatewayBundle != nil {
-		h = h.WithBundle(s.gatewayBundle)
 	}
 	// Feature #481 (W1-A4c): wire CREATE_USER's customer resolver and the
 	// gateway_sessions surface behind requireGatewaySession (spec §7.3).

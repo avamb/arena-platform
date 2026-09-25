@@ -134,10 +134,6 @@ type Server struct {
 	// tests, in which case the gateway falls back to English descriptions
 	// (bil24compat.LocalizeDescription nil-safe).
 	bundle *i18n.Bundle
-	// gatewayBundle is Options.GatewayBundle: the same bundle for the gateway
-	// alone. Production arena-api sets only this one, so every Bil24 wire
-	// description was English until 2026-09-25 whatever locale a site sent.
-	gatewayBundle *i18n.Bundle
 
 	// Dev / test toggles.
 	faultInjectOutboxAfterAudit bool
