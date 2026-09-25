@@ -266,9 +266,45 @@ async function main() {
         console.log(`- ${ae.actionEventId}: skipped, ${built.skip}`);
         continue;
       }
+      await emit(built, ae);
+    }
+  }
+
+  // A sold-out session is missing from GET_ALL_ACTIONS: Bil24 only lists what
+  // is still on sale. Its seat list can still be fetched by id; the catalogue
+  // entry is then supplied by hand as sessions/<id>/actionEvent.json (the
+  // GET_ALL_ACTIONS actionEventList shape plus "actionId"), and the action
+  // itself comes from actions/<actionId>/GET_ACTION_EXT.<locale>.json.
+  const listed = new Set((catalog.actionList || []).flatMap((a) => (a.actionEventList || []).map((ae) => ae.actionEventId)));
+  const sessionsDir = path.join(DUMP, 'sessions');
+  for (const id of existsSync(sessionsDir) ? readdirSync(sessionsDir) : []) {
+    const sidecar = path.join(sessionsDir, id, 'actionEvent.json');
+    if (listed.has(Number(id)) || !existsSync(sidecar)) continue;
+    if (ONLY.size && !ONLY.has(Number(id))) continue;
+    const ae = JSON.parse(readFileSync(sidecar, 'utf8'));
+    const exts = readdirSync(path.join(DUMP, 'actions', String(ae.actionId))).filter((f) => f.startsWith('GET_ACTION_EXT.'));
+    const want = `GET_ACTION_EXT.${opt('--locale', 'en-GB')}.json`;
+    const action = readJSON(`actions/${ae.actionId}/${exts.includes(want) ? want : exts[0]}`).action;
+    const built = buildBundle(action, ae);
+    if (built.skip) {
+      console.log(`- ${ae.actionEventId}: skipped, ${built.skip}`);
+      continue;
+    }
+    // arena refuses a NEW general-admission session whose categories add up
+    // to 0. Declare one place; the operator closes the category after the
+    // import, so the session stays sold out.
+    const ga = built.body.categoryList.filter((c) => !c.placement);
+    if (!built.body.seatList.length && ga.length && ga.every((c) => !(c.availability > 0))) {
+      ga[0].availability = 1;
+      built.summary.note = `sold out upstream: declared 1 place in "${ga[0].categoryPriceName}" - CLOSE that category in the admin after the import`;
+    }
+    await emit(built, ae);
+  }
+
+  async function emit(built, ae) {
       await writeFile(path.join(DUMP, 'bundles', `${ae.actionEventId}.json`), JSON.stringify(built.body, null, 2));
       console.log(`\n${JSON.stringify(built.summary, null, 2)}`);
-      if (!SEND) continue;
+      if (!SEND) return;
 
       const res = await fetch(`${env.ARENA_BASE_URL.replace(/\/$/, '')}/v1/organizations/${env.ARENA_ORG_ID}/imports/event-bundle`, {
         method: 'POST',
@@ -281,7 +317,6 @@ async function main() {
       try { json = JSON.parse(text); } catch { /* keep the raw text */ }
       results.push({ actionEventId: ae.actionEventId, status: res.status, response: json ?? text.slice(0, 2000) });
       console.log(`  -> HTTP ${res.status}`, json ? JSON.stringify({ created: json.created, seats_materialized: json.seats_materialized, compat_ids: json.compat_ids, publication: json.publication, warnings: json.warnings, error: json.error }) : text.slice(0, 500));
-    }
   }
 
   if (SEND) {
