@@ -193,12 +193,12 @@ func run() error {
 	// can neither delay nor re-trigger the webhooks (internal/platform/salesnotify).
 	salesNotifier := buildSalesNotifier(pool.Pool, cfg, logger)
 	go salesNotifier.Run(rootCtx)
-	outboxDispatcher := &multiDispatcher{dispatchers: []outbox.Dispatcher{
+	outboxDispatcher := &multiDispatcher{dispatchers: outboxLegs(
 		salesNotifier,
 		baseOutboxDispatcher,
 		macsDispatcher,
 		bil24WPDispatcher,
-	}}
+	)}
 	outboxStore := outbox.NewPGOutboxEventStore(pool.Pool)
 	outboxEventsDisp, outboxDispErr := outbox.NewOutboxEventsDispatcher(outbox.OutboxEventsDispatcherOptions{
 		Store:           outboxStore,
@@ -750,8 +750,8 @@ func getEmailFrom(cfg *config.Config) string { return cfg.SMTPFrom }
 // based on cfg.OutboxMode.
 //
 //   - webhook  → WebhookDispatcher posting signed payloads to OUTBOX_WEBHOOK_URL.
-//   - disabled → DisabledDispatcher; the OutboxEventsDispatcher loop skips
-//     ClaimNext entirely so no rows are ever consumed.
+//   - disabled → DisabledDispatcher; outboxLegs drops it from the fan-out, so
+//     the other legs keep delivering.
 //   - noop/"" → NoopDispatcher (dev/test only; rejected in production by PR-00).
 func buildOutboxDispatcher(cfg *config.Config, logger *slog.Logger) outbox.Dispatcher {
 	switch cfg.OutboxMode {
@@ -795,6 +795,23 @@ func coalesce(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// outboxLegs returns the fan-out members in delivery order, leaving out any
+// leg that is explicitly disabled. OUTBOX_MODE=disabled switches off only the
+// generic OUTBOX_WEBHOOK_URL leg: kept inside the fan-out, its
+// DisabledDispatcher would answer every event with ErrDispatchDisabled, the
+// row would stay unprocessed and be claimed again, and MACS and the selling
+// sites after it would never receive anything.
+func outboxLegs(legs ...outbox.Dispatcher) []outbox.Dispatcher {
+	out := make([]outbox.Dispatcher, 0, len(legs))
+	for _, d := range legs {
+		if dm, ok := d.(outbox.DisabledModeDispatcher); ok && dm.IsDisabled() {
+			continue
+		}
+		out = append(out, d)
+	}
+	return out
 }
 
 // multiDispatcher fans out Dispatch calls to multiple Dispatcher implementations

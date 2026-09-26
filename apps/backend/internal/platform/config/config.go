@@ -50,8 +50,10 @@ const (
 	// OutboxModeWebhook delivers events via HTTP POST to OUTBOX_WEBHOOK_URL.
 	// Requires OUTBOX_WEBHOOK_URL and a strong OUTBOX_SIGNING_SECRET.
 	OutboxModeWebhook OutboxMode = "webhook"
-	// OutboxModeDisabled explicitly disables outbox dispatch. Safe for
-	// production when the domain does not produce outbox events.
+	// OutboxModeDisabled switches off the generic OUTBOX_WEBHOOK_URL leg only.
+	// arena-worker drops that leg from its fan-out, so the Telegram, MACS and
+	// selling-site webhooks keep delivering. Safe for production when nobody
+	// subscribes to the generic webhook.
 	OutboxModeDisabled OutboxMode = "disabled"
 )
 
