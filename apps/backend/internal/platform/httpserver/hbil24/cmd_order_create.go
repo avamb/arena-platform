@@ -498,22 +498,35 @@ func (h *Handler) orderUnits(ctx context.Context, res gen.ReservationRow, pricin
 	}
 
 	currency := pricing.currency
-	locked := make(map[uuid.UUID]int64, len(items))
 	for _, it := range items {
-		locked[it.TierID] = it.UnitPrice
 		if currency == "" {
 			currency = it.Currency
 		}
 	}
 
-	if !orderIsSeated(seats) {
+	return expandOrderUnits(items, seats, pricing), currency, nil
+}
+
+// expandOrderUnits prices a hold one unit per ticket. A GA hold made through
+// categoryList carries its quantities in the GA lines; a hold made through
+// seatList (a real seat, or a GA place picked on a mixed plan) carries them in
+// its reservation seats. A seatList hold of GA places only has no GA lines at
+// all, so it must be priced from its seats too — reading the empty lines
+// answered "hold expired" for every GA-only cart on a mixed plan.
+func expandOrderUnits(items []gen.ReservationGAItemRow, seats []gen.SessionSeatRow, pricing cartPricing) []orderUnit {
+	locked := make(map[uuid.UUID]int64, len(items))
+	for _, it := range items {
+		locked[it.TierID] = it.UnitPrice
+	}
+
+	if !orderIsSeated(seats) && len(items) > 0 {
 		units := make([]orderUnit, 0, len(items))
 		for _, it := range items {
 			for n := int32(0); n < it.Quantity; n++ {
 				units = append(units, orderUnit{tierID: it.TierID, price: it.UnitPrice})
 			}
 		}
-		return units, currency, nil
+		return units
 	}
 
 	units := make([]orderUnit, 0, len(seats))
@@ -527,7 +540,7 @@ func (h *Handler) orderUnits(ctx context.Context, res gen.ReservationRow, pricin
 		}
 		units = append(units, orderUnit{tierID: *s.TierID, price: price})
 	}
-	return units, currency, nil
+	return units
 }
 
 // orderPricingLines groups the units by (tier, price) in first-seen order so
