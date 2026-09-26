@@ -756,7 +756,7 @@ func getEmailFrom(cfg *config.Config) string { return cfg.SMTPFrom }
 func buildOutboxDispatcher(cfg *config.Config, logger *slog.Logger) outbox.Dispatcher {
 	switch cfg.OutboxMode {
 	case config.OutboxModeDisabled:
-		logger.Info("outbox events dispatcher: OUTBOX_MODE=disabled; no events will be claimed or consumed")
+		logger.Info("outbox events dispatcher: OUTBOX_MODE=disabled; the generic webhook leg is off, Telegram, MACS and site webhooks still deliver")
 		return outbox.DisabledDispatcher{}
 
 	case config.OutboxModeWebhook:
