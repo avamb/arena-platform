@@ -90,6 +90,11 @@ func TestValidateScopes(t *testing.T) {
 		{"platform-prefix", []string{"platform.admin"}, apikeys.ErrForbiddenScope},
 		{"admin-prefix", []string{"event.read", "admin.users"}, apikeys.ErrForbiddenScope},
 		{"api-key-manage", []string{"api_key.manage"}, apikeys.ErrForbiddenScope},
+		{"geo-admin", []string{"venue.create", "geo.admin"}, apikeys.ErrForbiddenScope},
+		{"billing-admin", []string{"billing.admin"}, apikeys.ErrForbiddenScope},
+		{"network-prefix", []string{"network.view_sales"}, apikeys.ErrForbiddenScope},
+		{"superadmin-prefix", []string{"superadmin.read"}, apikeys.ErrForbiddenScope},
+		{"seating-plan-verify", []string{"seating_plan.verify"}, apikeys.ErrForbiddenScope},
 		{"ok-set", []string{
 			"event.create", "event.read", "event.update", "event.publish",
 			"session.create", "session.read", "session.update", "tier.create",
@@ -106,6 +111,21 @@ func TestValidateScopes(t *testing.T) {
 				t.Fatalf("ValidateScopes(%v) = %v, want %v", tc.scopes, err, tc.wantErr)
 			}
 		})
+	}
+}
+
+// A key issued before a scope became forbidden must lose that permission at
+// authentication, not keep it until someone revokes the key.
+func TestEffectiveScopes_DropsForbidden(t *testing.T) {
+	got := apikeys.EffectiveScopes([]string{"event.read", "geo.admin", "venue.create", "network.read", "order.read"})
+	want := []string{"event.read", "venue.create", "order.read"}
+	if len(got) != len(want) {
+		t.Fatalf("EffectiveScopes = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("EffectiveScopes = %v, want %v", got, want)
+		}
 	}
 }
 

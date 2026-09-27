@@ -209,7 +209,8 @@ SELECT t.system_ticket_id,
        COALESCE(NULLIF(btrim(ord.buyer_name), ''), cu.display_name) AS holder_name,
        oi.total                      AS price_minor,
        NULLIF(btrim(ord.currency), '') AS price_currency,
-       COALESCE(s.poster_media_id, e.poster_media_id) AS poster_media_id
+       COALESCE(s.poster_media_id, e.poster_media_id) AS poster_media_id,
+       epr.name                      AS promoter_name
 FROM       tickets t
 LEFT JOIN  sessions      s  ON s.id  = t.session_id
 LEFT JOIN  events        e  ON e.id  = s.event_id
@@ -221,4 +222,6 @@ LEFT JOIN  ticket_tiers  tt ON tt.id = t.tier_id
 LEFT JOIN  orders       ord ON ord.id = t.order_id
 LEFT JOIN  customers     cu ON cu.id = ord.customer_id
 LEFT JOIN  order_items   oi ON oi.ticket_id = t.id
+LEFT JOIN  event_promoters ep ON ep.event_id = e.id
+LEFT JOIN  org_promoters  epr ON epr.id = ep.promoter_id
 WHERE  t.id = $1;

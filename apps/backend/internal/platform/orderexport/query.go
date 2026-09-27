@@ -98,7 +98,10 @@ SELECT
     e.id AS event_id,
     e.name AS event_name,
     COALESCE(o.legal_name, o.name) AS org_legal_name,
-    o.name AS org_name,
+    -- The organizer DISPLAY name: the event's promoter when one is linked
+    -- (migration 0113, event_promoters), else the selling organization.
+    -- org_legal_name stays the organization: it feeds actionLegalOwner.
+    COALESCE(epr.name, o.name) AS org_name,
     v.id AS venue_id,
     v.name AS venue_name,
     ci.id AS city_id,
@@ -124,6 +127,8 @@ JOIN checkout_sessions cs ON cs.id = t.checkout_session_id
 JOIN sessions s ON s.id = t.session_id
 JOIN events e ON e.id = s.event_id
 JOIN organizations o ON o.id = e.org_id
+LEFT JOIN event_promoters ep ON ep.event_id = e.id
+LEFT JOIN org_promoters epr ON epr.id = ep.promoter_id
 JOIN venues v ON v.id = s.venue_id
 LEFT JOIN cities ci ON ci.id = v.city_id
 LEFT JOIN i18n_text t_en ON t_en.namespace = 'geo.cities'

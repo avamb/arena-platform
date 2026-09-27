@@ -26,6 +26,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -690,6 +691,64 @@ func TestEventBundle525_VenueMatchedByName(t *testing.T) {
 		status:     "draft",
 		startAtUTC: "2026-04-26T15:00:00Z",
 	})
+}
+
+// An event center picks the venue from the organization's list and sends its
+// arena UUID: the venue is used as it is, whatever name the payload carries,
+// and a UUID that is not this organization's venue is refused.
+func TestEventBundle_ArenaVenueID(t *testing.T) {
+	pool := import517Pool(t)
+	ctx := context.Background()
+	f := newBundle525Fixture(t, ctx, pool)
+	defer f.cleanup()
+
+	h := newBundle525Handler(t, pool)
+
+	rec, first := f.call(h, f.payload())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first bundle: status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var venueID uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT id FROM venues WHERE org_id = $1`, f.orgID).Scan(&venueID); err != nil {
+		t.Fatalf("read venue: %v", err)
+	}
+
+	second := f.payload()
+	second.ExternalRef = f.externalRef + ":picked"
+	second.Action.ActionName = "Bundle Picked Venue"
+	second.Venue.ArenaVenueID = venueID.String()
+	second.Venue.VenueName = "A name the operator never typed"
+	second.Venue.Address = "99 Somewhere Else"
+	second.Venue.Timezone = ""
+
+	recSecond, res := f.call(h, second)
+	if recSecond.Code != http.StatusOK {
+		t.Fatalf("picked venue: status = %d, want 200; body=%s", recSecond.Code, recSecond.Body.String())
+	}
+	if res.CompatIDs.VenueID != first.CompatIDs.VenueID {
+		t.Errorf("picked venue: venue_id = %d, want %d", res.CompatIDs.VenueID, first.CompatIDs.VenueID)
+	}
+	if hasWarning(res.Warnings, WarnVenueMatchedByName) {
+		t.Errorf("picked venue: unexpected %s warning: %+v", WarnVenueMatchedByName, res.Warnings)
+	}
+	assertRowCount(t, ctx, pool, 1, `SELECT count(*) FROM venues WHERE org_id = $1`, f.orgID)
+	var address string
+	if err := pool.QueryRow(ctx, `SELECT coalesce(address, '') FROM venues WHERE id = $1`, venueID).Scan(&address); err != nil {
+		t.Fatalf("read venue: %v", err)
+	}
+	if address != "1 Test Street" {
+		t.Errorf("venue address = %q, want the original %q: a pick is not an edit", address, "1 Test Street")
+	}
+
+	for _, bad := range []string{"not-a-uuid", uuid.NewString()} {
+		third := f.payload()
+		third.ExternalRef = f.externalRef + ":bad-" + bad[:4]
+		third.Venue.ArenaVenueID = bad
+		recBad, _ := f.call(h, third)
+		if recBad.Code != http.StatusUnprocessableEntity || !strings.Contains(recBad.Body.String(), "import.invalid_venue") {
+			t.Errorf("arenaVenueId %q: status = %d body=%s, want 422 import.invalid_venue", bad, recBad.Code, recBad.Body.String())
+		}
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -196,8 +196,14 @@ type Payload struct {
 	// embed) and a signed URL (for the email <img src>) via the
 	// MediaResolver. When empty the platform fallback logo URL is used
 	// and the PDF header simply omits the logo image slot.
-	OrgLogoMediaID         string `json:"org_logo_media_id,omitempty"`
-	OrgName                string `json:"org_name,omitempty"`
+	OrgLogoMediaID string `json:"org_logo_media_id,omitempty"`
+	OrgName        string `json:"org_name,omitempty"`
+	// PromoterName is the event's promoter when it is not the selling
+	// organization (migration 0113). Printed as the PDF's "Organizer"
+	// instead of OrgName; the header wordmark and the e-mail branding stay
+	// the organization's. Resolved at render time (presentation.go) when
+	// the enqueuer left it empty — which every enqueuer does.
+	PromoterName           string `json:"promoter_name,omitempty"`
 	OrgWebsiteURL          string `json:"org_website_url,omitempty"`
 	OrgLegalName           string `json:"org_legal_name,omitempty"`
 	OrgLegalAddressLine1   string `json:"org_legal_address_line1,omitempty"`
@@ -812,6 +818,7 @@ func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, brandin
 		OrgLogo:                logoBytes,
 		PosterImage:            posterBytes,
 		OrgName:                branding.OrgName,
+		OrganizerName:          p.PromoterName,
 		OrgWebsiteURL:          branding.WebsiteURL,
 		LegalName:              branding.LegalName,
 		LegalAddressLine1:      branding.LegalAddressLine1,

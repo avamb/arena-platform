@@ -66,6 +66,20 @@ func (s *Server) mountEventRoutes(r chi.Router) {
 			pr.Patch("/organizations/{org_id}/events/{id}/artists/{aid}", s.handleUpdateEventArtist)
 			pr.Delete("/organizations/{org_id}/events/{id}/artists/{aid}", s.handleDeleteEventArtist)
 		})
+		// Migration 0113: promoters of the organization's events.
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "promoter.read", "promoters")
+			pr.Get("/organizations/{org_id}/promoters", s.handleListPromoters)
+		})
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "promoter.manage", "promoters")
+			pr.Post("/organizations/{org_id}/promoters", s.handleCreatePromoter)
+			pr.Patch("/organizations/{org_id}/promoters/{id}", s.handleUpdatePromoter)
+		})
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "event.update", "events")
+			pr.Put("/organizations/{org_id}/events/{id}/promoter", s.handleSetEventPromoter)
+		})
 	}
 }
 

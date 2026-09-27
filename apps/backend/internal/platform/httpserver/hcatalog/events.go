@@ -162,8 +162,13 @@ type EventResponse struct {
 	TrailerURL       *string  `json:"trailer_url"`
 	MetaDescription  *string  `json:"meta_description"`
 	MetaKeywords     *string  `json:"meta_keywords"`
-	CreatedAt        string   `json:"created_at"`
-	UpdatedAt        string   `json:"updated_at"`
+	// PromoterID / PromoterName name the event's promoter (migration 0113,
+	// event_promoters). Both nil means the organization itself is the
+	// promoter. Hydrated by hydrateEvents, never by EventFromRow.
+	PromoterID   *string `json:"promoter_id"`
+	PromoterName *string `json:"promoter_name"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
 }
 
 func eventFromRow(e gen.EventRow) eventResponse {
@@ -210,6 +215,52 @@ func EventFromRow(e gen.EventRow) EventResponse {
 	resp.MetaDescription = e.MetaDescription
 	resp.MetaKeywords = e.MetaKeywords
 	return resp
+}
+
+// hydrateEvents fills every field EventFromRow cannot know from the events
+// row alone: the venue names and the promoter.
+func (h *Handler) hydrateEvents(ctx context.Context, responses []eventResponse) {
+	h.hydrateVenueNames(ctx, responses)
+	h.hydratePromoters(ctx, responses)
+}
+
+// hydratedEvent is EventFromRow plus hydrateEvents for a single event.
+func (h *Handler) hydratedEvent(ctx context.Context, e gen.EventRow) eventResponse {
+	single := []eventResponse{eventFromRow(e)}
+	h.hydrateEvents(ctx, single)
+	return single[0]
+}
+
+// hydratePromoters fills PromoterID / PromoterName from one
+// ListEventPromoters round trip. Like the venue names it is presentational:
+// a failure logs and leaves both nil rather than failing the request.
+func (h *Handler) hydratePromoters(ctx context.Context, responses []eventResponse) {
+	if h.eventQueries == nil || len(responses) == 0 {
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(responses))
+	for _, r := range responses {
+		if id, err := uuid.Parse(r.ID); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	refs, err := h.eventQueries.ListEventPromoters(ctx, ids)
+	if err != nil {
+		h.logger.Warn("event: promoter hydration failed", slog.String("error", err.Error()))
+		return
+	}
+	for i := range responses {
+		id, err := uuid.Parse(responses[i].ID)
+		if err != nil {
+			continue
+		}
+		if ref, ok := refs[id]; ok {
+			pid := ref.PromoterID.String()
+			name := ref.Name
+			responses[i].PromoterID = &pid
+			responses[i].PromoterName = &name
+		}
+	}
 }
 
 // hydrateVenueNames fills VenueNames on the given responses from one
@@ -416,7 +467,7 @@ func (h *Handler) HandleListEvents(w http.ResponseWriter, r *http.Request) {
 	for _, e := range rows {
 		result = append(result, eventFromRow(e))
 	}
-	h.hydrateVenueNames(ctx, result)
+	h.hydrateEvents(ctx, result)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"events": result})
 }
 
@@ -453,7 +504,7 @@ func (h *Handler) HandleGetEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	single := []eventResponse{eventFromRow(e)}
-	h.hydrateVenueNames(ctx, single)
+	h.hydrateEvents(ctx, single)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"event": single[0],
 	})
@@ -495,7 +546,7 @@ func (h *Handler) HandleListEventsByOrg(w http.ResponseWriter, r *http.Request) 
 	for _, e := range rows {
 		result = append(result, eventFromRow(e))
 	}
-	h.hydrateVenueNames(ctx, result)
+	h.hydrateEvents(ctx, result)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"events": result})
 }
 
@@ -728,7 +779,7 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 	h.notifyCatalogChange(ctx, EventUpdatedEventType, updated.ID.String(), orgID.String(), nil)
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"event": eventFromRow(updated),
+		"event": h.hydratedEvent(ctx, updated),
 	})
 }
 
@@ -815,7 +866,7 @@ func (h *Handler) HandleUpdateEventStatus(w http.ResponseWriter, r *http.Request
 
 	if current.Status == req.Status {
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{
-			"event": eventFromRow(current),
+			"event": h.hydratedEvent(ctx, current),
 		})
 		return
 	}
@@ -907,7 +958,7 @@ func (h *Handler) HandleUpdateEventStatus(w http.ResponseWriter, r *http.Request
 	h.notifyCatalogChange(ctx, catalogType, updated.ID.String(), orgID.String(), nil)
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"event": eventFromRow(updated),
+		"event": h.hydratedEvent(ctx, updated),
 	})
 }
 

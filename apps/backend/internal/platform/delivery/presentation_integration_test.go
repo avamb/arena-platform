@@ -800,6 +800,36 @@ func TestGetTicketPresentationByID_ResolvesEveryColumn(t *testing.T) {
 	if row.PosterMediaID == nil || *row.PosterMediaID != seed.SessionPosterID {
 		t.Errorf("poster_media_id = %v; want the session override %s", row.PosterMediaID, seed.SessionPosterID)
 	}
+
+	// Migration 0113: no event_promoters row = the organization itself is
+	// the promoter, so promoter_name is NULL; a linked promoter resolves.
+	if row.PromoterName != nil {
+		t.Errorf("promoter_name = %q; want NULL without a link", *row.PromoterName)
+	}
+	promoterName := "Presentation Partner " + uuid.NewString()[:8]
+	var promoterID uuid.UUID
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO org_promoters (org_id, name)
+		 SELECT org_id, $2 FROM events WHERE id = $1
+		 RETURNING id`, seed.EventID, promoterName).Scan(&promoterID); err != nil {
+		t.Fatalf("insert promoter: %v", err)
+	}
+	defer func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM event_promoters WHERE event_id = $1`, seed.EventID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM org_promoters WHERE id = $1`, promoterID)
+	}()
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO event_promoters (event_id, org_id, promoter_id)
+		 SELECT id, org_id, $2 FROM events WHERE id = $1`, seed.EventID, promoterID); err != nil {
+		t.Fatalf("link promoter: %v", err)
+	}
+	row, err = gen.New(pool).GetTicketPresentationByID(ctx, seed.TicketID)
+	if err != nil {
+		t.Fatalf("GetTicketPresentationByID after promoter link: %v", err)
+	}
+	if row.PromoterName == nil || *row.PromoterName != promoterName {
+		t.Errorf("promoter_name = %v; want %q", row.PromoterName, promoterName)
+	}
 }
 
 // TestGetTicketPresentationByID_TicketWithoutAnOrderOrAddress proves the

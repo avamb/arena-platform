@@ -230,6 +230,11 @@ type Ticket struct {
 	// ("Organizer: ...") and used as the header wordmark when there is no
 	// logo image.
 	OrgName string
+	// OrganizerName, when set, is the event's promoter (migration 0113) and
+	// replaces OrgName on the footer's "Organizer" line; the organization's
+	// website is then left off that line, since it is not the promoter's.
+	// OrgName still drives the header wordmark: the seller's branding.
+	OrganizerName string
 	// OrgWebsiteURL is appended to the footer's organizer line when set.
 	OrgWebsiteURL string
 

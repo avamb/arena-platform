@@ -103,3 +103,50 @@ UPDATE cities
 SET slug = $2
 WHERE id = $1
 RETURNING id, country_id, slug, created_at;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Organization-side city creation (migration 0113, city.create).
+-- Wrappers: gen/geo_org_city.sql.go.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- name: GetCountryByID :one
+SELECT id, iso2, iso3, slug, currency, created_at
+FROM countries
+WHERE id = $1;
+
+-- name: LockCountryCities :exec
+SELECT pg_advisory_xact_lock(hashtextextended('org_city_create:' || $1::text, 0));
+
+-- name: FindCityInCountryByName :one
+SELECT ci.id
+FROM   cities ci
+WHERE  ci.country_id = $1
+  AND  ( (NULLIF($3::text, '') IS NOT NULL AND ci.slug = $3::text)
+      OR EXISTS (
+           SELECT 1
+           FROM   i18n_text t
+           WHERE  t.namespace = 'geo.cities'
+             AND  t.key = ci.slug
+             AND  lower(regexp_replace(btrim(t.value), '\s+', ' ', 'g')) = $2::text))
+ORDER  BY (ci.slug = $3::text) DESC, ci.created_at, ci.id
+LIMIT  1;
+
+-- name: GetCityWithName :one
+SELECT
+    ci.id,
+    ci.country_id,
+    ci.slug,
+    c.iso2    AS country_iso2,
+    COALESCE(t_loc.value, t_en.value, ci.slug) AS name
+FROM cities ci
+JOIN countries c ON c.id = ci.country_id
+LEFT JOIN i18n_text t_loc ON t_loc.namespace = 'geo.cities'
+    AND t_loc.key = ci.slug
+    AND t_loc.locale = $2
+LEFT JOIN i18n_text t_en ON t_en.namespace = 'geo.cities'
+    AND t_en.key = ci.slug
+    AND t_en.locale = 'en'
+WHERE ci.id = $1;
+
+-- name: CitySlugTaken :one
+SELECT EXISTS (SELECT 1 FROM cities WHERE slug = $1);

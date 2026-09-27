@@ -4362,6 +4362,19 @@ components:
             more than one entry for a tour (AB-36 — the venue belongs to
             the session, so one event may span several venues).
           example: ["Palac Akropolis"]
+        promoter_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            The event's promoter (migration 0113, PUT
+            .../events/{id}/promoter). Null when the organization itself is
+            the promoter.
+        promoter_name:
+          type: [string, "null"]
+          description: |
+            Name of the event's promoter, which the ticket PDF prints as
+            "Organizer". Null when the organization itself is the promoter.
+          example: "Partner Agency s.r.o."
         visibility:
           type: string
           enum: [public, private, unlisted]
@@ -4451,6 +4464,187 @@ components:
           format: date-time
           description: ISO 8601 / RFC 3339 timestamp of last update.
           example: "2026-06-02T12:34:56Z"
+
+    Promoter:
+      type: object
+      required: [id, org_id, name, legal_id, phone, email, archived, archived_at, created_at, updated_at]
+      description: |
+        A promoter of the organization's events (migration 0113). The
+        organization selling an event is often, but not always, its
+        promoter; an event linked to a promoter prints the promoter's name
+        as "Organizer" on its tickets. Promoters are archived, never
+        deleted, so events that already name one keep rendering.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Primary key of the promoter.
+          example: "01929d0e-0e47-7000-8000-000000000701"
+        org_id:
+          type: string
+          format: uuid
+          description: Organization the promoter belongs to.
+          example: "01929d0e-0e47-7000-8000-000000000001"
+        name:
+          type: string
+          description: |
+            Display name, whitespace-collapsed. Unique among the
+            organization's active promoters, case-insensitively.
+          example: "Partner Agency s.r.o."
+        legal_id:
+          type: [string, "null"]
+          description: Company or tax identifier (INN, ICO), free-form.
+          example: "12345678"
+        phone:
+          type: [string, "null"]
+          description: Contact phone number.
+          example: "+420 123 456 789"
+        email:
+          type: [string, "null"]
+          description: Contact e-mail address.
+          example: "office@partner.example"
+        archived:
+          type: boolean
+          description: True when the promoter is archived and can no longer be linked to an event.
+        archived_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the promoter was archived; null while active.
+        created_at:
+          type: string
+          format: date-time
+          description: Row creation timestamp (RFC 3339).
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp (RFC 3339).
+
+    PromoterEnvelope:
+      type: object
+      required: [promoter]
+      description: Single-promoter response envelope.
+      properties:
+        promoter:
+          description: The promoter record.
+          allOf:
+            - $ref: "#/components/schemas/Promoter"
+
+    PromoterListEnvelope:
+      type: object
+      required: [promoters]
+      description: List-promoters response envelope.
+      properties:
+        promoters:
+          type: array
+          description: Promoters ordered by name; archived ones only with include_archived=true.
+          items:
+            $ref: "#/components/schemas/Promoter"
+
+    CreatePromoterRequest:
+      type: object
+      required: [name]
+      description: Body of POST /v1/organizations/{org_id}/promoters.
+      properties:
+        name:
+          type: string
+          description: Display name; must not be blank.
+          example: "Partner Agency s.r.o."
+        legal_id:
+          type: [string, "null"]
+          description: Optional company or tax identifier (INN, ICO). Blank is stored as null.
+        phone:
+          type: [string, "null"]
+          description: Optional contact phone. Blank is stored as null.
+        email:
+          type: [string, "null"]
+          description: Optional contact e-mail. Blank is stored as null.
+
+    UpdatePromoterRequest:
+      type: object
+      description: |
+        Body of PATCH /v1/organizations/{org_id}/promoters/{id}. Every field
+        is tri-state: absent = keep, null = clear, value = set. `name` can
+        be changed but never cleared.
+      properties:
+        name:
+          type: [string, "null"]
+          description: New display name; null or blank is rejected with 400 promoter.invalid_name.
+        legal_id:
+          type: [string, "null"]
+          description: Company or tax identifier; null clears it.
+        phone:
+          type: [string, "null"]
+          description: Contact phone; null clears it.
+        email:
+          type: [string, "null"]
+          description: Contact e-mail; null clears it.
+        archived:
+          type: boolean
+          description: true archives the promoter, false restores it.
+
+    SetEventPromoterRequest:
+      type: object
+      description: Body of PUT /v1/organizations/{org_id}/events/{id}/promoter.
+      properties:
+        promoter_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            An active promoter of the organization, or null (or absent) to
+            make the organization itself the promoter again.
+
+    EventPromoterResponse:
+      type: object
+      required: [event_id, promoter_id, promoter_name]
+      description: The promoter of an event after PUT .../events/{id}/promoter.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: The event.
+        promoter_id:
+          type: [string, "null"]
+          format: uuid
+          description: The linked promoter; null when the organization itself is the promoter.
+        promoter_name:
+          type: [string, "null"]
+          description: Name of the linked promoter; null when the organization itself is the promoter.
+
+    CreateOrgCityRequest:
+      type: object
+      required: [country_id, name]
+      description: Body of POST /v1/organizations/{org_id}/cities.
+      properties:
+        country_id:
+          type: string
+          format: uuid
+          description: The existing country the city belongs to.
+        name:
+          type: string
+          description: Display name of the city, in `locale`.
+          example: "Guardamar del Segura"
+        locale:
+          type: string
+          description: |
+            Language of `name` (e.g. "cs", "ru", "en"; a region subtag is
+            dropped). Defaults to "en". A non-English name is also stored as
+            the English fallback until someone curates one.
+          example: "es"
+
+    OrgCityResponse:
+      type: object
+      required: [city, created]
+      description: |
+        Response of POST /v1/organizations/{org_id}/cities. `city` has the
+        GET /v1/geo/cities item shape.
+      properties:
+        city:
+          description: The created or already existing city.
+          allOf:
+            - $ref: "#/components/schemas/GeoCityItem"
+        created:
+          type: boolean
+          description: True when the city was created by this call (201), false when an existing one was returned (200).
 
     HostedPageOrg:
       type: object
@@ -11008,6 +11202,14 @@ components:
         organizerName:
           type: string
           description: Organizer display name as sent by Bil24.
+        promoterId:
+          type: [string, "null"]
+          description: |
+            Arena event-bundle extension (source=arena only; migration 0113):
+            absent or null keeps the event's promoter, "" removes the link
+            (the organization itself is the promoter), a UUID links one of
+            the organization's active promoters. Anything else answers 422
+            `import.invalid_promoter`.
     ImportBil24SessionActionEvent:
       type: object
       description: |
@@ -11095,6 +11297,16 @@ components:
       required:
         - venueId
       properties:
+        arenaVenueId:
+          type: string
+          format: uuid
+          description: |
+            Arena extension, source=arena only: one of the organization's
+            venues by its arena id (as listed by
+            GET /v1/organizations/{org_id}/venues). Wins over venueId and
+            venueName, uses the venue as it is (its address, geo point and
+            timezone are not edited) and answers 422 import.invalid_venue when
+            the id is not a venue of this organization.
         venueId:
           type: integer
           format: int64
@@ -20932,6 +21144,354 @@ paths:
   # Backed by apps/backend/internal/platform/httpserver/sessions.go and
   # mounted by mount_catalog.go.
   # ────────────────────────────────────────────────────────────────────────
+
+  /v1/organizations/{org_id}/promoters:
+    get:
+      operationId: listPromoters
+      summary: List the organization's promoters
+      description: |
+        Returns the organization's active promoters ordered by name
+        (migration 0113). `?include_archived=true` adds archived ones.
+        Requires `promoter.read` and membership of the organization (an
+        API key is bound to its own organization).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: include_archived
+          in: query
+          required: false
+          description: Include archived promoters (true/false, default false).
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: The organization's promoters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromoterListEnvelope"
+        "400":
+          description: Invalid include_archived value.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `promoter.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: createPromoter
+      summary: Create a promoter
+      description: |
+        Adds a promoter to the organization. Requires `promoter.manage` and
+        membership of the organization. Answers 409
+        `promoter.duplicate_name` when an active promoter already has this
+        name (case- and whitespace-insensitive).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePromoterRequest"
+      responses:
+        "201":
+          description: Promoter created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromoterEnvelope"
+        "400":
+          description: Invalid body or blank name (`promoter.invalid_name`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `promoter.manage` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: An active promoter with this name exists (`promoter.duplicate_name`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/promoters/{id}:
+    patch:
+      operationId: updatePromoter
+      summary: Update, archive or restore a promoter
+      description: |
+        Tri-state partial update (absent = keep, null = clear, value = set)
+        plus `archived`. Requires `promoter.manage` and membership of the
+        organization. Another organization's promoter id answers 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUID of the promoter.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePromoterRequest"
+      responses:
+        "200":
+          description: Promoter updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromoterEnvelope"
+        "400":
+          description: Invalid body or blank name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `promoter.manage` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such promoter in this organization (`promoter.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The new name (or restoring) collides with an active promoter (`promoter.duplicate_name`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{id}/promoter:
+    put:
+      operationId: setEventPromoter
+      summary: Set or clear the promoter of an event
+      description: |
+        Links the event to one of the organization's active promoters, or
+        with `promoter_id: null` removes the link so the organization itself
+        is the promoter again. The linked promoter's name is what the ticket
+        PDF prints as "Organizer". Requires `event.update` and membership of
+        the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUID of the event.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetEventPromoterRequest"
+      responses:
+        "200":
+          description: The event's promoter after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventPromoterResponse"
+        "400":
+          description: Invalid body or promoter_id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The promoter is not an active promoter of this organization (`event.invalid_promoter`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/cities:
+    post:
+      operationId: createOrgCity
+      summary: Add a city to an existing country
+      description: |
+        Lets an organizer add the city of a new venue (permission
+        `city.create`, migration 0113; `geo.admin` stays platform-level).
+        Idempotent by name: when the country already has a city whose
+        stored name in any locale matches (case- and whitespace-insensitive)
+        or whose slug is the one the name would produce, that city is
+        returned with 200 and nothing is written; otherwise it is created
+        with a slug transliterated from the name and made globally unique
+        (201).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrgCityRequest"
+      responses:
+        "200":
+          description: A city with this name already exists in the country; it is returned unchanged.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgCityResponse"
+        "201":
+          description: City created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgCityResponse"
+        "400":
+          description: Invalid body, country_id or blank name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `city.create` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The country does not exist (`city.country_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/organizations/{org_id}/events/{event_id}/sessions:
     post:

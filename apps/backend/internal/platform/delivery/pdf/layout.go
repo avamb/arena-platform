@@ -960,7 +960,9 @@ func footerLines(doc *gofpdf.Fpdf, t Ticket, spec layoutSpec, s ticketStrings) [
 	if order := strings.TrimSpace(t.OrderNumber); order != "" {
 		out = append(out, s.Order+" "+order)
 	}
-	if org := strings.TrimSpace(t.OrgName); org != "" {
+	if promoter := strings.TrimSpace(t.OrganizerName); promoter != "" {
+		out = append(out, s.Organizer+": "+promoter)
+	} else if org := strings.TrimSpace(t.OrgName); org != "" {
 		out = append(out, s.Organizer+": "+joinNonEmpty(" · ", org, t.OrgWebsiteURL))
 	}
 	out = append(out, buildLegalLines(t, s.Contact)...)

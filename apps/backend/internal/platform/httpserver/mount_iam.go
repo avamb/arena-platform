@@ -201,5 +201,10 @@ func (s *Server) mountVenueRoutes(r chi.Router) {
 			s.applyAuth(pr, "venue.delete", "venues")
 			pr.Delete("/organizations/{org_id}/venues/{id}", s.handleDeleteVenue)
 		})
+		// Migration 0113: an organizer adds the city a new venue is in.
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "city.create", "cities")
+			pr.Post("/organizations/{org_id}/cities", s.handleCreateOrgCity)
+		})
 	}
 }

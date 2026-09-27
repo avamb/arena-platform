@@ -1578,3 +1578,42 @@ entries short and factual.
   Re-applying it to a handed-over head would grow the hall. Seated places
   never move; a seated target is refused (`ErrSeatedCategory`) — seats use
   `priceSchedule` instead.
+- **Promoter ≠ organization (migration 0113).** The organization SELLS the
+  event; a partner may PROMOTE it. `org_promoters` is the org's own list
+  (archived, never deleted); `event_promoters` links an event to one of them
+  (a link table, NOT an `events` column — the shared EventRow scanner) and
+  NO ROW means the organization itself is the promoter. Both FKs carry
+  `org_id`, so a link to another org's promoter is impossible at the DB
+  level; handlers still answer 422 `event.invalid_promoter` /
+  `import.invalid_promoter` (bundle `action.promoterId`: absent/null keep,
+  `""` clear, uuid set). The organizer DISPLAY name — the PDF footer's
+  "Organizer" line (`pdf.Ticket.OrganizerName`, resolved at render time via
+  `GetTicketPresentationByID.promoter_name`) and `orderexport.Event.OrgName`
+  (`COALESCE(promoter, organizations.name)`) — follows the link; the PDF
+  header wordmark, the e-mail branding and `OrgLegalName`
+  (→ MACS/Bil24 `actionLegalOwner`, plus `actionLegalOwnerInn`) stay the
+  organization's. Permissions: `promoter.read`/`promoter.manage` (granted
+  alongside `event.read`/`event.update`), `city.create` (alongside
+  `venue.create`). `POST /v1/organizations/{org_id}/cities` is idempotent by
+  name: a city of that country whose name in ANY locale matches
+  (case/whitespace-insensitive) or whose slug equals the name's slug is
+  returned with 200; otherwise 201 with a `geoslug.Slugify` slug made
+  globally unique (`-<iso2>`, then `-<n>`; untransliterable names such as
+  Hebrew start at `city-<iso2>`), serialized per country by an advisory
+  lock. `geoslug` is the single slug implementation (himports delegates).
+- **An organization API key never carries a platform-level permission.**
+  `apikeys.IsForbiddenScope` refuses `platform.*`, `admin.*`, `network.*`,
+  `superadmin.*`, `scaffold.*`, `api_key.manage`, `geo.admin`,
+  `billing.admin`, `reconciliation.review`, `barcode_batch.approve` and
+  `seating_plan.verify` at issue time, AND `server_apikey_auth.go` builds the
+  service actor from `apikeys.EffectiveScopes`, so a key minted before a scope
+  became forbidden loses it on its next request. Until 2026-09-27 only the
+  `platform.`/`admin.` prefixes were checked and an org admin could mint a key
+  with `geo.admin`. A NEW platform-wide permission must be added to that list
+  — its name alone does not protect it.
+- **An event center picks a venue by `venue.arenaVenueId`** (event-bundle,
+  source=arena): the org's venue UUID from `GET /v1/organizations/{org_id}/venues`.
+  It wins over `venueId`/`venueName`, never edits the venue, and answers 422
+  `import.invalid_venue` for a UUID that is not this org's venue. The bundle
+  decoder ignores unknown fields, so an older arena silently falls back to the
+  `venueName` match — ship the backend before relying on the pick.

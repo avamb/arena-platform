@@ -392,3 +392,20 @@ func TestNeedsPresentation_SkipsWhenEverythingIsHinted(t *testing.T) {
 		})
 	}
 }
+
+// TestApplyPresentation_PromoterName — the event's promoter (migration 0113)
+// is resolved at render time like every other presentation field, and a
+// NULL promoter (the organization itself) leaves it empty.
+func TestApplyPresentation_PromoterName(t *testing.T) {
+	p := Payload{TicketID: uuid.New().String()}
+	applyPresentation(&p, gen.TicketPresentationRow{PromoterName: strPtr("Partner Agency s.r.o.")})
+	if p.PromoterName != "Partner Agency s.r.o." {
+		t.Errorf("promoter_name = %q", p.PromoterName)
+	}
+
+	q := Payload{TicketID: uuid.New().String()}
+	applyPresentation(&q, gen.TicketPresentationRow{})
+	if q.PromoterName != "" {
+		t.Errorf("no promoter must leave promoter_name empty, got %q", q.PromoterName)
+	}
+}

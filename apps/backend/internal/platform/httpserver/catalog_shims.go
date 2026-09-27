@@ -361,3 +361,26 @@ func (s *Server) handleUpsertMACSWebhook(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleDeleteMACSWebhook(w http.ResponseWriter, r *http.Request) {
 	s.catalogHandler().HandleDeleteMACSWebhook(s.pgxPool, w, r)
 }
+
+// Promoters of an organization's events and the event promoter link
+// (migration 0113, hcatalog/promoters.go).
+func (s *Server) handleListPromoters(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleListPromoters(w, r)
+}
+
+func (s *Server) handleCreatePromoter(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleCreatePromoter(w, r)
+}
+
+func (s *Server) handleUpdatePromoter(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleUpdatePromoter(w, r)
+}
+
+func (s *Server) handleSetEventPromoter(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleSetEventPromoter(w, r)
+}
+
+// Organization-side city creation (city.create, hcatalog/org_cities.go).
+func (s *Server) handleCreateOrgCity(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleCreateOrgCity(w, r)
+}

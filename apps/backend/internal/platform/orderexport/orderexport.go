@@ -103,12 +103,16 @@ type Event struct {
 	EventName string
 	// OrgLegalName is organizations.legal_name with a fallback to name.
 	OrgLegalName string
-	OrgName      string
-	VenueID      uuid.UUID
-	VenueName    string
-	CityID       *uuid.UUID
-	CityName     string
-	Currency     string
+	// OrgName is the organizer DISPLAY name: the event's promoter
+	// (event_promoters → org_promoters.name, migration 0113) when linked,
+	// else organizations.name. No wire adapter emits it today; the legal
+	// owner fields stay on OrgLegalName.
+	OrgName   string
+	VenueID   uuid.UUID
+	VenueName string
+	CityID    *uuid.UUID
+	CityName  string
+	Currency  string
 	// SessionStartAt is the session start in UTC.
 	SessionStartAt time.Time
 	// ShowTimeLocal is SessionStartAt rendered as venue-local wall clock

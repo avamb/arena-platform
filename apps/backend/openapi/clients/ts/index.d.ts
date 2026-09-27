@@ -2341,6 +2341,109 @@ export interface paths {
         patch: operations["updateEventArtist"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/promoters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the organization's promoters
+         * @description Returns the organization's active promoters ordered by name
+         *     (migration 0113). `?include_archived=true` adds archived ones.
+         *     Requires `promoter.read` and membership of the organization (an
+         *     API key is bound to its own organization).
+         */
+        get: operations["listPromoters"];
+        put?: never;
+        /**
+         * Create a promoter
+         * @description Adds a promoter to the organization. Requires `promoter.manage` and
+         *     membership of the organization. Answers 409
+         *     `promoter.duplicate_name` when an active promoter already has this
+         *     name (case- and whitespace-insensitive).
+         */
+        post: operations["createPromoter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/promoters/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update, archive or restore a promoter
+         * @description Tri-state partial update (absent = keep, null = clear, value = set)
+         *     plus `archived`. Requires `promoter.manage` and membership of the
+         *     organization. Another organization's promoter id answers 404.
+         */
+        patch: operations["updatePromoter"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{id}/promoter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set or clear the promoter of an event
+         * @description Links the event to one of the organization's active promoters, or
+         *     with `promoter_id: null` removes the link so the organization itself
+         *     is the promoter again. The linked promoter's name is what the ticket
+         *     PDF prints as "Organizer". Requires `event.update` and membership of
+         *     the organization.
+         */
+        put: operations["setEventPromoter"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/cities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a city to an existing country
+         * @description Lets an organizer add the city of a new venue (permission
+         *     `city.create`, migration 0113; `geo.admin` stays platform-level).
+         *     Idempotent by name: when the country already has a city whose
+         *     stored name in any locale matches (case- and whitespace-insensitive)
+         *     or whose slug is the one the name would produce, that city is
+         *     returned with 200 and nothing is written; otherwise it is created
+         *     with a slug transliterated from the name and made globally unique
+         *     (201).
+         */
+        post: operations["createOrgCity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/events/{event_id}/sessions": {
         parameters: {
             query?: never;
@@ -9658,6 +9761,19 @@ export interface components {
              */
             venue_names: string[];
             /**
+             * Format: uuid
+             * @description The event's promoter (migration 0113, PUT
+             *     .../events/{id}/promoter). Null when the organization itself is
+             *     the promoter.
+             */
+            promoter_id?: string | null;
+            /**
+             * @description Name of the event's promoter, which the ticket PDF prints as
+             *     "Organizer". Null when the organization itself is the promoter.
+             * @example Partner Agency s.r.o.
+             */
+            promoter_name?: string | null;
+            /**
              * @description Discovery visibility for the cross-tenant GET /v1/events surface.
              *     `public` events appear in the default list; `unlisted` and
              *     `private` events require the caller to pass an explicit
@@ -9749,6 +9865,160 @@ export interface components {
              * @example 2026-06-02T12:34:56Z
              */
             updated_at: string;
+        };
+        /**
+         * @description A promoter of the organization's events (migration 0113). The
+         *     organization selling an event is often, but not always, its
+         *     promoter; an event linked to a promoter prints the promoter's name
+         *     as "Organizer" on its tickets. Promoters are archived, never
+         *     deleted, so events that already name one keep rendering.
+         */
+        Promoter: {
+            /**
+             * Format: uuid
+             * @description Primary key of the promoter.
+             * @example 01929d0e-0e47-7000-8000-000000000701
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Organization the promoter belongs to.
+             * @example 01929d0e-0e47-7000-8000-000000000001
+             */
+            org_id: string;
+            /**
+             * @description Display name, whitespace-collapsed. Unique among the
+             *     organization's active promoters, case-insensitively.
+             * @example Partner Agency s.r.o.
+             */
+            name: string;
+            /**
+             * @description Company or tax identifier (INN, ICO), free-form.
+             * @example 12345678
+             */
+            legal_id: string | null;
+            /**
+             * @description Contact phone number.
+             * @example +420 123 456 789
+             */
+            phone: string | null;
+            /**
+             * @description Contact e-mail address.
+             * @example office@partner.example
+             */
+            email: string | null;
+            /** @description True when the promoter is archived and can no longer be linked to an event. */
+            archived: boolean;
+            /**
+             * Format: date-time
+             * @description When the promoter was archived; null while active.
+             */
+            archived_at: string | null;
+            /**
+             * Format: date-time
+             * @description Row creation timestamp (RFC 3339).
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Last update timestamp (RFC 3339).
+             */
+            updated_at: string;
+        };
+        /** @description Single-promoter response envelope. */
+        PromoterEnvelope: {
+            /** @description The promoter record. */
+            promoter: components["schemas"]["Promoter"];
+        };
+        /** @description List-promoters response envelope. */
+        PromoterListEnvelope: {
+            /** @description Promoters ordered by name; archived ones only with include_archived=true. */
+            promoters: components["schemas"]["Promoter"][];
+        };
+        /** @description Body of POST /v1/organizations/{org_id}/promoters. */
+        CreatePromoterRequest: {
+            /**
+             * @description Display name; must not be blank.
+             * @example Partner Agency s.r.o.
+             */
+            name: string;
+            /** @description Optional company or tax identifier (INN, ICO). Blank is stored as null. */
+            legal_id?: string | null;
+            /** @description Optional contact phone. Blank is stored as null. */
+            phone?: string | null;
+            /** @description Optional contact e-mail. Blank is stored as null. */
+            email?: string | null;
+        };
+        /**
+         * @description Body of PATCH /v1/organizations/{org_id}/promoters/{id}. Every field
+         *     is tri-state: absent = keep, null = clear, value = set. `name` can
+         *     be changed but never cleared.
+         */
+        UpdatePromoterRequest: {
+            /** @description New display name; null or blank is rejected with 400 promoter.invalid_name. */
+            name?: string | null;
+            /** @description Company or tax identifier; null clears it. */
+            legal_id?: string | null;
+            /** @description Contact phone; null clears it. */
+            phone?: string | null;
+            /** @description Contact e-mail; null clears it. */
+            email?: string | null;
+            /** @description true archives the promoter, false restores it. */
+            archived?: boolean;
+        };
+        /** @description Body of PUT /v1/organizations/{org_id}/events/{id}/promoter. */
+        SetEventPromoterRequest: {
+            /**
+             * Format: uuid
+             * @description An active promoter of the organization, or null (or absent) to
+             *     make the organization itself the promoter again.
+             */
+            promoter_id?: string | null;
+        };
+        /** @description The promoter of an event after PUT .../events/{id}/promoter. */
+        EventPromoterResponse: {
+            /**
+             * Format: uuid
+             * @description The event.
+             */
+            event_id: string;
+            /**
+             * Format: uuid
+             * @description The linked promoter; null when the organization itself is the promoter.
+             */
+            promoter_id: string | null;
+            /** @description Name of the linked promoter; null when the organization itself is the promoter. */
+            promoter_name: string | null;
+        };
+        /** @description Body of POST /v1/organizations/{org_id}/cities. */
+        CreateOrgCityRequest: {
+            /**
+             * Format: uuid
+             * @description The existing country the city belongs to.
+             */
+            country_id: string;
+            /**
+             * @description Display name of the city, in `locale`.
+             * @example Guardamar del Segura
+             */
+            name: string;
+            /**
+             * @description Language of `name` (e.g. "cs", "ru", "en"; a region subtag is
+             *     dropped). Defaults to "en". A non-English name is also stored as
+             *     the English fallback until someone curates one.
+             * @example es
+             */
+            locale?: string;
+        };
+        /**
+         * @description Response of POST /v1/organizations/{org_id}/cities. `city` has the
+         *     GET /v1/geo/cities item shape.
+         */
+        OrgCityResponse: {
+            /** @description The created or already existing city. */
+            city: components["schemas"]["GeoCityItem"];
+            /** @description True when the city was created by this call (201), false when an existing one was returned (200). */
+            created: boolean;
         };
         /**
          * @description Public-safe organization branding slice returned by
@@ -15453,6 +15723,14 @@ export interface components {
             age?: string;
             /** @description Organizer display name as sent by Bil24. */
             organizerName?: string;
+            /**
+             * @description Arena event-bundle extension (source=arena only; migration 0113):
+             *     absent or null keeps the event's promoter, "" removes the link
+             *     (the organization itself is the promoter), a UUID links one of
+             *     the organization's active promoters. Anything else answers 422
+             *     `import.invalid_promoter`.
+             */
+            promoterId?: string | null;
         };
         /**
          * @description Bil24 "actionEvent" block — becomes an arena session. This block's
@@ -15535,6 +15813,16 @@ export interface components {
         };
         /** @description Bil24 "venue" block — matched to an arena venue by its Bil24 external id. */
         ImportBil24SessionVenue: {
+            /**
+             * Format: uuid
+             * @description Arena extension, source=arena only: one of the organization's
+             *     venues by its arena id (as listed by
+             *     GET /v1/organizations/{org_id}/venues). Wins over venueId and
+             *     venueName, uses the venue as it is (its address, geo point and
+             *     timezone are not edited) and answers 422 import.invalid_venue when
+             *     the id is not a venue of this organization.
+             */
+            arenaVenueId?: string;
             /**
              * Format: int64
              * @description Bil24 venue identifier. Must be positive and below 1e9 for
@@ -25386,6 +25674,387 @@ export interface operations {
             };
             /** @description Artist not found. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listPromoters: {
+        parameters: {
+            query?: {
+                /** @description Include archived promoters (true/false, default false). */
+                include_archived?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's promoters. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoterListEnvelope"];
+                };
+            };
+            /** @description Invalid include_archived value. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `promoter.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createPromoter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePromoterRequest"];
+            };
+        };
+        responses: {
+            /** @description Promoter created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoterEnvelope"];
+                };
+            };
+            /** @description Invalid body or blank name (`promoter.invalid_name`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `promoter.manage` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An active promoter with this name exists (`promoter.duplicate_name`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updatePromoter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the promoter. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePromoterRequest"];
+            };
+        };
+        responses: {
+            /** @description Promoter updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoterEnvelope"];
+                };
+            };
+            /** @description Invalid body or blank name. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `promoter.manage` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such promoter in this organization (`promoter.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The new name (or restoring) collides with an active promoter (`promoter.duplicate_name`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setEventPromoter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the event. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetEventPromoterRequest"];
+            };
+        };
+        responses: {
+            /** @description The event's promoter after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPromoterResponse"];
+                };
+            };
+            /** @description Invalid body or promoter_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The promoter is not an active promoter of this organization (`event.invalid_promoter`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createOrgCity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOrgCityRequest"];
+            };
+        };
+        responses: {
+            /** @description A city with this name already exists in the country; it is returned unchanged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgCityResponse"];
+                };
+            };
+            /** @description City created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgCityResponse"];
+                };
+            };
+            /** @description Invalid body, country_id or blank name. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `city.create` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The country does not exist (`city.country_not_found`). */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

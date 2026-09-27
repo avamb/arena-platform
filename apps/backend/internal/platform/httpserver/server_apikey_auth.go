@@ -137,7 +137,7 @@ func (s *Server) authenticateAPIKey(w http.ResponseWriter, r *http.Request, raw 
 	return auth.Actor{
 		ID:          key.ID.String(),
 		Type:        auth.ActorTypeService,
-		Permissions: key.Scopes,
+		Permissions: apikeys.EffectiveScopes(key.Scopes),
 		OrgID:       key.OrgID.String(),
 		ChannelID:   key.ChannelID,
 		RawToken:    raw,

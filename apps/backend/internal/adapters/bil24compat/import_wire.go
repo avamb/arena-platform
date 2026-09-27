@@ -73,6 +73,11 @@ type ImportSessionAction struct {
 	BigPosterURL   string `json:"bigPosterUrl"`
 	Age            string `json:"age"`
 	OrganizerName  string `json:"organizerName"`
+	// PromoterID is an arena-native event-bundle extension (migration 0113):
+	// absent or null keeps the event's promoter as it is, "" removes the link
+	// (the organization itself is the promoter), a UUID names one of the
+	// organization's active promoters. The Bil24-format importer ignores it.
+	PromoterID *string `json:"promoterId"`
 }
 
 // Name returns the best available display name for the event: the full name
@@ -110,15 +115,20 @@ type ImportSessionActionEvent struct {
 // ImportSessionVenue is the Bil24 "venue" block. Timezone is an IANA zone
 // name and is mandatory when the venue is not already known to arena.
 type ImportSessionVenue struct {
-	VenueID     int64    `json:"venueId"`
-	VenueName   string   `json:"venueName"`
-	Address     string   `json:"address"`
-	CityID      int64    `json:"cityId"`
-	CityName    string   `json:"cityName"`
-	CountryID   int64    `json:"countryId"`
-	CountryName string   `json:"countryName"`
-	Timezone    string   `json:"timezone"`
-	GeoLat      *float64 `json:"geoLat"`
+	// ArenaVenueID (arena extension, source=arena only) picks one of the
+	// organization's venues by its arena UUID — what an event center lists
+	// from GET /v1/organizations/{org_id}/venues. It wins over venueId and
+	// venueName and never edits the venue.
+	ArenaVenueID string   `json:"arenaVenueId"`
+	VenueID      int64    `json:"venueId"`
+	VenueName    string   `json:"venueName"`
+	Address      string   `json:"address"`
+	CityID       int64    `json:"cityId"`
+	CityName     string   `json:"cityName"`
+	CountryID    int64    `json:"countryId"`
+	CountryName  string   `json:"countryName"`
+	Timezone     string   `json:"timezone"`
+	GeoLat       *float64 `json:"geoLat"`
 	// GeoLon keeps the Bil24 spelling ("Lon"); arena stores it in
 	// venues.geo_lng.
 	GeoLon *float64 `json:"geoLon"`

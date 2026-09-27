@@ -813,6 +813,26 @@ func TestFooter_OrderAndOrganizerLines(t *testing.T) {
 	}
 }
 
+// TestFooter_PromoterReplacesTheOrganizationAsOrganizer — when the event
+// has a promoter other than the selling organization (migration 0113), the
+// footer names the promoter, without the organization's website; the
+// organization stays the header wordmark.
+func TestFooter_PromoterReplacesTheOrganizationAsOrganizer(t *testing.T) {
+	tk := validTicket(t)
+	tk.OrgWebsiteURL = "lampyris.cz"
+	tk.OrganizerName = "Partner Agency"
+	out := render(t, tk)
+	if !bytes.Contains(out, pdfText("Organizer: Partner Agency")) {
+		t.Error("footer does not name the promoter as organizer")
+	}
+	if bytes.Contains(out, pdfText("Organizer: Lampyris")) {
+		t.Error("footer still names the organization as organizer")
+	}
+	if bytes.Contains(out, pdfText("Partner Agency · lampyris.cz")) {
+		t.Error("the organization's website must not follow the promoter's name")
+	}
+}
+
 func TestFooter_CustomFinePrintReplacesTheDefaultNote(t *testing.T) {
 	tk := validTicket(t)
 	tk.FinePrint = "Bring photo ID."

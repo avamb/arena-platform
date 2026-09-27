@@ -55,11 +55,51 @@ const randomAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123
 // ForbiddenScopePrefixes are permission-code prefixes that no API key may
 // ever carry, regardless of what the issuing caller requests (spec §13.1:
 // "любые коды permissions, кроме platform.*, admin.*, api_key.manage").
-var ForbiddenScopePrefixes = []string{"platform.", "admin."}
+//
+// An organization key speaks for ONE organization, so every permission that
+// acts on the platform as a whole is refused too, not only the two prefixes
+// the spec named: until 2026-09-27 an org admin could mint a key carrying
+// geo.admin (edit every country and city), billing.admin or network.* and
+// the service actor would honour it.
+var ForbiddenScopePrefixes = []string{"platform.", "admin.", "network.", "superadmin.", "scaffold."}
 
-// ForbiddenScopeExact are exact permission codes that no API key may carry.
+// ForbiddenScopeExact are exact permission codes that no API key may carry:
+// the key-management permission itself and the platform-level permissions
+// whose names carry no telling prefix.
 var ForbiddenScopeExact = map[string]bool{
-	"api_key.manage": true,
+	"api_key.manage":        true,
+	"geo.admin":             true,
+	"billing.admin":         true,
+	"reconciliation.review": true,
+	"barcode_batch.approve": true,
+	"seating_plan.verify":   true,
+}
+
+// IsForbiddenScope reports whether scope may never be carried by an API key.
+func IsForbiddenScope(scope string) bool {
+	if ForbiddenScopeExact[scope] {
+		return true
+	}
+	for _, prefix := range ForbiddenScopePrefixes {
+		if strings.HasPrefix(scope, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// EffectiveScopes returns scopes without the forbidden ones. Authentication
+// builds the service actor from it, so a key issued before a scope became
+// forbidden loses that permission on its next request instead of keeping it
+// until someone revokes the key.
+func EffectiveScopes(scopes []string) []string {
+	out := make([]string, 0, len(scopes))
+	for _, s := range scopes {
+		if !IsForbiddenScope(s) {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // Sentinel errors. Callers use errors.Is.
@@ -157,13 +197,8 @@ func ValidateScopes(scopes []string) error {
 		return ErrEmptyScopes
 	}
 	for _, s := range scopes {
-		if ForbiddenScopeExact[s] {
+		if IsForbiddenScope(s) {
 			return ErrForbiddenScope
-		}
-		for _, prefix := range ForbiddenScopePrefixes {
-			if strings.HasPrefix(s, prefix) {
-				return ErrForbiddenScope
-			}
 		}
 	}
 	return nil

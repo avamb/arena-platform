@@ -51,6 +51,9 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 	if err != nil {
 		return importResult{}, err
 	}
+	if err := applyArenaPromoter(ctx, q, plan, eventID); err != nil {
+		return importResult{}, err
+	}
 	venueID, loc, err := h.resolveArenaVenue(ctx, q, tx, plan, match, warnings)
 	if err != nil {
 		return importResult{}, err
@@ -295,6 +298,29 @@ func (h *Handler) resolveArenaVenue(ctx context.Context, q *gen.Queries, tx pgx.
 	v := plan.Request.Venue
 	payloadTZ := trimSpace(v.Timezone)
 	name := trimSpace(v.VenueName)
+
+	// An event center picks the venue from the organization's own list: use
+	// it as it is, geography included — the pick is not an edit.
+	if raw := trimSpace(v.ArenaVenueID); raw != "" {
+		venueID, err := uuid.Parse(raw)
+		if err != nil {
+			return uuid.Nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_venue",
+				"venue.arenaVenueId "+raw+" is not a UUID")
+		}
+		vctx, err := q.GetVenueImportContext(ctx, venueID)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows), err == nil && vctx.OrgID != plan.OrgID:
+			return uuid.Nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_venue",
+				"venue.arenaVenueId "+raw+" is not a venue of this organization")
+		case err != nil:
+			return uuid.Nil, nil, fmt.Errorf("read venue %s: %w", venueID, err)
+		}
+		loc, _, err := arenaLocation(derefString(vctx.Timezone), payloadTZ, warnings)
+		if err != nil {
+			return uuid.Nil, nil, err
+		}
+		return venueID, loc, nil
+	}
 
 	if v.VenueID > 0 {
 		venueID, err := compatids.Resolve(ctx, tx, compatids.KindVenue, v.VenueID)
@@ -626,4 +652,43 @@ func derefString(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// applyArenaPromoter applies action.promoterId (migration 0113) inside the
+// import transaction: absent/null keeps the event's promoter, "" removes the
+// link (the organization itself is the promoter), a UUID links one of the
+// organization's ACTIVE promoters. Anything else is 422
+// import.invalid_promoter — the same rule as
+// PUT /v1/organizations/{org_id}/events/{id}/promoter (hcatalog.SetEventPromoterTx).
+func applyArenaPromoter(ctx context.Context, q *gen.Queries, plan importPlan, eventID uuid.UUID) error {
+	raw := plan.Request.Action.PromoterID
+	if raw == nil {
+		return nil
+	}
+	value := strings.TrimSpace(*raw)
+	if value == "" {
+		if err := q.DeleteEventPromoter(ctx, eventID, plan.OrgID); err != nil {
+			return fmt.Errorf("clear event promoter: %w", err)
+		}
+		return nil
+	}
+	invalid := failImport(http.StatusUnprocessableEntity, "import.invalid_promoter",
+		"action.promoterId is not an active promoter of this organization")
+	promoterID, err := uuid.Parse(value)
+	if err != nil {
+		return invalid
+	}
+	p, err := q.GetOrgPromoter(ctx, promoterID, plan.OrgID)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return invalid
+	case err != nil:
+		return fmt.Errorf("read promoter %s: %w", promoterID, err)
+	case p.ArchivedAt != nil:
+		return invalid
+	}
+	if err := q.SetEventPromoter(ctx, eventID, plan.OrgID, p.ID); err != nil {
+		return fmt.Errorf("set event promoter: %w", err)
+	}
+	return nil
 }

@@ -3970,6 +3970,20 @@ type CreateOperatorNetworkRequest struct {
 	Slug string `json:"slug"`
 }
 
+// CreateOrgCityRequest Body of POST /v1/organizations/{org_id}/cities.
+type CreateOrgCityRequest struct {
+	// CountryId The existing country the city belongs to.
+	CountryId openapi_types.UUID `json:"country_id"`
+
+	// Locale Language of `name` (e.g. "cs", "ru", "en"; a region subtag is
+	// dropped). Defaults to "en". A non-English name is also stored as
+	// the English fallback until someone curates one.
+	Locale *string `json:"locale,omitempty"`
+
+	// Name Display name of the city, in `locale`.
+	Name string `json:"name"`
+}
+
 // CreateOrganizationRequest Request body for POST /v1/organizations.
 type CreateOrganizationRequest struct {
 	// ContactEmail Public contact email (optional on create).
@@ -4165,6 +4179,21 @@ type CreatePromoCodeRequestDiscountType string
 // CreatePromoCodeRequestStatus Lifecycle status; defaults to `active` when omitted or
 // empty.
 type CreatePromoCodeRequestStatus string
+
+// CreatePromoterRequest Body of POST /v1/organizations/{org_id}/promoters.
+type CreatePromoterRequest struct {
+	// Email Optional contact e-mail. Blank is stored as null.
+	Email *string `json:"email"`
+
+	// LegalId Optional company or tax identifier (INN, ICO). Blank is stored as null.
+	LegalId *string `json:"legal_id"`
+
+	// Name Display name; must not be blank.
+	Name string `json:"name"`
+
+	// Phone Optional contact phone. Blank is stored as null.
+	Phone *string `json:"phone"`
+}
 
 // CreateRefundRequest Request body for `POST /v1/refunds`. Creates a new refund row
 // in the `requested` state. The handler looks up the parent
@@ -5108,6 +5137,15 @@ type EventItem struct {
 	// sessions.poster_media_id ?? events.poster_media_id ?? none.
 	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
 
+	// PromoterId The event's promoter (migration 0113, PUT
+	// .../events/{id}/promoter). Null when the organization itself is
+	// the promoter.
+	PromoterId *openapi_types.UUID `json:"promoter_id"`
+
+	// PromoterName Name of the event's promoter, which the ticket PDF prints as
+	// "Organizer". Null when the organization itself is the promoter.
+	PromoterName *string `json:"promoter_name"`
+
 	// ShortDescription Short marketing description shown in cards and previews (AB-45c).
 	// Tri-state PATCH: absent=keep, null=clear, value=set.
 	ShortDescription *string `json:"short_description"`
@@ -5156,6 +5194,18 @@ type EventItemVisibility string
 type EventListResponse struct {
 	// Events Events matching the request filters.
 	Events []EventItem `json:"events"`
+}
+
+// EventPromoterResponse The promoter of an event after PUT .../events/{id}/promoter.
+type EventPromoterResponse struct {
+	// EventId The event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// PromoterId The linked promoter; null when the organization itself is the promoter.
+	PromoterId *openapi_types.UUID `json:"promoter_id"`
+
+	// PromoterName Name of the linked promoter; null when the organization itself is the promoter.
+	PromoterName *string `json:"promoter_name"`
 }
 
 // EventPublication Single event-publication row connecting an event to an agent
@@ -5645,6 +5695,13 @@ type ImportBil24SessionAction struct {
 
 	// OrganizerName Organizer display name as sent by Bil24.
 	OrganizerName *string `json:"organizerName,omitempty"`
+
+	// PromoterId Arena event-bundle extension (source=arena only; migration 0113):
+	// absent or null keeps the event's promoter, "" removes the link
+	// (the organization itself is the promoter), a UUID links one of
+	// the organization's active promoters. Anything else answers 422
+	// `import.invalid_promoter`.
+	PromoterId *string `json:"promoterId"`
 }
 
 // ImportBil24SessionActionEvent Bil24 "actionEvent" block — becomes an arena session. This block's
@@ -5871,6 +5928,14 @@ type ImportBil24SessionSeatLocation struct {
 type ImportBil24SessionVenue struct {
 	// Address Postal address of the venue.
 	Address *string `json:"address,omitempty"`
+
+	// ArenaVenueId Arena extension, source=arena only: one of the organization's
+	// venues by its arena id (as listed by
+	// GET /v1/organizations/{org_id}/venues). Wins over venueId and
+	// venueName, uses the venue as it is (its address, geo point and
+	// timezone are not edited) and answers 422 import.invalid_venue when
+	// the id is not a venue of this organization.
+	ArenaVenueId *openapi_types.UUID `json:"arenaVenueId,omitempty"`
 
 	// CityId Bil24 city identifier. Range-checked only when non-zero.
 	CityId *int64 `json:"cityId,omitempty"`
@@ -6909,6 +6974,16 @@ type OrderTicketSummary struct {
 	Status string `json:"status"`
 }
 
+// OrgCityResponse Response of POST /v1/organizations/{org_id}/cities. `city` has the
+// GET /v1/geo/cities item shape.
+type OrgCityResponse struct {
+	// City The created or already existing city.
+	City GeoCityItem `json:"city"`
+
+	// Created True when the city was created by this call (201), false when an existing one was returned (200).
+	Created bool `json:"created"`
+}
+
 // OrganizationItem A single active organization (primary tenant boundary).
 // Includes legal & contact attributes added in migration
 // 0049_organizations_legal_fields (Wave O / feature #253). All
@@ -7918,6 +7993,56 @@ type PromoRedemptionItem struct {
 type PromoRedemptionListResponse struct {
 	// Redemptions Every redemption of the organization's codes, optionally narrowed to one code.
 	Redemptions []PromoRedemptionItem `json:"redemptions"`
+}
+
+// Promoter A promoter of the organization's events (migration 0113). The
+// organization selling an event is often, but not always, its
+// promoter; an event linked to a promoter prints the promoter's name
+// as "Organizer" on its tickets. Promoters are archived, never
+// deleted, so events that already name one keep rendering.
+type Promoter struct {
+	// Archived True when the promoter is archived and can no longer be linked to an event.
+	Archived bool `json:"archived"`
+
+	// ArchivedAt When the promoter was archived; null while active.
+	ArchivedAt *time.Time `json:"archived_at"`
+
+	// CreatedAt Row creation timestamp (RFC 3339).
+	CreatedAt time.Time `json:"created_at"`
+
+	// Email Contact e-mail address.
+	Email *string `json:"email"`
+
+	// Id Primary key of the promoter.
+	Id openapi_types.UUID `json:"id"`
+
+	// LegalId Company or tax identifier (INN, ICO), free-form.
+	LegalId *string `json:"legal_id"`
+
+	// Name Display name, whitespace-collapsed. Unique among the
+	// organization's active promoters, case-insensitively.
+	Name string `json:"name"`
+
+	// OrgId Organization the promoter belongs to.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Phone Contact phone number.
+	Phone *string `json:"phone"`
+
+	// UpdatedAt Last update timestamp (RFC 3339).
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// PromoterEnvelope Single-promoter response envelope.
+type PromoterEnvelope struct {
+	// Promoter The promoter record.
+	Promoter Promoter `json:"promoter"`
+}
+
+// PromoterListEnvelope List-promoters response envelope.
+type PromoterListEnvelope struct {
+	// Promoters Promoters ordered by name; archived ones only with include_archived=true.
+	Promoters []Promoter `json:"promoters"`
 }
 
 // PublicBuyerInfo Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
@@ -9501,6 +9626,13 @@ type SessionWarning struct {
 	Message string `json:"message"`
 }
 
+// SetEventPromoterRequest Body of PUT /v1/organizations/{org_id}/events/{id}/promoter.
+type SetEventPromoterRequest struct {
+	// PromoterId An active promoter of the organization, or null (or absent) to
+	// make the organization itself the promoter again.
+	PromoterId *openapi_types.UUID `json:"promoter_id"`
+}
+
 // StartCheckoutRequest Request body for `POST /v1/checkout/start`. Creates a new checkout
 // session in state `created` linked to an existing reservation. The
 // optional `user_id` attaches the session to an authenticated buyer;
@@ -10315,6 +10447,26 @@ type UpdatePromoCodeRequestDiscountType string
 
 // UpdatePromoCodeRequestStatus New lifecycle status. `paused` codes fail promo-validate with 422.
 type UpdatePromoCodeRequestStatus string
+
+// UpdatePromoterRequest Body of PATCH /v1/organizations/{org_id}/promoters/{id}. Every field
+// is tri-state: absent = keep, null = clear, value = set. `name` can
+// be changed but never cleared.
+type UpdatePromoterRequest struct {
+	// Archived true archives the promoter, false restores it.
+	Archived *bool `json:"archived,omitempty"`
+
+	// Email Contact e-mail; null clears it.
+	Email *string `json:"email"`
+
+	// LegalId Company or tax identifier; null clears it.
+	LegalId *string `json:"legal_id"`
+
+	// Name New display name; null or blank is rejected with 400 promoter.invalid_name.
+	Name *string `json:"name"`
+
+	// Phone Contact phone; null clears it.
+	Phone *string `json:"phone"`
+}
 
 // UpdateSeatingPlanRequest Request body for PATCH /v1/seating-plans/{id}. Every field is
 // optional — omitted fields keep their existing value. Archive is
@@ -11560,6 +11712,12 @@ type ListPromoCodeRedemptionsParams struct {
 	Format *string `form:"format,omitempty" json:"format,omitempty"`
 }
 
+// ListPromotersParams defines parameters for ListPromoters.
+type ListPromotersParams struct {
+	// IncludeArchived Include archived promoters (true/false, default false).
+	IncludeArchived *bool `form:"include_archived,omitempty" json:"include_archived,omitempty"`
+}
+
 // ListPublicFeedEventsParams defines parameters for ListPublicFeedEvents.
 type ListPublicFeedEventsParams struct {
 	// CityId Optional filter by publication city scope.
@@ -11813,6 +11971,9 @@ type UpdateChannelJSONRequestBody = UpdateChannelRequest
 // PutChannelWPWebhookJSONRequestBody defines body for PutChannelWPWebhook for application/json ContentType.
 type PutChannelWPWebhookJSONRequestBody PutChannelWPWebhookJSONBody
 
+// CreateOrgCityJSONRequestBody defines body for CreateOrgCity for application/json ContentType.
+type CreateOrgCityJSONRequestBody = CreateOrgCityRequest
+
 // CreateComplimentaryIssuanceJSONRequestBody defines body for CreateComplimentaryIssuance for application/json ContentType.
 type CreateComplimentaryIssuanceJSONRequestBody CreateComplimentaryIssuanceJSONBody
 
@@ -11864,6 +12025,9 @@ type CreateEventArtistJSONRequestBody CreateEventArtistJSONBody
 // UpdateEventArtistJSONRequestBody defines body for UpdateEventArtist for application/json ContentType.
 type UpdateEventArtistJSONRequestBody UpdateEventArtistJSONBody
 
+// SetEventPromoterJSONRequestBody defines body for SetEventPromoter for application/json ContentType.
+type SetEventPromoterJSONRequestBody = SetEventPromoterRequest
+
 // UpdateEventStatusJSONRequestBody defines body for UpdateEventStatus for application/json ContentType.
 type UpdateEventStatusJSONRequestBody = UpdateEventStatusRequest
 
@@ -11902,6 +12066,12 @@ type CreatePromoCodeJSONRequestBody = CreatePromoCodeRequest
 
 // UpdatePromoCodeJSONRequestBody defines body for UpdatePromoCode for application/json ContentType.
 type UpdatePromoCodeJSONRequestBody = UpdatePromoCodeRequest
+
+// CreatePromoterJSONRequestBody defines body for CreatePromoter for application/json ContentType.
+type CreatePromoterJSONRequestBody = CreatePromoterRequest
+
+// UpdatePromoterJSONRequestBody defines body for UpdatePromoter for application/json ContentType.
+type UpdatePromoterJSONRequestBody = UpdatePromoterRequest
 
 // PostV1OrganizationsOrgIdVenuesJSONRequestBody defines body for PostV1OrganizationsOrgIdVenues for application/json ContentType.
 type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest
