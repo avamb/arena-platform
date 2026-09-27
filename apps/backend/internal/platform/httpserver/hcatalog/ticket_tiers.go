@@ -83,6 +83,9 @@ type tierResponse struct {
 	Held      *int32 `json:"held,omitempty"`
 	Sold      *int32 `json:"sold,omitempty"`
 	Available *int32 `json:"available,omitempty"`
+	// NextTierID is the category this one hands its free places to when its
+	// sale window closes (migration 0112). List endpoint only.
+	NextTierID *string `json:"next_tier_id,omitempty"`
 }
 
 // TierResponse is the exported alias of tierResponse for use by the httpserver
@@ -449,9 +452,23 @@ func (h *Handler) HandleListTiers(w http.ResponseWriter, r *http.Request) {
 		placeStats = nil
 	}
 
+	// Chain links (migration 0112). Non-fatal like the counters above.
+	nextTier := map[uuid.UUID]uuid.UUID{}
+	if links, chainErr := h.tierQueries.ListTierChainForSession(ctx, sessionID); chainErr != nil {
+		h.logger.Warn("tier: category chain failed (non-fatal)", slog.String("error", chainErr.Error()))
+	} else {
+		for _, l := range links {
+			nextTier[l.TierID] = l.NextTierID
+		}
+	}
+
 	result := make([]tierResponse, 0, len(rows))
 	for _, t := range rows {
 		tr := tierFromRow(t)
+		if next, ok := nextTier[t.ID]; ok {
+			s := next.String()
+			tr.NextTierID = &s
+		}
 		sc, gc := seatCounts[t.ID], gaCounts[t.ID]
 		tr.SeatCount, tr.GAUnitCount = &sc, &gc
 

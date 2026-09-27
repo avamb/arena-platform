@@ -70,6 +70,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/reservationexpiry"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesnotify"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/tierchain"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
@@ -286,6 +287,10 @@ func run() error {
 	} else {
 		logger.Info("reservation expire sweep job scheduled at startup")
 	}
+	if err := tierchain.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
+		// Non-fatal: the next category opens a little later than announced.
+		logger.Warn("could not schedule initial tier chain sweep job", "error", err.Error())
+	}
 
 	// 7e. Ops watchdog startup scheduling -------------------------------------
 	// ops.watchdog (internal/platform/opswatchdog) is a strictly read-only,
@@ -479,6 +484,15 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 			WithCheckoutQueries(reservationQueries),
 		Logger:    logger,
 		Scheduler: reservationexpiry.NewPGScheduler(pool),
+	}))
+
+	// tier.chain_sweep hands the free places of a category whose sale window
+	// closed to the next category of its chain and opens it (migration 0112),
+	// then self-schedules the next run 30s later.
+	reg.Register(tierchain.JobType, tierchain.NewHandler(tierchain.Options{
+		Store:     tierchain.NewPGStore(pool),
+		Logger:    logger,
+		Scheduler: tierchain.NewPGScheduler(pool),
 	}))
 
 	// ticket.deliver sends transactional emails with PDF attachments for

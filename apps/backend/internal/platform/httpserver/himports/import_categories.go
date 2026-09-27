@@ -74,6 +74,7 @@ func syncImportedCategoryQuotas(
 	cats []importedCategory,
 	mintPlaces bool,
 	applyQuantity bool,
+	chain *chainIndex,
 	warnings *warningSink,
 ) error {
 	stats, err := gaquota.SessionStats(ctx, q, sessionID)
@@ -89,6 +90,27 @@ func syncImportedCategoryQuotas(
 		seen[c.TierID] = struct{}{}
 		if !mintPlaces {
 			continue
+		}
+		if chain.member(c.TierID) {
+			// A chain shares one hall (import_chain.go): the head's
+			// availability is the whole chain's, applied to the member
+			// selling now; a successor gets its places from a hand-over.
+			if st, ok := stats[c.TierID]; ok && st.Quantity > 0 {
+				if applyQuantity && chain.head(c.TierID) {
+					if err := applyChainQuantity(ctx, q, sessionID, chain, c, stats, warnings); err != nil {
+						return err
+					}
+				}
+				continue
+			}
+			if chain.successor(c.TierID) && c.Availability <= 0 {
+				// No places until the previous category hands them over; the
+				// hand-over opens it.
+				if err := gaquota.SetOpen(ctx, q, sessionID, c.TierID, false); err != nil {
+					return fmt.Errorf("close chain successor: %w", err)
+				}
+				continue
+			}
 		}
 		if st, ok := stats[c.TierID]; ok && st.Quantity > 0 {
 			// Repeat import — the quantity is arena's now, unless the event

@@ -1562,3 +1562,19 @@ entries short and factual.
   followed automatically; a chat the bot is not in lands in `last_error`.
   The bot must be a member of the group first (`getChat` answers `chat not
   found` otherwise). No admin screen yet: subscriptions are SQL rows.
+- **A chain of categories hands free places on; never re-mint a chain head.**
+  `ticket_tier_chain` (migration 0112) links a category to the next one;
+  `tier.chain_sweep` (`internal/platform/tierchain`, every 30 s) runs
+  `gaquota.HandOver` for every link whose source `sale_window_end` passed:
+  free, unreferenced-by-`reservation_seats` GA places are RE-TIERED and
+  re-keyed (rows kept, so a place an expired order's `order_items` points at
+  moves too), both capacities are re-synced, and on the FIRST hand-over the
+  source closes and the target opens. The session's place count never
+  changes. In an event-bundle, `categoryList[].nextCategoryIndex` sets the
+  link (-1 removes, absent keeps), a successor declared with availability 0
+  starts with NO places and closed (no `import.category_sold_out`), and the
+  head's availability means the WHOLE chain's places — a repeat import
+  applies the difference to the member selling now (`chainIndex.selling`).
+  Re-applying it to a handed-over head would grow the hall. Seated places
+  never move; a seated target is refused (`ErrSeatedCategory`) — seats use
+  `priceSchedule` instead.

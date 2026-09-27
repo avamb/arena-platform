@@ -10836,6 +10836,14 @@ export interface components {
              */
             ga_unit_count?: number | null;
             /**
+             * Format: uuid
+             * @description List endpoint only. The category this one hands its free places to
+             *     when its sale window closes, which then opens (migration 0112);
+             *     absent when the category is not chained. Set through an
+             *     event-bundle's categoryList[].nextCategoryIndex.
+             */
+            next_tier_id?: string | null;
+            /**
              * Format: int64
              * @description AB-48 (public feed only) - the effective scheduled price right
              *     now; `price_amount` stays the tier's base.
@@ -15601,10 +15609,64 @@ export interface components {
             /**
              * Format: int32
              * @description General-admission capacity of the category. Summed across categories
-             *     to size the session inventory.
+             *     to size the session inventory. In a chain of categories
+             *     (`nextCategoryIndex`) the head's availability is the number of
+             *     places of the WHOLE chain; a repeat import applies a change to the
+             *     member selling now, and a successor declared with 0 starts with no
+             *     places and closed until the previous category hands them over.
              * @example 100
              */
             availability?: number;
+            /**
+             * @description source=arena only. RFC3339 instant at which THIS category starts
+             *     selling; omitted falls back to `actionEvent.sellStartTime`.
+             * @example 2026-09-01T00:00:00+03:00
+             */
+            sellStartTime?: string;
+            /**
+             * @description source=arena only. RFC3339 instant at which THIS category stops
+             *     selling; omitted falls back to `actionEvent.sellEndTime`. For a
+             *     category with `nextCategoryIndex` this is when its free places move
+             *     to the next category (422 import.invalid_sale_window when it is not
+             *     after the start).
+             * @example 2026-10-01T00:00:00+03:00
+             */
+            sellEndTime?: string;
+            /**
+             * @description source=arena only. 0-based index into `categoryList` of the category
+             *     that receives this category's free places when its sale window
+             *     closes and then opens (migration 0112, tier.chain_sweep). -1 removes
+             *     the stored link; omitted keeps it. A link to itself, two categories
+             *     handing to the same one, or a cycle is 422
+             *     (import.invalid_next_category / import.category_chain_cycle).
+             * @example 1
+             */
+            nextCategoryIndex?: number;
+            /**
+             * @description source=arena only. Replaces the category's scheduled prices (the
+             *     same schedule `PUT .../tiers/{id}/price-schedule` manages); an empty
+             *     list clears it, omitted keeps it. Only a paid category carries one;
+             *     overlapping windows are 422 import.invalid_price_schedule.
+             */
+            priceSchedule?: components["schemas"]["ImportCategoryPriceWindow"][];
+        };
+        /** @description One scheduled price of an imported category. */
+        ImportCategoryPriceWindow: {
+            /**
+             * @description RFC3339 instant from which the price applies.
+             * @example 2026-10-01T00:00:00+03:00
+             */
+            validFrom: string;
+            /**
+             * @description RFC3339 instant until which the price applies; omitted means open-ended.
+             * @example 2026-10-15T00:00:00+03:00
+             */
+            validTo?: string;
+            /**
+             * @description Price in MAJOR currency units, like the category price.
+             * @example 249
+             */
+            price: number;
         };
         /** @description Sector / row / number triple identifying a seat within a hall. */
         ImportBil24SessionSeatLocation: {

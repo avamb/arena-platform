@@ -127,13 +127,69 @@ type ImportSessionVenue struct {
 // ImportSessionCategory is one entry of the Bil24 "categoryList" — an arena
 // ticket tier. Price is in the MAJOR currency unit (Bil24 sends floats on the
 // wire); arena stores minor units, see PriceMinorUnits.
+//
+// SellStartTime, SellEndTime, NextCategoryIndex and PriceSchedule are
+// arena-native event-bundle extensions (the site's event center); the
+// Bil24-format importer ignores them.
 type ImportSessionCategory struct {
 	CategoryPriceID   int64   `json:"categoryPriceId"`
 	CategoryPriceName string  `json:"categoryPriceName"`
 	Price             float64 `json:"price"`
 	Placement         bool    `json:"placement"`
 	Availability      int32   `json:"availability"`
+	// SellStartTime / SellEndTime are this category's own sale window
+	// (RFC3339 instants); empty falls back to the session's
+	// actionEvent.sellStartTime / sellEndTime.
+	SellStartTime string `json:"sellStartTime"`
+	SellEndTime   string `json:"sellEndTime"`
+	// NextCategoryIndex chains this category to categoryList[index]: when
+	// its sale window closes, its free places move there and that category
+	// opens (migration 0112). nil keeps the stored link, -1 removes it.
+	NextCategoryIndex *int `json:"nextCategoryIndex"`
+	// PriceSchedule replaces the category's scheduled prices; nil keeps the
+	// stored schedule, an empty list clears it.
+	PriceSchedule *[]ImportPriceWindow `json:"priceSchedule"`
 }
+
+// ImportPriceWindow is one scheduled price: Price (MAJOR units, like the
+// category price) applies from ValidFrom until ValidTo (RFC3339; empty
+// ValidTo = open-ended).
+type ImportPriceWindow struct {
+	ValidFrom string  `json:"validFrom"`
+	ValidTo   string  `json:"validTo"`
+	Price     float64 `json:"price"`
+}
+
+// ParseSellWindow returns the category's sale window, falling back to the
+// session window for each end the category does not set, and refuses a
+// window whose end is not after its start (ticket_tiers CHECK, 0019).
+func (c ImportSessionCategory) ParseSellWindow(sessionStart, sessionEnd *time.Time) (*time.Time, *time.Time, error) {
+	start, end := sessionStart, sessionEnd
+	if raw := strings.TrimSpace(c.SellStartTime); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return nil, nil, fmt.Errorf("sellStartTime %q: %w", raw, err)
+		}
+		u := t.UTC()
+		start = &u
+	}
+	if raw := strings.TrimSpace(c.SellEndTime); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return nil, nil, fmt.Errorf("sellEndTime %q: %w", raw, err)
+		}
+		u := t.UTC()
+		end = &u
+	}
+	if start != nil && end != nil && !end.After(*start) {
+		return nil, nil, fmt.Errorf("sale window ends (%s) before it starts (%s)",
+			end.Format(time.RFC3339), start.Format(time.RFC3339))
+	}
+	return start, end, nil
+}
+
+// PriceMinorUnits converts the window's major-unit price to minor units.
+func (w ImportPriceWindow) PriceMinorUnits() int64 { return money.Minor(w.Price) }
 
 // PriceMinorUnits converts the wire float major-unit price into the integer
 // minor units arena stores in ticket_tiers.price_amount, rounding half away

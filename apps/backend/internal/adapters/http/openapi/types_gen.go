@@ -5708,7 +5708,11 @@ type ImportBil24SessionActionEvent struct {
 // ImportBil24SessionCategory One Bil24 price category — becomes an arena ticket tier.
 type ImportBil24SessionCategory struct {
 	// Availability General-admission capacity of the category. Summed across categories
-	// to size the session inventory.
+	// to size the session inventory. In a chain of categories
+	// (`nextCategoryIndex`) the head's availability is the number of
+	// places of the WHOLE chain; a repeat import applies a change to the
+	// member selling now, and a successor declared with 0 starts with no
+	// places and closed until the previous category hands them over.
 	Availability *int32 `json:"availability,omitempty"`
 
 	// CategoryPriceId Bil24 category-price identifier. Must be positive and below 1e9
@@ -5723,6 +5727,14 @@ type ImportBil24SessionCategory struct {
 	// CategoryPriceName Tier display name.
 	CategoryPriceName *string `json:"categoryPriceName,omitempty"`
 
+	// NextCategoryIndex source=arena only. 0-based index into `categoryList` of the category
+	// that receives this category's free places when its sale window
+	// closes and then opens (migration 0112, tier.chain_sweep). -1 removes
+	// the stored link; omitted keeps it. A link to itself, two categories
+	// handing to the same one, or a cycle is 422
+	// (import.invalid_next_category / import.category_chain_cycle).
+	NextCategoryIndex *int `json:"nextCategoryIndex,omitempty"`
+
 	// Placement Whether the category is seated. Seated categories are accepted but
 	// imported as general admission by this endpoint.
 	Placement *bool `json:"placement,omitempty"`
@@ -5730,6 +5742,23 @@ type ImportBil24SessionCategory struct {
 	// Price Ticket price in MAJOR currency units, as Bil24 sends it. Converted to
 	// the integer minor units arena stores, rounded half away from zero.
 	Price *float32 `json:"price,omitempty"`
+
+	// PriceSchedule source=arena only. Replaces the category's scheduled prices (the
+	// same schedule `PUT .../tiers/{id}/price-schedule` manages); an empty
+	// list clears it, omitted keeps it. Only a paid category carries one;
+	// overlapping windows are 422 import.invalid_price_schedule.
+	PriceSchedule *[]ImportCategoryPriceWindow `json:"priceSchedule,omitempty"`
+
+	// SellEndTime source=arena only. RFC3339 instant at which THIS category stops
+	// selling; omitted falls back to `actionEvent.sellEndTime`. For a
+	// category with `nextCategoryIndex` this is when its free places move
+	// to the next category (422 import.invalid_sale_window when it is not
+	// after the start).
+	SellEndTime *string `json:"sellEndTime,omitempty"`
+
+	// SellStartTime source=arena only. RFC3339 instant at which THIS category starts
+	// selling; omitted falls back to `actionEvent.sellStartTime`.
+	SellStartTime *string `json:"sellStartTime,omitempty"`
 }
 
 // ImportBil24SessionRequest Request body for the Bil24 session import (spec §13.2). Assembled by the
@@ -5876,6 +5905,18 @@ type ImportBil24SessionVenue struct {
 
 	// VenueName Venue display name, used when arena has to create the venue.
 	VenueName *string `json:"venueName,omitempty"`
+}
+
+// ImportCategoryPriceWindow One scheduled price of an imported category.
+type ImportCategoryPriceWindow struct {
+	// Price Price in MAJOR currency units, like the category price.
+	Price float32 `json:"price"`
+
+	// ValidFrom RFC3339 instant from which the price applies.
+	ValidFrom string `json:"validFrom"`
+
+	// ValidTo RFC3339 instant until which the price applies; omitted means open-ended.
+	ValidTo *string `json:"validTo,omitempty"`
 }
 
 // ImportCompatIDs The compat-identifier set the caller must persist on its side
@@ -9746,6 +9787,12 @@ type TicketTierItem struct {
 	// NextPriceChangeAt AB-48 (public feed only) - when the effective price next
 	// changes ("price rises on <date>"); null if unknown.
 	NextPriceChangeAt *time.Time `json:"next_price_change_at"`
+
+	// NextTierId List endpoint only. The category this one hands its free places to
+	// when its sale window closes, which then opens (migration 0112);
+	// absent when the category is not chained. Set through an
+	// event-bundle's categoryList[].nextCategoryIndex.
+	NextTierId *openapi_types.UUID `json:"next_tier_id"`
 
 	// PriceAmount Tier price in the smallest currency unit (cents). Forced to 0
 	// for `pricing_mode = free`; must be > 0 for `pricing_mode = fixed`.

@@ -88,7 +88,11 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 	// Bil24-format importer follows. An arena bundle never carries an svg,
 	// so every category of the session is a General Admission one and mints
 	// its own places.
-	if err := syncImportedCategoryQuotas(ctx, q, sessionID, cats, true, true, warnings); err != nil {
+	chain, err := applyArenaCategoryExtras(ctx, q, plan, sessionID, orderedTiers)
+	if err != nil {
+		return importResult{}, err
+	}
+	if err := syncImportedCategoryQuotas(ctx, q, sessionID, cats, true, true, chain, warnings); err != nil {
 		return importResult{}, err
 	}
 
@@ -521,6 +525,11 @@ func (h *Handler) upsertArenaTiers(
 			capacity = &cap32
 		}
 		sortOrder := int32(i) //nolint:gosec // categoryList length is bounded by the request body cap
+		saleStart, saleEnd, winErr := c.ParseSellWindow(plan.SaleWindowStart, plan.SaleWindowEnd)
+		if winErr != nil {
+			return nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_sale_window",
+				fmt.Sprintf("categoryList[%d]: %s", i, winErr.Error()))
+		}
 
 		var target uuid.UUID
 		switch {
@@ -541,7 +550,7 @@ func (h *Handler) upsertArenaTiers(
 
 		if target == uuid.Nil {
 			row, insErr := q.InsertTicketTier(ctx, sessionID, name, mode, price, plan.Currency, nil, nil, capacity,
-				plan.SaleWindowStart, plan.SaleWindowEnd, sortOrder)
+				saleStart, saleEnd, sortOrder)
 			if insErr != nil {
 				return nil, nil, fmt.Errorf("insert ticket tier: %w", insErr)
 			}
@@ -556,7 +565,7 @@ func (h *Handler) upsertArenaTiers(
 		// never changes a category's quantity (plan 08_architecture/23
 		// decision 7) — price, sale window and sort order do keep updating.
 		updated, updErr := q.UpdateTicketTier(ctx, target, sessionID, name, mode, &price, plan.Currency, nil, nil, nil,
-			plan.SaleWindowStart, plan.SaleWindowEnd, &sortOrder)
+			saleStart, saleEnd, &sortOrder)
 		if errors.Is(updErr, pgx.ErrNoRows) {
 			// The compat id points at a tier of ANOTHER session. Re-pointing it
 			// would corrupt that session's outbound ids.
