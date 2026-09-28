@@ -41,6 +41,7 @@ func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef strin
 		ExternalRef: externalRef,
 		Action: bil24compat.ImportSessionAction{
 			ActionID:     actionID,
+			ArenaEventID: d.Event.EventID,
 			ActionName:   d.Event.Name,
 			Age:          d.Event.Age,
 			Description:  d.Event.Description,
@@ -48,12 +49,18 @@ func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef strin
 			PromoterID:   &promoter,
 		},
 		ActionEvent: bil24compat.ImportSessionActionEvent{
-			Day:      DisplayDate(s.Date),
-			Time:     s.Time,
-			Currency: d.currencyOrGuess(),
+			ArenaSessionID: s.SessionID,
+			Day:            DisplayDate(s.Date),
+			Time:           s.Time,
+			Currency:       d.currencyOrGuess(),
 		},
 		Venue:   bil24compat.ImportSessionVenue{ArenaVenueID: s.VenueID, VenueName: s.VenueName},
 		Publish: d.Publish,
+	}
+	if s.SessionID != "" {
+		// An existing date is addressed by id and keeps the key it was
+		// created under; the wire refuses a second key for it.
+		req.ExternalRef = ""
 	}
 	for _, c := range d.Channels {
 		req.ChannelIDs = append(req.ChannelIDs, c.ID)
@@ -73,6 +80,7 @@ func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef strin
 			windows = append(windows, w)
 		}
 		req.CategoryList = []bil24compat.ImportSessionCategory{{
+			ArenaTierID:       c.TierID,
 			CategoryPriceName: c.Name,
 			Price:             money.Major(c.PriceMinor),
 			Availability:      i32(s.Capacity),
@@ -82,6 +90,7 @@ func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef strin
 	case ModeParallel:
 		for _, c := range d.Tickets.Categories {
 			req.CategoryList = append(req.CategoryList, bil24compat.ImportSessionCategory{
+				ArenaTierID:       c.TierID,
 				CategoryPriceName: c.Name,
 				Price:             money.Major(c.PriceMinor),
 				Availability:      i32(c.Places),
@@ -93,6 +102,7 @@ func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef strin
 		n := len(d.Tickets.Categories)
 		for i, c := range d.Tickets.Categories {
 			cat := bil24compat.ImportSessionCategory{
+				ArenaTierID:       c.TierID,
 				CategoryPriceName: c.Name,
 				Price:             money.Major(c.PriceMinor),
 				PriceSchedule:     &empty,
@@ -160,7 +170,10 @@ type SaveOutcome struct {
 
 // Save posts every date of the draft that is not saved yet, in order, and
 // records progress in d.Saved so a retry sends only what is missing. The
-// first date creates the event; the others join it through its actionId.
+// first date creates the event; the others join it through its actionId. An
+// edited event (ModeEdit) is addressed by its arena ids instead, and every
+// date — existing or added — is re-sent, because the tickets are the same
+// for all of them.
 func (w *Wizard) Save(ctx context.Context, io SaveIO, ws WizSession, d *Draft, draftID string) SaveOutcome {
 	if len(d.Saved.Sessions) < len(d.Sessions) {
 		d.Saved.Sessions = append(d.Saved.Sessions, make([]SavedSession, len(d.Sessions)-len(d.Saved.Sessions))...)
@@ -173,7 +186,7 @@ func (w *Wizard) Save(ctx context.Context, io SaveIO, ws WizSession, d *Draft, d
 		}
 	}
 	for i := range d.Sessions {
-		if d.Saved.Sessions[i].SessionID != "" {
+		if d.Saved.Sessions[i].Done {
 			continue
 		}
 		ref := fmt.Sprintf("tg:%s:%s:%d", ws.OrgID.String(), draftID, i+1)
@@ -183,10 +196,15 @@ func (w *Wizard) Save(ctx context.Context, io SaveIO, ws WizSession, d *Draft, d
 			d.Saved.LastReason = w.saveReason(ws.Locale, err)
 			return SaveOutcome{FailedIdx: i, Reason: d.Saved.LastReason}
 		}
-		d.Saved.Sessions[i] = SavedSession{ExternalRef: ref, SessionID: res.SessionID}
+		d.Saved.Sessions[i] = SavedSession{ExternalRef: req.ExternalRef, SessionID: res.SessionID, Done: true}
 		if d.Saved.ActionID == 0 {
 			d.Saved.ActionID = res.CompatIDs.ActionID
 			d.Saved.EventID = res.EventID
+		}
+		if d.Mode == ModeEdit {
+			// A date added to an existing event now has an id of its own; a
+			// later retry re-sends it by that id, never under a second key.
+			d.Sessions[i].SessionID = res.SessionID
 		}
 		for _, wn := range res.Warnings {
 			if text := w.warningText(ws.Locale, wn.Code); text != "" && !contains(d.Saved.Warnings, text) {

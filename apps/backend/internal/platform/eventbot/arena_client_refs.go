@@ -251,3 +251,30 @@ func (c *ArenaClient) OrganizationSlug(ctx context.Context, jwt string, orgID uu
 	}
 	return out.Organization.Slug, nil
 }
+
+// GetEvent reads one event (the org-read guarded route).
+func (c *ArenaClient) GetEvent(ctx context.Context, jwt string, eventID uuid.UUID) (openapi.EventItem, error) {
+	var out openapi.EventEnvelope
+	err := c.do(ctx, http.MethodGet, "/v1/events/"+eventID.String(), jwt, nil, &out)
+	return out.Event, err
+}
+
+// ListTiers lists a session's categories.
+func (c *ArenaClient) ListTiers(ctx context.Context, jwt string, orgID, eventID, sessionID uuid.UUID) ([]openapi.TicketTierItem, error) {
+	var out openapi.TicketTierListResponse
+	path := "/v1/organizations/" + orgID.String() + "/events/" + eventID.String() + "/sessions/" + sessionID.String() + "/tiers"
+	if err := c.do(ctx, http.MethodGet, path, jwt, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Tiers, nil
+}
+
+// TierPriceSchedule lists a category's scheduled price windows.
+func (c *ArenaClient) TierPriceSchedule(ctx context.Context, jwt string, orgID, eventID, sessionID, tierID uuid.UUID) ([]openapi.TierPriceWindow, error) {
+	var out openapi.TierPriceScheduleEnvelope
+	path := "/v1/organizations/" + orgID.String() + "/events/" + eventID.String() + "/sessions/" + sessionID.String() + "/tiers/" + tierID.String() + "/price-schedule"
+	if err := c.do(ctx, http.MethodGet, path, jwt, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.PriceSchedule.Windows, nil
+}

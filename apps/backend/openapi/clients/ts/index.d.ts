@@ -15882,6 +15882,17 @@ export interface components {
          */
         ImportBil24SessionAction: {
             /**
+             * Format: uuid
+             * @description Arena extension, source=arena only: the event this bundle edits,
+             *     by its arena id (as listed by GET /v1/organizations/{org_id}/events).
+             *     Plays the role actionId plays for a site that kept the compat id;
+             *     a UUID that is not an event of this organization answers 422
+             *     import.invalid_event, and a session addressed by
+             *     actionEvent.arenaSessionId that belongs to another event answers
+             *     409 import.action_mismatch.
+             */
+            arenaEventId?: string;
+            /**
              * Format: int64
              * @description Bil24 action identifier. Must be positive and below 1e9 for
              *     source=bil24 (the default / the legacy /imports/bil24-session
@@ -15931,6 +15942,17 @@ export interface components {
          *     actionEventId is the idempotency key of the whole import.
          */
         ImportBil24SessionActionEvent: {
+            /**
+             * Format: uuid
+             * @description Arena extension, source=arena only: the session this bundle edits,
+             *     by its arena id (as listed by GET .../events/{event_id}/sessions).
+             *     With it the top-level externalRef may be omitted — the session
+             *     keeps the idempotency key it was created under. A UUID that is
+             *     not a session of this organization answers 422
+             *     import.invalid_session; a session other than the one externalRef
+             *     or actionEventId names answers 409 import.external_ref_conflict.
+             */
+            arenaSessionId?: string;
             /**
              * Format: int64
              * @description Bil24 action-event identifier and the idempotency key of the
@@ -16060,6 +16082,15 @@ export interface components {
         };
         /** @description One Bil24 price category — becomes an arena ticket tier. */
         ImportBil24SessionCategory: {
+            /**
+             * Format: uuid
+             * @description Arena extension, source=arena only: the category of the addressed
+             *     session this entry edits, by its arena id (as listed by
+             *     GET .../sessions/{session_id}/tiers), so a renamed category is
+             *     updated rather than created afresh. A UUID that is not a category
+             *     of that session answers 422 import.invalid_category.
+             */
+            arenaTierId?: string;
             /**
              * Format: int64
              * @description Bil24 category-price identifier. Must be positive and below 1e9

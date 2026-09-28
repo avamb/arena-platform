@@ -199,6 +199,10 @@ func (b *Bot) showEvent(ctx context.Context, chatID int64, editMsgID *int, from 
 	}
 	rows := [][]models.InlineKeyboardButton{
 		{
+			{Text: b.texts.T(loc, "bot.wz.edit_btn", nil), CallbackData: "wz:edit:" + eventID.String()},
+			{Text: b.texts.T(loc, "bot.wz.copy_btn", nil), CallbackData: "wz:copy:" + eventID.String()},
+		},
+		{
 			{Text: "« " + b.texts.T(loc, "bot.btn_back", nil), CallbackData: fmt.Sprintf("events:%d", page)},
 			{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"},
 		},

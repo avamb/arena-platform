@@ -328,7 +328,9 @@ func resolveImportSource(w http.ResponseWriter, r *http.Request, req bil24compat
 }
 
 // resolveExternalRef normalises and validates the idempotency key. It is
-// mandatory for source=arena (import.external_ref_required) and optional for
+// mandatory for source=arena (import.external_ref_required) unless the
+// bundle addresses an existing session by actionEvent.arenaSessionId (the
+// session then keeps the key it was created under), and optional for
 // bil24; in both cases a present-but-blank or over-long value is rejected with
 // import.external_ref_invalid, matching the length CHECK on
 // session_external_refs (migration 0099).
@@ -341,7 +343,7 @@ func resolveExternalRef(w http.ResponseWriter, r *http.Request, req bil24compat.
 			))
 			return "", false
 		}
-		if source == bil24compat.SourceArena {
+		if source == bil24compat.SourceArena && strings.TrimSpace(req.ActionEvent.ArenaSessionID) == "" {
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
 				"import.external_ref_required", "externalRef is required when source=arena", r,
 			))

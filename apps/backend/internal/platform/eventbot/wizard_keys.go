@@ -142,6 +142,18 @@ var wizardKeys = []string{
 	"bot.wz.warn_publish_skipped",
 	"bot.wz.warn_poster_skipped",
 	"bot.wz.err_forbidden",
+	"bot.wz.edit_btn",
+	"bot.wz.copy_btn",
+	"bot.wz.save_changes_btn",
+	"bot.wz.force_btn",
+	"bot.wz.edit_intro",
+	"bot.wz.edit_footer",
+	"bot.wz.edit_seated",
+	"bot.wz.edit_tickets_differ",
+	"bot.wz.edit_changed_meanwhile",
+	"bot.wz.edit_saved",
+	"bot.wz.copy_intro",
+	"bot.wz.edit_load_failed",
 }
 
 func init() {

@@ -274,6 +274,70 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	// stub does not record; the rows were verified above).
 	press("events:1", "Страница 1 из 1")
 
+	// ── Step 4: "Edit" reads the event back from arena, renames it and
+	// re-prices the category; a change made elsewhere meanwhile is noticed.
+	renamed := eventName + " (ред.)"
+	intro := press("wz:edit:"+eventID.String(), "Правим")
+	for _, want := range []string{eventName, venueName, "15.12.2027 20:00", "25 EUR", "120 мест"} {
+		if !strings.Contains(intro, want) {
+			t.Errorf("edit summary lacks %q:\n%s", want, intro)
+		}
+	}
+	press("wz:edit:event", "Как называется")
+	say(renamed, "Возраст")
+	press("wz:age:18+", "Кто проводит")
+	press("wz:prom:org", "афишу")
+	press("wz:skip", "Проверьте и опубликуйте")
+	press("wz:edit:tickets", "Как назвать билет")
+	press("wz:default", "Цена билета")
+	say("27,50", "Цена меняется")
+	press("wz:no", "Проверьте и опубликуйте")
+	if _, err := pool.Exec(ctx, `UPDATE events SET updated_at = now() WHERE id = $1`, eventID); err != nil {
+		t.Fatal(err)
+	}
+	press("wz:publish", "меняли в другом месте")
+	press("wz:publish:force", "Сохранено")
+	var (
+		nameAfter, ageAfter string
+		sessionsAfter       int
+		tiersAfter          int
+		priceAfter          int64
+		windowsAfter        int
+	)
+	if err := pool.QueryRow(ctx, `SELECT e.name, e.age_rating,
+	        (SELECT count(*) FROM sessions s WHERE s.event_id = e.id),
+	        (SELECT count(*) FROM ticket_tiers tt JOIN sessions s ON s.id = tt.session_id WHERE s.event_id = e.id AND tt.deleted_at IS NULL),
+	        (SELECT tt.price_amount FROM ticket_tiers tt JOIN sessions s ON s.id = tt.session_id WHERE s.event_id = e.id LIMIT 1),
+	        (SELECT count(*) FROM ticket_tier_prices w JOIN ticket_tiers tt ON tt.id = w.tier_id JOIN sessions s ON s.id = tt.session_id WHERE s.event_id = e.id)
+	        FROM events e WHERE e.id = $1`, eventID).Scan(&nameAfter, &ageAfter, &sessionsAfter, &tiersAfter, &priceAfter, &windowsAfter); err != nil {
+		t.Fatalf("event after edit: %v", err)
+	}
+	if nameAfter != renamed || ageAfter != "18+" || sessionsAfter != 1 || tiersAfter != 1 || priceAfter != 2750 || windowsAfter != 0 {
+		t.Fatalf("after edit: name=%q age=%q sessions=%d tiers=%d price=%d windows=%d", nameAfter, ageAfter, sessionsAfter, tiersAfter, priceAfter, windowsAfter)
+	}
+	if _, err := q.GetBotDraft(ctx, e2eWizardTelegramUser, f.orgID); err == nil {
+		t.Fatal("edit draft must be deleted after saving")
+	}
+
+	// ── "Repeat as new": the tickets travel, the dates are asked, the
+	// remembered venue is one button away, and a second event appears.
+	press("wz:copy:"+eventID.String(), "Копия")
+	say("20.12.2027", "Время начала")
+	press("wz:default", "В какой стране")
+	press("wz:keep", "В каком городе")
+	press("wz:keep", "Где проходит")
+	press("wz:keep", "Сколько мест продаём")
+	press("wz:keep", "Ещё сеанс")
+	copySummary := press("wz:next", "Проверьте и опубликуйте")
+	if !strings.Contains(copySummary, "20.12.2027 20:00") || !strings.Contains(copySummary, "27,50 EUR") || !strings.Contains(copySummary, renamed) {
+		t.Fatalf("copy summary:\n%s", copySummary)
+	}
+	press("wz:publish", "Готово!")
+	var events int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM events WHERE org_id = $1 AND name = $2`, f.orgID, renamed).Scan(&events); err != nil || events != 2 {
+		t.Fatalf("events after copy = %d (%v), want 2", events, err)
+	}
+
 	cancel()
 	select {
 	case err := <-done:

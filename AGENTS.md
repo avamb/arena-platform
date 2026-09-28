@@ -1709,6 +1709,22 @@ entries short and factual.
   heredoc holding Go source with backticks (raw strings, struct tags)
   breaks the Bash tool's parser ("unexpected EOF while looking for
   matching `''") — write such files with the Write tool.
+- **The event-bundle (source=arena) addresses existing rows by arena UUID
+  as well as by compat id: `action.arenaEventId`,
+  `actionEvent.arenaSessionId`, `categoryList[].arenaTierId`** (same
+  pattern as `venue.arenaVenueId`; an unknown or foreign UUID is 422
+  `import.invalid_event` / `invalid_session` / `invalid_category`, never
+  404). With `arenaSessionId` the top-level `externalRef` MAY be omitted —
+  `resolveExternalRef` (`himports/bil24_session.go`) only demands it for a
+  bundle that addresses no session — and the session keeps the key it was
+  created under; a DIFFERENT key for it is 409 `import.external_ref_conflict`,
+  a session of another event than `arenaEventId` is 409
+  `import.action_mismatch`. This is what the Telegram bot's "Edit" uses
+  (`eventbot/wizard_load.go` → `BuildBundle`): the bot never learns compat
+  ids or external refs. A category NOT addressed by `arenaTierId` still
+  matches by name (`lower(btrim(name))`), so a rename without the id mints a
+  new category and closes the old one. Guarded by
+  `himports/event_bundle_arena_ids_integration_test.go`.
 - **A JWT caller of the event-bundle import binds the event to NO sales
   channel unless it names `channelIds`.** `ensureChannelPublication` only
   ever knew `api_keys.channel_id`; a human operator (the bot) got a

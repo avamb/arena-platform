@@ -709,3 +709,40 @@ other = "The poster was not saved — add it later."
 
 ["bot.wz.err_forbidden"]
 other = "You do not have the right for this action — tell the owner of your organization."
+
+
+["bot.wz.edit_btn"]
+other = "Edit"
+
+["bot.wz.copy_btn"]
+other = "Repeat as new"
+
+["bot.wz.save_changes_btn"]
+other = "Save changes"
+
+["bot.wz.force_btn"]
+other = "Save anyway"
+
+["bot.wz.edit_intro"]
+other = "Editing «{{.Name}}». Everything below is what arena has right now. Existing dates cannot be changed here — only new ones added; one or several categories and their order stay as they are."
+
+["bot.wz.edit_footer"]
+other = "Press «Save changes» — the changes reach the sales page within a minute or two. Sold tickets are not affected: a new price applies to the next purchases."
+
+["bot.wz.edit_seated"]
+other = "This event has a seating plan or no dates yet, so it cannot be edited from the bot. Use the admin page."
+
+["bot.wz.edit_tickets_differ"]
+other = "The date {{.When}} carries other tickets than the first one; saving writes the tickets shown here to every date."
+
+["bot.wz.edit_changed_meanwhile"]
+other = "«{{.Name}}» was changed elsewhere (the site or the admin) after you opened it. Save your version over it?"
+
+["bot.wz.edit_saved"]
+other = "<b>Saved.</b> «{{.Name}}» is updated.{{.Warnings}}"
+
+["bot.wz.copy_intro"]
+other = "A copy of «{{.Name}}»: the tickets and the description are taken over, the dates are new. When is the first one?"
+
+["bot.wz.edit_load_failed"]
+other = "I could not read this event from arena. Try again in a minute."

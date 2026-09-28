@@ -11338,6 +11338,17 @@ components:
       required:
         - actionId
       properties:
+        arenaEventId:
+          type: string
+          format: uuid
+          description: |
+            Arena extension, source=arena only: the event this bundle edits,
+            by its arena id (as listed by GET /v1/organizations/{org_id}/events).
+            Plays the role actionId plays for a site that kept the compat id;
+            a UUID that is not an event of this organization answers 422
+            import.invalid_event, and a session addressed by
+            actionEvent.arenaSessionId that belongs to another event answers
+            409 import.action_mismatch.
         actionId:
           type: integer
           format: int64
@@ -11390,6 +11401,17 @@ components:
         - actionEventId
         - day
       properties:
+        arenaSessionId:
+          type: string
+          format: uuid
+          description: |
+            Arena extension, source=arena only: the session this bundle edits,
+            by its arena id (as listed by GET .../events/{event_id}/sessions).
+            With it the top-level externalRef may be omitted — the session
+            keeps the idempotency key it was created under. A UUID that is
+            not a session of this organization answers 422
+            import.invalid_session; a session other than the one externalRef
+            or actionEventId names answers 409 import.external_ref_conflict.
         actionEventId:
           type: integer
           format: int64
@@ -11528,6 +11550,15 @@ components:
       required:
         - categoryPriceId
       properties:
+        arenaTierId:
+          type: string
+          format: uuid
+          description: |
+            Arena extension, source=arena only: the category of the addressed
+            session this entry edits, by its arena id (as listed by
+            GET .../sessions/{session_id}/tiers), so a renamed category is
+            updated rather than created afresh. A UUID that is not a category
+            of that session answers 422 import.invalid_category.
         categoryPriceId:
           type: integer
           format: int64

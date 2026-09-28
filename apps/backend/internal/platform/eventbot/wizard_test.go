@@ -468,8 +468,8 @@ func (f *fakeSave) ImportEventBundle(_ context.Context, _ string, _ uuid.UUID, r
 	if err := f.failRef[req.ExternalRef]; err != nil {
 		return ImportResult{}, err
 	}
-	if req.ExternalRef == "" {
-		return ImportResult{}, errors.New("externalRef must be set")
+	if req.ExternalRef == "" && req.ActionEvent.ArenaSessionID == "" {
+		return ImportResult{}, errors.New("externalRef must be set unless the session is addressed by id")
 	}
 	f.posts = append(f.posts, req)
 	f.next++

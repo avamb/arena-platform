@@ -286,6 +286,10 @@ func (w *Wizard) Render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		if !d.Publish {
 			primary = btn("bot.wz.save_btn", "publish")
 		}
+		if d.Mode == ModeEdit {
+			text = header(5, "bot.wz.title_summary") + w.Summary(loc, d) + "\n\n" + t("bot.wz.edit_footer", nil)
+			primary = btn("bot.wz.save_changes_btn", "publish")
+		}
 		rows := [][]Button{
 			{primary},
 			{btn("bot.wz.edit_event_btn", "edit:event"), btn("bot.wz.edit_when_btn", "edit:when")},

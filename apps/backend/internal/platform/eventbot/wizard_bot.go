@@ -16,6 +16,7 @@ import (
 
 	tgbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -46,8 +47,11 @@ func (b *Bot) loadDraft(ctx context.Context, tgID int64, ws WizSession) (*Draft,
 		return nil, nil, err
 	}
 	var d Draft
-	if err := json.Unmarshal(row.State, &d); err != nil || d.Version != draftSchemaVersion || row.Mode != "create" {
+	if err := json.Unmarshal(row.State, &d); err != nil || d.Version != draftSchemaVersion || (row.Mode != ModeCreate && row.Mode != ModeEdit) {
 		return nil, &row, nil // unreadable or foreign: treated as absent
+	}
+	if d.Mode == "" {
+		d.Mode = row.Mode
 	}
 	return &d, &row, nil
 }
@@ -58,11 +62,65 @@ func (b *Bot) storeDraft(ctx context.Context, tgID int64, ws WizSession, d *Draf
 		return "", err
 	}
 	saved, _ := json.Marshal(d.Saved)
-	row, err := b.queries.UpsertBotDraft(ctx, tgID, ws.OrgID, "create", nil, d.Step, int32(draftSchemaVersion), state, saved)
+	mode := d.Mode
+	if mode == "" {
+		mode = ModeCreate
+	}
+	var eventID *uuid.UUID
+	if id, err := uuid.Parse(d.Event.EventID); err == nil && d.Mode == ModeEdit {
+		eventID = &id
+	}
+	row, err := b.queries.UpsertBotDraft(ctx, tgID, ws.OrgID, mode, eventID, d.Step, int32(draftSchemaVersion), state, saved)
 	if err != nil {
 		return "", err
 	}
 	return row.ID.String(), nil
+}
+
+// wizardOpenEvent starts "Edit" (copy=false) or "Repeat as new" (copy=true)
+// on an existing event: the event is read back from arena and becomes the
+// person's draft for this organization, replacing any draft they had.
+func (b *Bot) wizardOpenEvent(ctx context.Context, chatID int64, editMsgID *int, from *models.User, eventID uuid.UUID, copy bool) {
+	id, jwt, err := b.resolveIdentity(ctx, from.ID)
+	if err != nil {
+		b.replyIdentityError(ctx, chatID, from, err)
+		return
+	}
+	if id.Current == nil {
+		b.showOrgChooserFor(ctx, chatID, editMsgID, id)
+		return
+	}
+	ws := b.wizardSession(id, jwt)
+	loc := ws.Locale
+	d, notes, err := b.wizard.LoadEventDraft(ctx, b.arena, ws, eventID)
+	if err != nil {
+		if errors.Is(err, ErrNotEditable) {
+			b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.wz.edit_seated", nil), b.backKeyboard(loc, "event:"+eventID.String()+":1"))
+			return
+		}
+		b.logger.Warn("eventbot: load event for edit failed", slog.String("event_id", eventID.String()), slog.String("error", err.Error()))
+		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.wz.edit_load_failed", nil), b.backKeyboard(loc, "event:"+eventID.String()+":1"))
+		return
+	}
+	note := b.texts.T(loc, "bot.wz.edit_intro", map[string]any{"Name": Esc(d.Event.Name)})
+	if copy {
+		d = CopyDraft(d)
+		d.Channels = ws.Defaults.Channels
+		if len(d.Channels) == 0 {
+			if channels, err := b.arena.Channels(ctx, jwt, ws.OrgID); err == nil && len(channels) == 1 {
+				d.Channels = channels
+			}
+		}
+		note = b.texts.T(loc, "bot.wz.copy_intro", map[string]any{"Name": Esc(d.Event.Name)})
+	}
+	if len(notes) > 0 {
+		note += "\n\n⚠ " + strings.Join(notes, "\n⚠ ")
+	}
+	if _, err := b.storeDraft(ctx, from.ID, ws, d); err != nil {
+		b.wizardFail(ctx, chatID, editMsgID, loc, err)
+		return
+	}
+	b.wizardRender(ctx, chatID, editMsgID, ws, d, note)
 }
 
 // wizardStart handles the "+ Event" button: resume an unfinished draft or
@@ -108,13 +166,18 @@ func (b *Bot) wizardStart(ctx context.Context, chatID int64, editMsgID *int, fro
 
 // wizardCallback handles every "wz:<data>" button.
 func (b *Bot) wizardCallback(ctx context.Context, chatID int64, msgID int, from *models.User, data string) {
-	switch data {
-	case "new":
+	switch {
+	case data == "new":
 		b.wizardStart(ctx, chatID, &msgID, from, false)
 		return
-	case "restart":
+	case data == "restart":
 		b.wizardStart(ctx, chatID, &msgID, from, true)
 		return
+	case strings.HasPrefix(data, "edit:") || strings.HasPrefix(data, "copy:"):
+		if eventID, err := uuid.Parse(data[len("edit:"):]); err == nil {
+			b.wizardOpenEvent(ctx, chatID, &msgID, from, eventID, strings.HasPrefix(data, "copy:"))
+			return
+		}
 	}
 	id, jwt, err := b.resolveIdentity(ctx, from.ID)
 	if err != nil {
@@ -139,7 +202,9 @@ func (b *Bot) wizardCallback(ctx context.Context, chatID int64, msgID int, from 
 	case "resume":
 		b.wizardRender(ctx, chatID, &msgID, ws, d, "")
 	case "publish", "retry":
-		b.wizardSave(ctx, chatID, &msgID, from, ws, d, row.ID.String())
+		b.wizardSave(ctx, chatID, &msgID, from, ws, d, row.ID.String(), false)
+	case "publish:force":
+		b.wizardSave(ctx, chatID, &msgID, from, ws, d, row.ID.String(), true)
 	default:
 		b.wizardApply(ctx, chatID, &msgID, from, ws, d, WizInput{Data: data})
 	}
@@ -310,9 +375,24 @@ func wizardKeyboard(s Screen) *models.InlineKeyboardMarkup {
 	return &models.InlineKeyboardMarkup{InlineKeyboard: rows}
 }
 
-// wizardSave runs the save and reports the outcome.
-func (b *Bot) wizardSave(ctx context.Context, chatID int64, editMsgID *int, from *models.User, ws WizSession, d *Draft, draftID string) {
+// wizardSave runs the save and reports the outcome. For an edited event it
+// first checks that nobody changed the event elsewhere since it was loaded;
+// force skips that check ("save anyway").
+func (b *Bot) wizardSave(ctx context.Context, chatID int64, editMsgID *int, from *models.User, ws WizSession, d *Draft, draftID string, force bool) {
 	loc := ws.Locale
+	if d.Mode == ModeEdit && !force && d.Event.UpdatedAt != "" {
+		if eventID, err := uuid.Parse(d.Event.EventID); err == nil {
+			ev, err := b.arena.GetEvent(ctx, ws.JWT, eventID)
+			if err == nil && ev.UpdatedAt.UTC().Format(time.RFC3339Nano) != d.Event.UpdatedAt {
+				b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.wz.edit_changed_meanwhile", map[string]any{"Name": Esc(d.Event.Name)}),
+					&models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{
+						{Text: b.texts.T(loc, "bot.wz.force_btn", nil), CallbackData: "wz:publish:force"},
+						{Text: b.texts.T(loc, "bot.wz.cancel_btn", nil), CallbackData: "wz:cancel"},
+					}}})
+				return
+			}
+		}
+	}
 	b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.wz.saving", nil), nil)
 	out := b.wizard.Save(ctx, b.arena, ws, d, draftID)
 	if !out.Done {
@@ -344,6 +424,15 @@ func (b *Bot) wizardSave(ctx context.Context, chatID int64, editMsgID *int, from
 	warnings := ""
 	if len(out.Warnings) > 0 {
 		warnings = "\n\n⚠ " + strings.Join(out.Warnings, "\n⚠ ")
+	}
+	if d.Mode == ModeEdit {
+		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.edit_saved", map[string]any{"Name": Esc(d.Event.Name), "Warnings": warnings}), nil)
+		if eventID, err := uuid.Parse(d.Event.EventID); err == nil {
+			b.showEvent(ctx, chatID, nil, from, eventID, 1)
+			return
+		}
+		b.showHome(ctx, chatID, nil, from, "")
+		return
 	}
 	b.send(ctx, chatID, b.texts.T(loc, "bot.wz.saved", map[string]any{
 		"Name": Esc(d.Event.Name), "Published": published, "Link": link, "Warnings": warnings,

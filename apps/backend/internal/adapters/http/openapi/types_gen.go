@@ -5820,6 +5820,15 @@ type ImportBil24SessionAction struct {
 	// Age Age restriction label as sent by Bil24, e.g. "18+".
 	Age *string `json:"age,omitempty"`
 
+	// ArenaEventId Arena extension, source=arena only: the event this bundle edits,
+	// by its arena id (as listed by GET /v1/organizations/{org_id}/events).
+	// Plays the role actionId plays for a site that kept the compat id;
+	// a UUID that is not an event of this organization answers 422
+	// import.invalid_event, and a session addressed by
+	// actionEvent.arenaSessionId that belongs to another event answers
+	// 409 import.action_mismatch.
+	ArenaEventId *openapi_types.UUID `json:"arenaEventId,omitempty"`
+
 	// BigPosterUrl Absolute URL of the Bil24 poster image. Side-loaded into arena media
 	// storage outside the import transaction; a fetch failure is reported
 	// as a warning and never fails the import.
@@ -5852,6 +5861,15 @@ type ImportBil24SessionActionEvent struct {
 	// mint an id ≥ 1e9", supplied it must already be ≥ 1e9 and resolve
 	// to a session of this organization (event-bundle spec §3.1, §3.2).
 	ActionEventId int64 `json:"actionEventId"`
+
+	// ArenaSessionId Arena extension, source=arena only: the session this bundle edits,
+	// by its arena id (as listed by GET .../events/{event_id}/sessions).
+	// With it the top-level externalRef may be omitted — the session
+	// keeps the idempotency key it was created under. A UUID that is
+	// not a session of this organization answers 422
+	// import.invalid_session; a session other than the one externalRef
+	// or actionEventId names answers 409 import.external_ref_conflict.
+	ArenaSessionId *openapi_types.UUID `json:"arenaSessionId,omitempty"`
 
 	// ChargePercent Bil24 service-charge percentage. Informational only — arena never
 	// modifies the sales channel fee from an import and returns the
@@ -5902,6 +5920,13 @@ type ImportBil24SessionActionEvent struct {
 
 // ImportBil24SessionCategory One Bil24 price category — becomes an arena ticket tier.
 type ImportBil24SessionCategory struct {
+	// ArenaTierId Arena extension, source=arena only: the category of the addressed
+	// session this entry edits, by its arena id (as listed by
+	// GET .../sessions/{session_id}/tiers), so a renamed category is
+	// updated rather than created afresh. A UUID that is not a category
+	// of that session answers 422 import.invalid_category.
+	ArenaTierId *openapi_types.UUID `json:"arenaTierId,omitempty"`
+
 	// Availability General-admission capacity of the category. Summed across categories
 	// to size the session inventory. In a chain of categories
 	// (`nextCategoryIndex`) the head's availability is the number of

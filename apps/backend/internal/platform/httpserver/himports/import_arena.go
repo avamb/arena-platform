@@ -159,13 +159,39 @@ func (h *Handler) matchArenaSession(ctx context.Context, q *gen.Queries, tx pgx.
 	var m arenaMatch
 	ae := plan.Request.ActionEvent
 
-	byRef, _, err := q.GetSessionByExternalRef(ctx, plan.OrgID, plan.ExternalRef)
-	switch {
-	case err == nil:
-		m.SessionID = byRef
-		m.RefBound = true
-	case !errors.Is(err, pgx.ErrNoRows):
-		return m, fmt.Errorf("lookup session by external ref: %w", err)
+	if plan.ExternalRef != "" {
+		byRef, _, err := q.GetSessionByExternalRef(ctx, plan.OrgID, plan.ExternalRef)
+		switch {
+		case err == nil:
+			m.SessionID = byRef
+			m.RefBound = true
+		case !errors.Is(err, pgx.ErrNoRows):
+			return m, fmt.Errorf("lookup session by external ref: %w", err)
+		}
+	}
+
+	// An event center addresses the session it is editing by its arena UUID
+	// (the id it listed a moment ago); like venue.arenaVenueId, a UUID that
+	// is not this organization's is reported as invalid, never as foreign.
+	if raw := trimSpace(ae.ArenaSessionID); raw != "" {
+		sessionID, err := uuid.Parse(raw)
+		if err != nil {
+			return m, failImport(http.StatusUnprocessableEntity, "import.invalid_session",
+				"actionEvent.arenaSessionId "+raw+" is not a UUID")
+		}
+		sctx, err := q.GetSessionImportContext(ctx, sessionID)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows), err == nil && sctx.OrgID != plan.OrgID:
+			return m, failImport(http.StatusUnprocessableEntity, "import.invalid_session",
+				"actionEvent.arenaSessionId "+raw+" is not a session of this organization")
+		case err != nil:
+			return m, fmt.Errorf("read session %s: %w", sessionID, err)
+		}
+		if m.SessionID != uuid.Nil && m.SessionID != sessionID {
+			return m, failImport(http.StatusConflict, "import.external_ref_conflict",
+				"externalRef "+plan.ExternalRef+" is bound to a different session than actionEvent.arenaSessionId "+raw)
+		}
+		m.SessionID = sessionID
 	}
 
 	if ae.ActionEventID > 0 {
@@ -206,6 +232,11 @@ func (h *Handler) matchArenaSession(ctx context.Context, q *gen.Queries, tx pgx.
 	}
 	m.Ctx = sctx
 
+	if !m.RefBound && plan.ExternalRef == "" {
+		// Addressed by arenaSessionId without a key: the session keeps the
+		// key it was created under (or stays without one).
+		m.RefBound = true
+	}
 	if !m.RefBound {
 		existing, refErr := q.GetExternalRefBySession(ctx, m.SessionID)
 		switch {
@@ -246,6 +277,28 @@ func (h *Handler) resolveArenaEvent(ctx context.Context, q *gen.Queries, tx pgx.
 	var eventID uuid.UUID
 
 	switch {
+	case trimSpace(a.ArenaEventID) != "":
+		// An event center addresses the event by the UUID it listed; a UUID
+		// that is not this organization's is invalid, never foreign.
+		raw := trimSpace(a.ArenaEventID)
+		parsed, err := uuid.Parse(raw)
+		if err != nil {
+			return uuid.Nil, failImport(http.StatusUnprocessableEntity, "import.invalid_event",
+				"action.arenaEventId "+raw+" is not a UUID")
+		}
+		row, err := q.GetEventRaw(ctx, parsed)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows), err == nil && row.OrgID != plan.OrgID:
+			return uuid.Nil, failImport(http.StatusUnprocessableEntity, "import.invalid_event",
+				"action.arenaEventId "+raw+" is not an event of this organization")
+		case err != nil:
+			return uuid.Nil, fmt.Errorf("read event %s: %w", parsed, err)
+		}
+		eventID = parsed
+		if m.SessionID != uuid.Nil && m.Ctx.EventID != eventID {
+			return uuid.Nil, failImport(http.StatusConflict, "import.action_mismatch",
+				"the addressed session belongs to a different event than action.arenaEventId "+raw)
+		}
 	case a.ActionID > 0:
 		resolved, err := compatids.Resolve(ctx, tx, compatids.KindAction, a.ActionID)
 		switch {
@@ -566,6 +619,24 @@ func (h *Handler) upsertArenaTiers(
 
 		var target uuid.UUID
 		switch {
+		case trimSpace(c.ArenaTierID) != "":
+			// An event center addresses the category it is editing by the UUID
+			// it listed, so a renamed category is updated, not minted anew.
+			raw := trimSpace(c.ArenaTierID)
+			parsed, parseErr := uuid.Parse(raw)
+			if parseErr != nil {
+				return nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_category",
+					fmt.Sprintf("categoryList[%d].arenaTierId %s is not a UUID", i, raw))
+			}
+			for _, t := range existing {
+				if t.ID == parsed {
+					target = parsed
+				}
+			}
+			if target == uuid.Nil {
+				return nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_category",
+					fmt.Sprintf("categoryList[%d].arenaTierId %s is not a category of this session", i, raw))
+			}
 		case c.CategoryPriceID > 0:
 			resolved, resErr := compatids.Resolve(ctx, tx, compatids.KindCategoryPrice, c.CategoryPriceID)
 			switch {

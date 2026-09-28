@@ -78,6 +78,12 @@ type ImportSessionAction struct {
 	// (the organization itself is the promoter), a UUID names one of the
 	// organization's active promoters. The Bil24-format importer ignores it.
 	PromoterID *string `json:"promoterId"`
+	// ArenaEventID (arena extension, source=arena only) addresses an existing
+	// event of the organization by its arena UUID — what an event center
+	// reads from GET /v1/organizations/{org_id}/events. It plays the role
+	// actionId plays for a site that kept the compat id; a UUID that is not
+	// an event of this organization answers 422 import.invalid_event.
+	ArenaEventID string `json:"arenaEventId"`
 }
 
 // Name returns the best available display name for the event: the full name
@@ -110,6 +116,13 @@ type ImportSessionActionEvent struct {
 	ChargePercent   float64 `json:"chargePercent"`
 	SeatingPlanID   int64   `json:"seatingPlanId"`
 	SeatingPlanName string  `json:"seatingPlanName"`
+	// ArenaSessionID (arena extension, source=arena only) addresses an
+	// existing session of the organization by its arena UUID (as listed by
+	// GET .../events/{event_id}/sessions). With it the top-level externalRef
+	// may be omitted: the session keeps whatever idempotency key it was
+	// created under. A UUID that is not a session of this organization
+	// answers 422 import.invalid_session.
+	ArenaSessionID string `json:"arenaSessionId"`
 }
 
 // ImportSessionVenue is the Bil24 "venue" block. Timezone is an IANA zone
@@ -165,6 +178,12 @@ type ImportSessionCategory struct {
 	// PriceSchedule replaces the category's scheduled prices; nil keeps the
 	// stored schedule, an empty list clears it.
 	PriceSchedule *[]ImportPriceWindow `json:"priceSchedule"`
+	// ArenaTierID (arena extension, source=arena only) addresses an existing
+	// category of the addressed session by its arena UUID (as listed by
+	// GET .../sessions/{session_id}/tiers), so a renamed category is updated
+	// rather than created afresh. A UUID that is not a tier of that session
+	// answers 422 import.invalid_category.
+	ArenaTierID string `json:"arenaTierId"`
 }
 
 // ImportPriceWindow is one scheduled price: Price (MAJOR units, like the
