@@ -249,6 +249,16 @@ func replaceImportedSchedule(
 	return nil
 }
 
+// chainPlaces is the number of places every member of the chain owns
+// together — the hall the chain sells.
+func chainPlaces(ci *chainIndex, headID uuid.UUID, stats map[uuid.UUID]gaquota.Stats) int32 {
+	var total int32
+	for _, id := range ci.members(headID) {
+		total += stats[id].Quantity
+	}
+	return total
+}
+
 // applyChainQuantity brings a chain's total number of places to the head's
 // declared availability by growing or shrinking the member that sells now.
 func applyChainQuantity(
@@ -260,10 +270,7 @@ func applyChainQuantity(
 	stats map[uuid.UUID]gaquota.Stats,
 	warnings *warningSink,
 ) error {
-	var total int32
-	for _, id := range ci.members(head.TierID) {
-		total += stats[id].Quantity
-	}
+	total := chainPlaces(ci, head.TierID, stats)
 	if head.Availability <= 0 || head.Availability == total {
 		return nil
 	}

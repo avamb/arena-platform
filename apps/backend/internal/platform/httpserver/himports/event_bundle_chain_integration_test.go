@@ -135,6 +135,72 @@ func TestEventBundleChain_CreateHandOverAndReSave(t *testing.T) {
 	}
 }
 
+// A head that sold nothing hands EVERY place over and owns none. A re-save
+// must not mint it a fresh set: the next sweep would hand those on too and
+// the hall would grow by its own size on every save (staging 2026-09-28).
+func TestEventBundleChain_ReSaveAfterHeadHandedOverEverything(t *testing.T) {
+	pool := import517Pool(t)
+	ctx := context.Background()
+	f := newBundle525Fixture(t, ctx, pool)
+	defer f.cleanup()
+	h := newBundle525Handler(t, pool)
+
+	earlyEnd := time.Now().Add(time.Hour).Truncate(time.Second)
+	rec, out := f.call(h, chainPayload(f, earlyEnd, 30))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create: status %d; body=%s", rec.Code, rec.Body.String())
+	}
+	ids := out.CompatIDs.CategoryPriceIDs
+	early := out.TierIDs[externalIDString(ids[0])]
+	friends := out.TierIDs[externalIDString(ids[1])]
+
+	if _, err := pool.Exec(ctx,
+		`UPDATE ticket_tiers SET sale_window_end = now() - interval '1 minute' WHERE id=$1`, early); err != nil {
+		t.Fatalf("close Early window: %v", err)
+	}
+	sweep := tierchain.NewHandler(tierchain.Options{Store: tierchain.NewPGStore(pool)})
+	if err := sweep(ctx, nil); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if s := readTier(t, ctx, f, out.SessionID, early); s.places != 0 {
+		t.Fatalf("Early after hand-over owns %d places, want 0 (nothing sold)", s.places)
+	}
+
+	resave := func(hall int32) {
+		t.Helper()
+		p := chainPayload(f, earlyEnd, hall)
+		for i := range p.CategoryList {
+			p.CategoryList[i].CategoryPriceID = ids[i]
+		}
+		p.Action.ActionID = out.CompatIDs.ActionID
+		p.ActionEvent.ActionEventID = out.CompatIDs.ActionEventID
+		p.Venue.VenueID = out.CompatIDs.VenueID
+		p.CategoryList[0].SellEndTime = time.Now().Add(-time.Minute).Format(time.RFC3339)
+		if rec, _ := f.call(h, p); rec.Code != http.StatusOK {
+			t.Fatalf("re-save %d: status %d; body=%s", hall, rec.Code, rec.Body.String())
+		}
+		if err := sweep(ctx, nil); err != nil {
+			t.Fatalf("sweep: %v", err)
+		}
+	}
+
+	resave(30)
+	if s := readTier(t, ctx, f, out.SessionID, early); s.places != 0 {
+		t.Errorf("Early after an unchanged re-save owns %d places, want 0 (never re-minted)", s.places)
+	}
+	if s := readTier(t, ctx, f, out.SessionID, friends); s.places != 30 {
+		t.Errorf("Friends after an unchanged re-save = %d places, want 30 (the hall did not grow)", s.places)
+	}
+
+	resave(40)
+	if s := readTier(t, ctx, f, out.SessionID, friends); s.places != 40 {
+		t.Errorf("Friends after a re-save with 40 = %d places, want 40", s.places)
+	}
+	if s := readTier(t, ctx, f, out.SessionID, early); s.places != 0 {
+		t.Errorf("Early after a re-save with 40 owns %d places, want 0", s.places)
+	}
+}
+
 func TestEventBundleChain_PriceSchedule(t *testing.T) {
 	pool := import517Pool(t)
 	ctx := context.Background()

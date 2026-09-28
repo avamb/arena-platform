@@ -95,12 +95,21 @@ func syncImportedCategoryQuotas(
 			// A chain shares one hall (import_chain.go): the head's
 			// availability is the whole chain's, applied to the member
 			// selling now; a successor gets its places from a hand-over.
-			if st, ok := stats[c.TierID]; ok && st.Quantity > 0 {
-				if applyQuantity && chain.head(c.TierID) {
+			//
+			// The head is judged by the CHAIN's places, not its own: a head
+			// that sold nothing hands every place over and owns none, and
+			// minting it a fresh set here grew the hall on every re-save —
+			// the next sweep handed the new places on too (staging,
+			// 2026-09-28: 30 places became 60).
+			if chain.head(c.TierID) && chainPlaces(chain, c.TierID, stats) > 0 {
+				if applyQuantity {
 					if err := applyChainQuantity(ctx, q, sessionID, chain, c, stats, warnings); err != nil {
 						return err
 					}
 				}
+				continue
+			}
+			if st, ok := stats[c.TierID]; ok && st.Quantity > 0 {
 				continue
 			}
 			if chain.successor(c.TierID) && c.Availability <= 0 {
