@@ -1575,7 +1575,11 @@ entries short and factual.
   starts with NO places and closed (no `import.category_sold_out`), and the
   head's availability means the WHOLE chain's places — a repeat import
   applies the difference to the member selling now (`chainIndex.selling`).
-  Re-applying it to a handed-over head would grow the hall. Seated places
+  Re-applying it to a handed-over head would grow the hall. Judge the head by
+  the WHOLE chain's places (`chainPlaces`), never its own: a head that sold
+  nothing owns 0 places after the hand-over, and a repeat import that fell
+  through to the new-category branch minted it a fresh set every save
+  (staging 2026-09-28, 30 became 60 — `TestEventBundleChain_ReSaveAfterHeadHandedOverEverything`). Seated places
   never move; a seated target is refused (`ErrSeatedCategory`) — seats use
   `priceSchedule` instead.
 - **Promoter ≠ organization (migration 0113).** The organization SELLS the
