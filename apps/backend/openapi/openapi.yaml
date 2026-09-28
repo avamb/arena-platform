@@ -2277,6 +2277,167 @@ components:
           format: date-time
           description: Set once the key has been revoked via DELETE; null while active.
 
+    BotInvitationCreateRequest:
+      type: object
+      description: |
+        Body of POST /v1/organizations/{org_id}/bot-invitations: invite a
+        person into the Telegram event-center bot (spec 28 §3.3).
+      required:
+        - email
+        - role
+      properties:
+        email:
+          type: string
+          format: email
+          description: |
+            The invitee's e-mail. An unknown address creates the user (with
+            no usable password; the self-service reset sets one later), a
+            known one is reused.
+        role:
+          type: string
+          enum: [owner, manager]
+          description: |
+            The bot role the membership is created with: owner maps to the
+            org_admin membership role, manager to organizer. A person who
+            already holds a membership in the organization keeps their
+            existing role; the response reports the effective one.
+        locale:
+          type: string
+          description: |
+            Language of the invitation e-mail and of the bot's first messages
+            (`en` default, `ru`). Unknown values fall back to `en`.
+    BotInvitation:
+      type: object
+      description: A bot invitation as the API reports it, never the code.
+      required:
+        - id
+        - org_id
+        - user_id
+        - email
+        - role
+        - membership_role
+        - user_created
+        - expires_at
+        - delivery
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: bot_invitations.id.
+        org_id:
+          type: string
+          format: uuid
+          description: The organization the person was invited into.
+        user_id:
+          type: string
+          format: uuid
+          description: The arena user the Telegram account will be bound to.
+        email:
+          type: string
+          description: The normalized invitee e-mail.
+        role:
+          type: string
+          enum: [owner, manager]
+          description: The effective bot role, derived from the membership role.
+        membership_role:
+          type: string
+          description: The memberships.role the person holds (org_admin or organizer for a fresh invitation).
+        user_created:
+          type: boolean
+          description: True when the e-mail was unknown and a user row was created.
+        expires_at:
+          type: string
+          format: date-time
+          description: When the one-time code stops working (7 days).
+        delivery:
+          type: string
+          description: Always `email`; the deep link is mailed by arena-worker (bot.invitation_email).
+    BotInvitationCreateResponse:
+      type: object
+      description: Response of POST /v1/organizations/{org_id}/bot-invitations.
+      required:
+        - invitation
+      properties:
+        invitation:
+          allOf:
+            - $ref: "#/components/schemas/BotInvitation"
+          description: The invitation that was created.
+        deep_link:
+          type: string
+          description: |
+            `https://t.me/<bot>?start=inv_<code>`, present ONLY when the
+            caller is the platform superadmin (X-Admin-Reason on record) and
+            the bot username is configured, for the hand-over to
+            organizations provisioned by hand. An organization owner never
+            sees the code; the invitee gets it by e-mail.
+    BotInvitationAcceptRequest:
+      type: object
+      description: |
+        Body of POST /v1/bot/invitations/accept, sent by the bot process
+        under its service token when a Telegram user opens the deep link.
+      required:
+        - code
+        - email
+        - telegram_user_id
+      properties:
+        code:
+          type: string
+          description: The /start payload, with or without the `inv_` prefix.
+        email:
+          type: string
+          format: email
+          description: The e-mail the person typed; must match the invitation (case-insensitive).
+        telegram_user_id:
+          type: integer
+          format: int64
+          description: The Telegram account being bound.
+        telegram_username:
+          type: string
+          description: The Telegram @username, stored for display only.
+        locale:
+          type: string
+          description: The bot language for this account (`en` default, `ru`).
+    BotInvitationAcceptResponse:
+      type: object
+      description: Who the Telegram account now is.
+      required:
+        - user_id
+        - email
+        - org_id
+        - org_name
+        - role
+        - membership_role
+        - locale
+        - telegram_user_id
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: The arena user the account is bound to.
+        email:
+          type: string
+          description: That user's e-mail.
+        org_id:
+          type: string
+          format: uuid
+          description: The organization of the invitation (the bot's current organization).
+        org_name:
+          type: string
+          description: Its display name.
+        role:
+          type: string
+          enum: [owner, manager]
+          description: The effective bot role.
+        membership_role:
+          type: string
+          description: The memberships.role behind it.
+        locale:
+          type: string
+          description: The normalized bot language stored for the account.
+        telegram_user_id:
+          type: integer
+          format: int64
+          description: Echo of the bound Telegram account.
     CreateApiKeyRequest:
       type: object
       required: [name, scopes]
@@ -11553,6 +11714,22 @@ components:
             When true, the imported event and session are pushed through the
             standard publish gate. A gate rejection is reported as a warning and
             never fails the import.
+        channelIds:
+          type: array
+          description: |
+            Sales channels of the organization the event is published INTO
+            when `publish` is true (arena extension, spec 28 §3.4). An
+            organization API key bound to a channel still publishes into its
+            own channel and additionally into these; a human operator (JWT),
+            such as the Telegram event-center bot, publishes only where it
+            says, because a JWT carries no channel. Every id must be a sales
+            channel of this organization, or the import answers 422
+            `import.invalid_channel` before writing anything. Empty or absent
+            keeps the earlier behaviour (a key without a channel warns
+            `import.channel_publication_skipped`, a user binds nothing).
+          items:
+            type: string
+            format: uuid
     ImportEventBundleRequest:
       description: |
         Request body for POST /v1/organizations/{org_id}/imports/event-bundle
@@ -11683,7 +11860,10 @@ components:
         channel_id:
           type: string
           format: uuid
-          description: The sales channel the calling API key is bound to (api_keys.channel_id).
+          description: |
+            The sales channel the event was published into: the calling API
+            key's own channel (api_keys.channel_id) or one of the request's
+            `channelIds`.
         feed_token_id:
           type: string
           format: uuid
@@ -11772,6 +11952,15 @@ components:
             last case also raises the warning
             `import.channel_publication_skipped`, and without a channel binding
             no site webhook is delivered for this event.
+        publications:
+          type: array
+          description: |
+            Every sales-channel binding this import performed, in order: the
+            API key's own channel (if any) followed by the request's
+            `channelIds`. Always an array, empty when none happened;
+            `publication` is its first element.
+          items:
+            $ref: "#/components/schemas/ImportPublication"
 
     # ---------------------------------------------------------------
     # Bil24-compatible gateway: POST /compat/bil24/json request/response
@@ -16140,6 +16329,159 @@ paths:
           description: |
             Database pool or membership queries unavailable
             (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Telegram event-center bot (08_architecture/28_telegram_event_center_bot_ru.md)
+  # ─────────────────────────────────────────────────────────────────────────
+
+  /v1/organizations/{org_id}/bot-invitations:
+    post:
+      operationId: createOrganizationBotInvitation
+      summary: Invite a person into the Telegram event-center bot
+      description: |
+        In one transaction: finds or creates the user by e-mail, makes sure
+        they hold a membership in the organization (owner maps to org_admin,
+        manager to organizer; an existing membership keeps its role), stores
+        the SHA-256 of a fresh one-time code and queues the
+        `bot.invitation_email` job that mails the Telegram deep link
+        `https://t.me/<bot>?start=inv_<code>`. Requires `membership.grant`;
+        the caller must be a member of the organization, an organization API
+        key of it, or the platform superadmin with `X-Admin-Reason`. Only
+        the superadmin gets the `deep_link` back in the response.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: false
+          description: Required for the platform superadmin (audit trail); unlocks `deep_link` in the response.
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotInvitationCreateRequest"
+      responses:
+        "201":
+          description: Invitation created and its e-mail queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotInvitationCreateResponse"
+        "400":
+          description: Invalid body, e-mail or role (`bot.invalid_body`, `bot.invalid_email`, `bot.invalid_role`), or org_id is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `membership.grant`, is not a member of the organization, or the superadmin omitted X-Admin-Reason
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The user is deactivated (`bot.user_deactivated`) or a concurrent membership insert collided (`bot.membership_conflict`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not wired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/bot/invitations/accept:
+    post:
+      operationId: acceptBotInvitation
+      summary: Bind a Telegram account to an invited user
+      description: |
+        Called by the bot PROCESS, never by a person, with
+        `Authorization: Bearer <BOT_SERVICE_TOKEN>` when a Telegram user opens
+        an invitation deep link and confirms their e-mail. Redeems the
+        one-time code: unknown, expired and already-used codes all answer the
+        same 404 so the route cannot enumerate codes; the e-mail must match;
+        a Telegram account already bound to a different user is refused with
+        409. On success the account is bound (or re-bound after a
+        revocation) and the invitation is marked used. While
+        `BOT_SERVICE_TOKEN` is unset the route answers 503; it is never open.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotInvitationAcceptRequest"
+      responses:
+        "200":
+          description: The Telegram account is now linked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotInvitationAcceptResponse"
+        "400":
+          description: Invalid body, code, e-mail or telegram_user_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The code is unknown, expired or already used (`bot.invitation_not_found`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The Telegram account is linked to another user (`bot.telegram_already_linked`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The e-mail does not match the invitation (`bot.invitation_email_mismatch`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Service token not configured (`bot.service_not_configured`) or database not wired
           content:
             application/json:
               schema:

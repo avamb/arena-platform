@@ -48,7 +48,10 @@ type membershipResponse struct {
 // validMembershipRoles is the set of allowed role values for the memberships.role
 // column. Mirrors the CHECK constraint in migration 0011_memberships.sql.
 var validMembershipRoles = map[string]bool{
-	"organizer":                   true,
+	"organizer": true,
+	// org_admin is the "owner" of the Telegram event-center bot (migration
+	// 0115 widened memberships_role_check to allow it as a membership role).
+	"org_admin":                   true,
 	"agent":                       true,
 	"platform_operator":           true,
 	"external_ticketing_operator": true,
@@ -138,7 +141,7 @@ func (h *Handler) HandleGrantMembership(w http.ResponseWriter, r *http.Request) 
 	if !validMembershipRoles[req.Role] {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"membership.invalid_role",
-			"role must be one of: organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator",
+			"role must be one of: organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator, org_admin",
 			r,
 			map[string]any{"field": "role", "allowed": MembershipRoleList()},
 		))
@@ -273,7 +276,7 @@ func (h *Handler) HandleRevokeMembership(w http.ResponseWriter, r *http.Request)
 	if !validMembershipRoles[req.Role] {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"membership.invalid_role",
-			"role must be one of: organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator",
+			"role must be one of: organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator, org_admin",
 			r,
 			map[string]any{"field": "role", "allowed": MembershipRoleList()},
 		))
@@ -317,6 +320,7 @@ func MembershipRoleList() []string {
 		"agent",
 		"external_ticketing_operator",
 		"network_operator",
+		"org_admin",
 		"organizer",
 		"platform_operator",
 		"platform_superadmin",

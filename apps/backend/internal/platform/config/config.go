@@ -378,6 +378,22 @@ type Config struct {
 	// sales_notification_subscriptions). A separate bot from the ops one, so
 	// organizers never see operator alerts. Empty disables the deliveries.
 	SalesTelegramBotToken string `env:"SALES_TELEGRAM_BOT_TOKEN" required:"false" default:""`
+
+	// EventsTelegramBotToken is the token of the organizer-facing event-center
+	// bot (cmd/arena-bot, 08_architecture/28_telegram_event_center_bot_ru.md).
+	// Read by the bot process only; empty means the bot does not start.
+	EventsTelegramBotToken string `env:"EVENTS_TELEGRAM_BOT_TOKEN" required:"false" default:""`
+	// EventsTelegramBotUsername is that bot's public username (with or
+	// without "@"). arena-worker builds the invitation deep link
+	// https://t.me/<username>?start=inv_<code> from it.
+	EventsTelegramBotUsername string `env:"EVENTS_TELEGRAM_BOT_USERNAME" required:"false" default:""`
+	// BotServiceToken authenticates the bot process on the ONE route it calls
+	// outside a linked user's identity: POST /v1/bot/invitations/accept.
+	// Empty leaves that route answering 503, never open.
+	BotServiceToken string `env:"BOT_SERVICE_TOKEN" required:"false" default:""`
+	// BotArenaAPIURL is where the bot process reaches arena-api
+	// (http://api:8080 inside compose).
+	BotArenaAPIURL string `env:"BOT_ARENA_API_URL" required:"false" default:"http://localhost:8080"`
 	// OpsWatchdogHeartbeatHourUTC is the UTC hour (0-23) at which the
 	// ops.watchdog job sends its once-daily "still alive" digest.
 	OpsWatchdogHeartbeatHourUTC int `env:"OPS_WATCHDOG_HEARTBEAT_HOUR_UTC" required:"false" default:"7"`
@@ -484,6 +500,7 @@ func (c *Config) LogAttrs() []slog.Attr {
 		slog.Bool("ops_telegram_configured", c.OpsTelegramBotToken != "" && c.OpsTelegramChatID != ""),
 		slog.String("ops_alert_env_label", c.OpsAlertEnvLabel),
 		slog.Bool("sales_telegram_configured", c.SalesTelegramBotToken != ""),
+		slog.Bool("events_bot_configured", c.EventsTelegramBotToken != "" && c.EventsTelegramBotUsername != ""),
 		slog.Int("ops_watchdog_heartbeat_hour_utc", c.OpsWatchdogHeartbeatHourUTC),
 		slog.Bool("metrics_bearer_token_configured", c.MetricsBearerToken != ""),
 	}
@@ -565,6 +582,11 @@ func Load() (*Config, error) {
 		OpsAlertEnvLabel:    getenv("OPS_ALERT_ENV_LABEL", "dev"),
 
 		SalesTelegramBotToken: getenv("SALES_TELEGRAM_BOT_TOKEN", ""),
+
+		EventsTelegramBotToken:    getenv("EVENTS_TELEGRAM_BOT_TOKEN", ""),
+		EventsTelegramBotUsername: getenv("EVENTS_TELEGRAM_BOT_USERNAME", ""),
+		BotServiceToken:           getenv("BOT_SERVICE_TOKEN", ""),
+		BotArenaAPIURL:            getenv("BOT_ARENA_API_URL", "http://localhost:8080"),
 
 		MetricsBearerToken: getenv("METRICS_BEARER_TOKEN", ""),
 	}

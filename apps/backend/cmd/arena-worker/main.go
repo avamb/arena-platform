@@ -517,9 +517,13 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		AppPublicURL: cfg.AppPublicURL,
 		FromAddress:  coalesce(cfg.SMTPFrom, "noreply@arena.example.com"),
 		Logger:       logger,
+		BotUsername:  cfg.EventsTelegramBotUsername,
 	})
 	reg.Register(authemail.JobTypeEmailVerification, authEmailHandler.HandleEmailVerification)
 	reg.Register(authemail.JobTypePasswordResetEmail, authEmailHandler.HandlePasswordResetEmail)
+	// bot.invitation_email carries the Telegram deep link of an event-center
+	// bot invitation (spec 28 §3.3); the link needs EVENTS_TELEGRAM_BOT_USERNAME.
+	reg.Register(authemail.JobTypeBotInvitationEmail, authEmailHandler.HandleBotInvitationEmail)
 
 	// checkout.issue_tickets issues tickets after a payment.succeeded webhook
 	// (feature #363, PR2-07). The handler is enqueued atomically alongside the

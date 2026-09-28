@@ -58,6 +58,9 @@ type importPlan struct {
 	SaleWindowEnd   *time.Time
 	PosterMediaID   *uuid.UUID
 	Timezone        string
+	// ChannelIDs are the request's channelIds, already checked to be sales
+	// channels of OrgID (import.invalid_channel otherwise).
+	ChannelIDs []uuid.UUID
 }
 
 // importResult is the identifier set the response is built from.
@@ -78,9 +81,11 @@ type importResult struct {
 	// uses it, after tx.Commit succeeds, to decide whether to fire the
 	// catalog-change outbox notification exactly once per real transition.
 	PublishedNow bool
-	// Publication is the channel binding the import performed on behalf of the
-	// calling service actor (feature #536), nil when there was none.
-	Publication *ImportPublication
+	// Publication is the first channel binding the import performed (feature
+	// #536), nil when there was none; Publications lists every one of them
+	// (an API key's own channel, then the request's channelIds).
+	Publication  *ImportPublication
+	Publications []ImportPublication
 }
 
 // executeImport runs spec §13.2 steps 2-5 and 7-8 inside tx.
@@ -153,7 +158,7 @@ func (h *Handler) executeImport(ctx context.Context, q *gen.Queries, tx pgx.Tx, 
 	// Still inside the transaction: the site's own key publishes the event into
 	// its channel, so the webhook subscriber exists before handleImport fires
 	// the post-commit v1.event.published notification (feature #536).
-	publication, err := h.ensureChannelPublication(ctx, q, plan, eventID, venueID, warnings)
+	publications, err := h.ensureChannelPublication(ctx, q, plan, eventID, venueID, warnings)
 	if err != nil {
 		return importResult{}, err
 	}
@@ -175,7 +180,8 @@ func (h *Handler) executeImport(ctx context.Context, q *gen.Queries, tx pgx.Tx, 
 		Seating:      seatingOut,
 		CompatIDs:    compat,
 		PublishedNow: publishedNow,
-		Publication:  publication,
+		Publication:  firstPublication(publications),
+		Publications: publications,
 	}, nil
 }
 

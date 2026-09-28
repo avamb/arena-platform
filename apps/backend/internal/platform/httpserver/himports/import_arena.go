@@ -118,7 +118,7 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 
 	// Same channel binding as the bil24 path — an arena-native bundle posted by
 	// the site's own key must reach the site just as reliably (feature #536).
-	publication, err := h.ensureChannelPublication(ctx, q, plan, eventID, venueID, warnings)
+	publications, err := h.ensureChannelPublication(ctx, q, plan, eventID, venueID, warnings)
 	if err != nil {
 		return importResult{}, err
 	}
@@ -142,7 +142,8 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 		Created:      created,
 		CompatIDs:    compat,
 		PublishedNow: publishedNow,
-		Publication:  publication,
+		Publication:  firstPublication(publications),
+		Publications: publications,
 	}, nil
 }
 

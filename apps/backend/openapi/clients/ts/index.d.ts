@@ -1043,6 +1043,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/bot-invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invite a person into the Telegram event-center bot
+         * @description In one transaction: finds or creates the user by e-mail, makes sure
+         *     they hold a membership in the organization (owner maps to org_admin,
+         *     manager to organizer; an existing membership keeps its role), stores
+         *     the SHA-256 of a fresh one-time code and queues the
+         *     `bot.invitation_email` job that mails the Telegram deep link
+         *     `https://t.me/<bot>?start=inv_<code>`. Requires `membership.grant`;
+         *     the caller must be a member of the organization, an organization API
+         *     key of it, or the platform superadmin with `X-Admin-Reason`. Only
+         *     the superadmin gets the `deep_link` back in the response.
+         */
+        post: operations["createOrganizationBotInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/invitations/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bind a Telegram account to an invited user
+         * @description Called by the bot PROCESS, never by a person, with
+         *     `Authorization: Bearer <BOT_SERVICE_TOKEN>` when a Telegram user opens
+         *     an invitation deep link and confirms their e-mail. Redeems the
+         *     one-time code: unknown, expired and already-used codes all answer the
+         *     same 404 so the route cannot enumerate codes; the e-mail must match;
+         *     a Telegram account already bound to a different user is refused with
+         *     409. On success the account is bound (or re-bound after a
+         *     revocation) and the invitation is marked used. While
+         *     `BOT_SERVICE_TOKEN` is unset the route answers 503; it is never open.
+         */
+        post: operations["acceptBotInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/users/{user_id}": {
         parameters: {
             query?: never;
@@ -7900,6 +7956,134 @@ export interface components {
              * @description Set once the key has been revoked via DELETE; null while active.
              */
             revoked_at?: string | null;
+        };
+        /**
+         * @description Body of POST /v1/organizations/{org_id}/bot-invitations: invite a
+         *     person into the Telegram event-center bot (spec 28 §3.3).
+         */
+        BotInvitationCreateRequest: {
+            /**
+             * Format: email
+             * @description The invitee's e-mail. An unknown address creates the user (with
+             *     no usable password; the self-service reset sets one later), a
+             *     known one is reused.
+             */
+            email: string;
+            /**
+             * @description The bot role the membership is created with: owner maps to the
+             *     org_admin membership role, manager to organizer. A person who
+             *     already holds a membership in the organization keeps their
+             *     existing role; the response reports the effective one.
+             * @enum {string}
+             */
+            role: "owner" | "manager";
+            /**
+             * @description Language of the invitation e-mail and of the bot's first messages
+             *     (`en` default, `ru`). Unknown values fall back to `en`.
+             */
+            locale?: string;
+        };
+        /** @description A bot invitation as the API reports it, never the code. */
+        BotInvitation: {
+            /**
+             * Format: uuid
+             * @description bot_invitations.id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The organization the person was invited into.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description The arena user the Telegram account will be bound to.
+             */
+            user_id: string;
+            /** @description The normalized invitee e-mail. */
+            email: string;
+            /**
+             * @description The effective bot role, derived from the membership role.
+             * @enum {string}
+             */
+            role: "owner" | "manager";
+            /** @description The memberships.role the person holds (org_admin or organizer for a fresh invitation). */
+            membership_role: string;
+            /** @description True when the e-mail was unknown and a user row was created. */
+            user_created: boolean;
+            /**
+             * Format: date-time
+             * @description When the one-time code stops working (7 days).
+             */
+            expires_at: string;
+            /** @description Always `email`; the deep link is mailed by arena-worker (bot.invitation_email). */
+            delivery: string;
+        };
+        /** @description Response of POST /v1/organizations/{org_id}/bot-invitations. */
+        BotInvitationCreateResponse: {
+            /** @description The invitation that was created. */
+            invitation: components["schemas"]["BotInvitation"];
+            /**
+             * @description `https://t.me/<bot>?start=inv_<code>`, present ONLY when the
+             *     caller is the platform superadmin (X-Admin-Reason on record) and
+             *     the bot username is configured, for the hand-over to
+             *     organizations provisioned by hand. An organization owner never
+             *     sees the code; the invitee gets it by e-mail.
+             */
+            deep_link?: string;
+        };
+        /**
+         * @description Body of POST /v1/bot/invitations/accept, sent by the bot process
+         *     under its service token when a Telegram user opens the deep link.
+         */
+        BotInvitationAcceptRequest: {
+            /** @description The /start payload, with or without the `inv_` prefix. */
+            code: string;
+            /**
+             * Format: email
+             * @description The e-mail the person typed; must match the invitation (case-insensitive).
+             */
+            email: string;
+            /**
+             * Format: int64
+             * @description The Telegram account being bound.
+             */
+            telegram_user_id: number;
+            /** @description The Telegram @username, stored for display only. */
+            telegram_username?: string;
+            /** @description The bot language for this account (`en` default, `ru`). */
+            locale?: string;
+        };
+        /** @description Who the Telegram account now is. */
+        BotInvitationAcceptResponse: {
+            /**
+             * Format: uuid
+             * @description The arena user the account is bound to.
+             */
+            user_id: string;
+            /** @description That user's e-mail. */
+            email: string;
+            /**
+             * Format: uuid
+             * @description The organization of the invitation (the bot's current organization).
+             */
+            org_id: string;
+            /** @description Its display name. */
+            org_name: string;
+            /**
+             * @description The effective bot role.
+             * @enum {string}
+             */
+            role: "owner" | "manager";
+            /** @description The memberships.role behind it. */
+            membership_role: string;
+            /** @description The normalized bot language stored for the account. */
+            locale: string;
+            /**
+             * Format: int64
+             * @description Echo of the bound Telegram account.
+             */
+            telegram_user_id: number;
         };
         /** @description Request body for POST /v1/organizations/{org_id}/api-keys. */
         CreateApiKeyRequest: {
@@ -16037,6 +16221,19 @@ export interface components {
              *     never fails the import.
              */
             publish?: boolean;
+            /**
+             * @description Sales channels of the organization the event is published INTO
+             *     when `publish` is true (arena extension, spec 28 §3.4). An
+             *     organization API key bound to a channel still publishes into its
+             *     own channel and additionally into these; a human operator (JWT),
+             *     such as the Telegram event-center bot, publishes only where it
+             *     says, because a JWT carries no channel. Every id must be a sales
+             *     channel of this organization, or the import answers 422
+             *     `import.invalid_channel` before writing anything. Empty or absent
+             *     keeps the earlier behaviour (a key without a channel warns
+             *     `import.channel_publication_skipped`, a user binds nothing).
+             */
+            channelIds?: string[];
         };
         /**
          * @description Request body for POST /v1/organizations/{org_id}/imports/event-bundle
@@ -16151,7 +16348,9 @@ export interface components {
         ImportPublication: {
             /**
              * Format: uuid
-             * @description The sales channel the calling API key is bound to (api_keys.channel_id).
+             * @description The sales channel the event was published into: the calling API
+             *     key's own channel (api_keys.channel_id) or one of the request's
+             *     `channelIds`.
              */
             channel_id: string;
             /**
@@ -16227,6 +16426,13 @@ export interface components {
              *     no site webhook is delivered for this event.
              */
             publication: components["schemas"]["ImportPublication"] | null;
+            /**
+             * @description Every sales-channel binding this import performed, in order: the
+             *     API key's own channel (if any) followed by the request's
+             *     `channelIds`. Always an array, empty when none happened;
+             *     `publication` is its first element.
+             */
+            publications?: components["schemas"]["ImportPublication"][];
         };
         /**
          * @description Fields common to every `/compat/bil24/json` command. `fid` and
@@ -20442,6 +20648,168 @@ export interface operations {
              * @description Database pool or membership queries unavailable
              *     (`dependency.database_unavailable`).
              */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createOrganizationBotInvitation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for the platform superadmin (audit trail); unlocks `deep_link` in the response. */
+                "X-Admin-Reason"?: string;
+            };
+            path: {
+                /** @description UUIDv7 primary key of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotInvitationCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Invitation created and its e-mail queued */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotInvitationCreateResponse"];
+                };
+            };
+            /** @description Invalid body, e-mail or role (`bot.invalid_body`, `bot.invalid_email`, `bot.invalid_role`), or org_id is not a UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `membership.grant`, is not a member of the organization, or the superadmin omitted X-Admin-Reason */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The user is deactivated (`bot.user_deactivated`) or a concurrent membership insert collided (`bot.membership_conflict`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    acceptBotInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotInvitationAcceptRequest"];
+            };
+        };
+        responses: {
+            /** @description The Telegram account is now linked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotInvitationAcceptResponse"];
+                };
+            };
+            /** @description Invalid body, code, e-mail or telegram_user_id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The code is unknown, expired or already used (`bot.invitation_not_found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Telegram account is linked to another user (`bot.telegram_already_linked`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The e-mail does not match the invitation (`bot.invitation_email_mismatch`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured (`bot.service_not_configured`) or database not wired */
             503: {
                 headers: {
                     [name: string]: unknown;

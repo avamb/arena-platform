@@ -197,7 +197,7 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 	if !validMembershipRoles[req.Role] {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"admin_membership.invalid_role",
-			"role must be one of: organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator",
+			"role must be one of: organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator, org_admin",
 			r,
 			map[string]any{"field": "role", "allowed": MembershipRoleList()},
 		))
@@ -448,7 +448,7 @@ func (h *Handler) HandleAdminChangeMemberRole(w http.ResponseWriter, r *http.Req
 	if !validMembershipRoles[req.Role] {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"admin_membership.invalid_role",
-			"role must be one of: organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator",
+			"role must be one of: organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator, org_admin",
 			r,
 			map[string]any{"field": "role", "allowed": MembershipRoleList()},
 		))

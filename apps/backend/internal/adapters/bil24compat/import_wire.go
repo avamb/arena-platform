@@ -250,6 +250,14 @@ type ImportSessionRequest struct {
 	SeatList     []ImportSessionSeat      `json:"seatList"`
 	SVG          string                   `json:"svg"`
 	Publish      bool                     `json:"publish"`
+	// ChannelIDs names the organization's sales channels the event is
+	// published into when Publish is true (arena extension, spec 28 §3.4).
+	// A caller that is an organization API key bound to a channel publishes
+	// into that channel as before, plus these; a human operator (JWT) — the
+	// Telegram event-center bot — publishes only where it says. Empty keeps
+	// the earlier behaviour: an API key without a channel warns, a user
+	// publishes into no channel.
+	ChannelIDs []string `json:"channelIds"`
 }
 
 // HasPlacement reports whether any category is a seated (placement) one.

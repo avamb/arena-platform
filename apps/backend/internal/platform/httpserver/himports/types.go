@@ -115,6 +115,10 @@ type ImportSessionResponse struct {
 	ExternalRef          *string              `json:"external_ref"`
 	CompatIDs            ImportCompatIDs      `json:"compat_ids"`
 	Publication          *ImportPublication   `json:"publication"`
+	// Publications lists every channel binding this import performed: the
+	// API key's own channel (if any) followed by the request's channelIds.
+	// Never null — an empty array when none happened.
+	Publications []ImportPublication `json:"publications"`
 }
 
 // ImportPublication reports the channel binding the import performed on the

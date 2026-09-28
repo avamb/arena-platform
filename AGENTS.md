@@ -1640,6 +1640,35 @@ entries short and factual.
   `TestOrgRead_EventRoutesStayInsideTheOrganization`. The same audit found
   `POST /v1/events/{event_id}/report` writing the EVENT id into
   `event_reports.org_id`.
+- **The Telegram event-center bot is an external REST client; its only
+  server-side pieces are migration 0115, `httpserver/hbot` and
+  `authemail.HandleBotInvitationEmail`** (spec
+  `08_architecture/28_telegram_event_center_bot_ru.md`). Owner = membership
+  role `org_admin` (0115 widened `memberships_role_check`; before that the
+  role existed in `roles` but could not be a membership), manager =
+  `organizer`, which 0115 also granted the wizard's permission set
+  (`import.bil24_session`, `venue.create`, `city.create`, `promoter.*`,
+  `session.read`, `tier.read`, `order.read`, `publication.read`,
+  `feed_token.read`). `POST /v1/organizations/{org_id}/bot-invitations`
+  creates the membership AT ONCE and mails a `https://t.me/<bot>?start=inv_<code>`
+  deep link through the `bot.invitation_email` worker job, whose link needs
+  `EVENTS_TELEGRAM_BOT_USERNAME` in arena-worker's environment (the job
+  errors and retries without it). Only the platform superadmin gets the link
+  back in the response (`deep_link`); an org owner never sees the code.
+  `POST /v1/bot/invitations/accept` is the ONE route the bot process calls
+  outside a linked user's identity — guarded by `BOT_SERVICE_TOKEN`
+  (`hbot.RequireServiceToken`, which answers 503 when the token is unset,
+  never open, unlike the `/metrics` guard). Everything else the bot does is
+  a JWT minted for the linked user with the shared `JWT_SIGNING_SECRET`, so
+  memberships, not `user_roles`, must carry the person's role.
+- **A JWT caller of the event-bundle import binds the event to NO sales
+  channel unless it names `channelIds`.** `ensureChannelPublication` only
+  ever knew `api_keys.channel_id`; a human operator (the bot) got a
+  published event that appeared in no storefront and fired no site webhook.
+  `channelIds` (checked against the organization BEFORE the transaction,
+  422 `import.invalid_channel`) is the fix; the response's `publications[]`
+  lists every binding and `publication` stays the first one. An API key
+  bound to a channel publishes into its own channel plus the named ones.
 - **An event center picks a venue by `venue.arenaVenueId`** (event-bundle,
   source=arena): the org's venue UUID from `GET /v1/organizations/{org_id}/venues`.
   It wins over `venueId`/`venueName`, never edits the venue, and answers 422

@@ -185,6 +185,24 @@ const (
 	BindSessionSeatingRequestAdmissionModeHybrid        BindSessionSeatingRequestAdmissionMode = "hybrid"
 )
 
+// Defines values for BotInvitationRole.
+const (
+	BotInvitationRoleManager BotInvitationRole = "manager"
+	BotInvitationRoleOwner   BotInvitationRole = "owner"
+)
+
+// Defines values for BotInvitationAcceptResponseRole.
+const (
+	BotInvitationAcceptResponseRoleManager BotInvitationAcceptResponseRole = "manager"
+	BotInvitationAcceptResponseRoleOwner   BotInvitationAcceptResponseRole = "owner"
+)
+
+// Defines values for BotInvitationCreateRequestRole.
+const (
+	Manager BotInvitationCreateRequestRole = "manager"
+	Owner   BotInvitationCreateRequestRole = "owner"
+)
+
 // Defines values for CancelTicketRequestRefundMode.
 const (
 	Automatic CancelTicketRequestRefundMode = "automatic"
@@ -3100,6 +3118,126 @@ type BindSessionSeatingResponse struct {
 	} `json:"session"`
 }
 
+// BotInvitation A bot invitation as the API reports it, never the code.
+type BotInvitation struct {
+	// Delivery Always `email`; the deep link is mailed by arena-worker (bot.invitation_email).
+	Delivery string `json:"delivery"`
+
+	// Email The normalized invitee e-mail.
+	Email string `json:"email"`
+
+	// ExpiresAt When the one-time code stops working (7 days).
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Id bot_invitations.id.
+	Id openapi_types.UUID `json:"id"`
+
+	// MembershipRole The memberships.role the person holds (org_admin or organizer for a fresh invitation).
+	MembershipRole string `json:"membership_role"`
+
+	// OrgId The organization the person was invited into.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Role The effective bot role, derived from the membership role.
+	Role BotInvitationRole `json:"role"`
+
+	// UserCreated True when the e-mail was unknown and a user row was created.
+	UserCreated bool `json:"user_created"`
+
+	// UserId The arena user the Telegram account will be bound to.
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// BotInvitationRole The effective bot role, derived from the membership role.
+type BotInvitationRole string
+
+// BotInvitationAcceptRequest Body of POST /v1/bot/invitations/accept, sent by the bot process
+// under its service token when a Telegram user opens the deep link.
+type BotInvitationAcceptRequest struct {
+	// Code The /start payload, with or without the `inv_` prefix.
+	Code string `json:"code"`
+
+	// Email The e-mail the person typed; must match the invitation (case-insensitive).
+	Email openapi_types.Email `json:"email"`
+
+	// Locale The bot language for this account (`en` default, `ru`).
+	Locale *string `json:"locale,omitempty"`
+
+	// TelegramUserId The Telegram account being bound.
+	TelegramUserId int64 `json:"telegram_user_id"`
+
+	// TelegramUsername The Telegram @username, stored for display only.
+	TelegramUsername *string `json:"telegram_username,omitempty"`
+}
+
+// BotInvitationAcceptResponse Who the Telegram account now is.
+type BotInvitationAcceptResponse struct {
+	// Email That user's e-mail.
+	Email string `json:"email"`
+
+	// Locale The normalized bot language stored for the account.
+	Locale string `json:"locale"`
+
+	// MembershipRole The memberships.role behind it.
+	MembershipRole string `json:"membership_role"`
+
+	// OrgId The organization of the invitation (the bot's current organization).
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Its display name.
+	OrgName string `json:"org_name"`
+
+	// Role The effective bot role.
+	Role BotInvitationAcceptResponseRole `json:"role"`
+
+	// TelegramUserId Echo of the bound Telegram account.
+	TelegramUserId int64 `json:"telegram_user_id"`
+
+	// UserId The arena user the account is bound to.
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// BotInvitationAcceptResponseRole The effective bot role.
+type BotInvitationAcceptResponseRole string
+
+// BotInvitationCreateRequest Body of POST /v1/organizations/{org_id}/bot-invitations: invite a
+// person into the Telegram event-center bot (spec 28 §3.3).
+type BotInvitationCreateRequest struct {
+	// Email The invitee's e-mail. An unknown address creates the user (with
+	// no usable password; the self-service reset sets one later), a
+	// known one is reused.
+	Email openapi_types.Email `json:"email"`
+
+	// Locale Language of the invitation e-mail and of the bot's first messages
+	// (`en` default, `ru`). Unknown values fall back to `en`.
+	Locale *string `json:"locale,omitempty"`
+
+	// Role The bot role the membership is created with: owner maps to the
+	// org_admin membership role, manager to organizer. A person who
+	// already holds a membership in the organization keeps their
+	// existing role; the response reports the effective one.
+	Role BotInvitationCreateRequestRole `json:"role"`
+}
+
+// BotInvitationCreateRequestRole The bot role the membership is created with: owner maps to the
+// org_admin membership role, manager to organizer. A person who
+// already holds a membership in the organization keeps their
+// existing role; the response reports the effective one.
+type BotInvitationCreateRequestRole string
+
+// BotInvitationCreateResponse Response of POST /v1/organizations/{org_id}/bot-invitations.
+type BotInvitationCreateResponse struct {
+	// DeepLink `https://t.me/<bot>?start=inv_<code>`, present ONLY when the
+	// caller is the platform superadmin (X-Admin-Reason on record) and
+	// the bot username is configured, for the hand-over to
+	// organizations provisioned by hand. An organization owner never
+	// sees the code; the invitee gets it by e-mail.
+	DeepLink *string `json:"deep_link,omitempty"`
+
+	// Invitation The invitation that was created.
+	Invitation BotInvitation `json:"invitation"`
+}
+
 // BulkSessionPricingRequest AB-48 step 5 - apply one price grid to several sessions of an
 // event in one pass (the reference's multi-select "set ->").
 // Categories are matched by tier NAME (tiers are minted per plan
@@ -5839,6 +5977,18 @@ type ImportBil24SessionRequest struct {
 	// CategoryList Price categories to import as ticket tiers. Must contain at least one entry.
 	CategoryList []ImportBil24SessionCategory `json:"categoryList"`
 
+	// ChannelIds Sales channels of the organization the event is published INTO
+	// when `publish` is true (arena extension, spec 28 §3.4). An
+	// organization API key bound to a channel still publishes into its
+	// own channel and additionally into these; a human operator (JWT),
+	// such as the Telegram event-center bot, publishes only where it
+	// says, because a JWT carries no channel. Every id must be a sales
+	// channel of this organization, or the import answers 422
+	// `import.invalid_channel` before writing anything. Empty or absent
+	// keeps the earlier behaviour (a key without a channel warns
+	// `import.channel_publication_skipped`, a user binds nothing).
+	ChannelIds *[]openapi_types.UUID `json:"channelIds,omitempty"`
+
 	// Publish When true, the imported event and session are pushed through the
 	// standard publish gate. A gate rejection is reported as a warning and
 	// never fails the import.
@@ -5885,6 +6035,12 @@ type ImportBil24SessionResponse struct {
 	// `import.channel_publication_skipped`, and without a channel binding
 	// no site webhook is delivered for this event.
 	Publication *ImportPublication `json:"publication"`
+
+	// Publications Every sales-channel binding this import performed, in order: the
+	// API key's own channel (if any) followed by the request's
+	// `channelIds`. Always an array, empty when none happened;
+	// `publication` is its first element.
+	Publications *[]ImportPublication `json:"publications,omitempty"`
 
 	// SeatingPlanVersionId Seating plan version created by this import. Always null — this
 	// endpoint imports general-admission sessions only.
@@ -6035,6 +6191,18 @@ type ImportEventBundleRequest struct {
 	// CategoryList Price categories to import as ticket tiers. Must contain at least one entry.
 	CategoryList []ImportBil24SessionCategory `json:"categoryList"`
 
+	// ChannelIds Sales channels of the organization the event is published INTO
+	// when `publish` is true (arena extension, spec 28 §3.4). An
+	// organization API key bound to a channel still publishes into its
+	// own channel and additionally into these; a human operator (JWT),
+	// such as the Telegram event-center bot, publishes only where it
+	// says, because a JWT carries no channel. Every id must be a sales
+	// channel of this organization, or the import answers 422
+	// `import.invalid_channel` before writing anything. Empty or absent
+	// keeps the earlier behaviour (a key without a channel warns
+	// `import.channel_publication_skipped`, a user binds nothing).
+	ChannelIds *[]openapi_types.UUID `json:"channelIds,omitempty"`
+
 	// ExternalRef Caller-side idempotency key for the session, unique within
 	// the organization (migration 0099 session_external_refs).
 	// MANDATORY when source=arena (422
@@ -6088,7 +6256,9 @@ type ImportEventBundleRequestSource string
 // inside the same transaction, before the v1.event.published notification
 // fires. Repeating the bundle reuses the same feed token and publication.
 type ImportPublication struct {
-	// ChannelId The sales channel the calling API key is bound to (api_keys.channel_id).
+	// ChannelId The sales channel the event was published into: the calling API
+	// key's own channel (api_keys.channel_id) or one of the request's
+	// `channelIds`.
 	ChannelId openapi_types.UUID `json:"channel_id"`
 
 	// FeedTokenId The channel's agent feed token that carries the webhook fan-out.
@@ -11538,6 +11708,12 @@ type GetOrgBillingUsageParams struct {
 	PeriodEnd *time.Time `form:"period_end,omitempty" json:"period_end,omitempty"`
 }
 
+// CreateOrganizationBotInvitationParams defines parameters for CreateOrganizationBotInvitation.
+type CreateOrganizationBotInvitationParams struct {
+	// XAdminReason Required for the platform superadmin (audit trail); unlocks `deep_link` in the response.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
+}
+
 // CreateFeedTokenJSONBody defines parameters for CreateFeedToken.
 type CreateFeedTokenJSONBody struct {
 	Label *string `json:"label,omitempty"`
@@ -11918,6 +12094,9 @@ type StripeBillingWebhookJSONRequestBody StripeBillingWebhookJSONBody
 // CreateTariffJSONRequestBody defines body for CreateTariff for application/json ContentType.
 type CreateTariffJSONRequestBody CreateTariffJSONBody
 
+// AcceptBotInvitationJSONRequestBody defines body for AcceptBotInvitation for application/json ContentType.
+type AcceptBotInvitationJSONRequestBody = BotInvitationAcceptRequest
+
 // ValidatePromoCodeJSONRequestBody defines body for ValidatePromoCode for application/json ContentType.
 type ValidatePromoCodeJSONRequestBody = ValidatePromoCodeRequest
 
@@ -11974,6 +12153,9 @@ type CreateOrganizationBankAccountJSONRequestBody = CreateBankAccountRequest
 
 // UpdateOrganizationBankAccountJSONRequestBody defines body for UpdateOrganizationBankAccount for application/json ContentType.
 type UpdateOrganizationBankAccountJSONRequestBody = UpdateBankAccountRequest
+
+// CreateOrganizationBotInvitationJSONRequestBody defines body for CreateOrganizationBotInvitation for application/json ContentType.
+type CreateOrganizationBotInvitationJSONRequestBody = BotInvitationCreateRequest
 
 // CreateChannelJSONRequestBody defines body for CreateChannel for application/json ContentType.
 type CreateChannelJSONRequestBody = CreateChannelRequest

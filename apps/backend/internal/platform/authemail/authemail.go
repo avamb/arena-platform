@@ -129,6 +129,11 @@ type HandlerOptions struct {
 	FromAddress string
 	// Logger receives structured log output. Defaults to slog.Default().
 	Logger *slog.Logger
+	// BotUsername is the Telegram username of the event-center bot
+	// (EVENTS_TELEGRAM_BOT_USERNAME, with or without "@"). Only the
+	// bot.invitation_email job needs it; when empty that job fails and
+	// retries instead of mailing a dead link.
+	BotUsername string
 }
 
 // Handler provides worker.HandlerFunc implementations for auth email jobs.
@@ -139,6 +144,7 @@ type Handler struct {
 	appPublicURL string // pre-trimmed base URL
 	fromAddress  string
 	logger       *slog.Logger
+	botUsername  string
 }
 
 // NewHandler constructs a Handler from the given options.
@@ -156,6 +162,7 @@ func NewHandler(opts HandlerOptions) *Handler {
 		appPublicURL: base,
 		fromAddress:  opts.FromAddress,
 		logger:       logger,
+		botUsername:  strings.TrimPrefix(strings.TrimSpace(opts.BotUsername), "@"),
 	}
 }
 

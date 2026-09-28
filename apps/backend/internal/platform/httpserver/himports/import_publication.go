@@ -25,10 +25,14 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 )
@@ -41,18 +45,25 @@ import (
 // `…Token… = "literal"` const as a hardcoded credential, and this is a label.)
 const autoFeedLabel = "auto:event-bundle"
 
-// ensureChannelPublication publishes eventID into the sales channel the calling
-// service actor is bound to, minting the channel's feed token on first use.
+// ensureChannelPublication publishes eventID into every sales channel the
+// import is asked to bind it to, minting each channel's feed token on first
+// use, and returns the bindings in order.
 //
-// It answers (nil, nil) — no publication, no error — for every case that is not
-// "a site's own key asked for publish:true and the event really is published":
-// a human operator (who publishes through the admin UI, where the channel is an
-// explicit choice), a bundle without publish:true, and a publish that the
-// AB-42 gate refused (applyPublish already warned about that one; binding a
-// draft event into a public feed would be worse than not binding it).
+// The targets are the calling service actor's own channel (an organization
+// API key bound to a site, feature #536, spec 22 §2.2) followed by the
+// request's channelIds (spec 28 §3.4 — the Telegram event-center bot acts as
+// a human operator and has no key, so it names the channels explicitly;
+// resolveChannelIDs already proved every one belongs to the organization).
 //
-// A key with no channel is a supported configuration, not an error — it just
-// cannot receive webhooks, so it gets WarnChannelPublicationSkipped.
+// It answers (nil, nil) — no publication, no error — for every case that is
+// not "publish:true and the event really is published": a bundle without
+// publish:true, a caller with no target at all, and a publish that the AB-42
+// gate refused (applyPublish already warned about that one; binding a draft
+// event into a public feed would be worse than not binding it).
+//
+// A key with no channel and no channelIds is a supported configuration, not
+// an error — it just cannot receive webhooks, so it gets
+// WarnChannelPublicationSkipped.
 //
 // Every database failure is returned, never swallowed: a failed statement
 // inside a pgx transaction poisons the whole transaction, so a "best effort"
@@ -64,22 +75,35 @@ func (h *Handler) ensureChannelPublication(
 	plan importPlan,
 	eventID, venueID uuid.UUID,
 	warnings *warningSink,
-) (*ImportPublication, error) {
+) ([]ImportPublication, error) {
 	if !plan.Request.Publish {
 		return nil, nil
 	}
-	actor, ok := auth.ActorFromContext(ctx)
-	if !ok || actor.Type != auth.ActorTypeService {
+	targets := make([]uuid.UUID, 0, len(plan.ChannelIDs)+1)
+	seen := make(map[uuid.UUID]bool, len(plan.ChannelIDs)+1)
+	add := func(id uuid.UUID) {
+		if !seen[id] {
+			seen[id] = true
+			targets = append(targets, id)
+		}
+	}
+	if actor, ok := auth.ActorFromContext(ctx); ok && actor.Type == auth.ActorTypeService {
+		if actor.ChannelID != nil {
+			add(*actor.ChannelID)
+		} else if len(plan.ChannelIDs) == 0 {
+			warnings.add(WarnChannelPublicationSkipped,
+				"the event was published but this API key is not bound to a sales channel, "+
+					"so it was not published into any channel and no site webhook will be delivered; "+
+					"bind the key to the site channel to receive event.created")
+			return nil, nil
+		}
+	}
+	for _, id := range plan.ChannelIDs {
+		add(id)
+	}
+	if len(targets) == 0 {
 		return nil, nil
 	}
-	if actor.ChannelID == nil {
-		warnings.add(WarnChannelPublicationSkipped,
-			"the event was published but this API key is not bound to a sales channel, "+
-				"so it was not published into any channel and no site webhook will be delivered; "+
-				"bind the key to the site channel to receive event.created")
-		return nil, nil
-	}
-	channelID := *actor.ChannelID
 
 	// The publish gate may have refused the transition (applyPublish warns on
 	// its own); re-reading the row is the only honest way to tell "already
@@ -93,11 +117,6 @@ func (h *Handler) ensureChannelPublication(
 		return nil, nil
 	}
 
-	token, err := h.ensureChannelFeedToken(ctx, q, channelID)
-	if err != nil {
-		return nil, err
-	}
-
 	// The publication is scoped to the city of the session's venue, matching
 	// what an operator would pick in the admin UI. A venue without a city
 	// yields nil, which means "visible everywhere" rather than "invisible".
@@ -108,15 +127,79 @@ func (h *Handler) ensureChannelPublication(
 		return nil, fmt.Errorf("read venue city for channel publication: %w", vErr)
 	}
 
-	pub, err := q.PublishEvent(ctx, eventID, token.ID, cityID)
-	if err != nil {
-		return nil, fmt.Errorf("publish event into channel %s: %w", channelID, err)
+	out := make([]ImportPublication, 0, len(targets))
+	for _, channelID := range targets {
+		token, err := h.ensureChannelFeedToken(ctx, q, channelID)
+		if err != nil {
+			return nil, err
+		}
+		pub, err := q.PublishEvent(ctx, eventID, token.ID, cityID)
+		if err != nil {
+			return nil, fmt.Errorf("publish event into channel %s: %w", channelID, err)
+		}
+		out = append(out, ImportPublication{
+			ChannelID:     channelID,
+			FeedTokenID:   token.ID,
+			PublicationID: pub.ID,
+		})
 	}
-	return &ImportPublication{
-		ChannelID:     channelID,
-		FeedTokenID:   token.ID,
-		PublicationID: pub.ID,
-	}, nil
+	return out, nil
+}
+
+// resolveChannelIDs parses the request's channelIds and proves each one is a
+// sales channel of orgID. It runs before the import transaction, so a caller
+// error costs no write. A nil Handler.queries (unit tests without a
+// database) accepts an empty list and refuses a non-empty one.
+func (h *Handler) resolveChannelIDs(ctx context.Context, orgID uuid.UUID, req bil24compat.ImportSessionRequest) ([]uuid.UUID, error) {
+	if len(req.ChannelIDs) == 0 {
+		return nil, nil
+	}
+	out := make([]uuid.UUID, 0, len(req.ChannelIDs))
+	seen := make(map[uuid.UUID]bool, len(req.ChannelIDs))
+	for _, raw := range req.ChannelIDs {
+		raw = trimSpace(raw)
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return nil, failImport(http.StatusUnprocessableEntity, "import.invalid_channel",
+				"channelIds entry "+raw+" is not a UUID")
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if h.queries == nil {
+			return nil, failImport(http.StatusUnprocessableEntity, "import.invalid_channel",
+				"channelIds cannot be verified without a database")
+		}
+		if _, err := h.queries.GetSalesChannelByID(ctx, id, orgID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, failImport(http.StatusUnprocessableEntity, "import.invalid_channel",
+					"channelIds entry "+raw+" is not a sales channel of this organization")
+			}
+			return nil, fmt.Errorf("read sales channel %s: %w", id, err)
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+// firstPublication keeps the response's singular `publication` field: the
+// first binding, or nil when none happened.
+func firstPublication(pubs []ImportPublication) *ImportPublication {
+	if len(pubs) == 0 {
+		return nil
+	}
+	first := pubs[0]
+	return &first
+}
+
+// nonNilPublications makes the response's `publications` an array even when
+// nothing was bound (the contract promises an array, never null).
+func nonNilPublications(pubs []ImportPublication) []ImportPublication {
+	if pubs == nil {
+		return []ImportPublication{}
+	}
+	return pubs
 }
 
 // ensureChannelFeedToken returns the channel's usable feed token, creating one

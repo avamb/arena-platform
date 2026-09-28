@@ -209,6 +209,16 @@ func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request, forcedSou
 	// to a third-party host and must never hold row locks open. A failure is
 	// downgraded to a warning — a missing poster does not invalidate an
 	// otherwise correct catalog import.
+	// The request's channelIds are checked against the organization BEFORE
+	// anything is written: a foreign or unknown channel is a caller error
+	// (422 import.invalid_channel), not a reason to lose the import.
+	channelIDs, chErr := h.resolveChannelIDs(ctx, orgID, req)
+	if chErr != nil {
+		h.writeImportError(w, r, chErr)
+		return
+	}
+	plan.ChannelIDs = channelIDs
+
 	plan.PosterMediaID = h.sideLoadPoster(ctx, orgID, req,
 		h.currentPosterMediaID(ctx, orgID, source, externalRef, req), warnings)
 
@@ -272,6 +282,7 @@ func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request, forcedSou
 		ExternalRef:          refOut,
 		CompatIDs:            result.CompatIDs,
 		Publication:          result.Publication,
+		Publications:         nonNilPublications(result.Publications),
 	})
 }
 
