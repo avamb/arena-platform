@@ -306,6 +306,9 @@ func TestEventBundleChain_QuantitySteps(t *testing.T) {
 	p := chainPayload(f, earlyEnd, 10)
 	p.CategoryList[0].SellLimit = &three
 	p.CategoryList[1].SellLimit = &four
+	// Planned to take over at Early's date; it opens before that when Early
+	// sells out first.
+	p.CategoryList[1].SellStartTime = earlyEnd.Format(time.RFC3339)
 	rec, out := f.call(h, p)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create: status %d; body=%s", rec.Code, rec.Body.String())
@@ -365,6 +368,10 @@ func TestEventBundleChain_QuantitySteps(t *testing.T) {
 	want("exhausted", "Early", early, 3, false)
 	want("exhausted", "Friends", friends, 4, true)
 	want("exhausted", "Last minute", last, 5, false)
+	var started bool
+	if err := pool.QueryRow(ctx, `SELECT sale_window_start <= now() FROM ticket_tiers WHERE id=$1`, friends).Scan(&started); err != nil || !started {
+		t.Errorf("Friends opened early must start selling now: started=%v err=%v", started, err)
+	}
 
 	// Removing the middle step's limit gives it the rest of the hall back.
 	resave("limit removed", 12, func(p *bil24compat.ImportSessionRequest) {

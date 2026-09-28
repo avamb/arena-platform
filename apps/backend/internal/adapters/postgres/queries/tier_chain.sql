@@ -124,3 +124,13 @@ SELECT count(*) AS owned,
                           AND NOT EXISTS (SELECT 1 FROM reservation_seats rs WHERE rs.session_seat_id = ss.id)) AS free
 FROM   session_seats ss
 WHERE  ss.session_id = $1 AND ss.tier_id = $2 AND ss.kind = 'ga_unit';
+
+-- name: StartTierSaleNow :exec
+-- A category that opens early — its quantity step before it sold out before
+-- the date (migration 0114) — starts selling now, not at the date it was
+-- planned to take over.
+UPDATE ticket_tiers
+SET    sale_window_start = now(), updated_at = now()
+WHERE  id = $1 AND session_id = $2 AND deleted_at IS NULL
+  AND  sale_window_start > now()
+  AND  (sale_window_end IS NULL OR sale_window_end > now());

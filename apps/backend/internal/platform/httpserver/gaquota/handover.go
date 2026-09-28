@@ -80,6 +80,9 @@ func HandOver(ctx context.Context, txq *gen.Queries, link gen.TierChainRow) (Han
 		if _, err := txq.SetTicketTierOpen(ctx, link.NextTierID, link.SessionID, true); err != nil {
 			return res, fmt.Errorf("gaquota: open target category: %w", err)
 		}
+		if err := txq.StartTierSaleNow(ctx, link.NextTierID, link.SessionID); err != nil {
+			return res, fmt.Errorf("gaquota: start target sale: %w", err)
+		}
 		if err := txq.MarkTierChainHandedOver(ctx, link.TierID); err != nil {
 			return res, fmt.Errorf("gaquota: stamp hand-over: %w", err)
 		}

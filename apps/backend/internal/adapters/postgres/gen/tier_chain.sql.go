@@ -238,3 +238,17 @@ func (q *Queries) CountTierGAPlaces(ctx context.Context, sessionID, tierID uuid.
 	err = q.db.QueryRow(ctx, countTierGAPlaces, sessionID, tierID).Scan(&owned, &free)
 	return owned, free, err
 }
+
+const startTierSaleNow = `-- name: StartTierSaleNow :exec
+UPDATE ticket_tiers
+SET    sale_window_start = now(), updated_at = now()
+WHERE  id = $1 AND session_id = $2 AND deleted_at IS NULL
+  AND  sale_window_start > now()
+  AND  (sale_window_end IS NULL OR sale_window_end > now())`
+
+// StartTierSaleNow moves a category's sale start to now when it opens before
+// its planned date (a quantity step sold out early).
+func (q *Queries) StartTierSaleNow(ctx context.Context, tierID, sessionID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, startTierSaleNow, tierID, sessionID)
+	return err
+}
