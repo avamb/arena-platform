@@ -147,6 +147,9 @@ other = "Начать или открыть меню"
 ["bot.cmd_events"]
 other = "Мои ивенты"
 
+["bot.cmd_new"]
+other = "Новый ивент"
+
 ["bot.cmd_org"]
 other = "Выбрать организацию"
 
@@ -284,3 +287,419 @@ other = "Ваш доступ к этой организации убрали. Е
 
 ["bot.unknown_input"]
 other = "Я не понял. Воспользуйтесь кнопками ниже."
+
+# --- мастер «+ Ивент» (eventbot/wizard.go) -------------------------------------
+
+["bot.wz.new_event_btn"]
+other = "+ Ивент"
+
+["bot.wz.cancel_btn"]
+other = "Отмена"
+
+["bot.wz.back_btn"]
+other = "← Назад"
+
+["bot.wz.skip_btn"]
+other = "Пропустить"
+
+["bot.wz.keep_btn"]
+other = "Оставить: {{.Value}}"
+
+["bot.wz.step_title"]
+other = "<b>Шаг {{.N}} из 6 · {{.Title}}</b>\n"
+
+["bot.wz.title_event"]
+other = "Ивент"
+
+["bot.wz.title_when"]
+other = "Когда и где"
+
+["bot.wz.title_tickets"]
+other = "Билеты"
+
+["bot.wz.title_extra"]
+other = "Описание и продажи"
+
+["bot.wz.title_summary"]
+other = "Проверьте и опубликуйте"
+
+["bot.wz.resume"]
+other = "У вас есть незаконченный ивент «{{.Name}}». Продолжить с того места, где остановились, или начать заново?"
+
+["bot.wz.resume_btn"]
+other = "Продолжить"
+
+["bot.wz.restart_btn"]
+other = "Начать заново"
+
+["bot.wz.cancelled"]
+other = "Черновик удалён. Ничего не сохранено."
+
+["bot.wz.ask_name"]
+other = "Как называется ивент? Так его увидят покупатели, например «Дегустация вин Пьемонта»."
+
+["bot.wz.err_name"]
+other = "Укажите название ивента — до 200 знаков."
+
+["bot.wz.ask_age"]
+other = "Возрастное ограничение?"
+
+["bot.wz.ask_promoter"]
+other = "Кто проводит ивент? Это имя печатается в билете в строке «Организатор». Обычно — сама организация."
+
+["bot.wz.promoter_org"]
+other = "Сама организация"
+
+["bot.wz.promoter_new"]
+other = "+ Другой промоутер…"
+
+["bot.wz.ask_promoter_name"]
+other = "Название промоутера — как в билете."
+
+["bot.wz.err_promoter_name"]
+other = "Укажите название промоутера."
+
+["bot.wz.err_promoter_dup"]
+other = "Такой промоутер уже есть — выберите его из списка."
+
+["bot.wz.ask_promoter_legal"]
+other = "ИНН или IČO промоутера, если есть. Можно пропустить."
+
+["bot.wz.ask_poster"]
+other = "Пришлите афишу <b>файлом</b> (скрепка → Файл), не как фото: Telegram сжимает фото, а нам нужна ширина не меньше 1080 px.\n\nПодойдёт PNG или JPG до 5 МБ, формат 4:5 (1080×1350) или квадрат. Всё важное — в центре: сайт обрезает верх и низ в карточках. Без афиши карточка ивента на сайте не откроется, но афишу можно добавить и позже."
+
+["bot.wz.poster_compressed"]
+other = "Это пришло как сжатое фото. Отправьте тот же файл через скрепку → «Файл», чтобы сохранить качество."
+
+["bot.wz.poster_bad_type"]
+other = "Афиша должна быть картинкой PNG или JPG."
+
+["bot.wz.poster_too_big"]
+other = "Файл афиши больше 5 МБ — сохраните его с меньшим качеством."
+
+["bot.wz.poster_bad_ratio"]
+other = "Афиша {{.W}}×{{.H}} — нужен формат 4:5 (1080×1350) или квадрат (1080×1080)."
+
+["bot.wz.poster_too_small"]
+other = "Афиша {{.W}}×{{.H}} слишком маленькая — нужна ширина не меньше 1080 px."
+
+["bot.wz.poster_failed"]
+other = "Не удалось сохранить афишу. Попробуйте ещё раз или пропустите этот шаг."
+
+["bot.wz.poster_ok"]
+other = "Афиша {{.W}}×{{.H}} принята."
+
+["bot.wz.ask_date"]
+other = "Дата сеанса {{.N}}? Напишите как ДД.ММ.ГГГГ, например 15.10.2026."
+
+["bot.wz.err_date"]
+other = "Не понял дату. Напишите её как ДД.ММ.ГГГГ, например 15.10.2026."
+
+["bot.wz.ask_time"]
+other = "Время начала? Напишите как ЧЧ:ММ, например 19:30."
+
+["bot.wz.err_time"]
+other = "Не понял время. Напишите его как ЧЧ:ММ, например 19:30."
+
+["bot.wz.ask_same_venue"]
+other = "Сеанс {{.N}} там же — {{.Venue}}, {{.City}}?"
+
+["bot.wz.same_venue_btn"]
+other = "Да, там же"
+
+["bot.wz.other_venue_btn"]
+other = "Другая площадка"
+
+["bot.wz.ask_country"]
+other = "В какой стране?"
+
+["bot.wz.ask_city"]
+other = "В каком городе?"
+
+["bot.wz.city_other"]
+other = "+ Другой город…"
+
+["bot.wz.ask_city_name"]
+other = "Название города."
+
+["bot.wz.err_city_name"]
+other = "Укажите название города."
+
+["bot.wz.ask_venue"]
+other = "Где проходит? Выберите площадку или добавьте новую."
+
+["bot.wz.venue_new"]
+other = "+ Новая площадка…"
+
+["bot.wz.ask_venue_name"]
+other = "Название площадки — как её знают покупатели, например «Зал Дома культуры»."
+
+["bot.wz.err_venue_name"]
+other = "Укажите название площадки."
+
+["bot.wz.ask_venue_address"]
+other = "Адрес площадки (улица и дом). Можно пропустить."
+
+["bot.wz.ask_venue_capacity"]
+other = "Сколько мест в зале обычно? Число, например 120. Можно пропустить."
+
+["bot.wz.ask_venue_tz"]
+other = "Часовой пояс площадки, например Europe/Prague."
+
+["bot.wz.err_venue_tz"]
+other = "Не знаю такого пояса. Напишите его как в списке IANA, например Europe/Prague или Asia/Jerusalem."
+
+["bot.wz.venue_failed"]
+other = "Не удалось сохранить площадку: {{.Reason}}"
+
+["bot.wz.ask_capacity"]
+other = "Сколько мест продаём на этом сеансе? Число, например 80."
+
+["bot.wz.err_capacity"]
+other = "Нужно целое число не меньше 1, например 80."
+
+["bot.wz.session_added"]
+other = "Сеанс {{.N}}: {{.When}}, {{.Venue}}, {{.City}}, {{.Capacity}} мест."
+
+["bot.wz.ask_more_sessions"]
+other = "Ещё сеанс? Тот же ивент в другой день или в другом городе. Билеты у всех сеансов одинаковые."
+
+["bot.wz.more_session_btn"]
+other = "+ Ещё сеанс"
+
+["bot.wz.sessions_done_btn"]
+other = "Дальше →"
+
+["bot.wz.err_duplicate_session"]
+other = "Такой сеанс уже есть: та же дата, время и площадка."
+
+["bot.wz.ask_t_mode"]
+other = "Билеты одинаковые для всех или есть разные категории?"
+
+["bot.wz.t_mode_single"]
+other = "Одна категория"
+
+["bot.wz.t_mode_multi"]
+other = "Несколько категорий"
+
+["bot.wz.ask_t_name"]
+other = "Как назвать билет?"
+
+["bot.wz.t_name_default"]
+other = "Входной билет"
+
+["bot.wz.ask_t_price"]
+other = "Цена билета? Число, например 199 или 99,90."
+
+["bot.wz.err_price"]
+other = "Укажите цену билета числом, например 199."
+
+["bot.wz.ask_t_changes"]
+other = "Цена меняется со временем? Например, до 1 октября 199, потом 249."
+
+["bot.wz.t_changes_no"]
+other = "Нет"
+
+["bot.wz.t_changes_yes"]
+other = "Да, по датам"
+
+["bot.wz.ask_t_change_date"]
+other = "С какой даты новая цена? ДД.ММ.ГГГГ."
+
+["bot.wz.err_change_date_order"]
+other = "Даты повышений должны идти по возрастанию."
+
+["bot.wz.ask_t_change_price"]
+other = "Новая цена с {{.Date}}?"
+
+["bot.wz.ask_t_change_more"]
+other = "Повышений: {{.List}}. Добавить ещё одно?"
+
+["bot.wz.t_change_more_btn"]
+other = "+ Ещё повышение"
+
+["bot.wz.t_change_done_btn"]
+other = "Хватит →"
+
+["bot.wz.ask_t_kind"]
+other = "Как продаются категории?"
+
+["bot.wz.t_kind_parallel"]
+other = "Все сразу — покупатель выбирает"
+
+["bot.wz.t_kind_sequence"]
+other = "По очереди — цена растёт ступенями"
+
+["bot.wz.t_kind_parallel_hint"]
+other = "Например, VIP и Стандарт одновременно. У каждой категории своё число мест."
+
+["bot.wz.t_kind_sequence_hint"]
+other = "Например, «Старт» → «Обычный» → «В последний момент». Продаётся одна категория за раз, все делят места зала."
+
+["bot.wz.ask_t_cat_name"]
+other = "Название категории {{.N}}? Например «VIP» или «Старт»."
+
+["bot.wz.err_cat_dup"]
+other = "Категория «{{.Name}}» указана дважды."
+
+["bot.wz.ask_t_cat_price"]
+other = "Цена категории «{{.Name}}»?"
+
+["bot.wz.ask_t_cat_places"]
+other = "Сколько мест в категории «{{.Name}}»?"
+
+["bot.wz.err_places"]
+other = "Нужно целое число не меньше 1."
+
+["bot.wz.ask_t_cat_until"]
+other = "До какой даты продаётся «{{.Name}}» (включительно)? ДД.ММ.ГГГГ — или нажмите «Только по числу»."
+
+["bot.wz.t_cat_until_skip"]
+other = "Только по числу билетов"
+
+["bot.wz.err_until_order"]
+other = "Категории по очереди: «{{.Name}}» должна продаваться дольше предыдущей."
+
+["bot.wz.ask_t_cat_limit"]
+other = "Или первые сколько билетов по этой цене? Число — или «Без лимита»."
+
+["bot.wz.t_cat_limit_skip"]
+other = "Без лимита"
+
+["bot.wz.err_cat_need_end"]
+other = "Категория «{{.Name}}»: укажите дату, до которой она продаётся, или число билетов."
+
+["bot.wz.ask_t_cat_more"]
+other = "Категорий: {{.List}}. Добавить ещё?"
+
+["bot.wz.t_cat_more_btn"]
+other = "+ Ещё категория"
+
+["bot.wz.t_cat_done_btn"]
+other = "Готово →"
+
+["bot.wz.err_min_two"]
+other = "Для нескольких категорий нужно минимум две. Если категория одна — выберите «Одна категория»."
+
+["bot.wz.ask_description"]
+other = "Описание ивента для покупателей — одним сообщением, до 4000 знаков. Можно пропустить."
+
+["bot.wz.ask_currency"]
+other = "Валюта цен?"
+
+["bot.wz.err_currency"]
+other = "Валюта — три латинские буквы, например EUR, CZK или ILS."
+
+["bot.wz.ask_channels"]
+other = "Где продавать? Отметьте площадки продаж и нажмите «Готово». Я запомню выбор."
+
+["bot.wz.channels_done_btn"]
+other = "Готово →"
+
+["bot.wz.err_channels_empty"]
+other = "Отметьте хотя бы одну площадку продаж."
+
+["bot.wz.ask_publish"]
+other = "Открыть продажи сразу?"
+
+["bot.wz.publish_now_btn"]
+other = "Да, сразу"
+
+["bot.wz.publish_later_btn"]
+other = "Нет, пока не публиковать"
+
+["bot.wz.summary_event"]
+other = "«{{.Name}}», {{.Age}}{{.Promoter}}{{.Poster}}"
+
+["bot.wz.summary_promoter"]
+other = ", промоутер {{.Name}}"
+
+["bot.wz.summary_no_poster"]
+other = ", без афиши"
+
+["bot.wz.summary_sessions"]
+other = "{{.N}} сеанс(ов): {{.List}}."
+
+["bot.wz.summary_session"]
+other = "{{.When}} {{.Venue}}, {{.Capacity}} мест"
+
+["bot.wz.summary_single"]
+other = "Одна категория «{{.Name}}» {{.Price}}{{.Schedule}}."
+
+["bot.wz.summary_schedule_item"]
+other = "с {{.Date}} — {{.Price}}"
+
+["bot.wz.summary_parallel"]
+other = "Все сразу: {{.List}}."
+
+["bot.wz.summary_sequence"]
+other = "По очереди: {{.List}}."
+
+["bot.wz.summary_publish_now"]
+other = "Продажи откроются сразу."
+
+["bot.wz.summary_publish_later"]
+other = "Ивент будет создан без публикации."
+
+["bot.wz.summary_channels"]
+other = "Где продаём: {{.List}}."
+
+["bot.wz.summary_footer"]
+other = "После нажатия «Опубликовать» ивент появится на вашей странице продаж, ссылку пришлю сюда."
+
+["bot.wz.publish_btn"]
+other = "Опубликовать"
+
+["bot.wz.save_btn"]
+other = "Сохранить без публикации"
+
+["bot.wz.edit_event_btn"]
+other = "Изменить ивент"
+
+["bot.wz.edit_when_btn"]
+other = "Изменить даты"
+
+["bot.wz.edit_tickets_btn"]
+other = "Изменить билеты"
+
+["bot.wz.edit_extra_btn"]
+other = "Изменить описание"
+
+["bot.wz.saving"]
+other = "Сохраняю…"
+
+["bot.wz.saved"]
+other = "<b>Готово!</b> Ивент «{{.Name}}» создан{{.Published}}.\n{{.Link}}{{.Warnings}}"
+
+["bot.wz.saved_published"]
+other = " и опубликован"
+
+["bot.wz.link_line"]
+other = "Ссылка на продажу: {{.URL}}\nНа сайте появится через минуту-две."
+
+["bot.wz.link_none"]
+other = "Ссылку на продажу пришлю, как только она будет готова."
+
+["bot.wz.save_failed"]
+other = "Сеанс {{.When}} не сохранён. {{.Reason}}\n\nУже сохранённые сеансы я запомнил — нажмите «Повторить», и я досохраню остальные."
+
+["bot.wz.retry_btn"]
+other = "Повторить"
+
+["bot.wz.warn_channel_publication_skipped"]
+other = "Ивент не опубликован в канал сайта: нет права публиковать в этот канал."
+
+["bot.wz.warn_venue_timezone_kept"]
+other = "У площадки уже другой пояс — оставлен прежний."
+
+["bot.wz.warn_category_sold_out"]
+other = "Категория с количеством 0 создана закрытой."
+
+["bot.wz.warn_publish_skipped"]
+other = "Публикация не выполнена: ивент не прошёл проверку."
+
+["bot.wz.warn_poster_skipped"]
+other = "Афиша не загружена — добавьте её позже."
+
+["bot.wz.err_forbidden"]
+other = "У вас нет права на это действие — сообщите владельцу организации."

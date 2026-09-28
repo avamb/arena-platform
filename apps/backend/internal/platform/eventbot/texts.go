@@ -23,7 +23,7 @@ var SupportedLocales = []string{"en", "ru"}
 // each one exists in every supported catalog, so a missing translation is a
 // failing build rather than a key name shown to an organizer.
 var MessageKeys = []string{
-	"bot.cmd_start", "bot.cmd_events", "bot.cmd_org", "bot.cmd_lang", "bot.cmd_help",
+	"bot.cmd_start", "bot.cmd_events", "bot.cmd_new", "bot.cmd_org", "bot.cmd_lang", "bot.cmd_help",
 	"bot.not_invited", "bot.ask_email", "bot.ask_email_again",
 	"bot.invite_accepted", "bot.invite_not_found", "bot.invite_email_mismatch",
 	"bot.invite_already_linked", "bot.invite_failed", "bot.already_linked",

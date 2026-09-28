@@ -153,6 +153,9 @@ other = "Start or open the menu"
 ["bot.cmd_events"]
 other = "My events"
 
+["bot.cmd_new"]
+other = "New event"
+
 ["bot.cmd_org"]
 other = "Choose the organization"
 
@@ -290,3 +293,419 @@ other = "Your access to this organization was removed. If that is a mistake, ask
 
 ["bot.unknown_input"]
 other = "I did not understand that. Use the buttons below."
+
+# --- the "+ Event" wizard (eventbot/wizard.go) ------------------------------
+
+["bot.wz.new_event_btn"]
+other = "+ Event"
+
+["bot.wz.cancel_btn"]
+other = "Cancel"
+
+["bot.wz.back_btn"]
+other = "← Back"
+
+["bot.wz.skip_btn"]
+other = "Skip"
+
+["bot.wz.keep_btn"]
+other = "Keep: {{.Value}}"
+
+["bot.wz.step_title"]
+other = "<b>Step {{.N}} of 6 · {{.Title}}</b>\n"
+
+["bot.wz.title_event"]
+other = "Event"
+
+["bot.wz.title_when"]
+other = "When and where"
+
+["bot.wz.title_tickets"]
+other = "Tickets"
+
+["bot.wz.title_extra"]
+other = "Description and sales"
+
+["bot.wz.title_summary"]
+other = "Check and publish"
+
+["bot.wz.resume"]
+other = "You have an unfinished event, “{{.Name}}”. Continue where you stopped, or start over?"
+
+["bot.wz.resume_btn"]
+other = "Continue"
+
+["bot.wz.restart_btn"]
+other = "Start over"
+
+["bot.wz.cancelled"]
+other = "Draft deleted. Nothing was saved."
+
+["bot.wz.ask_name"]
+other = "What is the event called? Buyers will see this name, for example “Piedmont wine tasting”."
+
+["bot.wz.err_name"]
+other = "Please give the event a name, up to 200 characters."
+
+["bot.wz.ask_age"]
+other = "Age restriction?"
+
+["bot.wz.ask_promoter"]
+other = "Who runs the event? This name is printed on the ticket as the organizer. Usually the organization itself."
+
+["bot.wz.promoter_org"]
+other = "The organization itself"
+
+["bot.wz.promoter_new"]
+other = "+ Another promoter…"
+
+["bot.wz.ask_promoter_name"]
+other = "The promoter's name, as it should appear on the ticket."
+
+["bot.wz.err_promoter_name"]
+other = "Please give the promoter's name."
+
+["bot.wz.err_promoter_dup"]
+other = "This promoter already exists — pick it from the list."
+
+["bot.wz.ask_promoter_legal"]
+other = "The promoter's tax or company id, if any. You can skip this."
+
+["bot.wz.ask_poster"]
+other = "Send the poster <b>as a file</b> (paperclip → File), not as a photo: Telegram compresses photos and we need a width of at least 1080 px.\n\nPNG or JPG up to 5 MB, 4:5 (1080×1350) or square. Keep everything important in the centre: the site crops the top and bottom in cards. Without a poster the event card on the site will not open, but you can add the poster later."
+
+["bot.wz.poster_compressed"]
+other = "That arrived as a compressed photo. Send the same file via the paperclip → “File” to keep the quality."
+
+["bot.wz.poster_bad_type"]
+other = "The poster must be a PNG or JPG image."
+
+["bot.wz.poster_too_big"]
+other = "The poster file is over 5 MB — save it with a lower quality."
+
+["bot.wz.poster_bad_ratio"]
+other = "The poster is {{.W}}×{{.H}} — it must be 4:5 (1080×1350) or square (1080×1080)."
+
+["bot.wz.poster_too_small"]
+other = "The poster is {{.W}}×{{.H}}, too small — the width must be at least 1080 px."
+
+["bot.wz.poster_failed"]
+other = "The poster could not be saved. Try again or skip this step."
+
+["bot.wz.poster_ok"]
+other = "Poster {{.W}}×{{.H}} accepted."
+
+["bot.wz.ask_date"]
+other = "Date of date {{.N}}? Type it as DD.MM.YYYY, for example 15.10.2026."
+
+["bot.wz.err_date"]
+other = "I did not understand the date. Type it as DD.MM.YYYY, for example 15.10.2026."
+
+["bot.wz.ask_time"]
+other = "Start time? Type it as HH:MM, for example 19:30."
+
+["bot.wz.err_time"]
+other = "I did not understand the time. Type it as HH:MM, for example 19:30."
+
+["bot.wz.ask_same_venue"]
+other = "Is date {{.N}} at the same place — {{.Venue}}, {{.City}}?"
+
+["bot.wz.same_venue_btn"]
+other = "Yes, same place"
+
+["bot.wz.other_venue_btn"]
+other = "Another venue"
+
+["bot.wz.ask_country"]
+other = "Which country?"
+
+["bot.wz.ask_city"]
+other = "Which city?"
+
+["bot.wz.city_other"]
+other = "+ Another city…"
+
+["bot.wz.ask_city_name"]
+other = "Name of the city."
+
+["bot.wz.err_city_name"]
+other = "Please give the city's name."
+
+["bot.wz.ask_venue"]
+other = "Where does it take place? Pick a venue or add a new one."
+
+["bot.wz.venue_new"]
+other = "+ New venue…"
+
+["bot.wz.ask_venue_name"]
+other = "Name of the venue, as buyers know it, for example “Community hall”."
+
+["bot.wz.err_venue_name"]
+other = "Please give the venue's name."
+
+["bot.wz.ask_venue_address"]
+other = "Street address of the venue. You can skip this."
+
+["bot.wz.ask_venue_capacity"]
+other = "How many places does the hall usually have? A number, for example 120. You can skip this."
+
+["bot.wz.ask_venue_tz"]
+other = "Time zone of the venue, for example Europe/Prague."
+
+["bot.wz.err_venue_tz"]
+other = "I do not know that zone. Type it as in the IANA list, for example Europe/Prague or Asia/Jerusalem."
+
+["bot.wz.venue_failed"]
+other = "The venue could not be saved: {{.Reason}}"
+
+["bot.wz.ask_capacity"]
+other = "How many places are on sale for this date? A number, for example 80."
+
+["bot.wz.err_capacity"]
+other = "A whole number of at least 1 is needed, for example 80."
+
+["bot.wz.session_added"]
+other = "Date {{.N}}: {{.When}}, {{.Venue}}, {{.City}}, {{.Capacity}} places."
+
+["bot.wz.ask_more_sessions"]
+other = "Another date? The same event on another day or in another city. Tickets are the same for every date."
+
+["bot.wz.more_session_btn"]
+other = "+ Another date"
+
+["bot.wz.sessions_done_btn"]
+other = "Next →"
+
+["bot.wz.err_duplicate_session"]
+other = "That date already exists: same day, time and venue."
+
+["bot.wz.ask_t_mode"]
+other = "Are all tickets the same, or are there different categories?"
+
+["bot.wz.t_mode_single"]
+other = "One category"
+
+["bot.wz.t_mode_multi"]
+other = "Several categories"
+
+["bot.wz.ask_t_name"]
+other = "What is the ticket called?"
+
+["bot.wz.t_name_default"]
+other = "Admission"
+
+["bot.wz.ask_t_price"]
+other = "Ticket price? A number, for example 199 or 99.90."
+
+["bot.wz.err_price"]
+other = "Type the ticket price as a number, for example 199."
+
+["bot.wz.ask_t_changes"]
+other = "Does the price change over time? For example 199 until 1 October, then 249."
+
+["bot.wz.t_changes_no"]
+other = "No"
+
+["bot.wz.t_changes_yes"]
+other = "Yes, by date"
+
+["bot.wz.ask_t_change_date"]
+other = "From which date is the new price? DD.MM.YYYY."
+
+["bot.wz.err_change_date_order"]
+other = "Price change dates must go in ascending order."
+
+["bot.wz.ask_t_change_price"]
+other = "New price from {{.Date}}?"
+
+["bot.wz.ask_t_change_more"]
+other = "Price changes: {{.List}}. Add another one?"
+
+["bot.wz.t_change_more_btn"]
+other = "+ Another change"
+
+["bot.wz.t_change_done_btn"]
+other = "That's all →"
+
+["bot.wz.ask_t_kind"]
+other = "How are the categories sold?"
+
+["bot.wz.t_kind_parallel"]
+other = "All at once — the buyer chooses"
+
+["bot.wz.t_kind_sequence"]
+other = "One after another — the price rises in steps"
+
+["bot.wz.t_kind_parallel_hint"]
+other = "For example VIP and Standard at the same time. Each category has its own number of places."
+
+["bot.wz.t_kind_sequence_hint"]
+other = "For example “Early” → “Regular” → “Last minute”. One category sells at a time; all share the hall's places."
+
+["bot.wz.ask_t_cat_name"]
+other = "Name of category {{.N}}? For example “VIP” or “Early”."
+
+["bot.wz.err_cat_dup"]
+other = "Category “{{.Name}}” is listed twice."
+
+["bot.wz.ask_t_cat_price"]
+other = "Price of “{{.Name}}”?"
+
+["bot.wz.ask_t_cat_places"]
+other = "How many places in “{{.Name}}”?"
+
+["bot.wz.err_places"]
+other = "A whole number of at least 1 is needed."
+
+["bot.wz.ask_t_cat_until"]
+other = "Until which date does “{{.Name}}” sell (inclusive)? DD.MM.YYYY — or press “By count only”."
+
+["bot.wz.t_cat_until_skip"]
+other = "By ticket count only"
+
+["bot.wz.err_until_order"]
+other = "Categories in sequence: “{{.Name}}” must sell longer than the previous one."
+
+["bot.wz.ask_t_cat_limit"]
+other = "Or the first how many tickets at this price? A number — or “No limit”."
+
+["bot.wz.t_cat_limit_skip"]
+other = "No limit"
+
+["bot.wz.err_cat_need_end"]
+other = "Category “{{.Name}}”: give the date it sells until, or a ticket count."
+
+["bot.wz.ask_t_cat_more"]
+other = "Categories: {{.List}}. Add another?"
+
+["bot.wz.t_cat_more_btn"]
+other = "+ Another category"
+
+["bot.wz.t_cat_done_btn"]
+other = "Done →"
+
+["bot.wz.err_min_two"]
+other = "Several categories need at least two. If there is only one, choose “One category”."
+
+["bot.wz.ask_description"]
+other = "Description of the event for buyers, in one message, up to 4000 characters. You can skip this."
+
+["bot.wz.ask_currency"]
+other = "Currency of the prices?"
+
+["bot.wz.err_currency"]
+other = "The currency is three Latin letters, for example EUR, CZK or ILS."
+
+["bot.wz.ask_channels"]
+other = "Where to sell? Tick the sales channels and press “Done”. I will remember the choice."
+
+["bot.wz.channels_done_btn"]
+other = "Done →"
+
+["bot.wz.err_channels_empty"]
+other = "Tick at least one sales channel."
+
+["bot.wz.ask_publish"]
+other = "Open sales right away?"
+
+["bot.wz.publish_now_btn"]
+other = "Yes, right away"
+
+["bot.wz.publish_later_btn"]
+other = "No, do not publish yet"
+
+["bot.wz.summary_event"]
+other = "“{{.Name}}”, {{.Age}}{{.Promoter}}{{.Poster}}"
+
+["bot.wz.summary_promoter"]
+other = ", promoter {{.Name}}"
+
+["bot.wz.summary_no_poster"]
+other = ", no poster"
+
+["bot.wz.summary_sessions"]
+other = "{{.N}} date(s): {{.List}}."
+
+["bot.wz.summary_session"]
+other = "{{.When}} {{.Venue}}, {{.Capacity}} places"
+
+["bot.wz.summary_single"]
+other = "One category “{{.Name}}” {{.Price}}{{.Schedule}}."
+
+["bot.wz.summary_schedule_item"]
+other = "from {{.Date}} — {{.Price}}"
+
+["bot.wz.summary_parallel"]
+other = "All at once: {{.List}}."
+
+["bot.wz.summary_sequence"]
+other = "In sequence: {{.List}}."
+
+["bot.wz.summary_publish_now"]
+other = "Sales open right away."
+
+["bot.wz.summary_publish_later"]
+other = "The event will be created without publishing."
+
+["bot.wz.summary_channels"]
+other = "Selling on: {{.List}}."
+
+["bot.wz.summary_footer"]
+other = "After “Publish” the event appears on your sales page; I will send the link here."
+
+["bot.wz.publish_btn"]
+other = "Publish"
+
+["bot.wz.save_btn"]
+other = "Save without publishing"
+
+["bot.wz.edit_event_btn"]
+other = "Change the event"
+
+["bot.wz.edit_when_btn"]
+other = "Change the dates"
+
+["bot.wz.edit_tickets_btn"]
+other = "Change the tickets"
+
+["bot.wz.edit_extra_btn"]
+other = "Change the description"
+
+["bot.wz.saving"]
+other = "Saving…"
+
+["bot.wz.saved"]
+other = "<b>Done!</b> The event “{{.Name}}” is created{{.Published}}.\n{{.Link}}{{.Warnings}}"
+
+["bot.wz.saved_published"]
+other = " and published"
+
+["bot.wz.link_line"]
+other = "Sales link: {{.URL}}\nIt appears on the site within a minute or two."
+
+["bot.wz.link_none"]
+other = "I will send the sales link as soon as it is ready."
+
+["bot.wz.save_failed"]
+other = "Date {{.When}} was not saved. {{.Reason}}\n\nI kept the dates that were saved — press “Retry” and I will save the rest."
+
+["bot.wz.retry_btn"]
+other = "Retry"
+
+["bot.wz.warn_channel_publication_skipped"]
+other = "The event was not published into the site's channel: no right to publish there."
+
+["bot.wz.warn_venue_timezone_kept"]
+other = "The venue already has a different time zone — the earlier one was kept."
+
+["bot.wz.warn_category_sold_out"]
+other = "A category with 0 places was created closed."
+
+["bot.wz.warn_publish_skipped"]
+other = "Publishing was skipped: the event did not pass the check."
+
+["bot.wz.warn_poster_skipped"]
+other = "The poster was not saved — add it later."
+
+["bot.wz.err_forbidden"]
+other = "You do not have the right for this action — tell the owner of your organization."

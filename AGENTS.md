@@ -1683,6 +1683,32 @@ entries short and factual.
   `httpserver/bot_e2e_integration_test.go` (real router + real bot + stub
   Telegram); run the bot for real with `docker compose --profile bot up -d
   bot` and `EVENTS_TELEGRAM_BOT_TOKEN` in the environment.
+- **The bot's "+ Event" wizard (`eventbot/wizard*.go`) is a pure state
+  machine over `Draft`; the bot side (`wizard_bot.go`) only stores the
+  draft and renders.** `Wizard.Apply(ws, d, in)` is a function of the
+  draft and one answer (text, button data without the `wz:` prefix, or an
+  accepted poster); references and "+ new …" creations go through the
+  `RefIO` interface (`ArenaClient` implements it; tests use `fakeRefs`).
+  `BuildBundle` is the ONLY place a draft becomes an event-bundle — keep
+  new ticket rules there, not in the bot. `Save` posts one date at a time
+  and records progress in `Draft.Saved`, so a retry only re-sends the
+  dates that have no `SessionID` yet; `externalRef` is
+  `tg:<org>:<draft>:<n>` and makes a replay idempotent. A new venue's
+  timezone is guessed from the organization's other venues in that
+  country, then `countryTimezones` — Spain and Portugal are DELIBERATELY
+  absent (Canaries/Azores), the wizard asks. `time.Format("2006-01-02")`
+  for the draft's calendar date carries `// allow:timeformat` (the RFC
+  3339 guardrail scans every `.Format(`), and `int -> int32` narrowing
+  for the wire goes through `i32` (gosec G115) — `ParseCount` caps at
+  `maxCount`. Wizard texts are `bot.wz.*` keys listed in
+  `wizard_keys.go` (`TestEventBot_LocaleBundleHasEveryKey` and
+  `TestWizard_EveryStepRendersInBothLocales` guard them). The e2e stub
+  Telegram records only message TEXT, not `reply_markup`: an e2e
+  assertion on a button label (event names in "My events") cannot work —
+  assert on the text and verify the rows in the database instead. A bash
+  heredoc holding Go source with backticks (raw strings, struct tags)
+  breaks the Bash tool's parser ("unexpected EOF while looking for
+  matching `''") — write such files with the Write tool.
 - **A JWT caller of the event-bundle import binds the event to NO sales
   channel unless it names `channelIds`.** `ensureChannelPublication` only
   ever knew `api_keys.channel_id`; a human operator (the bot) got a

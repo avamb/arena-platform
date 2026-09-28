@@ -96,6 +96,8 @@ func run() error {
 		Minter:  eventbot.NewTokenMinter(cfg.JWTSecretStub, cfg.JWTIssuer, cfg.JWTAudience),
 		Texts:   eventbot.NewTexts(bundle),
 		Logger:  logger,
+
+		TicketsBaseURL: cfg.PublicTicketsBaseURL,
 	})
 	if err != nil {
 		return err

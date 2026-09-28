@@ -38,6 +38,12 @@ type Options struct {
 	TelegramServerURL string
 	// HTTPClient is the client used towards Telegram; nil uses a default.
 	HTTPClient *http.Client
+	// TicketsBaseURL is the storefront origin (PUBLIC_TICKETS_BASE_URL); the
+	// sales link after a save is "<base>/<org slug>/<event slug>". Empty
+	// means no link is shown.
+	TicketsBaseURL string
+	// Refs overrides the wizard's reference source (tests); nil uses Arena.
+	Refs RefIO
 }
 
 // Bot is the running event-center bot.
@@ -49,6 +55,10 @@ type Bot struct {
 	texts   *Texts
 	logger  *slog.Logger
 	pending *pendingInvites
+	wizard  *Wizard
+	// fileClient downloads Telegram files (posters); nil uses a default.
+	fileClient     *http.Client
+	ticketsBaseURL string
 }
 
 // New builds the bot; it does not talk to Telegram until Run.
@@ -70,10 +80,18 @@ func New(opts Options) (*Bot, error) {
 		texts:   opts.Texts,
 		logger:  logger,
 		pending: newPendingInvites(pendingInviteTTL),
+
+		fileClient:     opts.HTTPClient,
+		ticketsBaseURL: opts.TicketsBaseURL,
 	}
 	if b.texts == nil {
 		b.texts = NewTexts(nil)
 	}
+	var refs RefIO = opts.Arena
+	if opts.Refs != nil {
+		refs = opts.Refs
+	}
+	b.wizard = NewWizard(b.texts, refs)
 	tgOpts := []tgbot.Option{
 		tgbot.WithDefaultHandler(b.handleUpdate),
 		tgbot.WithSkipGetMe(),
@@ -114,6 +132,7 @@ func (b *Bot) publishCommands(ctx context.Context) {
 		cmds := []models.BotCommand{
 			{Command: "start", Description: b.texts.T(locale, "bot.cmd_start", nil)},
 			{Command: "events", Description: b.texts.T(locale, "bot.cmd_events", nil)},
+			{Command: "new", Description: b.texts.T(locale, "bot.cmd_new", nil)},
 			{Command: "org", Description: b.texts.T(locale, "bot.cmd_org", nil)},
 			{Command: "lang", Description: b.texts.T(locale, "bot.cmd_lang", nil)},
 			{Command: "help", Description: b.texts.T(locale, "bot.cmd_help", nil)},
@@ -170,6 +189,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		case "/events":
 			b.showEvents(ctx, chatID, nil, from, 1)
 			return
+		case "/new":
+			b.wizardStart(ctx, chatID, nil, from, false)
+			return
 		case "/org":
 			b.showOrgChooser(ctx, chatID, nil, from)
 			return
@@ -183,6 +205,13 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	}
 	if code, ok := b.pending.take(from.ID); ok {
 		b.acceptInvitation(ctx, chatID, from, code, text)
+		return
+	}
+	if m.Document != nil || len(m.Photo) > 0 {
+		if b.wizardPoster(ctx, chatID, from, m) {
+			return
+		}
+	} else if text != "" && b.wizardText(ctx, chatID, from, text) {
 		return
 	}
 	id, _, err := b.resolveIdentity(ctx, from.ID)
@@ -242,6 +271,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 			return
 		}
 		b.switchLang(ctx, chatID, &msgID, from, parts[1])
+	case "wz":
+		b.wizardCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "wz:"))
 	}
 }
 
@@ -325,6 +356,7 @@ func (b *Bot) showHome(ctx context.Context, chatID int64, editMsgID *int, from *
 func (b *Bot) homeKeyboard(id *Identity) *models.InlineKeyboardMarkup {
 	loc := id.Locale()
 	rows := [][]models.InlineKeyboardButton{
+		{{Text: b.texts.T(loc, "bot.wz.new_event_btn", nil), CallbackData: "wz:new"}},
 		{{Text: b.texts.T(loc, "bot.btn_events", nil), CallbackData: "events:1"}},
 	}
 	if len(id.Memberships) > 1 {
