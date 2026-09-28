@@ -338,7 +338,7 @@ func ExtendHoldTx(ctx context.Context, txq *gen.Queries, in HoldMutationInput) (
 	if len(gaLines) > 0 {
 		gateLines := make([]GALine, 0, len(gaLines))
 		for _, l := range gaLines {
-			gateLines = append(gateLines, GALine{TierID: l.TierID, Quantity: l.Quantity})
+			gateLines = append(gateLines, GALine(l))
 		}
 		if err := CheckGALinesSellable(ctx, txq, res.SessionID, gateLines, in.now()); err != nil {
 			return HoldMutationResult{}, err
