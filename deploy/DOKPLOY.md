@@ -117,6 +117,33 @@ fire. Treat it as a first-class production component, not an optional sidecar.
 `DATABASE_URL` and exits `0` on success. If it fails, the deploy must abort —
 the API and worker rely on the new schema being in place before they boot.
 
+### 2.5 `arena-bot` service (Telegram event-center bot)
+
+| Property | Value |
+|---|---|
+| Dokploy service type | **Application** (long-running, internal only) |
+| Docker image | **Same image** as `arena-api` |
+| Entrypoint | `/app/arena-bot` (override the image `CMD`) |
+| Internal listen | `BOT_METRICS_ADDR=:9092` (sidecar HTTP for `/healthz` and `/metrics`) |
+| Public port | **None** — the bot long-polls Telegram, nothing connects to it |
+| Liveness probe | `GET http://<container>:9092/healthz` → `200 OK` |
+| Start policy | `Always` |
+| Replicas | **Exactly 1** — Telegram refuses a second poller of the same token (409) |
+
+Spec: `08_architecture/28_telegram_event_center_bot_ru.md`. The bot owns only
+the `bot_*` tables and calls `arena-api` over REST (`BOT_ARENA_API_URL`, the
+api service's internal address) as the linked user, so it needs the API's
+`JWT_SIGNING_SECRET` to mint those tokens. Variables:
+
+| Variable | Service | Value |
+|---|---|---|
+| `EVENTS_TELEGRAM_BOT_TOKEN` | bot | the bot's token (secret) |
+| `EVENTS_TELEGRAM_BOT_USERNAME` | api, worker, bot | `ArenaEventsCentrBot` — the deep links in invitation e-mails |
+| `BOT_SERVICE_TOKEN` | api, bot | shared random secret of `POST /v1/bot/invitations/accept`; the route answers 503 while unset |
+| `BOT_ARENA_API_URL` | bot | `http://<api service>:8080` |
+| `BOT_METRICS_ADDR` | bot | `:9092` |
+| `JWT_SIGNING_SECRET` | api, bot | the same value on both |
+
 ### 2.4 Env passthrough checklist (all three services)
 
 The three services share configuration loaded from the same `config.Load()`

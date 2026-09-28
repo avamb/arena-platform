@@ -38,7 +38,8 @@ RUN go mod download && go mod verify
 RUN go build -mod=readonly -ldflags="-s -w" -o /out/arena-api         ./apps/backend/cmd/arena-api         \
  && go build -mod=readonly -ldflags="-s -w" -o /out/arena-worker      ./apps/backend/cmd/arena-worker      \
  && go build -mod=readonly -ldflags="-s -w" -o /out/arena-migrate     ./apps/backend/cmd/arena-migrate     \
- && go build -mod=readonly -ldflags="-s -w" -o /out/arena-healthcheck ./apps/backend/cmd/arena-healthcheck
+ && go build -mod=readonly -ldflags="-s -w" -o /out/arena-healthcheck ./apps/backend/cmd/arena-healthcheck \
+ && go build -mod=readonly -ldflags="-s -w" -o /out/arena-bot         ./apps/backend/cmd/arena-bot
 
 # ---- Stage 2: runtime ----
 FROM gcr.io/distroless/static-debian12:nonroot
@@ -49,6 +50,7 @@ COPY --from=build /out/arena-api          /app/arena-api
 COPY --from=build /out/arena-worker       /app/arena-worker
 COPY --from=build /out/arena-migrate      /app/arena-migrate
 COPY --from=build /out/arena-healthcheck  /app/arena-healthcheck
+COPY --from=build /out/arena-bot          /app/arena-bot
 
 USER nonroot:nonroot
 EXPOSE 8080

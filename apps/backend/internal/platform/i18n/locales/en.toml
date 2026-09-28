@@ -140,3 +140,153 @@ other = "unauthorized"
 
 ["bil24.internal"]
 other = "internal error"
+
+# ---------------------------------------------------------------------------
+# Telegram event-center bot (internal/platform/eventbot, spec 28). Every key
+# here must also exist in ru.toml; eventbot.MessageKeys lists them and
+# TestEventBot_LocaleBundleHasEveryKey checks both catalogs.
+# ---------------------------------------------------------------------------
+
+["bot.cmd_start"]
+other = "Start or open the menu"
+
+["bot.cmd_events"]
+other = "My events"
+
+["bot.cmd_org"]
+other = "Choose the organization"
+
+["bot.cmd_lang"]
+other = "Language"
+
+["bot.cmd_help"]
+other = "What this bot can do"
+
+["bot.not_invited"]
+other = "Hi! This bot creates events and shows sales for organizers of Arena Sold Out.\n\nTo use it you need an invitation: the owner of your organization sends it from this bot, and it arrives by e-mail as a link. Open that link and you will be in."
+
+["bot.ask_email"]
+other = "Welcome! One check before we start: please type the e-mail address the invitation was sent to."
+
+["bot.ask_email_again"]
+other = "That does not look like an e-mail address. Please type it as in the invitation, for example name@company.com"
+
+["bot.invite_accepted"]
+other = "Done! You are connected to <b>{{.Org}}</b> as {{.Role}}.\n\nHere you can see your events and sales; creating and editing events from the phone is coming next."
+
+["bot.invite_not_found"]
+other = "This invitation link does not work any more: it was already used, or it expired after 7 days. Ask the owner of your organization for a new one."
+
+["bot.invite_email_mismatch"]
+other = "This is not the address the invitation was sent to. Please type the e-mail exactly as in the invitation."
+
+["bot.invite_already_linked"]
+other = "This Telegram account is already connected to a different person. Open the invitation from the Telegram account that should own it."
+
+["bot.invite_failed"]
+other = "Something went wrong on our side, the invitation was not accepted. Please try the link again in a minute."
+
+["bot.already_linked"]
+other = "You are already connected. Here is your menu."
+
+["bot.role_owner"]
+other = "owner"
+
+["bot.role_manager"]
+other = "manager"
+
+["bot.menu_title"]
+other = "<b>{{.Org}}</b>\nWhat would you like to do?"
+
+["bot.btn_events"]
+other = "My events"
+
+["bot.btn_org"]
+other = "Organization"
+
+["bot.btn_lang"]
+other = "Language"
+
+["bot.btn_help"]
+other = "Help"
+
+["bot.btn_back"]
+other = "Back"
+
+["bot.btn_home"]
+other = "Menu"
+
+["bot.btn_prev"]
+other = "Previous"
+
+["bot.btn_next"]
+other = "Next"
+
+["bot.help"]
+other = "<b>What this bot can do</b>\n\n- <b>My events</b>: every event of your organization, upcoming first, with sold and free places and the money per date.\n- <b>Organization</b>: if you work for several organizations, switch between them here.\n- <b>Language</b>: English or Russian.\n\nCreating and editing events from the phone is the next step; until then use the event center on your site."
+
+["bot.events_empty"]
+other = "No events yet. The first one will appear here as soon as it is created."
+
+["bot.events_title"]
+other = "<b>Events of {{.Org}}</b>\nPage {{.Page}} of {{.Pages}}. Tap an event to see its dates and sales."
+
+["bot.events_upcoming"]
+other = "Upcoming"
+
+["bot.events_past"]
+other = "Past"
+
+["bot.event_card"]
+other = "<b>{{.Name}}</b>\n{{.Status}}"
+
+["bot.event_no_sessions"]
+other = "This event has no dates yet."
+
+["bot.session_line"]
+other = "<b>{{.When}}</b> {{.Venue}}\nSold {{.Sold}} of {{.Total}}, free {{.Available}}{{if .Held}}, on hold {{.Held}}{{end}}\n{{.Money}}"
+
+["bot.money_line"]
+other = "Paid {{.Paid}} in {{.Orders}} orders"
+
+["bot.money_none"]
+other = "No paid orders yet"
+
+["bot.status_draft"]
+other = "Draft, not on sale"
+
+["bot.status_published"]
+other = "On sale"
+
+["bot.status_archived"]
+other = "Archived"
+
+["bot.status_cancelled"]
+other = "Cancelled"
+
+["bot.session_cancelled"]
+other = "cancelled"
+
+["bot.org_choose"]
+other = "Which organization are you working in now?"
+
+["bot.org_switched"]
+other = "Switched to <b>{{.Org}}</b>."
+
+["bot.org_none"]
+other = "You are not a member of any organization any more. Ask its owner for a new invitation."
+
+["bot.lang_choose"]
+other = "Choose the language of the bot."
+
+["bot.lang_set"]
+other = "The bot now speaks English."
+
+["bot.error_generic"]
+other = "Something went wrong on our side. Please try again in a minute; if it repeats, tell your Arena contact."
+
+["bot.access_lost"]
+other = "Your access to this organization was removed. If that is a mistake, ask its owner for a new invitation."
+
+["bot.unknown_input"]
+other = "I did not understand that. Use the buttons below."

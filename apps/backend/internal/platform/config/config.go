@@ -394,6 +394,8 @@ type Config struct {
 	// BotArenaAPIURL is where the bot process reaches arena-api
 	// (http://api:8080 inside compose).
 	BotArenaAPIURL string `env:"BOT_ARENA_API_URL" required:"false" default:"http://localhost:8080"`
+	// BotMetricsAddr is the bot's sidecar /healthz + /metrics listener.
+	BotMetricsAddr string `env:"BOT_METRICS_ADDR" required:"false" default:":9092"`
 	// OpsWatchdogHeartbeatHourUTC is the UTC hour (0-23) at which the
 	// ops.watchdog job sends its once-daily "still alive" digest.
 	OpsWatchdogHeartbeatHourUTC int `env:"OPS_WATCHDOG_HEARTBEAT_HOUR_UTC" required:"false" default:"7"`
@@ -587,6 +589,7 @@ func Load() (*Config, error) {
 		EventsTelegramBotUsername: getenv("EVENTS_TELEGRAM_BOT_USERNAME", ""),
 		BotServiceToken:           getenv("BOT_SERVICE_TOKEN", ""),
 		BotArenaAPIURL:            getenv("BOT_ARENA_API_URL", "http://localhost:8080"),
+		BotMetricsAddr:            getenv("BOT_METRICS_ADDR", ":9092"),
 
 		MetricsBearerToken: getenv("METRICS_BEARER_TOKEN", ""),
 	}

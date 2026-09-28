@@ -32,7 +32,12 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
 
-const botTestServiceToken = "bot-service-token-for-tests"
+const (
+	botTestServiceToken = "bot-service-token-for-tests"
+	botTestJWTSecret    = "bot-invitations-integration-secret-32b!!"
+	botTestJWTIssuer    = "arena-api"
+	botTestJWTAudience  = "arena-api"
+)
 
 type botInviteFixture struct {
 	t       *testing.T
@@ -86,9 +91,9 @@ func (f *botInviteFixture) newEmail(label string) string {
 // only mount when it is) and the bot service token configured.
 func buildBotIntegrationServer(t *testing.T, pool *pgxpool.Pool) *Server {
 	t.Helper()
-	const secret = "bot-invitations-integration-secret-32b!!"
-	const issuer = "arena-api"
-	const audience = "arena-api"
+	const secret = botTestJWTSecret
+	const issuer = botTestJWTIssuer
+	const audience = botTestJWTAudience
 	stub, err := auth.NewStubProvider(auth.StubConfig{
 		Secret: secret, Issuer: issuer, Audience: audience, DefaultTTL: time.Hour, Enabled: true,
 	})

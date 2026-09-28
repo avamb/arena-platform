@@ -1661,6 +1661,28 @@ entries short and factual.
   never open, unlike the `/metrics` guard). Everything else the bot does is
   a JWT minted for the linked user with the shared `JWT_SIGNING_SECRET`, so
   memberships, not `user_roles`, must carry the person's role.
+- **`cmd/arena-bot` (package `internal/platform/eventbot`) is the fourth
+  binary of the image and polls Telegram with `github.com/go-telegram/bot`
+  at ONE worker** (`WithWorkers(1)`), so one person's messages are handled
+  in order; exactly one replica may run (Telegram answers a second poller
+  409). It talks to arena-api over REST only (`ArenaClient`, base
+  `BOT_ARENA_API_URL`) with a 5-minute JWT it mints for the linked user via
+  `auth.IssueJWT` and the API's own `JWT_SIGNING_SECRET`/issuer/audience —
+  the api and bot services MUST share those three values (the dev compose
+  pins `dev-only-do-not-use-in-prod` on both). Bot texts are `bot.*` keys in
+  the shared i18n bundle (en + ru; cs/he fall back to en through go-i18n),
+  listed in `eventbot.MessageKeys` and guarded by
+  `TestEventBot_LocaleBundleHasEveryKey`. Human-readable dates in chat
+  messages carry the `// allow:timeformat` marker of the RFC 3339 static
+  guardrail (`rfc3339_timestamps_test.go`), which otherwise rejects every
+  non-RFC3339 `.Format(` in production source. A Bot API STUB for tests must
+  parse `multipart/form-data`: the library posts JSON only for flat params
+  and switches to a form as soon as a param carries a nested struct
+  (`reply_markup`) — the first version of the e2e stub read JSON and saw
+  empty texts. The end-to-end proof is
+  `httpserver/bot_e2e_integration_test.go` (real router + real bot + stub
+  Telegram); run the bot for real with `docker compose --profile bot up -d
+  bot` and `EVENTS_TELEGRAM_BOT_TOKEN` in the environment.
 - **A JWT caller of the event-bundle import binds the event to NO sales
   channel unless it names `channelIds`.** `ensureChannelPublication` only
   ever knew `api_keys.channel_id`; a human operator (the bot) got a

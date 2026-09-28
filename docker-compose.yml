@@ -149,6 +149,10 @@ services:
       # Variable name is ENABLE_DEV_AUTH (matches config.Load lookup).
       ENABLE_DEV_AUTH: "true"
       JWT_SIGNING_SECRET: "dev-only-do-not-use-in-prod"
+      # Telegram event-center bot (spec 28): the accept route's service token and
+      # the username the invitation deep links point at.
+      BOT_SERVICE_TOKEN: "${BOT_SERVICE_TOKEN:-dev-bot-service-token}"
+      EVENTS_TELEGRAM_BOT_USERNAME: "${EVENTS_TELEGRAM_BOT_USERNAME:-ArenaEventsCentrBot}"
       JWT_ISSUER: "arena-dev"
       JWT_AUDIENCE: "arena-api"
       JWT_DEFAULT_TTL: "1h"
@@ -240,6 +244,8 @@ services:
       # HEALTH_ADDR overrides the arena-healthcheck default so it probes
       # the worker's sidecar on :9091, not arena-api on :8080.
       WORKER_METRICS_ADDR: ":9091"
+      # Invitation deep links of the event-center bot (bot.invitation_email).
+      EVENTS_TELEGRAM_BOT_USERNAME: "${EVENTS_TELEGRAM_BOT_USERNAME:-ArenaEventsCentrBot}"
       HEALTH_ADDR: "http://localhost:9091"
 
       DEFAULT_LOCALE: "en"
@@ -271,6 +277,52 @@ services:
   #              api service is currently "*" — fine for local dev,
   #              tighten to http://localhost:5174 in prod.
   # ------------------------------------------------------------------
+  # Telegram event-center bot (08_architecture/28_telegram_event_center_bot_ru.md).
+  # Off by default: it needs a real bot token. Start it with
+  #   EVENTS_TELEGRAM_BOT_TOKEN=... docker compose --profile bot up -d bot
+  # Exactly ONE replica may poll a token (Telegram answers a second with 409).
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: arena_new/arena-api:dev
+    container_name: arena_bot
+    restart: unless-stopped
+    profiles: ["bot"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    entrypoint: ["/app/arena-bot"]
+    environment:
+      APP_ENV: development
+      APP_NAME: arena-bot
+      APP_VERSION: 0.1.0-dev
+      APP_COMMIT: local
+      HTTP_LISTEN_ADDR: ":0"
+      BODY_LIMIT_BYTES: "1048576"
+      REQUEST_TIMEOUT_SECONDS: "30"
+      SHUTDOWN_TIMEOUT: "20s"
+
+      DATABASE_URL: "postgres://arena:arena@postgres:5432/arena?sslmode=disable"
+      DB_POOL_MIN_CONNS: "1"
+      DB_POOL_MAX_CONNS: "5"
+
+      # Must equal arena-api's secret: the bot mints the linked user's JWT.
+      JWT_SIGNING_SECRET: "dev-only-do-not-use-in-prod"
+      EVENTS_TELEGRAM_BOT_TOKEN: "${EVENTS_TELEGRAM_BOT_TOKEN:-}"
+      EVENTS_TELEGRAM_BOT_USERNAME: "${EVENTS_TELEGRAM_BOT_USERNAME:-ArenaEventsCentrBot}"
+      BOT_SERVICE_TOKEN: "${BOT_SERVICE_TOKEN:-dev-bot-service-token}"
+      BOT_ARENA_API_URL: "http://api:8080"
+      BOT_METRICS_ADDR: ":9092"
+      HEALTH_ADDR: "http://localhost:9092"
+
+      DEFAULT_LOCALE: "en"
+      ACTIVE_LOCALES: "ru,en"
+      LOG_LEVEL: "info"
+      LOG_FORMAT: "json"
+
   admin-web:
     image: node:20-alpine
     container_name: arena_admin_web
