@@ -34,6 +34,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgread"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 )
 
@@ -111,6 +112,44 @@ func publicationFromRow(ep gen.EventPublicationRow) publicationResponse {
 	return PublicationFromRow(ep)
 }
 
+// publicationEventOrg loads the event's organization and answers 404
+// publication.event_not_found unless the caller may read it (package
+// orgread): these routes carry no {org_id}, and until 2026-09-28 any holder
+// of a publication.* scope could list, publish or unpublish another
+// organization's event.
+func (h *Handler) publicationEventOrg(w http.ResponseWriter, r *http.Request, eventID uuid.UUID) (uuid.UUID, bool) {
+	ctx := r.Context()
+	notFound := func() (uuid.UUID, bool) {
+		msg := i18n.Localize(ctx, "publication.event_not_found", "event not found", nil)
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("publication.event_not_found", msg, r))
+		return uuid.Nil, false
+	}
+	if h.eventQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "database is not available", r,
+		))
+		return uuid.Nil, false
+	}
+	ev, err := h.eventQueries.GetEventByID(ctx, eventID, "en")
+	if errors.Is(err, pgx.ErrNoRows) {
+		return notFound()
+	}
+	if err == nil {
+		var allowed bool
+		allowed, err = orgread.New(ctx, h.membershipQueries).Can(ev.OrgID)
+		if err == nil && !allowed {
+			return notFound()
+		}
+	}
+	if err != nil {
+		h.logger.Error("publications: event organization check failed", "event_id", eventID, "err", err)
+		msg := i18n.Localize(ctx, "error.internal", "internal server error", nil)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("publication.internal", msg, r))
+		return uuid.Nil, false
+	}
+	return ev.OrgID, true
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/events/{event_id}/publications
 // ─────────────────────────────────────────────────────────────────────────────
@@ -172,6 +211,24 @@ func (h *Handler) HandlePublishEvent(w http.ResponseWriter, r *http.Request) {
 		cityID = &parsed
 	}
 
+	orgID, ok := h.publicationEventOrg(w, r, eventID)
+	if !ok {
+		return
+	}
+	// The feed must belong to the same organization: another organizer's
+	// storefront is answered like a feed that does not exist.
+	if tokenOrg, err := h.publicationQueries.GetFeedTokenOrgID(ctx, feedTokenID); err != nil || tokenOrg != orgID {
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			h.logger.Error("handlePublishEvent: feed token organization lookup failed", "feed_token_id", feedTokenID, "err", err)
+			msg := i18n.Localize(ctx, "error.internal", "internal server error", nil)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("publication.internal", msg, r))
+			return
+		}
+		msg := i18n.Localize(ctx, "publication.feed_token_not_found", "feed token not found: create the token on the sales channel first", nil)
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("publication.feed_token_not_found", msg, r))
+		return
+	}
+
 	pub, err := h.publicationQueries.PublishEvent(ctx, eventID, feedTokenID, cityID)
 	if err != nil {
 		// AB-43: map the specific FK violation (23503) to an actionable 404
@@ -214,6 +271,10 @@ func (h *Handler) HandleUnpublishEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if _, ok := h.publicationEventOrg(w, r, eventID); !ok {
+		return
+	}
+
 	if err := h.publicationQueries.UnpublishEvent(ctx, eventID, feedTokenID); err != nil {
 		h.logger.Error("handleUnpublishEvent: UnpublishEvent failed",
 			"event_id", eventID, "feed_token_id", feedTokenID, "err", err)
@@ -237,6 +298,10 @@ func (h *Handler) HandleListPublications(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		msg := i18n.Localize(ctx, "error.invalid_uuid", "invalid event_id: must be a UUID", nil)
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("publication.invalid_event_id", msg, r))
+		return
+	}
+
+	if _, ok := h.publicationEventOrg(w, r, eventID); !ok {
 		return
 	}
 

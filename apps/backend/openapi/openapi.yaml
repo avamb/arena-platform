@@ -28320,6 +28320,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            The event does not exist or belongs to an organization the caller
+            may not read (`publication.event_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: |
             Internal server error while listing publications
@@ -28434,8 +28442,11 @@ paths:
             sales channel first),
             `publication.city_not_found` (no `cities` row with the
             supplied `city_id`),
-            `publication.event_not_found` (the event was deleted
-            between the URL resolution and the INSERT).
+            `publication.event_not_found` (the event does not exist or
+            belongs to an organization the caller may not read). A feed
+            token of ANOTHER organization's sales channel is answered as
+            `publication.feed_token_not_found`: an event is published only
+            into its own organization's feeds.
           content:
             application/json:
               schema:
@@ -28511,6 +28522,14 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Caller lacks the `publication.delete` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            The event does not exist or belongs to an organization the caller
+            may not read (`publication.event_not_found`).
           content:
             application/json:
               schema:
@@ -32024,6 +32043,14 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Insufficient permission (`report.generate`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            The event does not exist or belongs to an organization the caller
+            may not read (`event.not_found`).
           content:
             application/json:
               schema:

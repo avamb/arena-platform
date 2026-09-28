@@ -24,10 +24,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgread"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,6 +62,35 @@ type EventReportResponse struct {
 	Lines             []EventReportLineResponse `json:"lines"`
 }
 
+// eventOrg loads the event's organization and answers 404 with notFoundCode
+// unless the caller may read it (package orgread). The report routes carry no
+// {org_id}: until 2026-09-28 any holder of report.read could read another
+// organization's sales report by event id.
+func (h *Handler) eventOrg(w http.ResponseWriter, r *http.Request, eventID uuid.UUID, notFoundCode, notFoundMsg string) (uuid.UUID, bool) {
+	ctx := r.Context()
+	ev, err := h.reportQueries.GetEventByID(ctx, eventID, "en")
+	if errors.Is(err, pgx.ErrNoRows) {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(notFoundCode, notFoundMsg, r))
+		return uuid.Nil, false
+	}
+	if err == nil {
+		var allowed bool
+		allowed, err = orgread.New(ctx, h.reportQueries).Can(ev.OrgID)
+		if err == nil && !allowed {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(notFoundCode, notFoundMsg, r))
+			return uuid.Nil, false
+		}
+	}
+	if err != nil {
+		slog.ErrorContext(ctx, "event report: event organization check failed", "event_id", eventID, "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"report.get_failed", "failed to verify the event", r,
+		))
+		return uuid.Nil, false
+	}
+	return ev.OrgID, true
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /v1/events/{event_id}/report
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,6 +109,10 @@ func (h *Handler) HandleGetEventReport(w http.ResponseWriter, r *http.Request) {
 
 	eventID, ok := httputil.UUIDPathParam(w, r, "event_id")
 	if !ok {
+		return
+	}
+
+	if _, ok := h.eventOrg(w, r, eventID, "report.not_found", "no report found for this event"); !ok {
 		return
 	}
 
@@ -132,6 +167,11 @@ func (h *Handler) HandleTriggerEventReport(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	orgID, ok := h.eventOrg(w, r, eventID, "event.not_found", "event not found")
+	if !ok {
+		return
+	}
+
 	// Check if a report already exists in a non-terminal state.
 	existing, err := h.reportQueries.GetEventReportByEventID(r.Context(), eventID)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -151,7 +191,7 @@ func (h *Handler) HandleTriggerEventReport(w http.ResponseWriter, r *http.Reques
 
 	// Create a new report row in 'pending' state.
 	now := time.Now().UTC()
-	report, err := h.reportQueries.InsertEventReport(r.Context(), eventID, eventID, &now, nil)
+	report, err := h.reportQueries.InsertEventReport(r.Context(), eventID, orgID, &now, nil)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "handleTriggerEventReport: insert failed",
 			"event_id", eventID, "error", err)

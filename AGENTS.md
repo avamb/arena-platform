@@ -1615,6 +1615,21 @@ entries short and factual.
   `platform.`/`admin.` prefixes were checked and an org admin could mint a key
   with `geo.admin`. A NEW platform-wide permission must be added to that list
   — its name alone does not protect it.
+- **A route without `{org_id}` in its path must still check the organization
+  of the row it loads — through `httpserver/orgread`.** `GET /v1/events/{id}`,
+  the cross-org `GET /v1/events`, `/v1/events/{event_id}/publications` and
+  `/v1/events/{event_id}/report` checked only a scope (`event.read`,
+  `publication.*`, `report.*`) until 2026-09-28, and every organization API
+  key carries `event.read`: one organizer could read another's draft event,
+  its sales report and publications by UUID, and publish or unpublish it.
+  `orgread.New(ctx, queries).Can(row.OrgID)` lets a platform superadmin read
+  everything (no X-Admin-Reason — a read, not an override), an API key only
+  its own organization, a user their memberships; a denial is the route's own
+  404, never 403. Publishing also requires the feed token's channel to belong
+  to the event's organization (`GetFeedTokenOrgID`). Guarded by
+  `TestOrgRead_EventRoutesStayInsideTheOrganization`. The same audit found
+  `POST /v1/events/{event_id}/report` writing the EVENT id into
+  `event_reports.org_id`.
 - **An event center picks a venue by `venue.arenaVenueId`** (event-bundle,
   source=arena): the org's venue UUID from `GET /v1/organizations/{org_id}/venues`.
   It wins over `venueId`/`venueName`, never edits the venue, and answers 422

@@ -170,3 +170,21 @@ func (q *Queries) GetFeedTokenByToken(ctx context.Context, token string) (FeedTo
 	row := q.db.QueryRow(ctx, getFeedTokenByToken, token)
 	return scanFeedTokenRow(row)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetFeedTokenOrgID
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getFeedTokenOrgID = `-- name: GetFeedTokenOrgID :one
+SELECT sc.org_id
+FROM   agent_feed_tokens ft
+JOIN   sales_channels sc ON sc.id = ft.sales_channel_id
+WHERE  ft.id = $1`
+
+// GetFeedTokenOrgID returns the organization whose sales channel owns the
+// feed token. Returns pgx.ErrNoRows when the token does not exist.
+func (q *Queries) GetFeedTokenOrgID(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	var orgID uuid.UUID
+	err := q.db.QueryRow(ctx, getFeedTokenOrgID, id).Scan(&orgID)
+	return orgID, err
+}

@@ -32589,6 +32589,18 @@ export interface operations {
                 };
             };
             /**
+             * @description The event does not exist or belongs to an organization the caller
+             *     may not read (`publication.event_not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
              * @description Internal server error while listing publications
              *     (`publication.internal`).
              */
@@ -32676,8 +32688,11 @@ export interface operations {
              *     sales channel first),
              *     `publication.city_not_found` (no `cities` row with the
              *     supplied `city_id`),
-             *     `publication.event_not_found` (the event was deleted
-             *     between the URL resolution and the INSERT).
+             *     `publication.event_not_found` (the event does not exist or
+             *     belongs to an organization the caller may not read). A feed
+             *     token of ANOTHER organization's sales channel is answered as
+             *     `publication.feed_token_not_found`: an event is published only
+             *     into its own organization's feeds.
              */
             404: {
                 headers: {
@@ -32761,6 +32776,18 @@ export interface operations {
             };
             /** @description Caller lacks the `publication.delete` permission. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The event does not exist or belongs to an organization the caller
+             *     may not read (`publication.event_not_found`).
+             */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36279,6 +36306,18 @@ export interface operations {
             };
             /** @description Insufficient permission (`report.generate`). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The event does not exist or belongs to an organization the caller
+             *     may not read (`event.not_found`).
+             */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

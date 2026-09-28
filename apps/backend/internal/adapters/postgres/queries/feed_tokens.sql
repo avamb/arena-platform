@@ -38,3 +38,11 @@ WHERE  token = $1
 SELECT id, token, sales_channel_id, label, is_active, revoked_at, last_used_at, created_at, updated_at
 FROM   agent_feed_tokens
 WHERE  token = $1;
+
+-- name: GetFeedTokenOrgID :one
+-- The organization whose sales channel owns a feed token: publishing an
+-- event into a feed must stay inside one organization.
+SELECT sc.org_id
+FROM   agent_feed_tokens ft
+JOIN   sales_channels sc ON sc.id = ft.sales_channel_id
+WHERE  ft.id = $1;

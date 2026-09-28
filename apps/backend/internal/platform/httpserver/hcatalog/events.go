@@ -19,6 +19,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgread"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
@@ -463,9 +464,21 @@ func (h *Handler) HandleListEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Only the organizations the caller may read (package orgread).
+	reader := orgread.New(ctx, h.membershipQueries)
 	result := make([]eventResponse, 0, len(rows))
 	for _, e := range rows {
-		result = append(result, eventFromRow(e))
+		allowed, err := reader.Can(e.OrgID)
+		if err != nil {
+			h.logger.Error("event: list membership check failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"catalog.membership_check_failed", "failed to verify org membership", r,
+			))
+			return
+		}
+		if allowed {
+			result = append(result, eventFromRow(e))
+		}
 	}
 	h.hydrateEvents(ctx, result)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"events": result})
@@ -500,6 +513,20 @@ func (h *Handler) HandleGetEvent(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"event.get_failed", "failed to get event", r,
 		))
+		return
+	}
+	// Another organization's event is "not found", never 403: an id must not be
+	// provable by probing (package orgread).
+	allowed, err := orgread.New(ctx, h.membershipQueries).Can(e.OrgID)
+	if err != nil {
+		h.logger.Error("event: get membership check failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"catalog.membership_check_failed", "failed to verify org membership", r,
+		))
+		return
+	}
+	if !allowed {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("event.not_found", "event not found", r))
 		return
 	}
 
