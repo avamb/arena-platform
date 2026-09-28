@@ -27,6 +27,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 )
 
 // arenaMatch is the outcome of spec §3.2 steps 1-2: which existing session (if
@@ -97,6 +98,11 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 	}
 	if err := syncImportedCategoryQuotas(ctx, q, sessionID, cats, true, true, chain, warnings); err != nil {
 		return importResult{}, err
+	}
+	// A quantity step selling now owns exactly its limit; the rest of the hall
+	// waits in the next, still closed category (migration 0114).
+	if _, err := gaquota.RebalanceSession(ctx, q, sessionID); err != nil {
+		return importResult{}, fmt.Errorf("apply category sell limits: %w", err)
 	}
 
 	if err := h.syncInventoryLedger(ctx, q, eventID, sessionID); err != nil {

@@ -43,10 +43,13 @@ type TierChainRow struct {
 	TierID       uuid.UUID  `json:"tier_id"`
 	NextTierID   uuid.UUID  `json:"next_tier_id"`
 	HandedOverAt *time.Time `json:"handed_over_at"`
+	// SellLimit is how many tickets TierID sells before its places pass to
+	// NextTierID (migration 0114); nil = only its sale window decides.
+	SellLimit *int32 `json:"sell_limit"`
 }
 
 const listTierChainForSession = `-- name: ListTierChainForSession :many
-SELECT c.tier_id, c.next_tier_id, c.handed_over_at
+SELECT c.tier_id, c.next_tier_id, c.handed_over_at, c.sell_limit
 FROM   ticket_tier_chain c
 JOIN   ticket_tiers t ON t.id = c.tier_id
 WHERE  t.session_id = $1
@@ -63,7 +66,7 @@ func (q *Queries) ListTierChainForSession(ctx context.Context, sessionID uuid.UU
 	var out []TierChainRow
 	for rows.Next() {
 		r := TierChainRow{SessionID: sessionID}
-		if err := rows.Scan(&r.TierID, &r.NextTierID, &r.HandedOverAt); err != nil {
+		if err := rows.Scan(&r.TierID, &r.NextTierID, &r.HandedOverAt, &r.SellLimit); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -72,21 +75,35 @@ func (q *Queries) ListTierChainForSession(ctx context.Context, sessionID uuid.UU
 }
 
 const listDueTierHandOvers = `-- name: ListDueTierHandOvers :many
-SELECT t.session_id, c.tier_id, c.next_tier_id, c.handed_over_at
+SELECT t.session_id, c.tier_id, c.next_tier_id, c.handed_over_at, c.sell_limit
 FROM   ticket_tier_chain c
 JOIN   ticket_tiers t  ON t.id  = c.tier_id      AND t.deleted_at  IS NULL
 JOIN   ticket_tiers nt ON nt.id = c.next_tier_id AND nt.deleted_at IS NULL
                       AND nt.session_id = t.session_id
-WHERE  t.sale_window_end IS NOT NULL
-  AND  t.sale_window_end <= now()
-  AND  EXISTS (
-         SELECT 1 FROM session_seats ss
-         WHERE  ss.session_id = t.session_id
-           AND  ss.tier_id    = t.id
-           AND  ss.kind       = 'ga_unit'
-           AND  ss.status     = 'available'
-           AND  NOT EXISTS (SELECT 1 FROM reservation_seats rs WHERE rs.session_seat_id = ss.id))
-ORDER  BY t.sale_window_end, t.sort_order
+WHERE (
+         ((t.sale_window_end IS NOT NULL AND t.sale_window_end <= now()) OR c.handed_over_at IS NOT NULL)
+         AND EXISTS (
+               SELECT 1 FROM session_seats ss
+               WHERE  ss.session_id = t.session_id
+                 AND  ss.tier_id    = t.id
+                 AND  ss.kind       = 'ga_unit'
+                 AND  ss.status     = 'available'
+                 AND  NOT EXISTS (SELECT 1 FROM reservation_seats rs WHERE rs.session_seat_id = ss.id))
+      )
+   OR (
+         c.sell_limit IS NOT NULL AND c.handed_over_at IS NULL AND t.is_open
+         AND EXISTS (
+               SELECT 1 FROM session_seats ss
+               WHERE  ss.session_id = t.session_id AND ss.tier_id = t.id AND ss.kind = 'ga_unit')
+         AND NOT EXISTS (
+               SELECT 1 FROM session_seats ss
+               WHERE  ss.session_id = t.session_id
+                 AND  ss.tier_id    = t.id
+                 AND  ss.kind       = 'ga_unit'
+                 AND  ss.status     = 'available'
+                 AND  NOT EXISTS (SELECT 1 FROM reservation_seats rs WHERE rs.session_seat_id = ss.id))
+      )
+ORDER  BY t.sale_window_end NULLS LAST, t.sort_order
 LIMIT  $1`
 
 // ListDueTierHandOvers returns the links whose source category's sale window
@@ -101,7 +118,7 @@ func (q *Queries) ListDueTierHandOvers(ctx context.Context, limit int32) ([]Tier
 	var out []TierChainRow
 	for rows.Next() {
 		var r TierChainRow
-		if err := rows.Scan(&r.SessionID, &r.TierID, &r.NextTierID, &r.HandedOverAt); err != nil {
+		if err := rows.Scan(&r.SessionID, &r.TierID, &r.NextTierID, &r.HandedOverAt, &r.SellLimit); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -118,6 +135,8 @@ WITH free AS (
       AND  ss.kind       = 'ga_unit'
       AND  ss.status     = 'available'
       AND  NOT EXISTS (SELECT 1 FROM reservation_seats rs WHERE rs.session_seat_id = ss.id)
+    ORDER  BY ss.seat_key DESC
+    LIMIT  $7
     FOR UPDATE
 ), moving AS (
     SELECT id, row_number() OVER (ORDER BY seat_key) AS rn FROM free
@@ -143,8 +162,23 @@ func (q *Queries) MoveFreeGAUnitsToTier(
 	startIndex int32,
 	statusVersion int64,
 ) (int64, error) {
+	return q.MoveFreeGAUnitsToTierUpTo(ctx, sessionID, fromTier, toTier, keyPrefix, startIndex, statusVersion, nil)
+}
+
+// MoveFreeGAUnitsToTierUpTo is MoveFreeGAUnitsToTier for at most limit places
+// (nil = every free place): how a quantity step of a chain (migration 0114)
+// passes the part of the hall beyond its limit to the next category.
+// The caller MUST hold the sessions row lock.
+func (q *Queries) MoveFreeGAUnitsToTierUpTo(
+	ctx context.Context,
+	sessionID, fromTier, toTier uuid.UUID,
+	keyPrefix string,
+	startIndex int32,
+	statusVersion int64,
+	limit *int64,
+) (int64, error) {
 	tag, err := q.db.Exec(ctx, moveFreeGAUnitsToTier,
-		sessionID, fromTier, toTier, keyPrefix, startIndex, statusVersion)
+		sessionID, fromTier, toTier, keyPrefix, startIndex, statusVersion, limit)
 	if err != nil {
 		return 0, err
 	}
@@ -175,4 +209,32 @@ WHERE  tier_id = $1 AND handed_over_at IS NULL`
 func (q *Queries) MarkTierChainHandedOver(ctx context.Context, tierID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, markTierChainHandedOver, tierID)
 	return err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SetTierChainSellLimit / CountTierGAPlaces (migration 0114)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const setTierChainSellLimit = `-- name: SetTierChainSellLimit :exec
+UPDATE ticket_tier_chain SET sell_limit = $2, updated_at = now() WHERE tier_id = $1`
+
+// SetTierChainSellLimit sets how many tickets a link's source sells before
+// handing over; nil = only its sale window decides.
+func (q *Queries) SetTierChainSellLimit(ctx context.Context, tierID uuid.UUID, sellLimit *int32) error {
+	_, err := q.db.Exec(ctx, setTierChainSellLimit, tierID, sellLimit)
+	return err
+}
+
+const countTierGAPlaces = `-- name: CountTierGAPlaces :one
+SELECT count(*) AS owned,
+       count(*) FILTER (WHERE ss.status = 'available'
+                          AND NOT EXISTS (SELECT 1 FROM reservation_seats rs WHERE rs.session_seat_id = ss.id)) AS free
+FROM   session_seats ss
+WHERE  ss.session_id = $1 AND ss.tier_id = $2 AND ss.kind = 'ga_unit'`
+
+// CountTierGAPlaces returns every GA place a category owns and the free ones
+// a move may take.
+func (q *Queries) CountTierGAPlaces(ctx context.Context, sessionID, tierID uuid.UUID) (owned, free int64, err error) {
+	err = q.db.QueryRow(ctx, countTierGAPlaces, sessionID, tierID).Scan(&owned, &free)
+	return owned, free, err
 }

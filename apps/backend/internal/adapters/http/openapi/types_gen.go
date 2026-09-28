@@ -5813,6 +5813,14 @@ type ImportBil24SessionCategory struct {
 	// after the start).
 	SellEndTime *string `json:"sellEndTime,omitempty"`
 
+	// SellLimit source=arena only. Makes a chained category a quantity step
+	// (migration 0114): it sells at most this many tickets, then its
+	// free places move to the next category and that one opens —
+	// whichever comes first, this or `sellEndTime`. 0 removes the limit;
+	// omitted keeps it. Only a category with a next one may carry a
+	// limit (422 import.invalid_sell_limit).
+	SellLimit *int32 `json:"sellLimit,omitempty"`
+
 	// SellStartTime source=arena only. RFC3339 instant at which THIS category starts
 	// selling; omitted falls back to `actionEvent.sellStartTime`.
 	SellStartTime *string `json:"sellStartTime,omitempty"`
@@ -9957,6 +9965,14 @@ type TicketTierItem struct {
 	// SeatCount AB-48 step 3 (admin list endpoint only) - number of physical
 	// seats bound to this category, shown beside its price.
 	SeatCount *int64 `json:"seat_count"`
+
+	// SellLimit List endpoint only. How many tickets this chained category sells
+	// before its places pass to `next_tier_id` (migration 0114): the
+	// category owns exactly that many places, the rest of the hall
+	// waits in the next, still closed one. Absent when the category is
+	// not chained or its turn ends only by date. Set through an
+	// event-bundle's categoryList[].sellLimit.
+	SellLimit *int32 `json:"sell_limit"`
 
 	// SessionId FK to the owning session. Immutable after creation; the
 	// owner-org check is enforced via the parent session row.

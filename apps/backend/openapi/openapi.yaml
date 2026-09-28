@@ -5871,6 +5871,16 @@ components:
             when its sale window closes, which then opens (migration 0112);
             absent when the category is not chained. Set through an
             event-bundle's categoryList[].nextCategoryIndex.
+        sell_limit:
+          type: [integer, "null"]
+          format: int32
+          description: |
+            List endpoint only. How many tickets this chained category sells
+            before its places pass to `next_tier_id` (migration 0114): the
+            category owns exactly that many places, the rest of the hall
+            waits in the next, still closed one. Absent when the category is
+            not chained or its turn ends only by date. Set through an
+            event-bundle's categoryList[].sellLimit.
         current_price:
           type: [integer, "null"]
           format: int64
@@ -11420,6 +11430,18 @@ components:
             handing to the same one, or a cycle is 422
             (import.invalid_next_category / import.category_chain_cycle).
           example: 1
+        sellLimit:
+          type: integer
+          format: int32
+          minimum: 0
+          description: |
+            source=arena only. Makes a chained category a quantity step
+            (migration 0114): it sells at most this many tickets, then its
+            free places move to the next category and that one opens —
+            whichever comes first, this or `sellEndTime`. 0 removes the limit;
+            omitted keeps it. Only a category with a next one may carry a
+            limit (422 import.invalid_sell_limit).
+          example: 50
         priceSchedule:
           type: array
           maxItems: 50

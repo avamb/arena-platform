@@ -11114,6 +11114,16 @@ export interface components {
              */
             next_tier_id?: string | null;
             /**
+             * Format: int32
+             * @description List endpoint only. How many tickets this chained category sells
+             *     before its places pass to `next_tier_id` (migration 0114): the
+             *     category owns exactly that many places, the rest of the hall
+             *     waits in the next, still closed one. Absent when the category is
+             *     not chained or its turn ends only by date. Set through an
+             *     event-bundle's categoryList[].sellLimit.
+             */
+            sell_limit?: number | null;
+            /**
              * Format: int64
              * @description AB-48 (public feed only) - the effective scheduled price right
              *     now; `price_amount` stays the tier's base.
@@ -15930,6 +15940,17 @@ export interface components {
              * @example 1
              */
             nextCategoryIndex?: number;
+            /**
+             * Format: int32
+             * @description source=arena only. Makes a chained category a quantity step
+             *     (migration 0114): it sells at most this many tickets, then its
+             *     free places move to the next category and that one opens —
+             *     whichever comes first, this or `sellEndTime`. 0 removes the limit;
+             *     omitted keeps it. Only a category with a next one may carry a
+             *     limit (422 import.invalid_sell_limit).
+             * @example 50
+             */
+            sellLimit?: number;
             /**
              * @description source=arena only. Replaces the category's scheduled prices (the
              *     same schedule `PUT .../tiers/{id}/price-schedule` manages); an empty

@@ -143,6 +143,38 @@ func applyArenaCategoryExtras(
 	if err != nil {
 		return nil, fmt.Errorf("read category chain: %w", err)
 	}
+
+	// Quantity steps (migration 0114): a limit belongs to a link, so a
+	// category must hand over to a next one before it can carry one.
+	linked := make(map[uuid.UUID]bool, len(links))
+	for _, l := range links {
+		linked[l.TierID] = true
+	}
+	for i, c := range list {
+		if c.SellLimit == nil {
+			continue
+		}
+		switch n := *c.SellLimit; {
+		case n < 0:
+			return nil, failImport(http.StatusUnprocessableEntity, "import.invalid_sell_limit",
+				fmt.Sprintf("categoryList[%d].sellLimit must be 0 (remove) or a positive number of tickets", i))
+		case n > 0 && !linked[ordered[i]]:
+			return nil, failImport(http.StatusUnprocessableEntity, "import.invalid_sell_limit",
+				fmt.Sprintf("categoryList[%d].sellLimit needs a nextCategoryIndex: only a category that hands its places on can stop at a number of tickets", i))
+		case linked[ordered[i]]:
+			var limit *int32
+			if n > 0 {
+				limit = &n
+			}
+			if err := q.SetTierChainSellLimit(ctx, ordered[i], limit); err != nil {
+				return nil, fmt.Errorf("write category sell limit: %w", err)
+			}
+		}
+	}
+	if links, err = q.ListTierChainForSession(ctx, sessionID); err != nil {
+		return nil, fmt.Errorf("read category chain: %w", err)
+	}
+
 	ci := &chainIndex{next: map[uuid.UUID]gen.TierChainRow{}, targets: map[uuid.UUID]struct{}{}}
 	for _, l := range links {
 		ci.next[l.TierID] = l

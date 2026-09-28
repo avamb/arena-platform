@@ -289,3 +289,105 @@ func TestEventBundleChain_RejectsBadLinks(t *testing.T) {
 	}
 	assertErrorCode(t, rec, "import.category_chain_cycle")
 }
+
+// A quantity step (sellLimit, migration 0114) owns exactly its limit; the rest
+// of the hall waits in the next, closed category. When the step has no free
+// place left the sweep opens the next one even though its date has not come,
+// and a middle step then keeps its own limit and passes the rest on.
+func TestEventBundleChain_QuantitySteps(t *testing.T) {
+	pool := import517Pool(t)
+	ctx := context.Background()
+	f := newBundle525Fixture(t, ctx, pool)
+	defer f.cleanup()
+	h := newBundle525Handler(t, pool)
+
+	earlyEnd := time.Now().Add(24 * time.Hour).Truncate(time.Second)
+	three, four := int32(3), int32(4)
+	p := chainPayload(f, earlyEnd, 10)
+	p.CategoryList[0].SellLimit = &three
+	p.CategoryList[1].SellLimit = &four
+	rec, out := f.call(h, p)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create: status %d; body=%s", rec.Code, rec.Body.String())
+	}
+	ids := out.CompatIDs.CategoryPriceIDs
+	early := out.TierIDs[externalIDString(ids[0])]
+	friends := out.TierIDs[externalIDString(ids[1])]
+	last := out.TierIDs[externalIDString(ids[2])]
+	want := func(stage, name string, id uuid.UUID, places int64, open bool) {
+		t.Helper()
+		if s := readTier(t, ctx, f, out.SessionID, id); s.places != places || s.open != open {
+			t.Errorf("%s: %s = %d places open=%v, want %d open=%v", stage, name, s.places, s.open, places, open)
+		}
+	}
+	want("create", "Early", early, 3, true)
+	want("create", "Friends", friends, 7, false)
+	want("create", "Last minute", last, 0, false)
+
+	resave := func(stage string, hall int32, mutate func(*bil24compat.ImportSessionRequest)) {
+		t.Helper()
+		p := chainPayload(f, earlyEnd, hall)
+		p.CategoryList[0].SellLimit = &three
+		p.CategoryList[1].SellLimit = &four
+		for i := range p.CategoryList {
+			p.CategoryList[i].CategoryPriceID = ids[i]
+		}
+		p.Action.ActionID = out.CompatIDs.ActionID
+		p.ActionEvent.ActionEventID = out.CompatIDs.ActionEventID
+		p.Venue.VenueID = out.CompatIDs.VenueID
+		if mutate != nil {
+			mutate(&p)
+		}
+		if rec, _ := f.call(h, p); rec.Code != http.StatusOK {
+			t.Fatalf("%s: status %d; body=%s", stage, rec.Code, rec.Body.String())
+		}
+	}
+	resave("unchanged re-save", 10, nil)
+	want("unchanged re-save", "Early", early, 3, true)
+	want("unchanged re-save", "Friends", friends, 7, false)
+
+	resave("hall 12", 12, nil)
+	want("hall 12", "Early", early, 3, true)
+	want("hall 12", "Friends", friends, 9, false)
+
+	sweep := tierchain.NewHandler(tierchain.Options{Store: tierchain.NewPGStore(pool)})
+	// Two sold and one held: the step is exhausted before its date.
+	if _, err := pool.Exec(ctx,
+		`UPDATE session_seats SET status = CASE WHEN rn <= 2 THEN 'sold' ELSE 'held' END
+		   FROM (SELECT id, row_number() OVER (ORDER BY seat_key) rn
+		           FROM session_seats WHERE session_id=$1 AND tier_id=$2) x
+		  WHERE session_seats.id = x.id`, out.SessionID, early); err != nil {
+		t.Fatalf("sell Early: %v", err)
+	}
+	if err := sweep(ctx, nil); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	want("exhausted", "Early", early, 3, false)
+	want("exhausted", "Friends", friends, 4, true)
+	want("exhausted", "Last minute", last, 5, false)
+
+	// Removing the middle step's limit gives it the rest of the hall back.
+	resave("limit removed", 12, func(p *bil24compat.ImportSessionRequest) {
+		zero := int32(0)
+		p.CategoryList[1].SellLimit = &zero
+		p.CategoryList[0].SellEndTime = earlyEnd.Format(time.RFC3339)
+	})
+	want("limit removed", "Friends", friends, 9, true)
+	want("limit removed", "Last minute", last, 0, false)
+	var limit *int32
+	if err := pool.QueryRow(ctx, `SELECT sell_limit FROM ticket_tier_chain WHERE tier_id=$1`, friends).Scan(&limit); err != nil || limit != nil {
+		t.Errorf("Friends sell_limit after 0 = %v (err %v), want NULL", limit, err)
+	}
+	var hall int
+	if err := pool.QueryRow(ctx, `SELECT capacity_total FROM sessions WHERE id=$1`, out.SessionID).Scan(&hall); err != nil || hall != 12 {
+		t.Errorf("session capacity = %d (err %v), want 12", hall, err)
+	}
+
+	bad := f.payload()
+	bad.CategoryList[0].SellLimit = &three
+	rec, _ = f.call(h, bad)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("limit without a next category: status %d, want 422", rec.Code)
+	}
+	assertErrorCode(t, rec, "import.invalid_sell_limit")
+}

@@ -18,32 +18,51 @@ DELETE FROM ticket_tier_chain WHERE tier_id = $1;
 
 -- name: ListTierChainForSession :many
 -- Every chain link of one session's live categories.
-SELECT c.tier_id, c.next_tier_id, c.handed_over_at
+SELECT c.tier_id, c.next_tier_id, c.handed_over_at, c.sell_limit
 FROM   ticket_tier_chain c
 JOIN   ticket_tiers t ON t.id = c.tier_id
 WHERE  t.session_id = $1
   AND  t.deleted_at IS NULL;
 
 -- name: ListDueTierHandOvers :many
--- Links whose source category's sale window has closed and that still own a
--- free GA place nothing references through a live-or-converted hold — the
--- work of one sweep. Ordered by window end so a chain whose several windows
--- already passed cascades in one sweep (A->B is handed over before B->C).
-SELECT t.session_id, c.tier_id, c.next_tier_id, c.handed_over_at
+-- The work of one sweep, two kinds of link:
+--   * the source's sale window has closed (or the link already handed over
+--     once) and the source still owns a free GA place nothing references
+--     through a live-or-converted hold: its places move on;
+--   * a quantity step (sell_limit, migration 0114) that is open, has not
+--     handed over yet and has no free place left: everything it may sell is
+--     sold or held, so the next category opens now.
+-- Ordered by window end so a chain whose several windows already passed
+-- cascades in one sweep (A->B is handed over before B->C).
+SELECT t.session_id, c.tier_id, c.next_tier_id, c.handed_over_at, c.sell_limit
 FROM   ticket_tier_chain c
 JOIN   ticket_tiers t  ON t.id  = c.tier_id      AND t.deleted_at  IS NULL
 JOIN   ticket_tiers nt ON nt.id = c.next_tier_id AND nt.deleted_at IS NULL
                       AND nt.session_id = t.session_id
-WHERE  t.sale_window_end IS NOT NULL
-  AND  t.sale_window_end <= now()
-  AND  EXISTS (
-         SELECT 1 FROM session_seats ss
-         WHERE  ss.session_id = t.session_id
-           AND  ss.tier_id    = t.id
-           AND  ss.kind       = 'ga_unit'
-           AND  ss.status     = 'available'
-           AND  NOT EXISTS (SELECT 1 FROM reservation_seats rs WHERE rs.session_seat_id = ss.id))
-ORDER  BY t.sale_window_end, t.sort_order
+WHERE (
+         ((t.sale_window_end IS NOT NULL AND t.sale_window_end <= now()) OR c.handed_over_at IS NOT NULL)
+         AND EXISTS (
+               SELECT 1 FROM session_seats ss
+               WHERE  ss.session_id = t.session_id
+                 AND  ss.tier_id    = t.id
+                 AND  ss.kind       = 'ga_unit'
+                 AND  ss.status     = 'available'
+                 AND  NOT EXISTS (SELECT 1 FROM reservation_seats rs WHERE rs.session_seat_id = ss.id))
+      )
+   OR (
+         c.sell_limit IS NOT NULL AND c.handed_over_at IS NULL AND t.is_open
+         AND EXISTS (
+               SELECT 1 FROM session_seats ss
+               WHERE  ss.session_id = t.session_id AND ss.tier_id = t.id AND ss.kind = 'ga_unit')
+         AND NOT EXISTS (
+               SELECT 1 FROM session_seats ss
+               WHERE  ss.session_id = t.session_id
+                 AND  ss.tier_id    = t.id
+                 AND  ss.kind       = 'ga_unit'
+                 AND  ss.status     = 'available'
+                 AND  NOT EXISTS (SELECT 1 FROM reservation_seats rs WHERE rs.session_seat_id = ss.id))
+      )
+ORDER  BY t.sale_window_end NULLS LAST, t.sort_order
 LIMIT  $1;
 
 -- name: MoveFreeGAUnitsToTier :execrows
@@ -63,6 +82,8 @@ WITH free AS (
       AND  ss.kind       = 'ga_unit'
       AND  ss.status     = 'available'
       AND  NOT EXISTS (SELECT 1 FROM reservation_seats rs WHERE rs.session_seat_id = ss.id)
+    ORDER  BY ss.seat_key DESC
+    LIMIT  $7
     FOR UPDATE
 ), moving AS (
     SELECT id, row_number() OVER (ORDER BY seat_key) AS rn FROM free
@@ -90,3 +111,16 @@ WHERE  t.id = $1 AND t.session_id = $2;
 UPDATE ticket_tier_chain
 SET    handed_over_at = now(), updated_at = now()
 WHERE  tier_id = $1 AND handed_over_at IS NULL;
+
+-- name: SetTierChainSellLimit :exec
+-- How many tickets a link's source sells before handing over (migration 0114);
+-- NULL = only its sale window decides.
+UPDATE ticket_tier_chain SET sell_limit = $2, updated_at = now() WHERE tier_id = $1;
+
+-- name: CountTierGAPlaces :one
+-- A category's GA places: all it owns, and the free ones a move may take.
+SELECT count(*) AS owned,
+       count(*) FILTER (WHERE ss.status = 'available'
+                          AND NOT EXISTS (SELECT 1 FROM reservation_seats rs WHERE rs.session_seat_id = ss.id)) AS free
+FROM   session_seats ss
+WHERE  ss.session_id = $1 AND ss.tier_id = $2 AND ss.kind = 'ga_unit';

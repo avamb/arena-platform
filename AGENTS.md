@@ -1582,6 +1582,16 @@ entries short and factual.
   (staging 2026-09-28, 30 became 60 — `TestEventBundleChain_ReSaveAfterHeadHandedOverEverything`). Seated places
   never move; a seated target is refused (`ErrSeatedCategory`) — seats use
   `priceSchedule` instead.
+  **Quantity steps (migration 0114):** `ticket_tier_chain.sell_limit` makes
+  the selling category own exactly that many places; the rest of the hall
+  waits in the next, CLOSED category (`gaquota.RebalanceStep`, run by
+  `RebalanceSession` after every arena import and by `HandOver` for the new
+  selling category). The sweep hands over when the date passes OR the step
+  has no free place left (sold + held = limit), whichever comes first. The
+  chain's place count is still the sum over all members, so a re-save keeps
+  the hall. Bundle `sellLimit`: absent keeps, `0` removes, positive needs a
+  `nextCategoryIndex` (422 `import.invalid_sell_limit`). A removed limit
+  pulls the parked places back into the selling category.
 - **Promoter ≠ organization (migration 0113).** The organization SELLS the
   event; a partner may PROMOTE it. `org_promoters` is the org's own list
   (archived, never deleted); `event_promoters` links an event to one of them

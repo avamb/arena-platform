@@ -156,6 +156,12 @@ type ImportSessionCategory struct {
 	// its sale window closes, its free places move there and that category
 	// opens (migration 0112). nil keeps the stored link, -1 removes it.
 	NextCategoryIndex *int `json:"nextCategoryIndex"`
+	// SellLimit makes a chained category a quantity step (migration 0114): it
+	// sells at most this many tickets, then its turn ends like a closed sale
+	// window — whichever comes first. nil keeps the stored limit, 0 removes it.
+	// Only a category that hands over to a next one (nextCategoryIndex) may
+	// carry one.
+	SellLimit *int32 `json:"sellLimit"`
 	// PriceSchedule replaces the category's scheduled prices; nil keeps the
 	// stored schedule, an empty list clears it.
 	PriceSchedule *[]ImportPriceWindow `json:"priceSchedule"`
