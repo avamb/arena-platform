@@ -124,3 +124,7 @@ apps/admin-web/test-results/
 ArenaSupportBot.txt
 *.secret.txt
 /api-token-*.txt
+
+# Telegram bot tokens kept next to the repo by the owner - never commit
+/EventsCentrBot.txt
+/ArenaSoldOutSalesBot.txt
