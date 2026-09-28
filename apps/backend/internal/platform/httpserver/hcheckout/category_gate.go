@@ -138,6 +138,118 @@ func CheckCategoriesSellable(ctx context.Context, txq *gen.Queries, sessionID uu
 	return nil
 }
 
+// GALine is one General Admission category and the number of places a hold
+// is about to take from it.
+type GALine struct {
+	TierID   uuid.UUID
+	Quantity int32
+}
+
+// maxChainSpill bounds how many waiting categories one hold may reach
+// through, a guard against a malformed chain rather than a business rule.
+const maxChainSpill = 8
+
+// CheckGALinesSellable is CheckCategoriesSellable for the GA lines of a
+// hold, with one exception for a chain of categories (migrations 0112/0114):
+// a category still waiting for its turn — closed, or its sale not yet
+// started — may be sold in the SAME hold that takes the last free places of
+// the category selling before it. A company asking for five tickets when the
+// cheaper step has three left gets three at that price and two at the next,
+// instead of a refusal; the cheaper places can never be skipped, because the
+// waiting category only sells once nothing is left before it. A hold that
+// grows a cart which already took those places qualifies the same way.
+//
+// The step it exhausts is handed over by tier.chain_sweep within a sweep
+// period, exactly as if the places had been sold one by one. A waiting
+// category whose own sale window has ENDED is never sold this way.
+func CheckGALinesSellable(ctx context.Context, txq *gen.Queries, sessionID uuid.UUID, lines []GALine, now time.Time) error {
+	if txq == nil {
+		return errors.New("hcheckout: CheckGALinesSellable requires queries")
+	}
+	want := make(map[uuid.UUID]int64, len(lines))
+	order := make([]uuid.UUID, 0, len(lines))
+	for _, l := range lines {
+		if _, seen := want[l.TierID]; !seen {
+			order = append(order, l.TierID)
+		}
+		want[l.TierID] += int64(l.Quantity)
+	}
+
+	tiers := map[uuid.UUID]gen.TicketTierRow{}
+	load := func(id uuid.UUID) (gen.TicketTierRow, error) {
+		if t, ok := tiers[id]; ok {
+			return t, nil
+		}
+		t, err := txq.GetTicketTierByID(ctx, id, sessionID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return t, &CategoryNotSellableError{TierID: id, Reason: ErrCategoryNotFound, Now: now}
+			}
+			return t, fmt.Errorf("hcheckout: load ticket category: %w", err)
+		}
+		tiers[id] = t
+		return t, nil
+	}
+	var links []gen.TierChainRow
+	linksLoaded := false
+
+	// spill reports whether a category that may not sell on its own is the
+	// waiting next step of a chain whose selling step this hold exhausts.
+	var spill func(t gen.TicketTierRow, depth int) (bool, error)
+	spill = func(t gen.TicketTierRow, depth int) (bool, error) {
+		if depth >= maxChainSpill || (t.SaleWindowEnd != nil && now.After(*t.SaleWindowEnd)) {
+			return false, nil
+		}
+		if !linksLoaded {
+			var err error
+			if links, err = txq.ListTierChainForSession(ctx, sessionID); err != nil {
+				return false, fmt.Errorf("hcheckout: read category chain: %w", err)
+			}
+			linksLoaded = true
+		}
+		for _, l := range links {
+			if l.NextTierID != t.ID || l.HandedOverAt != nil {
+				continue
+			}
+			src, err := load(l.TierID)
+			if err != nil {
+				return false, err
+			}
+			if CategorySellable(src, now) != nil {
+				ok, err := spill(src, depth+1)
+				if err != nil || !ok {
+					return false, err
+				}
+			}
+			_, free, err := txq.CountTierGAPlaces(ctx, sessionID, src.ID)
+			if err != nil {
+				return false, fmt.Errorf("hcheckout: count category places: %w", err)
+			}
+			return free <= want[src.ID], nil
+		}
+		return false, nil
+	}
+
+	for _, id := range order {
+		t, err := load(id)
+		if err != nil {
+			return err
+		}
+		gateErr := CategorySellable(t, now)
+		if gateErr == nil {
+			continue
+		}
+		ok, err := spill(t, 0)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return gateErr
+		}
+	}
+	return nil
+}
+
 // CheckSeatCategoriesSellable applies the same gate to the categories of a
 // set of seat rows (decision 10: a closed SEATED category refuses a new
 // hold of its seats too). Seats with no category bound are skipped — there

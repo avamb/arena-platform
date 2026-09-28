@@ -336,11 +336,11 @@ func ExtendHoldTx(ctx context.Context, txq *gen.Queries, in HoldMutationInput) (
 	// this refuses the extension, nothing more. The seat branch is gated
 	// inside holdSeatKeysTx, once the seats' categories are known.
 	if len(gaLines) > 0 {
-		gateIDs := make([]uuid.UUID, 0, len(gaLines))
+		gateLines := make([]GALine, 0, len(gaLines))
 		for _, l := range gaLines {
-			gateIDs = append(gateIDs, l.TierID)
+			gateLines = append(gateLines, GALine{TierID: l.TierID, Quantity: l.Quantity})
 		}
-		if err := CheckCategoriesSellable(ctx, txq, res.SessionID, gateIDs, in.now()); err != nil {
+		if err := CheckGALinesSellable(ctx, txq, res.SessionID, gateLines, in.now()); err != nil {
 			return HoldMutationResult{}, err
 		}
 	}

@@ -252,3 +252,31 @@ func (q *Queries) StartTierSaleNow(ctx context.Context, tierID, sessionID uuid.U
 	_, err := q.db.Exec(ctx, startTierSaleNow, tierID, sessionID)
 	return err
 }
+
+const listTierChainByOrg = `-- name: ListTierChainByOrg :many
+SELECT t.session_id, c.tier_id, c.next_tier_id, c.handed_over_at, c.sell_limit
+FROM   ticket_tier_chain c
+JOIN   ticket_tiers t ON t.id = c.tier_id AND t.deleted_at IS NULL
+JOIN   sessions s     ON s.id = t.session_id AND s.deleted_at IS NULL
+JOIN   events e       ON e.id = s.event_id AND e.deleted_at IS NULL
+WHERE  e.org_id = $1 AND c.handed_over_at IS NULL`
+
+// ListTierChainByOrg returns every chain link of orgID's live sessions that
+// has not handed over yet — what the catalog needs to name a selling step's
+// next category.
+func (q *Queries) ListTierChainByOrg(ctx context.Context, orgID uuid.UUID) ([]TierChainRow, error) {
+	rows, err := q.db.Query(ctx, listTierChainByOrg, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TierChainRow
+	for rows.Next() {
+		var r TierChainRow
+		if err := rows.Scan(&r.SessionID, &r.TierID, &r.NextTierID, &r.HandedOverAt, &r.SellLimit); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

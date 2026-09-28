@@ -659,7 +659,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			hcheckout.WriteCategoryGateError(w, r, gateErr)
 			return
 		}
-		if gateErr := hcheckout.CheckCategoriesSellable(ctx, resQ, sessionID, parsedGATierIDs, gateNow); gateErr != nil {
+		if gateErr := hcheckout.CheckGALinesSellable(ctx, resQ, sessionID, gaGateLines(parsedGATierIDs, req.GaItems), gateNow); gateErr != nil {
 			hcheckout.WriteCategoryGateError(w, r, gateErr)
 			return
 		}
@@ -887,7 +887,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 
 	// A closed category, or one outside its sale window, takes no NEW hold
 	// (plan 08_architecture/23 step 4).
-	if gateErr := hcheckout.CheckCategoriesSellable(ctx, resQ, sessionID, parsedGATierIDs, time.Now().UTC()); gateErr != nil {
+	if gateErr := hcheckout.CheckGALinesSellable(ctx, resQ, sessionID, gaGateLines(parsedGATierIDs, req.GaItems), time.Now().UTC()); gateErr != nil {
 		hcheckout.WriteCategoryGateError(w, r, gateErr)
 		return
 	}
@@ -1633,4 +1633,14 @@ func (h *Handler) supersedeOpenOrder(
 		slog.String("checkout_session_id", cs.ID.String()),
 	)
 	return nil
+}
+
+// gaGateLines pairs the parsed GA tier ids with their requested quantities
+// for hcheckout.CheckGALinesSellable (the chain-aware category gate).
+func gaGateLines(ids []uuid.UUID, items []PublicGAItem) []hcheckout.GALine {
+	out := make([]hcheckout.GALine, 0, len(ids))
+	for i, id := range ids {
+		out = append(out, hcheckout.GALine{TierID: id, Quantity: items[i].Quantity})
+	}
+	return out
 }

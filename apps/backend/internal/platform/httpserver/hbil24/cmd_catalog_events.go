@@ -131,7 +131,31 @@ func (h *Handler) loadActionEvents(
 		}
 	}
 
-	return h.projectActionEvents(ctx, orgID, sessions, tiers, prices, feePercent), nil
+	// Chain links that have not handed over: a selling step names its next
+	// category and a waiting category reports what it will sell after the
+	// step. Best effort — without them the catalog is only less helpful.
+	chain := catalogChain{next: map[uuid.UUID]uuid.UUID{}, waiting: map[uuid.UUID]bool{}}
+	if links, cerr := h.eventQueries.ListTierChainByOrg(ctx, orgID); cerr != nil {
+		h.logger.Warn("bil24_compat: GET_ALL_ACTIONS: category chain read failed",
+			slog.String("org_id", orgID.String()),
+			slog.String("error", cerr.Error()),
+		)
+	} else {
+		for _, l := range links {
+			chain.next[l.TierID] = l.NextTierID
+			chain.waiting[l.NextTierID] = true
+		}
+	}
+
+	return h.projectActionEvents(ctx, orgID, sessions, tiers, prices, feePercent, chain), nil
+}
+
+// catalogChain is the part of a chain of categories (migration 0112) the
+// catalog shows: next[source] = the category after it, waiting[target] =
+// the category has not had its turn yet.
+type catalogChain struct {
+	next    map[uuid.UUID]uuid.UUID
+	waiting map[uuid.UUID]bool
 }
 
 // projectActionEvents is the pure projection half of loadActionEvents: rows in,
@@ -145,6 +169,7 @@ func (h *Handler) projectActionEvents(
 	tiers []gen.ActionEventTierRow,
 	prices map[uuid.UUID]int64,
 	feePercent float64,
+	chain catalogChain,
 ) map[uuid.UUID]catalogAction {
 	// One instant for the whole projection so a category's sale window
 	// cannot be judged "open" for its availability and "closed" for the
@@ -221,7 +246,7 @@ func (h *Handler) projectActionEvents(
 		entry["availability"] = sessionAvail
 
 		catList, minPrice, maxPrice, hasPrice := h.projectCategories(
-			ctx, bySession[s.SessionID], prices, sessionAvail, now,
+			ctx, bySession[s.SessionID], prices, sessionAvail, now, chain,
 		)
 		// categoryLimitList is [] — not [{categoryList: []}] — when the
 		// session sells no GA places. That emptiness is load-bearing: it is
@@ -272,6 +297,7 @@ func (h *Handler) projectCategories(
 	prices map[uuid.UUID]int64,
 	sessionAvail int,
 	now time.Time,
+	chain catalogChain,
 ) (catList []map[string]any, minPrice, maxPrice int64, hasPrice bool) {
 	catList = make([]map[string]any, 0, len(tiers))
 	for _, t := range tiers {
@@ -309,6 +335,19 @@ func (h *Handler) projectCategories(
 			// default variation when the map is empty. The KEY must exist.
 			"tariffIdMap": map[string]any{},
 		})
+		// Arena extensions for a chain of categories. A selling step names
+		// the category after it; a waiting one — reported as availability 0
+		// above, so an older site simply does not offer it — tells how many
+		// places it sells in the same order once the step's places run out
+		// (hcheckout.CheckGALinesSellable).
+		entry := catList[len(catList)-1]
+		if next, ok := chain.next[t.Tier.ID]; ok {
+			entry["nextCategoryPriceId"] = h.compatCategoryPriceID(ctx, next)
+		}
+		if chain.waiting[t.Tier.ID] && avail == 0 &&
+			(t.Tier.SaleWindowEnd == nil || now.Before(*t.Tier.SaleWindowEnd)) {
+			entry["waitingAvailability"] = max(int(t.GAUnitsAvailable), 0)
+		}
 	}
 	return catList, minPrice, maxPrice, hasPrice
 }

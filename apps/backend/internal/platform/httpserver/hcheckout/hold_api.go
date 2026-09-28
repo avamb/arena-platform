@@ -375,11 +375,11 @@ func createGAHoldTx(ctx context.Context, txq *gen.Queries, in GAHoldInput, total
 	// Step 1b — a closed category or one outside its sale window takes no
 	// NEW hold (plan 08_architecture/23, decisions 4 and 5). Run under the
 	// sessions row lock just taken so a concurrent close cannot slip in.
-	gateIDs := make([]uuid.UUID, 0, len(in.Items))
+	gateLines := make([]GALine, 0, len(in.Items))
 	for _, it := range in.Items {
-		gateIDs = append(gateIDs, it.TierID)
+		gateLines = append(gateLines, GALine{TierID: it.TierID, Quantity: it.Quantity})
 	}
-	if err := CheckCategoriesSellable(ctx, txq, in.SessionID, gateIDs, time.Now().UTC()); err != nil {
+	if err := CheckGALinesSellable(ctx, txq, in.SessionID, gateLines, time.Now().UTC()); err != nil {
 		return gen.ReservationRow{}, err
 	}
 

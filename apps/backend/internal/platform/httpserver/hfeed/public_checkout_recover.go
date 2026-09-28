@@ -337,11 +337,11 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		}
 	}
 	if gaQty > 0 {
-		gaGateIDs := make([]uuid.UUID, 0, len(origGA))
+		gaGateLines := make([]hcheckout.GALine, 0, len(origGA))
 		for i := range origGA {
-			gaGateIDs = append(gaGateIDs, origGA[i].TierID)
+			gaGateLines = append(gaGateLines, hcheckout.GALine{TierID: origGA[i].TierID, Quantity: origGA[i].Quantity})
 		}
-		if gateErr := hcheckout.CheckCategoriesSellable(ctx, resQ, origRes.SessionID, gaGateIDs, time.Now().UTC()); gateErr != nil {
+		if gateErr := hcheckout.CheckGALinesSellable(ctx, resQ, origRes.SessionID, gaGateLines, time.Now().UTC()); gateErr != nil {
 			hcheckout.WriteCategoryGateError(w, r, gateErr)
 			return
 		}

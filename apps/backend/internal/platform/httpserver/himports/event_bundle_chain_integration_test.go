@@ -8,6 +8,7 @@ package himports
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 	"time"
@@ -15,6 +16,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/tierchain"
 )
 
@@ -397,4 +400,54 @@ func TestEventBundleChain_QuantitySteps(t *testing.T) {
 		t.Fatalf("limit without a next category: status %d, want 422", rec.Code)
 	}
 	assertErrorCode(t, rec, "import.invalid_sell_limit")
+}
+
+// A hold that takes the last free places of a quantity step may take the
+// rest from the next, still closed category in the same cart; the cheaper
+// places can never be skipped (hcheckout.CheckGALinesSellable).
+func TestEventBundleChain_SpillIntoNextStep(t *testing.T) {
+	pool := import517Pool(t)
+	ctx := context.Background()
+	f := newBundle525Fixture(t, ctx, pool)
+	defer f.cleanup()
+	h := newBundle525Handler(t, pool)
+
+	three := int32(3)
+	p := chainPayload(f, time.Now().Add(24*time.Hour).Truncate(time.Second), 10)
+	p.CategoryList[0].SellLimit = &three
+	rec, out := f.call(h, p)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create: status %d; body=%s", rec.Code, rec.Body.String())
+	}
+	ids := out.CompatIDs.CategoryPriceIDs
+	early := out.TierIDs[externalIDString(ids[0])]
+	friends := out.TierIDs[externalIDString(ids[1])]
+	last := out.TierIDs[externalIDString(ids[2])]
+	q := gen.New(pool)
+	now := time.Now().UTC()
+	check := func(lines ...hcheckout.GALine) error {
+		t.Helper()
+		return hcheckout.CheckGALinesSellable(ctx, q, out.SessionID, lines, now)
+	}
+	if err := check(hcheckout.GALine{TierID: early, Quantity: 3}, hcheckout.GALine{TierID: friends, Quantity: 2}); err != nil {
+		t.Errorf("3 Early + 2 Friends must spill into the waiting step: %v", err)
+	}
+	if err := check(hcheckout.GALine{TierID: early, Quantity: 2}, hcheckout.GALine{TierID: friends, Quantity: 1}); !errors.Is(err, hcheckout.ErrCategoryClosed) {
+		t.Errorf("a cart that leaves an Early place free must not reach Friends: %v", err)
+	}
+	if err := check(hcheckout.GALine{TierID: friends, Quantity: 1}); !errors.Is(err, hcheckout.ErrCategoryClosed) {
+		t.Errorf("Friends alone must stay closed: %v", err)
+	}
+	if err := check(hcheckout.GALine{TierID: early, Quantity: 3}, hcheckout.GALine{TierID: last, Quantity: 1}); err == nil {
+		t.Error("the spill must not jump over Friends to Last minute")
+	}
+
+	// A cart that already holds Early's places grows into Friends.
+	if _, err := pool.Exec(ctx,
+		`UPDATE session_seats SET status='held' WHERE session_id=$1 AND tier_id=$2`, out.SessionID, early); err != nil {
+		t.Fatalf("hold Early: %v", err)
+	}
+	if err := check(hcheckout.GALine{TierID: friends, Quantity: 2}); err != nil {
+		t.Errorf("with Early fully held Friends sells before the sweep opens it: %v", err)
+	}
 }

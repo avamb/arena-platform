@@ -134,3 +134,14 @@ SET    sale_window_start = now(), updated_at = now()
 WHERE  id = $1 AND session_id = $2 AND deleted_at IS NULL
   AND  sale_window_start > now()
   AND  (sale_window_end IS NULL OR sale_window_end > now());
+
+-- name: ListTierChainByOrg :many
+-- Every not-yet-handed-over chain link of an organization's published
+-- events, for the catalog: a selling step names its next category, and a
+-- waiting category reports the places it will sell after the step.
+SELECT t.session_id, c.tier_id, c.next_tier_id, c.handed_over_at, c.sell_limit
+FROM   ticket_tier_chain c
+JOIN   ticket_tiers t ON t.id = c.tier_id AND t.deleted_at IS NULL
+JOIN   sessions s     ON s.id = t.session_id AND s.deleted_at IS NULL
+JOIN   events e       ON e.id = s.event_id AND e.deleted_at IS NULL
+WHERE  e.org_id = $1 AND c.handed_over_at IS NULL;
