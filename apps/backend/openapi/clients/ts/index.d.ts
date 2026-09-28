@@ -1071,6 +1071,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/bot-team": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organization's team as the Telegram event-center bot shows it
+         * @description Owners (org_admin) first, then managers (organizer), each with
+         *     whether a Telegram account is linked and whether a bot invitation is
+         *     still waiting to be opened. Requires `membership.read`; the caller
+         *     must be a member of the organization, an organization API key of it,
+         *     or the platform superadmin.
+         */
+        get: operations["listOrganizationBotTeam"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/bot/invitations/accept": {
         parameters: {
             query?: never;
@@ -8084,6 +8108,34 @@ export interface components {
              * @description Echo of the bound Telegram account.
              */
             telegram_user_id: number;
+        };
+        /** @description One member of the organization as the Telegram event-center bot shows it. */
+        BotTeamMember: {
+            /**
+             * Format: uuid
+             * @description The member's user id (what DELETE .../members/{user_id} takes).
+             */
+            user_id: string;
+            /** @description The member's e-mail, the name the bot shows. */
+            email: string;
+            /** @description Bot role, "owner" (org_admin) or "manager" (organizer). Not an enum on purpose — a second enum with these values would rename the generated Go constants of BotInvitationCreateRequest. */
+            role: string;
+            /** @description The underlying membership role, org_admin or organizer. */
+            membership_role: string;
+            /** @description Whether a Telegram account is linked to this user (bot_telegram_links, not revoked). */
+            telegram_linked: boolean;
+            /** @description Whether a bot invitation for this organization is still unopened and unexpired. */
+            invitation_pending: boolean;
+            /**
+             * Format: date-time
+             * @description When the membership was created.
+             */
+            joined_at: string;
+        };
+        /** @description The organization's owners and managers, owners first. */
+        BotTeamResponse: {
+            /** @description Owners first, then managers, each ordered by e-mail. */
+            members: components["schemas"]["BotTeamMember"][];
         };
         /** @description Request body for POST /v1/organizations/{org_id}/api-keys. */
         CreateApiKeyRequest: {
@@ -20764,6 +20816,65 @@ export interface operations {
             };
             /** @description Database not wired */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listOrganizationBotTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The team. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotTeamResponse"];
+                };
+            };
+            /** @description org_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks membership.read or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The team could not be listed. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

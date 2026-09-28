@@ -2438,6 +2438,44 @@ components:
           type: integer
           format: int64
           description: Echo of the bound Telegram account.
+    BotTeamMember:
+      type: object
+      description: One member of the organization as the Telegram event-center bot shows it.
+      required: [user_id, email, role, membership_role, telegram_linked, invitation_pending, joined_at]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: The member's user id (what DELETE .../members/{user_id} takes).
+        email:
+          type: string
+          description: The member's e-mail, the name the bot shows.
+        role:
+          type: string
+          description: Bot role, "owner" (org_admin) or "manager" (organizer). Not an enum on purpose — a second enum with these values would rename the generated Go constants of BotInvitationCreateRequest.
+        membership_role:
+          type: string
+          description: The underlying membership role, org_admin or organizer.
+        telegram_linked:
+          type: boolean
+          description: Whether a Telegram account is linked to this user (bot_telegram_links, not revoked).
+        invitation_pending:
+          type: boolean
+          description: Whether a bot invitation for this organization is still unopened and unexpired.
+        joined_at:
+          type: string
+          format: date-time
+          description: When the membership was created.
+    BotTeamResponse:
+      type: object
+      description: The organization's owners and managers, owners first.
+      required: [members]
+      properties:
+        members:
+          type: array
+          description: Owners first, then managers, each ordered by e-mail.
+          items:
+            $ref: "#/components/schemas/BotTeamMember"
     CreateApiKeyRequest:
       type: object
       required: [name, scopes]
@@ -16451,6 +16489,58 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/bot-team:
+    get:
+      operationId: listOrganizationBotTeam
+      summary: The organization's team as the Telegram event-center bot shows it
+      description: |
+        Owners (org_admin) first, then managers (organizer), each with
+        whether a Telegram account is linked and whether a bot invitation is
+        still waiting to be opened. Requires `membership.read`; the caller
+        must be a member of the organization, an organization API key of it,
+        or the platform superadmin.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The team.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotTeamResponse"
+        "400":
+          description: org_id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller lacks membership.read or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The team could not be listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/bot/invitations/accept:
     post:
       operationId: acceptBotInvitation

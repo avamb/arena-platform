@@ -88,3 +88,23 @@ RETURNING id, telegram_user_id, org_id, mode, event_id, step, schema_version, st
 DELETE FROM bot_drafts
 WHERE  telegram_user_id = $1
   AND  org_id = $2;
+
+-- name: ListBotTeam :many
+-- The organization's team as the bot shows it: owners first, then managers,
+-- each with whether a Telegram account is linked and whether an invitation
+-- is still waiting to be opened.
+SELECT u.id      AS user_id,
+       u.email,
+       m.role    AS membership_role,
+       m.joined_at,
+       EXISTS (SELECT 1 FROM bot_telegram_links l
+               WHERE l.user_id = u.id AND l.revoked_at IS NULL)              AS telegram_linked,
+       EXISTS (SELECT 1 FROM bot_invitations i
+               WHERE i.user_id = u.id AND i.org_id = m.org_id
+                 AND i.accepted_at IS NULL AND i.expires_at > now())         AS invitation_pending
+FROM   memberships m
+JOIN   users u ON u.id = m.user_id
+WHERE  m.org_id = $1
+  AND  m.status = 'active'
+  AND  m.role IN ('org_admin', 'organizer')
+ORDER  BY (m.role = 'org_admin') DESC, u.email;

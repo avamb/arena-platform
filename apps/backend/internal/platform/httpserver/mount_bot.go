@@ -22,6 +22,10 @@ func (s *Server) mountBotRoutes(r chi.Router) {
 		s.applyAuth(pr, "membership.grant", "memberships")
 		pr.Post("/organizations/{org_id}/bot-invitations", s.handleCreateBotInvitation)
 	})
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "membership.read", "memberships")
+		pr.Get("/organizations/{org_id}/bot-team", s.handleListBotTeam)
+	})
 	serviceToken := ""
 	if s.cfg != nil {
 		serviceToken = s.cfg.BotServiceToken

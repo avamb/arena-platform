@@ -28,3 +28,7 @@ func (s *Server) handleCreateBotInvitation(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleAcceptBotInvitation(w http.ResponseWriter, r *http.Request) {
 	s.botHandler().HandleAcceptInvitation(w, r)
 }
+
+func (s *Server) handleListBotTeam(w http.ResponseWriter, r *http.Request) {
+	s.botHandler().HandleListTeam(w, r)
+}

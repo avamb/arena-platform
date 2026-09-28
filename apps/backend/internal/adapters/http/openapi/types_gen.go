@@ -3238,6 +3238,36 @@ type BotInvitationCreateResponse struct {
 	Invitation BotInvitation `json:"invitation"`
 }
 
+// BotTeamMember One member of the organization as the Telegram event-center bot shows it.
+type BotTeamMember struct {
+	// Email The member's e-mail, the name the bot shows.
+	Email string `json:"email"`
+
+	// InvitationPending Whether a bot invitation for this organization is still unopened and unexpired.
+	InvitationPending bool `json:"invitation_pending"`
+
+	// JoinedAt When the membership was created.
+	JoinedAt time.Time `json:"joined_at"`
+
+	// MembershipRole The underlying membership role, org_admin or organizer.
+	MembershipRole string `json:"membership_role"`
+
+	// Role Bot role, "owner" (org_admin) or "manager" (organizer). Not an enum on purpose — a second enum with these values would rename the generated Go constants of BotInvitationCreateRequest.
+	Role string `json:"role"`
+
+	// TelegramLinked Whether a Telegram account is linked to this user (bot_telegram_links, not revoked).
+	TelegramLinked bool `json:"telegram_linked"`
+
+	// UserId The member's user id (what DELETE .../members/{user_id} takes).
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// BotTeamResponse The organization's owners and managers, owners first.
+type BotTeamResponse struct {
+	// Members Owners first, then managers, each ordered by e-mail.
+	Members []BotTeamMember `json:"members"`
+}
+
 // BulkSessionPricingRequest AB-48 step 5 - apply one price grid to several sessions of an
 // event in one pass (the reference's multi-select "set ->").
 // Categories are matched by tier NAME (tiers are minted per plan

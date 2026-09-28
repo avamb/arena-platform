@@ -55,6 +55,7 @@ type Bot struct {
 	texts   *Texts
 	logger  *slog.Logger
 	pending *pendingInvites
+	team    *teamDialogs
 	wizard  *Wizard
 	// fileClient downloads Telegram files (posters); nil uses a default.
 	fileClient     *http.Client
@@ -80,6 +81,7 @@ func New(opts Options) (*Bot, error) {
 		texts:   opts.Texts,
 		logger:  logger,
 		pending: newPendingInvites(pendingInviteTTL),
+		team:    newTeamDialogs(),
 
 		fileClient:     opts.HTTPClient,
 		ticketsBaseURL: opts.TicketsBaseURL,
@@ -133,6 +135,7 @@ func (b *Bot) publishCommands(ctx context.Context) {
 			{Command: "start", Description: b.texts.T(locale, "bot.cmd_start", nil)},
 			{Command: "events", Description: b.texts.T(locale, "bot.cmd_events", nil)},
 			{Command: "new", Description: b.texts.T(locale, "bot.cmd_new", nil)},
+			{Command: "team", Description: b.texts.T(locale, "bot.cmd_team", nil)},
 			{Command: "org", Description: b.texts.T(locale, "bot.cmd_org", nil)},
 			{Command: "lang", Description: b.texts.T(locale, "bot.cmd_lang", nil)},
 			{Command: "help", Description: b.texts.T(locale, "bot.cmd_help", nil)},
@@ -192,6 +195,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		case "/new":
 			b.wizardStart(ctx, chatID, nil, from, false)
 			return
+		case "/team":
+			b.showTeam(ctx, chatID, nil, from, "")
+			return
 		case "/org":
 			b.showOrgChooser(ctx, chatID, nil, from)
 			return
@@ -205,6 +211,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	}
 	if code, ok := b.pending.take(from.ID); ok {
 		b.acceptInvitation(ctx, chatID, from, code, text)
+		return
+	}
+	if text != "" && b.teamText(ctx, chatID, from, text) {
 		return
 	}
 	if m.Document != nil || len(m.Photo) > 0 {
@@ -273,6 +282,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.switchLang(ctx, chatID, &msgID, from, parts[1])
 	case "wz":
 		b.wizardCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "wz:"))
+	case "team":
+		b.teamCallback(ctx, chatID, msgID, from, strings.TrimPrefix(strings.TrimPrefix(cq.Data, "team"), ":"))
 	}
 }
 
@@ -358,6 +369,9 @@ func (b *Bot) homeKeyboard(id *Identity) *models.InlineKeyboardMarkup {
 	rows := [][]models.InlineKeyboardButton{
 		{{Text: b.texts.T(loc, "bot.wz.new_event_btn", nil), CallbackData: "wz:new"}},
 		{{Text: b.texts.T(loc, "bot.btn_events", nil), CallbackData: "events:1"}},
+	}
+	if isOwner(id) {
+		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_team", nil), CallbackData: "team"}})
 	}
 	if len(id.Memberships) > 1 {
 		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_org", nil), CallbackData: "org"}})

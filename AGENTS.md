@@ -1725,6 +1725,16 @@ entries short and factual.
   matches by name (`lower(btrim(name))`), so a rename without the id mints a
   new category and closes the old one. Guarded by
   `himports/event_bundle_arena_ids_integration_test.go`.
+- **`DELETE /v1/organizations/{org_id}/members/{user_id}` revokes ONE role
+  and needs `{"role": "<membership role>"}` in the body** — an empty body is
+  400 `membership.empty_body`. The bot's "Team" screen therefore reads the
+  member's `membership_role` from `GET .../bot-team` (`hbot/team.go`,
+  migration 0116 grants `membership.grant`/`membership.revoke` to
+  `org_admin`) and sends it back on removal. A new inline `enum` in
+  openapi.yaml whose values are `owner`/`manager` would RENAME the generated
+  `Owner`/`Manager` constants of `BotInvitationCreateRequestRole` (the
+  AGENTS.md enum gotcha bit again on `BotTeamMember.role` — left as a plain
+  string on purpose).
 - **A JWT caller of the event-bundle import binds the event to NO sales
   channel unless it names `channelIds`.** `ensureChannelPublication` only
   ever knew `api_keys.channel_id`; a human operator (the bot) got a

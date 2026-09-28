@@ -25,6 +25,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventbot"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
@@ -140,6 +142,18 @@ func e2eCallback(data string) string {
 		time.Now().UnixNano()%100000, e2eTelegramUser, data)
 }
 
+// e2eMessageAs / e2eCallbackAs are the same updates from another Telegram
+// account (its private chat id equals its user id, as in Telegram).
+func e2eMessageAs(userID int64, text string) string {
+	return fmt.Sprintf(`"message":{"message_id":%d,"date":1700000000,"chat":{"id":%d,"type":"private"},"from":{"id":%d,"is_bot":false,"first_name":"U","language_code":"ru"},"text":%q}`,
+		time.Now().UnixNano()%100000, userID, userID, text)
+}
+
+func e2eCallbackAs(userID int64, data string) string {
+	return fmt.Sprintf(`"callback_query":{"id":"cb-%d","from":{"id":%d,"is_bot":false,"first_name":"U","language_code":"ru"},"chat_instance":"x","data":%q,"message":{"message_id":5,"date":1700000000,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
+		time.Now().UnixNano()%100000, userID, data, userID)
+}
+
 func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 	pool := onboardingIntegrationPool(t)
 	f := newBotInviteFixture(t, pool)
@@ -213,6 +227,70 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 	tg.waitFor(t, "No events yet")
 	if link, err := gen.New(pool).GetBotTelegramLink(ctx, 777); err != nil || link.Locale != "en" {
 		t.Fatalf("locale not stored: %+v %v", link, err)
+	}
+	tg.push(e2eCallback("lang:ru"))
+	tg.waitFor(t, "Что будем делать?")
+
+	// 5. Team (step 5): the manager is told the screen is the owner's; the
+	//    owner — bound through the same invitation route — sees both, invites
+	//    a colleague by e-mail and removes the manager.
+	const ownerTG = int64(779)
+	ownerEmail := f.emails[0]
+	if rec := f.invite(srv, f.ownerID, fmt.Sprintf(`{"email":%q,"role":"owner","locale":"ru"}`, ownerEmail)); rec.Code != http.StatusCreated {
+		t.Fatalf("invite owner: %d %s", rec.Code, rec.Body.String())
+	}
+	ownerCode, _ := f.queuedCode(ownerEmail)
+	if rec := f.accept(srv, botTestServiceToken, fmt.Sprintf(`{"code":%q,"email":%q,"telegram_user_id":%d,"locale":"ru"}`, ownerCode, ownerEmail, ownerTG)); rec.Code != http.StatusOK {
+		t.Fatalf("accept owner: %d %s", rec.Code, rec.Body.String())
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM bot_telegram_links WHERE telegram_user_id = $1`, ownerTG)
+	})
+	_, managerPayload := f.queuedCode(managerEmail)
+	managerUserID := uuid.MustParse(managerPayload.UserID)
+
+	m := tg.mark()
+	tg.push(e2eCallback("team"))
+	tg.waitSince(t, m, "только владелец")
+
+	m = tg.mark()
+	tg.push(e2eCallbackAs(ownerTG, "team"))
+	teamScreen := tg.waitSince(t, m, "Сотрудники: ")
+	if !strings.Contains(teamScreen, managerEmail) || !strings.Contains(teamScreen, ownerEmail) || !strings.Contains(teamScreen, "(это вы)") || !strings.Contains(teamScreen, "Telegram ✓") {
+		t.Fatalf("team screen:\n%s", teamScreen)
+	}
+	newEmail := f.newEmail("colleague")
+	m = tg.mark()
+	tg.push(e2eCallbackAs(ownerTG, "team:invite"))
+	tg.waitSince(t, m, "E-mail коллеги")
+	m = tg.mark()
+	tg.push(e2eMessageAs(ownerTG, "not-an-email"))
+	tg.waitSince(t, m, "не похоже")
+	m = tg.mark()
+	tg.push(e2eMessageAs(ownerTG, strings.ToUpper(newEmail)))
+	tg.waitSince(t, m, "Что может")
+	m = tg.mark()
+	tg.push(e2eCallbackAs(ownerTG, "team:role:manager"))
+	invited := tg.waitSince(t, m, "Приглашение отправлено")
+	if !strings.Contains(invited, newEmail) || !strings.Contains(invited, "менеджер") || !strings.Contains(invited, "приглашение отправлено") {
+		t.Fatalf("after invite:\n%s", invited)
+	}
+	if code, _ := f.queuedCode(newEmail); code == "" {
+		t.Fatal("no invitation e-mail queued for the colleague")
+	}
+
+	m = tg.mark()
+	tg.push(e2eCallbackAs(ownerTG, "team:rm:"+managerUserID.String()))
+	tg.waitSince(t, m, "Убрать "+managerEmail)
+	m = tg.mark()
+	tg.push(e2eCallbackAs(ownerTG, "team:rm:"+managerUserID.String()+":yes"))
+	removed := tg.waitSince(t, m, "убран из организации")
+	if strings.Contains(removed[strings.Index(removed, "Сотрудники:"):], managerEmail) {
+		t.Fatalf("the removed manager is still listed:\n%s", removed)
+	}
+	var active int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM memberships WHERE org_id = $1 AND status = 'active'`, f.orgID).Scan(&active); err != nil || active != 2 {
+		t.Fatalf("active memberships = %d (%v), want owner + colleague", active, err)
 	}
 
 	cancel()

@@ -252,3 +252,50 @@ func (q *Queries) DeleteBotDraft(ctx context.Context, telegramUserID int64, orgI
 	_, err := q.db.Exec(ctx, deleteBotDraft, telegramUserID, orgID)
 	return err
 }
+
+// ─── team ─────────────────────────────────────────────────────────────────────
+
+// BotTeamMemberRow is one member of the organization as the bot shows it.
+type BotTeamMemberRow struct {
+	UserID            uuid.UUID `json:"user_id"`
+	Email             string    `json:"email"`
+	MembershipRole    string    `json:"membership_role"`
+	JoinedAt          time.Time `json:"joined_at"`
+	TelegramLinked    bool      `json:"telegram_linked"`
+	InvitationPending bool      `json:"invitation_pending"`
+}
+
+const listBotTeam = `-- name: ListBotTeam :many
+SELECT u.id      AS user_id,
+       u.email,
+       m.role    AS membership_role,
+       m.joined_at,
+       EXISTS (SELECT 1 FROM bot_telegram_links l
+               WHERE l.user_id = u.id AND l.revoked_at IS NULL)              AS telegram_linked,
+       EXISTS (SELECT 1 FROM bot_invitations i
+               WHERE i.user_id = u.id AND i.org_id = m.org_id
+                 AND i.accepted_at IS NULL AND i.expires_at > now())         AS invitation_pending
+FROM   memberships m
+JOIN   users u ON u.id = m.user_id
+WHERE  m.org_id = $1
+  AND  m.status = 'active'
+  AND  m.role IN ('org_admin', 'organizer')
+ORDER  BY (m.role = 'org_admin') DESC, u.email`
+
+// ListBotTeam lists the organization's owners and managers, owners first.
+func (q *Queries) ListBotTeam(ctx context.Context, orgID uuid.UUID) ([]BotTeamMemberRow, error) {
+	rows, err := q.db.Query(ctx, listBotTeam, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BotTeamMemberRow
+	for rows.Next() {
+		var r BotTeamMemberRow
+		if err := rows.Scan(&r.UserID, &r.Email, &r.MembershipRole, &r.JoinedAt, &r.TelegramLinked, &r.InvitationPending); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

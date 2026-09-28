@@ -156,6 +156,72 @@ other = "My events"
 ["bot.cmd_new"]
 other = "New event"
 
+["bot.cmd_team"]
+other = "Team"
+
+["bot.btn_team"]
+other = "👥 Team"
+
+["bot.team_title"]
+other = "<b>Team: {{.Org}}</b>"
+
+["bot.team_member_line"]
+other = "• {{.Email}} — {{.Role}}{{.Marks}}"
+
+["bot.team_linked_mark"]
+other = ", Telegram ✓"
+
+["bot.team_pending_mark"]
+other = ", invitation sent"
+
+["bot.team_not_linked_mark"]
+other = ", no Telegram yet"
+
+["bot.team_self_mark"]
+other = " (you)"
+
+["bot.team_hint"]
+other = "An owner can do everything, including inviting and removing people; a manager creates and edits events. To add a colleague, press «Invite» — they get an e-mail with a link to this bot."
+
+["bot.team_invite_btn"]
+other = "＋ Invite"
+
+["bot.team_remove_btn"]
+other = "✕ Remove {{.Email}}"
+
+["bot.team_remove_yes_btn"]
+other = "Yes, remove"
+
+["bot.team_ask_email"]
+other = "The colleague's e-mail? They will get a letter with a link to this bot."
+
+["bot.team_ask_role"]
+other = "What may {{.Email}} do?"
+
+["bot.team_role_manager_btn"]
+other = "Manager — events only"
+
+["bot.team_role_owner_btn"]
+other = "Owner — everything, incl. the team"
+
+["bot.team_invited"]
+other = "Invitation sent to {{.Email}} as {{.Role}}. The link in the letter works for 7 days."
+
+["bot.team_invite_failed"]
+other = "I could not send the invitation. Check the e-mail and try again in a minute."
+
+["bot.team_confirm_remove"]
+other = "Remove {{.Email}} from the organization? They lose access to the events and to this bot."
+
+["bot.team_removed"]
+other = "{{.Email}} is removed."
+
+["bot.team_remove_failed"]
+other = "I could not remove this person. Try again in a minute."
+
+["bot.team_owner_only"]
+other = "Only the owner of the organization manages the team."
+
 ["bot.cmd_org"]
 other = "Choose the organization"
 

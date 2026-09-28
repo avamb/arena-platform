@@ -150,6 +150,72 @@ other = "Мои ивенты"
 ["bot.cmd_new"]
 other = "Новый ивент"
 
+["bot.cmd_team"]
+other = "Сотрудники"
+
+["bot.btn_team"]
+other = "👥 Сотрудники"
+
+["bot.team_title"]
+other = "<b>Сотрудники: {{.Org}}</b>"
+
+["bot.team_member_line"]
+other = "• {{.Email}} — {{.Role}}{{.Marks}}"
+
+["bot.team_linked_mark"]
+other = ", Telegram ✓"
+
+["bot.team_pending_mark"]
+other = ", приглашение отправлено"
+
+["bot.team_not_linked_mark"]
+other = ", без Telegram"
+
+["bot.team_self_mark"]
+other = " (это вы)"
+
+["bot.team_hint"]
+other = "Владелец может всё, в том числе приглашать и убирать людей; менеджер создаёт и правит ивенты. Чтобы добавить коллегу, нажмите «Пригласить» — ему придёт письмо со ссылкой на этого бота."
+
+["bot.team_invite_btn"]
+other = "＋ Пригласить"
+
+["bot.team_remove_btn"]
+other = "✕ Убрать {{.Email}}"
+
+["bot.team_remove_yes_btn"]
+other = "Да, убрать"
+
+["bot.team_ask_email"]
+other = "E-mail коллеги? Ему придёт письмо со ссылкой на этого бота."
+
+["bot.team_ask_role"]
+other = "Что может {{.Email}}?"
+
+["bot.team_role_manager_btn"]
+other = "Менеджер — только ивенты"
+
+["bot.team_role_owner_btn"]
+other = "Владелец — всё, включая сотрудников"
+
+["bot.team_invited"]
+other = "Приглашение отправлено на {{.Email}} как {{.Role}}. Ссылка в письме действует 7 дней."
+
+["bot.team_invite_failed"]
+other = "Не удалось отправить приглашение. Проверьте e-mail и попробуйте через минуту."
+
+["bot.team_confirm_remove"]
+other = "Убрать {{.Email}} из организации? Доступ к ивентам и к этому боту пропадёт."
+
+["bot.team_removed"]
+other = "{{.Email}} убран из организации."
+
+["bot.team_remove_failed"]
+other = "Не удалось убрать. Попробуйте через минуту."
+
+["bot.team_owner_only"]
+other = "Сотрудниками управляет только владелец организации."
+
 ["bot.cmd_org"]
 other = "Выбрать организацию"
 
