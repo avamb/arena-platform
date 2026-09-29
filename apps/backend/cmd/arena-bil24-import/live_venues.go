@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/geotz"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -235,6 +237,7 @@ func importLiveVenues(ctx context.Context, pool *pgxpool.Pool, orgID string, cou
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	countryIDs := map[string]string{}
+	countryISO := map[string]string{}
 	for _, country := range countries {
 		iso2, iso3 := countryCodes(country)
 		if country.ID == "" || country.Name == "" || iso2 == "" || iso3 == "" {
@@ -253,11 +256,14 @@ func importLiveVenues(ctx context.Context, pool *pgxpool.Pool, orgID string, cou
 			return stats, err
 		}
 		countryIDs[country.ID] = id
+		countryISO[country.ID] = iso2
 		stats.Countries++
 	}
 	cityIDs := map[string]string{}
+	cityISO := map[string]string{}
 	for _, city := range cities {
 		countryID := countryIDs[city.CountryID]
+		cityISO[city.ID] = countryISO[city.CountryID]
 		if city.ID == "" || city.Name == "" || countryID == "" {
 			return stats, fmt.Errorf("Bil24 city %q has no imported country", city.Name)
 		}
@@ -281,12 +287,21 @@ func importLiveVenues(ctx context.Context, pool *pgxpool.Pool, orgID string, cou
 		if venue.CityID != "" && cityID == "" {
 			return stats, fmt.Errorf("Bil24 venue %q references unknown city %s", venue.Name, venue.CityID)
 		}
+		// venues.timezone is NOT NULL (migration 0118): a Bil24 venue gets the
+		// zone of its city's country. A country outside the single-zone table
+		// cannot be guessed — the operator adds it to geotz or imports the
+		// venue by hand. An already-known venue keeps its stored zone (the
+		// ON CONFLICT branch does not touch it).
+		timezone := geotz.ForCountry(cityISO[venue.CityID])
+		if timezone == "" {
+			return stats, fmt.Errorf("Bil24 venue %q: no default timezone for country %q of its city — venues.timezone is required", venue.Name, cityISO[venue.CityID])
+		}
 		var existed bool
 		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM venues WHERE external_bil24_id=$1)`, venue.ID).Scan(&existed); err != nil {
 			return stats, err
 		}
 		var id string
-		err = tx.QueryRow(ctx, `INSERT INTO venues (org_id,city_id,name,address,address_line1,geo_lat,geo_lng,country,external_bil24_id) VALUES ($1,NULLIF($2,'')::uuid,$3,NULLIF($4,''),NULLIF($4,''),$5,$6,(SELECT c.iso2 FROM cities ci JOIN countries c ON c.id=ci.country_id WHERE ci.id=NULLIF($2,'')::uuid),$7) ON CONFLICT (external_bil24_id) WHERE external_bil24_id IS NOT NULL DO UPDATE SET city_id=EXCLUDED.city_id,name=EXCLUDED.name,address=EXCLUDED.address,address_line1=EXCLUDED.address_line1,geo_lat=EXCLUDED.geo_lat,geo_lng=EXCLUDED.geo_lng,country=EXCLUDED.country,updated_at=now() WHERE (venues.city_id,venues.name,venues.address,venues.geo_lat,venues.geo_lng) IS DISTINCT FROM (EXCLUDED.city_id,EXCLUDED.name,EXCLUDED.address,EXCLUDED.geo_lat,EXCLUDED.geo_lng) RETURNING id`, orgID, cityID, venue.Name, venue.Address, venue.Latitude, venue.Longitude, venue.ID).Scan(&id)
+		err = tx.QueryRow(ctx, `INSERT INTO venues (org_id,city_id,name,address,address_line1,geo_lat,geo_lng,country,external_bil24_id,timezone) VALUES ($1,NULLIF($2,'')::uuid,$3,NULLIF($4,''),NULLIF($4,''),$5,$6,(SELECT c.iso2 FROM cities ci JOIN countries c ON c.id=ci.country_id WHERE ci.id=NULLIF($2,'')::uuid),$7,$8) ON CONFLICT (external_bil24_id) WHERE external_bil24_id IS NOT NULL DO UPDATE SET city_id=EXCLUDED.city_id,name=EXCLUDED.name,address=EXCLUDED.address,address_line1=EXCLUDED.address_line1,geo_lat=EXCLUDED.geo_lat,geo_lng=EXCLUDED.geo_lng,country=EXCLUDED.country,updated_at=now() WHERE (venues.city_id,venues.name,venues.address,venues.geo_lat,venues.geo_lng) IS DISTINCT FROM (EXCLUDED.city_id,EXCLUDED.name,EXCLUDED.address,EXCLUDED.geo_lat,EXCLUDED.geo_lng) RETURNING id`, orgID, cityID, venue.Name, venue.Address, venue.Latitude, venue.Longitude, venue.ID, timezone).Scan(&id)
 		if err == pgx.ErrNoRows {
 			stats.Skipped++
 			continue

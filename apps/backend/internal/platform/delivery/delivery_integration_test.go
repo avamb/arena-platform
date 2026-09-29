@@ -234,8 +234,8 @@ func seedMinimalDeliveryData(ctx context.Context, t *testing.T, pool *pgxpool.Po
 
 	// 2b. Venue (sessions.venue_id is NOT NULL since migration 0079)
 	venueID := uuid.New()
-	exec(`INSERT INTO venues (id, org_id, name)
-	      VALUES ($1, $2, 'Test Venue')`, venueID, orgID)
+	exec(`INSERT INTO venues (id, org_id, name, timezone)
+	      VALUES ($1, $2, 'Test Venue', 'Europe/Prague')`, venueID, orgID)
 
 	// 3. Session (owns venue + currency since migrations 0079/0081)
 	exec(`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, currency, currency_source)

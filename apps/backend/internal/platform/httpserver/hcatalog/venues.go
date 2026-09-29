@@ -17,8 +17,11 @@
 // Bil24 gateway's GET_ALL_ACTIONS silently drops sessions for — see
 // venueLocation in hbil24/cmd_catalog_events.go). The geo.cities registry
 // (internal/adapters/postgres/gen/geo.sql.go CityRow) does not carry a
-// timezone column, so there is no per-city default to fall back to; a
-// legacy venue that predates this fix and still has no timezone keeps that
+// timezone column, so there is no per-city default to fall back to; since
+// migration 0118 the column is NOT NULL (legacy rows were backfilled), so a
+// venue without a zone can no longer exist at all — the note below about a
+// legacy venue is history:
+// a legacy venue that predates this fix and still has no timezone keeps that
 // state until an operator explicitly sets one — HandleUpdateVenue never
 // forces a fill on an edit that doesn't touch the field.
 package hcatalog

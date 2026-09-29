@@ -82,7 +82,7 @@ func newW1A6cFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool) *w1a
 	}{
 		{`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
 			[]any{f.orgID, "W1A6c Org " + suffix, "w1a6c-" + suffix}},
-		{`INSERT INTO venues (id, org_id, name) VALUES ($1, $2, $3)`,
+		{`INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Europe/Prague')`,
 			[]any{f.venueID, f.orgID, "W1A6c Venue " + suffix}},
 		// GetPublicCheckoutContext demands e.status = 'published'.
 		{`INSERT INTO events (id, org_id, name, status, visibility)

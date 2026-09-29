@@ -91,7 +91,7 @@ func newGA47Fixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool, geome
 	}{
 		{`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
 			[]any{f.orgID, "GA47 Org " + suffix, "ga47-" + suffix}},
-		{`INSERT INTO venues (id, org_id, name) VALUES ($1, $2, $3)`,
+		{`INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Europe/Prague')`,
 			[]any{f.venueID, f.orgID, "GA47 Venue " + suffix}},
 		{`INSERT INTO events (id, org_id, name, status, visibility)
 		  VALUES ($1, $2, $3, 'draft', 'private')`,

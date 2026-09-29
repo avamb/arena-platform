@@ -57,7 +57,7 @@ func TestListAllOrders_SearchAndNames_LiveDB(t *testing.T) {
 	}{
 		{`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
 			[]any{orgID, "Search Org " + suffix, "search-" + suffix}},
-		{`INSERT INTO venues (id, org_id, name) VALUES ($1, $2, $3)`,
+		{`INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Europe/Prague')`,
 			[]any{venueID, orgID, "Search Venue " + suffix}},
 		{`INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, $3, 'draft', 'private')`,
 			[]any{eventID, orgID, "Search Event " + suffix}},

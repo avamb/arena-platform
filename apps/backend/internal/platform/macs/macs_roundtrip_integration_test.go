@@ -103,7 +103,7 @@ func seedRoundtripFixture(t *testing.T, pool *pgxpool.Pool, recv *stub.Receiver)
 	// Org → venue → event → session
 	mustExec(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
 		f.orgID, "MACS RT Org "+suffix, "macs-rt-"+suffix)
-	mustExec(`INSERT INTO venues (id, org_id, name) VALUES ($1, $2, $3)`,
+	mustExec(`INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Europe/Prague')`,
 		f.venueID, f.orgID, "MACS RT Venue")
 	mustExec(`INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, $3, 'draft', 'private')`,
 		f.eventID, f.orgID, "MACS RT Event")

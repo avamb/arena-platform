@@ -170,7 +170,8 @@ type SeedVenue struct {
 	CitySlug        string // looked up via cities.slug at apply time; "" means NULL
 	Name            string
 	Address         string
-	CapacityDefault int // 0 means NULL
+	CapacityDefault int    // 0 means NULL
+	Timezone        string // IANA zone; venues.timezone is NOT NULL since 0118
 }
 
 type SeedUser struct {
@@ -344,18 +345,18 @@ func BuildSeed() SeedData {
 			{ID: OrgC, Name: "TEST Arena Riga", Slug: "test-arena-riga", Country: "LV", DefaultLocale: "ru", ReservationTTLSeconds: 1800},
 		},
 		Venues: []SeedVenue{
-			{ID: VenueA1, OrgID: OrgA, CitySlug: "tel-aviv", Name: "TEST Bloomfield Hall", Address: "1 Test Way, Tel Aviv", CapacityDefault: 1500},
-			{ID: VenueA2, OrgID: OrgA, CitySlug: "jerusalem", Name: "TEST Jerusalem Pavilion", Address: "2 Test Way, Jerusalem", CapacityDefault: 800},
-			{ID: VenueA3, OrgID: OrgA, CitySlug: "haifa", Name: "TEST Haifa Open Air", Address: "3 Test Way, Haifa", CapacityDefault: 5000},
-			{ID: VenueB1, OrgID: OrgB, CitySlug: "tallinn", Name: "TEST Old Town Stage", Address: "1 Test Tee, Tallinn", CapacityDefault: 600},
-			{ID: VenueB2, OrgID: OrgB, CitySlug: "tartu", Name: "TEST University Hall", Address: "2 Test Tee, Tartu", CapacityDefault: 400},
-			{ID: VenueB3, OrgID: OrgB, CitySlug: "parnu", Name: "TEST Beach Amphitheatre", Address: "3 Test Tee, Pärnu", CapacityDefault: 1200},
+			{ID: VenueA1, OrgID: OrgA, CitySlug: "tel-aviv", Name: "TEST Bloomfield Hall", Address: "1 Test Way, Tel Aviv", CapacityDefault: 1500, Timezone: "Asia/Jerusalem"},
+			{ID: VenueA2, OrgID: OrgA, CitySlug: "jerusalem", Name: "TEST Jerusalem Pavilion", Address: "2 Test Way, Jerusalem", CapacityDefault: 800, Timezone: "Asia/Jerusalem"},
+			{ID: VenueA3, OrgID: OrgA, CitySlug: "haifa", Name: "TEST Haifa Open Air", Address: "3 Test Way, Haifa", CapacityDefault: 5000, Timezone: "Asia/Jerusalem"},
+			{ID: VenueB1, OrgID: OrgB, CitySlug: "tallinn", Name: "TEST Old Town Stage", Address: "1 Test Tee, Tallinn", CapacityDefault: 600, Timezone: "Europe/Tallinn"},
+			{ID: VenueB2, OrgID: OrgB, CitySlug: "tartu", Name: "TEST University Hall", Address: "2 Test Tee, Tartu", CapacityDefault: 400, Timezone: "Europe/Tallinn"},
+			{ID: VenueB3, OrgID: OrgB, CitySlug: "parnu", Name: "TEST Beach Amphitheatre", Address: "3 Test Tee, Pärnu", CapacityDefault: 1200, Timezone: "Europe/Tallinn"},
 			// Org C cities aren't seeded in 0006_geo.sql (Latvia has no city
 			// rows) so the city_id will be NULL for these venues. The
 			// venue.city_id column is nullable; the seed gracefully falls back.
-			{ID: VenueC1, OrgID: OrgC, CitySlug: "", Name: "TEST Riga Dome", Address: "1 Test iela, Riga", CapacityDefault: 2200},
-			{ID: VenueC2, OrgID: OrgC, CitySlug: "", Name: "TEST Riga Studio", Address: "2 Test iela, Riga", CapacityDefault: 250},
-			{ID: VenueC3, OrgID: OrgC, CitySlug: "", Name: "TEST Riga Park", Address: "3 Test iela, Riga", CapacityDefault: 3500},
+			{ID: VenueC1, OrgID: OrgC, CitySlug: "", Name: "TEST Riga Dome", Address: "1 Test iela, Riga", CapacityDefault: 2200, Timezone: "Europe/Riga"},
+			{ID: VenueC2, OrgID: OrgC, CitySlug: "", Name: "TEST Riga Studio", Address: "2 Test iela, Riga", CapacityDefault: 250, Timezone: "Europe/Riga"},
+			{ID: VenueC3, OrgID: OrgC, CitySlug: "", Name: "TEST Riga Park", Address: "3 Test iela, Riga", CapacityDefault: 3500, Timezone: "Europe/Riga"},
 		},
 		Users: []SeedUser{
 			{ID: UserSuper, Email: "super@test.arena.local", PlaintextPwd: SeedPassword, PreferredLocale: "en", MarkEmailVerifiedAt: true},
@@ -529,10 +530,10 @@ func applyAll(ctx context.Context, tx pgx.Tx, seed SeedData) (ApplyStats, error)
 			capacity = v.CapacityDefault
 		}
 		tag, err := tx.Exec(ctx, `
-			INSERT INTO venues (id, org_id, city_id, name, address, capacity_default)
-			VALUES ($1, $2, $3, $4, $5, $6)
+			INSERT INTO venues (id, org_id, city_id, name, address, capacity_default, timezone)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
 			ON CONFLICT (id) DO NOTHING
-		`, v.ID, v.OrgID, cityID, v.Name, v.Address, capacity)
+		`, v.ID, v.OrgID, cityID, v.Name, v.Address, capacity, v.Timezone)
 		if err != nil {
 			return stats, fmt.Errorf("insert venue %q: %w", v.Name, err)
 		}

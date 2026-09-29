@@ -63,7 +63,7 @@ func TestMACS_AB50h_ExportFidelity(t *testing.T) {
 
 	mustExec(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
 		orgID, "AB50h Org "+suffix, "ab50h-"+suffix)
-	mustExec(`INSERT INTO venues (id, org_id, name, city_id) VALUES ($1, $2, $3, $4)`,
+	mustExec(`INSERT INTO venues (id, org_id, name, city_id, timezone) VALUES ($1, $2, $3, $4, 'Europe/Prague')`,
 		venueID, orgID, "AB50h Venue", cityID)
 	mustExec(`INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, $3, 'draft', 'private')`,
 		eventID, orgID, "AB50h Event")

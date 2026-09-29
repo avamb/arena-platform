@@ -233,7 +233,7 @@ func newHostedOrgFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	}{
 		{`INSERT INTO organizations (id, name, slug, kyb_status) VALUES ($1, $2, $3, 'verified')`,
 			[]any{f.orgID, "HOCO Org " + suffix, "hoco-" + suffix}},
-		{`INSERT INTO venues (id, org_id, name) VALUES ($1, $2, $3)`,
+		{`INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Europe/Prague')`,
 			[]any{f.venueID, f.orgID, "HOCO Venue " + suffix}},
 		{`INSERT INTO events (id, org_id, name, status, visibility)
 		  VALUES ($1, $2, $3, 'published', 'public')`,

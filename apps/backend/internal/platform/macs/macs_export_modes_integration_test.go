@@ -57,7 +57,7 @@ func TestMACS_ExportModes_Integration(t *testing.T) {
 		citySlug)
 	mustExec(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
 		orgID, "MACS Modes Org "+suffix, "macs-modes-"+suffix)
-	mustExec(`INSERT INTO venues (id, org_id, name, city_id) VALUES ($1, $2, $3, $4)`,
+	mustExec(`INSERT INTO venues (id, org_id, name, city_id, timezone) VALUES ($1, $2, $3, $4, 'Europe/Prague')`,
 		venueID, orgID, "Modes Venue", cityID)
 	mustExec(`INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, $3, 'draft', 'private')`,
 		eventID, orgID, "Modes Event")

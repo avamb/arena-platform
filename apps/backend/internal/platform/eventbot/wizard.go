@@ -23,6 +23,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/geotz"
 )
 
 // draftSchemaVersion is bumped when Draft changes shape; an older draft is
@@ -1114,23 +1116,10 @@ func (w *Wizard) guessTimezone(ctx context.Context, ws WizSession, iso2 string) 
 			}
 		}
 	}
-	return countryTimezones[strings.ToUpper(iso2)]
-}
-
-// countryTimezones covers the single-zone countries arena sells in; every
-// other country is asked explicitly.
-var countryTimezones = map[string]string{
-	"CZ": "Europe/Prague", "SK": "Europe/Bratislava", "HU": "Europe/Budapest", "AT": "Europe/Vienna",
-	"DE": "Europe/Berlin", "PL": "Europe/Warsaw", "IT": "Europe/Rome", "FR": "Europe/Paris",
-	"NL": "Europe/Amsterdam", "BE": "Europe/Brussels", "CH": "Europe/Zurich", "GB": "Europe/London",
-	"IE": "Europe/Dublin", "DK": "Europe/Copenhagen", "SE": "Europe/Stockholm", "NO": "Europe/Oslo",
-	"FI": "Europe/Helsinki", "EE": "Europe/Tallinn", "LV": "Europe/Riga", "LT": "Europe/Vilnius",
-	"IL": "Asia/Jerusalem", "CY": "Asia/Nicosia", "GR": "Europe/Athens", "BG": "Europe/Sofia",
-	"RO": "Europe/Bucharest", "HR": "Europe/Zagreb", "SI": "Europe/Ljubljana", "RS": "Europe/Belgrade",
-	"TR": "Europe/Istanbul", "GE": "Asia/Tbilisi", "AM": "Asia/Yerevan", "UA": "Europe/Kyiv",
-	"MD": "Europe/Chisinau", "BY": "Europe/Minsk", "LU": "Europe/Luxembourg", "MT": "Europe/Malta",
-	"AE": "Asia/Dubai", "ME": "Europe/Podgorica", "AL": "Europe/Tirane", "MK": "Europe/Skopje",
-	"BA": "Europe/Sarajevo", "IS": "Atlantic/Reykjavik",
+	// The single-zone countries arena sells in live in geotz (shared with the
+	// Bil24 import and migration 0118's backfill); every other country is
+	// asked explicitly.
+	return geotz.ForCountry(iso2)
 }
 
 func (w *Wizard) sessionAddedNote(loc string, d *Draft) string {

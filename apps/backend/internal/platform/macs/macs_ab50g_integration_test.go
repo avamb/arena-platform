@@ -96,7 +96,7 @@ func TestMACS_AB50g_RealCancelRoundTrip(t *testing.T) {
 
 	mustExec(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
 		orgID, "AB50g Org "+suffix, "ab50g-"+suffix)
-	mustExec(`INSERT INTO venues (id, org_id, name, city_id) VALUES ($1, $2, $3, $4)`,
+	mustExec(`INSERT INTO venues (id, org_id, name, city_id, timezone) VALUES ($1, $2, $3, $4, 'Europe/Prague')`,
 		venueID, orgID, "AB50g Venue", cityID)
 	mustExec(`INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, $3, 'draft', 'private')`,
 		eventID, orgID, "AB50g Event")

@@ -340,7 +340,7 @@ func TestQueryOrder_UnpaidOrderIsNotExportable(t *testing.T) {
 
 	mustExec(`INSERT INTO organizations (id, name, slug) VALUES ($1,$2,$3)`,
 		orgID, "OE504 Unpaid Org", "oe504-unpaid-"+suffix)
-	mustExec(`INSERT INTO venues (id, org_id, name) VALUES ($1,$2,$3)`, venueID, orgID, "OE504 Unpaid Venue")
+	mustExec(`INSERT INTO venues (id, org_id, name, timezone) VALUES ($1,$2,$3, 'Europe/Prague')`, venueID, orgID, "OE504 Unpaid Venue")
 	mustExec(`INSERT INTO events (id, org_id, name, status, visibility)
 		VALUES ($1,$2,$3,'draft','private')`, eventID, orgID, "OE504 Unpaid Event")
 	mustExec(`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total,

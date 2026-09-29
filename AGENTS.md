@@ -1805,6 +1805,18 @@ entries short and factual.
   00:00 is not "19–20". Both the page and the widget's session chips hand
   plain `en` to Intl as `en-GB` with `hourCycle: 'h23'` — the events are in
   Europe, and en-US's "11:00 AM" / "December 19" confused buyers.
+- **`venues.timezone` is NOT NULL and non-blank since migration 0118 — every
+  fixture that inserts a venue must name one.** Every clock time a buyer
+  sees is the session's UTC instant rendered in the VENUE's zone (widget
+  chips via the feed session's `timezone`, tickets page, e-ticket, bot);
+  without it the client fell back to the viewing device's zone (an
+  organizer in UTC+3 read 11:00 Madrid as 13:00, 2026-09-29). A bare
+  `INSERT INTO venues (id, org_id, name)` now fails with 23502 — add
+  `timezone` (`'Europe/Prague'` is the fixture convention). The single-zone
+  country table lives in `internal/platform/geotz` (bot wizard guess, Bil24
+  catalog import, 0118 backfill copy in SQL — `TestCountryZones_MatchMigration0118`
+  keeps the SQL copy equal); Spain/Portugal are deliberately absent. The
+  backfill's last resort is `'UTC'` — visibly wrong, never silently right.
 - **An event center picks a venue by `venue.arenaVenueId`** (event-bundle,
   source=arena): the org's venue UUID from `GET /v1/organizations/{org_id}/venues`.
   It wins over `venueId`/`venueName`, never edits the venue, and answers 422

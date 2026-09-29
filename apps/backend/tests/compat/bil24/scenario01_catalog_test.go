@@ -24,10 +24,12 @@ package compat_bil24_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -323,30 +325,35 @@ func runScenario01Catalog(t *testing.T, st *harnessState) {
 		}
 	})
 
-	// ── venue without a timezone (golden: no_timezone.json) ─────────────────
+	// ── venue without a timezone ─────────────────────────────────────────────
+	// Spec §7.1 used to drop the sessions of a venue with no IANA zone from
+	// the response (a wrong local day is worse than a missing session). Since
+	// migration 0118 such a venue cannot exist at all: venues.timezone is NOT
+	// NULL and non-blank, so the case is refused at the row, not projected
+	// around. This sub-test proves the refusal instead.
 	t.Run("no_timezone", func(t *testing.T) {
-		noTZEventUUID := sc1SeedNoTimezoneEvent(t, st, startAt, endAt)
-
-		nReq, nGolden := loadWPFixture(t, "GET_ALL_ACTIONS", "no_timezone")
-		nReq["fid"] = st.ChannelFID
-		nReq["token"] = st.ChannelToken
-		nResp := postBil24(t, base, nReq)
-
-		nAction := sc1FindActionByName(t, nResp, "W1 Harness NoTZ "+noTZEventUUID.String()[:8])
-		nGoldenAction := sc1Objects(t, resolveGolden(nGolden, st), "actionList")[0]
-		compareKeys(t, "no_timezone actionList entry", nAction, nGoldenAction)
-		// Spec §7.1: a session whose venue has no IANA zone cannot be given a
-		// local calendar day, and a WRONG day is worse than a missing session.
-		if got := sc1Array(t, nAction, "actionEventList"); len(got) != 0 {
-			t.Errorf("actionEventList = %v, want [] — the session's venue has no timezone", got)
+		for _, tc := range []struct {
+			name, value, sqlstate string
+		}{
+			{"null", "NULL", "23502"},
+			{"blank", "'  '", "23514"},
+		} {
+			venueID := uuid.New()
+			_, err := st.Pool.Exec(ctx,
+				`INSERT INTO venues (id, org_id, city_id, name, country, timezone)
+				 SELECT $1, $2, v.city_id, $3, 'CZ', `+tc.value+`
+				   FROM venues v WHERE v.id = $4`,
+				venueID, st.OrgID, "W1 Harness NoTZ venue "+venueID.String()[:8], st.VenueID,
+			)
+			if err == nil {
+				_, _ = st.Pool.Exec(ctx, `DELETE FROM venues WHERE id = $1`, venueID)
+				t.Fatalf("%s timezone: a venue without a zone was accepted — migration 0118's constraint is gone", tc.name)
+			}
+			var pgErr *pgconn.PgError
+			if !errors.As(err, &pgErr) || pgErr.Code != tc.sqlstate {
+				t.Errorf("%s timezone: err = %v, want SQLSTATE %s", tc.name, err, tc.sqlstate)
+			}
 		}
-		// With no projectable session there is no live tier either, so the
-		// action advertises 0/0 rather than dropping the keys.
-		sc1WantNumber(t, nAction, "minPrice", 0)
-		sc1WantNumber(t, nAction, "maxPrice", 0)
-		// The dates fall back to the trigger-maintained UTC caches, which is the
-		// best available answer when no zone is known.
-		sc1WantString(t, nAction, "firstEventDate", startAt.UTC().Format("02.01.2006")) // allow:timeformat: spec §7.1 DD.MM.YYYY
 	})
 }
 
@@ -473,46 +480,6 @@ func sc1SeedHybridEvent(t *testing.T, st *harnessState, start, end time.Time) st
 		t.Fatalf("seed hybrid ga_units: %v", err)
 	}
 	return sessID.String()
-}
-
-// sc1SeedNoTimezoneEvent creates a second venue with a NULL timezone plus a
-// published event with one session there. Spec §7.1 requires the session to be
-// dropped from the response entirely.
-func sc1SeedNoTimezoneEvent(t *testing.T, st *harnessState, start, end time.Time) uuid.UUID {
-	t.Helper()
-	ctx := context.Background()
-
-	venueID := uuid.New()
-	if _, err := st.Pool.Exec(ctx,
-		`INSERT INTO venues (id, org_id, city_id, name, country, timezone)
-		 SELECT $1, $2, v.city_id, $3, 'CZ', NULL
-		   FROM venues v WHERE v.id = $4`,
-		venueID, st.OrgID, "W1 Harness NoTZ venue "+venueID.String()[:8], st.VenueID,
-	); err != nil {
-		t.Fatalf("seed no-timezone venue: %v", err)
-	}
-
-	eventID := uuid.New()
-	if _, err := st.Pool.Exec(ctx,
-		`INSERT INTO events (id, org_id, name, status, visibility)
-		 VALUES ($1, $2, $3, 'published', 'public')`,
-		eventID, st.OrgID, "W1 Harness NoTZ "+eventID.String()[:8],
-	); err != nil {
-		t.Fatalf("seed no-timezone event: %v", err)
-	}
-	sc1RegisterEventCleanup(t, st, eventID, venueID)
-
-	if _, err := st.Pool.Exec(ctx,
-		`INSERT INTO sessions
-		     (id, event_id, venue_id, start_at, end_at, capacity_total,
-		      status, admission_mode, currency, currency_source)
-		 VALUES ($1, $2, $3, $4, $5, 20, 'scheduled', 'general_admission',
-		         'CZK', 'override')`,
-		uuid.New(), eventID, venueID, start, end,
-	); err != nil {
-		t.Fatalf("seed no-timezone session: %v", err)
-	}
-	return eventID
 }
 
 // sc1JerusalemDSTStraddle scans forward from now, day by day, for the next

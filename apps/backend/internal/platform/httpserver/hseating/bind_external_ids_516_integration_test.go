@@ -121,7 +121,7 @@ func newC3bFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool, geomet
 	}{
 		{`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
 			[]any{f.orgID, "C3b Org " + suffix, "c3b-" + suffix}},
-		{`INSERT INTO venues (id, org_id, name) VALUES ($1, $2, $3)`,
+		{`INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Europe/Prague')`,
 			[]any{f.venueID, f.orgID, "C3b Venue " + suffix}},
 		{`INSERT INTO events (id, org_id, name, status, visibility)
 		  VALUES ($1, $2, $3, 'draft', 'private')`,

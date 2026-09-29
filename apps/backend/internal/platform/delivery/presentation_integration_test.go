@@ -39,6 +39,7 @@ import (
 	"unicode/utf16"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -488,16 +489,32 @@ func TestDeliveryPresentation_PayloadHintOverridesResolvedValue(t *testing.T) {
 
 // TestDeliveryPresentation_VenueWithoutTimezoneFallsBackToUTC — the
 // fallback must be UTC, not a refusal to render.
-func TestDeliveryPresentation_VenueWithoutTimezoneFallsBackToUTC(t *testing.T) {
+// A venue cannot lose its timezone: migration 0118 made the column NOT NULL
+// and non-blank, so the "no timezone -> print UTC" fallback in
+// presentation.go is unreachable from real data. (An organizer in UTC+3
+// reading 11:00 Madrid as 13:00 on 2026-09-29 is why the zone is a
+// property of the venue the database guarantees.) The test proves the
+// refusal; the ticket keeps printing the venue-local time.
+func TestDeliveryPresentation_VenueTimezoneCannotBeCleared(t *testing.T) {
 	pool := presentationPool(t)
 	ctx := context.Background()
 	seed, cleanup := seedPresentationTicket(ctx, t, pool)
 	defer cleanup()
 
-	if _, err := pool.Exec(ctx,
-		`UPDATE venues SET timezone = NULL WHERE name = $1`, seed.VenueName,
-	); err != nil {
-		t.Fatalf("clear venue timezone: %v", err)
+	for _, tc := range []struct {
+		name, value, sqlstate string
+	}{
+		{"null", "NULL", "23502"},
+		{"blank", "''", "23514"},
+	} {
+		_, err := pool.Exec(ctx, `UPDATE venues SET timezone = `+tc.value+` WHERE name = $1`, seed.VenueName)
+		if err == nil {
+			t.Fatalf("%s: clearing the venue timezone was accepted — migration 0118's constraint is gone", tc.name)
+		}
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != tc.sqlstate {
+			t.Errorf("%s: err = %v, want SQLSTATE %s", tc.name, err, tc.sqlstate)
+		}
 	}
 
 	runDeliveryWithPayload(ctx, t, pool, Payload{
@@ -505,19 +522,9 @@ func TestDeliveryPresentation_VenueWithoutTimezoneFallsBackToUTC(t *testing.T) {
 		Locale:   "en",
 	})
 	doc := storedTicketPDF(ctx, t, pool, seed.TicketID)
-
-	// 19:00 UTC, the stored instant itself — and the day before the
-	// Tallinn-local clock would have put it.
-	for _, want := range []string{"3 October 2026", "19:00", "Saturday"} {
-		if !pdfContainsText(doc, want) {
-			t.Errorf("PDF does not fall back to %q when the venue has no timezone", want)
-		}
-	}
-	if pdfContainsText(doc, "22:00") {
-		t.Error("PDF printed a venue-local time for a venue that has no timezone")
-	}
-	if !pdfContainsText(doc, seed.VenueName) {
-		t.Errorf("a venue without a timezone must still print its name %q", seed.VenueName)
+	// 19:00 UTC on 3 October is 22:00 in Tallinn — the venue's own clock.
+	if !pdfContainsText(doc, "22:00") {
+		t.Error("PDF does not print the venue-local time")
 	}
 }
 

@@ -423,7 +423,7 @@ func newQuotaFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool, opts
 
 	mustExec(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
 		f.orgID, "Quota Org "+suffix, "quota-"+suffix)
-	mustExec(`INSERT INTO venues (id, org_id, name) VALUES ($1, $2, $3)`,
+	mustExec(`INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Europe/Prague')`,
 		f.venueID, f.orgID, "Quota Venue "+suffix)
 	mustExec(`INSERT INTO events (id, org_id, name, status, visibility)
 	          VALUES ($1, $2, $3, 'draft', 'private')`,

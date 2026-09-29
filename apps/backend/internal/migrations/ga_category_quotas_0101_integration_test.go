@@ -241,7 +241,7 @@ func newConversionFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	}
 	mustExec(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
 		f.orgID, "Conv Org "+suffix, "conv-"+suffix)
-	mustExec(`INSERT INTO venues (id, org_id, name) VALUES ($1, $2, $3)`,
+	mustExec(`INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Europe/Prague')`,
 		f.venueID, f.orgID, "Conv Venue "+suffix)
 	mustExec(`INSERT INTO events (id, org_id, name, status, visibility)
 	          VALUES ($1, $2, $3, 'draft', 'private')`,

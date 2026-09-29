@@ -184,7 +184,7 @@ func createSessionSeatsFixture(t *testing.T, ctx context.Context, pool *pgxpool.
 	}{
 		{`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
 			[]any{f.orgID, "AB39 Org " + suffix, "ab39-" + suffix}},
-		{`INSERT INTO venues (id, org_id, name) VALUES ($1, $2, $3)`,
+		{`INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Europe/Prague')`,
 			[]any{f.venueID, f.orgID, "AB39 Venue " + suffix}},
 		{`INSERT INTO events (id, org_id, name, status, visibility)
 		  VALUES ($1, $2, $3, 'draft', 'private')`,

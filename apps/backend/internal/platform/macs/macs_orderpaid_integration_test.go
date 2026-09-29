@@ -82,7 +82,7 @@ func TestMACS_W1Ma_OrderPaidRoundTrip(t *testing.T) {
 		citySlug)
 	mustExec(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
 		orgID, "W1Ma Org "+suffix, "w1ma-"+suffix)
-	mustExec(`INSERT INTO venues (id, org_id, name, city_id) VALUES ($1, $2, $3, $4)`,
+	mustExec(`INSERT INTO venues (id, org_id, name, city_id, timezone) VALUES ($1, $2, $3, $4, 'Europe/Prague')`,
 		venueID, orgID, "W1Ma Venue", cityID)
 	mustExec(`INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, $3, 'draft', 'private')`,
 		eventID, orgID, "W1Ma Event")

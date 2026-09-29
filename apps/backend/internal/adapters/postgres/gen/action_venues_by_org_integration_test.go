@@ -229,26 +229,26 @@ func createActionVenuesFixture(t *testing.T, ctx context.Context, pool *pgxpool.
 
 	// venues
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO venues (id, org_id, city_id, name)
-		 VALUES ($1, $2, $3, $4)`,
+		`INSERT INTO venues (id, org_id, city_id, name, timezone)
+		 VALUES ($1, $2, $3, $4, 'Europe/Prague')`,
 		f.venueWithCity, f.orgID, f.cityID, "AV VenueCity "+suffix); err != nil {
 		t.Fatalf("insert venueWithCity: %v", err)
 	}
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO venues (id, org_id, name, country)
-		 VALUES ($1, $2, $3, 'CZ')`,
+		`INSERT INTO venues (id, org_id, name, country, timezone)
+		 VALUES ($1, $2, $3, 'CZ', 'Europe/Prague')`,
 		f.venueWithoutCity, f.orgID, "AV VenueNoCity "+suffix); err != nil {
 		t.Fatalf("insert venueWithoutCity: %v", err)
 	}
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO venues (id, org_id, name)
-		 VALUES ($1, $2, $3)`,
+		`INSERT INTO venues (id, org_id, name, timezone)
+		 VALUES ($1, $2, $3, 'Europe/Prague')`,
 		f.draftOnlyVenue, f.orgID, "AV VenueDraft "+suffix); err != nil {
 		t.Fatalf("insert draftOnlyVenue: %v", err)
 	}
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO venues (id, org_id, name)
-		 VALUES ($1, $2, $3)`,
+		`INSERT INTO venues (id, org_id, name, timezone)
+		 VALUES ($1, $2, $3, 'Europe/Prague')`,
 		f.otherOrgVenue, f.otherOrgID, "AV VenueOther "+suffix); err != nil {
 		t.Fatalf("insert otherOrgVenue: %v", err)
 	}

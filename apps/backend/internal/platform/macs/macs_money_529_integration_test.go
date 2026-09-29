@@ -88,7 +88,7 @@ func TestMACS_W1M2_FractionalMoneyIsMajorUnits(t *testing.T) {
 		citySlug)
 	mustExec(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
 		orgID, "W1M2 Org "+suffix, "w1m2-"+suffix)
-	mustExec(`INSERT INTO venues (id, org_id, name, city_id) VALUES ($1, $2, $3, $4)`,
+	mustExec(`INSERT INTO venues (id, org_id, name, city_id, timezone) VALUES ($1, $2, $3, $4, 'Europe/Prague')`,
 		venueID, orgID, "W1M2 Venue", cityID)
 	mustExec(`INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, $3, 'draft', 'private')`,
 		eventID, orgID, "W1M2 Event")

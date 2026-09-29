@@ -82,7 +82,7 @@ func TestAdminTickets_Reconciliation_EventAndSessionFilters(t *testing.T) {
 
 	mustExec(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`,
 		orgID, "Reconciliation Org "+suffix, "reconciliation-"+suffix)
-	mustExec(`INSERT INTO venues (id, org_id, name) VALUES ($1, $2, $3)`,
+	mustExec(`INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Europe/Prague')`,
 		venueID, orgID, "Reconciliation Venue")
 	mustExec(`INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, $3, 'draft', 'private')`,
 		eventID, orgID, "Reconciliation Event")

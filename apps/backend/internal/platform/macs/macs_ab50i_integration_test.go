@@ -89,7 +89,7 @@ func TestMACS_AB50i_ExportHandler_200_WithCity(t *testing.T) {
 	mustExec(`INSERT INTO cities (id, country_id, slug) VALUES ($1, $2, $3)`, cityID, countryID, citySlug)
 	mustExec(`INSERT INTO i18n_text (namespace, key, locale, value) VALUES ('geo.cities', $1, 'en', 'AB50i Test City')`, citySlug)
 	mustExec(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`, orgID, "AB50i 200 Org "+suffix, "ab50i-200-"+suffix)
-	mustExec(`INSERT INTO venues (id, org_id, name, city_id) VALUES ($1, $2, $3, $4)`, venueID, orgID, "AB50i Venue", cityID)
+	mustExec(`INSERT INTO venues (id, org_id, name, city_id, timezone) VALUES ($1, $2, $3, $4, 'Europe/Prague')`, venueID, orgID, "AB50i Venue", cityID)
 	mustExec(`INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, $3, 'draft', 'private')`, eventID, orgID, "AB50i Event")
 	mustExec(`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, status, admission_mode, currency, currency_source)
 		VALUES ($1, $2, $3, NOW()+INTERVAL '60 days', NOW()+INTERVAL '60 days 3 hours', 100, 'draft', 'general_admission', 'RUB', 'override')`,
@@ -206,7 +206,7 @@ func TestMACS_AB50i_ExportHandler_422_NoCityVenue(t *testing.T) {
 
 	mustExec(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`, orgID, "AB50i 422 Org "+suffix, "ab50i-422-"+suffix)
 	// Venue WITHOUT city_id → cityName will be empty in export.
-	mustExec(`INSERT INTO venues (id, org_id, name) VALUES ($1, $2, $3)`, venueID, orgID, "AB50i NoCityVenue")
+	mustExec(`INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Europe/Prague')`, venueID, orgID, "AB50i NoCityVenue")
 	mustExec(`INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, $3, 'draft', 'private')`, eventID, orgID, "AB50i 422 Event")
 	mustExec(`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, status, admission_mode, currency, currency_source)
 		VALUES ($1, $2, $3, NOW()+INTERVAL '60 days', NOW()+INTERVAL '60 days 3 hours', 100, 'draft', 'general_admission', 'RUB', 'override')`,
@@ -273,7 +273,7 @@ func TestMACS_AB50i_ExportHandler_404_WrongOrg(t *testing.T) {
 	// Seed org1 with its own session.
 	mustExec(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`, org1ID, "AB50i 404 Org1 "+suffix, "ab50i-404-1-"+suffix)
 	mustExec(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`, org2ID, "AB50i 404 Org2 "+suffix, "ab50i-404-2-"+suffix)
-	mustExec(`INSERT INTO venues (id, org_id, name) VALUES ($1, $2, $3)`, venueID, org1ID, "AB50i 404 Venue")
+	mustExec(`INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Europe/Prague')`, venueID, org1ID, "AB50i 404 Venue")
 	mustExec(`INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, $3, 'draft', 'private')`, eventID, org1ID, "AB50i 404 Event")
 	mustExec(`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, status, admission_mode, currency, currency_source)
 		VALUES ($1, $2, $3, NOW()+INTERVAL '60 days', NOW()+INTERVAL '60 days 3 hours', 100, 'draft', 'general_admission', 'RUB', 'override')`,
