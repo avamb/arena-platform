@@ -53,7 +53,7 @@ func TestArenaClient_SuperadminSeesEveryOrganization(t *testing.T) {
 	}
 
 	// An ordinary member: no platform role, memberships as before.
-	plain := newStubArena(t, func(w http.ResponseWriter, r *http.Request) {
+	plain := newStubArena(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"user":{"id":"u"},"roles":["organizer"],"organization_memberships":[
 			{"org_id":"` + orgA.String() + `","org_name":"A","role":"organizer","status":"active"}]}`))
 	})

@@ -228,8 +228,12 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 	if link, err := gen.New(pool).GetBotTelegramLink(ctx, 777); err != nil || link.Locale != "en" {
 		t.Fatalf("locale not stored: %+v %v", link, err)
 	}
+	// The Russian menu text was already said in step 2, so wait for a NEW
+	// one — otherwise the next push races the locale switch (CI 2026-09-29:
+	// "team" answered in English, then "Теперь бот говорит по-русски").
+	m0 := tg.mark()
 	tg.push(e2eCallback("lang:ru"))
-	tg.waitFor(t, "Что будем делать?")
+	tg.waitSince(t, m0, "Что будем делать?")
 
 	// 5. Team (step 5): the manager is told the screen is the owner's; the
 	//    owner — bound through the same invitation route — sees both, invites
