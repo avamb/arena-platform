@@ -492,7 +492,9 @@ func (d *Draft) session() *DraftSession {
 // above the next question (a validation message, or a confirmation such as
 // "Date 1: …"), ErrCancelled when the person cancelled, or an error from
 // the references.
-func (w *Wizard) Apply(ctx context.Context, ws WizSession, d *Draft, in WizInput) (note string, err error) {
+// apply is the state machine proper; Apply (wizard_ack.go) wraps it with
+// the per-step confirmation line.
+func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput) (note string, err error) {
 	loc := ws.Locale
 	t := func(key string, data map[string]any) string { return w.texts.T(loc, key, data) }
 	text := strings.TrimSpace(in.Text)

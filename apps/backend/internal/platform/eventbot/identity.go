@@ -21,6 +21,9 @@ type Identity struct {
 	Link        gen.BotTelegramLinkRow
 	Memberships []Membership
 	Current     *Membership
+	// Superadmin: the platform operator. Memberships then lists EVERY
+	// organization (as owner).
+	Superadmin bool
 }
 
 // Locale is the language the bot answers this account in.
@@ -57,6 +60,11 @@ var ErrNotLinked = errors.New("eventbot: telegram account is not linked")
 // reads its memberships from /v1/me. The current organization is the
 // remembered one when the user still belongs to it, otherwise the only
 // membership, otherwise nil (the caller asks).
+//
+// A platform superadmin (the operator) has no memberships of their own:
+// their organization list is every organization of the platform, each as
+// owner, and the API lets them through on the X-Admin-Reason the client
+// always sends.
 func (b *Bot) resolveIdentity(ctx context.Context, telegramUserID int64) (*Identity, string, error) {
 	link, err := b.queries.GetBotTelegramLink(ctx, telegramUserID)
 	if err != nil {
@@ -72,11 +80,19 @@ func (b *Bot) resolveIdentity(ctx context.Context, telegramUserID int64) (*Ident
 	if err != nil {
 		return nil, "", err
 	}
-	memberships, err := b.arena.Me(ctx, jwt)
+	me, err := b.arena.MeInfo(ctx, jwt)
 	if err != nil {
 		return nil, "", err
 	}
-	id := &Identity{Link: link, Memberships: memberships}
+	memberships := me.Memberships
+	if me.Superadmin {
+		all, err := b.arena.AllOrganizations(ctx, jwt)
+		if err != nil {
+			return nil, "", err
+		}
+		memberships = all
+	}
+	id := &Identity{Link: link, Memberships: memberships, Superadmin: me.Superadmin}
 	if link.CurrentOrgID != nil {
 		for i := range memberships {
 			if memberships[i].OrgID == *link.CurrentOrgID {

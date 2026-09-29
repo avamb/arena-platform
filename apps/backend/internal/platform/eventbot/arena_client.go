@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -78,6 +79,12 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 		return fmt.Errorf("build %s %s: %w", method, path, err)
 	}
 	req.Header.Set("Accept", "application/json")
+	// Every organization route lets a platform superadmin act across
+	// organizations only when the request also states a reason
+	// (`requireOrgMembership` -> httputil.RequireAdminReason). The header is
+	// inert for everybody else, so the client states its reason always: the
+	// audit trail then names the bot on every superadmin call.
+	req.Header.Set("X-Admin-Reason", AdminReason)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -153,9 +160,35 @@ type Membership struct {
 	Role    string
 }
 
+// AdminReason is what the bot writes into X-Admin-Reason: a platform
+// superadmin working through the bot is audited under it on every call.
+const AdminReason = "telegram event center bot"
+
+// superadminRole is the platform-wide role /v1/me reports for the operator.
+const superadminRole = "platform_superadmin"
+
+// Me is what /v1/me tells the bot about the linked user.
+type Me struct {
+	Memberships []Membership
+	// Superadmin: the user holds the platform_superadmin role, so every
+	// organization is theirs to work in (with X-Admin-Reason, which the
+	// client always sends).
+	Superadmin bool
+}
+
 // Me returns the linked user's active organization memberships.
 func (c *ArenaClient) Me(ctx context.Context, jwt string) ([]Membership, error) {
+	me, err := c.MeInfo(ctx, jwt)
+	if err != nil {
+		return nil, err
+	}
+	return me.Memberships, nil
+}
+
+// MeInfo returns the memberships together with the platform role flag.
+func (c *ArenaClient) MeInfo(ctx context.Context, jwt string) (Me, error) {
 	var out struct {
+		Roles                   []string `json:"roles"`
 		OrganizationMemberships []struct {
 			OrgID   string `json:"org_id"`
 			OrgName string `json:"org_name"`
@@ -164,9 +197,9 @@ func (c *ArenaClient) Me(ctx context.Context, jwt string) ([]Membership, error) 
 		} `json:"organization_memberships"`
 	}
 	if err := c.do(ctx, http.MethodGet, "/v1/me", jwt, nil, &out); err != nil {
-		return nil, err
+		return Me{}, err
 	}
-	ms := make([]Membership, 0, len(out.OrganizationMemberships))
+	me := Me{Memberships: make([]Membership, 0, len(out.OrganizationMemberships))}
 	for _, m := range out.OrganizationMemberships {
 		if m.Status != "" && m.Status != "active" {
 			continue
@@ -175,8 +208,39 @@ func (c *ArenaClient) Me(ctx context.Context, jwt string) ([]Membership, error) 
 		if err != nil {
 			continue
 		}
-		ms = append(ms, Membership{OrgID: id, OrgName: m.OrgName, Role: m.Role})
+		me.Memberships = append(me.Memberships, Membership{OrgID: id, OrgName: m.OrgName, Role: m.Role})
 	}
+	for _, r := range out.Roles {
+		if r == superadminRole {
+			me.Superadmin = true
+		}
+	}
+	return me, nil
+}
+
+// AllOrganizations lists every organization of the platform as owner
+// memberships — the superadmin's organization chooser. GET /v1/organizations
+// answers the whole list only to a caller with org.read on the platform
+// level; the bot calls it for a superadmin identity alone.
+func (c *ArenaClient) AllOrganizations(ctx context.Context, jwt string) ([]Membership, error) {
+	var out struct {
+		Organizations []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"organizations"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/v1/organizations", jwt, nil, &out); err != nil {
+		return nil, err
+	}
+	ms := make([]Membership, 0, len(out.Organizations))
+	for _, o := range out.Organizations {
+		id, err := uuid.Parse(o.ID)
+		if err != nil {
+			continue
+		}
+		ms = append(ms, Membership{OrgID: id, OrgName: o.Name, Role: membershipRoleOwner})
+	}
+	sort.SliceStable(ms, func(i, j int) bool { return strings.ToLower(ms[i].OrgName) < strings.ToLower(ms[j].OrgName) })
 	return ms, nil
 }
 

@@ -162,6 +162,9 @@ other = "Team"
 ["bot.btn_team"]
 other = "👥 Team"
 
+["bot.btn_team_add"]
+other = "＋ Team member"
+
 ["bot.team_title"]
 other = "<b>Team: {{.Org}}</b>"
 
@@ -373,6 +376,78 @@ other = "← Back"
 
 ["bot.wz.skip_btn"]
 other = "Skip"
+
+["bot.wz.ack"]
+other = "✔ {{.Label}}: {{.Value}}"
+
+["bot.wz.ack_name"]
+other = "Name"
+
+["bot.wz.ack_age"]
+other = "Age"
+
+["bot.wz.ack_promoter"]
+other = "Organizer"
+
+["bot.wz.ack_promoter_org"]
+other = "your organization"
+
+["bot.wz.ack_poster"]
+other = "Poster"
+
+["bot.wz.ack_poster_none"]
+other = "none"
+
+["bot.wz.ack_date"]
+other = "Date"
+
+["bot.wz.ack_time"]
+other = "Time"
+
+["bot.wz.ack_country"]
+other = "Country"
+
+["bot.wz.ack_city"]
+other = "City"
+
+["bot.wz.ack_venue"]
+other = "Venue"
+
+["bot.wz.ack_capacity"]
+other = "Places"
+
+["bot.wz.ack_category"]
+other = "Category"
+
+["bot.wz.ack_price"]
+other = "Price"
+
+["bot.wz.ack_step"]
+other = "Price step"
+
+["bot.wz.ack_places"]
+other = "Tickets"
+
+["bot.wz.ack_until"]
+other = "On sale until"
+
+["bot.wz.ack_limit"]
+other = "Ticket limit"
+
+["bot.wz.ack_none"]
+other = "none"
+
+["bot.wz.ack_saved"]
+other = "saved"
+
+["bot.wz.ack_description"]
+other = "Description"
+
+["bot.wz.ack_currency"]
+other = "Currency"
+
+["bot.wz.ack_channels"]
+other = "Sold on"
 
 ["bot.wz.keep_btn"]
 other = "Keep: {{.Value}}"

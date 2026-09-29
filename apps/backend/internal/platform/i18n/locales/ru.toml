@@ -156,6 +156,9 @@ other = "Сотрудники"
 ["bot.btn_team"]
 other = "👥 Сотрудники"
 
+["bot.btn_team_add"]
+other = "＋ Сотрудник"
+
 ["bot.team_title"]
 other = "<b>Сотрудники: {{.Org}}</b>"
 
@@ -367,6 +370,78 @@ other = "← Назад"
 
 ["bot.wz.skip_btn"]
 other = "Пропустить"
+
+["bot.wz.ack"]
+other = "✔ {{.Label}}: {{.Value}}"
+
+["bot.wz.ack_name"]
+other = "Название"
+
+["bot.wz.ack_age"]
+other = "Возраст"
+
+["bot.wz.ack_promoter"]
+other = "Организатор"
+
+["bot.wz.ack_promoter_org"]
+other = "ваша организация"
+
+["bot.wz.ack_poster"]
+other = "Афиша"
+
+["bot.wz.ack_poster_none"]
+other = "без афиши"
+
+["bot.wz.ack_date"]
+other = "Дата"
+
+["bot.wz.ack_time"]
+other = "Время"
+
+["bot.wz.ack_country"]
+other = "Страна"
+
+["bot.wz.ack_city"]
+other = "Город"
+
+["bot.wz.ack_venue"]
+other = "Площадка"
+
+["bot.wz.ack_capacity"]
+other = "Мест"
+
+["bot.wz.ack_category"]
+other = "Категория"
+
+["bot.wz.ack_price"]
+other = "Цена"
+
+["bot.wz.ack_step"]
+other = "Ступень цены"
+
+["bot.wz.ack_places"]
+other = "Билетов"
+
+["bot.wz.ack_until"]
+other = "Продаётся до"
+
+["bot.wz.ack_limit"]
+other = "Лимит билетов"
+
+["bot.wz.ack_none"]
+other = "нет"
+
+["bot.wz.ack_saved"]
+other = "сохранено"
+
+["bot.wz.ack_description"]
+other = "Описание"
+
+["bot.wz.ack_currency"]
+other = "Валюта"
+
+["bot.wz.ack_channels"]
+other = "Где продаём"
 
 ["bot.wz.keep_btn"]
 other = "Оставить: {{.Value}}"

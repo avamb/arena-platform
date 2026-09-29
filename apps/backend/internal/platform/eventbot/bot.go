@@ -223,12 +223,12 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	} else if text != "" && b.wizardText(ctx, chatID, from, text) {
 		return
 	}
-	id, _, err := b.resolveIdentity(ctx, from.ID)
+	id, jwt, err := b.resolveIdentity(ctx, from.ID)
 	if err != nil {
 		b.replyIdentityError(ctx, chatID, from, err)
 		return
 	}
-	b.send(ctx, chatID, b.texts.T(id.Locale(), "bot.unknown_input", nil), b.homeKeyboard(id))
+	b.send(ctx, chatID, b.texts.T(id.Locale(), "bot.unknown_input", nil), b.homeKeyboard(ctx, id, jwt))
 }
 
 func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
@@ -351,7 +351,7 @@ func looksLikeEmail(s string) bool {
 // ─── screens ──────────────────────────────────────────────────────────────────
 
 func (b *Bot) showHome(ctx context.Context, chatID int64, editMsgID *int, from *models.User, prefix string) {
-	id, _, err := b.resolveIdentity(ctx, from.ID)
+	id, jwt, err := b.resolveIdentity(ctx, from.ID)
 	if err != nil {
 		b.replyIdentityError(ctx, chatID, from, err)
 		return
@@ -361,17 +361,25 @@ func (b *Bot) showHome(ctx context.Context, chatID int64, editMsgID *int, from *
 		return
 	}
 	text := prefix + b.texts.T(id.Locale(), "bot.menu_title", map[string]any{"Org": Esc(id.Current.OrgName)})
-	b.reply(ctx, chatID, editMsgID, text, b.homeKeyboard(id))
+	b.reply(ctx, chatID, editMsgID, text, b.homeKeyboard(ctx, id, jwt))
 }
 
-func (b *Bot) homeKeyboard(id *Identity) *models.InlineKeyboardMarkup {
+// homeKeyboard is the main menu. An owner who is still alone in the
+// organization sees "+ Team member" (straight into the invite dialog)
+// instead of a "Team" screen that would list only themselves; once a
+// colleague exists the button opens the team screen.
+func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *models.InlineKeyboardMarkup {
 	loc := id.Locale()
 	rows := [][]models.InlineKeyboardButton{
 		{{Text: b.texts.T(loc, "bot.wz.new_event_btn", nil), CallbackData: "wz:new"}},
 		{{Text: b.texts.T(loc, "bot.btn_events", nil), CallbackData: "events:1"}},
 	}
 	if isOwner(id) {
-		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_team", nil), CallbackData: "team"}})
+		if b.ownerIsAlone(ctx, id, jwt) {
+			rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_team_add", nil), CallbackData: "team:invite"}})
+		} else {
+			rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_team", nil), CallbackData: "team"}})
+		}
 	}
 	if len(id.Memberships) > 1 {
 		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_org", nil), CallbackData: "org"}})

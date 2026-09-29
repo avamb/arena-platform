@@ -26,6 +26,7 @@ var MessageKeys = []string{
 	"bot.cmd_start", "bot.cmd_events", "bot.cmd_new",
 	"bot.cmd_team",
 	"bot.btn_team",
+	"bot.btn_team_add",
 	"bot.team_title",
 	"bot.team_member_line",
 	"bot.team_linked_mark",

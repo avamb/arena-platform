@@ -119,6 +119,27 @@ func isOwner(id *Identity) bool {
 	return id != nil && id.Current != nil && id.Current.Role == membershipRoleOwner
 }
 
+// ownerIsAlone reports whether the current organization's team is just
+// this one person (or empty — a superadmin working in an organization they
+// are not a member of). A failed lookup answers false, so the menu falls
+// back to the full team screen rather than hiding it.
+func (b *Bot) ownerIsAlone(ctx context.Context, id *Identity, jwt string) bool {
+	if id == nil || id.Current == nil || jwt == "" {
+		return false
+	}
+	members, err := b.arena.Team(ctx, jwt, id.Current.OrgID)
+	if err != nil {
+		return false
+	}
+	others := 0
+	for _, m := range members {
+		if m.UserID != id.Link.UserID {
+			others++
+		}
+	}
+	return others == 0
+}
+
 // showTeam renders the team screen (owners only).
 func (b *Bot) showTeam(ctx context.Context, chatID int64, editMsgID *int, from *models.User, prefix string) {
 	id, jwt, err := b.resolveIdentity(ctx, from.ID)
