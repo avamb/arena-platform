@@ -212,6 +212,12 @@ export interface FeedSession {
    * backends (treated as 0).
    */
   service_fee_percent?: string;
+  /**
+   * IANA zone of the session's venue ("Europe/Madrid"); "" or absent when
+   * unknown. Session chips are formatted in it — the time on the door —
+   * never in the buyer's own zone.
+   */
+  timezone?: string;
   tiers: Tier[];
   /**
    * Resolved poster cover (AB-47c): session's own poster_media_id when set,

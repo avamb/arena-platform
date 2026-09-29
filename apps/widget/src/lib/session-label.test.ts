@@ -61,6 +61,33 @@ describe('sessionChipLabel', () => {
     expect(l.date).toMatch(/^\w{3},? 19 Dec$/);
   });
 
+  it('renders the time of the venue zone, not the viewer machine zone', () => {
+    // 10:00Z on 19 December is 11:00 in Madrid, whatever zone the test runs in.
+    const l = sessionChipLabel('2026-12-19T10:00:00Z', '2026-12-19T11:00:00Z', 'en', 'Europe/Madrid');
+    expect(l.time).toBe('11:00');
+    expect(l.date).toContain('19 Dec');
+    // The same instant read in Moscow is 13:00 — the old behaviour for a
+    // buyer whose phone lives there.
+    expect(sessionChipLabel('2026-12-19T10:00:00Z', null, 'en', 'Europe/Moscow').time).toBe('13:00');
+  });
+
+  it('judges "same day" in the venue zone', () => {
+    // 23:30Z–01:00Z is 00:30–02:00 in Madrid: one day there, two days in UTC.
+    const madrid = sessionChipLabel('2026-12-19T23:30:00Z', '2026-12-20T01:00:00Z', 'en', 'Europe/Madrid');
+    expect(madrid.time).toBe('00:30');
+    expect(madrid.date).not.toContain('–');
+    const utc = sessionChipLabel('2026-12-19T23:30:00Z', '2026-12-20T01:00:00Z', 'en', 'UTC');
+    expect(utc.time).toBe('');
+  });
+
+  it('falls back to the viewer zone for an empty or unknown zone name', () => {
+    const none = sessionChipLabel('2026-12-19T10:00:00Z', null, 'en', '');
+    const bad = sessionChipLabel('2026-12-19T10:00:00Z', null, 'en', 'Mars/Olympus');
+    const local = sessionChipLabel('2026-12-19T10:00:00Z', null, 'en');
+    expect(none.time).toBe(local.time);
+    expect(bad.time).toBe(local.time);
+  });
+
   it('formats a Russian locale range', () => {
     const l = sessionChipLabel('2026-10-16T10:00:00Z', '2026-10-18T21:00:00Z', 'ru');
     expect(l.time).toBe('');

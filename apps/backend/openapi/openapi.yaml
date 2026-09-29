@@ -29941,6 +29941,10 @@ paths:
           * `poster_url` — public URL of the event cover, or null.
 
         Session level (per-session poster + gallery):
+          * `timezone` — IANA zone name of the session's venue
+            (`venues.timezone`), `""` when the venue has none. The widget
+            formats the session chips in it, so a buyer whose phone is in
+            another zone still reads the venue's local time.
           * `service_fee_percent` — the channel's service charge as a
             decimal string (`"5.00"` = 5 %, `"0.00"` = none), applied on
             top of the ticket prices at checkout; the widget shows it as

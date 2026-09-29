@@ -7,6 +7,12 @@
  * alongside the individual days, for example — reads as a date range with no
  * time, because "16 Oct 12:00" would be indistinguishable from the chip for
  * the first day of the same festival.
+ *
+ * Every date and time is rendered in the VENUE's zone (`timeZone`, the
+ * session's `timezone` from the feed) when one is known: a buyer whose phone
+ * lives in another zone must still read the time printed on the door. An
+ * organizer in UTC+3 saw her 11:00 and 12:30 Madrid shows as 13:00 and 14:30
+ * before this (2026-09-29). Without a zone the viewer's own is used.
  */
 
 export interface SessionChipLabel {
@@ -22,13 +28,18 @@ function parse(iso: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** True when the two instants fall on different local calendar days. */
-function spansDays(start: Date, end: Date): boolean {
-  return (
-    start.getFullYear() !== end.getFullYear() ||
-    start.getMonth() !== end.getMonth() ||
-    start.getDate() !== end.getDate()
-  );
+/** The calendar day of an instant in the given zone, as "YYYY-MM-DD". */
+function dayKey(d: Date, timeZone: string | undefined): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { dateStyle: 'short', timeZone }).format(d);
+  } catch {
+    return d.toISOString().slice(0, 10);
+  }
+}
+
+/** True when the two instants fall on different calendar days of the zone. */
+function spansDays(start: Date, end: Date, timeZone: string | undefined): boolean {
+  return dayKey(start, timeZone) !== dayKey(end, timeZone);
 }
 
 /** The BCP 47 tag handed to Intl. A bare `en` is en-US to Intl ("Dec 19",
@@ -39,25 +50,37 @@ function intlTag(locale: string): string {
   return locale.toLowerCase() === 'en' ? 'en-GB' : locale;
 }
 
-function fmtDay(d: Date, locale: string): string {
+/** A zone Intl accepts, or undefined (the viewer's own) for "", absent or
+ * an unknown name — a bad zone must never blank every chip. */
+function usableZone(timeZone: string | null | undefined): string | undefined {
+  if (!timeZone) return undefined;
   try {
-    return d.toLocaleDateString(intlTag(locale), { weekday: 'short', month: 'short', day: 'numeric' });
+    new Intl.DateTimeFormat('en-CA', { timeZone });
+    return timeZone;
+  } catch {
+    return undefined;
+  }
+}
+
+function fmtDay(d: Date, locale: string, timeZone: string | undefined): string {
+  try {
+    return d.toLocaleDateString(intlTag(locale), { weekday: 'short', month: 'short', day: 'numeric', timeZone });
   } catch {
     return d.toISOString().slice(0, 10);
   }
 }
 
-function fmtDayShort(d: Date, locale: string): string {
+function fmtDayShort(d: Date, locale: string, timeZone: string | undefined): string {
   try {
-    return d.toLocaleDateString(intlTag(locale), { month: 'short', day: 'numeric' });
+    return d.toLocaleDateString(intlTag(locale), { month: 'short', day: 'numeric', timeZone });
   } catch {
     return d.toISOString().slice(0, 10);
   }
 }
 
-function fmtTime(d: Date, locale: string): string {
+function fmtTime(d: Date, locale: string, timeZone: string | undefined): string {
   try {
-    return d.toLocaleTimeString(intlTag(locale), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    return d.toLocaleTimeString(intlTag(locale), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone });
   } catch {
     return d.toISOString().slice(11, 16);
   }
@@ -68,20 +91,24 @@ function fmtTime(d: Date, locale: string): string {
  *
  * `endAt` is optional: a session without one, or with an unparseable one, is
  * treated as single-day and keeps the previous date + time rendering.
+ * `timeZone` is the venue's IANA zone; "" / absent / unknown means the
+ * viewer's own.
  */
 export function sessionChipLabel(
   startAt: string,
   endAt: string | null | undefined,
   locale = 'en',
+  timeZone?: string | null,
 ): SessionChipLabel {
   const start = parse(startAt);
   if (!start) {
     // Unparseable start: fall back to raw ISO slices, as before.
     return { date: (startAt ?? '').slice(0, 10), time: (startAt ?? '').slice(11, 16) };
   }
+  const tz = usableZone(timeZone);
   const end = parse(endAt);
-  if (end && end > start && spansDays(start, end)) {
-    return { date: `${fmtDayShort(start, locale)} – ${fmtDayShort(end, locale)}`, time: '' };
+  if (end && end > start && spansDays(start, end, tz)) {
+    return { date: `${fmtDayShort(start, locale, tz)} – ${fmtDayShort(end, locale, tz)}`, time: '' };
   }
-  return { date: fmtDay(start, locale), time: fmtTime(start, locale) };
+  return { date: fmtDay(start, locale, tz), time: fmtTime(start, locale, tz) };
 }

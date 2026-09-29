@@ -269,8 +269,14 @@ type publicFeedSessionResponse struct {
 	// ("5.00" = 5 %, "0.00" = none), applied on top of the ticket prices at
 	// checkout (channelPricingRules). The widget shows it as a cart line so
 	// the buyer sees the total before the payment page does.
-	ServiceFeePercent string                   `json:"service_fee_percent"`
-	Tiers             []publicFeedTierResponse `json:"tiers"`
+	ServiceFeePercent string `json:"service_fee_percent"`
+	// Timezone is the IANA zone of the session's venue (`venues.timezone`),
+	// "" when the venue has none. The widget formats the session chips in
+	// it: a buyer whose phone lives in another zone (found 2026-09-29 — an
+	// organizer in UTC+3 saw her 11:00 and 12:30 Madrid shows as 13:00 and
+	// 14:30) must still read the venue's local time, the one on the door.
+	Timezone string                   `json:"timezone"`
+	Tiers    []publicFeedTierResponse `json:"tiers"`
 	// PosterMediaID / PosterURL are the resolved cover (AB-47c): the session
 	// value when set, otherwise the event fallback. Same on both fields.
 	// The widget uses PosterURL directly; media_id is exposed for callers
@@ -332,6 +338,29 @@ func (h *Handler) publicFeedSessionFromRow(ctx context.Context, s gen.SessionRow
 		resp.PosterURL = &url
 	}
 	return resp
+}
+
+// venueTimezone resolves a venue's IANA zone, once per venue per request
+// (cache keyed by venue id; every session of an event usually shares one).
+// Best effort: a lookup failure or a venue without a zone yields "" and the
+// widget falls back to the viewer's own zone, as it always did.
+func (h *Handler) venueTimezone(ctx context.Context, venueID uuid.UUID, cache map[uuid.UUID]string) string {
+	if tz, ok := cache[venueID]; ok {
+		return tz
+	}
+	tz := ""
+	if h.sessionQueries != nil && venueID != uuid.Nil {
+		venue, err := h.sessionQueries.GetVenueByID(ctx, venueID)
+		switch {
+		case err != nil:
+			h.logger.Warn("public_feed: venue timezone lookup failed",
+				slog.String("venue_id", venueID.String()), slog.String("error", err.Error()))
+		case venue.Timezone != nil:
+			tz = strings.TrimSpace(*venue.Timezone)
+		}
+	}
+	cache[venueID] = tz
+	return tz
 }
 
 // applyPosterFallback fills PosterMediaID/PosterURL from the event cover
@@ -709,9 +738,11 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 					}
 				}
 			}
+			venueTimezones := map[uuid.UUID]string{}
 			for _, sess := range sessions {
 				sessResp := h.publicFeedSessionFromRow(ctx, sess, defaultBuyerFields)
 				sessResp.ServiceFeePercent = serviceFeePercent
+				sessResp.Timezone = h.venueTimezone(ctx, sess.VenueID, venueTimezones)
 				sessResp.applySeatingLinks(admissionByID[sess.ID.String()])
 				sessResp.applyPosterFallback(eventResp.PosterMediaID, eventResp.PosterURL)
 

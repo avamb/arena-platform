@@ -37,7 +37,7 @@
   <div class="chips-row" role="tablist" aria-label="Event sessions">
     {#each sessions as session (session.id)}
       {@const isSelected = selectedSession?.id === session.id}
-      {@const label = sessionChipLabel(session.start_at, session.end_at, locale)}
+      {@const label = sessionChipLabel(session.start_at, session.end_at, locale, session.timezone)}
       <button
         role="tab"
         aria-selected={isSelected}
