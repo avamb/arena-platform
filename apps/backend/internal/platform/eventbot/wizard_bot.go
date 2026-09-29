@@ -29,13 +29,18 @@ import (
 
 const (
 	posterMaxBytes = 5 << 20
-	posterMinWidth = 1080
+	// posterMinWidth admits a photo Telegram has compressed: a 1080×1350
+	// poster sent as a photo arrives as 1024×1280 (the longest side is
+	// capped at 1280). Owner decision 2026-09-29: an organizer who sends a
+	// photo must not be bounced — the file path keeps full quality, the
+	// photo path keeps the sale.
+	posterMinWidth = 1000
 	posterTolerant = 0.02
 )
 
 // wizardSession builds the wizard's view of the caller.
 func (b *Bot) wizardSession(id *Identity, jwt string) WizSession {
-	return WizSession{JWT: jwt, OrgID: id.Current.OrgID, Locale: id.Locale(), Defaults: DecodeDefaults(id.Link.Defaults)}
+	return WizSession{JWT: jwt, OrgID: id.Current.OrgID, OrgName: id.Current.OrgName, Locale: id.Locale(), Defaults: DecodeDefaults(id.Link.Defaults)}
 }
 
 func (b *Bot) loadDraft(ctx context.Context, tgID int64, ws WizSession) (*Draft, *gen.BotDraftRow, error) {
@@ -239,16 +244,29 @@ func (b *Bot) wizardPoster(ctx context.Context, chatID int64, from *models.User,
 		return false
 	}
 	loc := ws.Locale
-	if m.Document == nil {
-		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_compressed", nil), nil)
-		return true
+	// A document keeps the file as it was; a photo is what Telegram made of
+	// it (JPEG, longest side 1280) — the largest size it offers is taken.
+	var fileID, fileName string
+	var fileSize int64
+	switch {
+	case m.Document != nil:
+		fileID, fileName, fileSize = m.Document.FileID, m.Document.FileName, m.Document.FileSize
+	case len(m.Photo) > 0:
+		largest := m.Photo[0]
+		for _, p := range m.Photo[1:] {
+			if p.Width > largest.Width {
+				largest = p
+			}
+		}
+		fileID, fileName, fileSize = largest.FileID, "poster.jpg", int64(largest.FileSize)
+	default:
+		return false
 	}
-	doc := m.Document
-	if doc.FileSize > posterMaxBytes {
+	if fileSize > posterMaxBytes {
 		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_too_big", nil), nil)
 		return true
 	}
-	data, err := b.downloadTelegramFile(ctx, doc.FileID)
+	data, err := b.downloadTelegramFile(ctx, fileID)
 	if err != nil {
 		b.logger.Warn("eventbot: poster download failed", slog.String("error", err.Error()))
 		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_failed", nil), nil)
@@ -271,7 +289,7 @@ func (b *Bot) wizardPoster(ctx context.Context, chatID int64, from *models.User,
 	if format == "jpeg" {
 		contentType = "image/jpeg"
 	}
-	name := doc.FileName
+	name := fileName
 	if name == "" {
 		name = "poster." + format
 	}

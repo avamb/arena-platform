@@ -22,12 +22,13 @@ func (w *Wizard) Apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 	case "back", "cancel":
 		return note, nil
 	}
-	return w.ack(ws.Locale, before, d), nil
+	return w.ack(ws, before, d), nil
 }
 
 // ack renders the confirmation line for the step just answered, or "" when
 // the value is not final yet (a new promoter, city or venue being typed in).
-func (w *Wizard) ack(loc, step string, d *Draft) string {
+func (w *Wizard) ack(ws WizSession, step string, d *Draft) string {
+	loc := ws.Locale
 	t := func(key string, data map[string]any) string { return w.texts.T(loc, key, data) }
 	line := func(labelKey, value string) string {
 		if value == "" {
@@ -53,6 +54,11 @@ func (w *Wizard) ack(loc, step string, d *Draft) string {
 			return ""
 		}
 		if d.Event.PromoterID == "" && d.Event.PromoterName == "" {
+			// The organization itself, by its own name — "your organization"
+			// meant nothing to the first organizers who saw it (2026-09-29).
+			if ws.OrgName != "" {
+				return line("bot.wz.ack_promoter", Esc(ws.OrgName))
+			}
 			return line("bot.wz.ack_promoter", t("bot.wz.ack_promoter_org", nil))
 		}
 		return line("bot.wz.ack_promoter", Esc(d.Event.PromoterName))
@@ -88,6 +94,11 @@ func (w *Wizard) ack(loc, step string, d *Draft) string {
 		}
 		if s == nil {
 			return ""
+		}
+		// A venue arena already knows the size of says so at once, so the
+		// "keep 220" button on the next question is not a mystery number.
+		if s.Capacity > 0 {
+			return line("bot.wz.ack_venue", t("bot.wz.ack_venue_cap", map[string]any{"Venue": Esc(s.VenueName), "Capacity": s.Capacity}))
 		}
 		return line("bot.wz.ack_venue", Esc(s.VenueName))
 	case stSCapacity:

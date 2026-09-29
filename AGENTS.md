@@ -1741,6 +1741,19 @@ entries short and factual.
   heredoc holding Go source with backticks (raw strings, struct tags)
   breaks the Bash tool's parser ("unexpected EOF while looking for
   matching `''") — write such files with the Write tool.
+- **The wizard names the organization, never "your organization", and
+  takes a poster as a photo too.** `WizSession.OrgName` (from the
+  membership) is the "promoter = the organization itself" button label, the
+  ✔ line and the question text; a venue's known capacity is said with the
+  venue ("Palác Akropolis, вместимость 300") and again in the capacity
+  question, and the price question names the currency of the venue's
+  country — the three things the first organizer stumbled on (2026-09-29).
+  `wizardPoster` accepts a compressed photo (largest `PhotoSize`) as well as
+  a document: `posterMinWidth` is 1000 because Telegram caps a photo's
+  longest side at 1280 (a 1080×1350 poster arrives as 1024×1280); the file
+  path is still recommended in `bot.wz.ask_poster`, with the desktop
+  "Send as a document" checkbox spelled out — choosing "File" on Telegram
+  Desktop is NOT enough, the checkbox in the send window decides.
 - **The event-bundle (source=arena) addresses existing rows by arena UUID
   as well as by compat id: `action.arenaEventId`,
   `actionEvent.arenaSessionId`, `categoryList[].arenaTierId`** (same

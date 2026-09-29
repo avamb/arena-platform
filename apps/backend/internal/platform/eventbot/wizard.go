@@ -271,8 +271,12 @@ type RefIO interface {
 
 // WizSession is who is driving the wizard.
 type WizSession struct {
-	JWT      string
-	OrgID    uuid.UUID
+	JWT   string
+	OrgID uuid.UUID
+	// OrgName is what the wizard calls the organization on screen — "Arena
+	// Test Promotions", never "your organization": an organizer does not
+	// know what an "organization" is, but recognizes their own name.
+	OrgName  string
 	Locale   string
 	Defaults Defaults
 }

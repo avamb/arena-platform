@@ -21,7 +21,7 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 	seed := map[string]any{
 		"Org": "Org", "Role": "owner", "Page": 1, "Pages": 1, "Name": "N", "Status": "S", "Email": "a@b.c", "Marks": "",
 		"When": "w", "Venue": "v", "Sold": 1, "Total": 2, "Available": 1, "Held": 0, "Money": "m",
-		"Paid": "1 EUR", "Orders": 1, "Value": "x", "Label": "L", "N": 1, "Title": "t", "W": 1080, "H": 1350,
+		"Paid": "1 EUR", "Orders": 1, "Value": "x", "Label": "L", "Currency": "EUR", "N": 1, "Title": "t", "W": 1080, "H": 1350,
 		"Reason": "r", "City": "c", "Capacity": 80, "Date": "d", "List": "l", "Price": "p",
 		"Schedule": "", "Age": "18+", "Promoter": "", "Poster": "", "Published": "", "Link": "",
 		"Warnings": "", "URL": "u",

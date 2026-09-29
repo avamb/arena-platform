@@ -387,7 +387,7 @@ other = "Name"
 other = "Age"
 
 ["bot.wz.ack_promoter"]
-other = "Organizer"
+other = "Promoter"
 
 ["bot.wz.ack_promoter_org"]
 other = "your organization"
@@ -412,6 +412,9 @@ other = "City"
 
 ["bot.wz.ack_venue"]
 other = "Venue"
+
+["bot.wz.ack_venue_cap"]
+other = "{{.Venue}}, capacity {{.Capacity}}"
 
 ["bot.wz.ack_capacity"]
 other = "Places"
@@ -492,13 +495,13 @@ other = "Please give the event a name, up to 200 characters."
 other = "Age restriction?"
 
 ["bot.wz.ask_promoter"]
-other = "Who runs the event? This name is printed on the ticket as the organizer. Usually the organization itself."
+other = "Whose name is the event under? The promoter is the name printed on the ticket as the organizer, with its own ticket page. Usually that is {{.Org}}. For another theatre or brand, pick it or add a new one."
 
 ["bot.wz.promoter_org"]
 other = "The organization itself"
 
 ["bot.wz.promoter_new"]
-other = "+ Another promoter…"
+other = "+ New promoter (brand)…"
 
 ["bot.wz.ask_promoter_name"]
 other = "The promoter's name, as it should appear on the ticket."
@@ -513,10 +516,7 @@ other = "This promoter already exists — pick it from the list."
 other = "The promoter's tax or company id, if any. You can skip this."
 
 ["bot.wz.ask_poster"]
-other = "Send the poster <b>as a file</b> (paperclip → File), not as a photo: Telegram compresses photos and we need a width of at least 1080 px.\n\nPNG or JPG up to 5 MB, 4:5 (1080×1350) or square. Keep everything important in the centre: the site crops the top and bottom in cards. Without a poster the event card on the site will not open, but you can add the poster later."
-
-["bot.wz.poster_compressed"]
-other = "That arrived as a compressed photo. Send the same file via the paperclip → “File” to keep the quality."
+other = "Send the poster. Best <b>as a file</b>, so nothing is lost:\n• on the phone: paperclip 📎 → “File” → pick the picture;\n• on the computer: paperclip 📎 → pick the picture → tick “Send as a document” in the send window.\nA plain photo works too, but Telegram compresses it.\n\nPNG or JPG up to 5 MB, 4:5 (1080×1350) or square, at least 1000 px wide. Keep everything important in the centre: the site crops the top and bottom in cards. Without a poster the event card on the site will not open, but you can add the poster later."
 
 ["bot.wz.poster_bad_type"]
 other = "The poster must be a PNG or JPG image."
@@ -528,7 +528,7 @@ other = "The poster file is over 5 MB — save it with a lower quality."
 other = "The poster is {{.W}}×{{.H}} — it must be 4:5 (1080×1350) or square (1080×1080)."
 
 ["bot.wz.poster_too_small"]
-other = "The poster is {{.W}}×{{.H}}, too small — the width must be at least 1080 px."
+other = "The poster is {{.W}}×{{.H}}, too small — the width must be at least 1000 px. If you sent a photo, send the same file via the paperclip → “File”: Telegram will not compress it then."
 
 ["bot.wz.poster_failed"]
 other = "The poster could not be saved. Try again or skip this step."
@@ -602,6 +602,9 @@ other = "The venue could not be saved: {{.Reason}}"
 ["bot.wz.ask_capacity"]
 other = "How many places are on sale for this date? A number, for example 80."
 
+["bot.wz.ask_capacity_known"]
+other = "The venue “{{.Venue}}” holds {{.Capacity}}. How many places are on sale for this date? Keep {{.Capacity}} or type a number, for example 80."
+
 ["bot.wz.err_capacity"]
 other = "A whole number of at least 1 is needed, for example 80."
 
@@ -637,6 +640,9 @@ other = "Admission"
 
 ["bot.wz.ask_t_price"]
 other = "Ticket price? A number, for example 199 or 99.90."
+
+["bot.wz.ask_t_price_cur"]
+other = "Ticket price in {{.Currency}}? A number, for example 199 or 99.90. The currency follows the venue's country."
 
 ["bot.wz.err_price"]
 other = "Type the ticket price as a number, for example 199."

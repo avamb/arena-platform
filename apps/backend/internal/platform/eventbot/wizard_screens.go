@@ -50,12 +50,16 @@ func (w *Wizard) Render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		if ws.Defaults.PromoterID != "" && ws.Defaults.PromoterName != "" {
 			rows = append(rows, []Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": ws.Defaults.PromoterName}), Data: "keep"}})
 		}
-		rows = append(rows, []Button{btn("bot.wz.promoter_org", "prom:org")})
+		orgLabel := t("bot.wz.promoter_org", nil)
+		if ws.OrgName != "" {
+			orgLabel = truncate(ws.OrgName, 48)
+		}
+		rows = append(rows, []Button{{Label: orgLabel, Data: "prom:org"}})
 		for _, p := range sortedByName(promoters) {
 			rows = append(rows, []Button{{Label: truncate(p.Name, 48), Data: "prom:" + p.ID}})
 		}
 		rows = append(rows, []Button{btn("bot.wz.promoter_new", "prom:new")})
-		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_promoter", nil), Buttons: nav(rows...)}, nil
+		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_promoter", map[string]any{"Org": Esc(orgLabel)}), Buttons: nav(rows...)}, nil
 
 	case stPromoterName:
 		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_promoter_name", nil), Buttons: nav()}, nil
@@ -178,10 +182,12 @@ func (w *Wizard) Render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 	case stSCapacity:
 		s := d.session()
 		rows := [][]Button{}
+		text := t("bot.wz.ask_capacity", nil)
 		if s.Capacity > 0 {
 			rows = append(rows, []Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": s.Capacity}), Data: "keep"}})
+			text = t("bot.wz.ask_capacity_known", map[string]any{"Venue": Esc(s.VenueName), "Capacity": s.Capacity})
 		}
-		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_capacity", nil), Buttons: nav(rows...)}, nil
+		return Screen{Text: header(2, "bot.wz.title_when") + text, Buttons: nav(rows...)}, nil
 
 	case stSMore:
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_more_sessions", nil),
@@ -196,7 +202,11 @@ func (w *Wizard) Render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 			Buttons: nav([]Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": t("bot.wz.t_name_default", nil)}), Data: "default"}})}, nil
 
 	case stTPrice:
-		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_price", nil), Buttons: nav()}, nil
+		text := t("bot.wz.ask_t_price", nil)
+		if cur := d.currencyOrGuess(); cur != "" {
+			text = t("bot.wz.ask_t_price_cur", map[string]any{"Currency": cur})
+		}
+		return Screen{Text: header(3, "bot.wz.title_tickets") + text, Buttons: nav()}, nil
 
 	case stTChanges:
 		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_changes", nil),

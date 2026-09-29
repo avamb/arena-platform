@@ -124,6 +124,50 @@ func (r *wizardRun) firstDate() {
 	r.press("keep", stSMore)
 }
 
+// The wizard names the organization ("Arena Test Promotions", never "your
+// organization"), tells the venue's capacity with the venue, and the
+// currency with the price question — the three things the first organizer
+// to use it stumbled on (2026-09-29).
+func TestWizard_ScreensNameTheOrgVenueCapacityAndCurrency(t *testing.T) {
+	r := newWizardRun(t, newFakeRefs())
+	r.ws.OrgName = "Arena Test Promotions"
+	r.text("Ночь открытой сцены", stEvAge)
+	r.press("age:16+", stEvPromoter)
+	screen, err := r.w.Render(context.Background(), r.ws, r.d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(screen.Text, "Arena Test Promotions") {
+		t.Errorf("promoter question does not name the organization:\n%s", screen.Text)
+	}
+	if !strings.Contains(fmt.Sprint(screen.Buttons), "Arena Test Promotions") {
+		t.Errorf("no button carries the organization's name: %v", screen.Buttons)
+	}
+	if note := r.press("prom:org", stEvPoster); !strings.Contains(note, "Промоутер: Arena Test Promotions") {
+		t.Errorf("ack = %q, want the organization by name", note)
+	}
+	r.press("skip", stSDate)
+	r.text("01.01.2027", stSTime)
+	r.press("default", stSCountry)
+	r.press("country:cz", stSCity)
+	r.press("city:prg", stSVenue)
+	if note := r.press("venue:akr", stSCapacity); !strings.Contains(note, "Palác Akropolis, вместимость 300") {
+		t.Errorf("venue ack = %q, want the capacity with it", note)
+	}
+	screen, _ = r.w.Render(context.Background(), r.ws, r.d)
+	if !strings.Contains(screen.Text, "вмещает 300") {
+		t.Errorf("capacity question does not tell the venue's capacity:\n%s", screen.Text)
+	}
+	r.press("keep", stSMore)
+	r.press("next", stTMode)
+	r.press("mode:single", stTName)
+	r.press("default", stTPrice)
+	screen, _ = r.w.Render(context.Background(), r.ws, r.d)
+	if !strings.Contains(screen.Text, "в CZK") {
+		t.Errorf("price question does not name the currency:\n%s", screen.Text)
+	}
+}
+
 func TestWizard_SingleCategoryWithSchedule_HappyPath(t *testing.T) {
 	refs := newFakeRefs()
 	r := newWizardRun(t, refs)

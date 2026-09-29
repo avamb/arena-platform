@@ -170,7 +170,7 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	press("wz:new", "Как называется")
 	say(strings.Repeat("Ы", 201), "до 200 знаков") // an over-long name is refused, with a plain hint
 	say(eventName, "Возраст")
-	press("wz:age:16+", "Кто проводит")
+	press("wz:age:16+", "От чьего имени")
 	press("wz:prom:org", "афишу")
 	press("wz:skip", "Дата сеанса 1")
 
@@ -285,7 +285,7 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	}
 	press("wz:edit:event", "Как называется")
 	say(renamed, "Возраст")
-	press("wz:age:18+", "Кто проводит")
+	press("wz:age:18+", "От чьего имени")
 	press("wz:prom:org", "афишу")
 	press("wz:skip", "Проверьте и опубликуйте")
 	press("wz:edit:tickets", "Как назвать билет")
