@@ -160,6 +160,9 @@ var Bil24DescriptionKeys = []string{
 	"bil24.no_tickets_to_send",
 	"bil24.use_refund_ticket",
 	"bil24.unknown_command",
+	// Migration 0119: SCAN_TICKET met the code of a session's sample
+	// e-ticket — a real, unique EAN-13 that admits nobody.
+	"bil24.sample_ticket",
 	"bil24.invalid_request",
 	"bil24.not_found",
 	"bil24.unauthorized",

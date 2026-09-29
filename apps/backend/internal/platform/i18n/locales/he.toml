@@ -131,3 +131,6 @@ other = "אין הרשאה"
 
 ["bil24.internal"]
 other = "שגיאה פנימית"
+
+["bil24.sample_ticket"]
+other = "כרטיס לדוגמה – אינו מקנה כניסה"

@@ -141,6 +141,9 @@ other = "unauthorized"
 ["bil24.internal"]
 other = "internal error"
 
+["bil24.sample_ticket"]
+other = "sample ticket, not valid for entry"
+
 # ---------------------------------------------------------------------------
 # Telegram event-center bot (internal/platform/eventbot, spec 28). Every key
 # here must also exist in ru.toml; eventbot.MessageKeys lists them and
@@ -314,6 +317,15 @@ other = "<b>{{.Name}}</b>\n{{.Status}}"
 
 ["bot.event_no_sessions"]
 other = "This event has no dates yet."
+
+["bot.sample_btn"]
+other = "🎫 Sample ticket"
+
+["bot.sample_caption"]
+other = "This is how a buyer will see the ticket for “{{.Name}}”. A sample: the barcode is real, and the scanner at the gate answers “sample ticket”."
+
+["bot.sample_failed"]
+other = "Could not make the sample ticket. Try again later."
 
 ["bot.session_line"]
 other = "<b>{{.When}}</b> {{.Venue}}\nSold {{.Sold}} of {{.Total}}, free {{.Available}}{{if .Held}}, on hold {{.Held}}{{end}}\n{{.Money}}"

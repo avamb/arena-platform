@@ -222,6 +222,14 @@ type Ticket struct {
 	// note plus the "not a fiscal receipt" disclosure).
 	FinePrint string
 
+	// Watermark, when set, is printed diagonally across the flowing block
+	// (header to details) in the accent colour at low opacity — "SAMPLE" on
+	// the organizer's preview ticket. It never touches the anchored code
+	// block: the QR, the barcode and its quiet zones stay exactly as on a
+	// real ticket, so the preview scans like one and the gate can answer
+	// "sample". Empty prints nothing.
+	Watermark string
+
 	// ── Organisation branding ─────────────────────────────────────────
 	// All optional; empty fields are silently skipped so the renderer never
 	// refuses to print a ticket because branding metadata is missing.

@@ -216,6 +216,12 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	if !strings.Contains(saved, eventName) || !strings.Contains(saved, "https://tickets.test/") {
 		t.Fatalf("saved message: %s", saved)
 	}
+	// The published event comes with the buyer's e-ticket as a PDF: the
+	// first date's sample, fetched from the API as the manager.
+	sample := tg.waitFor(t, "[document sample-ticket.pdf]")
+	if !strings.Contains(sample, eventName) || strings.Contains(sample, "not a PDF") {
+		t.Fatalf("sample document: %s", sample)
+	}
 
 	var (
 		eventID    uuid.UUID

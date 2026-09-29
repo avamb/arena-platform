@@ -414,6 +414,7 @@ func renderWithSpec(t Ticket, spec layoutSpec) ([]byte, error) {
 
 	str := stringsFor(t.Locale)
 	drawFlow(doc, t, spec, str, accentColor(t))
+	drawWatermark(doc, t, spec, accentColor(t))
 	if err := drawBottom(doc, t, spec, str); err != nil {
 		return nil, err
 	}

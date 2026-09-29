@@ -282,6 +282,10 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.switchLang(ctx, chatID, &msgID, from, parts[1])
 	case "wz":
 		b.wizardCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "wz:"))
+	case "sample":
+		if len(parts) > 1 {
+			b.sampleCallback(ctx, chatID, from, parts[1])
+		}
 	case "team":
 		b.teamCallback(ctx, chatID, msgID, from, strings.TrimPrefix(strings.TrimPrefix(cq.Data, "team"), ":"))
 	}

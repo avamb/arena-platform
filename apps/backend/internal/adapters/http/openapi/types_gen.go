@@ -6056,6 +6056,12 @@ type ImportBil24SessionRequest struct {
 	// `import.invalid_channel` before writing anything. Empty or absent
 	// keeps the earlier behaviour (a key without a channel warns
 	// `import.channel_publication_skipped`, a user binds nothing).
+	// A named channel without a gateway credential (not a WordPress
+	// site's) also gets its storefront page switched on
+	// (`settings.hosted_page.enabled`, advisory warning
+	// `import.hosted_page_enabled`), so the organizer's sales link
+	// opens; a site's channel and an already-enabled one are left as
+	// they are.
 	ChannelIds *[]openapi_types.UUID `json:"channelIds,omitempty"`
 
 	// Publish When true, the imported event and session are pushed through the
@@ -6270,6 +6276,12 @@ type ImportEventBundleRequest struct {
 	// `import.invalid_channel` before writing anything. Empty or absent
 	// keeps the earlier behaviour (a key without a channel warns
 	// `import.channel_publication_skipped`, a user binds nothing).
+	// A named channel without a gateway credential (not a WordPress
+	// site's) also gets its storefront page switched on
+	// (`settings.hosted_page.enabled`, advisory warning
+	// `import.hosted_page_enabled`), so the organizer's sales link
+	// opens; a site's channel and an already-enabled one are left as
+	// they are.
 	ChannelIds *[]openapi_types.UUID `json:"channelIds,omitempty"`
 
 	// ExternalRef Caller-side idempotency key for the session, unique within
@@ -11992,6 +12004,12 @@ type ListPromoCodeRedemptionsParams struct {
 type ListPromotersParams struct {
 	// IncludeArchived Include archived promoters (true/false, default false).
 	IncludeArchived *bool `form:"include_archived,omitempty" json:"include_archived,omitempty"`
+}
+
+// GetV1OrganizationsOrgIdSessionsSessionIdSampleTicketParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdSampleTicket.
+type GetV1OrganizationsOrgIdSessionsSessionIdSampleTicketParams struct {
+	// Locale Language of the printed labels and the SAMPLE stamp (en, ru, cs).
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
 // ListPublicFeedEventsParams defines parameters for ListPublicFeedEvents.

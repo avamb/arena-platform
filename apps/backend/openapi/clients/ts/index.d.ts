@@ -5895,6 +5895,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/sessions/{session_id}/sample-ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organizer's preview of a buyer's e-ticket
+         * @description Renders the e-ticket a buyer of this session will receive — the real
+         *     layout, the organization's logo, the event's poster, the first open
+         *     category's price — stamped SAMPLE across the details, with the
+         *     buyer's data replaced by placeholders. The barcode is a REAL
+         *     platform EAN-13 minted once per session in the `sample` barcode
+         *     authority (migration 0119) and reused on every request, so the PDF
+         *     scans at the gate; the Bil24-protocol `SCAN_TICKET` answers it with
+         *     resultCode -2 `bil24.sample_ticket` and never marks it scanned. The
+         *     Telegram event-center bot sends this PDF right after a publish.
+         *     Language: the `locale` query parameter (`en`, `ru`, `cs`), else the
+         *     organization's default locale, else English. Requires the
+         *     `session.read` permission and membership in the organization.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdSampleTicket"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/orders/{id}/cancel": {
         parameters: {
             query?: never;
@@ -38210,6 +38241,88 @@ export interface operations {
                 };
             };
             /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdSampleTicket: {
+        parameters: {
+            query?: {
+                /** @description Language of the printed labels and the SAMPLE stamp (en, ru, cs). */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sample e-ticket PDF (Content-Disposition attachment, never cached). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description org_id or session_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`session.read`) or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The sample could not be rendered (`sample_ticket.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session queries unavailable (database not wired). */
             503: {
                 headers: {
                     [name: string]: unknown;

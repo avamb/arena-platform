@@ -102,6 +102,29 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 		seq := s.msgSeq
 		s.mu.Unlock()
 		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":1700000000,"chat":{"id":777,"type":"private"},"text":%q}}`, seq, p.Text)
+	case "sendDocument":
+		// A document arrives as multipart; it is recorded as a sent line
+		// "[document <filename>] <caption>" so waitFor can see it.
+		name, caption := "", field("caption")
+		if r.MultipartForm != nil {
+			if files := r.MultipartForm.File["document"]; len(files) > 0 {
+				name = files[0].Filename
+				if fh, err := files[0].Open(); err == nil {
+					head := make([]byte, 5)
+					n, _ := io.ReadFull(fh, head)
+					_ = fh.Close()
+					if string(head[:n]) != "%PDF-" {
+						name += " (not a PDF)"
+					}
+				}
+			}
+		}
+		s.mu.Lock()
+		s.sent = append(s.sent, "[document "+name+"] "+caption)
+		s.msgSeq++
+		seq := s.msgSeq
+		s.mu.Unlock()
+		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":1700000000,"chat":{"id":777,"type":"private"},"caption":%q}}`, seq, caption)
 	default:
 		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
 	}

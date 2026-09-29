@@ -55,6 +55,7 @@ var MessageKeys = []string{
 	"bot.btn_back", "bot.btn_home", "bot.btn_prev", "bot.btn_next", "bot.help",
 	"bot.events_empty", "bot.events_title", "bot.events_upcoming", "bot.events_past",
 	"bot.event_card", "bot.event_no_sessions", "bot.session_line",
+	"bot.sample_btn", "bot.sample_caption", "bot.sample_failed",
 	"bot.money_line", "bot.money_none",
 	"bot.status_draft", "bot.status_published", "bot.status_archived", "bot.status_cancelled",
 	"bot.session_cancelled",

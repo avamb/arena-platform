@@ -131,3 +131,6 @@ other = "nepovoleno"
 
 ["bil24.internal"]
 other = "vnitřní chyba"
+
+["bil24.sample_ticket"]
+other = "vzorová vstupenka – neopravňuje ke vstupu"

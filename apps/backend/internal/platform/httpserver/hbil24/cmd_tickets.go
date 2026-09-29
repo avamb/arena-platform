@@ -9,6 +9,7 @@
 package hbil24
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -104,6 +105,25 @@ func (h *Handler) handleBil24ScanTicket(w http.ResponseWriter, r *http.Request, 
 				"bil24.internal", "failed to look up ticket", nil),
 		))
 		return
+	}
+
+	// A sample e-ticket (migration 0119) carries a real code in the 'sample'
+	// authority and never a ticket: the gate must say so and admit nobody,
+	// and the code must stay scannable for the next demonstration — so it
+	// is never marked scanned. Only a querier that can name the authority
+	// (the real one) makes the call; the pre-#472 fakes cannot and skip it.
+	if barcode.TicketID == nil {
+		if aq, ok := sq.(barcodeAuthorityQuerier); ok {
+			authority, aErr := aq.GetBarcodeAuthorityByID(ctx, barcode.AuthorityID)
+			if aErr == nil && authority.Type == sampleAuthorityType {
+				writeBil24JSON(w, http.StatusOK, bil24Error(
+					req.Command, ResultCodeInvalidRequest,
+					h.localizeDesc(req.Locale, gwDefaultLocale(channel),
+						"bil24.sample_ticket", "sample ticket, not valid for entry", nil),
+				))
+				return
+			}
+		}
 	}
 
 	// Feature #472 (spec §5 item 3 + §7.14): org-scope enforcement. When
@@ -260,6 +280,16 @@ func (h *Handler) handleBil24ScanTicket(w http.ResponseWriter, r *http.Request, 
 // production wiring passes via New()/bil24_shims.go. Returns nil only when
 // neither is set, in which case the handler self-gates with a -99
 // "scan service unavailable" envelope.
+// sampleAuthorityType is barcode_authorities.type of a sample e-ticket's
+// code (migration 0119, hsample.SampleAuthorityType).
+const sampleAuthorityType = "sample"
+
+// barcodeAuthorityQuerier is the optional extension of ScanQuerier the
+// sample check needs; *gen.Queries satisfies it.
+type barcodeAuthorityQuerier interface {
+	GetBarcodeAuthorityByID(ctx context.Context, id uuid.UUID) (gen.BarcodeAuthorityRow, error)
+}
+
 func (h *Handler) scanQuerier() ScanQuerier {
 	if h.scanQ != nil {
 		return h.scanQ

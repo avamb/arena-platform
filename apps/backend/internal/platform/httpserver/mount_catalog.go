@@ -90,6 +90,8 @@ func (s *Server) mountSessionRoutes(r chi.Router) {
 			s.applyAuth(pr, "session.read", "sessions")
 			pr.Get("/organizations/{org_id}/events/{event_id}/sessions", s.handleListSessions)
 			pr.Get("/organizations/{org_id}/events/{event_id}/sessions/{id}", s.handleGetSession)
+			// The organizer's preview of a buyer's e-ticket (migration 0119).
+			pr.Get("/organizations/{org_id}/sessions/{session_id}/sample-ticket", s.handleSessionSampleTicket)
 		})
 	}
 	if s.authEnabled() && s.sessionQueries != nil && s.pool != nil {

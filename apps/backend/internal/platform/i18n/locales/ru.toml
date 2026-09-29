@@ -135,6 +135,9 @@ other = "нет доступа"
 ["bil24.internal"]
 other = "внутренняя ошибка"
 
+["bil24.sample_ticket"]
+other = "образец билета — не даёт права на вход"
+
 # ---------------------------------------------------------------------------
 # Telegram-бот ивент-центра (internal/platform/eventbot, спецификация 28).
 # Каждый ключ должен быть и в en.toml; список — eventbot.MessageKeys,
@@ -308,6 +311,15 @@ other = "<b>{{.Name}}</b>\n{{.Status}}"
 
 ["bot.event_no_sessions"]
 other = "У этого ивента пока нет дат."
+
+["bot.sample_btn"]
+other = "🎫 Образец билета"
+
+["bot.sample_caption"]
+other = "Так покупатель увидит билет на «{{.Name}}». Это образец: штрих-код настоящий, при сканировании на входе сканер ответит «образец билета»."
+
+["bot.sample_failed"]
+other = "Не удалось сделать образец билета. Попробуйте позже."
 
 ["bot.session_line"]
 other = "<b>{{.When}}</b> {{.Venue}}\nПродано {{.Sold}} из {{.Total}}, свободно {{.Available}}{{if .Held}}, в брони {{.Held}}{{end}}\n{{.Money}}"

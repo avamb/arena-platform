@@ -455,6 +455,14 @@ func (b *Bot) wizardSave(ctx context.Context, chatID int64, editMsgID *int, from
 	b.send(ctx, chatID, b.texts.T(loc, "bot.wz.saved", map[string]any{
 		"Name": Esc(d.Event.Name), "Published": published, "Link": link, "Warnings": warnings,
 	}), nil)
+	// A published event comes with the buyer's e-ticket as a PDF — the
+	// first date's sample, stamped SAMPLE, with a real code the gate
+	// recognises (migration 0119).
+	if d.Publish && len(d.Saved.Sessions) > 0 {
+		if sessionID, err := uuid.Parse(d.Saved.Sessions[0].SessionID); err == nil {
+			b.sendSampleTicket(ctx, chatID, ws.JWT, ws.OrgID, sessionID, loc, d.Event.Name)
+		}
+	}
 	b.showHome(ctx, chatID, nil, from, "")
 }
 
