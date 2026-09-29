@@ -23,6 +23,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +34,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/geoslug"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
@@ -45,6 +47,7 @@ type PromoterResponse struct {
 	LegalID    *string `json:"legal_id"`
 	Phone      *string `json:"phone"`
 	Email      *string `json:"email"`
+	Slug       *string `json:"slug"`
 	Archived   bool    `json:"archived"`
 	ArchivedAt *string `json:"archived_at"`
 	CreatedAt  string  `json:"created_at"`
@@ -60,6 +63,7 @@ func PromoterFromRow(p gen.OrgPromoterRow) PromoterResponse {
 		LegalID:   p.LegalID,
 		Phone:     p.Phone,
 		Email:     p.Email,
+		Slug:      p.Slug,
 		Archived:  p.ArchivedAt != nil,
 		CreatedAt: p.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt: p.UpdatedAt.UTC().Format(time.RFC3339),
@@ -95,7 +99,81 @@ func normalizeOptionalText(v *string) *string {
 // isPromoterNameConflict reports the active-name unique index violation.
 func isPromoterNameConflict(err error) bool {
 	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation
+	return errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation && pgErr.ConstraintName != promoterSlugConstraint
+}
+
+// promoterSlugConstraint is the platform-wide unique index on
+// org_promoters.slug (migration 0117).
+const promoterSlugConstraint = "org_promoters_slug_uq"
+
+func isPromoterSlugConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation && pgErr.ConstraintName == promoterSlugConstraint
+}
+
+// promoterSlugMaxLen bounds a promoter page slug.
+const promoterSlugMaxLen = 64
+
+// NormalizePromoterSlug lower-cases and trims a slug typed by a person and
+// reports whether it is a valid page address: 2–64 characters of a-z, 0-9
+// and single inner hyphens (the same alphabet organization slugs use, since
+// the two share the public page namespace).
+func NormalizePromoterSlug(raw string) (string, bool) {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	if len(s) < 2 || len(s) > promoterSlugMaxLen {
+		return "", false
+	}
+	prevHyphen := true
+	for i, r := range s {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			prevHyphen = false
+		case r == '-':
+			if prevHyphen || i == len(s)-1 {
+				return "", false
+			}
+			prevHyphen = true
+		default:
+			return "", false
+		}
+	}
+	return s, true
+}
+
+// promoterSlugChecker is the one query the slug helpers need.
+type promoterSlugChecker interface {
+	PromoterSlugTaken(ctx context.Context, slug string) (bool, error)
+}
+
+// autoPromoterSlug derives a free page slug from the promoter's name:
+// geoslug.Slugify (Latin folding + Cyrillic transliteration), "promoter"
+// when nothing survives, then "-2", "-3", … until one is free of both
+// promoter and organization slugs.
+func autoPromoterSlug(ctx context.Context, q promoterSlugChecker, name string) (string, error) {
+	base := geoslug.Slugify(name)
+	if base == "" {
+		base = "promoter"
+	}
+	if len(base) > promoterSlugMaxLen-4 {
+		base = strings.TrimRight(base[:promoterSlugMaxLen-4], "-")
+	}
+	if len(base) < 2 {
+		base = "promoter"
+	}
+	for n := 1; n <= 200; n++ {
+		candidate := base
+		if n > 1 {
+			candidate = base + "-" + strconv.Itoa(n)
+		}
+		taken, err := q.PromoterSlugTaken(ctx, candidate)
+		if err != nil {
+			return "", err
+		}
+		if !taken {
+			return candidate, nil
+		}
+	}
+	return "", errors.New("promoter: no free slug")
 }
 
 func (h *Handler) promoterAudit(ctx context.Context, tx pgx.Tx, r *http.Request, action, resourceType, resourceID string, meta map[string]any) error {
@@ -193,6 +271,9 @@ type createPromoterRequest struct {
 	LegalID *string `json:"legal_id"`
 	Phone   *string `json:"phone"`
 	Email   *string `json:"email"`
+	// Slug is the promoter's public page address (migration 0117); absent
+	// or empty = derived from the name.
+	Slug *string `json:"slug"`
 }
 
 // HandleCreatePromoter creates a promoter of the organization.
@@ -226,10 +307,49 @@ func (h *Handler) HandleCreatePromoter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	qtx := h.eventQueries.WithTx(tx)
 
-	p, err := h.eventQueries.WithTx(tx).InsertOrgPromoter(ctx, orgID, name,
-		normalizeOptionalText(req.LegalID), normalizeOptionalText(req.Phone), normalizeOptionalText(req.Email))
+	var slug string
+	if req.Slug != nil && strings.TrimSpace(*req.Slug) != "" {
+		normalized, ok := NormalizePromoterSlug(*req.Slug)
+		if !ok {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"promoter.invalid_slug", "slug must be 2-64 characters of a-z, 0-9 and single hyphens", r, map[string]any{"field": "slug"},
+			))
+			return
+		}
+		taken, err := qtx.PromoterSlugTaken(ctx, normalized)
+		if err != nil {
+			h.logger.Error("promoter: slug check failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("promoter.insert_failed", "failed to create promoter", r))
+			return
+		}
+		if taken {
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+				"promoter.duplicate_slug", "this page address is already taken", r, map[string]any{"field": "slug"},
+			))
+			return
+		}
+		slug = normalized
+	} else {
+		auto, err := autoPromoterSlug(ctx, qtx, name)
+		if err != nil {
+			h.logger.Error("promoter: slug derivation failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("promoter.insert_failed", "failed to create promoter", r))
+			return
+		}
+		slug = auto
+	}
+
+	p, err := qtx.InsertOrgPromoter(ctx, orgID, name,
+		normalizeOptionalText(req.LegalID), normalizeOptionalText(req.Phone), normalizeOptionalText(req.Email), &slug)
 	if err != nil {
+		if isPromoterSlugConflict(err) {
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+				"promoter.duplicate_slug", "this page address is already taken", r, map[string]any{"field": "slug"},
+			))
+			return
+		}
 		if isPromoterNameConflict(err) {
 			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 				"promoter.duplicate_name", "an active promoter with this name already exists", r,
@@ -267,6 +387,8 @@ type updatePromoterRequest struct {
 	Phone    optionalString `json:"phone"`
 	Email    optionalString `json:"email"`
 	Archived *bool          `json:"archived"`
+	// Slug: absent = keep, null = no page, value = the new page address.
+	Slug optionalString `json:"slug"`
 }
 
 // HandleUpdatePromoter edits, archives or restores a promoter.
@@ -327,9 +449,44 @@ func (h *Handler) HandleUpdatePromoter(w http.ResponseWriter, r *http.Request) {
 	if req.Archived != nil {
 		archived = *req.Archived
 	}
+	slug := current.Slug
+	if req.Slug.Present {
+		if req.Slug.Value == nil || strings.TrimSpace(*req.Slug.Value) == "" {
+			slug = nil
+		} else {
+			normalized, ok := NormalizePromoterSlug(*req.Slug.Value)
+			if !ok {
+				httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+					"promoter.invalid_slug", "slug must be 2-64 characters of a-z, 0-9 and single hyphens", r, map[string]any{"field": "slug"},
+				))
+				return
+			}
+			if current.Slug == nil || !strings.EqualFold(*current.Slug, normalized) {
+				taken, err := qtx.PromoterSlugTaken(ctx, normalized)
+				if err != nil {
+					h.logger.Error("promoter: slug check failed", slog.String("error", err.Error()))
+					httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("promoter.update_failed", "failed to update promoter", r))
+					return
+				}
+				if taken {
+					httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+						"promoter.duplicate_slug", "this page address is already taken", r, map[string]any{"field": "slug"},
+					))
+					return
+				}
+			}
+			slug = &normalized
+		}
+	}
 
-	updated, err := qtx.UpdateOrgPromoter(ctx, promoterID, orgID, name, legalID, phone, email, archived)
+	updated, err := qtx.UpdateOrgPromoter(ctx, promoterID, orgID, name, legalID, phone, email, archived, slug)
 	if err != nil {
+		if isPromoterSlugConflict(err) {
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+				"promoter.duplicate_slug", "this page address is already taken", r, map[string]any{"field": "slug"},
+			))
+			return
+		}
 		if isPromoterNameConflict(err) {
 			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 				"promoter.duplicate_name", "an active promoter with this name already exists", r,

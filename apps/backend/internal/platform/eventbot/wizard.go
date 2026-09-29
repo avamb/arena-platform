@@ -207,8 +207,11 @@ type SavedSession struct {
 
 // RefItem is a list entry of a reference (country, city, promoter, channel).
 type RefItem struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Slug is a promoter's public page address (migration 0117); empty for
+	// every other kind of reference and for a promoter without a page.
+	Slug     string `json:"slug,omitempty"`
 	ISO2     string `json:"iso2,omitempty"`
 	Currency string `json:"currency,omitempty"`
 }

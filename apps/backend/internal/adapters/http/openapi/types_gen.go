@@ -4361,6 +4361,13 @@ type CreatePromoterRequest struct {
 
 	// Phone Optional contact phone. Blank is stored as null.
 	Phone *string `json:"phone"`
+
+	// Slug Public page address (see Promoter.slug). Absent or blank =
+	// derived from the name (transliterated, "-2", "-3", … when
+	// taken). 400 `promoter.invalid_slug` for a malformed value, 409
+	// `promoter.duplicate_slug` when a promoter or an organization
+	// already uses it.
+	Slug *string `json:"slug"`
 }
 
 // CreateRefundRequest Request body for `POST /v1/refunds`. Creates a new refund row
@@ -8232,7 +8239,10 @@ type PromoRedemptionListResponse struct {
 // organization selling an event is often, but not always, its
 // promoter; an event linked to a promoter prints the promoter's name
 // as "Organizer" on its tickets. Promoters are archived, never
-// deleted, so events that already name one keep rendering.
+// deleted, so events that already name one keep rendering. Since
+// migration 0117 a promoter has its own public page,
+// `https://tickets.arenasoldout.com/{slug}`, listing the events
+// linked to it; `/{slug}/{event_slug}` is one of them.
 type Promoter struct {
 	// Archived True when the promoter is archived and can no longer be linked to an event.
 	Archived bool `json:"archived"`
@@ -8261,6 +8271,13 @@ type Promoter struct {
 
 	// Phone Contact phone number.
 	Phone *string `json:"phone"`
+
+	// Slug Public page address: `https://tickets.arenasoldout.com/{slug}`.
+	// Lower-case a-z, 0-9 and single hyphens, 2–64 characters,
+	// unique across the platform together with organization slugs
+	// (case-insensitive). Assigned from the name on creation when
+	// not given; null = the promoter has no page.
+	Slug *string `json:"slug"`
 
 	// UpdatedAt Last update timestamp (RFC 3339).
 	UpdatedAt time.Time `json:"updated_at"`
@@ -10707,6 +10724,11 @@ type UpdatePromoterRequest struct {
 
 	// Phone Contact phone; null clears it.
 	Phone *string `json:"phone"`
+
+	// Slug Public page address (see Promoter.slug): value = set (400
+	// `promoter.invalid_slug`, 409 `promoter.duplicate_slug`), null or
+	// blank = the promoter has no page any more.
+	Slug *string `json:"slug"`
 }
 
 // UpdateSeatingPlanRequest Request body for PATCH /v1/seating-plans/{id}. Every field is

@@ -38,6 +38,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
@@ -131,6 +132,12 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	resolved, err := h.publicFeedQueries.GetHostedPageResolution(ctx, orgSlug, eventSlug)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Not an organization's page: the first segment may be a
+		// promoter's slug (migration 0117) — the same shape comes back,
+		// with the promoter's slug and name in the org slot.
+		resolved, err = h.publicFeedQueries.GetHostedPageResolutionByPromoter(ctx, orgSlug, eventSlug)
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
@@ -245,6 +252,24 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 
 	ctx := r.Context()
 	org, err := h.publicFeedQueries.GetHostedPromoterPageOrg(ctx, orgSlug)
+	// promoterID is set when the slug names a promoter rather than an
+	// organization (migration 0117): the page then shows the promoter's
+	// name and only the events linked to it, under the organization's
+	// logo, locale and channel.
+	var promoterID *uuid.UUID
+	if errors.Is(err, pgx.ErrNoRows) {
+		var p gen.HostedPromoterPagePromoterRow
+		p, err = h.publicFeedQueries.GetHostedPromoterPageByPromoter(ctx, orgSlug)
+		if err == nil {
+			id := p.PromoterID
+			promoterID = &id
+			org = gen.HostedPromoterPageOrgRow{
+				OrgID: p.OrgID, OrgSlug: p.Slug, OrgName: p.Name,
+				OrgLogoMediaID: p.OrgLogoMediaID, OrgDefaultLocale: p.OrgDefaultLocale,
+				HasHostedChannel: p.HasHostedChannel,
+			}
+		}
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
@@ -283,7 +308,12 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 		resp.Org.LogoURL = &url
 	}
 
-	events, err := h.publicFeedQueries.ListHostedPromoterPageEvents(ctx, org.OrgID)
+	var events []gen.HostedPromoterPageEventRow
+	if promoterID != nil {
+		events, err = h.publicFeedQueries.ListHostedPromoterPageEventsByPromoter(ctx, org.OrgID, *promoterID)
+	} else {
+		events, err = h.publicFeedQueries.ListHostedPromoterPageEvents(ctx, org.OrgID)
+	}
 	if err != nil {
 		h.logger.Error("public_page: promoter events list failed",
 			slog.String("org_slug", orgSlug),

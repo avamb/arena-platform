@@ -4618,7 +4618,9 @@ export interface paths {
          * @description Backs the shared hosted sales page at
          *     `https://tickets.arenasoldout.com/{org_slug}/{event_slug}`. No JWT
          *     required — this is the entry point that hands the page its feed
-         *     token.
+         *     token. The first segment may also be a PROMOTER's slug (migration
+         *     0117): the event must then be linked to that promoter, and `org`
+         *     carries the promoter's slug and name.
          *
          *     Resolution rule, all in one round trip: active organization by
          *     `org_slug` → non-deleted event owned by it, by `event_slug`, with
@@ -4659,12 +4661,19 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Resolve the promoter landing page for an org slug
-         * @description Backs the shared promoter landing page at
+         * Resolve the landing page for an org or promoter slug
+         * @description Backs the shared landing page at
          *     `https://tickets.arenasoldout.com/{org_slug}` — a single short link
          *     that fans out to every currently-visible event of the organization
          *     (e.g. several one-off master-class dates run by the same promoter,
          *     each with its own date/time/teacher). No JWT required.
+         *
+         *     The segment is tried as an organization slug first and, when no
+         *     organization matches, as a promoter slug (migration 0117): the page
+         *     then carries the promoter's slug and name in `org` and lists only
+         *     the events linked to that promoter, under the organization's logo,
+         *     locale and channel. The two kinds of page are indistinguishable to
+         *     the caller.
          *
          *     Lists every event that would individually resolve on
          *     `GET /v1/public/pages/{org_slug}/{event_slug}`: non-deleted, status
@@ -10107,7 +10116,10 @@ export interface components {
          *     organization selling an event is often, but not always, its
          *     promoter; an event linked to a promoter prints the promoter's name
          *     as "Organizer" on its tickets. Promoters are archived, never
-         *     deleted, so events that already name one keep rendering.
+         *     deleted, so events that already name one keep rendering. Since
+         *     migration 0117 a promoter has its own public page,
+         *     `https://tickets.arenasoldout.com/{slug}`, listing the events
+         *     linked to it; `/{slug}/{event_slug}` is one of them.
          */
         Promoter: {
             /**
@@ -10143,6 +10155,15 @@ export interface components {
              * @example office@partner.example
              */
             email: string | null;
+            /**
+             * @description Public page address: `https://tickets.arenasoldout.com/{slug}`.
+             *     Lower-case a-z, 0-9 and single hyphens, 2–64 characters,
+             *     unique across the platform together with organization slugs
+             *     (case-insensitive). Assigned from the name on creation when
+             *     not given; null = the promoter has no page.
+             * @example teatrkolibel
+             */
+            slug: string | null;
             /** @description True when the promoter is archived and can no longer be linked to an event. */
             archived: boolean;
             /**
@@ -10184,6 +10205,15 @@ export interface components {
             phone?: string | null;
             /** @description Optional contact e-mail. Blank is stored as null. */
             email?: string | null;
+            /**
+             * @description Public page address (see Promoter.slug). Absent or blank =
+             *     derived from the name (transliterated, "-2", "-3", … when
+             *     taken). 400 `promoter.invalid_slug` for a malformed value, 409
+             *     `promoter.duplicate_slug` when a promoter or an organization
+             *     already uses it.
+             * @example teatrkolibel
+             */
+            slug?: string | null;
         };
         /**
          * @description Body of PATCH /v1/organizations/{org_id}/promoters/{id}. Every field
@@ -10201,6 +10231,12 @@ export interface components {
             email?: string | null;
             /** @description true archives the promoter, false restores it. */
             archived?: boolean;
+            /**
+             * @description Public page address (see Promoter.slug): value = set (400
+             *     `promoter.invalid_slug`, 409 `promoter.duplicate_slug`), null or
+             *     blank = the promoter has no page any more.
+             */
+            slug?: string | null;
         };
         /** @description Body of PUT /v1/organizations/{org_id}/events/{id}/promoter. */
         SetEventPromoterRequest: {

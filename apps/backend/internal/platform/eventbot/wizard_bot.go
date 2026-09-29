@@ -440,18 +440,33 @@ func (b *Bot) wizardSave(ctx context.Context, chatID int64, editMsgID *int, from
 	b.showHome(ctx, chatID, nil, from, "")
 }
 
-// salesLink is the storefront page of the event: <tickets base>/<org
-// slug>/<event slug>, or just the organization's page when the event slug
-// is not known yet.
+// salesLink is the storefront page of the event: <tickets base>/<promoter
+// slug>/<event slug> when the event has a promoter with a page (owner
+// decision 2026-09-29: the link is the promoter's, the organization's slug
+// is a technical detail), otherwise <tickets base>/<org slug>/<event slug>;
+// just the landing page when the event slug is not known yet.
 func (b *Bot) salesLink(ctx context.Context, ws WizSession, d *Draft) string {
 	if b.ticketsBaseURL == "" || !d.Publish {
 		return ""
 	}
-	orgSlug, err := b.arena.OrganizationSlug(ctx, ws.JWT, ws.OrgID)
-	if err != nil || orgSlug == "" {
-		return ""
+	pageSlug := ""
+	if d.Event.PromoterID != "" {
+		if promoters, err := b.arena.Promoters(ctx, ws.JWT, ws.OrgID); err == nil {
+			for _, p := range promoters {
+				if p.ID == d.Event.PromoterID && p.Slug != "" {
+					pageSlug = p.Slug
+				}
+			}
+		}
 	}
-	base := strings.TrimRight(b.ticketsBaseURL, "/") + "/" + orgSlug
+	if pageSlug == "" {
+		orgSlug, err := b.arena.OrganizationSlug(ctx, ws.JWT, ws.OrgID)
+		if err != nil || orgSlug == "" {
+			return ""
+		}
+		pageSlug = orgSlug
+	}
+	base := strings.TrimRight(b.ticketsBaseURL, "/") + "/" + pageSlug
 	if d.Saved.EventID == "" {
 		return base
 	}

@@ -92,7 +92,11 @@ func (c *ArenaClient) Promoters(ctx context.Context, jwt string, orgID uuid.UUID
 		if p.Archived {
 			continue
 		}
-		items = append(items, RefItem{ID: p.Id.String(), Name: p.Name})
+		item := RefItem{ID: p.Id.String(), Name: p.Name}
+		if p.Slug != nil {
+			item.Slug = *p.Slug
+		}
+		items = append(items, item)
 	}
 	return items, nil
 }

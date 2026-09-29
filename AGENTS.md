@@ -1753,6 +1753,25 @@ entries short and factual.
   422 `import.invalid_channel`) is the fix; the response's `publications[]`
   lists every binding and `publication` stays the first one. An API key
   bound to a channel publishes into its own channel plus the named ones.
+- **A promoter has its own public page since migration 0117, and it is THE
+  link an organizer hands out.** `org_promoters.slug` shares ONE namespace
+  with `organizations.slug` (platform-wide, case-insensitive, index
+  `org_promoters_slug_uq`): `GET /v1/public/pages/{slug}` and
+  `/{slug}/{event_slug}` (`hfeed/public_page.go`) try the organization first
+  and fall back to the promoter (`GetHostedPromoterPageByPromoter` /
+  `GetHostedPageResolutionByPromoter` / `ListHostedPromoterPageEventsByPromoter`
+  in `gen/public_page_promoter.sql.go`); the promoter's page lists only the
+  events linked through `event_promoters`, under the organization's logo,
+  locale and channel, with the promoter's slug and name in the `org` block
+  so the tickets page builds links off it unchanged. `POST .../promoters`
+  derives a slug from the name (`autoPromoterSlug`: `geoslug.Slugify`,
+  `promoter` when nothing survives, `-2`, `-3`, … past taken ones — checked
+  with `PromoterSlugTaken`, which also counts organization slugs) unless the
+  body names one (400 `promoter.invalid_slug`, 409
+  `promoter.duplicate_slug`); PATCH sets or clears it (null = no page). The
+  bot's `salesLink` prefers the promoter's slug when the event has one. Owner
+  decision 2026-09-29: the organization's slug is a technical detail nobody
+  outside sees; do not add an org-id segment to the URL.
 - **An event center picks a venue by `venue.arenaVenueId`** (event-bundle,
   source=arena): the org's venue UUID from `GET /v1/organizations/{org_id}/venues`.
   It wins over `venueId`/`venueName`, never edits the venue, and answers 422

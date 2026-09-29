@@ -149,3 +149,109 @@ FROM (
 ) matched
 ORDER BY first_session_at ASC NULLS LAST, id ASC
 LIMIT 200;
+
+-- name: GetHostedPageResolutionByPromoter :one
+-- GetHostedPageResolutionByPromoter is GetHostedPageResolution for the
+-- promoter's page (tickets.arenasoldout.com/{promoter_slug}/{event_slug},
+-- migration 0117): the event must be linked to the promoter through
+-- event_promoters, the promoter must be active (not archived) and its
+-- organization not deleted. The first two columns after the org id carry
+-- the PROMOTER's slug and name, so the page shows the promoter, not the
+-- organization; the logo and default locale stay the organization's.
+SELECT
+    o.id, p.slug, p.name, o.logo_media_id, o.default_locale,
+    e.id, e.slug, e.name, e.description, e.short_description,
+    e.image_url, e.poster_media_id, e.age_rating,
+    e.first_session_at, e.last_session_at,
+    (
+        SELECT v.timezone
+        FROM   sessions s
+        JOIN   venues v ON v.id = s.venue_id
+        WHERE  s.event_id   = e.id
+          AND  s.deleted_at IS NULL
+          AND  s.status    <> 'cancelled'
+        ORDER BY s.start_at ASC
+        LIMIT 1
+    ) AS first_session_timezone,
+    ft.token
+FROM org_promoters p
+JOIN organizations o ON o.id = p.org_id
+JOIN event_promoters epr ON epr.promoter_id = p.id
+JOIN events e ON e.id = epr.event_id AND e.org_id = o.id
+JOIN event_publications ep ON ep.event_id = e.id
+JOIN agent_feed_tokens ft ON ft.id = ep.feed_token_id
+JOIN sales_channels sc ON sc.id = ft.sales_channel_id
+WHERE lower(p.slug) = lower($1)
+  AND p.archived_at IS NULL
+  AND o.deleted_at IS NULL
+  AND lower(e.slug) = lower($2)
+  AND e.deleted_at IS NULL
+  AND e.status     = 'published'
+  AND sc.org_id    = o.id
+  AND sc.deleted_at IS NULL
+  AND sc.settings #>> '{hosted_page,enabled}' = 'true'
+  AND ft.is_active = true
+ORDER BY ft.created_at DESC
+LIMIT 1;
+
+-- name: GetHostedPromoterPageByPromoter :one
+-- GetHostedPromoterPageByPromoter is GetHostedPromoterPageOrg for a
+-- promoter slug (tickets.arenasoldout.com/{promoter_slug}): the promoter's
+-- id, slug and name, its organization's id, logo and default locale, and
+-- the organization's hosted-channel eligibility.
+SELECT
+    p.id, o.id, p.slug, p.name, o.logo_media_id, o.default_locale,
+    EXISTS (
+        SELECT 1
+        FROM   sales_channels sc
+        JOIN   agent_feed_tokens ft ON ft.sales_channel_id = sc.id
+        WHERE  sc.org_id      = o.id
+          AND  sc.deleted_at  IS NULL
+          AND  sc.settings #>> '{hosted_page,enabled}' = 'true'
+          AND  ft.is_active   = true
+    ) AS has_hosted_channel
+FROM org_promoters p
+JOIN organizations o ON o.id = p.org_id
+WHERE lower(p.slug) = lower($1)
+  AND p.archived_at IS NULL
+  AND o.deleted_at IS NULL;
+
+-- name: ListHostedPromoterPageEventsByPromoter :many
+-- ListHostedPromoterPageEventsByPromoter is ListHostedPromoterPageEvents
+-- narrowed to the events linked to one promoter (event_promoters).
+SELECT id, slug, name, short_description, image_url, poster_media_id,
+       age_rating, first_session_at, last_session_at, first_session_timezone,
+       feed_token
+FROM (
+    SELECT DISTINCT ON (e.id)
+        e.id, e.slug, e.name, e.short_description, e.image_url,
+        e.poster_media_id, e.age_rating, e.first_session_at, e.last_session_at,
+        ft.token AS feed_token,
+        (
+            SELECT v.timezone
+            FROM   sessions s
+            JOIN   venues v ON v.id = s.venue_id
+            WHERE  s.event_id   = e.id
+              AND  s.deleted_at IS NULL
+              AND  s.status    <> 'cancelled'
+            ORDER BY s.start_at ASC
+            LIMIT 1
+        ) AS first_session_timezone
+    FROM events e
+    JOIN event_promoters epr ON epr.event_id = e.id AND epr.promoter_id = $2
+    JOIN event_publications ep ON ep.event_id = e.id
+    JOIN agent_feed_tokens ft ON ft.id = ep.feed_token_id
+    JOIN sales_channels sc ON sc.id = ft.sales_channel_id
+    WHERE e.org_id      = $1
+      AND e.deleted_at  IS NULL
+      AND e.status      = 'published'
+      AND e.slug        IS NOT NULL
+      AND sc.org_id     = e.org_id
+      AND sc.deleted_at IS NULL
+      AND sc.settings #>> '{hosted_page,enabled}' = 'true'
+      AND ft.is_active  = true
+      AND (e.last_session_at IS NULL OR e.last_session_at >= now())
+    ORDER BY e.id, ft.created_at DESC
+) matched
+ORDER BY first_session_at ASC NULLS LAST, id ASC
+LIMIT 200;
