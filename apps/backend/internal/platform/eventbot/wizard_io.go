@@ -233,6 +233,8 @@ func (w *Wizard) warningText(loc, code string) string {
 	switch strings.TrimPrefix(code, "import.") {
 	case "channel_publication_skipped":
 		return w.texts.T(loc, "bot.wz.warn_channel_publication_skipped", nil)
+	case "hosted_page_enabled":
+		return w.texts.T(loc, "bot.wz.warn_hosted_page_enabled", nil)
 	case "venue_timezone_kept":
 		return w.texts.T(loc, "bot.wz.warn_venue_timezone_kept", nil)
 	case "category_sold_out":

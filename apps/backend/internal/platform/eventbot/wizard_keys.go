@@ -163,6 +163,7 @@ var wizardKeys = []string{
 	"bot.wz.save_failed",
 	"bot.wz.retry_btn",
 	"bot.wz.warn_channel_publication_skipped",
+	"bot.wz.warn_hosted_page_enabled",
 	"bot.wz.warn_venue_timezone_kept",
 	"bot.wz.warn_category_sold_out",
 	"bot.wz.warn_publish_skipped",

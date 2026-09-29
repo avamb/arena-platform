@@ -208,3 +208,31 @@ func (q *Queries) SoftDeleteSalesChannel(ctx context.Context, id, orgID uuid.UUI
 	row := q.db.QueryRow(ctx, softDeleteSalesChannel, id, orgID)
 	return scanSalesChannelRow(row)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EnableChannelHostedPage
+// ─────────────────────────────────────────────────────────────────────────────
+
+const enableChannelHostedPage = `-- name: EnableChannelHostedPage :execrows
+UPDATE sales_channels
+SET    settings   = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hosted_page}',
+                              COALESCE(settings -> 'hosted_page', '{}'::jsonb) || '{"enabled": true}'::jsonb, true),
+       updated_at = now()
+WHERE  id = $1
+  AND  org_id = $2
+  AND  deleted_at IS NULL
+  AND  COALESCE(settings #>> '{hosted_page,enabled}', '') <> 'true'
+  AND  settings #>> '{gateway,token_hash}' IS NULL
+  AND  settings ->> 'gateway_token_hash' IS NULL`
+
+// EnableChannelHostedPage turns on settings.hosted_page.enabled for a channel
+// that publishes through the event center and reports whether the row
+// changed. A channel with a gateway credential (a WordPress site's) and an
+// already-enabled one are left untouched (false, nil).
+func (q *Queries) EnableChannelHostedPage(ctx context.Context, id, orgID uuid.UUID) (bool, error) {
+	tag, err := q.db.Exec(ctx, enableChannelHostedPage, id, orgID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}

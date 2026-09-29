@@ -98,8 +98,13 @@ func (h *Handler) ensureChannelPublication(
 			return nil, nil
 		}
 	}
+	// named remembers which targets the bundle named explicitly, as opposed
+	// to the API key's own bound channel: that one is a site's and never
+	// gets a storefront page switched on by an import.
+	named := make(map[uuid.UUID]bool, len(plan.ChannelIDs))
 	for _, id := range plan.ChannelIDs {
 		add(id)
+		named[id] = true
 	}
 	if len(targets) == 0 {
 		return nil, nil
@@ -129,6 +134,21 @@ func (h *Handler) ensureChannelPublication(
 
 	out := make([]ImportPublication, 0, len(targets))
 	for _, channelID := range targets {
+		// A channel a human named on the bundle is where the organizer
+		// expects the sales link to open, so the storefront page is switched
+		// on here rather than left to a hand-typed settings JSON in the
+		// admin. EnableChannelHostedPage skips a WordPress site's channel
+		// (it carries a gateway credential) and one already enabled.
+		if named[channelID] {
+			enabled, err := q.EnableChannelHostedPage(ctx, channelID, plan.OrgID)
+			if err != nil {
+				return nil, fmt.Errorf("enable hosted page for channel %s: %w", channelID, err)
+			}
+			if enabled {
+				warnings.add(WarnHostedPageEnabled,
+					"the sales page of channel "+channelID.String()+" was switched on so the event has a public address")
+			}
+		}
 		token, err := h.ensureChannelFeedToken(ctx, q, channelID)
 		if err != nil {
 			return nil, err

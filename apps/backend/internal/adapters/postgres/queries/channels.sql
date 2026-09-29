@@ -62,3 +62,22 @@ WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
 RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at;
+
+-- name: EnableChannelHostedPage :execrows
+-- Turns on settings.hosted_page.enabled for a channel that publishes through
+-- the event center (a human naming channelIds on the event-bundle). Only a
+-- channel WITHOUT a gateway credential is touched: a WordPress site's channel
+-- (settings.gateway.token_hash, or the legacy gateway_token_hash) keeps
+-- whatever the operator decided, because its page is the site itself. An
+-- already-enabled channel is left alone (0 rows), so a repeated import is a
+-- no-op.
+UPDATE sales_channels
+SET    settings   = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hosted_page}',
+                              COALESCE(settings -> 'hosted_page', '{}'::jsonb) || '{"enabled": true}'::jsonb, true),
+       updated_at = now()
+WHERE  id = $1
+  AND  org_id = $2
+  AND  deleted_at IS NULL
+  AND  COALESCE(settings #>> '{hosted_page,enabled}', '') <> 'true'
+  AND  settings #>> '{gateway,token_hash}' IS NULL
+  AND  settings ->> 'gateway_token_hash' IS NULL;

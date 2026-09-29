@@ -33,7 +33,10 @@ func TestEventBundle_ChannelIDs_UserPublishesIntoNamedChannels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InsertSalesChannel A: %v", err)
 	}
-	chB, err := q.InsertSalesChannel(ctx, f.orgID, "Bot channel B "+uuid.NewString()[:6], "merchant_of_record", "stripe", nil, "0", nil, nil)
+	// Channel B is a WordPress site's: it carries a gateway credential, so the
+	// import must never switch its storefront page on.
+	chB, err := q.InsertSalesChannel(ctx, f.orgID, "Bot channel B "+uuid.NewString()[:6], "merchant_of_record", "stripe", nil, "0", nil,
+		[]byte(`{"gateway":{"token_hash":"$2a$10$notarealhash"}}`))
 	if err != nil {
 		t.Fatalf("InsertSalesChannel B: %v", err)
 	}
@@ -62,10 +65,35 @@ func TestEventBundle_ChannelIDs_UserPublishesIntoNamedChannels(t *testing.T) {
 	if res.Publications[1].ChannelID != chB.ID {
 		t.Fatalf("second binding should be channel B, got %+v", res.Publications[1])
 	}
+	hostedEnabled := false
 	for _, w := range res.Warnings {
 		if w.Code == WarnChannelPublicationSkipped {
 			t.Fatalf("a user naming channels must not be told the publication was skipped: %+v", res.Warnings)
 		}
+		if w.Code == WarnHostedPageEnabled {
+			hostedEnabled = true
+		}
+	}
+	if !hostedEnabled {
+		t.Fatalf("a channel without a page must be told its page was switched on: %+v", res.Warnings)
+	}
+	// Channel A (no gateway) now has its storefront page; channel B (a site)
+	// keeps its settings exactly as they were.
+	hostedFlag := func(id uuid.UUID) string {
+		var v *string
+		if err := pool.QueryRow(ctx, `SELECT settings #>> '{hosted_page,enabled}' FROM sales_channels WHERE id = $1`, id).Scan(&v); err != nil {
+			t.Fatalf("read hosted_page flag of %s: %v", id, err)
+		}
+		if v == nil {
+			return ""
+		}
+		return *v
+	}
+	if got := hostedFlag(chA.ID); got != "true" {
+		t.Fatalf("channel A hosted_page.enabled = %q, want true", got)
+	}
+	if got := hostedFlag(chB.ID); got != "" {
+		t.Fatalf("channel B (a site with a gateway credential) hosted_page.enabled = %q, want untouched", got)
 	}
 	var rows int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM event_publications WHERE event_id = $1`, res.EventID).Scan(&rows); err != nil {
@@ -83,6 +111,11 @@ func TestEventBundle_ChannelIDs_UserPublishesIntoNamedChannels(t *testing.T) {
 	if len(again.Publications) != 2 || again.Publications[0].FeedTokenID != res.Publications[0].FeedTokenID ||
 		again.Publications[0].PublicationID != res.Publications[0].PublicationID {
 		t.Fatalf("repeat should reuse the bindings: first=%+v again=%+v", res.Publications, again.Publications)
+	}
+	for _, w := range again.Warnings {
+		if w.Code == WarnHostedPageEnabled {
+			t.Fatalf("an already-enabled page must not be reported again: %+v", again.Warnings)
+		}
 	}
 
 	// Without channelIds a user binds nothing — and is not warned either.

@@ -16369,6 +16369,12 @@ export interface components {
              *     `import.invalid_channel` before writing anything. Empty or absent
              *     keeps the earlier behaviour (a key without a channel warns
              *     `import.channel_publication_skipped`, a user binds nothing).
+             *     A named channel without a gateway credential (not a WordPress
+             *     site's) also gets its storefront page switched on
+             *     (`settings.hosted_page.enabled`, advisory warning
+             *     `import.hosted_page_enabled`), so the organizer's sales link
+             *     opens; a site's channel and an already-enabled one are left as
+             *     they are.
              */
             channelIds?: string[];
         };

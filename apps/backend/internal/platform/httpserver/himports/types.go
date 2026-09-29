@@ -63,6 +63,13 @@ const (
 	// hangs off channel → feed token → publication) will never be found
 	// (feature #536, spec 22 §2.2).
 	WarnChannelPublicationSkipped = "import.channel_publication_skipped"
+	// WarnHostedPageEnabled — advisory: a channel named in channelIds had no
+	// storefront page yet, so the import switched its
+	// settings.hosted_page.enabled on. An organizer publishing from the
+	// event center expects a sales link that opens; until 2026-09-29 the
+	// flag had to be typed into the admin's settings JSON by hand and the
+	// bot's link answered 404 ("Arena Test Promotions").
+	WarnHostedPageEnabled = "import.hosted_page_enabled"
 	// WarnCategorySoldOut — a category was declared with availability 0.
 	// A General Admission category with a quantity of 0 is illegal (plan
 	// 08_architecture/23 decision 3), so arena created it CLOSED with a

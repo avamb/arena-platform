@@ -842,6 +842,9 @@ other = "Retry"
 ["bot.wz.warn_channel_publication_skipped"]
 other = "The event was not published into the site's channel: no right to publish there."
 
+["bot.wz.warn_hosted_page_enabled"]
+other = "The sales page of this channel is now on — the link will open."
+
 ["bot.wz.warn_venue_timezone_kept"]
 other = "The venue already has a different time zone — the earlier one was kept."
 

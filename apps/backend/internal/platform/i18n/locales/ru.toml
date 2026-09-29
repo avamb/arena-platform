@@ -836,6 +836,9 @@ other = "Повторить"
 ["bot.wz.warn_channel_publication_skipped"]
 other = "Ивент не опубликован в канал сайта: нет права публиковать в этот канал."
 
+["bot.wz.warn_hosted_page_enabled"]
+other = "Страница продаж для этого канала включена — ссылка откроется."
+
 ["bot.wz.warn_venue_timezone_kept"]
 other = "У площадки уже другой пояс — оставлен прежний."
 
