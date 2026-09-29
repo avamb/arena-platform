@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 )
@@ -95,10 +96,11 @@ type Sender interface {
 
 // Dispatcher is the outbox leg. Construct with NewDispatcher and start Run.
 type Dispatcher struct {
-	store  Store
-	sender Sender
-	logger *slog.Logger
-	queue  chan outbox.Event
+	store     Store
+	sender    Sender
+	logger    *slog.Logger
+	queue     chan outbox.Event
+	eventsBot string
 }
 
 // NewDispatcher returns the leg; a nil sender (no bot token configured)
@@ -108,6 +110,25 @@ func NewDispatcher(store Store, sender Sender, logger *slog.Logger) *Dispatcher 
 		logger = slog.Default()
 	}
 	return &Dispatcher{store: store, sender: sender, logger: logger, queue: make(chan outbox.Event, queueSize)}
+}
+
+// WithEventsBot names the Telegram event-center bot (spec 28 §10 step 7):
+// every sale and refund message then ends with a link to it, so an
+// organizer reading the sales feed is one tap from creating or editing an
+// event. Empty leaves the messages as they are.
+func (d *Dispatcher) WithEventsBot(username string) *Dispatcher {
+	if d != nil {
+		d.eventsBot = strings.TrimPrefix(strings.TrimSpace(username), "@")
+	}
+	return d
+}
+
+// withFooter appends the event-center bot link when one is configured.
+func (d *Dispatcher) withFooter(text string) string {
+	if d == nil || d.eventsBot == "" {
+		return text
+	}
+	return text + "\n\n" + EventsBotFooter(d.eventsBot)
 }
 
 // Dispatch implements outbox.Dispatcher. It only queues the event and never
@@ -192,7 +213,7 @@ func (d *Dispatcher) compose(ctx context.Context, ev outbox.Event) (key string, 
 		if err != nil {
 			return "", 0, "", "", err
 		}
-		return "paid:" + id, TriggerOrderPaid, FormatSale(sale), sale.OrgID, nil
+		return "paid:" + id, TriggerOrderPaid, d.withFooter(FormatSale(sale)), sale.OrgID, nil
 	default: // v1.ticket.refunded / v1.ticket.cancelled
 		id := payloadString(ev.Payload, "ticket_id", ev.AggregateID)
 		r, err := d.store.RefundByTicket(ctx, id)
@@ -206,7 +227,7 @@ func (d *Dispatcher) compose(ctx context.Context, ev outbox.Event) (key string, 
 				r.Amount = amt
 			}
 		}
-		return "refund:" + id, TriggerTicketRefunded, FormatRefund(r), r.OrgID, nil
+		return "refund:" + id, TriggerTicketRefunded, d.withFooter(FormatRefund(r)), r.OrgID, nil
 	}
 }
 

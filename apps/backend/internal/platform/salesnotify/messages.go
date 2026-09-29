@@ -129,6 +129,17 @@ func writeBuyer(b *strings.Builder, buyer Buyer) {
 	}
 }
 
+// EventsBotFooter is the line that points an organizer at the Telegram
+// event-center bot (spec 28 §10 step 7): one tap from a sale to creating or
+// editing an event. username is the bot's @-name without the "@".
+func EventsBotFooter(username string) string {
+	username = strings.TrimPrefix(strings.TrimSpace(username), "@")
+	if username == "" {
+		return ""
+	}
+	return fmt.Sprintf(`🤖 <a href="https://t.me/%s">@%s</a> — create and edit your events from Telegram`, esc(username), esc(username))
+}
+
 // FormatSale renders one sale.
 func FormatSale(s Sale) string {
 	var b strings.Builder

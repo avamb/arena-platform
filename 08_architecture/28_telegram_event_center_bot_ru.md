@@ -374,7 +374,26 @@ bot_drafts           (id uuid PK, telegram_user_id bigint, org_id uuid, mode tex
   Тесты: `bot_team_integration_test.go` (владелец первым, флаги, чужому 403), e2e
   `TestBotE2E_InvitationToMyEvents` продолжен: менеджеру отказ, владелец видит обоих,
   приглашает коллегу (письмо в очереди) и убирает менеджера.
-- Дальше — 6 (сайты-ведомые в репозиториях сайтов) и 7 (ссылка в продажном боте).
+- **Шаг 7 сделан**: каждое сообщение @ArenaSoldOutSalesBot о продаже и возврате
+  заканчивается строкой «🤖 @ArenaEventsCentrBot — create and edit your events from
+  Telegram» (`salesnotify.EventsBotFooter`, воркер передаёт
+  `EVENTS_TELEGRAM_BOT_USERNAME` через `Dispatcher.WithEventsBot`; пусто — без строки).
+- **Шаг 6 (сайты-ведомые) — не начат, разведка сделана.** В `lampyrisevents` приёмник
+  вебхуков (`mu-plugins/bil24-notification-receiver.php`) на `event.created` /
+  `event.changed` уже запускает синхронизацию каталога `bil24_acf_sync_cron`, а
+  `bil24-acf-sync` умеет заводить товар для незнакомого сеанса
+  (`find_or_create_product_for_action_event`) — то есть ивент из бота, опубликованный в
+  канал сайта (`channelIds`), должен появиться товаром без нового кода. Что осталось
+  проверить и доделать в репозиториях сайтов (§7): картинка товара с афиши Arena, мета
+  `_lops_arena_event_id`/`_lops_arena_session_id` для такого товара, сохранение чужого
+  `externalRef` при пересохранении через мастер сайта (иначе Arena заведёт копию), и
+  сценарий на staging Lampyris/Vino с реальным ботом. Рабочие копии обоих сайтов сейчас на
+  ветках с незакоммиченными правками владельца (`lampyrisevents` — `fix/tour-translations`,
+  `vinoandco` — `prod`), поэтому делать это отдельной сессией на чистых ветках.
+- **Не сделано в этой волне и требует владельца:** живой прогон бота с настоящим Telegram
+  (афиша файлом, кнопки), деплой (`bot` — четвёртый сервис compose, env из
+  `deploy/DOKPLOY.md` §2.5, миграции 0115–0116), первые приглашения владельцев Lampyris /
+  Vino&Co / Actorre / Учебного театра через `POST .../bot-invitations` из админки.
 
 ## 10. Порядок работ
 
