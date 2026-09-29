@@ -317,6 +317,10 @@ services:
       BOT_ARENA_API_URL: "http://api:8080"
       BOT_METRICS_ADDR: ":9092"
       HEALTH_ADDR: "http://localhost:9092"
+      # Optional: an Anthropic key switches on reading a sent poster into
+      # wizard hints (internal/platform/posterread); empty = off.
+      POSTER_LLM_API_KEY: "${POSTER_LLM_API_KEY:-}"
+      POSTER_LLM_MODEL: "${POSTER_LLM_MODEL:-claude-sonnet-5}"
 
       DEFAULT_LOCALE: "en"
       ACTIVE_LOCALES: "ru,en"
