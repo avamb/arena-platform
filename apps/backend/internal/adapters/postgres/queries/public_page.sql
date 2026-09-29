@@ -45,6 +45,13 @@ SELECT
         ORDER BY s.start_at ASC
         LIMIT 1
     ) AS first_session_timezone,
+    (
+        SELECT count(*)
+        FROM   sessions s
+        WHERE  s.event_id   = e.id
+          AND  s.deleted_at IS NULL
+          AND  s.status    <> 'cancelled'
+    ) AS session_count,
     ft.token
 FROM organizations o
 JOIN events e ON e.org_id = o.id
@@ -116,7 +123,7 @@ WHERE lower(o.slug) = lower($1)
 -- never span two tokens.
 SELECT id, slug, name, short_description, image_url, poster_media_id,
        age_rating, first_session_at, last_session_at, first_session_timezone,
-       feed_token
+       session_count, feed_token
 FROM (
     SELECT DISTINCT ON (e.id)
         e.id, e.slug, e.name, e.short_description, e.image_url,
@@ -131,7 +138,14 @@ FROM (
               AND  s.status    <> 'cancelled'
             ORDER BY s.start_at ASC
             LIMIT 1
-        ) AS first_session_timezone
+        ) AS first_session_timezone,
+        (
+            SELECT count(*)
+            FROM   sessions s
+            WHERE  s.event_id   = e.id
+              AND  s.deleted_at IS NULL
+              AND  s.status    <> 'cancelled'
+        ) AS session_count
     FROM events e
     JOIN event_publications ep ON ep.event_id = e.id
     JOIN agent_feed_tokens ft ON ft.id = ep.feed_token_id
@@ -173,6 +187,13 @@ SELECT
         ORDER BY s.start_at ASC
         LIMIT 1
     ) AS first_session_timezone,
+    (
+        SELECT count(*)
+        FROM   sessions s
+        WHERE  s.event_id   = e.id
+          AND  s.deleted_at IS NULL
+          AND  s.status    <> 'cancelled'
+    ) AS session_count,
     ft.token
 FROM org_promoters p
 JOIN organizations o ON o.id = p.org_id
@@ -221,7 +242,7 @@ WHERE lower(p.slug) = lower($1)
 -- narrowed to the events linked to one promoter (event_promoters).
 SELECT id, slug, name, short_description, image_url, poster_media_id,
        age_rating, first_session_at, last_session_at, first_session_timezone,
-       feed_token
+       session_count, feed_token
 FROM (
     SELECT DISTINCT ON (e.id)
         e.id, e.slug, e.name, e.short_description, e.image_url,
@@ -236,7 +257,14 @@ FROM (
               AND  s.status    <> 'cancelled'
             ORDER BY s.start_at ASC
             LIMIT 1
-        ) AS first_session_timezone
+        ) AS first_session_timezone,
+        (
+            SELECT count(*)
+            FROM   sessions s
+            WHERE  s.event_id   = e.id
+              AND  s.deleted_at IS NULL
+              AND  s.status    <> 'cancelled'
+        ) AS session_count
     FROM events e
     JOIN event_promoters epr ON epr.event_id = e.id AND epr.promoter_id = $2
     JOIN event_publications ep ON ep.event_id = e.id

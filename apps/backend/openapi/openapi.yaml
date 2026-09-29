@@ -4963,6 +4963,15 @@ components:
             when the event has no sessions yet or the venue has no timezone
             configured.
           example: "Europe/Prague"
+        session_count:
+          type: integer
+          description: |
+            Number of active, non-cancelled sessions of the event. The
+            tickets page prints a clock time next to the date only when this
+            is exactly 1 — with several sessions the buyer picks one (and
+            its time) in the session selector, and the first session's time
+            in a heading would be misleading.
+          example: 2
         feed_token:
           type: string
           description: |

@@ -5730,6 +5730,13 @@ type HostedPageEvent struct {
 	// `events.poster_media_id`), or null when no cover is set.
 	PosterUrl *string `json:"poster_url"`
 
+	// SessionCount Number of active, non-cancelled sessions of the event. The
+	// tickets page prints a clock time next to the date only when this
+	// is exactly 1 — with several sessions the buyer picks one (and
+	// its time) in the session selector, and the first session's time
+	// in a heading would be misleading.
+	SessionCount *int `json:"session_count,omitempty"`
+
 	// ShortDescription Short teaser description (AB-45c metadata).
 	ShortDescription *string `json:"short_description"`
 

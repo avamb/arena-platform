@@ -73,7 +73,13 @@ type hostedPageEventResponse struct {
 	FirstSessionAt       *string  `json:"first_session_at"`
 	LastSessionAt        *string  `json:"last_session_at"`
 	FirstSessionTimezone *string  `json:"first_session_timezone"`
-	FeedToken            string   `json:"feed_token,omitempty"`
+	// SessionCount is the number of active, non-cancelled sessions. The
+	// tickets page prints a clock time in the card header and the event
+	// heading only when it is exactly 1: with several sessions on one day
+	// the first session's time in the heading misled buyers (and the
+	// organizer) into thinking the event had one start.
+	SessionCount int64  `json:"session_count"`
+	FeedToken    string `json:"feed_token,omitempty"`
 }
 
 // hostedPageResponse is the full JSON envelope for GET
@@ -193,6 +199,7 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 		resp.Event.LastSessionAt = &s
 	}
 	resp.Event.FirstSessionTimezone = resolved.FirstSessionTimezone
+	resp.Event.SessionCount = resolved.SessionCount
 
 	// Venue name(s) are cheap (one aggregate query keyed by event id) and
 	// presentational — a lookup failure must not turn a resolved page into a
@@ -370,6 +377,7 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 			s := e.LastSessionAt.UTC().Format(time.RFC3339)
 			item.LastSessionAt = &s
 		}
+		item.SessionCount = e.SessionCount
 		if vn, ok := venueNames[e.EventID]; ok {
 			item.VenueNames = vn
 		}

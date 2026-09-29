@@ -54,6 +54,13 @@ describe('sessionChipLabel', () => {
     expect(l.date).toBe('nonsense');
   });
 
+  it('shows a 24-hour clock and day-first dates for plain en', () => {
+    const l = sessionChipLabel('2026-12-19T10:00:00Z', '2026-12-19T11:00:00Z', 'en');
+    expect(l.time).toMatch(/^\d{2}:\d{2}$/);
+    expect(l.time).not.toMatch(/AM|PM/);
+    expect(l.date).toMatch(/^\w{3},? 19 Dec$/);
+  });
+
   it('formats a Russian locale range', () => {
     const l = sessionChipLabel('2026-10-16T10:00:00Z', '2026-10-18T21:00:00Z', 'ru');
     expect(l.time).toBe('');

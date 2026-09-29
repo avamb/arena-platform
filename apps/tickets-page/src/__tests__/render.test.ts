@@ -130,6 +130,52 @@ describe('renderEvent', () => {
     expect(img?.src).toBe('https://example.com/poster.jpg');
   });
 
+  it('prints the date with a 24-hour time in the venue zone for a one-session event', () => {
+    const container = freshContainer();
+    renderEvent(container, sampleData, 'en', { apiBase: '', resumingCheckout: false });
+    // 18:00Z on 15 August is 20:00 in Prague; English reads day-first, 24h.
+    expect(container.querySelector('.asa-hero-meta')?.textContent).toBe('Saturday, 15 August 2026 at 20:00 · Forum Karlin · 16+');
+  });
+
+  it('prints the date without a time when the event has several sessions', () => {
+    const container = freshContainer();
+    renderEvent(
+      container,
+      {
+        ...sampleData,
+        event: {
+          ...sampleData.event,
+          first_session_at: '2026-12-19T10:00:00Z',
+          last_session_at: '2026-12-19T12:30:00Z',
+          first_session_timezone: 'Europe/Madrid',
+          session_count: 2,
+        },
+      },
+      'ru',
+      { apiBase: '', resumingCheckout: false },
+    );
+    const meta = container.querySelector('.asa-hero-meta')?.textContent ?? '';
+    expect(meta).toContain('19 декабря 2026');
+    expect(meta).not.toMatch(/\d{1,2}:\d{2}/);
+  });
+
+  it('prints a multi-day event as a span of dates', () => {
+    const container = freshContainer();
+    renderEvent(
+      container,
+      {
+        ...sampleData,
+        event: { ...sampleData.event, first_session_at: '2026-10-16T10:00:00Z', last_session_at: '2026-10-18T20:00:00Z', first_session_timezone: 'Europe/Madrid' },
+      },
+      'en',
+      { apiBase: '', resumingCheckout: false },
+    );
+    const meta = container.querySelector('.asa-hero-meta')?.textContent ?? '';
+    expect(meta.startsWith('16')).toBe(true);
+    expect(meta).toContain('18 October 2026');
+    expect(meta).not.toMatch(/\d{1,2}:\d{2}/);
+  });
+
   it('renders a back link to the org promoter page', () => {
     const container = freshContainer();
     renderEvent(container, sampleData, 'en', { apiBase: '', resumingCheckout: false });
@@ -350,7 +396,7 @@ describe('renderPromoterPage', () => {
       window.history.replaceState(null, '', '/actorre?lang=ru');
       renderPromoterPage(container, catalog, 'en', pageOptions());
       const card = container.querySelectorAll('a.asa-card')[1];
-      expect(card.querySelector('.asa-card__when')?.textContent).toBe('17 Nov · Tue 07:30 PM');
+      expect(card.querySelector('.asa-card__when')?.textContent).toBe('17 Nov · Tue 19:30');
       expect(card.getAttribute('href')).toBe('/actorre/one-night-reading?lang=ru');
       window.history.replaceState(null, '', '/');
     });
@@ -385,8 +431,56 @@ describe('renderPromoterPage', () => {
     expect(whatIndex).toBeGreaterThan(whenIndex);
     // 17:00 UTC on 1 October is 19:00 in Prague — the event's own zone.
     expect(row.querySelector('.asa-date-row__day')?.textContent).toBe('1');
-    expect(row.querySelector('.asa-date-row__time')?.textContent).toContain('07:00 PM');
+    expect(row.querySelector('.asa-date-row__time')?.textContent).toBe('Thu 19:00');
     expect(row.querySelector('.asa-date-row__title')?.textContent).toBe('Master Class — Day 1');
+  });
+
+  it('shows the weekday but no clock time on a date with several sessions', () => {
+    const container = freshContainer();
+    renderPromoterPage(
+      container,
+      {
+        ...sampleData,
+        events: [
+          {
+            ...eventWithPoster,
+            // 11:00 and 12:30 the same day: the chips below name the times.
+            first_session_at: '2026-12-19T10:00:00Z',
+            last_session_at: '2026-12-19T12:30:00Z',
+            first_session_timezone: 'Europe/Madrid',
+            session_count: 2,
+          },
+        ],
+      },
+      'en',
+      pageOptions(),
+    );
+    expect(container.querySelector('.asa-date-row__day')?.textContent).toBe('19');
+    expect(container.querySelector('.asa-date-row__month')?.textContent).toBe('Dec');
+    expect(container.querySelector('.asa-date-row__time')?.textContent).toBe('Sat');
+  });
+
+  it('keeps a show that runs past midnight on the evening it starts', () => {
+    const container = freshContainer();
+    renderPromoterPage(
+      container,
+      {
+        ...sampleData,
+        events: [
+          {
+            ...eventWithPoster,
+            // 21:00–01:00 Madrid: one evening, not "19–20".
+            first_session_at: '2026-12-19T20:00:00Z',
+            last_session_at: '2026-12-20T00:00:00Z',
+            first_session_timezone: 'Europe/Madrid',
+          },
+        ],
+      },
+      'en',
+      pageOptions(),
+    );
+    expect(container.querySelector('.asa-date-row__day')?.textContent).toBe('19');
+    expect(container.querySelector('.asa-date-row__time')?.textContent).toBe('Sat 21:00');
   });
 
   it('shows a multi-day event as a span of days with no single start time', () => {

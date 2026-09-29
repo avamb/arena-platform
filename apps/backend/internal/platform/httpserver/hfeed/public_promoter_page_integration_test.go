@@ -171,6 +171,7 @@ type promoterPageBody struct {
 		Title                string  `json:"title"`
 		FirstSessionAt       *string `json:"first_session_at"`
 		FirstSessionTimezone *string `json:"first_session_timezone"`
+		SessionCount         int64   `json:"session_count"`
 		FeedToken            string  `json:"feed_token"`
 	} `json:"events"`
 }

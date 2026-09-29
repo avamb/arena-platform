@@ -55,6 +55,17 @@ func TestPublicPromoterSlugPage_ListsOnlyThePromotersEvents(t *testing.T) {
 	if err := f.q.SetEventPromoter(ctx, eventB, f.orgID, promB.ID); err != nil {
 		t.Fatalf("SetEventPromoter B: %v", err)
 	}
+	// A second session the same day (the real case: 11:00 and 12:30) and a
+	// cancelled one — session_count must say 2, so the page prints no single
+	// clock time for the event.
+	secondStart := time.Now().UTC().Add(future + 90*time.Minute)
+	if _, err := f.q.InsertSession(ctx, eventA, f.venueID, secondStart, secondStart.Add(time.Hour), 10, nil, "scheduled", nil, "EUR", "override"); err != nil {
+		t.Fatalf("InsertSession second: %v", err)
+	}
+	cancelledStart := secondStart.Add(3 * time.Hour)
+	if _, err := f.q.InsertSession(ctx, eventA, f.venueID, cancelledStart, cancelledStart.Add(time.Hour), 10, nil, "cancelled", nil, "EUR", "override"); err != nil {
+		t.Fatalf("InsertSession cancelled: %v", err)
+	}
 	h := promoterPageHandler(pool)
 
 	// 1. The promoter's landing page: its slug and name, its one event.
@@ -76,6 +87,9 @@ func TestPublicPromoterSlugPage_ListsOnlyThePromotersEvents(t *testing.T) {
 	if page.Events[0].FeedToken != f.token {
 		t.Errorf("events[0].feed_token = %q, want the organization's channel token", page.Events[0].FeedToken)
 	}
+	if page.Events[0].SessionCount != 2 {
+		t.Errorf("events[0].session_count = %d, want 2 (two scheduled sessions, the cancelled one not counted)", page.Events[0].SessionCount)
+	}
 
 	// 2. The promoter's event page resolves; the other promoter's event and
 	//    the organization's own event do NOT resolve under this promoter.
@@ -90,14 +104,15 @@ func TestPublicPromoterSlugPage_ListsOnlyThePromotersEvents(t *testing.T) {
 			Name string `json:"name"`
 		} `json:"org"`
 		Event struct {
-			Slug string `json:"slug"`
+			Slug         string `json:"slug"`
+			SessionCount int64  `json:"session_count"`
 		} `json:"event"`
 		FeedToken string `json:"feed_token"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &ev); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if ev.Org.Slug != slugA || ev.Org.Name != promA.Name || ev.Event.Slug != eventASlug || ev.FeedToken != f.token {
+	if ev.Org.Slug != slugA || ev.Org.Name != promA.Name || ev.Event.Slug != eventASlug || ev.FeedToken != f.token || ev.Event.SessionCount != 2 {
 		t.Errorf("promoter event page = %+v", ev)
 	}
 	for _, other := range []string{orgEventSlug} {

@@ -31,9 +31,17 @@ function spansDays(start: Date, end: Date): boolean {
   );
 }
 
+/** The BCP 47 tag handed to Intl. A bare `en` is en-US to Intl ("Dec 19",
+ * "11:00 AM"); the events the widget sells are in Europe, so English
+ * follows en-GB: day first, 24-hour clock. Every other tag passes through
+ * — including an explicit `en-US` from an embedding site. */
+function intlTag(locale: string): string {
+  return locale.toLowerCase() === 'en' ? 'en-GB' : locale;
+}
+
 function fmtDay(d: Date, locale: string): string {
   try {
-    return d.toLocaleDateString(locale, { weekday: 'short', month: 'short', day: 'numeric' });
+    return d.toLocaleDateString(intlTag(locale), { weekday: 'short', month: 'short', day: 'numeric' });
   } catch {
     return d.toISOString().slice(0, 10);
   }
@@ -41,7 +49,7 @@ function fmtDay(d: Date, locale: string): string {
 
 function fmtDayShort(d: Date, locale: string): string {
   try {
-    return d.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
+    return d.toLocaleDateString(intlTag(locale), { month: 'short', day: 'numeric' });
   } catch {
     return d.toISOString().slice(0, 10);
   }
@@ -49,7 +57,7 @@ function fmtDayShort(d: Date, locale: string): string {
 
 function fmtTime(d: Date, locale: string): string {
   try {
-    return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString(intlTag(locale), { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
   } catch {
     return d.toISOString().slice(11, 16);
   }

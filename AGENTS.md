@@ -1791,6 +1791,20 @@ entries short and factual.
   bot's `salesLink` prefers the promoter's slug when the event has one. Owner
   decision 2026-09-29: the organization's slug is a technical detail nobody
   outside sees; do not add an org-id segment to the URL.
+- **`events.last_session_at` is the END of the last session (migration
+  0080, `MAX(end_at)`), so `first != last` never means "several sessions"
+  — a single 20:00–22:00 show has two different values.** The hosted pages
+  (`GET /v1/public/pages/...`) carry `session_count` (active, non-cancelled
+  sessions, a correlated subquery in all four `public_page.sql` queries)
+  for that question: the tickets page prints a clock time in the date card
+  and the event heading only when it is exactly 1; with several sessions
+  the chips below carry the times (an organizer with 11:00 and 12:30 shows
+  read the first session's time in the heading as "the time is wrong",
+  2026-09-29). Multi-day is still judged from start vs end, with a 6-hour
+  late-night grace (`spansSeveralDays`, `render.ts`) so a show ending at
+  00:00 is not "19–20". Both the page and the widget's session chips hand
+  plain `en` to Intl as `en-GB` with `hourCycle: 'h23'` — the events are in
+  Europe, and en-US's "11:00 AM" / "December 19" confused buyers.
 - **An event center picks a venue by `venue.arenaVenueId`** (event-bundle,
   source=arena): the org's venue UUID from `GET /v1/organizations/{org_id}/venues`.
   It wins over `venueId`/`venueName`, never edits the venue, and answers 422

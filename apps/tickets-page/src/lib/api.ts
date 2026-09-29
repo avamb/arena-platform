@@ -31,6 +31,12 @@ export interface HostedPageEvent {
    * null when unavailable — lets the page show the event's own local time
    * instead of the viewer's. */
   first_session_timezone: string | null;
+  /** Number of active, non-cancelled sessions. A clock time is printed
+   * next to the date only when this is exactly 1 — with several sessions
+   * the buyer picks one (and its time) in the selector below, and the
+   * first session's time in a heading misled buyers into thinking the
+   * event had one start. Absent on an older backend, which means "one". */
+  session_count?: number;
   /** Feed token the event is published through. Present only on the
    * promoter page's items, where every date renders its own ticket picker
    * and a picker cannot be mounted without one; the single-event response

@@ -10395,6 +10395,15 @@ export interface components {
              */
             first_session_timezone?: string | null;
             /**
+             * @description Number of active, non-cancelled sessions of the event. The
+             *     tickets page prints a clock time next to the date only when this
+             *     is exactly 1 — with several sessions the buyer picks one (and
+             *     its time) in the session selector, and the first session's time
+             *     in a heading would be misleading.
+             * @example 2
+             */
+            session_count?: number;
+            /**
              * @description Opaque feed token the event is published through — the same
              *     value `HostedPageResponse.feed_token` carries for that event on
              *     its own page. Present ONLY on the items of

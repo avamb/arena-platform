@@ -35,7 +35,11 @@ type HostedPageResolutionRow struct {
 	FirstSessionAt        *time.Time
 	LastSessionAt         *time.Time
 	FirstSessionTimezone  *string
-	FeedToken             string
+	// SessionCount is how many active, non-cancelled sessions the event has
+	// — the page shows a clock time only when there is exactly one, since
+	// with several the buyer picks the session (and its time) below.
+	SessionCount int64
+	FeedToken    string
 }
 
 const getHostedPageResolution = `-- name: GetHostedPageResolution :one
@@ -54,6 +58,13 @@ SELECT
         ORDER BY s.start_at ASC
         LIMIT 1
     ) AS first_session_timezone,
+    (
+        SELECT count(*)
+        FROM   sessions s
+        WHERE  s.event_id   = e.id
+          AND  s.deleted_at IS NULL
+          AND  s.status    <> 'cancelled'
+    ) AS session_count,
     ft.token
 FROM organizations o
 JOIN events e ON e.org_id = o.id
@@ -90,7 +101,7 @@ func (q *Queries) GetHostedPageResolution(ctx context.Context, orgSlug, eventSlu
 		&r.EventID, &r.EventSlug, &r.EventName, &r.EventDescription, &r.EventShortDescription,
 		&r.EventImageURL, &r.EventPosterMediaID, &r.EventAgeRating,
 		&r.FirstSessionAt, &r.LastSessionAt, &r.FirstSessionTimezone,
-		&r.FeedToken,
+		&r.SessionCount, &r.FeedToken,
 	)
 	return r, err
 }
@@ -164,6 +175,10 @@ type HostedPromoterPageEventRow struct {
 	FirstSessionAt        *time.Time
 	LastSessionAt         *time.Time
 	FirstSessionTimezone  *string
+	// SessionCount is how many active, non-cancelled sessions the event has
+	// — the page shows a clock time only when there is exactly one, since
+	// with several the buyer picks the session (and its time) below.
+	SessionCount int64
 	// FeedToken is the active feed token the event is published through —
 	// the same value GetHostedPageResolution returns on the event's own
 	// page. The promoter page mounts a ticket picker per date and cannot
@@ -174,7 +189,7 @@ type HostedPromoterPageEventRow struct {
 const listHostedPromoterPageEvents = `-- name: ListHostedPromoterPageEvents :many
 SELECT id, slug, name, short_description, image_url, poster_media_id,
        age_rating, first_session_at, last_session_at, first_session_timezone,
-       feed_token
+       session_count, feed_token
 FROM (
     SELECT DISTINCT ON (e.id)
         e.id, e.slug, e.name, e.short_description, e.image_url,
@@ -189,7 +204,14 @@ FROM (
               AND  s.status    <> 'cancelled'
             ORDER BY s.start_at ASC
             LIMIT 1
-        ) AS first_session_timezone
+        ) AS first_session_timezone,
+        (
+            SELECT count(*)
+            FROM   sessions s
+            WHERE  s.event_id   = e.id
+              AND  s.deleted_at IS NULL
+              AND  s.status    <> 'cancelled'
+        ) AS session_count
     FROM events e
     JOIN event_publications ep ON ep.event_id = e.id
     JOIN agent_feed_tokens ft ON ft.id = ep.feed_token_id
@@ -226,7 +248,7 @@ func (q *Queries) ListHostedPromoterPageEvents(ctx context.Context, orgID uuid.U
 			&r.EventID, &r.EventSlug, &r.EventName, &r.EventShortDescription,
 			&r.EventImageURL, &r.EventPosterMediaID, &r.EventAgeRating,
 			&r.FirstSessionAt, &r.LastSessionAt, &r.FirstSessionTimezone,
-			&r.FeedToken,
+			&r.SessionCount, &r.FeedToken,
 		); err != nil {
 			return nil, err
 		}

@@ -74,25 +74,75 @@ export function renderError(container: HTMLElement, locale: PageLocale, onRetry:
   container.appendChild(section);
 }
 
-/** Formats an event/session start as "weekday, day month year, HH:MM" in
- * the given locale. When `timeZone` is known (the event's own venue
- * timezone, from `first_session_timezone`) the time is shown in THAT zone
- * rather than the viewer's — a buyer in Madrid checking a Prague master
- * class should see Prague local time, not their own. Falls back to the
- * viewer's local zone when unknown. */
-function formatSessionDateTime(iso: string, locale: PageLocale, timeZone?: string | null): string {
+/** The BCP 47 tag handed to Intl for a page locale. Plain `en` means
+ * en-US to Intl — "December 19" and "11:00 AM" — but the events on this
+ * page are in Europe and their English-speaking buyers are too, so English
+ * follows the en-GB conventions: day before month, 24-hour clock. The
+ * other locales are 24-hour and day-first already. */
+export function intlLocale(locale: PageLocale): string {
+  return locale === 'en' ? 'en-GB' : locale;
+}
+
+/** True when the event has more than one session: a clock time then
+ * belongs to the session chips, not to the event's heading. An older
+ * backend sends no count, which is read as one. */
+function hasSeveralSessions(event: HostedPageEvent): boolean {
+  return typeof event.session_count === 'number' && event.session_count > 1;
+}
+
+/** A show that runs past midnight is still that evening's show: an end
+ * this soon after midnight is counted on the day before it. */
+const LATE_NIGHT_GRACE_MS = 6 * 60 * 60 * 1000;
+
+/** True when the event's first start and last END fall on different
+ * calendar days of the venue's zone. `last_session_at` is the end of the
+ * last session, so a 20:00–00:00 concert would otherwise read as two
+ * days — an end within the late-night grace still counts as the start's
+ * day (a festival pass ending at 21:00 two days later stays multi-day). */
+function spansSeveralDays(event: HostedPageEvent, tz: string | undefined): boolean {
+  if (!event.first_session_at) return false;
+  const start = new Date(event.first_session_at);
+  const endISO = event.last_session_at ?? event.first_session_at;
+  const end = new Date(Math.max(start.getTime(), Date.parse(endISO) - LATE_NIGHT_GRACE_MS));
+  const dayKeyFmt = new Intl.DateTimeFormat('en-CA', { dateStyle: 'short', timeZone: tz });
+  return dayKeyFmt.format(start) !== dayKeyFmt.format(end);
+}
+
+/** The "when" line of the event heading: "Saturday 19 December 2026 at
+ * 11:00" for an event with ONE session, the date alone when it has
+ * several (the session chips below carry the times — printing the first
+ * session's time here made an organizer with 11:00 and 12:30 shows report
+ * "the time is wrong" without scrolling), and a span of dates for a
+ * multi-day event. Times are shown in the event's own venue zone
+ * (`first_session_timezone`) rather than the viewer's — a buyer in Madrid
+ * checking a Prague master class should see Prague local time; the
+ * viewer's zone is the fallback when it is unknown. Empty when the event
+ * has no date yet. */
+export function formatEventWhen(event: HostedPageEvent, locale: PageLocale): string {
+  if (!event.first_session_at) return '';
+  const tz = event.first_session_timezone ?? undefined;
+  const tag = intlLocale(locale);
   try {
-    return new Intl.DateTimeFormat(locale, {
+    const start = new Date(event.first_session_at);
+    if (spansSeveralDays(event, tz)) {
+      const end = new Date(event.last_session_at ?? event.first_session_at);
+      return new Intl.DateTimeFormat(tag, { day: 'numeric', month: 'long', year: 'numeric', timeZone: tz }).formatRange(start, end);
+    }
+    if (hasSeveralSessions(event)) {
+      return new Intl.DateTimeFormat(tag, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: tz }).format(start);
+    }
+    return new Intl.DateTimeFormat(tag, {
       weekday: 'long',
       day: 'numeric',
       month: 'long',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-      timeZone: timeZone ?? undefined,
-    }).format(new Date(iso));
+      hourCycle: 'h23',
+      timeZone: tz,
+    }).format(start);
   } catch {
-    return iso;
+    return event.first_session_at;
   }
 }
 
@@ -145,8 +195,9 @@ export function renderEvent(
   const meta = document.createElement('p');
   meta.className = 'asa-hero-meta';
   const metaParts: string[] = [];
-  if (data.event.first_session_at) {
-    metaParts.push(formatSessionDateTime(data.event.first_session_at, locale, data.event.first_session_timezone));
+  const when = formatEventWhen(data.event, locale);
+  if (when) {
+    metaParts.push(when);
   }
   if (data.event.venue_names.length > 0) {
     metaParts.push(data.event.venue_names.join(', '));
@@ -262,7 +313,7 @@ function formatSpanOfDates(events: HostedPageEvent[], locale: PageLocale): strin
   const from = new Date(Math.min(...starts));
   const to = new Date(Math.max(...ends, ...starts));
   try {
-    const fmt = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long', year: 'numeric' });
+    const fmt = new Intl.DateTimeFormat(intlLocale(locale), { day: 'numeric', month: 'long', year: 'numeric' });
     return fmt.formatRange(from, to);
   } catch {
     return '';
@@ -282,8 +333,9 @@ interface DateParts {
   /** Day number, or "16–18" when the event spans several days. */
   day: string;
   month: string;
-  /** Weekday and clock time — empty for a multi-day event, which has no
-   * single start a buyer could rely on. */
+  /** Weekday and clock time; the weekday alone for an event with several
+   * sessions on that day (each chip below names its own time); empty for
+   * a multi-day event, which has no single start a buyer could rely on. */
   time: string;
 }
 
@@ -293,22 +345,26 @@ function dateParts(event: HostedPageEvent, locale: PageLocale): DateParts | null
   const start = new Date(event.first_session_at);
   const endISO = event.last_session_at ?? event.first_session_at;
   const end = new Date(endISO);
+  const tag = intlLocale(locale);
   try {
-    const dayFmt = new Intl.DateTimeFormat(locale, { day: 'numeric', timeZone: tz });
-    const monthFmt = new Intl.DateTimeFormat(locale, { month: 'short', timeZone: tz });
-    const dayKeyFmt = new Intl.DateTimeFormat('en-CA', { dateStyle: 'short', timeZone: tz });
-    const multiDay = dayKeyFmt.format(start) !== dayKeyFmt.format(end);
+    const dayFmt = new Intl.DateTimeFormat(tag, { day: 'numeric', timeZone: tz });
+    const monthFmt = new Intl.DateTimeFormat(tag, { month: 'short', timeZone: tz });
+    const multiDay = spansSeveralDays(event, tz);
 
     const day = multiDay ? `${dayFmt.format(start)}–${dayFmt.format(end)}` : dayFmt.format(start);
     const month = monthFmt.format(start).replace(/\.$/, '');
-    const time = multiDay
-      ? ''
-      : new Intl.DateTimeFormat(locale, {
-          weekday: 'short',
-          hour: '2-digit',
-          minute: '2-digit',
-          timeZone: tz,
-        }).format(start);
+    let time = '';
+    if (!multiDay) {
+      time = hasSeveralSessions(event)
+        ? new Intl.DateTimeFormat(tag, { weekday: 'short', timeZone: tz }).format(start)
+        : new Intl.DateTimeFormat(tag, {
+            weekday: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23',
+            timeZone: tz,
+          }).format(start);
+    }
     return { day, month, time };
   } catch {
     return null;
