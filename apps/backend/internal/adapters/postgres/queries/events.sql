@@ -273,3 +273,23 @@ WHERE  id = $1
   AND  event_id = $2
   AND  deleted_at IS NULL
 RETURNING id, event_id, name, role, bio, photo_media_id, sort_order, created_at, updated_at;
+
+-- name: EventSlugTaken :one
+-- True when an active event of the organization already uses the slug
+-- (case-insensitive, the same rule as the events_org_slug_unique index).
+SELECT EXISTS (
+    SELECT 1 FROM events
+    WHERE  org_id = $1
+      AND  lower(slug) = lower($2)
+      AND  deleted_at IS NULL
+);
+
+-- name: SetEventSlugIfEmpty :execrows
+-- Gives an event its first slug; an event that already has one keeps it
+-- (the slug is the public address, a rename must not move the page).
+UPDATE events
+SET    slug = $3, updated_at = now()
+WHERE  id = $1
+  AND  org_id = $2
+  AND  slug IS NULL
+  AND  deleted_at IS NULL;

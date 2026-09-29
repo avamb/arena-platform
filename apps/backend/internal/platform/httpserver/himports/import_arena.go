@@ -330,6 +330,9 @@ func (h *Handler) resolveArenaEvent(ctx context.Context, q *gen.Queries, tx pgx.
 			return uuid.Nil, fmt.Errorf("insert event: %w", err)
 		}
 		eventID = created.ID
+		if err := assignEventSlug(ctx, q, plan.OrgID, eventID, a.Name()); err != nil {
+			return uuid.Nil, err
+		}
 	}
 
 	if err := q.SetEventImportMetadata(ctx, eventID, plan.OrgID, a.Name(), optString(a.Description), optString(a.Age)); err != nil {

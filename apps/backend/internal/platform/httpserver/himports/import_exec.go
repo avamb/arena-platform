@@ -409,6 +409,9 @@ func (h *Handler) resolveEvent(ctx context.Context, q *gen.Queries, tx pgx.Tx, p
 		if err := q.SetEventBil24ExternalID(ctx, eventID, plan.OrgID, ext); err != nil {
 			return uuid.Nil, fmt.Errorf("stamp event external id: %w", err)
 		}
+		if err := assignEventSlug(ctx, q, plan.OrgID, eventID, a.Name()); err != nil {
+			return uuid.Nil, err
+		}
 	}
 
 	if err := q.SetEventImportMetadata(ctx, eventID, plan.OrgID, a.Name(), optString(a.Description), optString(a.Age)); err != nil {

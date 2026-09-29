@@ -1780,6 +1780,17 @@ entries short and factual.
   `Owner`/`Manager` constants of `BotInvitationCreateRequestRole` (the
   AGENTS.md enum gotcha bit again on `BotTeamMember.role` — left as a plain
   string on purpose).
+- **An event needs BOTH a slug and a hosted-page channel before it has a
+  public page, and until 2026-09-29 an import gave it neither.** The
+  hosted-page queries (`public_page.sql`) skip `events.slug IS NULL`, and
+  the whole organization page 404s unless one of its channels has
+  `settings.hosted_page.enabled = true`. Every import path now mints the
+  slug (`himports.assignEventSlug`: `geoslug.Slugify(name)`, `-2`, `-3`…
+  against `EventSlugTaken`, set once via `SetEventSlugIfEmpty` — a re-save
+  keeps it). The channel flag is still set by hand in the admin channel
+  settings; a bot-provisioned organization does not get it automatically,
+  so the bot's "your sales link" points at a 404 until an operator turns it
+  on ("Arena Test Promotions", first client-style run 2026-09-29).
 - **A JWT caller of the event-bundle import binds the event to NO sales
   channel unless it names `channelIds`.** `ensureChannelPublication` only
   ever knew `api_keys.channel_id`; a human operator (the bot) got a

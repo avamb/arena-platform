@@ -617,3 +617,42 @@ func (q *Queries) SoftDeleteEventArtist(ctx context.Context, id, eventID uuid.UU
 	row := q.db.QueryRow(ctx, softDeleteEventArtist, id, eventID)
 	return scanEventArtistRow(row)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EventSlugTaken / SetEventSlugIfEmpty — the first slug of an imported event
+// ─────────────────────────────────────────────────────────────────────────────
+
+const eventSlugTaken = `-- name: EventSlugTaken :one
+SELECT EXISTS (
+    SELECT 1 FROM events
+    WHERE  org_id = $1
+      AND  lower(slug) = lower($2)
+      AND  deleted_at IS NULL
+)`
+
+// EventSlugTaken reports whether an active event of the organization already
+// uses the slug (case-insensitive, like events_org_slug_unique).
+func (q *Queries) EventSlugTaken(ctx context.Context, orgID uuid.UUID, slug string) (bool, error) {
+	var taken bool
+	err := q.db.QueryRow(ctx, eventSlugTaken, orgID, slug).Scan(&taken)
+	return taken, err
+}
+
+const setEventSlugIfEmpty = `-- name: SetEventSlugIfEmpty :execrows
+UPDATE events
+SET    slug = $3, updated_at = now()
+WHERE  id = $1
+  AND  org_id = $2
+  AND  slug IS NULL
+  AND  deleted_at IS NULL`
+
+// SetEventSlugIfEmpty gives an event its first slug and reports whether a
+// row changed: an event that already has a slug keeps it — the slug is the
+// public address and a rename must not move the page.
+func (q *Queries) SetEventSlugIfEmpty(ctx context.Context, id, orgID uuid.UUID, slug string) (bool, error) {
+	tag, err := q.db.Exec(ctx, setEventSlugIfEmpty, id, orgID, slug)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
