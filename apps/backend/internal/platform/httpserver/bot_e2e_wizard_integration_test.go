@@ -292,7 +292,11 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	press("wz:default", "Цена билета")
 	say("27,50", "Цена меняется")
 	press("wz:no", "Проверьте и опубликуйте")
-	if _, err := pool.Exec(ctx, `UPDATE events SET updated_at = now() WHERE id = $1`, eventID); err != nil {
+	// The bot compares updated_at as the API prints it - whole seconds - so
+	// a change inside the same second as the load is invisible. On a fast
+	// machine the whole edit above fits in one second, which made a plain
+	// now() pass unnoticed (CI, 2026-09-29); move it a clear minute ahead.
+	if _, err := pool.Exec(ctx, `UPDATE events SET updated_at = now() + interval '1 minute' WHERE id = $1`, eventID); err != nil {
 		t.Fatal(err)
 	}
 	press("wz:publish", "меняли в другом месте")
