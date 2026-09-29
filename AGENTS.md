@@ -1661,6 +1661,16 @@ entries short and factual.
   never open, unlike the `/metrics` guard). Everything else the bot does is
   a JWT minted for the linked user with the shared `JWT_SIGNING_SECRET`, so
   memberships, not `user_roles`, must carry the person's role.
+  **The bot's `ArenaClient` sends `X-Admin-Reason` on EVERY call** (constant
+  `eventbot.AdminReason`): arena-api's `markSuperadminOrgAccess` flags every
+  request of a `platform_superadmin` user and `requireOrgMembership` then
+  answers 400 `superadmin.missing_reason` without the header — even in an
+  organization they ARE a member of — so the operator's own account got that
+  on "My events", "Team" and the wizard's second step in the first live run
+  (2026-09-29, fixed 58e4fee). The header is inert for ordinary members. A
+  superadmin identity (`/v1/me` roles) lists every organization as owner in
+  the chooser (`ArenaClient.AllOrganizations`); guarded by
+  `TestBotE2E_SuperadminWorksInEveryOrganization`.
 - **`cmd/arena-bot` (package `internal/platform/eventbot`) is the fourth
   binary of the image and polls Telegram with `github.com/go-telegram/bot`
   at ONE worker** (`WithWorkers(1)`), so one person's messages are handled
