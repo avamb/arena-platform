@@ -15,6 +15,8 @@
 //	BOT_ARENA_API_URL            http://api:8080 inside compose
 //	BOT_METRICS_ADDR             sidecar /healthz and /metrics (default :9092)
 //	JWT_SIGNING_SECRET           the API's own secret: the bot mints user JWTs with it
+//	POSTER_LLM_API_KEY           Anthropic key for reading a sent poster into hints (optional)
+//	POSTER_LLM_MODEL             the vision model for that reading (default claude-sonnet-5)
 package main
 
 import (
@@ -36,6 +38,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/posterread"
 )
 
 func main() {
@@ -89,6 +92,16 @@ func run() error {
 		return fmt.Errorf("load i18n bundle: %w", err)
 	}
 
+	// The poster reader is optional: without POSTER_LLM_API_KEY the wizard
+	// asks every question and offers no hints.
+	var posterReader posterread.Reader
+	if reader := posterread.NewAnthropic(cfg.PosterLLMAPIKey, cfg.PosterLLMModel, cfg.PosterLLMBaseURL, nil); reader.Configured() {
+		posterReader = reader
+		logger.Info("arena-bot: poster reading enabled", slog.String("model", cfg.PosterLLMModel))
+	} else {
+		logger.Info("arena-bot: poster reading disabled (POSTER_LLM_API_KEY is empty)")
+	}
+
 	bot, err := eventbot.New(eventbot.Options{
 		Token:   cfg.EventsTelegramBotToken,
 		Queries: gen.New(pool.Pool),
@@ -98,6 +111,7 @@ func run() error {
 		Logger:  logger,
 
 		TicketsBaseURL: cfg.PublicTicketsBaseURL,
+		PosterReader:   posterReader,
 	})
 	if err != nil {
 		return err

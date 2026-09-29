@@ -488,6 +488,27 @@ other = "Check and publish"
 ["bot.wz.resume"]
 other = "You have an unfinished event, “{{.Name}}”. Continue where you stopped, or start over?"
 
+["bot.wz.ask_name_poster"]
+other = "What is the event called? Buyers will see this name, for example “Piedmont wine tasting”.\n\nYou can send the poster right away: I will read the name, the date, the time, the venue and the prices off it and offer them — you confirm each one with a button. The poster goes to Claude (Anthropic) for reading: the picture only, no buyer data."
+
+["bot.wz.ask_poster_have"]
+other = "The poster {{.W}}×{{.H}} is already in. Keep it, or send another?"
+
+["bot.wz.keep_poster_btn"]
+other = "Keep this poster"
+
+["bot.wz.hint_btn"]
+other = "From the poster: {{.Value}}"
+
+["bot.wz.poster_reading"]
+other = "Reading the poster…"
+
+["bot.wz.poster_read"]
+other = "The poster says:\n{{.List}}\n\nI will offer these as hints: at each step press “From the poster” if it is right, or type your own."
+
+["bot.wz.poster_read_none"]
+other = "I found nothing on the poster that I could offer — we fill it in by hand."
+
 ["bot.wz.resume_btn"]
 other = "Continue"
 

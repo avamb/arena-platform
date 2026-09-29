@@ -396,6 +396,16 @@ type Config struct {
 	BotArenaAPIURL string `env:"BOT_ARENA_API_URL" required:"false" default:"http://localhost:8080"`
 	// BotMetricsAddr is the bot's sidecar /healthz + /metrics listener.
 	BotMetricsAddr string `env:"BOT_METRICS_ADDR" required:"false" default:":9092"`
+	// PosterLLMAPIKey is the Anthropic API key the bot reads posters with
+	// (internal/platform/posterread): the wizard then offers the name, the
+	// date, the venue and the prices printed on a sent poster as one-tap
+	// answers. Empty switches the reading off; the wizard asks as before.
+	// Only the poster image ever travels to the model.
+	PosterLLMAPIKey string `env:"POSTER_LLM_API_KEY" required:"false" default:""`
+	// PosterLLMModel is the vision model used for that reading.
+	PosterLLMModel string `env:"POSTER_LLM_MODEL" required:"false" default:"claude-sonnet-5"`
+	// PosterLLMBaseURL is the Messages API origin (a stub in tests).
+	PosterLLMBaseURL string `env:"POSTER_LLM_BASE_URL" required:"false" default:"https://api.anthropic.com"`
 	// OpsWatchdogHeartbeatHourUTC is the UTC hour (0-23) at which the
 	// ops.watchdog job sends its once-daily "still alive" digest.
 	OpsWatchdogHeartbeatHourUTC int `env:"OPS_WATCHDOG_HEARTBEAT_HOUR_UTC" required:"false" default:"7"`
@@ -590,6 +600,9 @@ func Load() (*Config, error) {
 		BotServiceToken:           getenv("BOT_SERVICE_TOKEN", ""),
 		BotArenaAPIURL:            getenv("BOT_ARENA_API_URL", "http://localhost:8080"),
 		BotMetricsAddr:            getenv("BOT_METRICS_ADDR", ":9092"),
+		PosterLLMAPIKey:           getenv("POSTER_LLM_API_KEY", ""),
+		PosterLLMModel:            getenv("POSTER_LLM_MODEL", "claude-sonnet-5"),
+		PosterLLMBaseURL:          getenv("POSTER_LLM_BASE_URL", "https://api.anthropic.com"),
 
 		MetricsBearerToken: getenv("METRICS_BEARER_TOKEN", ""),
 	}

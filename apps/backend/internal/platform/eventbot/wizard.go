@@ -105,6 +105,9 @@ type Draft struct {
 	Publish  bool           `json:"publish"`
 	Scratch  DraftScratch   `json:"scratch"`
 	Saved    DraftSaved     `json:"saved"`
+	// Hints is what the poster said (wizard_hints.go): offered as buttons,
+	// never applied on its own.
+	Hints DraftHints `json:"hints,omitempty"`
 }
 
 // DraftEvent is the event part of the draft.
@@ -314,11 +317,20 @@ type Wizard struct {
 	texts *Texts
 	refs  RefIO
 	now   func() time.Time
+	// posterHints is set when a poster reader is wired: the first question
+	// then invites the poster and says where it goes.
+	posterHints bool
 }
 
 // NewWizard builds a wizard over the given references.
 func NewWizard(texts *Texts, refs RefIO) *Wizard {
 	return &Wizard{texts: texts, refs: refs, now: func() time.Time { return time.Now().UTC() }}
+}
+
+// WithPosterHints tells the wizard a poster reader is available.
+func (w *Wizard) WithPosterHints(on bool) *Wizard {
+	w.posterHints = on
+	return w
 }
 
 // NewDraft starts a draft at the first question, seeded with the remembered
@@ -509,6 +521,16 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 	text := strings.TrimSpace(in.Text)
 	data := strings.TrimSpace(in.Data)
 
+	// "From the poster": the button stands for the value the person would
+	// have typed (or the choice they would have pressed).
+	if data == hintButtonData {
+		_, hintText, hintData := d.hintValue()
+		if hintText == "" && hintData == "" {
+			return "", nil
+		}
+		text, data = hintText, hintData
+	}
+
 	switch data {
 	case "cancel":
 		return "", ErrCancelled
@@ -523,6 +545,12 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 
 	switch d.Step {
 	case stEvName:
+		if in.Poster != nil {
+			// The poster came first: keep it, stay on the name question —
+			// its hints now sit on the questions that follow.
+			d.Event.PosterMediaID, d.Event.PosterW, d.Event.PosterH = in.Poster.MediaID, in.Poster.W, in.Poster.H
+			return t("bot.wz.poster_ok", map[string]any{"W": in.Poster.W, "H": in.Poster.H}), nil
+		}
 		if text == "" || len([]rune(text)) > 200 {
 			return t("bot.wz.err_name", nil), nil
 		}
@@ -605,6 +633,8 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		case in.Poster != nil:
 			d.Event.PosterMediaID, d.Event.PosterW, d.Event.PosterH = in.Poster.MediaID, in.Poster.W, in.Poster.H
 			note = t("bot.wz.poster_ok", map[string]any{"W": in.Poster.W, "H": in.Poster.H})
+			d.section(stSDate)
+		case data == "keep" && d.Event.PosterMediaID != "":
 			d.section(stSDate)
 		case data == "skip":
 			d.section(stSDate)

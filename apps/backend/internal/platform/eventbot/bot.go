@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/posterread"
 )
 
 // pendingInviteTTL is how long the bot waits for the e-mail after a person
@@ -44,6 +45,9 @@ type Options struct {
 	TicketsBaseURL string
 	// Refs overrides the wizard's reference source (tests); nil uses Arena.
 	Refs RefIO
+	// PosterReader reads a sent poster into wizard hints (posterread); nil
+	// means the wizard asks everything and offers nothing.
+	PosterReader posterread.Reader
 }
 
 // Bot is the running event-center bot.
@@ -60,6 +64,7 @@ type Bot struct {
 	// fileClient downloads Telegram files (posters); nil uses a default.
 	fileClient     *http.Client
 	ticketsBaseURL string
+	poster         posterread.Reader
 }
 
 // New builds the bot; it does not talk to Telegram until Run.
@@ -85,6 +90,7 @@ func New(opts Options) (*Bot, error) {
 
 		fileClient:     opts.HTTPClient,
 		ticketsBaseURL: opts.TicketsBaseURL,
+		poster:         opts.PosterReader,
 	}
 	if b.texts == nil {
 		b.texts = NewTexts(nil)
@@ -93,7 +99,7 @@ func New(opts Options) (*Bot, error) {
 	if opts.Refs != nil {
 		refs = opts.Refs
 	}
-	b.wizard = NewWizard(b.texts, refs)
+	b.wizard = NewWizard(b.texts, refs).WithPosterHints(b.poster != nil)
 	tgOpts := []tgbot.Option{
 		tgbot.WithDefaultHandler(b.handleUpdate),
 		tgbot.WithSkipGetMe(),

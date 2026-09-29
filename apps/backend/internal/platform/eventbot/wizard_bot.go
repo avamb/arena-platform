@@ -240,7 +240,7 @@ func (b *Bot) wizardPoster(ctx context.Context, chatID int64, from *models.User,
 	}
 	ws := b.wizardSession(id, jwt)
 	d, _, err := b.loadDraft(ctx, from.ID, ws)
-	if err != nil || d == nil || d.Step != stEvPoster {
+	if err != nil || d == nil || (d.Step != stEvPoster && d.Step != stEvName) {
 		return false
 	}
 	loc := ws.Locale
@@ -299,8 +299,33 @@ func (b *Bot) wizardPoster(ctx context.Context, chatID int64, from *models.User,
 		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_failed", nil), nil)
 		return true
 	}
+	b.readPosterHints(ctx, chatID, loc, d, data, contentType)
 	b.wizardApply(ctx, chatID, nil, from, ws, d, WizInput{Poster: &PosterAccepted{MediaID: up.ID, W: cfg.Width, H: cfg.Height}})
 	return true
+}
+
+// posterReadTimeout bounds the model call; the person sees "reading…"
+// meanwhile and the wizard goes on without hints when it runs out.
+const posterReadTimeout = 45 * time.Second
+
+// readPosterHints asks the vision model what the poster says and keeps the
+// answer in the draft as hints (wizard_hints.go). Without a reader, or when
+// the reading fails, the wizard simply asks everything as before.
+func (b *Bot) readPosterHints(ctx context.Context, chatID int64, loc string, d *Draft, data []byte, contentType string) {
+	if b.poster == nil {
+		return
+	}
+	b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_reading", nil), nil)
+	readCtx, cancel := context.WithTimeout(ctx, posterReadTimeout)
+	defer cancel()
+	facts, err := b.poster.Read(readCtx, data, contentType)
+	if err != nil {
+		b.logger.Warn("eventbot: poster reading failed", slog.String("error", err.Error()))
+		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_read_none", nil), nil)
+		return
+	}
+	d.Hints = HintsFromFacts(facts)
+	b.send(ctx, chatID, b.wizard.hintsNote(loc, d.Hints), nil)
 }
 
 // PosterCheck applies the site's poster rules (4:5 or square within 2 %,

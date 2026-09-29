@@ -10,6 +10,19 @@ import (
 // the question with its hint, and the buttons — every choice a button, the
 // remembered default first (spec 28 §5.0).
 func (w *Wizard) Render(ctx context.Context, ws WizSession, d *Draft) (Screen, error) {
+	screen, err := w.render(ctx, ws, d)
+	if err != nil {
+		return screen, err
+	}
+	// The poster's answer to this question, first among the buttons.
+	if label, _, _ := d.hintValue(); label != "" {
+		hint := Button{Label: w.texts.T(ws.Locale, "bot.wz.hint_btn", map[string]any{"Value": truncate(label, 40)}), Data: hintButtonData}
+		screen.Buttons = append([][]Button{{hint}}, screen.Buttons...)
+	}
+	return screen, nil
+}
+
+func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, error) {
 	loc := ws.Locale
 	t := func(key string, data map[string]any) string { return w.texts.T(loc, key, data) }
 	btn := func(key, data string) Button { return Button{Label: t(key, nil), Data: data} }
@@ -27,7 +40,11 @@ func (w *Wizard) Render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 
 	switch d.Step {
 	case stEvName:
-		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_name", nil), Buttons: nav()}, nil
+		ask := "bot.wz.ask_name"
+		if w.posterHints && d.Event.PosterMediaID == "" {
+			ask = "bot.wz.ask_name_poster"
+		}
+		return Screen{Text: header(1, "bot.wz.title_event") + t(ask, nil), Buttons: nav()}, nil
 
 	case stEvAge:
 		rows := [][]Button{}
@@ -68,6 +85,11 @@ func (w *Wizard) Render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_promoter_legal", nil), Buttons: nav([]Button{btn("bot.wz.skip_btn", "skip")})}, nil
 
 	case stEvPoster:
+		if d.Event.PosterMediaID != "" {
+			// The poster came with the first question: keep it, or send another.
+			return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_poster_have", map[string]any{"W": d.Event.PosterW, "H": d.Event.PosterH}),
+				Buttons: nav([]Button{btn("bot.wz.keep_poster_btn", "keep")})}, nil
+		}
 		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_poster", nil), Buttons: nav([]Button{btn("bot.wz.skip_btn", "skip")})}, nil
 
 	case stSDate:
