@@ -587,6 +587,7 @@ export interface CheckoutI18nStrings {
   cart_empty: string;
   /** Total row label in the cart summary. */
   cart_total_label: string;
+  cart_fee_label: string;
   /** Back button label inside the cart sheet (goes back to item list). */
   cart_back: string;
   /** Warning suffix shown on the countdown when hold is under 2 min. */
@@ -665,6 +666,7 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     cart_details_title: 'Your details',
     cart_empty: 'Your cart is empty.',
     cart_total_label: 'Total',
+    cart_fee_label: 'Service fee',
     cart_back: 'Back',
     expires_warn: 'your seats expire soon!',
     ticket_singular: 'ticket',
@@ -719,6 +721,7 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     cart_details_title: 'Ваши данные',
     cart_empty: 'Ваша корзина пуста.',
     cart_total_label: 'Итого',
+    cart_fee_label: 'Сервисный сбор',
     cart_back: 'Назад',
     expires_warn: 'ваши места скоро истекут!',
     ticket_singular: 'билет',
@@ -774,6 +777,7 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     cart_details_title: 'Vaše údaje',
     cart_empty: 'Váš košík je prázdný.',
     cart_total_label: 'Celkem',
+    cart_fee_label: 'Servisní poplatek',
     cart_back: 'Zpět',
     expires_warn: 'vaše místa brzy vyprší!',
     ticket_singular: 'vstupenka',
@@ -829,6 +833,7 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     cart_details_title: 'הפרטים שלך',
     cart_empty: 'הסל שלך ריק.',
     cart_total_label: 'סה״כ',
+    cart_fee_label: 'דמי שירות',
     cart_back: 'חזרה',
     expires_warn: 'המקומות שלך עומדים לפוג בקרוב!',
     ticket_singular: 'כרטיס',

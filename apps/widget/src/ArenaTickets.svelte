@@ -918,6 +918,7 @@
       <CartSheet
         cart={effectiveCart}
         buyerFields={selectedSession.buyer_fields as import('./lib/checkout.js').BuyerFieldConfig[]}
+        serviceFeePercent={selectedSession.service_fee_percent}
         locale={normLocale}
         submitting={checkoutSubmitting}
         submitError={checkoutError}

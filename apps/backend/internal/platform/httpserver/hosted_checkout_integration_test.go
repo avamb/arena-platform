@@ -463,6 +463,18 @@ func TestHostedCheckout_StartCreatesStripeSessionAndWebhookPaysTheOrder(t *testi
 	if cs.Total == nil {
 		t.Fatal("checkout session has no pricing snapshot")
 	}
+	// The fixture channel charges 1.25 %: the service charge is the
+	// CHANNEL's fee_percent (channelPricingRules), floored in minor units,
+	// and the total the buyer pays is the tickets plus that charge — until
+	// 2026-09-29 the widget priced with the process-wide (unset) rate and
+	// every channel fee was silently 0 on the hosted page.
+	if cs.Subtotal == nil || cs.PlatformFee == nil {
+		t.Fatalf("checkout session pricing snapshot incomplete: %+v", cs)
+	}
+	if wantFee := *cs.Subtotal * 125 / 10_000; *cs.PlatformFee != wantFee || *cs.Total != *cs.Subtotal+wantFee {
+		t.Errorf("pricing = subtotal %d, platform_fee %d, total %d; want fee %d = 1.25 %% of the subtotal and total = subtotal + fee",
+			*cs.Subtotal, *cs.PlatformFee, *cs.Total, wantFee)
+	}
 	if got, want := form.Get("line_items[0][price_data][unit_amount]"), strconv.FormatInt(*cs.Total, 10); got != want {
 		t.Errorf("stripe unit_amount = %q; want the platform-computed total %q", got, want)
 	}

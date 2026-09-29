@@ -341,6 +341,11 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		))
 		return
 	}
+	// The service charge is the CHANNEL's fee_percent (the same setting the
+	// Bil24 gateway applies), read on the pool before the hold transaction
+	// opens — never inside it (AGENTS.md: no pool read while holding the
+	// sessions row lock).
+	pricingRules := h.channelPricingRules(ctx, checkCtx.OrgID, checkCtx.SalesChannelID)
 
 	// ── 6b. Validate buyer fields against channel flags (WID-0d) ────────────────
 	// Fetch the buyer-field flags for this feed token and enforce them.
@@ -811,7 +816,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		// Priced BEFORE the commit on purpose: ComputePricingLines is pure, and
 		// the total it yields is what decides whether this cart needs a payment
 		// provider at all.
-		bd := hcheckout.ComputePricingLines(lines, discount, currency, h.pricingRules)
+		bd := hcheckout.ComputePricingLines(lines, discount, currency, pricingRules)
 
 		// A paid cart that could never have been charged must not survive this
 		// request. Returning here lets the deferred tx.Rollback release the
@@ -982,7 +987,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	if len(pricedGA) > 0 {
 		currency = pricedGA[0].currency
 	}
-	bd := hcheckout.ComputePricingLines(gaLines, discount, currency, h.pricingRules)
+	bd := hcheckout.ComputePricingLines(gaLines, discount, currency, pricingRules)
 
 	// A paid cart that could never have been charged must not survive this
 	// request: the deferred tx.Rollback releases the GA units and the
@@ -1643,4 +1648,31 @@ func gaGateLines(ids []uuid.UUID, items []PublicGAItem) []hcheckout.GALine {
 		out = append(out, hcheckout.GALine{TierID: id, Quantity: items[i].Quantity})
 	}
 	return out
+}
+
+// channelPricingRules is the pricing rule set for one sales channel: the
+// process-wide defaults with the platform service charge replaced by the
+// channel's own fee_percent when one is configured. Until 2026-09-29 the
+// widget priced every cart with the process-wide rate alone — which nothing
+// ever set — so a channel's fee_percent (the "service charge paid by the
+// buyer" an organizer asks for) reached the Bil24 gateway's carts but never
+// a widget checkout: a 5 % channel sold 50 EUR tickets for 50.00. The read
+// runs on the pool; callers must take it BEFORE opening the hold transaction.
+// A lookup failure keeps the defaults so a transient error cannot silently
+// widen or drop the charge on a live cart — it is logged.
+func (h *Handler) channelPricingRules(ctx context.Context, orgID, channelID uuid.UUID) hcheckout.PricingRules {
+	rules := h.pricingRules
+	if h.publicFeedQueries == nil {
+		return rules
+	}
+	ch, err := h.publicFeedQueries.GetSalesChannelByID(ctx, channelID, orgID)
+	if err != nil {
+		h.logger.Warn("public_feed_checkout: channel fee lookup failed, pricing with the defaults",
+			slog.String("channel_id", channelID.String()), slog.String("error", err.Error()))
+		return rules
+	}
+	if bp := ordering.ChargePercentBP(ch.FeePercent); bp > 0 {
+		rules.PlatformFeeRate = int64(bp)
+	}
+	return rules
 }

@@ -16,6 +16,7 @@ import {
   countdownSeconds,
   isTwoMinWarning,
   formatCountdown,
+  cartServiceFee,
 } from './cart.js';
 import type { CartLineItem, CartState } from './cart.js';
 import type { CategoryPrice, Tier } from '../types.js';
@@ -231,6 +232,15 @@ describe('buildSeatedLines', () => {
 describe('cartTotal', () => {
   it('returns 0 amount and empty currency for empty lines', () => {
     expect(cartTotal([])).toEqual({ amount: 0, currency: '' });
+  });
+
+  it('computes the channel service fee like the backend (basis points, floored)', () => {
+    expect(cartServiceFee(8500, '5.00')).toBe(425);
+    expect(cartServiceFee(5000, '1.25')).toBe(62); // 62.5 floors, as hcheckout does
+    expect(cartServiceFee(8500, '0.00')).toBe(0);
+    expect(cartServiceFee(8500, undefined)).toBe(0);
+    expect(cartServiceFee(8500, 'abc')).toBe(0);
+    expect(cartServiceFee(0, '5.00')).toBe(0);
   });
 
   it('computes single-line total', () => {

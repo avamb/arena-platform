@@ -173,6 +173,20 @@ export function cartTotal(lines: CartLineItem[]): { amount: number; currency: st
 }
 
 /**
+ * The channel's service charge on a cart, in minor units — the same
+ * arithmetic the backend applies at checkout (hcheckout.ComputePricingLines:
+ * basis points of the subtotal, floored), so the total the cart sheet shows
+ * is the total the payment page asks for. `feePercent` is the session's
+ * `service_fee_percent` ("5.00"); anything unparsable or non-positive is 0.
+ */
+export function cartServiceFee(subtotalMinor: number, feePercent: string | null | undefined): number {
+  const pct = Number.parseFloat((feePercent ?? '').trim());
+  if (!Number.isFinite(pct) || pct <= 0 || subtotalMinor <= 0) return 0;
+  const bp = Math.round(pct * 100);
+  return Math.floor((subtotalMinor * bp) / 10_000);
+}
+
+/**
  * Total number of individual tickets across all cart lines.
  */
 export function cartItemCount(lines: CartLineItem[]): number {

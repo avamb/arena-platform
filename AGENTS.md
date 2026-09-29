@@ -1753,6 +1753,25 @@ entries short and factual.
   422 `import.invalid_channel`) is the fix; the response's `publications[]`
   lists every binding and `publication` stays the first one. An API key
   bound to a channel publishes into its own channel plus the named ones.
+- **The widget's service charge is the CHANNEL's `fee_percent`, resolved per
+  request by `hfeed.Handler.channelPricingRules` — never the process-wide
+  `Options.PricingRules`, which nothing sets.** Until 2026-09-29
+  `HandlePublicFeedCheckoutStart` and `HandlePublicCheckoutRecover` priced
+  every cart with `h.pricingRules` alone, so a channel's fee reached the
+  Bil24 gateway's carts (`feeChargeMinor`) but never a hosted checkout: a
+  5 % channel sold 50 EUR tickets for 50.00 on the Stripe page, and
+  `createPublicOrder`'s `ChargePercentBP(ch.FeePercent)` was only an audit
+  snapshot on the order. The channel row is read on the pool BEFORE the
+  hold transaction (the AGENTS.md pool-read rule) and only overrides
+  `PlatformFeeRate` when the channel fee is > 0. The public feed session now
+  carries `service_fee_percent` (`GetFeedTokenBuyerFlags` also selects
+  `sc.fee_percent`) and the widget's `CartSheet` shows a "Service fee" line
+  computed by `cartServiceFee` with the SAME basis-point floor as
+  `ComputePricingLines`, so the sheet's total is the payment page's total.
+  Guarded by the fee assertion in
+  `TestHostedCheckout_StartCreatesStripeSessionAndWebhookPaysTheOrder`
+  (fixture channel 1.25 %). There is no fixed (per-ticket) fee yet — only
+  the percentage.
 - **A promoter has its own public page since migration 0117, and it is THE
   link an organizer hands out.** `org_promoters.slug` shares ONE namespace
   with `organizations.slug` (platform-wide, case-insensitive, index

@@ -206,6 +206,12 @@ export interface FeedSession {
   /** URL to fetch the seat status (only for seated/hybrid sessions). */
   seat_status_url?: string;
   buyer_fields: BuyerField[];
+  /**
+   * The channel's service charge as a decimal string ("5.00" = 5 %),
+   * applied on top of the ticket prices at checkout. Absent on older
+   * backends (treated as 0).
+   */
+  service_fee_percent?: string;
   tiers: Tier[];
   /**
    * Resolved poster cover (AB-47c): session's own poster_media_id when set,

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { removeCartLine, cartTotal, cartItemCount, countdownSeconds, isTwoMinWarning, formatCountdown } from '../lib/cart.js';
+  import { removeCartLine, cartTotal, cartServiceFee, cartItemCount, countdownSeconds, isTwoMinWarning, formatCountdown } from '../lib/cart.js';
   import { formatPrice, getCheckoutI18n } from '../lib/checkout.js';
   import type { CartState } from '../lib/cart.js';
   import BuyerForm from './BuyerForm.svelte';
@@ -9,6 +9,12 @@
     cart: CartState;
     buyerFields: BuyerFieldConfig[];
     locale?: string;
+    /**
+     * The channel's service charge ("5.00" = 5 %), from the session's
+     * `service_fee_percent`. Shown as its own line above the total so the
+     * buyer sees on the sheet what the payment page will ask for.
+     */
+    serviceFeePercent?: string | null;
     submitting?: boolean;
     submitError?: string | null;
     /**
@@ -28,7 +34,7 @@
     onCheckout: (values: BuyerFormValues) => void;
   }
   const {
-    cart, buyerFields, locale = 'en', submitting = false, submitError = null,
+    cart, buyerFields, locale = 'en', serviceFeePercent = null, submitting = false, submitError = null,
     conflictKeys, onContinueWithoutConflicts,
     onClose, onRemoveLine, onCheckout,
   }: Props = $props();
@@ -36,6 +42,7 @@
   const t = $derived(getCheckoutI18n(locale));
   const count = $derived(cartItemCount(cart.lines));
   const total = $derived(cartTotal(cart.lines));
+  const fee = $derived(cartServiceFee(total.amount, serviceFeePercent));
 
   let showBuyerForm = $state(false);
   let secondsLeft = $state(0);
@@ -103,9 +110,15 @@
         </ul>
 
         {#if total.currency}
+          {#if fee > 0}
+            <div class="fee-row">
+              <span class="fee-label">{t.cart_fee_label}</span>
+              <span class="fee-value">{formatPrice(fee, total.currency)}</span>
+            </div>
+          {/if}
           <div class="total-row">
             <span class="total-label">{t.cart_total_label}</span>
-            <span class="total-value">{formatPrice(total.amount, total.currency)}</span>
+            <span class="total-value">{formatPrice(total.amount + fee, total.currency)}</span>
           </div>
         {/if}
 
@@ -257,6 +270,13 @@
     line-height: 1;
   }
   .remove-btn:hover { color: #b91c1c; }
+  .fee-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 13px;
+    color: var(--_text-muted);
+  }
   .total-row {
     display: flex;
     justify-content: space-between;

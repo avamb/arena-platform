@@ -114,6 +114,9 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		))
 		return
 	}
+	// Reprice with the channel's own service charge (see channelPricingRules),
+	// read here on the pool, before the transaction below.
+	pricingRules := h.channelPricingRules(ctx, cs.OrgID, cs.ChannelID)
 
 	// ── 3. Guard: non-recoverable terminal states ─────────────────────────────
 	switch cs.State {
@@ -597,7 +600,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	bd := hcheckout.ComputePricingLines(lines, discount, currency, h.pricingRules)
+	bd := hcheckout.ComputePricingLines(lines, discount, currency, pricingRules)
 
 	// ── 9. Persist the fresh GA lines for the replacement reservation ─────────
 	for i := range origGA {

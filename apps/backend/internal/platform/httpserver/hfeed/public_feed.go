@@ -33,6 +33,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -255,16 +256,21 @@ type BuyerFieldItem struct {
 // #321 WID-0d) so the widget can render and validate the buyer form fields
 // without hard-coding assumptions.
 type publicFeedSessionResponse struct {
-	ID            string                   `json:"id"`
-	StartAt       string                   `json:"start_at"`
-	EndAt         string                   `json:"end_at"`
-	CapacityTotal int32                    `json:"capacity_total"`
-	Status        string                   `json:"status"`
-	AdmissionMode string                   `json:"admission_mode,omitempty"`
-	SchemaURL     string                   `json:"schema_url,omitempty"`
-	SeatStatusURL string                   `json:"seat_status_url,omitempty"`
-	BuyerFields   []BuyerFieldItem         `json:"buyer_fields"`
-	Tiers         []publicFeedTierResponse `json:"tiers"`
+	ID            string           `json:"id"`
+	StartAt       string           `json:"start_at"`
+	EndAt         string           `json:"end_at"`
+	CapacityTotal int32            `json:"capacity_total"`
+	Status        string           `json:"status"`
+	AdmissionMode string           `json:"admission_mode,omitempty"`
+	SchemaURL     string           `json:"schema_url,omitempty"`
+	SeatStatusURL string           `json:"seat_status_url,omitempty"`
+	BuyerFields   []BuyerFieldItem `json:"buyer_fields"`
+	// ServiceFeePercent is the channel's service charge as a decimal string
+	// ("5.00" = 5 %, "0.00" = none), applied on top of the ticket prices at
+	// checkout (channelPricingRules). The widget shows it as a cart line so
+	// the buyer sees the total before the payment page does.
+	ServiceFeePercent string                   `json:"service_fee_percent"`
+	Tiers             []publicFeedTierResponse `json:"tiers"`
 	// PosterMediaID / PosterURL are the resolved cover (AB-47c): the session
 	// value when set, otherwise the event fallback. Same on both fields.
 	// The widget uses PosterURL directly; media_id is exposed for callers
@@ -660,10 +666,14 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	// Fetch buyer-field flags from the channel linked to this feed token
 	// (feature #321 WID-0d). Non-fatal: defaults to email-only on error.
 	defaultBuyerFields := buildBuyerFields(false, false)
+	serviceFeePercent := "0.00"
 	if h.publicFeedQueries != nil {
 		flags, flagsErr := h.publicFeedQueries.GetFeedTokenBuyerFlags(ctx, feedToken)
 		if flagsErr == nil {
 			defaultBuyerFields = buildBuyerFields(flags.CollectName, flags.CollectPhone)
+			if strings.TrimSpace(flags.FeePercent) != "" {
+				serviceFeePercent = flags.FeePercent
+			}
 		} else if !errors.Is(flagsErr, pgx.ErrNoRows) {
 			h.logger.Error("public_feed: get buyer flags failed",
 				slog.String("feed_token", feedToken),
@@ -701,6 +711,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 			}
 			for _, sess := range sessions {
 				sessResp := h.publicFeedSessionFromRow(ctx, sess, defaultBuyerFields)
+				sessResp.ServiceFeePercent = serviceFeePercent
 				sessResp.applySeatingLinks(admissionByID[sess.ID.String()])
 				sessResp.applyPosterFallback(eventResp.PosterMediaID, eventResp.PosterURL)
 

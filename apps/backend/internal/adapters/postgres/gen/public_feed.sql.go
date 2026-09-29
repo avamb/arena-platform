@@ -175,12 +175,16 @@ func (q *Queries) GetPublicCheckoutContext(ctx context.Context, token string, se
 type FeedTokenBuyerFlagsRow struct {
 	CollectName  bool `json:"collect_name"`
 	CollectPhone bool `json:"collect_phone"`
+	// FeePercent is the channel's service charge ("5.00" = 5 %), the widget's
+	// cart shows it as a line; the checkout applies the same value.
+	FeePercent string
 }
 
 const getFeedTokenBuyerFlags = `-- name: GetFeedTokenBuyerFlags :one
 SELECT
     sc.collect_name,
-    sc.collect_phone
+    sc.collect_phone,
+    sc.fee_percent
 FROM agent_feed_tokens ft
 JOIN sales_channels sc ON sc.id = ft.sales_channel_id
 WHERE ft.token     = $1
@@ -196,6 +200,6 @@ WHERE ft.token     = $1
 func (q *Queries) GetFeedTokenBuyerFlags(ctx context.Context, feedToken string) (FeedTokenBuyerFlagsRow, error) {
 	row := q.db.QueryRow(ctx, getFeedTokenBuyerFlags, feedToken)
 	var r FeedTokenBuyerFlagsRow
-	err := row.Scan(&r.CollectName, &r.CollectPhone)
+	err := row.Scan(&r.CollectName, &r.CollectPhone, &r.FeePercent)
 	return r, err
 }

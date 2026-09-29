@@ -101,7 +101,8 @@ WHERE ft.token     = $1
 -- Feature #321 WID-0d.
 SELECT
     sc.collect_name,
-    sc.collect_phone
+    sc.collect_phone,
+    sc.fee_percent
 FROM agent_feed_tokens ft
 JOIN sales_channels sc ON sc.id = ft.sales_channel_id
 WHERE ft.token     = $1

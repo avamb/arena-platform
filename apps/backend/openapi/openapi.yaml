@@ -29932,6 +29932,11 @@ paths:
           * `poster_url` — public URL of the event cover, or null.
 
         Session level (per-session poster + gallery):
+          * `service_fee_percent` — the channel's service charge as a
+            decimal string (`"5.00"` = 5 %, `"0.00"` = none), applied on
+            top of the ticket prices at checkout; the widget shows it as
+            a cart line so the buyer sees the total before the payment
+            page does.
           * `poster_media_id` — resolved cover: session's own value when
             set, otherwise the event fallback. Same on `poster_url`.
           * `media_gallery: SessionMediaItem[]` — ordered per-session
