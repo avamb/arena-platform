@@ -69,6 +69,13 @@ entries short and factual.
   including admin grant/revoke and sender-dns style additions), regenerate Go
   types (`types_gen.go`) AND the TypeScript client. Commit regenerated files
   with the change. Codegen drift is a known recurring defect.
+- **A description-only edit to openapi.yaml still needs `node scripts/gen-ts-client.mjs`.**
+  The generated TypeScript client carries the descriptions as doc comments,
+  and CI's "OpenAPI Check" diffs the committed client against a fresh
+  generation — a text-only change to a route description (feed session
+  `timezone`, 2026-09-29) went red twice, and the second run only inherited
+  the first's drift. Regenerate after EVERY openapi.yaml touch, not only
+  after a schema change.
 - **A `$ref`-valued schema property still needs its own `description`** —
   `TestOpenAPIDocs_SchemaPropertiesDescription` inspects the property node
   itself, so a bare `foo: {$ref: ...}` fails. Use the house idiom:
