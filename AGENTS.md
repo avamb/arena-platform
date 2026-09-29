@@ -1678,6 +1678,14 @@ entries short and factual.
   superadmin identity (`/v1/me` roles) lists every organization as owner in
   the chooser (`ArenaClient.AllOrganizations`); guarded by
   `TestBotE2E_SuperadminWorksInEveryOrganization`.
+- **The bot's "changed elsewhere" check compares `updated_at` as the API
+  prints it — whole seconds (`time.RFC3339`).** A change inside the same
+  second as the load is invisible, so the e2e test that simulates an outside
+  edit must move `events.updated_at` a clear margin ahead
+  (`now() + interval '1 minute'`), never a plain `now()`: on a fast runner
+  the whole edit flow fits in one second and `TestBotE2E_WizardCreatesAnEvent`
+  failed three times in a row on CI (2026-09-29) while passing in earlier,
+  slower runs.
 - **`cmd/arena-bot` (package `internal/platform/eventbot`) is the fourth
   binary of the image and polls Telegram with `github.com/go-telegram/bot`
   at ONE worker** (`WithWorkers(1)`), so one person's messages are handled
