@@ -299,6 +299,16 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Vary: Origin on EVERY response, not only on the ones that carry
+			// Access-Control-Allow-Origin. The public routes are cacheable
+			// (Cache-Control: public, max-age=30), so a copy fetched WITHOUT an
+			// Origin — a buyer or an operator opening the JSON URL in the
+			// address bar — would otherwise be served by the browser cache to
+			// the page's cross-origin fetch a moment later, and that copy has
+			// no CORS headers: the tickets page showed "Something went wrong"
+			// for 30 s after the API URL had been opened directly
+			// (2026-09-29). Vary: Origin keys the cache on the header instead.
+			w.Header().Add("Vary", "Origin")
 			origin := strings.TrimSpace(r.Header.Get("Origin"))
 			if origin == "" {
 				next.ServeHTTP(w, r)
@@ -310,7 +320,6 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 				allowedOrigin = "*"
 			} else if _, ok := allowed[origin]; ok {
 				allowedOrigin = origin
-				w.Header().Add("Vary", "Origin")
 			}
 			if allowedOrigin == "" {
 				next.ServeHTTP(w, r)

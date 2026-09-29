@@ -588,6 +588,13 @@ entries short and factual.
   Bil24 — plan `08_architecture/23_ga_category_quotas_plan_ru.md`; the WP site
   caches category availability in product meta, so re-run the catalog sync
   after a fix before judging the page.
+- **`corsMiddleware` sends `Vary: Origin` on EVERY response, including one
+  with no Origin header — keep it that way.** The public routes are
+  cacheable (`Cache-Control: public, max-age=30`); until 2026-09-29 the
+  header was added only when Access-Control-Allow-Origin was, so a copy
+  fetched without an Origin (the JSON URL opened in the address bar) was
+  served by the browser cache to the tickets page's cross-origin fetch a
+  moment later, with no CORS headers — "Something went wrong" for 30 s.
 - **The public widget API has THREE independent rate limits, not one shared
   bucket, and the per-IP one only works when `TRUSTED_PROXY_COUNT` is set
   correctly.** `PUBLIC_FEED_TOKEN_RATE_LIMIT` (default 20000/min) is
