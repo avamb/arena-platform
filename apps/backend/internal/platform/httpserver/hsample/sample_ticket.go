@@ -137,7 +137,12 @@ func (h *Handler) HandleSessionSampleTicket(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", `attachment; filename="sample-ticket.pdf"`)
 	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
+	//nolint:gosec // G705: gosec's taint analysis flags this only because the
+	// locale entered through r.URL.Query(). It is matched against a fixed
+	// three-entry table before use and never reaches the body; every byte
+	// written here is a PDF the renderer built from stored rows.
 	_, _ = w.Write(out)
 }
 

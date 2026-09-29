@@ -1787,10 +1787,40 @@ entries short and factual.
   `settings.hosted_page.enabled = true`. Every import path now mints the
   slug (`himports.assignEventSlug`: `geoslug.Slugify(name)`, `-2`, `-3`…
   against `EventSlugTaken`, set once via `SetEventSlugIfEmpty` — a re-save
-  keeps it). The channel flag is still set by hand in the admin channel
-  settings; a bot-provisioned organization does not get it automatically,
-  so the bot's "your sales link" points at a 404 until an operator turns it
-  on ("Arena Test Promotions", first client-style run 2026-09-29).
+  keeps it). The channel flag has NO admin toggle (only the free-text
+  "Additional settings JSON" textarea), so the import switches it on itself
+  for a channel a human NAMED in `channelIds` that carries no gateway
+  credential (`gen.EnableChannelHostedPage`, advisory warning
+  `import.hosted_page_enabled`, shown by the bot); a WordPress site's
+  channel (`settings.gateway.token_hash` / legacy `gateway_token_hash`) and
+  the API key's own bound channel are never touched. An organization whose
+  channel predates this gets the flag on its next publish through the bot.
+- **A session has a sample e-ticket (migration 0119):
+  `GET /v1/organizations/{org_id}/sessions/{session_id}/sample-ticket`**
+  (`session.read`, `httpserver/hsample`) renders the buyer's real layout
+  through `pdf.Render` with the new `Ticket.Watermark` field (a diagonal
+  low-alpha stamp that never touches the anchored code block) and a REAL
+  EAN-13 minted through `mint.EAN13` in the `sample` barcode authority
+  (`barcode_authorities.type` CHECK widened; the REST enums for creating or
+  scanning authorities deliberately do not list it) and linked once per
+  session in `session_sample_barcodes`. SCAN_TICKET answers such a code
+  `-2 bil24.sample_ticket` and never marks it scanned — the check is on an
+  optional `barcodeAuthorityQuerier` extension of `ScanQuerier`, so the
+  pre-#472 fakes skip it. The bot sends the PDF after "Done!" and on the
+  event card's "Sample ticket" button (`sendSampleTicket`, Telegram
+  `sendDocument`); the e2e stub records it as `[document <name>] <caption>`.
+- **The bot reads a sent poster with a vision model, and everything it
+  reads is a BUTTON, never a value.** `internal/platform/posterread`
+  (Anthropic Messages API, forced `poster_facts` tool, image only — no
+  buyer data, no keys) is wired by `POSTER_LLM_API_KEY` on `arena-bot`
+  (model `POSTER_LLM_MODEL`, default `claude-sonnet-5`; empty key = off,
+  the wizard asks as before). The reading lands in `Draft.Hints`
+  (`wizard_hints.go`); `Render` prepends a "From the poster: …" button
+  (`hintButtonData`) to every question `hintValue` answers, and `apply`
+  turns the press into the typed text or the choice payload. A poster may
+  arrive at the FIRST question (`stEvName` accepts `WizInput.Poster` and
+  stays), and the poster step then offers `keep`. The model call blocks the
+  bot's single worker for up to 45 s ("Reading the poster…" is sent first).
 - **A JWT caller of the event-bundle import binds the event to NO sales
   channel unless it names `channelIds`.** `ensureChannelPublication` only
   ever knew `api_keys.channel_id`; a human operator (the bot) got a
