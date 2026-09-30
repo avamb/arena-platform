@@ -224,7 +224,10 @@ func TestEventBundle525_CreateMintsArenaIdentity(t *testing.T) {
 	var posterHits int
 	poster := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		posterHits++
-		w.Header().Set("Content-Type", "image/png")
+		// A media object uploaded without a type answers its signed URL as
+		// application/octet-stream (the bot's poster, 2026-09-30); the bytes
+		// are still a PNG and the side-load must go by them.
+		w.Header().Set("Content-Type", "application/octet-stream")
 		_, _ = w.Write(posterBytes)
 	}))
 	defer poster.Close()

@@ -7,6 +7,7 @@
 package hmedia
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -145,6 +146,19 @@ func (h *Handler) CreateMedia(w http.ResponseWriter, r *http.Request) {
 	if mt, _, perr := mime.ParseMediaType(contentType); perr == nil {
 		contentType = mt
 	}
+	// A client that names no type (Go's multipart CreateFormFile always
+	// writes application/octet-stream) still uploads a real PNG or JPEG;
+	// the stored type then drives every later "is it an image" check — the
+	// import's poster side-load, the signed download's Content-Type — so
+	// it is sniffed from the bytes rather than recorded as unknown.
+	body := bufio.NewReader(file)
+	if contentType == "application/octet-stream" {
+		if head, _ := body.Peek(512); len(head) > 0 {
+			if sniffed := http.DetectContentType(head); sniffed != "application/octet-stream" {
+				contentType, _, _ = mime.ParseMediaType(sniffed)
+			}
+		}
+	}
 
 	key, err := mediastore.NewStorageKey(ownerType)
 	if err != nil {
@@ -155,7 +169,7 @@ func (h *Handler) CreateMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	checksum, size, err := h.media.PutAndStream(ctx, key, contentType, file)
+	checksum, size, err := h.media.PutAndStream(ctx, key, contentType, body)
 	if err != nil {
 		h.logger.Error("media: storage put failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -234,7 +248,7 @@ func (h *Handler) GetMedia(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := mediaObjectFromRow(obj)
-	resp.SignedURL = signedURL
+	resp.SignedURL = h.absoluteSignedURL(signedURL)
 	resp.SignedURLTTLs = int64(signedURLTTL.Seconds())
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"media_object": resp,
@@ -344,4 +358,17 @@ func (h *Handler) DownloadMedia(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, max-age=60")
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, res.Body)
+}
+
+// absoluteSignedURL prefixes a host-relative signed path with the API
+// origin when one is configured; a presigned S3 URL is already absolute.
+func (h *Handler) absoluteSignedURL(raw string) string {
+	if raw == "" || strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") || h.publicBase == nil {
+		return raw
+	}
+	base := strings.TrimRight(strings.TrimSpace(h.publicBase()), "/")
+	if base == "" {
+		return raw
+	}
+	return base + raw
 }

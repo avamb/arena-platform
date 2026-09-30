@@ -57,6 +57,7 @@ var wizardKeys = []string{
 	"bot.wz.ask_poster",
 	"bot.wz.ask_name_poster",
 	"bot.wz.ask_poster_have",
+	"bot.wz.ask_poster_have_nosize",
 	"bot.wz.keep_poster_btn",
 	"bot.wz.hint_btn",
 	"bot.wz.poster_reading",

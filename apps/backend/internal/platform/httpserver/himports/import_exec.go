@@ -789,20 +789,27 @@ func (h *Handler) sideLoadPoster(ctx context.Context, orgID uuid.UUID, req bil24
 		return skip("upstream answered HTTP " + strconv.Itoa(resp.StatusCode))
 	}
 
-	contentType := trimSpace(resp.Header.Get("Content-Type"))
-	if idx := strings.IndexByte(contentType, ';'); idx >= 0 {
-		contentType = trimSpace(contentType[:idx])
-	}
-	if !strings.HasPrefix(contentType, "image/") {
-		return skip("upstream content type " + contentType + " is not an image")
-	}
-
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPosterBytes))
 	if err != nil {
 		return skip(err.Error())
 	}
 	if len(body) == 0 {
 		return skip("upstream returned an empty body")
+	}
+	// The bytes decide what the poster is, not the upstream's header: a
+	// media object uploaded without a type (the bot's first version sent
+	// none, so arena's own signed URL answered application/octet-stream)
+	// is still a PNG or a JPEG, and the poster of every bot-created event
+	// was silently dropped until 2026-09-30 because of that header alone.
+	contentType := trimSpace(resp.Header.Get("Content-Type"))
+	if idx := strings.IndexByte(contentType, ';'); idx >= 0 {
+		contentType = trimSpace(contentType[:idx])
+	}
+	if !strings.HasPrefix(contentType, "image/") {
+		contentType = http.DetectContentType(body)
+	}
+	if !strings.HasPrefix(contentType, "image/") {
+		return skip("upstream content type " + contentType + " is not an image")
 	}
 	sum := sha256.Sum256(body)
 	checksum := hex.EncodeToString(sum[:])

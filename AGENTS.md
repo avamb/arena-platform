@@ -1899,3 +1899,25 @@ entries short and factual.
   `import.invalid_venue` for a UUID that is not this org's venue. The bundle
   decoder ignores unknown fields, so an older arena silently falls back to the
   `venueName` match — ship the backend before relying on the pick.
+- **Every `/v1/media` answer wraps the object in `media_object`, and its
+  `signed_url` is absolute.** Until 2026-09-30 no poster sent to the Telegram
+  bot ever reached an event, for four reasons stacked on one path: the bot
+  decoded `POST /v1/media` and `GET /v1/media/{id}` at the TOP level (empty
+  id, empty signed URL — no error, the bundle just went out without
+  `bigPosterUrl`); `GET /v1/media/{id}` answered the local backend's
+  host-relative `/v1/media-files/...` path, which `sideLoadPoster` refuses
+  ("only http(s) poster urls"); Go's `multipart.CreateFormFile` labels the
+  part `application/octet-stream`, which `hmedia.CreateMedia` stored as the
+  content type; and the side-load trusted that header and skipped the
+  "non-image". Now `hmedia` absolutizes a relative signed URL onto
+  `Config.APIPublicBaseURL()` (`WithPublicBaseURL`, read per request) and
+  sniffs an untyped upload (`http.DetectContentType`), the side-load sniffs
+  the fetched bytes when the header is not `image/*`, and the bot sends a
+  `content_type` field and reads the envelope. The wizard e2e
+  (`bot_e2e_wizard_integration_test.go`) now sends a real 1000×1250 PNG
+  through the stub Telegram (`getFile` + `/file/bot<token>/<path>`) and
+  asserts `events.poster_media_id`; it needs `Options.Media` on the test
+  server and `srv.cfg.AppPublicURL = api.URL`, because the import fetches the
+  signed URL from the API itself. An event read back for "Edit" knows the
+  poster only by id, so the kept-poster question uses the
+  `bot.wz.ask_poster_have_nosize` text, never "0×0".

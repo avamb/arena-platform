@@ -27,9 +27,11 @@ import (
 
 	emailadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 )
 
 const (
@@ -121,7 +123,17 @@ func buildBotIntegrationServer(t *testing.T, pool *pgxpool.Pool) *Server {
 		BotServiceToken:           botTestServiceToken,
 		EventsTelegramBotUsername: "ArenaEventsCentrBot",
 	}
-	return New(Options{Config: cfg, Pool: pool, PgxPool: pool, Auth: stub, Verifier: verifier})
+	// A local-disk media store, so a poster the bot uploads is stored and the
+	// event-bundle can side-load it from the signed download URL.
+	st, err := storage.NewLocalStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewLocalStorage: %v", err)
+	}
+	media, err := mediastore.New(mediastore.Options{Pool: pool, Storage: st})
+	if err != nil {
+		t.Fatalf("mediastore.New: %v", err)
+	}
+	return New(Options{Config: cfg, Pool: pool, PgxPool: pool, Auth: stub, Verifier: verifier, Media: media})
 }
 
 // invite calls the org route's handler as the given user (the route's

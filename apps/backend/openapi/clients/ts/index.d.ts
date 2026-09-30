@@ -6165,7 +6165,10 @@ export interface components {
             created_at: string;
             /**
              * @description Short-lived download URL. Present on `GET /v1/media/{id}`
-             *     responses and omitted on `POST /v1/media` responses.
+             *     responses and omitted on `POST /v1/media` responses. Always
+             *     absolute: a local-storage deployment signs a host-relative path
+             *     and prefixes it with the API's public origin, so the value can
+             *     be handed on as-is (for example as an event-bundle `bigPosterUrl`).
              */
             signed_url?: string;
             /**

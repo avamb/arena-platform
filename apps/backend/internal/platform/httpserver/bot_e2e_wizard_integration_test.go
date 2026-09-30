@@ -10,9 +10,13 @@ package httpserver
 // database (see bot_e2e_integration_test.go for the DSN recipe).
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -36,6 +40,30 @@ func e2eWizardMessage(text string) string {
 func e2eWizardCallback(data string) string {
 	return fmt.Sprintf(`"callback_query":{"id":"cb-%d","from":{"id":%d,"is_bot":false,"first_name":"Wiz","language_code":"ru"},"chat_instance":"x","data":%q,"message":{"message_id":5,"date":1700000000,"chat":{"id":%d,"type":"private"},"text":"menu"}}`,
 		time.Now().UnixNano()%100000, e2eWizardTelegramUser, data, e2eWizardTelegramUser)
+}
+
+// e2eWizardDocument is a poster sent as a file (the recommended way, no
+// Telegram recompression); the stub serves the staged bytes for its file id.
+func e2eWizardDocument(name string, size int) string {
+	return fmt.Sprintf(`"message":{"message_id":%d,"date":1700000000,"chat":{"id":%d,"type":"private"},"from":{"id":%d,"is_bot":false,"first_name":"Wiz","language_code":"ru"},"document":{"file_id":"poster-file","file_unique_id":"poster-u","file_name":%q,"mime_type":"image/png","file_size":%d}}`,
+		time.Now().UnixNano()%100000, e2eWizardTelegramUser, e2eWizardTelegramUser, name, size)
+}
+
+// e2eWizardPoster is a 1000x1250 (4:5) PNG: the smallest poster the wizard
+// accepts, solid so it encodes small.
+func e2eWizardPoster(t *testing.T) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 1000, 1250))
+	for x := 0; x < 1000; x++ {
+		for y := 0; y < 1250; y++ {
+			img.Set(x, y, color.RGBA{R: 40, G: 60, B: 200, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode poster: %v", err)
+	}
+	return buf.Bytes()
 }
 
 // mark returns how many messages the bot has sent so far; waitSince looks
@@ -73,6 +101,9 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	srv := buildBotIntegrationServer(t, pool)
 	api := httptest.NewServer(srv.router)
 	defer api.Close()
+	// The poster the bot uploads is handed to the event-bundle as a signed
+	// download URL of the API itself, so the API must know its own address.
+	srv.cfg.AppPublicURL = api.URL
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	q := gen.New(pool)
@@ -104,6 +135,7 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 		exec("sessions", `DELETE FROM sessions WHERE event_id IN (SELECT id FROM events WHERE org_id = $1)`, f.orgID)
 		exec("event_promoters", `DELETE FROM event_promoters WHERE org_id = $1`, f.orgID)
 		exec("events", `DELETE FROM events WHERE org_id = $1`, f.orgID)
+		exec("media", `DELETE FROM media_objects WHERE org_id = $1`, f.orgID)
 		exec("org_promoters", `DELETE FROM org_promoters WHERE org_id = $1`, f.orgID)
 		exec("venues", `DELETE FROM venues WHERE org_id = $1`, f.orgID)
 		exec("audit", `DELETE FROM audit_events WHERE metadata->>'org_id' = $1`, f.orgID.String())
@@ -172,7 +204,15 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	say(eventName, "Возраст")
 	press("wz:age:16+", "От чьего имени")
 	press("wz:prom:org", "афишу")
-	press("wz:skip", "Дата сеанса 1")
+	// The poster goes in as a file: the bot downloads it from Telegram,
+	// uploads it to the API and moves on to the dates.
+	tg.mu.Lock()
+	tg.poster = e2eWizardPoster(t)
+	posterSize := len(tg.poster)
+	tg.mu.Unlock()
+	posterMark := tg.mark()
+	tg.push(e2eWizardDocument("poster.png", posterSize))
+	tg.waitSince(t, posterMark, "Дата сеанса 1")
 
 	// Step 2 — when and where; the venue is created through the API.
 	say("32.13.2027", "Не понял дату")
@@ -244,6 +284,18 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	if evName != eventName || evStatus != "published" || age == nil || *age != "16+" {
 		t.Fatalf("event = %s %s %v", evName, evStatus, age)
 	}
+	// The poster reached the event: the bundle named the upload's signed URL
+	// and the import side-loaded a copy of it (both bugs of 2026-09-30 —
+	// the bot misread the upload answer, the copy was refused as untyped —
+	// left poster_media_id NULL here).
+	var posterType string
+	var posterBytes int64
+	if err := pool.QueryRow(ctx, `SELECT m.content_type, m.byte_size FROM events e JOIN media_objects m ON m.id = e.poster_media_id WHERE e.id = $1`, eventID).Scan(&posterType, &posterBytes); err != nil {
+		t.Fatalf("event poster: %v", err)
+	}
+	if posterType != "image/png" || posterBytes != int64(posterSize) {
+		t.Fatalf("event poster = %s %d bytes, want image/png %d", posterType, posterBytes, posterSize)
+	}
 	if err := pool.QueryRow(ctx, `SELECT s.start_at, s.currency, s.capacity_total, v.timezone, v.capacity_default, v.address_line1
 	        FROM sessions s JOIN venues v ON v.id = s.venue_id WHERE s.event_id = $1`, eventID).Scan(&startsAt, &sessionCur, &capacity, &venueTZ, &venueCap, &venueAddr); err != nil {
 		t.Fatalf("session row: %v", err)
@@ -292,8 +344,13 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	press("wz:edit:event", "Как называется")
 	say(renamed, "Возраст")
 	press("wz:age:18+", "От чьего имени")
-	press("wz:prom:org", "афишу")
-	press("wz:skip", "Проверьте и опубликуйте")
+	// The event read back from arena carries its poster (by id only, so no
+	// size is named); it is kept as it is.
+	have := press("wz:prom:org", "уже принята")
+	if strings.Contains(have, "0×0") {
+		t.Fatalf("kept-poster question names a zero size: %s", have)
+	}
+	press("wz:keep", "Проверьте и опубликуйте")
 	press("wz:edit:tickets", "Как назвать билет")
 	press("wz:default", "Цена билета")
 	say("27,50", "Цена меняется")
@@ -324,6 +381,11 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	}
 	if nameAfter != renamed || ageAfter != "18+" || sessionsAfter != 1 || tiersAfter != 1 || priceAfter != 2750 || windowsAfter != 0 {
 		t.Fatalf("after edit: name=%q age=%q sessions=%d tiers=%d price=%d windows=%d", nameAfter, ageAfter, sessionsAfter, tiersAfter, priceAfter, windowsAfter)
+	}
+	// A re-save keeps the poster the event had.
+	var posterKept bool
+	if err := pool.QueryRow(ctx, `SELECT poster_media_id IS NOT NULL FROM events WHERE id = $1`, eventID).Scan(&posterKept); err != nil || !posterKept {
+		t.Fatalf("poster after edit: kept=%v err=%v", posterKept, err)
 	}
 	if _, err := q.GetBotDraft(ctx, e2eWizardTelegramUser, f.orgID); err == nil {
 		t.Fatal("edit draft must be deleted after saving")

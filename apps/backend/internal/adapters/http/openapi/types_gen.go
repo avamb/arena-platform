@@ -6693,7 +6693,10 @@ type MediaObject struct {
 	OwnerType MediaObjectOwnerType `json:"owner_type"`
 
 	// SignedUrl Short-lived download URL. Present on `GET /v1/media/{id}`
-	// responses and omitted on `POST /v1/media` responses.
+	// responses and omitted on `POST /v1/media` responses. Always
+	// absolute: a local-storage deployment signs a host-relative path
+	// and prefixes it with the API's public origin, so the value can
+	// be handed on as-is (for example as an event-bundle `bigPosterUrl`).
 	SignedUrl *string `json:"signed_url,omitempty"`
 
 	// SignedUrlTtlSeconds Lifetime (seconds) of the accompanying `signed_url`. Omitted

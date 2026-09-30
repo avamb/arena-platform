@@ -43,6 +43,8 @@ type stubTelegram struct {
 	sent    []string
 	nextID  int64
 	msgSeq  int
+	// poster is what getFile/the download path serve for any file id.
+	poster []byte
 }
 
 func newStubTelegram(t *testing.T) *stubTelegram {
@@ -102,6 +104,20 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 		seq := s.msgSeq
 		s.mu.Unlock()
 		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":1700000000,"chat":{"id":777,"type":"private"},"text":%q}}`, seq, p.Text)
+	case "getFile":
+		// Any file id resolves to the poster the test staged; the library
+		// then downloads it from /file/bot<token>/<file_path> below.
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"file_id":"poster-file","file_unique_id":"poster-u","file_size":1,"file_path":"documents/poster.png"}}`))
+	case "poster.png":
+		s.mu.Lock()
+		data := s.poster
+		s.mu.Unlock()
+		if len(data) == 0 {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(data)
 	case "sendDocument":
 		// A document arrives as multipart; it is recorded as a sent line
 		// "[document <filename>] <caption>" so waitFor can see it.

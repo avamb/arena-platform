@@ -87,7 +87,13 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 	case stEvPoster:
 		if d.Event.PosterMediaID != "" {
 			// The poster came with the first question: keep it, or send another.
-			return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_poster_have", map[string]any{"W": d.Event.PosterW, "H": d.Event.PosterH}),
+			// An event read back from arena knows only the poster's id, not
+			// its size; the question then names no dimensions.
+			have := t("bot.wz.ask_poster_have", map[string]any{"W": d.Event.PosterW, "H": d.Event.PosterH})
+			if d.Event.PosterW <= 0 || d.Event.PosterH <= 0 {
+				have = t("bot.wz.ask_poster_have_nosize", nil)
+			}
+			return Screen{Text: header(1, "bot.wz.title_event") + have,
 				Buttons: nav([]Button{btn("bot.wz.keep_poster_btn", "keep")})}, nil
 		}
 		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_poster", nil), Buttons: nav([]Button{btn("bot.wz.skip_btn", "skip")})}, nil

@@ -494,6 +494,9 @@ other = "What is the event called? Buyers will see this name, for example “Pie
 ["bot.wz.ask_poster_have"]
 other = "The poster {{.W}}×{{.H}} is already in. Keep it, or send another?"
 
+["bot.wz.ask_poster_have_nosize"]
+other = "The poster is already in. Keep it, or send another?"
+
 ["bot.wz.keep_poster_btn"]
 other = "Keep this poster"
 

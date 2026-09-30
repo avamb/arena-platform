@@ -178,6 +178,10 @@ func (c *ArenaClient) UploadPoster(ctx context.Context, jwt string, orgID uuid.U
 	mw := multipart.NewWriter(&buf)
 	_ = mw.WriteField("owner_type", "event_poster")
 	_ = mw.WriteField("org_id", orgID.String())
+	// The type must travel: CreateFormFile labels the part
+	// application/octet-stream, and a poster stored under that type was
+	// skipped by the import's side-load ("not an image") until 2026-09-30.
+	_ = mw.WriteField("content_type", contentType)
 	part, err := mw.CreateFormFile("file", filename)
 	if err != nil {
 		return UploadedMedia{}, err
@@ -203,24 +207,37 @@ func (c *ArenaClient) UploadPoster(ctx context.Context, jwt string, orgID uuid.U
 	if res.StatusCode < 200 || res.StatusCode > 299 {
 		return UploadedMedia{}, &APIError{Status: res.StatusCode, Code: "media.upload_failed", Message: strings.TrimSpace(string(raw))}
 	}
-	var out UploadedMedia
-	if err := decodeJSON(raw, &out); err != nil {
+	// The API answers {"media_object": {...}}; until 2026-09-30 this decoded
+	// a flat object and the id came back empty, so no bot-created event
+	// ever carried its poster into the publish — silently.
+	var env struct {
+		MediaObject UploadedMedia `json:"media_object"`
+	}
+	if err := decodeJSON(raw, &env); err != nil {
 		return UploadedMedia{}, err
 	}
-	_ = contentType
-	return out, nil
+	if env.MediaObject.ID == "" {
+		return UploadedMedia{}, fmt.Errorf("POST /v1/media: answer carries no media_object.id: %s", truncate(strings.TrimSpace(string(raw)), 200))
+	}
+	return env.MediaObject, nil
 }
 
 // MediaSignedURL returns a short-lived download URL of a media object, the
 // value the event-bundle's bigPosterUrl takes.
 func (c *ArenaClient) MediaSignedURL(ctx context.Context, jwt, mediaID string) (string, error) {
+	// The object sits under media_object, like every /v1/media answer.
 	var out struct {
-		SignedURL string `json:"signed_url"`
+		MediaObject struct {
+			SignedURL string `json:"signed_url"`
+		} `json:"media_object"`
 	}
 	if err := c.do(ctx, http.MethodGet, "/v1/media/"+url.PathEscape(mediaID), jwt, nil, &out); err != nil {
 		return "", err
 	}
-	return out.SignedURL, nil
+	if out.MediaObject.SignedURL == "" {
+		return "", fmt.Errorf("GET /v1/media/%s: answer carries no media_object.signed_url", mediaID)
+	}
+	return out.MediaObject.SignedURL, nil
 }
 
 // ImportResult is the event-bundle import response the wizard reads.
