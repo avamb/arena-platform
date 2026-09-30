@@ -202,6 +202,9 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	press("wz:new", "Как называется")
 	say(strings.Repeat("Ы", 201), "до 200 знаков") // an over-long name is refused, with a plain hint
 	say(eventName, "Возраст")
+	// "Cancel" asks first: one tap must not wipe the draft.
+	press("wz:cancel", "Выйти из создания ивента")
+	press("wz:cancel:no", "Возраст")
 	press("wz:age:16+", "От чьего имени")
 	press("wz:prom:org", "афишу")
 	// The poster goes in as a file: the bot downloads it from Telegram,
@@ -222,9 +225,8 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	press("wz:city:"+cityID.String(), "Где проходит")
 	press("wz:venue:new", "Название площадки")
 	say(venueName, "Адрес площадки")
-	say("Vabaduse väljak 1", "Сколько мест в зале")
-	say("120", "Сколько мест продаём") // zone guessed: straight to the session capacity
-	press("wz:keep", "Сеанс 1: 15.12.2027 20:00")
+	say("Vabaduse väljak 1", "Сколько мест продаём") // the one question about places
+	say("120", "Сеанс 1: 15.12.2027 20:00")          // zone guessed: straight to "one more date?"
 	press("wz:next", "Билеты одинаковые")
 
 	// Step 3 — one category with a price change.
@@ -341,20 +343,16 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 			t.Errorf("edit summary lacks %q:\n%s", want, intro)
 		}
 	}
-	press("wz:edit:event", "Как называется")
-	say(renamed, "Возраст")
-	press("wz:age:18+", "От чьего имени")
-	// The event read back from arena carries its poster (by id only, so no
-	// size is named); it is kept as it is.
-	have := press("wz:prom:org", "уже принята")
-	if strings.Contains(have, "0×0") {
-		t.Fatalf("kept-poster question names a zero size: %s", have)
-	}
-	press("wz:keep", "Проверьте и опубликуйте")
-	press("wz:edit:tickets", "Как назвать билет")
+	// Every part is one short screen and the answer returns to the card; the
+	// poster of the event is never asked about, it stays as it is.
+	press("wz:e:name", "Сейчас")
+	say(renamed, "Правка ивента")
+	press("wz:e:age", "Сейчас")
+	press("wz:age:18+", "Правка ивента")
+	press("wz:e:tickets", "Как назвать билет")
 	press("wz:default", "Цена билета")
 	say("27,50", "Цена меняется")
-	press("wz:no", "Проверьте и опубликуйте")
+	press("wz:no", "Правка ивента")
 	// The bot compares updated_at as the API prints it - whole seconds - so
 	// a change inside the same second as the load is invisible. On a fast
 	// machine the whole edit above fits in one second, which made a plain
@@ -399,7 +397,7 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	press("wz:keep", "В каком городе")
 	press("wz:keep", "Где проходит")
 	press("wz:keep", "Сколько мест продаём")
-	press("wz:keep", "Ещё сеанс")
+	press("wz:keep", "ещё один сеанс")
 	copySummary := press("wz:next", "Проверьте и опубликуйте")
 	if !strings.Contains(copySummary, "20.12.2027 20:00") || !strings.Contains(copySummary, "27,50 EUR") || !strings.Contains(copySummary, renamed) {
 		t.Fatalf("copy summary:\n%s", copySummary)
@@ -408,6 +406,23 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	var events int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM events WHERE org_id = $1 AND name = $2`, f.orgID, renamed).Scan(&events); err != nil || events != 2 {
 		t.Fatalf("events after copy = %d (%v), want 2", events, err)
+	}
+
+	// ── Leaving keeps the draft by default: it is offered again, and only
+	// "delete" removes it.
+	press("wz:new", "Как называется")
+	say("Черновик "+eventName, "Возраст")
+	press("wz:cancel", "Выйти из создания ивента")
+	press("wz:cancel:keep", "Черновик сохранён")
+	if _, err := q.GetBotDraft(ctx, e2eWizardTelegramUser, f.orgID); err != nil {
+		t.Fatalf("the kept draft is gone: %v", err)
+	}
+	press("wz:new", "незаконченный ивент")
+	press("wz:resume", "Возраст")
+	press("wz:cancel", "Выйти из создания ивента")
+	press("wz:cancel:drop", "Черновик удалён")
+	if _, err := q.GetBotDraft(ctx, e2eWizardTelegramUser, f.orgID); err == nil {
+		t.Fatal("the dropped draft must be deleted")
 	}
 
 	cancel()

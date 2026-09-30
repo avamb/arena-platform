@@ -443,12 +443,6 @@ other = "Price step"
 ["bot.wz.ack_places"]
 other = "Tickets"
 
-["bot.wz.ack_until"]
-other = "On sale until"
-
-["bot.wz.ack_limit"]
-other = "Ticket limit"
-
 ["bot.wz.ack_none"]
 other = "none"
 
@@ -487,9 +481,6 @@ other = "Check and publish"
 
 ["bot.wz.resume"]
 other = "You have an unfinished event, “{{.Name}}”. Continue where you stopped, or start over?"
-
-["bot.wz.ask_name_poster"]
-other = "What is the event called? Buyers will see this name, for example “Piedmont wine tasting”.\n\nYou can send the poster right away: I will read the name, the date, the time, the venue and the prices off it and offer them — you confirm each one with a button. The poster goes to Claude (Anthropic) for reading: the picture only, no buyer data."
 
 ["bot.wz.ask_poster_have"]
 other = "The poster {{.W}}×{{.H}} is already in. Keep it, or send another?"
@@ -624,7 +615,7 @@ other = "Please give the venue's name."
 other = "Street address of the venue. You can skip this."
 
 ["bot.wz.ask_venue_capacity"]
-other = "How many places does the hall usually have? A number, for example 120. You can skip this."
+other = "How many places are you selling for this session? A number, for example 120. It is also remembered as the new venue's usual capacity."
 
 ["bot.wz.ask_venue_tz"]
 other = "Time zone of the venue, for example Europe/Prague."
@@ -648,7 +639,7 @@ other = "A whole number of at least 1 is needed, for example 80."
 other = "Date {{.N}}: {{.When}}, {{.Venue}}, {{.City}}, {{.Capacity}} places."
 
 ["bot.wz.ask_more_sessions"]
-other = "Another date? The same event on another day or in another city. Tickets are the same for every date."
+other = "Add another session? The same event on another day or in another city. Its prices and ticket counts will be the same as the first one's."
 
 ["bot.wz.more_session_btn"]
 other = "+ Another date"
@@ -741,22 +732,10 @@ other = "How many places in “{{.Name}}”?"
 other = "A whole number of at least 1 is needed."
 
 ["bot.wz.ask_t_cat_until"]
-other = "Until which date does “{{.Name}}” sell (inclusive)? DD.MM.YYYY — or press “By count only”."
-
-["bot.wz.t_cat_until_skip"]
-other = "By ticket count only"
+other = "When does the price of “{{.Name}}” end? Send a date (DD.MM.YYYY, inclusive) or a number of tickets, for example 50. You can send both separated by a space, for example “31.12.2026 50”: the price ends at whichever comes first."
 
 ["bot.wz.err_until_order"]
 other = "Categories in sequence: “{{.Name}}” must sell longer than the previous one."
-
-["bot.wz.ask_t_cat_limit"]
-other = "Or the first how many tickets at this price? A number — or “No limit”."
-
-["bot.wz.t_cat_limit_skip"]
-other = "No limit"
-
-["bot.wz.err_cat_need_end"]
-other = "Category “{{.Name}}”: give the date it sells until, or a ticket count."
 
 ["bot.wz.ask_t_cat_more"]
 other = "Categories: {{.List}}. Add another?"
@@ -910,7 +889,7 @@ other = "Save changes"
 other = "Save anyway"
 
 ["bot.wz.edit_intro"]
-other = "Editing «{{.Name}}». Everything below is what arena has right now. Existing dates cannot be changed here — only new ones added; one or several categories and their order stay as they are."
+other = "Editing «{{.Name}}». Below is what arena has right now. Choose what to change: each change is a screen of its own. Existing dates cannot be changed, only new ones added."
 
 ["bot.wz.edit_footer"]
 other = "Press «Save changes» — the changes reach the sales page within a minute or two. Sold tickets are not affected: a new price applies to the next purchases."
@@ -932,3 +911,150 @@ other = "A copy of «{{.Name}}»: the tickets and the description are taken over
 
 ["bot.wz.edit_load_failed"]
 other = "I could not read this event from arena. Try again in a minute."
+
+["bot.wz.poster_first_btn"]
+other = "📷 Fill in from a poster"
+
+["bot.wz.ask_poster_first"]
+other = "Send the poster: I will read the name, date, time, venue and prices off it and offer them as answers. You confirm each value with a button.\n\nBest as a <b>file</b>, so the quality is kept:\n• on a phone: paperclip 📎 → “File” → the picture;\n• on a computer: paperclip 📎 → the picture → tick “Send as a document”.\n\nPNG or JPG up to 5 MB, 4:5 (1080×1350) or square, width from 1000 px. The picture goes to Claude (Anthropic) for reading: the poster only, no buyer data.\n\nChanged your mind? Press “Back” and type the name."
+
+["bot.wz.err_poster_first"]
+other = "I am waiting for a poster as a file or photo. To type the name instead, press “Back”."
+
+["bot.wz.edit_step_title"]
+other = "<b>✏️ Editing · {{.Title}}</b>\n"
+
+["bot.wz.edit_home_btn"]
+other = "⬅ Back to the event"
+
+["bot.wz.edit_field_name"]
+other = "Name"
+
+["bot.wz.edit_field_description"]
+other = "Description"
+
+["bot.wz.edit_field_poster"]
+other = "Poster"
+
+["bot.wz.edit_field_age"]
+other = "Age"
+
+["bot.wz.edit_field_promoter"]
+other = "Promoter"
+
+["bot.wz.edit_field_currency"]
+other = "Currency"
+
+["bot.wz.edit_field_dates"]
+other = "Dates"
+
+["bot.wz.edit_field_tickets"]
+other = "Prices and categories"
+
+["bot.wz.edit_ask_name"]
+other = "Now: “{{.Value}}”.\nSend the new name in one message."
+
+["bot.wz.edit_ask_age"]
+other = "Now: {{.Value}}. Choose the new age limit."
+
+["bot.wz.edit_ask_promoter"]
+other = "Now: {{.Value}}. Choose who the event runs for."
+
+["bot.wz.edit_ask_poster"]
+other = "Poster now: {{.State}}.\nSend the new one as a <b>file</b>: paperclip 📎 → “File” (on a computer tick “Send as a document”). PNG or JPG up to 5 MB, 4:5 (1080×1350) or square, width from 1000 px."
+
+["bot.wz.edit_poster_yes"]
+other = "set"
+
+["bot.wz.edit_poster_none"]
+other = "none"
+
+["bot.wz.edit_ask_description"]
+other = "Send the new description in one message, up to 4000 characters."
+
+["bot.wz.edit_desc_now"]
+other = "Now:\n<i>{{.Text}}</i>\n\n"
+
+["bot.wz.edit_desc_none"]
+other = "There is no description now.\n\n"
+
+["bot.wz.clear_description_btn"]
+other = "Remove the description"
+
+["bot.wz.edit_card_title"]
+other = "<b>✏️ Editing the event</b>\n"
+
+["bot.wz.edit_card_changed"]
+other = "✎ Changed: {{.List}}. None of it is on the site yet: press “Publish changes” when everything is ready."
+
+["bot.wz.edit_card_clean"]
+other = "Choose what to change. Each change is a short screen of its own."
+
+["bot.wz.edit_b_name"]
+other = "Name"
+
+["bot.wz.edit_b_desc"]
+other = "Description"
+
+["bot.wz.edit_b_poster"]
+other = "Poster"
+
+["bot.wz.edit_b_age"]
+other = "Age"
+
+["bot.wz.edit_b_promoter"]
+other = "Promoter"
+
+["bot.wz.edit_b_currency"]
+other = "Currency"
+
+["bot.wz.edit_b_date"]
+other = "＋ Date"
+
+["bot.wz.edit_b_tickets"]
+other = "Prices and categories"
+
+["bot.wz.edit_publish_btn"]
+other = "✅ Publish changes"
+
+["bot.wz.edit_exit_btn"]
+other = "Exit"
+
+["bot.wz.ask_t_cat_last"]
+other = "Is “{{.Name}}” the last category, or will another follow? The last one sells until the session starts."
+
+["bot.wz.t_cat_last_btn"]
+other = "The last one"
+
+["bot.wz.t_cat_next_btn"]
+other = "Another follows"
+
+["bot.wz.err_cat_end"]
+other = "I did not get that. Send a date DD.MM.YYYY, a number of tickets, or both separated by a space."
+
+["bot.wz.ack_end"]
+other = "✔ “{{.Name}}”: the price holds{{if .Until}} until {{.Until}}{{end}}{{if and .Until .Limit}}, or{{end}}{{if .Limit}} for the first {{.Limit}} tickets{{end}}"
+
+["bot.wz.ack_category_last"]
+other = "{{.Name}} (the last one, until the session starts)"
+
+["bot.wz.cancel_ask_create"]
+other = "Leave creating the event? You can keep the draft and come back to it with the “＋ Event” button, or delete it."
+
+["bot.wz.cancel_ask_edit"]
+other = "Leave editing? The changes are not published yet. You can keep them as a draft or delete them."
+
+["bot.wz.cancel_continue_btn"]
+other = "▶ Continue"
+
+["bot.wz.cancel_keep_btn"]
+other = "💾 Keep and leave"
+
+["bot.wz.cancel_drop_btn"]
+other = "🗑 Delete the draft"
+
+["bot.wz.cancel_drop_edit_btn"]
+other = "🗑 Delete the changes"
+
+["bot.wz.draft_kept"]
+other = "The draft is kept. Come back to it with the “＋ Event” button."

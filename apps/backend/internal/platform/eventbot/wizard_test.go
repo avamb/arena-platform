@@ -305,13 +305,12 @@ func TestWizard_SequenceCategories_NewCityAndVenue(t *testing.T) {
 	r.press("venue:new", stVName)
 	r.text("Teatro", stVAddress)
 	r.text("Calle Mayor 1", stVCapacity)
-	r.text("50", stVTz) // Spain has two zones (Canaries): asked
+	r.text("50", stVTz) // the one question about places; Spain has two zones (Canaries): asked
 	r.text("Mars/Olympus", stVTz)
-	r.text("Europe/Madrid", stSCapacity)
+	r.text("Europe/Madrid", stSMore) // the places were answered already: straight to "one more date?"
 	if want := "venue:Teatro@Europe/Madrid"; len(refs.created) != 2 || refs.created[1] != want {
 		t.Fatalf("created = %v", refs.created)
 	}
-	r.press("keep", stSMore)
 	if s := r.d.Sessions[0]; s.CityID != "city-madrid" || s.VenueID != "venue-teatro" || s.Capacity != 50 || s.Timezone != "Europe/Madrid" {
 		t.Fatalf("session = %+v", s)
 	}
@@ -319,23 +318,17 @@ func TestWizard_SequenceCategories_NewCityAndVenue(t *testing.T) {
 	r.press("mode:multi", stTKind)
 	r.press("kind:sequence", stTCatName)
 	r.text("Early bird", stTCatPrice)
-	r.text("20", stTCatUntil)
-	r.press("skip", stTCatLimit)
-	r.press("skip", stTCatUntil) // neither a date nor a limit: asked again
-	r.text("31.12.2026", stTCatLimit)
-	r.text("20", stTCatMore)
-	r.press("more", stTCatName)
+	r.text("20", stTCatUntil)     // the first category cannot be the last: no such question
+	r.text("banana", stTCatUntil) // neither a date nor a number: asked again
+	r.text("31.12.2026 20", stTCatName)
 	r.text("Regular", stTCatPrice)
-	r.text("30", stTCatUntil)
+	r.text("30", stTCatLast)
+	r.press("next", stTCatUntil)
 	r.text("01.12.2026", stTCatUntil) // earlier than the previous end: refused
-	r.text("28.02.2027", stTCatLimit)
-	r.press("skip", stTCatMore)
-	r.press("more", stTCatName)
+	r.text("28.02.2027", stTCatName)
 	r.text("Last minute", stTCatPrice)
-	r.text("40", stTCatUntil)
-	r.text("19.03.2027", stTCatLimit)
-	r.press("skip", stTCatMore)
-	r.press("done", stXDescription)
+	r.text("40", stTCatLast)
+	r.press("last", stXDescription)
 	r.press("skip", stXCurrency)
 	r.press("cur:EUR", stXPublish)
 	r.press("pub:now", stSummary)
@@ -439,8 +432,16 @@ func TestWizard_CancelAndBack(t *testing.T) {
 	r.text("X", stEvAge)
 	r.press("back", stEvName)
 	r.text("Y", stEvAge)
-	if _, err := r.w.Apply(context.Background(), r.ws, r.d, WizInput{Data: "cancel"}); !errors.Is(err, ErrCancelled) {
-		t.Fatalf("cancel: %v", err)
+	// "Cancel" asks first, and keeping the draft is the default way out.
+	r.press("cancel", stCancel)
+	r.press("cancel:no", stEvAge)
+	r.press("cancel", stCancel)
+	if _, err := r.w.Apply(context.Background(), r.ws, r.d, WizInput{Data: "cancel:keep"}); !errors.Is(err, ErrSavedExit) || r.d.Step != stEvAge {
+		t.Fatalf("keep: err=%v step=%s", err, r.d.Step)
+	}
+	r.press("cancel", stCancel)
+	if _, err := r.w.Apply(context.Background(), r.ws, r.d, WizInput{Data: "cancel:drop"}); !errors.Is(err, ErrCancelled) {
+		t.Fatalf("drop: %v", err)
 	}
 }
 

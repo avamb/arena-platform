@@ -31,32 +31,57 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		if len(d.History) > 0 {
 			last = append(last, btn("bot.wz.back_btn", "back"))
 		}
-		last = append(last, btn("bot.wz.cancel_btn", "cancel"))
+		if d.Mode == ModeEdit && d.Scratch.Edit != "" {
+			// Changing one part of an event: the way out is the event's card,
+			// not "cancel" (which would read as throwing the whole edit away).
+			last = append(last, btn("bot.wz.edit_home_btn", "e:home"))
+		} else {
+			last = append(last, btn("bot.wz.cancel_btn", "cancel"))
+		}
 		return append(rows, last)
 	}
 	header := func(n int, titleKey string) string {
+		if d.Mode == ModeEdit && d.Scratch.Edit != "" {
+			return t("bot.wz.edit_step_title", map[string]any{"Title": t("bot.wz.edit_field_"+d.Scratch.Edit, nil)})
+		}
 		return t("bot.wz.step_title", map[string]any{"N": n, "Title": t(titleKey, nil)})
 	}
 
 	switch d.Step {
 	case stEvName:
-		ask := "bot.wz.ask_name"
-		if w.posterHints && d.Event.PosterMediaID == "" {
-			ask = "bot.wz.ask_name_poster"
+		if d.singleEdit() {
+			return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.edit_ask_name", map[string]any{"Value": Esc(d.Event.Name)}), Buttons: nav()}, nil
 		}
-		return Screen{Text: header(1, "bot.wz.title_event") + t(ask, nil), Buttons: nav()}, nil
+		rows := [][]Button{}
+		if w.posterHints && d.Mode == ModeCreate && d.Event.PosterMediaID == "" {
+			// The one action on this screen is the name; reading a poster is a
+			// separate, optional screen behind a button.
+			rows = append(rows, []Button{btn("bot.wz.poster_first_btn", "poster")})
+		}
+		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_name", nil), Buttons: nav(rows...)}, nil
+
+	case stEvPosterAsk:
+		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_poster_first", nil), Buttons: nav()}, nil
 
 	case stEvAge:
 		rows := [][]Button{}
-		if ws.Defaults.Age != "" {
+		if ws.Defaults.Age != "" && !d.singleEdit() {
 			rows = append(rows, []Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": ws.Defaults.Age}), Data: "keep"}})
 		}
 		row := []Button{}
 		for _, a := range AgeOptions {
-			row = append(row, Button{Label: a, Data: "age:" + a})
+			label := a
+			if d.singleEdit() && a == d.Event.Age {
+				label = "✔ " + a
+			}
+			row = append(row, Button{Label: label, Data: "age:" + a})
 		}
 		rows = append(rows, row)
-		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_age", nil), Buttons: nav(rows...)}, nil
+		ask := t("bot.wz.ask_age", nil)
+		if d.singleEdit() {
+			ask = t("bot.wz.edit_ask_age", map[string]any{"Value": d.Event.Age})
+		}
+		return Screen{Text: header(1, "bot.wz.title_event") + ask, Buttons: nav(rows...)}, nil
 
 	case stEvPromoter:
 		promoters, err := w.refs.Promoters(ctx, ws.JWT, ws.OrgID)
@@ -64,19 +89,33 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 			return Screen{}, err
 		}
 		rows := [][]Button{}
-		if ws.Defaults.PromoterID != "" && ws.Defaults.PromoterName != "" {
+		if ws.Defaults.PromoterID != "" && ws.Defaults.PromoterName != "" && !d.singleEdit() {
 			rows = append(rows, []Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": ws.Defaults.PromoterName}), Data: "keep"}})
 		}
 		orgLabel := t("bot.wz.promoter_org", nil)
 		if ws.OrgName != "" {
 			orgLabel = truncate(ws.OrgName, 48)
 		}
-		rows = append(rows, []Button{{Label: orgLabel, Data: "prom:org"}})
+		mark := func(on bool) string {
+			if d.singleEdit() && on {
+				return "✔ "
+			}
+			return ""
+		}
+		rows = append(rows, []Button{{Label: mark(d.Event.PromoterID == "") + orgLabel, Data: "prom:org"}})
 		for _, p := range sortedByName(promoters) {
-			rows = append(rows, []Button{{Label: truncate(p.Name, 48), Data: "prom:" + p.ID}})
+			rows = append(rows, []Button{{Label: mark(p.ID == d.Event.PromoterID) + truncate(p.Name, 48), Data: "prom:" + p.ID}})
 		}
 		rows = append(rows, []Button{btn("bot.wz.promoter_new", "prom:new")})
-		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_promoter", map[string]any{"Org": Esc(orgLabel)}), Buttons: nav(rows...)}, nil
+		ask := t("bot.wz.ask_promoter", map[string]any{"Org": Esc(orgLabel)})
+		if d.singleEdit() {
+			now := orgLabel
+			if d.Event.PromoterName != "" {
+				now = d.Event.PromoterName
+			}
+			ask = t("bot.wz.edit_ask_promoter", map[string]any{"Value": Esc(now)})
+		}
+		return Screen{Text: header(1, "bot.wz.title_event") + ask, Buttons: nav(rows...)}, nil
 
 	case stPromoterName:
 		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_promoter_name", nil), Buttons: nav()}, nil
@@ -85,6 +124,13 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_promoter_legal", nil), Buttons: nav([]Button{btn("bot.wz.skip_btn", "skip")})}, nil
 
 	case stEvPoster:
+		if d.singleEdit() {
+			state := t("bot.wz.edit_poster_none", nil)
+			if d.Event.PosterMediaID != "" {
+				state = t("bot.wz.edit_poster_yes", nil)
+			}
+			return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.edit_ask_poster", map[string]any{"State": state}), Buttons: nav()}, nil
+		}
 		if d.Event.PosterMediaID != "" {
 			// The poster came with the first question: keep it, or send another.
 			// An event read back from arena knows only the poster's id, not
@@ -203,7 +249,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 	case stVAddress:
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_venue_address", nil), Buttons: nav([]Button{btn("bot.wz.skip_btn", "skip")})}, nil
 	case stVCapacity:
-		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_venue_capacity", nil), Buttons: nav([]Button{btn("bot.wz.skip_btn", "skip")})}, nil
+		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_venue_capacity", nil), Buttons: nav()}, nil
 	case stVTz:
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_venue_tz", nil), Buttons: nav()}, nil
 
@@ -266,17 +312,26 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_price", map[string]any{"Name": Esc(d.Scratch.Cat.Name)}), Buttons: nav()}, nil
 	case stTCatPlaces:
 		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_places", map[string]any{"Name": Esc(d.Scratch.Cat.Name)}), Buttons: nav()}, nil
+	case stTCatLast:
+		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_last", map[string]any{"Name": Esc(d.Scratch.Cat.Name)}),
+			Buttons: nav([]Button{btn("bot.wz.t_cat_last_btn", "last")}, []Button{btn("bot.wz.t_cat_next_btn", "next")})}, nil
 	case stTCatUntil:
-		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_until", map[string]any{"Name": Esc(d.Scratch.Cat.Name)}),
-			Buttons: nav([]Button{btn("bot.wz.t_cat_until_skip", "skip")})}, nil
-	case stTCatLimit:
-		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_limit", nil), Buttons: nav([]Button{btn("bot.wz.t_cat_limit_skip", "skip")})}, nil
+		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_until", map[string]any{"Name": Esc(d.Scratch.Cat.Name)}), Buttons: nav()}, nil
 
 	case stTCatMore:
 		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_more", map[string]any{"List": w.categoriesList(loc, d)}),
 			Buttons: nav([]Button{btn("bot.wz.t_cat_more_btn", "more"), btn("bot.wz.t_cat_done_btn", "done")})}, nil
 
 	case stXDescription:
+		if d.singleEdit() {
+			now := t("bot.wz.edit_desc_none", nil)
+			rows := [][]Button{}
+			if strings.TrimSpace(d.Event.Description) != "" {
+				now = t("bot.wz.edit_desc_now", map[string]any{"Text": Esc(truncate(d.Event.Description, 300))})
+				rows = append(rows, []Button{btn("bot.wz.clear_description_btn", "clear")})
+			}
+			return Screen{Text: header(4, "bot.wz.title_extra") + now + t("bot.wz.edit_ask_description", nil), Buttons: nav(rows...)}, nil
+		}
 		return Screen{Text: header(4, "bot.wz.title_extra") + t("bot.wz.ask_description", nil), Buttons: nav([]Button{btn("bot.wz.skip_btn", "skip")})}, nil
 
 	case stXCurrency:
@@ -317,6 +372,48 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 	case stXPublish:
 		return Screen{Text: header(4, "bot.wz.title_extra") + t("bot.wz.ask_publish", nil),
 			Buttons: nav([]Button{btn("bot.wz.publish_now_btn", "pub:now")}, []Button{btn("bot.wz.publish_later_btn", "pub:later")})}, nil
+
+	case stEditMenu:
+		text := t("bot.wz.edit_card_title", nil) + w.Summary(loc, d)
+		mark := func(field, key string) string {
+			label := t(key, nil)
+			for _, c := range d.Changed {
+				if c == field {
+					return "✎ " + label
+				}
+			}
+			return label
+		}
+		rows := [][]Button{}
+		if len(d.Changed) > 0 {
+			names := make([]string, 0, len(d.Changed))
+			for _, c := range d.Changed {
+				names = append(names, t("bot.wz.edit_field_"+c, nil))
+			}
+			text += "\n\n" + t("bot.wz.edit_card_changed", map[string]any{"List": strings.Join(names, ", ")})
+			rows = append(rows, []Button{btn("bot.wz.edit_publish_btn", "publish")})
+		} else {
+			text += "\n\n" + t("bot.wz.edit_card_clean", nil)
+		}
+		rows = append(rows,
+			[]Button{{Label: mark("name", "bot.wz.edit_b_name"), Data: "e:name"}, {Label: mark("description", "bot.wz.edit_b_desc"), Data: "e:desc"}},
+			[]Button{{Label: mark("poster", "bot.wz.edit_b_poster"), Data: "e:poster"}, {Label: mark("age", "bot.wz.edit_b_age"), Data: "e:age"}},
+			[]Button{{Label: mark("promoter", "bot.wz.edit_b_promoter"), Data: "e:promoter"}, {Label: mark("currency", "bot.wz.edit_b_currency"), Data: "e:currency"}},
+			[]Button{{Label: mark("dates", "bot.wz.edit_b_date"), Data: "e:date"}, {Label: mark("tickets", "bot.wz.edit_b_tickets"), Data: "e:tickets"}},
+			[]Button{btn("bot.wz.edit_exit_btn", "cancel")},
+		)
+		return Screen{Text: text, Buttons: rows}, nil
+
+	case stCancel:
+		ask, drop := "bot.wz.cancel_ask_create", "bot.wz.cancel_drop_btn"
+		if d.Mode == ModeEdit {
+			ask, drop = "bot.wz.cancel_ask_edit", "bot.wz.cancel_drop_edit_btn"
+		}
+		return Screen{Text: t(ask, nil), Buttons: [][]Button{
+			{btn("bot.wz.cancel_continue_btn", "cancel:no")},
+			{btn("bot.wz.cancel_keep_btn", "cancel:keep")},
+			{btn(drop, "cancel:drop")},
+		}}, nil
 
 	case stSummary:
 		text := header(5, "bot.wz.title_summary") + w.Summary(loc, d) + "\n\n" + t("bot.wz.summary_footer", nil)
@@ -382,6 +479,10 @@ func (w *Wizard) Summary(loc string, d *Draft) string {
 			names = append(names, Esc(c.Name))
 		}
 		b.WriteString("\n" + t("bot.wz.summary_channels", map[string]any{"List": strings.Join(names, ", ")}))
+	}
+	if d.Mode == ModeEdit {
+		// An existing event's sales status is not something the card changes.
+		return b.String()
 	}
 	b.WriteString("\n")
 	if d.Publish {

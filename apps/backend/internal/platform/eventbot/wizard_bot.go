@@ -224,7 +224,7 @@ func (b *Bot) wizardText(ctx context.Context, chatID int64, from *models.User, t
 	}
 	ws := b.wizardSession(id, jwt)
 	d, _, err := b.loadDraft(ctx, from.ID, ws)
-	if err != nil || d == nil || d.Step == stDone || d.Step == stSummary {
+	if err != nil || d == nil || d.Step == stDone || d.Step == stSummary || d.Step == stEditMenu || d.Step == stCancel {
 		return false
 	}
 	b.wizardApply(ctx, chatID, nil, from, ws, d, WizInput{Text: text})
@@ -240,7 +240,7 @@ func (b *Bot) wizardPoster(ctx context.Context, chatID int64, from *models.User,
 	}
 	ws := b.wizardSession(id, jwt)
 	d, _, err := b.loadDraft(ctx, from.ID, ws)
-	if err != nil || d == nil || (d.Step != stEvPoster && d.Step != stEvName) {
+	if err != nil || d == nil || !waitsForPoster(d) {
 		return false
 	}
 	loc := ws.Locale
@@ -299,9 +299,25 @@ func (b *Bot) wizardPoster(ctx context.Context, chatID int64, from *models.User,
 		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_failed", nil), nil)
 		return true
 	}
-	b.readPosterHints(ctx, chatID, loc, d, data, contentType)
+	if d.Mode != ModeEdit { // a replaced poster of an existing event has nothing to prefill
+		b.readPosterHints(ctx, chatID, loc, d, data, contentType)
+	}
 	b.wizardApply(ctx, chatID, nil, from, ws, d, WizInput{Poster: &PosterAccepted{MediaID: up.ID, W: cfg.Width, H: cfg.Height}})
 	return true
+}
+
+// waitsForPoster reports whether the draft can take a poster right now: the
+// poster question, and — for a new event only — the name question and the
+// "fill it in from the poster" screen. While an existing event's name or
+// description is being changed, a stray picture must not replace its poster.
+func waitsForPoster(d *Draft) bool {
+	switch d.Step {
+	case stEvPoster:
+		return true
+	case stEvName, stEvPosterAsk:
+		return d.Mode != ModeEdit
+	}
+	return false
 }
 
 // posterReadTimeout bounds the model call; the person sees "reading…"
@@ -377,6 +393,15 @@ func (b *Bot) wizardApply(ctx context.Context, chatID int64, editMsgID *int, fro
 		if errors.Is(err, ErrCancelled) {
 			_ = b.queries.DeleteBotDraft(ctx, from.ID, ws.OrgID)
 			b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.wz.cancelled", nil), nil)
+			b.showHome(ctx, chatID, nil, from, "")
+			return
+		}
+		if errors.Is(err, ErrSavedExit) {
+			if _, serr := b.storeDraft(ctx, from.ID, ws, d); serr != nil {
+				b.wizardFail(ctx, chatID, editMsgID, loc, serr)
+				return
+			}
+			b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.wz.draft_kept", nil), nil)
 			b.showHome(ctx, chatID, nil, from, "")
 			return
 		}

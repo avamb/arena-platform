@@ -3,6 +3,7 @@ package eventbot
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -79,7 +80,7 @@ func TestLoadEventDraft_SingleCategoryWithSchedule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(notes) != 0 || d.Mode != ModeEdit || d.Step != stSummary || !d.Publish {
+	if len(notes) != 0 || d.Mode != ModeEdit || d.Step != stEditMenu || !d.Publish {
 		t.Fatalf("draft head = mode %s step %s publish %v notes %v", d.Mode, d.Step, d.Publish, notes)
 	}
 	if d.Event.EventID != f.event.Id.String() || d.Event.Name != "Загруженный концерт" || d.Event.Age != "16+" || d.Event.PromoterName != "Lampyris s.r.o." || d.Event.Description != "Описание из Arena" || d.Event.UpdatedAt != "2026-10-01T12:00:00Z" {
@@ -99,30 +100,37 @@ func TestLoadEventDraft_SingleCategoryWithSchedule(t *testing.T) {
 		t.Fatalf("schedule (must be sorted) = %+v", d.Tickets.Schedule)
 	}
 
-	// The summary renders the loaded event and the edit buttons.
+	// The edit card renders the loaded event; nothing can be published from
+	// it until something has been changed.
 	r.d = d
 	screen, err := r.w.Render(context.Background(), r.ws, d)
-	if err != nil || !strings.Contains(screen.Text, "Загруженный концерт") || screen.Buttons[0][0].Data != "publish" || !strings.Contains(screen.Buttons[0][0].Label, "Сохранить") {
-		t.Fatalf("summary = %+v %v", screen, err)
+	if err != nil || !strings.Contains(screen.Text, "Загруженный концерт") || strings.Contains(fmt.Sprint(screen.Buttons), "publish") || !strings.Contains(fmt.Sprint(screen.Buttons), "e:name") {
+		t.Fatalf("edit card = %+v %v", screen, err)
 	}
 
 	// Re-pricing the single category keeps its id, whatever it is called.
-	r.press("edit:tickets", stTName)
+	r.press("e:tickets", stTName)
 	r.text("Вход в зал", stTPrice)
 	r.text("550", stTChanges)
-	r.press("no", stSummary) // back to the summary, not on into the description
+	r.press("no", stEditMenu) // back to the card, not on into the description
 	c := d.Tickets.Categories[0]
 	if c.TierID != tier.Id.String() || c.Name != "Вход в зал" || c.PriceMinor != 55000 || len(d.Tickets.Schedule) != 0 {
 		t.Fatalf("re-entered category = %+v schedule=%v", c, d.Tickets.Schedule)
 	}
 
-	// Renaming the event returns to the summary as well.
-	r.press("edit:event", stEvName)
-	r.text("Новое имя", stEvAge)
+	// Each part of the event is one screen: the answer returns to the card.
+	r.press("e:name", stEvName)
+	r.text("Новое имя", stEditMenu)
+	r.press("e:age", stEvAge)
 	r.press("keep", stEvAge) // no remembered default: ignored
-	r.press("age:18+", stEvPromoter)
-	r.press("prom:org", stEvPoster)
-	r.press("skip", stSummary)
+	r.press("age:18+", stEditMenu)
+	r.press("e:promoter", stEvPromoter)
+	r.press("prom:org", stEditMenu)
+	for _, want := range []string{"tickets", "name", "age", "promoter"} {
+		if !contains(d.Changed, want) {
+			t.Fatalf("Changed = %v, lacks %q", d.Changed, want)
+		}
+	}
 	if d.Event.Name != "Новое имя" || d.Event.Age != "18+" || d.Event.PromoterID != "" {
 		t.Fatalf("event after edit = %+v", d.Event)
 	}
@@ -138,11 +146,11 @@ func TestLoadEventDraft_SingleCategoryWithSchedule(t *testing.T) {
 
 	// Adding a date: existing ones stay, the new one is asked from scratch
 	// and the wizard comes back to the summary.
-	r.press("edit:when", stSDate)
+	r.press("e:date", stSDate)
 	r.text("16.12.2026", stSTime)
 	r.press("default", stSSame)
 	r.press("same", stSMore)
-	r.press("next", stSummary) // tickets exist: no ticket questions again
+	r.press("next", stEditMenu) // tickets exist: no ticket questions again
 	if len(d.Sessions) != 2 || d.Sessions[0].SessionID == "" || d.Sessions[1].SessionID != "" || d.Sessions[1].VenueID != ds.VenueID {
 		t.Fatalf("sessions after add = %+v", d.Sessions)
 	}
@@ -189,17 +197,13 @@ func TestLoadEventDraft_SequenceAndParallelAndCopy(t *testing.T) {
 
 	// Re-entering the categories carries the ids over by name.
 	r.d = d
-	r.press("edit:tickets", stTCatName)
+	r.press("e:tickets", stTCatName)
 	r.text("Early bird", stTCatPrice)
 	r.text("25", stTCatUntil)
-	r.text("31.12.2026", stTCatLimit)
-	r.press("skip", stTCatMore)
-	r.press("more", stTCatName)
+	r.text("31.12.2026", stTCatName)
 	r.text("Door price", stTCatPrice) // a new name: no id, a new category
-	r.text("45", stTCatUntil)
-	r.press("skip", stTCatLimit)
-	r.text("10", stTCatMore)
-	r.press("done", stSummary)
+	r.text("45", stTCatLast)
+	r.press("last", stEditMenu)
 	cats = d.Tickets.Categories
 	if len(cats) != 2 || cats[0].TierID != early.String() || cats[0].PriceMinor != 2500 || cats[1].TierID != "" || cats[1].Name != "Door price" {
 		t.Fatalf("re-entered sequence = %+v", cats)

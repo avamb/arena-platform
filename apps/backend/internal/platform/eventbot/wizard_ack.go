@@ -19,7 +19,7 @@ func (w *Wizard) Apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		return note, err
 	}
 	switch strings.TrimSpace(in.Data) {
-	case "back", "cancel":
+	case "back", "cancel", "cancel:no", "cancel:keep", "e:home":
 		return note, nil
 	}
 	return w.ack(ws, before, d), nil
@@ -127,18 +127,27 @@ func (w *Wizard) ack(ws WizSession, step string, d *Draft) string {
 		if c := lastCat(); c != nil && c.Places > 0 {
 			return line("bot.wz.ack_places", itoa(c.Places))
 		}
-	case stTCatUntil:
-		if d.Scratch.Cat.SellUntil == "" {
-			return line("bot.wz.ack_until", t("bot.wz.ack_none", nil))
+	case stTCatLast:
+		if d.Step == stTCatUntil {
+			return ""
 		}
-		return line("bot.wz.ack_until", DisplayDate(d.Scratch.Cat.SellUntil))
-	case stTCatLimit:
 		if c := lastCat(); c != nil {
-			if c.SellLimit == 0 {
-				return line("bot.wz.ack_limit", t("bot.wz.ack_none", nil))
-			}
-			return line("bot.wz.ack_limit", itoa(c.SellLimit))
+			return line("bot.wz.ack_category", t("bot.wz.ack_category_last", map[string]any{"Name": Esc(c.Name)}))
 		}
+	case stTCatUntil:
+		c := lastCat()
+		if c == nil {
+			return ""
+		}
+		until := ""
+		if c.SellUntil != "" {
+			until = DisplayDate(c.SellUntil)
+		}
+		limit := ""
+		if c.SellLimit > 0 {
+			limit = itoa(c.SellLimit)
+		}
+		return t("bot.wz.ack_end", map[string]any{"Name": Esc(c.Name), "Until": until, "Limit": limit})
 	case stXDescription:
 		if strings.TrimSpace(d.Event.Description) == "" {
 			return line("bot.wz.ack_description", t("bot.wz.ack_none", nil))

@@ -32,7 +32,7 @@ type EditIO interface {
 var ErrNotEditable = errors.New("eventbot: event cannot be edited from the bot")
 
 // LoadEventDraft reads the event and builds a ModeEdit draft positioned at
-// the summary. The returned notes are things the person should know before
+// the edit card. The returned notes are things the person should know before
 // saving (e.g. that other dates carry different tickets).
 func (w *Wizard) LoadEventDraft(ctx context.Context, io EditIO, ws WizSession, eventID uuid.UUID) (*Draft, []string, error) {
 	ev, err := io.GetEvent(ctx, ws.JWT, eventID)
@@ -78,7 +78,7 @@ func (w *Wizard) LoadEventDraft(ctx context.Context, io EditIO, ws WizSession, e
 		byISO[strings.ToUpper(c.ISO2)] = c
 	}
 
-	d := &Draft{Version: draftSchemaVersion, Mode: ModeEdit, Step: stSummary}
+	d := &Draft{Version: draftSchemaVersion, Mode: ModeEdit, Step: stEditMenu}
 	d.Event = DraftEvent{
 		EventID:      ev.Id.String(),
 		UpdatedAt:    ev.UpdatedAt.UTC().Format(time.RFC3339Nano),

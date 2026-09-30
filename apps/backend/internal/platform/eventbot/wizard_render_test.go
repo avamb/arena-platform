@@ -20,24 +20,21 @@ func TestWizard_EveryStepRendersInBothLocales(t *testing.T) {
 	r.press("kind:sequence", stTCatName)
 	r.text("Early", stTCatPrice)
 	r.text("20", stTCatUntil)
-	r.text("31.12.2026", stTCatLimit)
-	r.text("10", stTCatMore)
-	r.press("more", stTCatName)
+	r.text("31.12.2026 10", stTCatName)
 	r.text("Late", stTCatPrice)
-	r.text("30", stTCatUntil)
-	r.press("skip", stTCatLimit)
-	r.text("5", stTCatMore)
-	r.press("done", stXDescription)
+	r.text("30", stTCatLast)
+	r.press("last", stXDescription)
 	r.press("skip", stXCurrency)
 	r.press("cur:CZK", stXChannels)
 	r.press("ch:ch1", stXChannels)
 	r.press("done", stXPublish)
 	r.press("pub:now", stSummary)
 
-	steps := []string{stEvName, stEvAge, stEvPromoter, stPromoterName, stPromoterLegal, stEvPoster, stSDate, stSTime, stSSame,
+	steps := []string{stEvName, stEvPosterAsk, stEvAge, stEvPromoter, stPromoterName, stPromoterLegal, stEvPoster, stSDate, stSTime, stSSame,
 		stSCountry, stSCity, stCityName, stSVenue, stVName, stVAddress, stVCapacity, stVTz, stSCapacity, stSMore, stTMode,
 		stTName, stTPrice, stTChanges, stTChangeDate, stTChangePrice, stTChangeMore, stTKind, stTCatName, stTCatPrice,
-		stTCatPlaces, stTCatUntil, stTCatLimit, stTCatMore, stXDescription, stXCurrency, stXChannels, stXPublish, stSummary}
+		stTCatPlaces, stTCatLast, stTCatUntil, stTCatMore, stXDescription, stXCurrency, stXChannels, stXPublish, stSummary,
+		stEditMenu, stCancel}
 	for _, loc := range SupportedLocales {
 		r.ws.Locale = loc
 		for _, st := range steps {

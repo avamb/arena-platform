@@ -16,16 +16,23 @@ func TestWizard_PosterHintsAreButtonsThePersonConfirms(t *testing.T) {
 	r := newWizardRun(t, newFakeRefs())
 	r.w.WithPosterHints(true)
 
-	// The first question invites the poster and names where it goes.
+	// The first question asks for the name and offers the poster as a button;
+	// the button opens a screen of its own that names where the poster goes.
 	screen, err := r.w.Render(context.Background(), r.ws, r.d)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(screen.Text, "Claude") || len(screen.Buttons) != 1 {
+	if strings.Contains(screen.Text, "Claude") || len(screen.Buttons) != 2 || screen.Buttons[0][0].Data != "poster" {
 		t.Fatalf("first question without a poster: %q buttons=%v", screen.Text, screen.Buttons)
 	}
+	r.press("poster", stEvPosterAsk)
+	screen, err = r.w.Render(context.Background(), r.ws, r.d)
+	if err != nil || !strings.Contains(screen.Text, "Claude") {
+		t.Fatalf("poster screen: %q %v", screen.Text, err)
+	}
+	r.text("просто текст", stEvPosterAsk) // a typed text is not a poster
 
-	// The poster arrives first: kept, the name is still asked.
+	// The poster arrives: kept, back at the name question.
 	note := r.step(WizInput{Poster: &PosterAccepted{MediaID: "m1", W: 1080, H: 1350}}, stEvName)
 	if !strings.Contains(note, "1080×1350") || r.d.Event.PosterMediaID != "m1" {
 		t.Fatalf("poster at the name step: note=%q media=%q", note, r.d.Event.PosterMediaID)
@@ -105,8 +112,7 @@ func TestWizard_PosterHintsAreButtonsThePersonConfirms(t *testing.T) {
 	r.press(hintButtonData, stVAddress)
 	r.press("skip", stVCapacity)
 	r.text("120", stVTz) // Spain: the wizard asks the zone
-	r.text("Europe/Madrid", stSCapacity)
-	r.press("keep", stSMore)
+	r.text("Europe/Madrid", stSMore)
 	r.press("next", stTMode)
 	r.press("mode:single", stTName)
 	if l := hintLabel(stTName); !strings.Contains(l, "Партер") {
