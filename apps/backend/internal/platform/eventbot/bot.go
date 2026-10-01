@@ -12,6 +12,7 @@ import (
 	tgbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/posterread"
@@ -350,7 +351,40 @@ func (b *Bot) acceptInvitation(ctx context.Context, chatID int64, from *models.U
 		"Org":  Esc(res.OrgName),
 		"Role": b.texts.T(res.Locale, roleKey, nil),
 	}), nil)
+	b.notifyInviter(ctx, res, from)
 	b.showHome(ctx, chatID, nil, from, "")
+}
+
+// notifyInviter tells whoever issued an accepted invitation that the person
+// has joined, in the inviter's own language. Best effort: an issuer without a
+// bot link (the superadmin's API call) is simply not told, and a failed send
+// never touches the new member's own flow.
+func (b *Bot) notifyInviter(ctx context.Context, res AcceptInvitationResponse, from *models.User) {
+	userID, err := uuid.Parse(res.UserID)
+	if err != nil {
+		return
+	}
+	orgID, err := uuid.Parse(res.OrgID)
+	if err != nil {
+		return
+	}
+	inviter, err := b.queries.GetBotInvitationInviterLink(ctx, userID, orgID, from.ID)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			b.logger.Warn("eventbot: inviter lookup failed", slog.String("error", err.Error()))
+		}
+		return
+	}
+	loc := NormalizeLocale(inviter.Locale)
+	roleKey := "bot.role_manager"
+	if res.Role == "owner" {
+		roleKey = "bot.role_owner"
+	}
+	b.send(ctx, inviter.TelegramUserID, b.texts.T(loc, "bot.invite_accepted_notice", map[string]any{
+		"Email": Esc(res.Email),
+		"Org":   Esc(res.OrgName),
+		"Role":  b.texts.T(loc, roleKey, nil),
+	}), nil)
 }
 
 func looksLikeEmail(s string) bool {

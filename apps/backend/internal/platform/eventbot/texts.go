@@ -48,7 +48,7 @@ var MessageKeys = []string{
 	"bot.team_remove_failed",
 	"bot.team_owner_only", "bot.cmd_org", "bot.cmd_lang", "bot.cmd_help",
 	"bot.not_invited", "bot.ask_email", "bot.ask_email_again",
-	"bot.invite_accepted", "bot.invite_not_found", "bot.invite_email_mismatch",
+	"bot.invite_accepted", "bot.invite_accepted_notice", "bot.invite_not_found", "bot.invite_email_mismatch",
 	"bot.invite_already_linked", "bot.invite_failed", "bot.already_linked",
 	"bot.role_owner", "bot.role_manager",
 	"bot.menu_title", "bot.btn_events", "bot.btn_org", "bot.btn_lang", "bot.btn_help",

@@ -249,6 +249,9 @@ other = "That does not look like an e-mail address. Please type it as in the inv
 ["bot.invite_accepted"]
 other = "Done! You are connected to <b>{{.Org}}</b> as {{.Role}}.\n\nHere you can see your events and sales; creating and editing events from the phone is coming next."
 
+["bot.invite_accepted_notice"]
+other = "✅ {{.Email}} accepted the invitation and joined the bot: organization <b>{{.Org}}</b>, role — {{.Role}}."
+
 ["bot.invite_not_found"]
 other = "This invitation link does not work any more: it was already used, or it expired after 7 days. Ask the owner of your organization for a new one."
 

@@ -108,3 +108,17 @@ WHERE  m.org_id = $1
   AND  m.status = 'active'
   AND  m.role IN ('org_admin', 'organizer')
 ORDER  BY (m.role = 'org_admin') DESC, u.email;
+
+-- name: GetBotInvitationInviterLink :one
+-- The Telegram account of whoever issued the invitation that this Telegram
+-- account just accepted, so the bot can tell them the person has joined. No
+-- row when the invitation was issued without a bot-linked user (the
+-- superadmin's API call, a person who never opened the bot).
+SELECT l.telegram_user_id, l.locale
+FROM   bot_invitations i
+JOIN   bot_telegram_links l ON l.user_id = i.invited_by AND l.revoked_at IS NULL
+WHERE  i.user_id = $1
+  AND  i.org_id = $2
+  AND  i.accepted_telegram_user_id = $3
+ORDER  BY i.accepted_at DESC
+LIMIT  1;

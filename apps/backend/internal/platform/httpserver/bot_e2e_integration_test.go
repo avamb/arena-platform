@@ -318,8 +318,26 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 	if !strings.Contains(invited, newEmail) || !strings.Contains(invited, "менеджер") || !strings.Contains(invited, "приглашение отправлено") {
 		t.Fatalf("after invite:\n%s", invited)
 	}
-	if code, _ := f.queuedCode(newEmail); code == "" {
+	colleagueCode, _ := f.queuedCode(newEmail)
+	if colleagueCode == "" {
 		t.Fatal("no invitation e-mail queued for the colleague")
+	}
+
+	// The colleague opens the link in Telegram: they are connected, and the
+	// owner who invited them is told in their own chat.
+	const colleagueTG = int64(780)
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM bot_telegram_links WHERE telegram_user_id = $1`, colleagueTG)
+	})
+	m = tg.mark()
+	tg.push(e2eMessageAs(colleagueTG, "/start inv_"+colleagueCode))
+	tg.waitSince(t, m, "адрес почты")
+	m = tg.mark()
+	tg.push(e2eMessageAs(colleagueTG, newEmail))
+	tg.waitSince(t, m, "Готово")
+	notice := tg.waitSince(t, m, "принял приглашение")
+	if !strings.Contains(notice, newEmail) || !strings.Contains(notice, "менеджер") {
+		t.Fatalf("the inviter's notice:\n%s", notice)
 	}
 
 	m = tg.mark()

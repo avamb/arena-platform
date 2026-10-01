@@ -299,3 +299,29 @@ func (q *Queries) ListBotTeam(ctx context.Context, orgID uuid.UUID) ([]BotTeamMe
 	}
 	return out, rows.Err()
 }
+
+const getBotInvitationInviterLink = `-- name: GetBotInvitationInviterLink :one
+SELECT l.telegram_user_id, l.locale
+FROM   bot_invitations i
+JOIN   bot_telegram_links l ON l.user_id = i.invited_by AND l.revoked_at IS NULL
+WHERE  i.user_id = $1
+  AND  i.org_id = $2
+  AND  i.accepted_telegram_user_id = $3
+ORDER  BY i.accepted_at DESC
+LIMIT  1`
+
+// BotInviterLink is the Telegram account (and language) of whoever issued an
+// accepted invitation.
+type BotInviterLink struct {
+	TelegramUserID int64  `json:"telegram_user_id"`
+	Locale         string `json:"locale"`
+}
+
+// GetBotInvitationInviterLink finds the issuer's Telegram account for the
+// invitation userID accepted in orgID from acceptedBy. pgx.ErrNoRows when the
+// issuer has no active bot link.
+func (q *Queries) GetBotInvitationInviterLink(ctx context.Context, userID, orgID uuid.UUID, acceptedBy int64) (BotInviterLink, error) {
+	var r BotInviterLink
+	err := q.db.QueryRow(ctx, getBotInvitationInviterLink, userID, orgID, acceptedBy).Scan(&r.TelegramUserID, &r.Locale)
+	return r, err
+}
