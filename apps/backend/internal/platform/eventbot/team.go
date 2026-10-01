@@ -74,6 +74,7 @@ const teamDialogTTL = 30 * time.Minute
 
 type teamDialog struct {
 	email   string // "" while the e-mail is awaited
+	msgID   int    // the one bot message the dialog lives in; each step edits it
 	expires time.Time
 }
 
@@ -90,11 +91,11 @@ func newTeamDialogs() *teamDialogs {
 	return &teamDialogs{byID: map[int64]teamDialog{}, lapsed: map[int64]bool{}}
 }
 
-func (t *teamDialogs) start(id int64) {
+func (t *teamDialogs) start(id int64, msgID int) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	delete(t.lapsed, id)
-	t.byID[id] = teamDialog{expires: time.Now().Add(teamDialogTTL)}
+	t.byID[id] = teamDialog{msgID: msgID, expires: time.Now().Add(teamDialogTTL)}
 }
 
 func (t *teamDialogs) get(id int64) (teamDialog, bool) {
@@ -125,7 +126,7 @@ func (t *teamDialogs) takeLapsed(id int64) bool {
 func (t *teamDialogs) setEmail(id int64, email string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.byID[id] = teamDialog{email: email, expires: time.Now().Add(teamDialogTTL)}
+	t.byID[id] = teamDialog{email: email, msgID: t.byID[id].msgID, expires: time.Now().Add(teamDialogTTL)}
 }
 
 func (t *teamDialogs) clear(id int64) {
@@ -245,8 +246,8 @@ func (b *Bot) teamCallback(ctx context.Context, chatID int64, msgID int, from *m
 	case "":
 		b.showTeam(ctx, chatID, &msgID, from, "")
 	case "invite":
-		b.team.start(from.ID)
-		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.team_ask_email", nil), b.cancelKeyboard(loc, "team"))
+		b.team.start(from.ID, msgID)
+		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.team_ask_email", nil), b.backKeyboard(loc, "home"))
 	case "role":
 		if len(parts) < 2 {
 			return
@@ -325,6 +326,7 @@ func (b *Bot) teamText(ctx context.Context, chatID int64, from *models.User, tex
 		if id, _, err := b.resolveIdentity(ctx, from.ID); err == nil && isOwner(id) {
 			b.send(ctx, chatID, b.texts.T(id.Locale(), "bot.team_dialog_expired", nil), &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 				{{Text: b.texts.T(id.Locale(), "bot.team_invite_btn", nil), CallbackData: "team:invite"}},
+				{{Text: b.texts.T(id.Locale(), "bot.btn_home", nil), CallbackData: "home"}},
 			}})
 			return true
 		}
@@ -340,15 +342,21 @@ func (b *Bot) teamText(ctx context.Context, chatID int64, from *models.User, tex
 	}
 	loc := id.Locale()
 	email := strings.ToLower(strings.TrimSpace(text))
+	// The dialog lives in ONE message: every step edits the prompt in place, so
+	// no stale prompt with a dead button is left behind in the chat.
+	var edit *int
+	if dlg.msgID != 0 {
+		edit = &dlg.msgID
+	}
 	if !looksLikeEmail(email) {
-		b.send(ctx, chatID, b.texts.T(loc, "bot.ask_email_again", nil), b.cancelKeyboard(loc, "team"))
+		b.reply(ctx, chatID, edit, b.texts.T(loc, "bot.ask_email_again", nil), b.backKeyboard(loc, "home"))
 		return true
 	}
 	b.team.setEmail(from.ID, email)
-	b.send(ctx, chatID, b.texts.T(loc, "bot.team_ask_role", map[string]any{"Email": Esc(email)}), &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+	b.reply(ctx, chatID, edit, b.texts.T(loc, "bot.team_ask_role", map[string]any{"Email": Esc(email)}), &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 		{{Text: b.texts.T(loc, "bot.team_role_manager_btn", nil), CallbackData: "team:role:manager"}},
 		{{Text: b.texts.T(loc, "bot.team_role_owner_btn", nil), CallbackData: "team:role:owner"}},
-		{{Text: b.texts.T(loc, "bot.wz.cancel_btn", nil), CallbackData: "team"}},
+		{{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}},
 	}})
 	return true
 }
@@ -365,10 +373,4 @@ func (b *Bot) teamMember(ctx context.Context, jwt string, orgID, userID uuid.UUI
 		}
 	}
 	return TeamMember{}, false
-}
-
-func (b *Bot) cancelKeyboard(locale, target string) *models.InlineKeyboardMarkup {
-	return &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-		{{Text: b.texts.T(locale, "bot.wz.cancel_btn", nil), CallbackData: target}},
-	}}
 }

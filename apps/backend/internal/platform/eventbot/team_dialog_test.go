@@ -14,7 +14,7 @@ func TestTeamDialogs_LapseIsReportedOnce(t *testing.T) {
 	if d.takeLapsed(id) {
 		t.Fatal("nothing has lapsed yet")
 	}
-	d.start(id)
+	d.start(id, 5)
 	if _, ok := d.get(id); !ok {
 		t.Fatal("a fresh dialog must be live")
 	}
@@ -36,12 +36,12 @@ func TestTeamDialogs_LapseIsReportedOnce(t *testing.T) {
 	}
 
 	// Someone else's lapse is not ours, and a restart wipes it.
-	d.start(7)
+	d.start(7, 5)
 	d.mu.Lock()
 	d.byID[7] = teamDialog{expires: time.Now().Add(-time.Minute)}
 	d.mu.Unlock()
 	d.get(7)
-	d.start(7)
+	d.start(7, 5)
 	if d.takeLapsed(7) {
 		t.Fatal("starting a new dialog must clear the lapse")
 	}

@@ -249,6 +249,7 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	parts := strings.Split(cq.Data, ":")
 	switch parts[0] {
 	case "home":
+		b.team.clear(from.ID)
 		b.showHome(ctx, chatID, &msgID, from, "")
 	case "help":
 		b.showHelp(ctx, chatID, &msgID, from)
