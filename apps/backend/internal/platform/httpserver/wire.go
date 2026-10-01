@@ -90,11 +90,6 @@ type Options struct {
 	// organizer's OWN secret key and never injected as an object.
 	StripeAPIBaseURL string
 
-	// FlittAPIBaseURL is the Flitt twin of StripeAPIBaseURL: it overrides
-	// https://pay.flitt.com/api for hosted checkout creation and credential
-	// verification. Integration tests point it at a stub.
-	FlittAPIBaseURL string
-
 	// Per-domain sqlc *Queries. See struct docs above.
 	SuperadminQueries     *gen.Queries
 	AllocationQueries     *gen.Queries
@@ -312,7 +307,6 @@ func New(opts Options) *Server {
 		bil24Enabled:                opts.Bil24CompatEnabled,
 		bil24RequireToken:           opts.Bil24RequireToken,
 		stripeAPIBaseURL:            opts.StripeAPIBaseURL,
-		flittAPIBaseURL:             opts.FlittAPIBaseURL,
 		bil24TokenCache:             hbil24.NewTokenCache(opts.Bil24TokenCacheTTL),
 
 		geoQueries:            pickQueries(opts.GeoQueries, opts.PgxPool),
