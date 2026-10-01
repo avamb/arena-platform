@@ -30267,6 +30267,114 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/public/payment-return:
+    get:
+      operationId: getPublicPaymentReturn
+      summary: Buyer return from a hosted payment page
+      description: |
+        Where a provider-hosted payment page sends the buyer back to. A provider
+        may return the buyer with an HTTP POST (Flitt does by default), while
+        the buyer's page is an ordinary web page that cannot take one; this
+        route answers GET and POST alike with a `303 See Other` to that page,
+        which a browser always follows with GET. The body of a POST is never
+        read: the payment outcome comes from the provider's server callback,
+        not from this redirect. No JWT is required.
+      tags: [v1]
+      parameters:
+        - name: r
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            The buyer's own page to land on (the `return_url` the checkout was
+            started with). It is validated against the same origin allow-list as
+            `return_url` at checkout start; an origin that is not allowed is
+            replaced by the configured `PUBLIC_TICKETS_BASE_URL` fallback.
+        - name: checkout_token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: |
+            arena's opaque checkout token (up to 128 characters of
+            `A-Za-z0-9_-`), appended to the destination so the widget resumes
+            the order.
+      responses:
+        "303":
+          description: Redirect to the buyer's page with `checkout_token` appended.
+          headers:
+            Location:
+              description: The destination, `<page>?checkout_token=<token>`.
+              schema:
+                type: string
+            Cache-Control:
+              description: Always `no-store`.
+              schema:
+                type: string
+        "400":
+          description: |
+            `checkout.invalid_return` — `checkout_token` is missing or malformed;
+            `checkout.invalid_return_url` — the target is not an allowed origin
+            and no fallback is configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: postPublicPaymentReturn
+      summary: Buyer return from a hosted payment page (POST)
+      description: |
+        Where a provider-hosted payment page sends the buyer back to. A provider
+        may return the buyer with an HTTP POST (Flitt does by default), while
+        the buyer's page is an ordinary web page that cannot take one; this
+        route answers GET and POST alike with a `303 See Other` to that page,
+        which a browser always follows with GET. The body of a POST is never
+        read: the payment outcome comes from the provider's server callback,
+        not from this redirect. No JWT is required.
+      tags: [v1]
+      parameters:
+        - name: r
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            The buyer's own page to land on (the `return_url` the checkout was
+            started with). It is validated against the same origin allow-list as
+            `return_url` at checkout start; an origin that is not allowed is
+            replaced by the configured `PUBLIC_TICKETS_BASE_URL` fallback.
+        - name: checkout_token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: |
+            arena's opaque checkout token (up to 128 characters of
+            `A-Za-z0-9_-`), appended to the destination so the widget resumes
+            the order.
+      responses:
+        "303":
+          description: Redirect to the buyer's page with `checkout_token` appended.
+          headers:
+            Location:
+              description: The destination, `<page>?checkout_token=<token>`.
+              schema:
+                type: string
+            Cache-Control:
+              description: Always `no-store`.
+              schema:
+                type: string
+        "400":
+          description: |
+            `checkout.invalid_return` — `checkout_token` is missing or malformed;
+            `checkout.invalid_return_url` — the target is not an allowed origin
+            and no fallback is configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/public/checkout/{checkout_token}:
     get:
       operationId: getPublicCheckoutStatus

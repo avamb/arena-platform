@@ -415,6 +415,14 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 	}
 
 	returnWithToken := ReturnURLWithToken(req.ReturnURL, req.CheckoutToken)
+	// Flitt sends the buyer back with the method set in ITS portal (default
+	// POST, changeable only after director identification), and the buyer's
+	// page is an ordinary web page. Route the return through arena instead, so
+	// the buyer's last screen never depends on that setting (payment_return.go).
+	// The outcome itself comes from the server callback, never from this hop.
+	if cfg.provider == providerFlitt {
+		returnWithToken = PaymentReturnURL(s.callbackBase, req.ReturnURL, req.CheckoutToken)
+	}
 
 	resp, err := adapter.CreateCheckoutSession(ctx, payments.CreateHostedCheckoutRequest{
 		Amount:            req.Amount,

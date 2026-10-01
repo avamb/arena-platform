@@ -923,6 +923,12 @@ func RequireJSONContentType(next http.Handler) http.Handler {
 	})
 }
 
+// paymentReturnPath is hfeed.PaymentReturnPath. Repeated here as a literal
+// because this package must not import the handler packages; a test in
+// httpserver (TestContentType_PaymentReturnAcceptsAFormPost) pins the two
+// together.
+const paymentReturnPath = "/v1/public/payment-return"
+
 // routeAwareContentTypeMiddleware wraps RequireJSONContentType with route
 // awareness so that the 405 Method Not Allowed case is handled correctly.
 //
@@ -951,6 +957,14 @@ func routeAwareContentTypeMiddleware(router chi.Router) func(http.Handler) http.
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodPost, http.MethodPut, http.MethodPatch:
+				// The one route a THIRD PARTY's browser POSTs to: a hosted payment
+				// page returns the buyer with a form-encoded POST (Flitt's default),
+				// which this middleware would answer 415 and the buyer would end on a
+				// JSON error. The handler never reads the body, so there is nothing
+				// to enforce (hfeed/payment_return.go).
+				if r.URL.Path == paymentReturnPath {
+					break
+				}
 				// Skip content-type enforcement for bodyless requests (e.g. action
 				// endpoints like /issue, /pay, /void that transition state without
 				// a request body). ContentLength == 0 means the client sent no body.

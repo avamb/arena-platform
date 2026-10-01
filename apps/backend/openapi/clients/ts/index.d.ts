@@ -4746,6 +4746,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/payment-return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Buyer return from a hosted payment page
+         * @description Where a provider-hosted payment page sends the buyer back to. A provider
+         *     may return the buyer with an HTTP POST (Flitt does by default), while
+         *     the buyer's page is an ordinary web page that cannot take one; this
+         *     route answers GET and POST alike with a `303 See Other` to that page,
+         *     which a browser always follows with GET. The body of a POST is never
+         *     read: the payment outcome comes from the provider's server callback,
+         *     not from this redirect. No JWT is required.
+         */
+        get: operations["getPublicPaymentReturn"];
+        put?: never;
+        /**
+         * Buyer return from a hosted payment page (POST)
+         * @description Where a provider-hosted payment page sends the buyer back to. A provider
+         *     may return the buyer with an HTTP POST (Flitt does by default), while
+         *     the buyer's page is an ordinary web page that cannot take one; this
+         *     route answers GET and POST alike with a `303 See Other` to that page,
+         *     which a browser always follows with GET. The body of a POST is never
+         *     read: the payment outcome comes from the provider's server callback,
+         *     not from this redirect. No JWT is required.
+         */
+        post: operations["postPublicPaymentReturn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/checkout/{checkout_token}": {
         parameters: {
             query?: never;
@@ -34373,6 +34409,104 @@ export interface operations {
              *     the JSON error envelope never reaches the widget or the buyer.
              */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicPaymentReturn: {
+        parameters: {
+            query: {
+                /**
+                 * @description The buyer's own page to land on (the `return_url` the checkout was
+                 *     started with). It is validated against the same origin allow-list as
+                 *     `return_url` at checkout start; an origin that is not allowed is
+                 *     replaced by the configured `PUBLIC_TICKETS_BASE_URL` fallback.
+                 */
+                r?: string;
+                /**
+                 * @description arena's opaque checkout token (up to 128 characters of
+                 *     `A-Za-z0-9_-`), appended to the destination so the widget resumes
+                 *     the order.
+                 */
+                checkout_token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the buyer's page with `checkout_token` appended. */
+            303: {
+                headers: {
+                    /** @description The destination, `<page>?checkout_token=<token>`. */
+                    Location?: string;
+                    /** @description Always `no-store`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description `checkout.invalid_return` — `checkout_token` is missing or malformed;
+             *     `checkout.invalid_return_url` — the target is not an allowed origin
+             *     and no fallback is configured.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postPublicPaymentReturn: {
+        parameters: {
+            query: {
+                /**
+                 * @description The buyer's own page to land on (the `return_url` the checkout was
+                 *     started with). It is validated against the same origin allow-list as
+                 *     `return_url` at checkout start; an origin that is not allowed is
+                 *     replaced by the configured `PUBLIC_TICKETS_BASE_URL` fallback.
+                 */
+                r?: string;
+                /**
+                 * @description arena's opaque checkout token (up to 128 characters of
+                 *     `A-Za-z0-9_-`), appended to the destination so the widget resumes
+                 *     the order.
+                 */
+                checkout_token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the buyer's page with `checkout_token` appended. */
+            303: {
+                headers: {
+                    /** @description The destination, `<page>?checkout_token=<token>`. */
+                    Location?: string;
+                    /** @description Always `no-store`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description `checkout.invalid_return` — `checkout_token` is missing or malformed;
+             *     `checkout.invalid_return_url` — the target is not an allowed origin
+             *     and no fallback is configured.
+             */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

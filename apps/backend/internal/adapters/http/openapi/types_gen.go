@@ -12037,6 +12037,34 @@ type ListPublicFeedEventsParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// GetPublicPaymentReturnParams defines parameters for GetPublicPaymentReturn.
+type GetPublicPaymentReturnParams struct {
+	// R The buyer's own page to land on (the `return_url` the checkout was
+	// started with). It is validated against the same origin allow-list as
+	// `return_url` at checkout start; an origin that is not allowed is
+	// replaced by the configured `PUBLIC_TICKETS_BASE_URL` fallback.
+	R *string `form:"r,omitempty" json:"r,omitempty"`
+
+	// CheckoutToken arena's opaque checkout token (up to 128 characters of
+	// `A-Za-z0-9_-`), appended to the destination so the widget resumes
+	// the order.
+	CheckoutToken string `form:"checkout_token" json:"checkout_token"`
+}
+
+// PostPublicPaymentReturnParams defines parameters for PostPublicPaymentReturn.
+type PostPublicPaymentReturnParams struct {
+	// R The buyer's own page to land on (the `return_url` the checkout was
+	// started with). It is validated against the same origin allow-list as
+	// `return_url` at checkout start; an origin that is not allowed is
+	// replaced by the configured `PUBLIC_TICKETS_BASE_URL` fallback.
+	R *string `form:"r,omitempty" json:"r,omitempty"`
+
+	// CheckoutToken arena's opaque checkout token (up to 128 characters of
+	// `A-Za-z0-9_-`), appended to the destination so the widget resumes
+	// the order.
+	CheckoutToken string `form:"checkout_token" json:"checkout_token"`
+}
+
 // SubmitReconciliationReportJSONBody defines parameters for SubmitReconciliationReport.
 type SubmitReconciliationReportJSONBody struct {
 	Lines *[]struct {

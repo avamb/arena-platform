@@ -29,6 +29,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -233,9 +234,28 @@ func TestFlitt_StartAndCallbackPayTheOrder_EveryCurrency(t *testing.T) {
 			if got := ord["server_callback_url"]; got != wantCB {
 				t.Errorf("flitt server_callback_url = %v; want %s", got, wantCB)
 			}
-			wantReturn := returnURL + "?checkout_token=" + start.CheckoutToken
+			// The buyer comes back THROUGH arena (so Flitt's POST/GET setting is
+			// irrelevant), and arena then 303s to the buyer's own page.
+			wantReturn := "https://api.arena-integration.test/v1/public/payment-return?" +
+				url.Values{"r": {returnURL}, "checkout_token": {start.CheckoutToken}}.Encode()
 			if got := ord["response_url"]; got != wantReturn {
 				t.Errorf("flitt response_url = %v; want %s", got, wantReturn)
+			}
+			if got := ord["cancel_url"]; got != wantReturn {
+				t.Errorf("flitt cancel_url = %v; want %s", got, wantReturn)
+			}
+			ru, _ := url.Parse(fmt.Sprint(ord["response_url"]))
+			for _, method := range []string{http.MethodGet, http.MethodPost} {
+				req := httptest.NewRequest(method, ru.RequestURI(), strings.NewReader("order_status=approved"))
+				if method == http.MethodPost {
+					// What Flitt's browser redirect really sends.
+					req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				}
+				rec := httptest.NewRecorder()
+				srv.router.ServeHTTP(rec, req)
+				if want := returnURL + "?checkout_token=" + start.CheckoutToken; rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != want {
+					t.Errorf("%s response_url = %d Location %q; want 303 %q", method, rec.Code, rec.Header().Get("Location"), want)
+				}
 			}
 			// The Flitt order must die before arena releases the seats.
 			lifetime, err := ord["lifetime"].(json.Number).Int64()

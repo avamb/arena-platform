@@ -370,3 +370,36 @@ func TestContentType_AcceptPostAbsentOnSuccess(t *testing.T) {
 		t.Errorf("Accept-Post should not be set on non-415 response, got %q", ap)
 	}
 }
+
+// A hosted payment page returns the buyer with a form-encoded POST (Flitt's
+// default). The global JSON-only rule must not turn that into a 415 on the one
+// route built to receive it, or the buyer ends on a JSON error page.
+func TestContentType_PaymentReturnAcceptsAFormPost(t *testing.T) {
+	t.Parallel()
+
+	s := buildV1TestServer(t)
+	ts := httptest.NewServer(s.Router())
+	t.Cleanup(ts.Close)
+
+	form := "order_status=approved&order_id=x&signature=y"
+	// hfeed.PaymentReturnPath, spelled out so a rename breaks this test.
+	resp, err := ts.Client().Post(ts.URL+"/v1/public/payment-return?checkout_token=abc",
+		"application/x-www-form-urlencoded", strings.NewReader(form))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnsupportedMediaType {
+		t.Fatalf("form POST to the payment-return route = 415; it must reach the handler")
+	}
+
+	// And the exemption is exactly one path: any other route still insists on JSON.
+	other, err := ts.Client().Post(ts.URL+"/v1/echo", "application/x-www-form-urlencoded", strings.NewReader(form))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Body.Close()
+	if other.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("form POST to /v1/echo = %d, want 415; the exemption must not widen", other.StatusCode)
+	}
+}

@@ -1949,4 +1949,13 @@ entries short and factual.
   `cs/de/en/es/he/ru`, so a French buyer (`fr`) is dropped before the adapter —
   the Flitt page and the e-mail fall back to defaults until `fr` templates
   exist. Refunds are NOT driven through Flitt from arena (nor through Stripe:
-  the refund flow only simulates provider submission today).
+  the refund flow only simulates provider submission today). **The buyer comes
+  back from Flitt THROUGH arena, never straight to their page:** Flitt returns
+  the buyer with the method set in its portal (default POST, switchable only
+  after the director's identification), and a static tickets page answers a POST
+  with 405. `response_url`/`cancel_url` therefore point at
+  `GET|POST /v1/public/payment-return?r=<buyer page>&checkout_token=<token>`
+  (`hfeed/payment_return.go`), which 303s to the buyer's page; the POST body is
+  never read and `r` is re-validated by `ReturnURLPolicy` (an origin outside the
+  allow-list falls back, never redirects). Do not point a provider's return URL
+  at a buyer page directly.

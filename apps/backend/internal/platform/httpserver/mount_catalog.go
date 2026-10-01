@@ -241,4 +241,9 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	if s.checkoutQueries != nil && s.ticketQueries != nil && s.credentialQueries != nil {
 		r.Get("/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf", s.handlePublicTicketPDF)
 	}
+	// Where a hosted payment page sends the buyer back to. Answers GET and POST
+	// (a provider may POST) with a 303 to the buyer's own page; needs no
+	// database, so it is always mounted.
+	r.Get("/public/payment-return", s.handlePublicPaymentReturn)
+	r.Post("/public/payment-return", s.handlePublicPaymentReturn)
 }

@@ -65,7 +65,7 @@ Flitt — карточный шлюз с **redirect-оплатой**, как Str
 | `order_desc` | название события (до 1024 символов) |
 | `amount` | `checkout_sessions.total` в минорных единицах, как есть |
 | `currency` | валюта сеанса, верхний регистр, **без списка разрешённых в arena** |
-| `response_url` / `cancel_url` | страница покупателя + `?checkout_token=…` |
+| `response_url` / `cancel_url` | **маршрут arena** `<API_PUBLIC_URL>/v1/public/payment-return?r=<страница покупателя>&checkout_token=…` (см. §4.1) |
 | `server_callback_url` | `<API_PUBLIC_URL>/v1/payment-intents/webhook/{config_id}` |
 | `lifetime` | секунды до конца окна оплаты (минимум 60) |
 | `sender_email` | e-mail покупателя |
@@ -76,6 +76,24 @@ Flitt — карточный шлюз с **redirect-оплатой**, как Str
 Ответ: `response.checkout_url` (редирект) и `response.payment_id`. Любой
 `response_status: failure` — ошибка старта (HTTP 503 `checkout.payment_start_failed`,
 место удержания освобождают обычные свипы).
+
+### 4.1 Возврат покупателя не зависит от настройки Flitt
+
+Flitt возвращает покупателя методом, заданным в портале продавца («Redirect
+method to the results page», по умолчанию **POST**; менять можно только после
+идентификации директора). Страница сайта — обычная веб-страница и на POST может
+ответить 405. Поэтому `response_url` и `cancel_url` указывают на маршрут arena
+`GET|POST /v1/public/payment-return`: он на любой метод отвечает **303** на
+страницу покупателя (браузер идёт туда GET-ом). Тело POST не читается — исход
+платежа приходит из серверного callback, а не из этого редиректа.
+
+Защита от открытого редиректа: адрес `r` заново проходит ту же политику
+`ReturnURLPolicy`, что и `return_url` при старте (CORS-источники +
+`PUBLIC_TICKETS_BASE_URL`); чужой источник заменяется запасным адресом, а без
+запасного — 400. К адресу добавляется только `checkout_token` (до 128 символов
+`A-Za-z0-9_-`), чужие параметры и фрагмент отбрасываются. Ответ — `no-store` и
+`Referrer-Policy: no-referrer`. Без `API_PUBLIC_URL` Flitt получает прямой адрес
+страницы (как раньше).
 
 **Окно оплаты.** `lifetime` ≈ `WIDGET_PAYMENT_WINDOW_SECONDS` (1860 с): страница
 Flitt умирает раньше, чем arena отпускает места (окно + 120 с «грации») —
@@ -180,10 +198,9 @@ reverse из arena — отдельная работа вместе с общи�
 3. **Портал Flitt → Настройки продавца → Настройки оплаты:**
    - «Срок действия заказа по умолчанию» — только запасное значение, arena
      присылает `lifetime` сама;
-   - «Метод перенаправления на страницу результатов» — **GET**. При POST
-     браузер покупателя шлёт POST на страницу сайта с виджетом; статичная
-     страница ответит 405. На сайте WordPress POST обычно допустим, но GET
-     надёжнее; исход оплаты arena берёт из callback, а не из редиректа.
+   - «Метод перенаправления на страницу результатов» — **не важен**: возврат
+     покупателя идёт через маршрут arena (§4.1), который принимает и GET, и
+     POST. Переключать на GET не нужно.
 4. Включить в Flitt нужные валюты для продавца (EUR, GEL, …).
 5. Тест: карта `4444 5555 6666 1111` (3-D Secure, одобряется) на песочном
    продавце; полный список тестовых карт — https://docs.flitt.com/api/testing/.
@@ -209,5 +226,6 @@ reverse из arena — отдельная работа вместе с общи�
 | Ключ подписи callback | `hcheckout/provider_config.go` (`WebhookSecretFromConfig`) |
 | Конфигурация провайдера, обязательные поля, проверка ключей | `hpayments/` |
 | Допустимые провайдеры канала | миграция `0120_flitt_provider.sql`, `hcatalog/channels.go` |
+| Возврат покупателя (303) | `hfeed/payment_return.go`, маршрут `/v1/public/payment-return` |
 | Тестовая подмена адреса | `FLITT_API_BASE_URL` (в production запрещена `config.Validate`) |
 | Тесты | `adapters/flitt/adapter_test.go`, `httpserver/flitt_checkout_integration_test.go` |
