@@ -195,6 +195,13 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 		tg.push(e2eWizardCallback(data))
 		return tg.waitSince(t, m, expect)
 	}
+	// A typed date is never taken on trust: the bot reads it back (all the ways
+	// it could be read when day and month can be swapped) and the person picks.
+	sayDate := func(text, iso, expect string) string {
+		t.Helper()
+		say(text, "Вы написали")
+		return press("wz:dc:"+iso, expect)
+	}
 	venueName := "Bot hall " + uuid.NewString()[:6]
 	eventName := "Бот-концерт " + uuid.NewString()[:6]
 
@@ -218,15 +225,15 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	tg.waitSince(t, posterMark, "Дата сеанса 1")
 
 	// Step 2 — when and where; the venue is created through the API.
-	say("32.13.2027", "Не понял дату")
-	say("15.12.2027", "Время начала")
+	say("32.13.2099", "Не понял дату")
+	sayDate("15.12.2099", "2099-12-15", "Время начала")
 	press("wz:default", "В какой стране")
 	press("wz:country:"+countryID.String(), "В каком городе")
 	press("wz:city:"+cityID.String(), "Где проходит")
 	press("wz:venue:new", "Название площадки")
 	say(venueName, "Адрес площадки")
 	say("Vabaduse väljak 1", "Сколько мест продаём") // the one question about places
-	say("120", "Сеанс 1: 15.12.2027 20:00")          // zone guessed: straight to "one more date?"
+	say("120", "Сеанс 1: 15.12.2099 20:00")          // zone guessed: straight to "one more date?"
 	press("wz:next", "Билеты одинаковые")
 
 	// Step 3 — one category with a price change.
@@ -234,7 +241,7 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	press("wz:default", "Цена билета")
 	say("25", "Цена меняется")
 	press("wz:yes", "С какой даты")
-	say("01.12.2027", "Новая цена с 01.12.2027")
+	sayDate("01.12.2099", "2099-12-01", "Новая цена с 01.12.2099") // 1 Dec or 12 Jan: both offered
 	say("30", "Добавить ещё одно")
 	press("wz:done", "Описание ивента")
 
@@ -242,7 +249,7 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	press("wz:skip", "Валюта цен")
 	press("wz:cur:EUR", "Открыть продажи сразу")
 	summary := press("wz:pub:now", "Проверьте и опубликуйте")
-	for _, want := range []string{eventName, venueName, "15.12.2027 20:00", "25 EUR", "120 мест"} {
+	for _, want := range []string{eventName, venueName, "15.12.2099 20:00", "25 EUR", "120 мест"} {
 		if !strings.Contains(summary, want) {
 			t.Errorf("summary lacks %q:\n%s", want, summary)
 		}
@@ -306,7 +313,7 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	if sessionCur != "EUR" || venueTZ != "Europe/Tallinn" || capacity != 120 || venueCap == nil || *venueCap != 120 || venueAddr == nil || *venueAddr != "Vabaduse väljak 1" {
 		t.Fatalf("session = %v %s cap=%d venue=%s %v %v", startsAt, sessionCur, capacity, venueTZ, venueCap, venueAddr)
 	}
-	if got := startsAt.In(tallinn).Format("2006-01-02 15:04"); got != "2027-12-15 20:00" { // allow:timeformat: test fixture comparison
+	if got := startsAt.In(tallinn).Format("2006-01-02 15:04"); got != "2099-12-15 20:00" { // allow:timeformat: test fixture comparison
 		t.Fatalf("starts_at = %s", got)
 	}
 	if err := pool.QueryRow(ctx, `SELECT tt.price_amount, tt.currency, (SELECT count(*) FROM ticket_tier_prices w WHERE w.tier_id = tt.id)
@@ -338,7 +345,7 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	// re-prices the category; a change made elsewhere meanwhile is noticed.
 	renamed := eventName + " (ред.)"
 	intro := press("wz:edit:"+eventID.String(), "Правим")
-	for _, want := range []string{eventName, venueName, "15.12.2027 20:00", "25 EUR", "120 мест"} {
+	for _, want := range []string{eventName, venueName, "15.12.2099 20:00", "25 EUR", "120 мест"} {
 		if !strings.Contains(intro, want) {
 			t.Errorf("edit summary lacks %q:\n%s", want, intro)
 		}
@@ -392,14 +399,14 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	// ── "Repeat as new": the tickets travel, the dates are asked, the
 	// remembered venue is one button away, and a second event appears.
 	press("wz:copy:"+eventID.String(), "Копия")
-	say("20.12.2027", "Время начала")
+	sayDate("20.12.2099", "2099-12-20", "Время начала")
 	press("wz:default", "В какой стране")
 	press("wz:keep", "В каком городе")
 	press("wz:keep", "Где проходит")
 	press("wz:keep", "Сколько мест продаём")
 	press("wz:keep", "ещё один сеанс")
 	copySummary := press("wz:next", "Проверьте и опубликуйте")
-	if !strings.Contains(copySummary, "20.12.2027 20:00") || !strings.Contains(copySummary, "27,50 EUR") || !strings.Contains(copySummary, renamed) {
+	if !strings.Contains(copySummary, "20.12.2099 20:00") || !strings.Contains(copySummary, "27,50 EUR") || !strings.Contains(copySummary, renamed) {
 		t.Fatalf("copy summary:\n%s", copySummary)
 	}
 	press("wz:publish", "Готово!")

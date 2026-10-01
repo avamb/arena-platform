@@ -200,7 +200,7 @@ func TestLoadEventDraft_SequenceAndParallelAndCopy(t *testing.T) {
 	r.press("e:tickets", stTCatName)
 	r.text("Early bird", stTCatPrice)
 	r.text("25", stTCatUntil)
-	r.text("31.12.2026", stTCatName)
+	r.text("30.11.2026", stTCatName)
 	r.text("Door price", stTCatPrice) // a new name: no id, a new category
 	r.text("45", stTCatLast)
 	r.press("last", stEditMenu)

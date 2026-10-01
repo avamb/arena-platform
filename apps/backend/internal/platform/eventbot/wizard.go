@@ -202,13 +202,21 @@ type DraftScratch struct {
 	// "promoter", "poster", "description", "currency", "dates", "tickets").
 	Edit string `json:"edit,omitempty"`
 	// CancelFrom is the step the cancel confirmation returns to.
-	CancelFrom string         `json:"cancel_from,omitempty"`
-	Cat        DraftCategory  `json:"cat"`
-	Step       DraftPriceStep `json:"step"`
-	NewPromo   string         `json:"new_promoter_name"`
-	NewCity    string         `json:"new_city_name"`
-	NewVenue   VenueCreate    `json:"new_venue"`
-	SameAsPrev bool           `json:"same_as_prev"`
+	CancelFrom string `json:"cancel_from,omitempty"`
+	// CalMonth is the month ("2026-11") the date calendar shows; "" means the
+	// first month that has an allowed day. DatePending holds the dates a typed
+	// answer could mean while the person confirms one of them (DateRaw is what
+	// they typed, DateLimit the ticket count typed beside it).
+	CalMonth    string         `json:"cal_month,omitempty"`
+	DatePending []string       `json:"date_pending,omitempty"`
+	DateRaw     string         `json:"date_raw,omitempty"`
+	DateLimit   int            `json:"date_limit,omitempty"`
+	Cat         DraftCategory  `json:"cat"`
+	Step        DraftPriceStep `json:"step"`
+	NewPromo    string         `json:"new_promoter_name"`
+	NewCity     string         `json:"new_city_name"`
+	NewVenue    VenueCreate    `json:"new_venue"`
+	SameAsPrev  bool           `json:"same_as_prev"`
 }
 
 // DraftSaved is what the non-atomic save already wrote.
@@ -524,8 +532,15 @@ func DisplayDate(iso string) string {
 func (d *Draft) goTo(step string) {
 	if d.Step != step {
 		d.History = append(d.History, d.Step)
+		d.clearDateDialog()
 	}
 	d.Step = step
+}
+
+// clearDateDialog forgets a half-done date question (calendar month, typed
+// date waiting for a confirmation) when the person moves to another step.
+func (d *Draft) clearDateDialog() {
+	d.Scratch.CalMonth, d.Scratch.DatePending, d.Scratch.DateRaw, d.Scratch.DateLimit = "", nil, "", 0
 }
 
 // section moves to the first step of the next section — or back to the
@@ -653,6 +668,7 @@ func (d *Draft) back() bool {
 	}
 	d.Step = d.History[len(d.History)-1]
 	d.History = d.History[:len(d.History)-1]
+	d.clearDateDialog()
 	return true
 }
 
@@ -683,6 +699,13 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			return "", nil
 		}
 		text, data = hintText, hintData
+		// A date read off the poster is shown on the button in full, so pressing
+		// it is the confirmation; it is still held to the allowed range.
+		if isDateStep(d.Step) {
+			if iso, ok := ParseDate(text); ok {
+				text, data = "", pickCallback+iso
+			}
+		}
 	}
 
 	switch data {
@@ -720,6 +743,19 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		}
 		d.back()
 		return "", nil
+	}
+
+	// The date questions share one way of answering: a calendar of buttons, or
+	// a typed date that is confirmed before it counts (wizard_dates.go).
+	if isDateStep(d.Step) {
+		dateText, handled, dateNote := w.dateInput(loc, d, text, data)
+		if handled {
+			return dateNote, nil
+		}
+		text = dateText
+		if strings.HasPrefix(data, pickCallback) || strings.HasPrefix(data, confirmPrefix) {
+			data = ""
+		}
 	}
 
 	switch d.Step {

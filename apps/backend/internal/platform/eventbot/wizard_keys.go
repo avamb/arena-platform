@@ -4,6 +4,9 @@ package eventbot
 // locale test checks them in every supported catalog together with
 // MessageKeys. Generated from the ru catalog — keep in sync when adding keys.
 var wizardKeys = []string{
+	"bot.wz.cal_hint", "bot.wz.cal_range", "bot.wz.cal_no_days", "bot.wz.cal_today", "bot.wz.cal_tomorrow",
+	"bot.wz.cal_week", "bot.wz.cal_month", "bot.wz.date_confirm_one", "bot.wz.date_confirm_many",
+	"bot.wz.date_retry_btn", "bot.wz.date_limit_suffix", "bot.wz.err_date_past", "bot.wz.err_date_early", "bot.wz.err_date_late",
 	"bot.wz.new_event_btn",
 	"bot.wz.cancel_btn",
 	"bot.wz.back_btn",

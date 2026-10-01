@@ -570,10 +570,10 @@ other = "The poster could not be saved. Try again or skip this step."
 other = "Poster {{.W}}×{{.H}} accepted."
 
 ["bot.wz.ask_date"]
-other = "Date of date {{.N}}? Type it as DD.MM.YYYY, for example 15.10.2026."
+other = "Date of date {{.N}}?"
 
 ["bot.wz.err_date"]
-other = "I did not understand the date. Type it as DD.MM.YYYY, for example 15.10.2026."
+other = "I did not understand the date. Pick it in the calendar or type it, for example 15.10.2026 or “15 October”."
 
 ["bot.wz.ask_time"]
 other = "Start time? Type it as HH:MM, for example 19:30."
@@ -690,7 +690,7 @@ other = "No"
 other = "Yes, by date"
 
 ["bot.wz.ask_t_change_date"]
-other = "From which date is the new price? DD.MM.YYYY."
+other = "From which date is the new price?"
 
 ["bot.wz.err_change_date_order"]
 other = "Price change dates must go in ascending order."
@@ -738,7 +738,7 @@ other = "How many places in “{{.Name}}”?"
 other = "A whole number of at least 1 is needed."
 
 ["bot.wz.ask_t_cat_until"]
-other = "When does the price of “{{.Name}}” end? Send a date (DD.MM.YYYY, inclusive) or a number of tickets, for example 50. You can send both separated by a space, for example “31.12.2026 50”: the price ends at whichever comes first."
+other = "When does the price of “{{.Name}}” end? Pick the last day in the calendar. Or type a number of tickets, for example 50. You can send both separated by a space, for example “31.12.2026 50”: the price ends at whichever comes first."
 
 ["bot.wz.err_until_order"]
 other = "Categories in sequence: “{{.Name}}” must sell longer than the previous one."
@@ -1036,7 +1036,7 @@ other = "The last one"
 other = "Another follows"
 
 ["bot.wz.err_cat_end"]
-other = "I did not get that. Send a date DD.MM.YYYY, a number of tickets, or both separated by a space."
+other = "I did not get that. Pick a date in the calendar, type a number of tickets, or both separated by a space."
 
 ["bot.wz.ack_end"]
 other = "✔ “{{.Name}}”: the price holds{{if .Until}} until {{.Until}}{{end}}{{if and .Until .Limit}}, or{{end}}{{if .Limit}} for the first {{.Limit}} tickets{{end}}"
@@ -1064,3 +1064,45 @@ other = "🗑 Delete the changes"
 
 ["bot.wz.draft_kept"]
 other = "The draft is kept. Come back to it with the “＋ Event” button."
+
+["bot.wz.cal_hint"]
+other = "Pick a day in the calendar or type the date."
+
+["bot.wz.cal_range"]
+other = "Available from {{.Min}} to {{.Max}}."
+
+["bot.wz.cal_no_days"]
+other = "Nothing to pick: there are no free days between {{.Min}} and {{.Max}}. Go back and check the dates."
+
+["bot.wz.cal_today"]
+other = "Today"
+
+["bot.wz.cal_tomorrow"]
+other = "Tomorrow"
+
+["bot.wz.cal_week"]
+other = "In a week"
+
+["bot.wz.cal_month"]
+other = "In a month"
+
+["bot.wz.date_confirm_one"]
+other = "You wrote “{{.Raw}}”. Is that {{.Date}}?"
+
+["bot.wz.date_confirm_many"]
+other = "You wrote “{{.Raw}}”. That can be read in more than one way, because day and month are easy to swap. Which date is right?"
+
+["bot.wz.date_retry_btn"]
+other = "A different date"
+
+["bot.wz.date_limit_suffix"]
+other = "up to {{.N}} tickets"
+
+["bot.wz.err_date_past"]
+other = "That date has already passed. Pick today or later."
+
+["bot.wz.err_date_early"]
+other = "It cannot be earlier than {{.Date}}."
+
+["bot.wz.err_date_late"]
+other = "It cannot be later than {{.Date}}: that is the day of the event."

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -82,7 +83,9 @@ func newWizardRun(t *testing.T, refs RefIO) *wizardRun {
 	if err != nil {
 		t.Fatalf("i18n.NewBundle: %v", err)
 	}
-	return &wizardRun{t: t, w: NewWizard(NewTexts(bundle), refs), ws: WizSession{JWT: "jwt", OrgID: uuid.New(), Locale: "ru"}, d: NewDraft()}
+	w := NewWizard(NewTexts(bundle), refs)
+	w.now = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC) } // the tests' "today"
+	return &wizardRun{t: t, w: w, ws: WizSession{JWT: "jwt", OrgID: uuid.New(), Locale: "ru"}, d: NewDraft()}
 }
 
 // step feeds one answer and asserts the step the draft lands on.
@@ -101,7 +104,27 @@ func (r *wizardRun) step(in WizInput, want string) string {
 	return note
 }
 
-func (r *wizardRun) text(s, want string) string  { return r.step(WizInput{Text: s}, want) }
+// text types an answer. A date typed at a date question must be confirmed, so
+// when the wizard offers readings the first one is pressed, the way a person
+// would. A date refused as out of range leaves the step where it was, and the
+// note comes back.
+func (r *wizardRun) text(s, want string) string {
+	r.t.Helper()
+	note, err := r.w.Apply(context.Background(), r.ws, r.d, WizInput{Text: s})
+	if err != nil {
+		r.t.Fatalf("Apply(%q) at %s: %v", s, r.d.Step, err)
+	}
+	if len(r.d.Scratch.DatePending) > 0 {
+		return r.step(WizInput{Data: confirmPrefix + r.d.Scratch.DatePending[0]}, want)
+	}
+	if r.d.Step != want {
+		r.t.Fatalf("after %q: step=%s want %s (note %q)", s, r.d.Step, want, note)
+	}
+	if _, err := r.w.Render(context.Background(), r.ws, r.d); err != nil {
+		r.t.Fatalf("Render at %s: %v", r.d.Step, err)
+	}
+	return note
+}
 func (r *wizardRun) press(s, want string) string { return r.step(WizInput{Data: s}, want) }
 
 // eventHead walks name → age → promoter (existing) → poster (skip).

@@ -145,7 +145,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_poster", nil), Buttons: nav([]Button{btn("bot.wz.skip_btn", "skip")})}, nil
 
 	case stSDate:
-		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_date", map[string]any{"N": d.Cur + 1}), Buttons: nav()}, nil
+		return w.dateQuestion(loc, d, header(2, "bot.wz.title_when"), t("bot.wz.ask_date", map[string]any{"N": d.Cur + 1}), nav), nil
 
 	case stSTime:
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_time", nil),
@@ -287,7 +287,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 			Buttons: nav([]Button{btn("bot.wz.t_changes_no", "no"), btn("bot.wz.t_changes_yes", "yes")})}, nil
 
 	case stTChangeDate:
-		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_change_date", nil), Buttons: nav()}, nil
+		return w.dateQuestion(loc, d, header(3, "bot.wz.title_tickets"), t("bot.wz.ask_t_change_date", nil), nav), nil
 
 	case stTChangePrice:
 		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_change_price", map[string]any{"Date": DisplayDate(d.Scratch.Step.From)}), Buttons: nav()}, nil
@@ -316,7 +316,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_last", map[string]any{"Name": Esc(d.Scratch.Cat.Name)}),
 			Buttons: nav([]Button{btn("bot.wz.t_cat_last_btn", "last")}, []Button{btn("bot.wz.t_cat_next_btn", "next")})}, nil
 	case stTCatUntil:
-		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_until", map[string]any{"Name": Esc(d.Scratch.Cat.Name)}), Buttons: nav()}, nil
+		return w.dateQuestion(loc, d, header(3, "bot.wz.title_tickets"), t("bot.wz.ask_t_cat_until", map[string]any{"Name": Esc(d.Scratch.Cat.Name)}), nav), nil
 
 	case stTCatMore:
 		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_more", map[string]any{"List": w.categoriesList(loc, d)}),
