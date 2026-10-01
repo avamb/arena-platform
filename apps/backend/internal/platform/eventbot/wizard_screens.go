@@ -149,7 +149,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 
 	case stSTime:
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_time", nil),
-			Buttons: nav([]Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": "20:00"}), Data: "default"}})}, nil
+			Buttons: nav([]Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": d.defaultTime()}), Data: "default"}})}, nil
 
 	case stSSame:
 		prev := d.Sessions[d.Cur-1]

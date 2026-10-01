@@ -238,7 +238,19 @@ func (b *Bot) sessionLine(ctx context.Context, jwt, loc string, orgID uuid.UUID,
 		venue = Esc(*summary.Session.VenueName)
 	}
 	places := SummaryPlaces(summary)
+	// Once a ticket has been cancelled or refunded "sold 2" is not the whole
+	// story: say how many were issued, how many came back and how many are
+	// still valid.
+	ticketsLine := ""
+	if c := summary.Tickets.Cancelled; c > 0 {
+		ticketsLine = b.texts.T(loc, "bot.session_tickets_line", map[string]any{
+			"Issued":    summary.Tickets.Active + summary.Tickets.Cancelled + summary.Tickets.Transferred,
+			"Cancelled": c,
+			"Active":    summary.Tickets.Active,
+		})
+	}
 	return b.texts.T(loc, "bot.session_line", map[string]any{
+		"Tickets":   ticketsLine,
 		"When":      Esc(when),
 		"Venue":     venue,
 		"Sold":      places.Sold,

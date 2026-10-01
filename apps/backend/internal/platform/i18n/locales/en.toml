@@ -334,7 +334,10 @@ other = "This is how a buyer will see the ticket for “{{.Name}}”. A sample: 
 other = "Could not make the sample ticket. Try again later."
 
 ["bot.session_line"]
-other = "<b>{{.When}}</b> {{.Venue}}\nSold {{.Sold}} of {{.Total}}, free {{.Available}}{{if .Held}}, on hold {{.Held}}{{end}}\n{{.Money}}"
+other = "<b>{{.When}}</b> {{.Venue}}\nSold {{.Sold}} of {{.Total}}, available {{.Available}}{{if .Held}}, held {{.Held}}{{end}}{{if .Tickets}}\n{{.Tickets}}{{end}}\n{{.Money}}"
+
+["bot.session_tickets_line"]
+other = "Tickets: issued {{.Issued}}, returned or cancelled {{.Cancelled}}, valid {{.Active}}"
 
 ["bot.money_line"]
 other = "Paid {{.Paid}} in {{.Orders}} orders"

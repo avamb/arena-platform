@@ -672,6 +672,19 @@ func (d *Draft) back() bool {
 	return true
 }
 
+// defaultTime is the start time offered as "keep …": the time of the date
+// before this one (a second date of the same event, or one added to an event
+// that already has dates, almost always starts at the same hour), 20:00 when
+// there is nothing to copy.
+func (d *Draft) defaultTime() string {
+	if d.Cur > 0 && d.Cur <= len(d.Sessions) {
+		if prev := d.Sessions[d.Cur-1].Time; prev != "" {
+			return prev
+		}
+	}
+	return "20:00"
+}
+
 func (d *Draft) session() *DraftSession {
 	for len(d.Sessions) <= d.Cur {
 		d.Sessions = append(d.Sessions, DraftSession{})
@@ -880,7 +893,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		d.goTo(stSTime)
 
 	case stSTime:
-		hhmm := "20:00"
+		hhmm := d.defaultTime()
 		if data != "default" {
 			v, ok := ParseTime(text)
 			if !ok {

@@ -328,7 +328,10 @@ other = "Так покупатель увидит билет на «{{.Name}}».
 other = "Не удалось сделать образец билета. Попробуйте позже."
 
 ["bot.session_line"]
-other = "<b>{{.When}}</b> {{.Venue}}\nПродано {{.Sold}} из {{.Total}}, свободно {{.Available}}{{if .Held}}, в брони {{.Held}}{{end}}\n{{.Money}}"
+other = "<b>{{.When}}</b> {{.Venue}}\nПродано {{.Sold}} из {{.Total}}, свободно {{.Available}}{{if .Held}}, в брони {{.Held}}{{end}}{{if .Tickets}}\n{{.Tickets}}{{end}}\n{{.Money}}"
+
+["bot.session_tickets_line"]
+other = "Билетов: выдано {{.Issued}}, возвращено или отменено {{.Cancelled}}, действует {{.Active}}"
 
 ["bot.money_line"]
 other = "Оплачено {{.Paid}}, заказов: {{.Orders}}"
