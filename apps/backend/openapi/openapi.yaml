@@ -3975,8 +3975,10 @@ components:
         provider:
           type: string
           description: |
-            Provider slug. Must be one of: stripe, allpay, cloudpayments,
-            yookassa, manual.
+            Provider slug. Must be one of: stripe, allpay, flitt,
+            cloudpayments, yookassa, manual. `flitt` needs the secrets
+            `merchant_id` and `payment_key` (the portal's payment key signs
+            requests and callbacks; there is no separate webhook secret).
           example: "stripe"
         mode:
           type: string
@@ -4081,7 +4083,7 @@ components:
       properties:
         provider:
           type: string
-          description: Provider slug (one of stripe, allpay, cloudpayments, yookassa, manual).
+          description: Provider slug (one of stripe, allpay, flitt, cloudpayments, yookassa, manual).
           example: "stripe"
         mode:
           type: string
@@ -10845,7 +10847,7 @@ components:
             value returns 400 `channel.invalid_config`.
         provider:
           type: string
-          enum: [stripe, allpay]
+          enum: [stripe, allpay, flitt]
           description: |
             Defaults to `stripe` when omitted or empty. Any other value
             returns 400 `channel.invalid_config`.
@@ -10901,7 +10903,7 @@ components:
             apply and return 400 `channel.invalid_config` on violation.
         provider:
           type: string
-          enum: [stripe, allpay]
+          enum: [stripe, allpay, flitt]
           description: |
             New payment provider. Omit (or send an empty string) to
             leave unchanged.

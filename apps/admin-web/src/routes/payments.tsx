@@ -91,6 +91,7 @@ interface OrganizationListEnvelope {
 export type PaymentProvider =
   | "stripe"
   | "allpay"
+  | "flitt"
   | "cloudpayments"
   | "yookassa"
   | "manual";
@@ -102,6 +103,7 @@ export type PaymentConfigStatus = "configured" | "missing_required_fields";
 export const PAYMENT_PROVIDERS: readonly PaymentProvider[] = [
   "stripe",
   "allpay",
+  "flitt",
   "cloudpayments",
   "yookassa",
   "manual",
@@ -250,6 +252,9 @@ export const PROVIDER_REQUIRED_SECRETS: Readonly<
 > = {
   stripe: ["api_key", "webhook_secret"],
   allpay: ["merchant_id", "secret_key"],
+  // Flitt: the payment key signs requests AND verifies callbacks, so there is
+  // no separate webhook secret (the portal's "credit key" is for payouts).
+  flitt: ["merchant_id", "payment_key"],
   cloudpayments: ["public_id", "api_secret"],
   yookassa: ["shop_id", "secret_key"],
   manual: [],

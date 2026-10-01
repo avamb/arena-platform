@@ -23,7 +23,8 @@ func (s *Server) paymentsHandler() *hpayments.Handler {
 		// Same Stripe root the hosted checkout uses, so a stand that points
 		// checkout at a stub verifies credentials against that same stub
 		// rather than reaching out to the real Stripe.
-		WithStripeBaseURL(s.stripeBaseURL())
+		WithStripeBaseURL(s.stripeBaseURL()).
+		WithFlittBaseURL(s.flittBaseURL())
 }
 
 // ─── type aliases ─────────────────────────────────────────────────────────────

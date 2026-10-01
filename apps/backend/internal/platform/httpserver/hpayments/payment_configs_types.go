@@ -30,6 +30,7 @@ import (
 var SupportedPaymentProviders = map[string]bool{
 	"stripe":        true,
 	"allpay":        true,
+	"flitt":         true,
 	"cloudpayments": true,
 	"yookassa":      true,
 	"manual":        true,
@@ -41,8 +42,12 @@ var SupportedPaymentProviders = map[string]bool{
 // still surface their own runtime errors when extra optional secrets
 // are missing.
 var requiredSecretFields = map[string][]string{
-	"stripe":        {"api_key", "webhook_secret"},
-	"allpay":        {"merchant_id", "secret_key"},
+	"stripe": {"api_key", "webhook_secret"},
+	"allpay": {"merchant_id", "secret_key"},
+	// flitt: merchant_id is the numeric id from the portal; payment_key signs
+	// every request AND verifies every callback, so there is no separate
+	// webhook secret. (The portal's "credit key" is for payouts — never used.)
+	"flitt":         {"merchant_id", "payment_key"},
 	"cloudpayments": {"public_id", "api_secret"},
 	"yookassa":      {"shop_id", "secret_key"},
 	"manual":        {}, // manual provider has no credentials

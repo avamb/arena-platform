@@ -29,6 +29,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/flitt"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/stripe"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
@@ -72,6 +73,14 @@ func normalizeSecretPatch(patch map[string]string) map[string]string {
 // asked, and its config stays "unverified" forever, which is the honest
 // state. Only Stripe is wired today.
 func (h *Handler) CredentialVerifierFor(row gen.PaymentProviderConfigRow) (payments.CredentialVerifier, bool) {
+	if row.Provider == "flitt" {
+		merchantID := storedSecretValue(row.Secrets, "merchant_id")
+		paymentKey := storedSecretValue(row.Secrets, "payment_key")
+		if merchantID == "" || paymentKey == "" {
+			return nil, false
+		}
+		return flitt.New(flitt.Config{MerchantID: merchantID, PaymentKey: paymentKey, BaseURL: h.flittBaseURL}), true
+	}
 	if row.Provider != "stripe" {
 		return nil, false
 	}

@@ -33,6 +33,7 @@ package hcheckout
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -42,6 +43,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/flitt"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
@@ -128,9 +130,15 @@ func (h *Handler) HandlePaymentIntentWebhookForConfig(w http.ResponseWriter, r *
 	}
 
 	orgID := cfg.OrgID
+	expectedProvider := ""
+	if strings.EqualFold(cfg.Provider, "flitt") {
+		// A Flitt-signed callback may only move a Flitt payment of this org.
+		expectedProvider = "flitt"
+	}
 	h.processPaymentWebhook(w, r, body, webhookRoute{
-		Kind:          observability.RouteKindConfig,
-		ExpectedOrgID: &orgID,
+		Kind:             observability.RouteKindConfig,
+		ExpectedOrgID:    &orgID,
+		ExpectedProvider: expectedProvider,
 		// The whole reason this route exists.
 		ForeignEventIsOK: true,
 	})
@@ -172,6 +180,21 @@ func (h *Handler) usableWebhookConfig(r *http.Request, configID uuid.UUID) (gen.
 // which would defeat the point of this route. Here the provider comes from
 // the config row, so the expected header is known too.
 func (h *Handler) verifyConfigWebhookSignature(r *http.Request, body []byte, cfg gen.PaymentProviderConfigRow, secret string) error {
+	if strings.EqualFold(cfg.Provider, "flitt") {
+		// The signature rides in the body, not a header. The merchant id is
+		// compared first and BEFORE the hash: it is the cheap check, and a
+		// callback addressed to another merchant is not this config's even
+		// when a shared payment key would let it verify.
+		cb, err := flitt.ParseCallbackUnverified(body)
+		if err != nil {
+			return fmt.Errorf("flitt: unreadable callback: %w", err)
+		}
+		if want := SecretFieldFromConfig(cfg, "merchant_id"); want == "" || cb.MerchantID != want {
+			return errors.New("flitt: callback merchant_id does not match this config")
+		}
+		_, err = flitt.VerifyCallback(body, secret)
+		return err
+	}
 	if strings.EqualFold(cfg.Provider, "allpay") {
 		header := r.Header.Get("X-AllPay-Signature")
 		if header == "" {

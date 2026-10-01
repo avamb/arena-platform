@@ -72,7 +72,25 @@ func (s *Server) hostedPaymentStarter() hfeed.PaymentStarter {
 	if s.orgQueries == nil || s.channelQueries == nil {
 		return nil
 	}
-	return hfeed.NewStripePaymentStarter(s.orgQueries, s.channelQueries, s.stripeBaseURL())
+	callbackBase := ""
+	if s.cfg != nil {
+		callbackBase = s.cfg.APIPublicBaseURL()
+	}
+	return hfeed.NewStripePaymentStarter(s.orgQueries, s.channelQueries, s.stripeBaseURL()).
+		WithFlitt(s.flittBaseURL(), callbackBase)
+}
+
+// flittBaseURL resolves the Flitt endpoint, with the same precedence as
+// stripeBaseURL: the in-process Options override, then FLITT_API_BASE_URL
+// (refused by config.Validate in production), then the real pay.flitt.com.
+func (s *Server) flittBaseURL() string {
+	if s.flittAPIBaseURL != "" {
+		return s.flittAPIBaseURL
+	}
+	if s.cfg != nil {
+		return s.cfg.FlittAPIBaseURL
+	}
+	return ""
 }
 
 // stripeBaseURL resolves the Stripe endpoint the hosted-checkout adapter

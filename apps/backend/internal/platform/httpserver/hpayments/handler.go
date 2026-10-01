@@ -38,6 +38,8 @@ type Handler struct {
 	// can point the check at a stub without a network call; see
 	// WithStripeBaseURL.
 	stripeBaseURL string
+	// flittBaseURL is the same test seam for Flitt credential verification.
+	flittBaseURL string
 }
 
 // New constructs a Handler from the caller's dependencies. Nil queries and a
@@ -75,5 +77,12 @@ func (h *Handler) WithMembershipQueries(q *gen.Queries) *Handler {
 // carry the /v1 segment — the adapter concatenates endpoints onto it.
 func (h *Handler) WithStripeBaseURL(base string) *Handler {
 	h.stripeBaseURL = base
+	return h
+}
+
+// WithFlittBaseURL points Flitt credential verification at a different API
+// root (a stub in tests). Empty means the real https://pay.flitt.com/api.
+func (h *Handler) WithFlittBaseURL(base string) *Handler {
+	h.flittBaseURL = base
 	return h
 }

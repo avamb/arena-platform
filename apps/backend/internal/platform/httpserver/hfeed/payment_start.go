@@ -37,6 +37,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/flitt"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/stripe"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
@@ -204,6 +205,9 @@ type HostedCheckoutResult struct {
 	RedirectURL string
 	SessionID   string
 	PaymentID   string
+	// Provider is the provider that actually hosts the page ("stripe",
+	// "flitt"); it is what payment_intents.provider is recorded with.
+	Provider string
 }
 
 // PaymentStarter creates the provider-hosted payment page for a confirmed
@@ -245,24 +249,56 @@ type StripePaymentStarter struct {
 	// baseURL overrides the Stripe API endpoint. Empty means the real one;
 	// integration tests point it at a stub server.
 	baseURL string
+	// flittBaseURL is the same test seam for Flitt.
+	flittBaseURL string
+	// callbackBase is the public origin of arena-api ("https://api…"); the
+	// per-config webhook path is appended to it for providers that take a
+	// callback URL per order (Flitt). Empty means no callback URL is sent.
+	callbackBase string
 }
 
 // NewStripePaymentStarter builds the starter. Nil queries are allowed — the
 // starter then answers ErrCodePaymentNotConfigured, which is the correct
 // "this deployment cannot take money" answer rather than a nil dereference.
+//
+// Despite the name it serves every provider in hostedProviders; the name is
+// kept so the wiring and the tests that stub it need no churn.
 func NewStripePaymentStarter(orgQ, channelQ *gen.Queries, baseURL string) *StripePaymentStarter {
 	return &StripePaymentStarter{orgQueries: orgQ, channelQueries: channelQ, baseURL: baseURL}
 }
 
-// supportedHostedProvider is the only provider that can host a checkout page
-// in this wave.
-const supportedHostedProvider = "stripe"
+// WithFlitt sets the Flitt test seam and the public API origin the Flitt
+// callback URL is built from.
+func (s *StripePaymentStarter) WithFlitt(baseURL, callbackBase string) *StripePaymentStarter {
+	s.flittBaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	s.callbackBase = strings.TrimRight(strings.TrimSpace(callbackBase), "/")
+	return s
+}
+
+// Hosted-checkout providers. A channel's provider must be one of these for a
+// widget purchase to be payable.
+const (
+	providerStripe = "stripe"
+	providerFlitt  = "flitt"
+)
+
+// hostedProviders are the providers that can host a checkout page.
+var hostedProviders = map[string]bool{providerStripe: true, providerFlitt: true}
+
+// credentialFields names the secrets a provider's adapter is built from.
+var credentialFields = map[string][]string{
+	providerStripe: {"api_key"},
+	providerFlitt:  {"merchant_id", "payment_key"},
+}
 
 // hostedPaymentConfig is what the configuration checks yield: the provider
 // the channel names and the org's own credential for it.
 type hostedPaymentConfig struct {
 	provider string
-	apiKey   string
+	// apiKey is Stripe's secret key; for Flitt it is the payment key.
+	apiKey string
+	// merchantID is Flitt's merchant id (empty for Stripe).
+	merchantID string
 	// Which payment_provider_configs row this came from. Carried only so a
 	// failure can name it: an org has one row per (provider, mode) and
 	// SelectProviderConfig prefers an active `live` row over an active
@@ -300,12 +336,12 @@ func (s *StripePaymentStarter) resolveConfig(ctx context.Context, orgID, channel
 		}
 	}
 	provider := strings.ToLower(strings.TrimSpace(ch.Provider))
-	if provider != supportedHostedProvider {
+	if !hostedProviders[provider] {
 		return hostedPaymentConfig{}, &PaymentStartError{
 			Code: ErrCodePaymentProviderUnsupported,
 			Message: fmt.Sprintf(
-				"sales channel payment provider %q cannot host a checkout page; only %q is supported",
-				ch.Provider, supportedHostedProvider),
+				"sales channel payment provider %q cannot host a checkout page; supported: stripe, flitt",
+				ch.Provider),
 			Status: 422,
 		}
 	}
@@ -318,20 +354,27 @@ func (s *StripePaymentStarter) resolveConfig(ctx context.Context, orgID, channel
 			Status:  422,
 		}
 	}
-	apiKey := hcheckout.SecretFieldFromConfig(cfg, "api_key")
-	if apiKey == "" {
-		return hostedPaymentConfig{}, &PaymentStartError{
-			Code:    ErrCodePaymentNotConfigured,
-			Message: "the organization's stripe config has no api_key",
-			Status:  422,
+	for _, field := range credentialFields[provider] {
+		if hcheckout.SecretFieldFromConfig(cfg, field) == "" {
+			return hostedPaymentConfig{}, &PaymentStartError{
+				Code:    ErrCodePaymentNotConfigured,
+				Message: fmt.Sprintf("the organization's %s config has no %s", provider, field),
+				Status:  422,
+			}
 		}
 	}
-	return hostedPaymentConfig{
+	out := hostedPaymentConfig{
 		provider: provider,
-		apiKey:   apiKey,
 		configID: cfg.ID.String(),
 		mode:     cfg.Mode,
-	}, nil
+	}
+	if provider == providerFlitt {
+		out.merchantID = hcheckout.SecretFieldFromConfig(cfg, "merchant_id")
+		out.apiKey = hcheckout.SecretFieldFromConfig(cfg, "payment_key")
+	} else {
+		out.apiKey = hcheckout.SecretFieldFromConfig(cfg, "api_key")
+	}
+	return out, nil
 }
 
 // CheckPaymentConfigured implements the PaymentStarter pre-flight: the
@@ -349,7 +392,19 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 		return nil, err
 	}
 
-	adapter := stripe.New(stripe.Config{SecretKey: cfg.apiKey, BaseURL: s.baseURL})
+	var adapter payments.HostedCheckoutProvider
+	callbackURL := ""
+	switch cfg.provider {
+	case providerFlitt:
+		adapter = flitt.New(flitt.Config{MerchantID: cfg.merchantID, PaymentKey: cfg.apiKey, BaseURL: s.flittBaseURL})
+		// Flitt takes the callback URL per order. The config id in the path
+		// names the payment key the callback is verified with.
+		if s.callbackBase != "" {
+			callbackURL = s.callbackBase + "/v1/payment-intents/webhook/" + cfg.configID
+		}
+	default:
+		adapter = stripe.New(stripe.Config{SecretKey: cfg.apiKey, BaseURL: s.baseURL})
+	}
 
 	metadata := map[string]string{
 		"arena_checkout_session_id": req.CheckoutSessionID.String(),
@@ -375,6 +430,7 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 		CancelURL:     returnWithToken,
 		ExpiresAtUnix: req.ExpiresAtUnix,
 		Locale:        req.BuyerLocale,
+		CallbackURL:   callbackURL,
 		// One hosted session per arena checkout: a retry of this call for the
 		// same checkout must return the SAME cs_ id, never charge twice.
 		IdempotencyKey: req.CheckoutSessionID.String(),
@@ -384,13 +440,14 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 		// (provider, mode) and an active `live` row is preferred over an
 		// active `test` one, so "the provider rejected our key" does not
 		// say WHICH key — on production that ambiguity cost an hour.
-		return nil, fmt.Errorf("stripe hosted checkout (config %s, mode %s): %w", cfg.configID, cfg.mode, err)
+		return nil, fmt.Errorf("%s hosted checkout (config %s, mode %s): %w", cfg.provider, cfg.configID, cfg.mode, err)
 	}
 
 	return &HostedCheckoutResult{
 		RedirectURL: resp.URL,
 		SessionID:   resp.SessionID,
 		PaymentID:   resp.PaymentID,
+		Provider:    cfg.provider,
 	}, nil
 }
 
@@ -623,7 +680,7 @@ func (h *Handler) startHostedPayment(
 	if h.checkoutQueries != nil {
 		csID := in.Session.ID
 		if _, err := h.checkoutQueries.InsertHostedPaymentIntent(ctx,
-			&csID, in.CheckCtx.OrgID, supportedHostedProvider,
+			&csID, in.CheckCtx.OrgID, result.Provider,
 			result.SessionID, in.Breakdown.Total, in.Breakdown.Currency,
 			result.RedirectURL,
 		); err != nil {

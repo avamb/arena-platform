@@ -150,7 +150,7 @@ func ResolveProviderConfig(ctx context.Context, q *gen.Queries, orgID uuid.UUID,
 
 // WebhookSecretFromConfig extracts the provider's webhook signing secret
 // from a config's secrets blob (stripe: webhook_secret; allpay:
-// secret_key). Empty when absent.
+// secret_key; flitt: payment_key). Empty when absent.
 func WebhookSecretFromConfig(cfg gen.PaymentProviderConfigRow) string {
 	if len(cfg.Secrets) == 0 {
 		return ""
@@ -160,8 +160,13 @@ func WebhookSecretFromConfig(cfg gen.PaymentProviderConfigRow) string {
 		return ""
 	}
 	key := "webhook_secret"
-	if strings.EqualFold(cfg.Provider, "allpay") {
+	switch {
+	case strings.EqualFold(cfg.Provider, "allpay"):
 		key = "secret_key"
+	case strings.EqualFold(cfg.Provider, "flitt"):
+		// Flitt has no separate webhook secret: the payment key that signs
+		// requests also signs callbacks.
+		key = "payment_key"
 	}
 	if v, ok := m[key].(string); ok {
 		return strings.TrimSpace(v)

@@ -258,6 +258,7 @@ const (
 // Defines values for CreateChannelRequestProvider.
 const (
 	CreateChannelRequestProviderAllpay CreateChannelRequestProvider = "allpay"
+	CreateChannelRequestProviderFlitt  CreateChannelRequestProvider = "flitt"
 	CreateChannelRequestProviderStripe CreateChannelRequestProvider = "stripe"
 )
 
@@ -818,6 +819,7 @@ const (
 // Defines values for UpdateChannelRequestProvider.
 const (
 	UpdateChannelRequestProviderAllpay UpdateChannelRequestProvider = "allpay"
+	UpdateChannelRequestProviderFlitt  UpdateChannelRequestProvider = "flitt"
 	UpdateChannelRequestProviderStripe UpdateChannelRequestProvider = "stripe"
 )
 
@@ -4268,7 +4270,7 @@ type CreatePaymentProviderConfigRequest struct {
 	// Mode Operating mode for the credential set.
 	Mode *CreatePaymentProviderConfigRequestMode `json:"mode,omitempty"`
 
-	// Provider Provider slug (one of stripe, allpay, cloudpayments, yookassa, manual).
+	// Provider Provider slug (one of stripe, allpay, flitt, cloudpayments, yookassa, manual).
 	Provider string `json:"provider"`
 
 	// ProviderAccountId Optional public account identifier.
@@ -7876,8 +7878,10 @@ type PaymentProviderConfigItem struct {
 	// OrgId Owning organization. Immutable after creation.
 	OrgId openapi_types.UUID `json:"org_id"`
 
-	// Provider Provider slug. Must be one of: stripe, allpay, cloudpayments,
-	// yookassa, manual.
+	// Provider Provider slug. Must be one of: stripe, allpay, flitt,
+	// cloudpayments, yookassa, manual. `flitt` needs the secrets
+	// `merchant_id` and `payment_key` (the portal's payment key signs
+	// requests and callbacks; there is no separate webhook secret).
 	Provider string `json:"provider"`
 
 	// ProviderAccountId Optional public account identifier (e.g. Stripe acct_..., AllPay

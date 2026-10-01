@@ -58,6 +58,11 @@ type CreateHostedCheckoutRequest struct {
 	// than a value it would reject: a cosmetic mismatch must never cost a
 	// sale.
 	Locale string
+	// CallbackURL is the absolute URL the provider must post the payment
+	// outcome to, for providers that take it per order (Flitt's
+	// server_callback_url). Stripe configures its endpoint once in the
+	// dashboard and ignores this. Empty means "not supplied".
+	CallbackURL string
 }
 
 // CreateHostedCheckoutResponse is returned by

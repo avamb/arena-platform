@@ -114,14 +114,15 @@ describe("validatePaymentMode", () => {
 // PROVIDERS / validateProvider
 // ---------------------------------------------------------------------------
 describe("PROVIDERS", () => {
-  it("enumerates stripe and allpay", () => {
+  it("enumerates stripe, allpay and flitt", () => {
     expect(PROVIDERS).toContain("stripe");
     expect(PROVIDERS).toContain("allpay");
+    expect(PROVIDERS).toContain("flitt");
   });
 });
 
 describe("validateProvider", () => {
-  it.each(["stripe", "allpay"])("accepts %s", (p) => {
+  it.each(["stripe", "allpay", "flitt"])("accepts %s", (p) => {
     expect(validateProvider(p)).toBeNull();
   });
   it("rejects empty / unknown", () => {

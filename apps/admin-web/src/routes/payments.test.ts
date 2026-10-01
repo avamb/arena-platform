@@ -71,9 +71,10 @@ describe("validateOrgID", () => {
 // PAYMENT_PROVIDERS / validateProvider
 // ---------------------------------------------------------------------------
 describe("PAYMENT_PROVIDERS", () => {
-  it("includes stripe, allpay, cloudpayments, yookassa, manual", () => {
+  it("includes stripe, allpay, flitt, cloudpayments, yookassa, manual", () => {
     expect(PAYMENT_PROVIDERS).toContain("stripe");
     expect(PAYMENT_PROVIDERS).toContain("allpay");
+    expect(PAYMENT_PROVIDERS).toContain("flitt");
     expect(PAYMENT_PROVIDERS).toContain("cloudpayments");
     expect(PAYMENT_PROVIDERS).toContain("yookassa");
     expect(PAYMENT_PROVIDERS).toContain("manual");
@@ -81,7 +82,7 @@ describe("PAYMENT_PROVIDERS", () => {
 });
 
 describe("validateProvider", () => {
-  it.each(["stripe", "allpay", "cloudpayments", "yookassa", "manual"])(
+  it.each(["stripe", "allpay", "flitt", "cloudpayments", "yookassa", "manual"])(
     "accepts %s",
     (p) => {
       expect(validateProvider(p)).toBeNull();

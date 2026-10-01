@@ -9487,8 +9487,10 @@ export interface components {
              */
             org_id: string;
             /**
-             * @description Provider slug. Must be one of: stripe, allpay, cloudpayments,
-             *     yookassa, manual.
+             * @description Provider slug. Must be one of: stripe, allpay, flitt,
+             *     cloudpayments, yookassa, manual. `flitt` needs the secrets
+             *     `merchant_id` and `payment_key` (the portal's payment key signs
+             *     requests and callbacks; there is no separate webhook secret).
              * @example stripe
              */
             provider: string;
@@ -9595,7 +9597,7 @@ export interface components {
          */
         CreatePaymentProviderConfigRequest: {
             /**
-             * @description Provider slug (one of stripe, allpay, cloudpayments, yookassa, manual).
+             * @description Provider slug (one of stripe, allpay, flitt, cloudpayments, yookassa, manual).
              * @example stripe
              */
             provider: string;
@@ -15488,7 +15490,7 @@ export interface components {
              *     returns 400 `channel.invalid_config`.
              * @enum {string}
              */
-            provider?: "stripe" | "allpay";
+            provider?: "stripe" | "allpay" | "flitt";
             /**
              * @description Merchant account identifier at the provider. Required
              *     (non-empty after trim) when `payment_mode` is
@@ -15543,7 +15545,7 @@ export interface components {
              *     leave unchanged.
              * @enum {string}
              */
-            provider?: "stripe" | "allpay";
+            provider?: "stripe" | "allpay" | "flitt";
             /**
              * @description New merchant account identifier. Omitting the key OR sending
              *     JSON `null` both leave the stored value unchanged (the

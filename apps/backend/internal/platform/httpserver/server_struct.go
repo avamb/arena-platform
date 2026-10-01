@@ -157,4 +157,6 @@ type Server struct {
 	// Empty means the real api.stripe.com; integration tests point it at a
 	// stub server.
 	stripeAPIBaseURL string
+	// flittAPIBaseURL is the Flitt twin (Options.FlittAPIBaseURL).
+	flittAPIBaseURL string
 }

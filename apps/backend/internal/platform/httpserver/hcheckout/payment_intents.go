@@ -39,6 +39,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/flitt"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
@@ -715,6 +716,9 @@ func parseWebhookPaymentIntentRequest(body []byte) (webhookPaymentIntentRequest,
 	if err := json.Unmarshal(body, &probe); err != nil {
 		return webhookPaymentIntentRequest{}, err
 	}
+	if flitt.LooksLikeCallback(body) {
+		return parseFlittCallback(body)
+	}
 	_, hasType := probe["type"]
 	_, hasData := probe["data"]
 	if !hasType || !hasData {
@@ -741,6 +745,45 @@ func parseWebhookPaymentIntentRequest(body []byte) (webhookPaymentIntentRequest,
 			req.FailureCode = &code
 		}
 		if msg := env.Data.Object.LastPaymentError.Message; msg != "" {
+			req.FailureMessage = &msg
+		}
+	}
+	return req, nil
+}
+
+// flittEventPrefix marks event types synthesised from a Flitt callback
+// order_status ("flitt.order.approved"). processPaymentWebhook refuses these
+// on the legacy route, where nothing proves the body came from Flitt.
+const flittEventPrefix = "flitt.order."
+
+// parseFlittCallback turns a Flitt callback body into the normalised request.
+//
+//   - ProviderPaymentID is order_id: arena checkout session id, the value
+//     stored as payment_intents.provider_payment_id.
+//   - EventType is "flitt.order.<order_status>".
+//   - The numeric payment_id Flitt assigns becomes the charge reference
+//     (refunds, audit).
+//
+// Signature checking is NOT done here: the per-config route verified the body
+// before it got this far.
+func parseFlittCallback(body []byte) (webhookPaymentIntentRequest, error) {
+	cb, err := flitt.ParseCallbackUnverified(body)
+	if err != nil {
+		return webhookPaymentIntentRequest{}, err
+	}
+	req := webhookPaymentIntentRequest{
+		ProviderPaymentID: cb.OrderID,
+		EventType:         flittEventPrefix + cb.OrderStatus,
+		EventPayload:      json.RawMessage(body),
+		HostedPaymentID:   cb.PaymentID,
+	}
+	if cb.OrderStatus != flitt.StatusApproved {
+		if cb.ResponseCode != "" {
+			code := cb.ResponseCode
+			req.FailureCode = &code
+		}
+		if cb.ResponseDescription != "" {
+			msg := cb.ResponseDescription
 			req.FailureMessage = &msg
 		}
 	}
@@ -774,6 +817,20 @@ var webhookEventTypeToState = map[string]string{
 	// the intent here is what lets the buyer's widget stop showing a
 	// "continue to payment" button for a dead Stripe page.
 	"checkout.session.expired": "failed",
+	// Flitt hosted checkout. Only two of its order statuses move an intent:
+	//
+	//   approved - the money settled.
+	//   expired  - the order outlived its lifetime unpaid.
+	//
+	// "declined" is deliberately ABSENT. A declined card does not close a
+	// Flitt order: the buyer may try another card on the same page until it
+	// expires. Failing the intent on the first decline would make the intent
+	// terminal, and the later approval of that very order would then be
+	// ignored - a paid purchase lost. processing/created/reversed are
+	// acknowledged without a transition too (reversals are refunds, which
+	// follow the refund flow).
+	"flitt.order.approved": "succeeded",
+	"flitt.order.expired":  "failed",
 	// Shorthand aliases used by mock provider tests.
 	"mock.requires_action": "requires_action",
 	"mock.processing":      "processing",
@@ -896,6 +953,11 @@ type webhookRoute struct {
 	// miss stays a 404, because that route has no proof the delivery came
 	// from a known account at all.
 	ForeignEventIsOK bool
+	// ExpectedProvider, when set, is the provider whose config the URL names;
+	// an intent recorded under another provider is "not ours". Set only for
+	// Flitt: its callbacks are matched by OUR order id (a UUID), so a Flitt
+	// signature must never be able to move a Stripe intent of the same org.
+	ExpectedProvider string
 }
 
 // processPaymentWebhook is the shared body of both webhook entry points. The
@@ -970,6 +1032,17 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 	// A hosted session that expired unpaid fails the intent with a specific,
 	// machine-readable code so the order-status surface can tell "the buyer
 	// walked away" from "the card was declined".
+	if strings.HasPrefix(req.EventType, flittEventPrefix) && route.ExpectedProvider != "flitt" {
+		// A Flitt body is authenticated by the payment key of the config named
+		// in the URL. The legacy route has no such config, so it cannot vouch
+		// for one: refuse rather than guess.
+		h.recordWebhookEvent(observability.PaymentWebhookEventOther, webhookOutcomeRejected)
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
+			"webhook.flitt_requires_config_route",
+			"Flitt callbacks must be delivered to /v1/payment-intents/webhook/{config_id}", r))
+		return
+	}
+
 	if req.EventType == eventCheckoutSessionExpired && req.FailureCode == nil {
 		code := failureCodeSessionExpired
 		msg := "the hosted checkout session expired before it was paid"
@@ -1010,6 +1083,15 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 	// of their own account against a provider id belonging to organizer B and
 	// move B's order. Treated as "not ours" rather than 403: the answer must
 	// not tell the caller whether the id exists at all.
+	if route.ExpectedProvider != "" && !strings.EqualFold(pi.Provider, route.ExpectedProvider) {
+		h.logger.Warn("webhook: payment intent belongs to a different provider than the config in the URL",
+			slog.String("provider_payment_id", req.ProviderPaymentID),
+			slog.String("config_provider", route.ExpectedProvider),
+			slog.String("intent_provider", pi.Provider),
+		)
+		h.writeNotOurPayment(w, r, req.EventType)
+		return
+	}
 	if route.ExpectedOrgID != nil && pi.OrgID != *route.ExpectedOrgID {
 		h.logger.Warn("webhook: payment intent belongs to a different organization than the config in the URL",
 			slog.String("provider_payment_id", req.ProviderPaymentID),

@@ -1922,3 +1922,31 @@ entries short and factual.
   poster only by id, so the kept-poster question uses the
   `bot.wz.ask_poster_have_nosize` text, never "0×0".
 - **The bot wizard edits an existing event on a CARD, one part per screen, and "Cancel" never deletes on one tap.** An edited event opens at `stEditMenu` (was the creation summary, which re-walked the whole chain): buttons `e:name`/`e:desc`/`e:poster`/`e:age`/`e:promoter`/`e:currency` open ONE question (`Scratch.Edit` names it, `Draft.singleEdit()` makes every `d.next(...)`/`d.nextSection(...)` return to the card instead of the next question), while `e:date` and `e:tickets` reuse the creation steps and end on the card through `section()` → `goHome()`. Changes are collected in `Draft.Changed` (marked ✎ on the card) and written only by "Publish changes" (`publish`, offered once something changed). `e:home` leaves a part without applying it (`cancelEdit` puts the re-entered categories/schedule back and drops a half-entered date). Anything new that "walks on" in creation must go through `next`/`nextSection`/`goHome`, never a bare `goTo`, or edit mode will drag the person through the chain again. `cancel` now opens `stCancel` (keep / delete / continue): `cancel:keep` returns `ErrSavedExit` (the draft is stored as it is, `wizardApply` shows the menu), only `cancel:drop` returns `ErrCancelled` and deletes. Other 2026-09-30 wizard rules: the first question asks only for the name and offers "Fill in from a poster" as a button to `stEvPosterAsk` (a stray poster replaces an existing event's poster only on the poster screen, `waitsForPoster`); a new venue costs ONE places question (`stVCapacity`, required — the number is the session capacity AND the venue default, `createVenue` ends through `finishSession`); in "one after another" mode a category from the second on asks "last or another follows?" (`stTCatLast`) and the end of a non-last price is ONE answer, a date and/or a count (`ParseCategoryEnd`), because the old two-question form made the last category impossible to finish (it demanded an end the last one must not have). `draftSchemaVersion` is 2: older drafts are discarded by `loadDraft`.
+- **Flitt is a hosted-checkout provider like Stripe, with three differences
+  that bit during the build (spec `08_architecture/29_flitt_payment_provider_ru.md`,
+  migration 0120).** (1) The callback carries its signature IN THE BODY and is
+  signed with the SAME `payment_key` that signs requests — there is no
+  separate webhook secret, so `WebhookSecretFromConfig` reads `payment_key`
+  for flitt, and `verifyConfigWebhookSignature` compares `merchant_id` before
+  hashing. Decode the body with `json.Number` or `payment_id` is signed as
+  `8.05e+08`. (2) Flitt matches payments by OUR `order_id` (the checkout
+  session UUID), stored as `payment_intents.provider_payment_id`; its numeric
+  `payment_id` goes to `provider_charge_ref`. (3) `declined` is deliberately
+  NOT mapped to a failed intent — a declined card leaves the Flitt order open
+  for another card, and a terminal intent would swallow the later `approved`
+  (a paid purchase lost). Only `approved` and `expired` move an intent. A
+  Flitt-shaped body on the LEGACY un-suffixed webhook route is answered 400
+  `webhook.flitt_requires_config_route`; the per-config route sets
+  `webhookRoute.ExpectedProvider="flitt"` so a Flitt signature can never move
+  a Stripe intent of the same org. The published signature example in
+  docs.flitt.com does not reproduce (computed on other data): the algorithm was
+  proven against the live sandbox (`merchant_id 1549901`, key `test`, public
+  in their docs) — wrong key answers 1014, unknown merchant 1016, unknown
+  order 1018, which is exactly what `VerifyCredentials` keys on. `FLITT_API_BASE_URL`
+  is the test seam and `config.Validate` refuses it in production. Currencies
+  are NOT allow-listed in arena: the session currency goes to Flitt unchanged
+  and Flitt's 1012/1007 is the verdict. `buyer_locale` only accepts
+  `cs/de/en/es/he/ru`, so a French buyer (`fr`) is dropped before the adapter —
+  the Flitt page and the e-mail fall back to defaults until `fr` templates
+  exist. Refunds are NOT driven through Flitt from arena (nor through Stripe:
+  the refund flow only simulates provider submission today).

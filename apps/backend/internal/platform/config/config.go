@@ -189,6 +189,13 @@ type Config struct {
 	// Stripe key and every buyer who followed the returned URL.
 	StripeAPIBaseURL string `env:"STRIPE_API_BASE_URL" required:"false" default:""`
 
+	// FlittAPIBaseURL is the same seam for Flitt (default
+	// https://pay.flitt.com/api). TEST AND DEVELOPMENT ONLY: Validate()
+	// refuses a non-empty value under APP_ENV=production, for the reason
+	// STRIPE_API_BASE_URL is refused — the organizer's payment key signs every
+	// request, and a redirected endpoint could replay a signed order.
+	FlittAPIBaseURL string `env:"FLITT_API_BASE_URL" required:"false" default:""`
+
 	// -------------------------------------------------------------------------
 	// Database (PostgreSQL 17)
 	// -------------------------------------------------------------------------
@@ -686,6 +693,8 @@ func Load() (*Config, error) {
 
 	// STRIPE_API_BASE_URL — test/dev only, rejected in production by Validate.
 	cfg.StripeAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("STRIPE_API_BASE_URL", "")), "/")
+	// FLITT_API_BASE_URL — test/dev only, rejected in production by Validate.
+	cfg.FlittAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("FLITT_API_BASE_URL", "")), "/")
 
 	d, err := getenvDuration("REQUEST_TIMEOUT_SECONDS", 30*time.Second, true)
 	if err != nil {
@@ -1312,6 +1321,15 @@ func (c *Config) validateProduction() []error {
 		errs = append(errs, errors.New(
 			"STRIPE_API_BASE_URL must not be set in production;"+
 				" it redirects hosted checkout calls away from api.stripe.com"+
+				" and is for tests and local development only",
+		))
+	}
+
+	// 16. FLITT_API_BASE_URL: same reasoning as STRIPE_API_BASE_URL above.
+	if strings.TrimSpace(c.FlittAPIBaseURL) != "" {
+		errs = append(errs, errors.New(
+			"FLITT_API_BASE_URL must not be set in production;"+
+				" it redirects hosted checkout calls away from pay.flitt.com"+
 				" and is for tests and local development only",
 		))
 	}

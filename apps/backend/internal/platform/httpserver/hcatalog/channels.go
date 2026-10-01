@@ -141,12 +141,12 @@ func ValidateChannelConfig(paymentMode, provider, providerAccountID string) stri
 	}
 
 	switch provider {
-	case "stripe", "allpay":
+	case "stripe", "allpay", "flitt":
 		// valid
 	case "":
 		return "provider is required"
 	default:
-		return fmt.Sprintf("provider must be 'stripe' or 'allpay', got %q", provider)
+		return fmt.Sprintf("provider must be 'stripe', 'allpay' or 'flitt', got %q", provider)
 	}
 
 	if paymentMode == "direct_merchant" && strings.TrimSpace(providerAccountID) == "" {
@@ -479,10 +479,10 @@ func (h *Handler) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 			))
 			return
 		}
-		if req.Provider != "" && req.Provider != "stripe" && req.Provider != "allpay" {
+		if req.Provider != "" && req.Provider != "stripe" && req.Provider != "allpay" && req.Provider != "flitt" {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"channel.invalid_config",
-				fmt.Sprintf("provider must be 'stripe' or 'allpay', got %q", req.Provider),
+				fmt.Sprintf("provider must be 'stripe', 'allpay' or 'flitt', got %q", req.Provider),
 				r,
 				map[string]any{"field": "provider"},
 			))

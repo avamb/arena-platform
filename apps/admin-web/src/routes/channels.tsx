@@ -21,7 +21,7 @@
  * Validation mirrors the backend contract:
  *   - name required, 1-200 chars
  *   - payment_mode in {"direct_merchant", "merchant_of_record"}
- *   - provider     in {"stripe", "allpay"}
+ *   - provider     in {"stripe", "allpay", "flitt"}
  *   - provider_account_id required iff payment_mode=direct_merchant
  *   - fee_percent must parse as a decimal with up to 2 fractional digits
  *   - reservation_ttl_override is an optional positive integer (seconds)
@@ -81,13 +81,13 @@ interface OrganizationListEnvelope {
 }
 
 export type PaymentMode = "direct_merchant" | "merchant_of_record";
-export type Provider = "stripe" | "allpay";
+export type Provider = "stripe" | "allpay" | "flitt";
 
 export const PAYMENT_MODES: readonly PaymentMode[] = [
   "direct_merchant",
   "merchant_of_record",
 ];
-export const PROVIDERS: readonly Provider[] = ["stripe", "allpay"];
+export const PROVIDERS: readonly Provider[] = ["stripe", "allpay", "flitt"];
 
 export interface Channel {
   readonly id: string;
@@ -149,7 +149,7 @@ export function validatePaymentMode(mode: string): string | null {
 
 export function validateProvider(provider: string): string | null {
   if (!(PROVIDERS as readonly string[]).includes(provider)) {
-    return "Provider must be stripe or allpay";
+    return "Provider must be stripe, allpay or flitt";
   }
   return null;
 }
@@ -1074,6 +1074,8 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
                 ? paymentMode === "direct_merchant"
                   ? "Your Stripe connected account ID — starts with 'acct_'. Find it in your Stripe Dashboard → Settings → Account details."
                   : "Your Stripe account ID (optional for Merchant of Record mode). Starts with 'acct_'."
+                : provider === "flitt"
+                  ? "Your Flitt merchant ID (a number). Find it in the Flitt portal under Merchant settings. The payment key itself goes into the organization's Payment configs, never here."
                 : provider === "allpay"
                   ? paymentMode === "direct_merchant"
                     ? "Your AllPay merchant account ID. Find it in the AllPay merchant portal under Settings → Account."
