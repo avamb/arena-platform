@@ -38,6 +38,7 @@ var MessageKeys = []string{
 	"bot.team_remove_btn",
 	"bot.team_remove_yes_btn",
 	"bot.team_ask_email",
+	"bot.team_dialog_expired",
 	"bot.team_ask_role",
 	"bot.team_role_manager_btn",
 	"bot.team_role_owner_btn",

@@ -201,6 +201,9 @@ other = "Yes, remove"
 ["bot.team_ask_email"]
 other = "The colleague's e-mail? They will get a letter with a link to this bot."
 
+["bot.team_dialog_expired"]
+other = "Time is up: an invitation waits for the address and role for 30 minutes at most. Please start again."
+
 ["bot.team_ask_role"]
 other = "What may {{.Email}} do?"
 

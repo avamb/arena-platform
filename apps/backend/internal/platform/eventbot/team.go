@@ -80,13 +80,20 @@ type teamDialog struct {
 type teamDialogs struct {
 	mu   sync.Mutex
 	byID map[int64]teamDialog
+	// lapsed remembers whose dialog ran out, so the next e-mail or role press
+	// from them is answered with "time is up" instead of silently falling
+	// through to the events list.
+	lapsed map[int64]bool
 }
 
-func newTeamDialogs() *teamDialogs { return &teamDialogs{byID: map[int64]teamDialog{}} }
+func newTeamDialogs() *teamDialogs {
+	return &teamDialogs{byID: map[int64]teamDialog{}, lapsed: map[int64]bool{}}
+}
 
 func (t *teamDialogs) start(id int64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	delete(t.lapsed, id)
 	t.byID[id] = teamDialog{expires: time.Now().Add(teamDialogTTL)}
 }
 
@@ -94,11 +101,25 @@ func (t *teamDialogs) get(id int64) (teamDialog, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	d, ok := t.byID[id]
-	if !ok || time.Now().After(d.expires) {
+	if !ok {
+		return teamDialog{}, false
+	}
+	if time.Now().After(d.expires) {
 		delete(t.byID, id)
+		t.lapsed[id] = true
 		return teamDialog{}, false
 	}
 	return d, true
+}
+
+// takeLapsed reports whether this person's invite dialog ran out since they
+// last heard about it, and forgets the fact.
+func (t *teamDialogs) takeLapsed(id int64) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	was := t.lapsed[id]
+	delete(t.lapsed, id)
+	return was
 }
 
 func (t *teamDialogs) setEmail(id int64, email string) {
@@ -232,7 +253,11 @@ func (b *Bot) teamCallback(ctx context.Context, chatID int64, msgID int, from *m
 		}
 		dlg, ok := b.team.get(from.ID)
 		if !ok || dlg.email == "" {
-			b.showTeam(ctx, chatID, &msgID, from, "")
+			prefix := ""
+			if b.team.takeLapsed(from.ID) {
+				prefix = b.texts.T(loc, "bot.team_dialog_expired", nil) + "\n\n"
+			}
+			b.showTeam(ctx, chatID, &msgID, from, prefix)
 			return
 		}
 		role := parts[1]
@@ -294,6 +319,17 @@ func (b *Bot) teamCallback(ctx context.Context, chatID int64, msgID int, from *m
 // whether the text was taken.
 func (b *Bot) teamText(ctx context.Context, chatID int64, from *models.User, text string) bool {
 	dlg, ok := b.team.get(from.ID)
+	if !ok && looksLikeEmail(strings.ToLower(strings.TrimSpace(text))) && b.team.takeLapsed(from.ID) {
+		// The dialog ran out while the person was away: say so rather than
+		// treating the address as a stray message.
+		if id, _, err := b.resolveIdentity(ctx, from.ID); err == nil && isOwner(id) {
+			b.send(ctx, chatID, b.texts.T(id.Locale(), "bot.team_dialog_expired", nil), &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+				{{Text: b.texts.T(id.Locale(), "bot.team_invite_btn", nil), CallbackData: "team:invite"}},
+			}})
+			return true
+		}
+		return false
+	}
 	if !ok || dlg.email != "" {
 		return false
 	}
