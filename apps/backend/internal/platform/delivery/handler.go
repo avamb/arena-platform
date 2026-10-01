@@ -96,7 +96,7 @@ type Payload struct {
 	Template string `json:"template,omitempty"`
 	// Locale selects the language for subject + body. Falls back to
 	// templates.DefaultLocale when empty or unknown. Examples: "en", "de",
-	// "es", "he", "cs", "ru". The enqueue paths populate it from
+	// "es", "fr", "he", "cs", "ru". The enqueue paths populate it from
 	// checkout_sessions.buyer_locale (migration 0105) — empty means the
 	// purchase never stated a language (a gateway sale, or a ticket issued
 	// before 0105) and the renderer falls back to English.

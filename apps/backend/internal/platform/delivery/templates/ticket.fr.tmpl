@@ -1,0 +1,76 @@
+{{define "subject"}}Votre billet — {{.EventName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+<head><meta charset="UTF-8"><title>Votre billet</title></head>
+<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
+  <table cellpadding="0" cellspacing="0" style="width:100%;border-bottom:1px solid #eee;padding-bottom:12px;margin-bottom:16px">
+    <tr>
+      <td style="vertical-align:middle">
+        {{with .Branding.LogoURL}}<img src="{{.}}" alt="{{$.Branding.LogoAlt}}" style="max-height:48px;max-width:240px">{{end}}
+      </td>
+      <td style="vertical-align:middle;text-align:right;font-size:13px;color:#555">
+        <strong>{{.Branding.OrgName}}</strong>
+        {{with .Branding.WebsiteURL}}<br><a href="{{.}}" style="color:#1a73e8;text-decoration:none">{{.}}</a>{{end}}
+      </td>
+    </tr>
+  </table>
+  <h1 style="color:#1a1a2e">Votre billet est prêt</h1>
+  <p>Bonjour{{with .HolderName}} {{.}}{{end}},</p>
+  <p>Votre billet pour <strong>{{.EventName}}</strong> a été émis.
+     Vous trouverez le PDF en pièce jointe de ce message.</p>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
+    <tr><td><strong>Événement</strong></td><td>{{.EventName}}</td></tr>
+    {{with .SessionStart}}<tr><td><strong>Séance</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .VenueName}}<tr><td><strong>Lieu</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .TierName}}<tr><td><strong>Catégorie</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatSector}}<tr><td><strong>Secteur</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>Rang</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>Place</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>
+  <p style="font-size:12px;color:#666">Identifiant du billet : {{.TicketID}}</p>
+  <p style="font-size:12px;color:#666">Envoyé à : {{.RecipientEmail}}</p>
+  <hr>
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Contact : <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">Arena Platform — envoi automatique</p>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+Votre billet est prêt
+
+Bonjour{{with .HolderName}} {{.}}{{end}},
+
+Votre billet pour {{.EventName}} a été émis.
+Vous trouverez le PDF en pièce jointe de ce message.
+
+Événement : {{.EventName}}
+{{with .SessionStart}}Séance : {{.}}
+{{end}}{{with .VenueName}}Lieu : {{.}}
+{{end}}{{with .TierName}}Catégorie : {{.}}
+{{end}}{{with .SeatSector}}Secteur : {{.}}
+{{end}}{{with .SeatRow}}Rang : {{.}}
+{{end}}{{with .SeatNumber}}Place : {{.}}
+{{end}}
+Identifiant du billet : {{.TicketID}}
+Envoyé à : {{.RecipientEmail}}
+
+--
+{{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Contact : {{.}}
+{{end}}
+Arena Platform — envoi automatique
+{{end}}

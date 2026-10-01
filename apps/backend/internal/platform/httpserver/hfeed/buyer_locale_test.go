@@ -34,6 +34,8 @@ func TestNormalizeBuyerLocale_FoldsCaseAndRegionSubtags(t *testing.T) {
 		"he-IL":   "he",
 		"de-AT":   "de",
 		"es-419":  "es",
+		"fr-FR":   "fr",
+		"fr":      "fr",
 		" EN-us ": "en",
 	}
 	for in, want := range cases {
@@ -50,7 +52,7 @@ func TestNormalizeBuyerLocale_DropsAnythingUnshipped(t *testing.T) {
 	for _, in := range []string{
 		"",
 		"   ",
-		"fr",       // real language, no templates shipped
+		"pt",       // real language, no templates shipped
 		"zz",       // not a language
 		"english",  // a name, not a tag
 		"e",        // too short

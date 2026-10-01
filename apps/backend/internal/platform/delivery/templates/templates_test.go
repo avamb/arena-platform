@@ -14,9 +14,9 @@ func TestNew_ParsesAllEmbeddedFiles(t *testing.T) {
 	got := r.KnownTemplates()
 	want := []string{
 		"invitation.cs", "invitation.de", "invitation.en", "invitation.es",
-		"invitation.he", "invitation.ru",
-		"ticket.cs", "ticket.de", "ticket.en", "ticket.es", "ticket.he",
-		"ticket.ru",
+		"invitation.fr", "invitation.he", "invitation.ru",
+		"ticket.cs", "ticket.de", "ticket.en", "ticket.es", "ticket.fr",
+		"ticket.he", "ticket.ru",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("KnownTemplates mismatch:\n got=%v\nwant=%v", got, want)
@@ -43,7 +43,7 @@ func TestResolveLocale_FallbacksToEnglish(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cases := []string{"", "fr", "klingon", "EN-US", "  ", "ZH-Hant-TW"}
+	cases := []string{"", "pt", "klingon", "EN-US", "  ", "ZH-Hant-TW"}
 	for _, in := range cases {
 		got := r.ResolveLocale(TemplateKindTicket, in)
 		// "EN-US" should normalize to "en" — a hit, not a fallback.
@@ -369,6 +369,8 @@ func TestRender_RussianAndCzechMarkers(t *testing.T) {
 	}{
 		{locale: "ru", htmlLangAttr: `lang="ru"`, ticketMarker: "Ваш билет готов", inviteMarker: "Вы приглашены!"},
 		{locale: "cs", htmlLangAttr: `lang="cs"`, ticketMarker: "Vaše vstupenka je připravena", inviteMarker: "Jste pozváni!"},
+		// French, added for the first French-market organizer (2026-10-01).
+		{locale: "fr", htmlLangAttr: `lang="fr"`, ticketMarker: "Votre billet est prêt", inviteMarker: "Vous êtes invité(e) !"},
 	}
 	data := Data{
 		TicketID:       "11111111-2222-3333-4444-555555555555",
@@ -449,6 +451,8 @@ func TestResolveLocale_LocaleTagVariantsNormalizeToCsRu(t *testing.T) {
 		{"RU", "ru"},
 		{"cs-CZ", "cs"},
 		{"CS", "cs"},
+		{"fr-FR", "fr"},
+		{"FR", "fr"},
 		{"uk", DefaultLocale},    // Ukrainian must not map to Russian
 		{"uk-UA", DefaultLocale}, // Ukrainian must not map to Russian
 		{"be", DefaultLocale},    // Belarusian must not map to Russian
@@ -477,6 +481,7 @@ func TestNormalize(t *testing.T) {
 		"ru-RU":     "ru",
 		"RU":        "ru",
 		"cs-CZ":     "cs",
+		"fr-FR":     "fr",
 		"uk-UA":     "uk",
 		"be-BY":     "be",
 	}

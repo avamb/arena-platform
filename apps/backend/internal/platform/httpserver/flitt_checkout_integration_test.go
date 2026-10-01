@@ -469,3 +469,36 @@ func TestFlitt_MissingCredentialTakesNoInventory(t *testing.T) {
 	}
 	f.assertNoInventoryTaken(t, ctx, before)
 }
+
+// TestFlitt_FrenchBuyerGetsFrenchPageAndFrenchEmailLocale: a buyer from France
+// (browser tag fr-FR) must reach Flitt as lang=fr AND be stored as buyer_locale
+// fr, which is what picks the French e-mail template (templates.SupportedLocales).
+func TestFlitt_FrenchBuyerGetsFrenchPageAndFrenchEmailLocale(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f := newFlittFixture(t, ctx, pool, "ffr", "EUR")
+	defer f.cleanup()
+
+	stub := newStubFlittServer(t, f.paymentKey)
+	srv := buildHostedCheckoutServer(t, pool, "")
+	srv.flittAPIBaseURL = stub.baseURL()
+	srv.cfg.AppPublicURL = "https://api.arena-integration.test"
+
+	code, body := f.startCheckoutWithLocale(t, srv, hostedTicketsBaseURL+"/fr", "fr-FR")
+	if code != http.StatusCreated {
+		t.Fatalf("checkout/start = %d; body: %s", code, body)
+	}
+	var start hostedStartResponse
+	_ = json.Unmarshal(body, &start)
+	if got := stub.last(t)["lang"]; got != "fr" {
+		t.Errorf("flitt lang = %v; want fr", got)
+	}
+	var stored *string
+	if err := pool.QueryRow(ctx, `SELECT buyer_locale FROM checkout_sessions WHERE id = $1`,
+		uuid.MustParse(start.CheckoutSession.ID)).Scan(&stored); err != nil {
+		t.Fatalf("read buyer_locale: %v", err)
+	}
+	if stored == nil || *stored != "fr" {
+		t.Errorf("buyer_locale = %v; want fr so the ticket e-mail renders in French", stored)
+	}
+}

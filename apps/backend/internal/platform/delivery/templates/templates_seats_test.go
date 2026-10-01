@@ -20,6 +20,7 @@ var seatLabels = map[string][3]string{
 	"en": {"Sector", "Row", "Seat"},
 	"de": {"Sektor", "Reihe", "Platz"},
 	"es": {"Sector", "Fila", "Asiento"},
+	"fr": {"Secteur", "Rang", "Place"},
 	"he": {"אזור", "שורה", "מקום"},
 }
 

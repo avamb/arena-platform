@@ -4,9 +4,10 @@
 // Templates live next to this file as <name>.<locale>.tmpl, where:
 //
 //   - name   ∈ {"ticket", "invitation"}  (the email kind)
-//   - locale ∈ {"en", "de", "es", "he", "cs", "ru"}  (the AllPay markets
-//     baseline plus cs/ru, added for the Czech-market launch — feature
-//     #565 — where many buyers are Russian-speaking)
+//   - locale ∈ {"en", "de", "es", "fr", "he", "cs", "ru"}  (the AllPay
+//     markets baseline plus cs/ru, added for the Czech-market launch —
+//     feature #565 — where many buyers are Russian-speaking, plus fr for
+//     the first French-market organizer, 2026-10-01)
 //
 // Each .tmpl file defines three blocks via Go's html/template "define" syntax:
 //
@@ -15,8 +16,8 @@
 //	{{define "text"}}    ... {{end}}    plain-text fallback body
 //
 // Locale fallback: an unknown locale falls back to "en". Adding a new
-// locale (for example "fr") is a two-file change: drop ticket.fr.tmpl and
-// invitation.fr.tmpl into this directory; they are picked up automatically
+// locale (for example "pt") is a two-file change: drop ticket.pt.tmpl and
+// invitation.pt.tmpl into this directory; they are picked up automatically
 // at process start because templates are embedded via embed.FS.
 //
 // The renderer is intentionally a thin layer: it owns only the embedded
@@ -44,7 +45,7 @@ const DefaultLocale = "en"
 
 // SupportedLocales lists the locales that this package ships templates for.
 // Order is alphabetical; tests assert this list matches the embedded files.
-var SupportedLocales = []string{"cs", "de", "en", "es", "he", "ru"}
+var SupportedLocales = []string{"cs", "de", "en", "es", "fr", "he", "ru"}
 
 // TemplateKindTicket is the standard paid/free-checkout ticket delivery email.
 const TemplateKindTicket = "ticket"

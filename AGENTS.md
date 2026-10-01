@@ -1945,10 +1945,13 @@ entries short and factual.
   order 1018, which is exactly what `VerifyCredentials` keys on. `FLITT_API_BASE_URL`
   is the test seam and `config.Validate` refuses it in production. Currencies
   are NOT allow-listed in arena: the session currency goes to Flitt unchanged
-  and Flitt's 1012/1007 is the verdict. `buyer_locale` only accepts
-  `cs/de/en/es/he/ru`, so a French buyer (`fr`) is dropped before the adapter —
-  the Flitt page and the e-mail fall back to defaults until `fr` templates
-  exist. Refunds are NOT driven through Flitt from arena (nor through Stripe:
+  and Flitt's 1012/1007 is the verdict. `buyer_locale` accepts
+  `templates.SupportedLocales` = `cs/de/en/es/fr/he/ru` (French e-mail templates
+  added 2026-10-01, the PDF already had `fr`); the Flitt page gets `lang` from the
+  same value. The widget forwards whatever `locale` the host site sets (its UI
+  falls back to English for an unknown one), but the tickets PAGE only resolves
+  `en/ru/cs/he/es`, so a French browser on a promoter page still sends `en`
+  until `fr` joins `PAGE_LOCALES` (needs a French string table). Refunds are NOT driven through Flitt from arena (nor through Stripe:
   the refund flow only simulates provider submission today). **The buyer comes
   back from Flitt THROUGH arena, never straight to their page:** Flitt returns
   the buyer with the method set in its portal (default POST, switchable only
