@@ -63,9 +63,9 @@ const (
 	// hosted page that dies within a minute would be worse than none.
 	minLifetimeSeconds = 60
 
-	// credentialProbeOrderID is the order id used by VerifyCredentials. It is
+	// statusProbeOrderID is the order id used by VerifyCredentials. It is
 	// never created, so the answer is always "order not found" for a good key.
-	credentialProbeOrderID = "arena-credential-check"
+	statusProbeOrderID = "arena-credential-check"
 )
 
 // Flitt error codes the adapter reacts to (docs.flitt.com/api/response-codes).
@@ -491,7 +491,7 @@ func (a *Adapter) VerifyCredentials(ctx context.Context) error {
 	}
 	_, status, err := a.post(ctx, "/status/order_id", map[string]any{
 		"merchant_id": merchantID,
-		"order_id":    credentialProbeOrderID,
+		"order_id":    statusProbeOrderID,
 	})
 	if err == nil {
 		return nil
