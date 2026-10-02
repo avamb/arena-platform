@@ -212,8 +212,10 @@ describe('renderPromoterPage', () => {
     poster_url: 'https://example.com/day1.jpg',
     age_rating: null,
     venue_names: ['Studio A'],
-    first_session_at: '2026-10-01T17:00:00Z',
-    last_session_at: '2026-10-01T20:00:00Z',
+    // Far in the future: the page shows a past date without its picker, and a
+    // real 2026 date rotted this suite the day after it (2026-10-02).
+    first_session_at: '2099-10-01T17:00:00Z',
+    last_session_at: '2099-10-01T20:00:00Z',
     first_session_timezone: 'Europe/Prague',
     feed_token: 'ft_abc123',
   };
