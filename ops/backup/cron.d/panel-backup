@@ -1,0 +1,2 @@
+# Nightly encrypted backup of the Dokploy panel (database and configuration), runs on the panel host
+40 2 * * * root /usr/local/bin/panel-backup.sh

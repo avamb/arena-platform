@@ -70,7 +70,7 @@ fresh() { # dir pattern
 [ -n "$(fresh /var/backups/secrets 'arena_secrets_*.tar.gz.age')" ] || add "Encrypted secrets archive is older than 26h or missing"
 
 # The copy in R2 must really hold a fresh file for each of the three sets.
-for p in arena-postgres arena-media macs-mongo secrets-encrypted; do
+for p in arena-postgres arena-media macs-mongo secrets-encrypted dokploy-panel-encrypted; do
   if [ -z "$(rclone lsf "r2:arena-platform/$p" --max-age 26h 2>/dev/null | head -1)" ]; then
     add "R2 has no fresh copy in $p"
   fi

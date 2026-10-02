@@ -20,6 +20,7 @@
 | Копия ночных дампов и MACS в R2 | 03:45 | R2 `arena-postgres/`, `arena-media/`, `macs-mongo/` | 30 дней |
 | Суточная проверка всего | 04:15 | тревога в чат поддержки Telegram | |
 | Почасовая проверка 3-часового дампа | каждый час в :35 | тревога в чат поддержки Telegram | |
+| Панель Dokploy: база и настройки, зашифрованы | 02:40, на сервере панели `arena-macs` | `/var/backups/dokploy-panel` и R2 `dokploy-panel-encrypted/` | 14 дней на сервере, 90 дней в R2 |
 | Зашифрованный архив секретов (compose и `.env`) | 03:50 | `/var/backups/secrets` и R2 `secrets-encrypted/` | 14 дней на сервере, 90 дней в R2 |
 | Образы и исходники MACS | один раз 02.10.2026 | R2 `macs-images/`, `macs-sources/` | без срока |
 
@@ -38,6 +39,7 @@
 | Сервер потерян или не загружается | 6 |
 | Пропали афиши и логотипы | 7 |
 | Сломался MACS | 8 |
+| Потеряна или сломалась панель Dokploy | 8а |
 | Нужно понять, какие продажи потерялись | 10 |
 
 ## 2. Что где лежит
@@ -48,6 +50,7 @@
 | Postgres ночной | `/var/backups/arena/arena_ГГГГММДД-ЧЧММСС.dump` | `arena-postgres/` |
 | Медиа (афиши, логотипы) | `/var/backups/arena/media_ГГГГММДД-ЧЧММСС.tgz` | `arena-media/` |
 | MongoDB MACS | `/opt/macs/backup/mongo_daily_ГГГГММДД_ЧЧММ.archive.gz` | `macs-mongo/` |
+| Панель Dokploy (зашифровано): база и настройки | `/var/backups/dokploy-panel/` на `arena-macs` | `dokploy-panel-encrypted/` |
 | Секреты (compose и `.env` Arena, `.env` MACS, настройки Traefik), зашифрованы | `/var/backups/secrets/arena_secrets_ГГГГММДД-ЧЧММ.tar.gz.age` | `secrets-encrypted/` |
 | Образы Docker MACS | только `docker images` на сервере | `macs-images/macs_images_20261002.tar.gz` |
 | Исходники MACS | были на старом сервере `arena-macs` в `/docker/arenasoldout` | `macs-sources/macs_sources_20261002.tar.gz` |
@@ -393,6 +396,74 @@ docker compose up -d backend frontend
   в нём открытый пароль базы со старого сервера.
 - Бэкенд работает в режиме разработки (`uvicorn --reload`), пароль базы новый, но код чужой и старый.
 
+## 8а. Сценарий F: потеряна или сломалась панель Dokploy
+
+Панель Dokploy (`app.andreevmaster.com`) живёт на **`arena-macs`** (Hetzner CX22, 91.99.84.144), а не на боевом сервере. **Сайты и Arena работают сами по себе:**
+контейнеры не зависят от панели, пропадает только управление (деплои, переменные окружения, домены). Паниковать не нужно, но восстановить панель надо до следующего релиза.
+
+Панель управляет тремя серверами по SSH (ключи лежат в её базе): `lead-parser` (сайты, стенд Arena), `lampyrisevents`, `arena-platform-prod-1` (боевая Arena).
+Версия панели **v0.30.8**, ставьте именно её: схема базы должна совпадать с дампом.
+
+Что нужно: закрытый ключ `age` из менеджера паролей, ключ R2 (раздел 3), любой сервер с Docker (Ubuntu), доступ к DNS зоны `andreevmaster.com` в Cloudflare.
+
+1. **Достать копии из R2 и расшифровать** (раздел 3, «Как расшифровать»). Нужны два файла: `dokploy_db_*.dump.age` и `dokploy_config_*.tar.gz.age` последней даты.
+   Архив настроек содержит `etc/dokploy/traefik` (маршруты и сертификат Cloudflare Origin с его закрытым ключом), `schedules`, `volume-backups` и каталог `swarm-secrets/` с секретом авторизации.
+2. **Swarm, сеть и секреты** на новом сервере (адрес Swarm привязан к localhost, наружу порты кластера не открываются):
+
+```bash
+docker swarm init --advertise-addr <ПУБЛИЧНЫЙ_IP> --listen-addr 127.0.0.1:2377
+docker network create --driver overlay --attachable dokploy-network
+mkdir -p /etc/dokploy
+openssl rand -hex 24 | tr -d '\n' | docker secret create dokploy_postgres_password -
+docker secret create dokploy-auth-secret swarm-secrets/dokploy-auth-secret      # файл из расшифрованного архива, ТОЧНАЯ копия, без правки (в нём 65 байт, с переводом строки)
+```
+
+3. **База панели, восстановить ДО запуска панели** (иначе на пустой панели кто угодно сможет зарегистрироваться первым):
+
+```bash
+docker service create --name dokploy-postgres --constraint "node.role==manager" --network dokploy-network \
+  --env POSTGRES_USER=dokploy --env POSTGRES_DB=dokploy \
+  --secret source=dokploy_postgres_password,target=/run/secrets/postgres_password \
+  --env POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password \
+  --mount type=volume,source=dokploy-postgres-database,target=/var/lib/postgresql/data postgres:16
+# дождаться pg_isready, затем (дамп уже расшифрован в dokploy_db.dump):
+docker exec -i $(docker ps -q -f name=dokploy-postgres) pg_restore -U dokploy -d dokploy --no-owner --no-privileges --exit-on-error < dokploy_db.dump
+```
+
+4. **Настройки панели и запуск.** Распакуйте архив настроек в `/` (`tar xzf dokploy_config.tar.gz -C /` вернёт `etc/dokploy/...`, каталог `swarm-secrets` затем удалите),
+   создайте пустой `/etc/dokploy/traefik/dynamic/acme.json` с правами 600, если его нет, затем:
+
+```bash
+docker service create --name dokploy-redis --constraint "node.role==manager" --network dokploy-network --mount type=volume,source=redis-data-volume,target=/data redis:7
+docker service create --name dokploy --replicas 1 --network dokploy-network \
+  --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock \
+  --mount type=bind,source=/etc/dokploy,target=/etc/dokploy \
+  --mount type=volume,source=dokploy-docker-config,target=/root/.docker \
+  --secret source=dokploy_postgres_password,target=/run/secrets/postgres_password \
+  --secret source=dokploy-auth-secret,target=/run/secrets/dokploy-auth-secret \
+  --update-parallelism 1 --update-order stop-first --constraint "node.role == manager" \
+  -e ADVERTISE_ADDR=172.17.0.1 -e POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password \
+  -e BETTER_AUTH_SECRET_FILE=/run/secrets/dokploy-auth-secret dokploy/dokploy:v0.30.8
+docker run -d --name dokploy-traefik --restart always --network dokploy-network \
+  -v /etc/dokploy/traefik/traefik.yml:/etc/traefik/traefik.yml \
+  -v /etc/dokploy/traefik/dynamic:/etc/dokploy/traefik/dynamic \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -p 80:80/tcp -p 443:443/tcp -p 443:443/udp traefik:v3.6.7
+```
+
+   Порт 3000 **не публикуется**: панель отдаётся только по домену через Traefik. Версия Traefik 3.6.7 нужна из-за Docker 29 (Traefik 3.1.x с Docker 29 не работает).
+5. **DNS:** в Cloudflare, зона `andreevmaster.com`, запись A `app` укажите на IP нового сервера (оранжевое облако оставьте). Зона работает в режиме «Full (strict)»,
+   поэтому нужен сертификат **Cloudflare Origin**: он входит в архив настроек (`dynamic/certificates/…`). Без него ошибка 526.
+6. **Проверка:** войдите в панель (сессии сохраняются, если секрет авторизации скопирован точно), откройте «Servers»: должны быть три сервера. Список контейнеров каждого сервера
+   (вкладка Docker) подтверждает, что SSH-доступ работает. Серверы в базе уже удалённые, поэтому менять в ней ничего не нужно, даже если панель окажется на другом сервере.
+7. **Бэкап панели на новом сервере:** `ops/backup/panel-backup.sh` и `ops/backup/cron.d/panel-backup`. Нужны `rclone` с конфигом R2, `age` и `/etc/backup-age-recipient.txt` (раздел 13).
+
+**Что мы узнали при переносе 02.10.2026** (чтобы не наступать снова):
+- Домен панели использует **сертификат Cloudflare Origin** («Origin Server» в списке сертификатов панели), а не Let's Encrypt. Его файлы лежат в `/etc/dokploy/traefik/dynamic/certificates/`, и без них после смены DNS около двух минут отвечала ошибка 526.
+- **Секрет авторизации надо копировать байт в байт.** Если обрезать перевод строки в конце, контрольная сумма меняется, и 2FA и сессии могут перестать работать.
+- До переноса «локальным» сервером панели был `lead-parser`, поэтому его проекты в базе не имели сервера. При переносе `lead-parser` заведён как удалённый (ключ `dokploy-panel@arena-macs` в его `authorized_keys`), и 2 приложения и 10 compose переназначены на него.
+- `apt upgrade` на `arena-macs` обновил Docker до 29, а Traefik 3.1 с ним несовместим. Новая панель использует Traefik 3.6.7.
+
 ## 9. Сценарий E: потерян Redis
 
 Ничего не восстанавливать. Redis хранит только временное состояние (блокировки, кэш), всё перестраивается из Postgres. После любого восстановления базы
@@ -446,9 +517,8 @@ docker rm -f pgrestoretest; rm -rf /tmp/pgtest
 
 1. **Секреты Arena: закрыто 02.10.2026.** Копии в менеджере паролей и в зашифрованном архиве R2 (раздел 3). Остаточный риск: **закрытый ключ `age` должен быть
    сохранён в менеджере паролей**, без него архив бесполезен. Закрытый ключ с сервера удалён 02.10.2026 (`shred`), копия в менеджере паролей владельца. Так шифрование защищает и от утечки R2, и от взлома сервера. Менеджер паролей придётся обновлять вручную при смене секретов.
-2. **Бэкапа самой панели Dokploy (`lead-parser`) нет.** В её базе лежат все проекты, compose и переменные окружения Arena и сайтов. После переноса панели на
-   освободившийся сервер добавьте R2 как место назначения (Settings → S3 Destinations) и включите бэкап базы панели. Эти бэкапы будут содержать секреты из пункта 1:
-   папка в R2 только с этой целью, ключ с правами на один бакет.
+2. **Панель Dokploy: закрыто 02.10.2026.** С этого дня панель живёт на `arena-macs` (раньше на `lead-parser`) и каждую ночь в 02:40 UTC сохраняет в R2
+   зашифрованные базу и настройки (раздел 8а). Остаточный риск: в базе панели лежат секреты всех сайтов и SSH-ключи ко всем серверам, поэтому архив шифруется тем же ключом `age`.
 3. **Потеря данных до 3 часов.** WAL-архив и восстановление на любую секунду (PITR) не включены, описание в `deploy/BACKUP_RESTORE_RUNBOOK.md`, §5 и §7.
 4. **Копии не шифруются нашим ключом** (только шифрование на стороне Cloudflare). Бакет закрыт, ключ ограничен одним бакетом.
 5. **Ключ R2 с правом удаления файлов** лежит на сервере. Тот, кто получит ключ, может стереть и копии. Усиление: версионирование бакета.
@@ -467,6 +537,7 @@ docker rm -f pgrestoretest; rm -rf /tmp/pgtest
 | `ops/backup/macs-backup.sh` | `/opt/macs/backup.sh` | `/etc/cron.d/macs-backup`, 03:30 |
 | `ops/backup/offsite-backup.sh` | `/usr/local/bin/offsite-backup.sh` | `/etc/cron.d/offsite-backup`, 03:45 |
 | `ops/backup/secrets-backup.sh` | `/usr/local/bin/secrets-backup.sh` | `/etc/cron.d/secrets-backup`, 03:50 |
+| `ops/backup/panel-backup.sh` | **на `arena-macs`**: `/usr/local/bin/panel-backup.sh` | **на `arena-macs`**: `/etc/cron.d/panel-backup`, 02:40 |
 | `ops/backup/backup-check.sh` | `/usr/local/bin/backup-check.sh` | `/etc/cron.d/backup-check` и `--hourly` в `arena-pg-3h` |
 
 Имена контейнеров в скриптах прописаны под проект `arena-backend-prod-xy5zqo` (`arena-backend-prod-xy5zqo-db-1`, `…-worker-1`) и том
