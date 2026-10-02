@@ -22,6 +22,7 @@
 | Почасовая проверка 3-часового дампа | каждый час в :35 | тревога в чат поддержки Telegram | |
 | Панель Dokploy: база и настройки, зашифрованы | 02:40, на сервере панели `arena-macs` | `/var/backups/dokploy-panel` и R2 `dokploy-panel-encrypted/` | 14 дней на сервере, 90 дней в R2 |
 | Зашифрованный архив секретов (compose и `.env`) | 03:50 | `/var/backups/secrets` и R2 `secrets-encrypted/` | 14 дней на сервере, 90 дней в R2 |
+| Сайты WordPress на `lead-parser`: база каждую ночь, полный архив по воскресеньям, зашифровано | 03:10, на `lead-parser` | `/var/backups/wp-sites/<сайт>/` и R2 `wordpress-sites-encrypted/<сайт>/` | база и файлы за сутки: 7-8 дней на сервере, 30 дней в R2, полные архивы 10 дней и 35 дней |
 | Образы и исходники MACS | один раз 02.10.2026 | R2 `macs-images/`, `macs-sources/` | без срока |
 
 - **Максимальная потеря данных (RPO):** до 3 часов при потере сервера или базы.
@@ -40,6 +41,7 @@
 | Пропали афиши и логотипы | 7 |
 | Сломался MACS | 8 |
 | Потеряна или сломалась панель Dokploy | 8а |
+| Сломался или потерян сайт WordPress (Vino&Co, arenasoldout.com, Marina, ndarchdesign) | 8б |
 | Нужно понять, какие продажи потерялись | 10 |
 
 ## 2. Что где лежит
@@ -52,6 +54,7 @@
 | MongoDB MACS | `/opt/macs/backup/mongo_daily_ГГГГММДД_ЧЧММ.archive.gz` | `macs-mongo/` |
 | Панель Dokploy (зашифровано): база и настройки | `/var/backups/dokploy-panel/` на `arena-macs` | `dokploy-panel-encrypted/` |
 | Секреты (compose и `.env` Arena, `.env` MACS, настройки Traefik), зашифрованы | `/var/backups/secrets/arena_secrets_ГГГГММДД-ЧЧММ.tar.gz.age` | `secrets-encrypted/` |
+| Сайты WordPress (зашифровано): `db_*.sql.gz.age`, `uploads_delta_*.tgz.age`, `files_full_*.tgz.age` | `/var/backups/wp-sites/<сайт>/` на `lead-parser` | `wordpress-sites-encrypted/<сайт>/` |
 | Образы Docker MACS | только `docker images` на сервере | `macs-images/macs_images_20261002.tar.gz` |
 | Исходники MACS | были на старом сервере `arena-macs` в `/docker/arenasoldout` | `macs-sources/macs_sources_20261002.tar.gz` |
 
@@ -464,6 +467,52 @@ docker run -d --name dokploy-traefik --restart always --network dokploy-network 
 - До переноса «локальным» сервером панели был `lead-parser`, поэтому его проекты в базе не имели сервера. При переносе `lead-parser` заведён как удалённый (ключ `dokploy-panel@arena-macs` в его `authorized_keys`), и 2 приложения и 10 compose переназначены на него.
 - `apt upgrade` на `arena-macs` обновил Docker до 29, а Traefik 3.1 с ним несовместим. Новая панель использует Traefik 3.6.7.
 
+## 8б. Сценарий G: сломан или потерян сайт WordPress на `lead-parser`
+
+Копируются четыре сайта: `arenasoldout` (тестовый магазин), `vinoandco` (**боевой** Vino&Co), `marinabakanova`, `ndarchdesign`. Скрипт `wp-sites-backup.sh` работает на `lead-parser`
+каждую ночь в 03:10 UTC и **ничего не меняет на сайтах** (только читает: `mysqldump --single-transaction` и `tar`). Параллельно UpdraftPlus по-прежнему кладёт свои копии
+на Google Диск владельца, это второй независимый слой, его не трогаем.
+
+Что лежит для каждого сайта (всё зашифровано `age`, открытый ключ на сервере, закрытый в менеджере паролей, как в разделе 3):
+
+| Файл | Когда | Что внутри |
+|---|---|---|
+| `db_<штамп>.sql.gz.age` | каждую ночь | `mysqldump` всех схем контейнера базы (сжатый SQL) |
+| `uploads_delta_<штамп>.tgz.age` | каждую ночь, если были изменения | файлы `wp-content/uploads`, изменённые за последние 48 часов |
+| `files_full_<штамп>.tgz.age` | по воскресеньям | весь том сайта: ядро, плагины, темы, mu-plugins, загрузки, `wp-config.php`, `.htaccess`; без кэшей и без архивов UpdraftPlus |
+
+Хранение: на сервере база 7 дней, дельты 8, полные 10; в R2 база и дельты 30 дней, полные 35 дней. Размер на 02.10.2026: полные архивы 150 МБ (ndarchdesign), 327 МБ (Marina),
+451 МБ (Vino&Co), 836 МБ (arenasoldout), базы от 0,2 до 8 МБ в сжатом виде. Свежесть проверяет суточная проверка на сервере Arena (раздел 4): тревога, если базы
+сайта нет свежее 26 часов или полного архива свежее 8 суток.
+
+**Восстановить сайт целиком** (контейнер WordPress и базу создаёт Dokploy из compose, мы возвращаем только содержимое):
+
+1. Скачать из R2 нужное и расшифровать (раздел 3, «Как расшифровать»): последний `files_full_*`, все `uploads_delta_*` новее его и последний `db_*`.
+2. Остановить контейнер WordPress сайта (`docker stop <контейнер wordpress>`), базу оставить запущенной.
+3. Файлы: распаковать полный архив в том сайта, затем дельты по порядку (старые первыми):
+
+```bash
+VOL=/var/lib/docker/volumes/<проект>_wp_app/_data
+tar xzf files_full.tgz -C "$VOL"
+tar xzf uploads_delta_1.tgz -C "$VOL"      # и так каждую дельту
+```
+
+4. База (схема называется `wordpress`, это же имя в `wp-config.php`; дамп создаёт её сам через `--databases`):
+
+```bash
+gunzip -c db.sql.gz | docker exec -i <контейнер базы> sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot'
+```
+
+5. Запустить контейнер WordPress, проверить главную, вход в админку и страницу покупки. Если сайт показывает старый кэш: очистить Redis или кэш-плагин сайта.
+
+Если нужно вернуть **только базу** (удалили записи, сломали плагин): достаточно шага 4, файлы не трогать. Перед этим на всякий случай снять свежий дамп текущей базы.
+
+Контейнеры и тома сайтов прописаны в таблице `SITES` в самом скрипте. Новый сайт на `lead-parser` добавляется одной строкой туда и именем в цикле `backup-check.sh`.
+
+**Учения 02.10.2026:** боевая база Vino&Co снята той же командой и загружена в одноразовый `mysql:8.4` (память 700 МБ): 123 таблицы из 123, загрузка 13 секунд,
+число строк в `x4gd_posts` (2612), `x4gd_postmeta` (19715), `x4gd_options` (4639), `x4gd_users` (66), `x4gd_woocommerce_order_items` (2219) и `x4gd_actionscheduler_actions` (44078)
+совпало с боевой. **Расшифровка готовых `.age` файлов в учениях не проверялась** (закрытый ключ у владельца): сделайте это при ближайших учениях, команда та же, что для секретов.
+
 ## 9. Сценарий E: потерян Redis
 
 Ничего не восстанавливать. Redis хранит только временное состояние (блокировки, кэш), всё перестраивается из Postgres. После любого восстановления базы
@@ -525,6 +574,7 @@ docker rm -f pgrestoretest; rm -rf /tmp/pgtest
 6. **Один боевой сервер.** Потеря сервера означает простой, пока идёт сценарий B (оценка 2–4 часа).
 7. **Токены в `api-token-*.txt`** (Cloudflare, Hetzner, R2) лежат открытым текстом в рабочем каталоге проекта (в `.gitignore`). Перевыпустите их по окончании работ.
 8. **Старый сервер `arena-macs`** ещё работает как резерв MACS с данными на 02.10.2026, 14:29 UTC. Не останавливайте, пока не пройдёт реальное событие со сканированием.
+9. **Сайты WordPress копируются только с `lead-parser`.** Сайты на других серверах (Lampyris на `lampyrisevents`, `minimaldeco`) этим скриптом не покрыты. На `lead-parser` лежит копия ключа R2 (право записи и удаления во всём бакете) и открытый ключ `age`; при взломе этого сервера копии в R2 можно стереть, как и в пункте 5.
 
 ## 13. Скрипты и их установка на новом сервере
 
@@ -538,6 +588,7 @@ docker rm -f pgrestoretest; rm -rf /tmp/pgtest
 | `ops/backup/offsite-backup.sh` | `/usr/local/bin/offsite-backup.sh` | `/etc/cron.d/offsite-backup`, 03:45 |
 | `ops/backup/secrets-backup.sh` | `/usr/local/bin/secrets-backup.sh` | `/etc/cron.d/secrets-backup`, 03:50 |
 | `ops/backup/panel-backup.sh` | **на `arena-macs`**: `/usr/local/bin/panel-backup.sh` | **на `arena-macs`**: `/etc/cron.d/panel-backup`, 02:40 |
+| `ops/backup/wp-sites-backup.sh` | **на `lead-parser`**: `/usr/local/bin/wp-sites-backup.sh` (нужны `rclone` с конфигом R2, `age` из apt и `/etc/backup-age-recipient.txt`) | **на `lead-parser`**: `/etc/cron.d/wp-sites-backup`, 03:10 |
 | `ops/backup/backup-check.sh` | `/usr/local/bin/backup-check.sh` | `/etc/cron.d/backup-check` и `--hourly` в `arena-pg-3h` |
 
 Имена контейнеров в скриптах прописаны под проект `arena-backend-prod-xy5zqo` (`arena-backend-prod-xy5zqo-db-1`, `…-worker-1`) и том

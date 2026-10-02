@@ -76,6 +76,16 @@ for p in arena-postgres arena-media macs-mongo secrets-encrypted dokploy-panel-e
   fi
 done
 
+# WordPress sites on lead-parser (wp-sites-backup.sh there): a fresh database every night, a full archive every week.
+for s in arenasoldout vinoandco marinabakanova ndarchdesign; do
+  if [ -z "$(rclone lsf "r2:arena-platform/wordpress-sites-encrypted/$s" --include 'db_*' --max-age 26h 2>/dev/null | head -1)" ]; then
+    add "R2 has no fresh database backup of the WordPress site $s (older than 26h)"
+  fi
+  if [ -z "$(rclone lsf "r2:arena-platform/wordpress-sites-encrypted/$s" --include 'files_full_*' --max-age 8d 2>/dev/null | head -1)" ]; then
+    add "R2 has no full file backup of the WordPress site $s (older than 8 days)"
+  fi
+done
+
 if tail -n 6 /var/log/offsite-backup.log 2>/dev/null | grep -q FAILED; then
   add "the last off-site run reported FAILED, see /var/log/offsite-backup.log"
 fi

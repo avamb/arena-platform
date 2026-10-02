@@ -1,0 +1,2 @@
+# Encrypted backup of the WordPress sites on lead-parser to R2: database every night, full site archive on Sundays
+10 3 * * * root /usr/local/bin/wp-sites-backup.sh
