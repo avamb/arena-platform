@@ -12832,7 +12832,7 @@ components:
           description: ISO-4217 code of the session's prices.
         sellEndTime:
           type: string
-          description: RFC3339 timestamp after which sales close (earliest tier `sale_window_end`, else `start_at`).
+          description: RFC3339 timestamp after which the session's sale closes — the latest tier `sale_window_end`, a tier without one selling until `start_at`; `start_at` when the session has no tiers.
         seatingPlanId:
           type: integer
           format: int64

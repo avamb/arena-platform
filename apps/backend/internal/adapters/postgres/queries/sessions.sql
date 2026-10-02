@@ -176,9 +176,13 @@ WHERE  id = $1
 --
 -- The aggregate sub-selects keep the projection at ONE query for the whole
 -- catalog instead of three per session:
---   * sell_end_at — min(sale_window_end) over the session's live tiers; NULL
---     when no tier carries a window, and the handler then falls back to
---     start_at as the spec requires.
+--   * sell_end_at — the LAST moment any live tier still sells: max over the
+--     tiers of sale_window_end, a tier without one counting as selling until
+--     start_at. NULL when the session has no tiers, and the handler then falls
+--     back to start_at. It used to be min(sale_window_end), so a chain of
+--     price steps reported the first step's end as the end of the whole
+--     session's sale: the sites showed an event selling at its second price
+--     as "coming soon" and hid it from the session picker (Vino, 2026-10-02).
 --   * seats_total / seats_available — the materialised session_seats pool
 --     (assigned seats AND ga_units, AB-51). seats_total = 0 means the session
 --     has no unit rows at all, which is the signal to price availability off
@@ -211,11 +215,10 @@ SELECT s.id                                        AS session_id,
        s.poster_media_id,
        e.poster_media_id                           AS event_poster_media_id,
        e.image_url                                 AS event_image_url,
-       (SELECT min(tt.sale_window_end)
+       (SELECT max(COALESCE(tt.sale_window_end, s.start_at))
           FROM   ticket_tiers tt
           WHERE  tt.session_id = s.id
-            AND  tt.deleted_at IS NULL
-            AND  tt.sale_window_end IS NOT NULL)   AS sell_end_at,
+            AND  tt.deleted_at IS NULL)            AS sell_end_at,
        (SELECT count(*)
           FROM   session_seats ss
           WHERE  ss.session_id = s.id)::int        AS seats_total,

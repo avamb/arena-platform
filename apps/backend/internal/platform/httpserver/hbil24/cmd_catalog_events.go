@@ -219,8 +219,11 @@ func (h *Handler) projectActionEvents(
 			entry["cityId"] = int64(0)
 		}
 
-		// sellEndTime — spec §7.1: the earliest tier sale-window end, falling
-		// back to the session start when no tier bounds its window. Rendered
+		// sellEndTime — the last moment any category still sells (the latest
+		// tier sale-window end, a tier without one selling until the start),
+		// falling back to the session start when there are no tiers. Never the
+		// earliest end: the sites read it as the end of the WHOLE session's
+		// sale, and a chain of price steps would close after its first. Rendered
 		// RFC3339 *in the venue's zone* so the offset the site parses is the
 		// one a local buyer experiences.
 		sellEnd := s.StartAt

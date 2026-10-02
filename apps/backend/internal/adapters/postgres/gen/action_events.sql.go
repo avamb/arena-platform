@@ -40,9 +40,11 @@ import (
 // otherwise the session sells against inventory_ledger and LedgerAvailable
 // (capacity_total − sold − held, 0 when uncapped) is.
 //
-// SellEndAt is min(sale_window_end) over the session's live tiers, nil when no
-// tier bounds its sale window — the handler then falls back to StartAt as the
-// spec requires.
+// SellEndAt is the last moment any live tier still sells — max over the tiers
+// of sale_window_end, a tier without one counting as selling until StartAt —
+// nil when the session has no tiers, and the handler then falls back to
+// StartAt. Never the earliest end: a chain of price steps would report the
+// first step's end as the end of the whole sale.
 type ActionEventRow struct {
 	SessionID          uuid.UUID  `json:"session_id"`
 	EventID            uuid.UUID  `json:"event_id"`
@@ -77,11 +79,10 @@ SELECT s.id                                        AS session_id,
        s.poster_media_id,
        e.poster_media_id                           AS event_poster_media_id,
        e.image_url                                 AS event_image_url,
-       (SELECT min(tt.sale_window_end)
+       (SELECT max(COALESCE(tt.sale_window_end, s.start_at))
           FROM   ticket_tiers tt
           WHERE  tt.session_id = s.id
-            AND  tt.deleted_at IS NULL
-            AND  tt.sale_window_end IS NOT NULL)   AS sell_end_at,
+            AND  tt.deleted_at IS NULL)            AS sell_end_at,
        (SELECT count(*)
           FROM   session_seats ss
           WHERE  ss.session_id = s.id)::int        AS seats_total,

@@ -17254,7 +17254,7 @@ export interface components {
             time?: string;
             /** @description ISO-4217 code of the session's prices. */
             currency?: string;
-            /** @description RFC3339 timestamp after which sales close (earliest tier `sale_window_end`, else `start_at`). */
+            /** @description RFC3339 timestamp after which the session's sale closes — the latest tier `sale_window_end`, a tier without one selling until `start_at`; `start_at` when the session has no tiers. */
             sellEndTime?: string;
             /**
              * Format: int64

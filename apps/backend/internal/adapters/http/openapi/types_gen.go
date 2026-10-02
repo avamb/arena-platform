@@ -1624,7 +1624,7 @@ type Bil24ActionEventEntry struct {
 	// SeatingPlanName Display name of the seating plan, when one exists.
 	SeatingPlanName *string `json:"seatingPlanName,omitempty"`
 
-	// SellEndTime RFC3339 timestamp after which sales close (earliest tier `sale_window_end`, else `start_at`).
+	// SellEndTime RFC3339 timestamp after which the session's sale closes — the latest tier `sale_window_end`, a tier without one selling until `start_at`; `start_at` when the session has no tiers.
 	SellEndTime *string `json:"sellEndTime,omitempty"`
 
 	// TariffPlanList Always empty in wave 1 — arena has no tariff-plan concept.
