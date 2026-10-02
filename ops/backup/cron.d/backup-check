@@ -1,0 +1,2 @@
+# Backup freshness check, alerts to the support Telegram chat only
+15 4 * * * root /usr/local/bin/backup-check.sh

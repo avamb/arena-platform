@@ -1,0 +1,100 @@
+# MACS (macs.arenasoldout.com) on the Arena server, moved from arena-macs 2026-10-02.
+# Images are the ones that ran on the old host (docker save / load), not rebuilt.
+# MongoDB is reachable only from the internal network, passwords live in .env (mode 600).
+name: macs
+
+services:
+  mongodb:
+    image: mongo:8.0.17
+    container_name: macs-mongodb
+    restart: unless-stopped
+    command: ["--wiredTigerCacheSizeGB", "0.25"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: arenasoldout
+      APP_DB_PASSWORD: ${MONGO_APP_PASSWORD}
+    volumes:
+      - mongo_data:/data/db
+      - ./init-user.js:/docker-entrypoint-initdb.d/init-user.js:ro
+    networks:
+      internal:
+        aliases: [mongodb]
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  backend:
+    image: arenasoldout-backend:latest
+    container_name: macs-backend
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: production
+      DB_NAME: arenasoldout
+      MONGODB_URI: mongodb://arenasoldout_user:${MONGO_APP_PASSWORD}@mongodb:27017/arenasoldout
+      SESSION_LIFETIME_DAYS: "7"
+      CORS_ALLOW_ALL: "false"
+      BACKEND_LOCAL_URL: http://backend:8000
+    networks:
+      internal:
+        aliases: [backend]
+      dokploy-network: {}
+    mem_limit: 384m
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.macs-backend-web.entrypoints=web
+      - traefik.http.routers.macs-backend-web.rule=Host(`macs.arenasoldout.com`) && PathPrefix(`/api`)
+      - traefik.http.routers.macs-backend-web.middlewares=redirect-to-https@file
+      - traefik.http.routers.macs-backend-websecure.entrypoints=websecure
+      - traefik.http.routers.macs-backend-websecure.rule=Host(`macs.arenasoldout.com`) && PathPrefix(`/api`)
+      - traefik.http.routers.macs-backend-websecure.tls.certresolver=letsencrypt
+      - traefik.http.routers.macs-backend-websecure.service=macs-backend
+      - traefik.http.routers.macs-backend-web.service=macs-backend
+      - traefik.http.services.macs-backend.loadbalancer.server.port=8000
+
+  frontend:
+    image: arenasoldout-frontend:latest
+    container_name: macs-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: https://macs.arenasoldout.com/api
+      NEXT_PUBLIC_BROWSER_API_URL: https://macs.arenasoldout.com/api
+      NEXT_PUBLIC_DEPLOYED_ON_KOYEB: "false"
+      NEXT_PUBLIC_DOCKER_ENV: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+    networks:
+      internal: {}
+      dokploy-network: {}
+    mem_limit: 384m
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.macs-frontend-web.entrypoints=web
+      - traefik.http.routers.macs-frontend-web.rule=Host(`macs.arenasoldout.com`)
+      - traefik.http.routers.macs-frontend-web.middlewares=redirect-to-https@file
+      - traefik.http.routers.macs-frontend-web.service=macs-frontend
+      - traefik.http.routers.macs-frontend-websecure.entrypoints=websecure
+      - traefik.http.routers.macs-frontend-websecure.rule=Host(`macs.arenasoldout.com`)
+      - traefik.http.routers.macs-frontend-websecure.tls.certresolver=letsencrypt
+      - traefik.http.routers.macs-frontend-websecure.service=macs-frontend
+      - traefik.http.services.macs-frontend.loadbalancer.server.port=3000
+
+networks:
+  internal:
+    driver: bridge
+  dokploy-network:
+    external: true
+
+volumes:
+  mongo_data:

@@ -1,0 +1,4 @@
+# Postgres dump every 3 hours, copied to R2 right away
+5 */3 * * * root /usr/local/bin/arena-pg-3h.sh
+# Watch the 3-hourly dump, alert to the support chat once per incident
+35 * * * * root /usr/local/bin/backup-check.sh --hourly

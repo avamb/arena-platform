@@ -1,0 +1,2 @@
+# MACS: daily MongoDB dump at 03:30 UTC (05:30 Madrid)
+30 3 * * * root /opt/macs/backup.sh

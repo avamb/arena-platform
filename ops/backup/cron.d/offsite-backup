@@ -1,0 +1,2 @@
+# Off-site copy of Arena and MACS backups to Cloudflare R2, after the local backups (02:15 and 03:30 UTC)
+45 3 * * * root /usr/local/bin/offsite-backup.sh

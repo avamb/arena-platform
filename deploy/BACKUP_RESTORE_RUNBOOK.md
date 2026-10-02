@@ -1,5 +1,8 @@
 # Arena — Backup / Restore Runbook
 
+> **Актуальное состояние боевого сервера (на 2026-10-02) описано в** [`docs/ops/backup_and_restore_runbook_2026-10-02_ru.md`](../docs/ops/backup_and_restore_runbook_2026-10-02_ru.md).
+> Этот документ общий и написан в июне под гипотетическую схему (`deploy/backup.sh`, WAL-архив не включён). Для реальной аварии берите русский документ, здесь остаётся справочник по WAL/PITR.
+
 > **Scope:** PostgreSQL 17 + Redis 7  
 > **Environment:** Dokploy-hosted production + optional staging  
 > **Maintained by:** Platform / SRE team

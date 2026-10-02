@@ -1,0 +1,1 @@
+15 2 * * * root /usr/local/bin/arena-backup.sh >> /var/log/arena-backup.log 2>&1

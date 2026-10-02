@@ -31,3 +31,7 @@ Makefile text eol=lf
 *.pdf binary
 *.woff binary
 *.woff2 binary
+
+# Server-side scripts and cron files run on Linux: keep LF even on Windows checkouts
+ops/backup/** text eol=lf
+ops/macs/** text eol=lf
