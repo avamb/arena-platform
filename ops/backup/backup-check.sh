@@ -67,9 +67,10 @@ fresh() { # dir pattern
 [ -n "$(fresh /var/backups/arena 'arena_2*.dump')" ]            || add "Arena Postgres dump is older than 26h or missing"
 [ -n "$(fresh /var/backups/arena 'media_2*.tgz')" ]             || add "Arena media archive is older than 26h or missing"
 [ -n "$(fresh /opt/macs/backup 'mongo_daily_*.archive.gz')" ]   || add "MACS MongoDB dump is older than 26h or missing"
+[ -n "$(fresh /var/backups/secrets 'arena_secrets_*.tar.gz.age')" ] || add "Encrypted secrets archive is older than 26h or missing"
 
 # The copy in R2 must really hold a fresh file for each of the three sets.
-for p in arena-postgres arena-media macs-mongo; do
+for p in arena-postgres arena-media macs-mongo secrets-encrypted; do
   if [ -z "$(rclone lsf "r2:arena-platform/$p" --max-age 26h 2>/dev/null | head -1)" ]; then
     add "R2 has no fresh copy in $p"
   fi

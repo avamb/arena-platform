@@ -20,6 +20,7 @@
 | Копия ночных дампов и MACS в R2 | 03:45 | R2 `arena-postgres/`, `arena-media/`, `macs-mongo/` | 30 дней |
 | Суточная проверка всего | 04:15 | тревога в чат поддержки Telegram | |
 | Почасовая проверка 3-часового дампа | каждый час в :35 | тревога в чат поддержки Telegram | |
+| Зашифрованный архив секретов (compose и `.env`) | 03:50 | `/var/backups/secrets` и R2 `secrets-encrypted/` | 14 дней на сервере, 90 дней в R2 |
 | Образы и исходники MACS | один раз 02.10.2026 | R2 `macs-images/`, `macs-sources/` | без срока |
 
 - **Максимальная потеря данных (RPO):** до 3 часов при потере сервера или базы.
@@ -47,6 +48,7 @@
 | Postgres ночной | `/var/backups/arena/arena_ГГГГММДД-ЧЧММСС.dump` | `arena-postgres/` |
 | Медиа (афиши, логотипы) | `/var/backups/arena/media_ГГГГММДД-ЧЧММСС.tgz` | `arena-media/` |
 | MongoDB MACS | `/opt/macs/backup/mongo_daily_ГГГГММДД_ЧЧММ.archive.gz` | `macs-mongo/` |
+| Секреты (compose и `.env` Arena, `.env` MACS, настройки Traefik), зашифрованы | `/var/backups/secrets/arena_secrets_ГГГГММДД-ЧЧММ.tar.gz.age` | `secrets-encrypted/` |
 | Образы Docker MACS | только `docker images` на сервере | `macs-images/macs_images_20261002.tar.gz` |
 | Исходники MACS | были на старом сервере `arena-macs` в `/docker/arenasoldout` | `macs-sources/macs_sources_20261002.tar.gz` |
 
@@ -83,7 +85,36 @@ no_check_bucket = true
 
 **Боевые секреты Arena** (ключ подписи JWT, секрет вебхука Stripe, пароль почты, токены Telegram, ключ подписи медиа и т.д.)
 лежат в `/etc/dokploy/compose/arena-backend-prod-xy5zqo/code/docker-compose.yml` и `.env` рядом, а также в панели Dokploy.
-**Отдельной копии вне сервера и панели нет**, см. раздел 12, пункт 1.
+Копии хранятся **в двух местах** (решение владельца 02.10.2026):
+
+1. **Менеджер паролей владельца**: защищённая заметка с содержимым compose и `.env` проекта (из панели Dokploy, вкладка окружения проекта
+   `arena-backend-prod`) и `.env` MACS. Обновлять при каждом изменении секретов.
+2. **Зашифрованный архив в R2** (`secrets-encrypted/`), обновляется каждую ночь в 03:50 UTC скриптом `secrets-backup.sh`. Шифрование открытым ключом
+   `age`, поэтому сервер и R2 прочитать архив не могут. **Закрытый ключ** хранится только в менеджере паролей владельца (запись «Arena backup age private key»), на сервере его быть не должно.
+
+Открытый ключ (секретом не является, лежит на сервере в `/etc/backup-age-recipient.txt`):
+
+```
+age14meanax6yr474lnvapldtq2jcgm2w7ytgg952v4ypzzrg6g0gatqhnnmpf
+```
+
+В архиве: `docker-compose.yml` и `.env` Arena, `traefik.yml` и `middlewares.yml`, `.env`, `docker-compose.yml` и `init-user.js` MACS. Не входят: ключ R2
+(он нужен, чтобы вообще достать архив, храните его отдельно в менеджере паролей) и `acme.json` Traefik (сертификаты Let's Encrypt выдаются заново).
+
+**Как расшифровать архив.** Нужны программа `age` (на Windows: `winget install FiloSottile.age`, на Ubuntu: `apt install age`) и закрытый ключ из менеджера
+паролей, сохранённый во временный файл `key.txt` (удалите его после работы).
+
+```bash
+rclone lsl r2:arena-platform/secrets-encrypted | tail -3
+rclone copyto r2:arena-platform/secrets-encrypted/arena_secrets_ГГГГММДД-ЧЧММ.tar.gz.age secrets.tar.gz.age
+mkdir -p secrets-restore && age -d -i key.txt secrets.tar.gz.age | tar xz -C secrets-restore
+```
+
+В каталоге `secrets-restore` пути повторяют серверные (`etc/dokploy/...`, `opt/macs/...`). Проверка без показа секретов: `age -d -i key.txt secrets.tar.gz.age | tar tz`.
+
+**Если закрытый ключ потерян**, архив прочитать нельзя. Тогда создайте новую пару на сервере (`age-keygen -o /root/backup-age-private.txt`, открытую часть
+запишите командой `age-keygen -y /root/backup-age-private.txt > /etc/backup-age-recipient.txt`), **сразу заберите закрытый файл в менеджер паролей и удалите его с сервера**,
+запустите `/usr/local/bin/secrets-backup.sh`. Старые архивы останутся нечитаемыми.
 
 **MACS:** пароли MongoDB только в `/opt/macs/.env` (права 600). Compose в репозитории их не содержит.
 
@@ -266,7 +297,7 @@ curl -s https://api.arenasoldout.com/v1/info
 2. **Доступ к образам.** Образ `ghcr.io/avamb/arena-api:<тег>` приватный. На новом сервере выполните `docker login ghcr.io` (токен GitHub с правом `read:packages`).
 3. **rclone.** `apt install rclone`, затем создайте `/root/.config/rclone/rclone.conf` по шаблону из раздела 3 (ключ R2 из менеджера паролей или файла
    владельца, а если потерян, перевыпустите). Проверка: `rclone lsl r2:arena-platform/arena-postgres-3h | tail -3`.
-4. **Compose с пустой базой.** В панели Dokploy возьмите compose проекта `arena-backend-prod` (он хранится в панели вместе с переменными окружения)
+4. **Compose с пустой базой.** В панели Dokploy возьмите compose проекта `arena-backend-prod` (он хранится в панели вместе с переменными окружения, а если панели нет, возьмите файлы из зашифрованного архива секретов, раздел 3)
    и разверните на новом сервере. Поднимутся `db`, `migrate` (создаст пустую схему), `api`, `worker`, `bot`. Сразу остановите приложение:
    `docker stop <проект>-api-1 <проект>-worker-1 <проект>-bot-1`, где `<проект>` это имя compose-проекта на новом сервере.
 5. **Загрузить последний дамп из R2** и восстановить. База после `migrate` не пустая (в ней схема), поэтому пересоздаём её:
@@ -413,10 +444,9 @@ docker rm -f pgrestoretest; rm -rf /tmp/pgtest
 
 ## 12. Известные дыры (решения владельца)
 
-1. **Боевые секреты Arena не имеют копии вне сервера и панели.** Compose и `.env` проекта лежат на `arena-prod` и в панели Dokploy. Если потеряются
-   и сервер, и панель, ключ подписи JWT, секрет вебхука Stripe, пароль почты, токены Telegram, ключ подписи медиа придётся создавать заново (часть
-   перевыпускается в кабинетах Stripe, Brevo и Telegram, ключ подписи JWT выбросит всех из админки). Нужно решение, где хранить копию: менеджер паролей владельца
-   или зашифрованный архив в R2 (не в открытом виде).
+1. **Секреты Arena: закрыто 02.10.2026.** Копии в менеджере паролей и в зашифрованном архиве R2 (раздел 3). Остаточный риск: **закрытый ключ `age` должен быть
+   сохранён в менеджере паролей**, без него архив бесполезен. Файл `/root/backup-age-private.txt` на сервере после этого удаляют. Пока он лежит на сервере рядом с архивом,
+   шифрование защищает только от утечки самого R2, но не от взлома сервера. Менеджер паролей придётся обновлять вручную при смене секретов.
 2. **Бэкапа самой панели Dokploy (`lead-parser`) нет.** В её базе лежат все проекты, compose и переменные окружения Arena и сайтов. После переноса панели на
    освободившийся сервер добавьте R2 как место назначения (Settings → S3 Destinations) и включите бэкап базы панели. Эти бэкапы будут содержать секреты из пункта 1:
    папка в R2 только с этой целью, ключ с правами на один бакет.
@@ -437,13 +467,15 @@ docker rm -f pgrestoretest; rm -rf /tmp/pgtest
 | `ops/backup/arena-pg-3h.sh` | `/usr/local/bin/arena-pg-3h.sh` | `/etc/cron.d/arena-pg-3h`, каждые 3 часа |
 | `ops/backup/macs-backup.sh` | `/opt/macs/backup.sh` | `/etc/cron.d/macs-backup`, 03:30 |
 | `ops/backup/offsite-backup.sh` | `/usr/local/bin/offsite-backup.sh` | `/etc/cron.d/offsite-backup`, 03:45 |
+| `ops/backup/secrets-backup.sh` | `/usr/local/bin/secrets-backup.sh` | `/etc/cron.d/secrets-backup`, 03:50 |
 | `ops/backup/backup-check.sh` | `/usr/local/bin/backup-check.sh` | `/etc/cron.d/backup-check` и `--hourly` в `arena-pg-3h` |
 
 Имена контейнеров в скриптах прописаны под проект `arena-backend-prod-xy5zqo` (`arena-backend-prod-xy5zqo-db-1`, `…-worker-1`) и том
 `arena-backend-prod-xy5zqo_arena-media`. На новом сервере Dokploy создаст проект с другим суффиксом: **замените имена в `arena-backup.sh`, `arena-pg-3h.sh` и `backup-check.sh`**.
 
 ```bash
-install -m 700 ops/backup/arena-backup.sh ops/backup/arena-pg-3h.sh ops/backup/offsite-backup.sh ops/backup/backup-check.sh /usr/local/bin/
+install -m 700 ops/backup/arena-backup.sh ops/backup/arena-pg-3h.sh ops/backup/offsite-backup.sh ops/backup/backup-check.sh ops/backup/secrets-backup.sh /usr/local/bin/
+echo 'age14meanax6yr474lnvapldtq2jcgm2w7ytgg952v4ypzzrg6g0gatqhnnmpf' > /etc/backup-age-recipient.txt      # открытый ключ, нужен secrets-backup.sh
 install -m 700 ops/backup/macs-backup.sh /opt/macs/backup.sh
 install -m 644 ops/backup/cron.d/* /etc/cron.d/
 mkdir -p /var/backups/arena /var/backups/arena-3h && chmod 700 /var/backups/arena /var/backups/arena-3h
