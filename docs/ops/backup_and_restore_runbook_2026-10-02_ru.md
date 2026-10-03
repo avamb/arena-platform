@@ -41,7 +41,7 @@
 | Пропали афиши и логотипы | 7 |
 | Сломался MACS | 8 |
 | Потеряна или сломалась панель Dokploy | 8а |
-| Сломался или потерян сайт WordPress (Vino&Co, arenasoldout.com, Marina, ndarchdesign) | 8б |
+| Сломался или потерян сайт WordPress (Vino&Co, arenasoldout.com, Marina, ndarchdesign, iltabia.com) | 8б |
 | Нужно понять, какие продажи потерялись | 10 |
 
 ## 2. Что где лежит
@@ -469,7 +469,7 @@ docker run -d --name dokploy-traefik --restart always --network dokploy-network 
 
 ## 8б. Сценарий G: сломан или потерян сайт WordPress на `lead-parser`
 
-Копируются четыре сайта: `arenasoldout` (тестовый магазин), `vinoandco` (**боевой** Vino&Co), `marinabakanova`, `ndarchdesign`. Скрипт `wp-sites-backup.sh` работает на `lead-parser`
+Копируются пять сайтов: `arenasoldout` (тестовый магазин), `vinoandco` (**боевой** Vino&Co), `marinabakanova`, `ndarchdesign`, `iltabia` (с 03.10.2026, iltabia.com). Скрипт `wp-sites-backup.sh` работает на `lead-parser`
 каждую ночь в 03:10 UTC и **ничего не меняет на сайтах** (только читает: `mysqldump --single-transaction` и `tar`). Параллельно UpdraftPlus по-прежнему кладёт свои копии
 на Google Диск владельца, это второй независимый слой, его не трогаем.
 

@@ -77,7 +77,7 @@ for p in arena-postgres arena-media macs-mongo secrets-encrypted dokploy-panel-e
 done
 
 # WordPress sites on lead-parser (wp-sites-backup.sh there): a fresh database every night, a full archive every week.
-for s in arenasoldout vinoandco marinabakanova ndarchdesign; do
+for s in arenasoldout vinoandco marinabakanova ndarchdesign iltabia; do
   if [ -z "$(rclone lsf "r2:arena-platform/wordpress-sites-encrypted/$s" --include 'db_*' --max-age 26h 2>/dev/null | head -1)" ]; then
     add "R2 has no fresh database backup of the WordPress site $s (older than 26h)"
   fi

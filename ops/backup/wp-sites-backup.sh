@@ -29,6 +29,7 @@ arenasoldout|arena-wordpress-hpl1ba-wordpress-1|arena-wordpress-hpl1ba-wp_db-1|a
 vinoandco|asoconnector-vinoandcotempvino-fsppdj-wordpress-1|asoconnector-vinoandcotempvino-fsppdj-wp_db-1|asoconnector-vinoandcotempvino-fsppdj_wp_app
 marinabakanova|marinabakanovacom-wordpress-2h3b5p-wordpress-1|marinabakanovacom-wordpress-2h3b5p-wp_db-1|marinabakanovacom-wordpress-2h3b5p_wp_app
 ndarchdesign|ndarchdesign-wordpress-wroe1g-wordpress-1|ndarchdesign-wordpress-wroe1g-wp_db-1|ndarchdesign-wordpress-wroe1g_wp_app
+iltabia|iltabia-wordpress-ggulpw-wordpress-1|iltabia-wordpress-ggulpw-wp_db-1|iltabia-wordpress-ggulpw_wp_app
 "
 
 umask 077
