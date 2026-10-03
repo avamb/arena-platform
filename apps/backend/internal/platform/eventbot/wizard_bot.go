@@ -203,6 +203,14 @@ func (b *Bot) wizardCallback(ctx context.Context, chatID int64, msgID int, from 
 		b.showHome(ctx, chatID, &msgID, from, "")
 		return
 	}
+	if data == "e:sessions" && d.Mode == ModeEdit && d.Event.EventID != "" {
+		// Moving or cancelling a date is not part of the draft: it leaves
+		// the draft as it is and opens the sessions of the event itself.
+		if eventID, perr := uuid.Parse(d.Event.EventID); perr == nil {
+			b.sessionsOpen(ctx, chatID, &msgID, from, eventID)
+			return
+		}
+	}
 	switch data {
 	case "resume":
 		b.wizardRender(ctx, chatID, &msgID, ws, d, "")

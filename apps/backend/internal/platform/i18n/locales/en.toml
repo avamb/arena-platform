@@ -1018,7 +1018,7 @@ other = "Promoter"
 other = "Currency"
 
 ["bot.wz.edit_b_date"]
-other = "＋ Date"
+other = "＋ Another date"
 
 ["bot.wz.edit_b_tickets"]
 other = "Prices and categories"
@@ -1109,3 +1109,150 @@ other = "It cannot be earlier than {{.Date}}."
 
 ["bot.wz.err_date_late"]
 other = "It cannot be later than {{.Date}}: that is the day of the event."
+
+["bot.ses.list_title"]
+other = "<b>{{.Name}}</b>\nSessions of the event."
+
+["bot.ses.list_empty"]
+other = "No sessions yet."
+
+["bot.ses.card_hint"]
+other = "Here you can move this session to another date and time, or cancel it. The tickets already sold stay in it."
+
+["bot.ses.cancel_all_btn"]
+other = "✖ Cancel the whole event"
+
+["bot.ses.move_btn"]
+other = "📅 Move to another date"
+
+["bot.ses.cancel_btn"]
+other = "✖ Cancel the session"
+
+["bot.ses.to_sessions_btn"]
+other = "To sessions"
+
+["bot.ses.move_date_q"]
+other = "Now: <b>{{.Now}}</b>.\nWhich date should the session move to? It is the same session, not a new one — the tickets already sold stay in it."
+
+["bot.ses.move_time_q"]
+other = "New date: <b>{{.Date}}</b>.\nWhat time does it start? Type a time, for example 19:30."
+
+["bot.ses.keep_time_btn"]
+other = "Keep {{.Time}}"
+
+["bot.ses.no_change"]
+other = "The date and time are the same as now — nothing to move."
+
+["bot.ses.confirm_move"]
+other = "<b>Moving the session</b>\nWas: {{.Old}}\nWill be: <b>{{.New}}</b>"
+
+["bot.ses.confirm_cancel"]
+other = "<b>Cancelling the session</b>\n{{.Old}}"
+
+["bot.ses.confirm_cancel_all"]
+other = "<b>Cancelling the whole event</b>\n\"{{.Name}}\": sessions to cancel — {{.N}}."
+
+["bot.ses.buyers_move"]
+other = "This session already has buyers: {{.Tickets}} tickets, {{.Orders}} orders. Each gets an email with the new date and a new ticket (PDF). Buyers will be able to write to you: {{.Contact}}."
+
+["bot.ses.buyers_cancel"]
+other = "This session already has buyers: {{.Tickets}} tickets, {{.Orders}} orders. Each gets a cancellation email. Buyers will be able to write to you: {{.Contact}}."
+
+["bot.ses.no_address"]
+other = "Orders without an email address: {{.N}} — they cannot be written to."
+
+["bot.ses.no_buyers"]
+other = "This session has no buyers yet, so no emails will be sent."
+
+["bot.ses.message_label"]
+other = "Your message to the buyers:\n<i>{{.Text}}</i>"
+
+["bot.ses.message_none"]
+other = "There is no message from you to the buyers — they get only the plain email with the new date."
+
+["bot.ses.refund_note"]
+other = "The email does not promise any money back: you settle refunds with the buyers yourself."
+
+["bot.ses.msg_edit_btn"]
+other = "✎ Edit the message"
+
+["bot.ses.msg_ask"]
+other = "Write what the buyers will read (up to 1000 characters), for example the reason and how to reach you. Or pick a button."
+
+["bot.ses.msg_clear_btn"]
+other = "No message"
+
+["bot.ses.msg_default_btn"]
+other = "Standard text"
+
+["bot.ses.msg_too_long"]
+other = "Too long ({{.N}} characters). Shorten it to 1000."
+
+["bot.ses.go_move_btn"]
+other = "✔ Move and email the buyers"
+
+["bot.ses.go_move_free_btn"]
+other = "✔ Move"
+
+["bot.ses.go_cancel_btn"]
+other = "✔ Cancel and email the buyers"
+
+["bot.ses.go_cancel_free_btn"]
+other = "✔ Cancel the session"
+
+["bot.ses.go_cancel_all_btn"]
+other = "✔ Cancel all and email the buyers"
+
+["bot.ses.go_cancel_all_free_btn"]
+other = "✔ Cancel the whole event"
+
+["bot.ses.site_blocked"]
+other = "Some orders ({{.N}}) were placed through your WordPress site. That site writes the letter to its buyers, and moving or cancelling a session with such orders is not supported yet — write to Arena support and we will do it by hand. Nothing was changed."
+
+["bot.ses.contact_ask_email"]
+other = "To move the session the buyers need an address they can write to; it appears in the letter. Type the contact e-mail (organizer: {{.Name}})."
+
+["bot.ses.contact_ask_phone"]
+other = "A contact phone is optional. Type the number or skip it."
+
+["bot.ses.contact_no_phone_btn"]
+other = "No phone"
+
+["bot.ses.contact_show_phone_q"]
+other = "Show the phone to buyers in the letter?"
+
+["bot.ses.contact_show_btn"]
+other = "Show it"
+
+["bot.ses.contact_hide_btn"]
+other = "Do not show"
+
+["bot.ses.contact_bad_email"]
+other = "That does not look like an email address. Type it again."
+
+["bot.ses.contact_saved"]
+other = "✔ Contact saved."
+
+["bot.ses.letters"]
+other = "Emails to buyers queued: {{.N}}."
+
+["bot.ses.done_move"]
+other = "✔ The session moved to <b>{{.New}}</b>.{{.Letters}}"
+
+["bot.ses.done_cancel"]
+other = "✔ The session is cancelled.{{.Letters}}"
+
+["bot.ses.done_cancel_all"]
+other = "✔ Sessions cancelled: {{.N}}.{{.Letters}}"
+
+["bot.ses.partial"]
+other = "Sessions cancelled: {{.N}}; the rest failed. Open the list and check which sessions are left."
+
+["bot.ses.failed"]
+other = "That did not work. Nothing was changed. Please try again a little later."
+
+["bot.ses.expired"]
+other = "This dialog has expired. Open the event's sessions again."
+
+["bot.ses.open_btn"]
+other = "📅 Sessions: move and cancel"

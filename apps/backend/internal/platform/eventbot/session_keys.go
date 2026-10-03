@@ -1,0 +1,60 @@
+package eventbot
+
+// sessionKeys lists every bot.ses.* key of the sessions dialog (move and
+// cancel); the locale test checks them in every supported catalog together
+// with MessageKeys.
+var sessionKeys = []string{
+	"bot.ses.list_title",
+	"bot.ses.list_empty",
+	"bot.ses.card_hint",
+	"bot.ses.cancel_all_btn",
+	"bot.ses.move_btn",
+	"bot.ses.cancel_btn",
+	"bot.ses.to_sessions_btn",
+	"bot.ses.move_date_q",
+	"bot.ses.move_time_q",
+	"bot.ses.keep_time_btn",
+	"bot.ses.no_change",
+	"bot.ses.confirm_move",
+	"bot.ses.confirm_cancel",
+	"bot.ses.confirm_cancel_all",
+	"bot.ses.buyers_move",
+	"bot.ses.buyers_cancel",
+	"bot.ses.no_address",
+	"bot.ses.no_buyers",
+	"bot.ses.message_label",
+	"bot.ses.message_none",
+	"bot.ses.refund_note",
+	"bot.ses.msg_edit_btn",
+	"bot.ses.msg_ask",
+	"bot.ses.msg_clear_btn",
+	"bot.ses.msg_default_btn",
+	"bot.ses.msg_too_long",
+	"bot.ses.go_move_btn",
+	"bot.ses.go_move_free_btn",
+	"bot.ses.go_cancel_btn",
+	"bot.ses.go_cancel_free_btn",
+	"bot.ses.go_cancel_all_btn",
+	"bot.ses.go_cancel_all_free_btn",
+	"bot.ses.site_blocked",
+	"bot.ses.contact_ask_email",
+	"bot.ses.contact_ask_phone",
+	"bot.ses.contact_no_phone_btn",
+	"bot.ses.contact_show_phone_q",
+	"bot.ses.contact_show_btn",
+	"bot.ses.contact_hide_btn",
+	"bot.ses.contact_bad_email",
+	"bot.ses.contact_saved",
+	"bot.ses.letters",
+	"bot.ses.done_move",
+	"bot.ses.done_cancel",
+	"bot.ses.done_cancel_all",
+	"bot.ses.partial",
+	"bot.ses.failed",
+	"bot.ses.expired",
+	"bot.ses.open_btn",
+}
+
+func init() {
+	MessageKeys = append(MessageKeys, sessionKeys...)
+}

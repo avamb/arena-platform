@@ -3,7 +3,7 @@
 //
 // Templates live next to this file as <name>.<locale>.tmpl, where:
 //
-//   - name   ∈ {"ticket", "invitation"}  (the email kind)
+//   - name   ∈ {"ticket", "invitation", "change", "cancel"}  (the email kind)
 //   - locale ∈ {"en", "de", "es", "fr", "he", "cs", "ru"}  (the AllPay
 //     markets baseline plus cs/ru, added for the Czech-market launch —
 //     feature #565 — where many buyers are Russian-speaking, plus fr for
@@ -53,6 +53,15 @@ const TemplateKindTicket = "ticket"
 // TemplateKindInvitation is the complimentary invitation email (feature #149).
 const TemplateKindInvitation = "invitation"
 
+// TemplateKindChange is sent to a buyer when the organizer moved an event
+// session (date/time and/or venue changed). A new ticket PDF is attached; its
+// barcode is the same as on the old PDF, so the old one still scans.
+const TemplateKindChange = "change"
+
+// TemplateKindCancel is sent to a buyer when the organizer cancelled the
+// session. It carries no attachment and makes no promise about money.
+const TemplateKindCancel = "cancel"
+
 // Data is the value passed to every template. Fields are intentionally
 // strings (not domain structs) so the template author can ignore nil checks
 // and {{with}} blocks handle the "empty means omit" presentation rule.
@@ -96,6 +105,30 @@ type Data struct {
 	// Callers must populate this with resolved values; the worker handler
 	// is responsible for the org-logo / platform-logo fallback.
 	Branding Branding
+
+	// Change carries what a session-change / session-cancel e-mail says. It
+	// is zero for the ticket and invitation kinds.
+	Change ChangeData
+}
+
+// ChangeData carries what a session-change / session-cancel e-mail says. It is
+// zero for the ticket and invitation kinds.
+type ChangeData struct {
+	// Date / Venue say which parts of the session changed (kind "change").
+	Date  bool
+	Venue bool
+	// OldStart / NewStart are pre-formatted "YYYY-MM-DD HH:MM (zone)" strings (venue-local zone).
+	OldStart string
+	NewStart string
+	// OldVenue / NewVenue are venue display names (may be empty).
+	OldVenue string
+	NewVenue string
+	// Message is the organizer's own free text; may be empty. Plain text, the html engine escapes it.
+	Message string
+	// ContactName is the promoter / organization the buyer should write to; ContactEmail is always set; ContactPhone is empty when the organizer chose to hide it.
+	ContactName  string
+	ContactEmail string
+	ContactPhone string
 }
 
 // Branding carries the organisation branding fields rendered into the

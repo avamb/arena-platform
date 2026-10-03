@@ -30,13 +30,15 @@ type OrgPromoterRow struct {
 	ArchivedAt *time.Time `json:"archived_at"`
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
+	// PhoneHidden keeps Phone out of letters to buyers (migration 0121).
+	PhoneHidden bool `json:"phone_hidden"`
 }
 
-const orgPromoterColumns = `id, org_id, name, legal_id, phone, email, slug, archived_at, created_at, updated_at`
+const orgPromoterColumns = `id, org_id, name, legal_id, phone, email, slug, archived_at, created_at, updated_at, phone_hidden`
 
 func scanOrgPromoterRow(row interface{ Scan(dest ...any) error }) (OrgPromoterRow, error) {
 	var p OrgPromoterRow
-	err := row.Scan(&p.ID, &p.OrgID, &p.Name, &p.LegalID, &p.Phone, &p.Email, &p.Slug, &p.ArchivedAt, &p.CreatedAt, &p.UpdatedAt)
+	err := row.Scan(&p.ID, &p.OrgID, &p.Name, &p.LegalID, &p.Phone, &p.Email, &p.Slug, &p.ArchivedAt, &p.CreatedAt, &p.UpdatedAt, &p.PhoneHidden)
 	return p, err
 }
 
@@ -125,6 +127,21 @@ RETURNING ` + orgPromoterColumns
 // pgx.ErrNoRows for an unknown id or another organization's promoter.
 func (q *Queries) UpdateOrgPromoter(ctx context.Context, id, orgID uuid.UUID, name string, legalID, phone, email *string, archived bool, slug *string) (OrgPromoterRow, error) {
 	return scanOrgPromoterRow(q.db.QueryRow(ctx, updateOrgPromoter, id, orgID, name, legalID, phone, email, archived, slug))
+}
+
+const setOrgPromoterPhoneHidden = `-- name: SetOrgPromoterPhoneHidden :one
+UPDATE org_promoters
+SET    phone_hidden = $3,
+       updated_at   = now()
+WHERE  id = $1
+  AND  org_id = $2
+RETURNING ` + orgPromoterColumns
+
+// SetOrgPromoterPhoneHidden sets whether the promoter's phone may appear in a
+// letter to a buyer. Returns pgx.ErrNoRows for an unknown id or another
+// organization's promoter.
+func (q *Queries) SetOrgPromoterPhoneHidden(ctx context.Context, id, orgID uuid.UUID, hidden bool) (OrgPromoterRow, error) {
+	return scanOrgPromoterRow(q.db.QueryRow(ctx, setOrgPromoterPhoneHidden, id, orgID, hidden))
 }
 
 const promoterSlugTaken = `-- name: PromoterSlugTaken :one

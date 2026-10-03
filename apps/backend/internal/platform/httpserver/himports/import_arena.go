@@ -28,6 +28,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 )
 
 // arenaMatch is the outcome of spec §3.2 steps 1-2: which existing session (if
@@ -73,7 +74,7 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 		finish = endAt.UTC()
 	}
 
-	sessionID, created, err := h.upsertArenaSession(ctx, q, plan, match, eventID, venueID, startAt, finish, warnings)
+	sessionID, created, err := h.upsertArenaSession(ctx, q, tx, plan, match, eventID, venueID, startAt, finish, warnings)
 	if err != nil {
 		return importResult{}, err
 	}
@@ -503,6 +504,7 @@ func arenaLocation(storedTZ, payloadTZ string, warnings *warningSink) (*time.Loc
 func (h *Handler) upsertArenaSession(
 	ctx context.Context,
 	q *gen.Queries,
+	tx pgx.Tx,
 	plan importPlan,
 	m arenaMatch,
 	eventID, venueID uuid.UUID,
@@ -553,8 +555,15 @@ func (h *Handler) upsertArenaSession(
 	if plan.Request.Publish && m.Ctx.Status == "draft" {
 		status = "scheduled"
 	}
+	before, err := sessionchange.Load(ctx, tx, m.SessionID, true)
+	if err != nil {
+		return uuid.Nil, false, fmt.Errorf("lock session: %w", err)
+	}
 	if _, err := q.UpdateSession(ctx, m.SessionID, eventID, &venueID, &startAt, &endAt, capacityPtr, nil, status, nil, &currency, "override"); err != nil {
 		return uuid.Nil, false, fmt.Errorf("update session: %w", err)
+	}
+	if err := applySessionChange(ctx, tx, m.SessionID, before.State, plan.Request.ChangeMessage); err != nil {
+		return uuid.Nil, false, err
 	}
 	return m.SessionID, false, nil
 }

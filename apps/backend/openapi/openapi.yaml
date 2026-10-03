@@ -4671,7 +4671,7 @@ components:
 
     Promoter:
       type: object
-      required: [id, org_id, name, legal_id, phone, email, slug, archived, archived_at, created_at, updated_at]
+      required: [id, org_id, name, legal_id, phone, phone_hidden, email, slug, archived, archived_at, created_at, updated_at]
       description: |
         A promoter of the organization's events (migration 0113). The
         organization selling an event is often, but not always, its
@@ -4706,9 +4706,17 @@ components:
           type: [string, "null"]
           description: Contact phone number.
           example: "+420 123 456 789"
+        phone_hidden:
+          type: boolean
+          description: |
+            True keeps the phone number out of the letters buyers get when a
+            session moves or is cancelled (migration 0121).
         email:
           type: [string, "null"]
-          description: Contact e-mail address.
+          description: |
+            Contact e-mail address. It is also the address buyers are told to
+            write to when one of the event's sessions changes, so it must be
+            set before a session with buyers can be moved or cancelled.
           example: "office@partner.example"
         slug:
           type: [string, "null"]
@@ -4803,6 +4811,9 @@ components:
         email:
           type: [string, "null"]
           description: Contact e-mail; null clears it.
+        phone_hidden:
+          type: boolean
+          description: true keeps the phone out of letters to buyers, false shows it; absent keeps the current value.
         archived:
           type: boolean
           description: true archives the promoter, false restores it.
@@ -5653,6 +5664,212 @@ components:
             Re-applying the same status is a no-op. Any other combination
             is rejected with HTTP 422 and
             `error.code = "session.invalid_transition"`.
+        notice:
+          description: |
+            The organizer's own text for the letter buyers get when this save
+            moves or cancels a session they hold tickets for. Ignored when
+            nothing a buyer can see changes.
+          $ref: "#/components/schemas/SessionChangeNotice"
+
+    SessionChangeNotice:
+      type: object
+      description: |
+        What the organizer wants to say to the buyers of a session that is
+        being moved or cancelled. Shown under the standard, localized wording
+        of the letter.
+      properties:
+        message:
+          type: string
+          maxLength: 1000
+          description: |
+            Plain text, up to 1000 characters (longer is refused with 422
+            `session.change_message_too_long`), may be empty. Clients offer
+            the `default_message` of the change-impact answer as a starting
+            point; whatever is sent is what buyers read. It must not promise
+            a refund: returning money is a separate conversation between the
+            organizer and the buyer.
+          example: "We have moved the show by one week. Your ticket stays valid."
+
+    SessionChangeSummary:
+      type: object
+      required: [id, kinds, orders, tickets, queued]
+      description: |
+        What a session save did for buyers. Present on the PATCH and DELETE
+        answers only when the save changed something a buyer can see (the
+        start date or time, the venue, or cancelled the session).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the journal row (`session_changes`).
+        kinds:
+          type: array
+          description: |
+            What changed, any of `date`, `time`, `venue`; or just
+            `cancelled`. `date` is another calendar day in the venue's own
+            time zone, `time` the same day at another hour.
+          items:
+            type: string
+            description: One kind of change.
+        orders:
+          type: integer
+          description: Paid orders with a live ticket for the session, whose buyers must be told.
+        tickets:
+          type: integer
+          description: Live tickets in those orders.
+        queued:
+          type: integer
+          description: Letters put on the queue, one per order, in the same transaction as the save.
+
+    OrganizerContact:
+      type: object
+      required: [source, name, email, phone, phone_hidden, complete, target_kind, target_id, target_name]
+      description: |
+        Who buyers write to when a session changes: the event's promoter when
+        it has an e-mail, otherwise the organization. When neither has one
+        the contact is incomplete (`complete = false`) and `target_*` name
+        the row to fill in (PUT .../events/{event_id}/contact does exactly
+        that).
+      properties:
+        source:
+          type: string
+          description: '`promoter` or `organization`; empty when nobody has an e-mail.'
+        name:
+          type: string
+          description: Name of the promoter or organization the contact belongs to.
+        email:
+          type: string
+          description: The address buyers are told to write to; empty when missing.
+        phone:
+          type: string
+          description: Phone number; empty when none. It is stored even when hidden.
+        phone_hidden:
+          type: boolean
+          description: True when the phone must not appear in letters to buyers.
+        complete:
+          type: boolean
+          description: True when buyers have an e-mail address to write to.
+        target_kind:
+          type: string
+          description: '`promoter` or `organization`: the row a client fills in to complete the contact.'
+        target_id:
+          type: string
+          description: Id of that promoter or organization.
+        target_name:
+          type: string
+          description: Name of that promoter or organization.
+
+    SessionStateSnapshot:
+      type: object
+      required: [start_at, end_at, venue_id, venue_name, timezone, status]
+      description: The buyer-visible slice of a session.
+      properties:
+        start_at:
+          type: string
+          format: date-time
+          description: Start of the session (RFC 3339, UTC).
+        end_at:
+          type: string
+          format: date-time
+          description: End of the session (RFC 3339, UTC).
+        venue_id:
+          type: string
+          format: uuid
+          description: Venue of the session.
+        venue_name:
+          type: string
+          description: Display name of the venue.
+        timezone:
+          type: string
+          description: IANA time zone of the venue, in which the calendar day of a change is judged.
+        status:
+          type: string
+          description: Session status.
+
+    SessionChangeImpact:
+      type: object
+      required: [session_id, kinds, orders, tickets, arena_orders, site_orders, no_address, blocked, contact, default_message, current, proposed]
+      description: |
+        Dry run of a session move or cancellation: what saving it would do,
+        computed from the same rules the save applies. Nothing is written.
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: The session.
+        kinds:
+          type: array
+          description: |
+            What buyers would see change: `date`, `time`, `venue`, or just
+            `cancelled`. Empty means no buyer-visible change (nobody is told).
+          items:
+            type: string
+            description: One kind of change.
+        orders:
+          type: integer
+          description: Paid orders with a live ticket whose buyers would be told.
+        tickets:
+          type: integer
+          description: Live tickets in those orders.
+        arena_orders:
+          type: integer
+          description: Orders whose buyers Arena itself writes to.
+        site_orders:
+          type: integer
+          description: Orders sold through a website; such a change cannot be saved yet (`blocked`).
+        no_address:
+          type: integer
+          description: Arena-route orders with no buyer e-mail address; their buyers cannot be written to.
+        blocked:
+          type: string
+          description: |
+            Empty when the change may be saved, otherwise why not:
+            `contact_missing` (no organizer e-mail for buyers to answer) or
+            `site_route_unsupported` (an affected order was sold through a
+            website).
+        contact:
+          description: The organizer contact buyers would be pointed to.
+          $ref: "#/components/schemas/OrganizerContact"
+        default_message:
+          type: string
+          description: |
+            The text offered to the organizer for the buyers' letter, in the
+            language of the `locale` query parameter (English when absent or
+            unknown). A suggestion only; the organizer may edit or clear it.
+        current:
+          description: The session as it is now.
+          $ref: "#/components/schemas/SessionStateSnapshot"
+        proposed:
+          description: The session as the query parameters would leave it.
+          $ref: "#/components/schemas/SessionStateSnapshot"
+
+    SetEventContactRequest:
+      type: object
+      required: [email]
+      description: Body of PUT /v1/organizations/{org_id}/events/{event_id}/contact.
+      properties:
+        email:
+          type: string
+          description: |
+            The address buyers are told to write to; must be a valid e-mail
+            address (400 `contact.invalid_email`).
+          example: "office@teatrkolibel.example"
+        phone:
+          type: [string, "null"]
+          description: Optional phone number, up to 40 characters; null or blank clears it.
+          example: "+34 600 000 000"
+        phone_hidden:
+          type: boolean
+          description: True keeps the phone out of letters to buyers. Absent means false.
+
+    EventContactResponse:
+      type: object
+      required: [contact]
+      description: The organizer contact of an event after PUT .../events/{event_id}/contact.
+      properties:
+        contact:
+          description: The contact buyers will now see.
+          $ref: "#/components/schemas/OrganizerContact"
 
     SessionWarning:
       type: object
@@ -5677,6 +5894,11 @@ components:
         session:
           description: The session row.
           $ref: "#/components/schemas/SessionItem"
+        change:
+          description: |
+            Present only when this save moved or cancelled a session in a way
+            buyers can see: what changed and how many letters were queued.
+          $ref: "#/components/schemas/SessionChangeSummary"
         warnings:
           type: array
           description: |
@@ -5721,6 +5943,11 @@ components:
           type: boolean
           description: Always true on success; confirms the soft delete.
           example: true
+        change:
+          description: |
+            Present when buyers hold tickets for the session: a deletion is a
+            cancellation for them (`kinds = ["cancelled"]`).
+          $ref: "#/components/schemas/SessionChangeSummary"
 
     SessionMediaItem:
       type: object
@@ -11846,6 +12073,19 @@ components:
           items:
             type: string
             format: uuid
+        changeMessage:
+          type: string
+          maxLength: 1000
+          description: |
+            The organizer's own text for the letter buyers get when this
+            import MOVES a session that already has paid, live tickets (arena
+            extension). Plain text, up to 1000 characters (longer is refused
+            with 422 `session.change_message_too_long`), may be empty;
+            ignored when nothing a buyer can see changes. An import that
+            would move such a session is refused, and writes nothing, with
+            422 `organization.contact_missing` when the organizer has no
+            contact e-mail, or 422 `session.change_site_unsupported` when an
+            affected order was sold through a website.
     ImportEventBundleRequest:
       description: |
         Request body for POST /v1/organizations/{org_id}/imports/event-bundle
@@ -22295,6 +22535,18 @@ paths:
         422 `session.invalid_transition` envelope is returned for
         disallowed moves. When `capacity_total` changes, the capacity
         propagation hook fires to keep the inventory ledger in sync.
+
+        A save that changes what a buyer can see (the start date or time,
+        the venue, or `status` to `cancelled`) while paid, live tickets exist
+        queues one letter per order in the SAME transaction (the answer's
+        `change` object) and journals the change. It is refused, and nothing
+        is saved, when the organizer has no contact e-mail for buyers to
+        answer (422 `organization.contact_missing`) or when an affected
+        order was sold through a website that cannot be notified yet (422
+        `session.change_site_unsupported`). Moving only the start keeps the
+        session's length. Use GET
+        /v1/organizations/{org_id}/sessions/{session_id}/change-impact first
+        to show the organizer the consequences.
         Requires JWT + the `session.update` permission.
       tags: [v1]
       security:
@@ -22396,7 +22648,12 @@ paths:
             `session.venue_org_mismatch`, `session.invalid_currency`,
             `session.capacity_override_not_applicable` (capacity_override
             sent for a plan-bound session;
-            `error.details.reason = "plan_bound"`).
+            `error.details.reason = "plan_bound"`),
+            `organization.contact_missing` (buyers hold tickets and the
+            organizer has no contact e-mail),
+            `session.change_site_unsupported` (an affected order was sold
+            through a website), `session.change_message_too_long`
+            (`notice.message` over 1000 characters).
           content:
             application/json:
               schema:
@@ -22419,6 +22676,10 @@ paths:
       description: |
         Soft-deletes a session (sets `deleted_at = now()`) and writes a
         `v1.session.delete` audit event inside the same transaction.
+        Deleting is a cancellation for buyers: when paid, live tickets exist
+        the same letters and refusals apply as for a PATCH to
+        `status = "cancelled"` (see updateSession). An optional JSON body
+        `{"notice": {"message": "..."}}` carries the organizer's own text.
         Requires JWT + the `session.delete` permission.
       tags: [v1]
       security:
@@ -22445,6 +22706,17 @@ paths:
           schema:
             type: string
             format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Optional body of a session delete.
+              properties:
+                notice:
+                  description: The organizer's own text for the buyers' cancellation letter.
+                  $ref: "#/components/schemas/SessionChangeNotice"
       responses:
         "200":
           description: Session soft-deleted; audit event written.
@@ -33850,6 +34122,180 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Order queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/sessions/{session_id}/change-impact:
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdChangeImpact
+      summary: Dry run of moving or cancelling a session
+      description: |
+        Says what saving a new start, venue or a cancellation would do,
+        BEFORE it is saved: which kinds of change buyers would see, how many
+        paid orders and live tickets are affected, who writes to them (Arena
+        itself, or a website), whether the organizer has a contact e-mail for
+        buyers to answer, and the default text offered for the buyers'
+        letter. Writes nothing. The query parameters describe the proposed
+        state: `start_at` (moving only the start keeps the session's length),
+        `end_at`, `venue_id` (a venue of this organization) and `status`
+        (only `cancelled`). `locale` picks the language of
+        `default_message`. Requires the `session.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+        - name: start_at
+          in: query
+          required: false
+          description: Proposed start (RFC 3339).
+          schema: { type: string, format: date-time }
+        - name: end_at
+          in: query
+          required: false
+          description: Proposed end (RFC 3339).
+          schema: { type: string, format: date-time }
+        - name: venue_id
+          in: query
+          required: false
+          description: Proposed venue, one of this organization's.
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          description: Only `cancelled` is accepted.
+          schema: { type: string }
+        - name: locale
+          in: query
+          required: false
+          description: Language of `default_message` (en, ru, cs, de, es, fr, he); English otherwise.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The impact of the proposed change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionChangeImpact"
+        "400":
+          description: A path or query parameter is invalid (`session.invalid_start_at`, `session.invalid_end_at`, `session.invalid_venue_id`, `session.invalid_status`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`session.read`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`session.change_impact_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/contact:
+    put:
+      operationId: setEventContact
+      summary: Set the organizer contact buyers can answer to
+      description: |
+        Writes the e-mail (and optionally phone) buyers are told to write to
+        when a session of the event changes. The contact is stored on the
+        event's promoter when it has one, otherwise on the organization, and
+        the answer is the contact buyers will now see. Moving or cancelling a
+        session that buyers hold tickets for needs this e-mail (422
+        `organization.contact_missing` otherwise). Requires `event.update`
+        and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetEventContactRequest"
+      responses:
+        "200":
+          description: The contact buyers will now see.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventContactResponse"
+        "400":
+          description: Invalid body, e-mail or phone (`contact.invalid_email`, `contact.invalid_phone`, `contact.empty_body`, `contact.invalid_json`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`contact.update_failed`, `contact.audit_failed`, `contact.commit_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
           content:
             application/json:
               schema:

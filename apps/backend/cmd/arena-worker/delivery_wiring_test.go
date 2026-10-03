@@ -78,7 +78,14 @@ func TestDeliveryRegistration_GoesThroughTheOptionsBuilder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read main.go: %v", err)
 	}
-	if !strings.Contains(string(src), "delivery.NewHandler(buildDeliveryHandlerOptions(") {
+	// The options are built once (deliveryOpts) and shared with the
+	// session.change_email handler, which sends through the same sender and
+	// media store; either spelling goes through the builder.
+	code := string(src)
+	viaBuilder := strings.Contains(code, "delivery.NewHandler(buildDeliveryHandlerOptions(") ||
+		(strings.Contains(code, "deliveryOpts := buildDeliveryHandlerOptions(") &&
+			strings.Contains(code, "delivery.NewHandler(deliveryOpts)"))
+	if !viaBuilder {
 		t.Error("arena-worker must register ticket.deliver through buildDeliveryHandlerOptions, " +
 			"which is what guarantees the handler gets a MediaResolver")
 	}

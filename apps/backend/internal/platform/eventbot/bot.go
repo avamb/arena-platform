@@ -53,15 +53,16 @@ type Options struct {
 
 // Bot is the running event-center bot.
 type Bot struct {
-	tg      *tgbot.Bot
-	queries *gen.Queries
-	arena   *ArenaClient
-	minter  *TokenMinter
-	texts   *Texts
-	logger  *slog.Logger
-	pending *pendingInvites
-	team    *teamDialogs
-	wizard  *Wizard
+	tg       *tgbot.Bot
+	queries  *gen.Queries
+	arena    *ArenaClient
+	minter   *TokenMinter
+	texts    *Texts
+	logger   *slog.Logger
+	pending  *pendingInvites
+	team     *teamDialogs
+	sessions *sessionDialogs
+	wizard   *Wizard
 	// fileClient downloads Telegram files (posters); nil uses a default.
 	fileClient     *http.Client
 	ticketsBaseURL string
@@ -81,13 +82,14 @@ func New(opts Options) (*Bot, error) {
 		logger = slog.Default()
 	}
 	b := &Bot{
-		queries: opts.Queries,
-		arena:   opts.Arena,
-		minter:  opts.Minter,
-		texts:   opts.Texts,
-		logger:  logger,
-		pending: newPendingInvites(pendingInviteTTL),
-		team:    newTeamDialogs(),
+		queries:  opts.Queries,
+		arena:    opts.Arena,
+		minter:   opts.Minter,
+		texts:    opts.Texts,
+		logger:   logger,
+		pending:  newPendingInvites(pendingInviteTTL),
+		team:     newTeamDialogs(),
+		sessions: newSessionDialogs(),
 
 		fileClient:     opts.HTTPClient,
 		ticketsBaseURL: opts.TicketsBaseURL,
@@ -223,6 +225,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	if text != "" && b.teamText(ctx, chatID, from, text) {
 		return
 	}
+	if text != "" && b.sessionsText(ctx, chatID, from, text) {
+		return
+	}
 	if m.Document != nil || len(m.Photo) > 0 {
 		if b.wizardPoster(ctx, chatID, from, m) {
 			return
@@ -294,6 +299,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		if len(parts) > 1 {
 			b.sampleCallback(ctx, chatID, from, parts[1])
 		}
+	case "ses":
+		b.sessionsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ses:"))
 	case "team":
 		b.teamCallback(ctx, chatID, msgID, from, strings.TrimPrefix(strings.TrimPrefix(cq.Data, "team"), ":"))
 	}

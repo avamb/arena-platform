@@ -1,0 +1,98 @@
+{{define "subject"}}{{if and .Change.Date .Change.Venue}}Modification des informations de l'événement{{else if .Change.Date}}Votre événement a été reporté{{else}}Le lieu a changé{{end}} — {{.EventName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+<head><meta charset="UTF-8"><title>Votre événement a changé</title></head>
+<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
+  <table cellpadding="0" cellspacing="0" style="width:100%;border-bottom:1px solid #eee;padding-bottom:12px;margin-bottom:16px">
+    <tr>
+      <td style="vertical-align:middle">
+        {{with .Branding.LogoURL}}<img src="{{.}}" alt="{{$.Branding.LogoAlt}}" style="max-height:48px;max-width:240px">{{end}}
+      </td>
+      <td style="vertical-align:middle;text-align:right;font-size:13px;color:#555">
+        <strong>{{.Branding.OrgName}}</strong>
+        {{with .Branding.WebsiteURL}}<br><a href="{{.}}" style="color:#1a73e8;text-decoration:none">{{.}}</a>{{end}}
+      </td>
+    </tr>
+  </table>
+  <h1 style="color:#1a1a2e">Votre événement a changé</h1>
+  <p>Bonjour{{with .HolderName}} {{.}}{{end}},</p>
+  <p>L'organisateur a modifié les informations de <strong>{{.EventName}}</strong>. Voici ce qui change :</p>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px;margin-bottom:12px">
+    {{if .Change.Date}}{{with .Change.OldStart}}<tr><td><strong>Ancienne date et heure</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .Change.NewStart}}<tr><td><strong>Nouvelle date et heure</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{if .Change.Venue}}{{with .Change.OldVenue}}<tr><td><strong>Ancien lieu</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .Change.NewVenue}}<tr><td><strong>Nouveau lieu</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+  </table>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
+    <tr><td><strong>Événement</strong></td><td>{{.EventName}}</td></tr>
+    {{if not .Change.Date}}{{with .SessionStart}}<tr><td><strong>Séance</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{if not .Change.Venue}}{{with .VenueName}}<tr><td><strong>Lieu</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{with .TierName}}<tr><td><strong>Catégorie</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatSector}}<tr><td><strong>Secteur</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>Rang</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>Place</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>
+  <p>Un nouveau PDF de votre billet avec les informations à jour est joint. Le code-barres de votre billet n'a pas changé : l'ancien comme le nouveau PDF sont valables à l'entrée.</p>
+  {{with .Change.Message}}<div style="margin:16px 0;padding:12px 16px;border-left:3px solid #1a73e8;background:#f5f7fa">
+    <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Message de l'organisateur :</strong></p>
+    <p style="margin:0;white-space:pre-line">{{.}}</p>
+  </div>{{end}}
+  <p>Si ce changement ne vous convient pas, écrivez à l'organisateur{{with .Change.ContactName}} ({{.}}){{end}} à l'adresse <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{with .Change.ContactPhone}}, téléphone {{.}}{{end}}, et expliquez ce que vous souhaitez faire. L'organisateur lit chaque message.</p>
+  <p style="font-size:12px;color:#666">Identifiant du billet : {{.TicketID}}</p>
+  <p style="font-size:12px;color:#666">Envoyé à : {{.RecipientEmail}}</p>
+  <hr>
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Contact : <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">Arena Platform — envoi automatique</p>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+Votre événement a changé
+
+Bonjour{{with .HolderName}} {{.}}{{end}},
+
+L'organisateur a modifié les informations de {{.EventName}}. Voici ce qui change :
+
+{{if .Change.Date}}{{with .Change.OldStart}}Ancienne date et heure : {{.}}
+{{end}}{{with .Change.NewStart}}Nouvelle date et heure : {{.}}
+{{end}}{{end}}{{if .Change.Venue}}{{with .Change.OldVenue}}Ancien lieu : {{.}}
+{{end}}{{with .Change.NewVenue}}Nouveau lieu : {{.}}
+{{end}}{{end}}
+Événement : {{.EventName}}
+{{if not .Change.Date}}{{with .SessionStart}}Séance : {{.}}
+{{end}}{{end}}{{if not .Change.Venue}}{{with .VenueName}}Lieu : {{.}}
+{{end}}{{end}}{{with .TierName}}Catégorie : {{.}}
+{{end}}{{with .SeatSector}}Secteur : {{.}}
+{{end}}{{with .SeatRow}}Rang : {{.}}
+{{end}}{{with .SeatNumber}}Place : {{.}}
+{{end}}
+Un nouveau PDF de votre billet avec les informations à jour est joint. Le code-barres de votre billet n'a pas changé : l'ancien comme le nouveau PDF sont valables à l'entrée.
+{{with .Change.Message}}
+Message de l'organisateur :
+{{.}}
+{{end}}
+Si ce changement ne vous convient pas, écrivez à l'organisateur{{with .Change.ContactName}} ({{.}}){{end}} à l'adresse {{.Change.ContactEmail}}{{with .Change.ContactPhone}}, téléphone {{.}}{{end}}, et expliquez ce que vous souhaitez faire. L'organisateur lit chaque message.
+
+Identifiant du billet : {{.TicketID}}
+Envoyé à : {{.RecipientEmail}}
+
+--
+{{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Contact : {{.}}
+{{end}}
+Arena Platform — envoi automatique
+{{end}}

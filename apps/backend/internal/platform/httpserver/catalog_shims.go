@@ -332,6 +332,17 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	s.catalogHandler().HandleDeleteSession(w, r)
 }
 
+// handleSessionChangeImpact is the dry run of a session move or cancellation
+// (08_architecture/30_session_change_notifications_ru.md §4.1).
+func (s *Server) handleSessionChangeImpact(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleSessionChangeImpact(w, r)
+}
+
+// handleSetEventContact sets the organizer contact buyers can answer to.
+func (s *Server) handleSetEventContact(w http.ResponseWriter, r *http.Request) {
+	s.catalogHandler().HandleSetEventContact(w, r)
+}
+
 // ──── session media gallery shims (AB-47b, feature #435) ─────────────────────
 
 func (s *Server) handleGetSessionMedia(w http.ResponseWriter, r *http.Request) {

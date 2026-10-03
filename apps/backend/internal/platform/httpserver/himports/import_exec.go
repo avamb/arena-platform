@@ -28,6 +28,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/geoslug"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 )
 
 // defaultSessionDuration is applied to end_at because the Bil24 payload never
@@ -509,8 +510,15 @@ func (h *Handler) resolveSession(
 	if plan.Request.Publish && sctx.Status == "draft" {
 		status = "scheduled"
 	}
+	before, err := sessionchange.Load(ctx, tx, sessionID, true)
+	if err != nil {
+		return uuid.Nil, false, fmt.Errorf("lock session: %w", err)
+	}
 	if _, err := q.UpdateSession(ctx, sessionID, sctx.EventID, &venueID, &plan.StartAt, &endAt, capacityPtr, nil, status, nil, &currency, "override"); err != nil {
 		return uuid.Nil, false, fmt.Errorf("update session: %w", err)
+	}
+	if err := applySessionChange(ctx, tx, sessionID, before.State, plan.Request.ChangeMessage); err != nil {
+		return uuid.Nil, false, err
 	}
 	return sessionID, false, nil
 }

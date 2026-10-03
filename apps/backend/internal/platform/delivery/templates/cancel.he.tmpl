@@ -1,0 +1,84 @@
+{{define "subject"}}האירוע בוטל — {{.EventName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head><meta charset="UTF-8"><title>האירוע בוטל</title></head>
+<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e;direction:rtl;text-align:right">
+  <table cellpadding="0" cellspacing="0" style="width:100%;border-bottom:1px solid #eee;padding-bottom:12px;margin-bottom:16px;direction:rtl">
+    <tr>
+      <td style="vertical-align:middle">
+        {{with .Branding.LogoURL}}<img src="{{.}}" alt="{{$.Branding.LogoAlt}}" style="max-height:48px;max-width:240px">{{end}}
+      </td>
+      <td style="vertical-align:middle;text-align:left;font-size:13px;color:#555">
+        <strong>{{.Branding.OrgName}}</strong>
+        {{with .Branding.WebsiteURL}}<br><a href="{{.}}" style="color:#1a73e8;text-decoration:none">{{.}}</a>{{end}}
+      </td>
+    </tr>
+  </table>
+  <h1 style="color:#1a1a2e">האירוע שלך בוטל</h1>
+  <p>שלום{{with .HolderName}} {{.}}{{end}},</p>
+  <p>המארגן ביטל את המופע של <strong>{{.EventName}}</strong>{{with .SessionStart}} שהיה אמור להתקיים ב-{{.}}{{end}}. הכרטיס שלך למופע זה אינו תקף עוד לכניסה.</p>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px;direction:rtl">
+    <tr><td><strong>אירוע</strong></td><td>{{.EventName}}</td></tr>
+    {{with .SessionStart}}<tr><td><strong>מועד</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .VenueName}}<tr><td><strong>מקום</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .TierName}}<tr><td><strong>קטגוריה</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatSector}}<tr><td><strong>אזור</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>שורה</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>מקום</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>
+  {{with .Change.Message}}<div style="margin:16px 0;padding:12px 16px;border-right:3px solid #1a73e8;background:#f5f7fa;direction:rtl;text-align:right">
+    <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>הודעה מהמארגן:</strong></p>
+    <p style="margin:0;white-space:pre-line">{{.}}</p>
+  </div>{{end}}
+  <p>אנא כתבו למארגן{{with .Change.ContactName}} ({{.}}){{end}} בכתובת <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{with .Change.ContactPhone}}, טלפון {{.}}{{end}}, כדי לברר מהם הצעדים הבאים.</p>
+  <p style="font-size:12px;color:#666">מזהה כרטיס: {{.TicketID}}</p>
+  <p style="font-size:12px;color:#666">נשלח אל: {{.RecipientEmail}}</p>
+  <hr>
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>יצירת קשר: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">Arena Platform — שליחה אוטומטית</p>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+האירוע שלך בוטל
+
+שלום{{with .HolderName}} {{.}}{{end}},
+
+המארגן ביטל את המופע של {{.EventName}}{{with .SessionStart}} שהיה אמור להתקיים ב-{{.}}{{end}}. הכרטיס שלך למופע זה אינו תקף עוד לכניסה.
+
+אירוע: {{.EventName}}
+{{with .SessionStart}}מועד: {{.}}
+{{end}}{{with .VenueName}}מקום: {{.}}
+{{end}}{{with .TierName}}קטגוריה: {{.}}
+{{end}}{{with .SeatSector}}אזור: {{.}}
+{{end}}{{with .SeatRow}}שורה: {{.}}
+{{end}}{{with .SeatNumber}}מקום: {{.}}
+{{end}}{{with .Change.Message}}
+הודעה מהמארגן:
+{{.}}
+{{end}}
+אנא כתבו למארגן{{with .Change.ContactName}} ({{.}}){{end}} בכתובת {{.Change.ContactEmail}}{{with .Change.ContactPhone}}, טלפון {{.}}{{end}}, כדי לברר מהם הצעדים הבאים.
+
+מזהה כרטיס: {{.TicketID}}
+נשלח אל: {{.RecipientEmail}}
+
+--
+{{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}יצירת קשר: {{.}}
+{{end}}
+Arena Platform — שליחה אוטומטית
+{{end}}

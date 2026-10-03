@@ -1,0 +1,98 @@
+{{define "subject"}}{{if and .Change.Date .Change.Venue}}Event details changed{{else if .Change.Date}}Your event has been rescheduled{{else}}The venue has changed{{end}} — {{.EventName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head><meta charset="UTF-8"><title>Your event has changed</title></head>
+<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
+  <table cellpadding="0" cellspacing="0" style="width:100%;border-bottom:1px solid #eee;padding-bottom:12px;margin-bottom:16px">
+    <tr>
+      <td style="vertical-align:middle">
+        {{with .Branding.LogoURL}}<img src="{{.}}" alt="{{$.Branding.LogoAlt}}" style="max-height:48px;max-width:240px">{{end}}
+      </td>
+      <td style="vertical-align:middle;text-align:right;font-size:13px;color:#555">
+        <strong>{{.Branding.OrgName}}</strong>
+        {{with .Branding.WebsiteURL}}<br><a href="{{.}}" style="color:#1a73e8;text-decoration:none">{{.}}</a>{{end}}
+      </td>
+    </tr>
+  </table>
+  <h1 style="color:#1a1a2e">Your event has changed</h1>
+  <p>Hello{{with .HolderName}} {{.}}{{end}},</p>
+  <p>The organizer has changed the details of <strong>{{.EventName}}</strong>. Here is what is different.</p>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px;margin-bottom:12px">
+    {{if .Change.Date}}{{with .Change.OldStart}}<tr><td><strong>Previous date and time</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .Change.NewStart}}<tr><td><strong>New date and time</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{if .Change.Venue}}{{with .Change.OldVenue}}<tr><td><strong>Previous venue</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .Change.NewVenue}}<tr><td><strong>New venue</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+  </table>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
+    <tr><td><strong>Event</strong></td><td>{{.EventName}}</td></tr>
+    {{if not .Change.Date}}{{with .SessionStart}}<tr><td><strong>Session</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{if not .Change.Venue}}{{with .VenueName}}<tr><td><strong>Venue</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{with .TierName}}<tr><td><strong>Tier</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatSector}}<tr><td><strong>Sector</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>Row</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>Seat</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>
+  <p>A new ticket PDF with the updated details is attached. Your ticket barcode has not changed — both the old and the new PDF are valid at the entrance.</p>
+  {{with .Change.Message}}<div style="margin:16px 0;padding:12px 16px;border-left:3px solid #1a73e8;background:#f5f7fa">
+    <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Message from the organizer:</strong></p>
+    <p style="margin:0;white-space:pre-line">{{.}}</p>
+  </div>{{end}}
+  <p>If the change does not suit you, write to the organizer{{with .Change.ContactName}} ({{.}}){{end}} at <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{with .Change.ContactPhone}}, phone {{.}}{{end}}, and describe what you would like to do. The organizer reads every message.</p>
+  <p style="font-size:12px;color:#666">Ticket ID: {{.TicketID}}</p>
+  <p style="font-size:12px;color:#666">Delivered to: {{.RecipientEmail}}</p>
+  <hr>
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Contact: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">Arena Platform — automated message</p>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+Your event has changed
+
+Hello{{with .HolderName}} {{.}}{{end}},
+
+The organizer has changed the details of {{.EventName}}. Here is what is different.
+
+{{if .Change.Date}}{{with .Change.OldStart}}Previous date and time: {{.}}
+{{end}}{{with .Change.NewStart}}New date and time: {{.}}
+{{end}}{{end}}{{if .Change.Venue}}{{with .Change.OldVenue}}Previous venue: {{.}}
+{{end}}{{with .Change.NewVenue}}New venue: {{.}}
+{{end}}{{end}}
+Event: {{.EventName}}
+{{if not .Change.Date}}{{with .SessionStart}}Session: {{.}}
+{{end}}{{end}}{{if not .Change.Venue}}{{with .VenueName}}Venue: {{.}}
+{{end}}{{end}}{{with .TierName}}Tier: {{.}}
+{{end}}{{with .SeatSector}}Sector: {{.}}
+{{end}}{{with .SeatRow}}Row: {{.}}
+{{end}}{{with .SeatNumber}}Seat: {{.}}
+{{end}}
+A new ticket PDF with the updated details is attached. Your ticket barcode has not changed — both the old and the new PDF are valid at the entrance.
+{{with .Change.Message}}
+Message from the organizer:
+{{.}}
+{{end}}
+If the change does not suit you, write to the organizer{{with .Change.ContactName}} ({{.}}){{end}} at {{.Change.ContactEmail}}{{with .Change.ContactPhone}}, phone {{.}}{{end}}, and describe what you would like to do. The organizer reads every message.
+
+Ticket ID: {{.TicketID}}
+Delivered to: {{.RecipientEmail}}
+
+--
+{{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Contact: {{.}}
+{{end}}
+Arena Platform — automated message
+{{end}}

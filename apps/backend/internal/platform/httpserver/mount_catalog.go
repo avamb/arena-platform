@@ -46,6 +46,8 @@ func (s *Server) mountEventRoutes(r chi.Router) {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "event.update", "events")
 			pr.Patch("/organizations/{org_id}/events/{id}", s.handleUpdateEvent)
+			// The organizer contact buyers answer to (promoter, else organization).
+			pr.Put("/organizations/{org_id}/events/{event_id}/contact", s.handleSetEventContact)
 		})
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "event.publish", "events")
@@ -90,6 +92,8 @@ func (s *Server) mountSessionRoutes(r chi.Router) {
 			s.applyAuth(pr, "session.read", "sessions")
 			pr.Get("/organizations/{org_id}/events/{event_id}/sessions", s.handleListSessions)
 			pr.Get("/organizations/{org_id}/events/{event_id}/sessions/{id}", s.handleGetSession)
+			// Dry run of a move / cancellation: who would be told, and the default text.
+			pr.Get("/organizations/{org_id}/sessions/{session_id}/change-impact", s.handleSessionChangeImpact)
 			// The organizer's preview of a buyer's e-ticket (migration 0119).
 			pr.Get("/organizations/{org_id}/sessions/{session_id}/sample-ticket", s.handleSessionSampleTicket)
 		})

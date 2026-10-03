@@ -2,6 +2,7 @@ package templates
 
 import (
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -12,12 +13,16 @@ func TestNew_ParsesAllEmbeddedFiles(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	got := r.KnownTemplates()
-	want := []string{
-		"invitation.cs", "invitation.de", "invitation.en", "invitation.es",
-		"invitation.fr", "invitation.he", "invitation.ru",
-		"ticket.cs", "ticket.de", "ticket.en", "ticket.es", "ticket.fr",
-		"ticket.he", "ticket.ru",
+	var want []string
+	for _, kind := range []string{
+		TemplateKindTicket, TemplateKindInvitation,
+		TemplateKindChange, TemplateKindCancel,
+	} {
+		for _, loc := range SupportedLocales {
+			want = append(want, kind+"."+loc)
+		}
 	}
+	sort.Strings(want)
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("KnownTemplates mismatch:\n got=%v\nwant=%v", got, want)
 	}
@@ -29,7 +34,10 @@ func TestSupportedLocalesMatchEmbeddedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, loc := range SupportedLocales {
-		for _, kind := range []string{TemplateKindTicket, TemplateKindInvitation} {
+		for _, kind := range []string{
+			TemplateKindTicket, TemplateKindInvitation,
+			TemplateKindChange, TemplateKindCancel,
+		} {
 			if r.ResolveLocale(kind, loc) != loc {
 				t.Errorf("ResolveLocale(%q,%q): expected %q to be present",
 					kind, loc, loc)

@@ -64,6 +64,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -771,6 +772,42 @@ type updateSessionRequest struct {
 	Status           string  `json:"status"`
 	PosterMediaID    *string `json:"poster_media_id"`
 	Currency         *string `json:"currency"`
+	// Notice carries the organizer's own text for the letter the buyers get
+	// when this save moves or cancels the session (sessionchange package).
+	Notice *sessionNoticeRequest `json:"notice"`
+}
+
+// sessionNoticeRequest is the optional "notice" object of a session PATCH.
+type sessionNoticeRequest struct {
+	// Message is shown to buyers under the standard wording; up to 1000
+	// characters of plain text, may be empty.
+	Message string `json:"message"`
+}
+
+// writeSessionChangeError answers the refusals of sessionchange.Apply and
+// reports whether err was one of them.
+func writeSessionChangeError(w http.ResponseWriter, r *http.Request, err error) bool {
+	switch {
+	case errors.Is(err, sessionchange.ErrContactMissing):
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+			"organization.contact_missing",
+			"buyers have bought tickets for this session, so the organizer's contact e-mail must be set before it can be moved or cancelled", r,
+		))
+	case errors.Is(err, sessionchange.ErrSiteRoute):
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+			"session.change_site_unsupported",
+			"tickets for this session were sold through a website that cannot be notified of a change yet, so it cannot be moved or cancelled here", r,
+		))
+	case errors.Is(err, sessionchange.ErrMessageTooLong):
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+			"session.change_message_too_long",
+			"the message to buyers is too long", r,
+			map[string]any{"field": "notice.message", "max_length": sessionchange.MaxMessageRunes},
+		))
+	default:
+		return false
+	}
+	return true
 }
 
 // HandleUpdateSession serves PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}.
@@ -893,6 +930,13 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 			"session.get_failed", "failed to get session", r,
 		))
 		return
+	}
+
+	// Moving the start alone keeps the session's length: without this the old
+	// end_at would be left in the past of the new start.
+	if startAt != nil && endAt == nil {
+		shifted := startAt.Add(current.EndAt.Sub(current.StartAt))
+		endAt = &shifted
 	}
 
 	seated := current.AdmissionMode != admissionGeneralAdmission
@@ -1037,7 +1081,36 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		newPosterMediaID = &parsed
 	}
 
-	updated, err := h.sessionQueries.UpdateSession(ctx, sessionID, eventID, venueID, startAt, endAt, newCapacityTotal, req.CapacityOverride, req.Status, newPosterMediaID, newCurrency, currencySource)
+	// The update and the buyer notification share ONE transaction
+	// (sessionchange.Apply): a session that moves or is cancelled while
+	// buyers hold tickets either queues their letters or does not move.
+	noticeMessage := ""
+	if req.Notice != nil {
+		noticeMessage = req.Notice.Message
+	}
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "failed to begin transaction", r,
+		))
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	before, err := sessionchange.Load(ctx, tx, sessionID, true)
+	if err != nil || before.EventID != eventID || before.State.Deleted {
+		if err == nil || errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("session.not_found", "session not found", r))
+			return
+		}
+		h.logger.Error("session: lock for update failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"session.update_failed", "failed to update session", r,
+		))
+		return
+	}
+
+	updated, err := h.sessionQueries.WithTx(tx).UpdateSession(ctx, sessionID, eventID, venueID, startAt, endAt, newCapacityTotal, req.CapacityOverride, req.Status, newPosterMediaID, newCurrency, currencySource)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("session.not_found", "session not found", r))
@@ -1046,6 +1119,28 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("session: update failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"session.update_failed", "failed to update session", r,
+		))
+		return
+	}
+
+	change, err := sessionchange.Apply(ctx, tx, sessionchange.Input{
+		SessionID: sessionID,
+		Old:       before.State,
+		Notice:    sessionchange.NoticeFor(ctx, noticeMessage),
+	})
+	if err != nil {
+		if writeSessionChangeError(w, r, err) {
+			return
+		}
+		h.logger.Error("session: change notification failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"session.update_failed", "failed to update session", r,
+		))
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"session.commit_failed", "failed to commit transaction", r,
 		))
 		return
 	}
@@ -1085,9 +1180,23 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	overlapCount, overlapErr := h.sessionQueries.CountOverlappingSessions(ctx, eventID, sessionID, effectiveStart, effectiveEnd)
 	hasOverlap := overlapErr == nil && overlapCount > 0
 
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"session": SessionFromRow(updated, hasOverlap),
-	})
+	resp := map[string]any{"session": SessionFromRow(updated, hasOverlap)}
+	if change.ChangeID != uuid.Nil {
+		resp["change"] = sessionChangeResponse(change)
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
+// sessionChangeResponse is the "change" object a session PATCH/DELETE answers
+// with when the save was visible to buyers.
+func sessionChangeResponse(c sessionchange.Result) map[string]any {
+	return map[string]any{
+		"id":      c.ChangeID.String(),
+		"kinds":   c.Kinds,
+		"orders":  c.Orders,
+		"tickets": c.Tickets,
+		"queued":  c.Queued,
+	}
 }
 
 // sessionOwnsGAPlaces reports whether any general-admission category of the
@@ -1164,6 +1273,35 @@ func (h *Handler) HandleDeleteSession(w http.ResponseWriter, r *http.Request) {
 
 	qtx := h.sessionQueries.WithTx(tx)
 
+	// Deleting a session cancels it for its buyers: the same journal and the
+	// same letters as a PATCH to status=cancelled. An optional JSON body
+	// {"notice": {"message": "..."}} carries the organizer's own text.
+	noticeMessage := ""
+	if body, rerr := io.ReadAll(io.LimitReader(r.Body, 64*1024)); rerr == nil && len(strings.TrimSpace(string(body))) > 0 {
+		var req struct {
+			Notice *sessionNoticeRequest `json:"notice"`
+		}
+		if jerr := json.Unmarshal(body, &req); jerr != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("session.invalid_json", "request body is not valid JSON", r))
+			return
+		}
+		if req.Notice != nil {
+			noticeMessage = req.Notice.Message
+		}
+	}
+	before, err := sessionchange.Load(ctx, tx, sessionID, true)
+	if err != nil || before.EventID != eventID || before.State.Deleted {
+		if err == nil || errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("session.not_found", "session not found", r))
+			return
+		}
+		h.logger.Error("session: lock for delete failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"session.delete_failed", "failed to delete session", r,
+		))
+		return
+	}
+
 	deleted, err := qtx.SoftDeleteSession(ctx, sessionID, eventID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -1171,6 +1309,21 @@ func (h *Handler) HandleDeleteSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.logger.Error("session: soft-delete failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"session.delete_failed", "failed to delete session", r,
+		))
+		return
+	}
+	change, err := sessionchange.Apply(ctx, tx, sessionchange.Input{
+		SessionID: sessionID,
+		Old:       before.State,
+		Notice:    sessionchange.NoticeFor(ctx, noticeMessage),
+	})
+	if err != nil {
+		if writeSessionChangeError(w, r, err) {
+			return
+		}
+		h.logger.Error("session: change notification failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"session.delete_failed", "failed to delete session", r,
 		))
@@ -1211,8 +1364,12 @@ func (h *Handler) HandleDeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"session": SessionFromRow(deleted, false),
 		"deleted": true,
-	})
+	}
+	if change.ChangeID != uuid.Nil {
+		resp["change"] = sessionChangeResponse(change)
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }

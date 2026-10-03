@@ -277,6 +277,11 @@ type ImportSessionRequest struct {
 	// the earlier behaviour: an API key without a channel warns, a user
 	// publishes into no channel.
 	ChannelIDs []string `json:"channelIds"`
+	// ChangeMessage is the organizer's own text for the letter buyers get when
+	// this bundle moves a session that already has paid tickets (arena
+	// extension, up to 1000 characters of plain text, may be empty). Ignored
+	// when nothing a buyer can see changes.
+	ChangeMessage string `json:"changeMessage"`
 }
 
 // HasPlacement reports whether any category is a seated (placement) one.

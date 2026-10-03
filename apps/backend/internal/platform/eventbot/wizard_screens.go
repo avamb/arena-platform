@@ -400,6 +400,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 			[]Button{{Label: mark("poster", "bot.wz.edit_b_poster"), Data: "e:poster"}, {Label: mark("age", "bot.wz.edit_b_age"), Data: "e:age"}},
 			[]Button{{Label: mark("promoter", "bot.wz.edit_b_promoter"), Data: "e:promoter"}, {Label: mark("currency", "bot.wz.edit_b_currency"), Data: "e:currency"}},
 			[]Button{{Label: mark("dates", "bot.wz.edit_b_date"), Data: "e:date"}, {Label: mark("tickets", "bot.wz.edit_b_tickets"), Data: "e:tickets"}},
+			[]Button{btn("bot.ses.open_btn", "e:sessions")},
 			[]Button{btn("bot.wz.edit_exit_btn", "cancel")},
 		)
 		return Screen{Text: text, Buttons: rows}, nil

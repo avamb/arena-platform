@@ -70,6 +70,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/reservationexpiry"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesnotify"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/tierchain"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
@@ -504,9 +505,18 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	// a delivery handler is built, so a dependency missing here (Media was,
 	// for every ticket ever sent) is invisible everywhere else.
 	queries := gen.New(pool)
-	reg.Register(delivery.JobType, delivery.NewHandler(buildDeliveryHandlerOptions(
+	deliveryOpts := buildDeliveryHandlerOptions(
 		cfg, queries, buildDeliveryMediaResolver(mediaRepo, cfg, logger), logger,
-	)))
+	)
+	reg.Register(delivery.JobType, delivery.NewHandler(deliveryOpts))
+	// session.change_email is the letter Arena writes to a buyer whose session
+	// moved or was cancelled (sessionchange.Apply queues it in the move's own
+	// transaction). It shares the sender, media store and queries of
+	// ticket.deliver, so it is built from the same options.
+	reg.Register(sessionchange.JobTypeChangeEmail, delivery.NewChangeEmailHandler(delivery.ChangeEmailOptions{
+		HandlerOptions: deliveryOpts,
+		DB:             pool,
+	}))
 
 	// auth.email_verification and auth.password_reset_email deliver
 	// account-management emails for the registration and password-reset flows.

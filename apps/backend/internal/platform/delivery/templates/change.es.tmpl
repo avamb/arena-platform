@@ -1,0 +1,98 @@
+{{define "subject"}}{{if and .Change.Date .Change.Venue}}Cambios en los datos del evento{{else if .Change.Date}}Tu evento ha cambiado de fecha{{else}}El recinto ha cambiado{{end}} — {{.EventName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="es" dir="ltr">
+<head><meta charset="UTF-8"><title>Tu evento ha cambiado</title></head>
+<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
+  <table cellpadding="0" cellspacing="0" style="width:100%;border-bottom:1px solid #eee;padding-bottom:12px;margin-bottom:16px">
+    <tr>
+      <td style="vertical-align:middle">
+        {{with .Branding.LogoURL}}<img src="{{.}}" alt="{{$.Branding.LogoAlt}}" style="max-height:48px;max-width:240px">{{end}}
+      </td>
+      <td style="vertical-align:middle;text-align:right;font-size:13px;color:#555">
+        <strong>{{.Branding.OrgName}}</strong>
+        {{with .Branding.WebsiteURL}}<br><a href="{{.}}" style="color:#1a73e8;text-decoration:none">{{.}}</a>{{end}}
+      </td>
+    </tr>
+  </table>
+  <h1 style="color:#1a1a2e">Tu evento ha cambiado</h1>
+  <p>Hola{{with .HolderName}} {{.}}{{end}},</p>
+  <p>El organizador ha modificado los datos de <strong>{{.EventName}}</strong>. Esto es lo que ha cambiado:</p>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px;margin-bottom:12px">
+    {{if .Change.Date}}{{with .Change.OldStart}}<tr><td><strong>Fecha y hora anteriores</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .Change.NewStart}}<tr><td><strong>Nueva fecha y hora</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{if .Change.Venue}}{{with .Change.OldVenue}}<tr><td><strong>Recinto anterior</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .Change.NewVenue}}<tr><td><strong>Nuevo recinto</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+  </table>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
+    <tr><td><strong>Evento</strong></td><td>{{.EventName}}</td></tr>
+    {{if not .Change.Date}}{{with .SessionStart}}<tr><td><strong>Sesión</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{if not .Change.Venue}}{{with .VenueName}}<tr><td><strong>Recinto</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{with .TierName}}<tr><td><strong>Categoría</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatSector}}<tr><td><strong>Sector</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>Fila</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>Asiento</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>
+  <p>Adjuntamos un nuevo PDF de tu entrada con los datos actualizados. El código de barras de tu entrada no ha cambiado: en la entrada son válidos tanto el PDF anterior como el nuevo.</p>
+  {{with .Change.Message}}<div style="margin:16px 0;padding:12px 16px;border-left:3px solid #1a73e8;background:#f5f7fa">
+    <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Mensaje del organizador:</strong></p>
+    <p style="margin:0;white-space:pre-line">{{.}}</p>
+  </div>{{end}}
+  <p>Si el cambio no te conviene, escribe al organizador{{with .Change.ContactName}} ({{.}}){{end}} a <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{with .Change.ContactPhone}}, teléfono {{.}}{{end}} y cuéntale qué te gustaría hacer. El organizador lee todos los mensajes.</p>
+  <p style="font-size:12px;color:#666">ID de entrada: {{.TicketID}}</p>
+  <p style="font-size:12px;color:#666">Enviado a: {{.RecipientEmail}}</p>
+  <hr>
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>Contacto: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">Arena Platform — entrega automática</p>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+Tu evento ha cambiado
+
+Hola{{with .HolderName}} {{.}}{{end}},
+
+El organizador ha modificado los datos de {{.EventName}}. Esto es lo que ha cambiado:
+
+{{if .Change.Date}}{{with .Change.OldStart}}Fecha y hora anteriores: {{.}}
+{{end}}{{with .Change.NewStart}}Nueva fecha y hora: {{.}}
+{{end}}{{end}}{{if .Change.Venue}}{{with .Change.OldVenue}}Recinto anterior: {{.}}
+{{end}}{{with .Change.NewVenue}}Nuevo recinto: {{.}}
+{{end}}{{end}}
+Evento: {{.EventName}}
+{{if not .Change.Date}}{{with .SessionStart}}Sesión: {{.}}
+{{end}}{{end}}{{if not .Change.Venue}}{{with .VenueName}}Recinto: {{.}}
+{{end}}{{end}}{{with .TierName}}Categoría: {{.}}
+{{end}}{{with .SeatSector}}Sector: {{.}}
+{{end}}{{with .SeatRow}}Fila: {{.}}
+{{end}}{{with .SeatNumber}}Asiento: {{.}}
+{{end}}
+Adjuntamos un nuevo PDF de tu entrada con los datos actualizados. El código de barras de tu entrada no ha cambiado: en la entrada son válidos tanto el PDF anterior como el nuevo.
+{{with .Change.Message}}
+Mensaje del organizador:
+{{.}}
+{{end}}
+Si el cambio no te conviene, escribe al organizador{{with .Change.ContactName}} ({{.}}){{end}} a {{.Change.ContactEmail}}{{with .Change.ContactPhone}}, teléfono {{.}}{{end}} y cuéntale qué te gustaría hacer. El organizador lee todos los mensajes.
+
+ID de entrada: {{.TicketID}}
+Enviado a: {{.RecipientEmail}}
+
+--
+{{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}Contacto: {{.}}
+{{end}}
+Arena Platform — entrega automática
+{{end}}

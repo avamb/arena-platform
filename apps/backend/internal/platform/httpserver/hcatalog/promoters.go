@@ -41,32 +41,35 @@ import (
 
 // PromoterResponse is the JSON shape of one promoter.
 type PromoterResponse struct {
-	ID         string  `json:"id"`
-	OrgID      string  `json:"org_id"`
-	Name       string  `json:"name"`
-	LegalID    *string `json:"legal_id"`
-	Phone      *string `json:"phone"`
-	Email      *string `json:"email"`
-	Slug       *string `json:"slug"`
-	Archived   bool    `json:"archived"`
-	ArchivedAt *string `json:"archived_at"`
-	CreatedAt  string  `json:"created_at"`
-	UpdatedAt  string  `json:"updated_at"`
+	ID      string  `json:"id"`
+	OrgID   string  `json:"org_id"`
+	Name    string  `json:"name"`
+	LegalID *string `json:"legal_id"`
+	Phone   *string `json:"phone"`
+	Email   *string `json:"email"`
+	Slug    *string `json:"slug"`
+	// PhoneHidden keeps Phone out of letters to buyers.
+	PhoneHidden bool    `json:"phone_hidden"`
+	Archived    bool    `json:"archived"`
+	ArchivedAt  *string `json:"archived_at"`
+	CreatedAt   string  `json:"created_at"`
+	UpdatedAt   string  `json:"updated_at"`
 }
 
 // PromoterFromRow renders an org_promoters row.
 func PromoterFromRow(p gen.OrgPromoterRow) PromoterResponse {
 	resp := PromoterResponse{
-		ID:        p.ID.String(),
-		OrgID:     p.OrgID.String(),
-		Name:      p.Name,
-		LegalID:   p.LegalID,
-		Phone:     p.Phone,
-		Email:     p.Email,
-		Slug:      p.Slug,
-		Archived:  p.ArchivedAt != nil,
-		CreatedAt: p.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt: p.UpdatedAt.UTC().Format(time.RFC3339),
+		ID:          p.ID.String(),
+		OrgID:       p.OrgID.String(),
+		Name:        p.Name,
+		LegalID:     p.LegalID,
+		Phone:       p.Phone,
+		Email:       p.Email,
+		Slug:        p.Slug,
+		PhoneHidden: p.PhoneHidden,
+		Archived:    p.ArchivedAt != nil,
+		CreatedAt:   p.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:   p.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	if p.ArchivedAt != nil {
 		s := p.ArchivedAt.UTC().Format(time.RFC3339)
@@ -387,6 +390,8 @@ type updatePromoterRequest struct {
 	Phone    optionalString `json:"phone"`
 	Email    optionalString `json:"email"`
 	Archived *bool          `json:"archived"`
+	// PhoneHidden: absent = keep, true/false = set.
+	PhoneHidden *bool `json:"phone_hidden"`
 	// Slug: absent = keep, null = no page, value = the new page address.
 	Slug optionalString `json:"slug"`
 }
@@ -501,6 +506,14 @@ func (h *Handler) HandleUpdatePromoter(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("promoter: update failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("promoter.update_failed", "failed to update promoter", r))
 		return
+	}
+	if req.PhoneHidden != nil && *req.PhoneHidden != updated.PhoneHidden {
+		updated, err = qtx.SetOrgPromoterPhoneHidden(ctx, promoterID, orgID, *req.PhoneHidden)
+		if err != nil {
+			h.logger.Error("promoter: phone_hidden update failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("promoter.update_failed", "failed to update promoter", r))
+			return
+		}
 	}
 	if err := h.promoterAudit(ctx, tx, r, "v1.promoter.update", "promoter", updated.ID.String(), map[string]any{
 		"org_id":        orgID.String(),

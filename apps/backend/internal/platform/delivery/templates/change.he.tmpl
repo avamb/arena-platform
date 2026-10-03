@@ -1,0 +1,98 @@
+{{define "subject"}}{{if and .Change.Date .Change.Venue}}פרטי האירוע שונו{{else if .Change.Date}}מועד האירוע שונה{{else}}מקום האירוע שונה{{end}} — {{.EventName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head><meta charset="UTF-8"><title>האירוע שלך השתנה</title></head>
+<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e;direction:rtl;text-align:right">
+  <table cellpadding="0" cellspacing="0" style="width:100%;border-bottom:1px solid #eee;padding-bottom:12px;margin-bottom:16px;direction:rtl">
+    <tr>
+      <td style="vertical-align:middle">
+        {{with .Branding.LogoURL}}<img src="{{.}}" alt="{{$.Branding.LogoAlt}}" style="max-height:48px;max-width:240px">{{end}}
+      </td>
+      <td style="vertical-align:middle;text-align:left;font-size:13px;color:#555">
+        <strong>{{.Branding.OrgName}}</strong>
+        {{with .Branding.WebsiteURL}}<br><a href="{{.}}" style="color:#1a73e8;text-decoration:none">{{.}}</a>{{end}}
+      </td>
+    </tr>
+  </table>
+  <h1 style="color:#1a1a2e">האירוע שלך השתנה</h1>
+  <p>שלום{{with .HolderName}} {{.}}{{end}},</p>
+  <p>המארגן שינה את פרטי האירוע <strong>{{.EventName}}</strong>. אלה השינויים:</p>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px;direction:rtl;margin-bottom:12px">
+    {{if .Change.Date}}{{with .Change.OldStart}}<tr><td><strong>מועד קודם</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .Change.NewStart}}<tr><td><strong>מועד חדש</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{if .Change.Venue}}{{with .Change.OldVenue}}<tr><td><strong>מקום קודם</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .Change.NewVenue}}<tr><td><strong>מקום חדש</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+  </table>
+  <table cellpadding="4" style="border-collapse:collapse;font-size:14px;direction:rtl">
+    <tr><td><strong>אירוע</strong></td><td>{{.EventName}}</td></tr>
+    {{if not .Change.Date}}{{with .SessionStart}}<tr><td><strong>מועד</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{if not .Change.Venue}}{{with .VenueName}}<tr><td><strong>מקום</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{with .TierName}}<tr><td><strong>קטגוריה</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatSector}}<tr><td><strong>אזור</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatRow}}<tr><td><strong>שורה</strong></td><td>{{.}}</td></tr>{{end}}
+    {{with .SeatNumber}}<tr><td><strong>מקום</strong></td><td>{{.}}</td></tr>{{end}}
+  </table>
+  <p>קובץ PDF חדש של הכרטיס עם הפרטים המעודכנים מצורף להודעה. הברקוד של הכרטיס שלך לא השתנה — בכניסה תקפים גם ה-PDF הישן וגם החדש.</p>
+  {{with .Change.Message}}<div style="margin:16px 0;padding:12px 16px;border-right:3px solid #1a73e8;background:#f5f7fa;direction:rtl;text-align:right">
+    <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>הודעה מהמארגן:</strong></p>
+    <p style="margin:0;white-space:pre-line">{{.}}</p>
+  </div>{{end}}
+  <p>אם השינוי אינו מתאים לך, כתבו למארגן{{with .Change.ContactName}} ({{.}}){{end}} בכתובת <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{with .Change.ContactPhone}}, טלפון {{.}}{{end}}, וספרו מה הייתם רוצים לעשות. המארגן קורא כל הודעה.</p>
+  <p style="font-size:12px;color:#666">מזהה כרטיס: {{.TicketID}}</p>
+  <p style="font-size:12px;color:#666">נשלח אל: {{.RecipientEmail}}</p>
+  <hr>
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>יצירת קשר: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">Arena Platform — שליחה אוטומטית</p>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+האירוע שלך השתנה
+
+שלום{{with .HolderName}} {{.}}{{end}},
+
+המארגן שינה את פרטי האירוע {{.EventName}}. אלה השינויים:
+
+{{if .Change.Date}}{{with .Change.OldStart}}מועד קודם: {{.}}
+{{end}}{{with .Change.NewStart}}מועד חדש: {{.}}
+{{end}}{{end}}{{if .Change.Venue}}{{with .Change.OldVenue}}מקום קודם: {{.}}
+{{end}}{{with .Change.NewVenue}}מקום חדש: {{.}}
+{{end}}{{end}}
+אירוע: {{.EventName}}
+{{if not .Change.Date}}{{with .SessionStart}}מועד: {{.}}
+{{end}}{{end}}{{if not .Change.Venue}}{{with .VenueName}}מקום: {{.}}
+{{end}}{{end}}{{with .TierName}}קטגוריה: {{.}}
+{{end}}{{with .SeatSector}}אזור: {{.}}
+{{end}}{{with .SeatRow}}שורה: {{.}}
+{{end}}{{with .SeatNumber}}מקום: {{.}}
+{{end}}
+קובץ PDF חדש של הכרטיס עם הפרטים המעודכנים מצורף להודעה. הברקוד של הכרטיס שלך לא השתנה — בכניסה תקפים גם ה-PDF הישן וגם החדש.
+{{with .Change.Message}}
+הודעה מהמארגן:
+{{.}}
+{{end}}
+אם השינוי אינו מתאים לך, כתבו למארגן{{with .Change.ContactName}} ({{.}}){{end}} בכתובת {{.Change.ContactEmail}}{{with .Change.ContactPhone}}, טלפון {{.}}{{end}}, וספרו מה הייתם רוצים לעשות. המארגן קורא כל הודעה.
+
+מזהה כרטיס: {{.TicketID}}
+נשלח אל: {{.RecipientEmail}}
+
+--
+{{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}יצירת קשר: {{.}}
+{{end}}
+Arena Platform — שליחה אוטומטית
+{{end}}

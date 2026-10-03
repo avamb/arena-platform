@@ -206,6 +206,9 @@ func (b *Bot) showEvent(ctx context.Context, chatID int64, editMsgID *int, from 
 			{Text: b.texts.T(loc, "bot.sample_btn", nil), CallbackData: "sample:" + eventID.String()},
 		},
 		{
+			{Text: b.texts.T(loc, "bot.ses.open_btn", nil), CallbackData: "ses:list:" + eventID.String()},
+		},
+		{
 			{Text: "« " + b.texts.T(loc, "bot.btn_back", nil), CallbackData: fmt.Sprintf("events:%d", page)},
 			{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"},
 		},

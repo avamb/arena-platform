@@ -5209,6 +5209,16 @@ type EventArtistListEnvelope struct {
 	Artists []EventArtist `json:"artists"`
 }
 
+// EventContactResponse The organizer contact of an event after PUT .../events/{event_id}/contact.
+type EventContactResponse struct {
+	// Contact Who buyers write to when a session changes: the event's promoter when
+	// it has an e-mail, otherwise the organization. When neither has one
+	// the contact is incomplete (`complete = false`) and `target_*` name
+	// the row to fill in (PUT .../events/{event_id}/contact does exactly
+	// that).
+	Contact OrganizerContact `json:"contact"`
+}
+
 // EventDeleteResponse Soft-delete response envelope.
 type EventDeleteResponse struct {
 	// Deleted Always true on success; confirms the soft delete.
@@ -6048,6 +6058,17 @@ type ImportBil24SessionRequest struct {
 	// CategoryList Price categories to import as ticket tiers. Must contain at least one entry.
 	CategoryList []ImportBil24SessionCategory `json:"categoryList"`
 
+	// ChangeMessage The organizer's own text for the letter buyers get when this
+	// import MOVES a session that already has paid, live tickets (arena
+	// extension). Plain text, up to 1000 characters (longer is refused
+	// with 422 `session.change_message_too_long`), may be empty;
+	// ignored when nothing a buyer can see changes. An import that
+	// would move such a session is refused, and writes nothing, with
+	// 422 `organization.contact_missing` when the organizer has no
+	// contact e-mail, or 422 `session.change_site_unsupported` when an
+	// affected order was sold through a website.
+	ChangeMessage *string `json:"changeMessage,omitempty"`
+
 	// ChannelIds Sales channels of the organization the event is published INTO
 	// when `publish` is true (arena extension, spec 28 §3.4). An
 	// organization API key bound to a channel still publishes into its
@@ -6267,6 +6288,17 @@ type ImportEventBundleRequest struct {
 
 	// CategoryList Price categories to import as ticket tiers. Must contain at least one entry.
 	CategoryList []ImportBil24SessionCategory `json:"categoryList"`
+
+	// ChangeMessage The organizer's own text for the letter buyers get when this
+	// import MOVES a session that already has paid, live tickets (arena
+	// extension). Plain text, up to 1000 characters (longer is refused
+	// with 422 `session.change_message_too_long`), may be empty;
+	// ignored when nothing a buyer can see changes. An import that
+	// would move such a session is refused, and writes nothing, with
+	// 422 `organization.contact_missing` when the organizer has no
+	// contact e-mail, or 422 `session.change_site_unsupported` when an
+	// affected order was sold through a website.
+	ChangeMessage *string `json:"changeMessage,omitempty"`
 
 	// ChannelIds Sales channels of the organization the event is published INTO
 	// when `publish` is true (arena extension, spec 28 §3.4). An
@@ -7348,6 +7380,40 @@ type OrganizationItemKybStatus string
 // not registered a tax id yet.
 type OrganizationItemTaxIdScheme string
 
+// OrganizerContact Who buyers write to when a session changes: the event's promoter when
+// it has an e-mail, otherwise the organization. When neither has one
+// the contact is incomplete (`complete = false`) and `target_*` name
+// the row to fill in (PUT .../events/{event_id}/contact does exactly
+// that).
+type OrganizerContact struct {
+	// Complete True when buyers have an e-mail address to write to.
+	Complete bool `json:"complete"`
+
+	// Email The address buyers are told to write to; empty when missing.
+	Email string `json:"email"`
+
+	// Name Name of the promoter or organization the contact belongs to.
+	Name string `json:"name"`
+
+	// Phone Phone number; empty when none. It is stored even when hidden.
+	Phone string `json:"phone"`
+
+	// PhoneHidden True when the phone must not appear in letters to buyers.
+	PhoneHidden bool `json:"phone_hidden"`
+
+	// Source `promoter` or `organization`; empty when nobody has an e-mail.
+	Source string `json:"source"`
+
+	// TargetId Id of that promoter or organization.
+	TargetId string `json:"target_id"`
+
+	// TargetKind `promoter` or `organization`: the row a client fills in to complete the contact.
+	TargetKind string `json:"target_kind"`
+
+	// TargetName Name of that promoter or organization.
+	TargetName string `json:"target_name"`
+}
+
 // PaginationMeta Standard pagination metadata returned by list endpoints.
 // Clients use this object to implement "load more" buttons or
 // paginator UI components. All fields are always present in list responses.
@@ -8279,7 +8345,9 @@ type Promoter struct {
 	// CreatedAt Row creation timestamp (RFC 3339).
 	CreatedAt time.Time `json:"created_at"`
 
-	// Email Contact e-mail address.
+	// Email Contact e-mail address. It is also the address buyers are told to
+	// write to when one of the event's sessions changes, so it must be
+	// set before a session with buyers can be moved or cancelled.
 	Email *string `json:"email"`
 
 	// Id Primary key of the promoter.
@@ -8297,6 +8365,10 @@ type Promoter struct {
 
 	// Phone Contact phone number.
 	Phone *string `json:"phone"`
+
+	// PhoneHidden True keeps the phone number out of the letters buyers get when a
+	// session moves or is cancelled (migration 0121).
+	PhoneHidden bool `json:"phone_hidden"`
 
 	// Slug Public page address: `https://tickets.arenasoldout.com/{slug}`.
 	// Lower-case a-z, 0-9 and single hyphens, 2–64 characters,
@@ -9474,8 +9546,98 @@ type ServerInfoResponse struct {
 	WelcomeMessage string `json:"welcome_message"`
 }
 
+// SessionChangeImpact Dry run of a session move or cancellation: what saving it would do,
+// computed from the same rules the save applies. Nothing is written.
+type SessionChangeImpact struct {
+	// ArenaOrders Orders whose buyers Arena itself writes to.
+	ArenaOrders int `json:"arena_orders"`
+
+	// Blocked Empty when the change may be saved, otherwise why not:
+	// `contact_missing` (no organizer e-mail for buyers to answer) or
+	// `site_route_unsupported` (an affected order was sold through a
+	// website).
+	Blocked string `json:"blocked"`
+
+	// Contact Who buyers write to when a session changes: the event's promoter when
+	// it has an e-mail, otherwise the organization. When neither has one
+	// the contact is incomplete (`complete = false`) and `target_*` name
+	// the row to fill in (PUT .../events/{event_id}/contact does exactly
+	// that).
+	Contact OrganizerContact `json:"contact"`
+
+	// Current The buyer-visible slice of a session.
+	Current SessionStateSnapshot `json:"current"`
+
+	// DefaultMessage The text offered to the organizer for the buyers' letter, in the
+	// language of the `locale` query parameter (English when absent or
+	// unknown). A suggestion only; the organizer may edit or clear it.
+	DefaultMessage string `json:"default_message"`
+
+	// Kinds What buyers would see change: `date`, `time`, `venue`, or just
+	// `cancelled`. Empty means no buyer-visible change (nobody is told).
+	Kinds []string `json:"kinds"`
+
+	// NoAddress Arena-route orders with no buyer e-mail address; their buyers cannot be written to.
+	NoAddress int `json:"no_address"`
+
+	// Orders Paid orders with a live ticket whose buyers would be told.
+	Orders int `json:"orders"`
+
+	// Proposed The buyer-visible slice of a session.
+	Proposed SessionStateSnapshot `json:"proposed"`
+
+	// SessionId The session.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// SiteOrders Orders sold through a website; such a change cannot be saved yet (`blocked`).
+	SiteOrders int `json:"site_orders"`
+
+	// Tickets Live tickets in those orders.
+	Tickets int `json:"tickets"`
+}
+
+// SessionChangeNotice What the organizer wants to say to the buyers of a session that is
+// being moved or cancelled. Shown under the standard, localized wording
+// of the letter.
+type SessionChangeNotice struct {
+	// Message Plain text, up to 1000 characters (longer is refused with 422
+	// `session.change_message_too_long`), may be empty. Clients offer
+	// the `default_message` of the change-impact answer as a starting
+	// point; whatever is sent is what buyers read. It must not promise
+	// a refund: returning money is a separate conversation between the
+	// organizer and the buyer.
+	Message *string `json:"message,omitempty"`
+}
+
+// SessionChangeSummary What a session save did for buyers. Present on the PATCH and DELETE
+// answers only when the save changed something a buyer can see (the
+// start date or time, the venue, or cancelled the session).
+type SessionChangeSummary struct {
+	// Id Id of the journal row (`session_changes`).
+	Id openapi_types.UUID `json:"id"`
+
+	// Kinds What changed, any of `date`, `time`, `venue`; or just
+	// `cancelled`. `date` is another calendar day in the venue's own
+	// time zone, `time` the same day at another hour.
+	Kinds []string `json:"kinds"`
+
+	// Orders Paid orders with a live ticket for the session, whose buyers must be told.
+	Orders int `json:"orders"`
+
+	// Queued Letters put on the queue, one per order, in the same transaction as the save.
+	Queued int `json:"queued"`
+
+	// Tickets Live tickets in those orders.
+	Tickets int `json:"tickets"`
+}
+
 // SessionDeleteResponse Soft-delete response envelope.
 type SessionDeleteResponse struct {
+	// Change What a session save did for buyers. Present on the PATCH and DELETE
+	// answers only when the save changed something a buyer can see (the
+	// start date or time, the venue, or cancelled the session).
+	Change *SessionChangeSummary `json:"change,omitempty"`
+
 	// Deleted Always true on success; confirms the soft delete.
 	Deleted bool `json:"deleted"`
 
@@ -9491,6 +9653,11 @@ type SessionDeleteResponse struct {
 
 // SessionEnvelope Single-session response envelope.
 type SessionEnvelope struct {
+	// Change What a session save did for buyers. Present on the PATCH and DELETE
+	// answers only when the save changed something a buyer can see (the
+	// start date or time, the venue, or cancelled the session).
+	Change *SessionChangeSummary `json:"change,omitempty"`
+
 	// Session A single dated session (time slot) of an event at a venue. Since
 	// Wave 4 (AB-36/AB-38) the session — not the event — owns the venue,
 	// the seating bind and the currency, matching the Bil24 ActionEvent
@@ -9712,6 +9879,27 @@ type SessionPlaceCounts struct {
 	Unavailable int64 `json:"unavailable"`
 }
 
+// SessionStateSnapshot The buyer-visible slice of a session.
+type SessionStateSnapshot struct {
+	// EndAt End of the session (RFC 3339, UTC).
+	EndAt time.Time `json:"end_at"`
+
+	// StartAt Start of the session (RFC 3339, UTC).
+	StartAt time.Time `json:"start_at"`
+
+	// Status Session status.
+	Status string `json:"status"`
+
+	// Timezone IANA time zone of the venue, in which the calendar day of a change is judged.
+	Timezone string `json:"timezone"`
+
+	// VenueId Venue of the session.
+	VenueId openapi_types.UUID `json:"venue_id"`
+
+	// VenueName Display name of the venue.
+	VenueName string `json:"venue_name"`
+}
+
 // SessionSummary One-screen overview of a session: places by status, categories with
 // what was paid for them, the money per currency, orders, tickets,
 // refunds and the promo codes used. Read-only. Carries no buyer data,
@@ -9900,6 +10088,19 @@ type SessionWarning struct {
 
 	// Message Human-readable explanation of the warning.
 	Message string `json:"message"`
+}
+
+// SetEventContactRequest Body of PUT /v1/organizations/{org_id}/events/{event_id}/contact.
+type SetEventContactRequest struct {
+	// Email The address buyers are told to write to; must be a valid e-mail
+	// address (400 `contact.invalid_email`).
+	Email string `json:"email"`
+
+	// Phone Optional phone number, up to 40 characters; null or blank clears it.
+	Phone *string `json:"phone"`
+
+	// PhoneHidden True keeps the phone out of letters to buyers. Absent means false.
+	PhoneHidden *bool `json:"phone_hidden,omitempty"`
 }
 
 // SetEventPromoterRequest Body of PUT /v1/organizations/{org_id}/events/{id}/promoter.
@@ -10751,6 +10952,9 @@ type UpdatePromoterRequest struct {
 	// Phone Contact phone; null clears it.
 	Phone *string `json:"phone"`
 
+	// PhoneHidden true keeps the phone out of letters to buyers, false shows it; absent keeps the current value.
+	PhoneHidden *bool `json:"phone_hidden,omitempty"`
+
 	// Slug Public page address (see Promoter.slug): value = set (400
 	// `promoter.invalid_slug`, 409 `promoter.duplicate_slug`), null or
 	// blank = the promoter has no page any more.
@@ -10820,6 +11024,11 @@ type UpdateSessionRequest struct {
 	// present in the same body, end_at must remain strictly after
 	// start_at.
 	EndAt *time.Time `json:"end_at"`
+
+	// Notice What the organizer wants to say to the buyers of a session that is
+	// being moved or cancelled. Shown under the standard, localized wording
+	// of the letter.
+	Notice *SessionChangeNotice `json:"notice,omitempty"`
 
 	// PosterMediaId New session-level poster artwork (AB-47). When set, overrides
 	// the event-level poster for this session. Nil leaves unchanged.
@@ -11896,6 +12105,14 @@ type ListOrgEventsParams struct {
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
 }
 
+// DeleteSessionJSONBody defines parameters for DeleteSession.
+type DeleteSessionJSONBody struct {
+	// Notice What the organizer wants to say to the buyers of a session that is
+	// being moved or cancelled. Shown under the standard, localized wording
+	// of the letter.
+	Notice *SessionChangeNotice `json:"notice,omitempty"`
+}
+
 // GetSessionMACSExportParams defines parameters for GetSessionMACSExport.
 type GetSessionMACSExportParams struct {
 	// Download Set to "1" to receive a Content-Disposition attachment.
@@ -12011,6 +12228,24 @@ type ListPromoCodeRedemptionsParams struct {
 type ListPromotersParams struct {
 	// IncludeArchived Include archived promoters (true/false, default false).
 	IncludeArchived *bool `form:"include_archived,omitempty" json:"include_archived,omitempty"`
+}
+
+// GetV1OrganizationsOrgIdSessionsSessionIdChangeImpactParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdChangeImpact.
+type GetV1OrganizationsOrgIdSessionsSessionIdChangeImpactParams struct {
+	// StartAt Proposed start (RFC 3339).
+	StartAt *time.Time `form:"start_at,omitempty" json:"start_at,omitempty"`
+
+	// EndAt Proposed end (RFC 3339).
+	EndAt *time.Time `form:"end_at,omitempty" json:"end_at,omitempty"`
+
+	// VenueId Proposed venue, one of this organization's.
+	VenueId *openapi_types.UUID `form:"venue_id,omitempty" json:"venue_id,omitempty"`
+
+	// Status Only `cancelled` is accepted.
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// Locale Language of `default_message` (en, ru, cs, de, es, fr, he); English otherwise.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
 // GetV1OrganizationsOrgIdSessionsSessionIdSampleTicketParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdSampleTicket.
@@ -12315,11 +12550,17 @@ type CreateComplimentaryIssuanceJSONRequestBody CreateComplimentaryIssuanceJSONB
 // CreateEventJSONRequestBody defines body for CreateEvent for application/json ContentType.
 type CreateEventJSONRequestBody = CreateEventRequest
 
+// SetEventContactJSONRequestBody defines body for SetEventContact for application/json ContentType.
+type SetEventContactJSONRequestBody = SetEventContactRequest
+
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = CreateSessionRequest
 
 // BulkSessionPricingJSONRequestBody defines body for BulkSessionPricing for application/json ContentType.
 type BulkSessionPricingJSONRequestBody = BulkSessionPricingRequest
+
+// DeleteSessionJSONRequestBody defines body for DeleteSession for application/json ContentType.
+type DeleteSessionJSONRequestBody DeleteSessionJSONBody
 
 // UpdateSessionJSONRequestBody defines body for UpdateSession for application/json ContentType.
 type UpdateSessionJSONRequestBody = UpdateSessionRequest
