@@ -1,5 +1,5 @@
 #!/bin/sh
-# Nightly encrypted backup of the WordPress sites that run on lead-parser (Docker, Apache + MySQL).
+# Nightly encrypted backup of the WordPress sites that run on lead-parser and lampyrisevents (Docker, Apache + MySQL).
 # Cron: /etc/cron.d/wp-sites-backup at 03:10 UTC. READ-ONLY on the sites: mysqldump --single-transaction and tar.
 #
 # Per site and per run (all encrypted with the PUBLIC key in /etc/backup-age-recipient.txt, the private key
@@ -31,6 +31,9 @@ marinabakanova|marinabakanovacom-wordpress-2h3b5p-wordpress-1|marinabakanovacom-
 ndarchdesign|ndarchdesign-wordpress-wroe1g-wordpress-1|ndarchdesign-wordpress-wroe1g-wp_db-1|ndarchdesign-wordpress-wroe1g_wp_app
 iltabia|iltabia-wordpress-ggulpw-wordpress-1|iltabia-wordpress-ggulpw-wp_db-1|iltabia-wordpress-ggulpw_wp_app
 "
+
+# Another host (lampyrisevents) lists its own sites in /etc/wp-sites-backup.sites, same four fields per line, instead of the table above.
+[ -s /etc/wp-sites-backup.sites ] && SITES=$(cat /etc/wp-sites-backup.sites)
 
 umask 077
 mkdir -p "$DIR/tmp"; chmod 700 "$DIR" "$DIR/tmp"

@@ -41,7 +41,7 @@
 | Пропали афиши и логотипы | 7 |
 | Сломался MACS | 8 |
 | Потеряна или сломалась панель Dokploy | 8а |
-| Сломался или потерян сайт WordPress (Vino&Co, arenasoldout.com, Marina, ndarchdesign, iltabia.com) | 8б |
+| Сломался или потерян сайт WordPress (Vino&Co, arenasoldout.com, Marina, ndarchdesign, iltabia.com, Lampyris) | 8б |
 | Нужно понять, какие продажи потерялись | 10 |
 
 ## 2. Что где лежит
@@ -469,8 +469,8 @@ docker run -d --name dokploy-traefik --restart always --network dokploy-network 
 
 ## 8б. Сценарий G: сломан или потерян сайт WordPress на `lead-parser`
 
-Копируются пять сайтов: `arenasoldout` (тестовый магазин), `vinoandco` (**боевой** Vino&Co), `marinabakanova`, `ndarchdesign`, `iltabia` (с 03.10.2026, iltabia.com). Скрипт `wp-sites-backup.sh` работает на `lead-parser`
-каждую ночь в 03:10 UTC и **ничего не меняет на сайтах** (только читает: `mysqldump --single-transaction` и `tar`). Параллельно UpdraftPlus по-прежнему кладёт свои копии
+Копируются шесть сайтов: `arenasoldout` (тестовый магазин), `vinoandco` (**боевой** Vino&Co), `marinabakanova`, `ndarchdesign`, `iltabia` (с 03.10.2026, iltabia.com) на `lead-parser` и `lampyris` (**боевой** Lampyris, с 05.10.2026) на `lampyrisevents`. Скрипт `wp-sites-backup.sh` работает на обоих серверах
+каждую ночь в 03:10 по местному времени сервера (CEST, то есть 01:10 UTC) и **ничего не меняет на сайтах** (только читает: `mysqldump --single-transaction` и `tar`). Параллельно UpdraftPlus по-прежнему кладёт свои копии
 на Google Диск владельца, это второй независимый слой, его не трогаем.
 
 Что лежит для каждого сайта (всё зашифровано `age`, открытый ключ на сервере, закрытый в менеджере паролей, как в разделе 3):
@@ -574,7 +574,7 @@ docker rm -f pgrestoretest; rm -rf /tmp/pgtest
 6. **Один боевой сервер.** Потеря сервера означает простой, пока идёт сценарий B (оценка 2–4 часа).
 7. **Токены в `api-token-*.txt`** (Cloudflare, Hetzner, R2) лежат открытым текстом в рабочем каталоге проекта (в `.gitignore`). Перевыпустите их по окончании работ.
 8. **Старый сервер `arena-macs`** ещё работает как резерв MACS с данными на 02.10.2026, 14:29 UTC. Не останавливайте, пока не пройдёт реальное событие со сканированием.
-9. **Сайты WordPress копируются только с `lead-parser`.** Сайты на других серверах (Lampyris на `lampyrisevents`, `minimaldeco`) этим скриптом не покрыты. На `lead-parser` лежит копия ключа R2 (право записи и удаления во всём бакете) и открытый ключ `age`; при взломе этого сервера копии в R2 можно стереть, как и в пункте 5.
+9. **Сайты WordPress копируются только с `lead-parser` и `lampyrisevents`.** `minimaldeco` этим скриптом не покрыт. На обоих серверах лежит копия ключа R2 (право записи и удаления во всём бакете) и открытый ключ `age`; при взломе любого из них копии в R2 можно стереть, как и в пункте 5. Список сайтов `lampyrisevents` задаёт файл `/etc/wp-sites-backup.sites` (там нет таблицы `SITES` из скрипта).
 
 ## 13. Скрипты и их установка на новом сервере
 
