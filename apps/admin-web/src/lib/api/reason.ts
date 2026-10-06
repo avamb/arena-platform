@@ -109,6 +109,8 @@ const REASON_REQUIRED_REGEX: readonly RegExp[] = [
   /^\/v1\/organizations\/[^/]+\/channels(?:\/.*)?$/,
   /^\/v1\/organizations\/[^/]+\/payment-configs(?:\/.*)?$/,
   /^\/v1\/organizations\/[^/]+\/members(?:\/.*)?$/,
+  // Telegram bot invitations (creates a membership AND a one-time link).
+  /^\/v1\/organizations\/[^/]+\/bot-invitations$/,
   /^\/v1\/organizations\/[^/]+\/bank-accounts(?:\/.*)?$/,
   /^\/v1\/organizations\/[^/]+\/events(?:\/.*)?$/,
   /^\/v1\/organizations\/[^/]+\/sessions(?:\/.*)?$/,

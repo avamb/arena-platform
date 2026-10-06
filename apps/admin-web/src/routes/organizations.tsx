@@ -2675,6 +2675,134 @@ export function mapMembershipMutationError(err: ApiError): string {
   }
 }
 
+/** The two roles the Telegram event-center bot knows. */
+export type BotInviteRole = "owner" | "manager";
+
+/**
+ * The bot role that matches a membership role: the organization owner
+ * (org_admin) is the bot's owner, an organizer is its manager. Every other
+ * membership role has no place in the bot.
+ */
+export function botInviteRoleFor(role: string): BotInviteRole | null {
+  if (role === "org_admin") return "owner";
+  if (role === "organizer") return "manager";
+  return null;
+}
+
+export function buildBotInviteBody(
+  email: string,
+  role: BotInviteRole,
+  locale: "ru" | "en" = "ru",
+): { email: string; role: BotInviteRole; locale: string } {
+  return { email: email.trim().toLowerCase(), role, locale };
+}
+
+interface BotInviteResponse {
+  readonly deep_link?: string | null;
+  readonly invitation: {
+    readonly email: string;
+    readonly membership_role: string;
+    readonly delivery?: string;
+    readonly expires_at: string;
+  };
+}
+
+/** What the Users tab shows after a bot invitation was (or was not) created. */
+export interface BotInviteNotice {
+  readonly ok: boolean;
+  readonly email: string;
+  readonly role?: string;
+  readonly link?: string | null;
+  readonly message?: string;
+}
+
+function botInviteNotice(email: string, res: BotInviteResponse): BotInviteNotice {
+  return {
+    ok: true,
+    email,
+    role: res.invitation.membership_role,
+    link: res.deep_link ?? null,
+  };
+}
+
+async function sendBotInvitation(
+  orgId: string,
+  email: string,
+  role: BotInviteRole,
+  locale: "ru" | "en",
+): Promise<BotInviteResponse> {
+  return authedFetch<BotInviteResponse>({
+    method: "POST",
+    path: `/v1/organizations/${orgId}/bot-invitations`,
+    body: buildBotInviteBody(email, role, locale),
+  });
+}
+
+function BotInviteNoticeCard({
+  notice,
+  onClose,
+}: {
+  notice: BotInviteNotice;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div
+      role={notice.ok ? "status" : "alert"}
+      style={notice.ok ? botInviteOkStyle : botInviteErrStyle}
+      data-testid="orgs-drawer-users-bot-notice"
+    >
+      <div>
+        <strong>
+          {notice.ok
+            ? `Telegram bot invitation created for ${notice.email}`
+            : `Telegram bot invitation failed for ${notice.email}`}
+        </strong>
+      </div>
+      {notice.ok ? (
+        <>
+          <div>
+            Role in the organization: {notice.role !== undefined ? formatMembershipRole(notice.role) : "—"}. The same link
+            was sent to {notice.email} by e-mail; it works once and for 7 days.
+          </div>
+          {notice.link ? (
+            <div style={botInviteLinkRowStyle}>
+              <input
+                readOnly
+                value={notice.link}
+                aria-label="Telegram bot invitation link"
+                style={inputMonoStyle}
+                onFocus={(e) => e.currentTarget.select()}
+                data-testid="orgs-drawer-users-bot-link"
+              />
+              <button
+                type="button"
+                style={tabRowButtonStyle}
+                onClick={() => {
+                  void navigator.clipboard?.writeText(notice.link ?? "").then(() => setCopied(true));
+                }}
+                data-testid="orgs-drawer-users-bot-copy"
+              >
+                {copied ? "Copied" : "Copy link"}
+              </button>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div>{notice.message}</div>
+      )}
+      <button
+        type="button"
+        style={tabRowButtonStyle}
+        onClick={onClose}
+        data-testid="orgs-drawer-users-bot-close"
+      >
+        Close
+      </button>
+    </div>
+  );
+}
+
 function UsersTab({ org }: { org: AdminOrganization }) {
   const { permissions } = useAuth();
   const queryClient = useQueryClient();
@@ -2688,6 +2816,18 @@ function UsersTab({ org }: { org: AdminOrganization }) {
   const [addOpen, setAddOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
+  const [botNotice, setBotNotice] = useState<BotInviteNotice | null>(null);
+
+  const botInvite = useMutation<
+    BotInviteResponse,
+    ApiError,
+    { email: string; role: BotInviteRole }
+  >({
+    mutationFn: ({ email, role }) => sendBotInvitation(org.id, email, role, "ru"),
+    onSuccess: (res, vars) => setBotNotice(botInviteNotice(vars.email, res)),
+    onError: (err, vars) =>
+      setBotNotice({ ok: false, email: vars.email, message: mapMembershipMutationError(err) }),
+  });
 
   const query = useQuery<MembershipsEnvelope, ApiError>({
     queryKey: ["admin", "organizations", org.id, "members"],
@@ -2777,6 +2917,9 @@ function UsersTab({ org }: { org: AdminOrganization }) {
       <p style={drawerHelpStyle}>
         <code>GET /v1/admin/organizations/{org.id}/members</code>
       </p>
+      {botNotice !== null ? (
+        <BotInviteNoticeCard notice={botNotice} onClose={() => setBotNotice(null)} />
+      ) : null}
       {!canRead ? (
         <TabForbidden
           missing="membership.read"
@@ -2855,6 +2998,30 @@ function UsersTab({ org }: { org: AdminOrganization }) {
                     <td style={tabTdStyle}>{formatDateTime(m.joined_at)}</td>
                     <td style={tabTdStyle}>
                       <div style={rowActionsStyle}>
+                        {canGrant &&
+                        !isEditing &&
+                        m.status === "active" &&
+                        m.email !== undefined &&
+                        botInviteRoleFor(m.role) !== null ? (
+                          <button
+                            type="button"
+                            style={tabRowButtonStyle}
+                            onClick={() => {
+                              const botRole = botInviteRoleFor(m.role);
+                              if (botRole !== null && m.email !== undefined) {
+                                setBotNotice(null);
+                                botInvite.mutate({ email: m.email, role: botRole });
+                              }
+                            }}
+                            data-testid={`orgs-drawer-users-bot-${m.id}`}
+                            disabled={botInvite.isPending}
+                            title="Send this member a link to the Telegram event-center bot"
+                          >
+                            {botInvite.isPending && botInvite.variables?.email === m.email
+                              ? "Creating…"
+                              : "Bot link"}
+                          </button>
+                        ) : null}
                         {canGrant && !isEditing ? (
                           <button
                             type="button"
@@ -2908,9 +3075,10 @@ function UsersTab({ org }: { org: AdminOrganization }) {
         <AddMemberDialog
           orgId={org.id}
           onClose={() => setAddOpen(false)}
-          onCreated={() => {
+          onCreated={(notice) => {
             invalidate();
             setAddOpen(false);
+            setBotNotice(notice);
           }}
         />
       ) : null}
@@ -2978,9 +3146,12 @@ function AddMemberDialog({
 }: {
   orgId: string;
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (notice: BotInviteNotice | null) => void;
 }) {
   const [userInput, setUserInput] = useState("");
+  const [alsoBot, setAlsoBot] = useState(true);
+  const [botLocale, setBotLocale] = useState<"ru" | "en">("ru");
+  const botNoticeRef = useRef<BotInviteNotice | null>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [role, setRole] = useState<MembershipRole>("organizer");
@@ -2994,15 +3165,40 @@ function AddMemberDialog({
   const userErr = userInput.length > 0 ? validateMemberUserInput(userInput) : null;
   const localValid = validateMemberUserInput(userInput) === null;
 
+  const typedEmail = !UUID_RE.test(userInput.trim()) && EMAIL_RE.test(userInput.trim());
+  const botRole = botInviteRoleFor(role);
+  const offerBot = typedEmail && botRole !== null;
+
   const mutation = useMutation<MembershipEnvelope, ApiError, void>({
-    mutationFn: () =>
-      authedFetch<MembershipEnvelope>({
+    mutationFn: async () => {
+      botNoticeRef.current = null;
+      const member = await authedFetch<MembershipEnvelope>({
         method: "POST",
         path: `/v1/admin/organizations/${orgId}/members`,
         body: buildAddMemberBody(userInput, role, { firstName, lastName }),
-      }),
+      });
+      // The member exists now. A failed bot invitation must not look like a
+      // failed member, so it is reported next to the member list instead.
+      if (alsoBot && offerBot && botRole !== null) {
+        const email = userInput.trim().toLowerCase();
+        try {
+          const res = await sendBotInvitation(orgId, email, botRole, botLocale);
+          botNoticeRef.current = botInviteNotice(email, res);
+        } catch (err) {
+          botNoticeRef.current = {
+            ok: false,
+            email,
+            message:
+              err instanceof ApiError
+                ? mapMembershipMutationError(err)
+                : "Could not create the bot invitation. Use the Bot link button on the member row.",
+          };
+        }
+      }
+      return member;
+    },
     onSuccess: () => {
-      onCreated();
+      onCreated(botNoticeRef.current);
     },
     onError: (err) => {
       setServerErrors(mapAddMemberServerError(err));
@@ -3131,6 +3327,39 @@ function AddMemberDialog({
               ))}
             </select>
           </FieldRow>
+
+          {offerBot ? (
+            <FieldRow
+              label="Telegram bot"
+              htmlFor="orgs-add-member-bot"
+              error={null}
+              localError={null}
+              hint="Creates a one-time link to the event-center bot and e-mails it too. For an owner the bot opens Team and Events; for an organizer, Events."
+            >
+              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  id="orgs-add-member-bot"
+                  type="checkbox"
+                  checked={alsoBot}
+                  onChange={(e) => setAlsoBot(e.target.checked)}
+                  data-testid="orgs-drawer-users-add-bot"
+                />
+                Also send the Telegram bot invitation
+              </label>
+              {alsoBot ? (
+                <select
+                  value={botLocale}
+                  onChange={(e) => setBotLocale(e.target.value === "en" ? "en" : "ru")}
+                  style={inputStyle}
+                  aria-label="Bot invitation language"
+                  data-testid="orgs-drawer-users-add-bot-locale"
+                >
+                  <option value="ru">Letter in Russian</option>
+                  <option value="en">Letter in English</option>
+                </select>
+              ) : null}
+            </FieldRow>
+          ) : null}
 
           {serverErrors.form !== undefined ? (
             <div
@@ -5852,6 +6081,31 @@ const fieldErrorStyle: CSSProperties = {
   fontSize: 11,
   color: "#b91c1c",
   fontWeight: 500,
+};
+
+
+const botInviteOkStyle: CSSProperties = {
+  border: "1px solid #86efac",
+  background: "#f0fdf4",
+  color: "#14532d",
+  borderRadius: 8,
+  padding: "10px 12px",
+  margin: "8px 0",
+  display: "grid",
+  gap: 6,
+};
+
+const botInviteErrStyle: CSSProperties = {
+  ...botInviteOkStyle,
+  border: "1px solid #fca5a5",
+  background: "#fef2f2",
+  color: "#7f1d1d",
+};
+
+const botInviteLinkRowStyle: CSSProperties = {
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
 };
 
 const formErrorStyle: CSSProperties = {

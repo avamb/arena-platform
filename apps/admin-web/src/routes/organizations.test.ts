@@ -19,6 +19,8 @@ import {
   buildOrgScopedHref,
   buildOrganizationsListPath,
   buildAddMemberBody,
+  botInviteRoleFor,
+  buildBotInviteBody,
   memberDisplayName,
   filterRows,
   formatDurationSeconds,
@@ -955,5 +957,23 @@ describe("API keys tab helpers (feature #514, W1-C1c)", () => {
     it("falls back to a generic form-level message with the code suffix", () => {
       expect(mapApiKeyServerError(makeErr("weird.code", "boom")).form).toBe("boom (weird.code)");
     });
+  });
+});
+
+describe("Telegram bot invitation helpers", () => {
+  it("maps the owner and the organizer to the bot roles and nothing else", () => {
+    expect(botInviteRoleFor("org_admin")).toBe("owner");
+    expect(botInviteRoleFor("organizer")).toBe("manager");
+    expect(botInviteRoleFor("agent")).toBeNull();
+    expect(botInviteRoleFor("network_operator")).toBeNull();
+  });
+
+  it("builds the request body with a lower-cased e-mail and the chosen locale", () => {
+    expect(buildBotInviteBody("  Vera@Example.COM ", "manager")).toEqual({
+      email: "vera@example.com",
+      role: "manager",
+      locale: "ru",
+    });
+    expect(buildBotInviteBody("a@b.test", "owner", "en").locale).toBe("en");
   });
 });

@@ -208,6 +208,11 @@ describe("requiresAdminReason()", () => {
       "DELETE",
       true,
     ],
+    [
+      "/v1/organizations/11111111-1111-1111-1111-111111111111/bot-invitations",
+      "POST",
+      true,
+    ],
     // Wave O / feature #256 — banking coordinate mutations.
     [
       "/v1/organizations/11111111-1111-1111-1111-111111111111/bank-accounts",
