@@ -169,6 +169,7 @@ func (s *Server) mountAdminUserRoutes(r chi.Router) {
 		s.applyAuth(pr, "superadmin.read", "users")
 		pr.Get("/admin/users", s.handleAdminListUsers)
 		pr.Post("/admin/users", s.handleAdminCreateUser)
+		pr.Patch("/admin/users/{user_id}", s.handleAdminUpdateUser)
 		pr.Post("/admin/users/{user_id}/global-roles", s.handleAdminGrantGlobalRole)
 		pr.Delete("/admin/users/{user_id}/global-roles/{role}", s.handleAdminRevokeGlobalRole)
 		pr.Post("/admin/users/{user_id}/deactivate", s.handleAdminDeactivateUser)

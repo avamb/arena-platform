@@ -36,6 +36,7 @@ var orgScopedAdminUserRoles = map[string]bool{
 	"external_ticketing_operator": true,
 	"network_operator":            true,
 	"organizer":                   true,
+	"org_admin":                   true,
 }
 
 type adminCreateUserRequest struct {
@@ -43,6 +44,9 @@ type adminCreateUserRequest struct {
 	Role   string `json:"role"`
 	OrgID  string `json:"org_id,omitempty"`
 	Locale string `json:"locale,omitempty"`
+	// FirstName and LastName are optional.
+	FirstName *string `json:"first_name,omitempty"`
+	LastName  *string `json:"last_name,omitempty"`
 }
 
 type adminCreateUserResponse struct {
@@ -79,6 +83,8 @@ type adminUserDirectoryItemDTO struct {
 	ID              string                   `json:"id"`
 	DisplayNumber   int64                    `json:"display_number"`
 	Email           string                   `json:"email"`
+	FirstName       *string                  `json:"first_name"`
+	LastName        *string                  `json:"last_name"`
 	CreatedAt       string                   `json:"created_at"`
 	EmailVerifiedAt *string                  `json:"email_verified_at"`
 	DeactivatedAt   *string                  `json:"deactivated_at"`
@@ -132,6 +138,7 @@ func (h *Handler) HandleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		item := adminUserDirectoryItemDTO{
 			ID: row.ID.String(), DisplayNumber: row.DisplayNumber, Email: row.Email,
+			FirstName: row.FirstName, LastName: row.LastName,
 			CreatedAt:   row.CreatedAt.UTC().Format(time.RFC3339Nano),
 			GlobalRoles: []string{}, Memberships: []adminUserMembershipDTO{},
 		}
@@ -224,6 +231,15 @@ func (h *Handler) HandleAdminCreateUser(w http.ResponseWriter, r *http.Request) 
 		locale = "en"
 	}
 
+	firstName, firstOK := cleanUserName(req.FirstName)
+	lastName, lastOK := cleanUserName(req.LastName)
+	if !firstOK || !lastOK {
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+			"admin_user.name_too_long", "a name may be at most 100 characters", r,
+		))
+		return
+	}
+
 	tempPassword, err := users.GenerateVerificationToken()
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -266,6 +282,16 @@ func (h *Handler) HandleAdminCreateUser(w http.ResponseWriter, r *http.Request) 
 			"dependency.database_unavailable", "failed to create user", r,
 		))
 		return
+	}
+
+	if firstName != nil || lastName != nil {
+		if err := q.SetUserName(ctx, userRow.ID, firstName, lastName); err != nil {
+			h.logger.Error("admin_user: set name failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+				"dependency.database_unavailable", "failed to create user", r,
+			))
+			return
+		}
 	}
 
 	if scope == "global" {
@@ -470,6 +496,7 @@ func adminCreateUserRoleList() []string {
 		"agent",
 		"external_ticketing_operator",
 		"network_operator",
+		"org_admin",
 		"organizer",
 		"platform_operator",
 		"platform_superadmin",

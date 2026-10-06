@@ -1200,7 +1200,7 @@ components:
         SuperAdmin provisioning request. Global platform roles
         (`platform_operator`, `platform_superadmin`) must omit org_id.
         Organization-scoped roles (`organizer`, `agent`, `network_operator`,
-        `external_ticketing_operator`) must supply org_id and are created as
+        `external_ticketing_operator`, `org_admin`) must supply org_id and are created as
         active organization memberships.
       properties:
         email:
@@ -1217,7 +1217,8 @@ components:
             - external_ticketing_operator
             - platform_superadmin
             - network_operator
-          description: Role to assign at creation time.
+            - org_admin
+          description: Role to assign at creation time. org_admin is the organization owner.
         org_id:
           type: string
           format: uuid
@@ -1227,6 +1228,16 @@ components:
           type: string
           description: Preferred locale. Defaults to "en" when omitted.
           example: "en"
+        first_name:
+          type: string
+          maxLength: 100
+          description: Optional given name.
+          example: "Vera"
+        last_name:
+          type: string
+          maxLength: 100
+          description: Optional family name.
+          example: "Petrova"
 
     AdminCreatedUser:
       type: object
@@ -1320,6 +1331,12 @@ components:
           type: string
           format: email
           description: Normalized email address.
+        first_name:
+          type: [string, "null"]
+          description: Optional given name; null when not given.
+        last_name:
+          type: [string, "null"]
+          description: Optional family name; null when not given.
         created_at:
           type: string
           format: date-time
@@ -1596,7 +1613,7 @@ components:
           example: "01929d0e-0e47-7000-8000-000000000001"
         role:
           type: string
-          description: Named role bound to (user_id, org_id). One of organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator.
+          description: Named role bound to (user_id, org_id). One of organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator, org_admin (the organization owner).
           example: "organizer"
           enum:
             - organizer
@@ -1605,6 +1622,7 @@ components:
             - external_ticketing_operator
             - platform_superadmin
             - network_operator
+            - org_admin
         status:
           type: string
           description: Lifecycle state of the membership. active = in force, revoked = soft-removed by an admin, suspended = paused.
@@ -1615,6 +1633,79 @@ components:
           format: date-time
           description: ISO 8601 / RFC 3339 timestamp of when the membership was first granted.
           example: "2024-01-01T00:00:00Z"
+
+    AdminMemberItem:
+      type: object
+      required: [id, user_id, org_id, role, status, joined_at, email, first_name, last_name]
+      description: |
+        A membership of the admin members list together with the member e-mail
+        and optional name, so the console does not have to show UUIDs.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the memberships row.
+        user_id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the user holding this role.
+        org_id:
+          type: string
+          format: uuid
+          description: UUIDv7 primary key of the organization the role is scoped to.
+        role:
+          type: string
+          description: Named role bound to (user_id, org_id); org_admin is the organization owner.
+        status:
+          type: string
+          description: Lifecycle state of the membership (active, suspended or revoked).
+        joined_at:
+          type: string
+          format: date-time
+          description: RFC 3339 timestamp of when the membership was first granted.
+        email:
+          type: string
+          description: The member e-mail address.
+        first_name:
+          type: [string, "null"]
+          description: Optional given name; null when not given.
+        last_name:
+          type: [string, "null"]
+          description: Optional family name; null when not given.
+
+    AdminUserNameRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Body of PATCH /v1/admin/users/{user_id}. A key that is absent leaves
+        that name unchanged; null or an empty string clears it.
+      properties:
+        first_name:
+          type: [string, "null"]
+          maxLength: 100
+          description: New given name, or null/empty to clear it.
+          example: "Vera"
+        last_name:
+          type: [string, "null"]
+          maxLength: 100
+          description: New family name, or null/empty to clear it.
+          example: "Petrova"
+
+    AdminUserNameResponse:
+      type: object
+      required: [user_id, first_name, last_name]
+      description: The names of the user after the update.
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: UUID of the updated user.
+        first_name:
+          type: [string, "null"]
+          description: Given name now stored; null when not given.
+        last_name:
+          type: [string, "null"]
+          description: Family name now stored; null when not given.
 
     AdminAddMemberRequest:
       type: object
@@ -1634,9 +1725,19 @@ components:
           format: email
           description: Email of a user to add (case-insensitive lookup). A new email creates an invited user and issues a one-time password setup link. Mutually exclusive with user_id.
           example: "operator@example.com"
+        first_name:
+          type: string
+          maxLength: 100
+          description: Optional given name, stored only when email creates a new user.
+          example: "Vera"
+        last_name:
+          type: string
+          maxLength: 100
+          description: Optional family name, stored only when email creates a new user.
+          example: "Petrova"
         role:
           type: string
-          description: Role to grant. Must satisfy the memberships_role_check CHECK constraint.
+          description: Role to grant. Must satisfy the memberships_role_check CHECK constraint. org_admin is the organization owner.
           enum:
             - organizer
             - agent
@@ -1644,6 +1745,7 @@ components:
             - external_ticketing_operator
             - platform_superadmin
             - network_operator
+            - org_admin
           example: "organizer"
 
     AdminChangeMemberRoleRequest:
@@ -1656,7 +1758,7 @@ components:
       properties:
         role:
           type: string
-          description: New role to assign to the membership.
+          description: New role to assign to the membership. org_admin is the organization owner.
           enum:
             - organizer
             - agent
@@ -1664,6 +1766,7 @@ components:
             - external_ticketing_operator
             - platform_superadmin
             - network_operator
+            - org_admin
           example: "agent"
 
     OrganizationItem:
@@ -16900,6 +17003,66 @@ paths:
   # ─────────────────────────────────────────────────────────────────────────
 
   /v1/admin/users/{user_id}:
+    patch:
+      operationId: patchV1AdminUser
+      summary: Admin - set or clear a user first and last name
+      description: Sets or clears the optional first_name and last_name of a user. A key that is absent leaves that name unchanged. Requires JWT, superadmin.read, and X-Admin-Reason.
+      tags: [v1, admin]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: UUID of the target user.
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change (audit trail).
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUserNameRequest"
+      responses:
+        "200":
+          description: The names now stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserNameResponse"
+        "400":
+          description: Missing X-Admin-Reason, empty body, invalid JSON or no name key given
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Permission denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: A name is longer than 100 characters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     delete:
       operationId: deleteV1AdminUser
       summary: Admin - delete a never-active user or deactivate a retained user
@@ -17605,9 +17768,9 @@ paths:
                 properties:
                   memberships:
                     type: array
-                    description: Active memberships in this organization, ordered by joined_at ASC.
+                    description: Active memberships in this organization, ordered by joined_at ASC, each with the member e-mail and optional name.
                     items:
-                      $ref: "#/components/schemas/MembershipItem"
+                      $ref: "#/components/schemas/AdminMemberItem"
         "400":
           description: Missing X-Admin-Reason or invalid org_id path parameter
           content:

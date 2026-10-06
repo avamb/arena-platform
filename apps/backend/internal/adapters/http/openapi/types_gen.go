@@ -20,6 +20,7 @@ const (
 	AdminAddMemberRequestRoleAgent                     AdminAddMemberRequestRole = "agent"
 	AdminAddMemberRequestRoleExternalTicketingOperator AdminAddMemberRequestRole = "external_ticketing_operator"
 	AdminAddMemberRequestRoleNetworkOperator           AdminAddMemberRequestRole = "network_operator"
+	AdminAddMemberRequestRoleOrgAdmin                  AdminAddMemberRequestRole = "org_admin"
 	AdminAddMemberRequestRoleOrganizer                 AdminAddMemberRequestRole = "organizer"
 	AdminAddMemberRequestRolePlatformOperator          AdminAddMemberRequestRole = "platform_operator"
 	AdminAddMemberRequestRolePlatformSuperadmin        AdminAddMemberRequestRole = "platform_superadmin"
@@ -30,6 +31,7 @@ const (
 	AdminChangeMemberRoleRequestRoleAgent                     AdminChangeMemberRoleRequestRole = "agent"
 	AdminChangeMemberRoleRequestRoleExternalTicketingOperator AdminChangeMemberRoleRequestRole = "external_ticketing_operator"
 	AdminChangeMemberRoleRequestRoleNetworkOperator           AdminChangeMemberRoleRequestRole = "network_operator"
+	AdminChangeMemberRoleRequestRoleOrgAdmin                  AdminChangeMemberRoleRequestRole = "org_admin"
 	AdminChangeMemberRoleRequestRoleOrganizer                 AdminChangeMemberRoleRequestRole = "organizer"
 	AdminChangeMemberRoleRequestRolePlatformOperator          AdminChangeMemberRoleRequestRole = "platform_operator"
 	AdminChangeMemberRoleRequestRolePlatformSuperadmin        AdminChangeMemberRoleRequestRole = "platform_superadmin"
@@ -40,6 +42,7 @@ const (
 	AdminCreateUserRequestRoleAgent                     AdminCreateUserRequestRole = "agent"
 	AdminCreateUserRequestRoleExternalTicketingOperator AdminCreateUserRequestRole = "external_ticketing_operator"
 	AdminCreateUserRequestRoleNetworkOperator           AdminCreateUserRequestRole = "network_operator"
+	AdminCreateUserRequestRoleOrgAdmin                  AdminCreateUserRequestRole = "org_admin"
 	AdminCreateUserRequestRoleOrganizer                 AdminCreateUserRequestRole = "organizer"
 	AdminCreateUserRequestRolePlatformOperator          AdminCreateUserRequestRole = "platform_operator"
 	AdminCreateUserRequestRolePlatformSuperadmin        AdminCreateUserRequestRole = "platform_superadmin"
@@ -478,6 +481,7 @@ const (
 	MembershipItemRoleAgent                     MembershipItemRole = "agent"
 	MembershipItemRoleExternalTicketingOperator MembershipItemRole = "external_ticketing_operator"
 	MembershipItemRoleNetworkOperator           MembershipItemRole = "network_operator"
+	MembershipItemRoleOrgAdmin                  MembershipItemRole = "org_admin"
 	MembershipItemRoleOrganizer                 MembershipItemRole = "organizer"
 	MembershipItemRolePlatformOperator          MembershipItemRole = "platform_operator"
 	MembershipItemRolePlatformSuperadmin        MembershipItemRole = "platform_superadmin"
@@ -985,34 +989,46 @@ type AdminAddMemberRequest struct {
 	// Email Email of a user to add (case-insensitive lookup). A new email creates an invited user and issues a one-time password setup link. Mutually exclusive with user_id.
 	Email *openapi_types.Email `json:"email,omitempty"`
 
-	// Role Role to grant. Must satisfy the memberships_role_check CHECK constraint.
+	// FirstName Optional given name, stored only when email creates a new user.
+	FirstName *string `json:"first_name,omitempty"`
+
+	// LastName Optional family name, stored only when email creates a new user.
+	LastName *string `json:"last_name,omitempty"`
+
+	// Role Role to grant. Must satisfy the memberships_role_check CHECK constraint. org_admin is the organization owner.
 	Role AdminAddMemberRequestRole `json:"role"`
 
 	// UserId UUIDv7 primary key of the existing user to add. Mutually exclusive with email.
 	UserId *openapi_types.UUID `json:"user_id,omitempty"`
 }
 
-// AdminAddMemberRequestRole Role to grant. Must satisfy the memberships_role_check CHECK constraint.
+// AdminAddMemberRequestRole Role to grant. Must satisfy the memberships_role_check CHECK constraint. org_admin is the organization owner.
 type AdminAddMemberRequestRole string
 
 // AdminChangeMemberRoleRequest Request body for PATCH /v1/admin/organizations/{org_id}/members/{membership_id}
 // (feature #234). Only the role field is mutable; identity is fixed by the path.
 type AdminChangeMemberRoleRequest struct {
-	// Role New role to assign to the membership.
+	// Role New role to assign to the membership. org_admin is the organization owner.
 	Role AdminChangeMemberRoleRequestRole `json:"role"`
 }
 
-// AdminChangeMemberRoleRequestRole New role to assign to the membership.
+// AdminChangeMemberRoleRequestRole New role to assign to the membership. org_admin is the organization owner.
 type AdminChangeMemberRoleRequestRole string
 
 // AdminCreateUserRequest SuperAdmin provisioning request. Global platform roles
 // (`platform_operator`, `platform_superadmin`) must omit org_id.
 // Organization-scoped roles (`organizer`, `agent`, `network_operator`,
-// `external_ticketing_operator`) must supply org_id and are created as
+// `external_ticketing_operator`, `org_admin`) must supply org_id and are created as
 // active organization memberships.
 type AdminCreateUserRequest struct {
 	// Email New user's email address, normalised to lowercase before storage.
 	Email openapi_types.Email `json:"email"`
+
+	// FirstName Optional given name.
+	FirstName *string `json:"first_name,omitempty"`
+
+	// LastName Optional family name.
+	LastName *string `json:"last_name,omitempty"`
 
 	// Locale Preferred locale. Defaults to "en" when omitted.
 	Locale *string `json:"locale,omitempty"`
@@ -1020,11 +1036,11 @@ type AdminCreateUserRequest struct {
 	// OrgId Required for organization-scoped roles; forbidden for global platform roles.
 	OrgId *openapi_types.UUID `json:"org_id,omitempty"`
 
-	// Role Role to assign at creation time.
+	// Role Role to assign at creation time. org_admin is the organization owner.
 	Role AdminCreateUserRequestRole `json:"role"`
 }
 
-// AdminCreateUserRequestRole Role to assign at creation time.
+// AdminCreateUserRequestRole Role to assign at creation time. org_admin is the organization owner.
 type AdminCreateUserRequestRole string
 
 // AdminCreateUserResponse defines model for AdminCreateUserResponse.
@@ -1069,6 +1085,37 @@ type AdminCreatedUserOnboarding struct {
 
 	// PasswordResetIssued Whether a one-time password setup token was issued.
 	PasswordResetIssued bool `json:"password_reset_issued"`
+}
+
+// AdminMemberItem A membership of the admin members list together with the member e-mail
+// and optional name, so the console does not have to show UUIDs.
+type AdminMemberItem struct {
+	// Email The member e-mail address.
+	Email string `json:"email"`
+
+	// FirstName Optional given name; null when not given.
+	FirstName *string `json:"first_name"`
+
+	// Id UUIDv7 primary key of the memberships row.
+	Id openapi_types.UUID `json:"id"`
+
+	// JoinedAt RFC 3339 timestamp of when the membership was first granted.
+	JoinedAt time.Time `json:"joined_at"`
+
+	// LastName Optional family name; null when not given.
+	LastName *string `json:"last_name"`
+
+	// OrgId UUIDv7 primary key of the organization the role is scoped to.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Role Named role bound to (user_id, org_id); org_admin is the organization owner.
+	Role string `json:"role"`
+
+	// Status Lifecycle state of the membership (active, suspended or revoked).
+	Status string `json:"status"`
+
+	// UserId UUIDv7 primary key of the user holding this role.
+	UserId openapi_types.UUID `json:"user_id"`
 }
 
 // AdminSeatRow AB-39 admin-only seat row: the fields the operator table
@@ -1182,11 +1229,17 @@ type AdminUserDirectoryItem struct {
 	// EmailVerifiedAt Email verification timestamp, when verified.
 	EmailVerifiedAt *time.Time `json:"email_verified_at"`
 
+	// FirstName Optional given name; null when not given.
+	FirstName *string `json:"first_name"`
+
 	// GlobalRoles Global platform roles.
 	GlobalRoles []string `json:"global_roles"`
 
 	// Id User UUID.
 	Id openapi_types.UUID `json:"id"`
+
+	// LastName Optional family name; null when not given.
+	LastName *string `json:"last_name"`
 
 	// Memberships Active organization memberships.
 	Memberships []AdminUserDirectoryMembership `json:"memberships"`
@@ -1220,6 +1273,28 @@ type AdminUserDirectoryResponse struct {
 
 	// Users Directory page.
 	Users []AdminUserDirectoryItem `json:"users"`
+}
+
+// AdminUserNameRequest Body of PATCH /v1/admin/users/{user_id}. A key that is absent leaves
+// that name unchanged; null or an empty string clears it.
+type AdminUserNameRequest struct {
+	// FirstName New given name, or null/empty to clear it.
+	FirstName *string `json:"first_name"`
+
+	// LastName New family name, or null/empty to clear it.
+	LastName *string `json:"last_name"`
+}
+
+// AdminUserNameResponse The names of the user after the update.
+type AdminUserNameResponse struct {
+	// FirstName Given name now stored; null when not given.
+	FirstName *string `json:"first_name"`
+
+	// LastName Family name now stored; null when not given.
+	LastName *string `json:"last_name"`
+
+	// UserId UUID of the updated user.
+	UserId openapi_types.UUID `json:"user_id"`
 }
 
 // ApiKeyItem A single organization API key row. Never includes the secret or
@@ -6772,7 +6847,7 @@ type MembershipItem struct {
 	// OrgId UUIDv7 primary key of the organization the role is scoped to.
 	OrgId openapi_types.UUID `json:"org_id"`
 
-	// Role Named role bound to (user_id, org_id). One of organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator.
+	// Role Named role bound to (user_id, org_id). One of organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator, org_admin (the organization owner).
 	Role MembershipItemRole `json:"role"`
 
 	// Status Lifecycle state of the membership. active = in force, revoked = soft-removed by an admin, suspended = paused.
@@ -6782,7 +6857,7 @@ type MembershipItem struct {
 	UserId openapi_types.UUID `json:"user_id"`
 }
 
-// MembershipItemRole Named role bound to (user_id, org_id). One of organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator.
+// MembershipItemRole Named role bound to (user_id, org_id). One of organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator, org_admin (the organization owner).
 type MembershipItemRole string
 
 // MembershipItemStatus Lifecycle state of the membership. active = in force, revoked = soft-removed by an admin, suspended = paused.
@@ -11769,6 +11844,12 @@ type DeleteV1AdminUserParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// PatchV1AdminUserParams defines parameters for PatchV1AdminUser.
+type PatchV1AdminUserParams struct {
+	// XAdminReason Human-readable business reason for this change (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // PostV1AdminUserDeactivateParams defines parameters for PostV1AdminUserDeactivate.
 type PostV1AdminUserDeactivateParams struct {
 	// XAdminReason Human-readable business reason for this lifecycle action.
@@ -12420,6 +12501,9 @@ type PatchV1AdminOrganizationsOrgIdMembersMembershipIdJSONRequestBody = AdminCha
 
 // PostV1AdminUsersJSONRequestBody defines body for PostV1AdminUsers for application/json ContentType.
 type PostV1AdminUsersJSONRequestBody = AdminCreateUserRequest
+
+// PatchV1AdminUserJSONRequestBody defines body for PatchV1AdminUser for application/json ContentType.
+type PatchV1AdminUserJSONRequestBody = AdminUserNameRequest
 
 // PostV1AdminUserGlobalRoleJSONRequestBody defines body for PostV1AdminUserGlobalRole for application/json ContentType.
 type PostV1AdminUserGlobalRoleJSONRequestBody PostV1AdminUserGlobalRoleJSONBody

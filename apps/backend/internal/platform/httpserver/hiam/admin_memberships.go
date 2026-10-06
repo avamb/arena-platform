@@ -67,12 +67,25 @@ type adminAddMemberRequest struct {
 	UserID string `json:"user_id,omitempty"`
 	Email  string `json:"email,omitempty"`
 	Role   string `json:"role"`
+	// FirstName and LastName are optional and used only when Email names a
+	// user that does not exist yet.
+	FirstName *string `json:"first_name,omitempty"`
+	LastName  *string `json:"last_name,omitempty"`
 }
 
 // adminChangeMemberRoleRequest is the request body for
 // PATCH /v1/admin/organizations/{org_id}/members/{membership_id}.
 type adminChangeMemberRoleRequest struct {
 	Role string `json:"role"`
+}
+
+// adminMemberResponse is a membership plus the member's e-mail and optional
+// name: the admin console used to show only UUIDs.
+type adminMemberResponse struct {
+	membershipResponse
+	Email     string  `json:"email"`
+	FirstName *string `json:"first_name"`
+	LastName  *string `json:"last_name"`
 }
 
 // HandleAdminListMembers serves GET /v1/admin/organizations/{org_id}/members.
@@ -99,7 +112,7 @@ func (h *Handler) HandleAdminListMembers(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	rows, err := h.membershipQueries.ListMembershipsByOrg(ctx, orgID)
+	rows, err := h.membershipQueries.ListAdminMembersByOrg(ctx, orgID)
 	if err != nil {
 		h.logger.Error("admin_membership: list failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -108,15 +121,18 @@ func (h *Handler) HandleAdminListMembers(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	result := make([]membershipResponse, 0, len(rows))
+	result := make([]adminMemberResponse, 0, len(rows))
 	for _, m := range rows {
-		result = append(result, membershipResponse{
-			ID:       m.ID.String(),
-			UserID:   m.UserID.String(),
-			OrgID:    m.OrgID.String(),
-			Role:     m.Role,
-			Status:   m.Status,
-			JoinedAt: m.JoinedAt.UTC().Format(time.RFC3339),
+		result = append(result, adminMemberResponse{
+			membershipResponse: membershipResponse{
+				ID:       m.ID.String(),
+				UserID:   m.UserID.String(),
+				OrgID:    m.OrgID.String(),
+				Role:     m.Role,
+				Status:   m.Status,
+				JoinedAt: m.JoinedAt.UTC().Format(time.RFC3339),
+			},
+			Email: m.Email, FirstName: m.FirstName, LastName: m.LastName,
 		})
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"memberships": result})
@@ -266,6 +282,19 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 				h.logger.Error("admin_membership: create invited user failed", slog.String("error", createErr.Error()))
 				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("admin_membership.invite_failed", "failed to create invited user", r))
 				return
+			}
+			firstName, firstOK := cleanUserName(req.FirstName)
+			lastName, lastOK := cleanUserName(req.LastName)
+			if !firstOK || !lastOK {
+				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope("admin_user.name_too_long", "a name may be at most 100 characters", r))
+				return
+			}
+			if firstName != nil || lastName != nil {
+				if nameErr := q.SetUserName(ctx, created.ID, firstName, lastName); nameErr != nil {
+					h.logger.Error("admin_membership: set invited user name failed", slog.String("error", nameErr.Error()))
+					httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("admin_membership.invite_failed", "failed to create invited user", r))
+					return
+				}
 			}
 			userID = created.ID
 			invited = true

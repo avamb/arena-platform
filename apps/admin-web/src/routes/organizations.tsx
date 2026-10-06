@@ -2469,6 +2469,10 @@ interface MembershipResponse {
   readonly role: string;
   readonly status: string;
   readonly joined_at: string;
+  /** Present on the admin members list; absent on single-membership answers. */
+  readonly email?: string;
+  readonly first_name?: string | null;
+  readonly last_name?: string | null;
 }
 interface MembershipsEnvelope {
   readonly memberships: readonly MembershipResponse[];
@@ -2497,6 +2501,7 @@ export const MEMBERSHIP_ROLES = [
   "external_ticketing_operator",
   "platform_superadmin",
   "network_operator",
+  "org_admin",
 ] as const;
 
 export type MembershipRole = (typeof MEMBERSHIP_ROLES)[number];
@@ -2515,6 +2520,7 @@ const MEMBERSHIP_ROLE_LABELS: Record<MembershipRole, string> = {
   external_ticketing_operator: "External ticketing operator",
   platform_superadmin: "Platform superadmin",
   network_operator: "Network operator",
+  org_admin: "Owner (org_admin)",
 };
 
 export function formatMembershipRole(role: string): string {
@@ -2551,14 +2557,45 @@ export function validateMemberUserInput(raw: string): string | null {
 export function buildAddMemberBody(
   userInput: string,
   role: MembershipRole,
+  names: { firstName?: string; lastName?: string } = {},
 ):
   | { user_id: string; role: MembershipRole }
-  | { email: string; role: MembershipRole } {
+  | {
+      email: string;
+      role: MembershipRole;
+      first_name?: string;
+      last_name?: string;
+    } {
   const trimmed = userInput.trim();
   if (UUID_RE.test(trimmed)) {
     return { user_id: trimmed, role };
   }
-  return { email: trimmed.toLowerCase(), role };
+  const body: {
+    email: string;
+    role: MembershipRole;
+    first_name?: string;
+    last_name?: string;
+  } = { email: trimmed.toLowerCase(), role };
+  // The names are optional and only matter for a NEW user (an e-mail).
+  const first = (names.firstName ?? "").trim();
+  const last = (names.lastName ?? "").trim();
+  if (first !== "") body.first_name = first;
+  if (last !== "") body.last_name = last;
+  return body;
+}
+
+/** The person a membership row is about: "First Last", else the e-mail, else the id. */
+export function memberDisplayName(m: {
+  readonly email?: string;
+  readonly first_name?: string | null;
+  readonly last_name?: string | null;
+  readonly user_id: string;
+}): string {
+  const name = [m.first_name, m.last_name]
+    .filter((p): p is string => typeof p === "string" && p.trim() !== "")
+    .join(" ");
+  if (name !== "") return name;
+  return m.email ?? m.user_id;
 }
 
 export interface AddMemberFieldErrors {
@@ -2775,7 +2812,19 @@ function UsersTab({ org }: { org: AdminOrganization }) {
                 const rowErr = rowError?.id === m.id ? rowError.message : null;
                 return (
                   <tr key={m.id} data-testid={`orgs-drawer-users-row-${m.id}`}>
-                    <td style={tabTdMonoStyle}>{m.user_id}</td>
+                    <td style={tabTdStyle} data-testid={`orgs-drawer-users-user-${m.id}`}>
+                      {m.first_name || m.last_name ? (
+                        <div>
+                          <strong>
+                            {[m.first_name, m.last_name].filter(Boolean).join(" ")}
+                          </strong>
+                        </div>
+                      ) : null}
+                      {m.email !== undefined ? <div>{m.email}</div> : null}
+                      <div style={{ ...tabTdMonoStyle, fontSize: "0.75em", opacity: 0.7 }}>
+                        {m.user_id}
+                      </div>
+                    </td>
                     <td style={tabTdStyle}>
                       {isEditing && canGrant ? (
                         <RoleEditor
@@ -2830,7 +2879,7 @@ function UsersTab({ org }: { org: AdminOrganization }) {
                               if (
                                 typeof window !== "undefined" &&
                                 window.confirm(
-                                  `Revoke ${formatMembershipRole(m.role)} membership for user ${m.user_id}?`,
+                                  `Revoke ${formatMembershipRole(m.role)} membership for ${memberDisplayName(m)}?`,
                                 )
                               ) {
                                 deactivate.mutate({ id: m.id });
@@ -2932,6 +2981,8 @@ function AddMemberDialog({
   onCreated: () => void;
 }) {
   const [userInput, setUserInput] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [role, setRole] = useState<MembershipRole>("organizer");
   const [serverErrors, setServerErrors] = useState<AddMemberFieldErrors>({});
 
@@ -2948,7 +2999,7 @@ function AddMemberDialog({
       authedFetch<MembershipEnvelope>({
         method: "POST",
         path: `/v1/admin/organizations/${orgId}/members`,
-        body: buildAddMemberBody(userInput, role),
+        body: buildAddMemberBody(userInput, role, { firstName, lastName }),
       }),
     onSuccess: () => {
       onCreated();
@@ -3016,6 +3067,42 @@ function AddMemberDialog({
               autoCorrect="off"
               spellCheck={false}
               data-testid="orgs-drawer-users-add-user"
+            />
+          </FieldRow>
+          <FieldRow
+            label="First name (optional)"
+            htmlFor="orgs-add-member-first"
+            error={null}
+            localError={null}
+            hint="Used only when the e-mail is new. It can stay empty."
+          >
+            <input
+              id="orgs-add-member-first"
+              type="text"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              style={inputStyle}
+              maxLength={100}
+              autoComplete="off"
+              data-testid="orgs-drawer-users-add-first-name"
+            />
+          </FieldRow>
+          <FieldRow
+            label="Last name (optional)"
+            htmlFor="orgs-add-member-last"
+            error={null}
+            localError={null}
+            hint="Used only when the e-mail is new. It can stay empty."
+          >
+            <input
+              id="orgs-add-member-last"
+              type="text"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              style={inputStyle}
+              maxLength={100}
+              autoComplete="off"
+              data-testid="orgs-drawer-users-add-last-name"
             />
           </FieldRow>
           <FieldRow

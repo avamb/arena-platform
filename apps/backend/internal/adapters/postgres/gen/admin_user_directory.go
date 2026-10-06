@@ -13,6 +13,8 @@ type AdminUserDirectoryRow struct {
 	ID              uuid.UUID
 	DisplayNumber   int64
 	Email           string
+	FirstName       *string
+	LastName        *string
 	CreatedAt       time.Time
 	EmailVerifiedAt *time.Time
 	DeactivatedAt   *time.Time
@@ -21,7 +23,7 @@ type AdminUserDirectoryRow struct {
 }
 
 const listAdminUsers = `
-SELECT u.id, u.display_number, u.email, u.created_at, u.email_verified_at, u.deactivated_at,
+SELECT u.id, u.display_number, u.email, u.first_name, u.last_name, u.created_at, u.email_verified_at, u.deactivated_at,
        COALESCE((SELECT jsonb_agg(x.role ORDER BY x.role)
                  FROM (SELECT DISTINCT r.name AS role FROM user_roles ur JOIN roles r ON r.id = ur.role_id
                        WHERE ur.user_id = u.id AND ur.org_id IS NULL) x), '[]'::jsonb),
@@ -30,7 +32,8 @@ SELECT u.id, u.display_number, u.email, u.created_at, u.email_verified_at, u.dea
                  FROM memberships m JOIN organizations o ON o.id = m.org_id
                  WHERE m.user_id = u.id AND m.status = 'active'), '[]'::jsonb)
 FROM users u
-WHERE lower(u.email) LIKE '%' || lower($1) || '%'
+WHERE (lower(u.email) LIKE '%' || lower($1) || '%'
+       OR lower(concat_ws(' ', u.first_name, u.last_name)) LIKE '%' || lower($1) || '%')
 ORDER BY u.created_at DESC, u.id DESC
 LIMIT $2 OFFSET $3`
 
@@ -44,7 +47,7 @@ func (q *Queries) ListAdminUsers(ctx context.Context, emailSearch string, limit,
 	items := make([]AdminUserDirectoryRow, 0)
 	for rows.Next() {
 		var item AdminUserDirectoryRow
-		if err := rows.Scan(&item.ID, &item.DisplayNumber, &item.Email, &item.CreatedAt, &item.EmailVerifiedAt, &item.DeactivatedAt, &item.GlobalRoles, &item.Memberships); err != nil {
+		if err := rows.Scan(&item.ID, &item.DisplayNumber, &item.Email, &item.FirstName, &item.LastName, &item.CreatedAt, &item.EmailVerifiedAt, &item.DeactivatedAt, &item.GlobalRoles, &item.Memberships); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -52,7 +55,9 @@ func (q *Queries) ListAdminUsers(ctx context.Context, emailSearch string, limit,
 	return items, rows.Err()
 }
 
-const countAdminUsers = `SELECT count(*) FROM users WHERE lower(email) LIKE '%' || lower($1) || '%'`
+const countAdminUsers = `SELECT count(*) FROM users
+WHERE lower(email) LIKE '%' || lower($1) || '%'
+   OR lower(concat_ws(' ', first_name, last_name)) LIKE '%' || lower($1) || '%'`
 
 func (q *Queries) CountAdminUsers(ctx context.Context, emailSearch string) (int64, error) {
 	var total int64

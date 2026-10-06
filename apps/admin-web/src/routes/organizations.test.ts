@@ -19,6 +19,7 @@ import {
   buildOrgScopedHref,
   buildOrganizationsListPath,
   buildAddMemberBody,
+  memberDisplayName,
   filterRows,
   formatDurationSeconds,
   formatMembershipRole,
@@ -497,7 +498,13 @@ describe("Users tab membership helpers (feature #241)", () => {
       "external_ticketing_operator",
       "platform_superadmin",
       "network_operator",
+      "org_admin",
     ]);
+  });
+
+  it("offers the organization owner role under a plain name", () => {
+    expect(isMembershipRole("org_admin")).toBe(true);
+    expect(formatMembershipRole("org_admin")).toBe("Owner (org_admin)");
   });
 
   it("isMembershipRole accepts every documented role and rejects others", () => {
@@ -564,6 +571,32 @@ describe("Users tab membership helpers (feature #241)", () => {
         email: "op@example.com",
         role: "organizer",
       });
+    });
+    it("sends the optional names only for an e-mail and only when filled", () => {
+      expect(
+        buildAddMemberBody("op@example.com", "org_admin", {
+          firstName: "  Vera ",
+          lastName: "",
+        }),
+      ).toEqual({ email: "op@example.com", role: "org_admin", first_name: "Vera" });
+      expect(
+        buildAddMemberBody("00000000-0000-0000-0000-000000000001", role, {
+          firstName: "Vera",
+          lastName: "Petrova",
+        }),
+      ).toEqual({ user_id: "00000000-0000-0000-0000-000000000001", role: "organizer" });
+    });
+  });
+
+  describe("memberDisplayName", () => {
+    const base = { user_id: "01a111d2-9958-7195-8656-f4b6dbc32bc3" };
+    it("prefers the name, then the e-mail, then the id", () => {
+      expect(
+        memberDisplayName({ ...base, email: "v@x.test", first_name: "Vera", last_name: "Petrova" }),
+      ).toBe("Vera Petrova");
+      expect(memberDisplayName({ ...base, email: "v@x.test", first_name: null, last_name: "Petrova" })).toBe("Petrova");
+      expect(memberDisplayName({ ...base, email: "v@x.test", first_name: null, last_name: null })).toBe("v@x.test");
+      expect(memberDisplayName(base)).toBe(base.user_id);
     });
   });
 

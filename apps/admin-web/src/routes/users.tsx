@@ -37,6 +37,7 @@ export const GLOBAL_USER_ROLES: readonly AdminUserRole[] = [
 ] as const;
 
 export const ORG_SCOPED_USER_ROLES: readonly AdminUserRole[] = [
+  "org_admin",
   "organizer",
   "agent",
   "network_operator",
@@ -75,7 +76,7 @@ interface OrgPickerEnvelope {
 }
 
 export interface AdminDirectoryMembership { readonly id: string; readonly org_id: string; readonly name: string; readonly slug: string; readonly role: string; }
-export interface AdminDirectoryUser { readonly id: string; readonly display_number: number; readonly email: string; readonly created_at: string; readonly email_verified_at: string | null; readonly deactivated_at: string | null; readonly global_roles: readonly string[]; readonly memberships: readonly AdminDirectoryMembership[]; }
+export interface AdminDirectoryUser { readonly id: string; readonly display_number: number; readonly email: string; readonly first_name: string | null; readonly last_name: string | null; readonly created_at: string; readonly email_verified_at: string | null; readonly deactivated_at: string | null; readonly global_roles: readonly string[]; readonly memberships: readonly AdminDirectoryMembership[]; }
 export interface AdminDirectoryEnvelope { readonly users: readonly AdminDirectoryUser[]; readonly total: number; readonly limit: number; readonly offset: number; }
 
 function UsersRoute() {
@@ -90,6 +91,8 @@ function UsersProvisioning() {
   const queryClient = useQueryClient();
   const deepLinkedOrgID = orgContextFromLocation();
   const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [role, setRole] = useState<AdminUserRole>(
     deepLinkedOrgID === "" ? "platform_operator" : "organizer",
   );
@@ -194,7 +197,7 @@ function UsersProvisioning() {
       return;
     }
 
-    mutation.mutate(buildAdminCreateUserBody(email, role, orgId, locale));
+    mutation.mutate(buildAdminCreateUserBody(email, role, orgId, locale, { firstName, lastName }));
   }
 
   return (
@@ -215,7 +218,7 @@ function UsersProvisioning() {
         <div style={directoryHeaderStyle}>
           <div><h2 id="user-directory-heading" style={directoryHeadingStyle}>User directory</h2><p style={subheadingStyle}>Search users and review their current access.</p></div>
           <form onSubmit={(event) => { event.preventDefault(); setSubmittedSearch(search.trim()); }} style={searchFormStyle}>
-            <input aria-label="Search users by email" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search email" style={inputStyle} data-testid="users-search" />
+            <input aria-label="Search users by name or email" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or email" style={inputStyle} data-testid="users-search" />
             <button type="submit" style={secondaryButtonStyle}>Search</button>
           </form>
         </div>
@@ -239,6 +242,42 @@ function UsersProvisioning() {
             style={inputStyle}
             autoComplete="email"
             data-testid="users-email"
+          />
+        </Field>
+
+        <Field
+          label="First name (optional)"
+          htmlFor="users-first-name"
+          error={undefined}
+          hint="Shown next to the e-mail in the admin lists. It can stay empty."
+        >
+          <input
+            id="users-first-name"
+            type="text"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            style={inputStyle}
+            maxLength={100}
+            autoComplete="off"
+            data-testid="users-first-name"
+          />
+        </Field>
+
+        <Field
+          label="Last name (optional)"
+          htmlFor="users-last-name"
+          error={undefined}
+          hint="Shown next to the e-mail in the admin lists. It can stay empty."
+        >
+          <input
+            id="users-last-name"
+            type="text"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            style={inputStyle}
+            maxLength={100}
+            autoComplete="off"
+            data-testid="users-last-name"
           />
         </Field>
 
@@ -369,6 +408,7 @@ function UsersProvisioning() {
 function UserDirectoryTable({ users, onSelect }: { users: readonly AdminDirectoryUser[]; onSelect: (user: AdminDirectoryUser) => void }) {
   const columns: readonly ResponsiveTableColumn<AdminDirectoryUser>[] = [
     { id: "email", header: "Email", primary: true, renderCell: (user) => <button type="button" onClick={() => onSelect(user)} style={linkButtonStyle}>{user.email} · #{user.display_number}</button> },
+    { id: "name", header: "Name", renderCell: (user) => userFullName(user) === "" ? "—" : userFullName(user) },
     { id: "status", header: "Status", renderCell: (user) => user.deactivated_at === null ? "Active" : "Deactivated" },
     { id: "verified", header: "Verified", renderCell: (user) => user.email_verified_at === null ? "No" : "Yes" },
     { id: "roles", header: "Global roles", renderCell: (user) => user.global_roles.length === 0 ? "—" : user.global_roles.map(formatAdminUserRole).join(", ") },
@@ -387,6 +427,7 @@ function UserDirectoryDrawer({ user, organizations, onClose, onChanged }: { user
 	const confirm = (message: string, run: () => void) => { if (window.confirm(message)) run(); };
   return <ResponsiveDrawer id="user-directory-drawer" open={user !== null} onClose={onClose} closeLabel="Close user" title={user?.email ?? "User"} subtitle={user === null ? undefined : `Created ${formatDateTime(user.created_at)}`}>
     {user === null ? null : <div style={drawerContentStyle}>
+      <UserNameForm key={user.id} user={user} onChanged={onChanged} />
       <div><strong>Global roles</strong><p>{user.global_roles.length === 0 ? "No global roles" : user.global_roles.map(formatAdminUserRole).join(", ")}</p><div style={drawerActionStyle}>{user.global_roles.map((role) => <button key={role} type="button" style={secondaryButtonStyle} disabled={mutation.isPending} onClick={() => confirm(`Remove ${formatAdminUserRole(role)} from ${user.email}?`, () => mutation.mutate({ method: "DELETE", path: `/v1/admin/users/${user.id}/global-roles/${encodeURIComponent(role)}` }))}>Remove {formatAdminUserRole(role)}</button>)}<select aria-label="Global role" value={globalRole} onChange={(e) => setGlobalRole(e.target.value as AdminUserRole)} style={inputStyle}>{GLOBAL_USER_ROLES.map((role) => <option key={role} value={role}>{formatAdminUserRole(role)}</option>)}</select><button type="button" style={secondaryButtonStyle} disabled={mutation.isPending} onClick={() => confirm(`Grant ${formatAdminUserRole(globalRole)} to ${user.email}?`, () => mutation.mutate({ method: "POST", path: `/v1/admin/users/${user.id}/global-roles`, body: { role: globalRole } }))}>Add role</button></div></div>
       <div><strong>Organization memberships</strong>{user.memberships.length === 0 ? <p>No active organization memberships.</p> : <ul>{user.memberships.map((membership) => <li key={`${membership.id}-${membership.role}`}>{membership.name} ({membership.slug}) — {formatAdminUserRole(membership.role)}</li>)}</ul>}</div>
       <div style={drawerActionStyle}><select aria-label="Membership organization" value={membershipOrgID} onChange={(e) => setMembershipOrgID(e.target.value)} style={inputStyle}><option value="">Select organization</option>{organizations.map((org) => <option key={org.id} value={org.id}>{org.name} · #{org.display_number}</option>)}</select><select aria-label="Membership role" value={membershipRole} onChange={(e) => setMembershipRole(e.target.value as AdminUserRole)} style={inputStyle}>{ORG_SCOPED_USER_ROLES.map((role) => <option key={role} value={role}>{formatAdminUserRole(role)}</option>)}</select><button type="button" style={secondaryButtonStyle} disabled={mutation.isPending || membershipOrgID === ""} onClick={() => confirm(`Add ${formatAdminUserRole(membershipRole)} membership to ${user.email}?`, () => mutation.mutate({ method: "POST", path: `/v1/admin/organizations/${membershipOrgID}/members`, body: { user_id: user.id, role: membershipRole } }))}>Add membership</button></div>
@@ -396,6 +437,66 @@ function UserDirectoryDrawer({ user, organizations, onClose, onChanged }: { user
       {error === null ? null : <p role="alert" style={formErrorStyle}>{error}</p>}
     </div>}
   </ResponsiveDrawer>;
+}
+
+/** "First Last" of a directory user; empty when neither name is given. */
+export function userFullName(user: { readonly first_name: string | null; readonly last_name: string | null }): string {
+  return [user.first_name, user.last_name]
+    .filter((p): p is string => typeof p === "string" && p.trim() !== "")
+    .join(" ");
+}
+
+/**
+ * Body of PATCH /v1/admin/users/{user_id}: a blank field clears that name
+ * (null), so the form always sends both keys and the server never keeps a
+ * stale one.
+ */
+export function buildUserNameBody(firstName: string, lastName: string): { first_name: string | null; last_name: string | null } {
+  const clean = (raw: string): string | null => {
+    const v = raw.trim().replace(/\s+/g, " ");
+    return v === "" ? null : v;
+  };
+  return { first_name: clean(firstName), last_name: clean(lastName) };
+}
+
+function UserNameForm({ user, onChanged }: { user: AdminDirectoryUser; onChanged: () => Promise<void> }) {
+  const [firstName, setFirstName] = useState(user.first_name ?? "");
+  const [lastName, setLastName] = useState(user.last_name ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const mutation = useMutation<unknown, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<unknown>({
+        method: "PATCH",
+        path: `/v1/admin/users/${user.id}`,
+        body: buildUserNameBody(firstName, lastName),
+      }),
+    onSuccess: async () => {
+      setError(null);
+      setSaved(true);
+      await onChanged();
+    },
+    onError: (err) => {
+      setSaved(false);
+      setError(err.code === "admin_user.name_too_long" ? "A name may be at most 100 characters." : err.message);
+    },
+  });
+  const dirty = firstName.trim() !== (user.first_name ?? "") || lastName.trim() !== (user.last_name ?? "");
+  return (
+    <div data-testid="user-name-form">
+      <strong>Name</strong>
+      <p>Optional. Shown next to the e-mail in the admin lists.</p>
+      <div style={drawerActionStyle}>
+        <input aria-label="First name" placeholder="First name" value={firstName} maxLength={100} autoComplete="off" onChange={(e) => { setFirstName(e.target.value); setSaved(false); }} style={inputStyle} data-testid="user-first-name" />
+        <input aria-label="Last name" placeholder="Last name" value={lastName} maxLength={100} autoComplete="off" onChange={(e) => { setLastName(e.target.value); setSaved(false); }} style={inputStyle} data-testid="user-last-name" />
+        <button type="button" style={secondaryButtonStyle} disabled={mutation.isPending || !dirty} onClick={() => mutation.mutate()} data-testid="user-name-save">
+          {mutation.isPending ? "Saving…" : "Save name"}
+        </button>
+      </div>
+      {saved ? <p role="status">Saved.</p> : null}
+      {error === null ? null : <p role="alert" style={formErrorStyle}>{error}</p>}
+    </div>
+  );
 }
 
 function Field({
@@ -463,11 +564,20 @@ export function buildAdminCreateUserBody(
   role: AdminUserRole,
   rawOrgId: string,
   rawLocale: string,
+  names: { firstName?: string; lastName?: string } = {},
 ): AdminCreateUserRequest {
   const body: AdminCreateUserRequest = {
     email: rawEmail.trim().toLowerCase(),
     role,
   };
+  const firstName = (names.firstName ?? "").trim();
+  const lastName = (names.lastName ?? "").trim();
+  if (firstName !== "") {
+    body.first_name = firstName;
+  }
+  if (lastName !== "") {
+    body.last_name = lastName;
+  }
   const locale = rawLocale.trim();
   if (locale !== "") {
     body.locale = locale;
@@ -520,6 +630,8 @@ export function formatAdminUserRole(role: AdminUserRole | string): string {
       return "Network operator";
     case "external_ticketing_operator":
       return "External ticketing operator";
+    case "org_admin":
+      return "Owner (org_admin)";
     case "organizer":
       return "Organizer";
     case "agent":

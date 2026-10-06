@@ -1140,7 +1140,11 @@ export interface paths {
         delete: operations["deleteV1AdminUser"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Admin - set or clear a user first and last name
+         * @description Sets or clears the optional first_name and last_name of a user. A key that is absent leaves that name unchanged. Requires JWT, superadmin.read, and X-Admin-Reason.
+         */
+        patch: operations["patchV1AdminUser"];
         trace?: never;
     };
     "/v1/admin/users/{user_id}/deactivate": {
@@ -7171,7 +7175,7 @@ export interface components {
          * @description SuperAdmin provisioning request. Global platform roles
          *     (`platform_operator`, `platform_superadmin`) must omit org_id.
          *     Organization-scoped roles (`organizer`, `agent`, `network_operator`,
-         *     `external_ticketing_operator`) must supply org_id and are created as
+         *     `external_ticketing_operator`, `org_admin`) must supply org_id and are created as
          *     active organization memberships.
          */
         AdminCreateUserRequest: {
@@ -7182,10 +7186,10 @@ export interface components {
              */
             email: string;
             /**
-             * @description Role to assign at creation time.
+             * @description Role to assign at creation time. org_admin is the organization owner.
              * @enum {string}
              */
-            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator";
+            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator" | "org_admin";
             /**
              * Format: uuid
              * @description Required for organization-scoped roles; forbidden for global platform roles.
@@ -7197,6 +7201,16 @@ export interface components {
              * @example en
              */
             locale?: string;
+            /**
+             * @description Optional given name.
+             * @example Vera
+             */
+            first_name?: string;
+            /**
+             * @description Optional family name.
+             * @example Petrova
+             */
+            last_name?: string;
         };
         AdminCreatedUser: {
             /**
@@ -7281,6 +7295,10 @@ export interface components {
              * @description Normalized email address.
              */
             email: string;
+            /** @description Optional given name; null when not given. */
+            first_name?: string | null;
+            /** @description Optional family name; null when not given. */
+            last_name?: string | null;
             /**
              * Format: date-time
              * @description Account creation timestamp.
@@ -7516,11 +7534,11 @@ export interface components {
              */
             org_id: string;
             /**
-             * @description Named role bound to (user_id, org_id). One of organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator.
+             * @description Named role bound to (user_id, org_id). One of organizer, agent, platform_operator, external_ticketing_operator, platform_superadmin, network_operator, org_admin (the organization owner).
              * @example organizer
              * @enum {string}
              */
-            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator";
+            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator" | "org_admin";
             /**
              * @description Lifecycle state of the membership. active = in force, revoked = soft-removed by an admin, suspended = paused.
              * @example active
@@ -7533,6 +7551,70 @@ export interface components {
              * @example 2024-01-01T00:00:00Z
              */
             joined_at: string;
+        };
+        /**
+         * @description A membership of the admin members list together with the member e-mail
+         *     and optional name, so the console does not have to show UUIDs.
+         */
+        AdminMemberItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the memberships row.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the user holding this role.
+             */
+            user_id: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 primary key of the organization the role is scoped to.
+             */
+            org_id: string;
+            /** @description Named role bound to (user_id, org_id); org_admin is the organization owner. */
+            role: string;
+            /** @description Lifecycle state of the membership (active, suspended or revoked). */
+            status: string;
+            /**
+             * Format: date-time
+             * @description RFC 3339 timestamp of when the membership was first granted.
+             */
+            joined_at: string;
+            /** @description The member e-mail address. */
+            email: string;
+            /** @description Optional given name; null when not given. */
+            first_name: string | null;
+            /** @description Optional family name; null when not given. */
+            last_name: string | null;
+        };
+        /**
+         * @description Body of PATCH /v1/admin/users/{user_id}. A key that is absent leaves
+         *     that name unchanged; null or an empty string clears it.
+         */
+        AdminUserNameRequest: {
+            /**
+             * @description New given name, or null/empty to clear it.
+             * @example Vera
+             */
+            first_name?: string | null;
+            /**
+             * @description New family name, or null/empty to clear it.
+             * @example Petrova
+             */
+            last_name?: string | null;
+        };
+        /** @description The names of the user after the update. */
+        AdminUserNameResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the updated user.
+             */
+            user_id: string;
+            /** @description Given name now stored; null when not given. */
+            first_name: string | null;
+            /** @description Family name now stored; null when not given. */
+            last_name: string | null;
         };
         /**
          * @description Request body for POST /v1/admin/organizations/{org_id}/members
@@ -7552,11 +7634,21 @@ export interface components {
              */
             email?: string;
             /**
-             * @description Role to grant. Must satisfy the memberships_role_check CHECK constraint.
+             * @description Optional given name, stored only when email creates a new user.
+             * @example Vera
+             */
+            first_name?: string;
+            /**
+             * @description Optional family name, stored only when email creates a new user.
+             * @example Petrova
+             */
+            last_name?: string;
+            /**
+             * @description Role to grant. Must satisfy the memberships_role_check CHECK constraint. org_admin is the organization owner.
              * @example organizer
              * @enum {string}
              */
-            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator";
+            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator" | "org_admin";
         };
         /**
          * @description Request body for PATCH /v1/admin/organizations/{org_id}/members/{membership_id}
@@ -7564,11 +7656,11 @@ export interface components {
          */
         AdminChangeMemberRoleRequest: {
             /**
-             * @description New role to assign to the membership.
+             * @description New role to assign to the membership. org_admin is the organization owner.
              * @example agent
              * @enum {string}
              */
-            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator";
+            role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator" | "org_admin";
         };
         /**
          * @description A single active organization (primary tenant boundary).
@@ -21411,6 +21503,81 @@ export interface operations {
             };
         };
     };
+    patchV1AdminUser: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUID of the target user. */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUserNameRequest"];
+            };
+        };
+        responses: {
+            /** @description The names now stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserNameResponse"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, empty body, invalid JSON or no name key given */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description User not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A name is longer than 100 characters */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     postV1AdminUserDeactivate: {
         parameters: {
             query?: never;
@@ -22111,8 +22278,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** @description Active memberships in this organization, ordered by joined_at ASC. */
-                        memberships: components["schemas"]["MembershipItem"][];
+                        /** @description Active memberships in this organization, ordered by joined_at ASC, each with the member e-mail and optional name. */
+                        memberships: components["schemas"]["AdminMemberItem"][];
                     };
                 };
             };

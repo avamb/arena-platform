@@ -4,6 +4,8 @@ import {
   ADMIN_USER_ROLES,
   buildAdminUserDirectoryPath,
   buildAdminCreateUserBody,
+  buildUserNameBody,
+  userFullName,
   formatAdminUserRole,
   isOrgScopedAdminRole,
   mapCreateUserServerError,
@@ -23,6 +25,7 @@ describe("Users provisioning helpers", () => {
     expect(ADMIN_USER_ROLES).toEqual([
       "platform_operator",
       "platform_superadmin",
+      "org_admin",
       "organizer",
       "agent",
       "network_operator",
@@ -34,6 +37,7 @@ describe("Users provisioning helpers", () => {
     expect(isOrgScopedAdminRole("platform_operator")).toBe(false);
     expect(isOrgScopedAdminRole("platform_superadmin")).toBe(false);
     expect(isOrgScopedAdminRole("organizer")).toBe(true);
+    expect(isOrgScopedAdminRole("org_admin")).toBe(true);
     expect(isOrgScopedAdminRole("agent")).toBe(true);
     expect(isOrgScopedAdminRole("network_operator")).toBe(true);
     expect(isOrgScopedAdminRole("external_ticketing_operator")).toBe(true);
@@ -87,6 +91,7 @@ describe("Users provisioning helpers", () => {
   it("formats role labels", () => {
     expect(formatAdminUserRole("platform_superadmin")).toBe("Platform superadmin");
     expect(formatAdminUserRole("network_operator")).toBe("Network operator");
+    expect(formatAdminUserRole("org_admin")).toBe("Owner (org_admin)");
     expect(formatAdminUserRole("future_role")).toBe("future_role");
   });
 
@@ -127,5 +132,27 @@ describe("Users provisioning helpers", () => {
   it("keeps the role type compatible with OpenAPI enum values", () => {
     const role: AdminUserRole = "platform_operator";
     expect(role).toBe("platform_operator");
+  });
+});
+
+describe("User names", () => {
+  it("builds a create body with optional names only when filled", () => {
+    const body = buildAdminCreateUserBody("A@B.test", "org_admin", "01900000-0000-7000-8000-000000000010", "", {
+      firstName: " Vera ",
+      lastName: "  ",
+    });
+    expect(body).toMatchObject({ email: "a@b.test", role: "org_admin", first_name: "Vera" });
+    expect(body).not.toHaveProperty("last_name");
+  });
+
+  it("sends both keys on a name edit and clears a blank one with null", () => {
+    expect(buildUserNameBody("  Vera ", "")).toEqual({ first_name: "Vera", last_name: null });
+    expect(buildUserNameBody("Anna  Maria", " Petrova ")).toEqual({ first_name: "Anna Maria", last_name: "Petrova" });
+  });
+
+  it("joins the names the way the lists show them", () => {
+    expect(userFullName({ first_name: "Vera", last_name: "Petrova" })).toBe("Vera Petrova");
+    expect(userFullName({ first_name: null, last_name: "Petrova" })).toBe("Petrova");
+    expect(userFullName({ first_name: null, last_name: null })).toBe("");
   });
 });
