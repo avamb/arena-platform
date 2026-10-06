@@ -1,6 +1,15 @@
 # Перенос прод-Lampyris на lead-parser: план (05.10.2026)
 
-Статус: **подготовлен, не выполнялся.** Скрипт для шагов 1–2 лежит в `ops/wordpress/lampyris-db-prepare.sh` и проверен только в режимах отчёта и `alive`. Режим `apply` на боевой базе не запускался.
+Статус: **выполнен 06.10.2026, 23:01–23:05 по Мадриду, простой ~1,5 минуты.**
+
+Как прошло на деле:
+- Новый compose `lampyris_prod_lp` (composeId `pGE9rVppnZ4IdUn4-IoRl`, appName `lampyrisevents-lp-9grfpd`, сервер lead-parser, проект `lampyris`), создан через tRPC копией старого: источник github `main`, то же окружение, `uploads.ini`, домены. Автодеплой выключен. Контейнеры `lampyrisevents-lp-9grfpd-{wordpress,wp_db,wp_redis}-1`, IP 172.30.0.x (не 172.26.0.3).
+- Шаги 1–2 (`lampyris-db-prepare.sh apply`) НЕ делались: прогревочная копия 7,4 ГБ прошла за 51 с, финальная за 18 с, ужимать базу до окна не было смысла. Binlog 30 дней и `performance_schema` переехали как есть — сделать на новом хосте отдельно.
+- DNS переключён API-токеном владельца (файл `C:\Projects\lampyrisevents\claudflare.txt`, исключён в `.git/info/exclude`, срок до 08.10). Первая попытка Let's Encrypt сразу после смены DNS получила 404 (проверку ещё обслужил старый Traefik), повторный `docker restart` контейнера WordPress через минуту выдал сертификаты. SSL зоны переведён в Full (strict).
+- Проверено: страницы всех языков, туры, wp-json, sitemap, реальные IP в логах, WP-Cron (crontab root на lead-parser), синхронизация с Arena с нового IP, Brevo API 200 с нового IP. Строка WP-Cron на lampyrisevents убрана, `/etc/cron.d/wp-sites-backup` там убран в `/root/lampyris-move-20261006/`. Lampyris добавлен в таблицу `wp-sites-backup.sh` на lead-parser. Временный ssh-ключ удалён.
+- Откат: A-записи `lampyrisevents.com`/`www` на `167.233.208.166`, `docker start` трёх контейнеров `lampyrisevents-wordpress-ozgyu1-*` (данные на 23:01 06.10), вернуть crontab и cron.d из `/root/lampyris-move-20261006/`. Старый стек держать остановленным до 20.10.
+
+Исходный план ниже.
 
 ## 1. Вердикт по ёмкости (замеры 05.10, ~15:30 по Мадриду)
 
