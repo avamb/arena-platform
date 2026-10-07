@@ -220,8 +220,26 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		if len(rest) > 24 {
 			rest = rest[:24]
 		}
+		listed := map[string]bool{}
+		for _, c := range cities {
+			listed[geotz.Normalize(c.Name)] = true
+		}
 		for _, c := range append(first, rest...) {
 			rows = append(rows, []Button{{Label: c.Name, Data: "city:" + c.ID}})
+		}
+		// The platform's own list holds only cities somebody already used, so
+		// the country's biggest cities follow as buttons (they are added to
+		// the platform when pressed).
+		shown := 0
+		for i, name := range geotz.TopCities(s.CountryISO2) {
+			if shown >= maxCitySuggestions {
+				break
+			}
+			if listed[geotz.Normalize(name)] {
+				continue
+			}
+			rows = append(rows, []Button{{Label: truncate(name, 40), Data: "city:g:" + strconv.Itoa(i)}})
+			shown++
 		}
 		rows = chunk(rows, 2)
 		rows = append(rows, []Button{btn("bot.wz.city_other", "city:new")})
@@ -571,6 +589,10 @@ func itoa(n int) string { return strconv.Itoa(n) }
 // maxZoneButtons caps the zone buttons: Russia alone has two dozen zones, and a
 // zone that is not among the first few is reached by typing the city.
 const maxZoneButtons = 6
+
+// maxCitySuggestions caps the big-city buttons added under the platform's own
+// cities on the city question.
+const maxCitySuggestions = 16
 
 // zoneButtons are the zone question's buttons: the zone a city name pointed at
 // (the typed one, else the session's own city) first, then the zones of the

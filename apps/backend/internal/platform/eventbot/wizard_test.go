@@ -750,3 +750,53 @@ func TestWizard_CityTypedOntoTheQuestion(t *testing.T) {
 		}
 	})
 }
+
+// The city question offers the country's biggest cities as buttons below the
+// platform's own, without repeating a city the platform already lists, and a
+// press adds the city like a typed name.
+func TestWizard_BigCitiesAreOffered(t *testing.T) {
+	refs := newFakeRefs()
+	r := newWizardRun(t, refs)
+	r.eventHead()
+	r.text("20.03.2027", stSTime)
+	r.text("21:00", stSCountry)
+	r.press("country:cz", stSCity)
+
+	scr, err := r.w.Render(context.Background(), r.ws, r.d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var suggested []string
+	own := 0
+	for _, row := range scr.Buttons {
+		for _, b := range row {
+			switch {
+			case strings.HasPrefix(b.Data, "city:g:"):
+				suggested = append(suggested, b.Label)
+			case b.Data == "city:prg":
+				own++
+			}
+		}
+	}
+	if own != 1 || len(suggested) == 0 || len(suggested) > maxCitySuggestions {
+		t.Fatalf("own=%d suggested=%v", own, suggested)
+	}
+	for _, name := range suggested {
+		if name == "Prague" {
+			t.Fatalf("a city the platform lists was offered again: %v", suggested)
+		}
+	}
+	// Press the first suggestion: it is added and the venue question follows.
+	var data string
+	for _, row := range scr.Buttons {
+		for _, b := range row {
+			if strings.HasPrefix(b.Data, "city:g:") && data == "" {
+				data = b.Data
+			}
+		}
+	}
+	r.press(strings.TrimPrefix(data, ""), stSVenue)
+	if len(refs.created) != 1 || !strings.HasPrefix(refs.created[0], "city:") {
+		t.Fatalf("created = %v", refs.created)
+	}
+}

@@ -127,3 +127,21 @@ func TestNormalize(t *testing.T) {
 		}
 	}
 }
+
+func TestTopCities_CoverTheOfferedRegions(t *testing.T) {
+	for _, cc := range []string{"ES", "CZ", "DE", "FR", "US", "MX", "BR", "AR", "IL", "GB", "PL"} {
+		top := TopCities(cc)
+		if len(top) < 10 {
+			t.Errorf("%s: only %d cities", cc, len(top))
+		}
+	}
+	if es := TopCities("es"); len(es) == 0 || es[0] != "Madrid" {
+		t.Errorf("ES must start with Madrid: %v", es)
+	}
+	if us := TopCities("US"); len(us) == 0 || us[0] != "New York City" {
+		t.Errorf("US must start with New York City: %v", us)
+	}
+	if got := TopCities("JP"); got != nil {
+		t.Errorf("Japan is not offered, got %v", got)
+	}
+}

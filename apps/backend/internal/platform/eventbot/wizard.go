@@ -957,6 +957,23 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			d.goTo(stCityName)
 			return "", nil
 		}
+		if idx, ok := strings.CutPrefix(data, "city:g:"); ok {
+			// One of the country's biggest cities, offered from the embedded
+			// data: it is found or added by name like a typed one.
+			n, err := strconv.Atoi(idx)
+			top := geotz.TopCities(s.CountryISO2)
+			if err != nil || n < 0 || n >= len(top) {
+				return "", nil
+			}
+			c, err := w.refs.CreateCity(ctx, ws.JWT, ws.OrgID, s.CountryID, top[n], loc)
+			if err != nil {
+				return "", err
+			}
+			s.CityID, s.CityName = c.ID, c.Name
+			s.VenueID, s.VenueName, s.Timezone = "", "", ""
+			d.goTo(stSVenue)
+			return "", nil
+		}
 		id := strings.TrimPrefix(data, "city:")
 		if data == "keep" {
 			id = ws.Defaults.CityID

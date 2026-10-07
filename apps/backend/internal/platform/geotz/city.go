@@ -35,11 +35,13 @@ var (
 	loadOnce sync.Once
 	zonesBy  map[string][]Zone            // ISO2 -> zones, the zone of the biggest city first
 	cityZone map[string]map[string]string // ISO2 -> normalised city name -> zone
+	topBy    map[string][]string          // ISO2 -> the largest cities, biggest first
 )
 
 func load() {
 	zonesBy = map[string][]Zone{}
 	cityZone = map[string]map[string]string{}
+	topBy = map[string][]string{}
 	zr, err := gzip.NewReader(bytes.NewReader(citiesGz))
 	if err != nil {
 		return
@@ -49,6 +51,10 @@ func load() {
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for sc.Scan() {
 		p := strings.Split(sc.Text(), "\t")
+		if len(p) >= 3 && p[0] == "T" {
+			topBy[p[1]] = append(topBy[p[1]], p[2])
+			continue
+		}
 		if len(p) != 4 {
 			continue
 		}
@@ -121,4 +127,12 @@ func CityOf(iso2, zone string) string {
 		}
 	}
 	return ""
+}
+
+// TopCities lists the largest cities of the country, biggest first, for the
+// cities the bot offers as buttons. It is nil for a country outside the ones
+// the data covers (Europe, the United States, Mexico, South America, Israel).
+func TopCities(iso2 string) []string {
+	loadOnce.Do(load)
+	return topBy[strings.ToUpper(strings.TrimSpace(iso2))]
 }
