@@ -1,0 +1,1113 @@
+# es.toml — Spanish message catalog for arena_new.
+#
+# Only the Telegram event-center bot (the bot.* keys) is translated so far.
+# Every other key falls back to en.toml through go-i18n's built-in fallback
+# chain, so a partial catalog is safe. The keys mirror en.toml one to one:
+# eventbot.MessageKeys and the wizard key lists are checked against every
+# language the bot speaks (eventbot.SupportedLocales).
+#
+# Tone: informal "tú", like the Spanish e-mails of the product.
+
+["bot.cmd_start"]
+other = "Empezar o abrir el menú"
+
+["bot.cmd_events"]
+other = "Mis eventos"
+
+["bot.cmd_new"]
+other = "Nuevo evento"
+
+["bot.cmd_team"]
+other = "Equipo"
+
+["bot.btn_team"]
+other = "👥 Equipo"
+
+["bot.btn_team_add"]
+other = "＋ Miembro del equipo"
+
+["bot.team_title"]
+other = "<b>Equipo: {{.Org}}</b>"
+
+["bot.team_member_line"]
+other = "• {{.Email}} — {{.Role}}{{.Marks}}"
+
+["bot.team_linked_mark"]
+other = ", Telegram ✓"
+
+["bot.team_pending_mark"]
+other = ", invitación enviada"
+
+["bot.team_not_linked_mark"]
+other = ", aún sin Telegram"
+
+["bot.team_self_mark"]
+other = " (tú)"
+
+["bot.team_hint"]
+other = "Un propietario puede hacerlo todo, incluso invitar y quitar a personas; un gestor crea y edita eventos. Para añadir a un compañero, pulsa «Invitar»: recibirá un e-mail con un enlace a este bot."
+
+["bot.team_invite_btn"]
+other = "＋ Invitar"
+
+["bot.team_remove_btn"]
+other = "✕ Quitar a {{.Email}}"
+
+["bot.team_remove_yes_btn"]
+other = "Sí, quitar"
+
+["bot.team_ask_email"]
+other = "¿Cuál es el e-mail de tu compañero? Recibirá un correo con un enlace a este bot."
+
+["bot.team_dialog_expired"]
+other = "Se acabó el tiempo: una invitación espera la dirección y el rol 30 minutos como máximo. Empieza de nuevo, por favor."
+
+["bot.team_ask_role"]
+other = "¿Qué podrá hacer {{.Email}}?"
+
+["bot.team_role_manager_btn"]
+other = "Gestor: solo eventos"
+
+["bot.team_role_owner_btn"]
+other = "Propietario: todo, incl. el equipo"
+
+["bot.team_invited"]
+other = "Invitación enviada a {{.Email}} como {{.Role}}. El enlace del correo funciona durante 7 días."
+
+["bot.team_invite_failed"]
+other = "No he podido enviar la invitación. Revisa el e-mail e inténtalo de nuevo en un minuto."
+
+["bot.team_confirm_remove"]
+other = "¿Quitar a {{.Email}} de la organización? Perderá el acceso a los eventos y a este bot."
+
+["bot.team_removed"]
+other = "{{.Email}} ha sido quitado."
+
+["bot.team_remove_failed"]
+other = "No he podido quitar a esta persona. Inténtalo de nuevo en un minuto."
+
+["bot.team_owner_only"]
+other = "Solo el propietario de la organización gestiona el equipo."
+
+["bot.cmd_org"]
+other = "Elegir la organización"
+
+["bot.cmd_lang"]
+other = "Idioma"
+
+["bot.cmd_help"]
+other = "Qué puede hacer este bot"
+
+["bot.not_invited"]
+other = "¡Hola! Este bot crea eventos y muestra las ventas a los organizadores de Arena Sold Out.\n\nPara usarlo necesitas una invitación: el propietario de tu organización la envía desde este bot y te llega por e-mail como un enlace. Abre ese enlace y ya estarás dentro."
+
+["bot.ask_email"]
+other = "¡Te damos la bienvenida! Una comprobación antes de empezar: escribe la dirección de e-mail a la que se envió la invitación."
+
+["bot.ask_email_again"]
+other = "Eso no parece una dirección de e-mail. Escríbela como en la invitación, por ejemplo nombre@empresa.com"
+
+["bot.invite_accepted"]
+other = "¡Listo! Estás conectado a <b>{{.Org}}</b> como {{.Role}}.\n\nAquí puedes ver tus eventos y ventas; crear y editar eventos desde el móvil llegará próximamente."
+
+["bot.invite_accepted_notice"]
+other = "✅ {{.Email}} ha aceptado la invitación y se ha unido al bot: organización <b>{{.Org}}</b>, rol: {{.Role}}."
+
+["bot.invite_not_found"]
+other = "Este enlace de invitación ya no funciona: ya se usó o caducó a los 7 días. Pide uno nuevo al propietario de tu organización."
+
+["bot.invite_email_mismatch"]
+other = "Esta no es la dirección a la que se envió la invitación. Escribe el e-mail exactamente como en la invitación."
+
+["bot.invite_already_linked"]
+other = "Esta cuenta de Telegram ya está conectada a otra persona. Abre la invitación desde la cuenta de Telegram que deba quedarse con ella."
+
+["bot.invite_failed"]
+other = "Algo ha fallado por nuestra parte y la invitación no se ha aceptado. Prueba el enlace de nuevo en un minuto."
+
+["bot.already_linked"]
+other = "Ya estás conectado. Aquí tienes tu menú."
+
+["bot.role_owner"]
+other = "propietario"
+
+["bot.role_manager"]
+other = "gestor"
+
+["bot.menu_title"]
+other = "<b>{{.Org}}</b>\n¿Qué quieres hacer?"
+
+["bot.btn_events"]
+other = "Mis eventos"
+
+["bot.btn_org"]
+other = "Organización"
+
+["bot.btn_lang"]
+other = "Idioma"
+
+["bot.btn_help"]
+other = "Ayuda"
+
+["bot.btn_back"]
+other = "Atrás"
+
+["bot.btn_home"]
+other = "Inicio"
+
+["bot.btn_prev"]
+other = "Anterior"
+
+["bot.btn_next"]
+other = "Siguiente"
+
+["bot.help"]
+other = "<b>Qué puede hacer este bot</b>\n\n- <b>Mis eventos</b>: todos los eventos de tu organización, los próximos primero, con las plazas vendidas y libres y el dinero por fecha.\n- <b>Organización</b>: si trabajas para varias organizaciones, cambia entre ellas aquí.\n- <b>Idioma</b>: inglés, ruso o español.\n\nCrear y editar eventos desde el móvil es el siguiente paso; hasta entonces usa el centro de eventos de tu sitio web."
+
+["bot.events_empty"]
+other = "Aún no hay eventos. El primero aparecerá aquí en cuanto se cree."
+
+["bot.events_title"]
+other = "<b>Eventos de {{.Org}}</b>\nPágina {{.Page}} de {{.Pages}}. Toca un evento para ver sus fechas y ventas."
+
+["bot.events_upcoming"]
+other = "Próximos"
+
+["bot.events_past"]
+other = "Pasados"
+
+["bot.event_card"]
+other = "<b>{{.Name}}</b>\n{{.Status}}{{.Link}}"
+
+["bot.event_no_sessions"]
+other = "Este evento aún no tiene fechas."
+
+["bot.sample_btn"]
+other = "🎫 Entrada de muestra"
+
+["bot.sample_caption"]
+other = "Así verá el comprador la entrada de «{{.Name}}». Es una muestra: el código de barras es real y el escáner de la puerta responde «entrada de muestra»."
+
+["bot.sample_failed"]
+other = "No se pudo crear la entrada de muestra. Inténtalo más tarde."
+
+["bot.session_line"]
+other = "<b>{{.When}}</b> {{.Venue}}\nVendidas {{.Sold}} de {{.Total}}, libres {{.Available}}{{if .Held}}, reservadas {{.Held}}{{end}}{{if .Tickets}}\n{{.Tickets}}{{end}}\n{{.Money}}"
+
+["bot.session_tickets_line"]
+other = "Entradas: emitidas {{.Issued}}, devueltas o canceladas {{.Cancelled}}, válidas {{.Active}}"
+
+["bot.money_line"]
+other = "Pagado {{.Paid}} en {{.Orders}} pedidos"
+
+["bot.money_none"]
+other = "Aún no hay pedidos pagados"
+
+["bot.status_draft"]
+other = "Borrador, no está a la venta"
+
+["bot.status_published"]
+other = "A la venta"
+
+["bot.status_archived"]
+other = "Archivado"
+
+["bot.status_cancelled"]
+other = "Cancelado"
+
+["bot.session_cancelled"]
+other = "cancelada"
+
+["bot.org_choose"]
+other = "¿En qué organización estás trabajando ahora?"
+
+["bot.org_switched"]
+other = "Has cambiado a <b>{{.Org}}</b>."
+
+["bot.org_none"]
+other = "Ya no eres miembro de ninguna organización. Pide una nueva invitación a su propietario."
+
+["bot.lang_choose"]
+other = "Elige el idioma del bot."
+
+["bot.lang_set"]
+other = "Ahora el bot habla español."
+
+["bot.error_generic"]
+other = "Algo ha fallado por nuestra parte. Inténtalo de nuevo en un minuto; si se repite, díselo a tu contacto de Arena."
+
+["bot.access_lost"]
+other = "Se ha retirado tu acceso a esta organización. Si es un error, pide una nueva invitación a su propietario."
+
+["bot.unknown_input"]
+other = "No he entendido eso. Usa los botones de abajo."
+
+["bot.wz.new_event_btn"]
+other = "+ Evento"
+
+["bot.wz.cancel_btn"]
+other = "Cancelar"
+
+["bot.wz.back_btn"]
+other = "← Atrás"
+
+["bot.wz.skip_btn"]
+other = "Omitir"
+
+["bot.wz.ack"]
+other = "✔ {{.Label}}: {{.Value}}"
+
+["bot.wz.ack_name"]
+other = "Nombre"
+
+["bot.wz.ack_age"]
+other = "Edad"
+
+["bot.wz.ack_promoter"]
+other = "Promotor"
+
+["bot.wz.ack_promoter_org"]
+other = "tu organización"
+
+["bot.wz.ack_poster"]
+other = "Cartel"
+
+["bot.wz.ack_poster_none"]
+other = "ninguno"
+
+["bot.wz.ack_date"]
+other = "Fecha"
+
+["bot.wz.ack_time"]
+other = "Hora"
+
+["bot.wz.ack_country"]
+other = "País"
+
+["bot.wz.ack_city"]
+other = "Ciudad"
+
+["bot.wz.ack_venue"]
+other = "Recinto"
+
+["bot.wz.ack_venue_cap"]
+other = "{{.Venue}}, aforo {{.Capacity}}"
+
+["bot.wz.ack_capacity"]
+other = "Plazas"
+
+["bot.wz.ack_category"]
+other = "Categoría"
+
+["bot.wz.ack_price"]
+other = "Precio"
+
+["bot.wz.ack_step"]
+other = "Cambio de precio"
+
+["bot.wz.ack_places"]
+other = "Entradas"
+
+["bot.wz.ack_none"]
+other = "ninguno"
+
+["bot.wz.ack_saved"]
+other = "guardado"
+
+["bot.wz.ack_description"]
+other = "Descripción"
+
+["bot.wz.ack_currency"]
+other = "Moneda"
+
+["bot.wz.ack_channels"]
+other = "Se vende en"
+
+["bot.wz.keep_btn"]
+other = "Mantener: {{.Value}}"
+
+["bot.wz.step_title"]
+other = "<b>Paso {{.N}} de 6 · {{.Title}}</b>\n"
+
+["bot.wz.title_event"]
+other = "Evento"
+
+["bot.wz.title_when"]
+other = "Cuándo y dónde"
+
+["bot.wz.title_tickets"]
+other = "Entradas"
+
+["bot.wz.title_extra"]
+other = "Descripción y ventas"
+
+["bot.wz.title_summary"]
+other = "Revisar y publicar"
+
+["bot.wz.resume"]
+other = "Tienes un evento sin terminar, «{{.Name}}». ¿Continúas donde lo dejaste o empiezas de nuevo?"
+
+["bot.wz.ask_poster_have"]
+other = "El cartel de {{.W}}×{{.H}} ya está subido. ¿Lo mantienes o envías otro?"
+
+["bot.wz.ask_poster_have_nosize"]
+other = "El cartel ya está subido. ¿Lo mantienes o envías otro?"
+
+["bot.wz.keep_poster_btn"]
+other = "Mantener este cartel"
+
+["bot.wz.hint_btn"]
+other = "Del cartel: {{.Value}}"
+
+["bot.wz.poster_reading"]
+other = "Leyendo el cartel…"
+
+["bot.wz.poster_read"]
+other = "El cartel dice:\n{{.List}}\n\nTe lo ofreceré como sugerencias: en cada paso pulsa «Del cartel» si es correcto o escribe lo tuyo."
+
+["bot.wz.poster_read_none"]
+other = "No he encontrado nada en el cartel que pueda ofrecerte: lo rellenamos a mano."
+
+["bot.wz.resume_btn"]
+other = "Continuar"
+
+["bot.wz.restart_btn"]
+other = "Empezar de nuevo"
+
+["bot.wz.cancelled"]
+other = "Borrador eliminado. No se ha guardado nada."
+
+["bot.wz.ask_name"]
+other = "¿Cómo se llama el evento? Los compradores verán este nombre, por ejemplo “Concierto en Madrid” o “Taller en Roma”.\n\nEscribe el nombre en un mensaje{{if .Poster}} o, si el cartel está listo, pulsa “Rellenar desde un cartel”: leeré el nombre, la fecha y los precios, y tú confirmas cada valor{{end}}."
+
+["bot.wz.err_name"]
+other = "Ponle un nombre al evento, de hasta 200 caracteres."
+
+["bot.wz.ask_age"]
+other = "¿Restricción de edad?"
+
+["bot.wz.ask_promoter"]
+other = "¿A nombre de quién va el evento? El promotor es el nombre que aparece impreso en la entrada como organizador, con su propia página de entradas. Normalmente es {{.Org}}. Para otro teatro o marca, elígelo o añade uno nuevo."
+
+["bot.wz.promoter_org"]
+other = "La propia organización"
+
+["bot.wz.promoter_new"]
+other = "+ Nuevo promotor (marca)…"
+
+["bot.wz.ask_promoter_name"]
+other = "El nombre del promotor, tal como debe aparecer en la entrada."
+
+["bot.wz.err_promoter_name"]
+other = "Indica el nombre del promotor."
+
+["bot.wz.err_promoter_dup"]
+other = "Este promotor ya existe: elígelo de la lista."
+
+["bot.wz.ask_promoter_legal"]
+other = "El identificador fiscal o de empresa del promotor, si lo hay. Puedes omitirlo."
+
+["bot.wz.ask_poster"]
+other = "Envía el cartel. Lo mejor es <b>como archivo</b>, para no perder calidad:\n• en el móvil: clip 📎 → “Archivo” → elige la imagen;\n• en el ordenador: clip 📎 → elige la imagen → marca “Enviar como documento” en la ventana de envío.\nUna foto normal también sirve, pero Telegram la comprime.\n\nPNG o JPG de hasta 5 MB, en formato 4:5 (1080×1350) o cuadrado, de al menos 1000 px de ancho. Deja todo lo importante en el centro: la web recorta la parte de arriba y la de abajo en las tarjetas. Sin cartel, la tarjeta del evento en la web no se abrirá, pero puedes añadirlo más tarde."
+
+["bot.wz.poster_bad_type"]
+other = "El cartel debe ser una imagen PNG o JPG."
+
+["bot.wz.poster_too_big"]
+other = "El archivo del cartel pesa más de 5 MB: guárdalo con menos calidad."
+
+["bot.wz.poster_bad_ratio"]
+other = "El cartel mide {{.W}}×{{.H}}: debe ser 4:5 (1080×1350) o cuadrado (1080×1080)."
+
+["bot.wz.poster_too_small"]
+other = "El cartel mide {{.W}}×{{.H}}, es demasiado pequeño: el ancho debe ser de al menos 1000 px. Si enviaste una foto, envía el mismo archivo con el clip → “Archivo”: así Telegram no lo comprimirá."
+
+["bot.wz.poster_failed"]
+other = "No se pudo guardar el cartel. Inténtalo de nuevo u omite este paso."
+
+["bot.wz.poster_ok"]
+other = "Cartel {{.W}}×{{.H}} aceptado."
+
+["bot.wz.ask_date"]
+other = "Fecha {{.N}}: ¿qué día es?"
+
+["bot.wz.err_date"]
+other = "No he entendido la fecha. Elígela en el calendario o escríbela, por ejemplo 15.10.2026 o “15 de octubre”."
+
+["bot.wz.ask_time"]
+other = "¿A qué hora empieza? Escríbela como HH:MM, por ejemplo 19:30."
+
+["bot.wz.err_time"]
+other = "No he entendido la hora. Escríbela como HH:MM, por ejemplo 19:30."
+
+["bot.wz.ask_same_venue"]
+other = "¿La fecha {{.N}} es en el mismo sitio: {{.Venue}}, {{.City}}?"
+
+["bot.wz.same_venue_btn"]
+other = "Sí, el mismo sitio"
+
+["bot.wz.other_venue_btn"]
+other = "Otro recinto"
+
+["bot.wz.ask_country"]
+other = "¿En qué país?"
+
+["bot.wz.ask_city"]
+other = "¿En qué ciudad?"
+
+["bot.wz.city_other"]
+other = "+ Otra ciudad…"
+
+["bot.wz.ask_city_name"]
+other = "Nombre de la ciudad."
+
+["bot.wz.err_city_name"]
+other = "Indica el nombre de la ciudad."
+
+["bot.wz.ask_venue"]
+other = "¿Dónde se celebra? Elige un recinto o añade uno nuevo."
+
+["bot.wz.venue_new"]
+other = "+ Nuevo recinto…"
+
+["bot.wz.ask_venue_name"]
+other = "Nombre del recinto, tal como lo conocen los compradores, por ejemplo “Salón comunitario”."
+
+["bot.wz.err_venue_name"]
+other = "Indica el nombre del recinto."
+
+["bot.wz.ask_venue_address"]
+other = "Dirección del recinto. Puedes omitirla."
+
+["bot.wz.ask_venue_capacity"]
+other = "¿Cuántas plazas vendes para esta sesión? Un número, por ejemplo 120. También se guardará como el aforo habitual del nuevo recinto."
+
+["bot.wz.ask_venue_tz"]
+other = "Zona horaria del recinto, por ejemplo Europe/Prague."
+
+["bot.wz.err_venue_tz"]
+other = "No conozco esa zona. Escríbela como en la lista IANA, por ejemplo Europe/Madrid o Asia/Jerusalem."
+
+["bot.wz.venue_failed"]
+other = "No se pudo guardar el recinto: {{.Reason}}"
+
+["bot.wz.ask_capacity"]
+other = "¿Cuántas plazas hay a la venta para esta fecha? Un número, por ejemplo 80."
+
+["bot.wz.ask_capacity_known"]
+other = "El recinto “{{.Venue}}” tiene un aforo de {{.Capacity}}. ¿Cuántas plazas hay a la venta para esta fecha? Mantén {{.Capacity}} o escribe un número, por ejemplo 80."
+
+["bot.wz.err_capacity"]
+other = "Hace falta un número entero de al menos 1, por ejemplo 80."
+
+["bot.wz.session_added"]
+other = "Fecha {{.N}}: {{.When}}, {{.Venue}}, {{.City}}, {{.Capacity}} plazas."
+
+["bot.wz.ask_more_sessions"]
+other = "¿Añadir otra sesión? El mismo evento otro día o en otra ciudad. Sus precios y número de entradas serán los mismos que los de la primera."
+
+["bot.wz.more_session_btn"]
+other = "+ Otra fecha"
+
+["bot.wz.sessions_done_btn"]
+other = "Siguiente →"
+
+["bot.wz.err_duplicate_session"]
+other = "Esa fecha ya existe: mismo día, hora y recinto."
+
+["bot.wz.ask_t_mode"]
+other = "¿Todas las entradas son iguales o hay distintas categorías?"
+
+["bot.wz.t_mode_single"]
+other = "Una categoría"
+
+["bot.wz.t_mode_multi"]
+other = "Varias categorías"
+
+["bot.wz.ask_t_name"]
+other = "¿Cómo se llama la entrada?"
+
+["bot.wz.t_name_default"]
+other = "Entrada general"
+
+["bot.wz.ask_t_price"]
+other = "¿Precio de la entrada? Un número, por ejemplo 199 o 99.90."
+
+["bot.wz.ask_t_price_cur"]
+other = "¿Precio de la entrada en {{.Currency}}? Un número, por ejemplo 199 o 99.90. La moneda depende del país del recinto."
+
+["bot.wz.err_price"]
+other = "Escribe el precio de la entrada como un número, por ejemplo 199."
+
+["bot.wz.ask_t_changes"]
+other = "¿Cambia el precio con el tiempo? Por ejemplo, 199 hasta el 1 de octubre y luego 249."
+
+["bot.wz.t_changes_no"]
+other = "No"
+
+["bot.wz.t_changes_yes"]
+other = "Sí, por fecha"
+
+["bot.wz.ask_t_change_date"]
+other = "¿Desde qué fecha rige el nuevo precio?"
+
+["bot.wz.err_change_date_order"]
+other = "Las fechas de cambio de precio deben ir en orden ascendente."
+
+["bot.wz.ask_t_change_price"]
+other = "¿Nuevo precio desde el {{.Date}}?"
+
+["bot.wz.ask_t_change_more"]
+other = "Cambios de precio: {{.List}}. ¿Añadir otro?"
+
+["bot.wz.t_change_more_btn"]
+other = "+ Otro cambio"
+
+["bot.wz.t_change_done_btn"]
+other = "Eso es todo →"
+
+["bot.wz.ask_t_kind"]
+other = "¿Cómo se venden las categorías?"
+
+["bot.wz.t_kind_parallel"]
+other = "Todas a la vez: elige el comprador"
+
+["bot.wz.t_kind_sequence"]
+other = "Una tras otra: el precio sube por tramos"
+
+["bot.wz.t_kind_parallel_hint"]
+other = "Por ejemplo VIP y Estándar al mismo tiempo. Cada categoría tiene su propio número de plazas."
+
+["bot.wz.t_kind_sequence_hint"]
+other = "Por ejemplo “Anticipada” → “Normal” → “Última hora”. Se vende una categoría cada vez; todas comparten las plazas de la sala."
+
+["bot.wz.ask_t_cat_name"]
+other = "¿Nombre de la categoría {{.N}}? Por ejemplo “VIP” o “Anticipada”."
+
+["bot.wz.err_cat_dup"]
+other = "La categoría “{{.Name}}” está repetida."
+
+["bot.wz.ask_t_cat_price"]
+other = "¿Precio de “{{.Name}}”?"
+
+["bot.wz.ask_t_cat_places"]
+other = "¿Cuántas plazas hay en “{{.Name}}”?"
+
+["bot.wz.err_places"]
+other = "Hace falta un número entero de al menos 1."
+
+["bot.wz.ask_t_cat_until"]
+other = "¿Cuándo termina el precio de “{{.Name}}”? Elige el último día en el calendario. O escribe un número de entradas, por ejemplo 50. Puedes enviar ambos separados por un espacio, por ejemplo “31.12.2026 50”: el precio termina con lo que ocurra primero."
+
+["bot.wz.err_until_order"]
+other = "Categorías en secuencia: “{{.Name}}” debe venderse durante más tiempo que la anterior."
+
+["bot.wz.ask_t_cat_more"]
+other = "Categorías: {{.List}}. ¿Añadir otra?"
+
+["bot.wz.t_cat_more_btn"]
+other = "+ Otra categoría"
+
+["bot.wz.t_cat_done_btn"]
+other = "Listo →"
+
+["bot.wz.err_min_two"]
+other = "Varias categorías necesitan al menos dos. Si solo hay una, elige “Una categoría”."
+
+["bot.wz.ask_description"]
+other = "Descripción del evento para los compradores, en un solo mensaje, de hasta 4000 caracteres. Puedes omitirla."
+
+["bot.wz.ask_currency"]
+other = "¿Moneda de los precios?"
+
+["bot.wz.err_currency"]
+other = "La moneda son tres letras latinas, por ejemplo EUR, CZK o ILS."
+
+["bot.wz.ask_channels"]
+other = "¿Dónde vender? Marca los canales de venta y pulsa “Listo”. Recordaré la elección."
+
+["bot.wz.channels_done_btn"]
+other = "Listo →"
+
+["bot.wz.err_channels_empty"]
+other = "Marca al menos un canal de venta."
+
+["bot.wz.ask_publish"]
+other = "¿Abrir la venta ahora mismo?"
+
+["bot.wz.publish_now_btn"]
+other = "Sí, ahora mismo"
+
+["bot.wz.publish_later_btn"]
+other = "No, aún no publicar"
+
+["bot.wz.summary_event"]
+other = "“{{.Name}}”, {{.Age}}{{.Promoter}}{{.Poster}}"
+
+["bot.wz.summary_promoter"]
+other = ", promotor {{.Name}}"
+
+["bot.wz.summary_no_poster"]
+other = ", sin cartel"
+
+["bot.wz.summary_sessions"]
+other = "{{.N}} fecha(s): {{.List}}."
+
+["bot.wz.summary_session"]
+other = "{{.When}} {{.Venue}}, {{.Capacity}} plazas"
+
+["bot.wz.summary_single"]
+other = "Una categoría “{{.Name}}” {{.Price}}{{.Schedule}}."
+
+["bot.wz.summary_schedule_item"]
+other = "desde el {{.Date}} — {{.Price}}"
+
+["bot.wz.summary_parallel"]
+other = "Todas a la vez: {{.List}}."
+
+["bot.wz.summary_sequence"]
+other = "En secuencia: {{.List}}."
+
+["bot.wz.summary_publish_now"]
+other = "La venta se abre ahora mismo."
+
+["bot.wz.summary_publish_later"]
+other = "El evento se creará sin publicar."
+
+["bot.wz.summary_channels"]
+other = "Se vende en: {{.List}}."
+
+["bot.wz.summary_footer"]
+other = "Tras pulsar “Publicar”, el evento aparece en tu página de ventas; te enviaré el enlace aquí."
+
+["bot.wz.publish_btn"]
+other = "Publicar"
+
+["bot.wz.save_btn"]
+other = "Guardar sin publicar"
+
+["bot.wz.edit_event_btn"]
+other = "Cambiar el evento"
+
+["bot.wz.edit_when_btn"]
+other = "Cambiar las fechas"
+
+["bot.wz.edit_tickets_btn"]
+other = "Cambiar las entradas"
+
+["bot.wz.edit_extra_btn"]
+other = "Cambiar la descripción"
+
+["bot.wz.saving"]
+other = "Guardando…"
+
+["bot.wz.saved"]
+other = "<b>¡Listo!</b> El evento “{{.Name}}” está creado{{.Published}}.{{.Link}}{{.Warnings}}"
+
+["bot.wz.saved_published"]
+other = " y publicado"
+
+["bot.wz.link_line"]
+other = "🔗 Enlace al evento para los compradores:\n{{.URL}}"
+
+["bot.wz.link_none"]
+other = "Te enviaré el enlace de venta en cuanto esté listo."
+
+["bot.wz.save_failed"]
+other = "La fecha {{.When}} no se guardó. {{.Reason}}\n\nHe conservado las fechas que sí se guardaron: pulsa “Reintentar” y guardaré el resto."
+
+["bot.wz.retry_btn"]
+other = "Reintentar"
+
+["bot.wz.warn_channel_publication_skipped"]
+other = "El evento no se publicó en el canal de la web: no tienes permiso para publicar allí."
+
+["bot.wz.warn_hosted_page_enabled"]
+other = "La página de ventas de este canal ya está activada: el enlace se abrirá."
+
+["bot.wz.warn_venue_timezone_kept"]
+other = "El recinto ya tiene otra zona horaria: se mantuvo la anterior."
+
+["bot.wz.warn_category_sold_out"]
+other = "Se creó cerrada una categoría con 0 plazas."
+
+["bot.wz.warn_publish_skipped"]
+other = "Se omitió la publicación: el evento no pasó la comprobación."
+
+["bot.wz.warn_poster_skipped"]
+other = "El cartel no se guardó: añádelo más tarde."
+
+["bot.wz.err_forbidden"]
+other = "No tienes permiso para esta acción: díselo al propietario de tu organización."
+
+["bot.wz.edit_btn"]
+other = "Editar"
+
+["bot.wz.copy_btn"]
+other = "Repetir como nuevo"
+
+["bot.wz.save_changes_btn"]
+other = "Guardar cambios"
+
+["bot.wz.force_btn"]
+other = "Guardar igualmente"
+
+["bot.wz.edit_intro"]
+other = "Editando «{{.Name}}». Esto es lo que Arena tiene ahora. Elige qué cambiar: cada cambio tiene su propia pantalla. Las fechas existentes no se pueden modificar, solo añadir nuevas."
+
+["bot.wz.edit_footer"]
+other = "Pulsa «Guardar cambios»: los cambios llegarán a la página de ventas en uno o dos minutos. Las entradas vendidas no se ven afectadas: el nuevo precio se aplica a las próximas compras."
+
+["bot.wz.edit_seated"]
+other = "Este evento tiene un plano de asientos o todavía no tiene fechas, así que no se puede editar desde el bot. Usa la página de administración."
+
+["bot.wz.edit_tickets_differ"]
+other = "La fecha {{.When}} tiene entradas distintas a las de la primera; al guardar, las entradas que ves aquí se escribirán en todas las fechas."
+
+["bot.wz.edit_changed_meanwhile"]
+other = "«{{.Name}}» se ha modificado en otro sitio (la web o la administración) después de que lo abrieras. ¿Guardar tu versión por encima?"
+
+["bot.wz.edit_saved"]
+other = "<b>Guardado.</b> «{{.Name}}» está actualizado.{{.Link}}{{.Warnings}}"
+
+["bot.wz.copy_intro"]
+other = "Una copia de «{{.Name}}»: se mantienen las entradas y la descripción, las fechas son nuevas. ¿Cuándo es la primera?"
+
+["bot.wz.edit_load_failed"]
+other = "No he podido leer este evento desde Arena. Inténtalo de nuevo en un minuto."
+
+["bot.wz.poster_first_btn"]
+other = "📷 Rellenar desde un cartel"
+
+["bot.wz.ask_poster_first"]
+other = "Envía el cartel: leeré el nombre, la fecha, la hora, el recinto y los precios y te los ofreceré como respuestas. Tú confirmas cada valor con un botón.\n\nLo mejor es enviarlo como <b>archivo</b>, para conservar la calidad:\n• en el móvil: clip 📎 → «Archivo» → la imagen;\n• en el ordenador: clip 📎 → la imagen → marca «Enviar como documento».\n\nPNG o JPG de hasta 5 MB, 4:5 (1080×1350) o cuadrado, ancho mínimo de 1000 px. La imagen se envía a Claude (Anthropic) para leerla: solo el cartel, sin datos de compradores.\n\n¿Has cambiado de idea? Pulsa «Atrás» y escribe el nombre."
+
+["bot.wz.err_poster_first"]
+other = "Estoy esperando un cartel como archivo o foto. Para escribir el nombre en su lugar, pulsa «Atrás»."
+
+["bot.wz.edit_step_title"]
+other = "<b>✏️ Editando · {{.Title}}</b>\n"
+
+["bot.wz.edit_home_btn"]
+other = "⬅ Volver al evento"
+
+["bot.wz.edit_field_name"]
+other = "Nombre"
+
+["bot.wz.edit_field_description"]
+other = "Descripción"
+
+["bot.wz.edit_field_poster"]
+other = "Cartel"
+
+["bot.wz.edit_field_age"]
+other = "Edad"
+
+["bot.wz.edit_field_promoter"]
+other = "Promotor"
+
+["bot.wz.edit_field_currency"]
+other = "Moneda"
+
+["bot.wz.edit_field_dates"]
+other = "Fechas"
+
+["bot.wz.edit_field_tickets"]
+other = "Precios y categorías"
+
+["bot.wz.edit_ask_name"]
+other = "Ahora: “{{.Value}}”.\nEnvía el nuevo nombre en un solo mensaje."
+
+["bot.wz.edit_ask_age"]
+other = "Ahora: {{.Value}}. Elige el nuevo límite de edad."
+
+["bot.wz.edit_ask_promoter"]
+other = "Ahora: {{.Value}}. Elige para quién se organiza el evento."
+
+["bot.wz.edit_ask_poster"]
+other = "Cartel ahora: {{.State}}.\nEnvía el nuevo como <b>archivo</b>: clip 📎 → «Archivo» (en el ordenador, marca «Enviar como documento»). PNG o JPG de hasta 5 MB, 4:5 (1080×1350) o cuadrado, ancho mínimo de 1000 px."
+
+["bot.wz.edit_poster_yes"]
+other = "cargado"
+
+["bot.wz.edit_poster_none"]
+other = "ninguno"
+
+["bot.wz.edit_ask_description"]
+other = "Envía la nueva descripción en un solo mensaje, de hasta 4000 caracteres."
+
+["bot.wz.edit_desc_now"]
+other = "Ahora:\n<i>{{.Text}}</i>\n\n"
+
+["bot.wz.edit_desc_none"]
+other = "Ahora no hay descripción.\n\n"
+
+["bot.wz.clear_description_btn"]
+other = "Quitar la descripción"
+
+["bot.wz.edit_card_title"]
+other = "<b>✏️ Editando el evento</b>\n"
+
+["bot.wz.edit_card_changed"]
+other = "✎ Cambiado: {{.List}}. Nada de esto está aún en la web: pulsa «Publicar cambios» cuando todo esté listo."
+
+["bot.wz.edit_card_clean"]
+other = "Elige qué cambiar. Cada cambio tiene su propia pantalla corta."
+
+["bot.wz.edit_b_name"]
+other = "Nombre"
+
+["bot.wz.edit_b_desc"]
+other = "Descripción"
+
+["bot.wz.edit_b_poster"]
+other = "Cartel"
+
+["bot.wz.edit_b_age"]
+other = "Edad"
+
+["bot.wz.edit_b_promoter"]
+other = "Promotor"
+
+["bot.wz.edit_b_currency"]
+other = "Moneda"
+
+["bot.wz.edit_b_date"]
+other = "＋ Otra fecha"
+
+["bot.wz.edit_b_tickets"]
+other = "Precios y categorías"
+
+["bot.wz.edit_publish_btn"]
+other = "✅ Publicar cambios"
+
+["bot.wz.edit_exit_btn"]
+other = "Salir"
+
+["bot.wz.ask_t_cat_last"]
+other = "¿«{{.Name}}» es la última categoría o le seguirá otra? La última se vende hasta que empieza la sesión."
+
+["bot.wz.t_cat_last_btn"]
+other = "La última"
+
+["bot.wz.t_cat_next_btn"]
+other = "Le sigue otra"
+
+["bot.wz.err_cat_end"]
+other = "No te he entendido. Elige una fecha en el calendario, escribe un número de entradas, o ambas cosas separadas por un espacio."
+
+["bot.wz.ack_end"]
+other = "✔ “{{.Name}}”: el precio se mantiene{{if .Until}} hasta {{.Until}}{{end}}{{if and .Until .Limit}}, o{{end}}{{if .Limit}} durante las primeras {{.Limit}} entradas{{end}}"
+
+["bot.wz.ack_category_last"]
+other = "{{.Name}} (la última, hasta que empieza la sesión)"
+
+["bot.wz.cancel_ask_create"]
+other = "¿Salir de la creación del evento? Puedes conservar el borrador y volver a él con el botón «＋ Evento», o eliminarlo."
+
+["bot.wz.cancel_ask_edit"]
+other = "¿Salir de la edición? Los cambios aún no están publicados. Puedes conservarlos como borrador o eliminarlos."
+
+["bot.wz.cancel_continue_btn"]
+other = "▶ Continuar"
+
+["bot.wz.cancel_keep_btn"]
+other = "💾 Guardar y salir"
+
+["bot.wz.cancel_drop_btn"]
+other = "🗑 Eliminar el borrador"
+
+["bot.wz.cancel_drop_edit_btn"]
+other = "🗑 Eliminar los cambios"
+
+["bot.wz.draft_kept"]
+other = "El borrador está guardado. Vuelve a él con el botón «＋ Evento»."
+
+["bot.wz.cal_hint"]
+other = "Elige un día en el calendario o escribe la fecha."
+
+["bot.wz.cal_range"]
+other = "Disponible del {{.Min}} al {{.Max}}."
+
+["bot.wz.cal_no_days"]
+other = "No hay nada que elegir: no hay días libres entre el {{.Min}} y el {{.Max}}. Vuelve atrás y revisa las fechas."
+
+["bot.wz.cal_today"]
+other = "Hoy"
+
+["bot.wz.cal_tomorrow"]
+other = "Mañana"
+
+["bot.wz.cal_week"]
+other = "En una semana"
+
+["bot.wz.cal_month"]
+other = "En un mes"
+
+["bot.wz.date_confirm_one"]
+other = "Has escrito “{{.Raw}}”. ¿Es el {{.Date}}?"
+
+["bot.wz.date_confirm_many"]
+other = "Has escrito “{{.Raw}}”. Se puede leer de más de una manera, porque es fácil confundir día y mes. ¿Qué fecha es la correcta?"
+
+["bot.wz.date_retry_btn"]
+other = "Otra fecha"
+
+["bot.wz.date_limit_suffix"]
+other = "hasta {{.N}} entradas"
+
+["bot.wz.err_date_past"]
+other = "Esa fecha ya ha pasado. Elige hoy o una posterior."
+
+["bot.wz.err_date_early"]
+other = "No puede ser anterior al {{.Date}}."
+
+["bot.wz.err_date_late"]
+other = "No puede ser posterior al {{.Date}}: ese es el día del evento."
+
+["bot.ses.list_title"]
+other = "<b>{{.Name}}</b>\nSesiones del evento."
+
+["bot.ses.list_empty"]
+other = "Aún no hay sesiones."
+
+["bot.ses.card_hint"]
+other = "Aquí puedes cambiar esta sesión a otra fecha y hora, o cancelarla. Las entradas ya vendidas se quedan en ella."
+
+["bot.ses.cancel_all_btn"]
+other = "✖ Cancelar todo el evento"
+
+["bot.ses.move_btn"]
+other = "📅 Cambiar de fecha"
+
+["bot.ses.cancel_btn"]
+other = "✖ Cancelar la sesión"
+
+["bot.ses.to_sessions_btn"]
+other = "A las sesiones"
+
+["bot.ses.move_date_q"]
+other = "Ahora: <b>{{.Now}}</b>.\n¿A qué fecha se traslada la sesión? Es la misma sesión, no una nueva: las entradas ya vendidas se quedan en ella."
+
+["bot.ses.move_time_q"]
+other = "Nueva fecha: <b>{{.Date}}</b>.\n¿A qué hora empieza? Escribe una hora, por ejemplo 19:30."
+
+["bot.ses.keep_time_btn"]
+other = "Mantener {{.Time}}"
+
+["bot.ses.no_change"]
+other = "La fecha y la hora son las mismas de ahora: no hay nada que trasladar."
+
+["bot.ses.confirm_move"]
+other = "<b>Trasladar la sesión</b>\nAntes: {{.Old}}\nDespués: <b>{{.New}}</b>"
+
+["bot.ses.confirm_cancel"]
+other = "<b>Cancelar la sesión</b>\n{{.Old}}"
+
+["bot.ses.confirm_cancel_all"]
+other = "<b>Cancelar todo el evento</b>\n\"{{.Name}}\": sesiones a cancelar — {{.N}}."
+
+["bot.ses.buyers_move"]
+other = "Esta sesión ya tiene compradores: {{.Tickets}} entradas, {{.Orders}} pedidos. Cada uno recibirá un correo con la nueva fecha y una nueva entrada (PDF). Los compradores podrán escribirte: {{.Contact}}."
+
+["bot.ses.buyers_cancel"]
+other = "Esta sesión ya tiene compradores: {{.Tickets}} entradas, {{.Orders}} pedidos. Cada uno recibirá un correo de cancelación. Los compradores podrán escribirte: {{.Contact}}."
+
+["bot.ses.no_address"]
+other = "Pedidos sin dirección de correo: {{.N}} — no se les puede escribir."
+
+["bot.ses.no_buyers"]
+other = "Esta sesión aún no tiene compradores, así que no se enviará ningún correo."
+
+["bot.ses.message_label"]
+other = "Tu mensaje para los compradores:\n<i>{{.Text}}</i>"
+
+["bot.ses.message_none"]
+other = "No hay ningún mensaje tuyo para los compradores: recibirán solo el correo estándar con la nueva fecha."
+
+["bot.ses.refund_note"]
+other = "El correo no promete ninguna devolución de dinero: los reembolsos los gestionas tú directamente con los compradores."
+
+["bot.ses.msg_edit_btn"]
+other = "✎ Editar el mensaje"
+
+["bot.ses.msg_ask"]
+other = "Escribe lo que leerán los compradores (hasta 1000 caracteres), por ejemplo el motivo y cómo contactarte. O elige un botón."
+
+["bot.ses.msg_clear_btn"]
+other = "Sin mensaje"
+
+["bot.ses.msg_default_btn"]
+other = "Texto estándar"
+
+["bot.ses.msg_too_long"]
+other = "Demasiado largo ({{.N}} caracteres). Acórtalo a 1000."
+
+["bot.ses.go_move_btn"]
+other = "✔ Trasladar y avisar"
+
+["bot.ses.go_move_free_btn"]
+other = "✔ Trasladar"
+
+["bot.ses.go_cancel_btn"]
+other = "✔ Cancelar y avisar"
+
+["bot.ses.go_cancel_free_btn"]
+other = "✔ Cancelar la sesión"
+
+["bot.ses.go_cancel_all_btn"]
+other = "✔ Cancelar todo y avisar"
+
+["bot.ses.go_cancel_all_free_btn"]
+other = "✔ Cancelar todo el evento"
+
+["bot.ses.site_blocked"]
+other = "Algunos pedidos ({{.N}}) se hicieron a través de tu sitio WordPress. Ese sitio escribe el correo a sus compradores, y trasladar o cancelar una sesión con esos pedidos aún no está soportado: escribe al soporte de Arena y lo haremos a mano. No se ha cambiado nada."
+
+["bot.ses.contact_ask_email"]
+other = "Para trasladar la sesión, los compradores necesitan una dirección a la que escribir; aparecerá en el correo. Escribe el correo de contacto (organizador: {{.Name}})."
+
+["bot.ses.contact_ask_phone"]
+other = "El teléfono de contacto es opcional. Escribe el número u omítelo."
+
+["bot.ses.contact_no_phone_btn"]
+other = "Sin teléfono"
+
+["bot.ses.contact_show_phone_q"]
+other = "¿Mostrar el teléfono a los compradores en el correo?"
+
+["bot.ses.contact_show_btn"]
+other = "Mostrarlo"
+
+["bot.ses.contact_hide_btn"]
+other = "No mostrarlo"
+
+["bot.ses.contact_bad_email"]
+other = "Eso no parece una dirección de correo. Escríbela de nuevo."
+
+["bot.ses.contact_saved"]
+other = "✔ Contacto guardado."
+
+["bot.ses.letters"]
+other = "Correos a compradores en cola: {{.N}}."
+
+["bot.ses.done_move"]
+other = "✔ La sesión se ha trasladado al <b>{{.New}}</b>.{{.Letters}}"
+
+["bot.ses.done_cancel"]
+other = "✔ La sesión está cancelada.{{.Letters}}"
+
+["bot.ses.done_cancel_all"]
+other = "✔ Sesiones canceladas: {{.N}}.{{.Letters}}"
+
+["bot.ses.partial"]
+other = "Sesiones canceladas: {{.N}}; el resto ha fallado. Abre la lista y comprueba qué sesiones quedan."
+
+["bot.ses.failed"]
+other = "No ha funcionado. No se ha cambiado nada. Inténtalo de nuevo un poco más tarde."
+
+["bot.ses.expired"]
+other = "Este diálogo ha caducado. Abre de nuevo las sesiones del evento."
+
+["bot.ses.open_btn"]
+other = "📅 Sesiones: mover y cancelar"

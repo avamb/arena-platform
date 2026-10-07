@@ -20,6 +20,9 @@ func TestFormatMoney(t *testing.T) {
 		{123450, "EUR", "ru", "1 234,50 EUR"},
 		{100000000, "CZK", "ru", "1 000 000 CZK"},
 		{-2500, "ILS", "en", "-25 ILS"},
+		{123450, "EUR", "es", "1.234,50 EUR"},
+		{9990, "eur", "es-ES", "99,90 EUR"},
+		{100000000, "EUR", "es", "1.000.000 EUR"},
 		{5, "EUR", "en", "0.05 EUR"},
 	}
 	for _, c := range cases {

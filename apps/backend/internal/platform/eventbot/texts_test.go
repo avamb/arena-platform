@@ -61,7 +61,7 @@ func TestEventBot_TextsWithoutBundleRenderKeys(t *testing.T) {
 
 func TestEventBot_NormalizeLocale(t *testing.T) {
 	t.Parallel()
-	cases := map[string]string{"": "en", "en": "en", "en-US": "en", "ru": "ru", "RU": "ru", "ru-RU": "ru", "ru_RU": "ru", "cs": "en", "he": "en", "xx": "en"}
+	cases := map[string]string{"": "en", "en": "en", "en-US": "en", "ru": "ru", "RU": "ru", "ru-RU": "ru", "ru_RU": "ru", "es": "es", "es-ES": "es", "ES": "es", "es_MX": "es", "cs": "en", "he": "en", "xx": "en"}
 	for in, want := range cases {
 		if got := NormalizeLocale(in); got != want {
 			t.Errorf("NormalizeLocale(%q) = %q; want %q", in, got, want)

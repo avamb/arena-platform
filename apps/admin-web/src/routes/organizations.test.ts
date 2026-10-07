@@ -21,6 +21,7 @@ import {
   buildAddMemberBody,
   botInviteRoleFor,
   buildBotInviteBody,
+  parseBotInviteLocale,
   memberDisplayName,
   filterRows,
   formatDurationSeconds,
@@ -975,5 +976,13 @@ describe("Telegram bot invitation helpers", () => {
       locale: "ru",
     });
     expect(buildBotInviteBody("a@b.test", "owner", "en").locale).toBe("en");
+    expect(buildBotInviteBody("a@b.test", "owner", "es").locale).toBe("es");
+  });
+
+  it("reads the invitation language from a select value", () => {
+    expect(parseBotInviteLocale("es")).toBe("es");
+    expect(parseBotInviteLocale("en")).toBe("en");
+    expect(parseBotInviteLocale("ru")).toBe("ru");
+    expect(parseBotInviteLocale("cs")).toBe("ru");
   });
 });

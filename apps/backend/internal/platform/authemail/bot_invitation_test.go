@@ -18,6 +18,28 @@ func TestBotDeepLink(t *testing.T) {
 	}
 }
 
+func TestRenderBotInvitationEmail_Spanish(t *testing.T) {
+	t.Parallel()
+	link := "https://t.me/ArenaEventsCentrBot?start=inv_abc"
+	expires := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+
+	subject, htmlBody, textBody := renderBotInvitationEmail("es", "Mi Organización", "owner", link, expires)
+	if !strings.Contains(subject, "Mi Organización") || !strings.Contains(subject, "invitación") {
+		t.Errorf("Spanish subject = %q", subject)
+	}
+	if !strings.Contains(textBody, "propietario") || !strings.Contains(textBody, link) {
+		t.Errorf("Spanish text lacks the role or the link:\n%s", textBody)
+	}
+	if !strings.Contains(htmlBody, `lang="es"`) || !strings.Contains(htmlBody, link) {
+		t.Errorf("Spanish html lacks lang or link:\n%s", htmlBody)
+	}
+
+	_, _, managerText := renderBotInvitationEmail("es", "", "manager", link, expires)
+	if !strings.Contains(managerText, "gestor") {
+		t.Errorf("manager role word missing:\n%s", managerText)
+	}
+}
+
 func TestHandleBotInvitationEmail_MailsTheDeepLink(t *testing.T) {
 	t.Parallel()
 	sender := &captureSender{}

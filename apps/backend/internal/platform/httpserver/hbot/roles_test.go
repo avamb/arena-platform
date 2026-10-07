@@ -50,6 +50,7 @@ func TestNormalizeLocale(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
 		"": "en", "en": "en", "EN": "en", "ru": "ru", "ru-RU": "ru", "ru_RU": "ru",
+		"es": "es", "ES": "es", "es-ES": "es", "es_MX": "es",
 		"cs": "en", "he": "en", "xx-YY": "en",
 	}
 	for in, want := range cases {

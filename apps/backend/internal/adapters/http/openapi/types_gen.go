@@ -3237,7 +3237,7 @@ type BotInvitationAcceptRequest struct {
 	// Email The e-mail the person typed; must match the invitation (case-insensitive).
 	Email openapi_types.Email `json:"email"`
 
-	// Locale The bot language for this account (`en` default, `ru`).
+	// Locale The bot language for this account (`en` default, `ru`, `es`).
 	Locale *string `json:"locale,omitempty"`
 
 	// TelegramUserId The Telegram account being bound.
@@ -3286,7 +3286,7 @@ type BotInvitationCreateRequest struct {
 	Email openapi_types.Email `json:"email"`
 
 	// Locale Language of the invitation e-mail and of the bot's first messages
-	// (`en` default, `ru`). Unknown values fall back to `en`.
+	// (`en` default, `ru`, `es`). Unknown values fall back to `en`.
 	Locale *string `json:"locale,omitempty"`
 
 	// Role The bot role the membership is created with: owner maps to the

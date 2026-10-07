@@ -7,7 +7,8 @@ import (
 )
 
 // FormatMoney renders a minor-unit amount as "1 234,50 EUR" (ru) or
-// "1,234.50 EUR" (en). Integer arithmetic only: the amount is money.
+// "1,234.50 EUR" (en) or "1.234,50 EUR" (es). Integer arithmetic only: the
+// amount is money.
 func FormatMoney(minor int64, currency, locale string) string {
 	neg := minor < 0
 	if neg {
@@ -16,6 +17,9 @@ func FormatMoney(minor int64, currency, locale string) string {
 	whole := minor / 100
 	cents := minor % 100
 	thousands, decimal := ",", "."
+	if NormalizeLocale(locale) == "es" {
+		thousands, decimal = ".", ","
+	}
 	if NormalizeLocale(locale) == "ru" {
 		thousands, decimal = " ", ","
 	}

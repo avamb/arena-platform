@@ -37,6 +37,16 @@ func TestDateCandidates(t *testing.T) {
 		{"2026-10-20", []string{"2026-10-20"}},
 		{"сегодня", []string{"2026-10-01"}},
 		{"Завтра", []string{"2026-10-02"}},
+		// Spanish: "de" between the parts, accented "mañana", its own month words.
+		{"20 de octubre", []string{"2026-10-20"}},
+		{"20 de octubre de 2027", []string{"2027-10-20"}},
+		{"5 de enero", []string{"2027-01-05"}},
+		{"3 abr", []string{"2027-04-03"}},
+		{"15 de diciembre", []string{"2026-12-15"}},
+		{"10 de agosto de 2027", []string{"2027-08-10"}},
+		{"hoy", []string{"2026-10-01"}},
+		{"Mañana", []string{"2026-10-02"}},
+		{"pasado mañana", []string{"2026-10-03"}},
 		// Not dates.
 		{"31.02.2026", nil},
 		{"13.13.2026", nil},
@@ -57,6 +67,9 @@ func TestDateWords(t *testing.T) {
 	}
 	if got := DateWords("en", "2026-10-20"); got != "Tuesday, 20 October 2026" {
 		t.Errorf("en = %q", got)
+	}
+	if got := DateWords("es", "2026-10-20"); got != "martes, 20 de octubre de 2026" {
+		t.Errorf("es = %q", got)
 	}
 }
 

@@ -350,6 +350,10 @@ func normalizeLocale(locale string) string {
 	switch strings.ToLower(strings.TrimSpace(locale)) {
 	case "ru":
 		return "ru"
+	case "es":
+		// Only the bot invitation e-mail is translated so far; the other
+		// e-mails fall through to their English default.
+		return "es"
 	default:
 		return "en"
 	}

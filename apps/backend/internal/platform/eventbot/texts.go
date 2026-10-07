@@ -17,7 +17,8 @@ import (
 
 // SupportedLocales are the languages the bot speaks; anything else falls
 // back to en (spec 28 §8 — cs/he come with their toml translations later).
-var SupportedLocales = []string{"en", "ru"}
+// es was added 2026-10-07 for the organizers in Spain.
+var SupportedLocales = []string{"en", "ru", "es"}
 
 // MessageKeys lists every bot.* key the bot renders. The locale test proves
 // each one exists in every supported catalog, so a missing translation is a

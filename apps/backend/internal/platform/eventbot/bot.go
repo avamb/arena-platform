@@ -505,7 +505,7 @@ func (b *Bot) showLangChooser(ctx context.Context, chatID int64, editMsgID *int,
 		return
 	}
 	rows := [][]models.InlineKeyboardButton{
-		{{Text: "English", CallbackData: "lang:en"}, {Text: "Русский", CallbackData: "lang:ru"}},
+		{{Text: "English", CallbackData: "lang:en"}, {Text: "Русский", CallbackData: "lang:ru"}, {Text: "Español", CallbackData: "lang:es"}},
 		{{Text: b.texts.T(id.Locale(), "bot.btn_home", nil), CallbackData: "home"}},
 	}
 	b.reply(ctx, chatID, editMsgID, b.texts.T(id.Locale(), "bot.lang_choose", nil), &models.InlineKeyboardMarkup{InlineKeyboard: rows})

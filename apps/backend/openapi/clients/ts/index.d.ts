@@ -8254,7 +8254,7 @@ export interface components {
             role: "owner" | "manager";
             /**
              * @description Language of the invitation e-mail and of the bot's first messages
-             *     (`en` default, `ru`). Unknown values fall back to `en`.
+             *     (`en` default, `ru`, `es`). Unknown values fall back to `en`.
              */
             locale?: string;
         };
@@ -8326,7 +8326,7 @@ export interface components {
             telegram_user_id: number;
             /** @description The Telegram @username, stored for display only. */
             telegram_username?: string;
-            /** @description The bot language for this account (`en` default, `ru`). */
+            /** @description The bot language for this account (`en` default, `ru`, `es`). */
             locale?: string;
         };
         /** @description Who the Telegram account now is. */

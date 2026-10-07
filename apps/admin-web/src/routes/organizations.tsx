@@ -2689,10 +2689,18 @@ export function botInviteRoleFor(role: string): BotInviteRole | null {
   return null;
 }
 
+/** The languages of the invitation e-mail and of the bot's first messages. */
+export type BotInviteLocale = "ru" | "en" | "es";
+
+/** Reads a select value back into a language; anything unknown is Russian. */
+export function parseBotInviteLocale(value: string): BotInviteLocale {
+  return value === "en" || value === "es" ? value : "ru";
+}
+
 export function buildBotInviteBody(
   email: string,
   role: BotInviteRole,
-  locale: "ru" | "en" = "ru",
+  locale: BotInviteLocale = "ru",
 ): { email: string; role: BotInviteRole; locale: string } {
   return { email: email.trim().toLowerCase(), role, locale };
 }
@@ -2729,7 +2737,7 @@ async function sendBotInvitation(
   orgId: string,
   email: string,
   role: BotInviteRole,
-  locale: "ru" | "en",
+  locale: BotInviteLocale,
 ): Promise<BotInviteResponse> {
   return authedFetch<BotInviteResponse>({
     method: "POST",
@@ -3150,7 +3158,7 @@ function AddMemberDialog({
 }) {
   const [userInput, setUserInput] = useState("");
   const [alsoBot, setAlsoBot] = useState(true);
-  const [botLocale, setBotLocale] = useState<"ru" | "en">("ru");
+  const [botLocale, setBotLocale] = useState<BotInviteLocale>("ru");
   const botNoticeRef = useRef<BotInviteNotice | null>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -3349,13 +3357,14 @@ function AddMemberDialog({
               {alsoBot ? (
                 <select
                   value={botLocale}
-                  onChange={(e) => setBotLocale(e.target.value === "en" ? "en" : "ru")}
+                  onChange={(e) => setBotLocale(parseBotInviteLocale(e.target.value))}
                   style={inputStyle}
                   aria-label="Bot invitation language"
                   data-testid="orgs-drawer-users-add-bot-locale"
                 >
                   <option value="ru">Letter in Russian</option>
                   <option value="en">Letter in English</option>
+                  <option value="es">Letter in Spanish</option>
                 </select>
               ) : null}
             </FieldRow>

@@ -43,7 +43,7 @@ type BotInvitationEmailPayload struct {
 	OrgName string `json:"org_name,omitempty"`
 	// Role is the bot-level role the person is invited as: owner or manager.
 	Role string `json:"role,omitempty"`
-	// Locale selects the e-mail language (en default, ru).
+	// Locale selects the e-mail language (en default, ru, es).
 	Locale string `json:"locale,omitempty"`
 }
 
@@ -92,7 +92,7 @@ func (h *Handler) HandleBotInvitationEmail(ctx context.Context, payload []byte) 
 }
 
 // renderBotInvitationEmail returns subject, HTML body and text body of the
-// invitation in the requested locale (en default, ru).
+// invitation in the requested locale (en default, ru, es).
 func renderBotInvitationEmail(locale, orgName, role, link string, expiresAt time.Time) (subject, htmlBody, textBody string) {
 	safeLink := html.EscapeString(link)
 	expiry := expiresAt.UTC().Format(time.RFC3339)
@@ -123,6 +123,31 @@ func renderBotInvitationEmail(locale, orgName, role, link string, expiresAt time
 			"Ссылка одноразовая и действует до " + expiry + ".",
 			"Если вы не ждали этого письма, просто проигнорируйте его.",
 			"", "Arena Platform — автоматическое сообщение",
+		}, "\n")
+	case "es":
+		roleWord := "gestor"
+		if role == "owner" {
+			roleWord = "propietario"
+		}
+		if orgName != "" {
+			subject = orgName + ": invitación al bot de eventos de Arena"
+		} else {
+			subject = "Invitación al bot de eventos de Arena"
+		}
+		intro := "Te han invitado a crear eventos y seguir las ventas"
+		if orgName != "" {
+			intro += " de la organización «" + orgName + "»"
+		}
+		intro += " en el bot de Arena en Telegram (rol: " + roleWord + ")."
+		htmlBody = fmt.Sprintf(botInviteHTMLEs, html.EscapeString(intro), expiry, safeLink, safeLink)
+		textBody = strings.Join([]string{
+			subject, "",
+			intro,
+			"Abre el enlace en Telegram y pulsa «Start»:",
+			link, "",
+			"El enlace es de un solo uso y es válido hasta " + expiry + ".",
+			"Si no esperabas este correo, simplemente ignóralo.",
+			"", "Arena Platform — mensaje automático",
 		}, "\n")
 	default:
 		roleWord := "manager"
@@ -178,6 +203,32 @@ const botInviteHTMLEn = `<!DOCTYPE html>
   </p>
   <hr>
   <p style="font-size:11px;color:#999">Arena Platform &mdash; automated message</p>
+</body>
+</html>`
+
+const botInviteHTMLEs = `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><title>Bot de eventos de Arena</title></head>
+<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
+  <h1 style="color:#1a1a2e">Bot de eventos de Arena</h1>
+  <p>%s</p>
+  <p>Abre el enlace en Telegram y pulsa <strong>Start</strong>.
+     El enlace es de un solo uso y es válido hasta <strong>%s</strong>.</p>
+  <p style="margin:24px 0">
+    <a href="%s"
+       style="background:#1a73e8;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;font-weight:bold;display:inline-block">
+      Abrir el bot
+    </a>
+  </p>
+  <p style="font-size:12px;color:#666">
+    Si el botón no funciona, copia y pega este enlace en Telegram:<br>
+    <span style="word-break:break-all">%s</span>
+  </p>
+  <p style="font-size:11px;color:#999">
+    Si no esperabas este correo, simplemente ignóralo.
+  </p>
+  <hr>
+  <p style="font-size:11px;color:#999">Arena Platform &mdash; mensaje automático</p>
 </body>
 </html>`
 

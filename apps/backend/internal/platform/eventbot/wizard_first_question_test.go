@@ -10,7 +10,7 @@ import (
 // not sell: owner feedback 2026-10-07) and says both ways in: type the name,
 // or send a poster. The poster way is named only when the button is on screen.
 func TestWizard_FirstQuestionIsNeutralAndExplainsBothWays(t *testing.T) {
-	for _, loc := range []string{"ru", "en"} {
+	for _, loc := range []string{"ru", "en", "es"} {
 		for _, posters := range []bool{true, false} {
 			r := newWizardRun(t, newFakeRefs())
 			r.w.WithPosterHints(posters)
@@ -23,15 +23,18 @@ func TestWizard_FirstQuestionIsNeutralAndExplainsBothWays(t *testing.T) {
 			}
 			text := strings.ToLower(screen.Text)
 
-			for _, banned := range []string{"wine", "piedmont", "вин", "пьемонт"} {
+			for _, banned := range []string{"wine", "piedmont", "вин", "пьемонт", "vino", "cata"} {
 				if strings.Contains(text, banned) {
 					t.Errorf("%s posters=%v: the example must be neutral, found %q:\n%s", loc, posters, banned, screen.Text)
 				}
 			}
 			example := "мадрид"
 			posterWord := "афиш"
-			if loc == "en" {
+			switch loc {
+			case "en":
 				example, posterWord = "madrid", "poster"
+			case "es":
+				example, posterWord = "madrid", "cartel"
 			}
 			if !strings.Contains(text, example) {
 				t.Errorf("%s posters=%v: want a Madrid example:\n%s", loc, posters, screen.Text)

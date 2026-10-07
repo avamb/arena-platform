@@ -2411,7 +2411,7 @@ components:
           type: string
           description: |
             Language of the invitation e-mail and of the bot's first messages
-            (`en` default, `ru`). Unknown values fall back to `en`.
+            (`en` default, `ru`, `es`). Unknown values fall back to `en`.
     BotInvitation:
       type: object
       description: A bot invitation as the API reports it, never the code.
@@ -2502,7 +2502,7 @@ components:
           description: The Telegram @username, stored for display only.
         locale:
           type: string
-          description: The bot language for this account (`en` default, `ru`).
+          description: The bot language for this account (`en` default, `ru`, `es`).
     BotInvitationAcceptResponse:
       type: object
       description: Who the Telegram account now is.
