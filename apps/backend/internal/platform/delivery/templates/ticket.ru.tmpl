@@ -1,36 +1,43 @@
-{{define "subject"}}Ваш билет — {{.EventName}}{{end}}
+{{define "subject"}}{{if gt (len .Tickets) 1}}Ваши билеты — {{.EventName}}{{else}}Ваш билет — {{.EventName}}{{end}}{{end}}
 
 {{define "html"}}<!DOCTYPE html>
 <html lang="ru" dir="ltr">
-<head><meta charset="UTF-8"><title>Ваш билет</title></head>
-<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
-  <table cellpadding="0" cellspacing="0" style="width:100%;border-bottom:1px solid #eee;padding-bottom:12px;margin-bottom:16px">
-    <tr>
-      <td style="vertical-align:middle">
-        {{with .Branding.LogoURL}}<img src="{{.}}" alt="{{$.Branding.LogoAlt}}" style="max-height:48px;max-width:240px">{{end}}
-      </td>
-      <td style="vertical-align:middle;text-align:right;font-size:13px;color:#555">
-        <strong>{{.Branding.OrgName}}</strong>
-        {{with .Branding.WebsiteURL}}<br><a href="{{.}}" style="color:#1a73e8;text-decoration:none">{{.}}</a>{{end}}
-      </td>
-    </tr>
-  </table>
-  <h1 style="color:#1a1a2e">Ваш билет готов</h1>
-  <p>Здравствуйте{{with .HolderName}} {{.}}{{end}},</p>
-  <p>Ваш билет на <strong>{{.EventName}}</strong> оформлен.
-     PDF-файл прикреплён к этому письму.</p>
-  <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
-    <tr><td><strong>Мероприятие</strong></td><td>{{.EventName}}</td></tr>
-    {{with .SessionStart}}<tr><td><strong>Дата и время</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .VenueName}}<tr><td><strong>Место проведения</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .TierName}}<tr><td><strong>Категория</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .SeatSector}}<tr><td><strong>Сектор</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .SeatRow}}<tr><td><strong>Ряд</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .SeatNumber}}<tr><td><strong>Место</strong></td><td>{{.}}</td></tr>{{end}}
-  </table>
-  <p style="font-size:12px;color:#666">Номер билета: {{.TicketID}}</p>
-  <p style="font-size:12px;color:#666">Отправлено на: {{.RecipientEmail}}</p>
-  <hr>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ваш билет</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:28px 32px 8px 32px;color:#22333D;font-size:16px;">Здравствуйте{{with .HolderName}}, {{.}}{{end}}!</td></tr>
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{if gt (len .Tickets) 1}}Спасибо за покупку. Ваши билеты на «{{.EventName}}» — во вложении к этому письму (PDF-файлы).{{else}}Спасибо за покупку. Ваш билет на «{{.EventName}}» — во вложении к этому письму (PDF).{{end}}</td></tr>
+  <tr><td style="padding:8px 32px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:4px solid {{.Accent}};background:#f8f9fa;"><tr><td style="padding:12px 16px;color:#22333D;font-size:14px;line-height:1.6;">
+      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}
+    </td></tr></table>
+  </td></tr>
+  <tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">{{if gt (len .Tickets) 1}}Билеты ({{len .Tickets}}){{else}}Билет{{end}}</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
+    {{range .Tickets}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">№ {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td>{{with .Price}}<td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td>{{end}}</tr>
+    {{else}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">№ {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · Сектор {{.}}{{end}}{{with .SeatRow}} · Ряд {{.}}{{end}}{{with .SeatNumber}} · Место {{.}}{{end}}</td></tr>
+    {{end}}</table>
+  </td></tr>
+  {{with .Payment}}<tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">Оплата</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
+      <tr><td style="padding:4px 0;color:#46555f;">Заказ</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">№ {{.OrderNumber}}</td></tr>
+      {{with .PaidAt}}<tr><td style="padding:4px 0;color:#46555f;">Оплачено</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      {{with .Subtotal}}<tr><td style="padding:4px 0;color:#46555f;">Билеты</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      {{with .Discount}}<tr><td style="padding:4px 0;color:#46555f;">Скидка</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">−{{.}}</td></tr>{{end}}
+      {{with .ServiceFee}}<tr><td style="padding:4px 0;color:#46555f;">Сервисный сбор</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      <tr><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;">Итого оплачено</td><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;white-space:nowrap;text-align:right;">{{.Total}}</td></tr>
+    </table>
+  </td></tr>{{end}}
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Откройте файл на телефоне и предъявите штрих-код на входе — распечатывать не обязательно.</td></tr>
+  <tr><td style="padding:8px 32px 16px 32px;color:#46555f;font-size:14px;line-height:1.6;">Если у вас есть вопросы, просто ответьте на это письмо.</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+    Отправлено на: {{.RecipientEmail}}<br><br>
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     <strong>{{.Branding.LegalName}}</strong>
     {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
@@ -40,27 +47,37 @@
     {{with .Branding.ContactEmail}}<br>Контакты: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — автоматическая рассылка</p>
+  </td></tr>
+</table>
+</td></tr></table>
 </body>
 </html>{{end}}
 
 {{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
 
-Ваш билет готов
+Здравствуйте{{with .HolderName}}, {{.}}{{end}}!
 
-Здравствуйте{{with .HolderName}} {{.}}{{end}},
+{{if gt (len .Tickets) 1}}Спасибо за покупку. Ваши билеты на «{{.EventName}}» — во вложении к этому письму (PDF-файлы).{{else}}Спасибо за покупку. Ваш билет на «{{.EventName}}» — во вложении к этому письму (PDF).{{end}}
 
-Ваш билет на {{.EventName}} оформлен.
-PDF-файл прикреплён к этому письму.
-
-Мероприятие: {{.EventName}}
-{{with .SessionStart}}Дата и время: {{.}}
-{{end}}{{with .VenueName}}Место проведения: {{.}}
-{{end}}{{with .TierName}}Категория: {{.}}
-{{end}}{{with .SeatSector}}Сектор: {{.}}
-{{end}}{{with .SeatRow}}Ряд: {{.}}
-{{end}}{{with .SeatNumber}}Место: {{.}}
+{{.EventName}}
+{{with .SessionStart}}{{.}}
+{{end}}{{with .VenueName}}{{.}}
 {{end}}
-Номер билета: {{.TicketID}}
+{{if gt (len .Tickets) 1}}Билеты ({{len .Tickets}}){{else}}Билет{{end}}:
+{{range .Tickets}}- № {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .Price}} · {{.}}{{end}}
+{{else}}- № {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · Сектор {{.}}{{end}}{{with .SeatRow}} · Ряд {{.}}{{end}}{{with .SeatNumber}} · Место {{.}}{{end}}
+{{end}}{{with .Payment}}
+Оплата:
+- Заказ: № {{.OrderNumber}}
+{{with .PaidAt}}- Оплачено: {{.}}
+{{end}}{{with .Subtotal}}- Билеты: {{.}}
+{{end}}{{with .Discount}}- Скидка: −{{.}}
+{{end}}{{with .ServiceFee}}- Сервисный сбор: {{.}}
+{{end}}- Итого оплачено: {{.Total}}
+{{end}}
+Откройте файл на телефоне и предъявите штрих-код на входе — распечатывать не обязательно.
+Если у вас есть вопросы, просто ответьте на это письмо.
+
 Отправлено на: {{.RecipientEmail}}
 
 --

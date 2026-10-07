@@ -39,7 +39,6 @@ package delivery
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -421,31 +420,47 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			return nil
 		}
 
-		// ── 7. Claim delivery_job for processing (idempotency key) ────────────
-		// Atomically transition pending → processing. If the row is not in
-		// 'pending' state (already claimed by another worker or already terminal),
-		// return nil — idempotent skip prevents double-send.
+		// ── 7. Claim the delivery_job(s) for processing (idempotency key) ─────
+		// Atomically transition pending → processing. For a ticket e-mail this
+		// claims EVERY pending job of the same order and recipient in one
+		// statement (order_letter.go): one e-mail then carries all the tickets
+		// of the order. If the own row is not pending (already claimed by
+		// another worker — typically the worker job of a sibling ticket — or
+		// already terminal), return nil: an idempotent skip prevents a
+		// double-send.
+		members := []*letterMember{{ticketID: ticketID, jobID: deliveryJobID, p: p}}
 		if opts.DeliveryJobQueries != nil && deliveryJobID != uuid.Nil {
-			_, claimErr := opts.DeliveryJobQueries.ClaimDeliveryJobForProcessing(ctx, deliveryJobID)
+			claimed, claimErr := claimLetterMembers(ctx, opts.DeliveryJobQueries, ticketID, deliveryJobID, p)
 			if claimErr != nil {
-				if errors.Is(claimErr, pgx.ErrNoRows) {
-					// Not in 'pending' state — already claimed or terminal.
-					logger.Info("delivery: delivery_job not claimable (not pending); skipping",
-						slog.String("ticket_id", ticketID.String()),
-						slog.String("delivery_job_id", deliveryJobID.String()),
-					)
-					return nil
-				}
 				// Transient DB error claiming the job — let worker retry.
 				return fmt.Errorf("delivery: claim delivery_job %s for processing: %w",
 					deliveryJobID, claimErr)
 			}
+			if claimed == nil {
+				// Not in 'pending' state — already claimed or terminal.
+				logger.Info("delivery: delivery_job not claimable (not pending); skipping",
+					slog.String("ticket_id", ticketID.String()),
+					slog.String("delivery_job_id", deliveryJobID.String()),
+				)
+				return nil
+			}
+			members = claimed
+		}
+		// fail hands every claimed job back to 'pending' before the error is
+		// returned, so the worker's retry claims the whole letter again. A job
+		// left in 'processing' is unclaimable forever: the retry would skip the
+		// send and report success while the buyer never got the ticket.
+		fail := func(err error) error {
+			if opts.DeliveryJobQueries != nil {
+				releaseLetterMembers(context.WithoutCancel(ctx), opts.DeliveryJobQueries, members, err.Error(), logger)
+			}
+			return err
 		}
 
 		// ── 8. Resolve organisation branding ─────────────────────────────────
 		// Feature #290 (T-3). Pulls the org logo bytes + signed URL via
 		// the media adapter (when configured and OrgLogoMediaID is set),
-		// falling back to the platform logo otherwise. Also assembles
+		// falling back to no logo otherwise. Also assembles
 		// the EU "commercial communications" minimum-identification
 		// block from the legal_name + legal_address_* + contact_email
 		// fields carried on the payload, substituting platform defaults
@@ -453,96 +468,28 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		brand := resolveBranding(ctx, opts.Media, p, logger)
 		branding := brand.Branding
 
-		// ── 8b. Resolve the EAN-13 number for the PDF ──────────────────────
-		// Feature #503 (W1-B6b): the PDF prints the platform-minted EAN-13
-		// number under the QR. Enqueuers never populate p.EAN13 directly, so
-		// resolve it here from ticket_credentials — a best-effort lookup,
-		// never fatal: pre-#502 tickets not yet caught up by
-		// tickets.backfill_ean13 simply render without the line.
-		if p.EAN13 == "" && opts.CredentialQueries != nil {
-			eanCred, eanErr := opts.CredentialQueries.GetCredentialByTicketID(ctx, ticketID, "ean13")
-			if eanErr != nil {
-				if !errors.Is(eanErr, pgx.ErrNoRows) {
-					logger.Warn("delivery: get ean13 credential failed; rendering pdf without it",
-						slog.String("ticket_id", ticketID.String()),
-						slog.String("error", eanErr.Error()),
-					)
-				}
-			} else {
-				p.EAN13 = eanCred.Payload
+		// ── 8b–9. Every ticket of the letter ─────────────────────────────────
+		// The EAN-13 credential, the presentation values the buyer reads and
+		// the PDF credential, per ticket (order_letter.go). Prefer the T-1 PDF
+		// renderer so the attached document carries the QR code and full
+		// ticket detail; a ticket whose PDF credential already exists costs
+		// nothing to render again.
+		for _, m := range members {
+			if err := prepareLetterTicket(ctx, opts, logger, m, m.ticketID == ticketID, branding, brand.LogoBytes, p); err != nil {
+				return fail(err)
 			}
 		}
-
-		// ── 8c. Resolve the presentation values ───────────────────────────
-		// Event name, session start, venue name/address/city/timezone,
-		// category and holder name, the human-facing ticket and order
-		// numbers, the price the buyer paid for this ticket and the id of
-		// the poster to print. Enqueuers may bake these into the payload
-		// but none do; whatever is missing is read from the ticket's own
-		// rows here, with a payload hint always winning. Best effort — a
-		// failure logs and the ticket still ships (see presentation.go).
-		if opts.TicketQueries != nil {
-			resolvePresentation(ctx, opts.TicketQueries, ticketID, &p, logger)
-		}
-
-		// ── 9. Generate PDF credential ────────────────────────────────────────
-		// Prefer the T-1 PDF renderer (apps/backend/internal/platform/delivery/pdf)
-		// so the attached document carries the QR code and full ticket detail.
-		// Fall back to the legacy minimal renderer when called from a context
-		// that has no event/session metadata at all (keeps existing tests
-		// and free-form enqueuers working).
-		var pdfBytes []byte
-		if opts.CredentialQueries != nil {
-			cred, credErr := opts.CredentialQueries.GetCredentialByTicketID(ctx, ticketID, "pdf")
-			if credErr != nil {
-				if !errors.Is(credErr, pgx.ErrNoRows) {
-					return fmt.Errorf("delivery: get pdf credential for ticket %s: %w",
-						ticketID, credErr)
-				}
-				// Generate and store a new PDF credential.
-				//
-				// ── 8d. Poster bytes ─────────────────────────────────
-				// Fetched only on the path that actually renders, so a
-				// ticket whose PDF credential already exists costs the
-				// media store nothing. Best effort and bounded: a poster
-				// that is missing, too large, slow or not a drawable
-				// image format yields nil and the page simply has no
-				// poster column (see resolvePoster).
-				poster := resolvePoster(ctx, opts.Media, p.PosterMediaID, logger)
-				pdfPayload, prErr := renderTicketPDF(ctx, ticketID, p, branding, brand.LogoBytes, poster)
-				if prErr != nil {
-					return fmt.Errorf("delivery: render pdf for ticket %s: %w",
-						ticketID, prErr)
-				}
-				encoded := base64.StdEncoding.EncodeToString(pdfPayload)
-				cred, credErr = opts.CredentialQueries.InsertTicketCredential(
-					ctx, ticketID, "pdf", encoded,
-				)
-				if credErr != nil {
-					return fmt.Errorf("delivery: insert pdf credential for ticket %s: %w",
-						ticketID, credErr)
-				}
-			}
-			// Decode base64 payload back to bytes for attachment.
-			var decErr error
-			pdfBytes, decErr = base64.StdEncoding.DecodeString(cred.Payload)
-			if decErr != nil {
-				return fmt.Errorf("delivery: decode pdf payload for ticket %s: %w",
-					ticketID, decErr)
-			}
-		} else {
-			// No credential store — render on the fly so we still attach a PDF.
-			poster := resolvePoster(ctx, opts.Media, p.PosterMediaID, logger)
-			pdfPayload, prErr := renderTicketPDF(ctx, ticketID, p, branding, brand.LogoBytes, poster)
-			if prErr != nil {
-				logger.Warn("delivery: render pdf failed; sending without attachment",
-					slog.String("ticket_id", ticketID.String()),
-					slog.String("error", prErr.Error()),
-				)
-			} else {
-				pdfBytes = pdfPayload
+		sortLetterMembers(members)
+		var own *letterMember
+		for _, m := range members {
+			if m.ticketID == ticketID {
+				own = m
+				break
 			}
 		}
+		// The event, session and holder the letter speaks about are the own
+		// ticket's: the tickets of one order belong to one purchase.
+		p = own.p
 
 		// ── 10. Build email ───────────────────────────────────────────────────
 		// Localized templates from the templates package (feature #289, T-2).
@@ -553,10 +500,26 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			kind = templates.TemplateKindInvitation
 		}
 
-		// The buyer-facing number, never the internal UUID — the body's
-		// "Ticket ID" line and the attachment filename are what a buyer
-		// quotes back to support, and the PDF prints the same value.
-		ticketNumber := pdf.DisplayNumber(p.TicketNumber, ticketID.String())
+		// The buyer-facing number, never the internal UUID — the body's ticket
+		// line and the attachment filename are what a buyer quotes back to
+		// support, and the PDF prints the same value.
+		ticketNumber := own.number
+
+		// The payment block: the order's money, only when this letter carries
+		// every ticket of a paid order.
+		var payment *templates.PaymentData
+		if kind == templates.TemplateKindTicket && opts.DeliveryJobQueries != nil {
+			summary, sErr := opts.DeliveryJobQueries.GetDeliveryPaymentSummaryByTicketID(ctx, ticketID)
+			switch {
+			case sErr == nil:
+				payment = buildPaymentData(summary, p.SessionTZ, len(members))
+			case !errors.Is(sErr, pgx.ErrNoRows):
+				logger.Warn("delivery: payment summary lookup failed; sending without the payment block",
+					slog.String("ticket_id", ticketID.String()),
+					slog.String("error", sErr.Error()),
+				)
+			}
+		}
 
 		var htmlBody, textBody, subject string
 		if renderer != nil {
@@ -572,10 +535,12 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				SeatRow:        p.SeatRow,
 				SeatNumber:     p.SeatNumber,
 				Branding:       branding,
+				Tickets:        ticketLinesFor(kind, members, p.Locale, payment == nil),
+				Payment:        payment,
 			})
 			if rErr != nil {
-				return fmt.Errorf("delivery: render templates for ticket %s: %w",
-					ticketID, rErr)
+				return fail(fmt.Errorf("delivery: render templates for ticket %s: %w",
+					ticketID, rErr))
 			}
 			subject, htmlBody, textBody = out.Subject, out.HTMLBody, out.TextBody
 		} else {
@@ -592,22 +557,26 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		}
 
 		msg := ticketEmailMessage(p, recipientEmail, subject, htmlBody, textBody)
-		if len(pdfBytes) > 0 {
-			msg.Attachments = []email.Attachment{
-				{
-					Filename:    fmt.Sprintf("ticket-%s.pdf", ticketNumber),
-					ContentType: "application/pdf",
-					Data:        pdfBytes,
-				},
+		attachmentBytes := 0
+		for _, m := range members {
+			if len(m.pdf) == 0 {
+				continue
 			}
+			msg.Attachments = append(msg.Attachments, email.Attachment{
+				Filename:    fmt.Sprintf("ticket-%s.pdf", m.number),
+				ContentType: "application/pdf",
+				Data:        m.pdf,
+			})
+			attachmentBytes += len(m.pdf)
 		}
 
 		// ── 11. Send via real SMTP ────────────────────────────────────────────
 		// opts.Sender is guaranteed non-nil and non-dev-only at this point
 		// (the guard at step 2 would have returned early otherwise).
 		if sendErr := opts.Sender.Send(ctx, msg); sendErr != nil {
-			// The send failed, so nothing was delivered: hand the delivery_jobs
-			// row back to 'pending' so the worker's retry can claim it again.
+			// The send failed, so nothing was delivered: hand every claimed
+			// delivery_jobs row back to 'pending' so the worker's retry can
+			// claim them again.
 			//
 			// Until 2026-09-20 the row was left in 'processing'. The retry then
 			// hit the claim CAS ("not pending"), skipped the send and reported
@@ -622,17 +591,9 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			//
 			// NOTE: SMTP credentials and ticket barcodes are NOT included in log
 			// fields — only the ticket_id and sanitised error string.
-			if opts.DeliveryJobQueries != nil && deliveryJobID != uuid.Nil {
-				errText := sendErr.Error()
-				if _, relErr := opts.DeliveryJobQueries.UpdateDeliveryJobStatus(
-					ctx, deliveryJobID, StatusPending, &errText,
-				); relErr != nil {
-					logger.Error("delivery: could not release delivery_job back to pending after a failed send",
-						slog.String("delivery_job_id", deliveryJobID.String()),
-						slog.String("ticket_id", ticketID.String()),
-						slog.String("error", relErr.Error()),
-					)
-				}
+			errText := sendErr.Error()
+			if opts.DeliveryJobQueries != nil {
+				releaseLetterMembers(context.WithoutCancel(ctx), opts.DeliveryJobQueries, members, errText, logger)
 			}
 			logger.Warn("delivery: SMTP send failed; worker will retry",
 				slog.String("ticket_id", ticketID.String()),
@@ -642,21 +603,26 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			return fmt.Errorf("delivery: send email to %s: %w", recipientEmail, sendErr)
 		}
 
-		// ── 12. Update delivery_jobs to 'sent' ────────────────────────────────
+		// ── 12. Update every delivery_jobs row of the letter to 'sent' ───────
 		// SMTP accepted the message. Status-update failure here does NOT retry
 		// the send: the email was delivered, and a subsequent retry would cause
 		// a duplicate. Log the failure for reconciliation monitoring instead.
-		if opts.DeliveryJobQueries != nil && deliveryJobID != uuid.Nil {
-			if _, updErr := opts.DeliveryJobQueries.UpdateDeliveryJobStatus(
-				ctx, deliveryJobID, StatusSent, nil,
-			); updErr != nil {
-				// Non-fatal: the email was sent. Reconciliation will fix the status.
-				logger.Warn("delivery: update delivery_job to 'sent' failed after SMTP success; reconciliation required",
-					slog.String("delivery_job_id", deliveryJobID.String()),
-					slog.String("ticket_id", ticketID.String()),
-					slog.String("error", updErr.Error()),
-				)
-				// Return nil: do NOT retry the worker job — the email was sent.
+		if opts.DeliveryJobQueries != nil {
+			for _, m := range members {
+				if m.jobID == uuid.Nil {
+					continue
+				}
+				if _, updErr := opts.DeliveryJobQueries.UpdateDeliveryJobStatus(
+					ctx, m.jobID, StatusSent, nil,
+				); updErr != nil {
+					// Non-fatal: the email was sent. Reconciliation will fix the status.
+					logger.Warn("delivery: update delivery_job to 'sent' failed after SMTP success; reconciliation required",
+						slog.String("delivery_job_id", m.jobID.String()),
+						slog.String("ticket_id", m.ticketID.String()),
+						slog.String("error", updErr.Error()),
+					)
+					// Carry on: do NOT retry the worker job — the email was sent.
+				}
 			}
 		}
 
@@ -668,7 +634,8 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		logger.Info("delivery: email sent",
 			slog.String("ticket_id", ticketID.String()),
 			slog.String("delivery_job_id", deliveryJobID.String()),
-			slog.Int("attachment_bytes", len(pdfBytes)),
+			slog.Int("tickets", len(members)),
+			slog.Int("attachment_bytes", attachmentBytes),
 		)
 
 		return nil

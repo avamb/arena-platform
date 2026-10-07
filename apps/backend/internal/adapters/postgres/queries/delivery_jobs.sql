@@ -49,3 +49,15 @@ FROM   delivery_jobs
 WHERE  status = 'pending'
 ORDER  BY queued_at ASC
 LIMIT  $1;
+
+-- name: ClaimPendingDeliveryJobsForOrder :many
+-- ClaimPendingDeliveryJobsForOrder atomically moves the delivery job of
+-- ticket $1 AND every other pending job of the same order and recipient to
+-- 'processing', so one e-mail carries all the tickets of an order. One
+-- statement: of several worker jobs started together for one order exactly one
+-- gets the rows. See gen/delivery_group.sql.go for the statement.
+
+-- name: GetDeliveryPaymentSummaryByTicketID :one
+-- GetDeliveryPaymentSummaryByTicketID reads the order number, paid-at and the
+-- money of the purchase ticket $1 was issued for (the ticket e-mail's payment
+-- block). See gen/delivery_group.sql.go for the statement.

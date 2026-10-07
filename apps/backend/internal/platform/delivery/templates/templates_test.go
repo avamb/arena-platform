@@ -274,8 +274,10 @@ func TestRender_Branding_FooterCarriesLegalIdentification(t *testing.T) {
 
 func TestRender_Branding_PlatformFallbackLogo(t *testing.T) {
 	r, _ := New()
-	// When the org has no logo_media_id the worker substitutes the
-	// platform logo URL. The header <img src> must point at it.
+	// When the org has no logo_media_id the worker substitutes the platform
+	// logo URL, which is EMPTY on purpose (there is no hosted platform logo; a
+	// placeholder address made Gmail show a broken picture). The header then
+	// carries the organization's name instead of an <img>.
 	out, err := r.Render(TemplateKindTicket, "en", Data{
 		TicketID: "id", EventName: "E", RecipientEmail: "x@y.z",
 		Branding: Branding{
@@ -288,8 +290,14 @@ func TestRender_Branding_PlatformFallbackLogo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.HTMLBody, `src="`+PlatformLogoURL+`"`) {
-		t.Errorf("header missing platform fallback logo src: %q", out.HTMLBody)
+	if PlatformLogoURL != "" {
+		t.Errorf("PlatformLogoURL = %q, want empty: no placeholder address may reach a buyer's inbox", PlatformLogoURL)
+	}
+	if strings.Contains(out.HTMLBody, "<img") {
+		t.Errorf("an e-mail without a logo must not carry an <img>: %q", out.HTMLBody)
+	}
+	if !strings.Contains(out.HTMLBody, ">"+PlatformOrgName+"</td>") {
+		t.Errorf("header missing the organization name in place of the logo: %q", out.HTMLBody)
 	}
 	if !strings.Contains(out.HTMLBody, PlatformLegalName) {
 		t.Errorf("footer missing platform legal name: %q", out.HTMLBody)
@@ -375,10 +383,10 @@ func TestRender_RussianAndCzechMarkers(t *testing.T) {
 		ticketMarker string
 		inviteMarker string
 	}{
-		{locale: "ru", htmlLangAttr: `lang="ru"`, ticketMarker: "Ваш билет готов", inviteMarker: "Вы приглашены!"},
-		{locale: "cs", htmlLangAttr: `lang="cs"`, ticketMarker: "Vaše vstupenka je připravena", inviteMarker: "Jste pozváni!"},
+		{locale: "ru", htmlLangAttr: `lang="ru"`, ticketMarker: "Спасибо за покупку", inviteMarker: "Вы приглашены!"},
+		{locale: "cs", htmlLangAttr: `lang="cs"`, ticketMarker: "Děkujeme za nákup", inviteMarker: "Jste pozváni!"},
 		// French, added for the first French-market organizer (2026-10-01).
-		{locale: "fr", htmlLangAttr: `lang="fr"`, ticketMarker: "Votre billet est prêt", inviteMarker: "Vous êtes invité(e) !"},
+		{locale: "fr", htmlLangAttr: `lang="fr"`, ticketMarker: "Merci pour votre achat", inviteMarker: "Vous êtes invité(e) !"},
 	}
 	data := Data{
 		TicketID:       "11111111-2222-3333-4444-555555555555",

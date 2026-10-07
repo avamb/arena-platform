@@ -1,36 +1,43 @@
-{{define "subject"}}Vaše vstupenka — {{.EventName}}{{end}}
+{{define "subject"}}{{if gt (len .Tickets) 1}}Vaše vstupenky — {{.EventName}}{{else}}Vaše vstupenka — {{.EventName}}{{end}}{{end}}
 
 {{define "html"}}<!DOCTYPE html>
 <html lang="cs" dir="ltr">
-<head><meta charset="UTF-8"><title>Vaše vstupenka</title></head>
-<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
-  <table cellpadding="0" cellspacing="0" style="width:100%;border-bottom:1px solid #eee;padding-bottom:12px;margin-bottom:16px">
-    <tr>
-      <td style="vertical-align:middle">
-        {{with .Branding.LogoURL}}<img src="{{.}}" alt="{{$.Branding.LogoAlt}}" style="max-height:48px;max-width:240px">{{end}}
-      </td>
-      <td style="vertical-align:middle;text-align:right;font-size:13px;color:#555">
-        <strong>{{.Branding.OrgName}}</strong>
-        {{with .Branding.WebsiteURL}}<br><a href="{{.}}" style="color:#1a73e8;text-decoration:none">{{.}}</a>{{end}}
-      </td>
-    </tr>
-  </table>
-  <h1 style="color:#1a1a2e">Vaše vstupenka je připravena</h1>
-  <p>Dobrý den{{with .HolderName}} {{.}}{{end}},</p>
-  <p>Vaše vstupenka na <strong>{{.EventName}}</strong> byla vystavena.
-     PDF naleznete v příloze tohoto e-mailu.</p>
-  <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
-    <tr><td><strong>Akce</strong></td><td>{{.EventName}}</td></tr>
-    {{with .SessionStart}}<tr><td><strong>Termín</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .VenueName}}<tr><td><strong>Místo konání</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .TierName}}<tr><td><strong>Kategorie</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .SeatSector}}<tr><td><strong>Sektor</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .SeatRow}}<tr><td><strong>Řada</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .SeatNumber}}<tr><td><strong>Místo</strong></td><td>{{.}}</td></tr>{{end}}
-  </table>
-  <p style="font-size:12px;color:#666">Číslo vstupenky: {{.TicketID}}</p>
-  <p style="font-size:12px;color:#666">Doručeno na: {{.RecipientEmail}}</p>
-  <hr>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vaše vstupenka</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:28px 32px 8px 32px;color:#22333D;font-size:16px;">Dobrý den{{with .HolderName}}, {{.}}{{end}}!</td></tr>
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{if gt (len .Tickets) 1}}Děkujeme za nákup. Vaše vstupenky na „{{.EventName}}“ najdete v příloze tohoto e-mailu (soubory PDF).{{else}}Děkujeme za nákup. Vaši vstupenku na „{{.EventName}}“ najdete v příloze tohoto e-mailu (PDF).{{end}}</td></tr>
+  <tr><td style="padding:8px 32px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:4px solid {{.Accent}};background:#f8f9fa;"><tr><td style="padding:12px 16px;color:#22333D;font-size:14px;line-height:1.6;">
+      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}
+    </td></tr></table>
+  </td></tr>
+  <tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">{{if gt (len .Tickets) 1}}Vstupenky ({{len .Tickets}}){{else}}Vstupenka{{end}}</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
+    {{range .Tickets}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">č. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td>{{with .Price}}<td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td>{{end}}</tr>
+    {{else}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">č. {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · Sektor {{.}}{{end}}{{with .SeatRow}} · Řada {{.}}{{end}}{{with .SeatNumber}} · Místo {{.}}{{end}}</td></tr>
+    {{end}}</table>
+  </td></tr>
+  {{with .Payment}}<tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">Platba</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
+      <tr><td style="padding:4px 0;color:#46555f;">Objednávka</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">č. {{.OrderNumber}}</td></tr>
+      {{with .PaidAt}}<tr><td style="padding:4px 0;color:#46555f;">Zaplaceno</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      {{with .Subtotal}}<tr><td style="padding:4px 0;color:#46555f;">Vstupenky</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      {{with .Discount}}<tr><td style="padding:4px 0;color:#46555f;">Sleva</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">−{{.}}</td></tr>{{end}}
+      {{with .ServiceFee}}<tr><td style="padding:4px 0;color:#46555f;">Servisní poplatek</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      <tr><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;">Celkem zaplaceno</td><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;white-space:nowrap;text-align:right;">{{.Total}}</td></tr>
+    </table>
+  </td></tr>{{end}}
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Otevřete soubor v telefonu a u vstupu ukažte čárový kód — tisk není nutný.</td></tr>
+  <tr><td style="padding:8px 32px 16px 32px;color:#46555f;font-size:14px;line-height:1.6;">V případě dotazů jednoduše odpovězte na tento e-mail.</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+    Doručeno na: {{.RecipientEmail}}<br><br>
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     <strong>{{.Branding.LegalName}}</strong>
     {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
@@ -40,27 +47,37 @@
     {{with .Branding.ContactEmail}}<br>Kontakt: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — automatické doručení</p>
+  </td></tr>
+</table>
+</td></tr></table>
 </body>
 </html>{{end}}
 
 {{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
 
-Vaše vstupenka je připravena
+Dobrý den{{with .HolderName}}, {{.}}{{end}}!
 
-Dobrý den{{with .HolderName}} {{.}}{{end}},
+{{if gt (len .Tickets) 1}}Děkujeme za nákup. Vaše vstupenky na „{{.EventName}}“ najdete v příloze tohoto e-mailu (soubory PDF).{{else}}Děkujeme za nákup. Vaši vstupenku na „{{.EventName}}“ najdete v příloze tohoto e-mailu (PDF).{{end}}
 
-Vaše vstupenka na {{.EventName}} byla vystavena.
-PDF naleznete v příloze tohoto e-mailu.
-
-Akce: {{.EventName}}
-{{with .SessionStart}}Termín: {{.}}
-{{end}}{{with .VenueName}}Místo konání: {{.}}
-{{end}}{{with .TierName}}Kategorie: {{.}}
-{{end}}{{with .SeatSector}}Sektor: {{.}}
-{{end}}{{with .SeatRow}}Řada: {{.}}
-{{end}}{{with .SeatNumber}}Místo: {{.}}
+{{.EventName}}
+{{with .SessionStart}}{{.}}
+{{end}}{{with .VenueName}}{{.}}
 {{end}}
-Číslo vstupenky: {{.TicketID}}
+{{if gt (len .Tickets) 1}}Vstupenky ({{len .Tickets}}){{else}}Vstupenka{{end}}:
+{{range .Tickets}}- č. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .Price}} · {{.}}{{end}}
+{{else}}- č. {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · Sektor {{.}}{{end}}{{with .SeatRow}} · Řada {{.}}{{end}}{{with .SeatNumber}} · Místo {{.}}{{end}}
+{{end}}{{with .Payment}}
+Platba:
+- Objednávka: č. {{.OrderNumber}}
+{{with .PaidAt}}- Zaplaceno: {{.}}
+{{end}}{{with .Subtotal}}- Vstupenky: {{.}}
+{{end}}{{with .Discount}}- Sleva: −{{.}}
+{{end}}{{with .ServiceFee}}- Servisní poplatek: {{.}}
+{{end}}- Celkem zaplaceno: {{.Total}}
+{{end}}
+Otevřete soubor v telefonu a u vstupu ukažte čárový kód — tisk není nutný.
+V případě dotazů jednoduše odpovězte na tento e-mail.
+
 Doručeno na: {{.RecipientEmail}}
 
 --

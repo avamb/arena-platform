@@ -109,6 +109,56 @@ type Data struct {
 	// Change carries what a session-change / session-cancel e-mail says. It
 	// is zero for the ticket and invitation kinds.
 	Change ChangeData
+
+	// Accent is the colour of the thin band under the header, a CSS hex
+	// value. Render fills DefaultAccentColor when it is empty, so a caller
+	// never has to; a later wave can drive it from the organization.
+	Accent string
+
+	// Tickets lists every ticket the one e-mail carries (one letter per
+	// order). The ticket e-mail prints this list; when it is empty the
+	// template falls back to the single ticket described by TicketID,
+	// TierName and the Seat* fields above, which is what the change and
+	// cancel e-mails (one ticket each) and older callers use.
+	Tickets []TicketLine
+
+	// Payment is the purchase summary printed as the "Payment" block of the
+	// ticket e-mail. nil omits the block: an invitation, a free ticket or an
+	// order whose money is not known pays nothing to show.
+	Payment *PaymentData
+}
+
+// TicketLine is one ticket of a multi-ticket e-mail. Every field is a
+// ready-to-print string; empty ones are omitted by the templates.
+type TicketLine struct {
+	// Number is the buyer-facing ticket number (never a UUID).
+	Number string
+	// Tier is the category name; may be empty.
+	Tier string
+	// Seat is the "Sector A · Row 3 · Seat 5" style position, already put
+	// together in the buyer's language; empty for general admission.
+	Seat string
+	// Price is what the buyer paid for this ticket ("25.00 EUR"); empty for
+	// a free ticket or when it is not known.
+	Price string
+}
+
+// PaymentData is the "Payment" block of the ticket e-mail: the numbers of the
+// purchase as the buyer was charged, pre-formatted ("25.00 EUR").
+type PaymentData struct {
+	// OrderNumber is the buyer-facing order reference (orders.system_id).
+	OrderNumber string
+	// PaidAt is the payment time, formatted in the venue's zone; may be empty.
+	PaidAt string
+	// Subtotal is the sum of the ticket prices before any discount.
+	Subtotal string
+	// Discount is the promo-code discount as a positive amount; empty when
+	// there was none.
+	Discount string
+	// ServiceFee is the platform service charge; empty when there was none.
+	ServiceFee string
+	// Total is what the buyer paid.
+	Total string
 }
 
 // ChangeData carries what a session-change / session-cancel e-mail says. It is
@@ -182,11 +232,21 @@ type Branding struct {
 // NULL, etc.). The templates themselves never substitute these
 // values — the renderer prints exactly what it is given.
 const (
-	PlatformOrgName      = "Arena Platform"
-	PlatformLogoURL      = "https://assets.arena.example.com/branding/platform-logo.png"
+	PlatformOrgName = "Arena Platform"
+	// PlatformLogoURL is empty on purpose: there is no hosted platform logo,
+	// and a placeholder address (it used to be assets.arena.example.com)
+	// made Gmail show a broken picture on every e-mail of an organization
+	// without a logo. Empty makes the {{with .Branding.LogoURL}} guards drop
+	// the <img>, and the header shows the coloured band instead.
+	PlatformLogoURL      = ""
 	PlatformLegalName    = "Arena Platform"
 	PlatformContactEmail = "support@arena.example.com"
 )
+
+// DefaultAccentColor is the Arena Sold Out indigo — the same value as the PDF
+// ticket's accent (pdf.DefaultAccentColor) so a letter and its attachment
+// carry one colour.
+const DefaultAccentColor = "#4f46e5"
 
 // Rendered is the output of a single Render call: the three pieces of the
 // email body that the SMTP adapter needs.
@@ -287,6 +347,9 @@ func (r *Renderer) ResolveLocale(kind, locale string) string {
 // Falls back to DefaultLocale when locale is missing. Returns an error
 // only if kind is unknown or the templates fail to execute.
 func (r *Renderer) Render(kind, locale string, data Data) (Rendered, error) {
+	if strings.TrimSpace(data.Accent) == "" {
+		data.Accent = DefaultAccentColor
+	}
 	resolved := r.ResolveLocale(kind, locale)
 	key := kind + "." + resolved
 

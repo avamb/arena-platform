@@ -1,36 +1,43 @@
-{{define "subject"}}הכרטיס שלך — {{.EventName}}{{end}}
+{{define "subject"}}{{if gt (len .Tickets) 1}}הכרטיסים שלך — {{.EventName}}{{else}}הכרטיס שלך — {{.EventName}}{{end}}{{end}}
 
 {{define "html"}}<!DOCTYPE html>
 <html lang="he" dir="rtl">
-<head><meta charset="UTF-8"><title>הכרטיס שלך</title></head>
-<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e;direction:rtl;text-align:right">
-  <table cellpadding="0" cellspacing="0" style="width:100%;border-bottom:1px solid #eee;padding-bottom:12px;margin-bottom:16px;direction:rtl">
-    <tr>
-      <td style="vertical-align:middle">
-        {{with .Branding.LogoURL}}<img src="{{.}}" alt="{{$.Branding.LogoAlt}}" style="max-height:48px;max-width:240px">{{end}}
-      </td>
-      <td style="vertical-align:middle;text-align:left;font-size:13px;color:#555">
-        <strong>{{.Branding.OrgName}}</strong>
-        {{with .Branding.WebsiteURL}}<br><a href="{{.}}" style="color:#1a73e8;text-decoration:none">{{.}}</a>{{end}}
-      </td>
-    </tr>
-  </table>
-  <h1 style="color:#1a1a2e">הכרטיס שלך מוכן</h1>
-  <p>שלום{{with .HolderName}} {{.}}{{end}},</p>
-  <p>הכרטיס שלך עבור <strong>{{.EventName}}</strong> הונפק.
-     קובץ ה-PDF מצורף להודעה זו.</p>
-  <table cellpadding="4" style="border-collapse:collapse;font-size:14px;direction:rtl">
-    <tr><td><strong>אירוע</strong></td><td>{{.EventName}}</td></tr>
-    {{with .SessionStart}}<tr><td><strong>מועד</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .VenueName}}<tr><td><strong>מקום</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .TierName}}<tr><td><strong>קטגוריה</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .SeatSector}}<tr><td><strong>אזור</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .SeatRow}}<tr><td><strong>שורה</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .SeatNumber}}<tr><td><strong>מקום</strong></td><td>{{.}}</td></tr>{{end}}
-  </table>
-  <p style="font-size:12px;color:#666">מזהה כרטיס: {{.TicketID}}</p>
-  <p style="font-size:12px;color:#666">נשלח אל: {{.RecipientEmail}}</p>
-  <hr>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>הכרטיס שלך</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" dir="rtl" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:28px 32px 8px 32px;color:#22333D;font-size:16px;text-align:right;">שלום{{with .HolderName}} {{.}}{{end}},</td></tr>
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;text-align:right;">{{if gt (len .Tickets) 1}}תודה על הרכישה. הכרטיסים שלך ל„{{.EventName}}” מצורפים למייל זה (קובצי PDF).{{else}}תודה על הרכישה. הכרטיס שלך ל„{{.EventName}}” מצורף למייל זה (PDF).{{end}}</td></tr>
+  <tr><td style="padding:8px 32px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-right:4px solid {{.Accent}};background:#f8f9fa;"><tr><td style="padding:12px 16px;color:#22333D;font-size:14px;line-height:1.6;text-align:right;">
+      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br><span dir="ltr">{{.}}</span>{{end}}{{with .VenueName}}<br>{{.}}{{end}}
+    </td></tr></table>
+  </td></tr>
+  <tr><td style="padding:8px 32px;text-align:right;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">{{if gt (len .Tickets) 1}}כרטיסים ({{len .Tickets}}){{else}}כרטיס{{end}}</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
+    {{range .Tickets}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;text-align:right;">מס׳ {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td>{{with .Price}}<td dir="ltr" style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;white-space:nowrap;text-align:left;">{{.}}</td>{{end}}</tr>
+    {{else}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;text-align:right;">מס׳ {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · אזור {{.}}{{end}}{{with .SeatRow}} · שורה {{.}}{{end}}{{with .SeatNumber}} · מקום {{.}}{{end}}</td></tr>
+    {{end}}</table>
+  </td></tr>
+  {{with .Payment}}<tr><td style="padding:8px 32px;text-align:right;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">תשלום</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
+      <tr><td style="padding:4px 0;color:#46555f;text-align:right;">הזמנה</td><td dir="ltr" style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:left;">מס׳ {{.OrderNumber}}</td></tr>
+      {{with .PaidAt}}<tr><td style="padding:4px 0;color:#46555f;text-align:right;">שולם בתאריך</td><td dir="ltr" style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:left;">{{.}}</td></tr>{{end}}
+      {{with .Subtotal}}<tr><td style="padding:4px 0;color:#46555f;text-align:right;">כרטיסים</td><td dir="ltr" style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:left;">{{.}}</td></tr>{{end}}
+      {{with .Discount}}<tr><td style="padding:4px 0;color:#46555f;text-align:right;">הנחה</td><td dir="ltr" style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:left;">−{{.}}</td></tr>{{end}}
+      {{with .ServiceFee}}<tr><td style="padding:4px 0;color:#46555f;text-align:right;">עמלת שירות</td><td dir="ltr" style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:left;">{{.}}</td></tr>{{end}}
+      <tr><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;text-align:right;">סה״כ שולם</td><td dir="ltr" style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;white-space:nowrap;text-align:left;">{{.Total}}</td></tr>
+    </table>
+  </td></tr>{{end}}
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;text-align:right;">פתחו את הקובץ בטלפון והציגו את הברקוד בכניסה — אין צורך להדפיס.</td></tr>
+  <tr><td style="padding:8px 32px 16px 32px;color:#46555f;font-size:14px;line-height:1.6;text-align:right;">לכל שאלה אפשר פשוט להשיב למייל זה.</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;text-align:right;">
+    נשלח אל: {{.RecipientEmail}}<br><br>
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     <strong>{{.Branding.LegalName}}</strong>
     {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
@@ -40,27 +47,37 @@
     {{with .Branding.ContactEmail}}<br>יצירת קשר: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — שליחה אוטומטית</p>
+  </td></tr>
+</table>
+</td></tr></table>
 </body>
 </html>{{end}}
 
 {{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
 
-הכרטיס שלך מוכן
-
 שלום{{with .HolderName}} {{.}}{{end}},
 
-הכרטיס שלך עבור {{.EventName}} הונפק.
-קובץ ה-PDF מצורף להודעה זו.
+{{if gt (len .Tickets) 1}}תודה על הרכישה. הכרטיסים שלך ל„{{.EventName}}” מצורפים למייל זה (קובצי PDF).{{else}}תודה על הרכישה. הכרטיס שלך ל„{{.EventName}}” מצורף למייל זה (PDF).{{end}}
 
-אירוע: {{.EventName}}
-{{with .SessionStart}}מועד: {{.}}
-{{end}}{{with .VenueName}}מקום: {{.}}
-{{end}}{{with .TierName}}קטגוריה: {{.}}
-{{end}}{{with .SeatSector}}אזור: {{.}}
-{{end}}{{with .SeatRow}}שורה: {{.}}
-{{end}}{{with .SeatNumber}}מקום: {{.}}
+{{.EventName}}
+{{with .SessionStart}}{{.}}
+{{end}}{{with .VenueName}}{{.}}
 {{end}}
-מזהה כרטיס: {{.TicketID}}
+{{if gt (len .Tickets) 1}}כרטיסים ({{len .Tickets}}){{else}}כרטיס{{end}}:
+{{range .Tickets}}- מס׳ {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .Price}} · {{.}}{{end}}
+{{else}}- מס׳ {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · אזור {{.}}{{end}}{{with .SeatRow}} · שורה {{.}}{{end}}{{with .SeatNumber}} · מקום {{.}}{{end}}
+{{end}}{{with .Payment}}
+תשלום:
+- הזמנה: מס׳ {{.OrderNumber}}
+{{with .PaidAt}}- שולם בתאריך: {{.}}
+{{end}}{{with .Subtotal}}- כרטיסים: {{.}}
+{{end}}{{with .Discount}}- הנחה: −{{.}}
+{{end}}{{with .ServiceFee}}- עמלת שירות: {{.}}
+{{end}}- סה״כ שולם: {{.Total}}
+{{end}}
+פתחו את הקובץ בטלפון והציגו את הברקוד בכניסה — אין צורך להדפיס.
+לכל שאלה אפשר פשוט להשיב למייל זה.
+
 נשלח אל: {{.RecipientEmail}}
 
 --

@@ -1,36 +1,43 @@
-{{define "subject"}}Your ticket — {{.EventName}}{{end}}
+{{define "subject"}}{{if gt (len .Tickets) 1}}Your tickets — {{.EventName}}{{else}}Your ticket — {{.EventName}}{{end}}{{end}}
 
 {{define "html"}}<!DOCTYPE html>
 <html lang="en" dir="ltr">
-<head><meta charset="UTF-8"><title>Your ticket</title></head>
-<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
-  <table cellpadding="0" cellspacing="0" style="width:100%;border-bottom:1px solid #eee;padding-bottom:12px;margin-bottom:16px">
-    <tr>
-      <td style="vertical-align:middle">
-        {{with .Branding.LogoURL}}<img src="{{.}}" alt="{{$.Branding.LogoAlt}}" style="max-height:48px;max-width:240px">{{end}}
-      </td>
-      <td style="vertical-align:middle;text-align:right;font-size:13px;color:#555">
-        <strong>{{.Branding.OrgName}}</strong>
-        {{with .Branding.WebsiteURL}}<br><a href="{{.}}" style="color:#1a73e8;text-decoration:none">{{.}}</a>{{end}}
-      </td>
-    </tr>
-  </table>
-  <h1 style="color:#1a1a2e">Your ticket is ready</h1>
-  <p>Hello{{with .HolderName}} {{.}}{{end}},</p>
-  <p>Your ticket for <strong>{{.EventName}}</strong> has been issued.
-     Please find the PDF attached to this email.</p>
-  <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
-    <tr><td><strong>Event</strong></td><td>{{.EventName}}</td></tr>
-    {{with .SessionStart}}<tr><td><strong>Session</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .VenueName}}<tr><td><strong>Venue</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .TierName}}<tr><td><strong>Tier</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .SeatSector}}<tr><td><strong>Sector</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .SeatRow}}<tr><td><strong>Row</strong></td><td>{{.}}</td></tr>{{end}}
-    {{with .SeatNumber}}<tr><td><strong>Seat</strong></td><td>{{.}}</td></tr>{{end}}
-  </table>
-  <p style="font-size:12px;color:#666">Ticket ID: {{.TicketID}}</p>
-  <p style="font-size:12px;color:#666">Delivered to: {{.RecipientEmail}}</p>
-  <hr>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Your ticket</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:28px 32px 8px 32px;color:#22333D;font-size:16px;">Hello{{with .HolderName}} {{.}}{{end}}!</td></tr>
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{if gt (len .Tickets) 1}}Thank you for your purchase. Your tickets for “{{.EventName}}” are attached to this email (PDF files).{{else}}Thank you for your purchase. Your ticket for “{{.EventName}}” is attached to this email (PDF).{{end}}</td></tr>
+  <tr><td style="padding:8px 32px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:4px solid {{.Accent}};background:#f8f9fa;"><tr><td style="padding:12px 16px;color:#22333D;font-size:14px;line-height:1.6;">
+      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}
+    </td></tr></table>
+  </td></tr>
+  <tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">{{if gt (len .Tickets) 1}}Tickets ({{len .Tickets}}){{else}}Ticket{{end}}</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
+    {{range .Tickets}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">No. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td>{{with .Price}}<td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td>{{end}}</tr>
+    {{else}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">No. {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · Sector {{.}}{{end}}{{with .SeatRow}} · Row {{.}}{{end}}{{with .SeatNumber}} · Seat {{.}}{{end}}</td></tr>
+    {{end}}</table>
+  </td></tr>
+  {{with .Payment}}<tr><td style="padding:8px 32px;">
+    <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">Payment</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
+      <tr><td style="padding:4px 0;color:#46555f;">Order</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">No. {{.OrderNumber}}</td></tr>
+      {{with .PaidAt}}<tr><td style="padding:4px 0;color:#46555f;">Paid on</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      {{with .Subtotal}}<tr><td style="padding:4px 0;color:#46555f;">Tickets</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      {{with .Discount}}<tr><td style="padding:4px 0;color:#46555f;">Discount</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">−{{.}}</td></tr>{{end}}
+      {{with .ServiceFee}}<tr><td style="padding:4px 0;color:#46555f;">Service fee</td><td style="padding:4px 0;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td></tr>{{end}}
+      <tr><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;">Total paid</td><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;white-space:nowrap;text-align:right;">{{.Total}}</td></tr>
+    </table>
+  </td></tr>{{end}}
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Open the file on your phone and show the barcode at the entrance — no need to print.</td></tr>
+  <tr><td style="padding:8px 32px 16px 32px;color:#46555f;font-size:14px;line-height:1.6;">If you have any questions, just reply to this email.</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+    Delivered to: {{.RecipientEmail}}<br><br>
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     <strong>{{.Branding.LegalName}}</strong>
     {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
@@ -40,27 +47,37 @@
     {{with .Branding.ContactEmail}}<br>Contact: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — automated delivery</p>
+  </td></tr>
+</table>
+</td></tr></table>
 </body>
 </html>{{end}}
 
 {{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
 
-Your ticket is ready
+Hello{{with .HolderName}} {{.}}{{end}}!
 
-Hello{{with .HolderName}} {{.}}{{end}},
+{{if gt (len .Tickets) 1}}Thank you for your purchase. Your tickets for “{{.EventName}}” are attached to this email (PDF files).{{else}}Thank you for your purchase. Your ticket for “{{.EventName}}” is attached to this email (PDF).{{end}}
 
-Your ticket for {{.EventName}} has been issued.
-Please find the PDF attached to this email.
-
-Event: {{.EventName}}
-{{with .SessionStart}}Session: {{.}}
-{{end}}{{with .VenueName}}Venue: {{.}}
-{{end}}{{with .TierName}}Tier: {{.}}
-{{end}}{{with .SeatSector}}Sector: {{.}}
-{{end}}{{with .SeatRow}}Row: {{.}}
-{{end}}{{with .SeatNumber}}Seat: {{.}}
+{{.EventName}}
+{{with .SessionStart}}{{.}}
+{{end}}{{with .VenueName}}{{.}}
 {{end}}
-Ticket ID: {{.TicketID}}
+{{if gt (len .Tickets) 1}}Tickets ({{len .Tickets}}){{else}}Ticket{{end}}:
+{{range .Tickets}}- No. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .Price}} · {{.}}{{end}}
+{{else}}- No. {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · Sector {{.}}{{end}}{{with .SeatRow}} · Row {{.}}{{end}}{{with .SeatNumber}} · Seat {{.}}{{end}}
+{{end}}{{with .Payment}}
+Payment:
+- Order: No. {{.OrderNumber}}
+{{with .PaidAt}}- Paid on: {{.}}
+{{end}}{{with .Subtotal}}- Tickets: {{.}}
+{{end}}{{with .Discount}}- Discount: −{{.}}
+{{end}}{{with .ServiceFee}}- Service fee: {{.}}
+{{end}}- Total paid: {{.Total}}
+{{end}}
+Open the file on your phone and show the barcode at the entrance — no need to print.
+If you have any questions, just reply to this email.
+
 Delivered to: {{.RecipientEmail}}
 
 --

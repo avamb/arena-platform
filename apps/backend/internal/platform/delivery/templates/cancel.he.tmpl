@@ -2,22 +2,16 @@
 
 {{define "html"}}<!DOCTYPE html>
 <html lang="he" dir="rtl">
-<head><meta charset="UTF-8"><title>האירוע בוטל</title></head>
-<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e;direction:rtl;text-align:right">
-  <table cellpadding="0" cellspacing="0" style="width:100%;border-bottom:1px solid #eee;padding-bottom:12px;margin-bottom:16px;direction:rtl">
-    <tr>
-      <td style="vertical-align:middle">
-        {{with .Branding.LogoURL}}<img src="{{.}}" alt="{{$.Branding.LogoAlt}}" style="max-height:48px;max-width:240px">{{end}}
-      </td>
-      <td style="vertical-align:middle;text-align:left;font-size:13px;color:#555">
-        <strong>{{.Branding.OrgName}}</strong>
-        {{with .Branding.WebsiteURL}}<br><a href="{{.}}" style="color:#1a73e8;text-decoration:none">{{.}}</a>{{end}}
-      </td>
-    </tr>
-  </table>
-  <h1 style="color:#1a1a2e">האירוע שלך בוטל</h1>
-  <p>שלום{{with .HolderName}} {{.}}{{end}},</p>
-  <p>המארגן ביטל את המופע של <strong>{{.EventName}}</strong>{{with .SessionStart}} שהיה אמור להתקיים ב-{{.}}{{end}}. הכרטיס שלך למופע זה אינו תקף עוד לכניסה.</p>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>האירוע בוטל</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" dir="rtl" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;text-align:right;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">האירוע שלך בוטל</h1>
+  <p style="margin:0 0 12px 0;">שלום{{with .HolderName}} {{.}}{{end}},</p>
+  <p style="margin:0 0 12px 0;">המארגן ביטל את המופע של <strong>{{.EventName}}</strong>{{with .SessionStart}} שהיה אמור להתקיים ב-{{.}}{{end}}. הכרטיס שלך למופע זה אינו תקף עוד לכניסה.</p>
   <table cellpadding="4" style="border-collapse:collapse;font-size:14px;direction:rtl">
     <tr><td><strong>אירוע</strong></td><td>{{.EventName}}</td></tr>
     {{with .SessionStart}}<tr><td><strong>מועד</strong></td><td>{{.}}</td></tr>{{end}}
@@ -31,10 +25,12 @@
     <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>הודעה מהמארגן:</strong></p>
     <p style="margin:0;white-space:pre-line">{{.}}</p>
   </div>{{end}}
-  <p>אנא כתבו למארגן{{with .Change.ContactName}} ({{.}}){{end}} בכתובת <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{with .Change.ContactPhone}}, טלפון {{.}}{{end}}, כדי לברר מהם הצעדים הבאים.</p>
+  <p style="margin:0 0 12px 0;">אנא כתבו למארגן{{with .Change.ContactName}} ({{.}}){{end}} בכתובת <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{with .Change.ContactPhone}}, טלפון {{.}}{{end}}, כדי לברר מהם הצעדים הבאים.</p>
   <p style="font-size:12px;color:#666">מזהה כרטיס: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">נשלח אל: {{.RecipientEmail}}</p>
-  <hr>
+  </td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;text-align:right;">
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     <strong>{{.Branding.LegalName}}</strong>
     {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
@@ -44,6 +40,9 @@
     {{with .Branding.ContactEmail}}<br>יצירת קשר: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — שליחה אוטומטית</p>
+  </td></tr>
+</table>
+</td></tr></table>
 </body>
 </html>{{end}}
 
