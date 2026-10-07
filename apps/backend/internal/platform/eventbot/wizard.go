@@ -973,6 +973,28 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 				return "", nil
 			}
 		}
+		// A city typed straight onto the question: the list holds only the
+		// cities somebody already used, so most organizers' city is not in it.
+		// A name that matches a listed one picks it; any other is added (the
+		// API finds an existing city of that name before it creates one).
+		if name := strings.TrimSpace(text); name != "" && data == "" {
+			want := geotz.Normalize(name)
+			for _, c := range cities {
+				if geotz.Normalize(c.Name) == want {
+					s.CityID, s.CityName = c.ID, c.Name
+					s.VenueID, s.VenueName, s.Timezone = "", "", ""
+					d.goTo(stSVenue)
+					return "", nil
+				}
+			}
+			c, err := w.refs.CreateCity(ctx, ws.JWT, ws.OrgID, s.CountryID, name, loc)
+			if err != nil {
+				return "", err
+			}
+			s.CityID, s.CityName = c.ID, c.Name
+			s.VenueID, s.VenueName, s.Timezone = "", "", ""
+			d.goTo(stSVenue)
+		}
 
 	case stCityName:
 		if text == "" {

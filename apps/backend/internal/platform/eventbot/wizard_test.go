@@ -717,3 +717,36 @@ func TestWizard_VenueZoneByCityAndButtons(t *testing.T) {
 		}
 	})
 }
+
+// The city list holds only cities somebody already used, so a city typed
+// straight onto the question must work: a listed name is picked, any other is
+// added, and neither needs the "+ Another city" button.
+func TestWizard_CityTypedOntoTheQuestion(t *testing.T) {
+	start := func(refs *fakeRefs) *wizardRun {
+		r := newWizardRun(t, refs)
+		r.eventHead()
+		r.text("20.03.2027", stSTime)
+		r.text("21:00", stSCountry)
+		r.press("country:cz", stSCity)
+		return r
+	}
+	t.Run("a listed city is picked, not created", func(t *testing.T) {
+		refs := newFakeRefs()
+		r := start(refs)
+		r.text("  prague ", stSVenue)
+		if r.d.Sessions[0].CityID != "prg" || len(refs.created) != 0 {
+			t.Fatalf("city=%q created=%v", r.d.Sessions[0].CityID, refs.created)
+		}
+	})
+	t.Run("an unlisted city is added", func(t *testing.T) {
+		refs := newFakeRefs()
+		r := start(refs)
+		r.text("Brno", stSVenue)
+		if s := r.d.Sessions[0]; s.CityID != "city-brno" || s.CityName != "Brno" {
+			t.Fatalf("session = %+v", s)
+		}
+		if len(refs.created) != 1 || refs.created[0] != "city:Brno" {
+			t.Fatalf("created = %v", refs.created)
+		}
+	})
+}

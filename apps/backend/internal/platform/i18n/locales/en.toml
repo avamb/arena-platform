@@ -597,7 +597,7 @@ other = "Another venue"
 other = "Which country?"
 
 ["bot.wz.ask_city"]
-other = "Which city?"
+other = "Which city? Pick a button or just type the city's name."
 
 ["bot.wz.city_other"]
 other = "+ Another city…"

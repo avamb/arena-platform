@@ -453,7 +453,7 @@ other = "Otro recinto"
 other = "¿En qué país?"
 
 ["bot.wz.ask_city"]
-other = "¿En qué ciudad?"
+other = "¿En qué ciudad? Elige un botón o escribe el nombre de la ciudad."
 
 ["bot.wz.city_other"]
 other = "+ Otra ciudad…"
