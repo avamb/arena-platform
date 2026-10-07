@@ -181,9 +181,15 @@ func (b *Bot) showEvent(ctx context.Context, chatID int64, editMsgID *int, from 
 		b.replyAPIError(ctx, chatID, editMsgID, id, err)
 		return
 	}
+	// A published event shows its buyers' link right under the name, so the
+	// organizer can copy it without opening anything else.
+	link := ""
+	if url := b.eventLink(ctx, jwt, orgID, *event); url != "" {
+		link = "\n" + b.texts.T(loc, "bot.wz.link_line", map[string]any{"URL": url})
+	}
 	var sb strings.Builder
 	sb.WriteString(b.texts.T(loc, "bot.event_card", map[string]any{
-		"Name": Esc(event.Name), "Status": b.statusText(loc, string(event.Status)),
+		"Name": Esc(event.Name), "Status": b.statusText(loc, string(event.Status)), "Link": link,
 	}))
 	sb.WriteString("\n")
 	if len(sessions) == 0 {

@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
@@ -489,9 +490,9 @@ func (b *Bot) wizardSave(ctx context.Context, chatID int64, editMsgID *int, from
 	if raw, err := json.Marshal(RememberDefaults(ws.Defaults, d)); err == nil {
 		_ = b.queries.UpdateBotTelegramLinkDefaults(ctx, from.ID, raw)
 	}
-	link := b.texts.T(loc, "bot.wz.link_none", nil)
+	link := "\n\n" + b.texts.T(loc, "bot.wz.link_none", nil)
 	if url := b.salesLink(ctx, ws, d); url != "" {
-		link = b.texts.T(loc, "bot.wz.link_line", map[string]any{"URL": url})
+		link = "\n\n" + b.texts.T(loc, "bot.wz.link_line", map[string]any{"URL": url})
 	}
 	published := ""
 	if d.Publish {
@@ -502,7 +503,13 @@ func (b *Bot) wizardSave(ctx context.Context, chatID int64, editMsgID *int, from
 		warnings = "\n\n⚠ " + strings.Join(out.Warnings, "\n⚠ ")
 	}
 	if d.Mode == ModeEdit {
-		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.edit_saved", map[string]any{"Name": Esc(d.Event.Name), "Warnings": warnings}), nil)
+		// An edited event shows where buyers find it, the same line as after
+		// creating it; nothing is added for an event that is not published.
+		editLink := ""
+		if eventID, err := uuid.Parse(d.Event.EventID); err == nil {
+			editLink = b.eventLinkLine(ctx, ws.JWT, ws.OrgID, loc, eventID)
+		}
+		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.edit_saved", map[string]any{"Name": Esc(d.Event.Name), "Link": editLink, "Warnings": warnings}), nil)
 		if eventID, err := uuid.Parse(d.Event.EventID); err == nil {
 			b.showEvent(ctx, chatID, nil, from, eventID, 1)
 			return
@@ -533,36 +540,74 @@ func (b *Bot) salesLink(ctx context.Context, ws WizSession, d *Draft) string {
 	if b.ticketsBaseURL == "" || !d.Publish {
 		return ""
 	}
+	slug := ""
+	if d.Saved.EventID != "" {
+		if events, err := b.arena.ListEvents(ctx, ws.JWT, ws.OrgID); err == nil {
+			for _, e := range events {
+				if e.Id.String() == d.Saved.EventID && e.Slug != nil {
+					slug = *e.Slug
+				}
+			}
+		}
+	}
+	return b.storefrontLink(ctx, ws.JWT, ws.OrgID, d.Event.PromoterID, slug)
+}
+
+// storefrontLink builds the buyers' page from the promoter (when it has a
+// page of its own) or the organization, plus the event slug when it is known.
+func (b *Bot) storefrontLink(ctx context.Context, jwt string, orgID uuid.UUID, promoterID, eventSlug string) string {
+	if b.ticketsBaseURL == "" {
+		return ""
+	}
 	pageSlug := ""
-	if d.Event.PromoterID != "" {
-		if promoters, err := b.arena.Promoters(ctx, ws.JWT, ws.OrgID); err == nil {
+	if promoterID != "" {
+		if promoters, err := b.arena.Promoters(ctx, jwt, orgID); err == nil {
 			for _, p := range promoters {
-				if p.ID == d.Event.PromoterID && p.Slug != "" {
+				if p.ID == promoterID && p.Slug != "" {
 					pageSlug = p.Slug
 				}
 			}
 		}
 	}
 	if pageSlug == "" {
-		orgSlug, err := b.arena.OrganizationSlug(ctx, ws.JWT, ws.OrgID)
+		orgSlug, err := b.arena.OrganizationSlug(ctx, jwt, orgID)
 		if err != nil || orgSlug == "" {
 			return ""
 		}
 		pageSlug = orgSlug
 	}
 	base := strings.TrimRight(b.ticketsBaseURL, "/") + "/" + pageSlug
-	if d.Saved.EventID == "" {
+	if eventSlug == "" {
 		return base
 	}
-	events, err := b.arena.ListEvents(ctx, ws.JWT, ws.OrgID)
-	if err == nil {
-		for _, e := range events {
-			if e.Id.String() == d.Saved.EventID && e.Slug != nil && *e.Slug != "" {
-				return base + "/" + *e.Slug
-			}
-		}
+	return base + "/" + eventSlug
+}
+
+// eventLink is the buyers' page of a PUBLISHED event that already has its
+// slug; "" for a draft, an archived event or an event without a page yet.
+func (b *Bot) eventLink(ctx context.Context, jwt string, orgID uuid.UUID, ev openapi.EventItem) string {
+	if ev.Status != openapi.EventItemStatusPublished || ev.Slug == nil || *ev.Slug == "" {
+		return ""
 	}
-	return base
+	promoter := ""
+	if ev.PromoterId != nil {
+		promoter = ev.PromoterId.String()
+	}
+	return b.storefrontLink(ctx, jwt, orgID, promoter, *ev.Slug)
+}
+
+// eventLinkLine is that link as a message paragraph ("\n\n🔗 …"), or "" when
+// the event has none to show.
+func (b *Bot) eventLinkLine(ctx context.Context, jwt string, orgID uuid.UUID, loc string, eventID uuid.UUID) string {
+	ev, err := b.arena.GetEvent(ctx, jwt, eventID)
+	if err != nil {
+		return ""
+	}
+	url := b.eventLink(ctx, jwt, orgID, ev)
+	if url == "" {
+		return ""
+	}
+	return "\n\n" + b.texts.T(loc, "bot.wz.link_line", map[string]any{"URL": url})
 }
 
 func (b *Bot) wizardFail(ctx context.Context, chatID int64, editMsgID *int, loc string, err error) {

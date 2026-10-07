@@ -53,12 +53,14 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 			return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.edit_ask_name", map[string]any{"Value": Esc(d.Event.Name)}), Buttons: nav()}, nil
 		}
 		rows := [][]Button{}
-		if w.posterHints && d.Mode == ModeCreate && d.Event.PosterMediaID == "" {
+		posterButton := w.posterHints && d.Mode == ModeCreate && d.Event.PosterMediaID == ""
+		if posterButton {
 			// The one action on this screen is the name; reading a poster is a
 			// separate, optional screen behind a button.
 			rows = append(rows, []Button{btn("bot.wz.poster_first_btn", "poster")})
 		}
-		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_name", nil), Buttons: nav(rows...)}, nil
+		// The text names the button only when it is there.
+		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_name", map[string]any{"Poster": posterButton}), Buttons: nav(rows...)}, nil
 
 	case stEvPosterAsk:
 		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_poster_first", nil), Buttons: nav()}, nil

@@ -262,7 +262,7 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 
 	// Publish: the bot posts the event-bundle as the manager.
 	saved := press("wz:publish", "Готово!")
-	if !strings.Contains(saved, eventName) || !strings.Contains(saved, "https://tickets.test/") {
+	if !strings.Contains(saved, eventName) || !strings.Contains(saved, "https://tickets.test/") || !strings.Contains(saved, "🔗") {
 		t.Fatalf("saved message: %s", saved)
 	}
 	// The published event comes with the buyer's e-ticket as a PDF: the
@@ -368,7 +368,11 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 	press("wz:publish", "меняли в другом месте")
-	press("wz:publish:force", "Сохранено")
+	// An edited, published event shows the buyers' link right in the message.
+	editSaved := press("wz:publish:force", "Сохранено")
+	if !strings.Contains(editSaved, "https://tickets.test/") || !strings.Contains(editSaved, "🔗") {
+		t.Fatalf("edit saved message lacks the event link:\n%s", editSaved)
+	}
 	var (
 		nameAfter, ageAfter string
 		sessionsAfter       int

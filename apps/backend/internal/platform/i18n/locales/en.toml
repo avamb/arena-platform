@@ -319,7 +319,7 @@ other = "Upcoming"
 other = "Past"
 
 ["bot.event_card"]
-other = "<b>{{.Name}}</b>\n{{.Status}}"
+other = "<b>{{.Name}}</b>\n{{.Status}}{{.Link}}"
 
 ["bot.event_no_sessions"]
 other = "This event has no dates yet."
@@ -522,7 +522,7 @@ other = "Start over"
 other = "Draft deleted. Nothing was saved."
 
 ["bot.wz.ask_name"]
-other = "What is the event called? Buyers will see this name, for example “Piedmont wine tasting”."
+other = "What is the event called? Buyers will see this name, for example “Concert in Madrid” or “Workshop in Rome”.\n\nType the name as a message{{if .Poster}} or, if the poster is ready, tap “Fill in from a poster”: I will read the name, date and prices from it and you confirm each value{{end}}."
 
 ["bot.wz.err_name"]
 other = "Please give the event a name, up to 200 characters."
@@ -846,13 +846,13 @@ other = "Change the description"
 other = "Saving…"
 
 ["bot.wz.saved"]
-other = "<b>Done!</b> The event “{{.Name}}” is created{{.Published}}.\n{{.Link}}{{.Warnings}}"
+other = "<b>Done!</b> The event “{{.Name}}” is created{{.Published}}.{{.Link}}{{.Warnings}}"
 
 ["bot.wz.saved_published"]
 other = " and published"
 
 ["bot.wz.link_line"]
-other = "Sales link: {{.URL}}\nIt appears on the site within a minute or two."
+other = "🔗 Link to the event for buyers:\n{{.URL}}"
 
 ["bot.wz.link_none"]
 other = "I will send the sales link as soon as it is ready."
@@ -913,7 +913,7 @@ other = "The date {{.When}} carries other tickets than the first one; saving wri
 other = "«{{.Name}}» was changed elsewhere (the site or the admin) after you opened it. Save your version over it?"
 
 ["bot.wz.edit_saved"]
-other = "<b>Saved.</b> «{{.Name}}» is updated.{{.Warnings}}"
+other = "<b>Saved.</b> «{{.Name}}» is updated.{{.Link}}{{.Warnings}}"
 
 ["bot.wz.copy_intro"]
 other = "A copy of «{{.Name}}»: the tickets and the description are taken over, the dates are new. When is the first one?"
