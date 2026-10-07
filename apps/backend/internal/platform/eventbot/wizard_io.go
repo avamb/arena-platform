@@ -247,6 +247,32 @@ func (w *Wizard) warningText(loc, code string) string {
 	return ""
 }
 
+// EnsureChannels guards a NEW event that is about to be published against
+// having no sales channel, which makes it "published" with no public page and
+// no word to the organizer (a copy of an event starts with no channels, and
+// with two or more to choose from and nothing remembered it went straight to
+// the summary, 2026-10-07). A single channel is taken on its own; with several
+// the draft is sent to the channel question and askChannels is true.
+func (w *Wizard) EnsureChannels(ctx context.Context, ws WizSession, d *Draft) (askChannels bool, err error) {
+	if d.Mode == ModeEdit || !d.Publish || len(d.Channels) > 0 {
+		return false, nil
+	}
+	channels, err := w.refs.Channels(ctx, ws.JWT, ws.OrgID)
+	if err != nil {
+		return false, err
+	}
+	switch {
+	case len(channels) == 1:
+		d.Channels = channels
+	case len(channels) > 1:
+		d.History = nil
+		d.Scratch.ReturnToSummary = false
+		d.Step = stXChannels
+		return true, nil
+	}
+	return false, nil
+}
+
 // RememberDefaults folds the draft's answers into the account's defaults.
 func RememberDefaults(def Defaults, d *Draft) Defaults {
 	def.Age = d.Event.Age

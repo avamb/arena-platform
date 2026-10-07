@@ -596,3 +596,48 @@ func TestWizard_Save_RetriesOnlyTheMissingDates(t *testing.T) {
 		t.Fatalf("warnings = %v reason=%q", out.Warnings, r.d.Saved.LastReason)
 	}
 }
+
+// A copied event starts with no channels. With one channel the save takes it,
+// with two or more and nothing remembered the person is asked — the event must
+// never be published into no channel (found on prod 2026-10-07: a published
+// event with no public page and no warning).
+func TestWizard_EnsureChannelsBeforeSaving(t *testing.T) {
+	ctx := context.Background()
+	t.Run("one channel is taken", func(t *testing.T) {
+		r := newWizardRun(t, newFakeRefs())
+		r.d.Publish = true
+		ask, err := r.w.EnsureChannels(ctx, r.ws, r.d)
+		if err != nil || ask || len(r.d.Channels) != 1 || r.d.Channels[0].ID != "ch1" {
+			t.Fatalf("ask=%v err=%v channels=%+v", ask, err, r.d.Channels)
+		}
+	})
+	t.Run("two channels are asked", func(t *testing.T) {
+		refs := newFakeRefs()
+		refs.channels = append(refs.channels, RefItem{ID: "ch2", Name: "tickets.arenasoldout.com"})
+		r := newWizardRun(t, refs)
+		r.d.Publish = true
+		r.d.Step = stSummary
+		ask, err := r.w.EnsureChannels(ctx, r.ws, r.d)
+		if err != nil || !ask || r.d.Step != stXChannels || len(r.d.Channels) != 0 {
+			t.Fatalf("ask=%v err=%v step=%s channels=%+v", ask, err, r.d.Step, r.d.Channels)
+		}
+	})
+	t.Run("chosen channels, a draft and an edit are left alone", func(t *testing.T) {
+		refs := newFakeRefs()
+		refs.channels = append(refs.channels, RefItem{ID: "ch2", Name: "x"})
+		r := newWizardRun(t, refs)
+		r.d.Publish = true
+		r.d.Channels = []RefItem{{ID: "ch2", Name: "x"}}
+		if ask, _ := r.w.EnsureChannels(ctx, r.ws, r.d); ask {
+			t.Fatal("asked although a channel was chosen")
+		}
+		r.d.Channels, r.d.Publish = nil, false
+		if ask, _ := r.w.EnsureChannels(ctx, r.ws, r.d); ask {
+			t.Fatal("asked for an event that is saved as a draft")
+		}
+		r.d.Publish, r.d.Mode = true, ModeEdit
+		if ask, _ := r.w.EnsureChannels(ctx, r.ws, r.d); ask {
+			t.Fatal("asked while editing an existing event")
+		}
+	})
+}

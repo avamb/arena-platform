@@ -470,6 +470,14 @@ func (b *Bot) wizardSave(ctx context.Context, chatID int64, editMsgID *int, from
 			}
 		}
 	}
+	if ask, err := b.wizard.EnsureChannels(ctx, ws, d); err != nil {
+		b.wizardFail(ctx, chatID, editMsgID, loc, err)
+		return
+	} else if ask {
+		_, _ = b.storeDraft(ctx, from.ID, ws, d)
+		b.wizardRender(ctx, chatID, editMsgID, ws, d, b.texts.T(loc, "bot.wz.err_channels_empty", nil))
+		return
+	}
 	b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.wz.saving", nil), nil)
 	out := b.wizard.Save(ctx, b.arena, ws, d, draftID)
 	if !out.Done {
