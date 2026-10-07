@@ -15863,7 +15863,11 @@ export interface components {
             name: string;
             /**
              * @description Defaults to `direct_merchant` when omitted or empty. Any other
-             *     value returns 400 `channel.invalid_config`.
+             *     value returns 400 `channel.invalid_config`. `merchant_of_record`
+             *     makes the platform the seller of record and moves the refund and
+             *     chargeback risk onto it, so only a platform superadmin may set
+             *     it; anyone else gets 403
+             *     `channel.merchant_of_record_superadmin_only`.
              * @enum {string}
              */
             payment_mode?: "direct_merchant" | "merchant_of_record";
@@ -15919,6 +15923,11 @@ export interface components {
              *     unchanged. When set together with `provider` /
              *     `provider_account_id`, the same combination rules as create
              *     apply and return 400 `channel.invalid_config` on violation.
+             *     Switching a channel INTO `merchant_of_record` is reserved to a
+             *     platform superadmin (403
+             *     `channel.merchant_of_record_superadmin_only` otherwise);
+             *     repeating the mode the channel already has, or moving back to
+             *     `direct_merchant`, is allowed to any caller of the channel.
              * @enum {string}
              */
             payment_mode?: "direct_merchant" | "merchant_of_record";
@@ -35313,7 +35322,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Insufficient permission (`channel.create`). */
+            /**
+             * @description Insufficient permission (`channel.create`), or `payment_mode`
+             *     is `merchant_of_record` and the caller is not a platform
+             *     superadmin (`channel.merchant_of_record_superadmin_only`).
+             */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -35480,7 +35493,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Insufficient permission (`channel.update`). */
+            /**
+             * @description Insufficient permission (`channel.update`), or the request
+             *     switches the channel into `merchant_of_record` and the caller
+             *     is not a platform superadmin
+             *     (`channel.merchant_of_record_superadmin_only`).
+             */
             403: {
                 headers: {
                     [name: string]: unknown;

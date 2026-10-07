@@ -156,6 +156,30 @@ func ValidateChannelConfig(paymentMode, provider, providerAccountID string) stri
 	return ""
 }
 
+// ModeMerchantOfRecord is the payment_mode in which the platform, not the
+// organizer, is the seller of record and carries the refund/chargeback risk.
+const ModeMerchantOfRecord = "merchant_of_record"
+
+// requireSuperadminForMerchantOfRecord refuses a caller who is not a platform
+// superadmin. merchant_of_record moves the payment risk onto the platform, so
+// only an operator may switch a channel into it, deliberately and by hand
+// (owner decision 2026-10-07). The marker is derived server-side on every
+// request from superadmin.read, never from a caller-supplied claim, so an
+// organization owner, an organizer and an organization API key are all refused.
+// It writes the 403 itself and reports whether the request may go on.
+func requireSuperadminForMerchantOfRecord(w http.ResponseWriter, r *http.Request) bool {
+	if auth.HasSuperadminOrgAccess(r.Context()) {
+		return true
+	}
+	httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelopeWithDetails(
+		"channel.merchant_of_record_superadmin_only",
+		"only a platform superadmin can set payment_mode to 'merchant_of_record'; use 'direct_merchant'",
+		r,
+		map[string]any{"field": "payment_mode"},
+	))
+	return false
+}
+
 // NormalizeChannelSettings validates and returns the canonical form of the
 // settings JSON field. Returns a non-empty error message when invalid.
 func NormalizeChannelSettings(raw json.RawMessage) (json.RawMessage, string) {
@@ -254,6 +278,10 @@ func (h *Handler) HandleCreateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.FeePercent == "" {
 		req.FeePercent = "0.00"
+	}
+
+	if req.PaymentMode == ModeMerchantOfRecord && !requireSuperadminForMerchantOfRecord(w, r) {
+		return
 	}
 
 	if msg := ValidateChannelConfig(req.PaymentMode, req.Provider, req.ProviderAccountID); msg != "" {
@@ -455,6 +483,27 @@ func (h *Handler) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 	req.Name = strings.TrimSpace(req.Name)
 	req.PaymentMode = strings.TrimSpace(req.PaymentMode)
 	req.Provider = strings.TrimSpace(req.Provider)
+
+	// Switching a channel INTO merchant_of_record is an operator decision. A
+	// PATCH that merely repeats the mode the channel already has is harmless,
+	// so the stored row is read only when a non-superadmin asks for it.
+	if req.PaymentMode == ModeMerchantOfRecord && !auth.HasSuperadminOrgAccess(ctx) {
+		current, err := h.channelQueries.GetSalesChannelByID(ctx, chID, orgID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("channel.not_found", "sales channel not found", r))
+				return
+			}
+			h.logger.Error("channel: load for payment_mode check failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"channel.update_failed", "failed to update sales channel", r,
+			))
+			return
+		}
+		if current.PaymentMode != ModeMerchantOfRecord && !requireSuperadminForMerchantOfRecord(w, r) {
+			return
+		}
+	}
 
 	if req.PaymentMode != "" || req.Provider != "" {
 		providerAccountID := ""

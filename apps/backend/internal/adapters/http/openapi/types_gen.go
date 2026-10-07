@@ -4108,7 +4108,11 @@ type CreateChannelRequest struct {
 	Name string `json:"name"`
 
 	// PaymentMode Defaults to `direct_merchant` when omitted or empty. Any other
-	// value returns 400 `channel.invalid_config`.
+	// value returns 400 `channel.invalid_config`. `merchant_of_record`
+	// makes the platform the seller of record and moves the refund and
+	// chargeback risk onto it, so only a platform superadmin may set
+	// it; anyone else gets 403
+	// `channel.merchant_of_record_superadmin_only`.
 	PaymentMode *CreateChannelRequestPaymentMode `json:"payment_mode,omitempty"`
 
 	// Provider Defaults to `stripe` when omitted or empty. Any other value
@@ -4135,7 +4139,11 @@ type CreateChannelRequest struct {
 }
 
 // CreateChannelRequestPaymentMode Defaults to `direct_merchant` when omitted or empty. Any other
-// value returns 400 `channel.invalid_config`.
+// value returns 400 `channel.invalid_config`. `merchant_of_record`
+// makes the platform the seller of record and moves the refund and
+// chargeback risk onto it, so only a platform superadmin may set
+// it; anyone else gets 403
+// `channel.merchant_of_record_superadmin_only`.
 type CreateChannelRequestPaymentMode string
 
 // CreateChannelRequestProvider Defaults to `stripe` when omitted or empty. Any other value
@@ -10690,6 +10698,11 @@ type UpdateChannelRequest struct {
 	// unchanged. When set together with `provider` /
 	// `provider_account_id`, the same combination rules as create
 	// apply and return 400 `channel.invalid_config` on violation.
+	// Switching a channel INTO `merchant_of_record` is reserved to a
+	// platform superadmin (403
+	// `channel.merchant_of_record_superadmin_only` otherwise);
+	// repeating the mode the channel already has, or moving back to
+	// `direct_merchant`, is allowed to any caller of the channel.
 	PaymentMode *UpdateChannelRequestPaymentMode `json:"payment_mode,omitempty"`
 
 	// Provider New payment provider. Omit (or send an empty string) to
@@ -10724,6 +10737,11 @@ type UpdateChannelRequest struct {
 // unchanged. When set together with `provider` /
 // `provider_account_id`, the same combination rules as create
 // apply and return 400 `channel.invalid_config` on violation.
+// Switching a channel INTO `merchant_of_record` is reserved to a
+// platform superadmin (403
+// `channel.merchant_of_record_superadmin_only` otherwise);
+// repeating the mode the channel already has, or moving back to
+// `direct_merchant`, is allowed to any caller of the channel.
 type UpdateChannelRequestPaymentMode string
 
 // UpdateChannelRequestProvider New payment provider. Omit (or send an empty string) to

@@ -237,6 +237,17 @@ describe("mapServerError", () => {
     expect(mapServerError(err).name).toBe("bad name");
   });
 
+  it("maps channel.merchant_of_record_superadmin_only to the payment_mode field", () => {
+    const err = new ApiError(403, {
+      code: "channel.merchant_of_record_superadmin_only",
+      message: "server text",
+      details: { field: "payment_mode" },
+    });
+    const out = mapServerError(err);
+    expect(out.payment_mode).toMatch(/platform superadmin/i);
+    expect(out.form).toBeUndefined();
+  });
+
   it("maps channel.duplicate to name field", () => {
     const err = makeError("channel.duplicate", "already exists");
     expect(mapServerError(err).name).toBe("already exists");

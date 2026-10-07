@@ -854,7 +854,7 @@ func TestChannel236_CreateChannel_InvalidSettingsReturns400(t *testing.T) {
 	token := mintJWT(t, s.stub, "00000000-0000-0000-0000-000000000001")
 
 	// Array is not a JSON object → validation error.
-	body := `{"name":"x","payment_mode":"merchant_of_record","provider":"stripe","settings":[1,2,3]}`
+	body := `{"name":"x","payment_mode":"direct_merchant","provider":"stripe","provider_account_id":"acct_test","settings":[1,2,3]}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID.String()+"/channels",
 		strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -882,7 +882,7 @@ func TestChannel_CreateChannel_ZeroReservationTTLOverrideReturns400(t *testing.T
 	orgID := uuid.New()
 	token := mintJWT(t, s.stub, "00000000-0000-0000-0000-000000000001")
 
-	body := `{"name":"x","payment_mode":"merchant_of_record","provider":"stripe","reservation_ttl_override":0}`
+	body := `{"name":"x","payment_mode":"direct_merchant","provider":"stripe","provider_account_id":"acct_test","reservation_ttl_override":0}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID.String()+"/channels",
 		strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -904,7 +904,7 @@ func TestChannel_CreateChannel_NegativeReservationTTLOverrideReturns400(t *testi
 	orgID := uuid.New()
 	token := mintJWT(t, s.stub, "00000000-0000-0000-0000-000000000001")
 
-	body := `{"name":"x","payment_mode":"merchant_of_record","provider":"stripe","reservation_ttl_override":-60}`
+	body := `{"name":"x","payment_mode":"direct_merchant","provider":"stripe","provider_account_id":"acct_test","reservation_ttl_override":-60}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID.String()+"/channels",
 		strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -918,6 +918,32 @@ func TestChannel_CreateChannel_NegativeReservationTTLOverrideReturns400(t *testi
 	resp := channelRespJSON(t, w)
 	if code := errorCode(t, resp); code != "channel.invalid_reservation_ttl_override" {
 		t.Errorf("expected code='channel.invalid_reservation_ttl_override', got %q", code)
+	}
+}
+
+// merchant_of_record moves the refund/chargeback risk onto the platform, so a
+// caller who is not a platform superadmin must be refused BEFORE anything is
+// written (owner decision 2026-10-07). A plain user token carries no
+// superadmin marker, which is exactly what an organization owner looks like.
+func TestChannel_CreateChannel_MerchantOfRecordRefusedForNonSuperadmin(t *testing.T) {
+	s := buildChannelServer(t)
+	orgID := uuid.New()
+	token := mintJWT(t, s.stub, "00000000-0000-0000-0000-000000000001")
+
+	body := `{"name":"x","payment_mode":"merchant_of_record","provider":"stripe"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+orgID.String()+"/channels",
+		strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for merchant_of_record from a non-superadmin, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	resp := channelRespJSON(t, w)
+	if code := errorCode(t, resp); code != "channel.merchant_of_record_superadmin_only" {
+		t.Errorf("expected code='channel.merchant_of_record_superadmin_only', got %q", code)
 	}
 }
 

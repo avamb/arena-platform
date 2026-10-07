@@ -1933,6 +1933,12 @@ export function mapServerError(err: ApiError): ServerFieldErrors {
     case "channel.invalid_settings":
       out.settings = err.message;
       return out;
+    case "channel.merchant_of_record_superadmin_only":
+      // merchant_of_record puts the refund/chargeback risk on the platform, so
+      // only a platform superadmin may switch a channel into it.
+      out.payment_mode =
+        "Only a platform superadmin can use merchant_of_record. Choose direct_merchant, or ask the platform operator.";
+      return out;
     case "channel.duplicate":
       out.name = err.message;
       return out;
