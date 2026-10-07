@@ -87,7 +87,7 @@ var wizardKeys = []string{
 	"bot.wz.err_venue_name",
 	"bot.wz.ask_venue_address",
 	"bot.wz.ask_venue_capacity",
-	"bot.wz.ask_venue_tz",
+	"bot.wz.ask_venue_tz", "bot.wz.tz_suggest_note",
 	"bot.wz.err_venue_tz",
 	"bot.wz.venue_failed",
 	"bot.wz.ask_capacity",

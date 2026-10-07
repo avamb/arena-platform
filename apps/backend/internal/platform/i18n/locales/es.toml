@@ -483,10 +483,10 @@ other = "Dirección del recinto. Puedes omitirla."
 other = "¿Cuántas plazas vendes para esta sesión? Un número, por ejemplo 120. También se guardará como el aforo habitual del nuevo recinto."
 
 ["bot.wz.ask_venue_tz"]
-other = "Zona horaria del recinto, por ejemplo Europe/Prague."
+other = "Zona horaria del recinto. Elige un botón o escribe la ciudad del recinto (por ejemplo Nueva York) y buscaré su zona. También vale un nombre como America/New_York."
 
 ["bot.wz.err_venue_tz"]
-other = "No conozco esa zona. Escríbela como en la lista IANA, por ejemplo Europe/Madrid o Asia/Jerusalem."
+other = "No encontré esa zona. Elige un botón, escribe la ciudad del recinto o la zona como en la lista IANA, por ejemplo America/New_York o Asia/Jerusalem."
 
 ["bot.wz.venue_failed"]
 other = "No se pudo guardar el recinto: {{.Reason}}"
@@ -1135,3 +1135,6 @@ other = "Esa no es la palabra, así que no se ha cancelado nada. Para cancelar, 
 
 ["bot.ses.done_refund_note"]
 other = "💶 No se ha devuelto dinero automáticamente y las entradas siguen siendo válidas. Gestiona los reembolsos tú directamente con los compradores."
+
+["bot.wz.tz_suggest_note"]
+other = "Para la ciudad «{{.City}}» encontré la zona {{.Zone}}. Pulsa el botón para confirmarla."

@@ -641,3 +641,79 @@ func TestWizard_EnsureChannelsBeforeSaving(t *testing.T) {
 		}
 	})
 }
+
+// The zone question is answerable without knowing IANA names: the typed city
+// becomes a button to confirm, the country's biggest zones are buttons, and a
+// many-zone country is never guessed from another venue.
+func TestWizard_VenueZoneByCityAndButtons(t *testing.T) {
+	newVenue := func(country, city string) (*wizardRun, *fakeRefs) {
+		refs := newFakeRefs()
+		refs.countries = append(refs.countries, RefItem{ID: "us", Name: "United States", ISO2: "US", Currency: "USD"})
+		refs.cities["us"] = nil
+		// Another venue in the same country: it must NOT decide the zone.
+		refs.venues = append(refs.venues, VenueRef{ID: "ny", Name: "Old", CityID: "x", CountryISO2: "US", Timezone: "America/New_York", Capacity: 10})
+		r := newWizardRun(t, refs)
+		r.eventHead()
+		r.text("20.03.2027", stSTime)
+		r.text("21:00", stSCountry)
+		r.press("country:"+country, stSCity)
+		r.press("city:new", stCityName)
+		r.text(city, stSVenue)
+		r.press("venue:new", stVName)
+		r.text("Hall", stVAddress)
+		r.text("Main St 1", stVCapacity)
+		r.text("80", stVTz)
+		return r, refs
+	}
+	labels := func(r *wizardRun) []string {
+		scr, err := r.w.Render(context.Background(), r.ws, r.d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, row := range scr.Buttons {
+			for _, b := range row {
+				if strings.HasPrefix(b.Data, "tz:") {
+					out = append(out, b.Data+"|"+b.Label)
+				}
+			}
+		}
+		return out
+	}
+
+	t.Run("the session's own city is the first button", func(t *testing.T) {
+		r, _ := newVenue("us", "Los Angeles")
+		got := labels(r)
+		if len(got) < 2 || !strings.HasPrefix(got[0], "tz:America/Los_Angeles|✔ ") {
+			t.Fatalf("buttons = %v", got)
+		}
+		if len(got) > maxZoneButtons {
+			t.Fatalf("too many buttons: %v", got)
+		}
+		r.press("tz:America/Los_Angeles", stSMore)
+		if r.d.Sessions[0].Timezone != "America/Los_Angeles" {
+			t.Fatalf("session = %+v", r.d.Sessions[0])
+		}
+	})
+	t.Run("a typed city is offered, then confirmed", func(t *testing.T) {
+		r, _ := newVenue("us", "Springfield-on-nothing")
+		if got := labels(r); len(got) == 0 || strings.Contains(got[0], "✔") {
+			t.Fatalf("an unknown city must not be marked as a suggestion: %v", got)
+		}
+		note, err := r.w.Apply(context.Background(), r.ws, r.d, WizInput{Text: "Chicago"})
+		if err != nil || r.d.Step != stVTz || !strings.Contains(note, "America/Chicago") {
+			t.Fatalf("step=%s note=%q err=%v", r.d.Step, note, err)
+		}
+		if got := labels(r); !strings.HasPrefix(got[0], "tz:America/Chicago|✔ ") {
+			t.Fatalf("buttons = %v", got)
+		}
+		r.press("tz:America/Chicago", stSMore)
+	})
+	t.Run("a bad zone through a button is refused", func(t *testing.T) {
+		r, _ := newVenue("us", "Boston")
+		_, err := r.w.Apply(context.Background(), r.ws, r.d, WizInput{Data: "tz:Mars/Olympus"})
+		if err != nil || r.d.Step != stVTz {
+			t.Fatalf("step=%s err=%v", r.d.Step, err)
+		}
+	})
+}

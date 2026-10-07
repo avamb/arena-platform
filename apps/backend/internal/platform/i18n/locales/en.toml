@@ -627,10 +627,10 @@ other = "Street address of the venue. You can skip this."
 other = "How many places are you selling for this session? A number, for example 120. It is also remembered as the new venue's usual capacity."
 
 ["bot.wz.ask_venue_tz"]
-other = "Time zone of the venue, for example Europe/Prague."
+other = "Time zone of the venue. Pick a button, or type the venue's city (for example New York) and I will look up its zone. A name like America/New_York works too."
 
 ["bot.wz.err_venue_tz"]
-other = "I do not know that zone. Type it as in the IANA list, for example Europe/Prague or Asia/Jerusalem."
+other = "I could not find that zone. Pick a button, type the venue's city, or type the zone as in the IANA list, for example America/New_York or Asia/Jerusalem."
 
 ["bot.wz.venue_failed"]
 other = "The venue could not be saved: {{.Reason}}"
@@ -1280,3 +1280,6 @@ other = "That is not the word, so nothing was cancelled. To cancel, type exactly
 
 ["bot.ses.done_refund_note"]
 other = "💶 No money was refunded automatically and the tickets stay valid. Settle refunds with the buyers yourself."
+
+["bot.wz.tz_suggest_note"]
+other = "For the city «{{.City}}» I found the zone {{.Zone}}. Press the button to confirm it."

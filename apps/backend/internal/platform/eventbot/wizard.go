@@ -216,7 +216,10 @@ type DraftScratch struct {
 	NewPromo    string         `json:"new_promoter_name"`
 	NewCity     string         `json:"new_city_name"`
 	NewVenue    VenueCreate    `json:"new_venue"`
-	SameAsPrev  bool           `json:"same_as_prev"`
+	// TzHint is the zone a typed city name pointed at, offered as a button on
+	// the zone question until the person confirms it.
+	TzHint     string `json:"tz_hint,omitempty"`
+	SameAsPrev bool   `json:"same_as_prev"`
 }
 
 // DraftSaved is what the non-atomic save already wrote.
@@ -1038,10 +1041,26 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		d.goTo(stVTz)
 
 	case stVTz:
-		if _, err := time.LoadLocation(text); err != nil || text == "" {
+		// A pressed button carries a zone the bot itself proposed; typed text
+		// is an IANA name or a city name, which is only ever turned into a
+		// button to confirm (a wrong zone would shift every time a buyer
+		// reads).
+		zone := strings.TrimPrefix(data, "tz:")
+		if !strings.HasPrefix(data, "tz:") {
+			zone = strings.TrimSpace(text)
+			if _, err := time.LoadLocation(zone); err != nil || zone == "" {
+				if hint := geotz.ForCity(d.Scratch.NewVenue.CountryISO2, text); hint != "" {
+					d.Scratch.TzHint = hint
+					return t("bot.wz.tz_suggest_note", map[string]any{"City": Esc(strings.TrimSpace(text)), "Zone": hint}), nil
+				}
+				return t("bot.wz.err_venue_tz", nil), nil
+			}
+		}
+		if _, err := time.LoadLocation(zone); err != nil || zone == "" {
 			return t("bot.wz.err_venue_tz", nil), nil
 		}
-		d.Scratch.NewVenue.Timezone = text
+		d.Scratch.NewVenue.Timezone = zone
+		d.Scratch.TzHint = ""
 		return w.createVenue(ctx, ws, d)
 
 	case stSCapacity:
@@ -1434,6 +1453,12 @@ func (w *Wizard) finishSession(loc string, d *Draft) (string, error) {
 // of the organization in the same country, else a built-in default for
 // single-zone countries, else "" (the wizard asks).
 func (w *Wizard) guessTimezone(ctx context.Context, ws WizSession, iso2 string) string {
+	// A country with several zones is never guessed from another venue: the
+	// organization's New York venue says nothing about its next one in Los
+	// Angeles. The zone question asks, with the city's own zone as a button.
+	if len(geotz.ZonesFor(iso2)) > 1 {
+		return ""
+	}
 	if venues, err := w.refs.Venues(ctx, ws.JWT, ws.OrgID); err == nil {
 		for _, v := range venues {
 			if strings.EqualFold(v.CountryISO2, iso2) && v.Timezone != "" {

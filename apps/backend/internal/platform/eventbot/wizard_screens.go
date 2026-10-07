@@ -4,6 +4,8 @@ import (
 	"context"
 	"strconv"
 	"strings"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/geotz"
 )
 
 // Render builds the screen of the draft's current step: the step header,
@@ -253,7 +255,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 	case stVCapacity:
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_venue_capacity", nil), Buttons: nav()}, nil
 	case stVTz:
-		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_venue_tz", nil), Buttons: nav()}, nil
+		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_venue_tz", nil), Buttons: nav(zoneButtons(d)...)}, nil
 
 	case stSCapacity:
 		s := d.session()
@@ -565,3 +567,40 @@ func chunk(rows [][]Button, per int) [][]Button {
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// maxZoneButtons caps the zone buttons: Russia alone has two dozen zones, and a
+// zone that is not among the first few is reached by typing the city.
+const maxZoneButtons = 6
+
+// zoneButtons are the zone question's buttons: the zone a city name pointed at
+// (the typed one, else the session's own city) first, then the zones of the
+// country, the biggest city's zone first. Each button names the zone's
+// largest city so a person who does not know IANA names can still choose.
+func zoneButtons(d *Draft) [][]Button {
+	iso2 := d.Scratch.NewVenue.CountryISO2
+	rows := [][]Button{}
+	seen := map[string]bool{}
+	add := func(zone, mark string) {
+		if zone == "" || seen[zone] {
+			return
+		}
+		seen[zone] = true
+		label := zone
+		if city := geotz.CityOf(iso2, zone); city != "" {
+			label = city + " · " + zone
+		}
+		rows = append(rows, []Button{{Label: truncate(mark+label, 56), Data: "tz:" + zone}})
+	}
+	if d.Scratch.TzHint != "" {
+		add(d.Scratch.TzHint, "✔ ")
+	} else {
+		add(geotz.ForCity(iso2, d.session().CityName), "✔ ")
+	}
+	for _, z := range geotz.ZonesFor(iso2) {
+		if len(rows) >= maxZoneButtons {
+			break
+		}
+		add(z.ID, "")
+	}
+	return rows
+}

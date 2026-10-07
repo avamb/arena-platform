@@ -55,3 +55,75 @@ func TestCountryZones_MatchMigration0118(t *testing.T) {
 		}
 	}
 }
+
+// The city data resolves the cases the country table refuses to guess, in the
+// scripts people actually type.
+func TestForCity_ResolvesManyZoneCountries(t *testing.T) {
+	cases := []struct{ iso2, city, want string }{
+		{"US", "New York", "America/New_York"},
+		{"us", "  los angeles ", "America/Los_Angeles"},
+		{"US", "Chicago", "America/Chicago"},
+		{"ES", "Las Palmas de Gran Canaria", "Atlantic/Canary"},
+		{"ES", "Madrid", "Europe/Madrid"},
+		{"ES", "Málaga", "Europe/Madrid"}, // accents are folded
+		{"PT", "Ponta Delgada", "Atlantic/Azores"},
+		{"RU", "Москва", "Europe/Moscow"},
+		{"RU", "Владивосток", "Asia/Vladivostok"},
+		{"CA", "Vancouver", "America/Vancouver"},
+		{"AU", "Perth", "Australia/Perth"},
+		{"ES", "Atlantis", ""},
+		{"ES", "", ""},
+		{"CZ", "Praha", ""}, // a single-zone country is answered by ForCountry
+	}
+	for _, c := range cases {
+		if got := ForCity(c.iso2, c.city); got != c.want {
+			t.Errorf("ForCity(%q, %q) = %q, want %q", c.iso2, c.city, got, c.want)
+		}
+	}
+}
+
+func TestZonesFor_ListsTheCountrysZonesBiggestFirst(t *testing.T) {
+	us := ZonesFor("US")
+	if len(us) < 4 || us[0].ID != "America/New_York" {
+		t.Fatalf("US zones = %+v", us)
+	}
+	es := ZonesFor("es")
+	if len(es) < 2 || es[0].ID != "Europe/Madrid" || es[1].ID != "Atlantic/Canary" {
+		t.Fatalf("ES zones = %+v", es)
+	}
+	if in := ZonesFor("IN"); len(in) != 1 || in[0].ID != "Asia/Kolkata" {
+		t.Fatalf("IN zones = %+v", in)
+	}
+	if got := ZonesFor("CZ"); got != nil {
+		t.Fatalf("a country of the single-zone table has no entry, got %+v", got)
+	}
+	if CityOf("US", "America/New_York") == "" {
+		t.Error("CityOf returned nothing for a known zone")
+	}
+}
+
+// Every zone the data names must be one the runtime can load.
+func TestCityData_ZonesAreLoadable(t *testing.T) {
+	loadOnce.Do(load)
+	if len(zonesBy) < 100 || len(cityZone) < 10 {
+		t.Fatalf("data looks empty: %d countries, %d with cities", len(zonesBy), len(cityZone))
+	}
+	for cc, zs := range zonesBy {
+		for _, z := range zs {
+			if _, err := time.LoadLocation(z.ID); err != nil {
+				t.Errorf("%s: %q is not a loadable zone: %v", cc, z.ID, err)
+			}
+		}
+	}
+}
+
+func TestNormalize(t *testing.T) {
+	cases := map[string]string{
+		"  São Paulo ": "sao paulo", "St. John's": "st john s", "Нью-Йорк": "нью иорк", "": "", "---": "",
+	}
+	for in, want := range cases {
+		if got := Normalize(in); got != want {
+			t.Errorf("Normalize(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

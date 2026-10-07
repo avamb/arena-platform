@@ -1,0 +1,5 @@
+cities.tsv.gz is derived from the GeoNames "cities15000" gazetteer
+(https://www.geonames.org/), which is licensed under Creative Commons
+Attribution 4.0 (https://creativecommons.org/licenses/by/4.0/).
+Rebuild it with ops/geotz/build_cities.py. The file keeps only the country,
+the IANA zone and the normalised names of each city.
