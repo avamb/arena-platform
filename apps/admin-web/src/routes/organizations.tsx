@@ -2692,6 +2692,40 @@ export function botInviteRoleFor(role: string): BotInviteRole | null {
 /** The languages of the invitation e-mail and of the bot's first messages. */
 export type BotInviteLocale = "ru" | "en" | "es";
 
+/** The languages offered when sending a bot invitation, in menu order. */
+export const BOT_INVITE_LANGUAGES: readonly { code: BotInviteLocale; name: string }[] = [
+  { code: "ru", name: "Russian" },
+  { code: "en", name: "English" },
+  { code: "es", name: "Spanish" },
+];
+
+/**
+ * What an "Add member" sends to an e-mailed person: the admin-console
+ * invitation (a membership, plus a set-your-password letter for a new user),
+ * the Telegram bot invitation (a membership plus the bot link; the user gets
+ * an unknown password), or both. Not every organizer works in the console,
+ * so the operator chooses each time (owner decision 2026-10-07).
+ */
+export type InviteSendMode = "" | "admin" | "bot" | "both";
+
+/**
+ * Which invitations a submit sends. Without a choice to make (a person given
+ * by id, or a role the bot does not know) it is the console membership alone.
+ */
+export function inviteChannels(
+  offerBot: boolean,
+  mode: InviteSendMode,
+): { admin: boolean; bot: boolean; missing: boolean } {
+  if (!offerBot) return { admin: true, bot: false, missing: false };
+  if (mode === "") return { admin: false, bot: false, missing: true };
+  return { admin: mode !== "bot", bot: mode !== "admin", missing: false };
+}
+
+/** Reads the "what to send" select; anything unknown is "no choice yet". */
+export function parseInviteSendMode(value: string): InviteSendMode {
+  return value === "admin" || value === "bot" || value === "both" ? value : "";
+}
+
 /** Reads a select value back into a language; anything unknown is Russian. */
 export function parseBotInviteLocale(value: string): BotInviteLocale {
   return value === "en" || value === "es" ? value : "ru";
@@ -2708,6 +2742,7 @@ export function buildBotInviteBody(
 interface BotInviteResponse {
   readonly deep_link?: string | null;
   readonly invitation: {
+    readonly user_id?: string;
     readonly email: string;
     readonly membership_role: string;
     readonly delivery?: string;
@@ -2825,13 +2860,15 @@ function UsersTab({ org }: { org: AdminOrganization }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
   const [botNotice, setBotNotice] = useState<BotInviteNotice | null>(null);
+  // The member whose "Bot link" is waiting for a language choice.
+  const [botPickFor, setBotPickFor] = useState<string | null>(null);
 
   const botInvite = useMutation<
     BotInviteResponse,
     ApiError,
-    { email: string; role: BotInviteRole }
+    { email: string; role: BotInviteRole; locale: BotInviteLocale }
   >({
-    mutationFn: ({ email, role }) => sendBotInvitation(org.id, email, role, "ru"),
+    mutationFn: ({ email, role, locale }) => sendBotInvitation(org.id, email, role, locale),
     onSuccess: (res, vars) => setBotNotice(botInviteNotice(vars.email, res)),
     onError: (err, vars) =>
       setBotNotice({ ok: false, email: vars.email, message: mapMembershipMutationError(err) }),
@@ -3011,24 +3048,50 @@ function UsersTab({ org }: { org: AdminOrganization }) {
                         m.status === "active" &&
                         m.email !== undefined &&
                         botInviteRoleFor(m.role) !== null ? (
-                          <button
-                            type="button"
-                            style={tabRowButtonStyle}
-                            onClick={() => {
-                              const botRole = botInviteRoleFor(m.role);
-                              if (botRole !== null && m.email !== undefined) {
-                                setBotNotice(null);
-                                botInvite.mutate({ email: m.email, role: botRole });
-                              }
-                            }}
-                            data-testid={`orgs-drawer-users-bot-${m.id}`}
-                            disabled={botInvite.isPending}
-                            title="Send this member a link to the Telegram event-center bot"
-                          >
-                            {botInvite.isPending && botInvite.variables?.email === m.email
-                              ? "Creating…"
-                              : "Bot link"}
-                          </button>
+                          botPickFor === m.id ? (
+                            <span style={rowActionsStyle} data-testid={`orgs-drawer-users-bot-pick-${m.id}`}>
+                              <span style={{ fontSize: 12 }}>Letter in:</span>
+                              {BOT_INVITE_LANGUAGES.map((l) => (
+                                <button
+                                  key={l.code}
+                                  type="button"
+                                  style={tabRowButtonStyle}
+                                  disabled={botInvite.isPending}
+                                  data-testid={`orgs-drawer-users-bot-${m.id}-${l.code}`}
+                                  onClick={() => {
+                                    const botRole = botInviteRoleFor(m.role);
+                                    if (botRole !== null && m.email !== undefined) {
+                                      setBotNotice(null);
+                                      setBotPickFor(null);
+                                      botInvite.mutate({ email: m.email, role: botRole, locale: l.code });
+                                    }
+                                  }}
+                                >
+                                  {l.name}
+                                </button>
+                              ))}
+                              <button
+                                type="button"
+                                style={tabRowButtonStyle}
+                                onClick={() => setBotPickFor(null)}
+                              >
+                                Cancel
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              style={tabRowButtonStyle}
+                              onClick={() => setBotPickFor(m.id)}
+                              data-testid={`orgs-drawer-users-bot-${m.id}`}
+                              disabled={botInvite.isPending}
+                              title="Send this member a link to the Telegram event-center bot. You choose the letter language next."
+                            >
+                              {botInvite.isPending && botInvite.variables?.email === m.email
+                                ? "Creating…"
+                                : "Bot link"}
+                            </button>
+                          )
                         ) : null}
                         {canGrant && !isEditing ? (
                           <button
@@ -3157,8 +3220,13 @@ function AddMemberDialog({
   onCreated: (notice: BotInviteNotice | null) => void;
 }) {
   const [userInput, setUserInput] = useState("");
-  const [alsoBot, setAlsoBot] = useState(true);
-  const [botLocale, setBotLocale] = useState<BotInviteLocale>("ru");
+  const [sendMode, setSendMode] = useState<InviteSendMode>("");
+  // No default language: the operator picks the invitee's language every
+  // time. A default (it was "ru") sent a Russian letter from the English
+  // console, and a default taken from the console language would be just as
+  // wrong for someone who works in English and invites people of many tongues
+  // (owner decision 2026-10-07).
+  const [botLocale, setBotLocale] = useState<BotInviteLocale | "">("");
   const botNoticeRef = useRef<BotInviteNotice | null>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -3176,19 +3244,50 @@ function AddMemberDialog({
   const typedEmail = !UUID_RE.test(userInput.trim()) && EMAIL_RE.test(userInput.trim());
   const botRole = botInviteRoleFor(role);
   const offerBot = typedEmail && botRole !== null;
+  const channels = inviteChannels(offerBot, sendMode);
+  const botLocaleMissing = channels.bot && botLocale === "";
+  const sendBlocked = channels.missing || botLocaleMissing;
 
-  const mutation = useMutation<MembershipEnvelope, ApiError, void>({
+  const mutation = useMutation<MembershipEnvelope | null, ApiError, void>({
     mutationFn: async () => {
       botNoticeRef.current = null;
-      const member = await authedFetch<MembershipEnvelope>({
-        method: "POST",
-        path: `/v1/admin/organizations/${orgId}/members`,
-        body: buildAddMemberBody(userInput, role, { firstName, lastName }),
-      });
-      // The member exists now. A failed bot invitation must not look like a
-      // failed member, so it is reported next to the member list instead.
-      if (alsoBot && offerBot && botRole !== null) {
+      let member: MembershipEnvelope | null = null;
+      if (channels.admin) {
+        member = await authedFetch<MembershipEnvelope>({
+          method: "POST",
+          path: `/v1/admin/organizations/${orgId}/members`,
+          body: buildAddMemberBody(userInput, role, { firstName, lastName }),
+        });
+      }
+      if (channels.bot && botRole !== null && botLocale !== "") {
         const email = userInput.trim().toLowerCase();
+        if (!channels.admin) {
+          // Bot only: the invitation IS the whole request, so a failure is the
+          // form's failure. It creates the user and the membership itself.
+          const res = await sendBotInvitation(orgId, email, botRole, botLocale);
+          botNoticeRef.current = botInviteNotice(email, res);
+          // The invitation has no name fields: set them afterwards, best effort.
+          const userId = res.invitation.user_id;
+          const first = firstName.trim();
+          const last = lastName.trim();
+          if (userId !== undefined && (first !== "" || last !== "")) {
+            try {
+              await authedFetch<unknown>({
+                method: "PATCH",
+                path: `/v1/admin/users/${userId}`,
+                body: {
+                  ...(first !== "" ? { first_name: first } : {}),
+                  ...(last !== "" ? { last_name: last } : {}),
+                },
+              });
+            } catch {
+              // The invitation is out; the name can be filled in from Users.
+            }
+          }
+          return member;
+        }
+        // The member exists now. A failed bot invitation must not look like a
+        // failed member, so it is reported next to the member list instead.
         try {
           const res = await sendBotInvitation(orgId, email, botRole, botLocale);
           botNoticeRef.current = botInviteNotice(email, res);
@@ -3209,14 +3308,16 @@ function AddMemberDialog({
       onCreated(botNoticeRef.current);
     },
     onError: (err) => {
-      setServerErrors(mapAddMemberServerError(err));
+      setServerErrors(
+        channels.admin ? mapAddMemberServerError(err) : { form: mapMembershipMutationError(err) },
+      );
     },
   });
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setServerErrors({});
-    if (!localValid) {
+    if (!localValid || sendBlocked) {
       return;
     }
     mutation.mutate();
@@ -3338,33 +3439,42 @@ function AddMemberDialog({
 
           {offerBot ? (
             <FieldRow
-              label="Telegram bot"
-              htmlFor="orgs-add-member-bot"
+              label="What to send"
+              htmlFor="orgs-add-member-send"
               error={null}
               localError={null}
-              hint="Creates a one-time link to the event-center bot and e-mails it too. For an owner the bot opens Team and Events; for an organizer, Events."
+              hint="Console: a new user gets a letter to set a password, for people who work in this admin. Bot: a one-time Telegram link, enough for an organizer who only uses the bot (no console password). Both: the two letters. For an owner the bot opens Team and Events; for an organizer, Events."
             >
-              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input
-                  id="orgs-add-member-bot"
-                  type="checkbox"
-                  checked={alsoBot}
-                  onChange={(e) => setAlsoBot(e.target.checked)}
-                  data-testid="orgs-drawer-users-add-bot"
-                />
-                Also send the Telegram bot invitation
-              </label>
-              {alsoBot ? (
+              <select
+                id="orgs-add-member-send"
+                value={sendMode}
+                onChange={(e) => setSendMode(parseInviteSendMode(e.target.value))}
+                style={inputStyle}
+                aria-invalid={sendMode === ""}
+                data-testid="orgs-drawer-users-add-send"
+              >
+                <option value="">Choose what to send…</option>
+                <option value="admin">Admin console invitation only</option>
+                <option value="bot">Telegram bot invitation only</option>
+                <option value="both">Both: console and bot</option>
+              </select>
+              {channels.bot ? (
                 <select
                   value={botLocale}
-                  onChange={(e) => setBotLocale(parseBotInviteLocale(e.target.value))}
+                  onChange={(e) =>
+                    setBotLocale(e.target.value === "" ? "" : parseBotInviteLocale(e.target.value))
+                  }
                   style={inputStyle}
                   aria-label="Bot invitation language"
+                  aria-invalid={botLocale === ""}
                   data-testid="orgs-drawer-users-add-bot-locale"
                 >
-                  <option value="ru">Letter in Russian</option>
-                  <option value="en">Letter in English</option>
-                  <option value="es">Letter in Spanish</option>
+                  <option value="">Choose the bot letter language…</option>
+                  {BOT_INVITE_LANGUAGES.map((l) => (
+                    <option key={l.code} value={l.code}>
+                      Bot letter in {l.name}
+                    </option>
+                  ))}
                 </select>
               ) : null}
             </FieldRow>
@@ -3392,7 +3502,14 @@ function AddMemberDialog({
             <button
               type="submit"
               style={primaryButtonStyle}
-              disabled={!localValid || mutation.isPending}
+              disabled={!localValid || sendBlocked || mutation.isPending}
+              title={
+                channels.missing
+                  ? "Choose what to send first"
+                  : botLocaleMissing
+                    ? "Choose the language of the bot invitation letter first"
+                    : undefined
+              }
               data-testid="orgs-drawer-users-add-submit"
             >
               {mutation.isPending ? "Sending…" : "Invite or add member"}

@@ -25,6 +25,7 @@ import {
 } from "react";
 import { ApiError, fetchMe, login as apiLogin, logout as apiLogout, refresh } from "@/lib/api/client";
 import { runBootstrap } from "@/lib/auth/authBootstrap";
+import { setOrgScopedReasonApplies } from "@/lib/api/reason";
 import { getRefreshToken } from "@/lib/api/tokenStore";
 import type { MeResponse } from "@/lib/api/types";
 import { AuthContext, type AuthContextValue, type AuthStatus } from "@/lib/auth/AuthContext";
@@ -47,6 +48,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const loadMe = useCallback(async (): Promise<boolean> => {
     try {
       const response = await fetchMe();
+      setOrgScopedReasonApplies(response.roles.includes("platform_superadmin"));
       setMe(response);
       setMeError(null);
       setStatus("authenticated");
@@ -156,6 +158,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const logout = useCallback(async (): Promise<void> => {
     await apiLogout();
+    setOrgScopedReasonApplies(true);
     setMe(null);
     setMeError(null);
     setStatus("unauthenticated");

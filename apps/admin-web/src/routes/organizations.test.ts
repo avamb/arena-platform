@@ -22,6 +22,9 @@ import {
   botInviteRoleFor,
   buildBotInviteBody,
   parseBotInviteLocale,
+  BOT_INVITE_LANGUAGES,
+  inviteChannels,
+  parseInviteSendMode,
   memberDisplayName,
   filterRows,
   formatDurationSeconds,
@@ -984,5 +987,31 @@ describe("Telegram bot invitation helpers", () => {
     expect(parseBotInviteLocale("en")).toBe("en");
     expect(parseBotInviteLocale("ru")).toBe("ru");
     expect(parseBotInviteLocale("cs")).toBe("ru");
+  });
+
+  it("sends what the operator chose, and nothing until they chose", () => {
+    // An e-mailed person with a bot role: the choice is required.
+    expect(inviteChannels(true, "")).toEqual({ admin: false, bot: false, missing: true });
+    expect(inviteChannels(true, "admin")).toEqual({ admin: true, bot: false, missing: false });
+    expect(inviteChannels(true, "bot")).toEqual({ admin: false, bot: true, missing: false });
+    expect(inviteChannels(true, "both")).toEqual({ admin: true, bot: true, missing: false });
+    // A person given by id, or a role the bot does not know: the console membership alone.
+    expect(inviteChannels(false, "")).toEqual({ admin: true, bot: false, missing: false });
+    expect(inviteChannels(false, "bot")).toEqual({ admin: true, bot: false, missing: false });
+  });
+
+  it("reads the send-mode select, an unknown value being no choice", () => {
+    expect(parseInviteSendMode("admin")).toBe("admin");
+    expect(parseInviteSendMode("bot")).toBe("bot");
+    expect(parseInviteSendMode("both")).toBe("both");
+    expect(parseInviteSendMode("")).toBe("");
+    expect(parseInviteSendMode("sms")).toBe("");
+  });
+
+  it("offers every supported language and every one round-trips through the select", () => {
+    expect(BOT_INVITE_LANGUAGES.map((l) => l.code)).toEqual(["ru", "en", "es"]);
+    for (const l of BOT_INVITE_LANGUAGES) {
+      expect(parseBotInviteLocale(l.code)).toBe(l.code);
+    }
   });
 });

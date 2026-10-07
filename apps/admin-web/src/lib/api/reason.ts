@@ -132,6 +132,23 @@ const REASON_REQUIRED_REGEX: readonly RegExp[] = [
 /** HTTP methods treated as mutations for the SAUI-09 gate. */
 const MUTATION_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 
+/**
+ * Whether the org-scoped paths (`/v1/organizations/{id}/...`) need a reason.
+ *
+ * The backend demands X-Admin-Reason there only from a platform superadmin,
+ * who is reading across tenants. An organization's own owner or manager
+ * works inside their organization, so asking them to justify "reading data
+ * across tenants" is wrong and confusing (an invited owner met that prompt
+ * on the very first screen, 2026-10-07). AuthProvider sets this from
+ * /v1/me; it stays true until then and after sign-out, which is the old
+ * behaviour. The `/v1/admin/*` paths are superadmin-only and always ask.
+ */
+let orgScopedReasonApplies = true;
+
+export function setOrgScopedReasonApplies(applies: boolean): void {
+  orgScopedReasonApplies = applies;
+}
+
 function stripQuery(path: string): string {
   const qIndex = path.indexOf("?");
   return qIndex === -1 ? path : path.slice(0, qIndex);
@@ -163,9 +180,11 @@ export function requiresAdminReason(path: string, method?: string): boolean {
       return true;
     }
   }
-  for (const re of REASON_REQUIRED_REGEX) {
-    if (re.test(bare)) {
-      return true;
+  if (orgScopedReasonApplies) {
+    for (const re of REASON_REQUIRED_REGEX) {
+      if (re.test(bare)) {
+        return true;
+      }
     }
   }
   if (method !== undefined && MUTATION_METHODS.has(method.toUpperCase())) {
@@ -174,9 +193,11 @@ export function requiresAdminReason(path: string, method?: string): boolean {
         return true;
       }
     }
-    for (const re of REASON_REQUIRED_MUTATION_REGEX) {
-      if (re.test(bare)) {
-        return true;
+    if (orgScopedReasonApplies) {
+      for (const re of REASON_REQUIRED_MUTATION_REGEX) {
+        if (re.test(bare)) {
+          return true;
+        }
       }
     }
   }
@@ -342,6 +363,7 @@ export function __TEST_ONLY_resetReason(): void {
   cachedReason = null;
   initialised = false;
   resolver = null;
+  orgScopedReasonApplies = true;
   listeners.clear();
   try {
     sessionStorage.removeItem(REASON_STORAGE_KEY);

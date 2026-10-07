@@ -101,6 +101,11 @@ function LoginRoute() {
         Sign in with your operator credentials. Sessions are scoped to this
         browser tab.
       </p>
+      <p style={hintStyle} data-testid="login-invited-hint">
+        Invited by e-mail? You have no password yet: open the invitation
+        letter and press “Choose password” to set it, then sign in here. The
+        link expired? Use “Forgot your password?” below.
+      </p>
       {submitError !== null ? (
         <div role="alert" aria-live="assertive" style={alertStyle} data-testid="login-error">
           {submitError}
