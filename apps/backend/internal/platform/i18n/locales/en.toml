@@ -1195,16 +1195,16 @@ other = "✔ Move and email the buyers"
 other = "✔ Move"
 
 ["bot.ses.go_cancel_btn"]
-other = "✔ Cancel and email the buyers"
+other = "➡ Next: confirm the cancellation"
 
 ["bot.ses.go_cancel_free_btn"]
-other = "✔ Cancel the session"
+other = "➡ Next: confirm the cancellation"
 
 ["bot.ses.go_cancel_all_btn"]
-other = "✔ Cancel all and email the buyers"
+other = "➡ Next: confirm cancelling everything"
 
 ["bot.ses.go_cancel_all_free_btn"]
-other = "✔ Cancel the whole event"
+other = "➡ Next: confirm cancelling everything"
 
 ["bot.ses.site_blocked"]
 other = "Some orders ({{.N}}) were placed through your WordPress site. That site writes the letter to its buyers, and moving or cancelling a session with such orders is not supported yet — write to Arena support and we will do it by hand. Nothing was changed."
@@ -1262,3 +1262,18 @@ other = "Create events and follow Arena Sold Out sales right in Telegram: name, 
 
 ["bot.about_short"]
 other = "Arena Sold Out events and sales in Telegram"
+
+["bot.ses.cancel_word"]
+other = "CANCEL"
+
+["bot.ses.type_ask"]
+other = "⚠️ <b>Last step — nothing is cancelled yet.</b>\n\n{{.Subject}}\nBuyer emails to send (orders): {{.Orders}}. This cannot be undone.\n\nTo cancel, <b>type the word {{.Word}}</b> and send it as a message. To keep the session, press «Back»."
+
+["bot.ses.type_subject_one"]
+other = "Session: <b>{{.Old}}</b>"
+
+["bot.ses.type_subject_all"]
+other = "Event: <b>{{.Name}}</b> — all {{.N}} sessions"
+
+["bot.ses.type_wrong"]
+other = "That is not the word, so nothing was cancelled. To cancel, type exactly: {{.Word}}"

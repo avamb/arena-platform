@@ -52,11 +52,15 @@ const (
 	sesStepDate    = "date"
 	sesStepTime    = "time"
 	sesStepConfirm = "confirm"
-	sesStepMsg     = "msg"
-	sesStepEmail   = "email"
-	sesStepPhone   = "phone"
-	sesStepHide    = "hide"
-	sesStepDone    = "done"
+	// sesStepType is the last step of a CANCELLATION: the organizer has to
+	// type the cancel word. A button press alone never cancels a session —
+	// buyers are emailed and there is no undo.
+	sesStepType  = "type"
+	sesStepMsg   = "msg"
+	sesStepEmail = "email"
+	sesStepPhone = "phone"
+	sesStepHide  = "hide"
+	sesStepDone  = "done"
 )
 
 // sesItem is one session of the open event.
@@ -331,6 +335,8 @@ func (b *Bot) sesShow(ctx context.Context, chatID int64, msgID *int, id *Identit
 			{b.sesBtn(loc, "bot.ses.msg_clear_btn", "nomsg", nil), b.sesBtn(loc, "bot.ses.msg_default_btn", "defmsg", nil)},
 			b.sesNav(loc, "confirm"),
 		})
+	case sesStepType:
+		b.sesShowType(ctx, chatID, msgID, loc, dlg, prefix)
 	case sesStepEmail:
 		name := ""
 		if dlg.Impact != nil {
@@ -482,6 +488,40 @@ func (b *Bot) sesShowConfirm(ctx context.Context, chatID int64, msgID *int, loc 
 			back, b.sesHomeRow(loc))
 	}
 	b.sesReply(ctx, chatID, msgID, dlg, text, rows)
+}
+
+// sesShowType asks for the cancel word. It names what is about to be
+// cancelled and how many buyers are written to, and says plainly that nothing
+// happens until the word is sent.
+func (b *Bot) sesShowType(ctx context.Context, chatID int64, msgID *int, loc string, dlg *sessionDialog, prefix string) {
+	subject := ""
+	switch dlg.Mode {
+	case sesModeCancelAll:
+		subject = b.sesT(loc, "bot.ses.type_subject_all", map[string]any{"Name": Esc(dlg.EventName), "N": b.activeCount(dlg)})
+	default:
+		if dlg.Impact != nil {
+			subject = b.sesT(loc, "bot.ses.type_subject_one", map[string]any{"Old": Esc(dlg.Impact.Old)})
+		}
+	}
+	orders := 0
+	if dlg.Impact != nil {
+		orders = dlg.Impact.Orders
+	}
+	b.sesReply(ctx, chatID, msgID, dlg, prefix+b.sesT(loc, "bot.ses.type_ask", map[string]any{
+		"Subject": subject, "Orders": orders, "Word": b.sesCancelWord(loc),
+	}), [][]Button{b.sesNav(loc, "confirm"), b.sesHomeRow(loc)})
+}
+
+// sesCancelWord is the word the organizer types to cancel, in their language.
+func (b *Bot) sesCancelWord(loc string) string {
+	return b.sesT(loc, "bot.ses.cancel_word", nil)
+}
+
+// sesIsCancelWord reports whether the typed text is the explicit command: the
+// word of the organizer's language, or the English one in any language.
+func (b *Bot) sesIsCancelWord(loc, text string) bool {
+	text = strings.TrimSpace(strings.Trim(strings.TrimSpace(text), "\"'«».!"))
+	return strings.EqualFold(text, b.sesCancelWord(loc)) || strings.EqualFold(text, "cancel")
 }
 
 func (b *Bot) goKey(dlg *sessionDialog, notify bool) string {
@@ -704,6 +744,13 @@ func (b *Bot) sessionsCallback(ctx context.Context, chatID int64, msgID int, fro
 	case strings.HasPrefix(data, "hide:") && dlg.Step == sesStepHide:
 		b.sesSaveContact(ctx, chatID, &msgID, id, jwt, from, dlg, data == "hide:1")
 	case data == "go":
+		// A cancellation is never one button: the press only opens the step
+		// that asks for the cancel word (sessionsText carries it out).
+		if dlg.Mode != sesModeMove && dlg.Step == sesStepConfirm && dlg.Impact != nil {
+			dlg.Step = sesStepType
+			b.sesShow(ctx, chatID, &msgID, id, jwt, from, dlg, "")
+			return
+		}
 		b.sesGo(ctx, chatID, &msgID, id, jwt, from, dlg)
 	}
 	_ = loc
@@ -879,7 +926,7 @@ func (b *Bot) sessionsText(ctx context.Context, chatID int64, from *models.User,
 		return false
 	}
 	switch dlg.Step {
-	case sesStepDate, sesStepTime, sesStepMsg, sesStepEmail, sesStepPhone:
+	case sesStepDate, sesStepTime, sesStepMsg, sesStepEmail, sesStepPhone, sesStepType:
 	default:
 		return false
 	}
@@ -896,6 +943,13 @@ func (b *Bot) sessionsText(ctx context.Context, chatID int64, from *models.User,
 	}
 	text = strings.TrimSpace(text)
 	switch dlg.Step {
+	case sesStepType:
+		if !b.sesIsCancelWord(loc, text) {
+			b.sesShow(ctx, chatID, msgID, id, jwt, from, dlg, b.sesT(loc, "bot.ses.type_wrong", map[string]any{"Word": b.sesCancelWord(loc)}))
+			return true
+		}
+		dlg.Step = sesStepConfirm
+		b.sesGo(ctx, chatID, msgID, id, jwt, from, dlg)
 	case sesStepDate:
 		b.sesDateInput(ctx, chatID, msgID, id, jwt, from, dlg, text, "")
 	case sesStepTime:

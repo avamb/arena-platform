@@ -218,8 +218,24 @@ func TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers(t *testing.T) {
 	press("ses:o:0", "Здесь можно перенести")
 	press("ses:cx", "Отмена сеанса")
 	press("ses:nomsg", "Отмена сеанса")
-	press("ses:go", "Сеанс отменён")
+
+	// A cancellation is never one button: the press only asks for the word,
+	// and a wrong word cancels nothing.
+	press("ses:go", "Последний шаг")
 	var status string
+	_ = pool.QueryRow(ctx, `SELECT status FROM sessions WHERE id = $1`, sessionID).Scan(&status)
+	if status == "cancelled" {
+		t.Fatal("the session was cancelled by a button press alone")
+	}
+	say("да", "Это не то слово")
+	_ = pool.QueryRow(ctx, `SELECT status FROM sessions WHERE id = $1`, sessionID).Scan(&status)
+	if status == "cancelled" {
+		t.Fatal("the session was cancelled by a wrong word")
+	}
+	// Back returns to the confirmation, which still needs the word afterwards.
+	press("ses:confirm", "Отмена сеанса")
+	press("ses:go", "Последний шаг")
+	say("ОТМЕНИТЬ", "Сеанс отменён")
 	_ = pool.QueryRow(ctx, `SELECT status FROM sessions WHERE id = $1`, sessionID).Scan(&status)
 	if status != "cancelled" {
 		t.Fatalf("session status = %q, want cancelled", status)

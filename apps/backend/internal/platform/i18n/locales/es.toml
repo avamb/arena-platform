@@ -1050,16 +1050,16 @@ other = "✔ Trasladar y avisar"
 other = "✔ Trasladar"
 
 ["bot.ses.go_cancel_btn"]
-other = "✔ Cancelar y avisar"
+other = "➡ Siguiente: confirmar la cancelación"
 
 ["bot.ses.go_cancel_free_btn"]
-other = "✔ Cancelar la sesión"
+other = "➡ Siguiente: confirmar la cancelación"
 
 ["bot.ses.go_cancel_all_btn"]
-other = "✔ Cancelar todo y avisar"
+other = "➡ Siguiente: confirmar la cancelación de todo"
 
 ["bot.ses.go_cancel_all_free_btn"]
-other = "✔ Cancelar todo el evento"
+other = "➡ Siguiente: confirmar la cancelación de todo"
 
 ["bot.ses.site_blocked"]
 other = "Algunos pedidos ({{.N}}) se hicieron a través de tu sitio WordPress. Ese sitio escribe el correo a sus compradores, y trasladar o cancelar una sesión con esos pedidos aún no está soportado: escribe al soporte de Arena y lo haremos a mano. No se ha cambiado nada."
@@ -1117,3 +1117,18 @@ other = "Crea eventos y consulta las ventas de Arena Sold Out sin salir de Teleg
 
 ["bot.about_short"]
 other = "Eventos y ventas de Arena Sold Out en Telegram"
+
+["bot.ses.cancel_word"]
+other = "CANCELAR"
+
+["bot.ses.type_ask"]
+other = "⚠️ <b>Último paso: todavía no se ha cancelado nada.</b>\n\n{{.Subject}}\nCorreos a compradores (pedidos): {{.Orders}}. No se puede deshacer.\n\nPara cancelar, <b>escribe la palabra {{.Word}}</b> y envíala como mensaje. Para conservar la sesión, pulsa «Atrás»."
+
+["bot.ses.type_subject_one"]
+other = "Sesión: <b>{{.Old}}</b>"
+
+["bot.ses.type_subject_all"]
+other = "Evento: <b>{{.Name}}</b>: las {{.N}} sesiones"
+
+["bot.ses.type_wrong"]
+other = "Esa no es la palabra, así que no se ha cancelado nada. Para cancelar, escribe exactamente: {{.Word}}"
