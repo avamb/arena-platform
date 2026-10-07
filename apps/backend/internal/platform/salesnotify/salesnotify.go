@@ -56,6 +56,22 @@ type Subscription struct {
 	ChatID           string
 	OnOrderPaid      bool
 	OnTicketRefunded bool
+	// OnEventChanges: "event published / event changed" messages
+	// (migration 0124). Only an operator subscription ever gets them.
+	OnEventChanges bool
+}
+
+// RouteEventChanges returns the subscriptions that receive the "event
+// published / changed" messages: the operator's (no org_id) that switched
+// them on. An organization's own group never does (owner decision 2026-10-07).
+func RouteEventChanges(subs []Subscription) []Subscription {
+	var out []Subscription
+	for _, s := range subs {
+		if s.OrgID == "" && s.OnEventChanges {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // Route returns the subscriptions that must receive trigger for orgID.
@@ -228,6 +244,25 @@ func (d *Dispatcher) compose(ctx context.Context, ev outbox.Event) (key string, 
 			}
 		}
 		return "refund:" + id, TriggerTicketRefunded, d.withFooter(FormatRefund(r)), r.OrgID, nil
+	}
+}
+
+// AnnounceEventChange posts text to every operator subscription that switched
+// event messages on (RouteEventChanges). It is the one door the event watcher
+// (internal/platform/eventwatch) uses, so delivery, the supergroup migration
+// and the last_error bookkeeping stay in this package. Best effort: nothing
+// is returned, and a Dispatcher without a bot token does nothing.
+func (d *Dispatcher) AnnounceEventChange(ctx context.Context, text string) {
+	if d == nil || d.sender == nil {
+		return
+	}
+	subs, err := d.store.Subscriptions(ctx)
+	if err != nil {
+		d.logger.Warn("sales.notify: load subscriptions for an event message", "error", err.Error())
+		return
+	}
+	for _, sub := range RouteEventChanges(subs) {
+		d.deliver(ctx, sub, text)
 	}
 }
 

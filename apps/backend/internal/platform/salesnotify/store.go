@@ -19,7 +19,7 @@ func NewPGStore(pool *pgxpool.Pool) *PGStore { return &PGStore{pool: pool} }
 
 func (s *PGStore) Subscriptions(ctx context.Context) ([]Subscription, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id::text, COALESCE(org_id::text, ''), name, chat_id, on_order_paid, on_ticket_refunded
+		SELECT id::text, COALESCE(org_id::text, ''), name, chat_id, on_order_paid, on_ticket_refunded, on_event_changes
 		  FROM sales_notification_subscriptions
 		 WHERE allowed
 		 ORDER BY created_at, id`)
@@ -30,7 +30,7 @@ func (s *PGStore) Subscriptions(ctx context.Context) ([]Subscription, error) {
 	var out []Subscription
 	for rows.Next() {
 		var sub Subscription
-		if err := rows.Scan(&sub.ID, &sub.OrgID, &sub.Name, &sub.ChatID, &sub.OnOrderPaid, &sub.OnTicketRefunded); err != nil {
+		if err := rows.Scan(&sub.ID, &sub.OrgID, &sub.Name, &sub.ChatID, &sub.OnOrderPaid, &sub.OnTicketRefunded, &sub.OnEventChanges); err != nil {
 			return nil, err
 		}
 		out = append(out, sub)

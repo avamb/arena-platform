@@ -55,6 +55,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/mediaresolver"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventwatch"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
@@ -247,6 +248,7 @@ func run() error {
 	registerBuiltinHandlers(registry, pool.Pool, cfg, metrics, mediaRepo, logger)
 	registerMediaGCHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerOpsWatchdogHandler(registry, pool.Pool, cfg, opsNotifier, logger)
+	registerEventWatchHandler(registry, pool.Pool, cfg, salesNotifier, logger)
 
 	// 7b. Idempotency cleanup startup scheduling (feature #48) ---------------
 	// Enqueue an idempotency.cleanup job immediately if none is already
@@ -291,6 +293,10 @@ func run() error {
 	if err := tierchain.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: the next category opens a little later than announced.
 		logger.Warn("could not schedule initial tier chain sweep job", "error", err.Error())
+	}
+	if err := eventwatch.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
+		// Non-fatal: the operator hears about an event a little later.
+		logger.Warn("could not schedule initial event change watch job", "error", err.Error())
 	}
 
 	// 7e. Ops watchdog startup scheduling -------------------------------------
@@ -623,6 +629,25 @@ func registerOpsWatchdogHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *c
 		"interval", opswatchdog.DefaultInterval.String(),
 		"heartbeat_hour_utc", cfg.OpsWatchdogHeartbeatHourUTC,
 	)
+}
+
+// registerEventWatchHandler registers the self-scheduling events.change_watch
+// job (internal/platform/eventwatch): it tells the operator's Telegram group,
+// through the sales bot, when an event is published and when a published
+// event's name, poster, dates or prices change. It always registers; without
+// SALES_TELEGRAM_BOT_TOKEN the sales notifier simply sends nothing.
+func registerEventWatchHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier *salesnotify.Dispatcher, logger *slog.Logger) {
+	reg.Register(eventwatch.JobType, eventwatch.NewHandler(eventwatch.Options{
+		Pool:           pool,
+		Announcer:      notifier,
+		Logger:         logger,
+		Interval:       eventwatch.DefaultInterval,
+		StableFor:      eventwatch.DefaultStableFor,
+		TicketsBaseURL: cfg.PublicTicketsBaseURL,
+		Scheduler:      eventwatch.NewPGScheduler(pool),
+	}))
+	logger.Info("event change watch registered",
+		"interval", eventwatch.DefaultInterval.String(), "stable_for", eventwatch.DefaultStableFor.String())
 }
 
 // buildSalesNotifier builds the outbox leg that posts sales and refunds to
