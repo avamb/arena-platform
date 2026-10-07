@@ -234,8 +234,14 @@ func TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers(t *testing.T) {
 	}
 	// Back returns to the confirmation, which still needs the word afterwards.
 	press("ses:confirm", "Отмена сеанса")
-	press("ses:go", "Последний шаг")
-	say("ОТМЕНИТЬ", "Сеанс отменён")
+	askWord := press("ses:go", "Последний шаг")
+	if !strings.Contains(askWord, "Платформа деньги НЕ возвращает") {
+		t.Fatalf("the last step does not say that no money is refunded:\n%s", askWord)
+	}
+	doneMsg := say("ОТМЕНИТЬ", "Сеанс отменён")
+	if !strings.Contains(doneMsg, "автоматически не возвращены") {
+		t.Fatalf("the done message does not repeat that no money is refunded:\n%s", doneMsg)
+	}
 	_ = pool.QueryRow(ctx, `SELECT status FROM sessions WHERE id = $1`, sessionID).Scan(&status)
 	if status != "cancelled" {
 		t.Fatalf("session status = %q, want cancelled", status)

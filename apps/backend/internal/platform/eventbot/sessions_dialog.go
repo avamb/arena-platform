@@ -873,6 +873,11 @@ func (b *Bot) sesGo(ctx context.Context, chatID int64, msgID *int, id *Identity,
 	default:
 		dlg.Result = b.sesT(loc, "bot.ses.done_cancel_all", map[string]any{"N": done, "Letters": lettersText})
 	}
+	// A cancellation emails the buyers and moves no money: say so again once it
+	// is done, so the organizer does not assume the refunds went out.
+	if dlg.Mode != sesModeMove && letters > 0 {
+		dlg.Result += "\n\n" + b.sesT(loc, "bot.ses.done_refund_note", nil)
+	}
 	// Refresh the list so the next screen shows the new date or the cancellation.
 	if items, lerr := b.loadSesItems(ctx, jwt, dlg.OrgID, dlg.EventID); lerr == nil {
 		dlg.Items = items

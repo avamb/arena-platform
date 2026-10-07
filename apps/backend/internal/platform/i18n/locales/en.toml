@@ -1267,7 +1267,7 @@ other = "Arena Sold Out events and sales in Telegram"
 other = "CANCEL"
 
 ["bot.ses.type_ask"]
-other = "⚠️ <b>Last step — nothing is cancelled yet.</b>\n\n{{.Subject}}\nBuyer emails to send (orders): {{.Orders}}. This cannot be undone.\n\nTo cancel, <b>type the word {{.Word}}</b> and send it as a message. To keep the session, press «Back»."
+other = "⚠️ <b>Last step — nothing is cancelled yet.</b>\n\n{{.Subject}}\nBuyer emails to send (orders): {{.Orders}}. This cannot be undone.{{if .Orders}}\n\n💶 The platform does NOT refund the money: the orders stay paid and the tickets stay valid. Settle refunds with the buyers yourself.{{end}}\n\nTo cancel, <b>type the word {{.Word}}</b> and send it as a message. To keep the session, press «Back»."
 
 ["bot.ses.type_subject_one"]
 other = "Session: <b>{{.Old}}</b>"
@@ -1277,3 +1277,6 @@ other = "Event: <b>{{.Name}}</b> — all {{.N}} sessions"
 
 ["bot.ses.type_wrong"]
 other = "That is not the word, so nothing was cancelled. To cancel, type exactly: {{.Word}}"
+
+["bot.ses.done_refund_note"]
+other = "💶 No money was refunded automatically and the tickets stay valid. Settle refunds with the buyers yourself."

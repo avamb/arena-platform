@@ -1122,7 +1122,7 @@ other = "Eventos y ventas de Arena Sold Out en Telegram"
 other = "CANCELAR"
 
 ["bot.ses.type_ask"]
-other = "⚠️ <b>Último paso: todavía no se ha cancelado nada.</b>\n\n{{.Subject}}\nCorreos a compradores (pedidos): {{.Orders}}. No se puede deshacer.\n\nPara cancelar, <b>escribe la palabra {{.Word}}</b> y envíala como mensaje. Para conservar la sesión, pulsa «Atrás»."
+other = "⚠️ <b>Último paso: todavía no se ha cancelado nada.</b>\n\n{{.Subject}}\nCorreos a compradores (pedidos): {{.Orders}}. No se puede deshacer.{{if .Orders}}\n\n💶 La plataforma NO devuelve el dinero: los pedidos siguen pagados y las entradas siguen siendo válidas. Gestiona los reembolsos tú directamente con los compradores.{{end}}\n\nPara cancelar, <b>escribe la palabra {{.Word}}</b> y envíala como mensaje. Para conservar la sesión, pulsa «Atrás»."
 
 ["bot.ses.type_subject_one"]
 other = "Sesión: <b>{{.Old}}</b>"
@@ -1132,3 +1132,6 @@ other = "Evento: <b>{{.Name}}</b>: las {{.N}} sesiones"
 
 ["bot.ses.type_wrong"]
 other = "Esa no es la palabra, así que no se ha cancelado nada. Para cancelar, escribe exactamente: {{.Word}}"
+
+["bot.ses.done_refund_note"]
+other = "💶 No se ha devuelto dinero automáticamente y las entradas siguen siendo válidas. Gestiona los reembolsos tú directamente con los compradores."

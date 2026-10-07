@@ -41,6 +41,7 @@ var sessionKeys = []string{
 	"bot.ses.type_subject_one",
 	"bot.ses.type_subject_all",
 	"bot.ses.type_wrong",
+	"bot.ses.done_refund_note",
 	"bot.ses.site_blocked",
 	"bot.ses.contact_ask_email",
 	"bot.ses.contact_ask_phone",
