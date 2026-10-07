@@ -156,6 +156,31 @@ func (b *Bot) publishCommands(ctx context.Context) {
 		if _, err := b.tg.SetMyCommands(ctx, params); err != nil {
 			b.logger.Warn("eventbot: setMyCommands failed", slog.String("locale", locale), slog.String("error", err.Error()))
 		}
+		b.publishAbout(ctx, locale)
+	}
+}
+
+// publishAbout sets what Telegram shows in the EMPTY chat, above the Start
+// button, before the person has pressed anything: a long description and the
+// short one of the bot's profile. It is the first screen a person sees when
+// they open the invitation link, so it says what the bot does and how to get
+// in. Telegram caps them at 512 and 120 characters (checked in the tests).
+func (b *Bot) publishAbout(ctx context.Context, locale string) {
+	code := ""
+	if locale != "en" {
+		code = locale
+	}
+	if _, err := b.tg.SetMyDescription(ctx, &tgbot.SetMyDescriptionParams{
+		Description:  b.texts.T(locale, "bot.about_description", nil),
+		LanguageCode: code,
+	}); err != nil {
+		b.logger.Warn("eventbot: setMyDescription failed", slog.String("locale", locale), slog.String("error", err.Error()))
+	}
+	if _, err := b.tg.SetMyShortDescription(ctx, &tgbot.SetMyShortDescriptionParams{
+		ShortDescription: b.texts.T(locale, "bot.about_short", nil),
+		LanguageCode:     code,
+	}); err != nil {
+		b.logger.Warn("eventbot: setMyShortDescription failed", slog.String("locale", locale), slog.String("error", err.Error()))
 	}
 }
 
@@ -355,10 +380,14 @@ func (b *Bot) acceptInvitation(ctx context.Context, chatID int64, from *models.U
 	if res.Role == "owner" {
 		roleKey = "bot.role_owner"
 	}
+	// The first thing a person reads in the bot: where they are and the three
+	// steps to a published event, with the language one tap away in case the
+	// guess from Telegram's own language was wrong.
 	b.send(ctx, chatID, b.texts.T(res.Locale, "bot.invite_accepted", map[string]any{
-		"Org":  Esc(res.OrgName),
-		"Role": b.texts.T(res.Locale, roleKey, nil),
-	}), nil)
+		"Org":   Esc(res.OrgName),
+		"Role":  b.texts.T(res.Locale, roleKey, nil),
+		"Owner": res.Role == "owner",
+	}), languageRow())
 	b.notifyInviter(ctx, res, from)
 	b.showHome(ctx, chatID, nil, from, "")
 }
@@ -505,10 +534,20 @@ func (b *Bot) showLangChooser(ctx context.Context, chatID int64, editMsgID *int,
 		return
 	}
 	rows := [][]models.InlineKeyboardButton{
-		{{Text: "English", CallbackData: "lang:en"}, {Text: "Русский", CallbackData: "lang:ru"}, {Text: "Español", CallbackData: "lang:es"}},
+		languageRow().InlineKeyboard[0],
 		{{Text: b.texts.T(id.Locale(), "bot.btn_home", nil), CallbackData: "home"}},
 	}
 	b.reply(ctx, chatID, editMsgID, b.texts.T(id.Locale(), "bot.lang_choose", nil), &models.InlineKeyboardMarkup{InlineKeyboard: rows})
+}
+
+// languageRow is the one row of buttons that switches the bot's language; the
+// names are written in their own language on purpose.
+func languageRow() *models.InlineKeyboardMarkup {
+	return &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{
+		{Text: "English", CallbackData: "lang:en"},
+		{Text: "Русский", CallbackData: "lang:ru"},
+		{Text: "Español", CallbackData: "lang:es"},
+	}}}
 }
 
 func (b *Bot) switchLang(ctx context.Context, chatID int64, editMsgID *int, from *models.User, raw string) {

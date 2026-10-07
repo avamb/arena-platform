@@ -108,7 +108,7 @@ other = "¡Te damos la bienvenida! Una comprobación antes de empezar: escribe l
 other = "Eso no parece una dirección de e-mail. Escríbela como en la invitación, por ejemplo nombre@empresa.com"
 
 ["bot.invite_accepted"]
-other = "¡Listo! Estás conectado a <b>{{.Org}}</b> como {{.Role}}.\n\nAquí puedes ver tus eventos y ventas; crear y editar eventos desde el móvil llegará próximamente."
+other = "<b>¡Listo!</b> Ya estás conectado a <b>{{.Org}}</b> como {{.Role}}.\n\n<b>Cómo funciona</b>\n1. Pulsa «+ Evento» y escribe el nombre del evento. Si tienes el cartel, envíalo: leeré los datos.\n2. Responde a unas preguntas: fecha, recinto, entradas. Antes de publicar te muestro todo.\n3. Recibes el enlace para los compradores y una entrada de muestra. Puedes compartir el enlace enseguida.\n\nLas ventas están en «Mis eventos»{{if .Owner}}; a tus compañeros los invitas desde el mismo menú{{end}}. Todo está en el menú de abajo, y en «Ayuda» tienes esta guía siempre a mano."
 
 ["bot.invite_accepted_notice"]
 other = "✅ {{.Email}} ha aceptado la invitación y se ha unido al bot: organización <b>{{.Org}}</b>, rol: {{.Role}}."
@@ -162,7 +162,7 @@ other = "Anterior"
 other = "Siguiente"
 
 ["bot.help"]
-other = "<b>Qué puede hacer este bot</b>\n\n- <b>Mis eventos</b>: todos los eventos de tu organización, los próximos primero, con las plazas vendidas y libres y el dinero por fecha.\n- <b>Organización</b>: si trabajas para varias organizaciones, cambia entre ellas aquí.\n- <b>Idioma</b>: inglés, ruso o español.\n\nCrear y editar eventos desde el móvil es el siguiente paso; hasta entonces usa el centro de eventos de tu sitio web."
+other = "<b>Qué puede hacer este bot</b>\n\n- <b>+ Evento</b>: crea un evento paso a paso y lo publica. Escribe el nombre o envía el cartel: leeré los datos y tú confirmas cada valor. Al final te envío el enlace para los compradores y una entrada de muestra.\n- <b>Mis eventos</b>: todos los eventos de tu organización, los próximos primero, con las plazas vendidas y libres y el dinero por fecha. En la ficha de un evento puedes editarlo, repetirlo como nuevo, ver una entrada de muestra y mover o cancelar una sesión: los compradores reciben un correo.\n- <b>Equipo</b>: el propietario invita a sus compañeros y los quita.\n- <b>Organización</b>: si trabajas para varias organizaciones, cambia entre ellas aquí.\n- <b>Idioma</b>: inglés, ruso o español."
 
 ["bot.events_empty"]
 other = "Aún no hay eventos. El primero aparecerá aquí en cuanto se cree."
@@ -1111,3 +1111,9 @@ other = "Este diálogo ha caducado. Abre de nuevo las sesiones del evento."
 
 ["bot.ses.open_btn"]
 other = "📅 Sesiones: mover y cancelar"
+
+["bot.about_description"]
+other = "Crea eventos y consulta las ventas de Arena Sold Out sin salir de Telegram: nombre, fecha, entradas, y el enlace para los compradores está listo en un par de minutos.\n\nPara entrar necesitas el enlace de invitación de tu correo: ábrelo y pulsa Start. ¿No tienes invitación? Pídele al propietario de tu organización que te la envíe desde este bot."
+
+["bot.about_short"]
+other = "Eventos y ventas de Arena Sold Out en Telegram"

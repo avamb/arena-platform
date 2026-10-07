@@ -52,6 +52,7 @@ var MessageKeys = []string{
 	"bot.not_invited", "bot.ask_email", "bot.ask_email_again",
 	"bot.invite_accepted", "bot.invite_accepted_notice", "bot.invite_not_found", "bot.invite_email_mismatch",
 	"bot.invite_already_linked", "bot.invite_failed", "bot.already_linked",
+	"bot.about_description", "bot.about_short",
 	"bot.role_owner", "bot.role_manager",
 	"bot.menu_title", "bot.btn_events", "bot.btn_org", "bot.btn_lang", "bot.btn_help",
 	"bot.btn_back", "bot.btn_home", "bot.btn_prev", "bot.btn_next", "bot.help",

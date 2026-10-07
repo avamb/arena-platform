@@ -250,7 +250,7 @@ other = "Welcome! One check before we start: please type the e-mail address the 
 other = "That does not look like an e-mail address. Please type it as in the invitation, for example name@company.com"
 
 ["bot.invite_accepted"]
-other = "Done! You are connected to <b>{{.Org}}</b> as {{.Role}}.\n\nHere you can see your events and sales; creating and editing events from the phone is coming next."
+other = "<b>Done!</b> You are connected to <b>{{.Org}}</b> as {{.Role}}.\n\n<b>How it works</b>\n1. Press “+ Event” and type the event name. If you have a poster, send it: I read the details from it.\n2. Answer a few questions: date, venue, tickets. Before publishing I show you everything.\n3. You get the link for buyers and a sample ticket. You can share the link right away.\n\nSee sales under “My events”{{if .Owner}}; you can invite colleagues from the same menu{{end}}. All of it is in the menu below, and “Help” keeps this tip at hand."
 
 ["bot.invite_accepted_notice"]
 other = "✅ {{.Email}} accepted the invitation and joined the bot: organization <b>{{.Org}}</b>, role — {{.Role}}."
@@ -304,7 +304,7 @@ other = "Previous"
 other = "Next"
 
 ["bot.help"]
-other = "<b>What this bot can do</b>\n\n- <b>My events</b>: every event of your organization, upcoming first, with sold and free places and the money per date.\n- <b>Organization</b>: if you work for several organizations, switch between them here.\n- <b>Language</b>: English or Russian.\n\nCreating and editing events from the phone is the next step; until then use the event center on your site."
+other = "<b>What this bot can do</b>\n\n- <b>+ Event</b>: creates an event step by step and publishes it. Type the name or send a poster: I read the details from it and you confirm each value. At the end I send the link for buyers and a sample ticket.\n- <b>My events</b>: every event of your organization, upcoming first, with sold and free places and the money per date. On the card of an event you can edit it, repeat it as new, see a sample ticket and move or cancel a session: buyers get an e-mail.\n- <b>Team</b>: the owner invites colleagues and removes them.\n- <b>Organization</b>: if you work for several organizations, switch between them here.\n- <b>Language</b>: English, Russian or Spanish."
 
 ["bot.events_empty"]
 other = "No events yet. The first one will appear here as soon as it is created."
@@ -1256,3 +1256,9 @@ other = "This dialog has expired. Open the event's sessions again."
 
 ["bot.ses.open_btn"]
 other = "📅 Sessions: move and cancel"
+
+["bot.about_description"]
+other = "Create events and follow Arena Sold Out sales right in Telegram: name, date, tickets, and the link for buyers is ready in a couple of minutes.\n\nYou need the invitation link from your e-mail to get in: open it and press Start. No invitation? Ask the owner of your organization to send one from this bot."
+
+["bot.about_short"]
+other = "Arena Sold Out events and sales in Telegram"

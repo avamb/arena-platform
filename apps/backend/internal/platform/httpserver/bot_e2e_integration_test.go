@@ -247,6 +247,10 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 	if !strings.Contains(accepted, "менеджер") {
 		t.Errorf("accepted message should name the role: %s", accepted)
 	}
+	// The first message also says what to do next, naming the button below.
+	if !strings.Contains(accepted, "Как это работает") || !strings.Contains(accepted, "+ Ивент") {
+		t.Errorf("accepted message should give the steps: %s", accepted)
+	}
 	tg.waitFor(t, "Что будем делать?")
 
 	link, err := gen.New(pool).GetBotTelegramLink(ctx, 777)
