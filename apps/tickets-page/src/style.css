@@ -315,8 +315,7 @@ a {
 }
 
 .asa-hero-description {
-  /* Paragraph breaks typed into the description survive. */
-  white-space: pre-line;
+  /* Formatted by lib/richtext.ts: paragraphs, bold, italic and bullet lists. */
   color: var(--asa-text-secondary);
   margin: 0 0 24px;
   max-width: 70ch;
@@ -513,6 +512,27 @@ a {
   margin: 0 0 14px;
   color: var(--asa-text-secondary);
   max-width: 70ch;
+}
+
+/* The description's own formatting (lib/richtext.ts): paragraphs, bullet
+   lists, bold and italic. */
+.asa-hero-description p,
+.asa-date-panel__description p {
+  margin: 0 0 0.8em;
+}
+.asa-hero-description ul,
+.asa-date-panel__description ul {
+  margin: 0 0 0.8em;
+  padding-inline-start: 1.25em;
+}
+.asa-hero-description > :last-child,
+.asa-date-panel__description > :last-child {
+  margin-bottom: 0;
+}
+.asa-hero-description strong,
+.asa-date-panel__description strong {
+  color: var(--asa-text);
+  font-weight: 650;
 }
 
 .asa-date-row__when {

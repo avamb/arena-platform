@@ -1,6 +1,7 @@
 import type { PageLocale } from './locale.ts';
 import { isRtlLocale, toWidgetLocale } from './locale.ts';
 import { t } from './i18n.ts';
+import { plainText, renderRichText } from './richtext.ts';
 import type { HostedPageEvent, HostedPageResponse, HostedPromoterPageResponse } from './api.ts';
 
 /** Clears a container's children (avoids innerHTML = '' churn semantics
@@ -214,10 +215,10 @@ export function renderEvent(
   // and only stands in when nothing longer was written.
   const description = data.event.description ?? data.event.short_description;
   if (description) {
-    const p = document.createElement('p');
-    p.className = 'asa-hero-description';
-    p.textContent = description;
-    heroBody.appendChild(p);
+    const box = document.createElement('div');
+    box.className = 'asa-hero-description';
+    box.appendChild(renderRichText(document, description));
+    heroBody.appendChild(box);
   }
 
   hero.appendChild(heroBody);
@@ -560,10 +561,10 @@ function mountTicketPicker(
   // pointless extra step.
   const description = event.short_description ?? event.description;
   if (description) {
-    const p = document.createElement('p');
-    p.className = 'asa-date-panel__description';
-    p.textContent = description;
-    panel.appendChild(p);
+    const box = document.createElement('div');
+    box.className = 'asa-date-panel__description';
+    box.appendChild(renderRichText(document, description));
+    panel.appendChild(box);
   }
 
   // An event published through no token we can see cannot be sold from
@@ -807,7 +808,7 @@ export function applyDocumentChrome(
         metaEl.setAttribute('name', 'description');
         document.head.appendChild(metaEl);
       }
-      metaEl.setAttribute('content', content.description);
+      metaEl.setAttribute('content', plainText(content.description));
     }
   }
 
