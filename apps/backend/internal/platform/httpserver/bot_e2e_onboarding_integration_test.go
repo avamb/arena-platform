@@ -125,7 +125,10 @@ func TestBotE2E_OnboardingApplication(t *testing.T) {
 	say(e2eMessageAs(tgUser, "Bot Events"), "Страна")
 	say(e2eCallbackAs(tgUser, "onb:c:country:ES"), "Какие мероприятия")
 	// A toggle only edits the buttons in place; "Done" saves the choice.
+	// Wait for the markup edit, or "Done" can overtake the toggle on a slow runner.
+	edits := tg.callCount("editMessageReplyMarkup")
 	tg.push(e2eCallbackAs(tgUser, "onb:m:event_types:0"))
+	tg.waitCall(t, "editMessageReplyMarkup", edits)
 	say(e2eCallbackAs(tgUser, "onb:md:event_types"), "Рассадка")
 	say(e2eCallbackAs(tgUser, "onb:s:seating:0"), "Последний шаг")
 	say(e2eCallbackAs(tgUser, "onb:consent"), "Проверьте заявку")

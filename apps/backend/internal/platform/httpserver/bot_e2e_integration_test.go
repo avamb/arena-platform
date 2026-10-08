@@ -43,6 +43,9 @@ type stubTelegram struct {
 	sent    []string
 	nextID  int64
 	msgSeq  int
+	// calls counts every Bot API method the bot called, for the methods whose
+	// effect leaves no text behind (a button toggle edits the markup only).
+	calls map[string]int
 	// poster is what getFile/the download path serve for any file id.
 	poster []byte
 }
@@ -73,6 +76,12 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	if method != "getUpdates" {
 		s.t.Logf("telegram stub: %s", method)
+		s.mu.Lock()
+		if s.calls == nil {
+			s.calls = map[string]int{}
+		}
+		s.calls[method]++
+		s.mu.Unlock()
 	}
 	w.Header().Set("Content-Type", "application/json")
 	switch method {
@@ -147,6 +156,26 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *stubTelegram) push(update string) { s.updates <- json.RawMessage(update) }
+
+// callCount is how many times the bot has called a Bot API method so far.
+func (s *stubTelegram) callCount(method string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls[method]
+}
+
+// waitCall blocks until the bot has called method more than `before` times.
+func (s *stubTelegram) waitCall(t *testing.T, method string, before int) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if s.callCount(method) > before {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("bot never called %s after %d earlier calls", method, before)
+}
 
 // waitFor blocks until a message the bot sent contains needle.
 func (s *stubTelegram) waitFor(t *testing.T, needle string) string {
