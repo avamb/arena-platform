@@ -5662,6 +5662,9 @@ type GeoCountryItem struct {
 	// Name Localised display name (resolved from i18n_text)
 	Name string `json:"name"`
 
+	// Region Part of the world the country is grouped under in pickers, one of europe, north_america, latin_america, middle_east, asia, africa, oceania or other (migration 0127). A country added by hand starts as other.
+	Region string `json:"region"`
+
 	// Slug URL-safe slug
 	Slug string `json:"slug"`
 }

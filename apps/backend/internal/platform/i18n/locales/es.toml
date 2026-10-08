@@ -1263,3 +1263,35 @@ other = "🎉 ¡Tu solicitud está aprobada! La organización <b>{{.Org}}</b> es
 
 ["bot.onb.rejected"]
 other = "Lamentablemente no podemos abrir una organización con esta solicitud. Si crees que es un error, escríbenos por e-mail."
+
+# ── country regions (bot.wz.region.*) ──
+
+["bot.wz.ask_region"]
+other = "¿En qué parte del mundo está el recinto?"
+
+["bot.wz.regions_back_btn"]
+other = "← Regiones"
+
+["bot.wz.region.europe"]
+other = "Europa"
+
+["bot.wz.region.north_america"]
+other = "Norteamérica"
+
+["bot.wz.region.latin_america"]
+other = "Latinoamérica"
+
+["bot.wz.region.middle_east"]
+other = "Oriente Medio"
+
+["bot.wz.region.asia"]
+other = "Asia"
+
+["bot.wz.region.africa"]
+other = "África"
+
+["bot.wz.region.oceania"]
+other = "Oceanía"
+
+["bot.wz.region.other"]
+other = "Otros países"

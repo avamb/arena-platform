@@ -22,6 +22,7 @@ SELECT
     c.iso3,
     c.slug,
     c.currency,
+    c.region,
     COALESCE(t_loc.value, t_en.value, c.iso2) AS name
 FROM countries c
 LEFT JOIN i18n_text t_loc ON t_loc.namespace = 'geo.countries'
@@ -41,7 +42,9 @@ type ListCountryRow struct {
 	Iso3     string    `json:"iso3"`
 	Slug     string    `json:"slug"`
 	Currency string    `json:"currency"`
-	Name     string    `json:"name"`
+	// Region groups countries for pickers (migration 0127).
+	Region string `json:"region"`
+	Name   string `json:"name"`
 }
 
 // ListCountries returns all countries ordered by iso2, with localized names
@@ -61,6 +64,7 @@ func (q *Queries) ListCountries(ctx context.Context, locale string) ([]ListCount
 			&i.Iso3,
 			&i.Slug,
 			&i.Currency,
+			&i.Region,
 			&i.Name,
 		); err != nil {
 			return nil, err

@@ -178,6 +178,34 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		if ws.Defaults.CountryID != "" {
 			rows = append(rows, []Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": ws.Defaults.CountryName}), Data: "keep"}})
 		}
+		// A long list goes through regions: the region buttons first, the
+		// countries the organization already has venues in right under "keep",
+		// and only after a region is pressed, that region's countries.
+		if groupByRegion(countries) {
+			region := d.Scratch.CountryRegion
+			if !validRegion(countries, region) {
+				region = ""
+			}
+			if region == "" {
+				for _, c := range sortedByName(countries) {
+					if hasVenue[strings.ToUpper(c.ISO2)] {
+						rows = append(rows, []Button{{Label: c.Name, Data: "country:" + c.ID}})
+					}
+				}
+				for _, r := range presentRegions(countries) {
+					rows = append(rows, []Button{btn(regionKey(r), "region:"+r)})
+				}
+				return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_region", nil), Buttons: nav(chunk(rows, 2)...)}, nil
+			}
+			countries = inRegion(countries, region)
+			rows = nil
+			for _, c := range sortedByName(countries) {
+				rows = append(rows, []Button{{Label: c.Name, Data: "country:" + c.ID}})
+			}
+			rows = chunk(rows, 2)
+			rows = append(rows, []Button{btn("bot.wz.regions_back_btn", "region:")})
+			return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_country", nil), Buttons: nav(rows...)}, nil
+		}
 		first, rest := []RefItem{}, []RefItem{}
 		for _, c := range sortedByName(countries) {
 			if hasVenue[strings.ToUpper(c.ISO2)] {

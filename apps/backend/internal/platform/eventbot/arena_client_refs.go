@@ -27,7 +27,7 @@ func (c *ArenaClient) Countries(ctx context.Context, jwt, lang string) ([]RefIte
 	}
 	items := make([]RefItem, 0, len(out.Countries))
 	for _, x := range out.Countries {
-		items = append(items, RefItem{ID: x.Id.String(), Name: x.Name, ISO2: x.Iso2, Currency: x.Currency})
+		items = append(items, RefItem{ID: x.Id.String(), Name: x.Name, ISO2: x.Iso2, Currency: x.Currency, Region: x.Region})
 	}
 	return items, nil
 }

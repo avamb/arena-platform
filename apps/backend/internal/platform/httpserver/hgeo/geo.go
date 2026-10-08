@@ -54,7 +54,9 @@ type countryResponse struct {
 	Iso3     string `json:"iso3"`
 	Slug     string `json:"slug"`
 	Currency string `json:"currency"`
-	Name     string `json:"name"`
+	// Region is set by the list route only (migration 0127).
+	Region string `json:"region,omitempty"`
+	Name   string `json:"name"`
 }
 
 // cityResponse is the JSON body of a single city in list/create/update
@@ -135,6 +137,7 @@ func (h *Handler) HandleListCountries(w http.ResponseWriter, r *http.Request) {
 			Iso3:     row.Iso3,
 			Slug:     row.Slug,
 			Currency: strings.TrimSpace(row.Currency),
+			Region:   row.Region,
 			Name:     row.Name,
 		})
 	}

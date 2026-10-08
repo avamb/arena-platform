@@ -227,7 +227,10 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	// Step 2 — when and where; the venue is created through the API.
 	say("32.13.2099", "Не понял дату")
 	sayDate("15.12.2099", "2099-12-15", "Время начала")
-	press("wz:default", "В какой стране")
+	// Since migration 0127 the platform lists ~100 countries, so the question
+	// opens on regions and only then shows that region's countries.
+	press("wz:default", "В какой части мира")
+	press("wz:region:europe", "В какой стране")
 	press("wz:country:"+countryID.String(), "В каком городе")
 	press("wz:city:"+cityID.String(), "Где проходит")
 	press("wz:venue:new", "Название площадки")
@@ -404,7 +407,7 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	// remembered venue is one button away, and a second event appears.
 	press("wz:copy:"+eventID.String(), "Копия")
 	sayDate("20.12.2099", "2099-12-20", "Время начала")
-	press("wz:default", "В какой стране")
+	press("wz:default", "В какой части мира")
 	press("wz:keep", "В каком городе")
 	press("wz:keep", "Где проходит")
 	press("wz:keep", "Сколько мест продаём")

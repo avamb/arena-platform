@@ -185,6 +185,9 @@ type DraftPriceStep struct {
 
 // DraftScratch holds half-entered sub-dialogs.
 type DraftScratch struct {
+	// CountryRegion is the region whose countries the country question shows;
+	// empty shows the region buttons.
+	CountryRegion string `json:"country_region,omitempty"`
 	// ReturnToSummary is set by the summary's "edit …" buttons: the section
 	// being re-entered ends at the summary instead of running on into the
 	// next one.
@@ -249,6 +252,8 @@ type RefItem struct {
 	Slug     string `json:"slug,omitempty"`
 	ISO2     string `json:"iso2,omitempty"`
 	Currency string `json:"currency,omitempty"`
+	// Region groups a country for the picker (migration 0127).
+	Region string `json:"region,omitempty"`
 }
 
 // VenueRef is a venue of the organization.
@@ -934,6 +939,15 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		if err != nil {
 			return "", err
 		}
+		if rg, ok := strings.CutPrefix(data, "region:"); ok {
+			// A region button opens that region's countries; an empty one is
+			// the way back to the region list.
+			d.Scratch.CountryRegion = ""
+			if validRegion(countries, rg) {
+				d.Scratch.CountryRegion = rg
+			}
+			return "", nil
+		}
 		id := strings.TrimPrefix(data, "country:")
 		if data == "keep" {
 			id = ws.Defaults.CountryID
@@ -949,6 +963,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		s := d.session()
 		s.CountryID, s.CountryName, s.CountryISO2, s.Currency = chosen.ID, chosen.Name, chosen.ISO2, chosen.Currency
 		s.CityID, s.CityName, s.VenueID, s.VenueName, s.Timezone = "", "", "", "", ""
+		d.Scratch.CountryRegion = ""
 		d.goTo(stSCity)
 
 	case stSCity:

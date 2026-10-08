@@ -10440,6 +10440,11 @@ export interface components {
              * @example Israel
              */
             name: string;
+            /**
+             * @description Part of the world the country is grouped under in pickers, one of europe, north_america, latin_america, middle_east, asia, africa, oceania or other (migration 0127). A country added by hand starts as other.
+             * @example europe
+             */
+            region: string;
         };
         GeoCountriesResponse: {
             /** @description Ordered list of reference countries with localised names */

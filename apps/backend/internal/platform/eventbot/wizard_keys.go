@@ -234,6 +234,16 @@ var wizardKeys = []string{
 	"bot.wz.cancel_drop_btn",
 	"bot.wz.cancel_drop_edit_btn",
 	"bot.wz.draft_kept",
+	"bot.wz.ask_region",
+	"bot.wz.regions_back_btn",
+	"bot.wz.region.europe",
+	"bot.wz.region.north_america",
+	"bot.wz.region.latin_america",
+	"bot.wz.region.middle_east",
+	"bot.wz.region.asia",
+	"bot.wz.region.africa",
+	"bot.wz.region.oceania",
+	"bot.wz.region.other",
 }
 
 func init() {

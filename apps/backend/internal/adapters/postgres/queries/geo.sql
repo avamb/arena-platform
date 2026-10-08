@@ -9,6 +9,7 @@ SELECT
     c.iso3,
     c.slug,
     c.currency,
+    c.region,
     COALESCE(t_loc.value, t_en.value, c.iso2) AS name
 FROM countries c
 LEFT JOIN i18n_text t_loc ON t_loc.namespace = 'geo.countries'
