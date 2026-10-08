@@ -45,6 +45,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/backfill"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/bil24wire"
@@ -65,6 +66,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/macs"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/onboarding"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/opsalert"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/opswatchdog"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
@@ -249,6 +251,7 @@ func run() error {
 	registerMediaGCHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerOpsWatchdogHandler(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerEventWatchHandler(registry, pool.Pool, cfg, salesNotifier, logger)
+	registerOnboardingHandlers(registry, pool.Pool, cfg, opsNotifier, logger)
 
 	// 7b. Idempotency cleanup startup scheduling (feature #48) ---------------
 	// Enqueue an idempotency.cleanup job immediately if none is already
@@ -293,6 +296,10 @@ func run() error {
 	if err := tierchain.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: the next category opens a little later than announced.
 		logger.Warn("could not schedule initial tier chain sweep job", "error", err.Error())
+	}
+	if err := onboarding.ScheduleInitialSweep(rootCtx, pool.Pool); err != nil {
+		// Non-fatal: reminders and expiry of onboarding drafts run a little later.
+		logger.Warn("could not schedule initial onboarding sweep job", "error", err.Error())
 	}
 	if err := eventwatch.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: the operator hears about an event a little later.
@@ -534,12 +541,17 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		FromAddress:  coalesce(cfg.SMTPFrom, "noreply@arena.example.com"),
 		Logger:       logger,
 		BotUsername:  cfg.EventsTelegramBotUsername,
+
+		OnboardingSiteURL: cfg.OnboardingSiteURL,
 	})
 	reg.Register(authemail.JobTypeEmailVerification, authEmailHandler.HandleEmailVerification)
 	reg.Register(authemail.JobTypePasswordResetEmail, authEmailHandler.HandlePasswordResetEmail)
 	// bot.invitation_email carries the Telegram deep link of an event-center
 	// bot invitation (spec 28 §3.3); the link needs EVENTS_TELEGRAM_BOT_USERNAME.
 	reg.Register(authemail.JobTypeBotInvitationEmail, authEmailHandler.HandleBotInvitationEmail)
+	// onboarding.email carries the organizer-application letters (confirm and
+	// continue link, reminders, decision); its links need ONBOARDING_SITE_URL.
+	reg.Register(authemail.JobTypeOnboardingEmail, authEmailHandler.HandleOnboardingEmail)
 
 	// checkout.issue_tickets issues tickets after a payment.succeeded webhook
 	// (feature #363, PR2-07). The handler is enqueued atomically alongside the
@@ -616,6 +628,14 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 // registerMediaGCHandler, there is no configuration state under which the
 // watchdog should be entirely absent, since it degrades to a logging no-op
 // notifier rather than needing a feature flag.
+func registerOnboardingHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier opsalert.Notifier, logger *slog.Logger) {
+	svc := onboarding.New(onboarding.Options{
+		Pool: pool, Notifier: notifier, Audit: audit.NewPGWriter(pool), Logger: logger, AdminURL: cfg.AppPublicURL,
+	})
+	reg.Register(onboarding.JobTypeNotify, svc.HandleNotify)
+	reg.Register(onboarding.JobTypeSweep, onboarding.NewSweepHandler(svc, pool, logger))
+}
+
 func registerOpsWatchdogHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier opsalert.Notifier, logger *slog.Logger) {
 	reg.Register(opswatchdog.JobType, opswatchdog.NewHandler(opswatchdog.Options{
 		Pool:             pool,

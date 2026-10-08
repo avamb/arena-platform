@@ -7023,6 +7023,594 @@ type NetworkUserRemoveResponse struct {
 	Removed bool `json:"removed"`
 }
 
+// OnboardingAdminApplication An application as the operator sees it, with every field.
+type OnboardingAdminApplication struct {
+	// Answers All answers keyed by the form-schema field key.
+	Answers map[string]interface{} `json:"answers"`
+
+	// ApplicantName Applicant's full name.
+	ApplicantName *string `json:"applicant_name"`
+
+	// ConsentedAt When the terms were accepted.
+	ConsentedAt *time.Time `json:"consented_at"`
+
+	// Country Country of registration.
+	Country *string `json:"country"`
+
+	// CreatedAt When the draft was started.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CurrentStep The first step with a gap, or `review`.
+	CurrentStep string `json:"current_step"`
+
+	// DecisionReason The operator's reason for a refusal.
+	DecisionReason *string `json:"decision_reason"`
+
+	// Email Contact e-mail.
+	Email string `json:"email"`
+
+	// EmailConfirmedAt When the e-mail was confirmed.
+	EmailConfirmedAt *time.Time `json:"email_confirmed_at"`
+
+	// ExpiresAt When an unfinished draft expires.
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Id UUID of the application.
+	Id openapi_types.UUID `json:"id"`
+
+	// InfoRequestMessage The operator's last question.
+	InfoRequestMessage *string `json:"info_request_message"`
+
+	// LastActivityAt Last edit by the applicant.
+	LastActivityAt time.Time `json:"last_activity_at"`
+
+	// LegalName Registered name.
+	LegalName *string `json:"legal_name"`
+
+	// Locale Language of the application.
+	Locale string `json:"locale"`
+
+	// OrgId Organization created on approval.
+	OrgId *openapi_types.UUID `json:"org_id"`
+
+	// OrgName Organization name on posters and tickets.
+	OrgName *string `json:"org_name"`
+
+	// Phone Applicant's phone in E.164.
+	Phone *string `json:"phone"`
+
+	// PrivacyVersion Privacy policy version accepted at submission.
+	PrivacyVersion *string `json:"privacy_version"`
+
+	// ProgressPct Share of required fields filled.
+	ProgressPct int `json:"progress_pct"`
+
+	// PurgedAt When the personal data was erased.
+	PurgedAt *time.Time `json:"purged_at"`
+
+	// RemindersSent Reminder e-mails sent to the applicant.
+	RemindersSent *int `json:"reminders_sent,omitempty"`
+
+	// RequestedFields Fields requested from the applicant.
+	RequestedFields *[]string `json:"requested_fields,omitempty"`
+
+	// ReviewedAt When the decision was made.
+	ReviewedAt *time.Time `json:"reviewed_at"`
+
+	// ReviewedBy Operator who decided.
+	ReviewedBy *openapi_types.UUID `json:"reviewed_by"`
+
+	// Source site, telegram or operator.
+	Source string `json:"source"`
+
+	// Status draft, pending_approval, info_requested, approved, rejected or expired.
+	Status string `json:"status"`
+
+	// SubmittedAt When it was submitted.
+	SubmittedAt *time.Time `json:"submitted_at"`
+
+	// TelegramUserId Telegram account linked to the application.
+	TelegramUserId *int64 `json:"telegram_user_id"`
+
+	// TermsVersion Terms version accepted at submission.
+	TermsVersion *string `json:"terms_version"`
+
+	// UpdatedAt Last change of the row.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Utm Marketing attribution.
+	Utm *map[string]interface{} `json:"utm,omitempty"`
+}
+
+// OnboardingAdminDetail The operator's card of one application.
+type OnboardingAdminDetail struct {
+	// Application The application.
+	Application OnboardingAdminApplication `json:"application"`
+
+	// Checks Automatic checks in display order.
+	Checks []OnboardingCheck `json:"checks"`
+
+	// Events Timeline, oldest first.
+	Events []OnboardingEvent `json:"events"`
+
+	// Notes Private notes, oldest first.
+	Notes []OnboardingNote `json:"notes"`
+
+	// WouldApprove True when every automatic check passed.
+	WouldApprove bool `json:"would_approve"`
+}
+
+// OnboardingAdminListItem defines model for OnboardingAdminListItem.
+type OnboardingAdminListItem struct {
+	// Answers All answers keyed by the form-schema field key.
+	Answers map[string]interface{} `json:"answers"`
+
+	// ApplicantName Applicant's full name.
+	ApplicantName *string `json:"applicant_name"`
+
+	// ConsentedAt When the terms were accepted.
+	ConsentedAt *time.Time `json:"consented_at"`
+
+	// Country Country of registration.
+	Country *string `json:"country"`
+
+	// CreatedAt When the draft was started.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CurrentStep The first step with a gap, or `review`.
+	CurrentStep string `json:"current_step"`
+
+	// DecisionReason The operator's reason for a refusal.
+	DecisionReason *string `json:"decision_reason"`
+
+	// Email Contact e-mail.
+	Email string `json:"email"`
+
+	// EmailConfirmedAt When the e-mail was confirmed.
+	EmailConfirmedAt *time.Time `json:"email_confirmed_at"`
+
+	// ExpiresAt When an unfinished draft expires.
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Id UUID of the application.
+	Id openapi_types.UUID `json:"id"`
+
+	// InfoRequestMessage The operator's last question.
+	InfoRequestMessage *string `json:"info_request_message"`
+
+	// LastActivityAt Last edit by the applicant.
+	LastActivityAt time.Time `json:"last_activity_at"`
+
+	// LegalName Registered name.
+	LegalName *string `json:"legal_name"`
+
+	// Locale Language of the application.
+	Locale string `json:"locale"`
+
+	// OrgId Organization created on approval.
+	OrgId *openapi_types.UUID `json:"org_id"`
+
+	// OrgName Organization name on posters and tickets.
+	OrgName *string `json:"org_name"`
+
+	// Phone Applicant's phone in E.164.
+	Phone *string `json:"phone"`
+
+	// PrivacyVersion Privacy policy version accepted at submission.
+	PrivacyVersion *string `json:"privacy_version"`
+
+	// ProgressPct Share of required fields filled.
+	ProgressPct int `json:"progress_pct"`
+
+	// PurgedAt When the personal data was erased.
+	PurgedAt *time.Time `json:"purged_at"`
+
+	// RemindersSent Reminder e-mails sent to the applicant.
+	RemindersSent *int `json:"reminders_sent,omitempty"`
+
+	// RequestedFields Fields requested from the applicant.
+	RequestedFields *[]string `json:"requested_fields,omitempty"`
+
+	// ReviewedAt When the decision was made.
+	ReviewedAt *time.Time `json:"reviewed_at"`
+
+	// ReviewedBy Operator who decided.
+	ReviewedBy *openapi_types.UUID `json:"reviewed_by"`
+
+	// Source site, telegram or operator.
+	Source string `json:"source"`
+
+	// Status draft, pending_approval, info_requested, approved, rejected or expired.
+	Status string `json:"status"`
+
+	// SubmittedAt When it was submitted.
+	SubmittedAt *time.Time `json:"submitted_at"`
+
+	// TelegramUserId Telegram account linked to the application.
+	TelegramUserId *int64 `json:"telegram_user_id"`
+
+	// TermsVersion Terms version accepted at submission.
+	TermsVersion *string `json:"terms_version"`
+
+	// UpdatedAt Last change of the row.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Utm Marketing attribution.
+	Utm *map[string]interface{} `json:"utm,omitempty"`
+
+	// WouldApprove True when every automatic check passed (the system would approve it by itself).
+	WouldApprove bool `json:"would_approve"`
+}
+
+// OnboardingAdminListResponse A page of the queue with the tab counters. Each item is an application with an extra `would_approve` flag.
+type OnboardingAdminListResponse struct {
+	// Counts Rows per status (unconfirmed drafts are hidden).
+	Counts map[string]int `json:"counts"`
+
+	// Items Applications (OnboardingAdminApplication fields plus `would_approve`), newest activity first.
+	Items []OnboardingAdminListItem `json:"items"`
+
+	// Total Number of rows matching the filter.
+	Total int `json:"total"`
+}
+
+// OnboardingApplication An application as its applicant sees it.
+type OnboardingApplication struct {
+	// Answers All answers keyed by the form-schema field key.
+	Answers map[string]interface{} `json:"answers"`
+
+	// CurrentStep The first step with a gap, or `review`.
+	CurrentStep string `json:"current_step"`
+
+	// Email Contact e-mail.
+	Email string `json:"email"`
+
+	// EmailConfirmed True once the confirmation link was opened.
+	EmailConfirmed bool `json:"email_confirmed"`
+
+	// ExpiresAt When an unfinished draft expires.
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Id UUID of the application.
+	Id openapi_types.UUID `json:"id"`
+
+	// InfoRequestMessage In status info_requested: the operator's question.
+	InfoRequestMessage *string `json:"info_request_message,omitempty"`
+
+	// Locale Language of the application.
+	Locale string `json:"locale"`
+
+	// MissingFields Required fields that are still empty.
+	MissingFields []string `json:"missing_fields"`
+
+	// Progress Share of required fields filled, 0-100.
+	Progress int `json:"progress"`
+
+	// RequestedFields In status info_requested: the only fields the applicant may change.
+	RequestedFields []string `json:"requested_fields"`
+
+	// Status draft, pending_approval, info_requested, approved, rejected or expired.
+	Status string `json:"status"`
+
+	// SubmittedAt When the application was submitted.
+	SubmittedAt *time.Time `json:"submitted_at,omitempty"`
+}
+
+// OnboardingApplicationResponse Envelope around one application.
+type OnboardingApplicationResponse struct {
+	// Application The application.
+	Application OnboardingApplication `json:"application"`
+}
+
+// OnboardingApproveResponse What an approval created.
+type OnboardingApproveResponse struct {
+	// ChannelId Its direct-merchant sales channel (the public sales page is on).
+	ChannelId openapi_types.UUID `json:"channel_id"`
+
+	// ClosedDuplicates Other open applications of the same e-mail that were closed.
+	ClosedDuplicates int `json:"closed_duplicates"`
+
+	// OrgId The new organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgSlug Its public slug.
+	OrgSlug string `json:"org_slug"`
+
+	// OwnerCreated True when a new account was created and a set-password e-mail queued.
+	OwnerCreated bool `json:"owner_created"`
+
+	// OwnerId The owner user.
+	OwnerId openapi_types.UUID `json:"owner_id"`
+}
+
+// OnboardingCheck Result of one automatic check.
+type OnboardingCheck struct {
+	// CheckedAt When the check ran.
+	CheckedAt time.Time `json:"checked_at"`
+
+	// Detail What was found.
+	Detail string `json:"detail"`
+
+	// Key email_confirmed, complete, consents, country_allowed, tax_id_format, disposable_email, duplicate or payment_provider.
+	Key string `json:"key"`
+
+	// Result pass, warn or fail.
+	Result string `json:"result"`
+}
+
+// OnboardingConfirmRequest Body of POST /v1/onboarding/confirm.
+type OnboardingConfirmRequest struct {
+	// Token The token from the e-mailed link.
+	Token string `json:"token"`
+}
+
+// OnboardingConfirmResponse The e-mail is confirmed. The earlier access token stops working; use this one.
+type OnboardingConfirmResponse struct {
+	// AccessToken New access token for the browser that opened the link.
+	AccessToken string `json:"access_token"`
+
+	// Application The application.
+	Application OnboardingApplication `json:"application"`
+
+	// ApplicationId UUID of the application.
+	ApplicationId openapi_types.UUID `json:"application_id"`
+}
+
+// OnboardingEvent One entry of the application timeline.
+type OnboardingEvent struct {
+	// ActorId Operator user id, empty otherwise.
+	ActorId string `json:"actor_id"`
+
+	// ActorType applicant, operator or system.
+	ActorType string `json:"actor_type"`
+
+	// CreatedAt When it happened.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Detail Extra facts of the entry.
+	Detail *map[string]interface{} `json:"detail,omitempty"`
+
+	// Id UUID of the entry.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind created, email_confirmed, resumed, link_sent, submitted, resubmitted, info_requested, approved, rejected, extended, expired, reminder_sent, queue_reminder, purged or revived.
+	Kind string `json:"kind"`
+}
+
+// OnboardingExtendRequest Body of POST .../extend.
+type OnboardingExtendRequest struct {
+	// Days Days from now; empty uses the configured draft lifetime.
+	Days *int `json:"days,omitempty"`
+}
+
+// OnboardingFormSchema The application form as the website and the bot render it. Clients never hard-code a field, a range or a list of options.
+type OnboardingFormSchema struct {
+	// AcceptedCountries ISO-3166 alpha-2 codes accepted for new applications; an empty list means every country.
+	AcceptedCountries []string `json:"accepted_countries"`
+
+	// Locale Language of the labels (`en`, `ru` or `es`; anything else falls back to `en`).
+	Locale string `json:"locale"`
+
+	// PrivacyVersion Version of the privacy policy the applicant accepts.
+	PrivacyVersion string `json:"privacy_version"`
+
+	// Steps Form steps in order.
+	Steps []OnboardingSchemaStep `json:"steps"`
+
+	// TermsVersion Version of the terms of service the applicant accepts.
+	TermsVersion string `json:"terms_version"`
+
+	// Version Schema version; bumped when a field is removed or changes meaning.
+	Version int `json:"version"`
+}
+
+// OnboardingNote An operator's private note.
+type OnboardingNote struct {
+	// AuthorId Operator who wrote it.
+	AuthorId *openapi_types.UUID `json:"author_id"`
+
+	// Body Note text.
+	Body string `json:"body"`
+
+	// CreatedAt When it was written.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUID of the note.
+	Id openapi_types.UUID `json:"id"`
+}
+
+// OnboardingNoteRequest Body of POST .../notes.
+type OnboardingNoteRequest struct {
+	// Body Note text, up to 4000 characters.
+	Body string `json:"body"`
+}
+
+// OnboardingRejectRequest Body of POST .../reject.
+type OnboardingRejectRequest struct {
+	// Message Optional text added to the e-mail the applicant receives.
+	Message *string `json:"message,omitempty"`
+
+	// Reason The operator's reason (required, kept internally).
+	Reason string `json:"reason"`
+}
+
+// OnboardingRequestInfoRequest Body of POST .../request-info.
+type OnboardingRequestInfoRequest struct {
+	// Fields Field keys the applicant may change.
+	Fields []string `json:"fields"`
+
+	// Message The question shown to the applicant.
+	Message string `json:"message"`
+}
+
+// OnboardingResumeRequest Body of POST /v1/onboarding/resume.
+type OnboardingResumeRequest struct {
+	// Email The address the application was started with.
+	Email openapi_types.Email `json:"email"`
+
+	// TurnstileToken Cloudflare Turnstile response token.
+	TurnstileToken *string `json:"turnstile_token,omitempty"`
+}
+
+// OnboardingResumeResponse Always the same, whether or not the address has an application.
+type OnboardingResumeResponse struct {
+	// Accepted Always true.
+	Accepted bool `json:"accepted"`
+}
+
+// OnboardingSaveAnswersRequest Body of PUT /v1/onboarding/applications/{id}/answers: a partial update. Nothing is saved unless every key is valid; a null or empty value clears an answer.
+type OnboardingSaveAnswersRequest struct {
+	// Answers Answers keyed by the form-schema field key.
+	Answers map[string]interface{} `json:"answers"`
+}
+
+// OnboardingSchemaField One question of the application form.
+type OnboardingSchemaField struct {
+	// DefaultFrom Key of another field whose value fills this one when it is left empty.
+	DefaultFrom *string `json:"default_from,omitempty"`
+
+	// Hint Optional help text in the requested language.
+	Hint *string `json:"hint,omitempty"`
+
+	// Key Key of the answer in `answers`.
+	Key string `json:"key"`
+
+	// Label Field label in the requested language.
+	Label string `json:"label"`
+
+	// MaxItems Maximum number of items for a list of links.
+	MaxItems *int `json:"max_items,omitempty"`
+
+	// MaxLength Maximum length in characters for text kinds.
+	MaxLength *int `json:"max_length,omitempty"`
+
+	// Options Choices of a select or multiselect field.
+	Options *[]OnboardingSchemaOption `json:"options,omitempty"`
+
+	// ReadOnly True when the server sets the value (the e-mail confirmed by link).
+	ReadOnly *bool `json:"read_only,omitempty"`
+
+	// Required True when the application cannot be submitted without an answer (a consent must be true).
+	Required bool `json:"required"`
+
+	// Type Input type: text, textarea, email, phone, country, select, multiselect, bool, url, url_list, date, number or currency.
+	Type string `json:"type"`
+}
+
+// OnboardingSchemaOption One choice of a select or multiselect field.
+type OnboardingSchemaOption struct {
+	// Label Label in the requested language.
+	Label string `json:"label"`
+
+	// Value Machine value stored in the answers.
+	Value string `json:"value"`
+}
+
+// OnboardingSchemaStep One page of the application form.
+type OnboardingSchemaStep struct {
+	// Fields Questions of the step in display order.
+	Fields []OnboardingSchemaField `json:"fields"`
+
+	// Key Step key: contact, organization, events, platform or consents.
+	Key string `json:"key"`
+
+	// Title Step title in the requested language.
+	Title string `json:"title"`
+}
+
+// OnboardingSettings The single onboarding settings row.
+type OnboardingSettings struct {
+	// ApprovalMode manual (the operator decides) or auto_when_complete (the system approves when every check passes).
+	ApprovalMode string `json:"approval_mode"`
+
+	// Countries Accepted countries (ISO alpha-2); empty means all.
+	Countries []string `json:"countries"`
+
+	// DraftTtlDays Days of inactivity before a draft expires.
+	DraftTtlDays int `json:"draft_ttl_days"`
+
+	// MaxNewPerDay Daily ceiling of new applications.
+	MaxNewPerDay int `json:"max_new_per_day"`
+
+	// PrivacyVersion Current privacy policy version.
+	PrivacyVersion string `json:"privacy_version"`
+
+	// PurgeAfterDays Days after which an expired or rejected application loses its personal data.
+	PurgeAfterDays int `json:"purge_after_days"`
+
+	// TermsVersion Current terms version.
+	TermsVersion string `json:"terms_version"`
+
+	// UpdatedAt Last change.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// OnboardingSettingsRequest Body of PUT /v1/admin/onboarding/settings. A key that is absent keeps its value.
+type OnboardingSettingsRequest struct {
+	// ApprovalMode manual or auto_when_complete.
+	ApprovalMode *string `json:"approval_mode,omitempty"`
+
+	// Countries ISO alpha-2 codes; an empty list means every country.
+	Countries *[]string `json:"countries,omitempty"`
+
+	// DraftTtlDays 7 to 1095.
+	DraftTtlDays *int `json:"draft_ttl_days,omitempty"`
+
+	// MaxNewPerDay 1 to 100000.
+	MaxNewPerDay *int `json:"max_new_per_day,omitempty"`
+
+	// PrivacyVersion Current privacy policy version.
+	PrivacyVersion *string `json:"privacy_version,omitempty"`
+
+	// PurgeAfterDays 30 to 3650.
+	PurgeAfterDays *int `json:"purge_after_days,omitempty"`
+
+	// TermsVersion Current terms version.
+	TermsVersion *string `json:"terms_version,omitempty"`
+}
+
+// OnboardingStartRequest Body of POST /v1/onboarding/applications: the first step of the form.
+type OnboardingStartRequest struct {
+	// Email Contact e-mail; a confirmation link is sent to it.
+	Email openapi_types.Email `json:"email"`
+
+	// FirstName Given name.
+	FirstName string `json:"first_name"`
+
+	// Honeypot Hidden decoy field: a non-empty value makes the request a silent no-op.
+	Honeypot *string `json:"honeypot,omitempty"`
+
+	// LastName Family name.
+	LastName string `json:"last_name"`
+
+	// Locale Language of the e-mails and of the form (`en`, `ru`, `es`).
+	Locale *string `json:"locale,omitempty"`
+
+	// Phone Phone number; normalized to E.164 (for example +34600111222).
+	Phone string `json:"phone"`
+
+	// TurnstileToken Cloudflare Turnstile response token; verified by the platform.
+	TurnstileToken *string `json:"turnstile_token,omitempty"`
+
+	// Utm Optional marketing attribution (source, medium, campaign, term, content, ref).
+	Utm *map[string]string `json:"utm,omitempty"`
+}
+
+// OnboardingStartResponse A new draft. The access token is shown once; the database keeps only its hash.
+type OnboardingStartResponse struct {
+	// AccessToken Secret the browser (or the bot) keeps and sends in the X-Onboarding-Token header.
+	AccessToken string `json:"access_token"`
+
+	// ApplicationId UUID of the application.
+	ApplicationId openapi_types.UUID `json:"application_id"`
+
+	// CurrentStep The step to show next, or `review` when everything is filled.
+	CurrentStep string `json:"current_step"`
+
+	// Progress Share of required fields filled, 0-100.
+	Progress int `json:"progress"`
+}
+
 // OperatorNetwork An operator_network row (migration 0043_operator_networks.sql).
 // Represents a platform-level grouping that overlays organizations: a
 // `network_operator` user is assigned to one or more networks, and
@@ -11706,6 +12294,63 @@ type RemoveNetworkUserParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// ListOnboardingApplicationsParams defines parameters for ListOnboardingApplications.
+type ListOnboardingApplicationsParams struct {
+	// Status Filter by status (pending_approval, info_requested, draft, approved, rejected, expired).
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// Q Search in organization name, e-mail, applicant name and country.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Page size, 1-200 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Rows to skip.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ApproveOnboardingApplicationParams defines parameters for ApproveOnboardingApplication.
+type ApproveOnboardingApplicationParams struct {
+	// XAdminReason Human-readable business reason for this change (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// ExtendOnboardingApplicationParams defines parameters for ExtendOnboardingApplication.
+type ExtendOnboardingApplicationParams struct {
+	// XAdminReason Human-readable business reason for this change (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PurgeOnboardingApplicationParams defines parameters for PurgeOnboardingApplication.
+type PurgeOnboardingApplicationParams struct {
+	// XAdminReason Human-readable business reason for this change (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// RejectOnboardingApplicationParams defines parameters for RejectOnboardingApplication.
+type RejectOnboardingApplicationParams struct {
+	// XAdminReason Human-readable business reason for this change (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// RequestOnboardingInfoParams defines parameters for RequestOnboardingInfo.
+type RequestOnboardingInfoParams struct {
+	// XAdminReason Human-readable business reason for this change (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// ResendOnboardingLinkParams defines parameters for ResendOnboardingLink.
+type ResendOnboardingLinkParams struct {
+	// XAdminReason Human-readable business reason for this change (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// UpdateOnboardingSettingsParams defines parameters for UpdateOnboardingSettings.
+type UpdateOnboardingSettingsParams struct {
+	// XAdminReason Human-readable business reason for this change (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // SuperadminListOrdersParams defines parameters for SuperadminListOrders.
 type SuperadminListOrdersParams struct {
 	// Limit Maximum number of rows to return.
@@ -12060,6 +12705,30 @@ type GetV1MediaFileParams struct {
 
 	// Sig HMAC-SHA256 signature over `id:expires`. Required in production; optional in dev when no MEDIA_SIGNING_SECRET is set.
 	Sig *string `form:"sig,omitempty" json:"sig,omitempty"`
+}
+
+// GetOnboardingApplicationParams defines parameters for GetOnboardingApplication.
+type GetOnboardingApplicationParams struct {
+	// XOnboardingToken The application's access token (from the start or confirm response).
+	XOnboardingToken string `json:"X-Onboarding-Token"`
+}
+
+// SaveOnboardingAnswersParams defines parameters for SaveOnboardingAnswers.
+type SaveOnboardingAnswersParams struct {
+	// XOnboardingToken The application's access token (from the start or confirm response).
+	XOnboardingToken string `json:"X-Onboarding-Token"`
+}
+
+// SubmitOnboardingApplicationParams defines parameters for SubmitOnboardingApplication.
+type SubmitOnboardingApplicationParams struct {
+	// XOnboardingToken The application's access token (from the start or confirm response).
+	XOnboardingToken string `json:"X-Onboarding-Token"`
+}
+
+// GetOnboardingFormSchemaParams defines parameters for GetOnboardingFormSchema.
+type GetOnboardingFormSchemaParams struct {
+	// Locale Language of the labels (en, ru, es); anything else falls back to en.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
 // CreateOperatorNetworkParams defines parameters for CreateOperatorNetwork.
@@ -12505,6 +13174,21 @@ type AttachNetworkOrganizerJSONRequestBody = AttachNetworkOrganizationRequest
 // AssignNetworkUserJSONRequestBody defines body for AssignNetworkUser for application/json ContentType.
 type AssignNetworkUserJSONRequestBody = AssignNetworkUserRequest
 
+// ExtendOnboardingApplicationJSONRequestBody defines body for ExtendOnboardingApplication for application/json ContentType.
+type ExtendOnboardingApplicationJSONRequestBody = OnboardingExtendRequest
+
+// AddOnboardingNoteJSONRequestBody defines body for AddOnboardingNote for application/json ContentType.
+type AddOnboardingNoteJSONRequestBody = OnboardingNoteRequest
+
+// RejectOnboardingApplicationJSONRequestBody defines body for RejectOnboardingApplication for application/json ContentType.
+type RejectOnboardingApplicationJSONRequestBody = OnboardingRejectRequest
+
+// RequestOnboardingInfoJSONRequestBody defines body for RequestOnboardingInfo for application/json ContentType.
+type RequestOnboardingInfoJSONRequestBody = OnboardingRequestInfoRequest
+
+// UpdateOnboardingSettingsJSONRequestBody defines body for UpdateOnboardingSettings for application/json ContentType.
+type UpdateOnboardingSettingsJSONRequestBody = OnboardingSettingsRequest
+
 // PostV1AdminOrganizationsJSONRequestBody defines body for PostV1AdminOrganizations for application/json ContentType.
 type PostV1AdminOrganizationsJSONRequestBody = CreateOrganizationRequest
 
@@ -12606,6 +13290,18 @@ type RecordConsentJSONRequestBody RecordConsentJSONBody
 
 // PostV1MediaMultipartRequestBody defines body for PostV1Media for multipart/form-data ContentType.
 type PostV1MediaMultipartRequestBody PostV1MediaMultipartBody
+
+// StartOnboardingApplicationJSONRequestBody defines body for StartOnboardingApplication for application/json ContentType.
+type StartOnboardingApplicationJSONRequestBody = OnboardingStartRequest
+
+// SaveOnboardingAnswersJSONRequestBody defines body for SaveOnboardingAnswers for application/json ContentType.
+type SaveOnboardingAnswersJSONRequestBody = OnboardingSaveAnswersRequest
+
+// ConfirmOnboardingEmailJSONRequestBody defines body for ConfirmOnboardingEmail for application/json ContentType.
+type ConfirmOnboardingEmailJSONRequestBody = OnboardingConfirmRequest
+
+// ResumeOnboardingApplicationJSONRequestBody defines body for ResumeOnboardingApplication for application/json ContentType.
+type ResumeOnboardingApplicationJSONRequestBody = OnboardingResumeRequest
 
 // CreateOperatorNetworkJSONRequestBody defines body for CreateOperatorNetwork for application/json ContentType.
 type CreateOperatorNetworkJSONRequestBody = CreateOperatorNetworkRequest

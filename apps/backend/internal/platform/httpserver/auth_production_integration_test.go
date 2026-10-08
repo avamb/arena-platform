@@ -36,6 +36,13 @@ import (
 // PostgreSQL pool with the JWTVerifier (production path) wired.
 func productionIntegrationServer(t *testing.T) (*Server, string) {
 	t.Helper()
+	return productionIntegrationServerCfg(t, nil)
+}
+
+// productionIntegrationServerCfg is productionIntegrationServer with a hook to
+// adjust the config before the server (and so its route table) is built.
+func productionIntegrationServerCfg(t *testing.T, mutate func(*config.Config)) (*Server, string) {
+	t.Helper()
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -83,6 +90,9 @@ func productionIntegrationServer(t *testing.T) (*Server, string) {
 		EnableStubAuth: true,
 		AppEnv:         config.EnvDevelopment,
 		DefaultLocale:  "en",
+	}
+	if mutate != nil {
+		mutate(cfg)
 	}
 
 	srv := New(Options{

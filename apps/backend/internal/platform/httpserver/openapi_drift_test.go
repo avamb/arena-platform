@@ -269,6 +269,8 @@ func buildDriftTestServer(t *testing.T) *Server {
 		HTTPListenAddr: "127.0.0.1:0",
 		RequestTimeout: 5 * time.Second,
 		BodyLimitBytes: 1 << 20,
+		// The public onboarding routes exist only while the flag is on.
+		OnboardingEnabled: true,
 	}
 
 	// noopHandler is a minimal http.Handler that satisfies the MetricsHandler

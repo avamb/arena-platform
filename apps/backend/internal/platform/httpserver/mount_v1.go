@@ -37,6 +37,7 @@ func (s *Server) mountV1Routes() {
 		s.mountAPIKeyRoutes(r)
 		s.mountMembershipRoutes(r)
 		s.mountBotRoutes(r)
+		s.mountOnboardingRoutes(r)
 		s.mountVenueRoutes(r)
 		s.mountFeedTokenRoutes(r)
 		s.mountEventRoutes(r)

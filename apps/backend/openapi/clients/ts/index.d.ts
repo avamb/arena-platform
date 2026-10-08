@@ -6165,6 +6165,370 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/onboarding/form-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Organizer application form definition
+         * @description Public. The steps, fields, types, ranges, option lists and labels of the application form in the requested language, plus the accepted countries. Mounted only while ONBOARDING_ENABLED is on.
+         */
+        get: operations["getOnboardingFormSchema"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/onboarding/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start an organizer application
+         * @description Public. Always creates a NEW draft (the answer never reveals whether the address already has applications) and e-mails a confirm-and-continue link. Protected by Cloudflare Turnstile (turnstile_token), a hidden honeypot field and per-address, per-network and daily limits.
+         */
+        post: operations["startOnboardingApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/onboarding/applications/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an application
+         * @description Public, authenticated by the application's access token. Returns the answers, progress, status and the list of requested fields.
+         */
+        get: operations["getOnboardingApplication"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/onboarding/applications/{id}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save answers of a step
+         * @description Public, authenticated by the access token. A partial update: nothing is saved unless every key is valid. A draft can always be edited; an application in info_requested accepts only the requested fields; other statuses are locked. Saving revives an expired draft.
+         */
+        put: operations["saveOnboardingAnswers"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/onboarding/applications/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit an application for approval
+         * @description Public, authenticated by the access token. Requires a confirmed e-mail and every required field; consents must be true. Records the accepted terms and privacy versions, runs the automatic checks and tells the operator. After submission the application is locked unless the operator asks for more details.
+         */
+        post: operations["submitOnboardingApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/onboarding/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the e-mail and continue
+         * @description Public. Consumes the token of the e-mailed link: confirms the address, issues a fresh access token for this browser (the previous one stops working) and revives an expired draft. The link stays valid for 14 days.
+         */
+        post: operations["confirmOnboardingEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/onboarding/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * E-mail a continue link
+         * @description Public. Sends a fresh continue link for the newest open application of the address. Always answers 202, whether or not the address has one. Protected by Turnstile and a per-application limit.
+         */
+        post: operations["resumeOnboardingApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/onboarding/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - the application queue
+         * @description Requires onboarding.review (platform superadmin). Unconfirmed drafts are hidden. Returns the page and the per-status tab counters.
+         */
+        get: operations["listOnboardingApplications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/onboarding/applications/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - the application card
+         * @description Requires onboarding.review. Answers, automatic checks, timeline and notes.
+         */
+        get: operations["getOnboardingApplicationAdmin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/onboarding/applications/{id}/recheck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - recompute the checks
+         * @description Requires onboarding.review. Recomputes the automatic checks and returns the card.
+         */
+        post: operations["recheckOnboardingApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/onboarding/applications/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - approve an application
+         * @description Requires onboarding.review and X-Admin-Reason. In one transaction creates the organization with its legal fields, a direct-merchant sales channel with the public sales page, the owner (organization role org_admin, a set-your-password e-mail for a new account, the Telegram bot link when the application came from Telegram) and closes other open applications of the same e-mail. merchant_of_record is never enabled and kyb_status stays unverified.
+         */
+        post: operations["approveOnboardingApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/onboarding/applications/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - reject an application
+         * @description Requires onboarding.review and X-Admin-Reason. The reason is mandatory and kept internally; the applicant gets a generic e-mail plus the optional message.
+         */
+        post: operations["rejectOnboardingApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/onboarding/applications/{id}/request-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - ask the applicant for details
+         * @description Requires onboarding.review and X-Admin-Reason. Moves the application to info_requested, limits editing to the listed fields and e-mails a fresh continue link with the question.
+         */
+        post: operations["requestOnboardingInfo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/onboarding/applications/{id}/extend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - extend a draft
+         * @description Requires onboarding.review and X-Admin-Reason. Gives a draft more time and revives an expired one.
+         */
+        post: operations["extendOnboardingApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/onboarding/applications/{id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - e-mail the continue link again
+         * @description Requires onboarding.review and X-Admin-Reason. Rotates the link token and mails it; at most 3 per hour per application.
+         */
+        post: operations["resendOnboardingLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/onboarding/applications/{id}/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - erase the personal data
+         * @description Requires onboarding.review and X-Admin-Reason. Blanks every personal field of an unapproved application; the row stays for statistics. An approved application keeps its answers.
+         */
+        post: operations["purgeOnboardingApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/onboarding/applications/{id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - add a private note
+         * @description Requires onboarding.review.
+         */
+        post: operations["addOnboardingNote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/onboarding/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - onboarding settings
+         * @description Requires onboarding.review.
+         */
+        get: operations["getOnboardingSettings"];
+        /**
+         * Admin - change onboarding settings
+         * @description Requires onboarding.settings and X-Admin-Reason. A key that is absent keeps its value. Each change is audited.
+         */
+        put: operations["updateOnboardingSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -18199,6 +18563,465 @@ export interface components {
         Bil24RespGetSchema: components["schemas"]["Bil24ResponseEnvelope"] & {
             /** @description Seat coordinates and category index for the seating plan. */
             seatList?: components["schemas"]["Bil24GetSchemaSeat"][];
+        };
+        /** @description One choice of a select or multiselect field. */
+        OnboardingSchemaOption: {
+            /** @description Machine value stored in the answers. */
+            value: string;
+            /** @description Label in the requested language. */
+            label: string;
+        };
+        /** @description One question of the application form. */
+        OnboardingSchemaField: {
+            /** @description Key of the answer in `answers`. */
+            key: string;
+            /** @description Input type: text, textarea, email, phone, country, select, multiselect, bool, url, url_list, date, number or currency. */
+            type: string;
+            /** @description Field label in the requested language. */
+            label: string;
+            /** @description Optional help text in the requested language. */
+            hint?: string;
+            /** @description True when the application cannot be submitted without an answer (a consent must be true). */
+            required: boolean;
+            /** @description True when the server sets the value (the e-mail confirmed by link). */
+            read_only?: boolean;
+            /** @description Maximum length in characters for text kinds. */
+            max_length?: number;
+            /** @description Maximum number of items for a list of links. */
+            max_items?: number;
+            /** @description Key of another field whose value fills this one when it is left empty. */
+            default_from?: string;
+            /** @description Choices of a select or multiselect field. */
+            options?: components["schemas"]["OnboardingSchemaOption"][];
+        };
+        /** @description One page of the application form. */
+        OnboardingSchemaStep: {
+            /** @description Step key: contact, organization, events, platform or consents. */
+            key: string;
+            /** @description Step title in the requested language. */
+            title: string;
+            /** @description Questions of the step in display order. */
+            fields: components["schemas"]["OnboardingSchemaField"][];
+        };
+        /** @description The application form as the website and the bot render it. Clients never hard-code a field, a range or a list of options. */
+        OnboardingFormSchema: {
+            /** @description Schema version; bumped when a field is removed or changes meaning. */
+            version: number;
+            /** @description Language of the labels (`en`, `ru` or `es`; anything else falls back to `en`). */
+            locale: string;
+            /** @description Form steps in order. */
+            steps: components["schemas"]["OnboardingSchemaStep"][];
+            /** @description ISO-3166 alpha-2 codes accepted for new applications; an empty list means every country. */
+            accepted_countries: string[];
+            /** @description Version of the terms of service the applicant accepts. */
+            terms_version: string;
+            /** @description Version of the privacy policy the applicant accepts. */
+            privacy_version: string;
+        };
+        /** @description Body of POST /v1/onboarding/applications: the first step of the form. */
+        OnboardingStartRequest: {
+            /** @description Given name. */
+            first_name: string;
+            /** @description Family name. */
+            last_name: string;
+            /**
+             * Format: email
+             * @description Contact e-mail; a confirmation link is sent to it.
+             */
+            email: string;
+            /** @description Phone number; normalized to E.164 (for example +34600111222). */
+            phone: string;
+            /** @description Language of the e-mails and of the form (`en`, `ru`, `es`). */
+            locale?: string;
+            /** @description Optional marketing attribution (source, medium, campaign, term, content, ref). */
+            utm?: {
+                [key: string]: string;
+            };
+            /** @description Cloudflare Turnstile response token; verified by the platform. */
+            turnstile_token?: string;
+            /** @description Hidden decoy field: a non-empty value makes the request a silent no-op. */
+            honeypot?: string;
+        };
+        /** @description A new draft. The access token is shown once; the database keeps only its hash. */
+        OnboardingStartResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the application.
+             */
+            application_id: string;
+            /** @description Secret the browser (or the bot) keeps and sends in the X-Onboarding-Token header. */
+            access_token: string;
+            /** @description Share of required fields filled, 0-100. */
+            progress: number;
+            /** @description The step to show next, or `review` when everything is filled. */
+            current_step: string;
+        };
+        /** @description An application as its applicant sees it. */
+        OnboardingApplication: {
+            /**
+             * Format: uuid
+             * @description UUID of the application.
+             */
+            id: string;
+            /** @description draft, pending_approval, info_requested, approved, rejected or expired. */
+            status: string;
+            /** @description Language of the application. */
+            locale: string;
+            /** @description Contact e-mail. */
+            email: string;
+            /** @description True once the confirmation link was opened. */
+            email_confirmed: boolean;
+            /** @description The first step with a gap, or `review`. */
+            current_step: string;
+            /** @description Share of required fields filled, 0-100. */
+            progress: number;
+            /** @description All answers keyed by the form-schema field key. */
+            answers: {
+                [key: string]: unknown;
+            };
+            /** @description Required fields that are still empty. */
+            missing_fields: string[];
+            /** @description In status info_requested: the only fields the applicant may change. */
+            requested_fields: string[];
+            /** @description In status info_requested: the operator's question. */
+            info_request_message?: string;
+            /**
+             * Format: date-time
+             * @description When an unfinished draft expires.
+             */
+            expires_at: string;
+            /**
+             * Format: date-time
+             * @description When the application was submitted.
+             */
+            submitted_at?: string;
+        };
+        /** @description Envelope around one application. */
+        OnboardingApplicationResponse: {
+            /** @description The application. */
+            application: components["schemas"]["OnboardingApplication"];
+        };
+        /** @description Body of PUT /v1/onboarding/applications/{id}/answers: a partial update. Nothing is saved unless every key is valid; a null or empty value clears an answer. */
+        OnboardingSaveAnswersRequest: {
+            /** @description Answers keyed by the form-schema field key. */
+            answers: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Body of POST /v1/onboarding/confirm. */
+        OnboardingConfirmRequest: {
+            /** @description The token from the e-mailed link. */
+            token: string;
+        };
+        /** @description The e-mail is confirmed. The earlier access token stops working; use this one. */
+        OnboardingConfirmResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the application.
+             */
+            application_id: string;
+            /** @description New access token for the browser that opened the link. */
+            access_token: string;
+            /** @description The application. */
+            application: components["schemas"]["OnboardingApplication"];
+        };
+        /** @description Body of POST /v1/onboarding/resume. */
+        OnboardingResumeRequest: {
+            /**
+             * Format: email
+             * @description The address the application was started with.
+             */
+            email: string;
+            /** @description Cloudflare Turnstile response token. */
+            turnstile_token?: string;
+        };
+        /** @description Always the same, whether or not the address has an application. */
+        OnboardingResumeResponse: {
+            /** @description Always true. */
+            accepted: boolean;
+        };
+        /** @description An application as the operator sees it, with every field. */
+        OnboardingAdminApplication: {
+            /**
+             * Format: uuid
+             * @description UUID of the application.
+             */
+            id: string;
+            /** @description draft, pending_approval, info_requested, approved, rejected or expired. */
+            status: string;
+            /** @description site, telegram or operator. */
+            source: string;
+            /** @description Contact e-mail. */
+            email: string;
+            /**
+             * Format: date-time
+             * @description When the e-mail was confirmed.
+             */
+            email_confirmed_at?: string | null;
+            /** @description Applicant's full name. */
+            applicant_name?: string | null;
+            /** @description Applicant's phone in E.164. */
+            phone?: string | null;
+            /** @description Language of the application. */
+            locale: string;
+            /** @description Country of registration. */
+            country?: string | null;
+            /** @description Organization name on posters and tickets. */
+            org_name?: string | null;
+            /** @description Registered name. */
+            legal_name?: string | null;
+            /** @description The first step with a gap, or `review`. */
+            current_step: string;
+            /** @description Share of required fields filled. */
+            progress_pct: number;
+            /** @description All answers keyed by the form-schema field key. */
+            answers: {
+                [key: string]: unknown;
+            };
+            /** @description Fields requested from the applicant. */
+            requested_fields?: string[];
+            /** @description The operator's last question. */
+            info_request_message?: string | null;
+            /**
+             * Format: int64
+             * @description Telegram account linked to the application.
+             */
+            telegram_user_id?: number | null;
+            /** @description Terms version accepted at submission. */
+            terms_version?: string | null;
+            /** @description Privacy policy version accepted at submission. */
+            privacy_version?: string | null;
+            /**
+             * Format: date-time
+             * @description When the terms were accepted.
+             */
+            consented_at?: string | null;
+            /** @description Marketing attribution. */
+            utm?: {
+                [key: string]: unknown;
+            };
+            /** @description Reminder e-mails sent to the applicant. */
+            reminders_sent?: number;
+            /**
+             * Format: date-time
+             * @description Last edit by the applicant.
+             */
+            last_activity_at: string;
+            /**
+             * Format: date-time
+             * @description When an unfinished draft expires.
+             */
+            expires_at: string;
+            /**
+             * Format: date-time
+             * @description When it was submitted.
+             */
+            submitted_at?: string | null;
+            /**
+             * Format: uuid
+             * @description Operator who decided.
+             */
+            reviewed_by?: string | null;
+            /**
+             * Format: date-time
+             * @description When the decision was made.
+             */
+            reviewed_at?: string | null;
+            /** @description The operator's reason for a refusal. */
+            decision_reason?: string | null;
+            /**
+             * Format: uuid
+             * @description Organization created on approval.
+             */
+            org_id?: string | null;
+            /**
+             * Format: date-time
+             * @description When the personal data was erased.
+             */
+            purged_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When the draft was started.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Last change of the row.
+             */
+            updated_at: string;
+        };
+        /** @description A row of the queue: every field of the application, flattened, plus the automatic verdict. */
+        OnboardingAdminListItem: components["schemas"]["OnboardingAdminApplication"] & {
+            /** @description True when every automatic check passed (the system would approve it by itself). */
+            would_approve: boolean;
+        };
+        /** @description A page of the queue with the tab counters. Each item is an application with an extra `would_approve` flag. */
+        OnboardingAdminListResponse: {
+            /** @description Applications (OnboardingAdminApplication fields plus `would_approve`), newest activity first. */
+            items: components["schemas"]["OnboardingAdminListItem"][];
+            /** @description Number of rows matching the filter. */
+            total: number;
+            /** @description Rows per status (unconfirmed drafts are hidden). */
+            counts: {
+                [key: string]: number;
+            };
+        };
+        /** @description Result of one automatic check. */
+        OnboardingCheck: {
+            /** @description email_confirmed, complete, consents, country_allowed, tax_id_format, disposable_email, duplicate or payment_provider. */
+            key: string;
+            /** @description pass, warn or fail. */
+            result: string;
+            /** @description What was found. */
+            detail: string;
+            /**
+             * Format: date-time
+             * @description When the check ran.
+             */
+            checked_at: string;
+        };
+        /** @description One entry of the application timeline. */
+        OnboardingEvent: {
+            /**
+             * Format: uuid
+             * @description UUID of the entry.
+             */
+            id: string;
+            /** @description created, email_confirmed, resumed, link_sent, submitted, resubmitted, info_requested, approved, rejected, extended, expired, reminder_sent, queue_reminder, purged or revived. */
+            kind: string;
+            /** @description applicant, operator or system. */
+            actor_type: string;
+            /** @description Operator user id, empty otherwise. */
+            actor_id: string;
+            /** @description Extra facts of the entry. */
+            detail?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Format: date-time
+             * @description When it happened.
+             */
+            created_at: string;
+        };
+        /** @description An operator's private note. */
+        OnboardingNote: {
+            /**
+             * Format: uuid
+             * @description UUID of the note.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Operator who wrote it.
+             */
+            author_id?: string | null;
+            /** @description Note text. */
+            body: string;
+            /**
+             * Format: date-time
+             * @description When it was written.
+             */
+            created_at: string;
+        };
+        /** @description The operator's card of one application. */
+        OnboardingAdminDetail: {
+            /** @description The application. */
+            application: components["schemas"]["OnboardingAdminApplication"];
+            /** @description Automatic checks in display order. */
+            checks: components["schemas"]["OnboardingCheck"][];
+            /** @description True when every automatic check passed. */
+            would_approve: boolean;
+            /** @description Timeline, oldest first. */
+            events: components["schemas"]["OnboardingEvent"][];
+            /** @description Private notes, oldest first. */
+            notes: components["schemas"]["OnboardingNote"][];
+        };
+        /** @description What an approval created. */
+        OnboardingApproveResponse: {
+            /**
+             * Format: uuid
+             * @description The new organization.
+             */
+            org_id: string;
+            /** @description Its public slug. */
+            org_slug: string;
+            /**
+             * Format: uuid
+             * @description Its direct-merchant sales channel (the public sales page is on).
+             */
+            channel_id: string;
+            /**
+             * Format: uuid
+             * @description The owner user.
+             */
+            owner_id: string;
+            /** @description True when a new account was created and a set-password e-mail queued. */
+            owner_created: boolean;
+            /** @description Other open applications of the same e-mail that were closed. */
+            closed_duplicates: number;
+        };
+        /** @description Body of POST .../reject. */
+        OnboardingRejectRequest: {
+            /** @description The operator's reason (required, kept internally). */
+            reason: string;
+            /** @description Optional text added to the e-mail the applicant receives. */
+            message?: string;
+        };
+        /** @description Body of POST .../request-info. */
+        OnboardingRequestInfoRequest: {
+            /** @description Field keys the applicant may change. */
+            fields: string[];
+            /** @description The question shown to the applicant. */
+            message: string;
+        };
+        /** @description Body of POST .../extend. */
+        OnboardingExtendRequest: {
+            /** @description Days from now; empty uses the configured draft lifetime. */
+            days?: number;
+        };
+        /** @description Body of POST .../notes. */
+        OnboardingNoteRequest: {
+            /** @description Note text, up to 4000 characters. */
+            body: string;
+        };
+        /** @description The single onboarding settings row. */
+        OnboardingSettings: {
+            /** @description manual (the operator decides) or auto_when_complete (the system approves when every check passes). */
+            approval_mode: string;
+            /** @description Days of inactivity before a draft expires. */
+            draft_ttl_days: number;
+            /** @description Days after which an expired or rejected application loses its personal data. */
+            purge_after_days: number;
+            /** @description Accepted countries (ISO alpha-2); empty means all. */
+            countries: string[];
+            /** @description Daily ceiling of new applications. */
+            max_new_per_day: number;
+            /** @description Current terms version. */
+            terms_version: string;
+            /** @description Current privacy policy version. */
+            privacy_version: string;
+            /**
+             * Format: date-time
+             * @description Last change.
+             */
+            updated_at: string;
+        };
+        /** @description Body of PUT /v1/admin/onboarding/settings. A key that is absent keeps its value. */
+        OnboardingSettingsRequest: {
+            /** @description manual or auto_when_complete. */
+            approval_mode?: string;
+            /** @description 7 to 1095. */
+            draft_ttl_days?: number;
+            /** @description 30 to 3650. */
+            purge_after_days?: number;
+            /** @description ISO alpha-2 codes; an empty list means every country. */
+            countries?: string[];
+            /** @description 1 to 100000. */
+            max_new_per_day?: number;
+            /** @description Current terms version. */
+            terms_version?: string;
+            /** @description Current privacy policy version. */
+            privacy_version?: string;
         };
     };
     responses: never;
@@ -39501,6 +40324,995 @@ export interface operations {
             };
             /** @description Database unavailable. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getOnboardingFormSchema: {
+        parameters: {
+            query?: {
+                /** @description Language of the labels (en, ru, es); anything else falls back to en. */
+                locale?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The form definition */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingFormSchema"];
+                };
+            };
+        };
+    };
+    startOnboardingApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Draft created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStartResponse"];
+                };
+            };
+            /** @description Invalid or empty body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Captcha failed (onboarding.turnstile_failed) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A field is invalid (onboarding.invalid_field, with a fields map) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited (onboarding.rate_limited) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Captcha not configured or unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getOnboardingApplication: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The application's access token (from the start or confirm response). */
+                "X-Onboarding-Token": string;
+            };
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The application */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingApplicationResponse"];
+                };
+            };
+            /** @description Unknown id or wrong token (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    saveOnboardingAnswers: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The application's access token (from the start or confirm response). */
+                "X-Onboarding-Token": string;
+            };
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingSaveAnswersRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingApplicationResponse"];
+                };
+            };
+            /** @description Unknown id or wrong token */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The application is locked (onboarding.locked) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A field is invalid (onboarding.invalid_field, with a fields map of reasons) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    submitOnboardingApplication: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The application's access token (from the start or confirm response). */
+                "X-Onboarding-Token": string;
+            };
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Submitted; status is pending_approval */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingApplicationResponse"];
+                };
+            };
+            /** @description Unknown id or wrong token */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description E-mail not confirmed (onboarding.email_not_confirmed) or already submitted (onboarding.locked) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Required fields are missing (onboarding.incomplete) or a field is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    confirmOnboardingEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Confirmed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingConfirmResponse"];
+                };
+            };
+            /** @description Unknown or expired link (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    resumeOnboardingApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingResumeRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingResumeResponse"];
+                };
+            };
+            /** @description Captcha failed (onboarding.turnstile_failed) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Captcha not configured or unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listOnboardingApplications: {
+        parameters: {
+            query?: {
+                /** @description Filter by status (pending_approval, info_requested, draft, approved, rejected, expired). */
+                status?: string;
+                /** @description Search in organization name, e-mail, applicant name and country. */
+                q?: string;
+                /** @description Page size, 1-200 (default 50). */
+                limit?: number;
+                /** @description Rows to skip. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the queue */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingAdminListResponse"];
+                };
+            };
+            /** @description Unknown status */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getOnboardingApplicationAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingAdminDetail"];
+                };
+            };
+            /** @description Missing permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such application (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    recheckOnboardingApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingAdminDetail"];
+                };
+            };
+            /** @description Missing permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such application (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    approveOnboardingApplication: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Approved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingApproveResponse"];
+                };
+            };
+            /** @description Missing X-Admin-Reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such application (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The application is not in a state that allows this (onboarding.wrong_state) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    rejectOnboardingApplication: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingRejectRequest"];
+            };
+        };
+        responses: {
+            /** @description Rejected */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingAdminDetail"];
+                };
+            };
+            /** @description Missing X-Admin-Reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such application (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The application is not in a state that allows this (onboarding.wrong_state) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Reason missing (onboarding.invalid_field) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    requestOnboardingInfo: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingRequestInfoRequest"];
+            };
+        };
+        responses: {
+            /** @description Requested */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingAdminDetail"];
+                };
+            };
+            /** @description Missing X-Admin-Reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such application (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The application is not in a state that allows this (onboarding.wrong_state) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Fields or message invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    extendOnboardingApplication: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingExtendRequest"];
+            };
+        };
+        responses: {
+            /** @description Extended */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingAdminDetail"];
+                };
+            };
+            /** @description Missing X-Admin-Reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such application (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The application is not in a state that allows this (onboarding.wrong_state) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    resendOnboardingLink: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingAdminDetail"];
+                };
+            };
+            /** @description Missing X-Admin-Reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such application (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The application is not in a state that allows this (onboarding.wrong_state) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    purgeOnboardingApplication: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Purged */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingAdminDetail"];
+                };
+            };
+            /** @description Missing X-Admin-Reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such application (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The application is not in a state that allows this (onboarding.wrong_state) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    addOnboardingNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Note stored */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingNote"];
+                };
+            };
+            /** @description Missing permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such application (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Body missing or too long */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getOnboardingSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingSettings"];
+                };
+            };
+            /** @description Missing permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateOnboardingSettings: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change (audit trail). */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Settings now stored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingSettings"];
+                };
+            };
+            /** @description Missing X-Admin-Reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing permission */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A value is out of range (onboarding.invalid_field) */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

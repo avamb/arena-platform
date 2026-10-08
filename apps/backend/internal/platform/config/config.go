@@ -398,6 +398,17 @@ type Config struct {
 	// outside a linked user's identity: POST /v1/bot/invitations/accept.
 	// Empty leaves that route answering 503, never open.
 	BotServiceToken string `env:"BOT_SERVICE_TOKEN" required:"false" default:""`
+	// OnboardingEnabled mounts the public organizer-application routes
+	// (/v1/onboarding/*, 08_architecture/34_onboarding_applications_ru.md).
+	// Off by default: the website's form is the only intended client.
+	OnboardingEnabled bool `env:"ONBOARDING_ENABLED" required:"false" default:"false"`
+	// OnboardingSiteURL is the origin of the website that hosts the form; the
+	// e-mailed confirm/continue links point at <origin>/start/confirm.
+	OnboardingSiteURL string `env:"ONBOARDING_SITE_URL" required:"false" default:"https://arenasoldout.com"`
+	// OnboardingTurnstileSecret is the Cloudflare Turnstile secret key that
+	// verifies the first step and the "send me the link" request. Empty is
+	// accepted outside production only; in production the routes answer 503.
+	OnboardingTurnstileSecret string `env:"ONBOARDING_TURNSTILE_SECRET" required:"false" default:""`
 	// BotArenaAPIURL is where the bot process reaches arena-api
 	// (http://api:8080 inside compose).
 	BotArenaAPIURL string `env:"BOT_ARENA_API_URL" required:"false" default:"http://localhost:8080"`
@@ -606,6 +617,8 @@ func Load() (*Config, error) {
 		EventsTelegramBotUsername: getenv("EVENTS_TELEGRAM_BOT_USERNAME", ""),
 		BotServiceToken:           getenv("BOT_SERVICE_TOKEN", ""),
 		BotArenaAPIURL:            getenv("BOT_ARENA_API_URL", "http://localhost:8080"),
+		OnboardingSiteURL:         strings.TrimRight(getenv("ONBOARDING_SITE_URL", "https://arenasoldout.com"), "/"),
+		OnboardingTurnstileSecret: getenv("ONBOARDING_TURNSTILE_SECRET", ""),
 		BotMetricsAddr:            getenv("BOT_METRICS_ADDR", ":9092"),
 		PosterLLMAPIKey:           getenv("POSTER_LLM_API_KEY", ""),
 		PosterLLMModel:            getenv("POSTER_LLM_MODEL", "claude-sonnet-5"),
@@ -754,6 +767,12 @@ func Load() (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.EnableStubAuth = b
+
+	b, err = getenvBool("ONBOARDING_ENABLED", false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.OnboardingEnabled = b
 
 	// JWT default TTL.
 	d, err = getenvDuration("JWT_DEFAULT_TTL", time.Hour, false)

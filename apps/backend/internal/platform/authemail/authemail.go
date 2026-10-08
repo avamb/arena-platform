@@ -134,6 +134,9 @@ type HandlerOptions struct {
 	// bot.invitation_email job needs it; when empty that job fails and
 	// retries instead of mailing a dead link.
 	BotUsername string
+	// OnboardingSiteURL is the origin of the website that hosts the application
+	// form (ONBOARDING_SITE_URL). Only onboarding.email links use it.
+	OnboardingSiteURL string
 }
 
 // Handler provides worker.HandlerFunc implementations for auth email jobs.
@@ -145,6 +148,7 @@ type Handler struct {
 	fromAddress  string
 	logger       *slog.Logger
 	botUsername  string
+	siteURL      string
 }
 
 // NewHandler constructs a Handler from the given options.
@@ -163,6 +167,7 @@ func NewHandler(opts HandlerOptions) *Handler {
 		fromAddress:  opts.FromAddress,
 		logger:       logger,
 		botUsername:  strings.TrimPrefix(strings.TrimSpace(opts.BotUsername), "@"),
+		siteURL:      strings.TrimRight(strings.TrimSpace(opts.OnboardingSiteURL), "/"),
 	}
 }
 

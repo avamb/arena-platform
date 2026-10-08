@@ -13974,6 +13974,649 @@ components:
               items:
                 $ref: "#/components/schemas/Bil24GetSchemaSeat"
 
+    OnboardingSchemaOption:
+      type: object
+      description: "One choice of a select or multiselect field."
+      required: [value, label]
+      properties:
+        value:
+          type: string
+          description: "Machine value stored in the answers."
+        label:
+          type: string
+          description: "Label in the requested language."
+
+    OnboardingSchemaField:
+      type: object
+      description: "One question of the application form."
+      required: [key, type, label, required]
+      properties:
+        key:
+          type: string
+          description: "Key of the answer in `answers`."
+        type:
+          type: string
+          description: "Input type: text, textarea, email, phone, country, select, multiselect, bool, url, url_list, date, number or currency."
+        label:
+          type: string
+          description: "Field label in the requested language."
+        hint:
+          type: string
+          description: "Optional help text in the requested language."
+        required:
+          type: boolean
+          description: "True when the application cannot be submitted without an answer (a consent must be true)."
+        read_only:
+          type: boolean
+          description: "True when the server sets the value (the e-mail confirmed by link)."
+        max_length:
+          type: integer
+          description: "Maximum length in characters for text kinds."
+        max_items:
+          type: integer
+          description: "Maximum number of items for a list of links."
+        default_from:
+          type: string
+          description: "Key of another field whose value fills this one when it is left empty."
+        options:
+          type: array
+          description: "Choices of a select or multiselect field."
+          items:
+            $ref: "#/components/schemas/OnboardingSchemaOption"
+
+    OnboardingSchemaStep:
+      type: object
+      description: "One page of the application form."
+      required: [key, title, fields]
+      properties:
+        key:
+          type: string
+          description: "Step key: contact, organization, events, platform or consents."
+        title:
+          type: string
+          description: "Step title in the requested language."
+        fields:
+          type: array
+          description: "Questions of the step in display order."
+          items:
+            $ref: "#/components/schemas/OnboardingSchemaField"
+
+    OnboardingFormSchema:
+      type: object
+      description: "The application form as the website and the bot render it. Clients never hard-code a field, a range or a list of options."
+      required: [version, locale, steps, accepted_countries, terms_version, privacy_version]
+      properties:
+        version:
+          type: integer
+          description: "Schema version; bumped when a field is removed or changes meaning."
+        locale:
+          type: string
+          description: "Language of the labels (`en`, `ru` or `es`; anything else falls back to `en`)."
+        steps:
+          type: array
+          description: "Form steps in order."
+          items:
+            $ref: "#/components/schemas/OnboardingSchemaStep"
+        accepted_countries:
+          type: array
+          description: "ISO-3166 alpha-2 codes accepted for new applications; an empty list means every country."
+          items:
+            type: string
+        terms_version:
+          type: string
+          description: "Version of the terms of service the applicant accepts."
+        privacy_version:
+          type: string
+          description: "Version of the privacy policy the applicant accepts."
+
+    OnboardingStartRequest:
+      type: object
+      description: "Body of POST /v1/onboarding/applications: the first step of the form."
+      required: [first_name, last_name, email, phone]
+      properties:
+        first_name:
+          type: string
+          description: "Given name."
+        last_name:
+          type: string
+          description: "Family name."
+        email:
+          type: string
+          format: email
+          description: "Contact e-mail; a confirmation link is sent to it."
+        phone:
+          type: string
+          description: "Phone number; normalized to E.164 (for example +34600111222)."
+        locale:
+          type: string
+          description: "Language of the e-mails and of the form (`en`, `ru`, `es`)."
+        utm:
+          type: object
+          additionalProperties:
+            type: string
+          description: "Optional marketing attribution (source, medium, campaign, term, content, ref)."
+        turnstile_token:
+          type: string
+          description: "Cloudflare Turnstile response token; verified by the platform."
+        honeypot:
+          type: string
+          description: "Hidden decoy field: a non-empty value makes the request a silent no-op."
+
+    OnboardingStartResponse:
+      type: object
+      description: "A new draft. The access token is shown once; the database keeps only its hash."
+      required: [application_id, access_token, progress, current_step]
+      properties:
+        application_id:
+          type: string
+          format: uuid
+          description: "UUID of the application."
+        access_token:
+          type: string
+          description: "Secret the browser (or the bot) keeps and sends in the X-Onboarding-Token header."
+        progress:
+          type: integer
+          description: "Share of required fields filled, 0-100."
+        current_step:
+          type: string
+          description: "The step to show next, or `review` when everything is filled."
+
+    OnboardingApplication:
+      type: object
+      description: "An application as its applicant sees it."
+      required: [id, status, locale, email, email_confirmed, current_step, progress, answers, missing_fields, requested_fields, expires_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "UUID of the application."
+        status:
+          type: string
+          description: "draft, pending_approval, info_requested, approved, rejected or expired."
+        locale:
+          type: string
+          description: "Language of the application."
+        email:
+          type: string
+          description: "Contact e-mail."
+        email_confirmed:
+          type: boolean
+          description: "True once the confirmation link was opened."
+        current_step:
+          type: string
+          description: "The first step with a gap, or `review`."
+        progress:
+          type: integer
+          description: "Share of required fields filled, 0-100."
+        answers:
+          type: object
+          additionalProperties: true
+          description: "All answers keyed by the form-schema field key."
+        missing_fields:
+          type: array
+          description: "Required fields that are still empty."
+          items:
+            type: string
+        requested_fields:
+          type: array
+          description: "In status info_requested: the only fields the applicant may change."
+          items:
+            type: string
+        info_request_message:
+          type: string
+          description: "In status info_requested: the operator's question."
+        expires_at:
+          type: string
+          format: date-time
+          description: "When an unfinished draft expires."
+        submitted_at:
+          type: string
+          format: date-time
+          description: "When the application was submitted."
+
+    OnboardingApplicationResponse:
+      type: object
+      description: "Envelope around one application."
+      required: [application]
+      properties:
+        application:
+          allOf:
+            - $ref: "#/components/schemas/OnboardingApplication"
+          description: "The application."
+
+    OnboardingSaveAnswersRequest:
+      type: object
+      description: "Body of PUT /v1/onboarding/applications/{id}/answers: a partial update. Nothing is saved unless every key is valid; a null or empty value clears an answer."
+      required: [answers]
+      properties:
+        answers:
+          type: object
+          additionalProperties: true
+          description: "Answers keyed by the form-schema field key."
+
+    OnboardingConfirmRequest:
+      type: object
+      description: "Body of POST /v1/onboarding/confirm."
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: "The token from the e-mailed link."
+
+    OnboardingConfirmResponse:
+      type: object
+      description: "The e-mail is confirmed. The earlier access token stops working; use this one."
+      required: [application_id, access_token, application]
+      properties:
+        application_id:
+          type: string
+          format: uuid
+          description: "UUID of the application."
+        access_token:
+          type: string
+          description: "New access token for the browser that opened the link."
+        application:
+          allOf:
+            - $ref: "#/components/schemas/OnboardingApplication"
+          description: "The application."
+
+    OnboardingResumeRequest:
+      type: object
+      description: "Body of POST /v1/onboarding/resume."
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          description: "The address the application was started with."
+        turnstile_token:
+          type: string
+          description: "Cloudflare Turnstile response token."
+
+    OnboardingResumeResponse:
+      type: object
+      description: "Always the same, whether or not the address has an application."
+      required: [accepted]
+      properties:
+        accepted:
+          type: boolean
+          description: "Always true."
+
+    OnboardingAdminApplication:
+      type: object
+      description: "An application as the operator sees it, with every field."
+      required: [id, status, source, email, locale, current_step, progress_pct, answers, last_activity_at, expires_at, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "UUID of the application."
+        status:
+          type: string
+          description: "draft, pending_approval, info_requested, approved, rejected or expired."
+        source:
+          type: string
+          description: "site, telegram or operator."
+        email:
+          type: string
+          description: "Contact e-mail."
+        email_confirmed_at:
+          type: [string, "null"]
+          format: date-time
+          description: "When the e-mail was confirmed."
+        applicant_name:
+          type: [string, "null"]
+          description: "Applicant's full name."
+        phone:
+          type: [string, "null"]
+          description: "Applicant's phone in E.164."
+        locale:
+          type: string
+          description: "Language of the application."
+        country:
+          type: [string, "null"]
+          description: "Country of registration."
+        org_name:
+          type: [string, "null"]
+          description: "Organization name on posters and tickets."
+        legal_name:
+          type: [string, "null"]
+          description: "Registered name."
+        current_step:
+          type: string
+          description: "The first step with a gap, or `review`."
+        progress_pct:
+          type: integer
+          description: "Share of required fields filled."
+        answers:
+          type: object
+          additionalProperties: true
+          description: "All answers keyed by the form-schema field key."
+        requested_fields:
+          type: array
+          description: "Fields requested from the applicant."
+          items:
+            type: string
+        info_request_message:
+          type: [string, "null"]
+          description: "The operator's last question."
+        telegram_user_id:
+          type: [integer, "null"]
+          format: int64
+          description: "Telegram account linked to the application."
+        terms_version:
+          type: [string, "null"]
+          description: "Terms version accepted at submission."
+        privacy_version:
+          type: [string, "null"]
+          description: "Privacy policy version accepted at submission."
+        consented_at:
+          type: [string, "null"]
+          format: date-time
+          description: "When the terms were accepted."
+        utm:
+          type: object
+          additionalProperties: true
+          description: "Marketing attribution."
+        reminders_sent:
+          type: integer
+          description: "Reminder e-mails sent to the applicant."
+        last_activity_at:
+          type: string
+          format: date-time
+          description: "Last edit by the applicant."
+        expires_at:
+          type: string
+          format: date-time
+          description: "When an unfinished draft expires."
+        submitted_at:
+          type: [string, "null"]
+          format: date-time
+          description: "When it was submitted."
+        reviewed_by:
+          type: [string, "null"]
+          format: uuid
+          description: "Operator who decided."
+        reviewed_at:
+          type: [string, "null"]
+          format: date-time
+          description: "When the decision was made."
+        decision_reason:
+          type: [string, "null"]
+          description: "The operator's reason for a refusal."
+        org_id:
+          type: [string, "null"]
+          format: uuid
+          description: "Organization created on approval."
+        purged_at:
+          type: [string, "null"]
+          format: date-time
+          description: "When the personal data was erased."
+        created_at:
+          type: string
+          format: date-time
+          description: "When the draft was started."
+        updated_at:
+          type: string
+          format: date-time
+          description: "Last change of the row."
+
+    OnboardingAdminListItem:
+      description: "A row of the queue: every field of the application, flattened, plus the automatic verdict."
+      allOf:
+        - $ref: "#/components/schemas/OnboardingAdminApplication"
+        - type: object
+          required: [would_approve]
+          properties:
+            would_approve:
+              type: boolean
+              description: "True when every automatic check passed (the system would approve it by itself)."
+
+    OnboardingAdminListResponse:
+      type: object
+      description: "A page of the queue with the tab counters. Each item is an application with an extra `would_approve` flag."
+      required: [items, total, counts]
+      properties:
+        items:
+          type: array
+          description: "Applications (OnboardingAdminApplication fields plus `would_approve`), newest activity first."
+          items:
+            $ref: "#/components/schemas/OnboardingAdminListItem"
+        total:
+          type: integer
+          description: "Number of rows matching the filter."
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+          description: "Rows per status (unconfirmed drafts are hidden)."
+
+    OnboardingCheck:
+      type: object
+      description: "Result of one automatic check."
+      required: [key, result, detail, checked_at]
+      properties:
+        key:
+          type: string
+          description: "email_confirmed, complete, consents, country_allowed, tax_id_format, disposable_email, duplicate or payment_provider."
+        result:
+          type: string
+          description: "pass, warn or fail."
+        detail:
+          type: string
+          description: "What was found."
+        checked_at:
+          type: string
+          format: date-time
+          description: "When the check ran."
+
+    OnboardingEvent:
+      type: object
+      description: "One entry of the application timeline."
+      required: [id, kind, actor_type, actor_id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "UUID of the entry."
+        kind:
+          type: string
+          description: "created, email_confirmed, resumed, link_sent, submitted, resubmitted, info_requested, approved, rejected, extended, expired, reminder_sent, queue_reminder, purged or revived."
+        actor_type:
+          type: string
+          description: "applicant, operator or system."
+        actor_id:
+          type: string
+          description: "Operator user id, empty otherwise."
+        detail:
+          type: object
+          additionalProperties: true
+          description: "Extra facts of the entry."
+        created_at:
+          type: string
+          format: date-time
+          description: "When it happened."
+
+    OnboardingNote:
+      type: object
+      description: "An operator's private note."
+      required: [id, body, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "UUID of the note."
+        author_id:
+          type: [string, "null"]
+          format: uuid
+          description: "Operator who wrote it."
+        body:
+          type: string
+          description: "Note text."
+        created_at:
+          type: string
+          format: date-time
+          description: "When it was written."
+
+    OnboardingAdminDetail:
+      type: object
+      description: "The operator's card of one application."
+      required: [application, checks, would_approve, events, notes]
+      properties:
+        application:
+          allOf:
+            - $ref: "#/components/schemas/OnboardingAdminApplication"
+          description: "The application."
+        checks:
+          type: array
+          description: "Automatic checks in display order."
+          items:
+            $ref: "#/components/schemas/OnboardingCheck"
+        would_approve:
+          type: boolean
+          description: "True when every automatic check passed."
+        events:
+          type: array
+          description: "Timeline, oldest first."
+          items:
+            $ref: "#/components/schemas/OnboardingEvent"
+        notes:
+          type: array
+          description: "Private notes, oldest first."
+          items:
+            $ref: "#/components/schemas/OnboardingNote"
+
+    OnboardingApproveResponse:
+      type: object
+      description: "What an approval created."
+      required: [org_id, org_slug, channel_id, owner_id, owner_created, closed_duplicates]
+      properties:
+        org_id:
+          type: string
+          format: uuid
+          description: "The new organization."
+        org_slug:
+          type: string
+          description: "Its public slug."
+        channel_id:
+          type: string
+          format: uuid
+          description: "Its direct-merchant sales channel (the public sales page is on)."
+        owner_id:
+          type: string
+          format: uuid
+          description: "The owner user."
+        owner_created:
+          type: boolean
+          description: "True when a new account was created and a set-password e-mail queued."
+        closed_duplicates:
+          type: integer
+          description: "Other open applications of the same e-mail that were closed."
+
+    OnboardingRejectRequest:
+      type: object
+      description: "Body of POST .../reject."
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          description: "The operator's reason (required, kept internally)."
+        message:
+          type: string
+          description: "Optional text added to the e-mail the applicant receives."
+
+    OnboardingRequestInfoRequest:
+      type: object
+      description: "Body of POST .../request-info."
+      required: [fields, message]
+      properties:
+        fields:
+          type: array
+          description: "Field keys the applicant may change."
+          items:
+            type: string
+        message:
+          type: string
+          description: "The question shown to the applicant."
+
+    OnboardingExtendRequest:
+      type: object
+      description: "Body of POST .../extend."
+      properties:
+        days:
+          type: integer
+          description: "Days from now; empty uses the configured draft lifetime."
+
+    OnboardingNoteRequest:
+      type: object
+      description: "Body of POST .../notes."
+      required: [body]
+      properties:
+        body:
+          type: string
+          description: "Note text, up to 4000 characters."
+
+    OnboardingSettings:
+      type: object
+      description: "The single onboarding settings row."
+      required: [approval_mode, draft_ttl_days, purge_after_days, countries, max_new_per_day, terms_version, privacy_version, updated_at]
+      properties:
+        approval_mode:
+          type: string
+          description: "manual (the operator decides) or auto_when_complete (the system approves when every check passes)."
+        draft_ttl_days:
+          type: integer
+          description: "Days of inactivity before a draft expires."
+        purge_after_days:
+          type: integer
+          description: "Days after which an expired or rejected application loses its personal data."
+        countries:
+          type: array
+          description: "Accepted countries (ISO alpha-2); empty means all."
+          items:
+            type: string
+        max_new_per_day:
+          type: integer
+          description: "Daily ceiling of new applications."
+        terms_version:
+          type: string
+          description: "Current terms version."
+        privacy_version:
+          type: string
+          description: "Current privacy policy version."
+        updated_at:
+          type: string
+          format: date-time
+          description: "Last change."
+
+    OnboardingSettingsRequest:
+      type: object
+      description: "Body of PUT /v1/admin/onboarding/settings. A key that is absent keeps its value."
+      properties:
+        approval_mode:
+          type: string
+          description: "manual or auto_when_complete."
+        draft_ttl_days:
+          type: integer
+          description: "7 to 1095."
+        purge_after_days:
+          type: integer
+          description: "30 to 3650."
+        countries:
+          type: array
+          description: "ISO alpha-2 codes; an empty list means every country."
+          items:
+            type: string
+        max_new_per_day:
+          type: integer
+          description: "1 to 100000."
+        terms_version:
+          type: string
+          description: "Current terms version."
+        privacy_version:
+          type: string
+          description: "Current privacy policy version."
+
 paths:
   /healthz:
     get:
@@ -34929,6 +35572,867 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/onboarding/form-schema:
+    get:
+      operationId: getOnboardingFormSchema
+      summary: Organizer application form definition
+      description: "Public. The steps, fields, types, ranges, option lists and labels of the application form in the requested language, plus the accepted countries. Mounted only while ONBOARDING_ENABLED is on."
+      tags: [v1]
+      security: []
+      parameters:
+        - name: locale
+          in: query
+          required: false
+          description: Language of the labels (en, ru, es); anything else falls back to en.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The form definition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingFormSchema"
+  /v1/onboarding/applications:
+    post:
+      operationId: startOnboardingApplication
+      summary: Start an organizer application
+      description: "Public. Always creates a NEW draft (the answer never reveals whether the address already has applications) and e-mails a confirm-and-continue link. Protected by Cloudflare Turnstile (turnstile_token), a hidden honeypot field and per-address, per-network and daily limits."
+      tags: [v1]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingStartRequest"
+      responses:
+        "201":
+          description: Draft created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingStartResponse"
+        "400":
+          description: Invalid or empty body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Captcha failed (onboarding.turnstile_failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: A field is invalid (onboarding.invalid_field, with a fields map)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited (onboarding.rate_limited)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Captcha not configured or unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/onboarding/applications/{id}:
+    get:
+      operationId: getOnboardingApplication
+      summary: Read an application
+      description: "Public, authenticated by the application's access token. Returns the answers, progress, status and the list of requested fields."
+      tags: [v1]
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Onboarding-Token
+          in: header
+          required: true
+          description: The application's access token (from the start or confirm response).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: The application
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingApplicationResponse"
+        "404":
+          description: Unknown id or wrong token (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/onboarding/applications/{id}/answers:
+    put:
+      operationId: saveOnboardingAnswers
+      summary: Save answers of a step
+      description: "Public, authenticated by the access token. A partial update: nothing is saved unless every key is valid. A draft can always be edited; an application in info_requested accepts only the requested fields; other statuses are locked. Saving revives an expired draft."
+      tags: [v1]
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Onboarding-Token
+          in: header
+          required: true
+          description: The application's access token (from the start or confirm response).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingSaveAnswersRequest"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingApplicationResponse"
+        "404":
+          description: Unknown id or wrong token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The application is locked (onboarding.locked)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: A field is invalid (onboarding.invalid_field, with a fields map of reasons)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/onboarding/applications/{id}/submit:
+    post:
+      operationId: submitOnboardingApplication
+      summary: Submit an application for approval
+      description: "Public, authenticated by the access token. Requires a confirmed e-mail and every required field; consents must be true. Records the accepted terms and privacy versions, runs the automatic checks and tells the operator. After submission the application is locked unless the operator asks for more details."
+      tags: [v1]
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Onboarding-Token
+          in: header
+          required: true
+          description: The application's access token (from the start or confirm response).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Submitted; status is pending_approval
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingApplicationResponse"
+        "404":
+          description: Unknown id or wrong token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: E-mail not confirmed (onboarding.email_not_confirmed) or already submitted (onboarding.locked)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Required fields are missing (onboarding.incomplete) or a field is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/onboarding/confirm:
+    post:
+      operationId: confirmOnboardingEmail
+      summary: Confirm the e-mail and continue
+      description: "Public. Consumes the token of the e-mailed link: confirms the address, issues a fresh access token for this browser (the previous one stops working) and revives an expired draft. The link stays valid for 14 days."
+      tags: [v1]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingConfirmRequest"
+      responses:
+        "200":
+          description: Confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingConfirmResponse"
+        "404":
+          description: Unknown or expired link (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/onboarding/resume:
+    post:
+      operationId: resumeOnboardingApplication
+      summary: E-mail a continue link
+      description: "Public. Sends a fresh continue link for the newest open application of the address. Always answers 202, whether or not the address has one. Protected by Turnstile and a per-application limit."
+      tags: [v1]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingResumeRequest"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingResumeResponse"
+        "403":
+          description: Captcha failed (onboarding.turnstile_failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Captcha not configured or unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/onboarding/applications:
+    get:
+      operationId: listOnboardingApplications
+      summary: Admin - the application queue
+      description: "Requires onboarding.review (platform superadmin). Unconfirmed drafts are hidden. Returns the page and the per-status tab counters."
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Filter by status (pending_approval, info_requested, draft, approved, rejected, expired).
+          schema:
+            type: string
+        - name: q
+          in: query
+          required: false
+          description: Search in organization name, e-mail, applicant name and country.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1-200 (default 50).
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          description: Rows to skip.
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: A page of the queue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAdminListResponse"
+        "400":
+          description: Unknown status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/onboarding/applications/{id}:
+    get:
+      operationId: getOnboardingApplicationAdmin
+      summary: Admin - the application card
+      description: "Requires onboarding.review. Answers, automatic checks, timeline and notes."
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAdminDetail"
+        "403":
+          description: Missing permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such application (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/onboarding/applications/{id}/recheck:
+    post:
+      operationId: recheckOnboardingApplication
+      summary: Admin - recompute the checks
+      description: "Requires onboarding.review. Recomputes the automatic checks and returns the card."
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAdminDetail"
+        "403":
+          description: Missing permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such application (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/onboarding/applications/{id}/approve:
+    post:
+      operationId: approveOnboardingApplication
+      summary: Admin - approve an application
+      description: "Requires onboarding.review and X-Admin-Reason. In one transaction creates the organization with its legal fields, a direct-merchant sales channel with the public sales page, the owner (organization role org_admin, a set-your-password e-mail for a new account, the Telegram bot link when the application came from Telegram) and closes other open applications of the same e-mail. merchant_of_record is never enabled and kyb_status stays unverified."
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingApproveResponse"
+        "400":
+          description: Missing X-Admin-Reason
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such application (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The application is not in a state that allows this (onboarding.wrong_state)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/onboarding/applications/{id}/reject:
+    post:
+      operationId: rejectOnboardingApplication
+      summary: Admin - reject an application
+      description: "Requires onboarding.review and X-Admin-Reason. The reason is mandatory and kept internally; the applicant gets a generic e-mail plus the optional message."
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingRejectRequest"
+      responses:
+        "200":
+          description: Rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAdminDetail"
+        "400":
+          description: Missing X-Admin-Reason
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such application (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The application is not in a state that allows this (onboarding.wrong_state)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Reason missing (onboarding.invalid_field)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/onboarding/applications/{id}/request-info:
+    post:
+      operationId: requestOnboardingInfo
+      summary: Admin - ask the applicant for details
+      description: "Requires onboarding.review and X-Admin-Reason. Moves the application to info_requested, limits editing to the listed fields and e-mails a fresh continue link with the question."
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingRequestInfoRequest"
+      responses:
+        "200":
+          description: Requested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAdminDetail"
+        "400":
+          description: Missing X-Admin-Reason
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such application (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The application is not in a state that allows this (onboarding.wrong_state)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Fields or message invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/onboarding/applications/{id}/extend:
+    post:
+      operationId: extendOnboardingApplication
+      summary: Admin - extend a draft
+      description: "Requires onboarding.review and X-Admin-Reason. Gives a draft more time and revives an expired one."
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingExtendRequest"
+      responses:
+        "200":
+          description: Extended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAdminDetail"
+        "400":
+          description: Missing X-Admin-Reason
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such application (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The application is not in a state that allows this (onboarding.wrong_state)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/onboarding/applications/{id}/resend:
+    post:
+      operationId: resendOnboardingLink
+      summary: Admin - e-mail the continue link again
+      description: "Requires onboarding.review and X-Admin-Reason. Rotates the link token and mails it; at most 3 per hour per application."
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAdminDetail"
+        "400":
+          description: Missing X-Admin-Reason
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such application (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The application is not in a state that allows this (onboarding.wrong_state)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/onboarding/applications/{id}/purge:
+    post:
+      operationId: purgeOnboardingApplication
+      summary: Admin - erase the personal data
+      description: "Requires onboarding.review and X-Admin-Reason. Blanks every personal field of an unapproved application; the row stays for statistics. An approved application keeps its answers."
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Purged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAdminDetail"
+        "400":
+          description: Missing X-Admin-Reason
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such application (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The application is not in a state that allows this (onboarding.wrong_state)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/onboarding/applications/{id}/notes:
+    post:
+      operationId: addOnboardingNote
+      summary: Admin - add a private note
+      description: "Requires onboarding.review."
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingNoteRequest"
+      responses:
+        "201":
+          description: Note stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingNote"
+        "403":
+          description: Missing permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such application (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Body missing or too long
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/onboarding/settings:
+    get:
+      operationId: getOnboardingSettings
+      summary: Admin - onboarding settings
+      description: "Requires onboarding.review."
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingSettings"
+        "403":
+          description: Missing permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      operationId: updateOnboardingSettings
+      summary: Admin - change onboarding settings
+      description: "Requires onboarding.settings and X-Admin-Reason. A key that is absent keeps its value. Each change is audited."
+      tags: [admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change (audit trail).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingSettingsRequest"
+      responses:
+        "200":
+          description: Settings now stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingSettings"
+        "400":
+          description: Missing X-Admin-Reason
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Missing permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: A value is out of range (onboarding.invalid_field)
           content:
             application/json:
               schema:
