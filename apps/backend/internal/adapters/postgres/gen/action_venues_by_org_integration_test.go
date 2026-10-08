@@ -89,8 +89,9 @@ func TestListActionVenuesByOrg_LiveDB(t *testing.T) {
 	}
 
 	// Venue-without-city: country resolved via venues.country (co_vn); no
-	// city_id / city_name; locale 'ru' has no country row for CZ so the
-	// English fallback wins.
+	// city_id / city_name; locale 'ru' has no country row for the fictional
+	// country ZZ so the English fallback wins. (A real country cannot serve:
+	// migration 0127 gives every real one a ru name.)
 	vn, ok := byID[f.venueWithoutCity]
 	if !ok {
 		t.Fatalf("venueWithoutCity missing from projection")
@@ -98,11 +99,11 @@ func TestListActionVenuesByOrg_LiveDB(t *testing.T) {
 	if vn.CityID != nil {
 		t.Errorf("venueWithoutCity.CityID = %v; want nil", vn.CityID)
 	}
-	if vn.CountryIso2 == nil || *vn.CountryIso2 != "CZ" {
-		t.Errorf("venueWithoutCity.CountryIso2 = %v; want CZ", vn.CountryIso2)
+	if vn.CountryIso2 == nil || *vn.CountryIso2 != "ZZ" {
+		t.Errorf("venueWithoutCity.CountryIso2 = %v; want ZZ", vn.CountryIso2)
 	}
-	if vn.CountryName == nil || *vn.CountryName != "Czechia" {
-		t.Errorf("venueWithoutCity.CountryName = %v; want en-fallback Czechia", vn.CountryName)
+	if vn.CountryName == nil || *vn.CountryName != "Zedland" {
+		t.Errorf("venueWithoutCity.CountryName = %v; want en-fallback Zedland", vn.CountryName)
 	}
 }
 
@@ -112,7 +113,7 @@ type actionVenuesFixture struct {
 	orgID            uuid.UUID
 	otherOrgID       uuid.UUID
 	hungaryID        uuid.UUID
-	czechiaID        uuid.UUID
+	fictionalID      uuid.UUID
 	cityID           uuid.UUID
 	venueWithCity    uuid.UUID
 	venueWithoutCity uuid.UUID
@@ -127,10 +128,10 @@ type actionVenuesFixture struct {
 	otherSession     uuid.UUID
 	// The i18n_text and countries/cities rows may be pre-seeded; track
 	// which ones this fixture created so cleanup only touches its own.
-	insertedHungary bool
-	insertedCzechia bool
-	insertedCity    bool
-	i18nKeys        []struct{ ns, key, locale string }
+	insertedHungary   bool
+	insertedFictional bool
+	insertedCity      bool
+	i18nKeys          []struct{ ns, key, locale string }
 }
 
 func createActionVenuesFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool) *actionVenuesFixture {
@@ -166,15 +167,15 @@ func createActionVenuesFixture(t *testing.T, ctx context.Context, pool *pgxpool.
 		f.insertedHungary = true
 	}
 	if err := pool.QueryRow(ctx,
-		`SELECT id FROM countries WHERE iso2 = 'CZ'`).Scan(&f.czechiaID); err != nil {
-		f.czechiaID = uuid.New()
+		`SELECT id FROM countries WHERE iso2 = 'ZZ'`).Scan(&f.fictionalID); err != nil {
+		f.fictionalID = uuid.New()
 		if _, err := pool.Exec(ctx,
 			`INSERT INTO countries (id, iso2, iso3, slug, currency)
-			 VALUES ($1, 'CZ', 'CZE', 'czechia-`+suffix+`', 'CZK')`,
-			f.czechiaID); err != nil {
-			t.Fatalf("insert CZ: %v", err)
+			 VALUES ($1, 'ZZ', 'ZZZ', 'zedland-`+suffix+`', 'EUR')`,
+			f.fictionalID); err != nil {
+			t.Fatalf("insert ZZ: %v", err)
 		}
-		f.insertedCzechia = true
+		f.insertedFictional = true
 	}
 
 	// city — unique slug per test run.
@@ -195,20 +196,25 @@ func createActionVenuesFixture(t *testing.T, ctx context.Context, pool *pgxpool.
 		{"geo.cities", citySlug, "en", "Budapest"},
 		{"geo.countries", "HU", "ru", "Венгрия"},
 		{"geo.countries", "HU", "en", "Hungary"},
-		// CZ has no 'ru' row on purpose — the projection must fall back
-		// to the 'en' row 'Czechia'.
-		{"geo.countries", "CZ", "en", "Czechia"},
+		// ZZ has no 'ru' row on purpose — the projection must fall back
+		// to the 'en' row 'Zedland'.
+		{"geo.countries", "ZZ", "en", "Zedland"},
 	}
 	for _, r := range i18nRows {
-		if _, err := pool.Exec(ctx,
+		tag, err := pool.Exec(ctx,
 			`INSERT INTO i18n_text (namespace, key, locale, value)
 			 VALUES ($1, $2, $3, $4)
 			 ON CONFLICT (namespace, key, locale) DO NOTHING`,
-			r.ns, r.key, r.locale, r.value); err != nil {
+			r.ns, r.key, r.locale, r.value)
+		if err != nil {
 			t.Fatalf("insert i18n_text %s/%s/%s: %v", r.ns, r.key, r.locale, err)
 		}
-		f.i18nKeys = append(f.i18nKeys,
-			struct{ ns, key, locale string }{r.ns, r.key, r.locale})
+		// Only a row this test inserted is this test's to delete: the seeded
+		// ones (migration 0006 / 0127) must survive it.
+		if tag.RowsAffected() == 1 {
+			f.i18nKeys = append(f.i18nKeys,
+				struct{ ns, key, locale string }{r.ns, r.key, r.locale})
+		}
 	}
 
 	// orgs
@@ -236,7 +242,7 @@ func createActionVenuesFixture(t *testing.T, ctx context.Context, pool *pgxpool.
 	}
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO venues (id, org_id, name, country, timezone)
-		 VALUES ($1, $2, $3, 'CZ', 'Europe/Prague')`,
+		 VALUES ($1, $2, $3, 'ZZ', 'Europe/Prague')`,
 		f.venueWithoutCity, f.orgID, "AV VenueNoCity "+suffix); err != nil {
 		t.Fatalf("insert venueWithoutCity: %v", err)
 	}
@@ -343,9 +349,9 @@ func (f *actionVenuesFixture) cleanup() {
 			f.t.Logf("cleanup HU: %v", err)
 		}
 	}
-	if f.insertedCzechia {
-		if _, err := f.pool.Exec(ctx, `DELETE FROM countries WHERE id = $1`, f.czechiaID); err != nil {
-			f.t.Logf("cleanup CZ: %v", err)
+	if f.insertedFictional {
+		if _, err := f.pool.Exec(ctx, `DELETE FROM countries WHERE id = $1`, f.fictionalID); err != nil {
+			f.t.Logf("cleanup ZZ: %v", err)
 		}
 	}
 }
