@@ -52,3 +52,29 @@ func TestDecodeUpdateOrganizationRejectsUnknownFields(t *testing.T) {
 		t.Fatalf("unknown field error = %v", err)
 	}
 }
+
+func TestKYBChangeAllowedForOwner(t *testing.T) {
+	cases := []struct {
+		current, requested string
+		want               bool
+	}{
+		{"unverified", "unverified", true},
+		{"pending", "pending", true},
+		{"verified", "verified", true},
+		{"unverified", "pending", true},
+		{"rejected", "pending", true},
+		{"unverified", "verified", false},
+		{"pending", "verified", false},
+		{"rejected", "verified", false},
+		{"unverified", "rejected", false},
+		{"pending", "rejected", false},
+		{"verified", "pending", false},
+		{"verified", "unverified", false},
+		{"pending", "unverified", false},
+	}
+	for _, c := range cases {
+		if got := kybChangeAllowedForOwner(c.current, c.requested); got != c.want {
+			t.Errorf("kybChangeAllowedForOwner(%q, %q) = %v, want %v", c.current, c.requested, got, c.want)
+		}
+	}
+}

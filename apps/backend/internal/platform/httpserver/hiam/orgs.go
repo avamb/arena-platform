@@ -174,6 +174,15 @@ var (
 	usEIN         = regexp.MustCompile(`^[0-9]{2}-?[0-9]{7}$`)
 )
 
+// kybChangeAllowedForOwner reports whether an organization's own members may
+// move kyb_status from current to requested: no change, or a request for review.
+func kybChangeAllowedForOwner(current, requested string) bool {
+	if current == requested {
+		return true
+	}
+	return requested == "pending" && (current == "unverified" || current == "rejected")
+}
+
 func validateLegalUpdate(req updateOrgRequest, current gen.OrganizationRow) (legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website *string, kybStatus string, code string) {
 	legalName = optionalValue(req.LegalName, current.LegalName)
 	taxID = optionalValue(req.TaxID, current.TaxID)
@@ -455,6 +464,20 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 	legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website, kybStatus, validationCode := validateLegalUpdate(req, current)
 	if validationCode != "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails("org."+validationCode, strings.ReplaceAll(validationCode, "_", " "), r, map[string]any{"field": strings.TrimPrefix(validationCode, "invalid_")}))
+		return
+	}
+
+	// kyb_status gates live payments, so an organization cannot grade itself:
+	// only a platform superadmin writes it (the admin route does). The one move
+	// an owner may make is to ask for a review, unverified or rejected ->
+	// pending; repeating the stored value is harmless.
+	if !kybChangeAllowedForOwner(current.KybStatus, kybStatus) && !auth.HasSuperadminOrgAccess(ctx) {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelopeWithDetails(
+			"org.kyb_status_superadmin_only",
+			"only a platform superadmin can change kyb_status; an owner can only request a review (pending)",
+			r,
+			map[string]any{"field": "kyb_status"},
+		))
 		return
 	}
 
