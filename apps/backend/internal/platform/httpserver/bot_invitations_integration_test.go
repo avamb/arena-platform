@@ -93,6 +93,13 @@ func (f *botInviteFixture) newEmail(label string) string {
 // only mount when it is) and the bot service token configured.
 func buildBotIntegrationServer(t *testing.T, pool *pgxpool.Pool) *Server {
 	t.Helper()
+	return buildBotIntegrationServerCfg(t, pool, nil)
+}
+
+// buildBotIntegrationServerCfg is buildBotIntegrationServer with a hook that
+// adjusts the config (the onboarding e2e switches the application routes on).
+func buildBotIntegrationServerCfg(t *testing.T, pool *pgxpool.Pool, mutate func(*config.Config)) *Server {
+	t.Helper()
 	const secret = botTestJWTSecret
 	const issuer = botTestJWTIssuer
 	const audience = botTestJWTAudience
@@ -122,6 +129,9 @@ func buildBotIntegrationServer(t *testing.T, pool *pgxpool.Pool) *Server {
 		AppPublicURL:              "https://app.bot.test",
 		BotServiceToken:           botTestServiceToken,
 		EventsTelegramBotUsername: "ArenaEventsCentrBot",
+	}
+	if mutate != nil {
+		mutate(cfg)
 	}
 	// A local-disk media store, so a poster the bot uploads is stored and the
 	// event-bundle can side-load it from the signed download URL.

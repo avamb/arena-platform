@@ -44,6 +44,8 @@ type APIError struct {
 	Status  int
 	Code    string
 	Message string
+	// Fields is error.details.fields of a 422: field key -> reason.
+	Fields map[string]string
 }
 
 func (e *APIError) Error() string {
@@ -106,11 +108,15 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 			Error struct {
 				Code    string `json:"code"`
 				Message string `json:"message"`
+				Details struct {
+					Fields map[string]string `json:"fields"`
+				} `json:"details"`
 			} `json:"error"`
 		}
 		if json.Unmarshal(raw, &env) == nil {
 			ae.Code = env.Error.Code
 			ae.Message = env.Error.Message
+			ae.Fields = env.Error.Details.Fields
 		}
 		if ae.Code == "" {
 			ae.Code = "http." + http.StatusText(res.StatusCode)

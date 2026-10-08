@@ -1,0 +1,51 @@
+package eventbot
+
+// onbKeys lists every bot.onb.* key of the organizer-application dialog
+// (onboarding_dialog.go); the locale test proves en, ru and es carry each one.
+var onbKeys = []string{
+	"bot.onb.welcome",
+	"bot.onb.apply_btn",
+	"bot.onb.ask_first",
+	"bot.onb.ask_last",
+	"bot.onb.ask_phone",
+	"bot.onb.share_phone_btn",
+	"bot.onb.phone_not_yours",
+	"bot.onb.phone_invalid",
+	"bot.onb.ask_email",
+	"bot.onb.email_invalid",
+	"bot.onb.rate_limited",
+	"bot.onb.pending",
+	"bot.onb.site_btn",
+	"bot.onb.code_sent",
+	"bot.onb.code_resend_btn",
+	"bot.onb.code_resent",
+	"bot.onb.ask_code",
+	"bot.onb.code_wrong",
+	"bot.onb.email_confirmed",
+	"bot.onb.info_requested",
+	"bot.onb.info_go_btn",
+	"bot.onb.progress",
+	"bot.onb.yes_btn",
+	"bot.onb.no_btn",
+	"bot.onb.done_btn",
+	"bot.onb.country_hint",
+	"bot.onb.terms_link",
+	"bot.onb.privacy_link",
+	"bot.onb.consent_text",
+	"bot.onb.consent_btn",
+	"bot.onb.review_title",
+	"bot.onb.review_hint",
+	"bot.onb.submit_btn",
+	"bot.onb.use_buttons",
+	"bot.onb.invalid_field",
+	"bot.onb.not_allowed",
+	"bot.onb.unavailable",
+	"bot.onb.site_link",
+	"bot.onb.submitted",
+	"bot.onb.approved",
+	"bot.onb.rejected",
+}
+
+func init() {
+	MessageKeys = append(MessageKeys, onbKeys...)
+}

@@ -595,6 +595,9 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, op string, err er
 	case errors.Is(err, provisioning.ErrDuplicate):
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope("onboarding.duplicate_organization",
 			"an organization with this name already exists; ask the applicant for another name", r))
+	case errors.Is(err, onboarding.ErrCodeInvalid):
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope("onboarding.code_invalid",
+			"the code is wrong or expired", r))
 	case errors.Is(err, onboarding.ErrNotFound):
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("onboarding.not_found", "application not found", r))
 	case errors.Is(err, onboarding.ErrLocked):

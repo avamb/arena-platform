@@ -1283,3 +1283,128 @@ other = "💶 No money was refunded automatically and the tickets stay valid. Se
 
 ["bot.wz.tz_suggest_note"]
 other = "For the city «{{.City}}» I found the zone {{.Zone}}. Press the button to confirm it."
+
+# ── organizer application (bot.onb.*) ──
+
+["bot.onb.welcome"]
+other = "Hi! This bot creates events and shows sales for organizers of Arena Sold Out.\n\nIf you were invited, open the link from your invitation e-mail. If you want to sell tickets with Arena, apply here: it takes a few minutes, and we will review your application."
+
+["bot.onb.apply_btn"]
+other = "Apply to become an organizer"
+
+["bot.onb.ask_first"]
+other = "Let us start. What is your first name?"
+
+["bot.onb.ask_last"]
+other = "And your last name?"
+
+["bot.onb.ask_phone"]
+other = "Share your phone number with the button below. Telegram sends it itself, so we know it is yours."
+
+["bot.onb.share_phone_btn"]
+other = "📱 Share my number"
+
+["bot.onb.phone_not_yours"]
+other = "That is not your own contact. Press the button below to share your own number."
+
+["bot.onb.phone_invalid"]
+other = "That phone number does not look right. Share it again with the button."
+
+["bot.onb.ask_email"]
+other = "What is your e-mail? We will send a 6-digit code to it to confirm it is yours."
+
+["bot.onb.email_invalid"]
+other = "That does not look like an e-mail address. Type it again, for example name@company.com."
+
+["bot.onb.rate_limited"]
+other = "Too many attempts. Please wait a little and try again."
+
+["bot.onb.pending"]
+other = "Your application is with us and is being reviewed. We will write to you here as soon as there is a decision."
+
+["bot.onb.site_btn"]
+other = "Open on the website"
+
+["bot.onb.code_sent"]
+other = "We sent a 6-digit code to <b>{{.Email}}</b>. Type it here. The code works for 15 minutes."
+
+["bot.onb.code_resend_btn"]
+other = "Send the code again"
+
+["bot.onb.code_resent"]
+other = "A new code is on its way to <b>{{.Email}}</b>."
+
+["bot.onb.ask_code"]
+other = "Type the 6-digit code from the e-mail."
+
+["bot.onb.code_wrong"]
+other = "The code is wrong or has expired. Check it, or ask for a new one."
+
+["bot.onb.email_confirmed"]
+other = "✅ E-mail confirmed."
+
+["bot.onb.info_requested"]
+other = "We need a little more from you:\n\n<i>{{.Message}}</i>"
+
+["bot.onb.info_go_btn"]
+other = "Answer now"
+
+["bot.onb.progress"]
+other = "Application · {{.Pct}}% ready"
+
+["bot.onb.yes_btn"]
+other = "Yes"
+
+["bot.onb.no_btn"]
+other = "No"
+
+["bot.onb.done_btn"]
+other = "Done"
+
+["bot.onb.country_hint"]
+other = "Pick a country with a button, or type its two-letter code, for example ES."
+
+["bot.onb.terms_link"]
+other = "Terms of service"
+
+["bot.onb.privacy_link"]
+other = "Privacy policy"
+
+["bot.onb.consent_text"]
+other = "One last thing before we review it. By pressing the button you confirm that you accept the terms and the privacy policy, and that you are authorized to represent this organization.\n\n{{.Links}}"
+
+["bot.onb.consent_btn"]
+other = "I agree"
+
+["bot.onb.review_title"]
+other = "<b>Check your application</b>"
+
+["bot.onb.review_hint"]
+other = "If everything is right, send it. You can also continue on the website."
+
+["bot.onb.submit_btn"]
+other = "Send the application"
+
+["bot.onb.use_buttons"]
+other = "Please use the buttons for this question."
+
+["bot.onb.invalid_field"]
+other = "“{{.Label}}” does not look right. Please check it and try again."
+
+["bot.onb.not_allowed"]
+other = "Sorry, “{{.Label}}” is not available yet. Please contact us if you think this is a mistake."
+
+["bot.onb.unavailable"]
+other = "The website link is not available right now. You can continue here in the chat."
+
+["bot.onb.site_link"]
+other = "Continue on the website (the link opens your application):\n{{.Url}}"
+
+["bot.onb.submitted"]
+other = "✅ Thank you! The application is sent. We will review it and write to you here and by e-mail."
+
+["bot.onb.approved"]
+other = "🎉 Your application is approved! The organization <b>{{.Org}}</b> is ready. We sent a link to set your password to your e-mail. Press the button to open the menu."
+
+["bot.onb.rejected"]
+other = "Unfortunately we cannot open an organization for this application. If you think this is a mistake, write to us by e-mail."

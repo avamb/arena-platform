@@ -49,6 +49,12 @@ type Options struct {
 	// PosterReader reads a sent poster into wizard hints (posterread); nil
 	// means the wizard asks everything and offers nothing.
 	PosterReader posterread.Reader
+	// SelfOnboarding (BOT_SELF_ONBOARDING_ENABLED) offers a stranger the
+	// organizer application instead of "you need an invitation".
+	SelfOnboarding bool
+	// NoticeEvery is how often decisions on applications are announced
+	// (default 45 s); tests shorten it.
+	NoticeEvery time.Duration
 }
 
 // Bot is the running event-center bot.
@@ -67,6 +73,11 @@ type Bot struct {
 	fileClient     *http.Client
 	ticketsBaseURL string
 	poster         posterread.Reader
+
+	selfOnboarding bool
+	noticeEvery    time.Duration
+	onb            *onbDialogs
+	onbForms       *onbFormCache
 }
 
 // New builds the bot; it does not talk to Telegram until Run.
@@ -94,6 +105,11 @@ func New(opts Options) (*Bot, error) {
 		fileClient:     opts.HTTPClient,
 		ticketsBaseURL: opts.TicketsBaseURL,
 		poster:         opts.PosterReader,
+
+		selfOnboarding: opts.SelfOnboarding,
+		noticeEvery:    opts.NoticeEvery,
+		onb:            newOnbDialogs(),
+		onbForms:       &onbFormCache{m: map[string]onbFormEntry{}},
 	}
 	if b.texts == nil {
 		b.texts = NewTexts(nil)
@@ -134,6 +150,9 @@ func (b *Bot) Run(ctx context.Context) error {
 	}
 	b.logger.Info("eventbot: connected", slog.String("username", me.Username), slog.Int64("bot_id", me.ID))
 	b.publishCommands(ctx)
+	if b.selfOnboarding {
+		go b.onbNoticeLoop(ctx)
+	}
 	b.tg.Start(ctx)
 	return nil
 }
@@ -262,6 +281,10 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	}
 	id, jwt, err := b.resolveIdentity(ctx, from.ID)
 	if err != nil {
+		if b.onbOn() && errors.Is(err, ErrNotLinked) {
+			b.onbMessage(ctx, chatID, from, m)
+			return
+		}
 		b.replyIdentityError(ctx, chatID, from, err)
 		return
 	}
@@ -324,6 +347,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		if len(parts) > 1 {
 			b.sampleCallback(ctx, chatID, from, parts[1])
 		}
+	case "onb":
+		b.onbCallback(ctx, chatID, msgID, from, cq.Data)
 	case "ses":
 		b.sessionsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ses:"))
 	case "team":
@@ -569,6 +594,10 @@ func (b *Bot) backKeyboard(locale, target string) *models.InlineKeyboardMarkup {
 func (b *Bot) replyIdentityError(ctx context.Context, chatID int64, from *models.User, err error) {
 	locale := NormalizeLocale(from.LanguageCode)
 	if errors.Is(err, ErrNotLinked) {
+		if b.onbOn() {
+			b.onbWelcome(ctx, chatID, from)
+			return
+		}
 		b.send(ctx, chatID, b.texts.T(locale, "bot.not_invited", nil), nil)
 		return
 	}

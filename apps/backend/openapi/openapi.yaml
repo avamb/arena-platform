@@ -14617,6 +14617,146 @@ components:
           type: string
           description: "Current privacy policy version."
 
+    OnboardingBotFormSchema:
+      type: object
+      description: "Form definition for the Telegram bot, with the website's legal pages."
+      required: [schema, terms_url, privacy_url]
+      properties:
+        schema:
+          allOf:
+            - $ref: "#/components/schemas/OnboardingFormSchema"
+          description: "The form, as GET /v1/onboarding/form-schema returns it."
+        terms_url:
+          type: string
+          description: "URL of the terms of service page (empty when the site URL is not configured)."
+        privacy_url:
+          type: string
+          description: "URL of the privacy policy page (empty when the site URL is not configured)."
+
+    OnboardingBotStartRequest:
+      type: object
+      description: "Body of POST /v1/bot/onboarding/applications."
+      required: [telegram_user_id, first_name, last_name, phone, email]
+      properties:
+        telegram_user_id:
+          type: integer
+          format: int64
+          description: "The Telegram account; every bot call names it."
+        telegram_username:
+          type: string
+          description: "The account's @username, stored as an answer when it is valid."
+        first_name:
+          type: string
+          description: "Given name."
+        last_name:
+          type: string
+          description: "Family name."
+        phone:
+          type: string
+          description: "Phone number from Telegram's own contact button; normalized to E.164."
+        email:
+          type: string
+          format: email
+          description: "Contact e-mail; a six-digit confirmation code is sent to it."
+        locale:
+          type: string
+          description: "Language of the e-mails and of the form (`en`, `ru`, `es`)."
+
+    OnboardingBotStartResponse:
+      type: object
+      description: "The account's application: the existing open one, or a new draft."
+      required: [application, created]
+      properties:
+        application:
+          allOf:
+            - $ref: "#/components/schemas/OnboardingApplication"
+          description: "The application."
+        created:
+          type: boolean
+          description: "True when a new draft was created, false when an open one was returned."
+
+    OnboardingBotAnswersRequest:
+      type: object
+      description: "Body of PUT /v1/bot/onboarding/applications/{id}/answers."
+      required: [telegram_user_id, answers]
+      properties:
+        telegram_user_id:
+          type: integer
+          format: int64
+          description: "The Telegram account the application belongs to."
+        answers:
+          type: object
+          additionalProperties: true
+          description: "Answers keyed by the form-schema field key; nothing is saved unless every key is valid."
+
+    OnboardingBotActionRequest:
+      type: object
+      description: "Body of the bot calls that only name the account (and, for confirm-email, the typed code)."
+      required: [telegram_user_id]
+      properties:
+        telegram_user_id:
+          type: integer
+          format: int64
+          description: "The Telegram account the application belongs to."
+        code:
+          type: string
+          description: "The six-digit code from the e-mail (confirm-email only)."
+
+    OnboardingBotOkResponse:
+      type: object
+      description: "Acknowledgement of an action that returns no application."
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          description: "Always true."
+
+    OnboardingBotSiteLinkResponse:
+      type: object
+      description: "A website link that opens the application in a browser."
+      required: [url]
+      properties:
+        url:
+          type: string
+          description: "The continue link (valid 14 days; asking again replaces it)."
+
+    OnboardingBotNotice:
+      type: object
+      description: "A decision the bot has to tell an applicant about."
+      required: [application_id, telegram_user_id, status, locale, org_name, message]
+      properties:
+        application_id:
+          type: string
+          format: uuid
+          description: "UUID of the application."
+        telegram_user_id:
+          type: integer
+          format: int64
+          description: "Who to tell."
+        status:
+          type: string
+          description: "approved, rejected or info_requested."
+        locale:
+          type: string
+          description: "Language to write in."
+        org_name:
+          type: string
+          description: "Organization name from the application."
+        message:
+          type: string
+          description: "For info_requested: the operator's question."
+
+    OnboardingBotNoticesResponse:
+      type: object
+      description: "Decisions claimed by this call; each is delivered once."
+      required: [notices]
+      properties:
+        notices:
+          type: array
+          description: "The claimed decisions."
+          items:
+            $ref: "#/components/schemas/OnboardingBotNotice"
+
 paths:
   /healthz:
     get:
@@ -36433,6 +36573,389 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "422":
           description: A value is out of range (onboarding.invalid_field)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/bot/onboarding/form-schema:
+    get:
+      operationId: getBotOnboardingFormSchema
+      summary: Bot - application form definition
+      description: "Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on."
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: locale
+          in: query
+          required: false
+          description: Language of the labels (en, ru, es); anything else falls back to en.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The form and the legal page URLs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingBotFormSchema"
+        "401":
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/bot/onboarding/application:
+    get:
+      operationId: getBotOnboardingApplication
+      summary: Bot - the account's open application
+      description: "Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on. Returns the newest application of the account that is draft, info_requested, pending_approval or expired."
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: telegram_user_id
+          in: query
+          required: true
+          description: The Telegram account.
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: The application
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingApplicationResponse"
+        "401":
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such application for this Telegram account (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/bot/onboarding/applications:
+    post:
+      operationId: startBotOnboardingApplication
+      summary: Bot - start (or resume) an application
+      description: "Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on. Returns the account's open application when there is one, otherwise creates a draft (source telegram) and e-mails a six-digit code."
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingBotStartRequest"
+      responses:
+        "200":
+          description: An open application already existed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingBotStartResponse"
+        "201":
+          description: A new draft was created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingBotStartResponse"
+        "401":
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: A field is invalid (onboarding.invalid_field)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited (onboarding.rate_limited)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/bot/onboarding/applications/{id}/answers:
+    put:
+      operationId: saveBotOnboardingAnswers
+      summary: Bot - save answers
+      description: "Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on."
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingBotAnswersRequest"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingApplicationResponse"
+        "401":
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such application for this Telegram account (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The application is locked (onboarding.locked)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: A field is invalid (onboarding.invalid_field)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/bot/onboarding/applications/{id}/email-code:
+    post:
+      operationId: sendBotOnboardingEmailCode
+      summary: Bot - e-mail a new confirmation code
+      description: "Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on. At most three codes an hour; a code lives 15 minutes."
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingBotActionRequest"
+      responses:
+        "200":
+          description: Sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingBotOkResponse"
+        "401":
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such application for this Telegram account (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The e-mail is already confirmed or the application is no longer a draft (onboarding.wrong_state)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited (onboarding.rate_limited)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/bot/onboarding/applications/{id}/confirm-email:
+    post:
+      operationId: confirmBotOnboardingEmail
+      summary: Bot - confirm the e-mail with the code
+      description: "Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on. Five wrong guesses burn the code."
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingBotActionRequest"
+      responses:
+        "200":
+          description: Confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingApplicationResponse"
+        "401":
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such application for this Telegram account (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The code is wrong or expired (onboarding.code_invalid)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/bot/onboarding/applications/{id}/submit:
+    post:
+      operationId: submitBotOnboardingApplication
+      summary: Bot - submit the application
+      description: "Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on."
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingBotActionRequest"
+      responses:
+        "200":
+          description: Submitted; status is pending_approval
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingApplicationResponse"
+        "401":
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such application for this Telegram account (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: E-mail not confirmed (onboarding.email_not_confirmed) or locked (onboarding.locked)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Required fields are missing (onboarding.incomplete)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/bot/onboarding/applications/{id}/site-link:
+    post:
+      operationId: getBotOnboardingSiteLink
+      summary: Bot - a website link for the application
+      description: "Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on. Rotates the continue-link token, so the bot hands the link over in the chat instead of by e-mail."
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID of the application.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingBotActionRequest"
+      responses:
+        "200":
+          description: The link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingBotSiteLinkResponse"
+        "401":
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such application for this Telegram account (onboarding.not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The e-mail is not confirmed yet, the application is closed or the site URL is not configured (onboarding.wrong_state)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/bot/onboarding/notifications/claim:
+    post:
+      operationId: claimBotOnboardingNotices
+      summary: Bot - claim decisions to announce
+      description: "Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on. Returns approved, rejected and info_requested decisions not announced yet and marks them announced (at-most-once)."
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The claimed decisions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingBotNoticesResponse"
+        "401":
+          description: Missing or wrong service token
           content:
             application/json:
               schema:

@@ -398,6 +398,11 @@ type Config struct {
 	// outside a linked user's identity: POST /v1/bot/invitations/accept.
 	// Empty leaves that route answering 503, never open.
 	BotServiceToken string `env:"BOT_SERVICE_TOKEN" required:"false" default:""`
+	// BotSelfOnboardingEnabled (read by arena-bot) lets a stranger who opens
+	// the event-center bot apply for an organization instead of being told
+	// to ask for an invitation. It needs ONBOARDING_ENABLED and
+	// BOT_SERVICE_TOKEN on arena-api.
+	BotSelfOnboardingEnabled bool `env:"BOT_SELF_ONBOARDING_ENABLED" required:"false" default:"false"`
 	// OnboardingEnabled mounts the public organizer-application routes
 	// (/v1/onboarding/*, 08_architecture/34_onboarding_applications_ru.md).
 	// Off by default: the website's form is the only intended client.
@@ -773,6 +778,12 @@ func Load() (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.OnboardingEnabled = b
+
+	b, err = getenvBool("BOT_SELF_ONBOARDING_ENABLED", false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.BotSelfOnboardingEnabled = b
 
 	// JWT default TTL.
 	d, err = getenvDuration("JWT_DEFAULT_TTL", time.Hour, false)

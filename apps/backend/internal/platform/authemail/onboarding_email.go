@@ -31,6 +31,8 @@ const (
 	OnboardingKindInfoRequested = "info_requested"
 	OnboardingKindApproved      = "approved"
 	OnboardingKindRejected      = "rejected"
+	// OnboardingKindCode carries the six-digit code of the Telegram channel.
+	OnboardingKindCode = "code"
 )
 
 // OnboardingEmailPayload is the JSON payload of an onboarding.email job.
@@ -42,9 +44,11 @@ type OnboardingEmailPayload struct {
 	Locale        string `json:"locale,omitempty"`
 	OrgName       string `json:"org_name,omitempty"`
 	// Token is the raw resume token. NOT logged.
-	Token   string   `json:"token,omitempty"`
-	Message string   `json:"message,omitempty"`
-	Fields  []string `json:"fields,omitempty"`
+	Token   string `json:"token,omitempty"`
+	Message string `json:"message,omitempty"`
+	// Code is the six-digit e-mail confirmation code of the Telegram channel. NOT logged.
+	Code   string   `json:"code,omitempty"`
+	Fields []string `json:"fields,omitempty"`
 }
 
 // onboardingKindNeedsLink lists the kinds whose button opens the form.
@@ -64,6 +68,10 @@ func (h *Handler) HandleOnboardingEmail(ctx context.Context, payload []byte) err
 	}
 	link := ""
 	switch {
+	case p.Kind == OnboardingKindCode:
+		if p.Code == "" {
+			return fmt.Errorf("authemail: onboarding code e-mail has no code")
+		}
 	case onboardingKindNeedsLink[p.Kind]:
 		if p.Token == "" {
 			return fmt.Errorf("authemail: onboarding %s e-mail has no token", p.Kind)
@@ -112,6 +120,7 @@ var onboardingTexts = map[string]map[string]onboardingText{
 		OnboardingKindReceived:      {"We received your Arena application", "Hello{name}, we received the application{org}. Our team checks every organizer by hand, usually within one or two working days. We will write to you as soon as there is a decision or a question.", ""},
 		OnboardingKindInfoRequested: {"We need a few details for your Arena application", "Hello{name}, to continue with your application we need some details:\n\n{message}\n\nOpen the form with the button below and update the highlighted answers.", "Update the application"},
 		OnboardingKindApproved:      {"Your Arena application is approved", "Hello{name}, good news: your application{org} is approved and your workspace is ready. If this is your first Arena account, a separate e-mail brings a link to set your password. Then sign in to create your first event.", "Sign in to Arena"},
+		OnboardingKindCode:          {"Your Arena confirmation code", "Hello{name}, enter this code in the Telegram chat to confirm your e-mail address. It is valid for 15 minutes. If you did not start an application, ignore this e-mail.", ""},
 		OnboardingKindRejected:      {"About your Arena application", "Hello{name}, thank you for your interest in Arena. We are not able to approve the application{org} at this time.{message} If you think this is a mistake, simply reply to this e-mail.", ""},
 	},
 	"ru": {
@@ -121,6 +130,7 @@ var onboardingTexts = map[string]map[string]onboardingText{
 		OnboardingKindReceived:      {"Мы получили вашу заявку в Arena", "Здравствуйте{name}, мы получили заявку{org}. Команда проверяет каждого организатора вручную, обычно за один-два рабочих дня. Мы напишем вам, как только будет решение или вопрос.", ""},
 		OnboardingKindInfoRequested: {"Нужны уточнения по вашей заявке в Arena", "Здравствуйте{name}, чтобы продолжить с заявкой, нам нужны уточнения:\n\n{message}\n\nОткройте анкету кнопкой ниже и обновите отмеченные ответы.", "Обновить заявку"},
 		OnboardingKindApproved:      {"Ваша заявка в Arena одобрена", "Здравствуйте{name}, хорошие новости: заявка{org} одобрена, рабочее пространство готово. Если это ваш первый аккаунт в Arena, отдельным письмом придёт ссылка для создания пароля. После этого войдите и создайте первое мероприятие.", "Войти в Arena"},
+		OnboardingKindCode:          {"Код подтверждения Arena", "Здравствуйте{name}, введите этот код в чате Telegram, чтобы подтвердить адрес e-mail. Код действует 15 минут. Если вы не подавали заявку, просто проигнорируйте письмо.", ""},
 		OnboardingKindRejected:      {"О вашей заявке в Arena", "Здравствуйте{name}, спасибо за интерес к Arena. Сейчас мы не можем одобрить заявку{org}.{message} Если вы считаете, что это ошибка, просто ответьте на это письмо.", ""},
 	},
 	"es": {
@@ -130,6 +140,7 @@ var onboardingTexts = map[string]map[string]onboardingText{
 		OnboardingKindReceived:      {"Hemos recibido tu solicitud en Arena", "Hola{name}, hemos recibido la solicitud{org}. Nuestro equipo revisa a cada organizador a mano, normalmente en uno o dos días laborables. Te escribiremos en cuanto haya una decisión o una pregunta.", ""},
 		OnboardingKindInfoRequested: {"Necesitamos algunos datos para tu solicitud en Arena", "Hola{name}, para continuar con tu solicitud necesitamos algunos datos:\n\n{message}\n\nAbre el formulario con el botón de abajo y actualiza las respuestas marcadas.", "Actualizar la solicitud"},
 		OnboardingKindApproved:      {"Tu solicitud en Arena está aprobada", "Hola{name}, buenas noticias: la solicitud{org} está aprobada y tu espacio de trabajo está listo. Si es tu primera cuenta en Arena, otro correo te enviará un enlace para crear tu contraseña. Después entra y crea tu primer evento.", "Entrar en Arena"},
+		OnboardingKindCode:          {"Tu código de confirmación de Arena", "Hola{name}, introduce este código en el chat de Telegram para confirmar tu correo. Es válido durante 15 minutos. Si no iniciaste una solicitud, ignora este correo.", ""},
 		OnboardingKindRejected:      {"Sobre tu solicitud en Arena", "Hola{name}, gracias por tu interés en Arena. Por ahora no podemos aprobar la solicitud{org}.{message} Si crees que es un error, responde a este correo.", ""},
 	},
 }
@@ -160,6 +171,10 @@ func renderOnboardingEmail(p OnboardingEmailPayload, link string) (subject, html
 	}
 	body := strings.NewReplacer("{name}", name, "{org}", org, "{message}", message).Replace(t.Body)
 
+	codeBlock := ""
+	if p.Code != "" {
+		codeBlock = `<p style="font-size:30px;letter-spacing:8px;font-weight:bold;margin:24px 0">` + html.EscapeString(p.Code) + `</p>`
+	}
 	var b strings.Builder
 	b.WriteString(`<!DOCTYPE html><html lang="` + locale + `"><head><meta charset="UTF-8"><title>Arena</title></head>`)
 	b.WriteString(`<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">`)
@@ -167,6 +182,7 @@ func renderOnboardingEmail(p OnboardingEmailPayload, link string) (subject, html
 	for _, para := range strings.Split(body, "\n\n") {
 		b.WriteString(`<p style="line-height:1.5">` + strings.ReplaceAll(html.EscapeString(strings.TrimSpace(para)), "\n", "<br>") + `</p>`)
 	}
+	b.WriteString(codeBlock)
 	if t.Button != "" && link != "" {
 		b.WriteString(`<p style="margin:24px 0"><a href="` + html.EscapeString(link) + `" style="background:#4f46e5;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;font-weight:bold;display:inline-block">` +
 			html.EscapeString(t.Button) + `</a></p>`)
@@ -175,6 +191,9 @@ func renderOnboardingEmail(p OnboardingEmailPayload, link string) (subject, html
 	b.WriteString(`<hr><p style="font-size:11px;color:#999">Arena Platform</p></body></html>`)
 
 	text := []string{t.Subject, "", body}
+	if p.Code != "" {
+		text = append(text, "", p.Code)
+	}
 	if t.Button != "" && link != "" {
 		text = append(text, "", t.Button+": "+link)
 	}

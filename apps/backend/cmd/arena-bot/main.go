@@ -112,6 +112,8 @@ func run() error {
 
 		TicketsBaseURL: cfg.PublicTicketsBaseURL,
 		PosterReader:   posterReader,
+
+		SelfOnboarding: cfg.BotSelfOnboardingEnabled,
 	})
 	if err != nil {
 		return err

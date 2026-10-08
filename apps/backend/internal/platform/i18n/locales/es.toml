@@ -1138,3 +1138,128 @@ other = "💶 No se ha devuelto dinero automáticamente y las entradas siguen si
 
 ["bot.wz.tz_suggest_note"]
 other = "Para la ciudad «{{.City}}» encontré la zona {{.Zone}}. Pulsa el botón para confirmarla."
+
+# ── solicitud de organizador (bot.onb.*) ──
+
+["bot.onb.welcome"]
+other = "¡Hola! Este bot crea eventos y muestra las ventas a los organizadores de Arena Sold Out.\n\nSi te han invitado, abre el enlace del e-mail de invitación. Si quieres vender entradas con Arena, envía tu solicitud aquí: son unos minutos y la revisaremos."
+
+["bot.onb.apply_btn"]
+other = "Solicitar ser organizador"
+
+["bot.onb.ask_first"]
+other = "Empecemos. ¿Cómo te llamas (nombre)?"
+
+["bot.onb.ask_last"]
+other = "¿Y tus apellidos?"
+
+["bot.onb.ask_phone"]
+other = "Comparte tu número de teléfono con el botón de abajo. Lo envía el propio Telegram, así sabemos que es tuyo."
+
+["bot.onb.share_phone_btn"]
+other = "📱 Compartir mi número"
+
+["bot.onb.phone_not_yours"]
+other = "Ese contacto no es el tuyo. Pulsa el botón de abajo para compartir tu propio número."
+
+["bot.onb.phone_invalid"]
+other = "El número no parece correcto. Compártelo de nuevo con el botón."
+
+["bot.onb.ask_email"]
+other = "¿Cuál es tu e-mail? Te enviaremos un código de 6 dígitos para confirmar que es tuyo."
+
+["bot.onb.email_invalid"]
+other = "Eso no parece una dirección de e-mail. Escríbela de nuevo, por ejemplo nombre@empresa.com."
+
+["bot.onb.rate_limited"]
+other = "Demasiados intentos. Espera un poco e inténtalo de nuevo."
+
+["bot.onb.pending"]
+other = "Tu solicitud está con nosotros y se está revisando. Te escribiremos aquí en cuanto haya una decisión."
+
+["bot.onb.site_btn"]
+other = "Abrir en la web"
+
+["bot.onb.code_sent"]
+other = "Hemos enviado un código de 6 dígitos a <b>{{.Email}}</b>. Escríbelo aquí. El código vale 15 minutos."
+
+["bot.onb.code_resend_btn"]
+other = "Enviar el código otra vez"
+
+["bot.onb.code_resent"]
+other = "Un código nuevo va de camino a <b>{{.Email}}</b>."
+
+["bot.onb.ask_code"]
+other = "Escribe el código de 6 dígitos del e-mail."
+
+["bot.onb.code_wrong"]
+other = "El código es incorrecto o ha caducado. Revísalo o pide uno nuevo."
+
+["bot.onb.email_confirmed"]
+other = "✅ E-mail confirmado."
+
+["bot.onb.info_requested"]
+other = "Necesitamos algo más de tu parte:\n\n<i>{{.Message}}</i>"
+
+["bot.onb.info_go_btn"]
+other = "Responder ahora"
+
+["bot.onb.progress"]
+other = "Solicitud · {{.Pct}}% lista"
+
+["bot.onb.yes_btn"]
+other = "Sí"
+
+["bot.onb.no_btn"]
+other = "No"
+
+["bot.onb.done_btn"]
+other = "Listo"
+
+["bot.onb.country_hint"]
+other = "Elige un país con un botón o escribe su código de dos letras, por ejemplo ES."
+
+["bot.onb.terms_link"]
+other = "Condiciones del servicio"
+
+["bot.onb.privacy_link"]
+other = "Política de privacidad"
+
+["bot.onb.consent_text"]
+other = "Un último paso antes de revisarla. Al pulsar el botón confirmas que aceptas las condiciones y la política de privacidad, y que estás autorizado a representar a esta organización.\n\n{{.Links}}"
+
+["bot.onb.consent_btn"]
+other = "Acepto"
+
+["bot.onb.review_title"]
+other = "<b>Revisa tu solicitud</b>"
+
+["bot.onb.review_hint"]
+other = "Si todo es correcto, envíala. También puedes continuar en la web."
+
+["bot.onb.submit_btn"]
+other = "Enviar la solicitud"
+
+["bot.onb.use_buttons"]
+other = "Para esta pregunta usa los botones."
+
+["bot.onb.invalid_field"]
+other = "«{{.Label}}» no parece correcto. Revísalo e inténtalo de nuevo."
+
+["bot.onb.not_allowed"]
+other = "Lo sentimos, «{{.Label}}» todavía no está disponible. Si crees que es un error, contáctanos."
+
+["bot.onb.unavailable"]
+other = "El enlace a la web no está disponible ahora. Puedes continuar aquí, en el chat."
+
+["bot.onb.site_link"]
+other = "Continúa en la web (el enlace abre tu solicitud):\n{{.Url}}"
+
+["bot.onb.submitted"]
+other = "✅ ¡Gracias! La solicitud está enviada. La revisaremos y te escribiremos aquí y por e-mail."
+
+["bot.onb.approved"]
+other = "🎉 ¡Tu solicitud está aprobada! La organización <b>{{.Org}}</b> está lista. Te hemos enviado por e-mail un enlace para crear tu contraseña. Pulsa el botón para abrir el menú."
+
+["bot.onb.rejected"]
+other = "Lamentablemente no podemos abrir una organización con esta solicitud. Si crees que es un error, escríbenos por e-mail."

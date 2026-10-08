@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbot"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/honboarding"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/onboarding"
@@ -14,19 +15,20 @@ import (
 // dependencies. The service is stateless (every fact lives in the database),
 // so building it per request is cheap and keeps the Server struct unchanged.
 func (s *Server) onboardingHandler() *honboarding.Handler {
-	adminURL := ""
+	adminURL, siteURL := "", ""
 	secret, salt := "", ""
 	trusted := 0
 	production := false
 	if s.cfg != nil {
 		adminURL = s.cfg.AppPublicURL
+		siteURL = s.cfg.OnboardingSiteURL
 		secret = s.cfg.OnboardingTurnstileSecret
 		salt = s.cfg.JWTSecretStub
 		trusted = s.cfg.TrustedProxyCount
 		production = s.cfg.IsProduction()
 	}
 	svc := onboarding.New(onboarding.Options{
-		Pool: s.pgxPool, Audit: s.audit, Logger: s.logger, AdminURL: adminURL,
+		Pool: s.pgxPool, Audit: s.audit, Logger: s.logger, AdminURL: adminURL, SiteURL: siteURL,
 	})
 	verifier := &honboarding.TurnstileVerifier{Secret: secret, Required: production}
 	return honboarding.New(svc, verifier, salt, trusted, s.logger)
@@ -63,6 +65,24 @@ func (s *Server) mountOnboardingRoutes(r chi.Router) {
 		r.Post("/onboarding/applications/{id}/submit", s.onb((*honboarding.Handler).HandleSubmit))
 		r.Post("/onboarding/confirm", s.onb((*honboarding.Handler).HandleConfirm))
 		r.Post("/onboarding/resume", s.onb((*honboarding.Handler).HandleResume))
+
+		// The Telegram bot's side: guarded by BOT_SERVICE_TOKEN, never open.
+		serviceToken := ""
+		if s.cfg != nil {
+			serviceToken = s.cfg.BotServiceToken
+		}
+		r.Group(func(br chi.Router) {
+			br.Use(hbot.RequireServiceToken(serviceToken))
+			br.Get("/bot/onboarding/form-schema", s.onb((*honboarding.Handler).HandleBotSchema))
+			br.Get("/bot/onboarding/application", s.onb((*honboarding.Handler).HandleBotCurrent))
+			br.Post("/bot/onboarding/applications", s.onb((*honboarding.Handler).HandleBotStart))
+			br.Put("/bot/onboarding/applications/{id}/answers", s.onb((*honboarding.Handler).HandleBotSaveAnswers))
+			br.Post("/bot/onboarding/applications/{id}/email-code", s.onb((*honboarding.Handler).HandleBotEmailCode))
+			br.Post("/bot/onboarding/applications/{id}/confirm-email", s.onb((*honboarding.Handler).HandleBotConfirmEmail))
+			br.Post("/bot/onboarding/applications/{id}/submit", s.onb((*honboarding.Handler).HandleBotSubmit))
+			br.Post("/bot/onboarding/applications/{id}/site-link", s.onb((*honboarding.Handler).HandleBotSiteLink))
+			br.Post("/bot/onboarding/notifications/claim", s.onb((*honboarding.Handler).HandleBotClaimNotices))
+		})
 	}
 
 	if !s.authEnabled() || s.orgQueries == nil || s.pool == nil {

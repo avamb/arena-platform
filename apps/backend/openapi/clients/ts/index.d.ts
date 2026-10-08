@@ -6529,6 +6529,186 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/bot/onboarding/form-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bot - application form definition
+         * @description Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on.
+         */
+        get: operations["getBotOnboardingFormSchema"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/onboarding/application": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bot - the account's open application
+         * @description Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on. Returns the newest application of the account that is draft, info_requested, pending_approval or expired.
+         */
+        get: operations["getBotOnboardingApplication"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/onboarding/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bot - start (or resume) an application
+         * @description Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on. Returns the account's open application when there is one, otherwise creates a draft (source telegram) and e-mails a six-digit code.
+         */
+        post: operations["startBotOnboardingApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/onboarding/applications/{id}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Bot - save answers
+         * @description Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on.
+         */
+        put: operations["saveBotOnboardingAnswers"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/onboarding/applications/{id}/email-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bot - e-mail a new confirmation code
+         * @description Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on. At most three codes an hour; a code lives 15 minutes.
+         */
+        post: operations["sendBotOnboardingEmailCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/onboarding/applications/{id}/confirm-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bot - confirm the e-mail with the code
+         * @description Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on. Five wrong guesses burn the code.
+         */
+        post: operations["confirmBotOnboardingEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/onboarding/applications/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bot - submit the application
+         * @description Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on.
+         */
+        post: operations["submitBotOnboardingApplication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/onboarding/applications/{id}/site-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bot - a website link for the application
+         * @description Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on. Rotates the continue-link token, so the bot hands the link over in the chat instead of by e-mail.
+         */
+        post: operations["getBotOnboardingSiteLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/onboarding/notifications/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bot - claim decisions to announce
+         * @description Called by the bot PROCESS with Authorization: Bearer <BOT_SERVICE_TOKEN>; answers 503 while the token is unset. Mounted only while ONBOARDING_ENABLED is on. Returns approved, rejected and info_requested decisions not announced yet and marks them announced (at-most-once).
+         */
+        post: operations["claimBotOnboardingNotices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -19022,6 +19202,103 @@ export interface components {
             terms_version?: string;
             /** @description Current privacy policy version. */
             privacy_version?: string;
+        };
+        /** @description Form definition for the Telegram bot, with the website's legal pages. */
+        OnboardingBotFormSchema: {
+            /** @description The form, as GET /v1/onboarding/form-schema returns it. */
+            schema: components["schemas"]["OnboardingFormSchema"];
+            /** @description URL of the terms of service page (empty when the site URL is not configured). */
+            terms_url: string;
+            /** @description URL of the privacy policy page (empty when the site URL is not configured). */
+            privacy_url: string;
+        };
+        /** @description Body of POST /v1/bot/onboarding/applications. */
+        OnboardingBotStartRequest: {
+            /**
+             * Format: int64
+             * @description The Telegram account; every bot call names it.
+             */
+            telegram_user_id: number;
+            /** @description The account's @username, stored as an answer when it is valid. */
+            telegram_username?: string;
+            /** @description Given name. */
+            first_name: string;
+            /** @description Family name. */
+            last_name: string;
+            /** @description Phone number from Telegram's own contact button; normalized to E.164. */
+            phone: string;
+            /**
+             * Format: email
+             * @description Contact e-mail; a six-digit confirmation code is sent to it.
+             */
+            email: string;
+            /** @description Language of the e-mails and of the form (`en`, `ru`, `es`). */
+            locale?: string;
+        };
+        /** @description The account's application: the existing open one, or a new draft. */
+        OnboardingBotStartResponse: {
+            /** @description The application. */
+            application: components["schemas"]["OnboardingApplication"];
+            /** @description True when a new draft was created, false when an open one was returned. */
+            created: boolean;
+        };
+        /** @description Body of PUT /v1/bot/onboarding/applications/{id}/answers. */
+        OnboardingBotAnswersRequest: {
+            /**
+             * Format: int64
+             * @description The Telegram account the application belongs to.
+             */
+            telegram_user_id: number;
+            /** @description Answers keyed by the form-schema field key; nothing is saved unless every key is valid. */
+            answers: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Body of the bot calls that only name the account (and, for confirm-email, the typed code). */
+        OnboardingBotActionRequest: {
+            /**
+             * Format: int64
+             * @description The Telegram account the application belongs to.
+             */
+            telegram_user_id: number;
+            /** @description The six-digit code from the e-mail (confirm-email only). */
+            code?: string;
+        };
+        /** @description Acknowledgement of an action that returns no application. */
+        OnboardingBotOkResponse: {
+            /** @description Always true. */
+            ok: boolean;
+        };
+        /** @description A website link that opens the application in a browser. */
+        OnboardingBotSiteLinkResponse: {
+            /** @description The continue link (valid 14 days; asking again replaces it). */
+            url: string;
+        };
+        /** @description A decision the bot has to tell an applicant about. */
+        OnboardingBotNotice: {
+            /**
+             * Format: uuid
+             * @description UUID of the application.
+             */
+            application_id: string;
+            /**
+             * Format: int64
+             * @description Who to tell.
+             */
+            telegram_user_id: number;
+            /** @description approved, rejected or info_requested. */
+            status: string;
+            /** @description Language to write in. */
+            locale: string;
+            /** @description Organization name from the application. */
+            org_name: string;
+            /** @description For info_requested: the operator's question. */
+            message: string;
+        };
+        /** @description Decisions claimed by this call; each is delivered once. */
+        OnboardingBotNoticesResponse: {
+            /** @description The claimed decisions. */
+            notices: components["schemas"]["OnboardingBotNotice"][];
         };
     };
     responses: never;
@@ -41313,6 +41590,465 @@ export interface operations {
             };
             /** @description A value is out of range (onboarding.invalid_field) */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getBotOnboardingFormSchema: {
+        parameters: {
+            query?: {
+                /** @description Language of the labels (en, ru, es); anything else falls back to en. */
+                locale?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The form and the legal page URLs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingBotFormSchema"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getBotOnboardingApplication: {
+        parameters: {
+            query: {
+                /** @description The Telegram account. */
+                telegram_user_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The application */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingApplicationResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such application for this Telegram account (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    startBotOnboardingApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingBotStartRequest"];
+            };
+        };
+        responses: {
+            /** @description An open application already existed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingBotStartResponse"];
+                };
+            };
+            /** @description A new draft was created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingBotStartResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A field is invalid (onboarding.invalid_field) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited (onboarding.rate_limited) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    saveBotOnboardingAnswers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingBotAnswersRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingApplicationResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such application for this Telegram account (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The application is locked (onboarding.locked) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A field is invalid (onboarding.invalid_field) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    sendBotOnboardingEmailCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingBotActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Sent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingBotOkResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such application for this Telegram account (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The e-mail is already confirmed or the application is no longer a draft (onboarding.wrong_state) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited (onboarding.rate_limited) */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    confirmBotOnboardingEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingBotActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Confirmed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingApplicationResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such application for this Telegram account (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The code is wrong or expired (onboarding.code_invalid) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    submitBotOnboardingApplication: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingBotActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Submitted; status is pending_approval */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingApplicationResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such application for this Telegram account (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description E-mail not confirmed (onboarding.email_not_confirmed) or locked (onboarding.locked) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Required fields are missing (onboarding.incomplete) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getBotOnboardingSiteLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the application. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingBotActionRequest"];
+            };
+        };
+        responses: {
+            /** @description The link */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingBotSiteLinkResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such application for this Telegram account (onboarding.not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The e-mail is not confirmed yet, the application is closed or the site URL is not configured (onboarding.wrong_state) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    claimBotOnboardingNotices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The claimed decisions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingBotNoticesResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

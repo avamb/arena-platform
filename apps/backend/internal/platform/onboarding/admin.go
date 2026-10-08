@@ -281,7 +281,8 @@ UPDATE onboarding_applications SET status = 'approved', org_id = $2, reviewed_by
 		return nil, err
 	}
 	closed, err := tx.Exec(ctx, `
-UPDATE onboarding_applications SET status = 'rejected', decision_reason = $3, reviewed_at = $4, updated_at = $4
+UPDATE onboarding_applications SET status = 'rejected', decision_reason = $3, reviewed_at = $4, updated_at = $4,
+  telegram_notified_status = 'rejected'
 WHERE applicant_email = $2 AND id <> $1 AND purged_at IS NULL AND status IN ('draft', 'pending_approval', 'info_requested')`,
 		app.ID, app.Email, "duplicate of "+app.ID.String(), now)
 	if err != nil {

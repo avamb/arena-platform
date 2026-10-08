@@ -65,6 +65,7 @@ type Service struct {
 	audit    audit.Writer
 	logger   *slog.Logger
 	adminURL string
+	siteURL  string
 	now      func() time.Time
 }
 
@@ -77,13 +78,16 @@ type Options struct {
 	// AdminURL is the admin-web origin, used for the "open in the console"
 	// link in operator messages.
 	AdminURL string
-	Now      func() time.Time
+	// SiteURL is the website origin (ONBOARDING_SITE_URL): the bot hands out
+	// "<SiteURL>/start/confirm?token=..." and the terms and privacy pages.
+	SiteURL string
+	Now     func() time.Time
 }
 
 // New builds a Service.
 func New(o Options) *Service {
 	s := &Service{pool: o.Pool, notifier: o.Notifier, audit: o.Audit, logger: o.Logger,
-		adminURL: strings.TrimRight(o.AdminURL, "/"), now: o.Now}
+		adminURL: strings.TrimRight(o.AdminURL, "/"), siteURL: strings.TrimRight(o.SiteURL, "/"), now: o.Now}
 	if s.logger == nil {
 		s.logger = slog.Default()
 	}
@@ -204,7 +208,12 @@ RETURNING `+appColumns,
 	if err := addEvent(ctx, tx, app.ID, "created", ActorApplicant, map[string]any{"source": source, "locale": locale}, nil); err != nil {
 		return nil, err
 	}
-	if err := s.queueEmail(ctx, tx, authemail.OnboardingKindConfirm, app, resume, nil, ""); err != nil {
+	if source == SourceTelegram {
+		// The bot confirms the address with a six-digit code typed into the chat.
+		if err := s.issueEmailCode(ctx, tx, app); err != nil {
+			return nil, err
+		}
+	} else if err := s.queueEmail(ctx, tx, authemail.OnboardingKindConfirm, app, resume, nil, ""); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -235,12 +244,58 @@ FROM onboarding_applications WHERE created_at > now() - interval '1 day'`,
 
 // Get returns the application when the access token matches.
 func (s *Service) Get(ctx context.Context, id uuid.UUID, token string) (*Application, error) {
+	return s.get(ctx, tokenKey(id, token))
+}
+
+// appKey says who may touch an application: the holder of its access token
+// (browser) or the Telegram account it belongs to (bot, behind the service token).
+type appKey struct {
+	id        uuid.UUID
+	tokenHash string
+	tg        int64
+}
+
+func tokenKey(id uuid.UUID, token string) appKey {
 	if token == "" {
+		return appKey{}
+	}
+	return appKey{id: id, tokenHash: users.TokenHash(token)}
+}
+
+func telegramKey(id uuid.UUID, tg int64) appKey { return appKey{id: id, tg: tg} }
+
+// where returns the row condition with $1..$2 bound, or ok=false for a key
+// that can match nothing.
+func (k appKey) where() (string, []any, bool) {
+	switch {
+	case k.id == uuid.Nil:
+		return "", nil, false
+	case k.tokenHash != "":
+		return "id = $1 AND access_token_hash = $2", []any{k.id, k.tokenHash}, true
+	case k.tg > 0:
+		return "id = $1 AND telegram_user_id = $2", []any{k.id, k.tg}, true
+	}
+	return "", nil, false
+}
+
+func (s *Service) get(ctx context.Context, k appKey) (*Application, error) {
+	cond, args, ok := k.where()
+	if !ok {
 		return nil, ErrNotFound
 	}
 	app, err := scanApplication(s.pool.QueryRow(ctx,
-		`SELECT `+appColumns+` FROM onboarding_applications WHERE id = $1 AND access_token_hash = $2 AND purged_at IS NULL`,
-		id, users.TokenHash(token)))
+		`SELECT `+appColumns+` FROM onboarding_applications WHERE `+cond+` AND purged_at IS NULL`, args...))
+	return orNotFound(app, err)
+}
+
+// lock loads the application FOR UPDATE on tx.
+func (k appKey) lock(ctx context.Context, tx pgx.Tx) (*Application, error) {
+	cond, args, ok := k.where()
+	if !ok {
+		return nil, ErrNotFound
+	}
+	app, err := scanApplication(tx.QueryRow(ctx,
+		`SELECT `+appColumns+` FROM onboarding_applications WHERE `+cond+` AND purged_at IS NULL FOR UPDATE`, args...))
 	return orNotFound(app, err)
 }
 
@@ -254,18 +309,17 @@ func orNotFound(app *Application, err error) (*Application, error) {
 // SaveAnswers merges a partial update. Nothing is saved unless every key is valid.
 // An expired draft that has not been purged comes back to life.
 func (s *Service) SaveAnswers(ctx context.Context, id uuid.UUID, token string, patch map[string]any) (*Application, error) {
-	if token == "" {
-		return nil, ErrNotFound
-	}
+	return s.saveAnswers(ctx, tokenKey(id, token), patch)
+}
+
+func (s *Service) saveAnswers(ctx context.Context, k appKey, patch map[string]any) (*Application, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	app, err := scanApplication(tx.QueryRow(ctx,
-		`SELECT `+appColumns+` FROM onboarding_applications WHERE id = $1 AND access_token_hash = $2 AND purged_at IS NULL FOR UPDATE`,
-		id, users.TokenHash(token)))
+	app, err := k.lock(ctx, tx)
 	if app, err = orNotFound(app, err); err != nil {
 		return nil, err
 	}
@@ -481,18 +535,17 @@ func (s *Service) IssueLink(ctx context.Context, id uuid.UUID, actor Actor) erro
 
 // Submit validates completeness and hands the application to the operator.
 func (s *Service) Submit(ctx context.Context, id uuid.UUID, token string) (*Application, error) {
-	if token == "" {
-		return nil, ErrNotFound
-	}
+	return s.submit(ctx, tokenKey(id, token))
+}
+
+func (s *Service) submit(ctx context.Context, k appKey) (*Application, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	app, err := scanApplication(tx.QueryRow(ctx,
-		`SELECT `+appColumns+` FROM onboarding_applications WHERE id = $1 AND access_token_hash = $2 AND purged_at IS NULL FOR UPDATE`,
-		id, users.TokenHash(token)))
+	app, err := k.lock(ctx, tx)
 	if app, err = orNotFound(app, err); err != nil {
 		return nil, err
 	}
@@ -529,7 +582,8 @@ func (s *Service) Submit(ctx context.Context, id uuid.UUID, token string) (*Appl
 	app.RequestedFields, app.InfoRequestMessage = []string{}, nil
 	if _, err := tx.Exec(ctx, `
 UPDATE onboarding_applications SET status = 'pending_approval', submitted_at = $2, terms_version = $3,
-  privacy_version = $4, consented_at = $2, requested_fields = '{}', info_request_message = NULL, updated_at = $2
+  privacy_version = $4, consented_at = $2, requested_fields = '{}', info_request_message = NULL,
+  telegram_notified_status = NULL, updated_at = $2
 WHERE id = $1`, app.ID, now, set.TermsVersion, set.PrivacyVersion); err != nil {
 		return nil, err
 	}
@@ -577,7 +631,7 @@ func (s *Service) queueEmail(ctx context.Context, tx pgx.Tx, kind string, app *A
 	if app.OrgName != nil {
 		org = *app.OrgName
 	}
-	_, err := worker.EnqueueInTx(ctx, tx, authemail.JobTypeOnboardingEmail, authemail.OnboardingEmailPayload{
+	return s.queueRaw(ctx, tx, authemail.OnboardingEmailPayload{
 		Kind:          kind,
 		ApplicationID: app.ID.String(),
 		Email:         app.Email,
@@ -587,9 +641,13 @@ func (s *Service) queueEmail(ctx context.Context, tx pgx.Tx, kind string, app *A
 		Token:         resumeToken,
 		Message:       message,
 		Fields:        fields,
-	}, emailJobAttempts)
-	if err != nil {
-		return fmt.Errorf("onboarding: queue %s e-mail: %w", kind, err)
+	})
+}
+
+// queueRaw enqueues one onboarding.email job on tx.
+func (s *Service) queueRaw(ctx context.Context, tx pgx.Tx, p authemail.OnboardingEmailPayload) error {
+	if _, err := worker.EnqueueInTx(ctx, tx, authemail.JobTypeOnboardingEmail, p, emailJobAttempts); err != nil {
+		return fmt.Errorf("onboarding: queue %s e-mail: %w", p.Kind, err)
 	}
 	return nil
 }

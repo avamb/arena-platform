@@ -7323,6 +7323,108 @@ type OnboardingApproveResponse struct {
 	OwnerId openapi_types.UUID `json:"owner_id"`
 }
 
+// OnboardingBotActionRequest Body of the bot calls that only name the account (and, for confirm-email, the typed code).
+type OnboardingBotActionRequest struct {
+	// Code The six-digit code from the e-mail (confirm-email only).
+	Code *string `json:"code,omitempty"`
+
+	// TelegramUserId The Telegram account the application belongs to.
+	TelegramUserId int64 `json:"telegram_user_id"`
+}
+
+// OnboardingBotAnswersRequest Body of PUT /v1/bot/onboarding/applications/{id}/answers.
+type OnboardingBotAnswersRequest struct {
+	// Answers Answers keyed by the form-schema field key; nothing is saved unless every key is valid.
+	Answers map[string]interface{} `json:"answers"`
+
+	// TelegramUserId The Telegram account the application belongs to.
+	TelegramUserId int64 `json:"telegram_user_id"`
+}
+
+// OnboardingBotFormSchema Form definition for the Telegram bot, with the website's legal pages.
+type OnboardingBotFormSchema struct {
+	// PrivacyUrl URL of the privacy policy page (empty when the site URL is not configured).
+	PrivacyUrl string `json:"privacy_url"`
+
+	// Schema The form, as GET /v1/onboarding/form-schema returns it.
+	Schema OnboardingFormSchema `json:"schema"`
+
+	// TermsUrl URL of the terms of service page (empty when the site URL is not configured).
+	TermsUrl string `json:"terms_url"`
+}
+
+// OnboardingBotNotice A decision the bot has to tell an applicant about.
+type OnboardingBotNotice struct {
+	// ApplicationId UUID of the application.
+	ApplicationId openapi_types.UUID `json:"application_id"`
+
+	// Locale Language to write in.
+	Locale string `json:"locale"`
+
+	// Message For info_requested: the operator's question.
+	Message string `json:"message"`
+
+	// OrgName Organization name from the application.
+	OrgName string `json:"org_name"`
+
+	// Status approved, rejected or info_requested.
+	Status string `json:"status"`
+
+	// TelegramUserId Who to tell.
+	TelegramUserId int64 `json:"telegram_user_id"`
+}
+
+// OnboardingBotNoticesResponse Decisions claimed by this call; each is delivered once.
+type OnboardingBotNoticesResponse struct {
+	// Notices The claimed decisions.
+	Notices []OnboardingBotNotice `json:"notices"`
+}
+
+// OnboardingBotOkResponse Acknowledgement of an action that returns no application.
+type OnboardingBotOkResponse struct {
+	// Ok Always true.
+	Ok bool `json:"ok"`
+}
+
+// OnboardingBotSiteLinkResponse A website link that opens the application in a browser.
+type OnboardingBotSiteLinkResponse struct {
+	// Url The continue link (valid 14 days; asking again replaces it).
+	Url string `json:"url"`
+}
+
+// OnboardingBotStartRequest Body of POST /v1/bot/onboarding/applications.
+type OnboardingBotStartRequest struct {
+	// Email Contact e-mail; a six-digit confirmation code is sent to it.
+	Email openapi_types.Email `json:"email"`
+
+	// FirstName Given name.
+	FirstName string `json:"first_name"`
+
+	// LastName Family name.
+	LastName string `json:"last_name"`
+
+	// Locale Language of the e-mails and of the form (`en`, `ru`, `es`).
+	Locale *string `json:"locale,omitempty"`
+
+	// Phone Phone number from Telegram's own contact button; normalized to E.164.
+	Phone string `json:"phone"`
+
+	// TelegramUserId The Telegram account; every bot call names it.
+	TelegramUserId int64 `json:"telegram_user_id"`
+
+	// TelegramUsername The account's @username, stored as an answer when it is valid.
+	TelegramUsername *string `json:"telegram_username,omitempty"`
+}
+
+// OnboardingBotStartResponse The account's application: the existing open one, or a new draft.
+type OnboardingBotStartResponse struct {
+	// Application The application.
+	Application OnboardingApplication `json:"application"`
+
+	// Created True when a new draft was created, false when an open one was returned.
+	Created bool `json:"created"`
+}
+
 // OnboardingCheck Result of one automatic check.
 type OnboardingCheck struct {
 	// CheckedAt When the check ran.
@@ -12581,6 +12683,18 @@ type CreateTariffJSONBody struct {
 	Name          string         `json:"name"`
 }
 
+// GetBotOnboardingApplicationParams defines parameters for GetBotOnboardingApplication.
+type GetBotOnboardingApplicationParams struct {
+	// TelegramUserId The Telegram account.
+	TelegramUserId int64 `form:"telegram_user_id" json:"telegram_user_id"`
+}
+
+// GetBotOnboardingFormSchemaParams defines parameters for GetBotOnboardingFormSchema.
+type GetBotOnboardingFormSchemaParams struct {
+	// Locale Language of the labels (en, ru, es); anything else falls back to en.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
 // GetCheckoutQuoteParams defines parameters for GetCheckoutQuote.
 type GetCheckoutQuoteParams struct {
 	// TierId UUID of the ticket tier.
@@ -13254,6 +13368,24 @@ type CreateTariffJSONRequestBody CreateTariffJSONBody
 
 // AcceptBotInvitationJSONRequestBody defines body for AcceptBotInvitation for application/json ContentType.
 type AcceptBotInvitationJSONRequestBody = BotInvitationAcceptRequest
+
+// StartBotOnboardingApplicationJSONRequestBody defines body for StartBotOnboardingApplication for application/json ContentType.
+type StartBotOnboardingApplicationJSONRequestBody = OnboardingBotStartRequest
+
+// SaveBotOnboardingAnswersJSONRequestBody defines body for SaveBotOnboardingAnswers for application/json ContentType.
+type SaveBotOnboardingAnswersJSONRequestBody = OnboardingBotAnswersRequest
+
+// ConfirmBotOnboardingEmailJSONRequestBody defines body for ConfirmBotOnboardingEmail for application/json ContentType.
+type ConfirmBotOnboardingEmailJSONRequestBody = OnboardingBotActionRequest
+
+// SendBotOnboardingEmailCodeJSONRequestBody defines body for SendBotOnboardingEmailCode for application/json ContentType.
+type SendBotOnboardingEmailCodeJSONRequestBody = OnboardingBotActionRequest
+
+// GetBotOnboardingSiteLinkJSONRequestBody defines body for GetBotOnboardingSiteLink for application/json ContentType.
+type GetBotOnboardingSiteLinkJSONRequestBody = OnboardingBotActionRequest
+
+// SubmitBotOnboardingApplicationJSONRequestBody defines body for SubmitBotOnboardingApplication for application/json ContentType.
+type SubmitBotOnboardingApplicationJSONRequestBody = OnboardingBotActionRequest
 
 // ValidatePromoCodeJSONRequestBody defines body for ValidatePromoCode for application/json ContentType.
 type ValidatePromoCodeJSONRequestBody = ValidatePromoCodeRequest
