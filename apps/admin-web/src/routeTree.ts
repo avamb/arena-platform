@@ -32,6 +32,8 @@ import { Route as SessionSeatsRoute } from "@/routes/sessionSeats";
 import { Route as SessionOverviewRoute } from "@/routes/sessionOverview";
 import { Route as CustomerImportsRoute } from "@/routes/customerImports";
 import { Route as PromoCodesRoute } from "@/routes/promoCodes";
+import { Route as OnboardingRoute } from "@/routes/onboarding";
+import { Route as OnboardingDetailRoute } from "@/routes/onboardingDetail";
 
 /**
  * Manually-assembled route tree.
@@ -77,4 +79,6 @@ export const routeTree = RootRoute.addChildren([
   SessionOverviewRoute,
   CustomerImportsRoute,
   PromoCodesRoute,
+  OnboardingRoute,
+  OnboardingDetailRoute,
 ]);

@@ -228,6 +228,7 @@ const ROUTE_REGISTRY: Readonly<
     routeId: "PromoCodesRoute",
     file: "promoCodes.tsx",
   },
+  "/onboarding": { routeId: "OnboardingRoute", file: "onboarding.tsx" },
 };
 
 /**
@@ -259,6 +260,10 @@ const NON_NAV_ROUTE_IDS: ReadonlySet<string> = new Set([
   // row (and from the seat screen). Inherits its gate (order.read) from the
   // backend summary endpoint; a direct URL without it shows the 403 envelope.
   "SessionOverviewRoute",
+  // APP-09: one organizer application's card, reached only from the
+  // /onboarding queue. Inherits its gate (onboarding.review) from the
+  // backend; the component wraps itself in RequirePermission as well.
+  "OnboardingDetailRoute",
 ]);
 
 /**

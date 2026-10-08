@@ -64,6 +64,7 @@ export type NavRoutePath =
   | "/geo"
   | "/webhooks"
   | "/customer-imports"
+  | "/onboarding"
   | "/organizations/$orgId/promo-codes";
 
 export type PermissionRule =
@@ -349,6 +350,15 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     scopeKinds: ["global", "platform"],
     purpose:
       "Register, dry-run, and apply customer/order export imports (feature #520). Requires superadmin.read.",
+  },
+  {
+    id: "onboarding",
+    label: "Onboarding",
+    to: "/onboarding",
+    permission: { anyOf: ["onboarding.review"] },
+    scopeKinds: ["global", "platform"],
+    purpose:
+      "Organizer applications: the queue of submitted forms, the system's checks, approve / request details / reject, and the onboarding settings. Requires onboarding.review; the settings tab requires onboarding.settings.",
   },
 ];
 

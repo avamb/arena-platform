@@ -129,6 +129,18 @@ const REASON_REQUIRED_REGEX: readonly RegExp[] = [
   /^\/v1\/sessions\/[^/]+\/media$/,
 ];
 
+/**
+ * Onboarding queue decisions (APP-09, /v1/admin/onboarding/...). The backend
+ * (honboarding.reviewer) demands X-Admin-Reason on approve / reject /
+ * request-info / extend / resend / purge and on PUT settings. Reading the
+ * queue, rechecking the system's checks and adding a private note are not
+ * decisions, so they never prompt.
+ */
+const REASON_REQUIRED_ADMIN_MUTATION_REGEX: readonly RegExp[] = [
+  /^\/v1\/admin\/onboarding\/applications\/[^/]+\/(?:approve|reject|request-info|extend|resend|purge)$/,
+  /^\/v1\/admin\/onboarding\/settings$/,
+];
+
 /** HTTP methods treated as mutations for the SAUI-09 gate. */
 const MUTATION_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 
@@ -188,6 +200,11 @@ export function requiresAdminReason(path: string, method?: string): boolean {
     }
   }
   if (method !== undefined && MUTATION_METHODS.has(method.toUpperCase())) {
+    for (const re of REASON_REQUIRED_ADMIN_MUTATION_REGEX) {
+      if (re.test(bare)) {
+        return true;
+      }
+    }
     for (const prefix of REASON_REQUIRED_MUTATION_PREFIXES) {
       if (matchesPrefix(bare, prefix)) {
         return true;

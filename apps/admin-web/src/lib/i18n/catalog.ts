@@ -67,6 +67,7 @@ export const ruCatalog: Catalog = {
   "nav.audit": "Журнал аудита (Audit Log)",
   "nav.observability": "Наблюдаемость (Observability)",
   "nav.geo": "Геосправочник (Geo)",
+  "nav.onboarding": "Онбординг (Onboarding)",
 
   // Empty/scope states
   "shell.scopeNone":
@@ -165,6 +166,7 @@ export const enCatalog: Catalog = {
   "nav.audit": "Audit Log",
   "nav.observability": "Observability",
   "nav.geo": "Geo Registry",
+  "nav.onboarding": "Onboarding",
 
   // Empty/scope states
   "shell.scopeNone":
