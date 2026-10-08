@@ -186,7 +186,7 @@ other = "Este evento aún no tiene fechas."
 other = "🎫 Entrada de muestra"
 
 ["bot.sample_caption"]
-other = "Así verá el comprador la entrada de «{{.Name}}». Es una muestra: el código de barras es real y el escáner de la puerta responde «entrada de muestra»."
+other = "Así verá el comprador la entrada de «{{.Name}}». Es una muestra: el nombre del comprador es un texto de ejemplo, la entrada real lleva el nombre de quien la compró. El código de barras es real y el escáner de la puerta responde «entrada de muestra»."
 
 ["bot.sample_failed"]
 other = "No se pudo crear la entrada de muestra. Inténtalo más tarde."
@@ -387,7 +387,7 @@ other = "Ponle un nombre al evento, de hasta 200 caracteres."
 other = "¿Restricción de edad?"
 
 ["bot.wz.ask_promoter"]
-other = "¿A nombre de quién va el evento? El promotor es el nombre que aparece impreso en la entrada como organizador, con su propia página de entradas. Normalmente es {{.Org}}. Para otro teatro o marca, elígelo o añade uno nuevo."
+other = "¿A nombre de quién va el evento? El promotor es el nombre que aparece impreso en la entrada como organizador, con su propia página de entradas. Normalmente es {{.Org}}. Para otro teatro o marca, elígelo o añade uno nuevo. Para el próximo evento puedes elegir otro."
 
 ["bot.wz.promoter_org"]
 other = "La propia organización"
@@ -412,6 +412,9 @@ other = "Envía el cartel. Lo mejor es <b>como archivo</b>, para no perder calid
 
 ["bot.wz.poster_bad_type"]
 other = "El cartel debe ser una imagen PNG o JPG."
+
+["bot.wz.poster_is_pdf"]
+other = "Eso es un PDF, pero necesito una imagen PNG o JPG. Abre el PDF y guarda la página del cartel como imagen (en Vista Previa, Acrobat o un conversor en línea «PDF a JPG»), o haz una captura de pantalla del cartel, y envíala como archivo."
 
 ["bot.wz.poster_too_big"]
 other = "El archivo del cartel pesa más de 5 MB: guárdalo con menos calidad."
@@ -570,13 +573,13 @@ other = "Eso es todo →"
 other = "¿Cómo se venden las categorías?"
 
 ["bot.wz.t_kind_parallel"]
-other = "Todas a la vez: elige el comprador"
+other = "Varias categorías a la vez (adulto, niño, VIP)"
 
 ["bot.wz.t_kind_sequence"]
-other = "Una tras otra: el precio sube por tramos"
+other = "El precio cambia por etapas (anticipada, normal, última)"
 
 ["bot.wz.t_kind_parallel_hint"]
-other = "Por ejemplo VIP y Estándar al mismo tiempo. Cada categoría tiene su propio número de plazas."
+other = "Elige el comprador: por ejemplo una entrada de adulto y una de niño, o VIP y Estándar. Cada categoría tiene su propio precio y su propio número de plazas."
 
 ["bot.wz.t_kind_sequence_hint"]
 other = "Por ejemplo “Anticipada” → “Normal” → “Última hora”. Se vende una categoría cada vez; todas comparten las plazas de la sala."
@@ -615,7 +618,7 @@ other = "Listo →"
 other = "Varias categorías necesitan al menos dos. Si solo hay una, elige “Una categoría”."
 
 ["bot.wz.ask_description"]
-other = "Descripción del evento para los compradores, en un solo mensaje, de hasta 4000 caracteres. Puedes omitirla."
+other = "Descripción del evento para los compradores, en un solo mensaje, de hasta 4000 caracteres. Puedes omitirla.\n\nFormato: una línea en blanco empieza un párrafo nuevo, **negrita**, _cursiva_, las líneas que empiezan por “- ” forman una lista."
 
 ["bot.wz.ask_currency"]
 other = "¿Moneda de los precios?"
@@ -663,10 +666,10 @@ other = "Una categoría “{{.Name}}” {{.Price}}{{.Schedule}}."
 other = "desde el {{.Date}} — {{.Price}}"
 
 ["bot.wz.summary_parallel"]
-other = "Todas a la vez: {{.List}}."
+other = "A la vez: {{.List}}."
 
 ["bot.wz.summary_sequence"]
-other = "En secuencia: {{.List}}."
+other = "Por etapas: {{.List}}."
 
 ["bot.wz.summary_publish_now"]
 other = "La venta se abre ahora mismo."
@@ -834,7 +837,7 @@ other = "cargado"
 other = "ninguno"
 
 ["bot.wz.edit_ask_description"]
-other = "Envía la nueva descripción en un solo mensaje, de hasta 4000 caracteres."
+other = "Envía la nueva descripción en un solo mensaje, de hasta 4000 caracteres.\n\nFormato: una línea en blanco empieza un párrafo nuevo, **negrita**, _cursiva_, las líneas que empiezan por “- ” forman una lista."
 
 ["bot.wz.edit_desc_now"]
 other = "Ahora:\n<i>{{.Text}}</i>\n\n"
@@ -1147,6 +1150,9 @@ other = "¡Hola! Este bot crea eventos y muestra las ventas a los organizadores 
 ["bot.onb.apply_btn"]
 other = "Solicitar ser organizador"
 
+["bot.onb.apply_intro"]
+other = "¡Hola! Este bot crea eventos y muestra las ventas a los organizadores de Arena Sold Out. Presentemos tu solicitud: lleva unos minutos y la revisaremos."
+
 ["bot.onb.ask_first"]
 other = "Empecemos. ¿Cómo te llamas (nombre)?"
 
@@ -1226,10 +1232,25 @@ other = "Condiciones del servicio"
 other = "Política de privacidad"
 
 ["bot.onb.consent_text"]
-other = "Un último paso antes de revisarla. Al pulsar el botón confirmas que aceptas las condiciones y la política de privacidad, y que estás autorizado a representar a esta organización.\n\n{{.Links}}"
+other = "Un último paso antes de revisarla. Lee las condiciones de uso (Terms & Conditions) y la política de privacidad en los enlaces de abajo y marca las casillas: sin las tres no se puede enviar la solicitud.\n\n{{.Links}}"
 
 ["bot.onb.consent_btn"]
-other = "Acepto"
+other = "Continuar"
+
+["bot.onb.consent_terms"]
+other = "Acepto las condiciones de uso"
+
+["bot.onb.consent_privacy"]
+other = "Acepto la política de privacidad"
+
+["bot.onb.consent_authority"]
+other = "Estoy autorizado a representar a esta organización"
+
+["bot.onb.consent_need_all"]
+other = "Para continuar, marca las tres casillas."
+
+["bot.pay.not_connected"]
+other = "⚠️ Los pagos aún no están conectados. Ya puedes crear eventos, y podrás vender entradas en cuanto se conecte tu proveedor de pagos. Esta línea desaparecerá del menú cuando todo esté listo."
 
 ["bot.onb.review_title"]
 other = "<b>Revisa tu solicitud</b>"
@@ -1259,7 +1280,7 @@ other = "Continúa en la web (el enlace abre tu solicitud):\n{{.Url}}"
 other = "✅ ¡Gracias! La solicitud está enviada. La revisaremos y te escribiremos aquí y por e-mail."
 
 ["bot.onb.approved"]
-other = "🎉 ¡Tu solicitud está aprobada! La organización <b>{{.Org}}</b> está lista. Te hemos enviado por e-mail un enlace para crear tu contraseña. Pulsa el botón para abrir el menú."
+other = "🎉 ¡Tu solicitud está aprobada! La organización <b>{{.Org}}</b> está lista. Todo lo que necesitas para tus eventos se hace aquí, en el bot: pulsa el botón para abrir el menú. El e-mail con el enlace de contraseña es solo para el panel web, que necesitarás más adelante, así que por ahora puedes ignorarlo."
 
 ["bot.onb.rejected"]
 other = "Lamentablemente no podemos abrir una organización con esta solicitud. Si crees que es un error, escríbenos por e-mail."

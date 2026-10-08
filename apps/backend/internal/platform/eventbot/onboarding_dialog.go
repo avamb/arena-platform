@@ -180,6 +180,26 @@ func (b *Bot) onbWelcome(ctx context.Context, chatID int64, from *models.User) {
 	))
 }
 
+// onbApplyDirect serves the link t.me/<bot>?start=apply: a stranger who already
+// decided to apply gets a one-line intro and the first question at once, with
+// no extra "press Apply" step. An open application takes them back to where
+// they stopped, as the welcome screen does.
+func (b *Bot) onbApplyDirect(ctx context.Context, chatID int64, from *models.User) {
+	d := b.onb.get(from.ID)
+	if app, err := b.arena.OnboardingCurrent(ctx, from.ID); err == nil {
+		b.onbRoute(ctx, chatID, from, d, &app)
+		return
+	} else if !IsAPIError(err, http.StatusNotFound) {
+		b.logger.Error("eventbot: onboarding lookup failed", slog.Int64("telegram_user_id", from.ID), slog.String("error", err.Error()))
+		b.send(ctx, chatID, b.texts.T(NormalizeLocale(from.LanguageCode), "bot.not_invited", nil), nil)
+		return
+	}
+	loc := b.onbLocale(from, d, nil)
+	d.step = onbFirst
+	b.send(ctx, chatID, b.texts.T(loc, "bot.onb.apply_intro", nil), nil)
+	b.send(ctx, chatID, b.texts.T(loc, "bot.onb.ask_first", nil), nil)
+}
+
 // onbMessage handles a text or a contact from somebody who is not linked.
 func (b *Bot) onbMessage(ctx context.Context, chatID int64, from *models.User, m *models.Message) {
 	d := b.onb.get(from.ID)
@@ -425,8 +445,44 @@ func (b *Bot) onbConsent(ctx context.Context, chatID int64, from *models.User, d
 			links += `<a href="` + Esc(form.PrivacyURL) + `">` + b.texts.T(loc, "bot.onb.privacy_link", nil) + "</a>\n"
 		}
 	}
-	b.send(ctx, chatID, b.texts.T(loc, "bot.onb.consent_text", map[string]any{"Links": links}), inline(
-		[]models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.onb.consent_btn", nil), "onb:consent")}))
+	b.send(ctx, chatID, b.texts.T(loc, "bot.onb.consent_text", map[string]any{"Links": links}), b.consentKeyboard(loc, d))
+}
+
+// consentOrder is the order of the consent ticks on the screen; each is a
+// separate statement the applicant must tick, never one bundled button.
+var consentOrder = []struct{ key, text string }{
+	{"accept_terms", "bot.onb.consent_terms"},
+	{"accept_privacy", "bot.onb.consent_privacy"},
+	{"confirm_authority", "bot.onb.consent_authority"},
+}
+
+func (b *Bot) consentKeyboard(loc string, d *onbDialog) *models.InlineKeyboardMarkup {
+	rows := [][]models.InlineKeyboardButton{}
+	for _, c := range consentOrder {
+		mark := "▫️ "
+		if d.sel["consent"][c.key] {
+			mark = "✅ "
+		}
+		rows = append(rows, []models.InlineKeyboardButton{btn(mark+b.texts.T(loc, c.text, nil), "onb:ct:"+c.key)})
+	}
+	rows = append(rows, []models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.onb.consent_btn", nil), "onb:consent")})
+	return inline(rows...)
+}
+
+// onbConsentTick flips one consent tick and redraws the buttons in place.
+func (b *Bot) onbConsentTick(ctx context.Context, chatID int64, msgID int, loc string, d *onbDialog, key string) {
+	known := false
+	for _, c := range consentOrder {
+		known = known || c.key == key
+	}
+	if !known {
+		return
+	}
+	if d.sel["consent"] == nil {
+		d.sel["consent"] = map[string]bool{}
+	}
+	d.sel["consent"][key] = !d.sel["consent"][key]
+	_, _ = b.tg.EditMessageReplyMarkup(ctx, &tgbot.EditMessageReplyMarkupParams{ChatID: chatID, MessageID: msgID, ReplyMarkup: b.consentKeyboard(loc, d)})
 }
 
 // onbReview shows what will be sent and the submit button.
@@ -690,10 +746,20 @@ func (b *Bot) onbCallback(ctx context.Context, chatID int64, msgID int, from *mo
 		}
 		b.send(ctx, chatID, b.texts.T(loc, "bot.onb.site_link", map[string]any{"Url": Esc(link)}), nil)
 	case "consent":
-		// One press records all three consents, as the screen says.
+		// All three ticks are needed; the press then records them together.
+		for _, c := range consentOrder {
+			if !d.sel["consent"][c.key] {
+				b.send(ctx, chatID, b.texts.T(loc, "bot.onb.consent_need_all", nil), nil)
+				return
+			}
+		}
 		b.onbSaveAll(ctx, chatID, from, d, &app, "accept_terms", map[string]any{
 			"accept_terms": true, "accept_privacy": true, "confirm_authority": true,
 		})
+	case "ct":
+		if len(parts) > 2 {
+			b.onbConsentTick(ctx, chatID, msgID, loc, d, parts[2])
+		}
 	case "submit":
 		b.onbSubmit(ctx, chatID, from, d, &app)
 	case "s", "c", "b":

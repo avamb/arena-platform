@@ -4,6 +4,12 @@ package eventbot
 // (onboarding_dialog.go); the locale test proves en, ru and es carry each one.
 var onbKeys = []string{
 	"bot.onb.welcome",
+	"bot.onb.apply_intro",
+	"bot.onb.consent_terms",
+	"bot.onb.consent_privacy",
+	"bot.onb.consent_authority",
+	"bot.onb.consent_need_all",
+	"bot.pay.not_connected",
 	"bot.onb.apply_btn",
 	"bot.onb.ask_first",
 	"bot.onb.ask_last",

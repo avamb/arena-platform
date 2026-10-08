@@ -63,9 +63,10 @@ type words struct {
 }
 
 var wordsByLocale = map[string]words{
-	"en": {Stamp: "SAMPLE", Holder: "Buyer's name"},
-	"ru": {Stamp: "ОБРАЗЕЦ", Holder: "Имя покупателя"},
-	"cs": {Stamp: "VZOR", Holder: "Jméno kupujícího"},
+	"en": {Stamp: "SAMPLE", Holder: "Sample: buyer's name"},
+	"ru": {Stamp: "ОБРАЗЕЦ", Holder: "Образец: имя покупателя"},
+	"cs": {Stamp: "VZOR", Holder: "Vzor: jméno kupujícího"},
+	"es": {Stamp: "MUESTRA", Holder: "Muestra: nombre del comprador"},
 }
 
 // resolveLocale picks the PDF's language: the caller's `locale` query
@@ -141,7 +142,7 @@ func (h *Handler) HandleSessionSampleTicket(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusOK)
 	//nolint:gosec // G705: gosec's taint analysis flags this only because the
 	// locale entered through r.URL.Query(). It is matched against a fixed
-	// three-entry table before use and never reaches the body; every byte
+	// four-entry table before use and never reaches the body; every byte
 	// written here is a PDF the renderer built from stored rows.
 	_, _ = w.Write(out)
 }

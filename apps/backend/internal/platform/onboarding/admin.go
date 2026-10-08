@@ -686,7 +686,14 @@ func (s *Service) notifyDecision(ctx context.Context, app *Application, slug str
 	if app.OrgName != nil {
 		org = *app.OrgName
 	}
-	s.send(ctx, fmt.Sprintf("✅ Заявка одобрена %s: <b>%s</b> (%s)", who, opsalert.EscapeHTML(org), opsalert.EscapeHTML(slug)))
+	msg := fmt.Sprintf("✅ Заявка одобрена %s: <b>%s</b> (%s)", who, opsalert.EscapeHTML(org), opsalert.EscapeHTML(slug))
+	// A new organization starts without payment keys, and its owner sees
+	// "payments are not connected" until somebody connects them: say so here,
+	// so the operator does not have to remember to ask.
+	if p := app.Answers.String("payment_provider"); p != "" {
+		msg += "\n💳 Нужно подключить платежи: " + opsalert.EscapeHTML(p) + " (выбор заявителя). Пока ключей нет, билеты продать нельзя."
+	}
+	s.send(ctx, msg)
 }
 
 func (s *Service) send(ctx context.Context, text string) {

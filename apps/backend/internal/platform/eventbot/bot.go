@@ -246,6 +246,12 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 				b.startInvitation(ctx, chatID, from, strings.TrimPrefix(arg, "inv_"))
 				return
 			}
+			if arg == "apply" && b.onbOn() {
+				if _, _, err := b.resolveIdentity(ctx, from.ID); errors.Is(err, ErrNotLinked) {
+					b.onbApplyDirect(ctx, chatID, from)
+					return
+				}
+			}
 			b.showHome(ctx, chatID, nil, from, "")
 			return
 		case "/events":
@@ -472,7 +478,7 @@ func (b *Bot) showHome(ctx context.Context, chatID int64, editMsgID *int, from *
 		b.showOrgChooserFor(ctx, chatID, editMsgID, id)
 		return
 	}
-	text := prefix + b.texts.T(id.Locale(), "bot.menu_title", map[string]any{"Org": Esc(id.Current.OrgName)})
+	text := prefix + b.texts.T(id.Locale(), "bot.menu_title", map[string]any{"Org": Esc(id.Current.OrgName)}) + b.paymentsNote(ctx, id, jwt)
 	b.reply(ctx, chatID, editMsgID, text, b.homeKeyboard(ctx, id, jwt))
 }
 

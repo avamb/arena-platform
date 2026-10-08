@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -121,6 +122,7 @@ func CreateWorkspace(ctx context.Context, tx pgx.Tx, in WorkspaceInput) (Workspa
 	}
 	ws.OrgID, ws.Slug = org.ID, org.Slug
 
+	taxScheme, taxNumber := OrgTax(in.TaxIDScheme, in.Country, in.TaxID)
 	if _, err := tx.Exec(ctx, `
 UPDATE organizations SET
     legal_name = $2, tax_id = $3, tax_id_scheme = $4, registration_number = $5,
@@ -128,7 +130,7 @@ UPDATE organizations SET
     legal_address_country = $9, contact_email = $10, contact_phone = $11, website_url = $12,
     updated_at = now()
 WHERE id = $1`,
-		org.ID, nullable(in.LegalName), nullable(in.TaxID), nullable(OrgTaxScheme(in.TaxIDScheme, in.Country)),
+		org.ID, nullable(in.LegalName), nullable(taxNumber), nullable(taxScheme),
 		nullable(in.RegistrationNumber), nullable(in.AddressLine1), nullable(in.AddressPostalCode),
 		nullable(in.AddressCity), nullable(in.AddressCountry), nullable(in.ContactEmail),
 		nullable(in.ContactPhone), nullable(in.Website),
@@ -245,24 +247,54 @@ func freeSlug(ctx context.Context, q *gen.Queries, name string) (string, error) 
 	return "", errors.New("provisioning: no free slug")
 }
 
-// OrgTaxScheme maps the form's tax-number type onto the values the
-// organizations table accepts (eu_vat, gb_vat, il_vat, us_ein, other).
-func OrgTaxScheme(formScheme, country string) string {
+// The per-scheme formats below mirror the ones PATCH /v1/organizations/{id}
+// enforces (httpserver/hiam/orgs.go). An organization saved with a number its
+// own scheme rejects could never be edited again: every later save of the legal
+// block answered 400 invalid_tax_id (an Italian codice fiscale filed as an EU
+// VAT number, 2026-10-08).
+var (
+	orgEUVAT = regexp.MustCompile(`^[A-Z]{2}[A-Z0-9]{2,12}$`)
+	orgGBVAT = regexp.MustCompile(`^GB(?:[0-9]{9}|[0-9]{12}|GD[0-9]{3}|HA[0-9]{3})$`)
+	orgILVAT = regexp.MustCompile(`^[0-9]{9}$`)
+	orgUSEIN = regexp.MustCompile(`^[0-9]{2}-?[0-9]{7}$`)
+)
+
+// OrgTax maps the form's tax-number type onto the values the organizations
+// table accepts (eu_vat, gb_vat, il_vat, us_ein, other) and returns the number
+// to store with it. A number that does not fit the scheme it was filed under
+// (a personal tax code under "VAT") is kept as typed under "other", which the
+// operator reads as free text, instead of a scheme the save endpoint rejects.
+func OrgTax(formScheme, country, taxID string) (scheme, number string) {
+	taxID = strings.TrimSpace(taxID)
+	if formScheme == "" || taxID == "" {
+		return "", taxID
+	}
+	var re *regexp.Regexp
 	switch formScheme {
 	case "vat":
 		switch strings.ToUpper(country) {
 		case "GB":
-			return "gb_vat"
+			scheme, re = "gb_vat", orgGBVAT
 		case "IL":
-			return "il_vat"
+			scheme, re = "il_vat", orgILVAT
+		default:
+			scheme, re = "eu_vat", orgEUVAT
 		}
-		return "eu_vat"
 	case "ein":
-		return "us_ein"
-	case "":
-		return ""
+		scheme, re = "us_ein", orgUSEIN
+	default:
+		return "other", taxID
 	}
-	return "other"
+	// The save endpoint upper-cases a VAT number but does not strip spaces,
+	// so a "ES B-123 4567" typed into the form is stored without the noise.
+	candidate := taxID
+	if scheme != "us_ein" && scheme != "il_vat" {
+		candidate = strings.ToUpper(strings.NewReplacer(" ", "", ".", "", "-", "", "/", "").Replace(taxID))
+	}
+	if re.MatchString(candidate) {
+		return scheme, candidate
+	}
+	return "other", taxID
 }
 
 func botLocale(l string) string {

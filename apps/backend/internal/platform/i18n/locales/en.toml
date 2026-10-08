@@ -328,7 +328,7 @@ other = "This event has no dates yet."
 other = "🎫 Sample ticket"
 
 ["bot.sample_caption"]
-other = "This is how a buyer will see the ticket for “{{.Name}}”. A sample: the barcode is real, and the scanner at the gate answers “sample ticket”."
+other = "This is how a buyer will see the ticket for “{{.Name}}”. A sample: the buyer's name is a placeholder here, a real ticket carries the name of whoever bought it. The barcode is real, and the scanner at the gate answers “sample ticket”."
 
 ["bot.sample_failed"]
 other = "Could not make the sample ticket. Try again later."
@@ -531,7 +531,7 @@ other = "Please give the event a name, up to 200 characters."
 other = "Age restriction?"
 
 ["bot.wz.ask_promoter"]
-other = "Whose name is the event under? The promoter is the name printed on the ticket as the organizer, with its own ticket page. Usually that is {{.Org}}. For another theatre or brand, pick it or add a new one."
+other = "Whose name is the event under? The promoter is the name printed on the ticket as the organizer, with its own ticket page. Usually that is {{.Org}}. For another theatre or brand, pick it or add a new one. For the next event you can choose another."
 
 ["bot.wz.promoter_org"]
 other = "The organization itself"
@@ -556,6 +556,9 @@ other = "Send the poster. Best <b>as a file</b>, so nothing is lost:\n• on the
 
 ["bot.wz.poster_bad_type"]
 other = "The poster must be a PNG or JPG image."
+
+["bot.wz.poster_is_pdf"]
+other = "That is a PDF, but I need a PNG or JPG image. Open the PDF and save the poster page as an image (in Preview, Acrobat or an online “PDF to JPG” converter), or take a screenshot of the poster, then send it as a file."
 
 ["bot.wz.poster_too_big"]
 other = "The poster file is over 5 MB — save it with a lower quality."
@@ -714,13 +717,13 @@ other = "That's all →"
 other = "How are the categories sold?"
 
 ["bot.wz.t_kind_parallel"]
-other = "All at once — the buyer chooses"
+other = "Several categories at once (adult, child, VIP)"
 
 ["bot.wz.t_kind_sequence"]
-other = "One after another — the price rises in steps"
+other = "The price changes in stages (early, regular, last)"
 
 ["bot.wz.t_kind_parallel_hint"]
-other = "For example VIP and Standard at the same time. Each category has its own number of places."
+other = "The buyer picks: for example an adult and a child ticket, or VIP and Standard. Each category has its own price and its own number of places."
 
 ["bot.wz.t_kind_sequence_hint"]
 other = "For example “Early” → “Regular” → “Last minute”. One category sells at a time; all share the hall's places."
@@ -759,7 +762,7 @@ other = "Done →"
 other = "Several categories need at least two. If there is only one, choose “One category”."
 
 ["bot.wz.ask_description"]
-other = "Description of the event for buyers, in one message, up to 4000 characters. You can skip this."
+other = "Description of the event for buyers, in one message, up to 4000 characters. You can skip this.\n\nFormatting: a blank line starts a new paragraph, **bold**, _italic_, lines starting with “- ” make a list."
 
 ["bot.wz.ask_currency"]
 other = "Currency of the prices?"
@@ -807,10 +810,10 @@ other = "One category “{{.Name}}” {{.Price}}{{.Schedule}}."
 other = "from {{.Date}} — {{.Price}}"
 
 ["bot.wz.summary_parallel"]
-other = "All at once: {{.List}}."
+other = "At once: {{.List}}."
 
 ["bot.wz.summary_sequence"]
-other = "In sequence: {{.List}}."
+other = "In stages: {{.List}}."
 
 ["bot.wz.summary_publish_now"]
 other = "Sales open right away."
@@ -979,7 +982,7 @@ other = "set"
 other = "none"
 
 ["bot.wz.edit_ask_description"]
-other = "Send the new description in one message, up to 4000 characters."
+other = "Send the new description in one message, up to 4000 characters.\n\nFormatting: a blank line starts a new paragraph, **bold**, _italic_, lines starting with “- ” make a list."
 
 ["bot.wz.edit_desc_now"]
 other = "Now:\n<i>{{.Text}}</i>\n\n"
@@ -1292,6 +1295,9 @@ other = "Hi! This bot creates events and shows sales for organizers of Arena Sol
 ["bot.onb.apply_btn"]
 other = "Apply to become an organizer"
 
+["bot.onb.apply_intro"]
+other = "Hello! This bot sets up events and shows sales for Arena Sold Out organizers. Let's file your application: it takes a few minutes, and we will review it."
+
 ["bot.onb.ask_first"]
 other = "Let us start. What is your first name?"
 
@@ -1371,10 +1377,25 @@ other = "Terms of service"
 other = "Privacy policy"
 
 ["bot.onb.consent_text"]
-other = "One last thing before we review it. By pressing the button you confirm that you accept the terms and the privacy policy, and that you are authorized to represent this organization.\n\n{{.Links}}"
+other = "One last thing before we review it. Read the Terms & Conditions and the privacy policy at the links below and tick the boxes: the application cannot be sent without all three.\n\n{{.Links}}"
 
 ["bot.onb.consent_btn"]
-other = "I agree"
+other = "Continue"
+
+["bot.onb.consent_terms"]
+other = "I accept the Terms & Conditions"
+
+["bot.onb.consent_privacy"]
+other = "I accept the privacy policy"
+
+["bot.onb.consent_authority"]
+other = "I am authorized to represent this organization"
+
+["bot.onb.consent_need_all"]
+other = "To continue, tick all three boxes."
+
+["bot.pay.not_connected"]
+other = "⚠️ Payments are not connected yet. You can create events right now, and selling tickets starts once your payment provider is connected. This line disappears from the menu when everything is ready."
 
 ["bot.onb.review_title"]
 other = "<b>Check your application</b>"
@@ -1404,7 +1425,7 @@ other = "Continue on the website (the link opens your application):\n{{.Url}}"
 other = "✅ Thank you! The application is sent. We will review it and write to you here and by e-mail."
 
 ["bot.onb.approved"]
-other = "🎉 Your application is approved! The organization <b>{{.Org}}</b> is ready. We sent a link to set your password to your e-mail. Press the button to open the menu."
+other = "🎉 Your application is approved! The organization <b>{{.Org}}</b> is ready. Everything you need for events is done here in the bot: press the button to open the menu. The e-mail with a password link is only for the web console, which you will need later, so you can ignore it for now."
 
 ["bot.onb.rejected"]
 other = "Unfortunately we cannot open an organization for this application. If you think this is a mistake, write to us by e-mail."

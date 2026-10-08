@@ -66,7 +66,7 @@ func taxIDFormat(scheme, taxID string) (string, string) {
 	switch scheme {
 	case "vat":
 		if !vatPattern.MatchString(n) {
-			return CheckWarn, "does not look like a VAT number (two-letter country prefix and digits)"
+			return CheckWarn, "does not look like a VAT number (two-letter country prefix and digits), so approval will file it as free text (type: other)"
 		}
 	case "ico":
 		if !icoPattern.MatchString(n) {
@@ -74,7 +74,7 @@ func taxIDFormat(scheme, taxID string) (string, string) {
 		}
 	case "ein":
 		if !einPattern.MatchString(taxID) && !einPattern.MatchString(n) {
-			return CheckWarn, "an EIN is expected as NN-NNNNNNN"
+			return CheckWarn, "an EIN is expected as NN-NNNNNNN, so approval will file it as free text (type: other)"
 		}
 	case "other":
 		return CheckPass, "free-form number, not checked"

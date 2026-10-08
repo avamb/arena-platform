@@ -83,6 +83,8 @@ func TestBotE2E_OnboardingApplication(t *testing.T) {
 	// 1. A stranger sees the way to apply, not "you need an invitation".
 	say(e2eMessageAs(tgUser, "/start"), "подайте заявку")
 	say(e2eCallbackAs(tgUser, "onb:start"), "Как вас зовут")
+	// The shared link t.me/<bot>?start=apply goes straight to the first question.
+	say(e2eMessageAs(tgUser, "/start apply"), "Как вас зовут")
 	say(e2eMessageAs(tgUser, "Ана"), "фамилия")
 	say(e2eMessageAs(tgUser, "Перес"), "Поделитесь номером")
 	// Somebody else's contact is refused; text instead of the button too.
@@ -131,6 +133,14 @@ func TestBotE2E_OnboardingApplication(t *testing.T) {
 	tg.waitCall(t, "editMessageReplyMarkup", edits)
 	say(e2eCallbackAs(tgUser, "onb:md:event_types"), "Рассадка")
 	say(e2eCallbackAs(tgUser, "onb:s:seating:0"), "Последний шаг")
+	// Every consent is its own tick: pressing Continue with none ticked asks
+	// for them and saves nothing.
+	say(e2eCallbackAs(tgUser, "onb:consent"), "отметьте галочками все три пункта")
+	for _, key := range []string{"accept_terms", "accept_privacy", "confirm_authority"} {
+		before := tg.callCount("editMessageReplyMarkup")
+		tg.push(e2eCallbackAs(tgUser, "onb:ct:"+key))
+		tg.waitCall(t, "editMessageReplyMarkup", before)
+	}
 	say(e2eCallbackAs(tgUser, "onb:consent"), "Проверьте заявку")
 
 	var status string

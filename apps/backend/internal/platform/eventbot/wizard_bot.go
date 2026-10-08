@@ -287,7 +287,11 @@ func (b *Bot) wizardPoster(ctx context.Context, chatID int64, from *models.User,
 	}
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || (format != "png" && format != "jpeg") {
-		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_bad_type", nil), nil)
+		key := "bot.wz.poster_bad_type"
+		if bytes.HasPrefix(data, []byte("%PDF-")) {
+			key = "bot.wz.poster_is_pdf"
+		}
+		b.send(ctx, chatID, b.texts.T(loc, key, nil), nil)
 		return true
 	}
 	if key := PosterCheck(cfg.Width, cfg.Height); key != "" {

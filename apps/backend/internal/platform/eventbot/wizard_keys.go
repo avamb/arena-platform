@@ -64,6 +64,7 @@ var wizardKeys = []string{
 	"bot.wz.poster_read",
 	"bot.wz.poster_read_none",
 	"bot.wz.poster_bad_type",
+	"bot.wz.poster_is_pdf",
 	"bot.wz.poster_too_big",
 	"bot.wz.poster_bad_ratio",
 	"bot.wz.poster_too_small",
