@@ -1380,7 +1380,7 @@ other = "I agree"
 other = "<b>Check your application</b>"
 
 ["bot.onb.review_hint"]
-other = "If everything is right, send it. You can also continue on the website."
+other = "If everything is right, send it."
 
 ["bot.onb.submit_btn"]
 other = "Send the application"

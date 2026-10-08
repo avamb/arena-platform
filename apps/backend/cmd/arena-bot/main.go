@@ -114,6 +114,7 @@ func run() error {
 		PosterReader:   posterReader,
 
 		SelfOnboarding: cfg.BotSelfOnboardingEnabled,
+		SiteButton:     cfg.BotOnboardingSiteButton,
 	})
 	if err != nil {
 		return err

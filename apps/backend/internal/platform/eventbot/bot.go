@@ -55,6 +55,10 @@ type Options struct {
 	// NoticeEvery is how often decisions on applications are announced
 	// (default 45 s); tests shorten it.
 	NoticeEvery time.Duration
+	// SiteButton (BOT_ONBOARDING_SITE_BUTTON) shows "Open on the website"
+	// in the application dialog; keep it off until the site's continue page
+	// (/start/confirm) is live.
+	SiteButton bool
 }
 
 // Bot is the running event-center bot.
@@ -76,6 +80,7 @@ type Bot struct {
 
 	selfOnboarding bool
 	noticeEvery    time.Duration
+	siteButton     bool
 	onb            *onbDialogs
 	onbForms       *onbFormCache
 }
@@ -108,6 +113,7 @@ func New(opts Options) (*Bot, error) {
 
 		selfOnboarding: opts.SelfOnboarding,
 		noticeEvery:    opts.NoticeEvery,
+		siteButton:     opts.SiteButton,
 		onb:            newOnbDialogs(),
 		onbForms:       &onbFormCache{m: map[string]onbFormEntry{}},
 	}

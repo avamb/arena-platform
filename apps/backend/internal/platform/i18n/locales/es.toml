@@ -1235,7 +1235,7 @@ other = "Acepto"
 other = "<b>Revisa tu solicitud</b>"
 
 ["bot.onb.review_hint"]
-other = "Si todo es correcto, envíala. También puedes continuar en la web."
+other = "Si todo es correcto, envíala."
 
 ["bot.onb.submit_btn"]
 other = "Enviar la solicitud"

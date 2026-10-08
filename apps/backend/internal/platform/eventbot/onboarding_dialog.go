@@ -293,8 +293,7 @@ func (b *Bot) onbRoute(ctx context.Context, chatID int64, from *models.User, d *
 	loc := b.onbLocale(from, d, app)
 	switch {
 	case app.Status == "pending_approval":
-		b.send(ctx, chatID, b.texts.T(loc, "bot.onb.pending", nil), inline(
-			[]models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.onb.site_btn", nil), "onb:site")}))
+		b.send(ctx, chatID, b.texts.T(loc, "bot.onb.pending", nil), b.onbSiteRow(loc))
 	case !app.EmailConfirmed:
 		b.send(ctx, chatID, b.texts.T(loc, "bot.onb.code_sent", map[string]any{"Email": Esc(app.Email)}), inline(
 			[]models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.onb.code_resend_btn", nil), "onb:resend")}))
@@ -456,10 +455,20 @@ func (b *Bot) onbReview(ctx context.Context, chatID int64, from *models.User, d 
 		}
 	}
 	sb.WriteString("\n" + b.texts.T(loc, "bot.onb.review_hint", nil))
-	b.send(ctx, chatID, sb.String(), inline(
-		[]models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.onb.submit_btn", nil), "onb:submit")},
-		[]models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.onb.site_btn", nil), "onb:site")},
-	))
+	rows := [][]models.InlineKeyboardButton{{btn(b.texts.T(loc, "bot.onb.submit_btn", nil), "onb:submit")}}
+	if b.siteButton {
+		rows = append(rows, []models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.onb.site_btn", nil), "onb:site")})
+	}
+	b.send(ctx, chatID, sb.String(), inline(rows...))
+}
+
+// onbSiteRow is the "open on the website" button, or no keyboard while the
+// website's continue page is not live (BOT_ONBOARDING_SITE_BUTTON).
+func (b *Bot) onbSiteRow(loc string) *models.InlineKeyboardMarkup {
+	if !b.siteButton {
+		return nil
+	}
+	return inline([]models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.onb.site_btn", nil), "onb:site")})
 }
 
 // onbDisplay renders an answer for the review screen.
@@ -670,6 +679,10 @@ func (b *Bot) onbCallback(ctx context.Context, chatID int64, msgID int, from *mo
 	case "go":
 		b.onbRoute(ctx, chatID, from, d, &app)
 	case "site":
+		if !b.siteButton {
+			b.send(ctx, chatID, b.texts.T(loc, "bot.onb.unavailable", nil), nil)
+			return
+		}
 		link, err := b.arena.OnboardingSiteLink(ctx, app.ID, from.ID)
 		if err != nil {
 			b.send(ctx, chatID, b.texts.T(loc, "bot.onb.unavailable", nil), nil)

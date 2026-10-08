@@ -403,6 +403,10 @@ type Config struct {
 	// to ask for an invitation. It needs ONBOARDING_ENABLED and
 	// BOT_SERVICE_TOKEN on arena-api.
 	BotSelfOnboardingEnabled bool `env:"BOT_SELF_ONBOARDING_ENABLED" required:"false" default:"false"`
+	// BotOnboardingSiteButton (read by arena-bot) shows the "Open on the
+	// website" button in the application dialog. Off until the site's
+	// /start/confirm page exists.
+	BotOnboardingSiteButton bool `env:"BOT_ONBOARDING_SITE_BUTTON" required:"false" default:"false"`
 	// OnboardingEnabled mounts the public organizer-application routes
 	// (/v1/onboarding/*, 08_architecture/34_onboarding_applications_ru.md).
 	// Off by default: the website's form is the only intended client.
@@ -784,6 +788,12 @@ func Load() (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.BotSelfOnboardingEnabled = b
+
+	b, err = getenvBool("BOT_ONBOARDING_SITE_BUTTON", false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.BotOnboardingSiteButton = b
 
 	// JWT default TTL.
 	d, err = getenvDuration("JWT_DEFAULT_TTL", time.Hour, false)
