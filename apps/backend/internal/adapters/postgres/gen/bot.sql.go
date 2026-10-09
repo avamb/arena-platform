@@ -227,11 +227,14 @@ SET    mode           = EXCLUDED.mode,
        schema_version = EXCLUDED.schema_version,
        state          = EXCLUDED.state,
        saved          = EXCLUDED.saved,
+       reminded_at    = NULL,
        updated_at     = now()
 RETURNING ` + botDraftColumns
 
 // UpsertBotDraft writes the whole draft; every message the bot handles ends
-// with one of these so a restart never loses the operator's answers.
+// with one of these so a restart never loses the operator's answers. It also
+// clears reminded_at: an answer makes the draft live again, so it earns a
+// fresh idle reminder once it goes quiet anew.
 func (q *Queries) UpsertBotDraft(ctx context.Context, telegramUserID int64, orgID uuid.UUID, mode string, eventID *uuid.UUID, step string, schemaVersion int32, state, saved json.RawMessage) (BotDraftRow, error) {
 	if len(state) == 0 {
 		state = json.RawMessage(`{}`)
@@ -251,6 +254,174 @@ WHERE  telegram_user_id = $1
 func (q *Queries) DeleteBotDraft(ctx context.Context, telegramUserID int64, orgID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteBotDraft, telegramUserID, orgID)
 	return err
+}
+
+// ─── idle drafts (migration 0130) ─────────────────────────────────────────────
+
+// BotDraftReminderRow is what the idle-draft sweep needs to tell a draft's
+// owner about it: the draft's identity and content plus the owner's language.
+type BotDraftReminderRow struct {
+	ID             uuid.UUID       `json:"id"`
+	TelegramUserID int64           `json:"telegram_user_id"`
+	OrgID          uuid.UUID       `json:"org_id"`
+	Mode           string          `json:"mode"`
+	EventID        *uuid.UUID      `json:"event_id"`
+	State          json.RawMessage `json:"state"`
+	Locale         string          `json:"locale"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+}
+
+const botDraftReminderColumns = `d.id, d.telegram_user_id, d.org_id, d.mode, d.event_id, d.state, l.locale, d.updated_at`
+
+func scanBotDraftReminderRows(rows interface {
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+	Close()
+}) ([]BotDraftReminderRow, error) {
+	defer rows.Close()
+	var out []BotDraftReminderRow
+	for rows.Next() {
+		var r BotDraftReminderRow
+		if err := rows.Scan(&r.ID, &r.TelegramUserID, &r.OrgID, &r.Mode, &r.EventID, &r.State, &r.Locale, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+const listBotDraftsForReminder = `-- name: ListBotDraftsForReminder :many
+SELECT ` + botDraftReminderColumns + `
+FROM   bot_drafts d
+JOIN   bot_telegram_links l ON l.telegram_user_id = d.telegram_user_id
+WHERE  d.updated_at < $1
+  AND  d.reminded_at IS NULL
+ORDER  BY d.updated_at
+LIMIT  $2`
+
+// ListBotDraftsForReminder lists up to limit drafts untouched since before
+// idleBefore whose owner has not been reminded yet, oldest first.
+func (q *Queries) ListBotDraftsForReminder(ctx context.Context, idleBefore time.Time, limit int32) ([]BotDraftReminderRow, error) {
+	rows, err := q.db.Query(ctx, listBotDraftsForReminder, idleBefore, limit)
+	if err != nil {
+		return nil, err
+	}
+	return scanBotDraftReminderRows(rows)
+}
+
+const markBotDraftReminded = `-- name: MarkBotDraftReminded :exec
+UPDATE bot_drafts
+SET    reminded_at = now()
+WHERE  id = $1`
+
+// MarkBotDraftReminded records that the idle reminder for a draft was sent.
+// It leaves updated_at alone, so the reminder does not postpone the draft's
+// own expiry.
+func (q *Queries) MarkBotDraftReminded(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markBotDraftReminded, id)
+	return err
+}
+
+const deleteBotDraftsIdleBefore = `-- name: DeleteBotDraftsIdleBefore :many
+DELETE FROM bot_drafts d
+USING  bot_telegram_links l
+WHERE  l.telegram_user_id = d.telegram_user_id
+  AND  d.updated_at < $1
+RETURNING ` + botDraftReminderColumns
+
+// DeleteBotDraftsIdleBefore deletes every draft untouched since before
+// idleBefore and returns them, so their owners can be told the draft is gone.
+func (q *Queries) DeleteBotDraftsIdleBefore(ctx context.Context, idleBefore time.Time) ([]BotDraftReminderRow, error) {
+	rows, err := q.db.Query(ctx, deleteBotDraftsIdleBefore, idleBefore)
+	if err != nil {
+		return nil, err
+	}
+	return scanBotDraftReminderRows(rows)
+}
+
+// ─── dialogs (migration 0130) ─────────────────────────────────────────────────
+
+// BotDialogRow mirrors one bot_dialogs row: a short multi-step dialog of one
+// Telegram account (the team invite, a session move, ...). Step and State
+// belong to the dialog's own code; the table only keeps them.
+type BotDialogRow struct {
+	ID             uuid.UUID       `json:"id"`
+	TelegramUserID int64           `json:"telegram_user_id"`
+	OrgID          *uuid.UUID      `json:"org_id"`
+	Kind           string          `json:"kind"`
+	Step           string          `json:"step"`
+	State          json.RawMessage `json:"state"`
+	ExpiresAt      time.Time       `json:"expires_at"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+}
+
+const botDialogColumns = `id, telegram_user_id, org_id, kind, step, state, expires_at, created_at, updated_at`
+
+func scanBotDialogRow(row interface{ Scan(dest ...any) error }) (BotDialogRow, error) {
+	var r BotDialogRow
+	err := row.Scan(&r.ID, &r.TelegramUserID, &r.OrgID, &r.Kind, &r.Step, &r.State, &r.ExpiresAt, &r.CreatedAt, &r.UpdatedAt)
+	return r, err
+}
+
+const upsertBotDialog = `-- name: UpsertBotDialog :one
+INSERT INTO bot_dialogs (telegram_user_id, org_id, kind, step, state, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (telegram_user_id, kind) DO UPDATE
+SET    org_id     = EXCLUDED.org_id,
+       step       = EXCLUDED.step,
+       state      = EXCLUDED.state,
+       expires_at = EXCLUDED.expires_at,
+       updated_at = now()
+RETURNING ` + botDialogColumns
+
+// UpsertBotDialog writes the account's dialog of this kind, replacing any
+// earlier one: there is one live dialog per account and kind.
+func (q *Queries) UpsertBotDialog(ctx context.Context, telegramUserID int64, orgID *uuid.UUID, kind, step string, state json.RawMessage, expiresAt time.Time) (BotDialogRow, error) {
+	if len(state) == 0 {
+		state = json.RawMessage(`{}`)
+	}
+	return scanBotDialogRow(q.db.QueryRow(ctx, upsertBotDialog, telegramUserID, orgID, kind, step, state, expiresAt))
+}
+
+const getBotDialog = `-- name: GetBotDialog :one
+SELECT ` + botDialogColumns + `
+FROM   bot_dialogs
+WHERE  telegram_user_id = $1
+  AND  kind = $2`
+
+// GetBotDialog returns the account's dialog of this kind EVEN WHEN it has
+// expired — the caller tells the person so once and then deletes it — or
+// pgx.ErrNoRows.
+func (q *Queries) GetBotDialog(ctx context.Context, telegramUserID int64, kind string) (BotDialogRow, error) {
+	return scanBotDialogRow(q.db.QueryRow(ctx, getBotDialog, telegramUserID, kind))
+}
+
+const deleteBotDialog = `-- name: DeleteBotDialog :exec
+DELETE FROM bot_dialogs
+WHERE  telegram_user_id = $1
+  AND  kind = $2`
+
+// DeleteBotDialog ends the account's dialog of this kind; a missing one is
+// not an error.
+func (q *Queries) DeleteBotDialog(ctx context.Context, telegramUserID int64, kind string) error {
+	_, err := q.db.Exec(ctx, deleteBotDialog, telegramUserID, kind)
+	return err
+}
+
+const deleteExpiredBotDialogs = `-- name: DeleteExpiredBotDialogs :execrows
+DELETE FROM bot_dialogs
+WHERE  expires_at < $1`
+
+// DeleteExpiredBotDialogs removes every dialog whose expiry is earlier than
+// the given instant and reports how many went.
+func (q *Queries) DeleteExpiredBotDialogs(ctx context.Context, before time.Time) (int64, error) {
+	tag, err := q.db.Exec(ctx, deleteExpiredBotDialogs, before)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // ─── team ─────────────────────────────────────────────────────────────────────
