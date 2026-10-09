@@ -18238,6 +18238,8 @@ export interface components {
             currency?: string;
             /** @description RFC3339 timestamp after which the session's sale closes — the session's own `sales_end_at` (migration 0128), set by the organizer and the session start by default. After it every category reports availability 0. */
             sellEndTime?: string;
+            /** @description Arena extension (migration 0128). RFC3339 timestamp, in the venue's zone, when the venue opens its doors. Omitted when the organizer gave none. */
+            doorsOpenTime?: string;
             /**
              * Format: int64
              * @description Equal to `actionEventId` for sessions with seats (used by the

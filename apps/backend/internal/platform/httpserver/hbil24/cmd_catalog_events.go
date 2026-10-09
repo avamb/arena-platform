@@ -230,6 +230,14 @@ func (h *Handler) projectActionEvents(
 		}
 		entry["sellEndTime"] = sellEnd.In(loc).Format(time.RFC3339)
 
+		// doorsOpenTime (arena extension, migration 0128) — when the venue
+		// lets people in, RFC3339 in the venue's zone; omitted when the
+		// organizer gave none, so a site that does not know the key sees
+		// nothing new.
+		if s.DoorsOpenAt != nil {
+			entry["doorsOpenTime"] = s.DoorsOpenAt.In(loc).Format(time.RFC3339)
+		}
+
 		// seatingPlanId — spec §7.1: the plan is addressed by the SESSION, not
 		// by the plan row, because GET_SCHEMA takes an actionEventId. Pure GA
 		// sessions have no plan and report 0, which is how the plugin decides

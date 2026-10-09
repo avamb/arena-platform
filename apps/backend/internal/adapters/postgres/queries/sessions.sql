@@ -212,6 +212,7 @@ SELECT s.id                                        AS session_id,
        e.poster_media_id                           AS event_poster_media_id,
        e.image_url                                 AS event_image_url,
        s.sales_end_at                            AS sell_end_at,
+       s.doors_open_at,
        (SELECT count(*)
           FROM   session_seats ss
           WHERE  ss.session_id = s.id)::int        AS seats_total,

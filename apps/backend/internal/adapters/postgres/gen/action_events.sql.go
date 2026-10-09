@@ -59,6 +59,7 @@ type ActionEventRow struct {
 	EventPosterMediaID *uuid.UUID `json:"event_poster_media_id"`
 	EventImageURL      *string    `json:"event_image_url"`
 	SellEndAt          *time.Time `json:"sell_end_at"`
+	DoorsOpenAt        *time.Time `json:"doors_open_at"`
 	SeatsTotal         int32      `json:"seats_total"`
 	SeatsAvailable     int32      `json:"seats_available"`
 	LedgerAvailable    int32      `json:"ledger_available"`
@@ -79,6 +80,7 @@ SELECT s.id                                        AS session_id,
        e.poster_media_id                           AS event_poster_media_id,
        e.image_url                                 AS event_image_url,
        s.sales_end_at                            AS sell_end_at,
+       s.doors_open_at,
        (SELECT count(*)
           FROM   session_seats ss
           WHERE  ss.session_id = s.id)::int        AS seats_total,
@@ -137,6 +139,7 @@ func (q *Queries) ListActionEventsByOrg(ctx context.Context, orgID uuid.UUID) ([
 			&r.EventPosterMediaID,
 			&r.EventImageURL,
 			&r.SellEndAt,
+			&r.DoorsOpenAt,
 			&r.SeatsTotal,
 			&r.SeatsAvailable,
 			&r.LedgerAvailable,

@@ -248,6 +248,27 @@ func runScenario01Catalog(t *testing.T, st *harnessState) {
 		sc1WantNumber(t, hCats[0], "availability", 10)
 	})
 
+	// ── doorsOpenTime (arena extension, migration 0128) ─────────────────────
+	//
+	// Absent while the organizer gave no doors time (the goldens above stay
+	// the Bil24 key set); once set it travels RFC3339 in the venue's zone.
+	if _, ok := seated["doorsOpenTime"]; ok {
+		t.Errorf("seated session without a doors time carries doorsOpenTime %v", seated["doorsOpenTime"])
+	}
+	if _, err := st.Pool.Exec(ctx, `UPDATE sessions SET doors_open_at = start_at - interval '30 minutes' WHERE id = $1`, st.GAsessID); err != nil {
+		t.Fatalf("set doors: %v", err)
+	}
+	defer func() {
+		_, _ = st.Pool.Exec(ctx, `UPDATE sessions SET doors_open_at = NULL WHERE id = $1`, st.GAsessID)
+	}()
+	again := postBil24(t, base, req)
+	againGA := sc1FindEvent(t, sc1Objects(t, sc1Objects(t, again, "actionList")[0], "actionEventList"), float64(gaEventID))
+	var gaStart time.Time
+	if err := st.Pool.QueryRow(ctx, `SELECT start_at FROM sessions WHERE id = $1`, st.GAsessID).Scan(&gaStart); err != nil {
+		t.Fatal(err)
+	}
+	sc1WantString(t, againGA, "doorsOpenTime", gaStart.Add(-30*time.Minute).In(loc).Format(time.RFC3339))
+
 	// ── DST boundary venue (golden: dst_jerusalem.json) ─────────────────────
 	//
 	// spec §7.1 / feature #498: day/time/sellEndTime must use the offset that

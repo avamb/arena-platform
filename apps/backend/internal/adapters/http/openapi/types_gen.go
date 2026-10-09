@@ -1685,6 +1685,9 @@ type Bil24ActionEventEntry struct {
 	// Day Session calendar day in the venue's timezone, `DD.MM.YYYY`.
 	Day *string `json:"day,omitempty"`
 
+	// DoorsOpenTime Arena extension (migration 0128). RFC3339 timestamp, in the venue's zone, when the venue opens its doors. Omitted when the organizer gave none.
+	DoorsOpenTime *string `json:"doorsOpenTime,omitempty"`
+
 	// ETicket Whether e-tickets are enabled for this session.
 	ETicket *bool `json:"eTicket,omitempty"`
 
