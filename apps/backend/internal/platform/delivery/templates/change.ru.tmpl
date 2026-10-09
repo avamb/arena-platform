@@ -21,6 +21,7 @@
   <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
     <tr><td><strong>Мероприятие</strong></td><td>{{.EventName}}</td></tr>
     {{if not .Change.Date}}{{with .SessionStart}}<tr><td><strong>Дата и время</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{with .DoorsOpen}}<tr><td><strong>Вход с</strong></td><td>{{.}}</td></tr>{{end}}
     {{if not .Change.Venue}}{{with .VenueName}}<tr><td><strong>Место проведения</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
     {{with .TierName}}<tr><td><strong>Категория</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatSector}}<tr><td><strong>Сектор</strong></td><td>{{.}}</td></tr>{{end}}
@@ -68,7 +69,8 @@
 {{end}}{{end}}
 Мероприятие: {{.EventName}}
 {{if not .Change.Date}}{{with .SessionStart}}Дата и время: {{.}}
-{{end}}{{end}}{{if not .Change.Venue}}{{with .VenueName}}Место проведения: {{.}}
+{{end}}{{end}}{{with .DoorsOpen}}Вход с {{.}}
+{{end}}{{if not .Change.Venue}}{{with .VenueName}}Место проведения: {{.}}
 {{end}}{{end}}{{with .TierName}}Категория: {{.}}
 {{end}}{{with .SeatSector}}Сектор: {{.}}
 {{end}}{{with .SeatRow}}Ряд: {{.}}

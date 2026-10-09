@@ -196,6 +196,8 @@ LIMIT $1;
 --
 -- poster_media_id follows the documented resolution order of migration
 -- 0082: the session's own override first, the event's poster otherwise.
+--
+-- doors_open_at is the session's optional doors-open time (migration 0128).
 SELECT t.system_ticket_id,
        ord.system_id                 AS order_number,
        e.name                        AS event_name,
@@ -210,7 +212,8 @@ SELECT t.system_ticket_id,
        oi.total                      AS price_minor,
        NULLIF(btrim(ord.currency), '') AS price_currency,
        COALESCE(s.poster_media_id, e.poster_media_id) AS poster_media_id,
-       epr.name                      AS promoter_name
+       epr.name                      AS promoter_name,
+       s.doors_open_at               AS doors_open_at
 FROM       tickets t
 LEFT JOIN  sessions      s  ON s.id  = t.session_id
 LEFT JOIN  events        e  ON e.id  = s.event_id

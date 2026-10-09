@@ -150,6 +150,10 @@ func TestSessionChange_MoveQueuesOneLetterAndRerendersThePDF(t *testing.T) {
 	                    ON CONFLICT (ticket_id, type) DO UPDATE SET payload = EXCLUDED.payload`,
 		f.TicketID, base64.StdEncoding.EncodeToString([]byte("OLD-PDF")))
 
+	// Doors half an hour before the start (migration 0128): the move carries
+	// them along, and the letter and the new PDF both say so.
+	f.mustExec(ctx, t, `UPDATE sessions SET doors_open_at = start_at - interval '30 minutes' WHERE id = $1`, f.SessionID)
+
 	res, err := f.save(ctx, t, scMoveWeek, nil, "We are sorry about the move.")
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
@@ -192,6 +196,7 @@ func TestSessionChange_MoveQueuesOneLetterAndRerendersThePDF(t *testing.T) {
 		"contact":    f.contact,
 		"phone":      "+372 5000 1234",
 		"event name": f.EventName,
+		"doors":      "Doors open 21:30",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("letter does not carry the %s %q\n--- body ---\n%s", label, want, body)
@@ -205,6 +210,9 @@ func TestSessionChange_MoveQueuesOneLetterAndRerendersThePDF(t *testing.T) {
 	doc := storedTicketPDF(ctx, t, f.pool, f.TicketID)
 	if string(doc) == "OLD-PDF" {
 		t.Fatal("the stale PDF credential was not replaced")
+	}
+	if !pdfContainsText(doc, "Doors open 21:30") {
+		t.Error("the re-rendered PDF does not show the doors time")
 	}
 	if !pdfContainsText(doc, "10 October 2026") || pdfContainsText(doc, "3 October 2026") {
 		t.Error("the re-rendered PDF does not show the new date only")

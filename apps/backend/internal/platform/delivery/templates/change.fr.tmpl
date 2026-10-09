@@ -21,6 +21,7 @@
   <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
     <tr><td><strong>Événement</strong></td><td>{{.EventName}}</td></tr>
     {{if not .Change.Date}}{{with .SessionStart}}<tr><td><strong>Séance</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{with .DoorsOpen}}<tr><td><strong>Ouverture des portes</strong></td><td>{{.}}</td></tr>{{end}}
     {{if not .Change.Venue}}{{with .VenueName}}<tr><td><strong>Lieu</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
     {{with .TierName}}<tr><td><strong>Catégorie</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatSector}}<tr><td><strong>Secteur</strong></td><td>{{.}}</td></tr>{{end}}
@@ -68,7 +69,8 @@ L'organisateur a modifié les informations de {{.EventName}}. Voici ce qui chang
 {{end}}{{end}}
 Événement : {{.EventName}}
 {{if not .Change.Date}}{{with .SessionStart}}Séance : {{.}}
-{{end}}{{end}}{{if not .Change.Venue}}{{with .VenueName}}Lieu : {{.}}
+{{end}}{{end}}{{with .DoorsOpen}}Ouverture des portes {{.}}
+{{end}}{{if not .Change.Venue}}{{with .VenueName}}Lieu : {{.}}
 {{end}}{{end}}{{with .TierName}}Catégorie : {{.}}
 {{end}}{{with .SeatSector}}Secteur : {{.}}
 {{end}}{{with .SeatRow}}Rang : {{.}}

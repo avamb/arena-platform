@@ -70,6 +70,8 @@ type SampleTicketPresentationRow struct {
 	LegalAddressCountry    *string    `json:"legal_address_country"`
 	ContactEmail           *string    `json:"contact_email"`
 	LogoMediaID            *uuid.UUID `json:"logo_media_id"`
+	// DoorsOpenAt is sessions.doors_open_at (migration 0128).
+	DoorsOpenAt *time.Time `json:"doors_open_at"`
 }
 
 const getSampleTicketPresentation = `-- name: GetSampleTicketPresentation :one
@@ -88,7 +90,8 @@ SELECT s.id                                    AS session_id,
        o.default_locale                        AS org_locale,
        o.website_url, o.legal_name, o.legal_address_line1, o.legal_address_line2,
        o.legal_address_postal_code, o.legal_address_city, o.legal_address_country,
-       o.contact_email, o.logo_media_id
+       o.contact_email, o.logo_media_id,
+       s.doors_open_at
 FROM      sessions s
 JOIN      events        e    ON e.id = s.event_id
 JOIN      organizations o    ON o.id = e.org_id
@@ -117,6 +120,7 @@ func (q *Queries) GetSampleTicketPresentation(ctx context.Context, sessionID, or
 		&r.WebsiteURL, &r.LegalName, &r.LegalAddressLine1, &r.LegalAddressLine2,
 		&r.LegalAddressPostalCode, &r.LegalAddressCity, &r.LegalAddressCountry,
 		&r.ContactEmail, &r.LogoMediaID,
+		&r.DoorsOpenAt,
 	)
 	return r, err
 }

@@ -21,6 +21,7 @@
   <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
     <tr><td><strong>Event</strong></td><td>{{.EventName}}</td></tr>
     {{if not .Change.Date}}{{with .SessionStart}}<tr><td><strong>Session</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{with .DoorsOpen}}<tr><td><strong>Doors open</strong></td><td>{{.}}</td></tr>{{end}}
     {{if not .Change.Venue}}{{with .VenueName}}<tr><td><strong>Venue</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
     {{with .TierName}}<tr><td><strong>Tier</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatSector}}<tr><td><strong>Sector</strong></td><td>{{.}}</td></tr>{{end}}
@@ -68,7 +69,8 @@ The organizer has changed the details of {{.EventName}}. Here is what is differe
 {{end}}{{end}}
 Event: {{.EventName}}
 {{if not .Change.Date}}{{with .SessionStart}}Session: {{.}}
-{{end}}{{end}}{{if not .Change.Venue}}{{with .VenueName}}Venue: {{.}}
+{{end}}{{end}}{{with .DoorsOpen}}Doors open {{.}}
+{{end}}{{if not .Change.Venue}}{{with .VenueName}}Venue: {{.}}
 {{end}}{{end}}{{with .TierName}}Tier: {{.}}
 {{end}}{{with .SeatSector}}Sector: {{.}}
 {{end}}{{with .SeatRow}}Row: {{.}}

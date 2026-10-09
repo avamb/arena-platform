@@ -21,6 +21,7 @@
   <table cellpadding="4" style="border-collapse:collapse;font-size:14px;direction:rtl">
     <tr><td><strong>אירוע</strong></td><td>{{.EventName}}</td></tr>
     {{if not .Change.Date}}{{with .SessionStart}}<tr><td><strong>מועד</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{with .DoorsOpen}}<tr><td><strong>פתיחת דלתות</strong></td><td><span dir="ltr">{{.}}</span></td></tr>{{end}}
     {{if not .Change.Venue}}{{with .VenueName}}<tr><td><strong>מקום</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
     {{with .TierName}}<tr><td><strong>קטגוריה</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatSector}}<tr><td><strong>אזור</strong></td><td>{{.}}</td></tr>{{end}}
@@ -68,7 +69,8 @@
 {{end}}{{end}}
 אירוע: {{.EventName}}
 {{if not .Change.Date}}{{with .SessionStart}}מועד: {{.}}
-{{end}}{{end}}{{if not .Change.Venue}}{{with .VenueName}}מקום: {{.}}
+{{end}}{{end}}{{with .DoorsOpen}}פתיחת דלתות {{.}}
+{{end}}{{if not .Change.Venue}}{{with .VenueName}}מקום: {{.}}
 {{end}}{{end}}{{with .TierName}}קטגוריה: {{.}}
 {{end}}{{with .SeatSector}}אזור: {{.}}
 {{end}}{{with .SeatRow}}שורה: {{.}}

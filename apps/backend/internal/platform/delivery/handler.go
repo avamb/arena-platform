@@ -119,10 +119,14 @@ type Payload struct {
 	EventName    string    `json:"event_name,omitempty"`
 	SessionStart time.Time `json:"session_start,omitempty"`
 	SessionTZ    string    `json:"session_tz,omitempty"`
-	VenueName    string    `json:"venue_name,omitempty"`
-	VenueCity    string    `json:"venue_city,omitempty"`
-	TierName     string    `json:"tier_name,omitempty"`
-	HolderName   string    `json:"holder_name,omitempty"`
+	// DoorsOpenAt is when the venue lets people in (sessions.doors_open_at,
+	// migration 0128). Resolved at render time like the other hints; nil
+	// prints no doors line.
+	DoorsOpenAt *time.Time `json:"doors_open_at,omitempty"`
+	VenueName   string     `json:"venue_name,omitempty"`
+	VenueCity   string     `json:"venue_city,omitempty"`
+	TierName    string     `json:"tier_name,omitempty"`
+	HolderName  string     `json:"holder_name,omitempty"`
 	// OrderNumber is the buyer-facing order reference printed in the PDF
 	// footer ("Order 9096") — orders.system_id, the same integer the Bil24
 	// wire calls orderId. Resolved at render time; empty drops the line.
@@ -529,6 +533,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				HolderName:     p.HolderName,
 				EventName:      defaultStr(p.EventName, "Arena Event"),
 				SessionStart:   formatSessionForEmail(p.SessionStart, p.SessionTZ),
+				DoorsOpen:      formatClockForEmail(p.DoorsOpenAt, p.SessionTZ),
 				VenueName:      joinNonEmpty(", ", p.VenueName, p.VenueCity),
 				TierName:       p.TierName,
 				SeatSector:     p.SeatSector,
@@ -771,6 +776,7 @@ func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, brandin
 		EventName:              defaultStr(p.EventName, "Arena Event"),
 		SessionStart:           defaultTime(p.SessionStart),
 		SessionTZ:              p.SessionTZ,
+		DoorsOpenAt:            p.DoorsOpenAt,
 		VenueName:              p.VenueName,
 		VenueAddress:           p.VenueAddress,
 		VenueCity:              p.VenueCity,
@@ -917,6 +923,20 @@ func formatSessionForEmail(t time.Time, tz string) string {
 	// Human-facing email body rendered in the venue-local timezone;
 	// allow:timeformat: deliberately not an RFC3339 API timestamp.
 	return fmt.Sprintf("%s (%s)", t.In(loc).Format("2006-01-02 15:04"), zoneLabel)
+}
+
+// formatClockForEmail is the doors-open time as "HH:MM" on the venue's wall
+// clock, or "" when there is none.
+func formatClockForEmail(t *time.Time, tz string) string {
+	if t == nil || t.IsZero() {
+		return ""
+	}
+	loc := time.UTC
+	if l, err := time.LoadLocation(tz); tz != "" && err == nil {
+		loc = l
+	}
+	// allow:timeformat: human-facing wall-clock time in an e-mail body.
+	return t.In(loc).Format("15:04")
 }
 
 // joinNonEmpty joins the non-empty arguments with sep.

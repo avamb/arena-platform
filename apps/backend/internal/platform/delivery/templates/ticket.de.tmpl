@@ -12,7 +12,7 @@
   <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{if gt (len .Tickets) 1}}Vielen Dank für Ihren Kauf. Ihre Tickets für „{{.EventName}}“ finden Sie im Anhang dieser E-Mail (PDF-Dateien).{{else}}Vielen Dank für Ihren Kauf. Ihr Ticket für „{{.EventName}}“ finden Sie im Anhang dieser E-Mail (PDF).{{end}}</td></tr>
   <tr><td style="padding:8px 32px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:4px solid {{.Accent}};background:#f8f9fa;"><tr><td style="padding:12px 16px;color:#22333D;font-size:14px;line-height:1.6;">
-      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}
+      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .DoorsOpen}}<br>Einlass ab {{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}
     </td></tr></table>
   </td></tr>
   <tr><td style="padding:8px 32px;">
@@ -61,6 +61,7 @@ Guten Tag{{with .HolderName}} {{.}}{{end}}!
 
 {{.EventName}}
 {{with .SessionStart}}{{.}}
+{{end}}{{with .DoorsOpen}}Einlass ab {{.}}
 {{end}}{{with .VenueName}}{{.}}
 {{end}}
 {{if gt (len .Tickets) 1}}Tickets ({{len .Tickets}}){{else}}Ticket{{end}}:

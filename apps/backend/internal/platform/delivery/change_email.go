@@ -325,6 +325,7 @@ func (h *changeEmail) buildMessage(
 		HolderName:     first.HolderName,
 		EventName:      defaultStr(first.EventName, "Arena Event"),
 		SessionStart:   formatSessionForEmail(first.SessionStart, first.SessionTZ),
+		DoorsOpen:      formatClockForEmail(first.DoorsOpenAt, first.SessionTZ),
 		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),
 		Branding:       branding,
 		Change: templates.ChangeData{
@@ -343,6 +344,7 @@ func (h *changeEmail) buildMessage(
 	if !moves {
 		// A cancelled session's date is the one it was scheduled for.
 		data.SessionStart = oldStart
+		data.DoorsOpen = ""
 		data.Change.OldStart = oldStart
 	}
 	if len(tickets) == 1 {

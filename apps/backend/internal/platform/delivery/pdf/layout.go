@@ -655,6 +655,16 @@ func drawWhenWhere(doc *gofpdf.Fpdf, t Ticket, spec layoutSpec, y float64) float
 	doc.SetXY(textX, doc.GetY())
 	doc.MultiCell(textW, spec.dowFS*spec.dowLineH, weekday, "", "L", false)
 
+	// The doors-open time, when the organizer gave one: a muted line under the
+	// weekday, so guests come early enough to clear the scanners.
+	if t.DoorsOpenAt != nil {
+		_, doors, _ := formatShowTime(*t.DoorsOpenAt, t.SessionTZ, t.Locale)
+		doc.SetFont(fontFamily, "", spec.dowFS)
+		setText(doc, colorMuted)
+		doc.SetXY(textX, doc.GetY())
+		doc.MultiCell(textW, spec.dowFS*spec.dowLineH, stringsFor(t.Locale).Doors+" "+doors, "", "L", false)
+	}
+
 	venue := strings.TrimSpace(t.VenueName)
 	address := joinNonEmpty(", ", t.VenueAddress, t.VenueCity)
 	if venue != "" || address != "" {
