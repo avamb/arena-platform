@@ -129,7 +129,7 @@ func TestBotChannel_CodeAccountScopeAndNotices(t *testing.T) {
 		t.Fatalf("site link %q: %v", link, err)
 	}
 	terms, privacy := svc.SiteLinks()
-	if terms != "https://site.example.test/terms" || privacy != "https://site.example.test/privacy" {
+	if terms != "https://site.example.test/legal/terms" || privacy != "https://site.example.test/legal/privacy" {
 		t.Fatalf("site links: %q %q", terms, privacy)
 	}
 
