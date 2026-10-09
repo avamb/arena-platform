@@ -1,0 +1,720 @@
+[
+  {
+    "platform": "Karabas.com",
+    "website": "https://karabas.com",
+    "hq_country": "UA",
+    "segment": "large Ukrainian ticket operator (web + box offices + partner network), also diaspora city sites in ~25 countries; organizers sign an individual contract",
+    "markets": [
+      {
+        "market": "Ukraine (and diaspora city sites: DE, CY, FR, AT, UK, MD, IE, SK, HU, PT, NL, BE, NO, SE, FI, RS, CH, PL, ES, IT, CZ, DK)",
+        "currency": "UAH",
+        "vat_note": "not stated",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_detail": "Public offer: operator is an Agent (LLC 'NBOKS') selling on behalf of the Organizer/Principal; buyer pays the Agent (site, box offices, call-centre, partner network). Payout timing/reserve to organizer not published (contract only).",
+        "plans": [
+          {"name": "Individual contract with organizer", "monthly_fee": null, "annual_fee": null,
+           "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "sales via site, box offices across Ukraine, call centre, partner network (per promoter page)",
+           "notes": "Organizer commission size is set in the contract, not published (promoter page says contract terms and commission size are agreed individually). Buyer 'service fee' (Сервисный сбор) is a % of the ticket value per the public offer: 'traditionally 10%' but can be set individually by the Agent."}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": false, "rate_note": "Buyer card payments go to the Agent; legal-entity buyers pay by bank transfer on invoice", "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "not published",
+        "refunds_chargebacks": "Refund of money only under the offer's terms and an official organizer letter; service fee not stated as refundable for buyer-initiated returns (offer clause 1.14 defines it per ticket).",
+        "fine_print": ["service fee 'traditionally 10%' of ticket value, individual rates possible (public offer 1.14)", "a 'Martial law' services page exists (special refund/transfer rules)"],
+        "add_ons": [{"name": "box-office network, call centre, gift cards", "price": "not published"}],
+        "enterprise": "organizer terms by contract; contact commercial@karabas.com",
+        "sources": [
+          {"url": "https://karabas.com/ru/offerta/", "read": "2026-10-09", "what": "public offer (service fee definition, agent model)"},
+          {"url": "https://karabas.com/ru/promoter/", "read": "2026-10-09", "what": "organizer page (services list, contract required)"},
+          {"url": "https://karabas.cz/uk/promoter/", "read": "2026-10-09", "what": "search snippet: contract and commission size terms agreed individually"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Search snippet of the promoter page says the contract and the commission size are agreed with the operator; no number published."
+  },
+  {
+    "platform": "Concert.ua",
+    "website": "https://concert.ua",
+    "hq_country": "UA",
+    "segment": "largest Ukrainian ticket operator (est. 2012), organizers get a portal (events, sales, scanning, reports)",
+    "markets": [
+      {
+        "market": "Ukraine",
+        "currency": "UAH",
+        "vat_note": "not stated",
+        "model": "mixed",
+        "money_flow": "collecting",
+        "money_flow_detail": "Public offer: Agent sells tickets on behalf of the organizer; the buyer pays the Agent; the Agent is not authorised to refund buyers unless agreed with the organizer. Payout schedule not published.",
+        "plans": [
+          {"name": "Agent commission + buyer service fee (individual contract)", "monthly_fee": null, "annual_fee": null,
+           "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "sales online and in Concert.ua box offices, automatic returns, scanning app, analytics, daily reports, own-site selling, access for other operators",
+           "notes": "Offer 1.19: the buyer-paid 'Service fee' is set by the Agent by agreement with the organizer or by the Agent alone, as a percentage of nominal ticket value or a fixed amount. Add-on services (printed ticket, courier delivery, personal order handling) are priced separately by the Agent."}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": false, "rate_note": "not published", "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer (service fee on top); organizer pays an agent commission by contract",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "not published",
+        "refunds_chargebacks": "Service fee and additional services are not refundable when the buyer gets the nominal price back from the organizer (offer 10.4).",
+        "fine_print": [
+          "market quote from Concert.ua founder (Delo.ua, 2026-10-05): operator earns agent reward ~6-8% plus buyer service fee ~5-9% depending on contract",
+          "2023 scandal: a flat 100 UAH per ticket on charity tickets (news, 2023-05-19)",
+          "Jan 2026: internal management conflict, company asked organizers to temporarily move events to other operators (news 2026-01-15/18) - reputational/continuity risk"
+        ],
+        "add_ons": [{"name": "printed tickets, delivery, personal order handling", "price": "set unilaterally by agent"}],
+        "enterprise": "individual terms",
+        "sources": [
+          {"url": "https://concert.ua/uk/page/offer", "read": "2026-10-09", "what": "public offer, clauses 1.19, 1.20, 10.4"},
+          {"url": "https://concert.ua/uk/page/to-promoters", "read": "2026-10-09", "what": "organizer page (services, no prices)"},
+          {"url": "https://delo.ua/ru/creative-economy/kuda-uxodyat-dengi-s-koncerta-kak-rabotaet-biletnyi-biznes-v-ukraine-473768/", "read": "2026-10-09", "what": "market structure article with founder/producer quotes"},
+          {"url": "https://news.obozrevatel.com/ukr/society/100-grn-z-kozhnogo-kvitka-concert-ua-potrapiv-u-guchnij-skandal-cherez-zarobitki-na-blagodijnosti.htm", "read": "2026-10-09", "what": "2023 charity-ticket fee scandal"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "The 6-8% / 5-9% figures are quoted for the Ukrainian market in general by the Concert.ua founder, not as Concert.ua's price list."
+  },
+  {
+    "platform": "Kontramarka (Kontramarka.ua / Kontramarka.com)",
+    "website": "https://kontramarka.ua",
+    "hq_country": "UA",
+    "segment": "Ukrainian national ticket operator on the Maestro Ticket System; kontramarka.com offers organizer packages for international events",
+    "markets": [
+      {
+        "market": "Ukraine / international (kontramarka.com)",
+        "currency": "UAH (UA), other not stated",
+        "vat_note": "not stated",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_detail": "Site says platform operators act as commission agents of the organizers (kontramarka.com about page, snippet). Payout terms not published.",
+        "plans": [
+          {"name": "Distribution package", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "online sales", "notes": "described only as 'low commissions', no figure"},
+          {"name": "Cashier package", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "free hall layouts and free promo-code module", "notes": "described as a 'low flat fee', no figure"},
+          {"name": "On Site Ticketing", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "drawing/layout/programming of seating, provider handles maintenance", "notes": "hybrid arrangements priced by individual offer"}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": "free room layouts in the cashier package (kontramarka.com)",
+        "payouts": "not published",
+        "refunds_chargebacks": null,
+        "fine_print": ["no numbers anywhere on the public pages"],
+        "add_ons": [],
+        "enterprise": "individual offer on request",
+        "sources": [
+          {"url": "https://www.kontramarka.com/sell-your-event/", "read": "2026-10-09", "what": "organizer packages page"},
+          {"url": "https://kontramarka.ua/en/pages/corporate-customers", "read": "2026-10-09", "what": "search snippet: venues invited to cooperate (page not readable)"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Could not read kontramarka.ua public offer."
+  },
+  {
+    "platform": "Internet-bilet.ua and Ticketsbox (Ukraine)",
+    "website": "https://internet-bilet.ua ; https://ticketsbox.com",
+    "hq_country": "UA",
+    "segment": "Ukrainian ticket operators; organizers sign a contract by email/manager",
+    "markets": [
+      {
+        "market": "Ukraine",
+        "currency": "UAH",
+        "vat_note": "not stated",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_detail": "Ticketsbox public offer: operator charges buyer a 'Service fee' set by the operator itself as a percentage of nominal price or other method; offer is silent on organizer commission and payout timing. Internet-bilet: contract documents to be signed per organizers page (snippet).",
+        "plans": [
+          {"name": "Contract (no public tariffs)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "Ticketsbox: ticket quotas for resellers, commission/profit calculation tools, settlement tools, printed/electronic tickets with protection", "notes": "Ticketsbox offer 1.13: service fee defined by operator as percentage of nominal or other way, no figure; 5.3 buyer pays it with the tickets; 9.4 service fee not refundable."}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer (service fee)",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "not published",
+        "refunds_chargebacks": "Ticketsbox: service fee non-refundable; organizer is responsible for refunds to buyers.",
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "contact by email/manager",
+        "sources": [
+          {"url": "https://ticketsbox.com/offer/", "read": "2026-10-09", "what": "public offer clauses 1.13, 5.3, 9.4"},
+          {"url": "https://ticketsbox.com/organizatoram/", "read": "2026-10-09", "what": "organizers page (no prices)"},
+          {"url": "https://internet-bilet.ua/uk/orgs", "read": "2026-10-09", "what": "search snippet: organizers page"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Internet-bilet pages could not be read, only search snippets."
+  },
+  {
+    "platform": "RegToEvent",
+    "website": "https://regtoevent.com",
+    "hq_country": "UA",
+    "segment": "self-serve ticketing + registration + on-site check-in services for organizers (UA, PL, RO, ES, PT, EN pages); strong direct-merchant model",
+    "markets": [
+      {
+        "market": "Ukraine / international (EUR price list; Ukrainian legal entities billed in UAH at PrivatBank rate on payment day)",
+        "currency": "EUR",
+        "vat_note": "not stated",
+        "model": "percent_plus_fixed",
+        "money_flow": "direct_merchant",
+        "money_flow_detail": "Buyer's money goes straight to the organizer's own merchant account or IBAN; the RegToEvent fee is withheld from the ticket price or from a 'euro balance' (or added on top for the buyer on request). For organizers without a merchant account RTE offers turnkey processing that collects on their behalf, for transparent events.",
+        "plans": [
+          {"name": "Free events, 1-100 attendees", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "full system", "notes": "above 100 attendees terms are in the public offer; free-event chat support is paid (99 EUR/month)"},
+          {"name": "Charity, non-profit fundraising", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 1.0, "per_ticket_fixed": 0.2, "min_per_ticket": null, "cap_per_ticket": null, "includes": "full system", "notes": ""},
+          {"name": "Large events, 1000+ generated tickets", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 2.0, "per_ticket_fixed": 0.37, "min_per_ticket": null, "cap_per_ticket": null, "includes": "full system", "notes": ""},
+          {"name": "Small events, up to 999 tickets", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 2.9, "per_ticket_fixed": 0.39, "min_per_ticket": null, "cap_per_ticket": null, "includes": "full system", "notes": "calculator example: 100 x 50 EUR -> fee 368 EUR (1.84 EUR/ticket)"},
+          {"name": "Seats, time slots or online broadcast, hall up to 1000", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 4.5, "per_ticket_fixed": 0.3, "min_per_ticket": null, "cap_per_ticket": null, "includes": "full system incl. free hall-scheme builder", "notes": ""},
+          {"name": "Seats, time slots or online broadcast, hall over 1000", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 5.5, "per_ticket_fixed": 0.3, "min_per_ticket": null, "cap_per_ticket": null, "includes": "full system", "notes": ""},
+          {"name": "Regular sales (parks, zoos, aquaparks)", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 2.0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "full system", "notes": ""},
+          {"name": "High-risk (political, abstract-sacral events)", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 10.0, "per_ticket_fixed": 1.0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "full system", "notes": "2024 third-party article quoted religious/spiritual events at 30% + 0.5 EUR; current page says 10% + 1 EUR"}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": ["Visa/Mastercard via organizer's acquirer", "Stripe", "Ukrainian merchants / IBAN"], "own_processor_allowed": true, "rate_note": "payment-system fees are separate and paid by the organizer to the processor", "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer (switchable to buyer on top of ticket price)",
+        "free_tickets": "free events 0% for 1-100 attendees, over 100 per offer",
+        "seating": "seat/slot tickets cost 4.5%/5.5% + 0.3 EUR vs 2.9% + 0.39 EUR for plain tickets; hall-scheme builder free; custom scheme from a drawing from 99 EUR",
+        "payouts": "straight to organizer account at payment time (direct); turnkey processing option for organizers with no merchant",
+        "refunds_chargebacks": "not stated on the price page",
+        "fine_print": [
+          "paid add-ons: on-site check-in kits from 129 EUR/point, check-in software from 149 EUR/event, own white-label ticket 200-400 EUR, event setup 99 EUR, turnkey setup 299 EUR, hall scheme from 99 EUR",
+          "networking mobile app 1% + 1 EUR on top and setup fees 299-999 EUR; live-stream packages from 399 EUR",
+          "free-event support 99 EUR/month; visitor support widget 300 EUR/month",
+          "scanner/hardware rental 11-149 EUR/day plus deposit"
+        ],
+        "add_ons": [
+          {"name": "check-in on site (kit)", "price": "from 129 EUR per point, 4h slot"},
+          {"name": "white-label ticket/forms", "price": "200-300 EUR (forms), ticket design 300-400 EUR"},
+          {"name": "networking app", "price": "+1% +1 EUR, setup 299-999 EUR"}
+        ],
+        "enterprise": "large/high-risk by public offer, individual quotes for custom work",
+        "sources": [
+          {"url": "https://regtoevent.com/ua/price/", "read": "2026-10-09", "what": "price page"},
+          {"url": "https://regtoevent.com/ua/", "read": "2026-10-09", "what": "home page (direct to organizer merchant/IBAN)"},
+          {"url": "https://kosht.media/yak-stvoryty-ivent-ta-prodavaty-kvytky-onlayn-ohliad-top-3-servisiv/", "read": "2026-10-09", "what": "2024-09-30 third-party review quoting older RTE tiers"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Closest direct-merchant, percent+fixed model to Arena's structure; transparent price table by event type, fee payer switchable."
+  },
+  {
+    "platform": "Event.net.ua",
+    "website": "https://event.net.ua",
+    "hq_country": "UA",
+    "segment": "Ukrainian SaaS ticketing for organizers, tourist attractions (Kyiv-Pechersk Lavra, Sophia, 100+ sites), recurring events; 200+ organizers, 1.2M+ tickets",
+    "markets": [
+      {
+        "market": "Ukraine",
+        "currency": "UAH",
+        "vat_note": "not stated",
+        "model": "flat_per_ticket",
+        "money_flow": "direct_merchant",
+        "money_flow_detail": "Payment for tickets goes immediately and only to the organizer's own account; organizer connects Monobank, FinLine, LiqPay or WayForPay. Fiscalisation through checkbox.ua (Monobank) / CashDesk (FinLine).",
+        "plans": [
+          {"name": "Free events", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": 0.0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "unlimited guests", "notes": "not for seated events"},
+          {"name": "Free-seating / entrance ticket", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": 8.0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "regardless of ticket price; no monthly or hidden payments", "notes": "UAH per ticket"},
+          {"name": "Seated (hall scheme) ticket", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": 2.5, "per_ticket_fixed": 12.0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "organizer picks 12 UAH per ticket OR 2.5% (either/or)", "notes": "hall-scheme connection paid separately (price not published, contact)"}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": ["MonoBank", "FinLine", "LiqPay", "WayForPay"], "own_processor_allowed": true, "rate_note": "processor rates paid by organizer to the processor", "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer",
+        "free_tickets": "free events 0 UAH per ticket, unlimited guests, except hall-scheme events",
+        "seating": "12 UAH or 2.5% per seated ticket plus a separate hall-scheme connection fee",
+        "payouts": "instant: money goes straight to organizer's merchant account",
+        "refunds_chargebacks": null,
+        "fine_print": ["commission charged per issued ticket for paid events if any ticket exceeds 1 UAH (search snippet)", "branding/white-label ticket and landing design and guest-list ticket generation are additional services (no prices)"],
+        "add_ons": [{"name": "white-label ticket, landing branding, custom integrations", "price": "not published"}],
+        "enterprise": "contact for seated schemes and custom work",
+        "sources": [
+          {"url": "https://event.net.ua/", "read": "2026-10-09", "what": "home page price block"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Cheapest published seated pricing in the region."
+  },
+  {
+    "platform": "Ukrainian payment-bundled ticket tools: Wayforpay 'Social invoice - sell tickets', Eventmate, Ottry, Social.Invoice Tickets",
+    "website": "https://help.wayforpay.com ; https://eventmate.live ; https://ottry.com/promo/tickets",
+    "hq_country": "UA",
+    "segment": "small/one-off organizers who want a quick ticket page; fee bundled with a payment account",
+    "markets": [
+      {
+        "market": "Ukraine",
+        "currency": "UAH",
+        "vat_note": "not stated",
+        "model": "percent",
+        "money_flow": "direct_merchant (Wayforpay: money goes to the organizer's stated bank details); Eventmate and Ottry not stated",
+        "money_flow_detail": "Wayforpay: payouts to organizer's details. Ottry: funds go to a personal account, payout to an account named in the form. Eventmate: not stated.",
+        "plans": [
+          {"name": "Wayforpay ticket invoice", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 2.0, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "ticket page, e-mail QR tickets, scanning via web", "notes": "as quoted by a third-party review dated 2024-09-30"},
+          {"name": "Eventmate", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 6.0, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "app-based event page, scanning in the app, mass messaging", "notes": "free events are free; third-party review 2024-09-30"},
+          {"name": "Ottry", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 5.0, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "full package: QR scanning, Apple/Google Pay, promo codes, real-time data", "notes": "5% of ticket sales; third-party review 2024-09-30"},
+          {"name": "Social.Invoice Tickets (earlier Wayforpay product)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 2.5, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "ticket sales tool", "notes": "2021 headline: organizers pay 2.5% instead of 10%; from search snippet only"}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer",
+        "free_tickets": "Eventmate: free events free",
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["figures come from a 2024 third-party article, vendors' own pages were not read (Wayforpay help page blocked)"],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [
+          {"url": "https://kosht.media/yak-stvoryty-ivent-ta-prodavaty-kvytky-onlayn-ohliad-top-3-servisiv/", "read": "2026-10-09", "what": "third-party review 2024-09-30"},
+          {"url": "https://mc.today/uk/organizatori-zahodiv-zaplatyat-2-5-komisiyi-zamist-10-rozpovidayemo-pro-novu-platformu-prodazhu-kvitkiv/", "read": "2026-10-09", "what": "snippet only, 2021-09-27"}
+        ],
+        "confidence": "third_party"
+      }
+    ],
+    "notes": "Useful as a price floor in Ukraine: 2-6% bundled with payments."
+  },
+  {
+    "platform": "Ticketon.kz (Freedom Ticketon, Freedom Holding)",
+    "website": "https://ticketon.kz",
+    "hq_country": "KZ",
+    "segment": "No.1 ticket platform in Kazakhstan, 818 organizers, 67 cities in four countries (KZ, UZ, TJ, others); manager-led onboarding",
+    "markets": [
+      {
+        "market": "Kazakhstan (also ticketon.uz/.tj domains)",
+        "currency": "KZT",
+        "vat_note": "not stated",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_detail": "Resale rules mention funds held on a transit account of LLP Freedom Pay; organizer settlement revenue 'in real time' in a dashboard; payout timing not published.",
+        "plans": [
+          {"name": "Individual agreement", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "ticketing system, analytics, ticket validation app, integrations, promotion tools, Freedom ecosystem reach; start in 1-3 working days", "notes": "organizer page has an FAQ entry 'What does it cost, and what is the commission?' but the answer was collapsed and not visible in the scraped text; no number published"}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": false, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer service fee shown as separate line when applied (refund rules 2.2)",
+        "free_tickets": null,
+        "seating": "venues of any complexity supported",
+        "payouts": "not published",
+        "refunds_chargebacks": "Buyer return: service fee never refunded; if no service fee was applied, operator withholds 5% of nominal price as refund-processing/acquiring cost. Organizer cancellation: full refund, no deductions.",
+        "fine_print": ["service fee is not applied to all orders; its presence and size are shown as a separate line before payment", "resale marketplace (Freedom Fan2Fan) has its own seller reward and operator commission"],
+        "add_ons": [],
+        "enterprise": "all by agreement; enquiry form (needs company registration number)",
+        "sources": [
+          {"url": "https://ticketon.kz/en/organizer", "read": "2026-10-09", "what": "organizer landing page"},
+          {"url": "https://ticketon.kz/cms/refund-rules", "read": "2026-10-09", "what": "refund rules (5% withheld, service fee rules)"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Ticketon public offer (ticketon.kz/cms/agreement-old-five) returned 403; a Freedom Holding company, 'Freedom Pay' transit account."
+  },
+  {
+    "platform": "Kassir.kz",
+    "website": "https://kassir.kz",
+    "hq_country": "KZ",
+    "segment": "Kazakh ticket operator; card, Kaspi and instalment payments; turnstile integration",
+    "markets": [
+      {
+        "market": "Kazakhstan",
+        "currency": "KZT",
+        "vat_note": "not stated",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_detail": "Public offer: the Seller (operator) sells on behalf of the rights holder; buyer pays card/Kaspi/instalments; organizer must sign an agreement via info@kassir.kz. Payout timing not published.",
+        "plans": [
+          {"name": "Agreement with organizer", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "online sales, QR e-tickets, turnstile/scanner integration, categories and prices, promo codes, live reports, card/Kaspi/instalments, support", "notes": "commission not public"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": ["VISA", "Mastercard", "Kaspi", "instalments"], "own_processor_allowed": false, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer (service fee on top of ticket price)",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "not published",
+        "refunds_chargebacks": "service fee non-refundable on buyer-initiated returns; refunded in full if event is cancelled or postponed (offer 5.4)",
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "contact info@kassir.kz",
+        "sources": [
+          {"url": "https://kassir.kz/en/all/page/organizers", "read": "2026-10-09", "what": "organizers page"},
+          {"url": "https://kassir.kz/en/all/page/offer", "read": "2026-10-09", "what": "public offer, clauses 5.3-5.4"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Not to be confused with Russian Kassir.ru."
+  },
+  {
+    "platform": "TKT.GE (TNET), Biletebi.ge, sTickets.ge",
+    "website": "https://tkt.ge ; https://biletebi.ge ; https://www.stickets.ge",
+    "hq_country": "GE",
+    "segment": "Georgia: TKT.GE is the largest operator with box offices (Tbilisi Concert Hall, Batumi), account manager and controller services; Biletebi.ge is an e-ticket operator; sTickets is a new blockchain-based ticketing startup",
+    "markets": [
+      {
+        "market": "Georgia",
+        "currency": "GEL",
+        "vat_note": "not stated",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_detail": "Operators act as intermediaries between organizers and buyers (Biletebi terms); TKT.GE signs a service agreement before an event goes on sale (TNET terms snippet). Payout schedule not published.",
+        "plans": [
+          {"name": "TKT.GE organizer services (contract)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "web e-tickets, box offices, electronic seating plan, branded physical tickets, temporary box offices with cashiers and POS, account manager, organizer panel, controllers/scanners, event marketing, promo codes", "notes": "no prices published on the organizers page; contact event@tkt.ge"},
+          {"name": "Biletebi.ge platform service fee", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "ticket generation (QR), support", "notes": "fee paid by the buyer, set by the operator individually per event; non-refundable except if organizer denies the buyer or event is cancelled/postponed"},
+          {"name": "sTickets.ge", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "blockchain tickets, anti-counterfeit", "notes": "organizer earns a 5% royalty on every resale; platform fee not published, contact info@stickets.ge"}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": false, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer (service fee; TKT Club membership gives a discount on the service fee)",
+        "free_tickets": null,
+        "seating": "TKT.GE: seating plans for new halls prepared on request (price not published)",
+        "payouts": "not published",
+        "refunds_chargebacks": "Biletebi: platform service fee and transaction fee not refundable on returns except organizer denial/cancellation",
+        "fine_print": ["TKT.GE lists box-office, cashier, controller and ad services without prices"],
+        "add_ons": [{"name": "temporary box offices with cashiers/POS, branded tickets, controllers, ad bundles", "price": "not published"}],
+        "enterprise": "contact sales: TKT.GE event@tkt.ge / +995 32 2195577",
+        "sources": [
+          {"url": "https://tkt.ge/en/fororganizations", "read": "2026-10-09", "what": "organizer services"},
+          {"url": "https://biletebi.ge/en/static-pages/terms-and-conditions", "read": "2026-10-09", "what": "terms (platform service fee definition)"},
+          {"url": "https://www.stickets.ge/organizers", "read": "2026-10-09", "what": "5% resale royalty"},
+          {"url": "https://tktfly.ge/Home/Content/termsandconditions", "read": "2026-10-09", "what": "search snippet: service agreement signed before listing"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "No commission percentages found for Georgia."
+  },
+  {
+    "platform": "Tomsarkgh.am and TicketSystem.am",
+    "website": "https://www.tomsarkgh.am ; https://www.ticketsystem.am",
+    "hq_country": "AM",
+    "segment": "Armenia: Tomsarkgh is the best-known operator (cinema, concerts, theatre); TicketSystem.am is a newer Armenian tech platform with seat maps and QR scanning",
+    "markets": [
+      {
+        "market": "Armenia",
+        "currency": "AMD",
+        "vat_note": "not stated",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_detail": "Tomsarkgh user agreement: the company is an intermediary selling tickets for events run by the 'Service Provider' (organizer). TicketSystem: payments via integrated third-party providers. Payout terms not published.",
+        "plans": [
+          {"name": "Tomsarkgh / TicketSystem organizer terms", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "TicketSystem: hall/seat-map management, ticket categories, QR entry control online/offline, demo on request", "notes": "no organizer prices on either site; Tomsarkgh organizers page returned 404"}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": "TicketSystem: seat maps supported (price not public)",
+        "payouts": "not published",
+        "refunds_chargebacks": "TicketSystem: on a buyer return (up to 3 days before event) the company withholds 4% of the ticket price as a service fee; full refund if event is cancelled",
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "TicketSystem: contact +374 33499591 / demo",
+        "sources": [
+          {"url": "https://www.ticketsystem.am/en/terms-and-conditions", "read": "2026-10-09", "what": "4% withheld on returns"},
+          {"url": "https://www.ticketsystem.am/en/for-organizers", "read": "2026-10-09", "what": "organizer page, no prices"},
+          {"url": "https://www.tomsarkgh.am/ru/page/user-agreement", "read": "2026-10-09", "what": "user agreement (intermediary role)"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Ticket.am / Kassir.am not covered (nothing found)."
+  },
+  {
+    "platform": "iTicket.az, iTicket.uz, iTicket.md (iTicket group)",
+    "website": "https://iticket.az ; https://iticket.uz ; https://iticket.md",
+    "hq_country": "AZ / UZ / MD",
+    "segment": "Same-brand regional operators: online sales plus box-office points, delivery; iTicket.md also an organizer and distributor",
+    "markets": [
+      {
+        "market": "Azerbaijan",
+        "currency": "AZN",
+        "vat_note": "not stated",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_detail": "sells on organizer's behalf; payments via online gateway (epoint). Terms not public.",
+        "plans": [
+          {"name": "Organizer terms", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "publishing and managing events on the platform, QR and paper tickets at sales points", "notes": "not public; FAQ gives only return deductions (30% when returned >48h before event on new date; 15% to reissue a lost physical ticket)"}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": false, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "not published",
+        "refunds_chargebacks": "buyer return deductions in FAQ",
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "contact info@iticket.az",
+        "sources": [{"url": "https://iticket.az/en/page/faq", "read": "2026-10-09", "what": "FAQ (returns percentages)"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Moldova",
+        "currency": "MDL",
+        "vat_note": "not stated",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_detail": "iTicket.md acts as organizer or intermediary; collects from buyers. Payout terms not published.",
+        "plans": [
+          {"name": "Buyer administration fee", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 2.0, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "ticket issuing and processing", "notes": "terms clause 4.1: administration fees 'starting from 2%' of order value, applied in certain cases, shown at final booking stage; organizer commission not published"}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": false, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "not published",
+        "refunds_chargebacks": "fees not refunded; card refunds 90/80/70/50% of ticket value depending on time to event; cash withdrawal from an iTicket account costs 20%",
+        "fine_print": ["iTicket.md has a separate 'iTicket.events' organizer product link (could not be opened - too many redirects)"],
+        "add_ons": [],
+        "enterprise": "sales@iticket.md",
+        "sources": [{"url": "https://iticket.md/page/conditii", "read": "2026-10-09", "what": "terms and conditions clauses 2.4, 4.1-4.2, 5.4, 5.10"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Uzbekistan",
+        "currency": "UZS",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_detail": "iTicket.uz states in its Telegram that it is not the event organizer and provides ticket-sale services (snippet). No terms read.",
+        "plans": [],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [{"url": "https://t.me/s/iticket_uz?before=1696", "read": "2026-10-09", "what": "search snippet"}],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "Ticketon.uz exists through the Ticketon group (see Ticketon.kz). No Uzbek price list found."
+  },
+  {
+    "platform": "Ticketpro.by, Bezkassira.by, 24afisha / Bycard (Belarus)",
+    "website": "https://www.ticketpro.by ; https://bezkassira.by ; https://24afisha.by",
+    "hq_country": "BY",
+    "segment": "Belarus: Ticketpro (promoters/partners), Bezkassira (self-serve plus cash points), 24afisha (Arcom group, 24ats system, 60+ cinemas/theatres/sports venues)",
+    "markets": [
+      {
+        "market": "Belarus",
+        "currency": "BYN",
+        "vat_note": "not stated",
+        "model": "mixed",
+        "money_flow": "collecting",
+        "money_flow_detail": "Ticketpro and 24afisha sell as agent/realiser on behalf of the organizer under contract; Bezkassira charges buyers at cash points. Payout terms not published.",
+        "plans": [
+          {"name": "Bezkassira buyer service fee (cash points)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 5.0, "per_ticket_fixed": 1.0, "min_per_ticket": 1.0, "cap_per_ticket": null, "includes": "service fee added to the organizer's ticket price (min 1 BYN, quoted as 5% of price); a separate 2.5 BYN per ticket cash-point fee at the kiosk", "notes": "page text: 'from 1 BYN (5% of ticket price)' - read as minimum 1 BYN or 5%"},
+          {"name": "24afisha buyer service fee", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": 0.7, "cap_per_ticket": null, "includes": "fee for electronic ticket issue, from 0.7 (truncated snippet)", "notes": "search snippet only, truncated after 'from 0,7'"},
+          {"name": "Ticketpro corporate offer", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "service fee agreed per invoice for legal-entity bulk buyers", "notes": "service fee not refundable on returns"}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer",
+        "free_tickets": null,
+        "seating": "24ats: pre-drawn hall maps, quotas per ticket operator",
+        "payouts": "not published",
+        "refunds_chargebacks": "service fee not refundable",
+        "fine_print": ["an AIF article of 2018 noted online purchase fee of ~1 BYN on a 7 BYN ticket (~15%)", "Kvitki.by reported in liquidation (Facebook post)"],
+        "add_ons": [],
+        "enterprise": "contract",
+        "sources": [
+          {"url": "https://bezkassira.by/sale_points/", "read": "2026-10-09", "what": "cash points fee description"},
+          {"url": "https://www.ticketpro.by/publichnaya-oferta-na-realizaciyu-biletov-dlya-yuridicheskix-lic/", "read": "2026-10-09", "what": "public offer, service fee definition"},
+          {"url": "https://24afisha.by/ru/pages/contract-offer", "read": "2026-10-09", "what": "search snippet: service fee from 0,7 (page not readable)"},
+          {"url": "https://bycard.by/pages/fororganizer", "read": "2026-10-09", "what": "organizer page, no prices"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Belarus: public information only. No organizer commission found."
+  },
+  {
+    "platform": "Ticket.kg (Kyrgyzstan)",
+    "website": "https://ticket.kg",
+    "hq_country": "KG",
+    "segment": "first ticket operator in Kyrgyzstan, cash desks and app",
+    "markets": [
+      {
+        "market": "Kyrgyzstan",
+        "currency": "KGS",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_detail": "not verified; offer and organizer terms not readable",
+        "plans": [],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "organizer contact via phone/e-mail in footer",
+        "sources": [{"url": "https://ticket.kg/en", "read": "2026-10-09", "what": "home page: offer and organizer links only"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "No commission or fee info found."
+  },
+  {
+    "platform": "Tickchak (Tickchak Ltd, Jerusalem)",
+    "website": "https://tickchak.co.il",
+    "hq_country": "IL",
+    "segment": "major Israeli self-serve ticketing for events, festivals, courses, visitor centres, crowdfunding (Givechak); thousands of customers",
+    "markets": [
+      {
+        "market": "Israel",
+        "currency": "ILS",
+        "vat_note": "not stated",
+        "model": "mixed",
+        "money_flow": "both",
+        "money_flow_detail": "Terms of use section 4: payment either (a) through an external clearing provider where the money is paid to Tickchak, Tickchak deducts its fee and passes the balance to the event manager (collecting), or (b) through the organizer's own clearing terminal/provider connected by the organizer (direct). Which one is the default and whether the fee differs is not published.",
+        "plans": [
+          {"name": "Small events ('אירועים בקטנה')", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "up to 5 events per month (as shown on plan card)", "notes": "plan card shows a 'free' toggle and 'per month paid annually' wording but no amounts in the scraped text"},
+          {"name": "Large events, personal attention", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "personal account management", "notes": "price not public"}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": ["external clearing providers"], "own_processor_allowed": true, "rate_note": "terms mention fees for clearing, add-ons and promotion according to a price list shown to event managers privately", "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": "seated events supported (feature list)",
+        "payouts": "after fee deduction when paid via Tickchak's provider; timing not published",
+        "refunds_chargebacks": "per Israeli Consumer Protection Law and organizer policy; Tickchak says it is only a technology platform and agent",
+        "fine_print": ["fees/usage charges/add-ons follow a price list presented to event managers separately (personal area, quote, or separate agreement) and may change", "sign-up form asks event size (up to 100 / 1000 / over 1000 tickets) which suggests tiered pricing"],
+        "add_ons": [{"name": "branded SMS, own domain, mailing system, audience import, pixels", "price": "not published"}],
+        "enterprise": "contact *6565 / info@tickchak.co.il",
+        "sources": [
+          {"url": "https://tickchak.co.il/terms", "read": "2026-10-09", "what": "terms of use section 4 payments"},
+          {"url": "https://tickchak.co.il/events", "read": "2026-10-09", "what": "plan cards without prices"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "No public fee numbers could be found in Hebrew or English; may be visible only inside the signup flow."
+  },
+  {
+    "platform": "Eventer (Eventer Technologies Ltd, TSXV-listed)",
+    "website": "https://www.eventer.co.il",
+    "hq_country": "IL",
+    "segment": "Israeli SaaS ticketing for producers and venues (traditional and online events); revenue is ticket-sales commissions",
+    "markets": [
+      {
+        "market": "Israel",
+        "currency": "ILS",
+        "vat_note": "not stated",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_detail": "Terms: displayed price includes the seller's share and the site's brokerage/advertising commission; the site charges the buyer and transfers the payment to the seller net of the brokerage commission; clearing happens after the seller approves the order. Payout timing after collection not stated.",
+        "plans": [
+          {"name": "Commission (rate not published)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "ticketing, payment processing, settlement", "notes": "a 'fees' page (/ttpv3) exists but is rendered client-side and returned empty; company filings describe revenue as commissions from ticket sales"}
+        ],
+        "prepaid": [],
+        "processing": {"included": true, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer sees price including commission (inclusive price)",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "net of commission after collection; timing not published",
+        "refunds_chargebacks": "buyer cancellation fee '5% or NIS 100' charged when refund is made (terms; mirrors Consumer Protection Law)",
+        "fine_print": ["cancellation fee 5% or 100 NIS in terms of use"],
+        "add_ons": [],
+        "enterprise": "contact via 'start selling' page",
+        "sources": [
+          {"url": "https://www.eventer.co.il/routes/imcRegulations.html", "read": "2026-10-09", "what": "terms of use: commission inclusive in price, net payout, cancellation fee"},
+          {"url": "https://www.eventer.co.il/ttpv3", "read": "2026-10-09", "what": "fees page, empty template when scraped"},
+          {"url": "https://www.nasdaq.com/press-release/ldb-capital-corp-announces-definitive-agreement-proposed-qualifying-transaction", "read": "2026-10-09", "what": "search snippet: primary revenue is ticket sales commissions"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Public company filings (SEDAR+/SEC) might give average take rate, not checked."
+  },
+  {
+    "platform": "Ticks (ticks.co.il) and Eventbuzz (eventbuzz.co.il)",
+    "website": "https://ticks.co.il ; https://www.eventbuzz.co.il",
+    "hq_country": "IL",
+    "segment": "Israeli self-serve ticketing: Ticks (events, conferences, theatres, cinemas, seated halls, customers incl. Tel Aviv municipality, Technion, Israel Railways); Eventbuzz (event pages in minutes with seated halls and promoter network)",
+    "markets": [
+      {
+        "market": "Israel",
+        "currency": "ILS",
+        "vat_note": "not stated",
+        "model": "per_ticket (rate not published)",
+        "money_flow": "direct_merchant",
+        "money_flow_detail": "Ticks home page: buyers pay through the producer's own credit-card clearing provider and the system issues digital tax invoices; commission is charged per ticket sold only, no monthly fee, no commitment.",
+        "plans": [
+          {"name": "Ticks pay-per-ticket", "monthly_fee": 0, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "online sales, SMS with digital ticket, scanner app, seat selection, multi-language, stats", "notes": "rate behind a 'fair price' block and demo/contact, not in text"},
+          {"name": "Eventbuzz", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "event page free to create, marked seating, promoters network, pixels, SMS/e-mail", "notes": "price not shown"}
+        ],
+        "prepaid": [],
+        "processing": {"included": false, "processors": ["producer's own credit-card provider"], "own_processor_allowed": true, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": "seat selection supported (Ticks, Eventbuzz)",
+        "payouts": "direct to producer's provider (Ticks)",
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [
+          {"url": "https://ticks.co.il/", "read": "2026-10-09", "what": "home page"},
+          {"url": "https://www.eventbuzz.co.il/", "read": "2026-10-09", "what": "home page"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Ticks is the nearest Israeli analogue to Arena's direct-merchant model."
+  },
+  {
+    "platform": "SmarTicket, Leaan, Eventim Israel / Zappa, TixWise (Israel)",
+    "website": "https://www.smarticket.co.il ; https://www.leaan.co.il ; https://www.eventim.co.il ; https://www.tixwise.co.il",
+    "hq_country": "IL",
+    "segment": "SmarTicket: theatres, museums, municipalities (350+ clients); Leaan: 50-year ticket office; Eventim Israel/Zappa: largest concert ticketing (Eventim JV); TixWise: 2010 self-serve startup, site now a content blog",
+    "markets": [
+      {
+        "market": "Israel",
+        "currency": "ILS",
+        "vat_note": "not stated",
+        "model": "mixed",
+        "money_flow": "collecting",
+        "money_flow_detail": "SmarTicket: pricing by quote only (contact form/phone); Leaan and Zappa act as ticket agents for producers (not verified). Eventim terms: ticket company may charge a handling fee of NIS 5 per ticket/merchandise/service in an order (buyer).",
+        "plans": [
+          {"name": "Eventim Israel buyer handling fee", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": 5.0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "handling fee per ticket, merchandise or other service", "notes": "from search snippet of eventim.co.il/help/terms; page timed out"},
+          {"name": "TixWise (2010, historical)", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 7.0, "per_ticket_fixed": 4.0, "min_per_ticket": null, "cap_per_ticket": null, "includes": "7% per ticket up to NIS 100; above NIS 100: NIS 4 plus 3%; organizer may pass it on to buyers", "notes": "Ynet article dated 2010-08-20, almost certainly outdated"},
+          {"name": "SmarTicket", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": null, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "ticket and subscription management for culture, leisure, sport; all sales channels", "notes": "pricing by contact only"}
+        ],
+        "prepaid": [],
+        "processing": {"included": null, "processors": [], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer (Eventim handling fee); TixWise: organizer or buyer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "not published",
+        "refunds_chargebacks": "a class action against Zappa for not refunding cancelled concerts was approved in 2022 (Calcalist, 2022-04-03)",
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "SmarTicket: contact form 0722720770; Eventim B2B for venues",
+        "sources": [
+          {"url": "https://www.smarticket.co.il/", "read": "2026-10-09", "what": "pricing not public, customers list"},
+          {"url": "https://www.eventim.co.il/help/terms/", "read": "2026-10-09", "what": "search snippet: NIS 5 handling fee"},
+          {"url": "https://www.ynet.co.il/articles/0,7340,L-3940620,00.html", "read": "2026-10-09", "what": "TixWise 2010 article"}
+        ],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "Leaan, Hadran, Go-out, Bimot: no organizer pricing found. An Israeli SaaS blog (Everlage, vendor) says Israeli systems charge a percent and/or fixed fee per ticket or a flat subscription, and that Bit support, tax receipts and Section-46 receipts are common requirements."
+  }
+]
