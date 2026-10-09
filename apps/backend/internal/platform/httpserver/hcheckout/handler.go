@@ -272,6 +272,11 @@ type Handler struct {
 	// every recording site must be nil-safe, because a missing metric must
 	// never cost a payment.
 	metrics *observability.Metrics
+
+	// rowOrgAccess decides whether the caller may act on a refund or
+	// payment intent of a given organization (org_access.go). Nil fails
+	// closed.
+	rowOrgAccess RowOrgAccess
 }
 
 // WithMetrics wires the Prometheus collectors used by the payment-webhook

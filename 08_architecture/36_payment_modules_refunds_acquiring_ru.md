@@ -65,7 +65,7 @@
 - Вебхук `/v1/refunds/webhook` принимает только нормализованное тело Арены с её `refund_id`. Настоящие `refund.updated`, `charge.refunded` от Stripe и Flitt `reversed` не обрабатываются.
 - Возврат, созданный в кабинете провайдера, не виден Арене.
 - Платёж шлюза Bil24 (`provider='manual'`) принимает запись возврата и повисает: гарда нет.
-- Маршруты возврата плоские (`/v1/refunds/...`), проверка организации в хендлерах не обнаружена (**возможная дыра в изоляции организаций**, PAY-00).
+- Маршруты возврата плоские (`/v1/refunds/...`), проверки организации в хендлерах не было — подтверждённая дыра: владелец или API-ключ любой организации с `refund.*` мог читать, создавать и одобрять возвраты по чужому платежу. Закрыто 09.10 (PAY-00, §8).
 - Организационного списка возвратов нет, только `/v1/admin/refunds` для суперадмина.
 - `settlement` бывает `provider` и `external` (миграция 0102). Внешние возвраты Bil24 уже пишутся как `external`.
 
@@ -278,7 +278,7 @@ type RefundLookup interface {
 
 | Номер | Приор. | Содержание |
 |---|---|---|
-| PAY-00 | P0 | Аудит изоляции организаций плоских маршрутов (`/v1/refunds/*`, `/v1/tickets/{id}/cancel`, `/v1/complimentary/{id}/revoke`, `/v1/payment-intents/{id}/transition`); правки и тесты «чужая организация» |
+| PAY-00 | P0 | **Сделано 09.10.** Аудит изоляции организаций плоских маршрутов: `/v1/refunds/*` и `/v1/payment-intents/*` проверяли только право — закрыто гардом `hcheckout.RowOrgAccess` (`Server.rowOrgAccess`, чужая строка = 404 маршрута); `/v1/tickets/{id}/cancel` и `/v1/complimentary/{id}/revoke` уже были защищены в шимах. Тесты `server_orgauth_row_test.go`, `refund_org_isolation_integration_test.go` |
 | PAY-01 | P0 | Контракт модуля и реестр (§5): `Descriptor`, `Capabilities`, `WebhookParser`, `Refunder`, `RefundLookup`, `modules.go`; перевод Stripe и Flitt без изменения поведения; статическая проверка литералов |
 | PAY-02 | P0 | Снятие `sales_channels_provider_check`, валидация через дескриптор, перенос списков секретов и форматов в модули |
 | PAY-03 | P0 | Миграция данных возвратов (§7: `refund_batches`, колонки `refunds`, индексы, `tickets_refunded`) и движок: фиксация, advisory lock, вызов модуля, результат, гашение билета (`CancelTicketParams.RefundID`), `refund.sweep` |

@@ -284,6 +284,12 @@ func (h *Handler) HandleCreateRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Guard: the payment belongs to the caller's organization. A foreign
+	// payment answers the same 404 as a missing one (PAY-00).
+	if !h.rowOrgAllowed(w, r, pi.OrgID, true, "refund.payment_intent_not_found", "payment intent not found") {
+		return
+	}
+
 	// Guard: the payment intent must be in the 'succeeded' state.
 	// Refunding a non-succeeded intent (created, processing, failed, …) is
 	// invalid because the charge was never fully captured.
@@ -413,6 +419,9 @@ func (h *Handler) HandleGetRefund(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("refund.get_failed", "failed to retrieve refund", r))
 		return
 	}
+	if !h.rowOrgAllowed(w, r, refund.OrgID, false, "refund.not_found", "refund not found") {
+		return
+	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"refund": refundFromRow(refund),
@@ -504,6 +513,9 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("refund.fetch_failed", "failed to retrieve refund", r))
+		return
+	}
+	if !h.rowOrgAllowed(w, r, refund.OrgID, true, "refund.not_found", "refund not found") {
 		return
 	}
 
@@ -749,6 +761,9 @@ func (h *Handler) HandleRejectRefund(w http.ResponseWriter, r *http.Request) {
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("refund.fetch_failed", "failed to retrieve refund", r))
+		return
+	}
+	if !h.rowOrgAllowed(w, r, refund.OrgID, true, "refund.not_found", "refund not found") {
 		return
 	}
 
