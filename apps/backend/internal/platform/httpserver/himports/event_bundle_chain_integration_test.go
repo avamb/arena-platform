@@ -415,6 +415,10 @@ func TestEventBundleChain_SpillIntoNextStep(t *testing.T) {
 	three := int32(3)
 	p := chainPayload(f, time.Now().Add(24*time.Hour).Truncate(time.Second), 10)
 	p.CategoryList[0].SellLimit = &three
+	// The gate asks "can it be bought NOW", and since migration 0128 a
+	// session stops selling at its own sales end (the start by default): the
+	// fixture's April date has passed, so this session plays next month.
+	p.ActionEvent.Day = time.Now().AddDate(0, 1, 0).Format("02.01.2006")
 	rec, out := f.call(h, p)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create: status %d; body=%s", rec.Code, rec.Body.String())

@@ -1316,3 +1316,72 @@ other = "Oceanía"
 
 ["bot.wz.region.other"]
 other = "Otros países"
+
+["bot.wz.ask_sales_end"]
+other = "La venta de entradas se cierra al empezar — a las {{.Time}}.\nEn algunos eventos conviene seguir vendiendo después del inicio, para quien no compró a tiempo. Deja el inicio o elige otra hora si te conviene."
+
+["bot.wz.sales_end_after_btn"]
+other = "{{.Min}} min después del inicio · {{.Time}}"
+
+["bot.wz.sales_end_after_h_btn"]
+other = "{{.Hours}} h después del inicio · {{.Time}}"
+
+["bot.wz.other_time_btn"]
+other = "Otra hora"
+
+["bot.wz.ask_sales_end_time"]
+other = "¿Cuándo cerrar la venta de entradas? Escribe la hora como HH:MM, por ejemplo 21:00. Cuenta el día del evento (empieza a las {{.Time}})."
+
+["bot.wz.err_sales_end"]
+other = "No entendí la hora. Escríbela como HH:MM, por ejemplo 21:00."
+
+["bot.wz.ask_doors"]
+other = "¿A qué hora se abren las puertas? (opcional)\nSi indicas la hora, el público llega un poco antes: no hay cola en el escaneo de entradas y puedes empezar tu evento a tiempo. Escribe la hora como HH:MM o pulsa un botón."
+
+["bot.wz.doors_before_btn"]
+other = "{{.Min}} min antes · {{.Time}}"
+
+["bot.wz.doors_before_h_btn"]
+other = "{{.Hours}} h antes · {{.Time}}"
+
+["bot.wz.doors_none_btn"]
+other = "No indicar"
+
+["bot.wz.err_doors"]
+other = "Las puertas deben abrirse antes del inicio, como mucho 12 horas antes. Escribe la hora como HH:MM, por ejemplo 19:00."
+
+["bot.wz.ack_sales_end"]
+other = "Venta hasta"
+
+["bot.wz.sales_end_at_start"]
+other = "el inicio, {{.Time}}"
+
+["bot.wz.ack_doors"]
+other = "Puertas"
+
+["bot.wz.ack_doors_none"]
+other = "no indicadas"
+
+["bot.ses.sale_times_line"]
+other = "Venta hasta: {{.SalesEnd}} · Puertas: {{.Doors}}"
+
+["bot.ses.sales_end_btn"]
+other = "⏱ Fin de la venta"
+
+["bot.ses.doors_btn"]
+other = "🚪 Apertura de puertas"
+
+["bot.ses.sales_end_q"]
+other = "La venta de entradas de esta sesión se cierra ahora: <b>{{.Now}}</b>. La sesión empieza a las {{.Start}}.\n\nEn algunos eventos conviene seguir vendiendo después del inicio, para quien no compró a tiempo. Pulsa un botón o escribe la hora como HH:MM."
+
+["bot.ses.at_start_btn"]
+other = "Al empezar · {{.Time}}"
+
+["bot.ses.doors_q"]
+other = "Puertas ahora: <b>{{.Now}}</b>. La sesión empieza a las {{.Start}}.\n\nSi indicas la hora, el público llega un poco antes: no hay cola en el escaneo de entradas y puedes empezar a tiempo. Pulsa un botón o escribe la hora como HH:MM."
+
+["bot.ses.doors_clear_btn"]
+other = "No indicar la apertura de puertas"
+
+["bot.ses.sale_times_saved"]
+other = "Guardado. A los compradores no se les envía nada."

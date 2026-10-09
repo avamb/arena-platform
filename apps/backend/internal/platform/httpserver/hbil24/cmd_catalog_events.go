@@ -219,13 +219,11 @@ func (h *Handler) projectActionEvents(
 			entry["cityId"] = int64(0)
 		}
 
-		// sellEndTime — the last moment any category still sells (the latest
-		// tier sale-window end, a tier without one selling until the start),
-		// falling back to the session start when there are no tiers. Never the
-		// earliest end: the sites read it as the end of the WHOLE session's
-		// sale, and a chain of price steps would close after its first. Rendered
-		// RFC3339 *in the venue's zone* so the offset the site parses is the
-		// one a local buyer experiences.
+		// sellEndTime — the session's own sales end (sessions.sales_end_at,
+		// migration 0128: set by the organizer, the start by default). The
+		// sites read it as the end of the WHOLE session's sale, exactly the
+		// Bil24 meaning. Rendered RFC3339 *in the venue's zone* so the offset
+		// the site parses is the one a local buyer experiences.
 		sellEnd := s.StartAt
 		if s.SellEndAt != nil {
 			sellEnd = *s.SellEndAt
@@ -245,6 +243,17 @@ func (h *Handler) projectActionEvents(
 			entry["seatingPlanId"] = int64(0)
 		}
 
+		// The session's sales end closes every category with it: capping
+		// each category window lets the projections below apply the very
+		// rule the hold gate does.
+		if s.SellEndAt != nil {
+			capped := make([]gen.ActionEventTierRow, len(bySession[s.SessionID]))
+			for i, t := range bySession[s.SessionID] {
+				t.Tier = hcheckout.CapSaleWindow(t.Tier, *s.SellEndAt)
+				capped[i] = t
+			}
+			bySession[s.SessionID] = capped
+		}
 		sessionAvail := sessionAvailability(s, bySession[s.SessionID], now)
 		entry["availability"] = sessionAvail
 

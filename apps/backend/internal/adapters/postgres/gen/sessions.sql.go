@@ -41,6 +41,11 @@ type SessionRow struct {
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
 	DeletedAt            *time.Time `json:"deleted_at"`
+	// SalesEndAt is when ticket sales close (migration 0128, always set:
+	// defaults to StartAt). DoorsOpenAt is the optional, display-only
+	// "doors open" time, never after StartAt.
+	SalesEndAt  time.Time  `json:"sales_end_at"`
+	DoorsOpenAt *time.Time `json:"doors_open_at"`
 }
 
 // scanSessionRow scans a single sessions row into a SessionRow.
@@ -65,13 +70,15 @@ func scanSessionRow(row interface {
 		&s.CreatedAt,
 		&s.UpdatedAt,
 		&s.DeletedAt,
+		&s.SalesEndAt,
+		&s.DoorsOpenAt,
 	)
 	return s, err
 }
 
 // sessionColumns is the canonical RETURNING / SELECT column list shared by
 // every query that yields a full SessionRow.
-const sessionColumns = `id, event_id, venue_id, start_at, end_at, capacity_total, capacity_override, status, admission_mode, seating_plan_version_id, poster_media_id, currency, currency_source, created_at, updated_at, deleted_at`
+const sessionColumns = `id, event_id, venue_id, start_at, end_at, capacity_total, capacity_override, status, admission_mode, seating_plan_version_id, poster_media_id, currency, currency_source, created_at, updated_at, deleted_at, sales_end_at, doors_open_at`
 
 // ─────────────────────────────────────────────────────────────────────────────
 // InsertSession

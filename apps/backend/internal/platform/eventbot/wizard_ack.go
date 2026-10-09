@@ -77,6 +77,19 @@ func (w *Wizard) ack(ws WizSession, step string, d *Draft) string {
 			return ""
 		}
 		return line("bot.wz.ack_time", s.Time)
+	case stSSalesEnd, stSSalesEndTime:
+		if s == nil || d.Step == stSSalesEndTime {
+			return ""
+		}
+		return line("bot.wz.ack_sales_end", salesEndLabel(t, s))
+	case stSDoors:
+		if s == nil {
+			return ""
+		}
+		if v := doorsLabel(s); v != "" {
+			return line("bot.wz.ack_doors", v)
+		}
+		return line("bot.wz.ack_doors", t("bot.wz.ack_doors_none", nil))
 	case stSCountry:
 		if s == nil {
 			return ""

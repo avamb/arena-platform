@@ -119,6 +119,12 @@ func (w *Wizard) LoadEventDraft(ctx context.Context, io EditIO, ws WizSession, e
 		if s.CapacityOverride != nil {
 			ds.Capacity = int(*s.CapacityOverride)
 		}
+		if !s.SalesEndAt.IsZero() {
+			ds.SalesEndMin = int(s.SalesEndAt.Sub(s.StartAt).Round(time.Minute) / time.Minute)
+		}
+		if s.DoorsOpenAt != nil {
+			ds.DoorsMin = int(s.StartAt.Sub(*s.DoorsOpenAt).Round(time.Minute) / time.Minute)
+		}
 		if c, ok := byISO[strings.ToUpper(v.CountryISO2)]; ok {
 			ds.CountryID, ds.CountryName, ds.CountryISO2, ds.Currency = c.ID, c.Name, c.ISO2, c.Currency
 		}

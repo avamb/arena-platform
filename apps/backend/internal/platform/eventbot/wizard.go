@@ -43,6 +43,9 @@ const (
 	stEvPosterAsk   = "ev_poster_ask"
 	stSDate         = "s_date"
 	stSTime         = "s_time"
+	stSSalesEnd     = "s_sales_end"
+	stSSalesEndTime = "s_sales_end_time"
+	stSDoors        = "s_doors"
 	stSSame         = "s_same"
 	stSCountry      = "s_country"
 	stSCity         = "s_city"
@@ -154,6 +157,11 @@ type DraftSession struct {
 	VenueName   string `json:"venue_name"`
 	Timezone    string `json:"timezone"`
 	Capacity    int    `json:"capacity"`
+	// SalesEndMin is when ticket sales close, in minutes after the start
+	// (0 = at the start); DoorsMin when the doors open, in minutes before
+	// it (0 = not given). See wizard_sale_times.go.
+	SalesEndMin int `json:"sales_end_min,omitempty"`
+	DoorsMin    int `json:"doors_min,omitempty"`
 }
 
 // DraftTickets is the ticket part of the draft.
@@ -910,6 +918,53 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			hhmm = v
 		}
 		d.session().Time = hhmm
+		d.goTo(stSSalesEnd)
+
+	case stSSalesEnd:
+		s := d.session()
+		if n, ok := parseOffsetData("se:", data); ok {
+			s.SalesEndMin = n
+			d.goTo(stSDoors)
+			break
+		}
+		if data == "other" {
+			d.goTo(stSSalesEndTime)
+			break
+		}
+		if text != "" {
+			off, ok := salesEndOffset(s.Time, text)
+			if !ok {
+				return t("bot.wz.err_sales_end", nil), nil
+			}
+			s.SalesEndMin = off
+			d.goTo(stSDoors)
+		}
+
+	case stSSalesEndTime:
+		s := d.session()
+		off, ok := salesEndOffset(s.Time, text)
+		if !ok {
+			return t("bot.wz.err_sales_end", nil), nil
+		}
+		s.SalesEndMin = off
+		d.goTo(stSDoors)
+
+	case stSDoors:
+		s := d.session()
+		switch n, ok := parseOffsetData("dr:", data); {
+		case ok:
+			s.DoorsMin = n
+		case data == "none":
+			s.DoorsMin = 0
+		case text != "":
+			before, ok := doorsOffset(s.Time, text)
+			if !ok {
+				return t("bot.wz.err_doors", nil), nil
+			}
+			s.DoorsMin = before
+		default:
+			return "", nil
+		}
 		if d.Cur > 0 {
 			d.goTo(stSSame)
 		} else {

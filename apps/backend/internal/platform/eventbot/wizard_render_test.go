@@ -30,7 +30,7 @@ func TestWizard_EveryStepRendersInBothLocales(t *testing.T) {
 	r.press("done", stXPublish)
 	r.press("pub:now", stSummary)
 
-	steps := []string{stEvName, stEvPosterAsk, stEvAge, stEvPromoter, stPromoterName, stPromoterLegal, stEvPoster, stSDate, stSTime, stSSame,
+	steps := []string{stEvName, stEvPosterAsk, stEvAge, stEvPromoter, stPromoterName, stPromoterLegal, stEvPoster, stSDate, stSTime, stSSalesEnd, stSSalesEndTime, stSDoors, stSSame,
 		stSCountry, stSCity, stCityName, stSVenue, stVName, stVAddress, stVCapacity, stVTz, stSCapacity, stSMore, stTMode,
 		stTName, stTPrice, stTChanges, stTChangeDate, stTChangePrice, stTChangeMore, stTKind, stTCatName, stTCatPrice,
 		stTCatPlaces, stTCatLast, stTCatUntil, stTCatMore, stXDescription, stXCurrency, stXChannels, stXPublish, stSummary,

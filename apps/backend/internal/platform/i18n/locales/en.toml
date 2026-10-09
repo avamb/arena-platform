@@ -1461,3 +1461,72 @@ other = "Oceania"
 
 ["bot.wz.region.other"]
 other = "Other countries"
+
+["bot.wz.ask_sales_end"]
+other = "Ticket sales close at the start — {{.Time}}.\nSome events can keep selling after the start, for those who did not buy in time. Keep the start, or choose a later or earlier time if it suits your event."
+
+["bot.wz.sales_end_after_btn"]
+other = "{{.Min}} min after the start · {{.Time}}"
+
+["bot.wz.sales_end_after_h_btn"]
+other = "{{.Hours}} h after the start · {{.Time}}"
+
+["bot.wz.other_time_btn"]
+other = "Other time"
+
+["bot.wz.ask_sales_end_time"]
+other = "When should ticket sales close? Type the time as HH:MM, for example 21:00. It counts on the day of the event (the event starts at {{.Time}})."
+
+["bot.wz.err_sales_end"]
+other = "I did not understand the time. Type it as HH:MM, for example 21:00."
+
+["bot.wz.ask_doors"]
+other = "When do the doors open? (optional)\nIf you give the time, guests come a little earlier: there is no queue at ticket scanning, and you can start your event on time. Type it as HH:MM or pick a button."
+
+["bot.wz.doors_before_btn"]
+other = "{{.Min}} min before · {{.Time}}"
+
+["bot.wz.doors_before_h_btn"]
+other = "{{.Hours}} h before · {{.Time}}"
+
+["bot.wz.doors_none_btn"]
+other = "Do not show"
+
+["bot.wz.err_doors"]
+other = "The doors must open before the start, at most 12 hours earlier. Type the time as HH:MM, for example 19:00."
+
+["bot.wz.ack_sales_end"]
+other = "Sales close"
+
+["bot.wz.sales_end_at_start"]
+other = "at the start, {{.Time}}"
+
+["bot.wz.ack_doors"]
+other = "Doors open"
+
+["bot.wz.ack_doors_none"]
+other = "not shown"
+
+["bot.ses.sale_times_line"]
+other = "Sales close: {{.SalesEnd}} · Doors: {{.Doors}}"
+
+["bot.ses.sales_end_btn"]
+other = "⏱ Sales end"
+
+["bot.ses.doors_btn"]
+other = "🚪 Doors open"
+
+["bot.ses.sales_end_q"]
+other = "Ticket sales for this session now close: <b>{{.Now}}</b>. The session starts at {{.Start}}.\n\nSome events can keep selling after the start, for those who did not buy in time. Pick a button or type the time as HH:MM."
+
+["bot.ses.at_start_btn"]
+other = "At the start · {{.Time}}"
+
+["bot.ses.doors_q"]
+other = "Doors open now: <b>{{.Now}}</b>. The session starts at {{.Start}}.\n\nIf you give the time, guests come a little earlier: there is no queue at ticket scanning, and you can start on time. Pick a button or type the time as HH:MM."
+
+["bot.ses.doors_clear_btn"]
+other = "Do not show a doors time"
+
+["bot.ses.sale_times_saved"]
+other = "Saved. Buyers are not sent anything."

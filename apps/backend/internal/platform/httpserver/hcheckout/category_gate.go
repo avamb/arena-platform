@@ -112,6 +112,57 @@ func CheckCategorySellable(ctx context.Context, txq *gen.Queries, sessionID, tie
 	if txq == nil {
 		return errors.New("hcheckout: CheckCategorySellable requires queries")
 	}
+	if err := CheckSessionSalesOpen(ctx, txq, sessionID, tierID, now); err != nil {
+		return err
+	}
+	return checkCategory(ctx, txq, sessionID, tierID, now)
+}
+
+// SessionSalesClosed reports the refusal for a session whose own sales end
+// (sessions.sales_end_at, migration 0128) has passed, or nil. It is a
+// category-gate refusal with reason ErrCategoryNotOnSale and End set to the
+// session's sales end, so every caller maps it exactly like a category
+// whose sale window ended (409 tier.not_on_sale, gateway 101).
+func SessionSalesClosed(salesEnd time.Time, tierID uuid.UUID, now time.Time) error {
+	if salesEnd.IsZero() || !now.After(salesEnd) {
+		return nil
+	}
+	end := salesEnd
+	return &CategoryNotSellableError{TierID: tierID, Reason: ErrCategoryNotOnSale, End: &end, Now: now}
+}
+
+// CapSaleWindow returns the category with its sale window end pulled back
+// to the session's sales end when that comes first. Availability
+// projections (gateway catalog, seat list, public feed) apply it before
+// CategorySellable, so a session whose sales closed reports every category
+// as unavailable by the very rule the hold gate uses.
+func CapSaleWindow(t gen.TicketTierRow, salesEnd time.Time) gen.TicketTierRow {
+	if salesEnd.IsZero() {
+		return t
+	}
+	if t.SaleWindowEnd == nil || salesEnd.Before(*t.SaleWindowEnd) {
+		end := salesEnd
+		t.SaleWindowEnd = &end
+	}
+	return t
+}
+
+// CheckSessionSalesOpen refuses a NEW hold once the session's sales end has
+// passed. A session row it cannot find is left to the category checks
+// (they answer ErrCategoryNotFound for its categories).
+func CheckSessionSalesOpen(ctx context.Context, txq *gen.Queries, sessionID, tierID uuid.UUID, now time.Time) error {
+	end, err := txq.GetSessionSalesEnd(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return fmt.Errorf("hcheckout: load session sales end: %w", err)
+	}
+	return SessionSalesClosed(end, tierID, now)
+}
+
+// checkCategory is CheckCategorySellable without the session-wide check.
+func checkCategory(ctx context.Context, txq *gen.Queries, sessionID, tierID uuid.UUID, now time.Time) error {
 	t, err := txq.GetTicketTierByID(ctx, tierID, sessionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -125,13 +176,23 @@ func CheckCategorySellable(ctx context.Context, txq *gen.Queries, sessionID, tie
 // CheckCategoriesSellable applies CheckCategorySellable to every distinct
 // category id, in the order given, and returns the first refusal.
 func CheckCategoriesSellable(ctx context.Context, txq *gen.Queries, sessionID uuid.UUID, tierIDs []uuid.UUID, now time.Time) error {
+	if txq == nil {
+		return errors.New("hcheckout: CheckCategoriesSellable requires queries")
+	}
+	first := uuid.Nil
+	if len(tierIDs) > 0 {
+		first = tierIDs[0]
+	}
+	if err := CheckSessionSalesOpen(ctx, txq, sessionID, first, now); err != nil {
+		return err
+	}
 	seen := make(map[uuid.UUID]struct{}, len(tierIDs))
 	for _, id := range tierIDs {
 		if _, dup := seen[id]; dup {
 			continue
 		}
 		seen[id] = struct{}{}
-		if err := CheckCategorySellable(ctx, txq, sessionID, id, now); err != nil {
+		if err := checkCategory(ctx, txq, sessionID, id, now); err != nil {
 			return err
 		}
 	}
@@ -165,6 +226,11 @@ const maxChainSpill = 8
 func CheckGALinesSellable(ctx context.Context, txq *gen.Queries, sessionID uuid.UUID, lines []GALine, now time.Time) error {
 	if txq == nil {
 		return errors.New("hcheckout: CheckGALinesSellable requires queries")
+	}
+	if len(lines) > 0 {
+		if err := CheckSessionSalesOpen(ctx, txq, sessionID, lines[0].TierID, now); err != nil {
+			return err
+		}
 	}
 	want := make(map[uuid.UUID]int64, len(lines))
 	order := make([]uuid.UUID, 0, len(lines))

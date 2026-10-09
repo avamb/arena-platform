@@ -106,13 +106,17 @@ func (a ImportSessionAction) Name() string {
 // the session ends the NEXT day), SellStartTime another RFC3339 instant. Both
 // are optional; without EndTime the import keeps its default session length.
 type ImportSessionActionEvent struct {
-	ActionEventID   int64   `json:"actionEventId"`
-	Day             string  `json:"day"`
-	Time            string  `json:"time"`
-	EndTime         string  `json:"endTime"`
-	Currency        string  `json:"currency"`
-	SellEndTime     string  `json:"sellEndTime"`
-	SellStartTime   string  `json:"sellStartTime"`
+	ActionEventID int64  `json:"actionEventId"`
+	Day           string `json:"day"`
+	Time          string `json:"time"`
+	EndTime       string `json:"endTime"`
+	Currency      string `json:"currency"`
+	SellEndTime   string `json:"sellEndTime"`
+	SellStartTime string `json:"sellStartTime"`
+	// DoorsOpenTime (arena extension, migration 0128) is the optional RFC3339
+	// instant the venue opens its doors. Absent (nil) keeps the stored value,
+	// "" clears it.
+	DoorsOpenTime   *string `json:"doorsOpenTime"`
 	ChargePercent   float64 `json:"chargePercent"`
 	SeatingPlanID   int64   `json:"seatingPlanId"`
 	SeatingPlanName string  `json:"seatingPlanName"`
@@ -430,6 +434,25 @@ func (e ImportSessionActionEvent) ParseSellEnd() (*time.Time, error) {
 	}
 	utc := t.UTC()
 	return &utc, nil
+}
+
+// ParseDoorsOpen reads doorsOpenTime: set=false when the key is absent,
+// set=true with nil when it is "" (clear), set=true with the instant
+// otherwise.
+func (e ImportSessionActionEvent) ParseDoorsOpen() (doors *time.Time, set bool, err error) {
+	if e.DoorsOpenTime == nil {
+		return nil, false, nil
+	}
+	raw := strings.TrimSpace(*e.DoorsOpenTime)
+	if raw == "" {
+		return nil, true, nil
+	}
+	t, perr := time.Parse(time.RFC3339, raw)
+	if perr != nil {
+		return nil, true, fmt.Errorf("actionEvent.doorsOpenTime %q: %w", raw, perr)
+	}
+	utc := t.UTC()
+	return &utc, true, nil
 }
 
 // ParseLocalEnd converts the optional "HH:MM" endTime into an instant, using

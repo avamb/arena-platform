@@ -1699,7 +1699,7 @@ type Bil24ActionEventEntry struct {
 	// SeatingPlanName Display name of the seating plan, when one exists.
 	SeatingPlanName *string `json:"seatingPlanName,omitempty"`
 
-	// SellEndTime RFC3339 timestamp after which the session's sale closes — the latest tier `sale_window_end`, a tier without one selling until `start_at`; `start_at` when the session has no tiers.
+	// SellEndTime RFC3339 timestamp after which the session's sale closes — the session's own `sales_end_at` (migration 0128), set by the organizer and the session start by default. After it every category reports availability 0.
 	SellEndTime *string `json:"sellEndTime,omitempty"`
 
 	// TariffPlanList Always empty in wave 1 — arena has no tariff-plan concept.
@@ -4621,12 +4621,22 @@ type CreateSessionRequest struct {
 	// persisted.
 	Currency *string `json:"currency"`
 
+	// DoorsOpenAt Optional time the venue opens its doors (RFC 3339), shown to
+	// buyers on the sales page and the ticket. Must not be after
+	// start_at.
+	DoorsOpenAt *time.Time `json:"doors_open_at"`
+
 	// EndAt Session end time (RFC 3339, UTC). Must be strictly after `start_at`.
 	EndAt time.Time `json:"end_at"`
 
 	// PosterMediaId Optional session-level poster artwork (AB-47). When set, this
 	// overrides the event-level `poster_media_id` for this session.
 	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
+	// SalesEndAt When ticket sales for this session close (RFC 3339). Omitted:
+	// the session start. Every surface stops selling new tickets after
+	// it; a category's own sale_window_end can only close sooner.
+	SalesEndAt *time.Time `json:"sales_end_at"`
 
 	// SeatingPlanVersionId Seating plan version to bind. Required when admission_mode is
 	// `assigned_seats`/`hybrid` (400
@@ -6027,6 +6037,13 @@ type ImportBil24SessionActionEvent struct {
 	// format, interpreted in the venue timezone.
 	Day string `json:"day"`
 
+	// DoorsOpenTime Optional RFC3339 instant at which the venue opens its doors,
+	// stored as the session's `doors_open_at` and shown to buyers.
+	// Must not be after the session start
+	// (`import.invalid_doors_open_time`). Omitted keeps the stored
+	// value; an empty string clears it.
+	DoorsOpenTime *string `json:"doorsOpenTime,omitempty"`
+
 	// EndTime Optional local wall-clock end time in "HH:MM", interpreted in the
 	// venue timezone (event-bundle spec §3). A value at or before `time`
 	// means the session ends the NEXT calendar day. Omitted — the import
@@ -6044,8 +6061,11 @@ type ImportBil24SessionActionEvent struct {
 	// event-bundle payload.
 	SeatingPlanName *string `json:"seatingPlanName,omitempty"`
 
-	// SellEndTime RFC3339 instant at which sales close. Stored as the session sale
-	// window end. Omit to leave the sale window unbounded.
+	// SellEndTime RFC3339 instant at which sales for the session close, stored as
+	// the session's `sales_end_at` (migration 0128). Omitted on a new
+	// session: the session start; omitted on a repeat import: the
+	// stored value is kept. A Bil24-source import also stores it as the
+	// sale window end of every imported category, as before.
 	SellEndTime *string `json:"sellEndTime,omitempty"`
 
 	// SellStartTime Optional RFC3339 instant at which sales open, stored as every
@@ -10494,6 +10514,10 @@ type SessionItem struct {
 	// `derived` sessions.
 	CurrencySource SessionItemCurrencySource `json:"currency_source"`
 
+	// DoorsOpenAt When the venue opens its doors (RFC 3339, UTC), or null when the
+	// organizer did not say. Display only; never after start_at.
+	DoorsOpenAt *time.Time `json:"doors_open_at"`
+
 	// EndAt Session end time (RFC 3339, UTC). Must be strictly after
 	// `start_at` — enforced by both the handler and a CHECK
 	// constraint on the sessions table.
@@ -10517,6 +10541,12 @@ type SessionItem struct {
 	// session. Resolution order: sessions.poster_media_id ??
 	// events.poster_media_id ?? none.
 	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
+	// SalesEndAt When ticket sales for this session close (RFC 3339, UTC). Always
+	// present: the session start unless the organizer chose another
+	// moment. No new hold is taken after it on any surface; a category's
+	// own sale_window_end can only close that category sooner.
+	SalesEndAt time.Time `json:"sales_end_at"`
 
 	// SeatingPlanVersionId The bound seating plan version. Null for pure
 	// general-admission sessions; always set for assigned_seats /
@@ -11806,6 +11836,11 @@ type UpdateSessionRequest struct {
 	// are rejected with 422 `session.invalid_currency`.
 	Currency *string `json:"currency"`
 
+	// DoorsOpenAt When the venue opens its doors (RFC 3339). Absent keeps the
+	// stored value, null or "" clears it. Must not be after the
+	// session's (new) start. Moving start_at alone carries it along.
+	DoorsOpenAt *time.Time `json:"doors_open_at"`
+
 	// EndAt New session end time. When both start_at and end_at are
 	// present in the same body, end_at must remain strictly after
 	// start_at.
@@ -11819,6 +11854,12 @@ type UpdateSessionRequest struct {
 	// PosterMediaId New session-level poster artwork (AB-47). When set, overrides
 	// the event-level poster for this session. Nil leaves unchanged.
 	PosterMediaId *openapi_types.UUID `json:"poster_media_id"`
+
+	// SalesEndAt New moment ticket sales close (RFC 3339). Absent, null or ""
+	// keeps the stored value. Moving start_at alone carries the sales
+	// end along by the same amount. Some events sell after the start,
+	// for those who come late — the organizer decides.
+	SalesEndAt *time.Time `json:"sales_end_at"`
 
 	// StartAt New session start time (RFC 3339, UTC). Empty leaves unchanged.
 	StartAt *time.Time `json:"start_at"`

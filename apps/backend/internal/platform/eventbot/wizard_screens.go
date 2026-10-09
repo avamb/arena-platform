@@ -155,6 +155,33 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_time", nil),
 			Buttons: nav([]Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": d.defaultTime()}), Data: "default"}})}, nil
 
+	case stSSalesEnd:
+		s := d.session()
+		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_sales_end", map[string]any{"Time": s.Time}),
+			Buttons: nav(
+				[]Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": s.Time}), Data: offsetData("se:", 0)}},
+				[]Button{
+					{Label: t("bot.wz.sales_end_after_btn", map[string]any{"Min": 30, "Time": clockAt(s.Time, 30)}), Data: offsetData("se:", 30)},
+					{Label: t("bot.wz.sales_end_after_h_btn", map[string]any{"Hours": 1, "Time": clockAt(s.Time, 60)}), Data: offsetData("se:", 60)},
+				},
+				[]Button{btn("bot.wz.other_time_btn", "other")},
+			)}, nil
+
+	case stSSalesEndTime:
+		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_sales_end_time", map[string]any{"Time": d.session().Time}),
+			Buttons: nav()}, nil
+
+	case stSDoors:
+		s := d.session()
+		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_doors", nil),
+			Buttons: nav(
+				[]Button{
+					{Label: t("bot.wz.doors_before_btn", map[string]any{"Min": 30, "Time": clockAt(s.Time, -30)}), Data: offsetData("dr:", 30)},
+					{Label: t("bot.wz.doors_before_h_btn", map[string]any{"Hours": 1, "Time": clockAt(s.Time, -60)}), Data: offsetData("dr:", 60)},
+				},
+				[]Button{btn("bot.wz.doors_none_btn", "none")},
+			)}, nil
+
 	case stSSame:
 		prev := d.Sessions[d.Cur-1]
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_same_venue", map[string]any{

@@ -4605,6 +4605,11 @@ export interface paths {
          *         (`venues.timezone`), `""` when the venue has none. The widget
          *         formats the session chips in it, so a buyer whose phone is in
          *         another zone still reads the venue's local time.
+         *       * `sales_end_at` — when ticket sales for the session close
+         *         (RFC 3339; the start unless the organizer chose otherwise).
+         *         After it every tier reports `available: 0`.
+         *       * `doors_open_at` — when the venue opens its doors (RFC 3339),
+         *         or null when not given. Display only.
          *       * `service_fee_percent` — the channel's service charge as a
          *         decimal string (`"5.00"` = 5 %, `"0.00"` = none), applied on
          *         top of the ticket prices at checkout; the widget shows it as
@@ -11545,6 +11550,22 @@ export interface components {
              */
             end_at: string;
             /**
+             * Format: date-time
+             * @description When ticket sales for this session close (RFC 3339, UTC). Always
+             *     present: the session start unless the organizer chose another
+             *     moment. No new hold is taken after it on any surface; a category's
+             *     own sale_window_end can only close that category sooner.
+             * @example 2026-08-15T18:00:00Z
+             */
+            sales_end_at: string;
+            /**
+             * Format: date-time
+             * @description When the venue opens its doors (RFC 3339, UTC), or null when the
+             *     organizer did not say. Display only; never after start_at.
+             * @example 2026-08-15T17:30:00Z
+             */
+            doors_open_at: string | null;
+            /**
              * Format: int32
              * @description Total places available for this slot — a DERIVED value
              *     (AB-36): a bound seating plan version wins; otherwise
@@ -11675,6 +11696,22 @@ export interface components {
              */
             end_at: string;
             /**
+             * Format: date-time
+             * @description When ticket sales for this session close (RFC 3339). Omitted:
+             *     the session start. Every surface stops selling new tickets after
+             *     it; a category's own sale_window_end can only close sooner.
+             * @example 2026-08-15T18:00:00Z
+             */
+            sales_end_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Optional time the venue opens its doors (RFC 3339), shown to
+             *     buyers on the sales page and the ticket. Must not be after
+             *     start_at.
+             * @example 2026-08-15T17:30:00Z
+             */
+            doors_open_at?: string | null;
+            /**
              * Format: int32
              * @description PROVISIONAL capacity for a general-admission session created
              *     without any category yet, overriding the venue's
@@ -11768,6 +11805,23 @@ export interface components {
              *     start_at.
              */
             end_at?: string | null;
+            /**
+             * Format: date-time
+             * @description New moment ticket sales close (RFC 3339). Absent, null or ""
+             *     keeps the stored value. Moving start_at alone carries the sales
+             *     end along by the same amount. Some events sell after the start,
+             *     for those who come late — the organizer decides.
+             * @example 2026-08-15T18:00:00Z
+             */
+            sales_end_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When the venue opens its doors (RFC 3339). Absent keeps the
+             *     stored value, null or "" clears it. Must not be after the
+             *     session's (new) start. Moving start_at alone carries it along.
+             * @example 2026-08-15T17:30:00Z
+             */
+            doors_open_at?: string | null;
             /**
              * Format: int32
              * @description Not editable. Present only so an older client gets an
@@ -17064,11 +17118,23 @@ export interface components {
              */
             currency?: string;
             /**
-             * @description RFC3339 instant at which sales close. Stored as the session sale
-             *     window end. Omit to leave the sale window unbounded.
+             * @description RFC3339 instant at which sales for the session close, stored as
+             *     the session's `sales_end_at` (migration 0128). Omitted on a new
+             *     session: the session start; omitted on a repeat import: the
+             *     stored value is kept. A Bil24-source import also stores it as the
+             *     sale window end of every imported category, as before.
              * @example 2026-04-26T14:00:00Z
              */
             sellEndTime?: string;
+            /**
+             * @description Optional RFC3339 instant at which the venue opens its doors,
+             *     stored as the session's `doors_open_at` and shown to buyers.
+             *     Must not be after the session start
+             *     (`import.invalid_doors_open_time`). Omitted keeps the stored
+             *     value; an empty string clears it.
+             * @example 2026-04-26T17:30:00Z
+             */
+            doorsOpenTime?: string;
             /**
              * @description Optional local wall-clock end time in "HH:MM", interpreted in the
              *     venue timezone (event-bundle spec §3). A value at or before `time`
@@ -18170,7 +18236,7 @@ export interface components {
             time?: string;
             /** @description ISO-4217 code of the session's prices. */
             currency?: string;
-            /** @description RFC3339 timestamp after which the session's sale closes — the latest tier `sale_window_end`, a tier without one selling until `start_at`; `start_at` when the session has no tiers. */
+            /** @description RFC3339 timestamp after which the session's sale closes — the session's own `sales_end_at` (migration 0128), set by the organizer and the session start by default. After it every category reports availability 0. */
             sellEndTime?: string;
             /**
              * Format: int64

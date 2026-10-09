@@ -337,6 +337,10 @@ func (b *Bot) sesShow(ctx context.Context, chatID int64, msgID *int, id *Identit
 		})
 	case sesStepType:
 		b.sesShowType(ctx, chatID, msgID, loc, dlg, prefix)
+	case sesStepSalesEnd:
+		b.sesShowSalesEnd(ctx, chatID, msgID, loc, dlg, prefix)
+	case sesStepDoors:
+		b.sesShowDoors(ctx, chatID, msgID, loc, dlg, prefix)
 	case sesStepEmail:
 		name := ""
 		if dlg.Impact != nil {
@@ -400,9 +404,11 @@ func (b *Bot) sesShowCard(ctx context.Context, chatID int64, msgID *int, jwt, lo
 	text := prefix + "<b>" + Esc(dlg.EventName) + "</b>\n" + b.sessionLine(ctx, jwt, loc, dlg.OrgID, it.Raw)
 	rows := [][]Button{}
 	if !it.cancelled() {
+		text += "\n" + b.sesSaleTimesLine(loc, it)
 		text += "\n\n" + b.sesT(loc, "bot.ses.card_hint", nil)
 		rows = append(rows,
 			[]Button{b.sesBtn(loc, "bot.ses.move_btn", "mv", nil)},
+			[]Button{b.sesBtn(loc, "bot.ses.sales_end_btn", "se", nil), b.sesBtn(loc, "bot.ses.doors_btn", "dr", nil)},
 			[]Button{b.sesBtn(loc, "bot.ses.cancel_btn", "cx", nil)},
 		)
 	}
@@ -712,6 +718,17 @@ func (b *Bot) sessionsCallback(ctx context.Context, chatID int64, msgID int, fro
 		dlg.Mode, dlg.Step, dlg.Impact, dlg.MessageSet = sesModeMove, sesStepDate, nil, false
 		dlg.Cal = &Draft{Version: draftSchemaVersion, Step: stSDate, Sessions: []DraftSession{{Timezone: it.Tz}}}
 		b.sesShow(ctx, chatID, &msgID, id, jwt, from, dlg, "")
+	case data == "se" || data == "dr":
+		if !b.sesCurOpen(dlg) {
+			return
+		}
+		dlg.Mode, dlg.Impact, dlg.Step = "", nil, sesStepSalesEnd
+		if data == "dr" {
+			dlg.Step = sesStepDoors
+		}
+		b.sesShow(ctx, chatID, &msgID, id, jwt, from, dlg, "")
+	case (strings.HasPrefix(data, "se:") && dlg.Step == sesStepSalesEnd) || (strings.HasPrefix(data, "dr:") && dlg.Step == sesStepDoors):
+		b.sesSaleTimesInput(ctx, chatID, &msgID, id, jwt, from, dlg, "", data)
 	case data == "cx":
 		if !b.sesCurOpen(dlg) {
 			return
@@ -931,7 +948,7 @@ func (b *Bot) sessionsText(ctx context.Context, chatID int64, from *models.User,
 		return false
 	}
 	switch dlg.Step {
-	case sesStepDate, sesStepTime, sesStepMsg, sesStepEmail, sesStepPhone, sesStepType:
+	case sesStepDate, sesStepTime, sesStepMsg, sesStepEmail, sesStepPhone, sesStepType, sesStepSalesEnd, sesStepDoors:
 	default:
 		return false
 	}
@@ -959,6 +976,8 @@ func (b *Bot) sessionsText(ctx context.Context, chatID int64, from *models.User,
 		b.sesDateInput(ctx, chatID, msgID, id, jwt, from, dlg, text, "")
 	case sesStepTime:
 		b.sesTimeInput(ctx, chatID, msgID, id, jwt, from, dlg, text)
+	case sesStepSalesEnd, sesStepDoors:
+		b.sesSaleTimesInput(ctx, chatID, msgID, id, jwt, from, dlg, text, "")
 	case sesStepMsg:
 		msg, err := sessionchange.NormalizeMessage(text)
 		if err != nil {

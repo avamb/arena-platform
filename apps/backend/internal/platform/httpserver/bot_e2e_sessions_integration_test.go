@@ -212,6 +212,35 @@ func TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers(t *testing.T) {
 		t.Fatalf("organization contact = %q", email)
 	}
 
+	// The sales end and the doors time are changed from the card with one
+	// press each (migration 0128): no dry run, no journal row, no letter.
+	press("ses:list:"+eventID.String(), "Сеансы мероприятия")
+	card := press("ses:o:0", "Здесь можно перенести")
+	if !strings.Contains(card, "Продажа до: начала") {
+		t.Fatalf("card lacks the default sales end:\n%s", card)
+	}
+	press("ses:se", "продажа билетов на этот сеанс закрывается")
+	press("ses:se:60", "Сохранено")
+	press("ses:dr", "Вход сейчас")
+	press("ses:dr:30", "Сохранено")
+	var salesEnd time.Time
+	var doors *time.Time
+	if err := pool.QueryRow(ctx, `SELECT sales_end_at, doors_open_at FROM sessions WHERE id = $1`, sessionID).Scan(&salesEnd, &doors); err != nil {
+		t.Fatal(err)
+	}
+	if !salesEnd.Equal(got.Add(time.Hour)) {
+		t.Fatalf("sales end = %v, want an hour after the start %v", salesEnd, got)
+	}
+	if doors == nil || !doors.Equal(got.Add(-30*time.Minute)) {
+		t.Fatalf("doors = %v, want 30 minutes before the start %v", doors, got)
+	}
+	var changes int
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM session_changes WHERE session_id = $1`, sessionID).Scan(&changes)
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM worker_jobs WHERE job_type = 'session.change_email' AND payload->>'order_id' = $1`, orderID.String()).Scan(&jobs)
+	if changes != 1 || jobs != 1 {
+		t.Fatalf("sale times wrote %d journal rows and %d letters, want 1 and 1 (the move's)", changes, jobs)
+	}
+
 	// Cancelling the whole event (one session, so the button is the session's
 	// own "Cancel") writes another journal row and another letter.
 	press("ses:list:"+eventID.String(), "Сеансы мероприятия")
@@ -246,7 +275,7 @@ func TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers(t *testing.T) {
 	if status != "cancelled" {
 		t.Fatalf("session status = %q, want cancelled", status)
 	}
-	var changes int
+	changes = 0
 	_ = pool.QueryRow(ctx, `SELECT count(*) FROM session_changes WHERE session_id = $1`, sessionID).Scan(&changes)
 	if changes != 2 {
 		t.Fatalf("journal rows = %d, want 2 (move + cancel)", changes)
