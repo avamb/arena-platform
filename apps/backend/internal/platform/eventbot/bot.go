@@ -318,6 +318,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.showHome(ctx, chatID, &msgID, from, "")
 	case "help":
 		b.showHelp(ctx, chatID, &msgID, from)
+	case "scanner":
+		b.showScanner(ctx, chatID, &msgID, from)
 	case "events":
 		page := 1
 		if len(parts) > 1 {
@@ -502,6 +504,7 @@ func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *model
 	if len(id.Memberships) > 1 {
 		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_org", nil), CallbackData: "org"}})
 	}
+	rows = append(rows, b.scannerRow(loc))
 	rows = append(rows, []models.InlineKeyboardButton{
 		{Text: b.texts.T(loc, "bot.btn_lang", nil), CallbackData: "lang"},
 		{Text: b.texts.T(loc, "bot.btn_help", nil), CallbackData: "help"},

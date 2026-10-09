@@ -292,6 +292,10 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 	tg.push(e2eCallback("events:1"))
 	tg.waitFor(t, "Ивентов пока нет")
 
+	// 3b. The ticket-scanner screen is one press from the menu.
+	tg.push(e2eCallback("scanner"))
+	tg.waitFor(t, "Сканер билетов")
+
 	// 4. Language switch is remembered.
 	tg.push(e2eCallback("lang:en"))
 	tg.waitFor(t, "What would you like to do?")

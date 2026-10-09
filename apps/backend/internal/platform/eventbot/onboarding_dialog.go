@@ -896,7 +896,8 @@ func (b *Bot) onbAnnounce(ctx context.Context) {
 		switch n.Status {
 		case "approved":
 			b.send(ctx, n.TelegramUserID, b.texts.T(loc, "bot.onb.approved", map[string]any{"Org": Esc(n.OrgName)}), inline(
-				[]models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.btn_home", nil), "home")}))
+				[]models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.btn_home", nil), "home")},
+				b.scannerRow(loc)))
 		case "rejected":
 			b.send(ctx, n.TelegramUserID, b.texts.T(loc, "bot.onb.rejected", nil), nil)
 		case "info_requested":
