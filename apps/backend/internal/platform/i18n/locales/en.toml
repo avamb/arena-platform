@@ -204,6 +204,12 @@ other = "The colleague's e-mail? They will get a letter with a link to this bot.
 ["bot.team_dialog_expired"]
 other = "Time is up: an invitation waits for the address and role for 30 minutes at most. Please start again."
 
+["bot.dialog_expired"]
+other = "This dialog has expired after 30 minutes without an answer. Start again from the menu."
+
+["bot.too_many_messages"]
+other = "Too many messages — please wait a minute."
+
 ["bot.team_ask_role"]
 other = "What may {{.Email}} do?"
 
@@ -1542,3 +1548,12 @@ other = "Do not show a doors time"
 
 ["bot.ses.sale_times_saved"]
 other = "Saved. Buyers are not sent anything."
+
+["bot.draft_reminder"]
+other = "You left an event unfinished. The draft waits for you, and it will be deleted after 7 days without answers."
+
+["bot.draft_reminder_named"]
+other = "You left the event “{{.Name}}” unfinished. The draft waits for you, and it will be deleted after 7 days without answers."
+
+["bot.draft_deleted"]
+other = "Your event draft was deleted: there were no answers for 7 days. You can start a new one at any time."

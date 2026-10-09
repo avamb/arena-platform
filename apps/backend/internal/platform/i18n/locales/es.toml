@@ -62,6 +62,12 @@ other = "¿Cuál es el e-mail de tu compañero? Recibirá un correo con un enlac
 ["bot.team_dialog_expired"]
 other = "Se acabó el tiempo: una invitación espera la dirección y el rol 30 minutos como máximo. Empieza de nuevo, por favor."
 
+["bot.dialog_expired"]
+other = "Este diálogo ha caducado: pasaron 30 minutos sin respuesta. Empieza de nuevo desde el menú."
+
+["bot.too_many_messages"]
+other = "Demasiados mensajes — espera un minuto, por favor."
+
 ["bot.team_ask_role"]
 other = "¿Qué podrá hacer {{.Email}}?"
 
@@ -1397,3 +1403,12 @@ other = "No indicar la apertura de puertas"
 
 ["bot.ses.sale_times_saved"]
 other = "Guardado. A los compradores no se les envía nada."
+
+["bot.draft_reminder"]
+other = "Dejaste un evento sin terminar. El borrador te espera, y se eliminará si pasan 7 días sin respuestas."
+
+["bot.draft_reminder_named"]
+other = "Dejaste sin terminar el evento «{{.Name}}». El borrador te espera, y se eliminará si pasan 7 días sin respuestas."
+
+["bot.draft_deleted"]
+other = "Tu borrador del evento se eliminó: pasaron 7 días sin respuestas. Puedes empezar uno nuevo cuando quieras."

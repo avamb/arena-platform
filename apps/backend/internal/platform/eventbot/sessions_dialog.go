@@ -112,6 +112,9 @@ type sessionDialog struct {
 	expires time.Time
 }
 
+// sessionDialogs is still process memory, so a bot restart drops a move or
+// cancellation half-way; it is due to move onto DialogStore (dialogs.go, the
+// bot_dialogs table) the way the team invite already has.
 type sessionDialogs struct {
 	mu     sync.Mutex
 	byID   map[int64]*sessionDialog

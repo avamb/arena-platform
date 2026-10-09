@@ -80,6 +80,9 @@ SET    mode           = EXCLUDED.mode,
        schema_version = EXCLUDED.schema_version,
        state          = EXCLUDED.state,
        saved          = EXCLUDED.saved,
+       -- Any answer makes the draft live again, so it earns a fresh
+       -- 24-hour reminder once it goes idle anew (migration 0130).
+       reminded_at    = NULL,
        updated_at     = now()
 RETURNING id, telegram_user_id, org_id, mode, event_id, step, schema_version, state, saved,
           created_at, updated_at;
@@ -88,6 +91,59 @@ RETURNING id, telegram_user_id, org_id, mode, event_id, step, schema_version, st
 DELETE FROM bot_drafts
 WHERE  telegram_user_id = $1
   AND  org_id = $2;
+
+-- name: ListBotDraftsForReminder :many
+-- Drafts idle since before $1 whose owner has not been reminded yet, oldest
+-- first, with the language to remind them in (migration 0130).
+SELECT d.id, d.telegram_user_id, d.org_id, d.mode, d.event_id, d.state, l.locale, d.updated_at
+FROM   bot_drafts d
+JOIN   bot_telegram_links l ON l.telegram_user_id = d.telegram_user_id
+WHERE  d.updated_at < $1
+  AND  d.reminded_at IS NULL
+ORDER  BY d.updated_at
+LIMIT  $2;
+
+-- name: MarkBotDraftReminded :exec
+UPDATE bot_drafts
+SET    reminded_at = now()
+WHERE  id = $1;
+
+-- name: DeleteBotDraftsIdleBefore :many
+-- Drafts abandoned since before $1, deleted; the rows come back so their
+-- owners can be told the draft is gone.
+DELETE FROM bot_drafts d
+USING  bot_telegram_links l
+WHERE  l.telegram_user_id = d.telegram_user_id
+  AND  d.updated_at < $1
+RETURNING d.id, d.telegram_user_id, d.org_id, d.mode, d.event_id, d.state, l.locale, d.updated_at;
+
+-- name: UpsertBotDialog :one
+-- One live dialog per Telegram account and kind; every save slides the expiry.
+INSERT INTO bot_dialogs (telegram_user_id, org_id, kind, step, state, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (telegram_user_id, kind) DO UPDATE
+SET    org_id     = EXCLUDED.org_id,
+       step       = EXCLUDED.step,
+       state      = EXCLUDED.state,
+       expires_at = EXCLUDED.expires_at,
+       updated_at = now()
+RETURNING id, telegram_user_id, org_id, kind, step, state, expires_at, created_at, updated_at;
+
+-- name: GetBotDialog :one
+-- The dialog whatever its expiry: the caller reports an expired one once.
+SELECT id, telegram_user_id, org_id, kind, step, state, expires_at, created_at, updated_at
+FROM   bot_dialogs
+WHERE  telegram_user_id = $1
+  AND  kind = $2;
+
+-- name: DeleteBotDialog :exec
+DELETE FROM bot_dialogs
+WHERE  telegram_user_id = $1
+  AND  kind = $2;
+
+-- name: DeleteExpiredBotDialogs :execrows
+DELETE FROM bot_dialogs
+WHERE  expires_at < $1;
 
 -- name: ListBotTeam :many
 -- The organization's team as the bot shows it: owners first, then managers,

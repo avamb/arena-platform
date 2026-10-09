@@ -4,16 +4,14 @@ package eventbot
 // organization's owners and managers, invites a colleague by e-mail (the
 // same POST .../bot-invitations the admin uses) and removes one. A manager
 // is told this screen is the owner's. The two-step invite dialog (e-mail,
-// then role) is kept in memory: it is seconds long and a restart merely
-// asks the e-mail again.
+// then role) is kept in bot_dialogs (dialogs.go), so a deploy between the
+// two steps loses nothing.
 
 import (
 	"context"
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/go-telegram/bot/models"
 	"github.com/google/uuid"
@@ -68,71 +66,52 @@ func (c *ArenaClient) RemoveMember(ctx context.Context, jwt string, orgID, userI
 	return c.do(ctx, http.MethodDelete, "/v1/organizations/"+orgID.String()+"/members/"+userID.String(), jwt, body, nil)
 }
 
-// ─── the in-memory invite dialog ──────────────────────────────────────────────
+// ─── the invite dialog ────────────────────────────────────────────────────────
 
-const teamDialogTTL = 30 * time.Minute
+// The invite dialog lives in bot_dialogs (dialogs.go) under kind "team": step
+// "email" while the address is awaited, then "role" until a role is pressed.
+// It used to be a map in this process, and an owner who typed the e-mail
+// after a deploy got no invitation and no error (2026-10-01).
+const (
+	teamDialogKind = "team"
+	teamStepEmail  = "email"
+	teamStepRole   = "role"
+)
 
+// teamDialog is the invite dialog's state.
 type teamDialog struct {
-	email   string // "" while the e-mail is awaited
-	msgID   int    // the one bot message the dialog lives in; each step edits it
-	expires time.Time
+	Email string `json:"email"`  // "" while the e-mail is awaited
+	MsgID int    `json:"msg_id"` // the one bot message the dialog lives in; each step edits it
 }
 
-type teamDialogs struct {
-	mu   sync.Mutex
-	byID map[int64]teamDialog
-	// lapsed remembers whose dialog ran out, so the next e-mail or role press
-	// from them is answered with "time is up" instead of silently falling
-	// through to the events list.
-	lapsed map[int64]bool
+// startTeamDialog opens (or restarts) the invite dialog in the organization.
+func (b *Bot) startTeamDialog(ctx context.Context, tg int64, orgID uuid.UUID, msgID int) error {
+	return b.dialogs.Save(ctx, tg, &orgID, teamDialogKind, teamStepEmail, teamDialog{MsgID: msgID}, dialogTTL)
 }
 
-func newTeamDialogs() *teamDialogs {
-	return &teamDialogs{byID: map[int64]teamDialog{}, lapsed: map[int64]bool{}}
+// setTeamDialogEmail records the address and moves the dialog to the role.
+func (b *Bot) setTeamDialogEmail(ctx context.Context, tg int64, orgID uuid.UUID, dlg teamDialog) error {
+	return b.dialogs.Save(ctx, tg, &orgID, teamDialogKind, teamStepRole, dlg, dialogTTL)
 }
 
-func (t *teamDialogs) start(id int64, msgID int) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	delete(t.lapsed, id)
-	t.byID[id] = teamDialog{msgID: msgID, expires: time.Now().Add(teamDialogTTL)}
-}
-
-func (t *teamDialogs) get(id int64) (teamDialog, bool) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	d, ok := t.byID[id]
-	if !ok {
-		return teamDialog{}, false
+// loadTeamDialog reads the invite dialog. expired is true exactly once after
+// it ran out, so the caller can say "time is up" instead of letting the
+// e-mail or role press fall silently through to the events list. A failed
+// read is logged and treated as no dialog: the person then just starts again.
+func (b *Bot) loadTeamDialog(ctx context.Context, tg int64) (dlg teamDialog, step string, found, expired bool) {
+	step, found, expired, err := b.dialogs.Load(ctx, tg, teamDialogKind, &dlg)
+	if err != nil {
+		b.logger.Error("eventbot: team dialog load failed", slog.Int64("telegram_user_id", tg), slog.String("error", err.Error()))
+		return teamDialog{}, "", false, false
 	}
-	if time.Now().After(d.expires) {
-		delete(t.byID, id)
-		t.lapsed[id] = true
-		return teamDialog{}, false
+	return dlg, step, found, expired
+}
+
+// clearTeamDialog ends the invite dialog, if any.
+func (b *Bot) clearTeamDialog(ctx context.Context, tg int64) {
+	if err := b.dialogs.Delete(ctx, tg, teamDialogKind); err != nil {
+		b.logger.Warn("eventbot: team dialog clear failed", slog.Int64("telegram_user_id", tg), slog.String("error", err.Error()))
 	}
-	return d, true
-}
-
-// takeLapsed reports whether this person's invite dialog ran out since they
-// last heard about it, and forgets the fact.
-func (t *teamDialogs) takeLapsed(id int64) bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	was := t.lapsed[id]
-	delete(t.lapsed, id)
-	return was
-}
-
-func (t *teamDialogs) setEmail(id int64, email string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.byID[id] = teamDialog{email: email, msgID: t.byID[id].msgID, expires: time.Now().Add(teamDialogTTL)}
-}
-
-func (t *teamDialogs) clear(id int64) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	delete(t.byID, id)
 }
 
 // ─── screens ──────────────────────────────────────────────────────────────────
@@ -178,7 +157,7 @@ func (b *Bot) showTeam(ctx context.Context, chatID int64, editMsgID *int, from *
 		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.team_owner_only", nil), b.backKeyboard(loc, "home"))
 		return
 	}
-	b.team.clear(from.ID)
+	b.clearTeamDialog(ctx, from.ID)
 	members, err := b.arena.Team(ctx, jwt, id.Current.OrgID)
 	if err != nil {
 		b.logger.Error("eventbot: team failed", slog.String("org_id", id.Current.OrgID.String()), slog.String("error", err.Error()))
@@ -246,16 +225,20 @@ func (b *Bot) teamCallback(ctx context.Context, chatID int64, msgID int, from *m
 	case "":
 		b.showTeam(ctx, chatID, &msgID, from, "")
 	case "invite":
-		b.team.start(from.ID, msgID)
+		if err := b.startTeamDialog(ctx, from.ID, orgID, msgID); err != nil {
+			b.logger.Error("eventbot: team dialog start failed", slog.String("org_id", orgID.String()), slog.String("error", err.Error()))
+			b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.error_generic", nil), b.backKeyboard(loc, "home"))
+			return
+		}
 		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.team_ask_email", nil), b.backKeyboard(loc, "home"))
 	case "role":
 		if len(parts) < 2 {
 			return
 		}
-		dlg, ok := b.team.get(from.ID)
-		if !ok || dlg.email == "" {
+		dlg, step, found, expired := b.loadTeamDialog(ctx, from.ID)
+		if !found || step != teamStepRole || dlg.Email == "" {
 			prefix := ""
-			if b.team.takeLapsed(from.ID) {
+			if expired {
 				prefix = b.texts.T(loc, "bot.team_dialog_expired", nil) + "\n\n"
 			}
 			b.showTeam(ctx, chatID, &msgID, from, prefix)
@@ -265,8 +248,8 @@ func (b *Bot) teamCallback(ctx context.Context, chatID int64, msgID int, from *m
 		if role != "owner" && role != "manager" {
 			return
 		}
-		b.team.clear(from.ID)
-		res, err := b.arena.Invite(ctx, jwt, orgID, dlg.email, role, loc)
+		b.clearTeamDialog(ctx, from.ID)
+		res, err := b.arena.Invite(ctx, jwt, orgID, dlg.Email, role, loc)
 		if err != nil {
 			b.logger.Warn("eventbot: invite failed", slog.String("org_id", orgID.String()), slog.String("error", err.Error()))
 			key := "bot.team_invite_failed"
@@ -319,8 +302,12 @@ func (b *Bot) teamCallback(ctx context.Context, chatID int64, msgID int, from *m
 // teamText consumes the e-mail of an invite dialog in progress. It reports
 // whether the text was taken.
 func (b *Bot) teamText(ctx context.Context, chatID int64, from *models.User, text string) bool {
-	dlg, ok := b.team.get(from.ID)
-	if !ok && looksLikeEmail(strings.ToLower(strings.TrimSpace(text))) && b.team.takeLapsed(from.ID) {
+	dlg, step, ok, expired := b.loadTeamDialog(ctx, from.ID)
+	// The lapse is reported only for something that looks like the address
+	// the dialog asked for; any other text goes on to the wizard and the
+	// rest as if there had been no dialog. Either way the lapse is spent:
+	// deliberately, any text uses up the expired notice, e-mail or not.
+	if expired && looksLikeEmail(strings.ToLower(strings.TrimSpace(text))) {
 		// The dialog ran out while the person was away: say so rather than
 		// treating the address as a stray message.
 		if id, _, err := b.resolveIdentity(ctx, from.ID); err == nil && isOwner(id) {
@@ -332,12 +319,12 @@ func (b *Bot) teamText(ctx context.Context, chatID int64, from *models.User, tex
 		}
 		return false
 	}
-	if !ok || dlg.email != "" {
+	if !ok || step != teamStepEmail {
 		return false
 	}
 	id, _, err := b.resolveIdentity(ctx, from.ID)
-	if err != nil || !isOwner(id) {
-		b.team.clear(from.ID)
+	if err != nil || !isOwner(id) || id.Current == nil {
+		b.clearTeamDialog(ctx, from.ID)
 		return false
 	}
 	loc := id.Locale()
@@ -345,14 +332,19 @@ func (b *Bot) teamText(ctx context.Context, chatID int64, from *models.User, tex
 	// The dialog lives in ONE message: every step edits the prompt in place, so
 	// no stale prompt with a dead button is left behind in the chat.
 	var edit *int
-	if dlg.msgID != 0 {
-		edit = &dlg.msgID
+	if dlg.MsgID != 0 {
+		edit = &dlg.MsgID
 	}
 	if !looksLikeEmail(email) {
 		b.reply(ctx, chatID, edit, b.texts.T(loc, "bot.ask_email_again", nil), b.backKeyboard(loc, "home"))
 		return true
 	}
-	b.team.setEmail(from.ID, email)
+	dlg.Email = email
+	if err := b.setTeamDialogEmail(ctx, from.ID, id.Current.OrgID, dlg); err != nil {
+		b.logger.Error("eventbot: team dialog save failed", slog.String("org_id", id.Current.OrgID.String()), slog.String("error", err.Error()))
+		b.reply(ctx, chatID, edit, b.texts.T(loc, "bot.error_generic", nil), b.backKeyboard(loc, "home"))
+		return true
+	}
 	b.reply(ctx, chatID, edit, b.texts.T(loc, "bot.team_ask_role", map[string]any{"Email": Esc(email)}), &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 		{{Text: b.texts.T(loc, "bot.team_role_manager_btn", nil), CallbackData: "team:role:manager"}},
 		{{Text: b.texts.T(loc, "bot.team_role_owner_btn", nil), CallbackData: "team:role:owner"}},

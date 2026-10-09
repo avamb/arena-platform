@@ -8,6 +8,14 @@ info:
     health/readiness probes, Prometheus metrics, the transactional echo command
     (which exercises auth, idempotency, audit, and outbox in one transaction),
     and the development-only JWT mint endpoint.
+
+    Every route accepts the optional request header `X-Client-Channel`, which
+    names the client the call comes from. Allowed values are `telegram_bot`,
+    `admin_web` and `site_plugin`; the value is trimmed and lowercased, and an
+    unknown value is ignored (never an error). The channel is recorded as
+    `metadata.via` on every audit event the request writes, so a change made
+    through the Telegram bot can be told from one made in admin-web. It is a
+    self-declared hint for the audit trail, not an authorization input.
   version: "0.1.0"
   contact:
     name: Arena Platform Team

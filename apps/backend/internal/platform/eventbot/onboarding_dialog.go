@@ -54,6 +54,9 @@ type onbDialog struct {
 	expires  time.Time
 }
 
+// onbDialogs is still process memory (it only holds the first four answers;
+// everything after them lives on the server); it is due to move onto
+// DialogStore (dialogs.go, the bot_dialogs table) like the team invite.
 type onbDialogs struct {
 	mu sync.Mutex
 	m  map[int64]*onbDialog

@@ -14,6 +14,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 )
 
 // The ArenaClient half the wizard uses: references, "+ new …" creations,
@@ -198,6 +199,8 @@ func (c *ArenaClient) UploadPoster(ctx context.Context, jwt string, orgID uuid.U
 	}
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+jwt)
+	// This request bypasses c.do, so it names the client itself.
+	req.Header.Set(audit.HeaderClientChannel, ClientChannel)
 	res, err := c.http.Do(req)
 	if err != nil {
 		return UploadedMedia{}, fmt.Errorf("POST /v1/media: %w", err)

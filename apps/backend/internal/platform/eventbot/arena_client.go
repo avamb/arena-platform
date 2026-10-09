@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 )
 
 // ArenaClient is the bot's view of arena-api: a thin typed HTTP client over
@@ -87,6 +88,9 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 	// inert for everybody else, so the client states its reason always: the
 	// audit trail then names the bot on every superadmin call.
 	req.Header.Set("X-Admin-Reason", AdminReason)
+	// Names the bot as the client, so arena-api records audit metadata.via
+	// = telegram_bot on every row this call writes.
+	req.Header.Set(audit.HeaderClientChannel, ClientChannel)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -169,6 +173,11 @@ type Membership struct {
 // AdminReason is what the bot writes into X-Admin-Reason: a platform
 // superadmin working through the bot is audited under it on every call.
 const AdminReason = "telegram event center bot"
+
+// ClientChannel is what the bot writes into X-Client-Channel: arena-api stamps
+// it into audit_events.metadata.via, so every change made through the bot is
+// recognisable in the audit log.
+const ClientChannel = audit.ChannelTelegramBot
 
 // superadminRole is the platform-wide role /v1/me reports for the operator.
 const superadminRole = "platform_superadmin"
