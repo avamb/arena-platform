@@ -153,7 +153,7 @@ other = "Ayuda"
 other = "📲 Escáner de entradas"
 
 ["bot.scanner.text"]
-other = "<b>Escáner de entradas</b>\n\nLa aplicación para comprobar las entradas en la puerta: apunta la cámara del teléfono al código de la entrada y la aplicación te dice si es válida. Instálala en los teléfonos de quienes estarán en el acceso. No hace falta ningún equipo adicional.\n\nLa entrada de muestra que envía el bot al crear un evento la reconoce el escáner como muestra y no se gasta, así que puedes probarla enseguida."
+other = "<b>Escáner de entradas</b>\n\nLa aplicación para comprobar las entradas en la puerta: apunta la cámara del teléfono al código de la entrada y la aplicación te dice si es válida. Instálala en los teléfonos de quienes estarán en el acceso. No hace falta ningún equipo adicional.\n\n💡 Al crear un evento el bot te preguntará a qué hora se abre la entrada. Indícala: los asistentes llegarán un poco antes, no habrá cola en la puerta y el evento empezará puntual.\n\nLa entrada de muestra que envía el bot al crear un evento la reconoce el escáner como muestra y no se gasta, así que puedes probarla enseguida."
 
 ["bot.scanner.android_btn"]
 other = "Android: Google Play"
@@ -1292,7 +1292,7 @@ other = "Continúa en la web (el enlace abre tu solicitud):\n{{.Url}}"
 other = "✅ ¡Gracias! La solicitud está enviada. La revisaremos y te escribiremos aquí y por e-mail."
 
 ["bot.onb.approved"]
-other = "🎉 ¡Tu solicitud está aprobada! La organización <b>{{.Org}}</b> está lista. Todo lo que necesitas para tus eventos se hace aquí, en el bot: pulsa el botón para abrir el menú. El e-mail con el enlace de contraseña es solo para el panel web, que necesitarás más adelante, así que por ahora puedes ignorarlo.\n\n📲 Las entradas se comprueban en la puerta con la aplicación escáner: usa el botón «Escáner de entradas» de abajo o del menú."
+other = "🎉 ¡Tu solicitud está aprobada! La organización <b>{{.Org}}</b> está lista. Todo lo que necesitas para tus eventos se hace aquí, en el bot: pulsa el botón para abrir el menú. El e-mail con el enlace de contraseña es solo para el panel web, que necesitarás más adelante, así que por ahora puedes ignorarlo.\n\n📲 Las entradas se comprueban en la puerta con la aplicación escáner: usa el botón «Escáner de entradas» de abajo o del menú. Al crear un evento, indica la hora de apertura de la entrada: los asistentes llegarán antes y no habrá cola al escanear."
 
 ["bot.onb.rejected"]
 other = "Lamentablemente no podemos abrir una organización con esta solicitud. Si crees que es un error, escríbenos por e-mail."

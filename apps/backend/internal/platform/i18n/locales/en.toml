@@ -295,7 +295,7 @@ other = "Help"
 other = "📲 Ticket scanner"
 
 ["bot.scanner.text"]
-other = "<b>Ticket scanner</b>\n\nThe app for checking tickets at the door: point the phone's camera at the code on the ticket and the app shows whether it is valid. Install it on the phones of whoever stands at the entrance. No extra equipment is needed.\n\nThe sample ticket the bot sends after you create an event is recognised by the scanner as a sample and is not used up, so you can try it right away."
+other = "<b>Ticket scanner</b>\n\nThe app for checking tickets at the door: point the phone's camera at the code on the ticket and the app shows whether it is valid. Install it on the phones of whoever stands at the entrance. No extra equipment is needed.\n\n💡 When you create an event the bot asks when the doors open. Give a time: guests arrive a little earlier, there is no queue at the entrance, and the event starts on time.\n\nThe sample ticket the bot sends after you create an event is recognised by the scanner as a sample and is not used up, so you can try it right away."
 
 ["bot.scanner.android_btn"]
 other = "Android: Google Play"
@@ -1437,7 +1437,7 @@ other = "Continue on the website (the link opens your application):\n{{.Url}}"
 other = "✅ Thank you! The application is sent. We will review it and write to you here and by e-mail."
 
 ["bot.onb.approved"]
-other = "🎉 Your application is approved! The organization <b>{{.Org}}</b> is ready. Everything you need for events is done here in the bot: press the button to open the menu. The e-mail with a password link is only for the web console, which you will need later, so you can ignore it for now.\n\n📲 Tickets are checked at the door by the scanner app: use the “Ticket scanner” button below or in the menu."
+other = "🎉 Your application is approved! The organization <b>{{.Org}}</b> is ready. Everything you need for events is done here in the bot: press the button to open the menu. The e-mail with a password link is only for the web console, which you will need later, so you can ignore it for now.\n\n📲 Tickets are checked at the door by the scanner app: use the “Ticket scanner” button below or in the menu. When you create an event, give the time the doors open: guests arrive earlier and there is no queue at scanning."
 
 ["bot.onb.rejected"]
 other = "Unfortunately we cannot open an organization for this application. If you think this is a mistake, write to us by e-mail."
