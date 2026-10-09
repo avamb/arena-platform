@@ -340,6 +340,13 @@ func (h *Handler) HandleCreatePaymentIntent(w http.ResponseWriter, r *http.Reque
 		checkoutSessionID = &parsed
 	}
 
+	// The caller may only open a payment of its own organization (PAY-00).
+	// After the body validation, so a malformed request still answers 400,
+	// and before any row is read or written.
+	if !h.rowOrgAllowed(w, r, orgID, true, "payment_intent.org_not_found", "organization not found") {
+		return
+	}
+
 	// AB-41: the client does not choose the provider. With a checkout
 	// session the sales channel decides WHICH provider; a contradicting
 	// client value is rejected. Either way the org must hold an active,
@@ -458,6 +465,9 @@ func (h *Handler) HandleGetPaymentIntent(w http.ResponseWriter, r *http.Request)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("payment_intent.get_failed", "failed to retrieve payment intent", r))
 		return
 	}
+	if !h.rowOrgAllowed(w, r, pi.OrgID, false, "payment_intent.not_found", "payment intent not found") {
+		return
+	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"payment_intent": paymentIntentFromRow(pi),
@@ -541,6 +551,9 @@ func (h *Handler) HandleTransitionPaymentIntent(w http.ResponseWriter, r *http.R
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("payment_intent.fetch_failed", "failed to retrieve payment intent", r))
+		return
+	}
+	if !h.rowOrgAllowed(w, r, current.OrgID, true, "payment_intent.not_found", "payment intent not found") {
 		return
 	}
 

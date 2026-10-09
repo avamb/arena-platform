@@ -47,7 +47,7 @@ func (s *Server) checkoutHandler() *hcheckout.Handler {
 		s.issueTicketsForCheckout,
 		s.publishTicketRefundedEvents,
 		s.publishTicketRefundedV1Events,
-	).WithMetrics(s.typedMetrics)
+	).WithMetrics(s.typedMetrics).WithRowOrgAccess(s.rowOrgAccess)
 }
 
 // NewReservationProcessor forwards to hcheckout.NewReservationProcessor so
