@@ -32603,6 +32603,20 @@ export interface operations {
                 };
             };
             /**
+             * @description `payment_intent.org_not_found` — the caller is not a member of
+             *     the organization named by `org_id` (an API key may only open
+             *     payments of its own organization, a superadmin needs
+             *     `X-Admin-Reason`); `payment_intent.checkout_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
              * @description AB-41 provider resolution failed - `payment.provider_mismatch`
              *     (client value contradicts the checkout's sales channel),
              *     `payment.provider_not_configured`, `payment.provider_inactive`,
@@ -32689,7 +32703,13 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Payment intent not found (`payment_intent.not_found`). */
+            /**
+             * @description Payment intent not found (`payment_intent.not_found`) — also
+             *     the answer for a payment of another organization: the caller
+             *     must be a member of the organization that owns it (an API key
+             *     its own organization, a superadmin with `X-Admin-Reason` on a
+             *     write).
+             */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -32780,7 +32800,13 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Payment intent not found (`payment_intent.not_found`). */
+            /**
+             * @description Payment intent not found (`payment_intent.not_found`) — also
+             *     the answer for a payment of another organization: the caller
+             *     must be a member of the organization that owns it (an API key
+             *     its own organization, a superadmin with `X-Admin-Reason` on a
+             *     write).
+             */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -33182,7 +33208,10 @@ export interface operations {
             };
             /**
              * @description Parent payment intent not found
-             *     (`refund.payment_intent_not_found`).
+             *     (`refund.payment_intent_not_found`) — also the answer for a
+             *     payment of another organization: the caller must be a member
+             *     of the organization that owns the payment (an API key its own
+             *     organization, a superadmin with `X-Admin-Reason`).
              */
             404: {
                 headers: {
@@ -33266,7 +33295,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Refund not found (`refund.not_found`). */
+            /**
+             * @description Refund not found (`refund.not_found`) — also the answer for a
+             *     refund of another organization: the caller must be a member of
+             *     the organization that owns it (an API key its own
+             *     organization, a superadmin with `X-Admin-Reason` on a write).
+             */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -33358,7 +33392,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Refund not found (`refund.not_found`). */
+            /**
+             * @description Refund not found (`refund.not_found`) — also the answer for a
+             *     refund of another organization: the caller must be a member of
+             *     the organization that owns it (an API key its own
+             *     organization, a superadmin with `X-Admin-Reason` on a write).
+             */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -33461,7 +33500,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Refund not found (`refund.not_found`). */
+            /**
+             * @description Refund not found (`refund.not_found`) — also the answer for a
+             *     refund of another organization: the caller must be a member of
+             *     the organization that owns it (an API key its own
+             *     organization, a superadmin with `X-Admin-Reason` on a write).
+             */
             404: {
                 headers: {
                     [name: string]: unknown;

@@ -106,3 +106,48 @@ func (s *Server) enforceMembershipInOrg(w http.ResponseWriter, r *http.Request, 
 	}
 	return true
 }
+
+// rowOrgAccess is the hcheckout.RowOrgAccess the server wires for the flat
+// refund and payment-intent routes (PAY-00): the organization comes from the
+// row the handler loaded, not from the path. Same decision as
+// enforceMembershipInOrg — a platform superadmin acts everywhere (a write
+// needs X-Admin-Reason, a read does not, as in orgread), an organization API
+// key only inside api_keys.org_id, a user only inside their memberships —
+// but a refusal is the route's OWN 404, never 403, so a foreign refund or
+// payment id cannot be told apart from a missing one. Fail-closed when the
+// membership queries are not wired.
+func (s *Server) rowOrgAccess(w http.ResponseWriter, r *http.Request, orgID uuid.UUID, write bool, notFoundCode, notFoundMessage string) bool {
+	ctx := r.Context()
+	if auth.HasSuperadminOrgAccess(ctx) {
+		if !write {
+			return true
+		}
+		_, ok := httputil.RequireAdminReason(w, r)
+		return ok
+	}
+	notFound := func() bool {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(notFoundCode, notFoundMessage, r))
+		return false
+	}
+	if isService, allowed := auth.ServiceActorInOrg(ctx, orgID.String()); isService {
+		if !allowed {
+			return notFound()
+		}
+		return true
+	}
+	if s.membershipQueries == nil {
+		return notFound()
+	}
+	member, err := actorIsMemberOfOrgServer(ctx, s.membershipQueries, orgID)
+	if err != nil {
+		s.logger.Error("server: org membership check failed", "error", err.Error())
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"org.membership_check_failed", "failed to verify org membership", r,
+		))
+		return false
+	}
+	if !member {
+		return notFound()
+	}
+	return true
+}
