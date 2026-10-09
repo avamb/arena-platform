@@ -414,6 +414,11 @@ type Config struct {
 	// OnboardingSiteURL is the origin of the website that hosts the form; the
 	// e-mailed confirm/continue links point at <origin>/start/confirm.
 	OnboardingSiteURL string `env:"ONBOARDING_SITE_URL" required:"false" default:"https://arenasoldout.com"`
+	// OnboardingTermsURL / OnboardingPrivacyURL are the exact pages the consent
+	// screen links to. Empty means <OnboardingSiteURL>/legal/terms and
+	// /legal/privacy; set them while the new site is still on a sub-domain.
+	OnboardingTermsURL   string `env:"ONBOARDING_TERMS_URL" required:"false" default:""`
+	OnboardingPrivacyURL string `env:"ONBOARDING_PRIVACY_URL" required:"false" default:""`
 	// OnboardingTurnstileSecret is the Cloudflare Turnstile secret key that
 	// verifies the first step and the "send me the link" request. Empty is
 	// accepted outside production only; in production the routes answer 503.
@@ -627,6 +632,8 @@ func Load() (*Config, error) {
 		BotServiceToken:           getenv("BOT_SERVICE_TOKEN", ""),
 		BotArenaAPIURL:            getenv("BOT_ARENA_API_URL", "http://localhost:8080"),
 		OnboardingSiteURL:         strings.TrimRight(getenv("ONBOARDING_SITE_URL", "https://arenasoldout.com"), "/"),
+		OnboardingTermsURL:        strings.TrimSpace(getenv("ONBOARDING_TERMS_URL", "")),
+		OnboardingPrivacyURL:      strings.TrimSpace(getenv("ONBOARDING_PRIVACY_URL", "")),
 		OnboardingTurnstileSecret: getenv("ONBOARDING_TURNSTILE_SECRET", ""),
 		BotMetricsAddr:            getenv("BOT_METRICS_ADDR", ":9092"),
 		PosterLLMAPIKey:           getenv("POSTER_LLM_API_KEY", ""),
