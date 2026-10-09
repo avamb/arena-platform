@@ -45,6 +45,7 @@ type ticketStrings struct {
 	Holder    string // info-cell label above the ticket holder's name
 	Contact   string // footer prefix before the contact e-mail
 	NotFiscal string // the "not a fiscal receipt" disclosure sentence
+	Doors     string // prefix of the doors-open time under the weekday ("Doors open 19:30")
 }
 
 // ticketStringsByLocale holds one entry per locale the ported table covers.
@@ -61,6 +62,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Holder:    "Holder",
 		Contact:   "Contact",
 		NotFiscal: "This document is not a fiscal receipt.",
+		Doors:     "Doors open",
 	},
 	"ru": {
 		Category: "Категория", Seat: "Место", Price: "Цена",
@@ -70,6 +72,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Holder:    "Владелец",
 		Contact:   "Контакт",
 		NotFiscal: "Этот документ не является фискальным чеком.",
+		Doors:     "Вход с",
 	},
 	"cs": {
 		Category: "Kategorie", Seat: "Místo", Price: "Cena",
@@ -79,6 +82,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Holder:    "Držitel",
 		Contact:   "Kontakt",
 		NotFiscal: "Tento dokument není daňovým dokladem.",
+		Doors:     "Vstup od",
 	},
 	"es": {
 		Category: "Categoría", Seat: "Asiento", Price: "Precio",
@@ -88,6 +92,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Holder:    "Titular",
 		Contact:   "Contacto",
 		NotFiscal: "Este documento no es un recibo fiscal.",
+		Doors:     "Apertura de puertas",
 	},
 	"de": {
 		Category: "Kategorie", Seat: "Platz", Price: "Preis",
@@ -97,6 +102,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Holder:    "Inhaber",
 		Contact:   "Kontakt",
 		NotFiscal: "Dieses Dokument ist kein Steuerbeleg.",
+		Doors:     "Einlass ab",
 	},
 	"fr": {
 		Category: "Catégorie", Seat: "Place", Price: "Prix",
@@ -106,6 +112,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Holder:    "Titulaire",
 		Contact:   "Contact",
 		NotFiscal: "Ce document n’est pas un reçu fiscal.",
+		Doors:     "Ouverture des portes",
 	},
 	"it": {
 		Category: "Categoria", Seat: "Posto", Price: "Prezzo",
@@ -115,6 +122,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Holder:    "Intestatario",
 		Contact:   "Contatto",
 		NotFiscal: "Questo documento non è una ricevuta fiscale.",
+		Doors:     "Apertura porte",
 	},
 	"pl": {
 		Category: "Kategoria", Seat: "Miejsce", Price: "Cena",
@@ -124,6 +132,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Holder:    "Posiadacz",
 		Contact:   "Kontakt",
 		NotFiscal: "Ten dokument nie jest paragonem fiskalnym.",
+		Doors:     "Wejście od",
 	},
 	"uk": {
 		Category: "Категорія", Seat: "Місце", Price: "Ціна",
@@ -133,6 +142,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Holder:    "Власник",
 		Contact:   "Контакт",
 		NotFiscal: "Цей документ не є фіскальним чеком.",
+		Doors:     "Вхід з",
 	},
 }
 

@@ -36,7 +36,8 @@ SELECT s.id                                    AS session_id,
        o.default_locale                        AS org_locale,
        o.website_url, o.legal_name, o.legal_address_line1, o.legal_address_line2,
        o.legal_address_postal_code, o.legal_address_city, o.legal_address_country,
-       o.contact_email, o.logo_media_id
+       o.contact_email, o.logo_media_id,
+       s.doors_open_at
 FROM      sessions s
 JOIN      events        e    ON e.id = s.event_id
 JOIN      organizations o    ON o.id = e.org_id

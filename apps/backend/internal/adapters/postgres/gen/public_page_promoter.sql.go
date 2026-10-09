@@ -33,6 +33,15 @@ SELECT
         LIMIT 1
     ) AS first_session_timezone,
     (
+        SELECT s.doors_open_at
+        FROM   sessions s
+        WHERE  s.event_id   = e.id
+          AND  s.deleted_at IS NULL
+          AND  s.status    <> 'cancelled'
+        ORDER BY s.start_at ASC
+        LIMIT 1
+    ) AS first_session_doors_at,
+    (
         SELECT count(*)
         FROM   sessions s
         WHERE  s.event_id   = e.id
@@ -73,7 +82,7 @@ func (q *Queries) GetHostedPageResolutionByPromoter(ctx context.Context, promote
 		&r.OrgID, &r.OrgSlug, &r.OrgName, &r.OrgLogoMediaID, &r.OrgDefaultLocale,
 		&r.EventID, &r.EventSlug, &r.EventName, &r.EventDescription, &r.EventShortDescription,
 		&r.EventImageURL, &r.EventPosterMediaID, &r.EventAgeRating,
-		&r.FirstSessionAt, &r.LastSessionAt, &r.FirstSessionTimezone,
+		&r.FirstSessionAt, &r.LastSessionAt, &r.FirstSessionTimezone, &r.FirstSessionDoorsAt,
 		&r.SessionCount, &r.FeedToken,
 	)
 	return r, err
@@ -134,7 +143,7 @@ func (q *Queries) GetHostedPromoterPageByPromoter(ctx context.Context, promoterS
 
 const listHostedPromoterPageEventsByPromoter = `-- name: ListHostedPromoterPageEventsByPromoter :many
 SELECT id, slug, name, short_description, image_url, poster_media_id,
-       age_rating, first_session_at, last_session_at, first_session_timezone,
+       age_rating, first_session_at, last_session_at, first_session_timezone, first_session_doors_at,
        session_count, feed_token
 FROM (
     SELECT DISTINCT ON (e.id)
@@ -151,6 +160,15 @@ FROM (
             ORDER BY s.start_at ASC
             LIMIT 1
         ) AS first_session_timezone,
+        (
+            SELECT s.doors_open_at
+            FROM   sessions s
+            WHERE  s.event_id   = e.id
+              AND  s.deleted_at IS NULL
+              AND  s.status    <> 'cancelled'
+            ORDER BY s.start_at ASC
+            LIMIT 1
+        ) AS first_session_doors_at,
         (
             SELECT count(*)
             FROM   sessions s
@@ -193,7 +211,7 @@ func (q *Queries) ListHostedPromoterPageEventsByPromoter(ctx context.Context, or
 		if err := rows.Scan(
 			&r.EventID, &r.EventSlug, &r.EventName, &r.EventShortDescription,
 			&r.EventImageURL, &r.EventPosterMediaID, &r.EventAgeRating,
-			&r.FirstSessionAt, &r.LastSessionAt, &r.FirstSessionTimezone,
+			&r.FirstSessionAt, &r.LastSessionAt, &r.FirstSessionTimezone, &r.FirstSessionDoorsAt,
 			&r.SessionCount, &r.FeedToken,
 		); err != nil {
 			return nil, err

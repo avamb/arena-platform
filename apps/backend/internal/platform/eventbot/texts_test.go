@@ -25,7 +25,7 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		"Reason": "r", "City": "c", "Capacity": 80, "Date": "d", "List": "l", "Price": "p",
 		"Schedule": "", "Age": "18+", "Promoter": "", "Poster": "", "Published": "", "Link": "",
 		"Warnings": "", "URL": "u", "State": "s", "Text": "tx", "Until": "d", "Limit": "5", "Raw": "r", "Tickets": "t", "Issued": 2, "Cancelled": 1, "Active": 1, "Min": "01.01.2026", "Max": "02.01.2026",
-		"Old": "o", "New": "n", "Contact": "c", "Letters": "", "Time": "19:30", "Now": "now", "Word": "CANCEL", "Subject": "s", "Zone": "Europe/Madrid",
+		"Old": "o", "New": "n", "Contact": "c", "Letters": "", "Time": "19:30", "Now": "now", "Hours": 1, "Start": "19:30", "SalesEnd": "21:00", "Doors": "19:00", "Word": "CANCEL", "Subject": "s", "Zone": "Europe/Madrid",
 		"Message": "m", "Pct": 40, "Links": "l", "Url": "https://x.test/a",
 	}
 	for _, loc := range SupportedLocales {

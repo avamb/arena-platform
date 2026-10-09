@@ -419,7 +419,8 @@ SELECT t.system_ticket_id,
        oi.total                      AS price_minor,
        NULLIF(btrim(ord.currency), '') AS price_currency,
        COALESCE(s.poster_media_id, e.poster_media_id) AS poster_media_id,
-       epr.name                      AS promoter_name
+       epr.name                      AS promoter_name,
+       s.doors_open_at               AS doors_open_at
 FROM       tickets t
 LEFT JOIN  sessions      s  ON s.id  = t.session_id
 LEFT JOIN  events        e  ON e.id  = s.event_id
@@ -494,6 +495,9 @@ type TicketPresentationRow struct {
 	// org_promoters.name, migration 0113) — printed as the ticket's
 	// "Organizer". NULL when the selling organization is the promoter.
 	PromoterName *string `json:"promoter_name"`
+	// DoorsOpenAt is sessions.doors_open_at (migration 0128): when the venue
+	// lets people in, printed beside the start. NULL when not given.
+	DoorsOpenAt *time.Time `json:"doors_open_at"`
 }
 
 // GetTicketPresentationByID resolves the presentation values for one
@@ -521,6 +525,7 @@ func (q *Queries) GetTicketPresentationByID(ctx context.Context, ticketID uuid.U
 		&p.PriceCurrency,
 		&p.PosterMediaID,
 		&p.PromoterName,
+		&p.DoorsOpenAt,
 	)
 	return p, err
 }

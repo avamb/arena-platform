@@ -526,6 +526,9 @@ func (h *Handler) upsertArenaSession(
 		if err != nil {
 			return uuid.Nil, false, fmt.Errorf("insert session: %w", err)
 		}
+		if err := applyImportSaleTimes(ctx, q, plan, created.ID, eventID, startAt); err != nil {
+			return uuid.Nil, false, err
+		}
 		// The places themselves are minted per CATEGORY once the bundle's
 		// categoryList has been upserted (materializeArenaCategoryPlaces).
 		// Before migration 0101 this spot materialized one fungible
@@ -561,6 +564,9 @@ func (h *Handler) upsertArenaSession(
 	}
 	if _, err := q.UpdateSession(ctx, m.SessionID, eventID, &venueID, &startAt, &endAt, capacityPtr, nil, status, nil, &currency, "override"); err != nil {
 		return uuid.Nil, false, fmt.Errorf("update session: %w", err)
+	}
+	if err := applyImportSaleTimes(ctx, q, plan, m.SessionID, eventID, startAt); err != nil {
+		return uuid.Nil, false, err
 	}
 	if err := applySessionChange(ctx, tx, m.SessionID, before.State, plan.Request.ChangeMessage); err != nil {
 		return uuid.Nil, false, err
@@ -623,7 +629,12 @@ func (h *Handler) upsertArenaTiers(
 			capacity = &cap32
 		}
 		sortOrder := int32(i) //nolint:gosec // categoryList length is bounded by the request body cap
-		saleStart, saleEnd, winErr := c.ParseSellWindow(plan.SaleWindowStart, plan.SaleWindowEnd)
+		// The bundle's actionEvent.sellEndTime is the SESSION's sales end
+		// (migration 0128): it is not copied onto the categories any more,
+		// or extending the session's sale later would leave every category
+		// closing at the old time. A category's own sellEndTime still sets
+		// its own window.
+		saleStart, saleEnd, winErr := c.ParseSellWindow(plan.SaleWindowStart, nil)
 		if winErr != nil {
 			return nil, nil, failImport(http.StatusUnprocessableEntity, "import.invalid_sale_window",
 				fmt.Sprintf("categoryList[%d]: %s", i, winErr.Error()))

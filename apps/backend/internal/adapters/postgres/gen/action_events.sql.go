@@ -40,11 +40,10 @@ import (
 // otherwise the session sells against inventory_ledger and LedgerAvailable
 // (capacity_total − sold − held, 0 when uncapped) is.
 //
-// SellEndAt is the last moment any live tier still sells — max over the tiers
-// of sale_window_end, a tier without one counting as selling until StartAt —
-// nil when the session has no tiers, and the handler then falls back to
-// StartAt. Never the earliest end: a chain of price steps would report the
-// first step's end as the end of the whole sale.
+// SellEndAt is the session's own sales end (sessions.sales_end_at, migration
+// 0128 — the start by default, set by the organizer). It is never NULL in
+// the table; the pointer only keeps the handler's StartAt fallback for rows
+// built by hand in tests.
 type ActionEventRow struct {
 	SessionID          uuid.UUID  `json:"session_id"`
 	EventID            uuid.UUID  `json:"event_id"`
@@ -60,6 +59,7 @@ type ActionEventRow struct {
 	EventPosterMediaID *uuid.UUID `json:"event_poster_media_id"`
 	EventImageURL      *string    `json:"event_image_url"`
 	SellEndAt          *time.Time `json:"sell_end_at"`
+	DoorsOpenAt        *time.Time `json:"doors_open_at"`
 	SeatsTotal         int32      `json:"seats_total"`
 	SeatsAvailable     int32      `json:"seats_available"`
 	LedgerAvailable    int32      `json:"ledger_available"`
@@ -79,10 +79,8 @@ SELECT s.id                                        AS session_id,
        s.poster_media_id,
        e.poster_media_id                           AS event_poster_media_id,
        e.image_url                                 AS event_image_url,
-       (SELECT max(COALESCE(tt.sale_window_end, s.start_at))
-          FROM   ticket_tiers tt
-          WHERE  tt.session_id = s.id
-            AND  tt.deleted_at IS NULL)            AS sell_end_at,
+       s.sales_end_at                            AS sell_end_at,
+       s.doors_open_at,
        (SELECT count(*)
           FROM   session_seats ss
           WHERE  ss.session_id = s.id)::int        AS seats_total,
@@ -104,7 +102,7 @@ WHERE  e.org_id     = $1
   AND  e.deleted_at IS NULL
   AND  s.deleted_at IS NULL
   AND  s.status     = 'scheduled'
-  AND  s.start_at   > now() - interval '6 hours'
+  AND  (s.start_at > now() - interval '6 hours' OR s.sales_end_at > now())
 ORDER BY s.start_at ASC, s.id ASC`
 
 // ListActionEventsByOrg returns every sellable session of orgID's published
@@ -141,6 +139,7 @@ func (q *Queries) ListActionEventsByOrg(ctx context.Context, orgID uuid.UUID) ([
 			&r.EventPosterMediaID,
 			&r.EventImageURL,
 			&r.SellEndAt,
+			&r.DoorsOpenAt,
 			&r.SeatsTotal,
 			&r.SeatsAvailable,
 			&r.LedgerAvailable,
@@ -225,7 +224,7 @@ WHERE  e.org_id     = $1
   AND  e.deleted_at IS NULL
   AND  s.deleted_at IS NULL
   AND  s.status     = 'scheduled'
-  AND  s.start_at   > now() - interval '6 hours'
+  AND  (s.start_at > now() - interval '6 hours' OR s.sales_end_at > now())
   AND  tt.deleted_at IS NULL
 ORDER BY tt.session_id, tt.sort_order ASC, tt.id ASC`
 

@@ -308,8 +308,18 @@ func (h *Handler) buildSeatListCategories(
 ) []bil24compat.GetSeatListCategory {
 	ledgers := h.seatListLedgers(ctx, sessionID, tiers, stats)
 
+	// The session's own sales end closes every category with it (0128).
+	// Best effort: a failed lookup leaves the categories' own windows.
+	var salesEnd time.Time
+	if h.tierQueries != nil {
+		if end, err := h.tierQueries.GetSessionSalesEnd(ctx, sessionID); err == nil {
+			salesEnd = end
+		}
+	}
+
 	out := make([]bil24compat.GetSeatListCategory, 0, len(tiers))
 	for _, t := range tiers {
+		t = hcheckout.CapSaleWindow(t, salesEnd)
 		out = append(out, bil24compat.GetSeatListCategory{
 			CategoryPriceID:   h.compatCategoryPriceIDInt(ctx, t.ID),
 			CategoryPriceName: t.Name,

@@ -160,6 +160,11 @@ type Ticket struct {
 	SessionStart time.Time
 	SessionTZ    string
 
+	// DoorsOpenAt is when the venue lets people in (sessions.doors_open_at,
+	// migration 0128), printed on the venue's wall clock under the weekday.
+	// nil prints nothing.
+	DoorsOpenAt *time.Time
+
 	// VenueName / VenueAddress / VenueCity compose the "where" block.
 	// VenueName prints bold; address and city join with ", " on the line
 	// under it, and the whole line disappears when both are empty.

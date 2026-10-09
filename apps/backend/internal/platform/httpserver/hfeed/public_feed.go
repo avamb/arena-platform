@@ -256,9 +256,14 @@ type BuyerFieldItem struct {
 // #321 WID-0d) so the widget can render and validate the buyer form fields
 // without hard-coding assumptions.
 type publicFeedSessionResponse struct {
-	ID            string           `json:"id"`
-	StartAt       string           `json:"start_at"`
-	EndAt         string           `json:"end_at"`
+	ID      string `json:"id"`
+	StartAt string `json:"start_at"`
+	EndAt   string `json:"end_at"`
+	// SalesEndAt is when ticket sales close (the organizer's choice, the
+	// start by default); after it every category reports available 0.
+	// DoorsOpenAt is the optional "doors open" time, null when not set.
+	SalesEndAt    string           `json:"sales_end_at"`
+	DoorsOpenAt   *string          `json:"doors_open_at"`
 	CapacityTotal int32            `json:"capacity_total"`
 	Status        string           `json:"status"`
 	AdmissionMode string           `json:"admission_mode,omitempty"`
@@ -322,11 +327,16 @@ func (h *Handler) publicFeedSessionFromRow(ctx context.Context, s gen.SessionRow
 		ID:            s.ID.String(),
 		StartAt:       s.StartAt.UTC().Format(time.RFC3339),
 		EndAt:         s.EndAt.UTC().Format(time.RFC3339),
+		SalesEndAt:    salesEndOf(s).UTC().Format(time.RFC3339),
 		CapacityTotal: s.CapacityTotal,
 		Status:        s.Status,
 		BuyerFields:   buyerFields,
 		Tiers:         []publicFeedTierResponse{},
 		MediaGallery:  []publicFeedMediaItem{},
+	}
+	if s.DoorsOpenAt != nil {
+		d := s.DoorsOpenAt.UTC().Format(time.RFC3339)
+		resp.DoorsOpenAt = &d
 	}
 	// Session-level poster wins over the event-level fallback (AB-47c).
 	// The event fallback is applied later by applyPosterFallback when the
@@ -338,6 +348,15 @@ func (h *Handler) publicFeedSessionFromRow(ctx context.Context, s gen.SessionRow
 		resp.PosterURL = &url
 	}
 	return resp
+}
+
+// salesEndOf is the session's sales end, its start for a row built without
+// one (tests, pre-0128 fixtures).
+func salesEndOf(s gen.SessionRow) time.Time {
+	if s.SalesEndAt.IsZero() {
+		return s.StartAt
+	}
+	return s.SalesEndAt
 }
 
 // venueTimezone resolves a venue's IANA zone, once per venue per request
@@ -804,7 +823,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 									tr.NextPriceChangeAt = &s
 								}
 							}
-							tr.Available = publicFeedTierAvailable(tier, placeStats, now)
+							tr.Available = publicFeedTierAvailable(hcheckout.CapSaleWindow(tier, salesEndOf(sess)), placeStats, now)
 							sessResp.Tiers = append(sessResp.Tiers, tr)
 						}
 					}

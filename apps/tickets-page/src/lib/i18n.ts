@@ -31,6 +31,8 @@ export interface PageStrings {
   /** Back link shown on the per-event page, pointing at the org's
    * promoter page. */
   backToPromoter: string;
+  /** Prefix of the doors-open time ("Doors open 19:30"). */
+  doorsOpen: string;
 }
 
 const STRINGS: Record<PageLocale, PageStrings> = {
@@ -50,6 +52,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     ticketsCta: 'Tickets',
     eventPast: 'Took place',
     backToPromoter: 'All dates',
+    doorsOpen: 'Doors open',
   },
   ru: {
     loading: 'Загрузка события…',
@@ -67,6 +70,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     ticketsCta: 'Билеты',
     eventPast: 'Уже прошло',
     backToPromoter: 'Все даты',
+    doorsOpen: 'Вход с',
   },
   cs: {
     loading: 'Načítání akce…',
@@ -84,6 +88,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     ticketsCta: 'Vstupenky',
     eventPast: 'Již proběhlo',
     backToPromoter: 'Všechny termíny',
+    doorsOpen: 'Vstup od',
   },
   he: {
     loading: 'טוען את האירוע…',
@@ -101,6 +106,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     ticketsCta: 'כרטיסים',
     eventPast: 'כבר התקיים',
     backToPromoter: 'כל התאריכים',
+    doorsOpen: 'פתיחת דלתות',
   },
   es: {
     loading: 'Cargando evento…',
@@ -118,6 +124,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     ticketsCta: 'Entradas',
     eventPast: 'Ya se celebró',
     backToPromoter: 'Todas las fechas',
+    doorsOpen: 'Apertura de puertas',
   },
 };
 

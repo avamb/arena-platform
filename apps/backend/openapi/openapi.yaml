@@ -5095,6 +5095,15 @@ components:
             its time) in the session selector, and the first session's time
             in a heading would be misleading.
           example: 2
+        first_session_doors_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            When the venue opens its doors for the event's earliest active
+            session (`sessions.doors_open_at`, migration 0128), RFC 3339 UTC.
+            Null when the organizer gave no doors time. Like the clock time,
+            the tickets page prints it only when `session_count` is 1.
+          example: "2026-12-15T18:30:00Z"
         feed_token:
           type: string
           description: |
@@ -5463,6 +5472,8 @@ components:
         - currency_source
         - created_at
         - updated_at
+        - sales_end_at
+        - doors_open_at
         - has_overlapping_sessions
       description: |
         A single dated session (time slot) of an event at a venue. Since
@@ -5506,6 +5517,22 @@ components:
             `start_at` — enforced by both the handler and a CHECK
             constraint on the sessions table.
           example: "2026-08-15T21:00:00Z"
+        sales_end_at:
+          type: string
+          format: date-time
+          description: |
+            When ticket sales for this session close (RFC 3339, UTC). Always
+            present: the session start unless the organizer chose another
+            moment. No new hold is taken after it on any surface; a category's
+            own sale_window_end can only close that category sooner.
+          example: "2026-08-15T18:00:00Z"
+        doors_open_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            When the venue opens its doors (RFC 3339, UTC), or null when the
+            organizer did not say. Display only; never after start_at.
+          example: "2026-08-15T17:30:00Z"
         capacity_total:
           type: integer
           format: int32
@@ -5637,6 +5664,22 @@ components:
           format: date-time
           description: Session end time (RFC 3339, UTC). Must be strictly after `start_at`.
           example: "2026-08-15T21:00:00Z"
+        sales_end_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            When ticket sales for this session close (RFC 3339). Omitted:
+            the session start. Every surface stops selling new tickets after
+            it; a category's own sale_window_end can only close sooner.
+          example: "2026-08-15T18:00:00Z"
+        doors_open_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            Optional time the venue opens its doors (RFC 3339), shown to
+            buyers on the sales page and the ticket. Must not be after
+            start_at.
+          example: "2026-08-15T17:30:00Z"
         capacity_override:
           type: [integer, "null"]
           format: int32
@@ -5733,6 +5776,23 @@ components:
             New session end time. When both start_at and end_at are
             present in the same body, end_at must remain strictly after
             start_at.
+        sales_end_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            New moment ticket sales close (RFC 3339). Absent, null or ""
+            keeps the stored value. Moving start_at alone carries the sales
+            end along by the same amount. Some events sell after the start,
+            for those who come late — the organizer decides.
+          example: "2026-08-15T18:00:00Z"
+        doors_open_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            When the venue opens its doors (RFC 3339). Absent keeps the
+            stored value, null or "" clears it. Must not be after the
+            session's (new) start. Moving start_at alone carries it along.
+          example: "2026-08-15T17:30:00Z"
         capacity_override:
           type: [integer, "null"]
           format: int32
@@ -11864,9 +11924,21 @@ components:
         sellEndTime:
           type: string
           description: |
-            RFC3339 instant at which sales close. Stored as the session sale
-            window end. Omit to leave the sale window unbounded.
+            RFC3339 instant at which sales for the session close, stored as
+            the session's `sales_end_at` (migration 0128). Omitted on a new
+            session: the session start; omitted on a repeat import: the
+            stored value is kept. A Bil24-source import also stores it as the
+            sale window end of every imported category, as before.
           example: 2026-04-26T14:00:00Z
+        doorsOpenTime:
+          type: string
+          description: |
+            Optional RFC3339 instant at which the venue opens its doors,
+            stored as the session's `doors_open_at` and shown to buyers.
+            Must not be after the session start
+            (`import.invalid_doors_open_time`). Omitted keeps the stored
+            value; an empty string clears it.
+          example: 2026-04-26T17:30:00Z
         endTime:
           type: string
           description: |
@@ -13188,7 +13260,10 @@ components:
           description: ISO-4217 code of the session's prices.
         sellEndTime:
           type: string
-          description: RFC3339 timestamp after which the session's sale closes — the latest tier `sale_window_end`, a tier without one selling until `start_at`; `start_at` when the session has no tiers.
+          description: RFC3339 timestamp after which the session's sale closes — the session's own `sales_end_at` (migration 0128), set by the organizer and the session start by default. After it every category reports availability 0.
+        doorsOpenTime:
+          type: string
+          description: Arena extension (migration 0128). RFC3339 timestamp, in the venue's zone, when the venue opens its doors. Omitted when the organizer gave none.
         seatingPlanId:
           type: integer
           format: int64
@@ -31187,6 +31262,11 @@ paths:
             (`venues.timezone`), `""` when the venue has none. The widget
             formats the session chips in it, so a buyer whose phone is in
             another zone still reads the venue's local time.
+          * `sales_end_at` — when ticket sales for the session close
+            (RFC 3339; the start unless the organizer chose otherwise).
+            After it every tier reports `available: 0`.
+          * `doors_open_at` — when the venue opens its doors (RFC 3339),
+            or null when not given. Display only.
           * `service_fee_percent` — the channel's service charge as a
             decimal string (`"5.00"` = 5 %, `"0.00"` = none), applied on
             top of the ticket prices at checkout; the widget shows it as

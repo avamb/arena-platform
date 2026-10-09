@@ -46,6 +46,15 @@ SELECT
         LIMIT 1
     ) AS first_session_timezone,
     (
+        SELECT s.doors_open_at
+        FROM   sessions s
+        WHERE  s.event_id   = e.id
+          AND  s.deleted_at IS NULL
+          AND  s.status    <> 'cancelled'
+        ORDER BY s.start_at ASC
+        LIMIT 1
+    ) AS first_session_doors_at,
+    (
         SELECT count(*)
         FROM   sessions s
         WHERE  s.event_id   = e.id
@@ -122,7 +131,7 @@ WHERE lower(o.slug) = lower($1)
 -- can legitimately be published through different channels, and a cart may
 -- never span two tokens.
 SELECT id, slug, name, short_description, image_url, poster_media_id,
-       age_rating, first_session_at, last_session_at, first_session_timezone,
+       age_rating, first_session_at, last_session_at, first_session_timezone, first_session_doors_at,
        session_count, feed_token
 FROM (
     SELECT DISTINCT ON (e.id)
@@ -139,6 +148,15 @@ FROM (
             ORDER BY s.start_at ASC
             LIMIT 1
         ) AS first_session_timezone,
+        (
+            SELECT s.doors_open_at
+            FROM   sessions s
+            WHERE  s.event_id   = e.id
+              AND  s.deleted_at IS NULL
+              AND  s.status    <> 'cancelled'
+            ORDER BY s.start_at ASC
+            LIMIT 1
+        ) AS first_session_doors_at,
         (
             SELECT count(*)
             FROM   sessions s
@@ -187,6 +205,15 @@ SELECT
         ORDER BY s.start_at ASC
         LIMIT 1
     ) AS first_session_timezone,
+    (
+        SELECT s.doors_open_at
+        FROM   sessions s
+        WHERE  s.event_id   = e.id
+          AND  s.deleted_at IS NULL
+          AND  s.status    <> 'cancelled'
+        ORDER BY s.start_at ASC
+        LIMIT 1
+    ) AS first_session_doors_at,
     (
         SELECT count(*)
         FROM   sessions s
@@ -241,7 +268,7 @@ WHERE lower(p.slug) = lower($1)
 -- ListHostedPromoterPageEventsByPromoter is ListHostedPromoterPageEvents
 -- narrowed to the events linked to one promoter (event_promoters).
 SELECT id, slug, name, short_description, image_url, poster_media_id,
-       age_rating, first_session_at, last_session_at, first_session_timezone,
+       age_rating, first_session_at, last_session_at, first_session_timezone, first_session_doors_at,
        session_count, feed_token
 FROM (
     SELECT DISTINCT ON (e.id)
@@ -258,6 +285,15 @@ FROM (
             ORDER BY s.start_at ASC
             LIMIT 1
         ) AS first_session_timezone,
+        (
+            SELECT s.doors_open_at
+            FROM   sessions s
+            WHERE  s.event_id   = e.id
+              AND  s.deleted_at IS NULL
+              AND  s.status    <> 'cancelled'
+            ORDER BY s.start_at ASC
+            LIMIT 1
+        ) AS first_session_doors_at,
         (
             SELECT count(*)
             FROM   sessions s

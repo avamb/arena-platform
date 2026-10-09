@@ -466,6 +466,9 @@ func (h *Handler) resolveSession(
 		if insErr != nil {
 			return uuid.Nil, false, fmt.Errorf("insert session: %w", insErr)
 		}
+		if stErr := applyImportSaleTimes(ctx, q, plan, created.ID, eventID, plan.StartAt); stErr != nil {
+			return uuid.Nil, false, stErr
+		}
 		if regErr := registerExternal(ctx, tx, compatids.KindActionEvent, created.ID, ae.ActionEventID); regErr != nil {
 			return uuid.Nil, false, regErr
 		}
@@ -516,6 +519,9 @@ func (h *Handler) resolveSession(
 	}
 	if _, err := q.UpdateSession(ctx, sessionID, sctx.EventID, &venueID, &plan.StartAt, &endAt, capacityPtr, nil, status, nil, &currency, "override"); err != nil {
 		return uuid.Nil, false, fmt.Errorf("update session: %w", err)
+	}
+	if err := applyImportSaleTimes(ctx, q, plan, sessionID, sctx.EventID, plan.StartAt); err != nil {
+		return uuid.Nil, false, err
 	}
 	if err := applySessionChange(ctx, tx, sessionID, before.State, plan.Request.ChangeMessage); err != nil {
 		return uuid.Nil, false, err

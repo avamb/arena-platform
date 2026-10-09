@@ -77,6 +77,9 @@ type Data struct {
 	// SessionStart is a pre-formatted "YYYY-MM-DD HH:MM (zone)" string in
 	// the venue's local timezone, or empty if unknown.
 	SessionStart string
+	// DoorsOpen is the pre-formatted doors-open time ("19:30") on the venue's
+	// wall clock (sessions.doors_open_at, migration 0128); empty prints no line.
+	DoorsOpen string
 	// VenueName may be empty if the venue is not yet resolved.
 	VenueName string
 	// TierName may be empty for GA / untiered tickets.

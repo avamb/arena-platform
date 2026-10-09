@@ -183,6 +183,10 @@ func TestPublicPageIntegration_Resolves200WithToken(t *testing.T) {
 	if cc := w.Header().Get("Cache-Control"); cc == "" {
 		t.Errorf("Cache-Control header missing")
 	}
+	// Migration 0128: the key is always present, null without a doors time.
+	if !strings.Contains(w.Body.String(), `"first_session_doors_at":null`) {
+		t.Errorf("first_session_doors_at missing or not null: %s", w.Body.String())
+	}
 }
 
 // TestPublicPageIntegration_HostedPageDisabled_404 verifies that a channel

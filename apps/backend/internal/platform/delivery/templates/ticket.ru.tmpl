@@ -12,7 +12,7 @@
   <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{if gt (len .Tickets) 1}}Спасибо за покупку. Ваши билеты на «{{.EventName}}» — во вложении к этому письму (PDF-файлы).{{else}}Спасибо за покупку. Ваш билет на «{{.EventName}}» — во вложении к этому письму (PDF).{{end}}</td></tr>
   <tr><td style="padding:8px 32px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:4px solid {{.Accent}};background:#f8f9fa;"><tr><td style="padding:12px 16px;color:#22333D;font-size:14px;line-height:1.6;">
-      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}
+      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .DoorsOpen}}<br>Вход с {{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}
     </td></tr></table>
   </td></tr>
   <tr><td style="padding:8px 32px;">
@@ -61,6 +61,7 @@
 
 {{.EventName}}
 {{with .SessionStart}}{{.}}
+{{end}}{{with .DoorsOpen}}Вход с {{.}}
 {{end}}{{with .VenueName}}{{.}}
 {{end}}
 {{if gt (len .Tickets) 1}}Билеты ({{len .Tickets}}){{else}}Билет{{end}}:

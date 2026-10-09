@@ -62,6 +62,18 @@ func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef strin
 		// created under; the wire refuses a second key for it.
 		req.ExternalRef = ""
 	}
+	// Sales end and doors open (migration 0128): offsets from the start,
+	// sent as instants in the venue's zone. A date the draft read back
+	// without a doors time sends "" so a removed one is cleared.
+	if day, err := time.ParseInLocation("2006-01-02 15:04", s.Date+" "+s.Time, loc); err == nil {
+		sellEnd, doors := saleTimesOnWire(day, s)
+		req.ActionEvent.SellEndTime = sellEnd
+		if doors == nil && s.SessionID != "" {
+			empty := ""
+			doors = &empty
+		}
+		req.ActionEvent.DoorsOpenTime = doors
+	}
 	for _, c := range d.Channels {
 		req.ChannelIDs = append(req.ChannelIDs, c.ID)
 	}

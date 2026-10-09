@@ -21,6 +21,7 @@
   <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
     <tr><td><strong>Akce</strong></td><td>{{.EventName}}</td></tr>
     {{if not .Change.Date}}{{with .SessionStart}}<tr><td><strong>Termín</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{with .DoorsOpen}}<tr><td><strong>Vstup od</strong></td><td>{{.}}</td></tr>{{end}}
     {{if not .Change.Venue}}{{with .VenueName}}<tr><td><strong>Místo konání</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
     {{with .TierName}}<tr><td><strong>Kategorie</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatSector}}<tr><td><strong>Sektor</strong></td><td>{{.}}</td></tr>{{end}}
@@ -68,7 +69,8 @@ Pořadatel změnil údaje o akci {{.EventName}}. Co se změnilo:
 {{end}}{{end}}
 Akce: {{.EventName}}
 {{if not .Change.Date}}{{with .SessionStart}}Termín: {{.}}
-{{end}}{{end}}{{if not .Change.Venue}}{{with .VenueName}}Místo konání: {{.}}
+{{end}}{{end}}{{with .DoorsOpen}}Vstup od {{.}}
+{{end}}{{if not .Change.Venue}}{{with .VenueName}}Místo konání: {{.}}
 {{end}}{{end}}{{with .TierName}}Kategorie: {{.}}
 {{end}}{{with .SeatSector}}Sektor: {{.}}
 {{end}}{{with .SeatRow}}Řada: {{.}}

@@ -95,6 +95,7 @@ func (r *wizardRun) step(in WizInput, want string) string {
 	if err != nil {
 		r.t.Fatalf("Apply(%+v) at %s: %v", in, r.d.Step, err)
 	}
+	note = r.passSaleTimes(want, note)
 	if r.d.Step != want {
 		r.t.Fatalf("after %+v: step=%s want %s (note %q)", in, r.d.Step, want, note)
 	}
@@ -117,6 +118,7 @@ func (r *wizardRun) text(s, want string) string {
 	if len(r.d.Scratch.DatePending) > 0 {
 		return r.step(WizInput{Data: confirmPrefix + r.d.Scratch.DatePending[0]}, want)
 	}
+	note = r.passSaleTimes(want, note)
 	if r.d.Step != want {
 		r.t.Fatalf("after %q: step=%s want %s (note %q)", s, r.d.Step, want, note)
 	}
@@ -125,6 +127,26 @@ func (r *wizardRun) text(s, want string) string {
 	}
 	return note
 }
+
+// passSaleTimes answers the sales end and doors questions that follow a
+// start time with their defaults (at the start, no doors time) when the test
+// wants to land past them, so a walk written before migration 0128 still
+// reads as the person's path. Tests of those two questions name the steps.
+func (r *wizardRun) passSaleTimes(want, note string) string {
+	r.t.Helper()
+	if r.d.Step != stSSalesEnd || want == stSSalesEnd || want == stSSalesEndTime || want == stSDoors {
+		return note
+	}
+	for _, data := range []string{"se:0", "none"} {
+		n, err := r.w.Apply(context.Background(), r.ws, r.d, WizInput{Data: data})
+		if err != nil {
+			r.t.Fatalf("Apply(%q) at %s: %v", data, r.d.Step, err)
+		}
+		note = n
+	}
+	return note
+}
+
 func (r *wizardRun) press(s, want string) string { return r.step(WizInput{Data: s}, want) }
 
 // eventHead walks name → age → promoter (existing) → poster (skip).
@@ -278,6 +300,8 @@ func TestWizard_ParallelCategories_NewPromoterAndSecondDateSameVenue(t *testing.
 	if note := r.press("same", stSSame); note == "" { // the very same date and time again
 		t.Fatal("expected a duplicate-session note")
 	}
+	r.press("back", stSDoors)
+	r.press("back", stSSalesEnd)
 	r.press("back", stSTime)
 	r.press("back", stSDate)
 	r.press("back", stSMore)

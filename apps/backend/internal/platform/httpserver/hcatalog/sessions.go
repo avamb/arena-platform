@@ -146,6 +146,8 @@ type SessionResponse struct {
 	VenueID                string  `json:"venue_id"`
 	StartAt                string  `json:"start_at"`
 	EndAt                  string  `json:"end_at"`
+	SalesEndAt             string  `json:"sales_end_at"`
+	DoorsOpenAt            *string `json:"doors_open_at"`
 	CapacityTotal          int32   `json:"capacity_total"`
 	CapacityOverride       *int32  `json:"capacity_override"`
 	Status                 string  `json:"status"`
@@ -168,6 +170,7 @@ func SessionFromRow(s gen.SessionRow, hasOverlap bool) SessionResponse {
 		VenueID:                s.VenueID.String(),
 		StartAt:                s.StartAt.UTC().Format(time.RFC3339),
 		EndAt:                  s.EndAt.UTC().Format(time.RFC3339),
+		SalesEndAt:             s.StartAt.UTC().Format(time.RFC3339),
 		CapacityTotal:          s.CapacityTotal,
 		CapacityOverride:       s.CapacityOverride,
 		Status:                 s.Status,
@@ -185,6 +188,13 @@ func SessionFromRow(s gen.SessionRow, hasOverlap bool) SessionResponse {
 	if s.PosterMediaID != nil {
 		v := s.PosterMediaID.String()
 		resp.PosterMediaID = &v
+	}
+	if !s.SalesEndAt.IsZero() {
+		resp.SalesEndAt = s.SalesEndAt.UTC().Format(time.RFC3339)
+	}
+	if s.DoorsOpenAt != nil {
+		v := s.DoorsOpenAt.UTC().Format(time.RFC3339)
+		resp.DoorsOpenAt = &v
 	}
 	return resp
 }
@@ -307,6 +317,10 @@ type createSessionRequest struct {
 	SeatingPlanVersionID string  `json:"seating_plan_version_id"`
 	PosterMediaID        *string `json:"poster_media_id"`
 	Currency             string  `json:"currency"`
+	// SalesEndAt / DoorsOpenAt are the session's sales end (default: the
+	// start) and optional doors-open time (migration 0128).
+	SalesEndAt  *string         `json:"sales_end_at"`
+	DoorsOpenAt json.RawMessage `json:"doors_open_at"`
 }
 
 // HandleCreateSession serves POST /v1/organizations/{org_id}/events/{event_id}/sessions.
@@ -401,6 +415,14 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"session.invalid_date_range", "end_at must be after start_at", r,
 			map[string]any{"field": "end_at"},
+		))
+		return
+	}
+
+	saleTimes, stErr := parseSaleTimes(req.SalesEndAt, req.DoorsOpenAt, startAt)
+	if stErr != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			stErr.code, stErr.message, r, map[string]any{"field": stErr.field},
 		))
 		return
 	}
@@ -557,6 +579,18 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 			"session.insert_failed", "failed to create session", r,
 		))
 		return
+	}
+	if saleTimes.any() {
+		updated, stErr := h.sessionQueries.SetSessionSaleTimes(ctx, sess.ID, eventID, saleTimes.SalesEndAt, saleTimes.DoorsOpenAt, saleTimes.SetDoors)
+		if stErr != nil {
+			_, _ = h.sessionQueries.SoftDeleteSession(ctx, sess.ID, eventID)
+			h.logger.Error("session: set sale times failed", slog.String("error", stErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"session.insert_failed", "failed to create session", r,
+			))
+			return
+		}
+		sess = updated
 	}
 
 	// Plan-bound create (seated OR GA-with-plan, AB-51): run the SEAT-B2
@@ -772,6 +806,11 @@ type updateSessionRequest struct {
 	Status           string  `json:"status"`
 	PosterMediaID    *string `json:"poster_media_id"`
 	Currency         *string `json:"currency"`
+	// SalesEndAt moves the session's sales end (absent or "" = keep;
+	// moving start_at alone carries it along). DoorsOpenAt: absent = keep,
+	// null = clear, RFC 3339 = set (migration 0128).
+	SalesEndAt  *string         `json:"sales_end_at"`
+	DoorsOpenAt json.RawMessage `json:"doors_open_at"`
 	// Notice carries the organizer's own text for the letter the buyers get
 	// when this save moves or cancels the session (sessionchange package).
 	Notice *sessionNoticeRequest `json:"notice"`
@@ -928,6 +967,18 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("session: get for update failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"session.get_failed", "failed to get session", r,
+		))
+		return
+	}
+
+	effStart := current.StartAt
+	if startAt != nil {
+		effStart = *startAt
+	}
+	saleTimes, stErr := parseSaleTimes(req.SalesEndAt, req.DoorsOpenAt, effStart)
+	if stErr != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			stErr.code, stErr.message, r, map[string]any{"field": stErr.field},
 		))
 		return
 	}
@@ -1121,6 +1172,16 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 			"session.update_failed", "failed to update session", r,
 		))
 		return
+	}
+	if saleTimes.any() {
+		updated, err = h.sessionQueries.WithTx(tx).SetSessionSaleTimes(ctx, sessionID, eventID, saleTimes.SalesEndAt, saleTimes.DoorsOpenAt, saleTimes.SetDoors)
+		if err != nil {
+			h.logger.Error("session: set sale times failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"session.update_failed", "failed to update session", r,
+			))
+			return
+		}
 	}
 
 	change, err := sessionchange.Apply(ctx, tx, sessionchange.Input{

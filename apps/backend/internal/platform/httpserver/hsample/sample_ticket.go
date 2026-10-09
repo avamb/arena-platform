@@ -200,6 +200,7 @@ func (h *Handler) buildTicket(ctx context.Context, pres gen.SampleTicketPresenta
 		Locale:                 locale,
 		EventName:              pres.EventName,
 		SessionStart:           pres.StartAt,
+		DoorsOpenAt:            pres.DoorsOpenAt,
 		SessionTZ:              deref(pres.VenueTimezone),
 		VenueName:              deref(pres.VenueName),
 		VenueAddress:           deref(pres.VenueAddress),

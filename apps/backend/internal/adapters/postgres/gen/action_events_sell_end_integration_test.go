@@ -14,13 +14,14 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
-// TestListActionEventsByOrg_SellEndIsTheLastTierToSell pins sell_end_at, the
-// value GET_ALL_ACTIONS sends the sites as sellEndTime and the sites read as
-// the end of the WHOLE session's sale. It used to be the EARLIEST tier end,
-// so a chain of price steps closed after its first step: on 2026-10-02 the
-// Vino event center showed an event selling at its second price as "coming
-// soon", and the session picker hid it.
-func TestListActionEventsByOrg_SellEndIsTheLastTierToSell(t *testing.T) {
+// TestListActionEventsByOrg_SellEndIsTheSessionSalesEnd pins sell_end_at,
+// the value GET_ALL_ACTIONS sends the sites as sellEndTime and the sites read
+// as the end of the WHOLE session's sale. Since migration 0128 it is the
+// session's own sales_end_at (the start unless the organizer moved it), not
+// derived from the categories: a chain of price steps whose first step closed
+// still sells (2026-10-02, Vino), and a sale extended past the start keeps the
+// session in the catalog after it has begun.
+func TestListActionEventsByOrg_SellEndIsTheSessionSalesEnd(t *testing.T) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		t.Skip("DATABASE_URL not set — skipping live DB integration test")
@@ -34,8 +35,10 @@ func TestListActionEventsByOrg_SellEndIsTheLastTierToSell(t *testing.T) {
 
 	suffix := uuid.NewString()[:8]
 	orgID, venueID, eventID := uuid.New(), uuid.New(), uuid.New()
-	steps, openEnded, noTiers := uuid.New(), uuid.New(), uuid.New()
+	steps, extended, noTiers := uuid.New(), uuid.New(), uuid.New()
 	start := time.Now().UTC().Add(30 * 24 * time.Hour).Truncate(time.Second)
+	begun := time.Now().UTC().Add(-8 * time.Hour).Truncate(time.Second)
+	extendedEnd := time.Now().UTC().Add(time.Hour).Truncate(time.Second)
 
 	exec := func(sql string, args ...any) {
 		t.Helper()
@@ -64,26 +67,32 @@ func TestListActionEventsByOrg_SellEndIsTheLastTierToSell(t *testing.T) {
 	exec(`INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)`, orgID, "SE Org "+suffix, "se-"+suffix)
 	exec(`INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Asia/Jerusalem')`, venueID, orgID, "SE Venue "+suffix)
 	exec(`INSERT INTO events (id, org_id, name, status, visibility) VALUES ($1, $2, $3, 'published', 'public')`, eventID, orgID, "SE Event "+suffix)
-	for _, id := range []uuid.UUID{steps, openEnded, noTiers} {
+	session := func(id uuid.UUID, at time.Time) {
 		exec(`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, status,
 		          admission_mode, currency, currency_source)
 		      VALUES ($1, $2, $3, $4, $4::timestamptz + interval '2 hours', 80, 'scheduled',
-		          'general_admission', 'ILS', 'override')`, id, eventID, venueID, start)
+		          'general_admission', 'ILS', 'override')`, id, eventID, venueID, at)
 	}
+	session(steps, start)
+	session(noTiers, start)
+	session(extended, begun)
 	tier := func(session uuid.UUID, name string, end *time.Time) {
 		exec(`INSERT INTO ticket_tiers (session_id, name, pricing_mode, price_amount, currency, sale_window_end)
 		      VALUES ($1, $2, 'fixed', 19900, 'ILS', $3)`, session, name, end)
 	}
 	firstEnd := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second) // the first step already closed
 	lastEnd := start.Add(-time.Hour)
-	// Price steps: the first ended yesterday, the last sells until an hour before the start.
 	tier(steps, "Early", &firstEnd)
 	tier(steps, "Last minute", &lastEnd)
-	// One step bounded, one without an end: the session sells until it starts.
-	tier(openEnded, "Early", &firstEnd)
-	tier(openEnded, "Door", nil)
+	tier(extended, "Door", nil)
 
-	rows, err := gen.New(pool).ListActionEventsByOrg(ctx, orgID)
+	q := gen.New(pool)
+	// The organizer extended the sale of a session that began 8 hours ago.
+	if _, err := q.SetSessionSaleTimes(ctx, extended, eventID, &extendedEnd, nil, false); err != nil {
+		t.Fatalf("SetSessionSaleTimes: %v", err)
+	}
+
+	rows, err := q.ListActionEventsByOrg(ctx, orgID)
 	if err != nil {
 		t.Fatalf("ListActionEventsByOrg: %v", err)
 	}
@@ -92,19 +101,15 @@ func TestListActionEventsByOrg_SellEndIsTheLastTierToSell(t *testing.T) {
 		got[r.SessionID] = r.SellEndAt
 	}
 	if len(got) != 3 {
-		t.Fatalf("want 3 sessions, got %d", len(got))
+		t.Fatalf("want 3 sessions (the extended one included), got %d", len(got))
 	}
-	want := func(name string, id uuid.UUID, w *time.Time) {
+	want := func(name string, id uuid.UUID, w time.Time) {
 		t.Helper()
-		g := got[id]
-		switch {
-		case w == nil && g != nil:
-			t.Errorf("%s: sell_end_at = %v, want NULL (the handler falls back to the start)", name, *g)
-		case w != nil && (g == nil || !g.Equal(*w)):
-			t.Errorf("%s: sell_end_at = %v, want %v", name, g, *w)
+		if g := got[id]; g == nil || !g.Equal(w) {
+			t.Errorf("%s: sell_end_at = %v, want %v", name, g, w)
 		}
 	}
-	want("price steps", steps, &lastEnd)
-	want("open-ended step", openEnded, &start)
-	want("no tiers", noTiers, nil)
+	want("price steps", steps, start)
+	want("no tiers", noTiers, start)
+	want("extended past the start", extended, extendedEnd)
 }

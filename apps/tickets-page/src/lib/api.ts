@@ -37,6 +37,10 @@ export interface HostedPageEvent {
    * first session's time in a heading misled buyers into thinking the
    * event had one start. Absent on an older backend, which means "one". */
   session_count?: number;
+  /** When the venue opens its doors for the first session (RFC 3339,
+   * migration 0128), null when the organizer gave none. Printed only for an
+   * event with one session, like its clock time. Absent on an older backend. */
+  first_session_doors_at?: string | null;
   /** Feed token the event is published through. Present only on the
    * promoter page's items, where every date renders its own ticket picker
    * and a picker cannot be mounted without one; the single-event response

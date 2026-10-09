@@ -56,6 +56,20 @@ var gateWithheldCases = []struct {
 		},
 		wantErr: hcheckout.ErrCategoryNotOnSale,
 	},
+	{
+		// Migration 0128: the session's own sales end closes every category
+		// at once, whatever the categories' windows say.
+		name: "session sales end has passed",
+		withdraw: func(t *testing.T, ctx context.Context, pool *pgxpool.Pool, tierID uuid.UUID) {
+			t.Helper()
+			if _, err := pool.Exec(ctx,
+				`UPDATE sessions SET sales_end_at = now() - interval '1 minute'
+				  WHERE id = (SELECT session_id FROM ticket_tiers WHERE id = $1)`, tierID); err != nil {
+				t.Fatalf("set session sales end: %v", err)
+			}
+		},
+		wantErr: hcheckout.ErrCategoryNotOnSale,
+	},
 }
 
 func ptrTime(v time.Time) *time.Time { return &v }

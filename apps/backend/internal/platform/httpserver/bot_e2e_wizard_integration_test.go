@@ -227,9 +227,13 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	// Step 2 — when and where; the venue is created through the API.
 	say("32.13.2099", "Не понял дату")
 	sayDate("15.12.2099", "2099-12-15", "Время начала")
+	// Migration 0128: the sales end (the start, or later) and the optional
+	// doors time follow the start time.
+	press("wz:default", "Продажа билетов закроется в начале")
+	press("wz:se:60", "Во сколько открывается вход")
 	// Since migration 0127 the platform lists ~100 countries, so the question
 	// opens on regions and only then shows that region's countries.
-	press("wz:default", "В какой части мира")
+	press("wz:dr:30", "В какой части мира")
 	press("wz:region:europe", "В какой стране")
 	press("wz:country:"+countryID.String(), "В каком городе")
 	press("wz:city:"+cityID.String(), "Где проходит")
@@ -394,6 +398,17 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	if nameAfter != renamed || ageAfter != "18+" || sessionsAfter != 1 || tiersAfter != 1 || priceAfter != 2750 || windowsAfter != 0 {
 		t.Fatalf("after edit: name=%q age=%q sessions=%d tiers=%d price=%d windows=%d", nameAfter, ageAfter, sessionsAfter, tiersAfter, priceAfter, windowsAfter)
 	}
+	// The sales end an hour after the start and the doors half an hour before
+	// it, chosen when the event was created, survive the edit's re-save.
+	var salesEndMin, doorsMin float64
+	if err := pool.QueryRow(ctx, `SELECT extract(epoch FROM sales_end_at - start_at) / 60,
+	        extract(epoch FROM start_at - doors_open_at) / 60
+	        FROM sessions WHERE event_id = $1`, eventID).Scan(&salesEndMin, &doorsMin); err != nil {
+		t.Fatalf("sale times after edit: %v", err)
+	}
+	if salesEndMin != 60 || doorsMin != 30 {
+		t.Fatalf("after edit: sales end %v min after the start, doors %v min before; want 60 and 30", salesEndMin, doorsMin)
+	}
 	// A re-save keeps the poster the event had.
 	var posterKept bool
 	if err := pool.QueryRow(ctx, `SELECT poster_media_id IS NOT NULL FROM events WHERE id = $1`, eventID).Scan(&posterKept); err != nil || !posterKept {
@@ -407,7 +422,9 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	// remembered venue is one button away, and a second event appears.
 	press("wz:copy:"+eventID.String(), "Копия")
 	sayDate("20.12.2099", "2099-12-20", "Время начала")
-	press("wz:default", "В какой части мира")
+	press("wz:default", "Продажа билетов закроется в начале")
+	press("wz:se:0", "Во сколько открывается вход")
+	press("wz:none", "В какой части мира")
 	press("wz:keep", "В каком городе")
 	press("wz:keep", "Где проходит")
 	press("wz:keep", "Сколько мест продаём")

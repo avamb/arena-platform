@@ -147,6 +147,25 @@ export function formatEventWhen(event: HostedPageEvent, locale: PageLocale): str
   }
 }
 
+/** "Doors open 19:30" for an event with ONE session whose organizer gave
+ * a doors time, on the venue's clock like the start; empty otherwise (with
+ * several sessions the doors time would belong to one of them only). */
+export function formatEventDoors(event: HostedPageEvent, locale: PageLocale): string {
+  if (!event.first_session_doors_at || hasSeveralSessions(event)) return '';
+  const tz = event.first_session_timezone ?? undefined;
+  try {
+    const clock = new Intl.DateTimeFormat(intlLocale(locale), {
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+      timeZone: tz,
+    }).format(new Date(event.first_session_doors_at));
+    return `${t(locale).doorsOpen} ${clock}`;
+  } catch {
+    return '';
+  }
+}
+
 export interface RenderEventOptions {
   apiBase: string;
   resumingCheckout: boolean;
@@ -199,6 +218,10 @@ export function renderEvent(
   const when = formatEventWhen(data.event, locale);
   if (when) {
     metaParts.push(when);
+  }
+  const doors = formatEventDoors(data.event, locale);
+  if (doors) {
+    metaParts.push(doors);
   }
   if (data.event.venue_names.length > 0) {
     metaParts.push(data.event.venue_names.join(', '));
@@ -495,6 +518,13 @@ function renderDateRow(
       time.textContent = parts.time;
       when.appendChild(time);
     }
+    const doors = formatEventDoors(event, locale);
+    if (doors) {
+      const d = document.createElement('span');
+      d.className = 'asa-date-row__time asa-date-row__doors';
+      d.textContent = doors;
+      when.appendChild(d);
+    }
 
     a.appendChild(when);
   }
@@ -635,7 +665,7 @@ function renderCatalogCard(
   if (parts) {
     const when = document.createElement('p');
     when.className = 'asa-card__when';
-    when.textContent = [`${parts.day} ${parts.month}`, parts.time].filter(Boolean).join(' · ');
+    when.textContent = [`${parts.day} ${parts.month}`, parts.time, formatEventDoors(event, locale)].filter(Boolean).join(' · ');
     body.appendChild(when);
   }
 
