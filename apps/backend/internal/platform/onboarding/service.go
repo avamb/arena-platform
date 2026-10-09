@@ -66,7 +66,10 @@ type Service struct {
 	logger   *slog.Logger
 	adminURL string
 	siteURL  string
-	now      func() time.Time
+	// termsURL / privacyURL override the default <siteURL>/legal/... pages.
+	termsURL   string
+	privacyURL string
+	now        func() time.Time
 }
 
 // Options configures a Service.
@@ -81,13 +84,18 @@ type Options struct {
 	// SiteURL is the website origin (ONBOARDING_SITE_URL): the bot hands out
 	// "<SiteURL>/start/confirm?token=..." and the terms and privacy pages.
 	SiteURL string
-	Now     func() time.Time
+	// TermsURL and PrivacyURL, when set, are the exact pages the consent
+	// screen links to (ONBOARDING_TERMS_URL / ONBOARDING_PRIVACY_URL).
+	TermsURL   string
+	PrivacyURL string
+	Now        func() time.Time
 }
 
 // New builds a Service.
 func New(o Options) *Service {
 	s := &Service{pool: o.Pool, notifier: o.Notifier, audit: o.Audit, logger: o.Logger,
-		adminURL: strings.TrimRight(o.AdminURL, "/"), siteURL: strings.TrimRight(o.SiteURL, "/"), now: o.Now}
+		adminURL: strings.TrimRight(o.AdminURL, "/"), siteURL: strings.TrimRight(o.SiteURL, "/"),
+		termsURL: strings.TrimSpace(o.TermsURL), privacyURL: strings.TrimSpace(o.PrivacyURL), now: o.Now}
 	if s.logger == nil {
 		s.logger = slog.Default()
 	}

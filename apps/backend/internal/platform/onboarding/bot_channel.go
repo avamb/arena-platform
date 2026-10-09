@@ -251,11 +251,20 @@ func (s *Service) BotSiteLink(ctx context.Context, id uuid.UUID, tg int64) (stri
 }
 
 // SiteLinks returns the website's terms and privacy pages for the consent screen.
+//
+// The pages live under /legal/ on the new site. While the new site is still on
+// a sub-domain (before it replaces the main domain) ONBOARDING_TERMS_URL and
+// ONBOARDING_PRIVACY_URL point at the sub-domain's copies; once they are unset
+// the links follow ONBOARDING_SITE_URL.
 func (s *Service) SiteLinks() (terms, privacy string) {
-	if s.siteURL == "" {
-		return "", ""
+	terms, privacy = s.termsURL, s.privacyURL
+	if terms == "" && s.siteURL != "" {
+		terms = s.siteURL + "/legal/terms"
 	}
-	return s.siteURL + "/terms", s.siteURL + "/privacy"
+	if privacy == "" && s.siteURL != "" {
+		privacy = s.siteURL + "/legal/privacy"
+	}
+	return terms, privacy
 }
 
 // BotNotice is one decision the bot has to tell an applicant about.

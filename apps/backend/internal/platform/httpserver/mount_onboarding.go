@@ -15,13 +15,14 @@ import (
 // dependencies. The service is stateless (every fact lives in the database),
 // so building it per request is cheap and keeps the Server struct unchanged.
 func (s *Server) onboardingHandler() *honboarding.Handler {
-	adminURL, siteURL := "", ""
+	adminURL, siteURL, termsURL, privacyURL := "", "", "", ""
 	secret, salt := "", ""
 	trusted := 0
 	production := false
 	if s.cfg != nil {
 		adminURL = s.cfg.AppPublicURL
 		siteURL = s.cfg.OnboardingSiteURL
+		termsURL, privacyURL = s.cfg.OnboardingTermsURL, s.cfg.OnboardingPrivacyURL
 		secret = s.cfg.OnboardingTurnstileSecret
 		salt = s.cfg.JWTSecretStub
 		trusted = s.cfg.TrustedProxyCount
@@ -29,6 +30,7 @@ func (s *Server) onboardingHandler() *honboarding.Handler {
 	}
 	svc := onboarding.New(onboarding.Options{
 		Pool: s.pgxPool, Audit: s.audit, Logger: s.logger, AdminURL: adminURL, SiteURL: siteURL,
+		TermsURL: termsURL, PrivacyURL: privacyURL,
 	})
 	verifier := &honboarding.TurnstileVerifier{Secret: secret, Required: production}
 	return honboarding.New(svc, verifier, salt, trusted, s.logger)
