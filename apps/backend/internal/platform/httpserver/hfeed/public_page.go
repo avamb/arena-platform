@@ -78,8 +78,13 @@ type hostedPageEventResponse struct {
 	// heading only when it is exactly 1: with several sessions on one day
 	// the first session's time in the heading misled buyers (and the
 	// organizer) into thinking the event had one start.
-	SessionCount int64  `json:"session_count"`
-	FeedToken    string `json:"feed_token,omitempty"`
+	SessionCount int64 `json:"session_count"`
+	// FirstSessionDoorsAt is when the venue opens its doors for the first
+	// session (sessions.doors_open_at, migration 0128; RFC 3339 UTC), null
+	// when the organizer gave none. Like the clock time, the page prints it
+	// only for an event with exactly one session.
+	FirstSessionDoorsAt *string `json:"first_session_doors_at"`
+	FeedToken           string  `json:"feed_token,omitempty"`
 }
 
 // hostedPageResponse is the full JSON envelope for GET
@@ -200,6 +205,7 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Event.FirstSessionTimezone = resolved.FirstSessionTimezone
 	resp.Event.SessionCount = resolved.SessionCount
+	resp.Event.FirstSessionDoorsAt = rfc3339UTC(resolved.FirstSessionDoorsAt)
 
 	// Venue name(s) are cheap (one aggregate query keyed by event id) and
 	// presentational — a lookup failure must not turn a resolved page into a
@@ -378,6 +384,7 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 			item.LastSessionAt = &s
 		}
 		item.SessionCount = e.SessionCount
+		item.FirstSessionDoorsAt = rfc3339UTC(e.FirstSessionDoorsAt)
 		if vn, ok := venueNames[e.EventID]; ok {
 			item.VenueNames = vn
 		}
@@ -386,4 +393,13 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 
 	w.Header().Set("Cache-Control", "public, max-age=30, stale-while-revalidate=15")
 	httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
+// rfc3339UTC formats an optional instant for the hosted-page JSON.
+func rfc3339UTC(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	v := t.UTC().Format(time.RFC3339)
+	return &v
 }

@@ -218,6 +218,17 @@ export interface FeedSession {
    * never in the buyer's own zone.
    */
   timezone?: string;
+  /**
+   * When ticket sales for the session close (RFC 3339; migration 0128) —
+   * the start unless the organizer extended the sale. Absent on older
+   * backends.
+   */
+  sales_end_at?: string;
+  /**
+   * When the venue opens its doors (RFC 3339), or null when the organizer
+   * gave none. Shown under the session chips. Absent on older backends.
+   */
+  doors_open_at?: string | null;
   tiers: Tier[];
   /**
    * Resolved poster cover (AB-47c): session's own poster_media_id when set,

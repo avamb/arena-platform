@@ -11206,6 +11206,15 @@ export interface components {
              */
             session_count?: number;
             /**
+             * Format: date-time
+             * @description When the venue opens its doors for the event's earliest active
+             *     session (`sessions.doors_open_at`, migration 0128), RFC 3339 UTC.
+             *     Null when the organizer gave no doors time. Like the clock time,
+             *     the tickets page prints it only when `session_count` is 1.
+             * @example 2026-12-15T18:30:00Z
+             */
+            first_session_doors_at?: string | null;
+            /**
              * @description Opaque feed token the event is published through — the same
              *     value `HostedPageResponse.feed_token` carries for that event on
              *     its own page. Present ONLY on the items of

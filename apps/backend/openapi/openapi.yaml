@@ -5095,6 +5095,15 @@ components:
             its time) in the session selector, and the first session's time
             in a heading would be misleading.
           example: 2
+        first_session_doors_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            When the venue opens its doors for the event's earliest active
+            session (`sessions.doors_open_at`, migration 0128), RFC 3339 UTC.
+            Null when the organizer gave no doors time. Like the clock time,
+            the tickets page prints it only when `session_count` is 1.
+          example: "2026-12-15T18:30:00Z"
         feed_token:
           type: string
           description: |

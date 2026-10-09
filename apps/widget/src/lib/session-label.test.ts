@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { sessionChipLabel } from './session-label.js';
+import { doorsOpenLabel, sessionChipLabel } from './session-label.js';
 
 describe('sessionChipLabel', () => {
   it('renders a single-day session as date + time', () => {
@@ -93,5 +93,23 @@ describe('sessionChipLabel', () => {
     expect(l.time).toBe('');
     expect(l.date).toContain('16');
     expect(l.date).toContain('18');
+  });
+});
+
+describe('doorsOpenLabel', () => {
+  it('prints the doors time on the venue clock in the page language', () => {
+    expect(doorsOpenLabel('2026-12-15T18:30:00Z', 'ru', 'Europe/Prague')).toBe('Вход с 19:30');
+    expect(doorsOpenLabel('2026-12-15T18:30:00Z', 'en', 'Europe/Prague')).toBe('Doors open 19:30');
+    expect(doorsOpenLabel('2026-12-15T18:30:00Z', 'es-ES', 'Europe/Madrid')).toBe('Apertura de puertas 19:30');
+  });
+
+  it('falls back to English for an unknown language', () => {
+    expect(doorsOpenLabel('2026-12-15T18:30:00Z', 'ja', 'Europe/Prague')).toContain('Doors open');
+  });
+
+  it('prints nothing without a doors time', () => {
+    expect(doorsOpenLabel(null, 'ru', 'Europe/Prague')).toBe('');
+    expect(doorsOpenLabel(undefined)).toBe('');
+    expect(doorsOpenLabel('not a date')).toBe('');
   });
 });

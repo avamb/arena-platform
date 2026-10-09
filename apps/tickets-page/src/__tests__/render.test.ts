@@ -137,6 +137,29 @@ describe('renderEvent', () => {
     expect(container.querySelector('.asa-hero-meta')?.textContent).toBe('Saturday, 15 August 2026 at 20:00 · Forum Karlin · 16+');
   });
 
+  it('prints the doors-open time after the start for a one-session event', () => {
+    const container = freshContainer();
+    renderEvent(
+      container,
+      { ...sampleData, event: { ...sampleData.event, first_session_doors_at: '2026-08-15T17:30:00Z' } },
+      'ru',
+      { apiBase: '', resumingCheckout: false },
+    );
+    // 17:30Z is 19:30 in Prague.
+    expect(container.querySelector('.asa-hero-meta')?.textContent).toContain('20:00 · Вход с 19:30 · Forum Karlin');
+  });
+
+  it('leaves the doors time out when the event has several sessions', () => {
+    const container = freshContainer();
+    renderEvent(
+      container,
+      { ...sampleData, event: { ...sampleData.event, session_count: 2, first_session_doors_at: '2026-08-15T17:30:00Z' } },
+      'en',
+      { apiBase: '', resumingCheckout: false },
+    );
+    expect(container.querySelector('.asa-hero-meta')?.textContent).not.toContain('Doors open');
+  });
+
   it('prints the date without a time when the event has several sessions', () => {
     const container = freshContainer();
     renderEvent(

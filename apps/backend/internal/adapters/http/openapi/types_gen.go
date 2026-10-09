@@ -5821,6 +5821,12 @@ type HostedPageEvent struct {
 	// FirstSessionAt Earliest session start (trigger-maintained cache), or null.
 	FirstSessionAt *time.Time `json:"first_session_at"`
 
+	// FirstSessionDoorsAt When the venue opens its doors for the event's earliest active
+	// session (`sessions.doors_open_at`, migration 0128), RFC 3339 UTC.
+	// Null when the organizer gave no doors time. Like the clock time,
+	// the tickets page prints it only when `session_count` is 1.
+	FirstSessionDoorsAt *time.Time `json:"first_session_doors_at"`
+
 	// FirstSessionTimezone IANA time zone name (`venues.timezone`) of the venue of the
 	// event's earliest active, non-cancelled session — lets the page
 	// show the event's own local time rather than the viewer's. Null

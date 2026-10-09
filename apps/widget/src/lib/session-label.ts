@@ -112,3 +112,34 @@ export function sessionChipLabel(
   }
   return { date: fmtDay(start, locale, tz), time: fmtTime(start, locale, tz) };
 }
+
+/** "Doors open" in the languages the widget is embedded in; English for
+ * anything else. Keyed by the primary subtag. */
+const DOORS_WORDS: Record<string, string> = {
+  en: 'Doors open',
+  ru: 'Вход с',
+  uk: 'Вхід з',
+  cs: 'Vstup od',
+  pl: 'Wejście od',
+  de: 'Einlass ab',
+  fr: 'Ouverture des portes',
+  it: 'Apertura porte',
+  es: 'Apertura de puertas',
+  he: 'פתיחת דלתות',
+};
+
+/**
+ * The doors-open line of a session ("Doors open 19:30"), on the venue's
+ * clock like the chips. Empty when the session has no doors time or it
+ * does not parse.
+ */
+export function doorsOpenLabel(
+  doorsAt: string | null | undefined,
+  locale = 'en',
+  timeZone?: string | null,
+): string {
+  const d = parse(doorsAt);
+  if (!d) return '';
+  const word = DOORS_WORDS[locale.toLowerCase().split('-')[0]] ?? DOORS_WORDS.en;
+  return `${word} ${fmtTime(d, locale, usableZone(timeZone))}`;
+}

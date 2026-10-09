@@ -7,7 +7,7 @@
    * as colored swatches below the chips.
    */
   import type { FeedSession, Tier } from '../types.js';
-  import { sessionChipLabel } from '../lib/session-label.js';
+  import { doorsOpenLabel, sessionChipLabel } from '../lib/session-label.js';
 
   interface Props {
     sessions: FeedSession[];
@@ -26,6 +26,11 @@
   }
 
   /** Categories derived from tiers of the selected session (for legend). */
+  /** "Doors open 19:30" of the selected session; empty when none was given. */
+  const doorsLine = $derived(
+    selectedSession ? doorsOpenLabel(selectedSession.doors_open_at, locale, selectedSession.timezone) : '',
+  );
+
   const legendTiers = $derived(
     selectedSession ? [...selectedSession.tiers].sort((a, b) => a.sort_order - b.sort_order) : [],
   );
@@ -55,6 +60,10 @@
     {/each}
   </div>
 
+  {#if doorsLine}
+    <p class="doors" data-testid="doors-open">{doorsLine}</p>
+  {/if}
+
   <!-- ── Price-category legend ── -->
   {#if legendTiers.length > 0}
     <div class="legend" aria-label="Price categories">
@@ -70,6 +79,12 @@
 </div>
 
 <style>
+  .doors {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--_text-muted, #6b7280);
+  }
+
   .session-list {
     display: flex;
     flex-direction: column;
