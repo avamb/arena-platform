@@ -429,3 +429,84 @@ func TestEventCenterOrders_DetailBlocks(t *testing.T) {
 		t.Fatalf("agent detail: %d, want 403", code)
 	}
 }
+
+// TestEventCenterOrders_ManagerPassesAgentIsRefused pins the gate on both
+// routes together, now that migration 0129 grants the manager the whole
+// operational set: an organizer membership with an EMPTY roles claim reaches
+// the list and the card (200), an agent membership in the same organization
+// does not (403).
+func TestEventCenterOrders_ManagerPassesAgentIsRefused(t *testing.T) {
+	f := newECOrdersFixture(t)
+	for _, path := range []string{
+		"/v1/organizations/" + f.orgA.String() + "/orders",
+		"/v1/organizations/" + f.orgA.String() + "/orders/" + f.paidOrder.String(),
+	} {
+		if code, body := f.get(path, f.managerTok); code != http.StatusOK {
+			t.Errorf("manager GET %s: %d %v, want 200", path, code, body)
+		}
+		if code, body := f.get(path, f.agentTok); code != http.StatusForbidden {
+			t.Errorf("agent GET %s: %d %v, want 403", path, code, body)
+		}
+	}
+}
+
+// TestEventCenterOrders_ExactOrderNumberListedBeforePhoneSuffix guards the
+// double reading of a 10-digit query: it is an order number AND a national
+// phone (a 9+ digit suffix of the buyer's digits matches). An unrelated, NEWER
+// order whose phone merely ends in those digits must not push the order that
+// really carries the number off the top of the list.
+func TestEventCenterOrders_ExactOrderNumberListedBeforePhoneSuffix(t *testing.T) {
+	f := newECOrdersFixture(t)
+	ctx := context.Background()
+	decoy := uuid.New()
+	number := fmt.Sprintf("%d", f.paidSystemID)
+	if len(number) < 9 {
+		t.Skipf("system_id %s is shorter than the 9-digit phone-suffix threshold", number)
+	}
+	res, cs := uuid.New(), uuid.New()
+	for i, st := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO reservations (id, org_id, channel_id, session_id, quantity, state, expires_at)
+		  VALUES ($1, $2, $3, $4, 1, 'expired', now() - interval '5 minutes')`, []any{res, f.orgA, f.channelA, f.sessionA}},
+		{`INSERT INTO checkout_sessions (id, org_id, channel_id, reservation_id, state) VALUES ($1, $2, $3, $4, 'pricing_confirmed')`,
+			[]any{cs, f.orgA, f.channelA, res}},
+		{`INSERT INTO orders (id, org_id, channel_id, event_id, session_id, checkout_session_id, reservation_id,
+		                      source, status, currency, subtotal, discount, charge, total, buyer_name, buyer_email, buyer_phone, created_at)
+		  VALUES ($1, $2, $3, $4, $5, $6, $7, 'public_feed', 'expired', 'EUR', 2500, 0, 0, 2500,
+		          'Phone Decoy', $8, $9, now() + interval '1 minute')`,
+			[]any{decoy, f.orgA, f.channelA, f.eventA, f.sessionA, cs, res,
+				"decoy-" + decoy.String()[:8] + "@example.com", "+34 " + number[:3] + " " + number[3:]}},
+	} {
+		if _, err := f.pool.Exec(ctx, st.sql, st.args...); err != nil {
+			t.Fatalf("decoy fixture step %d: %v", i, err)
+		}
+	}
+	t.Cleanup(func() {
+		for _, st := range []struct {
+			sql string
+			id  uuid.UUID
+		}{
+			{`DELETE FROM orders WHERE id = $1`, decoy},
+			{`DELETE FROM checkout_sessions WHERE id = $1`, cs},
+			{`DELETE FROM reservations WHERE id = $1`, res},
+		} {
+			if _, err := f.pool.Exec(ctx, st.sql, st.id); err != nil {
+				t.Logf("decoy cleanup: %v", err)
+			}
+		}
+	})
+
+	ids, total, _ := f.listIDs("q=" + number)
+	if len(ids) < 1 || ids[0] != f.paidOrder.String() {
+		t.Fatalf("q=%s: got %v, want the order numbered %s first", number, ids, number)
+	}
+	found := false
+	for _, id := range ids {
+		found = found || id == decoy.String()
+	}
+	if !found || total != float64(len(ids)) {
+		t.Fatalf("q=%s: decoy (phone suffix) should be listed after the exact hit: ids %v total %v", number, ids, total)
+	}
+}

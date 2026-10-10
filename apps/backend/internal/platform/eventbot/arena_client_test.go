@@ -27,6 +27,11 @@ func TestArenaClient_AcceptInvitation(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer svc-token" {
 			t.Errorf("service token missing: %q", r.Header.Get("Authorization"))
 		}
+		// Every bot call names its channel, so the audit log can tell a change
+		// made through the bot from one made in admin-web.
+		if got := r.Header.Get("X-Client-Channel"); got != "telegram_bot" {
+			t.Errorf("X-Client-Channel = %q, want telegram_bot", got)
+		}
 		var req AcceptInvitationRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		switch req.Code {

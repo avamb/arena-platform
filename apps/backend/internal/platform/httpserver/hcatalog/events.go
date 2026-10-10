@@ -168,8 +168,15 @@ type EventResponse struct {
 	// promoter. Hydrated by hydrateEvents, never by EventFromRow.
 	PromoterID   *string `json:"promoter_id"`
 	PromoterName *string `json:"promoter_name"`
-	CreatedAt    string  `json:"created_at"`
-	UpdatedAt    string  `json:"updated_at"`
+	// SalesState / NextSessionAt / SessionCount are computed from the
+	// event's active sessions (EC-02, sales_state.go) and hydrated by
+	// hydrateEvents, never by EventFromRow. SalesState is one of on_sale,
+	// upcoming, sold_out, archived; "" only when the hydration failed.
+	SalesState    string  `json:"sales_state"`
+	NextSessionAt *string `json:"next_session_at"`
+	SessionCount  int     `json:"session_count"`
+	CreatedAt     string  `json:"created_at"`
+	UpdatedAt     string  `json:"updated_at"`
 }
 
 func eventFromRow(e gen.EventRow) eventResponse {
@@ -219,10 +226,11 @@ func EventFromRow(e gen.EventRow) EventResponse {
 }
 
 // hydrateEvents fills every field EventFromRow cannot know from the events
-// row alone: the venue names and the promoter.
+// row alone: the venue names, the promoter and the sales state.
 func (h *Handler) hydrateEvents(ctx context.Context, responses []eventResponse) {
 	h.hydrateVenueNames(ctx, responses)
 	h.hydratePromoters(ctx, responses)
+	h.hydrateSalesStates(ctx, responses)
 }
 
 // hydratedEvent is EventFromRow plus hydrateEvents for a single event.

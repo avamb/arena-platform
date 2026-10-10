@@ -1,0 +1,1997 @@
+[
+  {
+    "platform": "Entradium",
+    "website": "https://www.entradium.com",
+    "hq_country": "ES",
+    "segment": "Spanish self-serve ticketing for small theatres, venues, associations, tour/leisure; legal entity crocantickets SL (Madrid)",
+    "markets": [
+      {
+        "market": "Spain",
+        "currency": "EUR",
+        "vat_note": "Plan percentages are stated WITHOUT IVA ('Los precios no incluyen IVA') and are applied to the ticket price. Buyer-side management fee is stated as 2% of the ticket total + IVA in the buyer terms.",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Entradium collects the buyer's money and pays the organiser: organiser requests payment in a billing area and is paid every Tuesday for events already held; early payout before the event only by prior arrangement (ask before creating the event). Platform fee is netted from the proceeds / added to buyer price (buyer sees 'gastos de gestion').",
+        "plans": [
+          {
+            "name": "Basico",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 1.0,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Self-managed admin panel, unlimited events and ticket types, access-control app, email support Mon-Fri, sales stats, presence on entradium + partner network",
+            "notes": null
+          },
+          {
+            "name": "Profesional",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 2.0,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Everything in Basico + tracking pixels/analytics, PR/sales-agent tool, email support 7 days, hard-ticket generation, automatic multi-session generation, access-control equipment availability, promoter app",
+            "notes": null
+          },
+          {
+            "name": "Premium",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 2.5,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Everything in Profesional + venue digitisation and numbered seating, priority support + personal manager, phone support 7 days, sell from your own website, partner tool, virtual queue, box-office sales equipment, cashless",
+            "notes": "Third-party (Soundtix comparison, snippet) reads Entradium as ~3% incl. IVA = 2.5% x 1.21 - consistent"
+          }
+        ],
+        "prepaid": [],
+        "processing": {
+          "included": true,
+          "processors": [],
+          "own_processor_allowed": null,
+          "rate_note": "Card processing is inside the platform fee (organiser connects nothing). Page does not name the processor.",
+          "platform_extra_processing_fee": null
+        },
+        "who_pays_default": "buyer (page: 'tu comprador paga menos'; buyer terms: 2% + IVA management fee to buyer)",
+        "free_tickets": "Free events are possible (events with 0.00 EUR listed). Charity events ('entradium solidario'): Entradium assumes the management fees - organiser and buyer pay nothing.",
+        "seating": "Numbered seating on Premium; the venue seat map is drawn by Entradium free of charge. Physical box-office system with computer + printer provided.",
+        "payouts": "Every Tuesday for the events already held and requested in the billing area; advance payout only by prior agreement.",
+        "refunds_chargebacks": "Buyer support (name changes, refunds) handled by Entradium on behalf of the organiser. Refund of management fee not stated on the pages read.",
+        "fine_print": [
+          "Rental of access-control equipment, hard-ticket generation, cashless and virtual queue are quoted per case (no public price)",
+          "Page headline says 'desde 1% + iva*' - the asterisk points to the plan table",
+          "Buyer-fee wording (2%) in the terms differs from the 1/2/2.5% plan percentages - the buyer fee and the organiser plan fee may be the same charge or two charges; the pages do not reconcile them"
+        ],
+        "add_ons": [
+          {
+            "name": "Handheld scanner (PDA) loan",
+            "price": "not public"
+          },
+          {
+            "name": "Hard tickets",
+            "price": "per quote"
+          },
+          {
+            "name": "Cashless",
+            "price": "per quote"
+          }
+        ],
+        "enterprise": null,
+        "sources": [
+          {
+            "url": "https://core.entradium.com/promoter_info",
+            "read": "2026-10-09",
+            "what": "organiser pricing page: plans Basico 1% / Profesional 2% / Premium 2.5%, payout every Tuesday"
+          },
+          {
+            "url": "https://www.entradium.com/es/legal",
+            "read": "2026-10-09",
+            "what": "buyer terms section 3: management fee 2% of ticket total + IVA charged to buyer"
+          },
+          {
+            "url": "https://soundtix.com/blog/comparativa-ticketeras-espana-2026",
+            "read": "2026-10-09",
+            "what": "third-party comparison: ~3% incl. IVA, post-event settlement, extras cost money (competitor source, treat with care)"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Cheapest published percentage in Spain after Vivetix; no monthly fees. Spanish page for IVA treatment: fees ex-IVA, 21% IVA assumed by the organiser as intermediary service (see Spain context entry)."
+  },
+  {
+    "platform": "Giglon",
+    "website": "https://www.giglon.com",
+    "hq_country": "ES",
+    "segment": "Spanish cloud ticketing for venues, promoters, town halls, tourist sites; has own marketplace and microsites; ENS certified",
+    "markets": [
+      {
+        "market": "Spain",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": null,
+        "money_flow_note": "Not stated. FAQ says refunds for cancelled events apply 'only to payments managed and notified by Giglon' (so some channels are not Giglon-collected); payment via TPV/Bizum; automated invoicing in the private area. Cannot classify without a quote.",
+        "plans": [],
+        "prepaid": [],
+        "processing": {
+          "included": null,
+          "processors": [
+            "TPV (card)",
+            "Bizum"
+          ],
+          "own_processor_allowed": null,
+          "rate_note": "not stated",
+          "platform_extra_processing_fee": null
+        },
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [
+          "No public commission anywhere on giglon.com (terms page has no fee clause)"
+        ],
+        "add_ons": [],
+        "enterprise": "Contact sales - no public price. A practicalteam.com portfolio snippet mentions a 'comision reducida' without a number (snippet).",
+        "sources": [
+          {
+            "url": "https://www.giglon.com/servicios",
+            "read": "2026-10-09",
+            "what": "services: online sale, box office, widget, seat selection, microsites, ticket design, app validation; no prices"
+          },
+          {
+            "url": "https://www.giglon.com/vende",
+            "read": "2026-10-09",
+            "what": "'contact now' - no pricing; cloud box office, thermal printing, card reader, Bizum"
+          },
+          {
+            "url": "https://www.giglon.com/faq",
+            "read": "2026-10-09",
+            "what": "FAQ: refund for cancelled events only for payments managed by Giglon"
+          },
+          {
+            "url": "https://nevent.ai/es/plataformas-venta-entradas/giglon/",
+            "read": "2026-10-09",
+            "what": "third-party directory: 'comisiones y precios no publicados online'"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Numbered-seat plans, thermal ticket printing and box office are core features; price on request only."
+  },
+  {
+    "platform": "Wegow",
+    "website": "https://www.wegow.com/es",
+    "hq_country": "ES",
+    "segment": "Spanish live-music marketplace/'social ticketing' for promoters and artists (also Bracelit cashless)",
+    "markets": [
+      {
+        "market": "Spain",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Wegow collected ticket money and was meant to pay promoters later; in May 2025 it entered 'preconcurso de acreedores' and left unpaid amounts of EUR 3,000 to 200,000+ per project (promoters/artists) - the textbook case of the collecting-model risk. (Source is a competitor's article plus RNE/ABC headlines in search snippets.)",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [
+          "No public promoter fee schedule. Registration page not readable without an account.",
+          "Current legal status in Oct 2026 could not be confirmed"
+        ],
+        "add_ons": [],
+        "enterprise": "Not public",
+        "sources": [
+          {
+            "url": "https://vivetix.com/b/wegow-que-ha-pasado-alternativas-seguras-reclamar",
+            "read": "2026-10-09",
+            "what": "article (competitor Vivetix) on the preconcurso, May 2025; amounts unpaid"
+          },
+          {
+            "url": "https://www.abc.es/cultura/musica/wegow-asegura-pagara-dinero-venta-entradas-debe-20250925102408-nt.html",
+            "read": "2026-10-09",
+            "what": "ABC 2025-09-26 headline: Wegow says it will pay all money owed (search snippet only)"
+          },
+          {
+            "url": "https://www.wegow.com/es",
+            "read": "2026-10-09",
+            "what": "promoter registration at /es/registrarse-promotor; no fees on the public page"
+          }
+        ],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "Useful as a risk reference: organisers fled to platforms with escrow or direct-to-organiser payments. Do not use Wegow as a price benchmark."
+  },
+  {
+    "platform": "Taquilla.com",
+    "website": "https://www.taquilla.com",
+    "hq_country": "ES",
+    "segment": "Not a ticket seller for organisers: a price-COMPARISON site that lists tickets from 40+ ticket pages ('COMPARAMOS precios')",
+    "markets": [
+      {
+        "market": "Spain",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": null,
+        "money_flow_note": "Aggregator/affiliate, no organiser fee schedule exists.",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "n/a",
+        "sources": [
+          {
+            "url": "https://www.taquilla.com/themes/tcom-2.0/about.php?lang=es",
+            "read": "2026-10-09",
+            "what": "about page: compares prices on 40+ sales pages, 5,000 active shows"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Verified: does not sell to organisers - exclude from the comparison table."
+  },
+  {
+    "platform": "EVENTIM.Light (self-service of Eventim; marketplace entradas.com)",
+    "website": "https://www.eventim-light.es",
+    "hq_country": "DE",
+    "segment": "Self-serve ticketing from CTS Eventim: own ticket shop, box office, seating plans; optional listing on entradas.com marketplace",
+    "markets": [
+      {
+        "market": "Spain",
+        "currency": "EUR",
+        "vat_note": "Spanish page: 'payment gateway and taxes already included in the sales price' - fees are shown all-in (tax included).",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Eventim collects the sales and settles within 5 working days after the organiser marks the event 'Finished'; cancelled/postponed events are settled only after buyers' refund claims are resolved.",
+        "plans": [
+          {
+            "name": "Own ticket shop / box office",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 3.5,
+            "per_ticket_fixed": 0.4,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Ticket shop in own design, seating plans, box office sales, free scan app, reports, promotions, season tickets, Facebook events. No contract, no fixed costs.",
+            "notes": "Fee is on top of the base ('precio de venta al publico') price; organiser chooses to pay it or pass to buyers"
+          },
+          {
+            "name": "Sold through entradas.com marketplace",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 9.5,
+            "per_ticket_fixed": 0.4,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Same as above plus listing on entradas.com for national reach",
+            "notes": "3.5% + 0.40 EUR plus an additional 6% on the retail price (so 9.5% + 0.40 EUR in total). Buyers on the Eventim network may pay further booking fees and shipping."
+          }
+        ],
+        "prepaid": [],
+        "processing": {
+          "included": true,
+          "processors": [],
+          "own_processor_allowed": null,
+          "rate_note": "payment fees and tax included in the ticket fee",
+          "platform_extra_processing_fee": null
+        },
+        "who_pays_default": "configurable (organiser pays or passes the fee on to the buyer)",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "Within 5 working days after the event is set to 'Finished' (bank details in profile).",
+        "refunds_chargebacks": "On cancellation the buyer is refunded the base price only; page warns that 'ticket-related fees and sales commissions may apply if an event is cancelled'.",
+        "fine_print": [
+          "No contract and no fixed costs",
+          "An organiser must confirm the event as completed to start settlement"
+        ],
+        "add_ons": [
+          {
+            "name": "Box office sales",
+            "price": "included"
+          },
+          {
+            "name": "Scan app",
+            "price": "free"
+          }
+        ],
+        "enterprise": null,
+        "sources": [
+          {
+            "url": "https://www.eventim-light.es/precios/",
+            "read": "2026-10-09",
+            "what": "Spanish pricing page"
+          },
+          {
+            "url": "https://www.eventim-light.es/en/pricing/",
+            "read": "2026-10-09",
+            "what": "English pricing page: fee 3.5% + 0.40; entradas.com +6%; payout 5 working days"
+          },
+          {
+            "url": "https://nevent.ai/es/plataformas-venta-entradas/eventim-light/",
+            "read": "2026-10-09",
+            "what": "third-party directory (snippet): Germany 3.5% + 0.49/0.99; Eventim network +10% - applies to DE page"
+          }
+        ],
+        "confidence": "page"
+      },
+      {
+        "market": "Germany (reference)",
+        "currency": "EUR",
+        "vat_note": "tax included per page",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Same Eventim settlement model.",
+        "plans": [
+          {
+            "name": "DE standard",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 3.5,
+            "per_ticket_fixed": 0.49,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": null,
+            "notes": "3.5% + 0.49 EUR for base price up to 6.99 EUR; 3.5% + 0.99 EUR from 7.00 EUR (from search snippets of eventim-light.de/en/pricing)"
+          }
+        ],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [
+          {
+            "url": "https://www.eventim-light.de/en/pricing/",
+            "read": "2026-10-09",
+            "what": "search snippet only (not opened)"
+          }
+        ],
+        "confidence": "snippet"
+      },
+      {
+        "market": "Netherlands (reference)",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": null,
+        "plans": [
+          {
+            "name": "NL standard",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 2.0,
+            "per_ticket_fixed": 0.49,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": null,
+            "notes": "EUR 0.49 + 2% up to base 15.99; from 16.00 the fixed part is EUR 0.99 (search snippet of eventim-light.nl/en/pricing)"
+          }
+        ],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [
+          {
+            "url": "https://www.eventim-light.nl/en/pricing/",
+            "read": "2026-10-09",
+            "what": "search snippet only"
+          }
+        ],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "Spain's Light fee is a flat 3.5% + 0.40 EUR with no tier by price band, unlike DE (two price bands). Marketplace listing costs another 6%."
+  },
+  {
+    "platform": "Ticketea",
+    "website": "https://www.ticketea.com",
+    "hq_country": "ES",
+    "segment": "Former Spanish ticketing platform",
+    "markets": [
+      {
+        "market": "Spain",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": null,
+        "money_flow_note": "Not applicable: ticketea.com shows 'Ahora somos Eventbrite' - absorbed into Eventbrite in April 2018. Eventbrite ES is covered by another collector.",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [
+          {
+            "url": "https://www.ticketea.com",
+            "read": "2026-10-09",
+            "what": "banner: part of Eventbrite since April 2018"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "No separate successor with its own price list exists - use Eventbrite entries."
+  },
+  {
+    "platform": "Atrapalo (Espectaculos / Atrapalo Ticketing)",
+    "website": "https://www.atrapalo.com",
+    "hq_country": "ES",
+    "segment": "Large Spanish leisure/travel marketplace that also sells show tickets for theatres and promoters; organiser tools (access control, box office, seat map, promo codes)",
+    "markets": [
+      {
+        "market": "Spain",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Inferred: Atrapalo's own terms say it is an information/distribution intermediary and sells through its checkout; organisers apply through a form and the sales team contacts them. No public fee schedule.",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "Contact sales; the 8%-25% range comes only from a marketing-agency blog (weak source, mark as third_party)",
+        "sources": [
+          {
+            "url": "https://www.comunicare.es/anunciarse-en-atrapalo/",
+            "read": "2026-10-09",
+            "what": "agency blog (third party): organiser fills a form, sales team follows up; claims Atrapalo takes 8%-25% commission per transaction"
+          },
+          {
+            "url": "https://soporte.atrapalo.com/support/solutions/articles/6000054778-condiciones-generales-de-entradas",
+            "read": "2026-10-09",
+            "what": "search snippet: Atrapalo performs an information activity, never event organisation"
+          },
+          {
+            "url": "https://play.google.com/store/apps/details?id=com.atrapalo.espectaculos.ticketing&hl=es_EC",
+            "read": "2026-10-09",
+            "what": "search snippet: Atrapalo Ticketing app for attendee lists and QR validation"
+          }
+        ],
+        "confidence": "third_party"
+      }
+    ],
+    "notes": "No public number; treat the 8-25% as a rough marketplace-commission range only."
+  },
+  {
+    "platform": "Enterticket",
+    "website": "https://www.enterticket.es",
+    "hq_country": "ES",
+    "segment": "Spanish ticketing for promoters of concerts, shows, festivals (site did not render for the scraper)",
+    "markets": [
+      {
+        "market": "Spain",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": null,
+        "money_flow_note": "Site unreadable; fee negotiated per promoter according to third-party comparison. Enterticket's answers to buyer complaints (OCU) say the PROMOTER sets the management-fee policy and Enterticket only manages the tickets.",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "Negotiated; 10%-12.5% is a third-party estimate, no official number",
+        "sources": [
+          {
+            "url": "https://buscatusitio.com/comisiones-ticketing",
+            "read": "2026-10-09",
+            "what": "third-party calculator: 'tarifa negociable segun volumen', 10%-12.5% (= 4-5 EUR on a 40 EUR ticket)"
+          },
+          {
+            "url": "https://soundtix.com/blog/comparativa-ticketeras-espana-2026",
+            "read": "2026-10-09",
+            "what": "competitor article, not about Enterticket specifically; OCU complaint snippets mention 7.50 EUR management fee per ticket"
+          }
+        ],
+        "confidence": "third_party"
+      }
+    ],
+    "notes": "enterticket.es returned empty content to the scraper; no official pricing seen."
+  },
+  {
+    "platform": "Bacantix",
+    "website": "https://www.bacantix.com",
+    "hq_country": "ES",
+    "segment": "Spanish regional ticketing (town councils, fiestas, theatres, Melilla/Alicante area); operated by Bacanti Inversiones y Servicios SL",
+    "markets": [
+      {
+        "market": "Spain",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "FAQ: Bacantix acts as 'distribuidor e intermediario' between buyers and promoters and takes card payments through the Redsys gateway (3-D Secure; Visa/Mastercard/Maestro), so it collects. Promoter terms are behind a login ('Area promotores').",
+        "plans": [],
+        "prepaid": [],
+        "processing": {
+          "included": true,
+          "processors": [
+            "Redsys"
+          ],
+          "own_processor_allowed": null,
+          "rate_note": "not stated",
+          "platform_extra_processing_fee": null
+        },
+        "who_pays_default": "buyer (example seen in a social-media listing: 16 EUR ticket + 1 EUR gestion fee; snippet)",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [
+          "Cards from foreign issuers are blocked when the issuing country differs from the country of payment (FAQ anti-fraud filter)",
+          "No cancellations or exchanges by Bacantix for buyers"
+        ],
+        "add_ons": [],
+        "enterprise": "Contact sales - no public promoter price",
+        "sources": [
+          {
+            "url": "https://www.bacantix.com/entradas/documento.aspx?id=alcazar&documento=preguntasfrecuentes",
+            "read": "2026-10-09",
+            "what": "FAQ: payment methods, Redsys, intermediary role, anti-fraud limits 1000 EUR/24h per IP and card"
+          },
+          {
+            "url": "https://www.bacantix.com/Entradas/Promotores.aspx?id=alcazar",
+            "read": "2026-10-09",
+            "what": "promoter area is a login page - no terms"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Regional player; useful only as an example of the Redsys-based collecting model."
+  },
+  {
+    "platform": "Koobin / KoobinEvent",
+    "website": "https://www.koobin.com",
+    "hq_country": "ES",
+    "segment": "Ticketing SOFTWARE for sports clubs, auditoriums, theatres, promoters (Girona); sells to venues, not self-serve",
+    "markets": [
+      {
+        "market": "Spain",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": null,
+        "money_flow_note": "Venue installs the software; payment arrangement not stated. Pricing only after a meeting.",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "Contact sales",
+        "sources": [
+          {
+            "url": "https://www.koobin.com",
+            "read": "2026-10-09",
+            "what": "no public price; 'request a meeting'; subscriptions, packages, seating, CRM, dynamic pricing, API; AWS"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Many Spanish theatres (e.g. Auditorium Palma, Tabakalera) sell through *.koobin.com."
+  },
+  {
+    "platform": "UNVERIFIED names: Proticketing, Clic&Go, Tiketin, Ticketsnoy",
+    "website": null,
+    "hq_country": null,
+    "segment": "Names given in the task that could not be verified as real organiser-facing ticket platforms",
+    "markets": [],
+    "notes": "Searches (Google via Bright Data and WebSearch) found no organiser-facing product with these names in Spain. 'Proticketing' returned only a Capterra entry for 'proticket' (product TicketReturn). Other Spanish names that DO appear in directories (not covered): 4Tickets, Koliseo, QwantiQ, bclever. Ticketsnoy/Clic&Go/Tiketin: nothing found."
+  },
+  {
+    "platform": "Vivetix",
+    "website": "https://vivetix.com",
+    "hq_country": "ES",
+    "segment": "Spanish self-serve ticketing (company Tonic Time SL), Spain + Latin America; markets itself as cheapest; claims escrow",
+    "markets": [
+      {
+        "market": "Spain",
+        "currency": "EUR",
+        "vat_note": "Fees are stated WITHOUT IVA ('IVA no incluido'); organiser may choose to show IVA-inclusive ticket price",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Platform gateway collects; organiser withdraws balance (withdrawals free). Vivetix says it holds funds in an external escrow account until the event takes place (own claim).",
+        "plans": [
+          {
+            "name": "Base rate ('Tarifa base')",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 1.0,
+            "per_ticket_fixed": 0.1,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Use of Vivetix and card-payment costs (gateway included)",
+            "notes": "Default for every event; other rates by contacting Vivetix. Blog text elsewhere says '2% + 0.10 EUR' (inconsistent with the pricing page 1% + 0.10 EUR)"
+          },
+          {
+            "name": "'Tu ticketera' (white label)",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 3.0,
+            "per_ticket_fixed": 0.1,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Own-branded ticket shop",
+            "notes": "Page: 'Coste 2%' extra on top of the base 1% -> 3% + 0.10 EUR (interpretation)"
+          },
+          {
+            "name": "Advance payout",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": null,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Withdraw up to 70% of balance before the event ends (needs risk-department approval)",
+            "notes": "Costs an extra 10% (ex IVA)"
+          },
+          {
+            "name": "Featured public listing",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": null,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "'Publico y quiero destacarlo'",
+            "notes": "Extra 1%"
+          }
+        ],
+        "prepaid": [],
+        "processing": {
+          "included": true,
+          "processors": [],
+          "own_processor_allowed": null,
+          "rate_note": "gateway/card costs included in the 1% + 0.10 EUR",
+          "platform_extra_processing_fee": null
+        },
+        "who_pays_default": "configurable: 'attendees pay IVA included / organiser receives IVA included' toggle exists; buyer-fee split is chosen by the organiser",
+        "free_tickets": "Free events: no management fees and no card fees (free events have no gateway).",
+        "seating": null,
+        "payouts": "Free withdrawals from balance after sales; advance (up to 70%) costs 10%.",
+        "refunds_chargebacks": "Per competitor quoting T&Cs: if an event is cancelled and Vivetix refunds buyers, organiser owes the publication-service cost + 1% of each ticket price as cancellation commission (snippet, not opened).",
+        "fine_print": [
+          "Private accounts (individuals) cannot create paid events or withdraw through the gateway",
+          "Rates for other tiers 'by contacting us'"
+        ],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [
+          {
+            "url": "https://vivetix.com/crear-un-evento-online",
+            "read": "2026-10-09",
+            "what": "creator page with country fee list ES / MX"
+          },
+          {
+            "url": "https://vivetix.com/b/tarifa-precio-vivetix",
+            "read": "2026-10-09",
+            "what": "blog: base fee 2% + 0.10 EUR + IVA with gateway included (inconsistent with creator page)"
+          },
+          {
+            "url": "https://soundtix.com/blog/comparativa-ticketeras-espana-2026",
+            "read": "2026-10-09",
+            "what": "competitor article incl. cancellation fee quote: organiser pays publication cost + 1% of each ticket price if event cancelled and buyers refunded; example 1% + 2% white label + 10% advance + 21% IVA"
+          }
+        ],
+        "confidence": "page"
+      },
+      {
+        "market": "Mexico",
+        "currency": "MXN",
+        "vat_note": "fees ex IVA",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": null,
+        "plans": [
+          {
+            "name": "Base",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 2.5,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": null,
+            "notes": "2.5% for use of Vivetix, excludes MercadoPago cost"
+          },
+          {
+            "name": "White label",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 3.5,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": null,
+            "notes": "3.5%, excludes MercadoPago cost"
+          }
+        ],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [
+          {
+            "url": "https://vivetix.com/crear-un-evento-online",
+            "read": "2026-10-09",
+            "what": "country fee list"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Source of the 'cheapest in Spain' claim; several claims about it (escrow, extras) come from Vivetix itself or from a competitor (Soundtix)."
+  },
+  {
+    "platform": "Notikumi Pro",
+    "website": "https://pro.notikumi.com",
+    "hq_country": "ES",
+    "segment": "Valencia-based ticketing + CRM + newsletters + BI suite for cultural venues/promoters; white-label, no buyer registration",
+    "markets": [
+      {
+        "market": "Spain",
+        "currency": "EUR",
+        "vat_note": "Prices are stated EXCLUDING IVA",
+        "model": "mixed",
+        "money_flow": null,
+        "money_flow_note": "Not stated on the pricing page. Competitor article claims buyers see ~10% fees in practice and a PayPal surcharge of > 1 EUR.",
+        "plans": [
+          {
+            "name": "Basic",
+            "monthly_fee": 29,
+            "annual_fee": null,
+            "per_ticket_percent": 5.0,
+            "per_ticket_fixed": 0.5,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Unlimited ticketing, white-label, numbered seating, season tickets, card + PayPal + instalments, 1,000 newsletter sends/day (30,000/month; extra EUR 6 per 1,000), CRM, segmentation, BI",
+            "notes": "Per-ticket: EUR 0.50, or 5% if the ticket is above EUR 10 (ex IVA). Page header says 'sin costes fijos' while plans carry EUR 29/89 per month - 'try now' free trial, no card"
+          },
+          {
+            "name": "Pro",
+            "monthly_fee": 89,
+            "annual_fee": null,
+            "per_ticket_percent": 5.0,
+            "per_ticket_fixed": 0.5,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Everything in Basic + API access to ticketing/marketing/BI, third-party integrations (Zoho, Mailchimp, Mailjet, Power BI, Looker Studio, Google Sheets), 5,000-100,000 daily sends with volume discount",
+            "notes": "Same per-ticket price as shown"
+          },
+          {
+            "name": "Pro+ (large venues, promoters)",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": null,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "All of the above; contact-sales",
+            "notes": "Price not public"
+          }
+        ],
+        "prepaid": [],
+        "processing": {
+          "included": null,
+          "processors": [
+            "Card",
+            "PayPal",
+            "Pago a plazos"
+          ],
+          "own_processor_allowed": null,
+          "rate_note": "not stated",
+          "platform_extra_processing_fee": null
+        },
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [
+          "Discounts for NGOs, students and solidarity projects 'on request'",
+          "Newsletter overage EUR 6 per 1,000 recipients"
+        ],
+        "add_ons": [],
+        "enterprise": "Pro+: contact sales",
+        "sources": [
+          {
+            "url": "https://pro.notikumi.com/precios/",
+            "read": "2026-10-09",
+            "what": "pricing page: Basic EUR 29/month, Pro EUR 89/month, per ticket EUR 0.50 or 5% above EUR 10, ex IVA"
+          },
+          {
+            "url": "https://soundtix.com/blog/comparativa-ticketeras-espana-2026",
+            "read": "2026-10-09",
+            "what": "competitor article: real buyer fee ~10%, PayPal > 1 EUR extra (unverified)"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Competitor (Soundtix) calculates EUR 107.69/month incl. IVA for the base plan."
+  },
+  {
+    "platform": "Xceed",
+    "website": "https://xceed.me",
+    "hq_country": "ES",
+    "segment": "Nightlife / clubs / electronic events ticketing and guest-list platform (Spain, Italy, Portugal, Belgium, France, Germany, UK ...), own marketplace app",
+    "markets": [
+      {
+        "market": "Spain (country selector also lists IT, PT, BE, FR, DE, IE, NL, UK, US, Rest of world)",
+        "currency": "EUR",
+        "vat_note": "Not stated on the page",
+        "model": "mixed",
+        "money_flow": null,
+        "money_flow_note": "Not stated.",
+        "plans": [
+          {
+            "name": "Esencial",
+            "monthly_fee": 0,
+            "annual_fee": 0,
+            "per_ticket_percent": null,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Unlimited events, link tracking, analytics, multi-device scanner app, chat support Mon-Fri",
+            "notes": "Transaction fee applies to online sales"
+          },
+          {
+            "name": "Premium",
+            "monthly_fee": 49,
+            "annual_fee": 29,
+            "per_ticket_percent": null,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Esencial + custom page / site integration, phone + chat support daily, EUR 200 Xceed Advertising credit",
+            "notes": "EUR 29/month billed annually, EUR 49 billed monthly"
+          },
+          {
+            "name": "Pro",
+            "monthly_fee": 59,
+            "annual_fee": 44,
+            "per_ticket_percent": null,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Premium + digital seating map, promoter accounting automation, custom integrations, dedicated 24/7 support, EUR 300 ad credit, 1 pro photo shoot",
+            "notes": "EUR 44/month billed annually, EUR 59 billed monthly"
+          }
+        ],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": "configurable: 'pass fees to customer' (organiser nets full price, buyer fee shown) or 'absorb' (as low as 3%)",
+        "free_tickets": "Free events: free unlimited use; free bookings via the verified marketplace pay a referral fee EUR 0.07 per single free booking",
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [
+          "Bookings through Xceed's verified marketplace carry a 15% marketing referral fee (EUR 0.07 per free single booking)",
+          "Cashback tiers: 'the more you sell the more you get back' (no numbers)",
+          "Unlimited extra users free",
+          "Slider example: 20 EUR ticket, buyer fee 1.60 EUR (8%) - the country shown by default is not stated; per-country fees not readable (JS slider)"
+        ],
+        "add_ons": [
+          {
+            "name": "Xceed Advertising",
+            "price": "credits included on Premium (200) and Pro (300)"
+          }
+        ],
+        "enterprise": "Large venues/complex events: contact help@xceed.me",
+        "sources": [
+          {
+            "url": "https://xceed.me/es/pricing",
+            "read": "2026-10-09",
+            "what": "pricing page: plans; absorb fee 'as low as 3%'; pass-to-buyer example 20 EUR ticket -> buyer fee 1.60 EUR; marketplace referral fee 15%"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Per-country fee table for IT/PT is inside a JavaScript slider and could not be read. Third-party (Soundtix) quotes 29-59 EUR/month + fee."
+  },
+  {
+    "platform": "Tuk Tuk",
+    "website": "https://tuktuk.cat",
+    "hq_country": "ES",
+    "segment": "Catalan/Spanish self-serve ticketing for small concerts, theatres, town festivals, free events",
+    "markets": [
+      {
+        "market": "Spain",
+        "currency": "EUR",
+        "vat_note": "'El IVA ya esta incluido' - the percentage is VAT-inclusive",
+        "model": "percent",
+        "money_flow": "both",
+        "money_flow_note": "Default: platform collects and transfers sales to the organiser's bank account after the event (with invoice for the fee). ENTERPRISE: direct payment gateway to the organiser's own account. The page does not give a payout day count.",
+        "plans": [
+          {
+            "name": "FREE",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 0.0,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Free (0 EUR) tickets only, up to 3 events and 500 tickets per event; QR validation, named tickets, capacity control, email delivery, Google Wallet",
+            "notes": null
+          },
+          {
+            "name": "BASIC",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 8.0,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Unlimited events and tickets, ticket types, named tickets, stats, card and Bizum, WhatsApp + email delivery, basic support",
+            "notes": "Fee includes IVA and card/Bizum payment costs. EUR 12 ticket -> EUR 0.96 fee"
+          },
+          {
+            "name": "PROFESSIONAL",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 9.0,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Basic + group tickets, season passes, seat map for theatres, VIP table map, invitations, discount codes, Meta Pixel, priority support",
+            "notes": null
+          },
+          {
+            "name": "ENTERPRISE",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": null,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Professional + white label, own domain and email domain, DIRECT payment gateway into the organiser's bank account, Verifactu-compatible invoicing, webhooks, onboarding",
+            "notes": "Contact sales"
+          }
+        ],
+        "prepaid": [],
+        "processing": {
+          "included": true,
+          "processors": [
+            "Card",
+            "Bizum"
+          ],
+          "own_processor_allowed": null,
+          "rate_note": "included in the % fee",
+          "platform_extra_processing_fee": null
+        },
+        "who_pays_default": "configurable: fee added on top of the ticket (buyer pays, default/most common) or included in the price and deducted from proceeds (organiser pays ~11 EUR on a 12 EUR ticket)",
+        "free_tickets": "FREE plan: no commission for 0 EUR tickets, capped at 3 events / 500 tickets per event",
+        "seating": "Seat map only on PROFESSIONAL (9%) and above",
+        "payouts": "After the event, direct to bank account, with invoice for the fee (no day count stated).",
+        "refunds_chargebacks": "Fee is not refundable if the organiser cancels the event.",
+        "fine_print": [
+          "8%/9% are gross incl. IVA and payment costs, so net of 21% IVA the platform keeps about 6.6% / 7.4% before card costs (arithmetic, not a quoted figure)"
+        ],
+        "add_ons": [],
+        "enterprise": "ENTERPRISE: contact sales",
+        "sources": [
+          {
+            "url": "https://tuktuk.cat/es/precios",
+            "read": "2026-10-09",
+            "what": "pricing: FREE / BASIC 8% / PROFESSIONAL 9% / ENTERPRISE, VAT included"
+          },
+          {
+            "url": "https://tuktuk.cat/es/blog/12/cuanto-cuesta-vender-entradas-online/",
+            "read": "2026-10-09",
+            "what": "own blog: who pays, example 300 x 12 EUR, payout at end of event with invoice"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Highest published percentage in the Spanish small-organiser segment, but all-in (IVA + card + Bizum)."
+  },
+  {
+    "platform": "Soundtix",
+    "website": "https://soundtix.com",
+    "hq_country": "ES",
+    "segment": "Spanish white-label ticketing for venues/promoters/bands, built on Stripe Connect with instant payouts to the organiser's own Stripe",
+    "markets": [
+      {
+        "market": "Spain",
+        "currency": "EUR",
+        "vat_note": "Fee amounts are shown INCLUDING IVA (comparison article: 'todos los precios con IVA incluido'; example: Soundtix 1.12 EUR 'IVA incluido')",
+        "model": "percent",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Stripe Connect: each organiser has their own Stripe account and the money goes straight to it at the moment of purchase; Soundtix never holds it. Fee is added on top of the base price paid by the buyer (application-fee style split).",
+        "plans": [
+          {
+            "name": "Standard (ticket base price < 40 EUR)",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 10.0,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Stripe processing, ticketing platform, 100% white label, Apple Pay/Google Pay, no-registration checkout, QR access control, embeddable widget, Meta Ads + Mailchimp integrations, support 24/7, virtual queue, seat selection",
+            "notes": "Pricing page: 'ronda el 10%' added to the base price and split into Stripe commission + Soundtix commission (example 15 EUR ticket: buyer pays 16.41; Stripe 0.42; Soundtix 0.99). The blog states, for a 40 EUR ticket, buyer pays 42 EUR: Stripe 0.88 + Soundtix 1.12 incl IVA (= 2.8% platform fee). The two descriptions are not the same schedule - scale not reconciled."
+          },
+          {
+            "name": "Tickets > 40 EUR or high volume",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": null,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Custom proposal",
+            "notes": "No public number"
+          }
+        ],
+        "prepaid": [],
+        "processing": {
+          "included": true,
+          "processors": [
+            "Stripe (Stripe Connect)"
+          ],
+          "own_processor_allowed": true,
+          "rate_note": "Stripe ES standard ~1.5% + 0.15 EUR (as quoted by Soundtix); Soundtix absorbs Stripe changes",
+          "platform_extra_processing_fee": null
+        },
+        "who_pays_default": "buyer (fee added to the base price; organiser receives the base price in full)",
+        "free_tickets": "Free events cost nothing",
+        "seating": "Seat selection included (no surcharge stated)",
+        "payouts": "Instant, direct to the organiser's Stripe account.",
+        "refunds_chargebacks": "If the event is cancelled Soundtix returns its fee and also covers Stripe's non-refundable part for the first 100 EUR of Stripe costs for new promoters.",
+        "fine_print": [
+          "No monthly fee, no setup, no minimum, no contract",
+          "Real-world example on the pricing page: 201 tickets at 15 EUR average"
+        ],
+        "add_ons": [],
+        "enterprise": "Custom for >40 EUR tickets / large volume",
+        "sources": [
+          {
+            "url": "https://soundtix.com/precios-comisiones-venta-entradas",
+            "read": "2026-10-09",
+            "what": "official pricing page"
+          },
+          {
+            "url": "https://soundtix.com/blog/comparativa-ticketeras-espana-2026",
+            "read": "2026-10-09",
+            "what": "own comparison article, 2026-08-23: 2.8% example, cancellation cover"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Closest model to Arena (direct merchant, Stripe Connect, white label). Soundtix is also the author of the comparison article used as third-party source for other Spanish platforms - competitor bias."
+  },
+  {
+    "platform": "BuscaTuSitio",
+    "website": "https://buscatusitio.com",
+    "hq_country": "ES",
+    "segment": "Spanish ticketing + seat-map creator that publishes the comparison calculator used as a source above",
+    "markets": [
+      {
+        "market": "Spain",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "percent",
+        "money_flow": null,
+        "money_flow_note": null,
+        "plans": [
+          {
+            "name": "All-inclusive",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 2.5,
+            "per_ticket_fixed": null,
+            "min_per_ticket": 1.0,
+            "cap_per_ticket": null,
+            "includes": null,
+            "notes": "'2.5% total with everything included, minimum 1 EUR per ticket' - only read from its own comparison calculator, not from a pricing page"
+          }
+        ],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [
+          {
+            "url": "https://buscatusitio.com/comisiones-ticketing",
+            "read": "2026-10-09",
+            "what": "self-reported figure in its own comparison tool"
+          }
+        ],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "Self-reported number from a calculator that ranks itself cheapest; verify on its own pricing page before using."
+  },
+  {
+    "platform": "SPAIN CONTEXT (not a platform): IVA and management-fee regulation",
+    "website": null,
+    "hq_country": "ES",
+    "segment": "Reference facts for Spanish pricing design",
+    "markets": [
+      {
+        "market": "Spain",
+        "currency": "EUR",
+        "vat_note": "Tickets to live cultural shows (theatre, concerts, cinema, circus, bullfights, museums) = 10% IVA (art. 91.Uno.2.6 LIVA); professional events/congresses/B2B training and professional sport = 21%; the platform's fee as an intermediation/tech service is generally 21% IVA, deductible for an organiser under the general regime (a Soundtix blog says this depends on the contract and invoice structure). Platforms quote either ex-IVA (Entradium, Vivetix, Notikumi) or IVA-included (Eventim.Light, Tuk Tuk, Soundtix).",
+        "model": "mixed",
+        "money_flow": null,
+        "money_flow_note": "Spanish consumer authority (Direccion General de Consumo, informative note Aug 2024): management fees for online show tickets must be included in the price shown at all times, itemised, a FIXED amount that does not vary with ticket price nor be a percentage of it for the same event (unless justified by additional services), only for services the consumer receives, not above the in-person extra costs. A source says Real Decreto-ley 4/2026 (10 Feb 2026) changed art. 20.1.c TRLGDCU to require the full final price including management fees (verify in BOE). OCU: 92% of analysed companies apply management fees, average surcharge 11%.",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [
+          "A percentage buyer fee (Tuk Tuk 8-9%, Notikumi 5%, Eventim 3.5%) conflicts with the Consumo guidance of a fixed amount per event - relevant for Arena's Spain pricing",
+          "Competitor blogs (Soundtix) are not legal advice"
+        ],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [
+          {
+            "url": "https://soundtix.com/blog/iva-venta-entradas-espana-que-tipo-aplicar",
+            "read": "2026-10-09",
+            "what": "VAT guide: 10% cultural vs 21% general; fee 21%"
+          },
+          {
+            "url": "https://portal-cec.consumo.gob.es/sites/default/files/documentos/NI_Gastos_Gestion_Entradas_Espectaculos_08_08_2024.pdf",
+            "read": "2026-10-09",
+            "what": "Consumo note on management fees (read via search summary, PDF not decoded)"
+          },
+          {
+            "url": "https://www.dsca.gob.es/es/comunicacion/notas-prensa/consumo-pone-foco-gastos-gestion-compra-online-entradas-espectaculos",
+            "read": "2026-10-09",
+            "what": "Consumo press release (search result, not opened)"
+          },
+          {
+            "url": "https://www.ocu.org/consumo-familia/derechos-consumidor/noticias/gastos-gestion-entradas",
+            "read": "2026-10-09",
+            "what": "OCU on management fees (search result, not opened)"
+          }
+        ],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "Check with a Spanish gestor/lawyer before shipping percentage-based buyer fees in Spain."
+  },
+  {
+    "platform": "BOL - Bilheteira Online",
+    "website": "https://www.bol.pt",
+    "hq_country": "PT",
+    "segment": "Largest Portuguese ticketing marketplace (ETNAGA, since 1992): 400+ organisers, 1,500+ physical points (Fnac, CTT, El Corte Ingles), Portugal and Spain",
+    "markets": [
+      {
+        "market": "Portugal",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Marketplace that sells to buyers and settles with the promoter (inferred; no organiser terms public). Its own T&Cs exclude refund of service commissions on cancellations (DECO finding).",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "Contact sales / negotiated; no public fee",
+        "sources": [
+          {
+            "url": "https://nevent.ai/es/plataformas-venta-entradas/bol/",
+            "read": "2026-10-09",
+            "what": "third-party directory: commissions 'no publicadas', negotiated"
+          },
+          {
+            "url": "https://www.bol.pt/Ajuda/CondicoesGerais",
+            "read": "2026-10-09",
+            "what": "search snippet: on cancellation promoter refunds buyers excluding processing costs"
+          },
+          {
+            "url": "https://jornaleconomico.sapo.pt/?p=1385187",
+            "read": "2026-10-09",
+            "what": "DECO: Ticketline/Fnac/BOL/MEO Blueticket T&Cs exclude refunding commissions (via search summary)"
+          }
+        ],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "Portuguese consumer body DECO reported these platforms to the prosecutor over not refunding fees on cancelled shows."
+  },
+  {
+    "platform": "Ticketline",
+    "website": "https://ticketline.sapo.pt",
+    "hq_country": "PT",
+    "segment": "Major Portuguese ticketing network (concerts, theatre, exhibitions)",
+    "markets": [
+      {
+        "market": "Portugal",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Marketplace; promoter terms not public. Observador reports a usual 6% service commission charged on the ticket (and on server-reinforcement extras) - this appears to be a buyer-side fee. Ticketline says technical reinforcement for high-demand shows is included in the service and not charged to the promoter in advance.",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "Promoter commission not public",
+        "sources": [
+          {
+            "url": "https://observador.pt/especiais/bilhetes-para-concertos-mais-caros-ha-espetaculos-com-taxa-extra-para-garantir-servidores-mais-potentes/",
+            "read": "2026-10-09",
+            "what": "6% usual service commission (read via search summary)"
+          },
+          {
+            "url": "https://jornaleconomico.sapo.pt/?p=1385187",
+            "read": "2026-10-09",
+            "what": "DECO: T&Cs exclude refunding service fees on cancellation"
+          }
+        ],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "No organiser price list found; ticketline.sapo.pt was unreachable for direct fetch."
+  },
+  {
+    "platform": "MEO Blueticket",
+    "website": "https://www.blueticket.pt",
+    "hq_country": "PT",
+    "segment": "Large Portuguese ticketing operator (Altice Portugal controls 51%), 200+ physical points, eTicketing platform for venues/promoters",
+    "markets": [
+      {
+        "market": "Portugal",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Inferred marketplace. Buyer-side service commission of 6% is retained on cancellations per a consumer complaint; for high-demand shows the technical-reinforcement cost 'may or may not' be charged to the promoter depending on the deal.",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "Contact sales; no organiser fee published",
+        "sources": [
+          {
+            "url": "https://portaldaqueixa.com/brands/blueticket-venda-de-bilhetes-online/complaints/meo-blueticket-reembolso-incompleto-apos-cancelamento-de-evento-1-157438926",
+            "read": "2026-10-09",
+            "what": "consumer complaint, 6% service commission kept (via search summary)"
+          }
+        ],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "No organiser-facing fee page found."
+  },
+  {
+    "platform": "Imperdivel",
+    "website": "https://www.imperdivel.pt",
+    "hq_country": "PT",
+    "segment": "Portuguese ticket seller",
+    "markets": [
+      {
+        "market": "Portugal",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": null,
+        "money_flow_note": "Website showed a maintenance notice ('Temporariamente indisponivel') on 2026-10-09; nothing could be read.",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [
+          {
+            "url": "https://www.imperdivel.pt",
+            "read": "2026-10-09",
+            "what": "maintenance page"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Could not verify pricing."
+  },
+  {
+    "platform": "3cket",
+    "website": "https://business.3cket.com",
+    "hq_country": "PT",
+    "segment": "Portuguese ticketing + cashless for events, festivals, clubs; pays with MB WAY, Multibanco, cards, Klarna",
+    "markets": [
+      {
+        "market": "Portugal",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "mixed",
+        "money_flow": "collecting",
+        "money_flow_note": "3cket runs the financial close and transfers the money to the organiser automatically on the first Wednesday after each event (tied to the refund window for tickets or cashless credits).",
+        "plans": [
+          {
+            "name": "Ticketing",
+            "monthly_fee": 0,
+            "annual_fee": 0,
+            "per_ticket_percent": 0.0,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Create events and sell tickets at no cost to the organiser; no monthly/subscription/joining fee",
+            "notes": "Page headline '0% de comissao' - the page does not state the buyer-side fee, which is where 3cket earns its revenue (not stated)"
+          },
+          {
+            "name": "Paid modules (cashless etc.)",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": null,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Prices not published; 'depends on your event's needs'; Cashless 'can be completely free' depending on needs",
+            "notes": null
+          }
+        ],
+        "prepaid": [],
+        "processing": {
+          "included": true,
+          "processors": [
+            "Card",
+            "Apple Pay",
+            "Google Pay",
+            "Klarna",
+            "MB WAY",
+            "Multibanco reference"
+          ],
+          "own_processor_allowed": null,
+          "rate_note": "not stated",
+          "platform_extra_processing_fee": null
+        },
+        "who_pays_default": "buyer (implied: 0% commission to organiser) - not explicitly stated on the page",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "Automatic bank transfer on the first Wednesday after each event.",
+        "refunds_chargebacks": null,
+        "fine_print": [
+          "Pricing page (./pricing) not read, so buyer fee level is unknown"
+        ],
+        "add_ons": [],
+        "enterprise": "Modules priced per event",
+        "sources": [
+          {
+            "url": "https://business.3cket.com/",
+            "read": "2026-10-09",
+            "what": "organiser landing page (read via fetch summarizer): 0% commission, payout first Wednesday after the event"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Portuguese example of 'free for the organiser, buyer pays', payout after event."
+  },
+  {
+    "platform": "Liveticket",
+    "website": "https://www.liveticket.it",
+    "hq_country": "IT",
+    "segment": "Italian ticketing for theatres, cinemas, concerts, museums, sports, festivals; also sells to resale points",
+    "markets": [
+      {
+        "market": "Italy",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Home page describes a 'sistema in conto terzi' (sales on behalf of third parties = platform collects and settles). Prices only by quote.",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "Request a quote (index.aspx?Id=35180); no public figure",
+        "sources": [
+          {
+            "url": "https://www.liveticket.it",
+            "read": "2026-10-09",
+            "what": "no prices; 'no maintenance or obsolescence costs'; free trial on request; third-party-account system"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "No organiser fee published."
+  },
+  {
+    "platform": "Vivaticket",
+    "website": "https://www.vivaticket.com",
+    "hq_country": "IT",
+    "segment": "Large Italian ticketing operator (Bestunion group): events, theatres, concert halls",
+    "markets": [
+      {
+        "market": "Italy",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Presale service on behalf of the formal organiser; its T&Cs say it has no power over event organisation and (per an Altroconsumo complaint) does not refund its fees when a show is cancelled. Site is behind a Queue-it waiting room so the organiser page could not be read.",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "Not public",
+        "sources": [
+          {
+            "url": "https://www.altroconsumo.it/reclamare/bacheca-dei-reclami/mancato-rimborso-commissioni-v/ceed62c0f0fadba17f",
+            "read": "2026-10-09",
+            "what": "complaint thread (via search summary)"
+          }
+        ],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "No numbers."
+  },
+  {
+    "platform": "Ciaotickets",
+    "website": "https://www.ciaotickets.com",
+    "hq_country": "IT",
+    "segment": "Italian ticketing for sport (Serie C clubs), cultural events, subscriptions",
+    "markets": [
+      {
+        "market": "Italy",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": null,
+        "money_flow_note": "Home page has no organiser pricing; 'Biglietteria elettronica' and 'Contatti' pages are the entry points. Buyers pay service fees (card refund net of 'commissioni di servizio').",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "Contact only",
+        "sources": [
+          {
+            "url": "https://www.ciaotickets.com",
+            "read": "2026-10-09",
+            "what": "home page; organiser pricing absent"
+          },
+          {
+            "url": "https://www.reggionline.com/san-donato-reggiana-le-modalita-rimborso-dei-biglietti/",
+            "read": "2026-10-09",
+            "what": "refund net of service fees (search summary)"
+          }
+        ],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "No numbers."
+  },
+  {
+    "platform": "DIY Ticket (diyticket.it)",
+    "website": "https://www.diyticket.it",
+    "hq_country": "IT",
+    "segment": "Rome-based ticketing with SisalPay/Mooney cash payment points; self-help organiser tools",
+    "markets": [
+      {
+        "market": "Italy",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": null,
+        "money_flow_note": "Public pages (home, selfhelp) show only buyer information; no organiser fees.",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "Contact only",
+        "sources": [
+          {
+            "url": "https://www.diyticket.it/selfhelp",
+            "read": "2026-10-09",
+            "what": "buyer-oriented, no organiser pricing"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "No numbers."
+  },
+  {
+    "platform": "Mailticket",
+    "website": "https://www.mailticket.it",
+    "hq_country": "IT",
+    "segment": "Italian ticketing since 2000 for integrated box office, presale and access control",
+    "markets": [
+      {
+        "market": "Italy",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": null,
+        "money_flow_note": "Organiser page /info/organizzatori could not be read through the summarizer; no commission table found in search. Trustpilot score 1.5/5 (34 reviews) - customer-service reputation poor (search summary).",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "Contact only",
+        "sources": [
+          {
+            "url": "https://www.mailticket.it",
+            "read": "2026-10-09",
+            "what": "home: link to organiser solutions only"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "No numbers."
+  },
+  {
+    "platform": "Billetto (Italy)",
+    "website": "https://go.billetto.com/it-it",
+    "hq_country": "GB",
+    "segment": "Pan-European self-serve ticketing with its own marketplace and POS; Italian-language site",
+    "markets": [
+      {
+        "market": "Italy",
+        "currency": "EUR",
+        "vat_note": "Fees and plan prices are stated excluding IVA ('IVA esclusa')",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Billetto collects and pays the organiser within 3-5 working days after the event, with a statement of revenue and fees (bank may need a few more days). Early payout is a Growth-only extra.",
+        "plans": [
+          {
+            "name": "Essential",
+            "monthly_fee": 0,
+            "annual_fee": null,
+            "per_ticket_percent": 3.99,
+            "per_ticket_fixed": 0.9,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Up to 1,000 tickets per year, no monthly fee, no setup",
+            "notes": "Billetto Advertising pay-per-sale add-on"
+          },
+          {
+            "name": "Growth",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 3.99,
+            "per_ticket_fixed": 0.9,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Over 1,000 tickets per year; custom pricing 'or less' by meeting; early payment of most ticket revenue; manual ad campaigns; premium homepage eligibility; custom email marketing",
+            "notes": "Shown as '3.99% + 0.90 or less', no lower figure published"
+          }
+        ],
+        "prepaid": [],
+        "processing": {
+          "included": true,
+          "processors": [
+            "Visa",
+            "Mastercard",
+            "PayPal"
+          ],
+          "own_processor_allowed": null,
+          "rate_note": "included in the 3.99% + 0.90",
+          "platform_extra_processing_fee": null
+        },
+        "who_pays_default": "buyer (organiser may absorb and sell all-inclusive)",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "3-5 working days after the event",
+        "refunds_chargebacks": "Organiser sets refund terms; booking fees can be refunded on request.",
+        "fine_print": [
+          "No minimum or cap per ticket stated",
+          "POS: Adyen terminal EUR 199 + optional printer EUR 270, one-off; POS transaction fee not stated"
+        ],
+        "add_ons": [
+          {
+            "name": "Billetto POS 2.0 terminal (Adyen)",
+            "price": "EUR 199 one-off"
+          },
+          {
+            "name": "Receipt printer",
+            "price": "EUR 270 one-off"
+          }
+        ],
+        "enterprise": "Growth (>1,000 tickets/year): custom pricing via meeting",
+        "sources": [
+          {
+            "url": "https://go.billetto.com/it-it/pricing",
+            "read": "2026-10-09",
+            "what": "Italy pricing page (via fetch summarizer); Google snippet confirms 3.99% + 0.90 'a carico dell'acquirente'"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Portuguese and other Billetto country sites use the same product; Billetto is probably covered fully by another collector (UK/Nordics)."
+  },
+  {
+    "platform": "OOOH.Events",
+    "website": "https://oooh.events",
+    "hq_country": "IT",
+    "segment": "Small Italian ticketing with onsite/box-office services and printed tickets",
+    "markets": [
+      {
+        "market": "Italy",
+        "currency": "EUR",
+        "vat_note": "Organiser prices are ex IVA; the spectator fee is IVA-included",
+        "model": "percent_plus_fixed",
+        "money_flow": null,
+        "money_flow_note": "Organiser-side payout terms are not stated on the tariff page.",
+        "plans": [
+          {
+            "name": "Online sales (all three tiers)",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": 0.0,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Free for the organiser",
+            "notes": "Spectator pays EUR 0.90 + 5% of the amount, IVA included"
+          },
+          {
+            "name": "Onsite issuance (Premium / Standard / Urgent)",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": null,
+            "per_ticket_fixed": 0.15,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Per ticket, paper included",
+            "notes": "EUR 0.15 Premium, EUR 0.25 Standard, EUR 0.50 Urgent; PDF pre-print by email 0.05 / 0.25 / 0.50; thermal pre-print 0.15 / 0.25"
+          }
+        ],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": "buyer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [
+          "Tier depends on publishing date and price rules: Premium needs publication 2+ weeks ahead and a higher onsite price (EUR 2 above online for tariffs under EUR 15, 15% above for EUR 15+); Urgent for events published 2 or fewer working days ahead",
+          "Pre-print PDF: EUR 50 minimum billed, credit valid within the calendar year, invoice paid before issue",
+          "Rentals: notebook / printer EUR 25 (Premium) or 50 (Standard) per month; handheld access-control EUR 25 per month; onsite activation EUR 100 on Standard"
+        ],
+        "add_ons": [
+          {
+            "name": "Onsite activation and training",
+            "price": "free Premium / EUR 100 Standard"
+          }
+        ],
+        "enterprise": null,
+        "sources": [
+          {
+            "url": "https://oooh.events/tariffe/",
+            "read": "2026-10-09",
+            "what": "tariff page (via fetch summarizer)"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Italian-style 'diritto di prevendita' structure."
+  },
+  {
+    "platform": "More.com (ex Viva.gr / Viva Event) - Teller platform",
+    "website": "https://www.more.com",
+    "hq_country": "GR",
+    "segment": "Leading ticketing platform of Greece and Cyprus: about EUR 155m GTV, 7m+ tickets, 27,000 events in 2025; Alter Ego Media announced a 50.1% stake in March 2026. Organisers use the free 'Teller' platform",
+    "markets": [
+      {
+        "market": "Greece (Cyprus similar via vivaevent.cy / More.com)",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "mixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Inferred: card sales run through the More.com / Viva acquiring and the organiser is settled. Page names the Interchange++ settlement as 'the only cost'; who bears it is not stated and the buyer service fee is not mentioned. Payout timing not stated.",
+        "plans": [
+          {
+            "name": "Teller platform",
+            "monthly_fee": 0,
+            "annual_fee": 0,
+            "per_ticket_percent": 0.0,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Ticketing platform provided entirely free to partners; cash sales at own box office also free",
+            "notes": "Only cost: bank settlement for e-tickets sold through the More.com network on Viva's Interchange++ model, about 2.4% + EUR 0.24 per transaction (Viva 2.06% + ~0.34% variables such as issuer fee, scheme, card type)"
+          }
+        ],
+        "prepaid": [],
+        "processing": {
+          "included": false,
+          "processors": [
+            "Viva Wallet acquiring"
+          ],
+          "own_processor_allowed": null,
+          "rate_note": "Viva Interchange++: about 2.4% + EUR 0.24 per transaction on average",
+          "platform_extra_processing_fee": null
+        },
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [
+          "Merchandise service has a separate charge (article 6407357, not read)",
+          "Streaming via More.com exists (article 5772756, not read)"
+        ],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [
+          {
+            "url": "https://help-teller.more.com/el/articles/6145213-%CF%80%CE%BF%CE%B9%CE%BF-%CE%B5%CE%AF%CE%BD%CE%B1%CE%B9-%CF%84%CE%BF-%CE%BA%CF%8C%CF%83%CF%84%CE%BF%CF%82-%CF%83%CF%85%CE%BD%CE%B5%CF%81%CE%B3%CE%B1%CF%83%CE%AF%CE%B1%CF%82",
+            "read": "2026-10-09",
+            "what": "Greek help article 'what is the cost of cooperation', dated 2026-06-26"
+          },
+          {
+            "url": "https://www.tovima.com/finance/alter-ego-media-acquires-majority-stake-in-more-gr",
+            "read": "2026-10-09",
+            "what": "ownership change and GTV (search summary)"
+          },
+          {
+            "url": "https://cyprus-mail.com/2023/01/10/viva-services-expands-in-cyprus-with-vivaevent-cy",
+            "read": "2026-10-09",
+            "what": "vivaevent.cy: Viva Services brand extension of viva.gr in Cyprus; organisers can also sell from own website at no extra cost (search summary)"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Cheapest platform fee in the group (0% platform), but with Greek market share; the buyer service fee is the revenue source and is not published for organisers. Ticketmaster GR/CY self-service: nothing found."
+  },
+  {
+    "platform": "Soldout Tickets (Cyprus) / other Cyprus options",
+    "website": null,
+    "hq_country": "CY",
+    "segment": "Not verified",
+    "markets": [
+      {
+        "market": "Cyprus",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": null,
+        "money_flow_note": "No platform called 'Soldout Tickets' in Cyprus could be found (the search returned an unrelated 'Sellout Tickets'). The verified Cyprus option is vivaevent.cy (Viva Services / More.com, see More.com entry). Klisto (reservation system with ticketing) exists but no fees were found.",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": null,
+        "sources": [
+          {
+            "url": "https://cyprus-mail.com/2023/01/10/viva-services-expands-in-cyprus-with-vivaevent-cy",
+            "read": "2026-10-09",
+            "what": "vivaevent.cy launch (search summary)"
+          }
+        ],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "No numbers."
+  },
+  {
+    "platform": "Trackage Scheme (Malta)",
+    "website": "https://trackagescheme.com",
+    "hq_country": "MT",
+    "segment": "Maltese music-event ticketing with payouts into the organiser's own Stripe account",
+    "markets": [
+      {
+        "market": "Malta",
+        "currency": "EUR",
+        "vat_note": "Not stated",
+        "model": "mixed",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Funds settle directly into the organiser's own Stripe account; Trackage says it does not hold the money. Stripe standard schedule 'typically 2-7 days for Maltese accounts'. Fee collected as a booking fee.",
+        "plans": [
+          {
+            "name": "Per-ticket booking fee",
+            "monthly_fee": null,
+            "annual_fee": null,
+            "per_ticket_percent": null,
+            "per_ticket_fixed": null,
+            "min_per_ticket": null,
+            "cap_per_ticket": null,
+            "includes": "Charged only when a ticket sells; no subscriptions, no setup fees",
+            "notes": "Rate not published: 'contact us for specific pricing based on event size and type'"
+          }
+        ],
+        "prepaid": [],
+        "processing": {
+          "included": false,
+          "processors": [
+            "Stripe"
+          ],
+          "own_processor_allowed": true,
+          "rate_note": "Stripe's own rate, not stated",
+          "platform_extra_processing_fee": null
+        },
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "Stripe standard payout, 2-7 days for Maltese accounts",
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "Event-size based quote",
+        "sources": [
+          {
+            "url": "https://trackagescheme.com/tickets",
+            "read": "2026-10-09",
+            "what": "organiser page (via fetch summarizer)"
+          }
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Same direct-merchant architecture as Arena."
+  },
+  {
+    "platform": "ShowsHappening / ShowsManager (Malta)",
+    "website": "https://www.showshappening.com",
+    "hq_country": "MT",
+    "segment": "Malta's main ticketing platform for large shows since 2013 (per a third-party guide); organisers use ShowsManager",
+    "markets": [
+      {
+        "market": "Malta",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": null,
+        "money_flow_note": "Public site offers 'create an event and sell your tickets' via showsmanager.com but shows no fees. A 2013 MaltaToday column by a Maltese ticketing founder cited a 4% commission (old, unnamed company - not usable). TicketLane and TicketLine (Malta) exist but no organiser fees were found.",
+        "plans": [],
+        "prepaid": [],
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": [],
+        "enterprise": "Not public",
+        "sources": [
+          {
+            "url": "https://www.showshappening.com",
+            "read": "2026-10-09",
+            "what": "organiser links only"
+          },
+          {
+            "url": "https://www.maltatoday.com.mt/business/business_comment/27466/stefan-debattista-step-right-up-and-get-your-tickets-here-20130610",
+            "read": "2026-10-09",
+            "what": "2013 column quoting a 4% commission (search summary)"
+          }
+        ],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "No reliable current number for Malta."
+  }
+]

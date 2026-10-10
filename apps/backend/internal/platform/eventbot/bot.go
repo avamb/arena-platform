@@ -59,6 +59,17 @@ type Options struct {
 	// in the application dialog; keep it off until the site's continue page
 	// (/start/confirm) is live.
 	SiteButton bool
+	// DialogSweepEvery is how often long-expired bot_dialogs rows are
+	// deleted (default 10 min); tests shorten it.
+	DialogSweepEvery time.Duration
+	// DraftSweepEvery is how often idle wizard drafts are reminded of and
+	// expired (default 10 min); tests shorten it.
+	DraftSweepEvery time.Duration
+	// MessageRateLimit caps the messages one Telegram account may send per
+	// minute: 0 means the spec's 30, a negative value switches the limit off.
+	// Button presses have their own fixed budget (callbackRateLimit). Only
+	// end-to-end tests that type faster than any person should ever set it.
+	MessageRateLimit int
 }
 
 // Bot is the running event-center bot.
@@ -70,9 +81,17 @@ type Bot struct {
 	texts    *Texts
 	logger   *slog.Logger
 	pending  *pendingInvites
-	team     *teamDialogs
 	sessions *sessionDialogs
-	wizard   *Wizard
+	// dialogs keeps the short multi-step dialogs (the team invite, ...) in
+	// bot_dialogs, so a restart loses none of them.
+	dialogs          DialogStore
+	dialogSweepEvery time.Duration
+	draftSweepEvery  time.Duration
+	// limiter is the per-account message limit (spec 35 §4.4); cbLimiter is
+	// the separate, wider one for button presses.
+	limiter   *userRateLimiter
+	cbLimiter *userRateLimiter
+	wizard    *Wizard
 	// fileClient downloads Telegram files (posters); nil uses a default.
 	fileClient     *http.Client
 	ticketsBaseURL string
@@ -104,8 +123,13 @@ func New(opts Options) (*Bot, error) {
 		texts:    opts.Texts,
 		logger:   logger,
 		pending:  newPendingInvites(pendingInviteTTL),
-		team:     newTeamDialogs(),
 		sessions: newSessionDialogs(),
+
+		dialogs:          newPGDialogStore(opts.Queries),
+		dialogSweepEvery: opts.DialogSweepEvery,
+		draftSweepEvery:  opts.DraftSweepEvery,
+		limiter:          newUserRateLimiter(rateLimitFrom(opts.MessageRateLimit), messageRateWindow),
+		cbLimiter:        newUserRateLimiter(callbackRateLimit, messageRateWindow),
 
 		fileClient:     opts.HTTPClient,
 		ticketsBaseURL: opts.TicketsBaseURL,
@@ -159,8 +183,20 @@ func (b *Bot) Run(ctx context.Context) error {
 	if b.selfOnboarding {
 		go b.onbNoticeLoop(ctx)
 	}
+	go b.dialogSweepLoop(ctx)
+	go b.draftSweepLoop(ctx)
 	b.tg.Start(ctx)
 	return nil
+}
+
+// rateLimitFrom turns Options.MessageRateLimit into the limiter's limit:
+// 0 is the default, a negative value is "no limit" (the limiter admits
+// everything when its limit is not positive).
+func rateLimitFrom(opt int) int {
+	if opt == 0 {
+		return messageRateLimit
+	}
+	return opt
 }
 
 func (b *Bot) publishCommands(ctx context.Context) {
@@ -218,15 +254,28 @@ func (b *Bot) handleUpdate(ctx context.Context, _ *tgbot.Bot, u *models.Update) 
 			b.logger.Error("eventbot: panic in update handler", slog.Any("panic", r))
 		}
 	}()
+	var from *models.User
 	switch {
 	case u.CallbackQuery != nil:
-		b.handleCallback(ctx, u.CallbackQuery)
+		from = &u.CallbackQuery.From
 	case u.Message != nil && u.Message.From != nil && !u.Message.From.IsBot:
 		if string(u.Message.Chat.Type) != "private" {
 			return // the bot works in private chats only
 		}
-		b.handleMessage(ctx, u.Message)
+		from = u.Message.From
+	default:
+		return
 	}
+	// The limit is checked before any handler runs, so a flood costs one map
+	// lookup per update rather than a database read and an API call.
+	if !b.admit(ctx, u, from) {
+		return
+	}
+	if u.CallbackQuery != nil {
+		b.handleCallback(ctx, u.CallbackQuery)
+		return
+	}
+	b.handleMessage(ctx, u.Message)
 }
 
 func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
@@ -314,7 +363,7 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	parts := strings.Split(cq.Data, ":")
 	switch parts[0] {
 	case "home":
-		b.team.clear(from.ID)
+		b.clearTeamDialog(ctx, from.ID)
 		b.showHome(ctx, chatID, &msgID, from, "")
 	case "help":
 		b.showHelp(ctx, chatID, &msgID, from)
@@ -639,19 +688,10 @@ func (b *Bot) reply(ctx context.Context, chatID int64, editMsgID *int, text stri
 	b.send(ctx, chatID, text, kb)
 }
 
+// send is sendChecked (draft_sweep.go) for the callers that cannot do anything
+// with a failure but log it.
 func (b *Bot) send(ctx context.Context, chatID int64, text string, kb *models.InlineKeyboardMarkup) {
-	params := &tgbot.SendMessageParams{
-		ChatID:    chatID,
-		Text:      text,
-		ParseMode: models.ParseModeHTML,
-		LinkPreviewOptions: &models.LinkPreviewOptions{
-			IsDisabled: tgbot.True(),
-		},
-	}
-	if kb != nil {
-		params.ReplyMarkup = kb
-	}
-	if _, err := b.tg.SendMessage(ctx, params); err != nil {
+	if err := b.sendChecked(ctx, chatID, text, kb); err != nil {
 		b.logger.Warn("eventbot: sendMessage failed", slog.Int64("chat_id", chatID), slog.String("error", err.Error()))
 	}
 }

@@ -219,15 +219,15 @@ func New(opts Options) *Server {
 		r.Use(i18n.LocaleMiddleware(opts.Bundle, defaultLocale, supported))
 	}
 
+	r.Use(clientChannelMiddleware) // X-Client-Channel -> audit metadata.via
+
 	// Lazily construct PG-backed audit + idempotency + outbox stores when
 	// the caller didn't supply concrete implementations.
 	auditWriter := opts.Audit
 	if auditWriter == nil && opts.PgxPool != nil {
 		auditWriter = audit.NewPGWriter(opts.PgxPool)
 	}
-	// Requests authenticated with an organization API key must be attributed
-	// to `api_key:<id>` no matter which handler writes the row (spec §13.1).
-	auditWriter = audit.WithServiceActor(auditWriter)
+	auditWriter = decorateAuditWriter(auditWriter)
 	idemStore := opts.Idem
 	if idemStore == nil && opts.PgxPool != nil {
 		idemStore = idempotency.NewPGStore(opts.PgxPool)

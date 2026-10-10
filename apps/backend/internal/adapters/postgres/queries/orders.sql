@@ -313,6 +313,12 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
 --                        a phone identity of the customer;
 --   $13 text             the pg_trgm similarity over buyer name/email/phone.
 -- Every matcher empty = no search filter.
+-- Scoping: `o.org_id = $1` is the leading predicate (orders_org_created_idx),
+-- so every matcher below runs over ONE organization's orders; the phone
+-- identity lookup uses the (kind, value_normalized) unique index.
+-- Ordering: an exact orders.system_id hit ($10) is listed first, so a
+-- 10-digit number that is also the tail of another buyer's phone cannot push
+-- the order that really carries it off the top.
 SELECT o.id, o.system_id, o.org_id, o.channel_id, o.event_id, o.session_id, o.customer_id,
        o.checkout_session_id, o.reservation_id, o.external_ref, o.source, o.status,
        o.currency, o.subtotal, o.discount, o.charge, o.total, o.charge_percent_bp,
@@ -357,10 +363,11 @@ WHERE  o.org_id = $1
          OR (length($12) >= 9 AND regexp_replace(COALESCE(o.buyer_phone, ''), '\D', '', 'g') LIKE '%' || $12)
          OR o.customer_id IN (
             SELECT ci.customer_id FROM customer_identities ci
-            WHERE  ci.kind = 'phone' AND regexp_replace(ci.value_normalized, '\D', '', 'g') = $12)))
+            WHERE  ci.kind = 'phone' AND ci.value_normalized IN ('+' || $12, $12))))
      OR ($13 <> '' AND (o.buyer_name % $13 OR o.buyer_email % $13 OR o.buyer_phone % $13))
   )
-ORDER  BY o.created_at DESC, o.id DESC
+ORDER  BY (CASE WHEN $10::bigint IS NOT NULL AND o.system_id = $10 THEN 0 ELSE 1 END),
+          o.created_at DESC, o.id DESC
 LIMIT  $14 OFFSET $15;
 
 -- name: CountOrdersByOrg :one
@@ -406,7 +413,7 @@ WHERE  o.org_id = $1
          OR (length($12) >= 9 AND regexp_replace(COALESCE(o.buyer_phone, ''), '\D', '', 'g') LIKE '%' || $12)
          OR o.customer_id IN (
             SELECT ci.customer_id FROM customer_identities ci
-            WHERE  ci.kind = 'phone' AND regexp_replace(ci.value_normalized, '\D', '', 'g') = $12)))
+            WHERE  ci.kind = 'phone' AND ci.value_normalized IN ('+' || $12, $12))))
      OR ($13 <> '' AND (o.buyer_name % $13 OR o.buyer_email % $13 OR o.buyer_phone % $13))
   );
 

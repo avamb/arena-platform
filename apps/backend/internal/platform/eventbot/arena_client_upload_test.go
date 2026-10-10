@@ -20,6 +20,11 @@ func TestArenaClient_UploadPoster_SendsTheContentType(t *testing.T) {
 		if r.URL.Path != "/v1/media" || r.Method != http.MethodPost {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
+		// The upload builds its own request (multipart), outside ArenaClient.do:
+		// it must name the bot as the client too.
+		if got := r.Header.Get("X-Client-Channel"); got != "telegram_bot" {
+			t.Errorf("X-Client-Channel = %q, want telegram_bot", got)
+		}
 		_ = r.ParseMultipartForm(1 << 20)
 		gotType = r.FormValue("content_type")
 		gotOwner = r.FormValue("owner_type")

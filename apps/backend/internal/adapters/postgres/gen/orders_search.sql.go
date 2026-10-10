@@ -97,13 +97,14 @@ WHERE  o.org_id = $1
          OR (length($12) >= 9 AND regexp_replace(COALESCE(o.buyer_phone, ''), '\D', '', 'g') LIKE '%' || $12)
          OR o.customer_id IN (
             SELECT ci.customer_id FROM customer_identities ci
-            WHERE  ci.kind = 'phone' AND regexp_replace(ci.value_normalized, '\D', '', 'g') = $12)))
+            WHERE  ci.kind = 'phone' AND ci.value_normalized IN ('+' || $12, $12))))
      OR ($13 <> '' AND (o.buyer_name % $13 OR o.buyer_email % $13 OR o.buyer_phone % $13))
   )
 `
 
 const searchOrdersByOrg = searchOrdersByOrgSelect + searchOrdersByOrgWhere +
-	`ORDER  BY o.created_at DESC, o.id DESC
+	`ORDER  BY (CASE WHEN $10::bigint IS NOT NULL AND o.system_id = $10 THEN 0 ELSE 1 END),
+          o.created_at DESC, o.id DESC
 LIMIT  $14 OFFSET $15`
 
 const countOrdersByOrg = `-- name: CountOrdersByOrg :one
