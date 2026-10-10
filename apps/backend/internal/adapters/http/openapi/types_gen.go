@@ -7815,6 +7815,38 @@ type OperatorNetworkListResponse struct {
 	Total int `json:"total"`
 }
 
+// OrderChannelSummary The sales channel the order was placed through and how the buyer reached the checkout.
+type OrderChannelSummary struct {
+	// Id Sales channel id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind `site` for a bil24_gateway order or any order of a channel that
+	// holds a gateway token (a selling site through the gateway);
+	// otherwise `hosted_page` when the channel has
+	// settings.hosted_page.enabled (the platform's own event/promoter
+	// page); otherwise `widget` (public_feed / checkout_api /
+	// complimentary on a plain channel).
+	Kind string `json:"kind"`
+
+	// Name Channel name; empty when the channel row was deleted since.
+	Name string `json:"name"`
+}
+
+// OrderDeliveryEntry The ticket e-mail delivery job of one ticket (delivery_jobs).
+type OrderDeliveryEntry struct {
+	// LastError Error of the last failed attempt, if any.
+	LastError *string `json:"last_error"`
+
+	// SentAt When the letter was accepted for delivery, for a sent job.
+	SentAt *time.Time `json:"sent_at"`
+
+	// Status delivery_jobs.status — pending, processing, sent, failed, skipped or disabled — or `none` when the ticket has no job row.
+	Status string `json:"status"`
+
+	// TicketId The ticket this delivery is for.
+	TicketId openapi_types.UUID `json:"ticket_id"`
+}
+
 // OrderDetail defines model for OrderDetail.
 type OrderDetail struct {
 	// BuyerEmail Buyer's email, if captured.
@@ -7828,6 +7860,9 @@ type OrderDetail struct {
 
 	// CancelledAt When the order was cancelled, if it was.
 	CancelledAt *time.Time `json:"cancelled_at"`
+
+	// Channel The sales channel of the order and how the buyer reached the checkout.
+	Channel OrderChannelSummary `json:"channel"`
 
 	// ChannelId Sales channel the order was placed through.
 	ChannelId openapi_types.UUID `json:"channel_id"`
@@ -7849,6 +7884,16 @@ type OrderDetail struct {
 
 	// CustomerId Linked customer, if the buyer was resolved to one.
 	CustomerId *openapi_types.UUID `json:"customer_id"`
+
+	// Delivery The ticket e-mail delivery of every issued ticket, in line order.
+	Delivery []OrderDeliveryEntry `json:"delivery"`
+
+	// DeliveryState The tickets' delivery folded into one word: `sent` when
+	// every ticket's letter went out; `pending` while any job is
+	// pending or processing; `failed` when a job failed and none
+	// is pending; `none` otherwise (no tickets, no jobs, or only
+	// skipped/disabled ones).
+	DeliveryState string `json:"delivery_state"`
 
 	// Discount Discount applied, in minor currency units.
 	Discount int `json:"discount"`
@@ -7877,6 +7922,9 @@ type OrderDetail struct {
 	// PaidAt When the order was marked paid, if it was.
 	PaidAt *time.Time `json:"paid_at"`
 
+	// Payment The payment intent behind the order (see OrderPaymentSummary for which one); null when the order has none — a gateway order paid on the selling site, an invitation, a free order.
+	Payment *OrderPaymentSummary `json:"payment"`
+
 	// PaymentMethod Payment method used, if known.
 	PaymentMethod *string `json:"payment_method"`
 
@@ -7901,11 +7949,25 @@ type OrderDetail struct {
 	// SystemId Bigint id surfaced to Bil24-compat clients.
 	SystemId int64 `json:"system_id"`
 
-	// Tickets Tickets issued for this order's line items.
+	// Tickets Tickets issued for this order's line items, in line order.
 	Tickets []OrderTicketSummary `json:"tickets"`
 
 	// Total Order total, in minor currency units.
 	Total int `json:"total"`
+
+	// UnpaidReason Why the order is not paid, derived from the status and the
+	// chosen payment intent; empty for paid, partially_refunded and
+	// refunded. `cancelled` — status cancelled; `manual_review` —
+	// a payment arrived that could not complete the checkout and
+	// waits for an operator; `payment_failed` — the intent failed
+	// (the provider's code is in payment.failure_code);
+	// `awaiting_payment` — pending_payment with no failed intent,
+	// the buyer may still pay; `payment_abandoned` — expired or
+	// abandoned with an intent that never reached a verdict (the
+	// buyer opened the payment page and left); `hold_expired` —
+	// expired or abandoned with no intent at all (the buyer never
+	// started paying).
+	UnpaidReason string `json:"unpaid_reason"`
 
 	// UpdatedAt When the order was last updated.
 	UpdatedAt time.Time `json:"updated_at"`
@@ -7960,6 +8022,145 @@ type OrderItemSummary struct {
 
 	// UnitPrice Unit price, in minor currency units.
 	UnitPrice int `json:"unit_price"`
+}
+
+// OrderListItem defines model for OrderListItem.
+type OrderListItem struct {
+	// BuyerEmail Buyer's email, if captured.
+	BuyerEmail *string `json:"buyer_email"`
+
+	// BuyerName Buyer's name, if captured.
+	BuyerName *string `json:"buyer_name"`
+
+	// BuyerPhone Buyer's phone, if captured.
+	BuyerPhone *string `json:"buyer_phone"`
+
+	// CancelledAt When the order was cancelled, if it was.
+	CancelledAt *time.Time `json:"cancelled_at"`
+
+	// ChannelId Sales channel the order was placed through.
+	ChannelId openapi_types.UUID `json:"channel_id"`
+
+	// Charge Platform/provider charge, in minor currency units.
+	Charge int `json:"charge"`
+
+	// ChargePercentBp Charge rate applied, in basis points.
+	ChargePercentBp int `json:"charge_percent_bp"`
+
+	// CheckoutSessionId Checkout session this order was created from.
+	CheckoutSessionId openapi_types.UUID `json:"checkout_session_id"`
+
+	// CreatedAt When the order was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency code.
+	Currency string `json:"currency"`
+
+	// CustomerId Linked customer, if the buyer was resolved to one.
+	CustomerId *openapi_types.UUID `json:"customer_id"`
+
+	// Discount Discount applied, in minor currency units.
+	Discount int `json:"discount"`
+
+	// EventId Event the order's session belongs to.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// EventName Name of the event the order's session belongs to.
+	EventName string `json:"event_name"`
+
+	// ExpiresAt When the order's hold expires, if still pending.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// ExternalRef External reference (e.g. gateway order id) for compat integrations.
+	ExternalRef *string `json:"external_ref"`
+
+	// Id UUIDv7 primary key of the order row.
+	Id openapi_types.UUID `json:"id"`
+
+	// OrgId Owning organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PaidAt When the order was marked paid, if it was.
+	PaidAt *time.Time `json:"paid_at"`
+
+	// PaymentMethod Payment method used, if known.
+	PaymentMethod *string `json:"payment_method"`
+
+	// PromoCodeId Promo code applied to this order, if any.
+	PromoCodeId *openapi_types.UUID `json:"promo_code_id"`
+
+	// ReservationId Reservation (hold) backing this order.
+	ReservationId openapi_types.UUID `json:"reservation_id"`
+
+	// SessionId Session the order was placed for.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// SessionStartAt Start of the order's session, UTC.
+	SessionStartAt time.Time `json:"session_start_at"`
+
+	// SessionTimezone IANA zone of the session's venue — render session_start_at in it.
+	SessionTimezone string `json:"session_timezone"`
+
+	// Source Where the order originated (e.g. widget, bil24, admin).
+	Source string `json:"source"`
+
+	// Status Order lifecycle status (pending_payment, paid, cancelled, expired).
+	Status string `json:"status"`
+
+	// Subtotal Subtotal before discount, in minor currency units.
+	Subtotal int `json:"subtotal"`
+
+	// SystemId Bigint id surfaced to Bil24-compat clients.
+	SystemId int64 `json:"system_id"`
+
+	// Total Order total, in minor currency units.
+	Total int `json:"total"`
+
+	// UpdatedAt When the order was last updated.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// OrderPaymentSummary The payment intent the order card speaks about: a succeeded one if
+// any (the payment behind a paid order), else the newest failed one
+// (the buyer's last attempt that got a verdict, with the provider's
+// code), else the newest of all (an open hosted page the buyer may
+// still finish).
+type OrderPaymentSummary struct {
+	// Amount Amount of the intent, in minor currency units.
+	Amount int64 `json:"amount"`
+
+	// CreatedAt When the intent was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency of the intent.
+	Currency string `json:"currency"`
+
+	// FailureCode The provider's failure code of a failed intent (e.g. card_declined).
+	FailureCode *string `json:"failure_code"`
+
+	// FailureMessage The provider's failure message of a failed intent.
+	FailureMessage *string `json:"failure_message"`
+
+	// HostedCheckoutUrl The provider-hosted payment page of the intent, if the flow used one.
+	HostedCheckoutUrl *string `json:"hosted_checkout_url"`
+
+	// Id Payment intent id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Provider Payment provider (stripe, flitt, mock, ...).
+	Provider string `json:"provider"`
+
+	// ProviderChargeRef The provider's charge reference behind a hosted session, once known.
+	ProviderChargeRef *string `json:"provider_charge_ref"`
+
+	// ProviderPaymentId The provider's id of the hosted session or payment.
+	ProviderPaymentId *string `json:"provider_payment_id"`
+
+	// State Intent state — created, requires_action, processing, authorized, succeeded, failed or manual_review.
+	State string `json:"state"`
+
+	// UpdatedAt When the intent last changed.
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // OrderSummary One order, as returned by both the org-scoped orders list and the
@@ -8051,8 +8252,19 @@ type OrderSummary struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// OrderTicketSummary A ticket issued for one of the order's line items.
+// OrderTicketSummary A ticket issued for one of the order's line items, with what the
+// order card prints (EC-05): its category, the price the buyer paid
+// for this unit, its EAN-13 and when it was scanned at the door.
 type OrderTicketSummary struct {
+	// Barcode The ticket's EAN-13 — the stored credential, or for a ticket issued before stored credentials the legacy deterministic code, the same number every export and PDF of that ticket carries.
+	Barcode string `json:"barcode"`
+
+	// CancelledAt When the ticket was cancelled, if it was.
+	CancelledAt *time.Time `json:"cancelled_at"`
+
+	// Currency ISO 4217 currency of the order.
+	Currency string `json:"currency"`
+
 	// HolderEmail Ticket holder's email, if captured.
 	HolderEmail *string `json:"holder_email"`
 
@@ -8061,6 +8273,15 @@ type OrderTicketSummary struct {
 
 	// IssuedAt When the ticket was issued.
 	IssuedAt time.Time `json:"issued_at"`
+
+	// ItemId The order line this ticket was issued for.
+	ItemId openapi_types.UUID `json:"item_id"`
+
+	// Price What the buyer paid for this unit, in minor currency units (order_items.total, after discount and fee; 0 for an invitation).
+	Price int64 `json:"price"`
+
+	// SeatLabel The seat parts that exist joined with " / " (e.g. "A / 3 / 12"); null for general admission.
+	SeatLabel *string `json:"seat_label"`
 
 	// SeatNumber Seat number, for reserved-seating sessions.
 	SeatNumber *string `json:"seat_number"`
@@ -8073,6 +8294,18 @@ type OrderTicketSummary struct {
 
 	// Status Ticket lifecycle status.
 	Status string `json:"status"`
+
+	// SystemTicketId Bigint ticket number printed on the e-ticket and sent to the sites.
+	SystemTicketId int64 `json:"system_ticket_id"`
+
+	// TierId Category (ticket tier) of the line.
+	TierId openapi_types.UUID `json:"tier_id"`
+
+	// TierName Name of the category; null when the tier row is gone.
+	TierName *string `json:"tier_name"`
+
+	// UsedAt When the ticket was scanned at the door (latest scan of its barcodes, any authority); null if never.
+	UsedAt *time.Time `json:"used_at"`
 }
 
 // OrgCityResponse Response of POST /v1/organizations/{org_id}/cities. `city` has the
@@ -13122,14 +13355,47 @@ type UpdateExternalAllocationJSONBody struct {
 
 // GetV1OrganizationsOrgIdOrdersParams defines parameters for GetV1OrganizationsOrgIdOrders.
 type GetV1OrganizationsOrgIdOrdersParams struct {
-	// Q Fuzzy search text over buyer_name/buyer_email/buyer_phone, max 200 chars.
+	// Q One search value, max 200 characters, read in this precedence:
+	// exactly 13 digits (spaces/dashes ignored) is a ticket barcode —
+	// the EAN-13 of a ticket of the order, in any barcode authority,
+	// including the legacy deterministic code of a ticket that has
+	// no stored credential; a bare number of up to 12 digits, or one
+	// prefixed with `#`, is the order number (`system_id`); a value
+	// containing `@` is an exact, case-insensitive e-mail match on
+	// `buyer_email` or on an e-mail identity of the order's customer;
+	// a value that normalizes to a phone (optional leading +, 7-15
+	// digits after dropping spaces, dots, dashes and parentheses) is
+	// matched on the digits of `buyer_phone` (leading 00/+ stripped on
+	// both sides), on a 9+ digit suffix of them (a national number
+	// typed without its country code) and on the customer's phone
+	// identities; anything else is the pg_trgm similarity over
+	// buyer_name / buyer_email / buyer_phone. A bare number is ALSO
+	// tried as a phone, so a national number typed without + still
+	// finds its order.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Tab Status group, event-center style. `recent` (default) is every
+	// status, newest first; `paid` is paid, partially_refunded and
+	// refunded (money was taken, whatever was returned later);
+	// `unpaid` is pending_payment, expired, cancelled, abandoned and
+	// manual_review (no confirmed payment behind the order;
+	// manual_review is a payment that could not complete the checkout
+	// and waits for an operator). Every `orders.status` belongs to
+	// exactly one of the two groups. Any other value is 400
+	// `orders.invalid_tab`. Combines with `status` (AND).
+	Tab *string `form:"tab,omitempty" json:"tab,omitempty"`
 
 	// Status Filter by order lifecycle status (e.g. pending_payment, paid, cancelled, expired).
 	Status *string `form:"status,omitempty" json:"status,omitempty"`
 
-	// SessionId Filter to orders placed for this session.
+	// SessionId Filter to orders placed for this session. A session of another
+	// organization, or an unknown id, answers 404
+	// `orders.session_id_not_found` — never an empty page.
 	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
+
+	// EventId Filter to orders of this event. An event of another organization,
+	// or an unknown id, answers 404 `orders.event_id_not_found`.
+	EventId *openapi_types.UUID `form:"event_id,omitempty" json:"event_id,omitempty"`
 
 	// From Only orders created at or after this RFC3339 timestamp.
 	From *time.Time `form:"from,omitempty" json:"from,omitempty"`

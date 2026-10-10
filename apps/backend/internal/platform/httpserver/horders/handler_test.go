@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/ean13"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -108,7 +109,11 @@ type fakeDB struct {
 	itemRows  [][]any
 	eventRows [][]any
 
-	ticketVals map[uuid.UUID][]any
+	// ticketDetailRows feeds ListOrderTicketDetails (one row per issued
+	// ticket, newTicketDetailVals order); intentRows feeds
+	// ListPaymentIntentsByCheckout (scanPaymentIntentRow order).
+	ticketDetailRows [][]any
+	intentRows       [][]any
 
 	// updateStatusVals, when set, is returned by UPDATE orders (used by
 	// ordering.Cancel via UpdateOrderStatus).
@@ -138,6 +143,13 @@ func (f *fakeDB) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
 		}
 		orderID, _ := args[0].(uuid.UUID)
 		return &fakeRow{vals: []any{uuid.New(), orderID, args[1], args[2], json.RawMessage("{}"), time.Now().UTC()}}
+	case strings.Contains(sql, "-- name: CountOrdersByOrg"):
+		if !f.orderFound {
+			return &fakeRow{vals: []any{int64(0)}}
+		}
+		return &fakeRow{vals: []any{int64(1)}}
+	case strings.Contains(sql, "FROM   sales_channels"):
+		return &fakeRow{err: pgx.ErrNoRows}
 	case strings.Contains(sql, "FROM   orders"):
 		if !f.orderFound {
 			return &fakeRow{err: pgx.ErrNoRows}
@@ -148,19 +160,21 @@ func (f *fakeDB) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
 			return &fakeRow{err: pgx.ErrNoRows}
 		}
 		return &fakeRow{vals: f.orderVals}
-	case strings.Contains(sql, "FROM   tickets"):
-		id, _ := args[0].(uuid.UUID)
-		vals, ok := f.ticketVals[id]
-		if !ok {
-			return &fakeRow{err: pgx.ErrNoRows}
-		}
-		return &fakeRow{vals: vals}
 	}
 	return &fakeRow{err: fmt.Errorf("fakeDB.QueryRow: unexpected SQL %q", sql)}
 }
 
 func (f *fakeDB) Query(_ context.Context, sql string, _ ...any) (pgx.Rows, error) {
 	switch {
+	case strings.Contains(sql, "-- name: SearchOrdersByOrg"):
+		if !f.orderFound {
+			return &fakeRows{}, nil
+		}
+		return &fakeRows{data: [][]any{newOrderListVals(f.orderVals)}}, nil
+	case strings.Contains(sql, "-- name: ListOrderTicketDetails"):
+		return &fakeRows{data: f.ticketDetailRows}, nil
+	case strings.Contains(sql, "FROM   payment_intents"):
+		return &fakeRows{data: f.intentRows}, nil
 	case strings.Contains(sql, "FROM   orders"):
 		if !f.orderFound {
 			return &fakeRows{}, nil
@@ -206,15 +220,24 @@ func newOrderEventVals(id, orderID uuid.UUID, eventType, actor string, created t
 	return []any{id, orderID, eventType, actor, json.RawMessage(`{}`), created}
 }
 
-// newTicketVals builds a TicketRow value slice in scanTicketRow's exact
-// column order (tickets.sql.go).
-func newTicketVals(id, checkoutID, sessionID uuid.UUID, status string, issuedAt time.Time) []any {
+// newOrderListVals extends an OrderRow value slice with the three list
+// extras SearchOrdersByOrg selects (event_name, session_start_at,
+// session_timezone).
+func newOrderListVals(orderVals []any) []any {
+	out := append([]any{}, orderVals...)
+	return append(out, "Fake Event", time.Now().UTC().Truncate(time.Second), "Europe/Madrid")
+}
+
+// newTicketDetailVals builds an OrderTicketDetailRow value slice in
+// ListOrderTicketDetails' exact column order (orders_search.sql.go).
+func newTicketDetailVals(itemID, ticketID, tierID uuid.UUID, status string, issuedAt time.Time, price int64,
+	barcode *string, deliveryStatus *string) []any {
 	return []any{
-		id, checkoutID, sessionID, (*uuid.UUID)(nil), (*string)(nil),
-		status, issuedAt, issuedAt, issuedAt,
-		(*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil), int32(0),
-		(*time.Time)(nil), (*string)(nil), (*string)(nil), (*uuid.UUID)(nil),
-		(*time.Time)(nil), (*int64)(nil), false, (*string)(nil), int64(3000000001),
+		itemID, int32(0), price, tierID, "Parterre",
+		ticketID, status, (*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil),
+		issuedAt, (*time.Time)(nil), int64(3000000001),
+		barcode, (*time.Time)(nil),
+		deliveryStatus, (*time.Time)(nil), (*string)(nil),
 	}
 }
 
@@ -320,8 +343,8 @@ func TestHandleGet_FullAssembly(t *testing.T) {
 			newOrderEventVals(uuid.New(), orderID, "created", "system", now),
 			newOrderEventVals(uuid.New(), orderID, "paid", "system", now.Add(time.Minute)),
 		},
-		ticketVals: map[uuid.UUID][]any{
-			ticketID: newTicketVals(ticketID, checkoutID, sessionID, "active", now),
+		ticketDetailRows: [][]any{
+			newTicketDetailVals(itemWithTicketID, ticketID, tierID, "active", now, 2500, nil, ptr("sent")),
 		},
 	}
 	h := testHandler(db)
@@ -380,6 +403,27 @@ func TestHandleGet_FullAssembly(t *testing.T) {
 	}
 	if ticket["status"] != "active" {
 		t.Errorf("ticket status = %v, want active", ticket["status"])
+	}
+	// No stored credential: the legacy deterministic code is printed, the
+	// same number orderexport would emit for this ticket.
+	if ticket["barcode"] != ean13.PlatformCode(3000000001) {
+		t.Errorf("ticket barcode = %v, want the legacy PlatformCode", ticket["barcode"])
+	}
+	if ticket["tier_name"] != "Parterre" || ticket["price"] != float64(2500) {
+		t.Errorf("ticket tier/price = %v / %v", ticket["tier_name"], ticket["price"])
+	}
+	if body["delivery_state"] != "sent" {
+		t.Errorf("delivery_state = %v, want sent", body["delivery_state"])
+	}
+	if body["payment"] != nil {
+		t.Errorf("payment = %v, want null for an order without an intent", body["payment"])
+	}
+	if body["unpaid_reason"] != "" {
+		t.Errorf("unpaid_reason = %v, want empty for a paid order", body["unpaid_reason"])
+	}
+	channel, _ := body["channel"].(map[string]any)
+	if channel["kind"] != "widget" || channel["id"] != channelID.String() {
+		t.Errorf("channel = %v", body["channel"])
 	}
 
 	events, ok := body["events"].([]any)
@@ -447,7 +491,27 @@ func TestHandleList_ReturnsSummaries(t *testing.T) {
 	if body["offset"] != float64(0) {
 		t.Errorf("offset = %v, want 0", body["offset"])
 	}
+	if body["total_count"] != float64(1) || body["has_more"] != false {
+		t.Errorf("total_count/has_more = %v/%v", body["total_count"], body["has_more"])
+	}
+	if first["event_name"] != "Fake Event" || first["session_timezone"] != "Europe/Madrid" {
+		t.Errorf("list extras missing: %v", first)
+	}
 }
+
+func TestHandleList_RejectsUnknownTab(t *testing.T) {
+	orgID := uuid.New()
+	h := testHandler(&fakeDB{realOrgID: orgID})
+	r := chiRequest(http.MethodGet, "/v1/organizations/"+orgID.String()+"/orders?tab=refunded",
+		map[string]string{"org_id": orgID.String()})
+	w := httptest.NewRecorder()
+	h.HandleList(w, r)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "orders.invalid_tab") {
+		t.Fatalf("expected 400 orders.invalid_tab, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
 
 func TestHandleList_RejectsInvalidPagination(t *testing.T) {
 	orgID := uuid.New()
