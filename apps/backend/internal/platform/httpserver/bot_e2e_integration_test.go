@@ -48,6 +48,17 @@ type stubTelegram struct {
 	calls map[string]int
 	// poster is what getFile/the download path serve for any file id.
 	poster []byte
+	// docs holds the bytes of every document the bot sent, by file name (the
+	// last one of a name wins).
+	docs map[string][]byte
+}
+
+// document returns the bytes of a document the bot sent, by file name.
+func (s *stubTelegram) document(name string) ([]byte, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b, ok := s.docs[name]
+	return b, ok
 }
 
 func newStubTelegram(t *testing.T) *stubTelegram {
@@ -135,12 +146,19 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 			if files := r.MultipartForm.File["document"]; len(files) > 0 {
 				name = files[0].Filename
 				if fh, err := files[0].Open(); err == nil {
-					head := make([]byte, 5)
-					n, _ := io.ReadFull(fh, head)
+					body, _ := io.ReadAll(fh)
 					_ = fh.Close()
-					if string(head[:n]) != "%PDF-" {
+					// A .pdf must be a PDF; any other document (the CSV
+					// exports) is kept whole so a test can read the file.
+					if strings.HasSuffix(strings.ToLower(name), ".pdf") && !strings.HasPrefix(string(body), "%PDF-") {
 						name += " (not a PDF)"
 					}
+					s.mu.Lock()
+					if s.docs == nil {
+						s.docs = map[string][]byte{}
+					}
+					s.docs[name] = body
+					s.mu.Unlock()
 				}
 			}
 		}
