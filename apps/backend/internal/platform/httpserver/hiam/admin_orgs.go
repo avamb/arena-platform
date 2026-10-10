@@ -13,6 +13,10 @@
 //   - X-Admin-Reason header (the same audit-reason gate that the rest of
 //     the /v1/admin namespace already requires; see superadmin.go and
 //     apps/admin-web/src/lib/api/reason.ts)
+//   - the platform superadmin marker (SEC-1): every owner holds org.update /
+//     org.delete, so the permission alone let the owner of one organization
+//     rename or archive any other and self-verify KYB. Owners edit their own
+//     organization through /v1/organizations/{id} instead.
 //
 // Every successful write records an audit event with action
 // "v1.admin.org.{create,update,archive}", resource_type "organization",
@@ -53,7 +57,7 @@ func (h *Handler) HandleAdminCreateOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reason, ok := requireAdminReason(w, r)
-	if !ok {
+	if !ok || !requirePlatformSuperadmin(w, r) {
 		return
 	}
 	ctx := r.Context()
@@ -153,7 +157,7 @@ func (h *Handler) HandleAdminUpdateOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reason, ok := requireAdminReason(w, r)
-	if !ok {
+	if !ok || !requirePlatformSuperadmin(w, r) {
 		return
 	}
 	ctx := r.Context()
@@ -304,7 +308,7 @@ func (h *Handler) HandleAdminArchiveOrg(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	reason, ok := requireAdminReason(w, r)
-	if !ok {
+	if !ok || !requirePlatformSuperadmin(w, r) {
 		return
 	}
 	ctx := r.Context()
