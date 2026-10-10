@@ -1721,3 +1721,51 @@ other = "✔ El pedido está cancelado y sus plazas vuelven a estar libres."
 
 ["bot.ord.cancel_not_possible"]
 other = "Este pedido ya no se puede cancelar: ya no está pendiente de pago."
+
+["bot.resend.btn"]
+other = "✉️ Reenviar entradas"
+
+["bot.resend.choose"]
+other = "✉️ <b>Reenviar entradas</b> · pedido №{{.Num}}\n\nEntradas por enviar: {{.N}} (las devueltas o anuladas no se envían). Saldrán en un solo correo.\n\nDirección del pedido: {{.Email}}\n\n¿A dónde enviamos el correo?"
+
+["bot.resend.choose_noaddr"]
+other = "✉️ <b>Reenviar entradas</b> · pedido №{{.Num}}\n\nEntradas por enviar: {{.N}}. El pedido no tiene e-mail, así que escribe la dirección a la que enviar el correo."
+
+["bot.resend.same_btn"]
+other = "A la misma dirección ({{.Email}})"
+
+["bot.resend.other_btn"]
+other = "A otra dirección"
+
+["bot.resend.other_ask"]
+other = "✉️ <b>Otra dirección</b> · pedido №{{.Num}}\n\nEl correo irá a la dirección que escribas ahora, <b>solo esta vez</b>. La dirección del pedido no cambia y la que escribas se guarda solo 24 horas. Tú respondes de que las entradas del comprador lleguen a la persona correcta.\n\nEscribe el e-mail como mensaje:"
+
+["bot.resend.bad_email"]
+other = "Eso no parece una dirección de e-mail. Escríbela de nuevo, por ejemplo nombre@ejemplo.com, o pulsa «Atrás»."
+
+["bot.resend.confirm_same"]
+other = "✉️ <b>¿Enviar las entradas?</b>\n\nPedido №{{.Num}} · entradas: {{.N}}\nA: {{.Email}} (la dirección del pedido)\n\nLlegarán en un solo correo."
+
+["bot.resend.confirm_other"]
+other = "✉️ <b>¿Enviar las entradas?</b>\n\nPedido №{{.Num}} · entradas: {{.N}}\nA: {{.Email}}\n\nDirección de un solo uso: la del pedido se queda como está y esta deja de valer a las 24 horas."
+
+["bot.resend.send_btn"]
+other = "✉️ Enviar"
+
+["bot.resend.done_same"]
+other = "✔ Hecho. Las entradas del pedido №{{.Num}} ({{.N}}) van de camino a {{.Email}} en un solo correo."
+
+["bot.resend.done_other"]
+other = "✔ Hecho. Las entradas del pedido №{{.Num}} ({{.N}}) van de camino a {{.Email}} en un solo correo. La dirección se usó una sola vez: el pedido conserva la suya."
+
+["bot.resend.site"]
+other = "Este pedido se vendió a través del sitio propio del vendedor, así que el correo lo envía el sitio, no Arena. Pedido №{{.Num}}: pide al sitio que lo envíe otra vez."
+
+["bot.resend.not_paid"]
+other = "El pedido №{{.Num}} no está pagado, así que no hay nada que enviar."
+
+["bot.resend.no_tickets"]
+other = "El pedido №{{.Num}} no tiene entradas vigentes: las devueltas o anuladas no se envían."
+
+["bot.resend.private_only"]
+other = "Las direcciones de los compradores solo se muestran y se escriben en un chat privado con el bot. Abre el pedido allí."

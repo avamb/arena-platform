@@ -1866,3 +1866,51 @@ other = "✔ The order is cancelled and its seats are free again."
 
 ["bot.ord.cancel_not_possible"]
 other = "This order can no longer be cancelled: it is not waiting for payment any more."
+
+["bot.resend.btn"]
+other = "✉️ Resend tickets"
+
+["bot.resend.choose"]
+other = "✉️ <b>Resend tickets</b> · order №{{.Num}}\n\nTickets to send: {{.N}} (refunded or cancelled ones are not sent). They go out as one letter.\n\nThe order's address: {{.Email}}\n\nWhere should the letter go?"
+
+["bot.resend.choose_noaddr"]
+other = "✉️ <b>Resend tickets</b> · order №{{.Num}}\n\nTickets to send: {{.N}}. The order has no e-mail address, so type the address to send the letter to."
+
+["bot.resend.same_btn"]
+other = "To the same address ({{.Email}})"
+
+["bot.resend.other_btn"]
+other = "To another address"
+
+["bot.resend.other_ask"]
+other = "✉️ <b>Another address</b> · order №{{.Num}}\n\nThe letter goes to the address you type now, <b>this once</b>. The order's own address does not change, and the typed one is kept for 24 hours only. You are responsible for the buyer's tickets reaching the right person.\n\nType the e-mail address as a message:"
+
+["bot.resend.bad_email"]
+other = "That does not look like an e-mail address. Type it again, for example name@example.com, or press «Back»."
+
+["bot.resend.confirm_same"]
+other = "✉️ <b>Send the tickets?</b>\n\nOrder №{{.Num}} · tickets: {{.N}}\nTo: {{.Email}} (the order's address)\n\nThey arrive as one letter."
+
+["bot.resend.confirm_other"]
+other = "✉️ <b>Send the tickets?</b>\n\nOrder №{{.Num}} · tickets: {{.N}}\nTo: {{.Email}}\n\nOne-time address: the order's own address stays as it is, and this one stops working after 24 hours."
+
+["bot.resend.send_btn"]
+other = "✉️ Send"
+
+["bot.resend.done_same"]
+other = "✔ Done. The tickets of order №{{.Num}} ({{.N}}) are on their way to {{.Email}} as one letter."
+
+["bot.resend.done_other"]
+other = "✔ Done. The tickets of order №{{.Num}} ({{.N}}) are on their way to {{.Email}} as one letter. The address was used once: the order keeps its own."
+
+["bot.resend.site"]
+other = "This order was sold through the seller's own site, so the site sends the letter, not Arena. Order №{{.Num}}: ask the site to send it again."
+
+["bot.resend.not_paid"]
+other = "Order №{{.Num}} is not paid, so there is nothing to send."
+
+["bot.resend.no_tickets"]
+other = "Order №{{.Num}} has no active tickets: refunded or cancelled ones are not sent."
+
+["bot.resend.private_only"]
+other = "Buyers' addresses are shown and typed only in a private chat with the bot. Open the order there."
