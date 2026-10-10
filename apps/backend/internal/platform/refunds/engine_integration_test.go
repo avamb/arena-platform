@@ -1,7 +1,7 @@
 //go:build integration
 
 // engine_integration_test.go — the refund engine against a live database
-// migrated to 0133, with a FAKE payment module (so every provider answer can
+// migrated to 0138, with a FAKE payment module (so every provider answer can
 // be scripted) and the REAL ticket cancellation (htickets.CancelTicketTx).
 //
 // Run with:
@@ -52,6 +52,9 @@ type fakeModule struct {
 	// buildErrs scripts what fakeSource.Build answers, one entry per call
 	// (nil = build the module); the last entry repeats.
 	buildErrs []error
+	// onBuild runs inside fakeSource.Build after buildErrs; a non-nil error
+	// is returned as the build error.
+	onBuild func() error
 }
 
 func (m *fakeModule) nextBuildErr() error {
@@ -123,6 +126,14 @@ func (s fakeSource) Descriptor(p string) (payments.Descriptor, bool) {
 func (s fakeSource) Build(context.Context, uuid.UUID, string) (payments.Module, error) {
 	if err := s.m.nextBuildErr(); err != nil {
 		return nil, err
+	}
+	s.m.mu.Lock()
+	hook := s.m.onBuild
+	s.m.mu.Unlock()
+	if hook != nil {
+		if err := hook(); err != nil {
+			return nil, err
+		}
 	}
 	return s.m, nil
 }

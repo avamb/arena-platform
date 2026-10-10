@@ -1,5 +1,5 @@
 // store.go — the engine's own SQL. It reads and writes the refunds columns
-// migration 0133 added, which the shared gen.RefundRow scanner does not
+// migration 0138 added, which the shared gen.RefundRow scanner does not
 // carry (widening that scanner would touch every query feeding it).
 package refunds
 

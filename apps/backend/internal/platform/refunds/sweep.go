@@ -1,32 +1,46 @@
 // sweep.go — refund.sweep (spec 36 §7), the self-scheduling worker job that
 // finishes what a request could not. One pass:
 //
-//  1. STUCK: an engine refund still provider_pending 24 hours after it was
-//     APPROVED (not created: a refund may wait days for its approval) goes
-//     to manual_review — under the payment's advisory lock, and never while
-//     a provider call of it is in flight (provider_attempted_at younger than
-//     CallStaleAfter). A call that answers after the park still records the
-//     provider's answer (drive.go apply, "late answer").
+//  1. STUCK: an engine refund with no provider refund id still
+//     provider_pending 24 hours after it was APPROVED (not created: a refund
+//     may wait days for its approval) goes to manual_review — under the
+//     payment's advisory lock, and never while a provider call of it is in
+//     flight (provider_attempted_at younger than CallStaleAfter). One the
+//     provider ACCEPTED as pending (it carries a provider refund id) is not
+//     stuck — the provider is still working on it — and is parked only
+//     after PendingParkAfter (7 days). A call that answers after the park
+//     still records the provider's answer (drive.go apply, "late answer").
 //  2. RETRY: one with no provider refund id whose last call started more
 //     than a minute ago is called again — same idempotency key, so the
-//     provider answers the first attempt's refund if there was one.
+//     provider answers the first attempt's refund if there was one. NEVER
+//     after StuckAfter since approval: a provider keeps an idempotency key
+//     for about a day (Stripe: 24 hours), and a later re-POST with the same
+//     key could create a SECOND refund (second review, item 2).
 //  3. LOOKUP: one the provider accepted as pending is read back through the
-//     module's RefundLookup every ten minutes; a refund the provider later
-//     reports failed already cost its ticket, so it goes to manual_review
-//     ("money did not go back"), never silently to failed.
+//     module's RefundLookup every ten minutes (a GET by the provider's own
+//     refund id, so no idempotency window applies) for up to
+//     PendingParkAfter; a refund the provider later reports failed already
+//     cost its ticket, so it goes to manual_review ("money did not go
+//     back"), never silently to failed.
 //  4. REPAIR: an accepted refund whose ticket is still active (a crash
 //     between the outcome commit and the cancellation) gets its ticket
 //     cancelled; after maxRepairAttempts failures it is parked.
-//  5. ALERTS: every engine refund in manual_review whose ops alert was not
-//     sent yet (review_alerted_at) is announced once — ids, amount and the
-//     failure code, never buyer data. Whichever process moved the row, the
-//     alert comes from here (arena-worker holds the ops bot).
+//  5. ALERTS: every engine refund that owes an ops alert (alert_due_at: it
+//     entered manual_review, or a late acceptance revived a failed refund)
+//     is announced once — ids, amount and the failure code, never buyer
+//     data. Whichever process moved the row, the alert comes from here
+//     (arena-worker holds the ops bot).
 //
-// A pass is BOUNDED (PAY-03 review M4/M5): a context deadline well under the
-// worker's 5-minute stale-claim timeout, at most maxCalls provider calls,
-// candidates ordered so the longest-waiting go first and at most one call
-// per payment per pass, so one large batch cannot starve the others. It
-// only touches rows the engine created (provider IS NOT NULL).
+// A pass is BOUNDED and a provider brownout cannot starve it (review M4/M5,
+// second review item 5): every section runs under its own deadline derived
+// from the job's context — park SweepPassTimeout/6, retry /2, lookups /6,
+// repair /6, alerts a fresh 30 seconds — so the whole pass stays under the
+// worker's 5-minute stale-claim timeout; the retry section also stops after
+// maxUnknownPerPass calls without an answer; provider calls are capped at
+// SweepMaxCalls; candidates are ordered so the longest-waiting go first and
+// at most one call per payment is made per pass, so one large batch cannot
+// starve the others; and a failing section never skips the ones after it.
+// It only touches rows the engine created (provider IS NOT NULL).
 package refunds
 
 import (
@@ -53,15 +67,23 @@ const (
 	DefaultSweepInterval = time.Minute
 	LookupAfter          = 10 * time.Minute
 	StuckAfter           = 24 * time.Hour
-	// DefaultSweepPassTimeout keeps a pass well under the worker's 5-minute
-	// stale-claim timeout, so a slow pass is never re-run concurrently.
+	// PendingParkAfter: a refund the provider accepted as pending is looked
+	// up for this long before it is parked for a human.
+	PendingParkAfter = 7 * 24 * time.Hour
+	// DefaultSweepPassTimeout sizes a pass's sections (see the file comment)
+	// so that a pass stays well under the worker's 5-minute stale-claim
+	// timeout and is never re-run concurrently.
 	DefaultSweepPassTimeout = 3 * time.Minute
 	// DefaultSweepMaxCalls caps the provider calls (retries + lookups) of
 	// one pass.
 	DefaultSweepMaxCalls = 40
-	maxRepairAttempts    = 10
-	sweepBatch           = 50
-	lookupsPerPayment    = 3
+	// maxUnknownPerPass: the retry section stops after this many calls that
+	// ended without an answer — a provider in a brownout is not hammered.
+	maxUnknownPerPass  = 5
+	alertSectionBudget = 30 * time.Second
+	maxRepairAttempts  = 10
+	sweepBatch         = 50
+	lookupsPerPayment  = 3
 )
 
 // Notifier is the ops alert channel (opsalert.Notifier fits).
@@ -72,67 +94,116 @@ type Notifier interface {
 // SweepReport counts what one pass did.
 type SweepReport struct {
 	Stuck, Retried, LookedUp, Repaired, Alerted int
-	// Calls is the number of provider calls the pass made.
-	Calls int
+	// Calls is the number of provider calls the pass made; Unknown how many
+	// of the retries ended without an answer.
+	Calls, Unknown int
 }
 
 // scopeSQL is the organization filter (tests only, see Options.SweepOrgs).
 const scopeSQL = ` AND (cardinality($2::uuid[]) = 0 OR org_id = ANY($2::uuid[]))`
 
-// Sweep runs one bounded pass. now is the clock (tests move it).
+// Sweep runs one bounded pass. now is the clock (tests move it). Every
+// section runs, whatever an earlier one did; their errors are joined.
 func (e *Engine) Sweep(ctx context.Context, now time.Time, notifier Notifier) (SweepReport, error) {
-	ctx, cancel := context.WithTimeout(ctx, e.sweepPassTimeout)
-	defer cancel()
-	var rep SweepReport
+	var (
+		rep  SweepReport
+		errs []error
+	)
+	t := e.sweepPassTimeout
 	budget := e.sweepMaxCalls
-
-	stuck, err := e.parkStuck(ctx, now)
-	if err != nil {
-		return rep, fmt.Errorf("refunds: park stuck refunds: %w", err)
+	section := func(d time.Duration, name string, fn func(ctx context.Context) error) {
+		sctx, cancel := context.WithTimeout(ctx, d)
+		defer cancel()
+		if err := fn(sctx); err != nil {
+			errs = append(errs, fmt.Errorf("refunds: sweep %s: %w", name, err))
+		}
 	}
-	rep.Stuck = stuck
 
+	section(t/6, "park", func(ctx context.Context) error {
+		n, err := e.parkStuck(ctx, now)
+		rep.Stuck = n
+		return err
+	})
+	section(t/2, "retry", func(ctx context.Context) error {
+		return e.retryPass(ctx, now, &rep, &budget)
+	})
+	section(t/6, "lookup", func(ctx context.Context) error {
+		return e.lookupPass(ctx, now, &rep, &budget)
+	})
+	section(t/6, "repair", func(ctx context.Context) error {
+		n, err := e.repair(ctx, now)
+		rep.Repaired = n
+		return err
+	})
+	if notifier != nil {
+		// A fresh context: alerts are sent even when the job's own context
+		// is nearly spent.
+		actx, cancel := context.WithTimeout(context.WithoutCancel(ctx), alertSectionBudget)
+		n, err := e.alertReviews(actx, notifier)
+		cancel()
+		rep.Alerted = n
+		if err != nil {
+			errs = append(errs, fmt.Errorf("refunds: sweep alerts: %w", err))
+		}
+	}
+	return rep, errors.Join(errs...)
+}
+
+// retryPass calls again the refunds whose last call ended without an answer.
+func (e *Engine) retryPass(ctx context.Context, now time.Time, rep *SweepReport, budget *int) error {
 	retry, err := e.selectIDs(ctx, `SELECT id FROM (
 		SELECT id, provider_attempted_at, created_at,
 		       row_number() OVER (PARTITION BY payment_intent_id
 		                          ORDER BY provider_attempted_at NULLS FIRST, created_at) AS rn
 		FROM refunds
 		WHERE settlement = 'provider' AND provider IS NOT NULL AND state = 'provider_pending'
-		  AND provider_refund_id IS NULL AND COALESCE(provider_attempted_at, created_at) <= $1`+scopeSQL+`) c
+		  AND provider_refund_id IS NULL AND COALESCE(provider_attempted_at, created_at) <= $1
+		  AND COALESCE(approved_at, created_at) > $3`+scopeSQL+`) c
 		WHERE rn = 1 ORDER BY provider_attempted_at NULLS FIRST, created_at LIMIT `+strconv.Itoa(sweepBatch),
-		now.Add(-CallStaleAfter), e.scopeOrgs())
+		now.Add(-CallStaleAfter), e.scopeOrgs(), now.Add(-StuckAfter))
 	if err != nil {
-		return rep, fmt.Errorf("refunds: select retries: %w", err)
+		return err
 	}
 	for _, id := range retry {
-		if budget <= 0 || ctx.Err() != nil {
+		if *budget <= 0 || rep.Unknown >= maxUnknownPerPass || ctx.Err() != nil {
 			break
 		}
-		budget--
+		*budget--
 		rep.Calls++
-		if _, derr := e.Drive(ctx, id); derr != nil {
+		r, derr := e.Drive(ctx, id)
+		if derr != nil {
+			rep.Unknown++
 			e.logger.Error("refunds: sweep retry failed", "refund_id", id.String(), "error", derr.Error())
+			continue
+		}
+		if r.State == StateProviderPending && r.ProviderRefundID == nil {
+			rep.Unknown++
 			continue
 		}
 		rep.Retried++
 	}
+	return nil
+}
 
+// lookupPass reads accepted-but-pending refunds back from their provider.
+func (e *Engine) lookupPass(ctx context.Context, now time.Time, rep *SweepReport, budget *int) error {
 	lookup, err := e.selectIDs(ctx, `SELECT id FROM (
 		SELECT id, updated_at,
 		       row_number() OVER (PARTITION BY payment_intent_id ORDER BY updated_at) AS rn
 		FROM refunds
 		WHERE settlement = 'provider' AND provider IS NOT NULL AND state = 'provider_pending'
-		  AND provider_refund_id IS NOT NULL AND updated_at <= $1`+scopeSQL+`) c
+		  AND provider_refund_id IS NOT NULL AND updated_at <= $1
+		  AND COALESCE(approved_at, created_at) > $3`+scopeSQL+`) c
 		WHERE rn <= `+strconv.Itoa(lookupsPerPayment)+` ORDER BY updated_at LIMIT `+strconv.Itoa(sweepBatch),
-		now.Add(-LookupAfter), e.scopeOrgs())
+		now.Add(-LookupAfter), e.scopeOrgs(), now.Add(-PendingParkAfter))
 	if err != nil {
-		return rep, fmt.Errorf("refunds: select lookups: %w", err)
+		return err
 	}
 	for _, id := range lookup {
-		if budget <= 0 || ctx.Err() != nil {
+		if *budget <= 0 || ctx.Err() != nil {
 			break
 		}
-		budget--
+		*budget--
 		rep.Calls++
 		if lerr := e.lookup(ctx, id); lerr != nil {
 			e.logger.Error("refunds: sweep lookup failed", "refund_id", id.String(), "error", lerr.Error())
@@ -140,21 +211,7 @@ func (e *Engine) Sweep(ctx context.Context, now time.Time, notifier Notifier) (S
 		}
 		rep.LookedUp++
 	}
-
-	repaired, err := e.repair(ctx, now)
-	if err != nil {
-		return rep, fmt.Errorf("refunds: repair: %w", err)
-	}
-	rep.Repaired = repaired
-
-	if notifier != nil {
-		alerted, err := e.alertReviews(ctx, notifier)
-		if err != nil {
-			return rep, fmt.Errorf("refunds: alerts: %w", err)
-		}
-		rep.Alerted = alerted
-	}
-	return rep, nil
+	return nil
 }
 
 func (e *Engine) selectIDs(ctx context.Context, sql string, args ...any) ([]uuid.UUID, error) {
@@ -193,15 +250,20 @@ func (e *Engine) refundAndPayment(ctx context.Context, id uuid.UUID) (Refund, Pa
 	return r, pay, err
 }
 
-// parkStuck moves engine refunds pending for longer than StuckAfter SINCE
-// THEIR APPROVAL to manual_review, one row at a time under its payment's
-// advisory lock, skipping any whose provider call is in flight.
+// stuckWhere selects the refunds parkStuck parks. $1 = now - StuckAfter,
+// $2 = organization scope, $3 = CallStaleAfter, $4 = now - PendingParkAfter.
+const stuckWhere = `settlement = 'provider' AND provider IS NOT NULL AND state = 'provider_pending'
+	AND ((provider_refund_id IS NULL AND COALESCE(approved_at, created_at) <= $1
+	      AND (provider_attempted_at IS NULL OR provider_attempted_at <= now() - $3::interval))
+	  OR (provider_refund_id IS NOT NULL AND COALESCE(approved_at, created_at) <= $4))` + scopeSQL
+
+// parkStuck moves overdue engine refunds (stuckWhere) to manual_review, one
+// row at a time under its payment's advisory lock, skipping any whose
+// provider call is in flight.
 func (e *Engine) parkStuck(ctx context.Context, now time.Time) (int, error) {
-	const stuckWhere = `settlement = 'provider' AND provider IS NOT NULL AND state = 'provider_pending'
-		AND COALESCE(approved_at, created_at) <= $1
-		AND (provider_attempted_at IS NULL OR provider_attempted_at <= now() - $3::interval)`
-	ids, err := e.selectIDs(ctx, `SELECT id FROM refunds WHERE `+stuckWhere+scopeSQL+
-		` ORDER BY created_at LIMIT `+strconv.Itoa(sweepBatch), now.Add(-StuckAfter), e.scopeOrgs(), intervalText(CallStaleAfter))
+	args := []any{now.Add(-StuckAfter), e.scopeOrgs(), intervalText(CallStaleAfter), now.Add(-PendingParkAfter)}
+	ids, err := e.selectIDs(ctx, `SELECT id FROM refunds WHERE `+stuckWhere+
+		` ORDER BY created_at LIMIT `+strconv.Itoa(sweepBatch), args...)
 	if err != nil {
 		return 0, err
 	}
@@ -220,11 +282,13 @@ func (e *Engine) parkStuck(ctx context.Context, now time.Time) (int, error) {
 				return err
 			}
 			r, err := scanRefund(tx.QueryRow(ctx, `UPDATE refunds
-				SET state = 'manual_review', updated_at = now(),
-				    failure_code = COALESCE(failure_code, 'stuck_provider_pending'),
-				    failure_reason = COALESCE(failure_reason, 'the provider did not confirm this refund within 24 hours of its approval')
-				WHERE id = $4 AND `+stuckWhere+scopeSQL+`
-				RETURNING `+refundColumns, now.Add(-StuckAfter), e.scopeOrgs(), intervalText(CallStaleAfter), id))
+				SET state = 'manual_review', updated_at = now(), `+reviewAlertSQL+`,
+				    failure_code = CASE WHEN provider_refund_id IS NULL THEN 'stuck_provider_pending' ELSE 'provider_pending_too_long' END,
+				    failure_reason = CASE WHEN provider_refund_id IS NULL
+				        THEN 'the provider did not confirm this refund within 24 hours of its approval; last answer: ' || COALESCE(failure_code, 'none')
+				        ELSE 'the provider accepted this refund but has not completed it within 7 days' END
+				WHERE id = $5 AND `+stuckWhere+`
+				RETURNING `+refundColumns, append(args, id)...))
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil // changed meanwhile (answered, or a call started)
 			}
@@ -234,7 +298,7 @@ func (e *Engine) parkStuck(ctx context.Context, now time.Time) (int, error) {
 			moved = &r
 			return e.writeAudit(ctx, tx, audit.Event{ActorType: "system", Action: "v1.refund.manual_review",
 				ResourceType: "refund", ResourceID: r.ID.String(),
-				Metadata: map[string]any{"reason": "stuck_provider_pending", "order_id": uuidString(r.OrderID),
+				Metadata: map[string]any{"reason": deref(r.FailureCode), "order_id": uuidString(r.OrderID),
 					"amount": r.Amount, "currency": r.Currency, "provider": deref(r.Provider)}})
 		})
 		if err != nil {
@@ -248,21 +312,27 @@ func (e *Engine) parkStuck(ctx context.Context, now time.Time) (int, error) {
 	return parked, nil
 }
 
+// repairWhere selects accepted refunds whose due ticket cancellation has
+// not happened (alias r). $1 = now - CallStaleAfter, $2 = scope.
+const repairWhere = `r.settlement = 'provider' AND r.provider IS NOT NULL
+	AND (r.state = 'succeeded' OR (r.state = 'provider_pending' AND r.provider_refund_id IS NOT NULL))
+	AND ((r.cancel_ticket AND EXISTS (SELECT 1 FROM tickets t WHERE t.id = r.ticket_id AND t.status = 'active'))
+	     OR (r.ticket_id IS NULL AND EXISTS (
+	          SELECT 1 FROM payment_intents p JOIN tickets t ON t.checkout_session_id = p.checkout_session_id
+	          WHERE p.id = r.payment_intent_id AND r.amount >= p.amount AND t.status = 'active')
+	         AND NOT EXISTS (SELECT 1 FROM tickets t2 WHERE t2.refund_id = r.id)))
+	AND COALESCE(r.repair_attempted_at, r.updated_at) <= $1
+	AND (cardinality($2::uuid[]) = 0 OR r.org_id = ANY($2::uuid[]))`
+
 // repair cancels the tickets of accepted refunds a crash left active, with
-// a bounded number of attempts per refund.
+// a bounded number of attempts per refund. Each attempt is decided and
+// counted under the payment's advisory lock (second review, item 7); the
+// cancellation itself runs in the canceller's own transaction afterwards,
+// and the v1.ticket.refunded publish is claimed once (settle.go publish).
 func (e *Engine) repair(ctx context.Context, now time.Time) (int, error) {
-	ids, err := e.selectIDs(ctx, `SELECT r.id FROM refunds r
-		WHERE r.settlement = 'provider' AND r.provider IS NOT NULL
-		  AND (r.state = 'succeeded' OR (r.state = 'provider_pending' AND r.provider_refund_id IS NOT NULL))
-		  AND ((r.cancel_ticket AND EXISTS (SELECT 1 FROM tickets t WHERE t.id = r.ticket_id AND t.status = 'active'))
-		       OR (r.ticket_id IS NULL AND EXISTS (
-		            SELECT 1 FROM payment_intents p JOIN tickets t ON t.checkout_session_id = p.checkout_session_id
-		            WHERE p.id = r.payment_intent_id AND r.amount >= p.amount AND t.status = 'active')
-		           AND NOT EXISTS (SELECT 1 FROM tickets t2 WHERE t2.refund_id = r.id)))
-		  AND COALESCE(r.repair_attempted_at, r.updated_at) <= $1
-		  AND (cardinality($2::uuid[]) = 0 OR r.org_id = ANY($2::uuid[]))
-		ORDER BY COALESCE(r.repair_attempted_at, r.updated_at) LIMIT `+strconv.Itoa(sweepBatch),
-		now.Add(-CallStaleAfter), e.scopeOrgs())
+	args := []any{now.Add(-CallStaleAfter), e.scopeOrgs()}
+	ids, err := e.selectIDs(ctx, `SELECT r.id FROM refunds r WHERE `+repairWhere+`
+		ORDER BY COALESCE(r.repair_attempted_at, r.updated_at) LIMIT `+strconv.Itoa(sweepBatch), args...)
 	if err != nil {
 		return 0, err
 	}
@@ -271,12 +341,26 @@ func (e *Engine) repair(ctx context.Context, now time.Time) (int, error) {
 		if ctx.Err() != nil {
 			break
 		}
-		var attempts int
+		attempts := 0
 		if err := e.inTx(ctx, func(tx pgx.Tx) error {
-			return tx.QueryRow(ctx, `UPDATE refunds SET repair_attempts = repair_attempts + 1, repair_attempted_at = now()
-				WHERE id = $1 RETURNING repair_attempts`, id).Scan(&attempts)
+			var piID *uuid.UUID
+			if err := tx.QueryRow(ctx, `SELECT payment_intent_id FROM refunds WHERE id = $1`, id).Scan(&piID); err != nil || piID == nil {
+				return err
+			}
+			if err := LockPayment(ctx, tx, *piID); err != nil {
+				return err
+			}
+			err := tx.QueryRow(ctx, `UPDATE refunds r SET repair_attempts = repair_attempts + 1, repair_attempted_at = now()
+				WHERE r.id = $3 AND `+repairWhere+` RETURNING repair_attempts`, append(args, id)...).Scan(&attempts)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil // another pass repaired it meanwhile
+			}
+			return err
 		}); err != nil {
 			return repaired, err
+		}
+		if attempts == 0 {
+			continue
 		}
 		r, pay, err := e.refundAndPayment(ctx, id)
 		if err != nil {
@@ -295,7 +379,7 @@ func (e *Engine) repair(ctx context.Context, now time.Time) (int, error) {
 			repaired++
 			if r.State == StateSucceeded {
 				// The first settle never got this far: v1.ticket.refunded is
-				// published here, once (consumers dedup by ticket).
+				// published here — once, publish claims it.
 				e.publish(ctx, r, pay, ticketIDs)
 			}
 		}
@@ -311,7 +395,7 @@ func (e *Engine) parkRepair(ctx context.Context, r Refund) error {
 		if err := LockPayment(ctx, tx, r.PaymentIntentID); err != nil {
 			return err
 		}
-		u, err := scanRefund(tx.QueryRow(ctx, `UPDATE refunds SET state = 'manual_review', updated_at = now(),
+		u, err := scanRefund(tx.QueryRow(ctx, `UPDATE refunds SET state = 'manual_review', updated_at = now(), `+reviewAlertSQL+`,
 			failure_code = 'ticket_cancellation_failed',
 			failure_reason = 'the provider returned the money but the ticket could not be cancelled; cancel it by hand'
 			WHERE id = $1 AND state IN ('succeeded', 'provider_pending') RETURNING `+refundColumns, r.ID))
@@ -333,18 +417,18 @@ func (e *Engine) parkRepair(ctx context.Context, r Refund) error {
 	return err
 }
 
-// alertReviews sends one ops alert per engine refund in manual_review that
-// has not been announced. Ids, amount, provider and code only — never the
-// buyer. The row is marked BEFORE the send, so a crash loses one message
-// rather than repeating it.
+// alertReviews sends one ops alert per engine refund that owes one
+// (alert_due_at). Ids, amount, provider and code only — never the buyer.
+// The row is marked BEFORE the send, so a crash loses one message rather
+// than repeating it.
 func (e *Engine) alertReviews(ctx context.Context, n Notifier) (int, error) {
 	var rows []Refund
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
-		res, err := tx.Query(ctx, `UPDATE refunds SET review_alerted_at = now()
+		res, err := tx.Query(ctx, `UPDATE refunds SET alert_due_at = NULL, review_alerted_at = now()
 			WHERE id IN (SELECT id FROM refunds
-			             WHERE settlement = 'provider' AND provider IS NOT NULL AND state = 'manual_review'
-			               AND review_alerted_at IS NULL AND (cardinality($1::uuid[]) = 0 OR org_id = ANY($1::uuid[]))
-			             ORDER BY updated_at LIMIT `+strconv.Itoa(sweepBatch)+` FOR UPDATE SKIP LOCKED)
+			             WHERE settlement = 'provider' AND provider IS NOT NULL AND alert_due_at IS NOT NULL
+			               AND (cardinality($1::uuid[]) = 0 OR org_id = ANY($1::uuid[]))
+			             ORDER BY alert_due_at LIMIT `+strconv.Itoa(sweepBatch)+` FOR UPDATE SKIP LOCKED)
 			RETURNING `+refundColumns, e.scopeOrgs())
 		if err != nil {
 			return err
@@ -356,8 +440,14 @@ func (e *Engine) alertReviews(ctx context.Context, n Notifier) (int, error) {
 		return 0, err
 	}
 	for _, r := range rows {
-		text := fmt.Sprintf("Refund %s (%d %s via %s) needs manual review: %s. Order %s.",
-			r.ID, r.Amount, r.Currency, deref(r.Provider), deref(r.FailureCode), uuidString(r.OrderID))
+		var text string
+		if r.State == StateManualReview {
+			text = fmt.Sprintf("Refund %s (%d %s via %s) needs manual review: %s. Order %s.",
+				r.ID, r.Amount, r.Currency, deref(r.Provider), deref(r.FailureCode), uuidString(r.OrderID))
+		} else {
+			text = fmt.Sprintf("Refund %s (%d %s via %s) was accepted by the provider after it had been marked failed: accepted_after_failure. Check that the ticket was not refunded twice. Order %s.",
+				r.ID, r.Amount, r.Currency, deref(r.Provider), uuidString(r.OrderID))
+		}
 		if err := n.Send(ctx, text); err != nil {
 			e.logger.Warn("refunds: ops alert failed", "refund_id", r.ID.String(), "error", err.Error())
 		}
@@ -375,18 +465,18 @@ func (e *Engine) lookup(ctx context.Context, id uuid.UUID) error {
 		return nil
 	}
 	desc, hasModule := e.modules.Descriptor(deref(r.Provider))
+	callCtx, cancel := context.WithTimeout(ctx, e.callTimeout)
+	defer cancel()
 	var looker payments.RefundLookup
 	if hasModule && desc.Capabilities.RefundLookup {
-		if module, berr := e.modules.Build(ctx, r.OrgID, deref(r.Provider)); berr == nil {
+		if module, berr := e.modules.Build(callCtx, r.OrgID, deref(r.Provider)); berr == nil {
 			looker, _ = module.(payments.RefundLookup)
 		}
 	}
 	if looker == nil {
-		// No way to ask: wait for the webhook (PAY-05) or the 24-hour park.
+		// No way to ask: wait for the webhook (PAY-05) or the 7-day park.
 		return e.touch(ctx, id)
 	}
-	callCtx, cancel := context.WithTimeout(ctx, e.callTimeout)
-	defer cancel()
 	res, err := looker.RefundStatus(callCtx, *r.ProviderRefundID)
 	if err != nil {
 		e.observe(outcomeUnknown)
@@ -415,9 +505,9 @@ func (e *Engine) lookup(ctx context.Context, id uuid.UUID) error {
 		case payments.RefundFailed:
 			// The ticket was cancelled when the provider accepted; the money
 			// did not go back after all. An operator decides — and is told
-			// (alertReviews), PAY-03 review M1.
+			// (alertReviews), review M1.
 			sql = `UPDATE refunds SET state = 'manual_review', provider_status = $2, failure_code = $3,
-			       failure_reason = $4, updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
+			       failure_reason = $4, ` + reviewAlertSQL + `, updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
 			code := res.FailureCode
 			if code == "" {
 				code = "failed_after_acceptance"
@@ -525,16 +615,17 @@ func NewSweepHandler(o SweepOptions) func(ctx context.Context, payload []byte) e
 		} else {
 			rep, err := o.Engine.Sweep(ctx, o.Now(), o.Notifier)
 			passErr = err
-			if err == nil && (rep.Stuck+rep.Retried+rep.LookedUp+rep.Repaired+rep.Alerted) > 0 {
+			if (rep.Stuck + rep.Retried + rep.LookedUp + rep.Repaired + rep.Alerted + rep.Unknown) > 0 {
 				o.Logger.Info("refund sweep complete", "stuck", rep.Stuck, "retried", rep.Retried,
-					"looked_up", rep.LookedUp, "repaired", rep.Repaired, "alerted", rep.Alerted, "calls", rep.Calls)
+					"looked_up", rep.LookedUp, "repaired", rep.Repaired, "alerted", rep.Alerted,
+					"calls", rep.Calls, "unknown", rep.Unknown)
 			}
 		}
 		if passErr != nil {
 			o.Logger.Error("refund sweep pass failed", "error", passErr.Error())
 		}
 		if o.Scheduler != nil {
-			if err := o.Scheduler.ScheduleNext(ctx, o.Now().Add(o.Interval)); err != nil {
+			if err := o.Scheduler.ScheduleNext(context.WithoutCancel(ctx), o.Now().Add(o.Interval)); err != nil {
 				return fmt.Errorf("refunds: schedule next run: %w", err)
 			}
 		}

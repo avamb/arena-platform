@@ -1,4 +1,4 @@
--- 0133_refund_engine.sql — the data the refund engine needs (spec
+-- 0138_refund_engine.sql — the data the refund engine needs (spec
 -- 08_architecture/36_payment_modules_refunds_acquiring_ru.md §7, PAY-03).
 --
 -- Until now an approved refund was only MARKED provider_pending ("simulating
@@ -21,9 +21,12 @@
 --     flight" marker refund.sweep respects (never re-call within a minute);
 --   * refunds.repair_attempts / repair_attempted_at — refund.sweep's bounded
 --     retries of a ticket cancellation after an accepted refund;
---   * refunds.review_alerted_at — whether the ops alert of a refund that
---     went to manual_review was sent (arena-worker sends it, whichever
---     process moved the row);
+--   * refunds.alert_due_at / review_alerted_at — an ops alert is owed
+--     (set on every move into manual_review, and when a late provider
+--     acceptance revives a failed refund) / when the last one was sent;
+--     arena-worker's refund.sweep sends it, whichever process moved the row;
+--   * refunds.refunded_published_at — v1.ticket.refunded was claimed for
+--     publication, so it is published at most once;
 --   * a unique (provider, provider_refund_id) so one provider refund maps to
 --     one row, and at most one live CANCELLING refund per ticket;
 --   * usage_records.tickets_refunded — the counter PAY-11 bills from (only
@@ -74,7 +77,9 @@ ALTER TABLE refunds
     ADD COLUMN provider_attempted_at timestamptz,
     ADD COLUMN repair_attempts       integer NOT NULL DEFAULT 0,
     ADD COLUMN repair_attempted_at   timestamptz,
-    ADD COLUMN review_alerted_at     timestamptz;
+    ADD COLUMN review_alerted_at     timestamptz,
+    ADD COLUMN alert_due_at          timestamptz,
+    ADD COLUMN refunded_published_at timestamptz;
 
 CREATE UNIQUE INDEX refunds_provider_refund_uq
     ON refunds (provider, provider_refund_id)
@@ -88,6 +93,8 @@ CREATE INDEX refunds_batch_id_idx ON refunds (batch_id) WHERE batch_id IS NOT NU
 CREATE INDEX refunds_ticket_id_idx ON refunds (ticket_id) WHERE ticket_id IS NOT NULL;
 CREATE INDEX refunds_engine_pending_idx ON refunds (created_at)
     WHERE state = 'provider_pending' AND provider IS NOT NULL;
+CREATE INDEX refunds_alert_due_idx ON refunds (alert_due_at)
+    WHERE alert_due_at IS NOT NULL;
 
 UPDATE refunds
 SET    state          = 'manual_review',
@@ -111,6 +118,7 @@ ALTER TABLE usage_records
 -- state that pretends a provider call is pending would be the old defect.
 ALTER TABLE usage_records DROP COLUMN IF EXISTS tickets_refunded;
 
+DROP INDEX IF EXISTS refunds_alert_due_idx;
 DROP INDEX IF EXISTS refunds_engine_pending_idx;
 DROP INDEX IF EXISTS refunds_ticket_id_idx;
 DROP INDEX IF EXISTS refunds_batch_id_idx;
@@ -118,6 +126,8 @@ DROP INDEX IF EXISTS refunds_live_ticket_cancel_uq;
 DROP INDEX IF EXISTS refunds_provider_refund_uq;
 
 ALTER TABLE refunds
+    DROP COLUMN IF EXISTS refunded_published_at,
+    DROP COLUMN IF EXISTS alert_due_at,
     DROP COLUMN IF EXISTS review_alerted_at,
     DROP COLUMN IF EXISTS repair_attempted_at,
     DROP COLUMN IF EXISTS repair_attempts,

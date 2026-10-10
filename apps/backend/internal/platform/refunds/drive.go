@@ -51,6 +51,10 @@ func hadUnknownOutcome(r Refund) bool {
 
 const providerStatusUnknown = "unknown_outcome"
 
+// reviewAlertSQL is the alert bookkeeping of every move INTO manual_review:
+// an ops alert is owed from now (refund.sweep's alert pass sends it once).
+const reviewAlertSQL = `alert_due_at = now(), review_alerted_at = NULL`
+
 // ErrNotClaimable: the refund is not waiting for a provider call (already
 // answered, not approved yet, not an engine refund) or a call is in flight.
 var ErrNotClaimable = errors.New("refunds: refund is not waiting for a provider call")
@@ -82,9 +86,12 @@ func (e *Engine) Drive(ctx context.Context, id uuid.UUID) (Refund, error) {
 
 // claim stamps the call marker under the payment's lock. A refund is
 // claimable when it is an engine refund in provider_pending with no
-// provider refund id, no call of it started within CallStaleAfter, and no
+// provider refund id, no call of it started within CallStaleAfter, no
 // OTHER refund of the same payment is mid-call (one call per payment at a
-// time, spec §7 step 3).
+// time, spec §7 step 3), and it was approved less than StuckAfter ago: a
+// provider keeps an idempotency key for about a day (Stripe: 24 hours), so
+// a later re-POST with the same key could create a SECOND refund. Such a
+// row is only ever parked (second review, item 2).
 func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, error) {
 	var (
 		r   Refund
@@ -122,7 +129,8 @@ func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, erro
 			WHERE  id = $1 AND settlement = 'provider' AND state = 'provider_pending'
 			  AND  provider IS NOT NULL AND provider_refund_id IS NULL
 			  AND  (provider_attempted_at IS NULL OR provider_attempted_at <= now() - $2::interval)
-			RETURNING `+refundColumns, id, intervalText(CallStaleAfter)))
+			  AND  COALESCE(approved_at, created_at) > now() - $3::interval
+			RETURNING `+refundColumns, id, intervalText(CallStaleAfter), intervalText(StuckAfter)))
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotClaimable
 		}
@@ -136,24 +144,45 @@ func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, erro
 	return r, pay, err
 }
 
-// call talks to the provider. It never holds a transaction.
+// deterministicModuleError reports an error that repeating the call can
+// never change and that proves the provider was NOT reached: the module is
+// unknown or only declared, or the module refused the request before any
+// network call (amount, missing charge reference). PAY-03 second review,
+// item 6: such a refund goes to manual_review with an alert at once instead
+// of being retried every minute for a day.
+func deterministicModuleError(err error) bool {
+	return errors.Is(err, payments.ErrUnknownProvider) ||
+		errors.Is(err, payments.ErrModuleNotImplemented) ||
+		errors.Is(err, payments.ErrRefundAmountInvalid) ||
+		errors.Is(err, payments.ErrRefundExceedsPayment) ||
+		errors.Is(err, payments.ErrRefundChargeRefMissing)
+}
+
+// call talks to the provider. It never holds a transaction. ONE timeout
+// (callTimeout) bounds everything it does: building the module (which reads
+// the organization's configuration), resolving the charge reference and the
+// refund itself — a hung database or provider must not hold a claim, a
+// request or a sweep pass open beyond it.
 func (e *Engine) call(ctx context.Context, r Refund, pay Payment) callOutcome {
+	callCtx, cancel := context.WithTimeout(ctx, e.callTimeout)
+	defer cancel()
+
 	provider := deref(r.Provider)
-	module, err := e.modules.Build(ctx, r.OrgID, provider)
+	module, err := e.modules.Build(callCtx, r.OrgID, provider)
 	if err != nil {
 		var cfg *ConfigError
-		if errors.As(err, &cfg) {
+		switch {
+		case errors.As(err, &cfg):
 			return callOutcome{kind: outcomeDeclined, code: cfg.Code, message: cfg.Message}
+		case deterministicModuleError(err):
+			return callOutcome{kind: outcomeDeclined, review: true, code: "payment_module_unavailable", message: err.Error()}
 		}
 		return callOutcome{kind: outcomeUnknown, code: "module_unavailable", message: err.Error()}
 	}
 	refunder, ok := module.(payments.Refunder)
 	if !ok {
-		return callOutcome{kind: outcomeDeclined, code: failureCodeUnknownProvider, message: "the payment module cannot refund"}
+		return callOutcome{kind: outcomeDeclined, review: true, code: failureCodeUnknownProvider, message: "the payment module cannot refund"}
 	}
-
-	callCtx, cancel := context.WithTimeout(ctx, e.callTimeout)
-	defer cancel()
 
 	var out callOutcome
 	chargeRef := deref(pay.ProviderChargeRef)
@@ -187,7 +216,10 @@ func (e *Engine) call(ctx context.Context, r Refund, pay Payment) callOutcome {
 	case err != nil:
 		if code, msg, declined := payments.RefundDeclined(err); declined {
 			out.kind, out.code, out.message = outcomeDeclined, code, msg
-			out.review = payments.RefundDeclineNeedsReview(err)
+			// A refusal the module raised BEFORE any network call (amount,
+			// charge reference) is a configuration or data problem a human
+			// must look at, not a provider verdict (second review, item 6).
+			out.review = payments.RefundDeclineNeedsReview(err) || deterministicModuleError(err)
 		} else {
 			out.kind, out.code, out.message = outcomeUnknown, "provider_unavailable", err.Error()
 		}
@@ -216,6 +248,7 @@ func (e *Engine) apply(ctx context.Context, claimed Refund, pay Payment, out cal
 	var (
 		updated Refund
 		changed bool
+		revived bool
 	)
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
 		if err := LockPayment(ctx, tx, pay.ID); err != nil {
@@ -232,16 +265,23 @@ func (e *Engine) apply(ctx context.Context, claimed Refund, pay Payment, out cal
 			return err
 		}
 		late := false
+		accepted := out.kind == outcomeSucceeded || out.kind == outcomePending
 		switch {
 		case cur.State == StateProviderPending && cur.ProviderRefundID == nil:
-			updated, err = recordOutcome(ctx, tx, claimed, out, pay)
-		case cur.ProviderRefundID == nil && cur.State == StateManualReview && (out.kind == outcomeSucceeded || out.kind == outcomePending):
-			// The sweep parked the row while this call was in flight (or an
-			// operator did). The provider's ACCEPTANCE is the truth about
-			// the money and must never be lost: record it and settle, so
-			// the ticket is cancelled (PAY-03 review H2).
-			late = true
-			updated, err = recordOutcome(ctx, tx, claimed, out, pay)
+			// Judged on the LOCKED row, never on the claim snapshot: another
+			// attempt may have recorded an unknown outcome while this call
+			// was in flight (second review, item 3).
+			updated, err = recordOutcome(ctx, tx, cur, out, pay, false)
+		case cur.ProviderRefundID == nil && accepted && (cur.State == StateManualReview || cur.State == StateFailed):
+			// The row left provider_pending while this call was in flight:
+			// the sweep or an operator parked it, or another attempt's
+			// refusal failed it. The provider's ACCEPTANCE is the truth
+			// about the money and must never be lost: record it and settle,
+			// so the ticket is cancelled (review H2). Reviving a FAILED row
+			// also owes an ops alert — the failure may already have let a
+			// second refund of the same ticket through.
+			late, revived = true, cur.State == StateFailed
+			updated, err = recordOutcome(ctx, tx, cur, out, pay, revived)
 		default:
 			// Someone else (a webhook, a concurrent drive) recorded an
 			// answer first, or the row left provider_pending and this
@@ -279,6 +319,12 @@ func (e *Engine) apply(ctx context.Context, claimed Refund, pay Payment, out cal
 		if updated.State == StateManualReview {
 			e.logReview(updated)
 		}
+		if revived {
+			e.logger.Error("refunds: REFUND NEEDS MANUAL REVIEW",
+				"event", "refund_manual_review", "refund_id", updated.ID.String(), "order_id", uuidString(updated.OrderID),
+				"amount", updated.Amount, "currency", updated.Currency,
+				"failure_code", "accepted_after_failure")
+		}
 		e.settle(ctx, updated, pay)
 	}
 	return updated, nil
@@ -293,23 +339,38 @@ func (e *Engine) logReview(r Refund) {
 		"amount", r.Amount, "currency", r.Currency, "failure_code", deref(r.FailureCode))
 }
 
-// recordOutcome writes one outcome onto a provider_pending row.
-func recordOutcome(ctx context.Context, tx pgx.Tx, cur Refund, out callOutcome, pay Payment) (Refund, error) {
+// acceptAlertSQL is the alert bookkeeping of an ACCEPTED outcome: leaving
+// manual_review clears the last alert, so a later return to manual_review
+// is announced again (second review, item 4); reviving a failed row owes a
+// new alert ($4).
+const acceptAlertSQL = `review_alerted_at = NULL, alert_due_at = CASE WHEN $4::boolean THEN now() END`
+
+// reviveCancelSQL keeps cancel_ticket only when no other live cancelling
+// refund of the ticket exists: a failed row revived by a late acceptance
+// must not collide with the refund that replaced it.
+const reviveCancelSQL = `cancel_ticket = cancel_ticket AND NOT EXISTS (
+	SELECT 1 FROM refunds o WHERE o.ticket_id = refunds.ticket_id AND o.id <> refunds.id
+	  AND o.cancel_ticket AND o.state NOT IN ('failed', 'rejected'))`
+
+// recordOutcome writes one outcome onto the locked current row cur
+// (provider_pending, or a parked/failed row a late acceptance revives).
+func recordOutcome(ctx context.Context, tx pgx.Tx, cur Refund, out callOutcome, pay Payment, revivedFromFailed bool) (Refund, error) {
 	var (
 		sql  string
 		args []any
 	)
 	switch out.kind {
 	case outcomeSucceeded:
-		sql = `UPDATE refunds SET state = 'succeeded', succeeded_at = now(), provider_refund_id = $2,
-		       provider_status = $3, failure_code = NULL, failure_reason = NULL, updated_at = now()
-		       WHERE id = $1 RETURNING ` + refundColumns
-		args = []any{cur.ID, out.result.ProviderRefundID, string(out.result.Status)}
+		sql = `UPDATE refunds SET state = 'succeeded', succeeded_at = now(), failed_at = NULL, provider_refund_id = $2,
+		       provider_status = $3, failure_code = NULL, failure_reason = NULL, ` + acceptAlertSQL + `, ` + reviveCancelSQL + `,
+		       updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
+		args = []any{cur.ID, out.result.ProviderRefundID, string(out.result.Status), revivedFromFailed}
 	case outcomePending:
 		// state is set too: a late acceptance brings a parked row back.
-		sql = `UPDATE refunds SET state = 'provider_pending', provider_refund_id = $2, provider_status = $3,
-		       failure_code = NULL, failure_reason = NULL, updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
-		args = []any{cur.ID, out.result.ProviderRefundID, string(out.result.Status)}
+		sql = `UPDATE refunds SET state = 'provider_pending', failed_at = NULL, provider_refund_id = $2, provider_status = $3,
+		       failure_code = NULL, failure_reason = NULL, ` + acceptAlertSQL + `, ` + reviveCancelSQL + `,
+		       updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
+		args = []any{cur.ID, out.result.ProviderRefundID, string(out.result.Status), revivedFromFailed}
 	case outcomeDeclined:
 		if out.review || hadUnknownOutcome(cur) {
 			// The money's whereabouts are not known (an earlier call had no
@@ -317,10 +378,11 @@ func recordOutcome(ctx context.Context, tx pgx.Tx, cur Refund, out callOutcome, 
 			// failed — that would free the ticket for a second refund.
 			reason := "the provider refused this attempt, but an earlier attempt had no answer and may have returned the money; check the provider dashboard: " + out.message
 			if out.review {
-				reason = "the provider says the money may already be back; check the provider dashboard: " + out.message
+				reason = "the refund needs a human; check the provider dashboard: " + out.message
 			}
 			sql = `UPDATE refunds SET state = 'manual_review', provider_refund_id = $2, provider_status = 'declined',
-			       failure_code = $3, failure_reason = $4, updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
+			       failure_code = $3, failure_reason = $4, ` + reviewAlertSQL + `, updated_at = now()
+			       WHERE id = $1 RETURNING ` + refundColumns
 			args = []any{cur.ID, strPtr(out.result.ProviderRefundID), truncate(out.code, 100), truncate(reason, 500)}
 			break
 		}

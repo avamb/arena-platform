@@ -168,8 +168,26 @@ func (e *Engine) projectOrder(ctx context.Context, r Refund, pay Payment) {
 	}
 }
 
+// publish emits v1.ticket.refunded for the refund AT MOST ONCE: it first
+// claims refunds.refunded_published_at, so two settles (a request and a
+// sweep repair, or two sweep chains) can never both publish. The claim is
+// committed before the outbox write; a crash between the two loses that one
+// publish (spec 36 §14) rather than ever sending it twice.
 func (e *Engine) publish(ctx context.Context, r Refund, pay Payment, ticketIDs []string) {
 	if e.publishRefunded == nil || len(ticketIDs) == 0 {
+		return
+	}
+	claimed := false
+	if err := e.inTx(ctx, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE refunds SET refunded_published_at = now()
+			WHERE id = $1 AND refunded_published_at IS NULL`, r.ID)
+		claimed = err == nil && tag.RowsAffected() == 1
+		return err
+	}); err != nil {
+		e.logger.Error("refunds: claiming the refunded publish failed", "refund_id", r.ID.String(), "error", err.Error())
+		return
+	}
+	if !claimed {
 		return
 	}
 	cs := ""
