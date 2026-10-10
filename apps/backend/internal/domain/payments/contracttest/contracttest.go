@@ -19,7 +19,6 @@
 package contracttest
 
 import (
-	"context"
 	"errors"
 	"reflect"
 	"testing"
@@ -117,10 +116,10 @@ func Run(t *testing.T, c Case) {
 		if !parser.RecognizesWebhook(c.GoodWebhook) {
 			t.Error("RecognizesWebhook(GoodWebhook) = false")
 		}
-		if _, err := parser.VerifyAndParse(context.Background(), c.BadSignatureWebhook); !errors.Is(err, payments.ErrInvalidWebhookSignature) {
+		if _, err := parser.VerifyAndParse(t.Context(), c.BadSignatureWebhook); !errors.Is(err, payments.ErrInvalidWebhookSignature) {
 			t.Errorf("VerifyAndParse(BadSignatureWebhook) = %v; want ErrInvalidWebhookSignature", err)
 		}
-		got, err := parser.VerifyAndParse(context.Background(), c.GoodWebhook)
+		got, err := parser.VerifyAndParse(t.Context(), c.GoodWebhook)
 		if err != nil {
 			t.Fatalf("VerifyAndParse(GoodWebhook): %v", err)
 		}
@@ -172,7 +171,7 @@ func Run(t *testing.T, c Case) {
 			req := base
 			req.AmountMinor = 0
 			req.IdempotencyKey = "contract-zero"
-			if _, err := refunder.Refund(context.Background(), req); !errors.Is(err, payments.ErrRefundAmountInvalid) {
+			if _, err := refunder.Refund(t.Context(), req); !errors.Is(err, payments.ErrRefundAmountInvalid) {
 				t.Errorf("Refund(0) = %v; want ErrRefundAmountInvalid", err)
 			}
 			if got := rc.StubRequests(); got != before {
@@ -185,7 +184,7 @@ func Run(t *testing.T, c Case) {
 			req := base
 			req.AmountMinor = rc.PaymentAmountMinor + 1
 			req.IdempotencyKey = "contract-over"
-			if _, err := refunder.Refund(context.Background(), req); !errors.Is(err, payments.ErrRefundExceedsPayment) {
+			if _, err := refunder.Refund(t.Context(), req); !errors.Is(err, payments.ErrRefundExceedsPayment) {
 				t.Errorf("Refund(payment+1) = %v; want ErrRefundExceedsPayment", err)
 			}
 			if got := rc.StubRequests(); got != before {
@@ -198,11 +197,11 @@ func Run(t *testing.T, c Case) {
 			req := base
 			req.AmountMinor = rc.PaymentAmountMinor
 			req.IdempotencyKey = "contract-idem"
-			first, err := refunder.Refund(context.Background(), req)
+			first, err := refunder.Refund(t.Context(), req)
 			if err != nil {
 				t.Fatalf("first Refund: %v", err)
 			}
-			second, err := refunder.Refund(context.Background(), req)
+			second, err := refunder.Refund(t.Context(), req)
 			if err != nil {
 				t.Fatalf("second Refund: %v", err)
 			}
@@ -228,7 +227,7 @@ func Run(t *testing.T, c Case) {
 					t.Skip("payment too small to halve")
 				}
 				req.IdempotencyKey = "contract-partial"
-				if _, err := refunder.Refund(context.Background(), req); err != nil {
+				if _, err := refunder.Refund(t.Context(), req); err != nil {
 					t.Errorf("partial Refund: %v", err)
 				}
 			})

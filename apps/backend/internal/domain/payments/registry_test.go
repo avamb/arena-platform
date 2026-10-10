@@ -27,7 +27,7 @@ func entryFor(name string) payments.Entry {
 		},
 		Capabilities: payments.Capabilities{HostedCheckout: true},
 	}
-	return payments.Entry{Descriptor: d, New: func(secrets map[string]string, _ payments.Options) (payments.Module, error) {
+	return payments.Entry{Descriptor: d, New: func(_ map[string]string, _ payments.Options) (payments.Module, error) {
 		return stubModule{d}, nil
 	}}
 }
