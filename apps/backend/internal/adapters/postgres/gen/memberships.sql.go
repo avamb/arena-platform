@@ -149,6 +149,7 @@ FROM (
     FROM   memberships m
     WHERE  m.user_id = $1
       AND  m.status  = 'active'
+      AND  m.role NOT IN ('platform_superadmin', 'platform_operator')
 
     UNION
 
@@ -194,6 +195,7 @@ FROM (
     WHERE  m.user_id = $1
       AND  m.org_id  = $2
       AND  m.status  = 'active'
+      AND  m.role NOT IN ('platform_superadmin', 'platform_operator')
 
     UNION
 

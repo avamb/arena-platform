@@ -27,6 +27,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,8 +61,8 @@ func (failingTxStarter) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) 
 }
 
 // newTestHandler builds a Handler whose database is present but unusable, and
-// whose membership check is disabled (membershipQueries stays nil), so the
-// tests exercise exactly the validation ladder.
+// whose membership handle stays nil; importRequest acts as the platform
+// superadmin, so the tests exercise exactly the validation ladder.
 func newTestHandler() *Handler {
 	return New(gen.New(emptyDBTX{}), failingTxStarter{}, nil, nil)
 }
@@ -84,7 +85,12 @@ func importRequest(t *testing.T, orgID uuid.UUID, body any) *http.Request {
 	req.Header.Set("Content-Type", "application/json")
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("org_id", orgID.String())
-	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	// The org guard fails closed without a membership handle (SEC-1): the
+	// validation-ladder tests act as the platform superadmin, which needs no
+	// database to pass it.
+	req.Header.Set("X-Admin-Reason", "unit test")
+	ctx := auth.WithSuperadminOrgAccess(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	return req.WithContext(ctx)
 }
 
 // validPayload is a minimal, fully valid general-admission import body.

@@ -126,7 +126,7 @@ func (h *Handler) HandleRevokeInvitation(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	superadmin, ok := h.requireOrgMembership(w, r, orgID)
+	superadmin, ok := h.requireOrgMembership(w, r, orgID, "membership.revoke")
 	if !ok {
 		return
 	}
@@ -269,7 +269,7 @@ func (h *Handler) HandleResendInvitation(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	superadmin, ok := h.requireOrgMembership(w, r, orgID)
+	superadmin, ok := h.requireOrgMembership(w, r, orgID, "membership.grant")
 	if !ok {
 		return
 	}
