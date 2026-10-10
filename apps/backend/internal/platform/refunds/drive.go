@@ -451,9 +451,11 @@ func overBudget(ctx context.Context, tx pgx.Tx, cur Refund, pay Payment) (bool, 
 	var ticketPrice *int64
 	err := tx.QueryRow(ctx, `SELECT
 		(SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
-		  WHERE payment_intent_id = $1 AND id <> $2 AND state NOT IN ('failed', 'rejected')),
+		  WHERE payment_intent_id = $1 AND id <> $2 AND state NOT IN ('failed', 'rejected')
+		    AND NOT (COALESCE(failure_code, '') = 'budget_taken_by_another_refund' AND provider_refund_id IS NULL)),
 		(SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
-		  WHERE $3::uuid IS NOT NULL AND ticket_id = $3 AND id <> $2 AND state NOT IN ('failed', 'rejected')),
+		  WHERE $3::uuid IS NOT NULL AND ticket_id = $3 AND id <> $2 AND state NOT IN ('failed', 'rejected')
+		    AND NOT (COALESCE(failure_code, '') = 'budget_taken_by_another_refund' AND provider_refund_id IS NULL)),
 		(SELECT oi.total FROM order_items oi WHERE $3::uuid IS NOT NULL AND oi.ticket_id = $3 LIMIT 1)`,
 		pay.ID, cur.ID, cur.TicketID).Scan(&payUsed, &ticketUsed, &ticketPrice)
 	if err != nil {
