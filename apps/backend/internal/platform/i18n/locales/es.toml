@@ -1550,3 +1550,174 @@ other = "<b>Notificaciones</b>\n\nEste bot no envía avisos de ventas. Llegan de
 
 ["bot.ec.notif_manager"]
 other = "<b>Notificaciones</b>\n\nEste bot no envía avisos de ventas. Llegan desde {{.Bot}}: un mensaje por cada pedido pagado y cada devolución, en segundos.\n\nSolo el propietario de la organización elige qué chats los reciben. Pídele que te añada al grupo o que conecte uno nuevo. Los mensajes incluyen los contactos del comprador."
+
+["bot.ord.btn"]
+other = "Pedidos"
+
+["bot.ord.list_title"]
+other = "<b>Pedidos: {{.Org}}</b>{{.Scope}}\n{{.Tab}} · {{.Total}} · página {{.Page}} de {{.Pages}}.{{.Search}}\n{{.Legend}}\nPulsa un pedido para abrirlo. Para buscar, escribe un código de barras, un número de pedido, un e-mail, un teléfono o un nombre."
+
+["bot.ord.legend"]
+other = "✅ pagado  ⏳ pendiente de pago  ⌛ caducado  ✖ cancelado  ↩ reembolsado"
+
+["bot.ord.tab_recent"]
+other = "Últimos"
+
+["bot.ord.tab_paid"]
+other = "Pagados"
+
+["bot.ord.tab_unpaid"]
+other = "Sin pagar"
+
+["bot.ord.scope_line"]
+other = "\nSolo: {{.Name}}"
+
+["bot.ord.scope_all_btn"]
+other = "Todos los pedidos"
+
+["bot.ord.empty_recent"]
+other = "Aún no hay pedidos. Aparecerán aquí en cuanto alguien empiece a comprar."
+
+["bot.ord.empty_paid"]
+other = "Aún no hay pedidos pagados."
+
+["bot.ord.empty_unpaid"]
+other = "No hay pedidos sin pagar."
+
+["bot.ord.search_none"]
+other = "No se encontró ningún pedido para «{{.Query}}». Escribe un código de barras, un número de pedido, un e-mail, un teléfono o un nombre, o borra la búsqueda."
+
+["bot.ord.st_paid"]
+other = "Pagado"
+
+["bot.ord.st_pending_payment"]
+other = "Pendiente de pago"
+
+["bot.ord.st_expired"]
+other = "Caducado"
+
+["bot.ord.st_cancelled"]
+other = "Cancelado"
+
+["bot.ord.st_partially_refunded"]
+other = "Reembolsado en parte"
+
+["bot.ord.st_refunded"]
+other = "Reembolsado"
+
+["bot.ord.st_manual_review"]
+other = "Requiere revisión"
+
+["bot.ord.card_head"]
+other = "<b>Pedido №{{.Num}}</b>\n{{.Chip}} {{.Status}} · {{.Amount}} · {{.When}}"
+
+["bot.ord.card_event"]
+other = "\n\n🎭 <b>{{.Name}}</b>\n📅 {{.Date}}"
+
+["bot.ord.card_buyer"]
+other = "\n\n👤 {{.Name}}{{.Contacts}}"
+
+["bot.ord.buyer_unknown"]
+other = "<i>Comprador sin indicar</i>"
+
+["bot.ord.contacts_private"]
+other = "\n\n👤 Los datos de contacto del comprador solo se muestran en un chat privado con el bot."
+
+["bot.ord.phone_call"]
+other = "llamar"
+
+["bot.ord.phone_wa"]
+other = "WhatsApp"
+
+["bot.ord.tickets_head"]
+other = "\n\n🎟 <b>Entradas: {{.N}}</b>"
+
+["bot.ord.tickets_more"]
+other = "… y {{.N}} más"
+
+["bot.ord.no_tickets"]
+other = "\n\n🎟 No se han emitido entradas."
+
+["bot.ord.ticket_line"]
+other = "• {{.Tier}} · {{.Price}} · <code>{{.Code}}</code>{{.Seat}} · {{.Status}}{{.Entered}}"
+
+["bot.ord.seat"]
+other = " · asiento {{.Label}}"
+
+["bot.ord.entered"]
+other = " · ✔ entró {{.When}}"
+
+["bot.ord.tk_active"]
+other = "válida"
+
+["bot.ord.tk_cancelled"]
+other = "cancelada"
+
+["bot.ord.tk_transferred"]
+other = "transferida"
+
+["bot.ord.channel_line"]
+other = "\n\n🛒 Vendido a través de: {{.Channel}}"
+
+["bot.ord.channel_hosted_page"]
+other = "la página del evento en Arena"
+
+["bot.ord.channel_widget"]
+other = "el widget de entradas de una web"
+
+["bot.ord.channel_site"]
+other = "una web asociada"
+
+["bot.ord.channel_other"]
+other = "otro canal"
+
+["bot.ord.payment_line"]
+other = "\n💳 Pago: {{.Provider}}"
+
+["bot.ord.delivery_sent"]
+other = "📧 Las entradas se enviaron al comprador por e-mail."
+
+["bot.ord.delivery_pending"]
+other = "📧 El e-mail con las entradas está en cola y aún no se ha enviado."
+
+["bot.ord.delivery_failed"]
+other = "📧 No se pudo entregar el e-mail con las entradas."
+
+["bot.ord.reason_payment_failed"]
+other = "⚠️ El pago no se completó: la tarjeta o el banco lo rechazaron. El comprador puede intentarlo de nuevo."
+
+["bot.ord.reason_payment_abandoned"]
+other = "⚠️ El comprador abrió la página de pago y se fue sin pagar. Las plazas se liberaron."
+
+["bot.ord.reason_hold_expired"]
+other = "⌛ El comprador no llegó a empezar a pagar durante el tiempo de reserva, así que las plazas se liberaron."
+
+["bot.ord.reason_cancelled"]
+other = "✖ El pedido está cancelado. Sus plazas vuelven a estar libres."
+
+["bot.ord.reason_awaiting_payment"]
+other = "⏳ El comprador aún no ha pagado. Las plazas siguen reservadas hasta que se agote el tiempo de pago."
+
+["bot.ord.reason_manual_review"]
+other = "⚠️ Llegó un pago que no pudo completar este pedido, así que espera una revisión. Escribe a soporte."
+
+["bot.ord.reason_unknown"]
+other = "Este pedido no está pagado."
+
+["bot.ord.reason_provider"]
+other = "Mensaje del proveedor de pago: {{.Msg}}"
+
+["bot.ord.cancel_btn"]
+other = "Cancelar pedido sin pagar"
+
+["bot.ord.cancel_ask"]
+other = "⚠️ <b>Último paso: todavía no se ha cancelado nada.</b>\n\nPedido №{{.Num}} · {{.Amount}}\nEl pedido se cerrará y se liberarán las plazas reservadas para él. Esto no se puede deshacer.\n\nPara cancelar, <b>escribe la palabra {{.Word}}</b> y envíala como mensaje. Para conservar el pedido, pulsa «Atrás»."
+
+["bot.ord.cancel_wrong"]
+other = "Esa no es la palabra, así que no se ha cancelado nada. Para cancelar, escribe exactamente: {{.Word}}"
+
+["bot.ord.cancel_done"]
+other = "✔ El pedido está cancelado y sus plazas vuelven a estar libres."
+
+["bot.ord.cancel_not_possible"]
+other = "Este pedido ya no se puede cancelar: ya no está pendiente de pago."

@@ -32,6 +32,8 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		"Code": "C", "Discount": "1 EUR", "Closed": "", "Places": 5, "Revenue": "1 EUR", "Transferred": 1, "Pending": "1 EUR",
 		"Unavailable": 1, "Scope": "sc", "Charge": "1 EUR", "RefundCount": 1, "Refunded": "1 EUR", "External": "1 EUR",
 		"PendingOrders": 1, "Rows": 3, "What": "w", "Bot": "@Bot",
+		// the orders screens (ord_keys.go)
+		"Tab": "t", "Num": 1000000500, "Chip": "c", "Contacts": "", "Tier": "t", "Seat": "", "Entered": "", "Channel": "ch", "Provider": "stripe", "Msg": "m",
 	}
 	for _, loc := range SupportedLocales {
 		for _, key := range MessageKeys {
