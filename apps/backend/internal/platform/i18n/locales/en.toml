@@ -2525,3 +2525,174 @@ other = "This event has no upcoming sessions to choose from."
 
 ["bot.promo.err_incomplete"]
 other = "Something is missing in the code. Go back and check the steps."
+
+["bot.cat.btn"]
+other = "🎟 Categories"
+
+["bot.cat.list_title"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\nCategories: {{.Total}} · page {{.Page}}/{{.Pages}}"
+
+["bot.cat.list_empty"]
+other = "This date has no categories yet. Add them in the event editor (Edit → Tickets)."
+
+["bot.cat.list_hint"]
+other = "Tap a category to close or open it, change its price, its sale window or its number of places."
+
+["bot.cat.line"]
+other = "{{.Chip}} <b>{{.Name}}</b> · {{.Price}}\n      {{.Value}}"
+
+["bot.cat.places"]
+other = "{{.Sold}} sold · {{.Held}} held · {{.Available}} free of {{.Total}}"
+
+["bot.cat.places_none"]
+other = "no places of its own"
+
+["bot.cat.price_free"]
+other = "free"
+
+["bot.cat.price_pwyw"]
+other = "pay what you want"
+
+["bot.cat.gone"]
+other = "This screen is no longer open. Open the event again from the menu."
+
+["bot.cat.gone_one"]
+other = "That category is no longer on this date. Here is the list as it is now."
+
+["bot.cat.state_open"]
+other = "on sale"
+
+["bot.cat.state_closed"]
+other = "closed, no new sales"
+
+["bot.cat.card_head"]
+other = "🎟 <b>{{.Name}}</b> · {{.State}}\n📅 {{.When}}"
+
+["bot.cat.card_price"]
+other = "💶 Price: {{.Price}}"
+
+["bot.cat.card_next_price"]
+other = "      The scheduled price changes on {{.When}}."
+
+["bot.cat.card_places"]
+other = "📊 Places: {{.Value}}"
+
+["bot.cat.card_window"]
+other = "🗓 Sale window: {{.Value}}"
+
+["bot.cat.card_session_end"]
+other = "⏱ The whole date stops selling at {{.When}}; no category window can extend that."
+
+["bot.cat.window_both"]
+other = "from {{.Min}} until {{.Max}} (inclusive)"
+
+["bot.cat.window_from"]
+other = "from {{.Date}}"
+
+["bot.cat.window_until"]
+other = "until {{.Date}} (inclusive)"
+
+["bot.cat.window_none"]
+other = "no limit"
+
+["bot.cat.note_free"]
+other = "💶 A free category: it has no price to change."
+
+["bot.cat.note_pwyw"]
+other = "💶 A pay-what-you-want category: its price range is changed in the admin console."
+
+["bot.cat.note_chain"]
+other = "↪ This category hands its free places on to «{{.Name}}» by itself, by date or when its step sells out. To keep that working only its price can be changed here; change dates or steps through Edit → Tickets of the event."
+
+["bot.cat.note_chain_target"]
+other = "↪ This category takes over the free places of the previous one by itself. To keep that working only its price can be changed here; change dates or steps through Edit → Tickets of the event."
+
+["bot.cat.note_seated"]
+other = "🪑 The places of this category come from the seating plan, so their number is not changed here."
+
+["bot.cat.close_btn"]
+other = "⏸ Close sales"
+
+["bot.cat.open_btn"]
+other = "▶ Open sales"
+
+["bot.cat.price_btn"]
+other = "💶 Price"
+
+["bot.cat.window_btn"]
+other = "🗓 Sale window"
+
+["bot.cat.qty_btn"]
+other = "🔢 Places"
+
+["bot.cat.cancel_btn"]
+other = "‹ Back to the category"
+
+["bot.cat.closed_done"]
+other = "⏸ Closed: no new tickets of this category are sold. Tickets already sold and carts already started stay as they are."
+
+["bot.cat.opened_done"]
+other = "▶ Open again: the category sells."
+
+["bot.cat.q_price"]
+other = "💶 <b>New price</b> of «{{.Name}}», now {{.Price}}.\n\nType the amount in {{.Currency}}, for example 25 or 25.50. It applies to NEW purchases only: orders already paid and carts already started keep their price."
+
+["bot.cat.err_price"]
+other = "⚠ That is not a price: type a positive amount with at most two decimals, for example 25 or 25.50."
+
+["bot.cat.price_confirm"]
+other = "💶 <b>{{.Name}}</b>: {{.Old}} → {{.New}}\n\nThe new price applies to new purchases only. Orders already paid and carts already started keep their price. Save it?"
+
+["bot.cat.price_save_btn"]
+other = "✔ Save the price"
+
+["bot.cat.price_saved"]
+other = "✔ Price saved: {{.Price}} for new purchases."
+
+["bot.cat.price_saved_window"]
+other = "✔ Price saved: {{.Price}} for new purchases (the scheduled price that is in force now was changed)."
+
+["bot.cat.q_qty"]
+other = "🔢 <b>New number of places</b> of «{{.Name}}». Now: {{.Value}}.\n\nType the number. It cannot be below the places already sold or held ({{.Limit}})."
+
+["bot.cat.err_qty"]
+other = "⚠ Type a whole number of places, from 1 to 1000000."
+
+["bot.cat.err_qty_below"]
+other = "⚠ Not saved: that is fewer places than this category has sold or held. It cannot go below {{.Limit}}."
+
+["bot.cat.err_qty_seated"]
+other = "⚠ Not saved: the places of this category come from the seating plan, so their number is not changed here."
+
+["bot.cat.qty_saved"]
+other = "✔ Saved: the category now has {{.Total}} places."
+
+["bot.cat.window_screen"]
+other = "🗓 <b>Sale window</b> of «{{.Name}}»: {{.Value}}.\n\nThe category sells only inside its window. The sales end of the whole date still applies."
+
+["bot.cat.window_from_btn"]
+other = "▶ First day…"
+
+["bot.cat.window_until_btn"]
+other = "⏹ Last day…"
+
+["bot.cat.window_remove_btn"]
+other = "✕ Remove this limit"
+
+["bot.cat.q_wstart"]
+other = "🗓 <b>First day of sale</b> of «{{.Name}}». Now: {{.Value}}.\nSales start at midnight of that day, venue time."
+
+["bot.cat.q_wend"]
+other = "🗓 <b>Last day of sale</b> of «{{.Name}}», inclusive. Now: {{.Value}}.\nSales stop at the end of that day, venue time."
+
+["bot.cat.cap_note"]
+other = "The whole date stops selling at {{.When}}: a later last day changes nothing."
+
+["bot.cat.err_window"]
+other = "⚠ Not saved: the last day must be after the first day."
+
+["bot.cat.window_saved"]
+other = "✔ Sale window saved."
+
+["bot.cat.window_removed"]
+other = "✔ Limit removed."

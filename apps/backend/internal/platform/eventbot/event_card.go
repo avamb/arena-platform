@@ -145,6 +145,13 @@ func (b *Bot) showEventCard(ctx context.Context, chatID int64, editMsgID *int, f
 	if row := b.promoEventRow(loc, id, eventID); row != nil { // promo codes of the event (EC-11)
 		rows = append(rows, row)
 	}
+	// The categories of an event with a single live date (EC-15); with several
+	// dates they sit on each date's card in the Sessions screen.
+	if sum != nil && len(sum.Sessions) == 1 && sum.Sessions[0].Status != "cancelled" {
+		if row := b.categoryEventRow(loc, id, eventID); row != nil {
+			rows = append(rows, row)
+		}
+	}
 	// Publish, take off sale, archive, delete: what the status allows (EC-10).
 	rows = append(rows, b.eventStatusRows(loc, id, string(event.Status), eventID)...)
 	if canInvite(id) {
