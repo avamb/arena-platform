@@ -150,6 +150,38 @@ func TestEngine_HeldBackRefundNeverCancelsThroughAMoneyOnlyRefund(t *testing.T) 
 	}
 }
 
+// TestEngine_NeverSentStuckRefundFreesItsTicket (sixth review, LOW-3): a
+// refund of T1 approved a day ago and never sent is parked by the sweep as
+// stuck_provider_pending. It moved no money, so — like a never-sent refund
+// held back for its budget — it stops counting against the payment and the
+// ticket and gives its cancel_ticket up: the operator's way forward is a
+// NEW refund of the ticket, which must be possible.
+func TestEngine_NeverSentStuckRefundFreesItsTicket(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	ctx := context.Background()
+	m := &fakeModule{partial: true}
+	e := f.engine(m, true)
+	stuck := f.rawRefund(t, f.payment, 2500, "provider_pending", `ticket_id = '`+f.tickets[0].String()+`', order_id = '`+f.order.String()+
+		`', cancel_ticket = true, approved_at = now() - interval '24 hours', created_at = now() - interval '24 hours'`)
+	if rep, err := e.Sweep(ctx, time.Now(), nil); err != nil || rep.Stuck != 1 {
+		t.Fatalf("sweep: %+v %v", rep, err)
+	}
+	r := f.refundState(t, stuck)
+	if r.State != refunds.StateManualReview || deref(r.FailureCode) != "stuck_provider_pending" || r.CancelTicket {
+		t.Fatalf("stuck = %s / %s cancel %v; want parked without cancel_ticket", r.State, deref(r.FailureCode), r.CancelTicket)
+	}
+	if !strings.Contains(deref(r.FailureReason), "no money") || !strings.Contains(deref(r.FailureReason), "new refund") {
+		t.Fatalf("reason %q; want it to say no money moved and that a new refund is the way forward", deref(r.FailureReason))
+	}
+	if sum, _ := gen.New(f.pool).SumNonFailedRefundsByIntent(ctx, f.payment); sum != 0 {
+		t.Fatalf("flat sum = %d; the never-sent stuck refund moved no money", sum)
+	}
+	res, err := e.CreateBatch(ctx, f.batch("k-again", true, refunds.Item{TicketID: f.tickets[0]}))
+	if err != nil || res.Refunds[0].State != refunds.StateSucceeded {
+		t.Fatalf("new refund of T1: %v %+v; the stuck refund must not block it", err, res.Refunds)
+	}
+}
+
 // TestEngine_ForgedTicketCancelPrefixIsAnOrdinaryFlatRefund (M-4):
 // requested_by is free text a POST /v1/refunds client sends. A
 // whole-payment flat refund whose requested_by merely LOOKS like the

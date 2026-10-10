@@ -239,14 +239,17 @@ func (e *Engine) parkOverBudget(ctx context.Context, tx pgx.Tx, id uuid.UUID, pa
 }
 
 // countsAgainstBudgetSQL is true for a live refund row that counts against
-// its payment's and ticket's budget: every row except one parked for the
-// budget BEFORE any provider call (fifth review, M-1 — an attempted row may
-// have moved money and keeps counting), and only while it is still parked:
-// once an operator resolves it (to succeeded, say) it counts again.
+// its payment's and ticket's budget: every row except one the engine parked
+// BEFORE any provider call — held back for its budget (fifth review, M-1)
+// or stuck unsent for 23 hours (sixth review, LOW-3) — because it moved no
+// money; an attempted row may have moved money and keeps counting. The
+// exclusion holds only while the row is still parked: once an operator
+// resolves it (to succeeded, say) it counts again.
 // gen.SumNonFailedRefundsByIntent, the flat routes' sum, carries the same
 // rule (fifth review, LOW d). Unqualified: use it where the refunds row is
 // the innermost table.
-const countsAgainstBudgetSQL = `NOT (state = 'manual_review' AND COALESCE(failure_code, '') = '` + failureBudgetTaken + `' AND provider_attempts = 0)`
+const countsAgainstBudgetSQL = `NOT (state = 'manual_review' AND provider_attempts = 0 AND provider_refund_id IS NULL
+	AND COALESCE(failure_code, '') IN ('` + failureBudgetTaken + `', 'stuck_provider_pending'))`
 
 // deterministicModuleError reports an error that repeating the call can
 // never change and that proves the provider was NOT reached: the module is

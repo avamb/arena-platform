@@ -332,8 +332,9 @@ func (e *Engine) parkStuck(ctx context.Context, now time.Time) (int, error) {
 			r, err := scanRefund(tx.QueryRow(ctx, `UPDATE refunds
 				SET state = 'manual_review', updated_at = now(), `+reviewAlertSQL+`,
 				    failure_code = CASE WHEN provider_refund_id IS NULL THEN 'stuck_provider_pending' ELSE 'provider_pending_too_long' END,
-				    failure_reason = CASE WHEN provider_refund_id IS NULL AND first_attempted_at IS NULL
-				        THEN 'this refund was approved more than 23 hours ago but never sent to the provider: no call was made, so no money moved through it. Arena will not send it on its own; a person decides whether the buyer is still owed this money and refunds it again'
+				    cancel_ticket = CASE WHEN provider_refund_id IS NULL AND provider_attempts = 0 THEN false ELSE cancel_ticket END,
+				    failure_reason = CASE WHEN provider_refund_id IS NULL AND provider_attempts = 0
+				        THEN 'this refund was approved more than 23 hours ago but never sent to the provider: no call was made, so no money moved through it. It no longer counts against the payment and no longer holds its ticket, and arena will never send it. The ticket is unchanged. If the buyer is still owed this money, create a new refund of the ticket or order; otherwise nothing else needs doing'
 				        WHEN provider_refund_id IS NULL
 				        THEN 'the provider did not confirm this refund within 23 hours of its first attempt, and it may not be sent again (idempotency window); last answer: ' || COALESCE(failure_code, 'none')
 				        ELSE 'the provider accepted this refund but has not completed it within 7 days' END
