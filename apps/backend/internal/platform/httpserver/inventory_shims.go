@@ -129,20 +129,24 @@ func (s *Server) handleConfirmCapacity(w http.ResponseWriter, r *http.Request) {
 
 // ─── external allocation handler shims ────────────────────────────────────────
 //
-// PR2-31 (feature #389): these routes are mounted at
-// /organizations/{org_id}/external-allocations and were the last inventory
-// surface missing the org-membership guard — RBAC (allocation.*) alone let a
-// permission-holder in Org A read/write Org B's allocations by supplying B's
-// UUID in the path.
+// PR2-31 (feature #389) put the org-membership guard on these routes; SEC-2
+// found it checked only the PATH organization, which is the PARTNER. The
+// session and category of a create come from the body and get/patch loaded the
+// row by id alone, so a member of any organization held another organizer's
+// capacity or read and settled another partner's allocation. The rule
+// (org_isolation_guards.go): the session's ORGANIZER creates an allocation for a
+// partner and runs its whole life; the PARTNER (path org) reads its own, reports
+// consumption and may dispute it; anything else is the route's own 404.
 
 func (s *Server) handleCreateExternalAllocation(w http.ResponseWriter, r *http.Request) {
-	if !s.enforceOrgMembership(w, r, "org_id") {
+	if !s.guardAllocationCreate(w, r) {
 		return
 	}
 	s.inventoryHandler().HandleCreateExternalAllocation(w, r)
 }
 
 func (s *Server) handleListExternalAllocations(w http.ResponseWriter, r *http.Request) {
+	// A list is the partner's own: it names the path organization as partner.
 	if !s.enforceOrgMembership(w, r, "org_id") {
 		return
 	}
@@ -150,14 +154,14 @@ func (s *Server) handleListExternalAllocations(w http.ResponseWriter, r *http.Re
 }
 
 func (s *Server) handleGetExternalAllocation(w http.ResponseWriter, r *http.Request) {
-	if !s.enforceOrgMembership(w, r, "org_id") {
+	if _, ok := s.allocationForPath(w, r); !ok {
 		return
 	}
 	s.inventoryHandler().HandleGetExternalAllocation(w, r)
 }
 
 func (s *Server) handlePatchExternalAllocation(w http.ResponseWriter, r *http.Request) {
-	if !s.enforceOrgMembership(w, r, "org_id") {
+	if !s.guardAllocationPatch(w, r) {
 		return
 	}
 	s.inventoryHandler().HandlePatchExternalAllocation(w, r)
