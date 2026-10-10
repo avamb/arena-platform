@@ -22,6 +22,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 )
 
 func adminNamesCall(t *testing.T, h http.HandlerFunc, method, path, body string, params map[string]string) *httptest.ResponseRecorder {
@@ -34,7 +36,7 @@ func adminNamesCall(t *testing.T, h http.HandlerFunc, method, path, body string,
 	for k, v := range params {
 		rctx.URLParams.Add(k, v)
 	}
-	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+	r = r.WithContext(auth.WithSuperadminOrgAccess(context.WithValue(r.Context(), chi.RouteCtxKey, rctx)))
 	h(w, r)
 	return w
 }

@@ -326,6 +326,10 @@ func TestBotInvitationRevoke_TheMembershipStaysWhen(t *testing.T) {
 		rctx.URLParams.Add("id", inv.String())
 		c := context.WithValue(req.Context(), chi.RouteCtxKey, rctx)
 		c = auth.WithActor(c, auth.Actor{ID: m.f.ownerID.String(), Type: auth.ActorTypeUser})
+		// The fixture owner was demoted above, so the call is the operator's:
+		// a platform superadmin naming a reason (SEC-1 requires membership.revoke).
+		c = auth.WithSuperadminOrgAccess(c)
+		req.Header.Set("X-Admin-Reason", "integration: last owner guard")
 		rec := httptest.NewRecorder()
 		m.srv.handleRevokeBotInvitation(rec, req.WithContext(c))
 		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"kept_reason":"last_owner"`) {

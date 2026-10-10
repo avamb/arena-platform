@@ -64,7 +64,7 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	superadmin, ok := h.requireOrgMembership(w, r, orgID)
+	superadmin, ok := h.requireOrgMembership(w, r, orgID, "membership.grant")
 	if !ok {
 		return
 	}

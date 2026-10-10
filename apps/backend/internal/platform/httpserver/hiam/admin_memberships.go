@@ -112,6 +112,11 @@ func (h *Handler) HandleAdminListMembers(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	caller, ok := membershipCallerKind(w, r)
+	if !ok || !h.requireMembershipAuthority(w, r, caller, orgID, "membership.read") {
+		return
+	}
+
 	rows, err := h.membershipQueries.ListAdminMembersByOrg(ctx, orgID)
 	if err != nil {
 		h.logger.Error("admin_membership: list failed", slog.String("error", err.Error()))
@@ -236,6 +241,12 @@ func (h *Handler) HandleAdminAddMember(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		userID = parsed
+	}
+
+	caller, ok := membershipCallerKind(w, r)
+	if !ok || !checkMembershipRole(w, r, caller, req.Role, true, "admin_membership") ||
+		!h.requireMembershipAuthority(w, r, caller, orgID, "membership.grant") {
+		return
 	}
 
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -484,6 +495,13 @@ func (h *Handler) HandleAdminChangeMemberRole(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	caller, ok := membershipCallerKind(w, r)
+	if !ok || !checkMembershipRole(w, r, caller, req.Role, true, "admin_membership") ||
+		!h.requireMembershipAuthority(w, r, caller, orgID, "membership.grant") ||
+		!h.requireOwnerManagedRow(w, r, caller, membershipID, orgID) {
+		return
+	}
+
 	updated, err := h.membershipQueries.ChangeMembershipRole(ctx, membershipID, orgID, req.Role)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -550,6 +568,12 @@ func (h *Handler) HandleAdminDeactivateMember(w http.ResponseWriter, r *http.Req
 	}
 	membershipID, ok := httputil.UUIDPathParam(w, r, "membership_id")
 	if !ok {
+		return
+	}
+
+	caller, ok := membershipCallerKind(w, r)
+	if !ok || !h.requireMembershipAuthority(w, r, caller, orgID, "membership.revoke") ||
+		!h.requireOwnerManagedRow(w, r, caller, membershipID, orgID) {
 		return
 	}
 

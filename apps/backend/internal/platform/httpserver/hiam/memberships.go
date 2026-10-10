@@ -148,6 +148,14 @@ func (h *Handler) HandleGrantMembership(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// SEC-1: the caller's authority in THIS organization, and a role the
+	// caller may hand out.
+	caller, ok := membershipCallerKind(w, r)
+	if !ok || !checkMembershipRole(w, r, caller, req.Role, true, "membership") ||
+		!h.requireMembershipAuthority(w, r, caller, orgID, "membership.grant") {
+		return
+	}
+
 	m, err := h.membershipQueries.InsertMembership(ctx, userID, orgID, req.Role)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -202,6 +210,11 @@ func (h *Handler) HandleListMembers(w http.ResponseWriter, r *http.Request) {
 
 	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
+		return
+	}
+
+	caller, ok := membershipCallerKind(w, r)
+	if !ok || !h.requireMembershipAuthority(w, r, caller, orgID, "membership.read") {
 		return
 	}
 
@@ -280,6 +293,12 @@ func (h *Handler) HandleRevokeMembership(w http.ResponseWriter, r *http.Request)
 			r,
 			map[string]any{"field": "role", "allowed": MembershipRoleList()},
 		))
+		return
+	}
+
+	caller, ok := membershipCallerKind(w, r)
+	if !ok || !checkMembershipRole(w, r, caller, req.Role, false, "membership") ||
+		!h.requireMembershipAuthority(w, r, caller, orgID, "membership.revoke") {
 		return
 	}
 
