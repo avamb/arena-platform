@@ -2332,7 +2332,11 @@ export interface paths {
          * Soft-delete an event owned by the organization
          * @description Marks the event as deleted (sets deleted_at = now()) and writes an
          *     audit_events row inside the same transaction. Owner-gated: a
-         *     non-owner request resolves to 404. Requires JWT + the `event.delete`
+         *     non-owner request resolves to 404. An event that has sold anything (a
+         *     paid, partially refunded or refunded order, or any issued ticket)
+         *     cannot be deleted: the answer is 409 `event.has_paid_orders` and the
+         *     event can only be archived. `GET .../delete-impact` says beforehand
+         *     what a delete would touch. Requires JWT + the `event.delete`
          *     permission.
          */
         delete: operations["deleteEvent"];
@@ -2361,12 +2365,43 @@ export interface paths {
         /**
          * Transition an event to a new lifecycle status
          * @description Validates and applies a status transition according to the event
-         *     lifecycle (draft → published → cancelled|archived). Re-applying the
-         *     same status is a no-op (HTTP 200). Owner-gated: org_id in the path
-         *     must match the event's owning organization. Requires JWT + the
-         *     `event.publish` permission.
+         *     lifecycle (draft → published → cancelled|archived). A published event
+         *     may also go back to `draft`: that is "take off sale". The event leaves
+         *     every public surface and the sites are told, while its sessions, orders
+         *     and sold tickets stay exactly as they are, and publishing it again
+         *     restores the channels it was sold in. Every real transition is written
+         *     to the audit log (`v1.event.status_update`, with `from_status` and
+         *     `to_status`). Re-applying the same status is a no-op (HTTP 200).
+         *     Owner-gated: org_id in the path must match the event's owning
+         *     organization. Requires JWT + the `event.publish` permission.
          */
         post: operations["updateEventStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/delete-impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dry run of deleting an event
+         * @description Says what deleting the event would touch, BEFORE it is deleted: its
+         *     live sessions, the orders that were ever paid (paid, partially
+         *     refunded, refunded) and the tickets issued for it, and whether the
+         *     delete is allowed. An event with paid orders or tickets cannot be
+         *     deleted (`can_delete` false, `blocked` `has_paid_orders`) and can only
+         *     be archived (`can_archive`). Writes nothing. Requires the
+         *     `event.delete` permission; an event of another organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsEventIdDeleteImpact"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -12172,6 +12207,31 @@ export interface components {
              * @example true
              */
             deleted: boolean;
+        };
+        /**
+         * @description Dry run of deleting an event: what the delete would touch and whether
+         *     it is allowed. Nothing is written.
+         */
+        EventDeleteImpact: {
+            /**
+             * Format: uuid
+             * @description The event.
+             */
+            event_id: string;
+            /** @description The event's current lifecycle status (draft, published, cancelled or archived). */
+            status: string;
+            /** @description Live (not deleted) sessions of the event. */
+            sessions: number;
+            /** @description Orders that were ever paid (paid, partially_refunded or refunded). */
+            paid_orders: number;
+            /** @description Tickets issued for any session of the event, whatever their status. */
+            tickets: number;
+            /** @description False when the event has paid orders or tickets; such an event can only be archived. */
+            can_delete: boolean;
+            /** @description Whether the lifecycle allows moving the event to archived from its current status. */
+            can_archive: boolean;
+            /** @description Empty when the event may be deleted, otherwise why not (has_paid_orders). */
+            blocked: string;
         };
         /** @description One artist/performer record attached to an event. */
         EventArtist: {
@@ -28183,6 +28243,19 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description The event has paid orders or issued tickets (`event.has_paid_orders`).
+             *     `error.details` carries `paid_orders`, `tickets` and `sessions`.
+             *     Nothing is changed; archive the event instead.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal server error (event.delete_failed / event.audit_failed / event.commit_failed). */
             500: {
                 headers: {
@@ -28389,6 +28462,85 @@ export interface operations {
                 };
             };
             /** @description Database pool or event queries unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdEventsEventIdDeleteImpact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the owning organization. */
+                org_id: string;
+                /** @description UUIDv7 of the event. */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The impact of deleting the event. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDeleteImpact"];
+                };
+            };
+            /** @description org_id or event_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.delete` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found, already deleted, or owned by a different organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (event.delete_impact_failed). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or event queries unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -968,16 +968,8 @@ func (h *Handler) HandleUpdateEventStatus(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	updated, err := h.eventQueries.UpdateEventStatus(ctx, eventID, orgID, req.Status)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("event.not_found", "event not found", r))
-			return
-		}
-		h.logger.Error("event: update status failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"event.update_status_failed", "failed to update event status", r,
-		))
+	updated, ok := h.applyEventStatus(w, r, current, orgID, req.Status)
+	if !ok {
 		return
 	}
 
@@ -1034,6 +1026,24 @@ func (h *Handler) HandleDeleteEvent(w http.ResponseWriter, r *http.Request) {
 
 	qtx := h.eventQueries.WithTx(tx)
 
+	// EC-10: an event that has sold anything is archived, never deleted. The
+	// check runs on the transaction and is answered with the counts, so the
+	// caller can say how many orders and tickets stand in the way.
+	if ev, gErr := qtx.GetEventRaw(ctx, eventID); gErr == nil && ev.OrgID == orgID {
+		imp, iErr := qtx.EventDeleteImpact(ctx, eventID)
+		if iErr != nil {
+			h.logger.Error("event: delete guard failed", slog.String("error", iErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"event.delete_failed", "failed to delete event", r,
+			))
+			return
+		}
+		if eventHasSales(imp) {
+			writeEventHasPaidOrders(w, r, imp)
+			return
+		}
+	}
+
 	deleted, err := qtx.SoftDeleteEvent(ctx, eventID, orgID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -1080,6 +1090,9 @@ func (h *Handler) HandleDeleteEvent(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+
+	// A site that carries the event re-reads the catalog and finds it gone.
+	h.notifyCatalogChange(ctx, EventUpdatedEventType, deleted.ID.String(), orgID.String(), nil)
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"event":   eventFromRow(deleted),
