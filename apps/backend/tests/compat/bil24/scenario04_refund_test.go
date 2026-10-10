@@ -399,7 +399,8 @@ func sc4Seed(t *testing.T, st *harnessState, count int, unitPrice int64, buyerEm
 		allTickets := append(append([]uuid.UUID{}, fx.TicketIDs...), fTicketID)
 		// tickets.refund_id and refunds.ticket_id point at each other.
 		_, _ = st.Pool.Exec(c, `UPDATE tickets SET refund_id = NULL WHERE id = ANY($1)`, allTickets)
-		_, _ = st.Pool.Exec(c, `DELETE FROM refunds WHERE ticket_id = ANY($1)`, allTickets)
+		// refunds.cancelled_ticket_id (0138) references tickets too.
+		_, _ = st.Pool.Exec(c, `DELETE FROM refunds WHERE ticket_id = ANY($1) OR cancelled_ticket_id = ANY($1)`, allTickets)
 		_, _ = st.Pool.Exec(c, `DELETE FROM tickets WHERE id = ANY($1)`, allTickets)
 		_, _ = st.Pool.Exec(c, `DELETE FROM orders WHERE id = ANY($1)`,
 			[]uuid.UUID{fx.OrderID, fOrderID})
