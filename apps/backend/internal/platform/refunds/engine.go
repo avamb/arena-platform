@@ -210,6 +210,7 @@ type Engine struct {
 // repair pass (which then also has none) — only tests do that.
 func New(o Options) *Engine {
 	if err := o.Validate(); err != nil {
+		// allow:panic: boot-time configuration guard; the timing options are code constants, and unsafe ones could double-refund.
 		panic(err)
 	}
 	if o.Logger == nil {
