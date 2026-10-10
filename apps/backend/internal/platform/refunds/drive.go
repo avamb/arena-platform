@@ -111,6 +111,7 @@ func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, erro
 		r      Refund
 		pay    Payment
 		parked bool
+		handed *Refund
 	)
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
 		var piID *uuid.UUID
@@ -142,9 +143,9 @@ func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, erro
 		if pay, err = getPayment(ctx, tx, *piID); err != nil {
 			return err
 		}
-		if p, err := e.parkOverBudget(ctx, tx, id, pay); err != nil || p != nil {
+		if p, h, err := e.parkOverBudget(ctx, tx, id, pay); err != nil || p != nil {
 			if p != nil {
-				r, parked = *p, true
+				r, parked, handed = *p, true, h
 			}
 			return err // the park commits
 		}
@@ -168,6 +169,15 @@ func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, erro
 	})
 	if err == nil && parked {
 		e.logReview(r)
+		if handed != nil {
+			// The refund that took the cancellation over settles now; the
+			// sweep's repair finishes whatever this does not (M-2).
+			e.logger.Info("refunds: ticket cancellation handed over to the accepted refund",
+				"refund_id", handed.ID.String(), "from_refund_id", r.ID.String())
+			sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), e.callTimeout)
+			e.settle(sctx, *handed, pay)
+			cancel()
+		}
 		return r, pay, ErrNotClaimable
 	}
 	return r, pay, err
@@ -182,51 +192,64 @@ func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, erro
 // no provider refund id, no call in flight) that would push the live
 // refunds of its payment or ticket past what was paid is parked in
 // manual_review with an alert instead of being sent. It returns the parked
-// row, or nil when the refund is within budget or not waiting.
-func (e *Engine) parkOverBudget(ctx context.Context, tx pgx.Tx, id uuid.UUID, pay Payment) (*Refund, error) {
+// row, or nil when the refund is within budget or not waiting, and the
+// refund the ticket's cancellation was handed over to (handover.go), if any.
+func (e *Engine) parkOverBudget(ctx context.Context, tx pgx.Tx, id uuid.UUID, pay Payment) (*Refund, *Refund, error) {
 	cur, err := getRefund(ctx, tx, id, true)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	if cur.State != StateProviderPending || cur.ProviderRefundID != nil || cur.Provider == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	over, err := overBudget(ctx, tx, cur, pay)
 	if err != nil || !over {
-		return nil, err
+		return nil, nil, err
 	}
 	// A refund that was never sent cannot have moved any money: it stops
 	// counting against the budget. One whose earlier call ended without an
 	// answer may have created the refund at the provider under its
 	// idempotency key: it keeps counting, under a code of its own (fifth
-	// review, M-1).
+	// review, M-1). A never-sent refund also gives its cancel_ticket up: it
+	// will never return money, so it must not keep the ticket's cancellation
+	// from the refund that did (M-2, handover.go).
 	code, reason := failureBudgetTaken, reasonBudgetTakenNeverSent
 	if cur.ProviderAttempts > 0 {
 		code, reason = failureBudgetAfterUnanswered, reasonBudgetAfterUnanswered
 	}
 	parked, err := scanRefund(tx.QueryRow(ctx, `UPDATE refunds SET state = 'manual_review',
 		failure_code = $3, failure_reason = $4,
+		cancel_ticket = CASE WHEN provider_attempts = 0 THEN false ELSE cancel_ticket END,
 		`+reviewAlertSQL+`, updated_at = now()
 		WHERE id = $1 AND settlement = 'provider' AND state = 'provider_pending' AND provider_refund_id IS NULL
 		  AND (provider_attempted_at IS NULL OR provider_attempted_at <= now() - $2::interval)
 		RETURNING `+refundColumns, id, intervalText(CallStaleAfter), code, reason))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil // a call is in flight; the claim below refuses it too
+		return nil, nil, nil // a call is in flight; the claim below refuses it too
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := e.writeAudit(ctx, tx, audit.Event{ActorType: "system", Action: "v1.refund.manual_review",
 		ResourceType: "refund", ResourceID: parked.ID.String(),
 		Metadata: map[string]any{"reason": code, "order_id": uuidString(parked.OrderID),
 			"amount": parked.Amount, "currency": parked.Currency, "provider": deref(parked.Provider),
 			"provider_attempts": parked.ProviderAttempts}}); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &parked, nil
+	handed, err := e.handOverCancellation(ctx, tx, parked, pay)
+	if err != nil {
+		return nil, nil, err
+	}
+	if handed != nil {
+		if parked, err = getRefund(ctx, tx, parked.ID, false); err != nil {
+			return nil, nil, err
+		}
+	}
+	return &parked, handed, nil
 }
 
 // Budget park codes and reasons (fourth review M-b, fifth review M-1).
@@ -492,13 +515,15 @@ func overBudget(ctx context.Context, tx pgx.Tx, cur Refund, pay Payment) (bool, 
 }
 
 // recordOverBudget parks a late acceptance that would exceed the payment or
-// the ticket: the provider id is kept, cancel_ticket is dropped (the other
-// refund owns the cancellation) and an alert is owed.
+// the ticket: the provider id is kept and an alert is owed. cancel_ticket is
+// dropped because the refund that took its place holds it; if that one is
+// then held back before it is ever sent, parkOverBudget hands the
+// cancellation back to this refund (fifth review, M-2, handover.go).
 func recordOverBudget(ctx context.Context, tx pgx.Tx, cur Refund, out callOutcome) (Refund, error) {
 	return scanRefund(tx.QueryRow(ctx, `UPDATE refunds SET state = 'manual_review', failed_at = NULL,
 		provider_refund_id = $2, provider_status = $3, cancel_ticket = false,
 		failure_code = 'late_acceptance_over_budget',
-		failure_reason = 'the provider accepted this refund after it had been marked failed, and another refund has since taken its amount: the buyer may have been refunded twice; check the provider dashboard',
+		failure_reason = 'the provider accepted this refund after it had been marked failed, and another refund has since been created for its amount. If that refund was sent too, the buyer may have been refunded twice; if it is held back before it is sent, this refund takes the ticket cancellation over. Until then the ticket is still valid; check the provider dashboard',
 		`+reviewAlertSQL+`, updated_at = now() WHERE id = $1 RETURNING `+refundColumns,
 		cur.ID, out.result.ProviderRefundID, string(out.result.Status)))
 }

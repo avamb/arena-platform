@@ -157,6 +157,21 @@ func TestEngine_ReplacementIsNotSentWhenALateAcceptanceTookItsMoney(t *testing.T
 	if got.State != refunds.StateManualReview || deref(got.FailureCode) != "budget_taken_by_another_refund" {
 		t.Fatalf("B = %s / %s; want parked for a human", got.State, deref(got.FailureCode))
 	}
+	// Fifth review, M-2: B was never sent, so A is the ONE refund of ticket
+	// 1 and its money really went back — A takes the cancellation over and
+	// the ticket stops admitting. B gives its cancellation up, so it blocks
+	// nothing.
+	aid := a.Refunds[0].ID
+	if st, link := f.ticketStatus(t, f.tickets[0]); st != "cancelled" || link == nil || *link != aid {
+		t.Fatalf("ticket 1 = %s link %v; want cancelled through A, whose money went back", st, link)
+	}
+	if ra := f.refundState(t, aid); ra.State != refunds.StateSucceeded || !ra.CancelTicket || ra.FailureCode != nil {
+		t.Fatalf("A = %s cancel %v code %s; want succeeded and owning the cancellation", ra.State, ra.CancelTicket, deref(ra.FailureCode))
+	}
+	if rb := f.refundState(t, bid); rb.CancelTicket || strings.Contains(deref(rb.FailureReason), "still valid") {
+		t.Fatalf("B cancel %v reason %q; want no cancellation and a reason naming the refund that cancels the ticket",
+			rb.CancelTicket, deref(rb.FailureReason))
+	}
 	n := &recordingNotifier{}
 	if _, err := e.Sweep(ctx, time.Now(), n); err != nil {
 		t.Fatal(err)
@@ -164,6 +179,9 @@ func TestEngine_ReplacementIsNotSentWhenALateAcceptanceTookItsMoney(t *testing.T
 	joined := strings.Join(n.texts, "\n")
 	if !strings.Contains(joined, bid.String()) || !strings.Contains(joined, "budget_taken_by_another_refund") {
 		t.Fatalf("alerts = %v; want one about B", n.texts)
+	}
+	if !strings.Contains(joined, aid.String()) || !strings.Contains(joined, "accepted by the provider late") {
+		t.Fatalf("alerts = %v; want the follow-up that A was accepted late and cancels its ticket", n.texts)
 	}
 	// An ordinary second refund of the OTHER ticket is unaffected.
 	other, err := e.CreateBatch(ctx, f.batch("k-other", true, refunds.Item{TicketID: f.tickets[1]}))

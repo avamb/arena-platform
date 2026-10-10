@@ -91,4 +91,9 @@ func TestEngine_AttemptedRefundParkedForBudgetKeepsCounting(t *testing.T) {
 	if m.callCount() != 2 {
 		t.Fatalf("provider calls = %d after the refused batch", m.callCount())
 	}
+	// Nobody knows whether B's money went back: the ticket stays valid for
+	// a person to decide, and B's reason says so.
+	if st, _ := f.ticketStatus(t, f.tickets[0]); st != "active" || !strings.Contains(deref(b.FailureReason), "still valid") {
+		t.Fatalf("ticket 1 = %s, B reason %q; want the ticket left for a person", st, deref(b.FailureReason))
+	}
 }
