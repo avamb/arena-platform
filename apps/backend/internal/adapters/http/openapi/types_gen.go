@@ -8347,6 +8347,33 @@ type OrderPaymentSummary struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// OrderResendTicketsRequest Body of the resend-tickets route. Every field is optional; an empty body
+// sends the tickets to the order's own address.
+type OrderResendTicketsRequest struct {
+	// Email A one-time address for this resend. It is stored on the delivery task
+	// for 24 hours and never changes the order's buyer e-mail. An empty
+	// string or null means "the order's own address".
+	Email *string `json:"email"`
+}
+
+// OrderResendTicketsResponse What the resend queued.
+type OrderResendTicketsResponse struct {
+	// DifferentAddress True when the letter goes to a one-time address that is not the order's own.
+	DifferentAddress bool `json:"different_address"`
+
+	// ExpiresAt When the one-time address stops being valid (24 hours after the request). Null for the order's own address.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// OrderId UUID of the order.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// QueuedTickets How many active tickets were queued. Refunded and cancelled tickets are not sent.
+	QueuedTickets int `json:"queued_tickets"`
+
+	// RecipientMasked The address the letter goes to with most characters hidden, such as `a***@e******.com`.
+	RecipientMasked string `json:"recipient_masked"`
+}
+
 // OrderSummary One order, as returned by both the org-scoped orders list and the
 // `order` fields common to the detail endpoint (feature #489, W1-A6d,
 // spec §14.2).
@@ -14257,6 +14284,9 @@ type RevokeOrganizationMembershipJSONRequestBody = RevokeMembershipRequest
 
 // PostV1OrganizationsOrgIdOrdersIdCancelJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersIdCancel for application/json ContentType.
 type PostV1OrganizationsOrgIdOrdersIdCancelJSONRequestBody PostV1OrganizationsOrgIdOrdersIdCancelJSONBody
+
+// PostV1OrganizationsOrgIdOrdersOrderIdResendTicketsJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersOrderIdResendTickets for application/json ContentType.
+type PostV1OrganizationsOrgIdOrdersOrderIdResendTicketsJSONRequestBody = OrderResendTicketsRequest
 
 // CreatePaymentProviderConfigJSONRequestBody defines body for CreatePaymentProviderConfig for application/json ContentType.
 type CreatePaymentProviderConfigJSONRequestBody = CreatePaymentProviderConfigRequest

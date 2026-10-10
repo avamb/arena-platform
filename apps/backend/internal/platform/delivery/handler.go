@@ -100,6 +100,13 @@ type Payload struct {
 	// purchase never stated a language (a gateway sale, or a ticket issued
 	// before 0105) and the renderer falls back to English.
 	Locale string `json:"locale,omitempty"`
+	// RecipientExpiresAt is set by the operator "resend tickets to another
+	// address" route (EC-13): the delivery_jobs row then holds a one-time
+	// address that is NOT the order's, and this is the moment after which the
+	// worker must not mail it any more. A job that starts later — a long
+	// outage, a retry — is skipped instead of sending a buyer's tickets to an
+	// address somebody typed a day ago. nil means the job has no deadline.
+	RecipientExpiresAt *time.Time `json:"recipient_expires_at,omitempty"`
 	// EventName, SessionStart, SessionTZ, VenueName, VenueAddress,
 	// VenueCity, TierName, HolderName, TicketNumber, OrderNumber,
 	// PriceMinor/Currency and PosterMediaID are optional presentation
@@ -395,6 +402,20 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				slog.String("delivery_job_id", deliveryJobID.String()),
 				slog.String("status", currentStatus),
 			)
+			return nil
+		}
+
+		// ── 4b. Guard: a one-time recipient address that has expired ─────────
+		// (EC-13) The operator chose an address for ONE resend; once its
+		// deadline has passed the job is skipped, never sent to a stale address.
+		if p.RecipientExpiresAt != nil && time.Now().After(*p.RecipientExpiresAt) {
+			logger.Info("delivery: one-time recipient address expired; skipping",
+				slog.String("ticket_id", ticketID.String()),
+			)
+			if opts.DeliveryJobQueries != nil && deliveryJobID != uuid.Nil && currentStatus == StatusPending {
+				reason := "one-time recipient address expired before delivery"
+				_, _ = opts.DeliveryJobQueries.UpdateDeliveryJobStatus(ctx, deliveryJobID, StatusSkipped, &reason)
+			}
 			return nil
 		}
 
