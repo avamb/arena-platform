@@ -54,15 +54,15 @@ RETURNING id, org_id, session_id, tier_id, qty, recipients, batch_id, status, is
 -- Inserts a ticket row sourced from a complimentary issuance.
 -- Uses complimentary_issuance_id instead of checkout_session_id (see migration 0036
 -- which makes checkout_session_id nullable and adds the complimentary_issuance_id FK).
-INSERT INTO tickets (complimentary_issuance_id, session_id, tier_id, holder_email, seat_key)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO tickets (complimentary_issuance_id, session_id, tier_id, holder_email, seat_key, holder_name)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, complimentary_issuance_id, session_id, tier_id, holder_email,
-          status, issued_at, created_at, updated_at, seat_key;
+          status, issued_at, created_at, updated_at, seat_key, system_ticket_id, holder_name;
 
 -- name: ListTicketsByComplimentaryIssuance :many
 -- Lists all tickets for a complimentary issuance (idempotency check + read).
 SELECT id, complimentary_issuance_id, session_id, tier_id, holder_email,
-       status, issued_at, created_at, updated_at, seat_key
+       status, issued_at, created_at, updated_at, seat_key, system_ticket_id, holder_name
 FROM   tickets
 WHERE  complimentary_issuance_id = $1
 ORDER BY issued_at ASC, id ASC;
@@ -70,13 +70,14 @@ ORDER BY issued_at ASC, id ASC;
 -- name: HasScannedTicketsForIssuance :one
 -- Returns true if any ticket belonging to the issuance has a scanned barcode.
 -- Used during revocation to detect when human review is required.
--- A barcode is considered scanned when its status column equals 'scanned'.
+-- A ticket is used when a barcode of it has status 'scanned' or it carries
+-- used_at - the same definition as the paged invitations list (EC-12).
 SELECT EXISTS (
     SELECT 1
-    FROM   barcodes b
-    JOIN   tickets  t ON t.id = b.ticket_id
+    FROM   tickets t
     WHERE  t.complimentary_issuance_id = $1
-      AND  b.status = 'scanned'
+      AND (t.used_at IS NOT NULL OR EXISTS (
+               SELECT 1 FROM barcodes b WHERE b.ticket_id = t.id AND b.status = 'scanned'))
 ) AS has_scanned;
 
 -- name: RevokeComplimentaryTickets :many
@@ -88,4 +89,4 @@ SET    status     = 'revoked',
        updated_at = now()
 WHERE  complimentary_issuance_id = $1
 RETURNING id, complimentary_issuance_id, session_id, tier_id, holder_email,
-          status, issued_at, created_at, updated_at, seat_key;
+          status, issued_at, created_at, updated_at, seat_key, system_ticket_id, holder_name;

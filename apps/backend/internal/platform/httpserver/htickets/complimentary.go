@@ -63,9 +63,12 @@ type createComplimentaryIssuanceRequest struct {
 	TierID     *string  `json:"tier_id"`
 	Qty        int32    `json:"qty"`
 	Recipients []string `json:"recipients"`
-	BatchID    string   `json:"batch_id"`
-	IssuedBy   *string  `json:"issued_by"`
-	Notes      *string  `json:"notes"`
+	// RecipientNames[i] is the guest name of Recipients[i] (EC-12, migration
+	// 0136); shorter than Recipients or empty entries mean "no name".
+	RecipientNames []string `json:"recipient_names"`
+	BatchID        string   `json:"batch_id"`
+	IssuedBy       *string  `json:"issued_by"`
+	Notes          *string  `json:"notes"`
 }
 
 // HandleCreateComplimentaryIssuance serves POST /v1/organizations/{org_id}/complimentary.
@@ -128,6 +131,13 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 	if req.Qty <= 0 {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"complimentary.invalid_qty", "qty must be a positive integer", r,
+		))
+		return
+	}
+
+	if verr := validateComplimentaryRequest(&req); verr != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			verr.code, verr.message, r, verr.details,
 		))
 		return
 	}
@@ -322,10 +332,14 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 	tickets := make([]gen.ComplimentaryTicketRow, 0, req.Qty)
 	effectiveQty := req.Qty
 	for i := int32(0); i < effectiveQty; i++ {
-		var holderEmail *string
+		var holderEmail, holderName *string
 		if i < int32(len(recipients)) && recipients[i] != "" { //nolint:gosec // recipients length bounded by request Qty (int32) above
 			e := recipients[i]
 			holderEmail = &e
+		}
+		if int(i) < len(req.RecipientNames) && strings.TrimSpace(req.RecipientNames[i]) != "" {
+			n := strings.TrimSpace(req.RecipientNames[i])
+			holderName = &n
 		}
 		var seatKey *string
 		if int(i) < len(placeKeys) {
@@ -333,7 +347,7 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 			seatKey = &k
 		}
 		t, err := complQ.InsertComplimentaryTicket(
-			ctx, issuance.ID, sessionID, tierID, holderEmail, seatKey,
+			ctx, issuance.ID, sessionID, tierID, holderEmail, seatKey, holderName,
 		)
 		if err != nil {
 			h.logger.Error("complimentary: insert ticket failed",
@@ -386,51 +400,6 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 		"issuance":          complimentaryIssuanceFromRow(issuance),
 		"tickets":           complimentaryTicketsFromRows(tickets),
 		"idempotent_replay": false,
-	})
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /v1/organizations/{org_id}/complimentary
-// ─────────────────────────────────────────────────────────────────────────────
-
-// HandleListComplimentaryIssuances serves GET /v1/organizations/{org_id}/complimentary.
-// Returns all complimentary issuances for the given org, newest first.
-func (h *Handler) HandleListComplimentaryIssuances(w http.ResponseWriter, r *http.Request) {
-	if h.complimentaryQueries == nil {
-		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
-		))
-		return
-	}
-
-	orgIDStr := chi.URLParam(r, "org_id")
-	orgID, err := uuid.Parse(orgIDStr)
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			"complimentary.invalid_org_id", "org_id must be a valid UUID", r,
-		))
-		return
-	}
-
-	ctx := r.Context()
-	rows, err := h.complimentaryQueries.ListComplimentaryIssuancesByOrg(ctx, orgID)
-	if err != nil {
-		h.logger.Error("complimentary: list failed",
-			slog.String("error", err.Error()),
-		)
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"complimentary.list_failed", "failed to list complimentary issuances", r,
-		))
-		return
-	}
-
-	issuances := make([]map[string]any, 0, len(rows))
-	for _, row := range rows {
-		issuances = append(issuances, complimentaryIssuanceFromRow(row))
-	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"issuances": issuances,
-		"total":     len(issuances),
 	})
 }
 
@@ -525,6 +494,8 @@ func complimentaryTicketsFromRows(rows []gen.ComplimentaryTicketRow) []map[strin
 			"session_id":                t.SessionID,
 			"tier_id":                   t.TierID,
 			"holder_email":              t.HolderEmail,
+			"holder_name":               t.HolderName,
+			"system_ticket_id":          t.SystemTicketID,
 			"status":                    t.Status,
 			"issued_at":                 t.IssuedAt,
 			"created_at":                t.CreatedAt,
@@ -630,12 +601,13 @@ func (h *Handler) HandleRevokeComplimentaryIssuance(w http.ResponseWriter, r *ht
 		h.logger.Warn("complimentary.revoke: blocked by scanned ticket — manual_review",
 			slog.String("issuance_id", id.String()),
 		)
-		httputil.WriteJSON(w, http.StatusConflict, map[string]any{
-			"error":    "complimentary.scanned_ticket_requires_manual_review",
-			"message":  "one or more tickets have been scanned; issuance flagged for manual review",
-			"status":   "manual_review",
-			"issuance": complimentaryIssuanceFromRow(updated),
-		})
+		// The standard error envelope (error.code) so clients can branch on
+		// the code; the flagged issuance rides in error.details.
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+			"complimentary.scanned_ticket_requires_manual_review",
+			"one or more tickets have been scanned; issuance flagged for manual review", r,
+			map[string]any{"status": "manual_review", "issuance": complimentaryIssuanceFromRow(updated)},
+		))
 		return
 	}
 

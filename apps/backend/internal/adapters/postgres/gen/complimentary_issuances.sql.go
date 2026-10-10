@@ -78,6 +78,12 @@ type ComplimentaryTicketRow struct {
 	// SeatKey is non-nil when the comp ticket was issued against an
 	// assigned seat (AB-49: revocation must release it back to sale).
 	SeatKey *string `json:"seat_key"`
+	// SystemTicketID is tickets.system_ticket_id (migration 0088) - the
+	// number the guest and the organizer see instead of the UUID.
+	SystemTicketID int64 `json:"system_ticket_id"`
+	// HolderName is the guest's name typed on the invitation (migration
+	// 0136); nil when none was given.
+	HolderName *string `json:"holder_name"`
 }
 
 // scanComplimentaryTicketRow scans a single tickets row for complimentary issuances.
@@ -96,6 +102,8 @@ func scanComplimentaryTicketRow(row interface {
 		&r.CreatedAt,
 		&r.UpdatedAt,
 		&r.SeatKey,
+		&r.SystemTicketID,
+		&r.HolderName,
 	)
 	return r, err
 }
@@ -242,21 +250,23 @@ RETURNING id, org_id, session_id, tier_id, qty, recipients, batch_id, status, is
 // takes one of its category's places, and cancellation finds that place
 // back through the stamp (htickets.ReleaseCancelledTicketInventoryTx).
 // Nil for a session with no places behind the category.
+//
+// holderName is the guest's name typed on the invitation (migration 0136);
+// nil leaves the column NULL.
 func (q *Queries) InsertComplimentaryTicket(
 	ctx context.Context,
 	complimentaryIssuanceID uuid.UUID,
 	sessionID uuid.UUID,
 	tierID *uuid.UUID,
-	holderEmail *string,
-	seatKey *string,
+	holderEmail, seatKey, holderName *string,
 ) (ComplimentaryTicketRow, error) {
 	const sql = `
-INSERT INTO tickets (complimentary_issuance_id, session_id, tier_id, holder_email, seat_key)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO tickets (complimentary_issuance_id, session_id, tier_id, holder_email, seat_key, holder_name)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, complimentary_issuance_id, session_id, tier_id, holder_email,
-          status, issued_at, created_at, updated_at, seat_key`
+          status, issued_at, created_at, updated_at, seat_key, system_ticket_id, holder_name`
 	row := q.db.QueryRow(ctx, sql,
-		complimentaryIssuanceID, sessionID, tierID, holderEmail, seatKey,
+		complimentaryIssuanceID, sessionID, tierID, holderEmail, seatKey, holderName,
 	)
 	return scanComplimentaryTicketRow(row)
 }
@@ -274,7 +284,7 @@ func (q *Queries) ListTicketsByComplimentaryIssuance(
 ) ([]ComplimentaryTicketRow, error) {
 	const sql = `
 SELECT id, complimentary_issuance_id, session_id, tier_id, holder_email,
-       status, issued_at, created_at, updated_at, seat_key
+       status, issued_at, created_at, updated_at, seat_key, system_ticket_id, holder_name
 FROM   tickets
 WHERE  complimentary_issuance_id = $1
 ORDER BY issued_at ASC, id ASC`
@@ -300,7 +310,8 @@ ORDER BY issued_at ASC, id ASC`
 // ─────────────────────────────────────────────────────────────────────────────
 
 // HasScannedTicketsForIssuance returns true when at least one ticket belonging
-// to the complimentary issuance has a barcode with status='scanned'.
+// to the complimentary issuance has a barcode with status='scanned' or carries
+// used_at (the same definition of "used" as the invitations list).
 //
 // Used in the revocation flow to determine whether clean revocation is possible
 // (no scanned tickets) or whether the issuance must be queued for manual review
@@ -312,10 +323,10 @@ func (q *Queries) HasScannedTicketsForIssuance(
 	const sql = `
 SELECT EXISTS (
     SELECT 1
-    FROM   barcodes b
-    JOIN   tickets  t ON t.id = b.ticket_id
+    FROM   tickets t
     WHERE  t.complimentary_issuance_id = $1
-      AND  b.status = 'scanned'
+      AND (t.used_at IS NOT NULL OR EXISTS (
+               SELECT 1 FROM barcodes b WHERE b.ticket_id = t.id AND b.status = 'scanned'))
 ) AS has_scanned`
 	row := q.db.QueryRow(ctx, sql, complimentaryIssuanceID)
 	var hasScanned bool
@@ -343,7 +354,7 @@ SET    status     = 'revoked',
        updated_at = now()
 WHERE  complimentary_issuance_id = $1
 RETURNING id, complimentary_issuance_id, session_id, tier_id, holder_email,
-          status, issued_at, created_at, updated_at, seat_key`
+          status, issued_at, created_at, updated_at, seat_key, system_ticket_id, holder_name`
 	rows, err := q.db.Query(ctx, sql, complimentaryIssuanceID)
 	if err != nil {
 		return nil, err
