@@ -1,12 +1,14 @@
 package horders
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
 	"sort"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -20,10 +22,10 @@ import (
 //
 //	GET /v1/organizations/{org_id}/sessions/{session_id}/summary   (order.read)
 
-// placeCounts are the places of a session (or of one category) by status.
+// PlaceCounts are the places of a session (or of one category) by status.
 // SoldUpstream is the part of Sold that was sold in the system the session was
 // imported from: no ticket, order or money stands behind it in arena.
-type placeCounts struct {
+type PlaceCounts struct {
 	Total        int64 `json:"total"`
 	Available    int64 `json:"available"`
 	Held         int64 `json:"held"`
@@ -32,7 +34,7 @@ type placeCounts struct {
 	Unavailable  int64 `json:"unavailable"`
 }
 
-func (p *placeCounts) add(r gen.SessionSummaryPlacesRow) {
+func (p *PlaceCounts) add(r gen.SessionSummaryPlacesRow) {
 	p.Available += r.Available
 	p.Held += r.Held
 	p.Sold += r.Sold
@@ -41,7 +43,7 @@ func (p *placeCounts) add(r gen.SessionSummaryPlacesRow) {
 	p.Total += r.Available + r.Held + r.Sold + r.Unavailable
 }
 
-type summarySession struct {
+type SummarySession struct {
 	ID             string  `json:"id"`
 	EventID        string  `json:"event_id"`
 	OrgID          string  `json:"org_id"`
@@ -54,27 +56,27 @@ type summarySession struct {
 	VenueTimezone  *string `json:"venue_timezone"`
 }
 
-type summaryPlaces struct {
-	Seats placeCounts `json:"seats"`
-	GA    placeCounts `json:"ga"`
+type SummaryPlaces struct {
+	Seats PlaceCounts `json:"seats"`
+	GA    PlaceCounts `json:"ga"`
 }
 
-type summaryTier struct {
+type SummaryTier struct {
 	ID          string      `json:"id"`
 	Name        string      `json:"name"`
 	Kind        string      `json:"kind"`
 	PriceAmount int64       `json:"price_amount"`
 	Currency    string      `json:"currency"`
 	IsOpen      bool        `json:"is_open"`
-	Places      placeCounts `json:"places"`
+	Places      PlaceCounts `json:"places"`
 	PaidItems   int64       `json:"paid_items"`
 	PaidRevenue int64       `json:"paid_revenue"`
 }
 
-// summaryMoney is the bottom line of one currency, in minor units. Paid covers
+// SummaryMoney is the bottom line of one currency, in minor units. Paid covers
 // every order that was paid at some point (paid, partially_refunded,
 // refunded); Refunded counts succeeded refunds only; Net = Paid - Refunded.
-type summaryMoney struct {
+type SummaryMoney struct {
 	Currency      string `json:"currency"`
 	PaidOrders    int64  `json:"paid_orders"`
 	Paid          int64  `json:"paid"`
@@ -86,7 +88,7 @@ type summaryMoney struct {
 	Pending       int64  `json:"pending"`
 }
 
-type summaryOrders struct {
+type SummaryOrders struct {
 	Status   string `json:"status"`
 	Source   string `json:"source"`
 	Currency string `json:"currency"`
@@ -94,7 +96,7 @@ type summaryOrders struct {
 	Total    int64  `json:"total"`
 }
 
-type summaryRefunds struct {
+type SummaryRefunds struct {
 	Settlement string `json:"settlement"`
 	State      string `json:"state"`
 	Currency   string `json:"currency"`
@@ -102,8 +104,8 @@ type summaryRefunds struct {
 	Amount     int64  `json:"amount"`
 }
 
-// summaryPromo is one promo code's share of the session's paid orders.
-type summaryPromo struct {
+// SummaryPromo is one promo code's share of the session's paid orders.
+type SummaryPromo struct {
 	ID       string `json:"id"`
 	Code     string `json:"code"`
 	Currency string `json:"currency"`
@@ -111,15 +113,15 @@ type summaryPromo struct {
 	Discount int64  `json:"discount"`
 }
 
-type sessionSummary struct {
-	Session summarySession               `json:"session"`
-	Places  summaryPlaces                `json:"places"`
-	Tiers   []summaryTier                `json:"tiers"`
-	Money   []summaryMoney               `json:"money"`
-	Orders  []summaryOrders              `json:"orders"`
+type SessionSummary struct {
+	Session SummarySession               `json:"session"`
+	Places  SummaryPlaces                `json:"places"`
+	Tiers   []SummaryTier                `json:"tiers"`
+	Money   []SummaryMoney               `json:"money"`
+	Orders  []SummaryOrders              `json:"orders"`
 	Tickets gen.SessionSummaryTicketsRow `json:"tickets"`
-	Refunds []summaryRefunds             `json:"refunds"`
-	Promos  []summaryPromo               `json:"promos"`
+	Refunds []SummaryRefunds             `json:"refunds"`
+	Promos  []SummaryPromo               `json:"promos"`
 }
 
 // orderWasPaid reports whether an order of this status took the buyer's money
@@ -128,9 +130,9 @@ func orderWasPaid(status string) bool {
 	return status == "paid" || status == "partially_refunded" || status == "refunded"
 }
 
-// buildSessionSummary folds the raw aggregates into the response. Pure, so
+// BuildSessionSummary folds the raw aggregates into the response. Pure, so
 // the arithmetic is unit-tested without a database.
-func buildSessionSummary(
+func BuildSessionSummary(
 	header gen.SessionSummaryHeaderRow,
 	places []gen.SessionSummaryPlacesRow,
 	tiers []gen.SessionSummaryTierRow,
@@ -138,9 +140,9 @@ func buildSessionSummary(
 	tickets gen.SessionSummaryTicketsRow,
 	refunds []gen.SessionSummaryRefundsRow,
 	promos []gen.SessionSummaryPromoRow,
-) sessionSummary {
-	out := sessionSummary{
-		Session: summarySession{
+) SessionSummary {
+	out := SessionSummary{
+		Session: SummarySession{
 			ID:             header.ID.String(),
 			EventID:        header.EventID.String(),
 			OrgID:          header.OrgID.String(),
@@ -152,15 +154,15 @@ func buildSessionSummary(
 			VenueName:      header.VenueName,
 			VenueTimezone:  header.VenueTimezone,
 		},
-		Tiers:   make([]summaryTier, 0, len(tiers)),
-		Money:   []summaryMoney{},
-		Orders:  make([]summaryOrders, 0, len(orders)),
+		Tiers:   make([]SummaryTier, 0, len(tiers)),
+		Money:   []SummaryMoney{},
+		Orders:  make([]SummaryOrders, 0, len(orders)),
 		Tickets: tickets,
-		Refunds: make([]summaryRefunds, 0, len(refunds)),
-		Promos:  make([]summaryPromo, 0, len(promos)),
+		Refunds: make([]SummaryRefunds, 0, len(refunds)),
+		Promos:  make([]SummaryPromo, 0, len(promos)),
 	}
 	for _, p := range promos {
-		out.Promos = append(out.Promos, summaryPromo{
+		out.Promos = append(out.Promos, SummaryPromo{
 			ID: p.PromoCodeID.String(), Code: p.Code, Currency: p.Currency,
 			Orders: p.Orders, Discount: p.Discount,
 		})
@@ -174,7 +176,7 @@ func buildSessionSummary(
 	})
 
 	type tierPlaces struct {
-		counts   placeCounts
+		counts   PlaceCounts
 		hasSeats bool
 	}
 	byTier := map[string]*tierPlaces{}
@@ -199,7 +201,7 @@ func buildSessionSummary(
 	}
 
 	for _, t := range tiers {
-		st := summaryTier{
+		st := SummaryTier{
 			ID:          t.ID.String(),
 			Name:        t.Name,
 			Kind:        "ga",
@@ -218,17 +220,17 @@ func buildSessionSummary(
 		out.Tiers = append(out.Tiers, st)
 	}
 
-	money := map[string]*summaryMoney{}
-	moneyFor := func(currency string) *summaryMoney {
+	money := map[string]*SummaryMoney{}
+	moneyFor := func(currency string) *SummaryMoney {
 		m := money[currency]
 		if m == nil {
-			m = &summaryMoney{Currency: currency}
+			m = &SummaryMoney{Currency: currency}
 			money[currency] = m
 		}
 		return m
 	}
 	for _, o := range orders {
-		out.Orders = append(out.Orders, summaryOrders{
+		out.Orders = append(out.Orders, SummaryOrders{
 			Status: o.Status, Source: o.Source, Currency: o.Currency,
 			Orders: o.Orders, Total: o.Total,
 		})
@@ -245,7 +247,7 @@ func buildSessionSummary(
 		}
 	}
 	for _, r := range refunds {
-		out.Refunds = append(out.Refunds, summaryRefunds{
+		out.Refunds = append(out.Refunds, SummaryRefunds{
 			Settlement: r.Settlement, State: r.State, Currency: r.Currency,
 			Refunds: r.Refunds, Amount: r.Amount,
 		})
@@ -300,53 +302,55 @@ func (h *Handler) HandleSessionSummary(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	header, err := h.queries.GetSessionSummaryHeader(ctx, sessionID, orgID)
+	summary, part, err := LoadSessionSummary(ctx, h.queries, sessionID, orgID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		httputil.WriteJSON(w, http.StatusNotFound,
 			httputil.ErrorEnvelope("session.not_found", "session not found", r))
 		return
 	}
-	fail := func(what string, err error) {
+	if err != nil {
 		h.logger.Error("horders: session summary failed",
-			slog.String("part", what), slog.Any("error", err))
+			slog.String("part", part), slog.Any("error", err))
 		httputil.WriteJSON(w, http.StatusInternalServerError,
 			httputil.ErrorEnvelope("orders.internal", "failed to build the session summary", r))
-	}
-	if err != nil {
-		fail("header", err)
 		return
 	}
-	places, err := h.queries.ListSessionSummaryPlaces(ctx, sessionID)
-	if err != nil {
-		fail("places", err)
-		return
-	}
-	tiers, err := h.queries.ListSessionSummaryTiers(ctx, sessionID)
-	if err != nil {
-		fail("tiers", err)
-		return
-	}
-	orders, err := h.queries.ListSessionSummaryOrders(ctx, sessionID)
-	if err != nil {
-		fail("orders", err)
-		return
-	}
-	tickets, err := h.queries.GetSessionSummaryTickets(ctx, sessionID)
-	if err != nil {
-		fail("tickets", err)
-		return
-	}
-	refunds, err := h.queries.ListSessionSummaryRefunds(ctx, sessionID)
-	if err != nil {
-		fail("refunds", err)
-		return
-	}
-	promos, err := h.queries.ListSessionSummaryPromos(ctx, sessionID)
-	if err != nil {
-		fail("promos", err)
-		return
-	}
+	httputil.WriteJSON(w, http.StatusOK, summary)
+}
 
-	httputil.WriteJSON(w, http.StatusOK,
-		buildSessionSummary(header, places, tiers, orders, tickets, refunds, promos))
+// LoadSessionSummary reads every aggregate of one session, scoped to the
+// organization, and folds them with BuildSessionSummary. It is shared by the
+// JSON route and the CSV export (hexport), so the two can never disagree. A
+// session that is not this organization's answers pgx.ErrNoRows; any other
+// error names the failing part for the log.
+func LoadSessionSummary(ctx context.Context, q *gen.Queries, sessionID, orgID uuid.UUID) (SessionSummary, string, error) {
+	header, err := q.GetSessionSummaryHeader(ctx, sessionID, orgID)
+	if err != nil {
+		return SessionSummary{}, "header", err
+	}
+	places, err := q.ListSessionSummaryPlaces(ctx, sessionID)
+	if err != nil {
+		return SessionSummary{}, "places", err
+	}
+	tiers, err := q.ListSessionSummaryTiers(ctx, sessionID)
+	if err != nil {
+		return SessionSummary{}, "tiers", err
+	}
+	orders, err := q.ListSessionSummaryOrders(ctx, sessionID)
+	if err != nil {
+		return SessionSummary{}, "orders", err
+	}
+	tickets, err := q.GetSessionSummaryTickets(ctx, sessionID)
+	if err != nil {
+		return SessionSummary{}, "tickets", err
+	}
+	refunds, err := q.ListSessionSummaryRefunds(ctx, sessionID)
+	if err != nil {
+		return SessionSummary{}, "refunds", err
+	}
+	promos, err := q.ListSessionSummaryPromos(ctx, sessionID)
+	if err != nil {
+		return SessionSummary{}, "promos", err
+	}
+	return BuildSessionSummary(header, places, tiers, orders, tickets, refunds, promos), "", nil
 }
