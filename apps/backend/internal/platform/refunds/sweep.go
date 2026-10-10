@@ -22,9 +22,10 @@
 //     PendingParkAfter; a refund the provider later reports failed already
 //     cost its ticket, so it goes to manual_review ("money did not go
 //     back"), never silently to failed.
-//  4. REPAIR: an accepted refund whose ticket is still active (a crash
-//     between the outcome commit and the cancellation) gets its ticket
-//     cancelled; after maxRepairAttempts failures it is parked.
+//  4. REPAIR: an accepted refund whose settlement is unfinished (no
+//     settled_at: a crash between the outcome commit and the cancellation,
+//     a failed cancellation, order projection or publish) is settled
+//     again; after maxRepairAttempts failures it is parked.
 //  5. ALERTS: every engine refund that owes an ops alert (alert_due_at: it
 //     entered manual_review, or a late acceptance revived a failed refund)
 //     is announced once — ids, amount and the failure code, never buyer
@@ -48,6 +49,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"time"
 
@@ -57,6 +59,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/opsalert"
 )
 
 // JobType is the worker_jobs.job_type of the sweep.
@@ -93,6 +96,11 @@ const (
 	// sends it; a pass that died mid-send releases it this way.
 	alertLease        = 2 * time.Minute
 	maxRepairAttempts = 10
+	// MaxAlertAttempts: an owed alert Telegram refused this many times, and
+	// owed for longer than alertGiveUpAfter, is given up (logged), so a
+	// message Telegram can never accept does not cost a call every pass.
+	MaxAlertAttempts  = 20
+	alertGiveUpAfter  = 24 * time.Hour
 	sweepBatch        = 50
 	lookupsPerPayment = 3
 )
@@ -349,24 +357,24 @@ func (e *Engine) parkStuck(ctx context.Context, now time.Time) (int, error) {
 	return parked, nil
 }
 
-// repairWhere selects accepted refunds whose SCOPE (settle.go refundScope)
-// still has an active ticket they are due to cancel (alias r) — for an
-// order-level refund, any active ticket of the order no other live refund
-// owns, however many it cancelled already (third review, H1).
+// repairWhere selects accepted refunds (alias r) whose after-acceptance
+// steps are not all done: settled_at is stamped only when every due ticket
+// cancellation of the refund's scope went through, the order projection is
+// in place and — once it succeeded — the v1.ticket.refunded publish is
+// claimed (settle.go finish). Which tickets a refund covers is decided by
+// refundScope alone; this query keeps no second copy of those rules (fourth
+// review, H-1 and M-a: a copy drifted, and a refund whose projection or
+// publish failed after its tickets were cancelled was never retried).
 // $1 = now - CallStaleAfter, $2 = scope.
-const repairWhere = `r.settlement = 'provider' AND r.provider IS NOT NULL
+const repairWhere = `r.settlement = 'provider' AND r.provider IS NOT NULL AND r.settled_at IS NULL
 	AND (r.state = 'succeeded' OR (r.state = 'provider_pending' AND r.provider_refund_id IS NOT NULL))
-	AND ((r.cancel_ticket AND EXISTS (SELECT 1 FROM tickets t WHERE t.id = r.ticket_id AND t.status = 'active'))
-	     OR (r.ticket_id IS NULL AND EXISTS (
-	          SELECT 1 FROM payment_intents p JOIN tickets t ON t.checkout_session_id = p.checkout_session_id
-	          WHERE p.id = r.payment_intent_id AND r.amount >= p.amount AND t.status = 'active' AND t.refund_id IS NULL
-	            AND NOT EXISTS (SELECT 1 FROM refunds o WHERE o.ticket_id = t.id AND o.id <> r.id
-	                              AND o.cancel_ticket AND o.state NOT IN ('failed', 'rejected')))))
 	AND COALESCE(r.repair_attempted_at, r.updated_at) <= $1
 	AND (cardinality($2::uuid[]) = 0 OR r.org_id = ANY($2::uuid[]))`
 
-// repair cancels the tickets of accepted refunds a crash left active, with
-// a bounded number of attempts per refund. Each attempt is decided and
+// repair finishes accepted refunds whose settlement a crash, a failure or an
+// expired deadline left unfinished (a ticket still active, the order not
+// projected, the publish not claimed), with a bounded number of attempts
+// per refund. Each attempt is decided and
 // counted under the payment's advisory lock (second review, item 7); the
 // cancellation itself runs in the canceller's own transaction afterwards,
 // and the v1.ticket.refunded publish is claimed once (settle.go publish).
@@ -414,15 +422,10 @@ func (e *Engine) repair(ctx context.Context, now time.Time) (int, error) {
 			}
 			continue
 		}
-		ticketIDs, ok := e.cancelTickets(ctx, r, pay)
-		e.projectOrder(ctx, r, pay)
-		if ok {
+		// The same steps as the first settle; v1.ticket.refunded is published
+		// at most once (publish claims it).
+		if e.finish(ctx, r, pay) {
 			repaired++
-			if r.State == StateSucceeded {
-				// The first settle never got this far: v1.ticket.refunded is
-				// published here — once, publish claims it.
-				e.publish(ctx, r, pay, ticketIDs)
-			}
 		}
 	}
 	return repaired, nil
@@ -438,7 +441,7 @@ func (e *Engine) parkRepair(ctx context.Context, r Refund) error {
 		}
 		u, err := scanRefund(tx.QueryRow(ctx, `UPDATE refunds SET state = 'manual_review', updated_at = now(), `+reviewAlertSQL+`,
 			failure_code = 'ticket_cancellation_failed',
-			failure_reason = 'the provider returned the money but the ticket could not be cancelled; cancel it by hand'
+			failure_reason = 'the provider returned the money but finishing the refund kept failing (cancelling its tickets, moving the order, or announcing the refund to the sites); check the tickets and the order by hand'
 			WHERE id = $1 AND state IN ('succeeded', 'provider_pending') RETURNING `+refundColumns, r.ID))
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
@@ -460,75 +463,155 @@ func (e *Engine) parkRepair(ctx context.Context, r Refund) error {
 
 // alertReviews sends one ops alert per engine refund that owes one
 // (alert_due_at), at most alertsPerPass per pass. Ids, amount, provider and
-// code only — never the buyer. Each alert is leased first (alert_lease_until,
-// so a concurrent pass skips it), sent, and only a CONFIRMED delivery clears
-// alert_due_at; a failed delivery releases the lease and the next pass tries
-// again (third review, M1). The first failure ends the section: Telegram is
-// down, and the rest wait for the next pass.
+// code only — never the buyer — with every value HTML-escaped (Telegram's
+// HTML parse mode refuses a stray < or &). Each alert is leased first
+// (alert_lease_until, so a concurrent pass skips it), sent, and only a
+// CONFIRMED delivery clears alert_due_at (third review, M1). A failed
+// delivery counts against its row (alert_attempts) and the leases are
+// released; rows with fewer failures go first, so a message Telegram keeps
+// refusing never blocks the alerts behind it, and one refused
+// MaxAlertAttempts times and owed for longer than alertGiveUpAfter is given
+// up with an error log (fourth review, LOW 2). The first failure still ends
+// the section: Telegram may be down, and the rest wait for the next pass.
 func (e *Engine) alertReviews(ctx context.Context, n Notifier) (int, error) {
-	var rows []Refund
-	var due []time.Time
+	var (
+		rows  []Refund
+		due   []time.Time
+		fails []int
+	)
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
 		res, err := tx.Query(ctx, `UPDATE refunds SET alert_lease_until = now() + $2::interval
 			WHERE id IN (SELECT id FROM refunds
 			             WHERE settlement = 'provider' AND provider IS NOT NULL AND alert_due_at IS NOT NULL
 			               AND (alert_lease_until IS NULL OR alert_lease_until < now())
 			               AND (cardinality($1::uuid[]) = 0 OR org_id = ANY($1::uuid[]))
-			             ORDER BY alert_due_at LIMIT `+strconv.Itoa(alertsPerPass)+` FOR UPDATE SKIP LOCKED)
-			RETURNING alert_due_at, `+refundColumns, e.scopeOrgs(), intervalText(alertLease))
+			             ORDER BY alert_attempts, alert_due_at LIMIT `+strconv.Itoa(alertsPerPass)+` FOR UPDATE SKIP LOCKED)
+			RETURNING alert_attempts, alert_due_at, `+refundColumns, e.scopeOrgs(), intervalText(alertLease))
 		if err != nil {
 			return err
 		}
 		defer res.Close()
 		for res.Next() {
-			var at time.Time
-			r, err := scanRefundWith(res, &at)
+			var (
+				at   time.Time
+				fail int
+			)
+			r, err := scanRefundWith(res, &fail, &at)
 			if err != nil {
 				return err
 			}
-			rows, due = append(rows, r), append(due, at)
+			rows, due, fails = append(rows, r), append(due, at), append(fails, fail)
 		}
 		return res.Err()
 	})
 	if err != nil {
 		return 0, err
 	}
-	sent := 0
-	for i, r := range rows {
-		var text string
-		if r.State == StateManualReview {
-			text = fmt.Sprintf("Refund %s (%d %s via %s) needs manual review: %s. Order %s.",
-				r.ID, r.Amount, r.Currency, deref(r.Provider), deref(r.FailureCode), uuidString(r.OrderID))
-		} else {
-			text = fmt.Sprintf("Refund %s (%d %s via %s) was accepted by the provider late, after it had been parked or marked failed: accepted_late. Its ticket is cancelled; check for a manual duplicate refund. Order %s.",
-				r.ID, r.Amount, r.Currency, deref(r.Provider), uuidString(r.OrderID))
+	// RETURNING does not keep the subquery's order: fewest failures first,
+	// then the oldest.
+	order := make([]int, len(rows))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		x, y := order[a], order[b]
+		if fails[x] != fails[y] {
+			return fails[x] < fails[y]
 		}
-		if derr := deliver(ctx, n, text); derr != nil {
+		return due[x].Before(due[y])
+	})
+	sent := 0
+	for k, i := range order {
+		r := rows[i]
+		if derr := deliver(ctx, n, alertText(r)); derr != nil {
 			e.logger.Warn("refunds: ops alert not delivered; the next pass retries it", "refund_id", r.ID.String(), "error", derr.Error())
-			e.releaseAlerts(ctx, rows[i:])
+			if ctx.Err() == nil {
+				// The section's own deadline is not the message's fault.
+				e.alertFailed(ctx, r, due[i])
+			}
+			rest := make([]Refund, 0, len(order)-k)
+			for _, j := range order[k:] {
+				rest = append(rest, rows[j])
+			}
+			e.releaseAlerts(ctx, rest)
 			break
 		}
-		// Cleared only if no NEW alert was owed meanwhile (alert_due_at
-		// unchanged since the lease).
-		if err := e.inTx(ctx, func(tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, `UPDATE refunds SET review_alerted_at = now(), alert_lease_until = NULL,
-				alert_due_at = CASE WHEN alert_due_at = $2 THEN NULL ELSE alert_due_at END WHERE id = $1`, r.ID, due[i])
-			return err
-		}); err != nil {
-			e.logger.Error("refunds: marking an alert delivered failed", "refund_id", r.ID.String(), "error", err.Error())
-		}
+		e.alertDelivered(ctx, r, due[i])
 		sent++
 	}
 	return sent, nil
 }
 
+// alertText is the ops message of one owed alert.
+func alertText(r Refund) string {
+	esc := opsalert.EscapeHTML
+	if r.State == StateManualReview {
+		return fmt.Sprintf("Refund %s (%d %s via %s) needs manual review: %s. Order %s.",
+			r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), esc(deref(r.FailureCode)), uuidString(r.OrderID))
+	}
+	return fmt.Sprintf("Refund %s (%d %s via %s) was accepted by the provider late, after it had been parked or marked failed: accepted_late. Its ticket is cancelled; check for a manual duplicate refund. Order %s.",
+		r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), uuidString(r.OrderID))
+}
+
+// alertWriteTimeout bounds each bookkeeping write of the alert section, on a
+// context of its own: a delivered alert must be marked even when the
+// section's deadline has just passed, or it is sent again.
+const alertWriteTimeout = 5 * time.Second
+
+// alertDelivered clears the owed alert — only if no NEW alert was owed
+// meanwhile (alert_due_at unchanged since the lease).
+func (e *Engine) alertDelivered(ctx context.Context, r Refund, due time.Time) {
+	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), alertWriteTimeout)
+	defer cancel()
+	if err := e.inTx(wctx, func(tx pgx.Tx) error {
+		_, err := tx.Exec(wctx, `UPDATE refunds SET review_alerted_at = now(), alert_lease_until = NULL, alert_attempts = 0,
+			alert_due_at = CASE WHEN alert_due_at = $2 THEN NULL ELSE alert_due_at END WHERE id = $1`, r.ID, due)
+		return err
+	}); err != nil {
+		e.logger.Error("refunds: marking an alert delivered failed", "refund_id", r.ID.String(), "error", err.Error())
+	}
+}
+
+// alertFailed counts a refused delivery against its row and releases it.
+// An alert refused MaxAlertAttempts times and owed for longer than
+// alertGiveUpAfter is given up: Telegram is evidently up (the failures are
+// spread over a day of passes that delivered other alerts first) and will
+// never take this message.
+func (e *Engine) alertFailed(ctx context.Context, r Refund, due time.Time) {
+	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), alertWriteTimeout)
+	defer cancel()
+	var (
+		attempts int
+		gaveUp   bool
+	)
+	if err := e.inTx(wctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(wctx, `UPDATE refunds SET alert_lease_until = NULL, alert_attempts = alert_attempts + 1,
+			alert_due_at = CASE WHEN alert_attempts + 1 >= $3 AND alert_due_at = $2 AND alert_due_at < now() - $4::interval
+			                    THEN NULL ELSE alert_due_at END
+			WHERE id = $1 RETURNING alert_attempts, alert_due_at IS NULL`,
+			r.ID, due, MaxAlertAttempts, intervalText(alertGiveUpAfter)).Scan(&attempts, &gaveUp)
+	}); err != nil {
+		e.logger.Warn("refunds: counting an undelivered alert failed; its lease expires", "refund_id", r.ID.String(), "error", err.Error())
+		return
+	}
+	if gaveUp {
+		e.logger.Error("refunds: ops alert given up after repeated refused deliveries; the refund still needs a human",
+			"event", "refund_alert_given_up", "refund_id", r.ID.String(), "order_id", uuidString(r.OrderID),
+			"attempts", attempts, "failure_code", deref(r.FailureCode))
+	}
+}
+
 // releaseAlerts gives undelivered alerts back to the next pass.
 func (e *Engine) releaseAlerts(ctx context.Context, rows []Refund) {
+	if len(rows) == 0 {
+		return
+	}
 	ids := make([]uuid.UUID, 0, len(rows))
 	for _, r := range rows {
 		ids = append(ids, r.ID)
 	}
-	wctx := context.WithoutCancel(ctx)
+	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), alertWriteTimeout)
+	defer cancel()
 	if err := e.inTx(wctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(wctx, `UPDATE refunds SET alert_lease_until = NULL WHERE id = ANY($1::uuid[])`, ids)
 		return err
@@ -582,7 +665,7 @@ func (e *Engine) lookup(ctx context.Context, id uuid.UUID) error {
 		args := []any{id, string(res.Status)}
 		switch res.Status {
 		case payments.RefundSucceeded:
-			sql = `UPDATE refunds SET state = 'succeeded', succeeded_at = now(), provider_status = $2, updated_at = now()
+			sql = `UPDATE refunds SET state = 'succeeded', succeeded_at = now(), provider_status = $2, settled_at = NULL, updated_at = now()
 			       WHERE id = $1 RETURNING ` + refundColumns
 		case payments.RefundFailed:
 			// The ticket was cancelled when the provider accepted; the money

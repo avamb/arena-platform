@@ -30,8 +30,14 @@
 --     arena-worker's refund.sweep sends it, whichever process moved the row;
 --   * refunds.alert_lease_until — the pass sending an owed alert holds it;
 --     alert_due_at is cleared only after a confirmed delivery;
+--   * refunds.alert_attempts — failed deliveries of the owed alert: the
+--     ones with fewer failures go first, so a message Telegram keeps
+--     refusing never blocks the others, and it is given up after a cap;
 --   * refunds.refunded_published_at — v1.ticket.refunded was claimed for
 --     publication, so it is published at most once;
+--   * refunds.settled_at — every step after the provider accepted (ticket
+--     cancellations, the order projection, the publish once it succeeded)
+--     is done; refund.sweep's repair finishes an accepted refund without it;
 --   * a unique (provider, provider_refund_id) so one provider refund maps to
 --     one row, and at most one live CANCELLING refund per ticket;
 --   * usage_records.tickets_refunded — the counter PAY-11 bills from (only
@@ -86,7 +92,9 @@ ALTER TABLE refunds
     ADD COLUMN review_alerted_at     timestamptz,
     ADD COLUMN alert_due_at          timestamptz,
     ADD COLUMN alert_lease_until     timestamptz,
-    ADD COLUMN refunded_published_at timestamptz;
+    ADD COLUMN alert_attempts        integer NOT NULL DEFAULT 0,
+    ADD COLUMN refunded_published_at timestamptz,
+    ADD COLUMN settled_at            timestamptz;
 
 CREATE UNIQUE INDEX refunds_provider_refund_uq
     ON refunds (provider, provider_refund_id)
@@ -102,6 +110,8 @@ CREATE INDEX refunds_engine_pending_idx ON refunds (created_at)
     WHERE state = 'provider_pending' AND provider IS NOT NULL;
 CREATE INDEX refunds_alert_due_idx ON refunds (alert_due_at)
     WHERE alert_due_at IS NOT NULL;
+CREATE INDEX refunds_engine_unsettled_idx ON refunds (updated_at)
+    WHERE provider IS NOT NULL AND settled_at IS NULL AND state IN ('succeeded', 'provider_pending');
 
 UPDATE refunds
 SET    state          = 'manual_review',
@@ -125,6 +135,7 @@ ALTER TABLE usage_records
 -- state that pretends a provider call is pending would be the old defect.
 ALTER TABLE usage_records DROP COLUMN IF EXISTS tickets_refunded;
 
+DROP INDEX IF EXISTS refunds_engine_unsettled_idx;
 DROP INDEX IF EXISTS refunds_alert_due_idx;
 DROP INDEX IF EXISTS refunds_engine_pending_idx;
 DROP INDEX IF EXISTS refunds_ticket_id_idx;
@@ -133,7 +144,9 @@ DROP INDEX IF EXISTS refunds_live_ticket_cancel_uq;
 DROP INDEX IF EXISTS refunds_provider_refund_uq;
 
 ALTER TABLE refunds
+    DROP COLUMN IF EXISTS settled_at,
     DROP COLUMN IF EXISTS refunded_published_at,
+    DROP COLUMN IF EXISTS alert_attempts,
     DROP COLUMN IF EXISTS alert_lease_until,
     DROP COLUMN IF EXISTS alert_due_at,
     DROP COLUMN IF EXISTS review_alerted_at,

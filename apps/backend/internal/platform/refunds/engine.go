@@ -247,6 +247,12 @@ func refusal(status int, code, msg string, details map[string]any) *Error {
 	return &Error{Status: status, Code: code, Message: msg, Details: details}
 }
 
+// TicketCancelRequestedByPrefix starts refunds.requested_by of the refund
+// POST /v1/tickets/{id}/cancel writes for refund_mode=automatic (htickets
+// cancel.go): a ticket-less refund that speaks for that ONE ticket, which
+// the operator already cancelled (PAY-03 fourth review, H-1).
+const TicketCancelRequestedByPrefix = "ticket.cancel:"
+
 // Error codes (spec 36 §8).
 const (
 	CodeSellerSiteOrder        = "refund.seller_site_order"

@@ -6,6 +6,7 @@ package refunds
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,6 +24,7 @@ type Refund struct {
 	Amount              int64
 	Currency            string
 	Reason              *string
+	RequestedBy         *string
 	State               string
 	Settlement          string
 	Provider            *string
@@ -43,7 +45,17 @@ func (r Refund) Accepted() bool {
 	return r.State == StateSucceeded || (r.State == StateProviderPending && r.ProviderRefundID != nil)
 }
 
-const refundColumns = `id, org_id, payment_intent_id, order_id, ticket_id, batch_id, amount, currency, reason,
+// fromTicketCancel reports a ticket-less refund written by POST
+// /v1/tickets/{id}/cancel with refund_mode=automatic: it speaks for the one
+// ticket the operator already cancelled (linked through tickets.refund_id),
+// never for the rest of the order, however large its amount (PAY-03 fourth
+// review, H-1: a whole-payment refund of an adult ticket must not cancel
+// the free child ticket bought with it).
+func (r Refund) fromTicketCancel() bool {
+	return r.TicketID == nil && strings.HasPrefix(deref(r.RequestedBy), TicketCancelRequestedByPrefix)
+}
+
+const refundColumns = `id, org_id, payment_intent_id, order_id, ticket_id, batch_id, amount, currency, reason, requested_by,
        state, settlement, provider, provider_refund_id, provider_status, failure_code, failure_reason,
        cancel_ticket, provider_attempts, provider_attempted_at, created_at, updated_at`
 
@@ -56,7 +68,7 @@ func scanRefund(row pgx.Row) (Refund, error) {
 func scanRefundWith(row pgx.Row, extra ...any) (Refund, error) {
 	var r Refund
 	var pi *uuid.UUID
-	dest := append(extra, &r.ID, &r.OrgID, &pi, &r.OrderID, &r.TicketID, &r.BatchID, &r.Amount, &r.Currency, &r.Reason,
+	dest := append(extra, &r.ID, &r.OrgID, &pi, &r.OrderID, &r.TicketID, &r.BatchID, &r.Amount, &r.Currency, &r.Reason, &r.RequestedBy,
 		&r.State, &r.Settlement, &r.Provider, &r.ProviderRefundID, &r.ProviderStatus, &r.FailureCode, &r.FailureReason,
 		&r.CancelTicket, &r.ProviderAttempts, &r.ProviderAttemptedAt, &r.CreatedAt, &r.UpdatedAt)
 	err := row.Scan(dest...)
