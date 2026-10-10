@@ -61,6 +61,7 @@ type promoCodeResponse struct {
 	Status              string   `json:"status"`
 	Uses                int32    `json:"uses"`
 	DiscountTotal       int64    `json:"discount_total"`
+	DiscountCurrency    *string  `json:"discount_currency"`
 	LastUsedAt          *string  `json:"last_used_at"`
 	CreatedAt           string   `json:"created_at"`
 	UpdatedAt           string   `json:"updated_at"`
@@ -105,6 +106,7 @@ func promoCodeFromRow(pc gen.PromoCodeRow, usage *gen.PromoCodeUsageRow) promoCo
 	if usage != nil {
 		resp.Uses = usage.Uses
 		resp.DiscountTotal = usage.DiscountTotal
+		resp.DiscountCurrency = usage.DiscountCurrency
 		if usage.LastUsedAt != nil {
 			s := usage.LastUsedAt.UTC().Format(time.RFC3339)
 			resp.LastUsedAt = &s

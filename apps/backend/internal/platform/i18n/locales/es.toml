@@ -1891,3 +1891,336 @@ other = "le cambiaste el rol después de invitarle."
 
 ["bot.team.kept_last_owner"]
 other = "es el único propietario."
+
+["bot.promo.btn"]
+other = "🏷 Códigos promocionales"
+
+["bot.promo.list_title"]
+other = "🏷 <b>Códigos promocionales</b> · {{.Org}}{{.Scope}}\nCódigos: {{.Total}} · página {{.Page}} de {{.Pages}}\n{{.Legend}}"
+
+["bot.promo.legend"]
+other = "● activo · ⏸ en pausa · ⌛ caducado · ✕ agotado · ○ aún no empieza"
+
+["bot.promo.scope_line"]
+other = "Para el evento <b>{{.Name}}</b> y los códigos que valen para todos los eventos."
+
+["bot.promo.list_all_btn"]
+other = "Todos los códigos"
+
+["bot.promo.empty"]
+other = "Todavía no hay códigos. Un código da un descuento a los compradores: pulsa «Nuevo código»."
+
+["bot.promo.empty_event"]
+other = "Ningún código vale todavía para este evento. Pulsa «Nuevo código» para crear uno."
+
+["bot.promo.new_btn"]
+other = "＋ Nuevo código"
+
+["bot.promo.st_active"]
+other = "activo"
+
+["bot.promo.st_paused"]
+other = "en pausa"
+
+["bot.promo.st_expired"]
+other = "caducado"
+
+["bot.promo.st_exhausted"]
+other = "agotado"
+
+["bot.promo.st_scheduled"]
+other = "aún no empieza"
+
+["bot.promo.discount_pct"]
+other = "{{.Value}}% de descuento"
+
+["bot.promo.discount_fixed"]
+other = "{{.Amount}} de descuento en el pedido"
+
+["bot.promo.sess_all"]
+other = "todas las sesiones, también las futuras"
+
+["bot.promo.sess_n"]
+other = "sesiones: {{.N}}"
+
+["bot.promo.lim_total"]
+other = "{{.Limit}} usos en total"
+
+["bot.promo.lim_per"]
+other = "{{.Limit}} por comprador"
+
+["bot.promo.lim_none"]
+other = "sin límites"
+
+["bot.promo.valid_from"]
+other = "desde el {{.Date}}"
+
+["bot.promo.valid_until"]
+other = "hasta el {{.Date}}"
+
+["bot.promo.valid_none"]
+other = "sin fecha de fin"
+
+["bot.promo.usage_none"]
+other = "aún sin usar"
+
+["bot.promo.usage"]
+other = "usado {{.Count}} veces, descuento {{.Discount}}, último {{.When}}"
+
+["bot.promo.usage_mixed"]
+other = "usado {{.Count}} veces, último {{.When}} (los pedidos están en varias monedas: mira «Uso»)"
+
+["bot.promo.card_discount"]
+other = "Descuento: {{.Text}}"
+
+["bot.promo.card_rule"]
+other = "Un descuento fijo se resta una sola vez del pedido entero, no de cada entrada, y un pedido admite un solo código."
+
+["bot.promo.card_sessions"]
+other = "Sesiones: {{.Text}}"
+
+["bot.promo.card_sess_line"]
+other = "• {{.Name}} · {{.When}}"
+
+["bot.promo.card_sess_more"]
+other = "…y {{.N}} más"
+
+["bot.promo.card_limits"]
+other = "Límites: {{.Text}}"
+
+["bot.promo.card_valid"]
+other = "Vigencia: {{.Text}}"
+
+["bot.promo.card_usage"]
+other = "Uso: {{.Text}}"
+
+["bot.promo.card_state"]
+other = "Estado: {{.Text}}"
+
+["bot.promo.only_currency"]
+other = "Solo vale para pedidos en {{.Currency}}."
+
+["bot.promo.pause_btn"]
+other = "⏸ Pausar"
+
+["bot.promo.activate_btn"]
+other = "▶ Activar"
+
+["bot.promo.sessions_btn"]
+other = "Sesiones"
+
+["bot.promo.usage_btn"]
+other = "Uso"
+
+["bot.promo.csv_btn"]
+other = "⬇ CSV"
+
+["bot.promo.delete_btn"]
+other = "🗑 Eliminar"
+
+["bot.promo.paused_done"]
+other = "⏸ El código <b>{{.Code}}</b> está en pausa: los compradores no pueden usarlo hasta que lo actives de nuevo."
+
+["bot.promo.activated_done"]
+other = "▶ El código <b>{{.Code}}</b> vuelve a estar activo."
+
+["bot.promo.sess_head"]
+other = "🏷 <b>{{.Code}}</b> · sesiones\n\n{{.Text}}\n\n¿Dónde debe valer el código?"
+
+["bot.promo.sess_all_btn"]
+other = "Todas las sesiones, también las futuras"
+
+["bot.promo.sess_only_btn"]
+other = "Solo las sesiones marcadas…"
+
+["bot.promo.sess_all_done"]
+other = "✔ <b>{{.Code}}</b> ahora vale para todas las sesiones, también las futuras."
+
+["bot.promo.sess_saved"]
+other = "✔ Guardado. <b>{{.Code}}</b> ahora vale solo para las sesiones marcadas (sesiones: {{.N}})."
+
+["bot.promo.e_head"]
+other = "🏷 <b>{{.Code}}</b> · sesiones"
+
+["bot.promo.q_event_edit"]
+other = "Elige el evento cuyas sesiones quieres cambiar."
+
+["bot.promo.pick_edit_note"]
+other = "Las sesiones de otros eventos que el código ya tiene se quedan como están."
+
+["bot.promo.usage_title"]
+other = "🏷 <b>{{.Code}}</b> · uso\n{{.Text}}\nPágina {{.Page}} de {{.Pages}}\n"
+
+["bot.promo.usage_empty"]
+other = "Nadie ha usado este código todavía."
+
+["bot.promo.usage_row"]
+other = "№{{.Num}} · {{.Date}} · {{.Name}} · −{{.Discount}} de {{.Amount}} · {{.Status}}"
+
+["bot.promo.buyer_unknown"]
+other = "comprador sin nombre"
+
+["bot.promo.csv_empty"]
+other = "Todavía no hay nada que exportar: nadie ha usado este código."
+
+["bot.promo.csv_scope"]
+other = "uso del código promocional"
+
+["bot.promo.csv_what"]
+other = "pedidos"
+
+["bot.promo.csv_too_big"]
+other = "El archivo de uso es demasiado grande para enviarlo por el chat."
+
+["bot.promo.delete_ask"]
+other = "🗑 <b>¿Eliminar el código {{.Code}}?</b>\n\nVeces usado: {{.Count}}. Al eliminarlo, el código sale de la lista, su uso ya no se puede abrir ni exportar aquí y su nombre sigue ocupado, así que ningún código nuevo podrá llamarse igual. Si solo quieres detenerlo, mejor ponlo en pausa. Los pedidos ya pagados no cambian.\n\nPara eliminarlo, escribe exactamente: {{.Word}}"
+
+["bot.promo.delete_wrong"]
+other = "Esa no es la palabra, así que no se eliminó nada. Para eliminar, escribe exactamente: {{.Word}}"
+
+["bot.promo.delete_word"]
+other = "ELIMINAR"
+
+["bot.promo.deleted_done"]
+other = "✔ El código <b>{{.Code}}</b> se ha eliminado."
+
+["bot.promo.gone"]
+other = "Esta pantalla ya no está abierta. Empieza de nuevo el código."
+
+["bot.promo.cancelled"]
+other = "El código nuevo no se ha creado."
+
+["bot.promo.created"]
+other = "✔ El código <b>{{.Code}}</b> está creado."
+
+["bot.promo.use_buttons"]
+other = "Usa los botones que hay bajo la pregunta."
+
+["bot.promo.c_head"]
+other = "🏷 <b>Nuevo código promocional</b>{{.Text}}"
+
+["bot.promo.q_code"]
+other = "Escribe el código que introducirán los compradores, por ejemplo SUMMER25. Solo letras, cifras, - y _, hasta 64 caracteres. Lo pondré en mayúsculas."
+
+["bot.promo.q_type"]
+other = "¿Qué tipo de descuento?"
+
+["bot.promo.type_pct_btn"]
+other = "Porcentaje"
+
+["bot.promo.type_fix_btn"]
+other = "Importe fijo"
+
+["bot.promo.q_percent"]
+other = "¿Cuántos por ciento de descuento? Un número entero de 1 a 100."
+
+["bot.promo.q_amount"]
+other = "¿Cuánto se resta? Escribe el importe, por ejemplo 5 o 5,50.\n\nUn descuento fijo se resta una sola vez del <b>pedido</b> entero, no de cada entrada, y un pedido admite un solo código."
+
+["bot.promo.q_currency"]
+other = "¿En qué moneda? El código solo vale para pedidos en esa moneda. Pulsa un botón o escribe el código de tres letras, por ejemplo EUR."
+
+["bot.promo.q_scope"]
+other = "¿Dónde vale el código?"
+
+["bot.promo.q_scope_event"]
+other = "¿Dónde vale el código? Estás en el evento <b>{{.Name}}</b>."
+
+["bot.promo.scope_all_btn"]
+other = "En todas las sesiones, también las futuras"
+
+["bot.promo.scope_pick_btn"]
+other = "Solo en las sesiones elegidas"
+
+["bot.promo.q_event"]
+other = "Elige el evento y luego marcarás sus sesiones."
+
+["bot.promo.q_pick"]
+other = "Marca las sesiones de <b>{{.Name}}</b> en las que vale el código y pulsa «Listo»."
+
+["bot.promo.pick_done_btn"]
+other = "✔ Listo ({{.N}})"
+
+["bot.promo.pick_event_btn"]
+other = "Otro evento"
+
+["bot.promo.q_total"]
+other = "¿Cuántas veces se puede usar el código en total? Escribe un número, o sáltalo si no hay límite."
+
+["bot.promo.q_per"]
+other = "¿Cuántas veces puede usarlo un mismo comprador? Escribe un número, o sáltalo si no hay límite."
+
+["bot.promo.skip_btn"]
+other = "Saltar (sin límite)"
+
+["bot.promo.skip_exp_btn"]
+other = "Saltar (sin fecha de fin)"
+
+["bot.promo.q_expiry"]
+other = "¿Hasta qué día vale el código? Elige el último día, o sáltalo si no hay fecha de fin. Vale hasta el final de ese día (UTC)."
+
+["bot.promo.q_status"]
+other = "¿Activar el código ahora o crearlo en pausa?"
+
+["bot.promo.status_active_btn"]
+other = "▶ Activo"
+
+["bot.promo.status_paused_btn"]
+other = "⏸ En pausa"
+
+["bot.promo.summary"]
+other = "🏷 <b>Revisa el código nuevo</b>\n\n{{.Text}}\n\nPulsa «Crear» para guardarlo."
+
+["bot.promo.create_btn"]
+other = "✔ Crear"
+
+["bot.promo.cancel_btn"]
+other = "✖ Cancelar"
+
+["bot.promo.err_code_empty"]
+other = "Escribe el código."
+
+["bot.promo.err_code_long"]
+other = "Ese código tiene más de 64 caracteres. Escribe uno más corto."
+
+["bot.promo.err_code_chars"]
+other = "Usa solo letras, cifras, - _ y punto, sin espacios. Escribe el código otra vez."
+
+["bot.promo.err_code_dup"]
+other = "Ya tienes un código con ese nombre. Escribe otro."
+
+["bot.promo.err_percent"]
+other = "Escribe un número entero de por ciento entre 1 y 100."
+
+["bot.promo.err_amount"]
+other = "Escribe un importe mayor que cero con como máximo dos decimales, por ejemplo 5 o 5,50."
+
+["bot.promo.err_currency"]
+other = "Escribe un código de moneda de tres letras, por ejemplo EUR."
+
+["bot.promo.err_limit"]
+other = "Escribe un número entero de 1 a 1000000, o pulsa Saltar."
+
+["bot.promo.err_per_gt_total"]
+other = "Un comprador no puede tener más usos que el límite total. Escribe un número menor."
+
+["bot.promo.err_pick_none"]
+other = "Marca al menos una sesión, o vuelve y elige todas las sesiones."
+
+["bot.promo.err_session_currency"]
+other = "Esa sesión vende en otra moneda, así que un código en esta moneda no puede valer en ella."
+
+["bot.promo.err_session_foreign"]
+other = "El servidor no aceptó una de las sesiones: no está en esta organización."
+
+["bot.promo.err_duplicate"]
+other = "Ya existe un código con ese nombre en esta organización. Un código eliminado también conserva su nombre. Escribe otro."
+
+["bot.promo.err_no_events"]
+other = "No hay eventos en curso para elegir."
+
+["bot.promo.err_no_sessions"]
+other = "Este evento no tiene sesiones próximas para elegir."
+
+["bot.promo.err_incomplete"]
+other = "Falta algo en el código. Vuelve y revisa los pasos."

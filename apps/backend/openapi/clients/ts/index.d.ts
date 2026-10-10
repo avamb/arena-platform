@@ -14770,6 +14770,13 @@ export interface components {
              */
             discount_total: number;
             /**
+             * @description ISO 4217 currency of `discount_total` when every order that used
+             *     the code was in one currency; `null` when the code was never used
+             *     or its orders are in several currencies (the sum is then not one
+             *     amount).
+             */
+            discount_currency: string | null;
+            /**
              * Format: date-time
              * @description When the code was last redeemed; `null` when never.
              */
@@ -14907,6 +14914,8 @@ export interface components {
             currency: string | null;
             /** @description E-mail the order was bought under. */
             buyer_email: string | null;
+            /** @description Name the order was bought under (the buyer's own words); null when the order carries none. */
+            buyer_name: string | null;
             /**
              * Format: uuid
              * @description The event session the order sold.
