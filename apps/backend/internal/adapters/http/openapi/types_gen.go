@@ -4119,7 +4119,10 @@ type CreateChannelRequest struct {
 	PaymentMode *CreateChannelRequestPaymentMode `json:"payment_mode,omitempty"`
 
 	// Provider Defaults to `stripe` when omitted or empty. Any other value
-	// returns 400 `channel.invalid_config`.
+	// returns 400 `channel.invalid_config`. The values are the
+	// payment modules arena has (the module registry,
+	// `internal/app/payments`); a new module adds its name here and
+	// needs no database migration.
 	Provider *CreateChannelRequestProvider `json:"provider,omitempty"`
 
 	// ProviderAccountId Merchant account identifier at the provider. Required
@@ -4150,7 +4153,10 @@ type CreateChannelRequest struct {
 type CreateChannelRequestPaymentMode string
 
 // CreateChannelRequestProvider Defaults to `stripe` when omitted or empty. Any other value
-// returns 400 `channel.invalid_config`.
+// returns 400 `channel.invalid_config`. The values are the
+// payment modules arena has (the module registry,
+// `internal/app/payments`); a new module adds its name here and
+// needs no database migration.
 type CreateChannelRequestProvider string
 
 // CreateCustomerImportRequest Registers a customer_imports row referencing an already-uploaded
@@ -12025,7 +12031,9 @@ type UpdateChannelRequest struct {
 	PaymentMode *UpdateChannelRequestPaymentMode `json:"payment_mode,omitempty"`
 
 	// Provider New payment provider. Omit (or send an empty string) to
-	// leave unchanged.
+	// leave unchanged. Same values and rule as on create: a
+	// registered payment module, otherwise 400
+	// `channel.invalid_config`.
 	Provider *UpdateChannelRequestProvider `json:"provider,omitempty"`
 
 	// ProviderAccountId New merchant account identifier. Omitting the key OR sending
@@ -12064,7 +12072,9 @@ type UpdateChannelRequest struct {
 type UpdateChannelRequestPaymentMode string
 
 // UpdateChannelRequestProvider New payment provider. Omit (or send an empty string) to
-// leave unchanged.
+// leave unchanged. Same values and rule as on create: a
+// registered payment module, otherwise 400
+// `channel.invalid_config`.
 type UpdateChannelRequestProvider string
 
 // UpdateEventRequest Partial update for PATCH /v1/organizations/{org_id}/events/{id}.
