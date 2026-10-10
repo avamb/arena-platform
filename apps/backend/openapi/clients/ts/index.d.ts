@@ -5956,6 +5956,124 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/sessions/{session_id}/sales.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sales of a session as a CSV file
+         * @description One row per ticket of the session, as a spreadsheet file:
+         *     order number, order status, order date, buyer, e-mail, phone,
+         *     category, price paid for that ticket, currency, EAN-13 barcode,
+         *     ticket status, whether the ticket was admitted at the gate (`yes` /
+         *     `no`), sales channel and promo code. Written by the platform's
+         *     csvexport rules (spec 35 §5.1): UTF-8 with a BOM, `;` separator, CRLF,
+         *     every text quoted, barcodes / phones / long numbers as Excel text
+         *     (`="4600051000001"`), formula-looking values prefixed with `'`,
+         *     money as a decimal with a dot, dates as `YYYY-MM-DD HH:MM` in the
+         *     venue's zone. Column labels follow `locale` / `lang` / Accept-Language
+         *     (`en`, `ru`, `es`; default `en`); values stay as the API spells them.
+         *     The file is streamed in batches; a session above 50 000 tickets is
+         *     refused with 413 before any byte is sent.
+         *
+         *     Requires `order.read` AND `session.read`; a session of another
+         *     organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdSalesCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/sales.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sales of an event as a CSV file
+         * @description The same rows as the session file, across every session of the
+         *     event, plus a last column with the session's start in its venue's
+         *     zone. Same csvexport rules, same locale selection, same 50 000-row
+         *     cap. The event's sessions may sit in different venues: each date
+         *     column uses its own venue's zone, the file name the server's date.
+         *
+         *     Requires `order.read` AND `session.read`; an event of another
+         *     organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsEventIdSalesCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/summary.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Per-category summary of a session as a CSV file
+         * @description The categories of the session summary (`GET .../summary`, the same
+         *     numbers) as a spreadsheet: category, kind (`seated` / `ga`), list
+         *     price, currency, places total / available / held / sold / sold
+         *     elsewhere / unavailable, paid tickets, revenue (what was paid,
+         *     minor units rendered as a decimal) and whether the category is on
+         *     sale (`yes` / `no`). Same csvexport rules and locale selection as the
+         *     sales file; no buyer data.
+         *
+         *     Requires `order.read` AND `session.read`; a session of another
+         *     organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdSummaryCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/promo-codes/{promo_code_id}/redemptions.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Uses of a promo code as a CSV file
+         * @description One row per redemption of the code: order number, order status,
+         *     date of the redemption (in the venue's zone of the order's session),
+         *     buyer, e-mail, discount amount and currency. Same csvexport rules,
+         *     locale selection and 50 000-row cap as the sales file. A redemption
+         *     recorded before an order existed for it (migration 0108) has empty
+         *     order and buyer columns.
+         *
+         *     Requires `promo.read`; a code of another organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdPromoCodesPromoCodeIdRedemptionsCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/change-impact": {
         parameters: {
             query?: never;
@@ -40069,6 +40187,373 @@ export interface operations {
                 };
             };
             /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdSalesCsv: {
+        parameters: {
+            query?: {
+                /** @description Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The CSV attachment, `Content-Disposition: attachment;
+             *     filename="sales_<event slug or id>_<YYYY-MM-DD>.csv"`.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description org_id or session_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `order.read` or `session.read`, or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The export exceeds the row limit (`export.too_many_rows`, details `rows` and `max_rows`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdEventsEventIdSalesCsv: {
+        parameters: {
+            query?: {
+                /** @description Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The CSV attachment, `Content-Disposition: attachment;
+             *     filename="sales_<event slug or id>_<YYYY-MM-DD>.csv"`.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description org_id or event_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `order.read` or `session.read`, or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found, or not part of this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The export exceeds the row limit (`export.too_many_rows`); export one session at a time. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdSummaryCsv: {
+        parameters: {
+            query?: {
+                /** @description Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The CSV attachment, `Content-Disposition: attachment;
+             *     filename="summary_<event slug or id>_<YYYY-MM-DD>.csv"`.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description org_id or session_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `order.read` or `session.read`, or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdPromoCodesPromoCodeIdRedemptionsCsv: {
+        parameters: {
+            query?: {
+                /** @description Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the promo code */
+                promo_code_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The CSV attachment, `Content-Disposition: attachment;
+             *     filename="promo_<code>_<YYYY-MM-DD>.csv"`.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description org_id or promo_code_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `promo.read`, or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Promo code not found, or not part of this organization (`promo.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The export exceeds the row limit (`export.too_many_rows`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export queries unavailable (`dependency.database_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -43,7 +43,7 @@ func TestBuildSessionSummary_FoldsPlacesMoneyAndRefunds(t *testing.T) {
 	promos := []gen.SessionSummaryPromoRow{
 		{PromoCodeID: uuid.New(), Code: "ARENA10", Currency: "CZK", Orders: 1, Discount: 4500},
 	}
-	got := buildSessionSummary(header, places, tiers, orders, tickets, refunds, promos)
+	got := BuildSessionSummary(header, places, tiers, orders, tickets, refunds, promos)
 	if len(got.Promos) != 1 || got.Promos[0].Code != "ARENA10" || got.Promos[0].Discount != 4500 {
 		t.Fatalf("promos: %+v", got.Promos)
 	}
@@ -88,7 +88,7 @@ func TestBuildSessionSummary_FoldsPlacesMoneyAndRefunds(t *testing.T) {
 }
 
 func TestBuildSessionSummary_EmptySessionHasNoNulls(t *testing.T) {
-	got := buildSessionSummary(gen.SessionSummaryHeaderRow{ID: uuid.New()}, nil, nil, nil,
+	got := BuildSessionSummary(gen.SessionSummaryHeaderRow{ID: uuid.New()}, nil, nil, nil,
 		gen.SessionSummaryTicketsRow{}, nil, nil)
 	if got.Tiers == nil || got.Money == nil || got.Orders == nil || got.Refunds == nil || got.Promos == nil {
 		t.Fatalf("empty lists must encode as [] not null: %+v", got)
@@ -106,7 +106,7 @@ func TestBuildSessionSummary_KeepsCurrenciesApart(t *testing.T) {
 	refunds := []gen.SessionSummaryRefundsRow{
 		{Settlement: "provider", State: "succeeded", Currency: "EUR", Refunds: 1, Amount: 5000},
 	}
-	got := buildSessionSummary(gen.SessionSummaryHeaderRow{}, nil, nil, orders,
+	got := BuildSessionSummary(gen.SessionSummaryHeaderRow{}, nil, nil, orders,
 		gen.SessionSummaryTicketsRow{}, refunds, nil)
 	if len(got.Money) != 2 || got.Money[0].Currency != "CZK" || got.Money[1].Currency != "EUR" {
 		t.Fatalf("money must be one row per currency, sorted: %+v", got.Money)
