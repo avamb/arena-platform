@@ -180,7 +180,7 @@ other = "Anterior"
 other = "Siguiente"
 
 ["bot.help"]
-other = "<b>Qué puede hacer este bot</b>\n\n- <b>+ Evento</b>: crea un evento paso a paso y lo publica. Escribe el nombre o envía el cartel: leeré los datos y tú confirmas cada valor. Al final te envío el enlace para los compradores y una entrada de muestra.\n- <b>Mis eventos</b>: todos los eventos de tu organización, los próximos primero, con las plazas vendidas y libres y el dinero por fecha. En la ficha de un evento puedes editarlo, repetirlo como nuevo, ver una entrada de muestra y mover o cancelar una sesión: los compradores reciben un correo.\n- <b>Equipo</b>: el propietario invita a sus compañeros y los quita.\n- <b>Organización</b>: si trabajas para varias organizaciones, cambia entre ellas aquí.\n- <b>Escáner de entradas</b>: la aplicación para comprobar las entradas en la puerta, con enlaces a Google Play y App Store.\n- <b>Idioma</b>: inglés, ruso o español."
+other = "<b>Qué puede hacer este bot</b>\n\n- <b>+ Evento</b>: crea un evento paso a paso y lo publica. Escribe el nombre o envía el cartel: leeré los datos y tú confirmas cada valor. Al final te envío el enlace para los compradores y una entrada de muestra.\n- <b>Mis eventos</b>: todos los eventos de tu organización, los próximos primero, con las plazas vendidas y libres y el dinero por fecha. En la ficha de un evento puedes editarlo, repetirlo como nuevo, ver una entrada de muestra y mover o cancelar una sesión: los compradores reciben un correo.\n- <b>Notificaciones</b>: de dónde llegan los avisos de ventas y devoluciones y cómo conectar tu chat.\n- <b>Equipo</b>: el propietario invita a sus compañeros y los quita.\n- <b>Organización</b>: si trabajas para varias organizaciones, cambia entre ellas aquí.\n- <b>Escáner de entradas</b>: la aplicación para comprobar las entradas en la puerta, con enlaces a Google Play y App Store.\n- <b>Idioma</b>: inglés, ruso o español."
 
 ["bot.events_empty"]
 other = "Aún no hay eventos. El primero aparecerá aquí en cuanto se cree."
@@ -1412,3 +1412,141 @@ other = "Dejaste sin terminar el evento «{{.Name}}». El borrador te espera, y 
 
 ["bot.draft_deleted"]
 other = "Tu borrador del evento se eliminó: pasaron 7 días sin respuestas. Puedes empezar uno nuevo cuando quieras."
+
+["bot.ec.filter_run"]
+other = "En marcha · {{.N}}"
+
+["bot.ec.filter_arc"]
+other = "Archivo · {{.N}}"
+
+["bot.ec.list_title"]
+other = "<b>Eventos: {{.Org}}</b>\n{{.Filter}}. Página {{.Page}} de {{.Pages}}.{{.Search}}\n{{.Legend}}\nPulsa un evento para abrir su ficha. Para buscar por nombre, escribe unas letras."
+
+["bot.ec.legend"]
+other = "● a la venta  ○ pronto  ✕ agotado  ✓ archivo"
+
+["bot.ec.search_line"]
+other = "Búsqueda: «{{.Query}}» — encontrados {{.N}}."
+
+["bot.ec.search_none"]
+other = "No se encontró nada para «{{.Query}}». Prueba otras palabras o borra la búsqueda."
+
+["bot.ec.empty_run"]
+other = "No hay eventos en marcha. Pulsa «+ Evento» en el menú para crear uno o mira el archivo."
+
+["bot.ec.empty_arc"]
+other = "El archivo está vacío."
+
+["bot.ec.clear_search_btn"]
+other = "✖ Borrar búsqueda"
+
+["bot.ec.tot_places"]
+other = "Vendidas {{.Sold}} de {{.Total}}, libres {{.Available}}{{if .Held}}, reservadas {{.Held}}{{end}}"
+
+["bot.ec.refunds_line"]
+other = "Devoluciones: {{.Count}} por {{.Amount}}, neto {{.Net}}"
+
+["bot.ec.entered_line"]
+other = "Han entrado: {{.Used}} de {{.Total}}"
+
+["bot.ec.comp_line"]
+other = "Invitaciones: {{.N}}"
+
+["bot.ec.promos_head"]
+other = "Códigos promocionales:"
+
+["bot.ec.promo_line"]
+other = "• {{.Code}} — usado {{.Orders}} veces, descuento {{.Discount}}"
+
+["bot.ec.more"]
+other = "…y {{.N}} más"
+
+["bot.ec.tiers_head"]
+other = "Categorías:"
+
+["bot.ec.tier_line"]
+other = "• {{.Name}}{{.Closed}} — {{.Price}} — {{.Sold}}/{{.Places}} — {{.Revenue}}"
+
+["bot.ec.tier_closed"]
+other = " (cerrada)"
+
+["bot.ec.all_dates"]
+other = "<b>Todas las fechas ({{.N}})</b>"
+
+["bot.ec.next_line"]
+other = "Próxima fecha: {{.When}}"
+
+["bot.ec.when_line"]
+other = "<b>{{.When}}</b> {{.Venue}}"
+
+["bot.ec.summary_btn"]
+other = "📊 Resumen"
+
+["bot.ec.csv_btn"]
+other = "⬇ Exportar CSV"
+
+["bot.ec.summary_csv_btn"]
+other = "⬇ Resumen CSV"
+
+["bot.ec.dates_btn"]
+other = "🗓 Fechas ({{.N}})"
+
+["bot.ec.dates_hide_btn"]
+other = "Ocultar fechas"
+
+["bot.ec.sum_title"]
+other = "<b>Resumen: {{.Name}}</b>\n{{.Scope}}"
+
+["bot.ec.sum_tickets"]
+other = "Entradas: válidas {{.Active}}, anuladas o devueltas {{.Cancelled}}, han entrado {{.Used}}{{if .Transferred}}, transferidas {{.Transferred}}{{end}}"
+
+["bot.ec.sum_orders"]
+other = "Pedidos: pagados {{.Paid}}, pendientes de pago {{.Pending}}"
+
+["bot.ec.sum_places"]
+other = "Plazas: vendidas {{.Sold}}, libres {{.Available}}, reservadas {{.Held}}, bloqueadas {{.Unavailable}}, total {{.Total}}"
+
+["bot.ec.sum_money"]
+other = "Pagado {{.Paid}} en {{.Orders}} pedidos (descuentos {{.Discount}}, gastos de gestión {{.Charge}})\nDevoluciones: {{.RefundCount}} por {{.Refunded}}{{if .External}}, de ellas {{.External}} fuera del sistema{{end}}\nNeto: <b>{{.Net}}</b>{{if .Pending}}\nPendiente de pago: {{.Pending}} en {{.PendingOrders}} pedidos{{end}}"
+
+["bot.ec.scope_all"]
+other = "Todas las fechas ({{.N}})"
+
+["bot.ec.csv_caption"]
+other = "<b>{{.Name}}</b>, {{.Scope}}\n{{.What}}: {{.Rows}}. Exportado el {{.Date}}. El archivo contiene datos de compradores: no lo compartas con terceros."
+
+["bot.ec.csv_what_sales"]
+other = "entradas"
+
+["bot.ec.csv_what_summary"]
+other = "categorías"
+
+["bot.ec.csv_empty"]
+other = "Aún no hay nada que exportar: no hay entradas."
+
+["bot.ec.csv_failed"]
+other = "No se pudo preparar el archivo. Inténtalo de nuevo en un minuto."
+
+["bot.ec.csv_too_big_event"]
+other = "Hay demasiadas filas para un solo archivo (más de 50 000). Exporta una fecha cada vez: abre el evento, despliega «Fechas» y pulsa ⬇ junto a la fecha."
+
+["bot.ec.csv_too_big_session"]
+other = "Esta fecha tiene demasiadas filas para un solo archivo (más de 50 000). Escribe a soporte y lo prepararemos."
+
+["bot.ec.not_found"]
+other = "No encontrado. Puede que se haya eliminado o que pertenezca a otra organización."
+
+["bot.ec.no_rights"]
+other = "Tu rol en esta organización no incluye las cifras de ventas."
+
+["bot.ec.notif_btn"]
+other = "🔔 Notificaciones"
+
+["bot.ec.notif_open_btn"]
+other = "Abrir {{.Bot}}"
+
+["bot.ec.notif_owner"]
+other = "<b>Notificaciones</b>\n\nEste bot no envía avisos de ventas. Llegan desde {{.Bot}}: un mensaje por cada pedido pagado y cada devolución, en segundos, en el chat que elijas.\n\nCómo conectar tu propio chat:\n1. Crea un grupo (o usa uno que ya tengas) y añade a {{.Bot}}.\n2. Abre {{.Bot}} con el botón de abajo. Los propietarios son administradores allí: tú añades y quitas tus chats.\n3. Tus compañeros que deban ver los avisos se unen al mismo grupo.\n\nLos mensajes incluyen los contactos del comprador, así que mantén el grupo solo para tu equipo."
+
+["bot.ec.notif_manager"]
+other = "<b>Notificaciones</b>\n\nEste bot no envía avisos de ventas. Llegan desde {{.Bot}}: un mensaje por cada pedido pagado y cada devolución, en segundos.\n\nSolo el propietario de la organización elige qué chats los reciben. Pídele que te añada al grupo o que conecte uno nuevo. Los mensajes incluyen los contactos del comprador."

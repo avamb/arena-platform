@@ -2,14 +2,12 @@ package eventbot
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/go-telegram/bot/models"
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
@@ -91,135 +89,6 @@ func (b *Bot) statusText(locale string, status string) string {
 	default:
 		return Esc(status)
 	}
-}
-
-func (b *Bot) showEvents(ctx context.Context, chatID int64, editMsgID *int, from *models.User, page int) {
-	id, jwt, err := b.resolveIdentity(ctx, from.ID)
-	if err != nil {
-		b.replyIdentityError(ctx, chatID, from, err)
-		return
-	}
-	if id.Current == nil {
-		b.showOrgChooserFor(ctx, chatID, editMsgID, id)
-		return
-	}
-	loc := id.Locale()
-	events, err := b.arena.ListEvents(ctx, jwt, id.Current.OrgID)
-	if err != nil {
-		b.replyAPIError(ctx, chatID, editMsgID, id, err)
-		return
-	}
-	if len(events) == 0 {
-		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.events_empty", nil), b.backKeyboard(loc, "home"))
-		return
-	}
-	upcoming, past := SortEvents(events, time.Now())
-	ordered := append(append([]openapi.EventItem{}, upcoming...), past...)
-	items, page, pages := PageOf(ordered, page, eventsPageSize)
-
-	text := b.texts.T(loc, "bot.events_title", map[string]any{
-		"Org": Esc(id.Current.OrgName), "Page": page, "Pages": pages,
-	})
-	rows := make([][]models.InlineKeyboardButton, 0, len(items)+2)
-	for _, e := range items {
-		label := truncate(e.Name, 40)
-		if e.FirstSessionAt != nil {
-			// allow:timeformat: day.month label on a chat button, not a wire timestamp
-			label = e.FirstSessionAt.UTC().Format("02.01") + " · " + label
-		}
-		if e.LastSessionAt != nil && e.LastSessionAt.Before(time.Now()) {
-			label = "✓ " + label
-		}
-		rows = append(rows, []models.InlineKeyboardButton{{
-			Text: label, CallbackData: fmt.Sprintf("event:%s:%d", e.Id.String(), page),
-		}})
-	}
-	var nav []models.InlineKeyboardButton
-	if page > 1 {
-		nav = append(nav, models.InlineKeyboardButton{Text: "« " + b.texts.T(loc, "bot.btn_prev", nil), CallbackData: fmt.Sprintf("events:%d", page-1)})
-	}
-	if page < pages {
-		nav = append(nav, models.InlineKeyboardButton{Text: b.texts.T(loc, "bot.btn_next", nil) + " »", CallbackData: fmt.Sprintf("events:%d", page+1)})
-	}
-	if len(nav) > 0 {
-		rows = append(rows, nav)
-	}
-	rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}})
-	b.reply(ctx, chatID, editMsgID, text, &models.InlineKeyboardMarkup{InlineKeyboard: rows})
-}
-
-func (b *Bot) showEvent(ctx context.Context, chatID int64, editMsgID *int, from *models.User, eventID uuid.UUID, page int) {
-	id, jwt, err := b.resolveIdentity(ctx, from.ID)
-	if err != nil {
-		b.replyIdentityError(ctx, chatID, from, err)
-		return
-	}
-	if id.Current == nil {
-		b.showOrgChooserFor(ctx, chatID, editMsgID, id)
-		return
-	}
-	loc := id.Locale()
-	orgID := id.Current.OrgID
-	events, err := b.arena.ListEvents(ctx, jwt, orgID)
-	if err != nil {
-		b.replyAPIError(ctx, chatID, editMsgID, id, err)
-		return
-	}
-	var event *openapi.EventItem
-	for i := range events {
-		if events[i].Id == eventID {
-			event = &events[i]
-			break
-		}
-	}
-	if event == nil {
-		b.showEvents(ctx, chatID, editMsgID, from, page)
-		return
-	}
-	sessions, err := b.arena.ListSessions(ctx, jwt, orgID, eventID)
-	if err != nil {
-		b.replyAPIError(ctx, chatID, editMsgID, id, err)
-		return
-	}
-	// A published event shows its buyers' link right under the name, so the
-	// organizer can copy it without opening anything else.
-	link := ""
-	if url := b.eventLink(ctx, jwt, orgID, *event); url != "" {
-		link = "\n" + b.texts.T(loc, "bot.wz.link_line", map[string]any{"URL": url})
-	}
-	var sb strings.Builder
-	sb.WriteString(b.texts.T(loc, "bot.event_card", map[string]any{
-		"Name": Esc(event.Name), "Status": b.statusText(loc, string(event.Status)), "Link": link,
-	}))
-	sb.WriteString("\n")
-	if len(sessions) == 0 {
-		sb.WriteString("\n" + b.texts.T(loc, "bot.event_no_sessions", nil))
-	}
-	for i, s := range sessions {
-		if i >= maxSessionsPerCard {
-			sb.WriteString("\n…")
-			break
-		}
-		sb.WriteString("\n")
-		sb.WriteString(b.sessionLine(ctx, jwt, loc, orgID, s))
-	}
-	rows := [][]models.InlineKeyboardButton{
-		{
-			{Text: b.texts.T(loc, "bot.wz.edit_btn", nil), CallbackData: "wz:edit:" + eventID.String()},
-			{Text: b.texts.T(loc, "bot.wz.copy_btn", nil), CallbackData: "wz:copy:" + eventID.String()},
-		},
-		{
-			{Text: b.texts.T(loc, "bot.sample_btn", nil), CallbackData: "sample:" + eventID.String()},
-		},
-		{
-			{Text: b.texts.T(loc, "bot.ses.open_btn", nil), CallbackData: "ses:list:" + eventID.String()},
-		},
-		{
-			{Text: "« " + b.texts.T(loc, "bot.btn_back", nil), CallbackData: fmt.Sprintf("events:%d", page)},
-			{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"},
-		},
-	}
-	b.reply(ctx, chatID, editMsgID, sb.String(), &models.InlineKeyboardMarkup{InlineKeyboard: rows})
 }
 
 // sessionLine renders one date of an event from its summary; when the

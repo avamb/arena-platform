@@ -108,8 +108,11 @@ type sessionDialog struct {
 	Phone      string
 	MsgID      int
 	// Result is what the last write reported, for the done screen.
-	Result  string
-	expires time.Time
+	Result string
+	// CanSales: the person may read sales figures, so the card offers the
+	// summary and the export of the date (event_summary.go, event_csv.go).
+	CanSales bool
+	expires  time.Time
 }
 
 // sessionDialogs is still process memory, so a bot restart drops a move or
@@ -298,7 +301,7 @@ func (b *Bot) sessionsOpen(ctx context.Context, chatID int64, editMsgID *int, fr
 		b.replyAPIError(ctx, chatID, editMsgID, id, err)
 		return
 	}
-	dlg := &sessionDialog{OrgID: orgID, EventID: eventID, EventName: name, Items: items, Cur: -1, Step: sesStepList}
+	dlg := &sessionDialog{OrgID: orgID, EventID: eventID, EventName: name, Items: items, Cur: -1, Step: sesStepList, CanSales: canViewSales(id)}
 	if editMsgID != nil {
 		dlg.MsgID = *editMsgID
 	}
@@ -406,6 +409,9 @@ func (b *Bot) sesShowCard(ctx context.Context, chatID int64, msgID *int, jwt, lo
 	it := dlg.Items[dlg.Cur]
 	text := prefix + "<b>" + Esc(dlg.EventName) + "</b>\n" + b.sessionLine(ctx, jwt, loc, dlg.OrgID, it.Raw)
 	rows := [][]Button{}
+	if dlg.CanSales {
+		rows = append(rows, []Button{b.sesBtn(loc, "bot.ec.summary_btn", "sm", nil), b.sesBtn(loc, "bot.ec.csv_btn", "csv", nil)})
+	}
 	if !it.cancelled() {
 		text += "\n" + b.sesSaleTimesLine(loc, it)
 		text += "\n\n" + b.sesT(loc, "bot.ses.card_hint", nil)
@@ -713,6 +719,15 @@ func (b *Bot) sessionsCallback(ctx context.Context, chatID int64, msgID int, fro
 		}
 		dlg.Cur, dlg.Step, dlg.Mode, dlg.Impact, dlg.MessageSet = n, sesStepCard, "", nil, false
 		b.sesShow(ctx, chatID, &msgID, id, jwt, from, dlg, "")
+	case data == "sm" || data == "csv":
+		if dlg.Cur < 0 || dlg.Cur >= len(dlg.Items) || !canViewSales(id) {
+			return
+		}
+		if data == "csv" {
+			b.sendCSV(ctx, chatID, from, csvSessionSales, dlg.Items[dlg.Cur].ID)
+			return
+		}
+		b.showSessionSummary(ctx, chatID, &msgID, from, dlg.Items[dlg.Cur].ID, "ses:card")
 	case data == "mv":
 		if !b.sesCurOpen(dlg) {
 			return

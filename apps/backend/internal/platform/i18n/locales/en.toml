@@ -322,7 +322,7 @@ other = "Previous"
 other = "Next"
 
 ["bot.help"]
-other = "<b>What this bot can do</b>\n\n- <b>+ Event</b>: creates an event step by step and publishes it. Type the name or send a poster: I read the details from it and you confirm each value. At the end I send the link for buyers and a sample ticket.\n- <b>My events</b>: every event of your organization, upcoming first, with sold and free places and the money per date. On the card of an event you can edit it, repeat it as new, see a sample ticket and move or cancel a session: buyers get an e-mail.\n- <b>Team</b>: the owner invites colleagues and removes them.\n- <b>Organization</b>: if you work for several organizations, switch between them here.\n- <b>Ticket scanner</b>: the app for checking tickets at the door, with links to Google Play and the App Store.\n- <b>Language</b>: English, Russian or Spanish."
+other = "<b>What this bot can do</b>\n\n- <b>+ Event</b>: creates an event step by step and publishes it. Type the name or send a poster: I read the details from it and you confirm each value. At the end I send the link for buyers and a sample ticket.\n- <b>My events</b>: every event of your organization, upcoming first, with sold and free places and the money per date. On the card of an event you can edit it, repeat it as new, see a sample ticket and move or cancel a session: buyers get an e-mail.\n- <b>Notifications</b>: where sales and refund alerts come from and how to connect your chat.\n- <b>Team</b>: the owner invites colleagues and removes them.\n- <b>Organization</b>: if you work for several organizations, switch between them here.\n- <b>Ticket scanner</b>: the app for checking tickets at the door, with links to Google Play and the App Store.\n- <b>Language</b>: English, Russian or Spanish."
 
 ["bot.events_empty"]
 other = "No events yet. The first one will appear here as soon as it is created."
@@ -1557,3 +1557,141 @@ other = "You left the event “{{.Name}}” unfinished. The draft waits for you,
 
 ["bot.draft_deleted"]
 other = "Your event draft was deleted: there were no answers for 7 days. You can start a new one at any time."
+
+["bot.ec.filter_run"]
+other = "Running · {{.N}}"
+
+["bot.ec.filter_arc"]
+other = "Archive · {{.N}}"
+
+["bot.ec.list_title"]
+other = "<b>Events: {{.Org}}</b>\n{{.Filter}}. Page {{.Page}} of {{.Pages}}.{{.Search}}\n{{.Legend}}\nTap an event to open its card. To search by name, just type a few letters."
+
+["bot.ec.legend"]
+other = "● selling  ○ soon  ✕ sold out  ✓ archive"
+
+["bot.ec.search_line"]
+other = "Search: “{{.Query}}” — found {{.N}}."
+
+["bot.ec.search_none"]
+other = "Nothing found for “{{.Query}}”. Try other words or clear the search."
+
+["bot.ec.empty_run"]
+other = "No running events. Press “+ Event” in the menu to create one, or look in the archive."
+
+["bot.ec.empty_arc"]
+other = "The archive is empty."
+
+["bot.ec.clear_search_btn"]
+other = "✖ Clear search"
+
+["bot.ec.tot_places"]
+other = "Sold {{.Sold}} of {{.Total}}, available {{.Available}}{{if .Held}}, held {{.Held}}{{end}}"
+
+["bot.ec.refunds_line"]
+other = "Refunds: {{.Count}} for {{.Amount}}, net {{.Net}}"
+
+["bot.ec.entered_line"]
+other = "Entered: {{.Used}} of {{.Total}}"
+
+["bot.ec.comp_line"]
+other = "Invitations: {{.N}}"
+
+["bot.ec.promos_head"]
+other = "Promo codes:"
+
+["bot.ec.promo_line"]
+other = "• {{.Code}} — used {{.Orders}} times, discount {{.Discount}}"
+
+["bot.ec.more"]
+other = "…and {{.N}} more"
+
+["bot.ec.tiers_head"]
+other = "Categories:"
+
+["bot.ec.tier_line"]
+other = "• {{.Name}}{{.Closed}} — {{.Price}} — {{.Sold}}/{{.Places}} — {{.Revenue}}"
+
+["bot.ec.tier_closed"]
+other = " (closed)"
+
+["bot.ec.all_dates"]
+other = "<b>All dates ({{.N}})</b>"
+
+["bot.ec.next_line"]
+other = "Next date: {{.When}}"
+
+["bot.ec.when_line"]
+other = "<b>{{.When}}</b> {{.Venue}}"
+
+["bot.ec.summary_btn"]
+other = "📊 Summary"
+
+["bot.ec.csv_btn"]
+other = "⬇ Export CSV"
+
+["bot.ec.summary_csv_btn"]
+other = "⬇ Summary CSV"
+
+["bot.ec.dates_btn"]
+other = "🗓 Dates ({{.N}})"
+
+["bot.ec.dates_hide_btn"]
+other = "Hide dates"
+
+["bot.ec.sum_title"]
+other = "<b>Summary: {{.Name}}</b>\n{{.Scope}}"
+
+["bot.ec.sum_tickets"]
+other = "Tickets: valid {{.Active}}, cancelled or returned {{.Cancelled}}, entered {{.Used}}{{if .Transferred}}, transferred {{.Transferred}}{{end}}"
+
+["bot.ec.sum_orders"]
+other = "Orders: paid {{.Paid}}, awaiting payment {{.Pending}}"
+
+["bot.ec.sum_places"]
+other = "Places: sold {{.Sold}}, available {{.Available}}, held {{.Held}}, withheld {{.Unavailable}}, total {{.Total}}"
+
+["bot.ec.sum_money"]
+other = "Paid {{.Paid}} in {{.Orders}} orders (discounts {{.Discount}}, service charge {{.Charge}})\nRefunds: {{.RefundCount}} for {{.Refunded}}{{if .External}}, of which {{.External}} outside the system{{end}}\nNet: <b>{{.Net}}</b>{{if .Pending}}\nAwaiting payment: {{.Pending}} in {{.PendingOrders}} orders{{end}}"
+
+["bot.ec.scope_all"]
+other = "All dates ({{.N}})"
+
+["bot.ec.csv_caption"]
+other = "<b>{{.Name}}</b>, {{.Scope}}\n{{.What}}: {{.Rows}}. Exported {{.Date}}. The file holds buyers' contacts: keep it private."
+
+["bot.ec.csv_what_sales"]
+other = "tickets"
+
+["bot.ec.csv_what_summary"]
+other = "categories"
+
+["bot.ec.csv_empty"]
+other = "Nothing to export yet: there are no tickets."
+
+["bot.ec.csv_failed"]
+other = "Could not prepare the file. Try again in a minute."
+
+["bot.ec.csv_too_big_event"]
+other = "There are too many rows for one file (over 50,000). Export one date at a time: open the event, expand “Dates” and press ⬇ next to the date."
+
+["bot.ec.csv_too_big_session"]
+other = "This date has too many rows for one file (over 50,000). Write to support and we will prepare it for you."
+
+["bot.ec.not_found"]
+other = "Not found. It may have been removed, or it belongs to another organization."
+
+["bot.ec.no_rights"]
+other = "Your role in this organization does not include sales figures."
+
+["bot.ec.notif_btn"]
+other = "🔔 Notifications"
+
+["bot.ec.notif_open_btn"]
+other = "Open {{.Bot}}"
+
+["bot.ec.notif_owner"]
+other = "<b>Notifications</b>\n\nThis bot does not send sales alerts. They come from {{.Bot}}: a message for every paid order and every refund, within seconds, in a chat of your choice.\n\nHow to connect your own chat:\n1. Create a group chat (or pick an existing one) and add {{.Bot}} to it.\n2. Open {{.Bot}} with the button below. Owners are administrators there: you add and remove your chats yourself.\n3. Your colleagues who should see the alerts join the same group.\n\nThe messages carry the buyer's contacts, so keep the group for your own team."
+
+["bot.ec.notif_manager"]
+other = "<b>Notifications</b>\n\nThis bot does not send sales alerts. They come from {{.Bot}}: a message for every paid order and every refund, within seconds.\n\nOnly the owner of the organization chooses which chats receive them. Ask the owner to add you to the group chat or to connect a new one. The messages carry the buyer's contacts."
