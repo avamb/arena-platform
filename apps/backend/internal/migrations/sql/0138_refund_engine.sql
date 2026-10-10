@@ -39,8 +39,10 @@
 --     cancelled before it wrote this ticket-less refund: such a refund
 --     speaks for that one ticket only. requested_by is free text a client of
 --     POST /v1/refunds sends, so it cannot carry that meaning (PAY-03 fifth
---     review, M-4); existing rows are backfilled where the ticket's own
---     refund link agrees with requested_by;
+--     review, M-4); it references the ticket and is never set together
+--     with ticket_id; existing rows are backfilled where the ticket's own
+--     refund link agrees with requested_by, or where the named ticket
+--     belongs to the payment's checkout and is cancelled (sixth review);
 --   * refunds.settled_at — every step after the provider accepted (ticket
 --     cancellations, the order projection, the publish once it succeeded)
 --     is done; refund.sweep's repair finishes an accepted refund without it;
@@ -101,14 +103,32 @@ ALTER TABLE refunds
     ADD COLUMN alert_attempts        integer NOT NULL DEFAULT 0,
     ADD COLUMN refunded_published_at timestamptz,
     ADD COLUMN settled_at            timestamptz,
-    ADD COLUMN cancelled_ticket_id   uuid;
+    ADD COLUMN cancelled_ticket_id   uuid REFERENCES tickets(id),
+    ADD CONSTRAINT refunds_cancelled_ticket_id_check
+        CHECK (cancelled_ticket_id IS NULL OR ticket_id IS NULL);
 
+-- backfill cancelled_ticket_id: begin
+-- (1) the ticket links back to the refund (tickets.refund_id);
 UPDATE refunds r
 SET    cancelled_ticket_id = t.id
 FROM   tickets t
 WHERE  t.refund_id = r.id
   AND  r.ticket_id IS NULL
+  AND  r.cancelled_ticket_id IS NULL
   AND  r.requested_by = 'ticket.cancel:' || t.id::text;
+-- (2) the link was never written (it is best-effort in the route): the
+-- named ticket exists, belongs to the payment's checkout session and is
+-- cancelled — what the route does before it writes the refund.
+UPDATE refunds r
+SET    cancelled_ticket_id = t.id
+FROM   tickets t, payment_intents pi
+WHERE  pi.id = r.payment_intent_id
+  AND  t.checkout_session_id = pi.checkout_session_id
+  AND  t.status = 'cancelled'
+  AND  r.ticket_id IS NULL
+  AND  r.cancelled_ticket_id IS NULL
+  AND  r.requested_by = 'ticket.cancel:' || t.id::text;
+-- backfill cancelled_ticket_id: end
 
 CREATE UNIQUE INDEX refunds_provider_refund_uq
     ON refunds (provider, provider_refund_id)
@@ -158,6 +178,7 @@ DROP INDEX IF EXISTS refunds_live_ticket_cancel_uq;
 DROP INDEX IF EXISTS refunds_provider_refund_uq;
 
 ALTER TABLE refunds
+    DROP CONSTRAINT IF EXISTS refunds_cancelled_ticket_id_check,
     DROP COLUMN IF EXISTS cancelled_ticket_id,
     DROP COLUMN IF EXISTS settled_at,
     DROP COLUMN IF EXISTS refunded_published_at,
