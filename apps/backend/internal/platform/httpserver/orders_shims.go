@@ -53,3 +53,13 @@ func (s *Server) handleCancelOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	s.ordersHandler().HandleCancel(w, r)
 }
+
+// handleResendOrderTickets serves POST .../orders/{order_id}/resend-tickets
+// (EC-13): the membership check here, the ticket.update permission in the
+// mount, the org-scoped order lookup in htickets.
+func (s *Server) handleResendOrderTickets(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.ticketsHandler().HandleResendOrderTickets(w, r)
+}

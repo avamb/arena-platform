@@ -345,6 +345,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	if text != "" && b.eventsText(ctx, chatID, from, text) {
 		return
 	}
+	if text != "" && b.resendText(ctx, chatID, from, text) {
+		return
+	}
 	if text != "" && b.ordersText(ctx, chatID, from, text) {
 		return
 	}
@@ -381,6 +384,9 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	}
 	if !isOrdersCallback(parts[0]) {
 		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
+	}
+	if !strings.HasPrefix(cq.Data, "or:r:") {
+		b.leaveResend(ctx, from.ID) // any other press ends the "Resend tickets" dialog (EC-13)
 	}
 	if parts[0] != "ec" { // "ec" ends a delete question itself, unless it is a status button
 		b.leaveEvStatus(ctx, from.ID)

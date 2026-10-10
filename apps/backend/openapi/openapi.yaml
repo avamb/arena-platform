@@ -3154,6 +3154,47 @@ components:
           items:
             $ref: "#/components/schemas/CustomerConsentItem"
 
+    OrderResendTicketsRequest:
+      type: object
+      description: |
+        Body of the resend-tickets route. Every field is optional; an empty body
+        sends the tickets to the order's own address.
+      properties:
+        email:
+          type: [string, "null"]
+          description: |
+            A one-time address for this resend. It is stored on the delivery task
+            for 24 hours and never changes the order's buyer e-mail. An empty
+            string or null means "the order's own address".
+
+    OrderResendTicketsResponse:
+      type: object
+      description: What the resend queued.
+      required:
+        - order_id
+        - queued_tickets
+        - different_address
+        - recipient_masked
+        - expires_at
+      properties:
+        order_id:
+          type: string
+          format: uuid
+          description: UUID of the order.
+        queued_tickets:
+          type: integer
+          description: How many active tickets were queued. Refunded and cancelled tickets are not sent.
+        different_address:
+          type: boolean
+          description: True when the letter goes to a one-time address that is not the order's own.
+        recipient_masked:
+          type: string
+          description: The address the letter goes to with most characters hidden, such as `a***@e******.com`.
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the one-time address stops being valid (24 hours after the request). Null for the order's own address.
+
     OrderSummary:
       type: object
       required:
@@ -36837,6 +36878,100 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Order queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/orders/{order_id}/resend-tickets:
+    post:
+      operationId: postV1OrganizationsOrgIdOrdersOrderIdResendTickets
+      summary: Send an order's tickets again
+      description: |
+        Queues the ticket e-mail of a paid order again (EC-13, spec 35 section 6.4).
+        Every ACTIVE ticket of the order is requeued, so the buyer gets one
+        letter with all the tickets; refunded and cancelled tickets are not
+        sent. Without a body the letter goes to the order's own address (the
+        buyer's, else the first holder's). With `email` it goes to that address
+        once: the address lives on the delivery task, expires after 24 hours and
+        never replaces the order's buyer e-mail. The call writes a
+        `tickets_resent` row into the order history and an audit event that
+        records only whether a different address was used. An order sold through
+        a seller's own site (a channel with an active WordPress webhook, or the
+        Bil24-protocol gateway source) answers 409 `order.seller_site_order`
+        and queues nothing: that site sends its own letters. Requires the
+        `ticket.update` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: order_id
+          in: path
+          required: true
+          description: UUIDv7 of the order
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderResendTicketsRequest"
+      responses:
+        "202":
+          description: The tickets were queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderResendTicketsResponse"
+        "400":
+          description: A path parameter is not a UUID, or `email` is not a valid address (`order.invalid_email`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`ticket.update`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Order not found, or not linked to this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The order is not paid (`order.not_paid`), has no active tickets (`order.no_active_tickets`), or was sold through a seller site (`order.seller_site_order`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The order has no e-mail address and none was given (`order.no_recipient`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Delivery store unavailable (database not wired).
           content:
             application/json:
               schema:
