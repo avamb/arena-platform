@@ -142,6 +142,11 @@ func TestEngine_ReplacementIsNotSentWhenALateAcceptanceTookItsMoney(t *testing.T
 	if got := a.Refunds[0]; got.State != refunds.StateManualReview || deref(got.FailureCode) != "late_acceptance_over_budget" {
 		t.Fatalf("A = %s / %s; want parked over budget", got.State, deref(got.FailureCode))
 	}
+	// Sixth review, MEDIUM-1: B may never be claimed (left requested,
+	// rejected), so A's reason must not promise anything B would do.
+	if r := deref(a.Refunds[0].FailureReason); !strings.Contains(r, "STILL VALID") || strings.Contains(r, "cancellation over") {
+		t.Fatalf("A reason %q; want the ticket said to be still valid, no promised hand-over", r)
+	}
 	if len(b.Refunds) != 1 || b.Refunds[0].State != refunds.StateRequested {
 		t.Fatalf("B = %+v; want one requested refund", b.Refunds)
 	}
@@ -157,31 +162,47 @@ func TestEngine_ReplacementIsNotSentWhenALateAcceptanceTookItsMoney(t *testing.T
 	if got.State != refunds.StateManualReview || deref(got.FailureCode) != "budget_taken_by_another_refund" {
 		t.Fatalf("B = %s / %s; want parked for a human", got.State, deref(got.FailureCode))
 	}
-	// Fifth review, M-2: B was never sent, so A is the ONE refund of ticket
-	// 1 and its money really went back — A takes the cancellation over and
-	// the ticket stops admitting. B gives its cancellation up, so it blocks
-	// nothing.
+	// Sixth review (owner decision: money first, never cancel a ticket on
+	// a guess): nothing cancels ticket 1 automatically. B was never sent,
+	// so it gives its cancel_ticket up and blocks nothing; A stays parked
+	// as it was. Both reasons and the alert say that the money went back
+	// once, through A, that the ticket is STILL VALID and how a person
+	// cancels it.
 	aid := a.Refunds[0].ID
-	if st, link := f.ticketStatus(t, f.tickets[0]); st != "cancelled" || link == nil || *link != aid {
-		t.Fatalf("ticket 1 = %s link %v; want cancelled through A, whose money went back", st, link)
+	if st, link := f.ticketStatus(t, f.tickets[0]); st != "active" || link != nil {
+		t.Fatalf("ticket 1 = %s link %v; nothing may cancel it automatically", st, link)
 	}
-	if ra := f.refundState(t, aid); ra.State != refunds.StateSucceeded || !ra.CancelTicket || ra.FailureCode != nil {
-		t.Fatalf("A = %s cancel %v code %s; want succeeded and owning the cancellation", ra.State, ra.CancelTicket, deref(ra.FailureCode))
+	ra := f.refundState(t, aid)
+	if ra.State != refunds.StateManualReview || deref(ra.FailureCode) != "late_acceptance_over_budget" || ra.CancelTicket {
+		t.Fatalf("A = %s / %s cancel %v; want left parked over budget, cancel_ticket unchanged (false)",
+			ra.State, deref(ra.FailureCode), ra.CancelTicket)
 	}
-	if rb := f.refundState(t, bid); rb.CancelTicket || strings.Contains(deref(rb.FailureReason), "still valid") {
-		t.Fatalf("B cancel %v reason %q; want no cancellation and a reason naming the refund that cancels the ticket",
-			rb.CancelTicket, deref(rb.FailureReason))
+	rb := f.refundState(t, bid)
+	if rb.CancelTicket {
+		t.Fatal("B still holds cancel_ticket; a refund that is never sent must not block the ticket")
+	}
+	for name, reason := range map[string]string{"A": deref(ra.FailureReason), "B": deref(rb.FailureReason)} {
+		for _, want := range []string{aid.String(), "STILL VALID", "Nothing was sent twice", "refund_mode=none"} {
+			if !strings.Contains(reason, want) {
+				t.Fatalf("%s reason %q; want it to contain %q", name, reason, want)
+			}
+		}
 	}
 	n := &recordingNotifier{}
 	if _, err := e.Sweep(ctx, time.Now(), n); err != nil {
 		t.Fatal(err)
 	}
+	if st, _ := f.ticketStatus(t, f.tickets[0]); st != "active" {
+		t.Fatalf("ticket 1 = %s after the sweep; nothing may cancel it automatically", st)
+	}
 	joined := strings.Join(n.texts, "\n")
 	if !strings.Contains(joined, bid.String()) || !strings.Contains(joined, "budget_taken_by_another_refund") {
 		t.Fatalf("alerts = %v; want one about B", n.texts)
 	}
-	if !strings.Contains(joined, aid.String()) || !strings.Contains(joined, "accepted by the provider late") {
-		t.Fatalf("alerts = %v; want the follow-up that A was accepted late and cancels its ticket", n.texts)
+	for _, want := range []string{"STILL VALID", f.tickets[0].String(), "refund_mode=none"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("alerts = %v; want them to contain %q", n.texts, want)
+		}
 	}
 	// An ordinary second refund of the OTHER ticket is unaffected.
 	other, err := e.CreateBatch(ctx, f.batch("k-other", true, refunds.Item{TicketID: f.tickets[1]}))

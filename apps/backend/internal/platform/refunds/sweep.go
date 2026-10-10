@@ -551,8 +551,17 @@ func (e *Engine) alertReviews(ctx context.Context, n Notifier) (int, error) {
 func alertText(r Refund) string {
 	esc := opsalert.EscapeHTML
 	if r.State == StateManualReview {
-		return fmt.Sprintf("Refund %s (%d %s via %s) needs manual review: %s. Order %s.",
+		text := fmt.Sprintf("Refund %s (%d %s via %s) needs manual review: %s. Order %s.",
 			r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), esc(deref(r.FailureCode)), uuidString(r.OrderID))
+		switch deref(r.FailureCode) {
+		case failureBudgetTaken, failureBudgetAfterUnanswered, failureLateOverBudget:
+			if r.TicketID != nil {
+				// Sixth review: nothing cancels this ticket automatically.
+				text += fmt.Sprintf(" Ticket %s is STILL VALID. Check the provider dashboard; if the buyer's money for it is back, cancel it without a refund: POST /v1/tickets/%s/cancel with refund_mode=none.",
+					r.TicketID, r.TicketID)
+			}
+		}
+		return text
 	}
 	return fmt.Sprintf("Refund %s (%d %s via %s) was accepted by the provider late, after it had been parked or marked failed: accepted_late. Its ticket is cancelled; check for a manual duplicate refund. Order %s.",
 		r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), uuidString(r.OrderID))

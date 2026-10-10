@@ -95,8 +95,58 @@ func TestEngine_AttemptedRefundParkedForBudgetKeepsCounting(t *testing.T) {
 	}
 	// Nobody knows whether B's money went back: the ticket stays valid for
 	// a person to decide, and B's reason says so.
-	if st, _ := f.ticketStatus(t, f.tickets[0]); st != "active" || !strings.Contains(deref(b.FailureReason), "still valid") {
+	if st, _ := f.ticketStatus(t, f.tickets[0]); st != "active" || !strings.Contains(deref(b.FailureReason), "STILL VALID") {
 		t.Fatalf("ticket 1 = %s, B reason %q; want the ticket left for a person", st, deref(b.FailureReason))
+	}
+}
+
+// TestEngine_HeldBackRefundNeverCancelsThroughAMoneyOnlyRefund (sixth
+// review, HIGH-1): payment 5000, tickets T1 and T2 at 2500. P is a
+// money-only refund of 500 on T1 (succeeded, cancels nothing), F a flat
+// refund of 2500 waiting for approval, B 2000 on T1 WITH cancellation and
+// never sent, X an earlier failed refund of T2 accepted late and parked
+// over budget. B's claim holds B back for the budget — and must not cancel
+// T1 through P: only 500 of T1's 2500 went back.
+func TestEngine_HeldBackRefundNeverCancelsThroughAMoneyOnlyRefund(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	ctx := context.Background()
+	m := &fakeModule{partial: true}
+	e := f.engine(m, true)
+	p, err := e.CreateBatch(ctx, f.batch("k-p", false, refunds.Item{TicketID: f.tickets[0], Amount: amountPtr(500)}))
+	if err != nil || p.Refunds[0].State != refunds.StateSucceeded || p.Refunds[0].CancelTicket {
+		t.Fatalf("P: %v %+v", err, p.Refunds)
+	}
+	f.rawRefund(t, f.payment, 2500, "requested", "")
+	in := f.batch("k-b", true, refunds.Item{TicketID: f.tickets[0], Amount: amountPtr(2000)})
+	in.Approved = false
+	b, err := e.CreateBatch(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bid := b.Refunds[0].ID
+	f.rawRefund(t, f.payment, 2500, "manual_review", `ticket_id = '`+f.tickets[1].String()+`', order_id = '`+f.order.String()+
+		`', failure_code = 'late_acceptance_over_budget', provider_status = 'succeeded', provider_refund_id = 're_x_`+uuid.NewString()+`'`)
+	f.approveNow(t, bid)
+	got, err := e.Drive(ctx, bid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.callCount() != 1 || got.State != refunds.StateManualReview || deref(got.FailureCode) != "budget_taken_by_another_refund" || got.CancelTicket {
+		t.Fatalf("B = %s / %s cancel %v, calls %d; want held back unsent without cancel_ticket",
+			got.State, deref(got.FailureCode), got.CancelTicket, m.callCount())
+	}
+	if st, link := f.ticketStatus(t, f.tickets[0]); st != "active" || link != nil {
+		t.Fatalf("T1 = %s link %v; a money-only refund of 500 must never cancel it", st, link)
+	}
+	if rp := f.refundState(t, p.Refunds[0].ID); rp.CancelTicket || rp.State != refunds.StateSucceeded {
+		t.Fatalf("P = %s cancel %v; want untouched", rp.State, rp.CancelTicket)
+	}
+	f.exec(t, `UPDATE refunds SET updated_at = now() - interval '2 minutes' WHERE org_id = $1`, f.org)
+	if _, err := e.Sweep(ctx, time.Now(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := f.ticketStatus(t, f.tickets[0]); st != "active" {
+		t.Fatalf("T1 = %s after the sweep", st)
 	}
 }
 
