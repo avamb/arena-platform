@@ -74,6 +74,9 @@ func TestManagerPermissions0129_OrganizerPassesEveryEventCenterGate(t *testing.T
 		{"promo.create", http.MethodPost, orgPath + "/promo-codes", `{}`},
 		{"promo.update", http.MethodPatch, orgPath + "/promo-codes/" + random, `{"is_active":false}`},
 		{"promo.delete", http.MethodDelete, orgPath + "/promo-codes/" + random, ""},
+		// EC-11: the usage list and the usage file behind the promo-code card.
+		{"promo.read", http.MethodGet, orgPath + "/promo-code-redemptions?promo_code_id=" + random, ""},
+		{"promo.read", http.MethodGet, orgPath + "/promo-codes/" + random + "/redemptions.csv", ""},
 		{"complimentary.read", http.MethodGet, orgPath + "/complimentary", ""},
 		{"complimentary.issue", http.MethodPost, orgPath + "/complimentary", `{}`},
 		{"scan_event.read", http.MethodGet, "/v1/admin/tickets/" + random + "/scans", ""},

@@ -294,6 +294,7 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
 		// and an event's delete question (its typed word)
 		b.leaveEvStatus(ctx, from.ID)
+		b.leavePromo(ctx, from.ID) // and a promo-code question (EC-11)
 		switch cmd {
 		case "/start":
 			arg = strings.TrimSpace(arg)
@@ -351,6 +352,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	if text != "" && b.inviteText(ctx, chatID, from, text) {
 		return
 	}
+	if text != "" && b.promoText(ctx, chatID, from, text) {
+		return
+	}
 	if text != "" && b.ordersText(ctx, chatID, from, text) {
 		return
 	}
@@ -397,6 +401,9 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	if parts[0] != "iv" { // any other press ends the "Invitations" dialog (EC-12): its typed guests, quantity or annul word
 		b.leaveInvite(ctx, from.ID)
 	}
+	if parts[0] != "pm" { // any other screen ends the promo-code dialog (EC-11)
+		b.leavePromo(ctx, from.ID)
+	}
 	switch parts[0] {
 	case "el":
 		b.eventsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "el:"))
@@ -406,6 +413,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.ordersCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "or:"))
 	case "iv":
 		b.inviteCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "iv:"))
+	case "pm":
+		b.promoCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pm:"))
 	case "home":
 		b.clearTeamDialog(ctx, from.ID)
 		b.showHome(ctx, chatID, &msgID, from, "")
@@ -592,6 +601,9 @@ func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *model
 	}
 	if canInvite(id) {
 		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.inv.btn", nil), CallbackData: "iv:new"}})
+	}
+	if row := b.promoMenuRow(loc, id); row != nil { // promo codes (EC-11)
+		rows = append(rows, row)
 	}
 	if isOwner(id) {
 		if b.ownerIsAlone(ctx, id, jwt) {

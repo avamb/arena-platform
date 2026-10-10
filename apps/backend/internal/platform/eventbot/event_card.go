@@ -142,6 +142,9 @@ func (b *Bot) showEventCard(ctx context.Context, chatID int64, editMsgID *int, f
 		[]models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.sample_btn", nil), CallbackData: "sample:" + eventID.String()}},
 		b.sessionsOrdersRow(loc, id, eventID),
 	)
+	if row := b.promoEventRow(loc, id, eventID); row != nil { // promo codes of the event (EC-11)
+		rows = append(rows, row)
+	}
 	// Publish, take off sale, archive, delete: what the status allows (EC-10).
 	rows = append(rows, b.eventStatusRows(loc, id, string(event.Status), eventID)...)
 	if canInvite(id) {

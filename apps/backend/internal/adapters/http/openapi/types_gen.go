@@ -4264,7 +4264,10 @@ type CreateChannelRequest struct {
 	PaymentMode *CreateChannelRequestPaymentMode `json:"payment_mode,omitempty"`
 
 	// Provider Defaults to `stripe` when omitted or empty. Any other value
-	// returns 400 `channel.invalid_config`.
+	// returns 400 `channel.invalid_config`. The values are the
+	// payment modules arena has (the module registry,
+	// `internal/app/payments`); a new module adds its name here and
+	// needs no database migration.
 	Provider *CreateChannelRequestProvider `json:"provider,omitempty"`
 
 	// ProviderAccountId Merchant account identifier at the provider. Required
@@ -4295,7 +4298,10 @@ type CreateChannelRequest struct {
 type CreateChannelRequestPaymentMode string
 
 // CreateChannelRequestProvider Defaults to `stripe` when omitted or empty. Any other value
-// returns 400 `channel.invalid_config`.
+// returns 400 `channel.invalid_config`. The values are the
+// payment modules arena has (the module registry,
+// `internal/app/payments`); a new module adds its name here and
+// needs no database migration.
 type CreateChannelRequestProvider string
 
 // CreateCustomerImportRequest Registers a customer_imports row referencing an already-uploaded
@@ -9618,6 +9624,12 @@ type PromoCodeItem struct {
 	// created before migration 0108 means any currency.
 	Currency *string `json:"currency"`
 
+	// DiscountCurrency ISO 4217 currency of `discount_total` when every order that used
+	// the code was in one currency; `null` when the code was never used
+	// or its orders are in several currencies (the sum is then not one
+	// amount).
+	DiscountCurrency *string `json:"discount_currency"`
+
 	// DiscountTotal Sum of the discounts those orders took, in minor units.
 	DiscountTotal int64 `json:"discount_total"`
 
@@ -9700,6 +9712,9 @@ type PromoCodeListResponse struct {
 type PromoRedemptionItem struct {
 	// BuyerEmail E-mail the order was bought under.
 	BuyerEmail *string `json:"buyer_email"`
+
+	// BuyerName Name the order was bought under (the buyer's own words); null when the order carries none.
+	BuyerName *string `json:"buyer_name"`
 
 	// ChannelId The sales channel the order came through.
 	ChannelId *openapi_types.UUID `json:"channel_id"`
@@ -12225,7 +12240,9 @@ type UpdateChannelRequest struct {
 	PaymentMode *UpdateChannelRequestPaymentMode `json:"payment_mode,omitempty"`
 
 	// Provider New payment provider. Omit (or send an empty string) to
-	// leave unchanged.
+	// leave unchanged. Same values and rule as on create: a
+	// registered payment module, otherwise 400
+	// `channel.invalid_config`.
 	Provider *UpdateChannelRequestProvider `json:"provider,omitempty"`
 
 	// ProviderAccountId New merchant account identifier. Omitting the key OR sending
@@ -12264,7 +12281,9 @@ type UpdateChannelRequest struct {
 type UpdateChannelRequestPaymentMode string
 
 // UpdateChannelRequestProvider New payment provider. Omit (or send an empty string) to
-// leave unchanged.
+// leave unchanged. Same values and rule as on create: a
+// registered payment module, otherwise 400
+// `channel.invalid_config`.
 type UpdateChannelRequestProvider string
 
 // UpdateEventRequest Partial update for PATCH /v1/organizations/{org_id}/events/{id}.

@@ -38,6 +38,7 @@ type promoRedemptionResponse struct {
 	OrderStatus    *string `json:"order_status"`
 	Currency       *string `json:"currency"`
 	BuyerEmail     *string `json:"buyer_email"`
+	BuyerName      *string `json:"buyer_name"`
 	SessionID      *string `json:"session_id"`
 	ChannelID      *string `json:"channel_id"`
 	ChannelName    *string `json:"channel_name"`
@@ -63,6 +64,7 @@ func promoRedemptionFromRow(r gen.PromoCodeRedemptionReportRow) promoRedemptionR
 		OrderStatus:    r.OrderStatus,
 		Currency:       r.Currency,
 		BuyerEmail:     r.BuyerEmail,
+		BuyerName:      r.BuyerName,
 		SessionID:      uuidStr(r.SessionID),
 		ChannelID:      uuidStr(r.ChannelID),
 		ChannelName:    r.ChannelName,
