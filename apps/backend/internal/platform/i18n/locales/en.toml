@@ -1976,3 +1976,492 @@ other = "This change is not possible for the event in its current state."
 
 ["bot.evs.archive_instead_btn"]
 other = "🗄 Archive instead"
+
+["bot.inv.btn"]
+other = "🎟 Invitations"
+
+["bot.inv.hub"]
+other = "🎟 <b>Invitations</b> · {{.Org}}\n\nFree tickets for guests: real tickets with a barcode, sent to each guest by e-mail. They take places from the category like sold tickets, and you can annul one later.\n\nAt most {{.Max}} tickets in one operation; for more, do several operations."
+
+["bot.inv.issue_btn"]
+other = "➕ Issue invitations"
+
+["bot.inv.list_btn"]
+other = "📋 Issued invitations"
+
+["bot.inv.ev_title"]
+other = "🎟 <b>Invitations</b> · {{.Org}}\n\nChoose the event ({{.Page}}/{{.Pages}}):"
+
+["bot.inv.ev_empty"]
+other = "No event has a date to come, so there is nobody to invite to."
+
+["bot.inv.se_title"]
+other = "🎟 <b>{{.Name}}</b>\n\nChoose the date ({{.Page}}/{{.Pages}}). The free places are shown beside each date:"
+
+["bot.inv.se_empty"]
+other = "<b>{{.Name}}</b> has no date to come (past and cancelled dates are not offered)."
+
+["bot.inv.ti_title"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nChoose the category. The invitations take places from it:"
+
+["bot.inv.ti_empty"]
+other = "<b>{{.Name}}</b> · {{.When}}\n\nThis date has no general-admission category to issue from."
+
+["bot.inv.ti_seated"]
+other = "<b>{{.Name}}</b> · {{.When}}\n\nThis date has a seating plan. An invitation without a seat would use up a place and leave the seat on sale, so invitations cannot be issued for it here yet."
+
+["bot.inv.ti_full"]
+other = "The category «{{.Tier}}» has no free places left."
+
+["bot.inv.free_label"]
+other = "free {{.N}}"
+
+["bot.inv.qty_ask"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\nCategory: {{.Tier}} · free places: {{.N}}\n\nHow many tickets? Press a number or type it. At most {{.Max}} in one operation; for more, do several operations."
+
+["bot.inv.qty_bad"]
+other = "That is not a number. Type how many tickets, for example 4."
+
+["bot.inv.qty_over_max"]
+other = "At most {{.Max}} tickets in one operation. Type a smaller number and do the rest in another operation."
+
+["bot.inv.qty_over_free"]
+other = "Only {{.N}} free places are left in «{{.Tier}}». Type a smaller number."
+
+["bot.inv.rcpt_ask"]
+other = "Who are the {{.N}} guests? Send them one per line, either <code>Name, e-mail</code> or just the e-mail:\n\n<code>Anna Novak, anna@example.com\nboris@example.com</code>\n\nStill needed: {{.Left}}. You may send them in several messages, but a message is accepted whole or not at all. Each guest gets an invitation of their own, so an address can be on the list only once."
+
+["bot.inv.rcpt_got"]
+other = "Accepted so far ({{.Got}} of {{.N}}):\n{{.List}}"
+
+["bot.inv.rcpt_bad"]
+other = "Nothing from that message was accepted. Fix these lines and send the message again:\n{{.List}}"
+
+["bot.inv.bad_line"]
+other = "Line {{.Line}}: «{{.Text}}» — {{.Reason}}"
+
+["bot.inv.reason_email"]
+other = "no valid e-mail address"
+
+["bot.inv.reason_name"]
+other = "the name is too long"
+
+["bot.inv.reason_repeat"]
+other = "this e-mail is already on the list"
+
+["bot.inv.reason_several"]
+other = "more than one e-mail on a line (one guest per line)"
+
+["bot.inv.rcpt_too_many"]
+other = "That message has {{.Sent}} guests but only {{.Left}} more are needed. Send exactly the missing ones, or press «Back» to change the quantity."
+
+["bot.inv.confirm"]
+other = "🎟 <b>Send the invitations?</b>\n\n{{.Name}}\n{{.When}} · {{.Tier}}\nTickets: {{.N}}\n\n{{.List}}\n\nThese are real tickets with a barcode: they take {{.N}} places from the category and each guest receives an e-mail with the ticket. You can annul one later."
+
+["bot.inv.send_btn"]
+other = "✉️ Send"
+
+["bot.inv.done"]
+other = "✔ Invitations issued: {{.N}}. The e-mails are on their way.\n\n{{.List}}"
+
+["bot.inv.partial"]
+other = "⚠ Issued {{.Done}} of {{.N}}. Stopped because {{.Why}}"
+
+["bot.inv.partial_done"]
+other = "Issued:\n{{.List}}"
+
+["bot.inv.partial_left"]
+other = "Not issued:\n{{.List}}"
+
+["bot.inv.retry_btn"]
+other = "↻ Try again"
+
+["bot.inv.why_full"]
+other = "there are not enough free places in the category."
+
+["bot.inv.why_rejected"]
+other = "the server did not accept a guest's data."
+
+["bot.inv.why_gone"]
+other = "the event or the date no longer exists."
+
+["bot.inv.why_error"]
+other = "of a temporary error. Nothing is lost: press «Try again» and only the missing ones are issued."
+
+["bot.inv.list_title"]
+other = "🎟 <b>Invitations</b> · {{.Org}}\nIssued: {{.Total}} · page {{.Page}}/{{.Pages}}\n{{.Legend}}"
+
+["bot.inv.legend"]
+other = "✔ valid  ✕ annulled  ● used at the door"
+
+["bot.inv.list_empty"]
+other = "No invitations have been issued yet."
+
+["bot.inv.state_valid"]
+other = "valid"
+
+["bot.inv.state_revoked"]
+other = "annulled"
+
+["bot.inv.state_used"]
+other = "used at the door"
+
+["bot.inv.card"]
+other = "🎟 <b>{{.Event}}</b>\n{{.When}} · {{.Tier}}\n\nGuest:\n{{.Guests}}\n\nStatus: {{.State}}\nIssued: {{.Issued}}"
+
+["bot.inv.revoke_btn"]
+other = "🚫 Annul invitation"
+
+["bot.inv.revoke_ask"]
+other = "🚫 <b>Annul this invitation?</b>\n\n{{.Guest}}\n{{.Event}} · {{.When}}\n\nThe ticket and its barcode stop working at once and the place goes back on sale. This cannot be undone, and Arena does not tell the guest: write to them yourself.\n\nTo annul, type the word <b>{{.Word}}</b> as a message."
+
+["bot.inv.revoke_wrong"]
+other = "That is not the word, so nothing was annulled. To annul, type {{.Word}}, or press «Back»."
+
+["bot.inv.revoke_word"]
+other = "ANNUL"
+
+["bot.inv.revoke_done"]
+other = "✔ The invitation for {{.Guest}} is annulled. The place is back on sale."
+
+["bot.inv.revoke_already"]
+other = "The invitation for {{.Guest}} was already annulled."
+
+["bot.inv.revoke_used"]
+other = "The invitation for {{.Guest}} has already been scanned at the door, so it was not annulled. It is marked for manual review."
+
+["bot.inv.private_only"]
+other = "Guests' addresses are shown and typed only in a private chat with the bot. Open Invitations there."
+
+["bot.promo.btn"]
+other = "🏷 Promo codes"
+
+["bot.promo.list_title"]
+other = "🏷 <b>Promo codes</b> · {{.Org}}{{.Scope}}\nCodes: {{.Total}} · page {{.Page}} of {{.Pages}}\n{{.Legend}}"
+
+["bot.promo.legend"]
+other = "● working · ⏸ paused · ⌛ expired · ✕ used up · ○ not started yet"
+
+["bot.promo.scope_line"]
+other = "For the event <b>{{.Name}}</b>, and the codes that work on every event."
+
+["bot.promo.list_all_btn"]
+other = "All codes"
+
+["bot.promo.empty"]
+other = "No promo codes yet. A code gives buyers a discount: press «New code»."
+
+["bot.promo.empty_event"]
+other = "No promo code works on this event yet. Press «New code» to make one for it."
+
+["bot.promo.new_btn"]
+other = "＋ New code"
+
+["bot.promo.st_active"]
+other = "working"
+
+["bot.promo.st_paused"]
+other = "paused"
+
+["bot.promo.st_expired"]
+other = "expired"
+
+["bot.promo.st_exhausted"]
+other = "used up"
+
+["bot.promo.st_scheduled"]
+other = "not started yet"
+
+["bot.promo.discount_pct"]
+other = "{{.Value}}% off"
+
+["bot.promo.discount_fixed"]
+other = "{{.Amount}} off the order"
+
+["bot.promo.sess_all"]
+other = "all sessions, including future ones"
+
+["bot.promo.sess_n"]
+other = "sessions: {{.N}}"
+
+["bot.promo.lim_total"]
+other = "{{.Limit}} uses in total"
+
+["bot.promo.lim_per"]
+other = "{{.Limit}} per buyer"
+
+["bot.promo.lim_none"]
+other = "no limits"
+
+["bot.promo.valid_from"]
+other = "from {{.Date}}"
+
+["bot.promo.valid_until"]
+other = "until {{.Date}}"
+
+["bot.promo.valid_none"]
+other = "no end date"
+
+["bot.promo.usage_none"]
+other = "not used yet"
+
+["bot.promo.usage"]
+other = "used {{.Count}}×, discount {{.Discount}}, last {{.When}}"
+
+["bot.promo.usage_mixed"]
+other = "used {{.Count}}×, last {{.When}} (the orders are in several currencies: see Usage)"
+
+["bot.promo.card_discount"]
+other = "Discount: {{.Text}}"
+
+["bot.promo.card_rule"]
+other = "A fixed discount comes off the whole order once, not off every ticket, and one order takes one code."
+
+["bot.promo.card_sessions"]
+other = "Sessions: {{.Text}}"
+
+["bot.promo.card_sess_line"]
+other = "• {{.Name}} · {{.When}}"
+
+["bot.promo.card_sess_more"]
+other = "…and {{.N}} more"
+
+["bot.promo.card_limits"]
+other = "Limits: {{.Text}}"
+
+["bot.promo.card_valid"]
+other = "Valid: {{.Text}}"
+
+["bot.promo.card_usage"]
+other = "Usage: {{.Text}}"
+
+["bot.promo.card_state"]
+other = "Status: {{.Text}}"
+
+["bot.promo.only_currency"]
+other = "It works only on orders in {{.Currency}}."
+
+["bot.promo.pause_btn"]
+other = "⏸ Pause"
+
+["bot.promo.activate_btn"]
+other = "▶ Activate"
+
+["bot.promo.sessions_btn"]
+other = "Sessions"
+
+["bot.promo.usage_btn"]
+other = "Usage"
+
+["bot.promo.csv_btn"]
+other = "⬇ CSV"
+
+["bot.promo.delete_btn"]
+other = "🗑 Delete"
+
+["bot.promo.paused_done"]
+other = "⏸ Code <b>{{.Code}}</b> is paused: buyers cannot use it until you activate it again."
+
+["bot.promo.activated_done"]
+other = "▶ Code <b>{{.Code}}</b> is active again."
+
+["bot.promo.sess_head"]
+other = "🏷 <b>{{.Code}}</b> · sessions\n\n{{.Text}}\n\nWhere should the code work?"
+
+["bot.promo.sess_all_btn"]
+other = "All sessions, including future ones"
+
+["bot.promo.sess_only_btn"]
+other = "Only checked sessions…"
+
+["bot.promo.sess_all_done"]
+other = "✔ <b>{{.Code}}</b> now works on every session, including future ones."
+
+["bot.promo.sess_saved"]
+other = "✔ Saved. <b>{{.Code}}</b> now works only on the sessions you checked (sessions: {{.N}})."
+
+["bot.promo.e_head"]
+other = "🏷 <b>{{.Code}}</b> · sessions"
+
+["bot.promo.q_event_edit"]
+other = "Choose the event whose sessions you want to change."
+
+["bot.promo.pick_edit_note"]
+other = "Sessions of other events that the code already has stay as they are."
+
+["bot.promo.usage_title"]
+other = "🏷 <b>{{.Code}}</b> · usage\n{{.Text}}\nPage {{.Page}} of {{.Pages}}\n"
+
+["bot.promo.usage_empty"]
+other = "Nobody has used this code yet."
+
+["bot.promo.usage_row"]
+other = "№{{.Num}} · {{.Date}} · {{.Name}} · −{{.Discount}} of {{.Amount}} · {{.Status}}"
+
+["bot.promo.buyer_unknown"]
+other = "buyer without a name"
+
+["bot.promo.csv_empty"]
+other = "Nothing to export yet: nobody has used this code."
+
+["bot.promo.csv_scope"]
+other = "usage of the promo code"
+
+["bot.promo.csv_what"]
+other = "orders"
+
+["bot.promo.csv_too_big"]
+other = "The usage file is too large to send in a chat."
+
+["bot.promo.delete_ask"]
+other = "🗑 <b>Delete the code {{.Code}}?</b>\n\nTimes used: {{.Count}}. Once deleted, the code leaves the list, its usage can no longer be opened or exported here, and its name stays taken, so no new code can have the same name. If you only want to stop it, pause it instead. Orders already paid are not touched.\n\nTo delete, type exactly: {{.Word}}"
+
+["bot.promo.delete_wrong"]
+other = "That is not the word, so nothing was deleted. To delete, type exactly: {{.Word}}"
+
+["bot.promo.delete_word"]
+other = "DELETE"
+
+["bot.promo.deleted_done"]
+other = "✔ Code <b>{{.Code}}</b> is deleted."
+
+["bot.promo.gone"]
+other = "This screen is no longer open. Start the new code again."
+
+["bot.promo.cancelled"]
+other = "The new code was not created."
+
+["bot.promo.created"]
+other = "✔ Code <b>{{.Code}}</b> is created."
+
+["bot.promo.use_buttons"]
+other = "Use the buttons under the question."
+
+["bot.promo.c_head"]
+other = "🏷 <b>New promo code</b>{{.Text}}"
+
+["bot.promo.q_code"]
+other = "Type the code buyers will enter, for example SUMMER25. Letters, digits, - and _ only, up to 64 characters. I will make it upper case."
+
+["bot.promo.q_type"]
+other = "What kind of discount?"
+
+["bot.promo.type_pct_btn"]
+other = "Percent"
+
+["bot.promo.type_fix_btn"]
+other = "Fixed amount"
+
+["bot.promo.q_percent"]
+other = "How many percent off? A whole number from 1 to 100."
+
+["bot.promo.q_amount"]
+other = "How much comes off? Type the amount, for example 5 or 5.50.\n\nA fixed discount comes off the whole <b>order</b> once, not off every ticket, and one order takes only one code."
+
+["bot.promo.q_currency"]
+other = "In which currency? The code works only on orders in that currency. Press a button or type the three-letter code, for example EUR."
+
+["bot.promo.q_scope"]
+other = "Where does the code work?"
+
+["bot.promo.q_scope_event"]
+other = "Where does the code work? You are on the event <b>{{.Name}}</b>."
+
+["bot.promo.scope_all_btn"]
+other = "On all sessions, including future ones"
+
+["bot.promo.scope_pick_btn"]
+other = "Only on chosen sessions"
+
+["bot.promo.q_event"]
+other = "Choose the event, then you will tick its sessions."
+
+["bot.promo.q_pick"]
+other = "Tick the sessions of <b>{{.Name}}</b> the code works on, then press «Done»."
+
+["bot.promo.pick_done_btn"]
+other = "✔ Done ({{.N}})"
+
+["bot.promo.pick_event_btn"]
+other = "Another event"
+
+["bot.promo.q_total"]
+other = "How many times can the code be used in total? Type a number, or skip for no limit."
+
+["bot.promo.q_per"]
+other = "How many times can one buyer use it? Type a number, or skip for no limit."
+
+["bot.promo.skip_btn"]
+other = "Skip (no limit)"
+
+["bot.promo.skip_exp_btn"]
+other = "Skip (no end date)"
+
+["bot.promo.q_expiry"]
+other = "Until which day does the code work? Pick the last day, or skip for no end date. It works through the end of that day (UTC)."
+
+["bot.promo.q_status"]
+other = "Switch the code on now, or create it paused?"
+
+["bot.promo.status_active_btn"]
+other = "▶ Active"
+
+["bot.promo.status_paused_btn"]
+other = "⏸ Paused"
+
+["bot.promo.summary"]
+other = "🏷 <b>Check the new code</b>\n\n{{.Text}}\n\nPress «Create» to save it."
+
+["bot.promo.create_btn"]
+other = "✔ Create"
+
+["bot.promo.cancel_btn"]
+other = "✖ Cancel"
+
+["bot.promo.err_code_empty"]
+other = "Type the code."
+
+["bot.promo.err_code_long"]
+other = "That code is longer than 64 characters. Type a shorter one."
+
+["bot.promo.err_code_chars"]
+other = "Use only letters, digits, - _ and a dot, with no spaces. Type the code again."
+
+["bot.promo.err_code_dup"]
+other = "You already have a code with that name. Type another."
+
+["bot.promo.err_percent"]
+other = "Type a whole number of percent from 1 to 100."
+
+["bot.promo.err_amount"]
+other = "Type an amount above zero with at most two decimals, for example 5 or 5.50."
+
+["bot.promo.err_currency"]
+other = "Type a three-letter currency code, for example EUR."
+
+["bot.promo.err_limit"]
+other = "Type a whole number from 1 to 1000000, or press Skip."
+
+["bot.promo.err_per_gt_total"]
+other = "One buyer cannot be allowed more uses than the total limit. Type a smaller number."
+
+["bot.promo.err_pick_none"]
+other = "Tick at least one session, or go back and choose all sessions."
+
+["bot.promo.err_session_currency"]
+other = "That session sells in another currency, so a code in this currency cannot work on it."
+
+["bot.promo.err_session_foreign"]
+other = "The server did not accept one of the sessions: it is not in this organization."
+
+["bot.promo.err_duplicate"]
+other = "A code with that name already exists in this organization. A deleted code keeps its name too. Type another name."
+
+["bot.promo.err_no_events"]
+other = "There are no running events to choose from."
+
+["bot.promo.err_no_sessions"]
+other = "This event has no upcoming sessions to choose from."
+
+["bot.promo.err_incomplete"]
+other = "Something is missing in the code. Go back and check the steps."

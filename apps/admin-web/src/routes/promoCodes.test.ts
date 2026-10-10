@@ -39,6 +39,7 @@ function promoCode(overrides: Partial<PromoCode> = {}): PromoCode {
     applies_to_session_ids: [],
     uses: 0,
     discount_total: 0,
+    discount_currency: null,
     last_used_at: null,
     max_uses: null,
     max_uses_per_customer: null,

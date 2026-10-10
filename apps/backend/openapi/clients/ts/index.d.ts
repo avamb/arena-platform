@@ -5505,13 +5505,20 @@ export interface paths {
         };
         /**
          * List complimentary ticket issuances for an organization
-         * @description List complimentary ticket issuances for an organization.
+         * @description A page of the organization's complimentary issuances, newest first,
+         *     each with the event and date it is for, its category, its tickets
+         *     (number, guest name and e-mail, whether it was scanned) and a derived
+         *     state (`valid`, `revoked`, `used`). Pending and failed issuances are
+         *     not listed.
          */
         get: operations["listComplimentaryIssuances"];
         put?: never;
         /**
          * Issue a complimentary ticket
-         * @description Issue a complimentary ticket.
+         * @description Issue complimentary tickets (at most 50 per operation) to named
+         *     recipients: real tickets with barcodes that take places from the
+         *     category, and an invitation e-mail to each recipient with an
+         *     address. Revocation annuls the tickets and returns the places.
          */
         post: operations["createComplimentaryIssuance"];
         delete?: never;
@@ -5551,7 +5558,13 @@ export interface paths {
         put?: never;
         /**
          * Revoke a complimentary ticket issuance
-         * @description Revoke a complimentary ticket issuance.
+         * @description Annul every ticket of the issuance (barcodes and credentials stop
+         *     working, the places return to sale). The caller must belong to the
+         *     issuance's organization (403 otherwise). 409
+         *     `complimentary.already_revoked` when it was annulled before, 409
+         *     `complimentary.scanned_ticket_requires_manual_review` when a ticket
+         *     was already scanned at the door (the issuance is parked for manual
+         *     review and nothing is annulled).
          */
         post: operations["revokeComplimentaryIssuance"];
         delete?: never;
@@ -14653,6 +14666,13 @@ export interface components {
              */
             discount_total: number;
             /**
+             * @description ISO 4217 currency of `discount_total` when every order that used
+             *     the code was in one currency; `null` when the code was never used
+             *     or its orders are in several currencies (the sum is then not one
+             *     amount).
+             */
+            discount_currency: string | null;
+            /**
              * Format: date-time
              * @description When the code was last redeemed; `null` when never.
              */
@@ -14790,6 +14810,8 @@ export interface components {
             currency: string | null;
             /** @description E-mail the order was bought under. */
             buyer_email: string | null;
+            /** @description Name the order was bought under (the buyer's own words); null when the order carries none. */
+            buyer_name: string | null;
             /**
              * Format: uuid
              * @description The event session the order sold.
@@ -17739,6 +17761,167 @@ export interface components {
              * @description ISO-8601 timestamp when the comp ticket was issued.
              */
             created_at: string;
+        };
+        /** @description One ticket of a complimentary issuance, as the invitations list shows it. */
+        ComplimentaryTicketItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the ticket.
+             */
+            id: string;
+            /**
+             * Format: int64
+             * @description The ticket number the guest and the organizer see (tickets.system_ticket_id).
+             */
+            system_ticket_id: number;
+            /** @description E-mail address the invitation was sent to; null for an anonymous ticket. */
+            holder_email: string | null;
+            /** @description Name of the guest typed on the invitation; null when none was given. */
+            holder_name: string | null;
+            /** @description Ticket status (active, revoked, cancelled, transferred). */
+            status: string;
+            /** @description True once the ticket has been scanned at the door. */
+            used: boolean;
+        };
+        /**
+         * @description One complimentary issuance in the paged list: the issuance row with
+         *     the event, date and category it is for, its tickets and a derived
+         *     state.
+         */
+        ComplimentaryListItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the issuance (the id the revoke route takes).
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Organization that issued it.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Session (date) the tickets are valid for.
+             */
+            session_id: string;
+            /**
+             * Format: uuid
+             * @description Category the tickets were issued in; null for an untiered issuance.
+             */
+            tier_id: string | null;
+            /**
+             * Format: int32
+             * @description Number of tickets in the issuance.
+             */
+            qty: number;
+            /** @description Recipient e-mail addresses in ticket order. */
+            recipients: string[];
+            /** @description Idempotency key the issuance was created under. */
+            batch_id: string;
+            /** @description Raw issuance status (issued, revoked, manual_review). */
+            status: string;
+            /** @description Free-text label of who issued it, when given. */
+            issued_by?: string | null;
+            /** @description Internal note, when given. */
+            notes?: string | null;
+            /**
+             * Format: uuid
+             * @description Event the session belongs to.
+             */
+            event_id?: string | null;
+            /** @description Name of the event. */
+            event_name?: string | null;
+            /**
+             * Format: date-time
+             * @description Start of the session, RFC 3339 in UTC.
+             */
+            session_start_at?: string | null;
+            /** @description IANA timezone of the venue, when known. */
+            venue_timezone?: string | null;
+            /** @description Name of the category. */
+            tier_name?: string | null;
+            /**
+             * Format: int64
+             * @description Number of ticket rows of the issuance.
+             */
+            ticket_count: number;
+            /**
+             * @description Derived state: `valid` (issued, not scanned), `revoked`
+             *     (annulled) or `used` (at least one ticket scanned at the door,
+             *     or parked for manual review because of that).
+             */
+            state: string;
+            /** @description The tickets of the issuance, oldest first. */
+            tickets: components["schemas"]["ComplimentaryTicketItem"][];
+            /**
+             * Format: date-time
+             * @description When the issuance was created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the issuance last changed.
+             */
+            updated_at: string;
+        };
+        /** @description One page of complimentary issuances, newest first. */
+        ComplimentaryListResponse: {
+            /** @description The issuances of this page. */
+            issuances: components["schemas"]["ComplimentaryListItem"][];
+            /**
+             * Format: int64
+             * @description Issuances that match the filters, over all pages.
+             */
+            total: number;
+            /** @description True when another page follows this one. */
+            has_more: boolean;
+        };
+        /**
+         * @description Issue complimentary tickets. At most 50 tickets per operation; more
+         *     goes in several operations (400 `complimentary.qty_too_large`).
+         *     `batch_id` makes a retry safe: repeating an (organization, batch_id)
+         *     pair returns the first result with `idempotent_replay: true` and
+         *     sends no second letter.
+         */
+        ComplimentaryCreateRequest: {
+            /**
+             * Format: uuid
+             * @description Session (date) the tickets are valid for.
+             */
+            session_id: string;
+            /**
+             * Format: uuid
+             * @description Category to issue in; required on a general-admission session.
+             */
+            tier_id?: string;
+            /**
+             * Format: int32
+             * @description Number of tickets, 1 to 50.
+             */
+            qty: number;
+            /**
+             * @description Recipient e-mail addresses, one per ticket in order; each is
+             *     validated (400 `complimentary.invalid_recipient`). Shorter than
+             *     `qty` leaves the remaining tickets anonymous.
+             */
+            recipients?: string[];
+            /** @description Guest names, aligned with `recipients` by index; an empty entry means no name. */
+            recipient_names?: string[];
+            /** @description Idempotency key, unique per organization. */
+            batch_id: string;
+            /** @description Free-text label of who issued it. */
+            issued_by?: string;
+            /** @description Internal note. */
+            notes?: string;
+        };
+        /** @description The issuance that was created, or the existing one on a replay. */
+        ComplimentaryCreateResponse: {
+            /** @description The issuance row (id, org_id, session_id, tier_id, qty, recipients, batch_id, status, issued_by, notes, created_at, updated_at). */
+            issuance: Record<string, never>;
+            /** @description The tickets of the issuance with their numbers and holders. */
+            tickets: Record<string, never>[];
+            /** @description True when the batch_id already existed and nothing new was created. */
+            idempotent_replay: boolean;
         };
         /** @description Denormalized event context on every MACS ticket. */
         MACSActionEvent: {
@@ -39401,7 +39584,16 @@ export interface operations {
     };
     listComplimentaryIssuances: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Page size, 1 to 100 (default 20). */
+                limit?: number;
+                /** @description Rows to skip (default 0). */
+                offset?: number;
+                /** @description Only issuances in this state - valid, revoked or used. Absent means all. */
+                state?: string;
+                /** @description Only issuances for this session (date). */
+                session_id?: string;
+            };
             header?: never;
             path: {
                 /** @description Organization UUID that scopes this request (tenant isolation). */
@@ -39411,15 +39603,22 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of complimentary issuances. */
+            /** @description A page of complimentary issuances. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        issuances?: components["schemas"]["ComplimentaryIssuance"][];
-                    };
+                    "application/json": components["schemas"]["ComplimentaryListResponse"];
+                };
+            };
+            /** @description A query parameter is invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Unauthorized. */
@@ -39454,29 +39653,29 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    /** Format: uuid */
-                    session_id: string;
-                    /** Format: uuid */
-                    tier_id: string;
-                    /** Format: email */
-                    recipient_email: string;
-                    recipient_name?: string;
-                    note?: string;
-                };
+                "application/json": components["schemas"]["ComplimentaryCreateRequest"];
             };
         };
         responses: {
-            /** @description Complimentary ticket issued. */
+            /** @description The batch_id was already used - the first result, nothing new created. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComplimentaryCreateResponse"];
+                };
+            };
+            /** @description Complimentary tickets issued. */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ComplimentaryIssuance"];
+                    "application/json": components["schemas"]["ComplimentaryCreateResponse"];
                 };
             };
-            /** @description Invalid request. */
+            /** @description Invalid request (too many tickets, bad recipient or name, tier required). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -39487,6 +39686,15 @@ export interface operations {
             };
             /** @description Unauthorized. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The category or the session has fewer free places than requested (`tier.sold_out`, `complimentary.capacity_overflow`). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -39589,8 +39797,26 @@ export interface operations {
                     };
                 };
             };
+            /** @description The caller does not belong to the issuance's organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Issuance not found. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Already revoked, or a ticket was scanned and the issuance is parked for manual review. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

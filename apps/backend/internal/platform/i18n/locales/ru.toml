@@ -1970,3 +1970,492 @@ other = "Для ивента в его нынешнем состоянии эт�
 
 ["bot.evs.archive_instead_btn"]
 other = "🗄 Лучше в архив"
+
+["bot.inv.btn"]
+other = "🎟 Приглашения"
+
+["bot.inv.hub"]
+other = "🎟 <b>Приглашения</b> · {{.Org}}\n\nБесплатные билеты для гостей: настоящие билеты со штрихкодом, каждый уходит гостю на почту. Они занимают места категории, как проданные, и их можно аннулировать позже.\n\nЗа одну операцию не больше {{.Max}} билетов; больше — несколькими операциями."
+
+["bot.inv.issue_btn"]
+other = "➕ Выдать приглашения"
+
+["bot.inv.list_btn"]
+other = "📋 Выданные приглашения"
+
+["bot.inv.ev_title"]
+other = "🎟 <b>Приглашения</b> · {{.Org}}\n\nВыберите ивент ({{.Page}}/{{.Pages}}):"
+
+["bot.inv.ev_empty"]
+other = "Ни у одного ивента нет предстоящей даты, приглашать пока некуда."
+
+["bot.inv.se_title"]
+other = "🎟 <b>{{.Name}}</b>\n\nВыберите дату ({{.Page}}/{{.Pages}}). Свободные места показаны рядом с датой:"
+
+["bot.inv.se_empty"]
+other = "У «{{.Name}}» нет предстоящих дат (прошедшие и отменённые не предлагаются)."
+
+["bot.inv.ti_title"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nВыберите категорию. Приглашения займут её места:"
+
+["bot.inv.ti_empty"]
+other = "<b>{{.Name}}</b> · {{.When}}\n\nУ этой даты нет категории со свободной рассадкой, из которой можно выдать приглашения."
+
+["bot.inv.ti_seated"]
+other = "<b>{{.Name}}</b> · {{.When}}\n\nУ этой даты есть схема зала. Приглашение без места израсходовало бы место категории, а кресло осталось бы в продаже, поэтому здесь приглашения для неё пока не выдаются."
+
+["bot.inv.ti_full"]
+other = "В категории «{{.Tier}}» не осталось свободных мест."
+
+["bot.inv.free_label"]
+other = "свободно {{.N}}"
+
+["bot.inv.qty_ask"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\nКатегория: {{.Tier}} · свободных мест: {{.N}}\n\nСколько билетов? Нажмите число или введите его. За одну операцию не больше {{.Max}}; больше — несколькими операциями."
+
+["bot.inv.qty_bad"]
+other = "Это не число. Введите, сколько билетов, например 4."
+
+["bot.inv.qty_over_max"]
+other = "За одну операцию не больше {{.Max}} билетов. Введите число поменьше, остальное выдайте отдельной операцией."
+
+["bot.inv.qty_over_free"]
+other = "В «{{.Tier}}» осталось только {{.N}} свободных мест. Введите число поменьше."
+
+["bot.inv.rcpt_ask"]
+other = "Кто эти {{.N}} гостей? Пришлите их по одному в строке: <code>Имя, e-mail</code> или просто e-mail:\n\n<code>Анна Новак, anna@example.com\nboris@example.com</code>\n\nОсталось указать: {{.Left}}. Можно присылать несколькими сообщениями, но сообщение принимается целиком или не принимается совсем. Каждому гостю уходит своё приглашение, поэтому один адрес в списке — только один раз."
+
+["bot.inv.rcpt_got"]
+other = "Принято пока ({{.Got}} из {{.N}}):\n{{.List}}"
+
+["bot.inv.rcpt_bad"]
+other = "Из этого сообщения ничего не принято. Исправьте строки и пришлите сообщение снова:\n{{.List}}"
+
+["bot.inv.bad_line"]
+other = "Строка {{.Line}}: «{{.Text}}» — {{.Reason}}"
+
+["bot.inv.reason_email"]
+other = "нет корректного e-mail"
+
+["bot.inv.reason_name"]
+other = "слишком длинное имя"
+
+["bot.inv.reason_repeat"]
+other = "этот e-mail уже есть в списке"
+
+["bot.inv.reason_several"]
+other = "в строке больше одного e-mail (один гость в строке)"
+
+["bot.inv.rcpt_too_many"]
+other = "В сообщении {{.Sent}} гостей, а нужно ещё только {{.Left}}. Пришлите ровно недостающих или нажмите «Назад», чтобы изменить количество."
+
+["bot.inv.confirm"]
+other = "🎟 <b>Отправить приглашения?</b>\n\n{{.Name}}\n{{.When}} · {{.Tier}}\nБилетов: {{.N}}\n\n{{.List}}\n\nЭто настоящие билеты со штрихкодом: они займут {{.N}} мест категории, и каждый гость получит письмо с билетом. Позже любое можно аннулировать."
+
+["bot.inv.send_btn"]
+other = "✉️ Отправить"
+
+["bot.inv.done"]
+other = "✔ Выдано приглашений: {{.N}}. Письма уже в пути.\n\n{{.List}}"
+
+["bot.inv.partial"]
+other = "⚠ Выдано {{.Done}} из {{.N}}. Остановились, потому что {{.Why}}"
+
+["bot.inv.partial_done"]
+other = "Выдано:\n{{.List}}"
+
+["bot.inv.partial_left"]
+other = "Не выдано:\n{{.List}}"
+
+["bot.inv.retry_btn"]
+other = "↻ Повторить"
+
+["bot.inv.why_full"]
+other = "в категории не хватает свободных мест."
+
+["bot.inv.why_rejected"]
+other = "сервер не принял данные гостя."
+
+["bot.inv.why_gone"]
+other = "ивента или даты больше нет."
+
+["bot.inv.why_error"]
+other = "случилась временная ошибка. Ничего не потеряно: нажмите «Повторить», и выдадутся только недостающие."
+
+["bot.inv.list_title"]
+other = "🎟 <b>Приглашения</b> · {{.Org}}\nВыдано: {{.Total}} · страница {{.Page}}/{{.Pages}}\n{{.Legend}}"
+
+["bot.inv.legend"]
+other = "✔ действует  ✕ аннулировано  ● использовано на входе"
+
+["bot.inv.list_empty"]
+other = "Приглашений пока не выдавали."
+
+["bot.inv.state_valid"]
+other = "действует"
+
+["bot.inv.state_revoked"]
+other = "аннулировано"
+
+["bot.inv.state_used"]
+other = "использовано на входе"
+
+["bot.inv.card"]
+other = "🎟 <b>{{.Event}}</b>\n{{.When}} · {{.Tier}}\n\nГость:\n{{.Guests}}\n\nСтатус: {{.State}}\nВыдано: {{.Issued}}"
+
+["bot.inv.revoke_btn"]
+other = "🚫 Аннулировать приглашение"
+
+["bot.inv.revoke_ask"]
+other = "🚫 <b>Аннулировать это приглашение?</b>\n\n{{.Guest}}\n{{.Event}} · {{.When}}\n\nБилет и его штрихкод перестанут действовать сразу, место вернётся в продажу. Отменить это нельзя, а Арена не сообщает гостю: напишите ему сами.\n\nЧтобы аннулировать, введите слово <b>{{.Word}}</b> сообщением."
+
+["bot.inv.revoke_wrong"]
+other = "Это не то слово, поэтому ничего не аннулировано. Чтобы аннулировать, введите {{.Word}} или нажмите «Назад»."
+
+["bot.inv.revoke_word"]
+other = "АННУЛИРОВАТЬ"
+
+["bot.inv.revoke_done"]
+other = "✔ Приглашение для {{.Guest}} аннулировано. Место вернулось в продажу."
+
+["bot.inv.revoke_already"]
+other = "Приглашение для {{.Guest}} уже было аннулировано."
+
+["bot.inv.revoke_used"]
+other = "Приглашение для {{.Guest}} уже отсканировано на входе, поэтому его не аннулировали. Оно отмечено для ручной проверки."
+
+["bot.inv.private_only"]
+other = "Адреса гостей показываются и вводятся только в личном чате с ботом. Откройте «Приглашения» там."
+
+["bot.promo.btn"]
+other = "🏷 Промокоды"
+
+["bot.promo.list_title"]
+other = "🏷 <b>Промокоды</b> · {{.Org}}{{.Scope}}\nКодов: {{.Total}} · страница {{.Page}} из {{.Pages}}\n{{.Legend}}"
+
+["bot.promo.legend"]
+other = "● действует · ⏸ на паузе · ⌛ срок вышел · ✕ исчерпан · ○ ещё не начался"
+
+["bot.promo.scope_line"]
+other = "Для ивента <b>{{.Name}}</b> и коды, которые действуют на все ивенты."
+
+["bot.promo.list_all_btn"]
+other = "Все коды"
+
+["bot.promo.empty"]
+other = "Промокодов пока нет. Промокод даёт покупателям скидку: нажмите «Новый код»."
+
+["bot.promo.empty_event"]
+other = "Ни один промокод пока не действует на этот ивент. Нажмите «Новый код», чтобы создать его."
+
+["bot.promo.new_btn"]
+other = "＋ Новый код"
+
+["bot.promo.st_active"]
+other = "действует"
+
+["bot.promo.st_paused"]
+other = "на паузе"
+
+["bot.promo.st_expired"]
+other = "срок вышел"
+
+["bot.promo.st_exhausted"]
+other = "исчерпан"
+
+["bot.promo.st_scheduled"]
+other = "ещё не начался"
+
+["bot.promo.discount_pct"]
+other = "скидка {{.Value}}%"
+
+["bot.promo.discount_fixed"]
+other = "скидка {{.Amount}} на заказ"
+
+["bot.promo.sess_all"]
+other = "все сеансы, включая будущие"
+
+["bot.promo.sess_n"]
+other = "сеансов: {{.N}}"
+
+["bot.promo.lim_total"]
+other = "всего {{.Limit}} раз"
+
+["bot.promo.lim_per"]
+other = "{{.Limit}} на покупателя"
+
+["bot.promo.lim_none"]
+other = "без лимитов"
+
+["bot.promo.valid_from"]
+other = "с {{.Date}}"
+
+["bot.promo.valid_until"]
+other = "до {{.Date}}"
+
+["bot.promo.valid_none"]
+other = "без срока окончания"
+
+["bot.promo.usage_none"]
+other = "ещё не использовался"
+
+["bot.promo.usage"]
+other = "использован {{.Count}} раз, скидка {{.Discount}}, последний {{.When}}"
+
+["bot.promo.usage_mixed"]
+other = "использован {{.Count}} раз, последний {{.When}} (заказы в разных валютах: смотрите «Использование»)"
+
+["bot.promo.card_discount"]
+other = "Скидка: {{.Text}}"
+
+["bot.promo.card_rule"]
+other = "Фиксированная скидка вычитается из всего заказа один раз, а не из каждого билета, и в одном заказе действует один код."
+
+["bot.promo.card_sessions"]
+other = "Сеансы: {{.Text}}"
+
+["bot.promo.card_sess_line"]
+other = "• {{.Name}} · {{.When}}"
+
+["bot.promo.card_sess_more"]
+other = "…и ещё {{.N}}"
+
+["bot.promo.card_limits"]
+other = "Лимиты: {{.Text}}"
+
+["bot.promo.card_valid"]
+other = "Срок: {{.Text}}"
+
+["bot.promo.card_usage"]
+other = "Использование: {{.Text}}"
+
+["bot.promo.card_state"]
+other = "Статус: {{.Text}}"
+
+["bot.promo.only_currency"]
+other = "Работает только на заказы в {{.Currency}}."
+
+["bot.promo.pause_btn"]
+other = "⏸ На паузу"
+
+["bot.promo.activate_btn"]
+other = "▶ Включить"
+
+["bot.promo.sessions_btn"]
+other = "Сеансы"
+
+["bot.promo.usage_btn"]
+other = "Использование"
+
+["bot.promo.csv_btn"]
+other = "⬇ CSV"
+
+["bot.promo.delete_btn"]
+other = "🗑 Удалить"
+
+["bot.promo.paused_done"]
+other = "⏸ Код <b>{{.Code}}</b> на паузе: покупатели не смогут им воспользоваться, пока вы его не включите."
+
+["bot.promo.activated_done"]
+other = "▶ Код <b>{{.Code}}</b> снова действует."
+
+["bot.promo.sess_head"]
+other = "🏷 <b>{{.Code}}</b> · сеансы\n\n{{.Text}}\n\nГде должен действовать код?"
+
+["bot.promo.sess_all_btn"]
+other = "Все сеансы, включая будущие"
+
+["bot.promo.sess_only_btn"]
+other = "Только отмеченные сеансы…"
+
+["bot.promo.sess_all_done"]
+other = "✔ <b>{{.Code}}</b> теперь действует на все сеансы, включая будущие."
+
+["bot.promo.sess_saved"]
+other = "✔ Сохранено. <b>{{.Code}}</b> теперь действует только на отмеченные сеансы (сеансов: {{.N}})."
+
+["bot.promo.e_head"]
+other = "🏷 <b>{{.Code}}</b> · сеансы"
+
+["bot.promo.q_event_edit"]
+other = "Выберите ивент, сеансы которого хотите изменить."
+
+["bot.promo.pick_edit_note"]
+other = "Сеансы других ивентов, которые уже есть у кода, останутся как есть."
+
+["bot.promo.usage_title"]
+other = "🏷 <b>{{.Code}}</b> · использование\n{{.Text}}\nСтраница {{.Page}} из {{.Pages}}\n"
+
+["bot.promo.usage_empty"]
+other = "Этим кодом пока никто не пользовался."
+
+["bot.promo.usage_row"]
+other = "№{{.Num}} · {{.Date}} · {{.Name}} · −{{.Discount}} из {{.Amount}} · {{.Status}}"
+
+["bot.promo.buyer_unknown"]
+other = "покупатель без имени"
+
+["bot.promo.csv_empty"]
+other = "Выгружать пока нечего: этим кодом никто не пользовался."
+
+["bot.promo.csv_scope"]
+other = "использование промокода"
+
+["bot.promo.csv_what"]
+other = "заказов"
+
+["bot.promo.csv_too_big"]
+other = "Файл использования слишком большой, чтобы отправить его в чат."
+
+["bot.promo.delete_ask"]
+other = "🗑 <b>Удалить код {{.Code}}?</b>\n\nИспользован раз: {{.Count}}. После удаления код пропадёт из списка, его использование нельзя будет открыть или выгрузить здесь, а само название останется занятым: новый код с таким названием создать не получится. Если нужно только остановить код, лучше поставьте его на паузу. Уже оплаченные заказы не меняются.\n\nЧтобы удалить, напечатайте точно: {{.Word}}"
+
+["bot.promo.delete_wrong"]
+other = "Это не то слово, поэтому ничего не удалено. Чтобы удалить, напечатайте точно: {{.Word}}"
+
+["bot.promo.delete_word"]
+other = "УДАЛИТЬ"
+
+["bot.promo.deleted_done"]
+other = "✔ Код <b>{{.Code}}</b> удалён."
+
+["bot.promo.gone"]
+other = "Этот экран уже закрыт. Начните создание кода заново."
+
+["bot.promo.cancelled"]
+other = "Новый код не создан."
+
+["bot.promo.created"]
+other = "✔ Код <b>{{.Code}}</b> создан."
+
+["bot.promo.use_buttons"]
+other = "Воспользуйтесь кнопками под вопросом."
+
+["bot.promo.c_head"]
+other = "🏷 <b>Новый промокод</b>{{.Text}}"
+
+["bot.promo.q_code"]
+other = "Напечатайте код, который будут вводить покупатели, например SUMMER25. Только буквы, цифры, - и _, до 64 символов. Я сделаю его заглавными буквами."
+
+["bot.promo.q_type"]
+other = "Какая скидка?"
+
+["bot.promo.type_pct_btn"]
+other = "Процент"
+
+["bot.promo.type_fix_btn"]
+other = "Фиксированная сумма"
+
+["bot.promo.q_percent"]
+other = "Сколько процентов скидки? Целое число от 1 до 100."
+
+["bot.promo.q_amount"]
+other = "Сколько вычитается? Напечатайте сумму, например 5 или 5,50.\n\nФиксированная скидка вычитается из всего <b>заказа</b> один раз, а не из каждого билета, и в одном заказе действует только один код."
+
+["bot.promo.q_currency"]
+other = "В какой валюте? Код действует только на заказы в этой валюте. Нажмите кнопку или напечатайте трёхбуквенный код, например EUR."
+
+["bot.promo.q_scope"]
+other = "Где действует код?"
+
+["bot.promo.q_scope_event"]
+other = "Где действует код? Вы на ивенте <b>{{.Name}}</b>."
+
+["bot.promo.scope_all_btn"]
+other = "На всех сеансах, включая будущие"
+
+["bot.promo.scope_pick_btn"]
+other = "Только на выбранных сеансах"
+
+["bot.promo.q_event"]
+other = "Выберите ивент, затем отметите его сеансы."
+
+["bot.promo.q_pick"]
+other = "Отметьте сеансы ивента <b>{{.Name}}</b>, на которых действует код, и нажмите «Готово»."
+
+["bot.promo.pick_done_btn"]
+other = "✔ Готово ({{.N}})"
+
+["bot.promo.pick_event_btn"]
+other = "Другой ивент"
+
+["bot.promo.q_total"]
+other = "Сколько раз всего можно использовать код? Напечатайте число или пропустите, если лимита нет."
+
+["bot.promo.q_per"]
+other = "Сколько раз код может использовать один покупатель? Напечатайте число или пропустите, если лимита нет."
+
+["bot.promo.skip_btn"]
+other = "Пропустить (без лимита)"
+
+["bot.promo.skip_exp_btn"]
+other = "Пропустить (без срока)"
+
+["bot.promo.q_expiry"]
+other = "До какого дня действует код? Выберите последний день или пропустите, если срока нет. Код действует до конца этого дня (UTC)."
+
+["bot.promo.q_status"]
+other = "Включить код сразу или создать его на паузе?"
+
+["bot.promo.status_active_btn"]
+other = "▶ Включён"
+
+["bot.promo.status_paused_btn"]
+other = "⏸ На паузе"
+
+["bot.promo.summary"]
+other = "🏷 <b>Проверьте новый код</b>\n\n{{.Text}}\n\nНажмите «Создать», чтобы сохранить."
+
+["bot.promo.create_btn"]
+other = "✔ Создать"
+
+["bot.promo.cancel_btn"]
+other = "✖ Отмена"
+
+["bot.promo.err_code_empty"]
+other = "Напечатайте код."
+
+["bot.promo.err_code_long"]
+other = "Этот код длиннее 64 символов. Напечатайте покороче."
+
+["bot.promo.err_code_chars"]
+other = "Допустимы только буквы, цифры, - _ и точка, без пробелов. Напечатайте код ещё раз."
+
+["bot.promo.err_code_dup"]
+other = "Код с таким названием у вас уже есть. Напечатайте другое."
+
+["bot.promo.err_percent"]
+other = "Напечатайте целое число процентов от 1 до 100."
+
+["bot.promo.err_amount"]
+other = "Напечатайте сумму больше нуля не более чем с двумя знаками после запятой, например 5 или 5,50."
+
+["bot.promo.err_currency"]
+other = "Напечатайте трёхбуквенный код валюты, например EUR."
+
+["bot.promo.err_limit"]
+other = "Напечатайте целое число от 1 до 1000000 или нажмите «Пропустить»."
+
+["bot.promo.err_per_gt_total"]
+other = "Одному покупателю нельзя разрешить больше использований, чем общий лимит. Напечатайте число поменьше."
+
+["bot.promo.err_pick_none"]
+other = "Отметьте хотя бы один сеанс или вернитесь и выберите все сеансы."
+
+["bot.promo.err_session_currency"]
+other = "Этот сеанс продаётся в другой валюте, поэтому код в этой валюте на нём не сработает."
+
+["bot.promo.err_session_foreign"]
+other = "Сервер не принял один из сеансов: его нет в этой организации."
+
+["bot.promo.err_duplicate"]
+other = "Код с таким названием в этой организации уже есть. Удалённый код тоже сохраняет своё название. Напечатайте другое."
+
+["bot.promo.err_no_events"]
+other = "Нет идущих ивентов, из которых можно выбрать."
+
+["bot.promo.err_no_sessions"]
+other = "У этого ивента нет предстоящих сеансов, из которых можно выбрать."
+
+["bot.promo.err_incomplete"]
+other = "В коде чего-то не хватает. Вернитесь и проверьте шаги."
