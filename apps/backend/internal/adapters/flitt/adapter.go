@@ -117,7 +117,7 @@ func New(cfg Config) *Adapter {
 }
 
 // ProviderName returns the canonical provider key.
-func (a *Adapter) ProviderName() string { return "flitt" }
+func (a *Adapter) ProviderName() string { return Name }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Signature

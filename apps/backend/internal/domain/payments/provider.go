@@ -2,30 +2,26 @@
 // types for the arena payment layer (ADR-008: adapter pattern, ADR-011: direct-merchant
 // vs merchant-of-record routing).
 //
-// Payment provider adapters (Stripe, AllPay, …) each implement the PaymentProvider
-// interface. Higher-level application code uses PaymentRoutingPolicy to obtain the
-// correct adapter for a sales channel without coupling to a concrete provider.
+// Payment provider adapters (Stripe, Flitt, AllPay, …) each implement the
+// narrow interfaces of module.go and register themselves through a
+// payments.Entry (descriptor + factory) in internal/app/payments/modules.go.
+// Higher-level application code asks the Registry (modules.go) for the entry
+// named by a channel's or a config's provider value and type-asserts the
+// capability it needs, without coupling to a concrete provider.
 //
 // Sentinel errors:
 //
-//	ErrUnknownProvider        — routing policy cannot find adapter for the requested provider
+//	ErrUnknownProvider        — the registry has no entry for the requested provider
 //	ErrInvalidWebhookSignature — HMAC verification of an inbound webhook failed
 //
 // Typical usage:
 //
-//	policy := payments.NewPaymentRoutingPolicy()
-//	policy.Register(stripeAdapter)
-//	policy.Register(allpayAdapter)
-//
-//	provider, err := policy.ResolveProvider(payments.ChannelConfig{
-//	    Provider:    channel.Provider,
-//	    PaymentMode: channel.PaymentMode,
-//	})
-//	if errors.Is(err, payments.ErrUnknownProvider) {
-//	    http.Error(w, "bad provider", http.StatusBadRequest)
-//	    return
+//	entry, ok := registry.Get(channel.Provider)
+//	if !ok || !entry.Descriptor.Capabilities.HostedCheckout {
+//	    // this provider cannot host a checkout page
 //	}
-//	resp, err := provider.CreateIntent(ctx, req)
+//	module, err := entry.Build(payments.SecretsFromJSON(cfg.Secrets), opts)
+//	hosted := module.(payments.HostedCheckoutProvider)
 package payments
 
 import (
@@ -37,9 +33,8 @@ import (
 // Sentinel errors
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ErrUnknownProvider is returned by PaymentRoutingPolicy.ResolveProvider when no
-// adapter is registered for the requested provider name, or when the channel
-// configuration specifies an unrecognised payment_mode.
+// ErrUnknownProvider is returned by Registry.Build when no module is
+// registered for the requested provider name.
 //
 // HTTP handlers should map this error to 400 Bad Request.
 var ErrUnknownProvider = errors.New("payments: unknown provider")
@@ -162,8 +157,8 @@ type WebhookResponse struct {
 // before being returned.
 type PaymentProvider interface {
 	// ProviderName returns the canonical, lowercase name for this provider,
-	// e.g. "stripe" or "allpay". This value is used as the registry key in
-	// PaymentRoutingPolicy.
+	// e.g. "stripe" or "allpay" — the same value as Descriptor().Name for a
+	// provider that is also a Module.
 	ProviderName() string
 
 	// CreateIntent creates a new payment intent with the given parameters.

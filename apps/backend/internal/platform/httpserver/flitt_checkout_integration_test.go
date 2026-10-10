@@ -446,6 +446,67 @@ func TestFlitt_ExpiredOrderFailsTheIntent(t *testing.T) {
 	}
 }
 
+// TestFlitt_SignedCallbackWithTrailingGarbageIsRefused: a genuinely signed
+// "approved" callback with bytes appended after the JSON object answers 400
+// webhook.invalid_json and moves nothing — the module's streaming decoder
+// would stop after the first value, so the whole-body JSON check must still
+// run on the module-event path, exactly as it did before the registry.
+func TestFlitt_SignedCallbackWithTrailingGarbageIsRefused(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f := newFlittFixture(t, ctx, pool, "fg", "EUR")
+	defer f.cleanup()
+
+	stub := newStubFlittServer(t, f.paymentKey)
+	srv := buildHostedCheckoutServer(t, pool, "")
+	srv.flittAPIBaseURL = stub.baseURL()
+	srv.cfg.AppPublicURL = "https://api.arena-integration.test"
+	q := gen.New(pool)
+
+	code, body := f.startCheckout(t, srv, hostedTicketsBaseURL+"/x")
+	if code != http.StatusCreated {
+		t.Fatalf("checkout/start = %d; body: %s", code, body)
+	}
+	var start hostedStartResponse
+	_ = json.Unmarshal(body, &start)
+	csID := uuid.MustParse(start.CheckoutSession.ID)
+	cs, _ := q.GetCheckoutSessionByID(ctx, csID)
+	before, err := q.GetPaymentIntentByProviderID(ctx, csID.String())
+	if err != nil {
+		t.Fatalf("intent before callback: %v", err)
+	}
+
+	paid := f.callback(t, csID.String(), "approved", *cs.Total, "EUR", f.paymentKey, f.merchantID)
+	garbled := append(append([]byte{}, paid...), []byte(` trailing-garbage`)...)
+	code, body = postFlittCallback(t, srv, f.configWebhookPath(), garbled)
+	if code != http.StatusBadRequest {
+		t.Fatalf("callback with trailing garbage = %d; want 400; body: %s", code, body)
+	}
+	if !strings.Contains(string(body), "webhook.invalid_json") {
+		t.Errorf("error body = %s; want webhook.invalid_json", body)
+	}
+
+	after, err := q.GetPaymentIntentByProviderID(ctx, csID.String())
+	if err != nil {
+		t.Fatalf("intent after callback: %v", err)
+	}
+	if after.State != before.State {
+		t.Errorf("intent state moved %q -> %q on a refused callback", before.State, after.State)
+	}
+	var n int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM payment_intent_events WHERE provider_payment_id = $1`, csID.String()).Scan(&n); err != nil {
+		t.Fatalf("count payment_intent_events: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("payment_intent_events rows after a refused callback = %d, want 0", n)
+	}
+	csAfter, _ := q.GetCheckoutSessionByID(ctx, csID)
+	if csAfter.State == "completed" {
+		t.Errorf("checkout session completed by a refused callback")
+	}
+}
+
 // TestFlitt_MissingCredentialTakesNoInventory: a Flitt config without a
 // payment key is refused BEFORE the hold is taken (the pre-flight), like Stripe.
 func TestFlitt_MissingCredentialTakesNoInventory(t *testing.T) {

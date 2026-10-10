@@ -5,10 +5,8 @@
 //
 //  1. Compile-time interface assertions (MockProvider, ErrorProvider implement PaymentProvider)
 //  2. PaymentProvider interface contract (MockProvider default stub behaviour)
-//  3. PaymentRoutingPolicy — correct registration + resolution
-//  4. PaymentRoutingPolicy — wrong/unknown provider → ErrUnknownProvider
-//  5. PaymentRoutingPolicy — invalid/empty payment_mode → ErrUnknownProvider
-//  6. PaymentRoutingPolicy — Register panics on nil/empty-name adapter
+//     3-6. (The PaymentRoutingPolicy groups moved to registry_test.go when the
+//     module registry replaced the policy — PAY-01.)
 //  7. Webhook helpers — VerifyStripeSignature
 //  8. Webhook helpers — VerifyAllPaySignature
 //  9. Webhook helpers — ComputeHMACSHA256
@@ -149,193 +147,6 @@ func TestPayment134_MockProvider_CustomStub(t *testing.T) {
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected custom error %v, got %v", wantErr, err)
 	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 3. PaymentRoutingPolicy — registration + successful resolution
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestPayment134_RoutingPolicy_ResolvesStripe(t *testing.T) {
-	policy := payments.NewPaymentRoutingPolicy()
-	stripe := payments.NewMockProvider("stripe")
-	policy.Register(stripe)
-
-	got, err := policy.ResolveProvider(payments.ChannelConfig{
-		Provider:    "stripe",
-		PaymentMode: "direct_merchant",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.ProviderName() != "stripe" {
-		t.Errorf("expected provider %q, got %q", "stripe", got.ProviderName())
-	}
-}
-
-func TestPayment134_RoutingPolicy_ResolvesAllPay(t *testing.T) {
-	policy := payments.NewPaymentRoutingPolicy()
-	allpay := payments.NewMockProvider("allpay")
-	policy.Register(allpay)
-
-	got, err := policy.ResolveProvider(payments.ChannelConfig{
-		Provider:    "allpay",
-		PaymentMode: "merchant_of_record",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.ProviderName() != "allpay" {
-		t.Errorf("expected provider %q, got %q", "allpay", got.ProviderName())
-	}
-}
-
-func TestPayment134_RoutingPolicy_RegistersMultipleAdapters(t *testing.T) {
-	policy := payments.NewPaymentRoutingPolicy()
-	policy.Register(payments.NewMockProvider("stripe"))
-	policy.Register(payments.NewMockProvider("allpay"))
-
-	if policy.Len() != 2 {
-		t.Fatalf("expected 2 registered adapters, got %d", policy.Len())
-	}
-}
-
-func TestPayment134_RoutingPolicy_RegisterOverwrites(t *testing.T) {
-	policy := payments.NewPaymentRoutingPolicy()
-	policy.Register(payments.NewMockProvider("stripe"))
-	policy.Register(payments.NewMockProvider("stripe")) // second registration should overwrite
-
-	if policy.Len() != 1 {
-		t.Fatalf("expected 1 adapter after overwrite, got %d", policy.Len())
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 4. PaymentRoutingPolicy — unknown provider → ErrUnknownProvider (→ 400)
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestPayment134_RoutingPolicy_UnknownProvider_ReturnsErrUnknownProvider(t *testing.T) {
-	policy := payments.NewPaymentRoutingPolicy()
-	policy.Register(payments.NewMockProvider("stripe"))
-
-	_, err := policy.ResolveProvider(payments.ChannelConfig{
-		Provider:    "nonexistent_provider",
-		PaymentMode: "direct_merchant",
-	})
-	if !errors.Is(err, payments.ErrUnknownProvider) {
-		t.Fatalf("expected ErrUnknownProvider, got %v", err)
-	}
-}
-
-func TestPayment134_RoutingPolicy_EmptyPolicy_ReturnsErrUnknownProvider(t *testing.T) {
-	policy := payments.NewPaymentRoutingPolicy()
-
-	_, err := policy.ResolveProvider(payments.ChannelConfig{
-		Provider:    "stripe",
-		PaymentMode: "direct_merchant",
-	})
-	if !errors.Is(err, payments.ErrUnknownProvider) {
-		t.Fatalf("expected ErrUnknownProvider for empty policy, got %v", err)
-	}
-}
-
-func TestPayment134_RoutingPolicy_EmptyProvider_ReturnsErrUnknownProvider(t *testing.T) {
-	policy := payments.NewPaymentRoutingPolicy()
-	policy.Register(payments.NewMockProvider("stripe"))
-
-	_, err := policy.ResolveProvider(payments.ChannelConfig{
-		Provider:    "",
-		PaymentMode: "direct_merchant",
-	})
-	if !errors.Is(err, payments.ErrUnknownProvider) {
-		t.Fatalf("expected ErrUnknownProvider for empty provider, got %v", err)
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 5. PaymentRoutingPolicy — invalid/empty payment_mode → ErrUnknownProvider
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestPayment134_RoutingPolicy_InvalidPaymentMode_ReturnsErrUnknownProvider(t *testing.T) {
-	policy := payments.NewPaymentRoutingPolicy()
-	policy.Register(payments.NewMockProvider("stripe"))
-
-	cases := []struct {
-		name        string
-		paymentMode string
-	}{
-		{"empty payment_mode", ""},
-		{"unknown payment_mode", "cash"},
-		{"typo in payment_mode", "direct merchant"},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := policy.ResolveProvider(payments.ChannelConfig{
-				Provider:    "stripe",
-				PaymentMode: tc.paymentMode,
-			})
-			if !errors.Is(err, payments.ErrUnknownProvider) {
-				t.Fatalf("expected ErrUnknownProvider for payment_mode=%q, got %v", tc.paymentMode, err)
-			}
-		})
-	}
-}
-
-// Table-driven test: all valid (provider, payment_mode) combos resolve correctly.
-func TestPayment134_RoutingPolicy_ValidCombinations(t *testing.T) {
-	policy := payments.NewPaymentRoutingPolicy()
-	policy.Register(payments.NewMockProvider("stripe"))
-	policy.Register(payments.NewMockProvider("allpay"))
-
-	cases := []struct {
-		provider    string
-		paymentMode string
-	}{
-		{"stripe", "direct_merchant"},
-		{"stripe", "merchant_of_record"},
-		{"allpay", "direct_merchant"},
-		{"allpay", "merchant_of_record"},
-	}
-
-	for _, tc := range cases {
-		name := fmt.Sprintf("%s/%s", tc.provider, tc.paymentMode)
-		t.Run(name, func(t *testing.T) {
-			got, err := policy.ResolveProvider(payments.ChannelConfig{
-				Provider:    tc.provider,
-				PaymentMode: tc.paymentMode,
-			})
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got.ProviderName() != tc.provider {
-				t.Errorf("expected provider %q, got %q", tc.provider, got.ProviderName())
-			}
-		})
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 6. PaymentRoutingPolicy — Register panics on nil/empty-name adapter
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestPayment134_RoutingPolicy_RegisterNilAdapterPanics(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic when registering nil adapter")
-		}
-	}()
-	policy := payments.NewPaymentRoutingPolicy()
-	policy.Register(nil)
-}
-
-func TestPayment134_RoutingPolicy_RegisterEmptyNamePanics(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic when registering adapter with empty ProviderName")
-		}
-	}()
-	policy := payments.NewPaymentRoutingPolicy()
-	policy.Register(payments.NewMockProvider("")) // empty name
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -591,23 +402,46 @@ func TestPayment134_ErrorProvider_AllMethodsReturnConfiguredError(t *testing.T) 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Full integration scenario — routing + mock + error path
+// Full integration scenario — registry + mock + error path
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestPayment134_Integration_FullRoutingFlow(t *testing.T) {
-	policy := payments.NewPaymentRoutingPolicy()
-	policy.Register(payments.NewMockProvider("stripe"))
-	policy.Register(payments.NewMockProvider("allpay"))
+// mockModule gives a MockProvider the Descriptor a registry entry needs.
+type mockModule struct{ *payments.MockProvider }
 
-	// Scenario 1: direct_merchant channel on Stripe → CreateIntent succeeds
-	t.Run("Stripe_DirectMerchant_CreateIntent", func(t *testing.T) {
-		provider, err := policy.ResolveProvider(payments.ChannelConfig{
-			Provider:    "stripe",
-			PaymentMode: "direct_merchant",
-		})
+func (m mockModule) Descriptor() payments.Descriptor {
+	return payments.Descriptor{Name: m.ProviderName(), Title: m.ProviderName()}
+}
+
+func mockEntry(name string) payments.Entry {
+	return payments.Entry{
+		Descriptor: payments.Descriptor{Name: name, Title: name},
+		New: func(map[string]string, payments.Options) (payments.Module, error) {
+			return mockModule{payments.NewMockProvider(name)}, nil
+		},
+	}
+}
+
+func TestPayment134_Integration_FullRoutingFlow(t *testing.T) {
+	registry, err := payments.NewRegistry(mockEntry("stripe"), mockEntry("allpay"))
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+	resolve := func(t *testing.T, name string) payments.PaymentProvider {
+		t.Helper()
+		m, err := registry.Build(name, nil, payments.Options{})
 		if err != nil {
 			t.Fatalf("routing failed: %v", err)
 		}
+		provider, ok := m.(payments.PaymentProvider)
+		if !ok {
+			t.Fatalf("module %T is not a PaymentProvider", m)
+		}
+		return provider
+	}
+
+	// Scenario 1: a Stripe channel → CreateIntent succeeds
+	t.Run("Stripe_DirectMerchant_CreateIntent", func(t *testing.T) {
+		provider := resolve(t, "stripe")
 		resp, err := provider.CreateIntent(context.Background(), payments.CreateIntentRequest{
 			Amount:         25000,
 			Currency:       "RUB",
@@ -621,15 +455,9 @@ func TestPayment134_Integration_FullRoutingFlow(t *testing.T) {
 		}
 	})
 
-	// Scenario 2: merchant_of_record channel on AllPay → RefundPayment succeeds
+	// Scenario 2: an AllPay channel → RefundPayment succeeds
 	t.Run("AllPay_MOR_Refund", func(t *testing.T) {
-		provider, err := policy.ResolveProvider(payments.ChannelConfig{
-			Provider:    "allpay",
-			PaymentMode: "merchant_of_record",
-		})
-		if err != nil {
-			t.Fatalf("routing failed: %v", err)
-		}
+		provider := resolve(t, "allpay")
 		resp, err := provider.RefundPayment(context.Background(), payments.RefundPaymentRequest{
 			ProviderIntentID: "ap_pi_999",
 			Amount:           0, // full refund
@@ -646,10 +474,7 @@ func TestPayment134_Integration_FullRoutingFlow(t *testing.T) {
 
 	// Scenario 3: wrong provider for channel → ErrUnknownProvider (→ 400)
 	t.Run("WrongProvider_Returns400Error", func(t *testing.T) {
-		_, err := policy.ResolveProvider(payments.ChannelConfig{
-			Provider:    "paypal", // not registered
-			PaymentMode: "direct_merchant",
-		})
+		_, err := registry.Build("paypal", nil, payments.Options{}) // not registered
 		if !errors.Is(err, payments.ErrUnknownProvider) {
 			t.Fatalf("expected ErrUnknownProvider (→ 400), got %v", err)
 		}

@@ -5,14 +5,13 @@ package hcheckout
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
+	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 )
 
@@ -374,42 +373,11 @@ func (h *Handler) verifyWebhookSignature(r *http.Request, body []byte) error {
 	// AB-41: per-organization secrets from payment_provider_configs take
 	// precedence over the process-env secrets (which stay as the
 	// platform-level fallback). The org is located from the refund /
-	// payment-intent id carried in the body — a read-only lookup that
+	// payment-intent id carried in the body: a read-only lookup that
 	// mutates nothing; the HMAC is still verified over the raw bytes.
-	stripeSecret := h.webhookStripeSecret
-	allPaySecret := h.webhookAllPaySecret
-	if cfgStripe, cfgAllPay := h.webhookSecretsFromOrgConfig(r.Context(), body); cfgStripe != "" || cfgAllPay != "" {
-		if cfgStripe != "" {
-			stripeSecret = cfgStripe
-		}
-		if cfgAllPay != "" {
-			allPaySecret = cfgAllPay
-		}
-	}
-	hasStripe := stripeSecret != ""
-	hasAllPay := allPaySecret != ""
-
-	if !hasStripe && !hasAllPay {
-		// Dev/mock path — no secrets configured. Config validation prevents
-		// this branch from being reached in production.
-		return nil
-	}
-
-	stripeHeader := r.Header.Get("Stripe-Signature")
-	allPayHeader := r.Header.Get("X-AllPay-Signature")
-
-	if stripeHeader != "" && hasStripe {
-		return payments.VerifyStripeSignature(
-			stripeHeader, body, stripeSecret, payments.DefaultWebhookTolerance,
-		)
-	}
-	if allPayHeader != "" && hasAllPay {
-		return payments.VerifyAllPaySignature(allPayHeader, body, allPaySecret)
-	}
-
-	// Secrets are configured but no recognized provider signature header found.
-	return fmt.Errorf(
-		"%w: no provider signature header present (expected Stripe-Signature or X-AllPay-Signature)",
-		payments.ErrInvalidWebhookSignature,
-	)
+	// PAY-01: the per-provider checks run through the module registry
+	// (payment_modules.go), in registry order.
+	return verifyLegacyWebhook(r.Context(), r, body,
+		h.webhookSecretsFromOrgConfig(r.Context(), body),
+		paymodules.PlatformWebhookSecrets(h.webhookStripeSecret, h.webhookAllPaySecret))
 }

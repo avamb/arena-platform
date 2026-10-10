@@ -279,11 +279,11 @@ type RefundLookup interface {
 | Номер | Приор. | Содержание |
 |---|---|---|
 | PAY-00 | P0 | **Сделано 09.10.** Аудит изоляции организаций плоских маршрутов: `/v1/refunds/*` и `/v1/payment-intents/*` проверяли только право — закрыто гардом `hcheckout.RowOrgAccess` (`Server.rowOrgAccess`, чужая строка = 404 маршрута); `/v1/tickets/{id}/cancel` и `/v1/complimentary/{id}/revoke` уже были защищены в шимах. Тесты `server_orgauth_row_test.go`, `refund_org_isolation_integration_test.go` |
-| PAY-01 | P0 | Контракт модуля и реестр (§5): `Descriptor`, `Capabilities`, `WebhookParser`, `Refunder`, `RefundLookup`, `modules.go`; перевод Stripe и Flitt без изменения поведения; статическая проверка литералов |
+| PAY-01 | P0 | **Сделано 10.10.** Контракт модуля и реестр (§5): `Descriptor`, `Capabilities`, `WebhookParser`, `Refunder`, `RefundLookup` в `domain/payments/module.go`, реестр фабрик `domain/payments/modules.go`; сам список модулей лежит в `internal/app/payments/modules.go` (адаптеры импортируют `domain/payments`, поэтому список не может жить там же). Stripe, Flitt и AllPay — модули; hosted checkout, каталог провайдеров и обязательных секретов, форматы ключей, проверка ключей, поиск секрета вебхука, оба маршрута вебхука идут через реестр. Flitt-колбэк нормализует модуль Flitt; Stripe-события в машине состояний пока разбирает ядро (переезд на `NormalizedEvent` — PAY-04/05). Статическая проверка `tests/staticanalysis/payment_provider_literals_test.go`, контрактные тесты `contracttest.Run` в пакете каждого модуля |
 | PAY-02 | P0 | Снятие `sales_channels_provider_check`, валидация через дескриптор, перенос списков секретов и форматов в модули |
 | PAY-03 | P0 | Миграция данных возвратов (§7: `refund_batches`, колонки `refunds`, индексы, `tickets_refunded`) и движок: фиксация, advisory lock, вызов модуля, результат, гашение билета (`CancelTicketParams.RefundID`), `refund.sweep` |
-| PAY-04 | P0 | Модуль Stripe: `Refunder`, `WebhookParser`, `RefundLookup`, дочитывание `pi_…` по `cs_…`, единицы, проверка подписки endpoint на события; заглушка Stripe и интеграционные тесты |
-| PAY-05 | P0 | Вебхуки возвратов через конфигурационный маршрут; возврат из кабинета провайдера (§7); инструкция подключения с событиями возвратов |
+| PAY-04 | P0 | Модуль Stripe: `Refunder`, `WebhookParser`, `RefundLookup`, дочитывание `pi_…` по `cs_…`, единицы, проверка подписки endpoint на события; заглушка Stripe и интеграционные тесты. **Перед стартом — предупреждение M1 под таблицей.** |
+| PAY-05 | P0 | Вебхуки возвратов через конфигурационный маршрут; возврат из кабинета провайдера (§7); инструкция подключения с событиями возвратов. **Перед стартом — предупреждение M1 под таблицей.** |
 | PAY-06 | P0 | Организационные API (§8): `refund-options`, создание с `Idempotency-Key`, очередь, деталь, повтор; OpenAPI и TS-клиент |
 | PAY-07 | P1 | Письмо покупателю о возврате (`kind=refund`, 7 языков) |
 | PAY-08 | P1 | `acquiring_mode` на организации и канале (§6.1): миграции и заполнение, вопрос анкеты онбординга, provisioning, шлюз, правка суперадмином, CHECK с `payment_mode`, проверка согласованности, аудит смены, поле в `/v1/me` и `GET /organizations/{id}` |
@@ -295,6 +295,8 @@ type RefundLookup interface {
 | PAY-14 | P2 | Модуль AllPay: выбор канонической копии, checkout, возврат (отдельная спецификация) |
 | PAY-15 | P2 | Вариант A, волна «сайт как продавец» вместе с EC-00: маршрут `seller_site` через событие `order.refund_requested` на сайт, `wc_create_refund` в плагине, ответ сайта вебхуком; тот же экран бота |
 | PAY-16 | P3 | Споры и чарджбэки (`dispute_opened`) в очередь и тревоги (ONB-13) |
+
+**Предупреждение M1 (ревью PAY-01, 10.10) — обязательно для PAY-04 и PAY-05.** Прежде чем события Stripe переедут на `NormalizedEvent`: (1) `webhookRequestFromEvent` должна решать только по виду события (`Kind`): вид, который ядро не сопоставляет, подтверждается без перехода, без запасного пути через таблицу имён типов событий (`webhookEventTypeToState`); (2) «платёжные ворота» Stripe должны смотреть на нормализованный вид pending/paid, а не на поле `PaymentStatus`, иначе оплаченные события `checkout.session.completed` будут проглочены как неоплаченные; (3) нормализатор модуля Stripe и разборщик ядра `stripeEventEnvelope` — две копии одного разбора, на этом шаге их надо свести в одну (в модуле); (4) подтест частичного возврата в контрактном тесте (`contracttest.Run`) должен проверять сумму, которую получила заглушка провайдера.
 
 Права менеджера (`refund.*`, `ticket.cancel`) входят в единую миграцию прав `EC-17` (`35_…` §3), отдельной задачи здесь нет.
 

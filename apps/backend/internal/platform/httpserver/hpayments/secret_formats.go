@@ -27,41 +27,10 @@ import (
 	"strings"
 )
 
-// secretFormat describes what a given provider's secret field must look like.
-type secretFormat struct {
-	// prefixes the value may start with. Empty means "no prefix rule".
-	prefixes []string
-	// modePrefixes maps a config mode to the prefixes legal in THAT mode, so
-	// a live key cannot be filed under test. A mode absent from the map is
-	// checked against prefixes alone.
-	modePrefixes map[string][]string
-	// human is how the field is described in the error, in the provider's
-	// own vocabulary, so an operator knows what to go and fetch.
-	human string
-}
-
-// secretFormats is keyed by provider, then by secret field name.
-//
-// Stripe is the only entry because it is the only provider whose key shapes
-// are both documented as stable and in production here. Restricted keys
-// (rk_) are accepted: they are valid API credentials and an organization is
-// entitled to scope one down.
-var secretFormats = map[string]map[string]secretFormat{
-	"stripe": {
-		"api_key": {
-			prefixes: []string{"sk_test_", "sk_live_", "rk_test_", "rk_live_"},
-			modePrefixes: map[string][]string{
-				"test": {"sk_test_", "rk_test_"},
-				"live": {"sk_live_", "rk_live_"},
-			},
-			human: "Stripe secret key (Developers → API keys → Secret key)",
-		},
-		"webhook_secret": {
-			prefixes: []string{"whsec_"},
-			human:    "Stripe webhook signing secret (Developers → Webhooks → your endpoint → Signing secret)",
-		},
-	},
-}
+// The prefix rules themselves live on each module's Descriptor
+// (payments.SecretField.Prefixes / ModePrefixes / Label) since PAY-01: the
+// module that knows its provider's key shapes declares them, and this file
+// only applies them. A field with no prefix rule accepts anything.
 
 // NormalizeSecretValue trims surrounding whitespace from a pasted credential.
 //
@@ -83,7 +52,7 @@ func NormalizeSecretValue(v string) string {
 // refused because of it. An empty value means "delete this field" and is
 // left to MergeSecrets.
 func ValidateSecretFormats(provider, mode string, patch map[string]string) error {
-	formats, known := secretFormats[provider]
+	d, known := descriptorFor(provider)
 	if !known {
 		return nil
 	}
@@ -92,12 +61,12 @@ func ValidateSecretFormats(provider, mode string, patch map[string]string) error
 		if value == "" {
 			continue
 		}
-		format, checked := formats[field]
+		format, checked := d.Secret(field)
 		if !checked {
 			continue
 		}
-		allowed := format.prefixes
-		if modeAllowed, ok := format.modePrefixes[mode]; ok {
+		allowed := format.Prefixes
+		if modeAllowed, ok := format.ModePrefixes[mode]; ok {
 			allowed = modeAllowed
 		}
 		if len(allowed) == 0 || hasAnyPrefix(value, allowed) {
@@ -105,7 +74,7 @@ func ValidateSecretFormats(provider, mode string, patch map[string]string) error
 		}
 		// Never echo the value back: it is a credential, and an error
 		// message is the one place a secret reliably ends up in a log.
-		if _, legalSomewhere := format.modePrefixes[mode]; legalSomewhere && hasAnyPrefix(value, format.prefixes) {
+		if _, legalSomewhere := format.ModePrefixes[mode]; legalSomewhere && hasAnyPrefix(value, format.Prefixes) {
 			return fmt.Errorf(
 				"%s: this is a %s key but the configuration is in %s mode — "+
 					"use the %s key, or change the configuration's mode",
@@ -114,7 +83,7 @@ func ValidateSecretFormats(provider, mode string, patch map[string]string) error
 		}
 		return fmt.Errorf(
 			"%s does not look like a %s: it must start with %s",
-			field, format.human, strings.Join(allowed, " or "),
+			field, format.Label, strings.Join(allowed, " or "),
 		)
 	}
 	return nil

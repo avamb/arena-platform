@@ -14,7 +14,7 @@
 //
 // 10. HTTP transport details (Authorization header, Content-Type)
 // 11. Integration: end-to-end create → capture cycle (mock httptest server)
-// 12. Integration: AllPay registered in PaymentRoutingPolicy
+// 12. Integration: AllPay as a registry entry
 package payments_test
 
 import (
@@ -737,43 +737,48 @@ func TestAllPay136_Integration_WebhookReceivedAfterPayment(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 12. Integration: AllPay registered in PaymentRoutingPolicy
+// 12. Integration: AllPay as a registry entry
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestAllPay136_Integration_RegisteredInRoutingPolicy(t *testing.T) {
+func TestAllPay136_Integration_RegisteredInRegistry(t *testing.T) {
 	a, err := payments.NewAllPayAdapter(payments.AllPayConfig{APIKey: "k"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
-	policy := payments.NewPaymentRoutingPolicy()
-	policy.Register(a)
-
-	got, err := policy.ResolveProvider(payments.ChannelConfig{
-		Provider:    "allpay",
-		PaymentMode: "direct_merchant",
+	reg, err := payments.NewRegistry(payments.Entry{
+		Descriptor: payments.Descriptor{Name: "allpay", Title: "AllPay"},
+		New: func(map[string]string, payments.Options) (payments.Module, error) {
+			return allPayModule{a}, nil
+		},
 	})
 	if err != nil {
-		t.Fatalf("ResolveProvider failed: %v", err)
+		t.Fatalf("NewRegistry: %v", err)
 	}
-	if got.ProviderName() != "allpay" {
-		t.Errorf("expected resolved provider %q, got %q", "allpay", got.ProviderName())
+	got, err := reg.Build("allpay", nil, payments.Options{})
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+	if got.Descriptor().Name != "allpay" {
+		t.Errorf("expected resolved provider %q, got %q", "allpay", got.Descriptor().Name)
 	}
 }
 
 func TestAllPay136_Integration_WrongProviderReturnsErrUnknownProvider(t *testing.T) {
-	policy := payments.NewPaymentRoutingPolicy()
-	// Register AllPay but request Stripe → should fail.
-	a, _ := payments.NewAllPayAdapter(payments.AllPayConfig{APIKey: "k"})
-	policy.Register(a)
-
-	_, err := policy.ResolveProvider(payments.ChannelConfig{
-		Provider:    "stripe",
-		PaymentMode: "direct_merchant",
-	})
-	if !errors.Is(err, payments.ErrUnknownProvider) {
+	reg, err := payments.NewRegistry(payments.Declared(payments.Descriptor{Name: "allpay", Title: "AllPay"}))
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+	if _, err := reg.Build("stripe", nil, payments.Options{}); !errors.Is(err, payments.ErrUnknownProvider) {
 		t.Fatalf("expected ErrUnknownProvider for unregistered provider, got: %v", err)
 	}
+}
+
+// allPayModule gives the legacy domain-side AllPay adapter a Descriptor so it
+// can sit in a registry for this test; the real module is internal/adapters/allpay.
+type allPayModule struct{ *payments.AllPayAdapter }
+
+func (allPayModule) Descriptor() payments.Descriptor {
+	return payments.Descriptor{Name: "allpay", Title: "AllPay"}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
