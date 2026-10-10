@@ -330,8 +330,11 @@ func TestEngine_NeverAttemptedStuckRefundSaysSo(t *testing.T) {
 		t.Fatalf("sweep: %+v %v", rep, err)
 	}
 	r := f.refundState(t, id)
+	// Fifth review, LOW c: the threshold is 23 hours (StuckAfter), and no
+	// path sends a parked refund again, so the reason must not promise it.
 	if r.State != refunds.StateManualReview || strings.Contains(deref(r.FailureReason), "idempotency") ||
-		!strings.Contains(deref(r.FailureReason), "never sent") {
+		!strings.Contains(deref(r.FailureReason), "never sent") || !strings.Contains(deref(r.FailureReason), "23 hours") ||
+		strings.Contains(deref(r.FailureReason), "can be sent again") {
 		t.Fatalf("parked %s: %q; want a reason saying it was never sent", r.State, deref(r.FailureReason))
 	}
 }

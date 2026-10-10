@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
@@ -158,6 +159,32 @@ func TestEngine_DriveStopsCancellingWhenItsCallerGoesAway(t *testing.T) {
 	}
 	if st, _ := f.ticketStatus(t, f.tickets[0]); st != "cancelled" {
 		t.Fatalf("ticket = %s after the repair", st)
+	}
+}
+
+// TestEngine_FlatBudgetSumMatchesTheEngine (LOW d): the flat routes
+// (POST /v1/refunds, approve, the ticket-cancel route) and the engine must
+// count the same refunds against a payment. A refund held back for its
+// budget BEFORE any provider call moved no money and counts for neither;
+// once an operator resolves it to succeeded, or when it was attempted, it
+// counts for both.
+func TestEngine_FlatBudgetSumMatchesTheEngine(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	ctx := context.Background()
+	pay := f.extraPayment(t)
+	f.rawRefund(t, pay, 300, "succeeded", `provider_refund_id = 're_`+uuid.NewString()+`'`)
+	held := f.rawRefund(t, pay, 600, "manual_review", `failure_code = 'budget_taken_by_another_refund'`)
+	q := gen.New(f.pool)
+	if sum, err := q.SumNonFailedRefundsByIntent(ctx, pay); err != nil || sum != 300 {
+		t.Fatalf("flat sum = %d %v; want 300 — the never-sent held refund moved no money", sum, err)
+	}
+	f.exec(t, `UPDATE refunds SET provider_attempts = 1 WHERE id = $1`, held)
+	if sum, _ := q.SumNonFailedRefundsByIntent(ctx, pay); sum != 900 {
+		t.Fatalf("flat sum = %d; want 900 — an attempted held refund may have moved money", sum)
+	}
+	f.exec(t, `UPDATE refunds SET provider_attempts = 0, state = 'succeeded' WHERE id = $1`, held)
+	if sum, _ := q.SumNonFailedRefundsByIntent(ctx, pay); sum != 900 {
+		t.Fatalf("flat sum = %d; want 900 — an operator resolved the held refund as paid out", sum)
 	}
 }
 

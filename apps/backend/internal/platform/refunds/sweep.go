@@ -333,7 +333,7 @@ func (e *Engine) parkStuck(ctx context.Context, now time.Time) (int, error) {
 				SET state = 'manual_review', updated_at = now(), `+reviewAlertSQL+`,
 				    failure_code = CASE WHEN provider_refund_id IS NULL THEN 'stuck_provider_pending' ELSE 'provider_pending_too_long' END,
 				    failure_reason = CASE WHEN provider_refund_id IS NULL AND first_attempted_at IS NULL
-				        THEN 'this refund was approved more than 24 hours ago but never sent to the provider; no call was made, so it can be sent again after a person checks it'
+				        THEN 'this refund was approved more than 23 hours ago but never sent to the provider: no call was made, so no money moved through it. Arena will not send it on its own; a person decides whether the buyer is still owed this money and refunds it again'
 				        WHEN provider_refund_id IS NULL
 				        THEN 'the provider did not confirm this refund within 23 hours of its first attempt, and it may not be sent again (idempotency window); last answer: ' || COALESCE(failure_code, 'none')
 				        ELSE 'the provider accepted this refund but has not completed it within 7 days' END

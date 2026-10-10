@@ -263,9 +263,12 @@ const (
 // countsAgainstBudgetSQL is true for a live refund row that counts against
 // its payment's and ticket's budget: every row except one parked for the
 // budget BEFORE any provider call (fifth review, M-1 — an attempted row may
-// have moved money and keeps counting). Unqualified: use it where the
-// refunds row is the innermost table.
-const countsAgainstBudgetSQL = `NOT (COALESCE(failure_code, '') = '` + failureBudgetTaken + `' AND provider_attempts = 0)`
+// have moved money and keeps counting), and only while it is still parked:
+// once an operator resolves it (to succeeded, say) it counts again.
+// gen.SumNonFailedRefundsByIntent, the flat routes' sum, carries the same
+// rule (fifth review, LOW d). Unqualified: use it where the refunds row is
+// the innermost table.
+const countsAgainstBudgetSQL = `NOT (state = 'manual_review' AND COALESCE(failure_code, '') = '` + failureBudgetTaken + `' AND provider_attempts = 0)`
 
 // deterministicModuleError reports an error that repeating the call can
 // never change and that proves the provider was NOT reached: the module is
