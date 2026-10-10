@@ -34,7 +34,7 @@ const (
 // Transitions:
 //
 //	draft     → published | cancelled
-//	published → cancelled | archived
+//	published → draft | cancelled | archived
 //	cancelled → archived
 //	archived  → (terminal)
 //
@@ -46,6 +46,10 @@ var ValidEventTransitions = map[EventStatus]map[EventStatus]bool{
 		EventStatusCancelled: true,
 	},
 	EventStatusPublished: {
+		// published → draft is "take off sale" (EC-10): the event leaves
+		// every public surface, nothing sold is touched, and it can be
+		// published again later.
+		EventStatusDraft:     true,
 		EventStatusCancelled: true,
 		EventStatusArchived:  true,
 	},

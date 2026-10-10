@@ -292,6 +292,8 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 			b.leaveEvents(ctx, from.ID) // a command ends the events list's search
 		}
 		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
+		// and an event's delete question (its typed word)
+		b.leaveEvStatus(ctx, from.ID)
 		switch cmd {
 		case "/start":
 			arg = strings.TrimSpace(arg)
@@ -337,6 +339,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	if text != "" && b.sessionsText(ctx, chatID, from, text) {
 		return
 	}
+	if text != "" && b.evStatusText(ctx, chatID, from, text) {
+		return
+	}
 	if text != "" && b.eventsText(ctx, chatID, from, text) {
 		return
 	}
@@ -376,6 +381,9 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	}
 	if !isOrdersCallback(parts[0]) {
 		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
+	}
+	if parts[0] != "ec" { // "ec" ends a delete question itself, unless it is a status button
+		b.leaveEvStatus(ctx, from.ID)
 	}
 	switch parts[0] {
 	case "el":

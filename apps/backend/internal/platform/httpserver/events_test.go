@@ -440,6 +440,7 @@ func TestEvent125_StatusTransition_AllowedTransitions(t *testing.T) {
 	}{
 		{"draft", "published"},
 		{"draft", "cancelled"},
+		{"published", "draft"}, // take off sale (EC-10)
 		{"published", "cancelled"},
 		{"published", "archived"},
 		{"cancelled", "archived"},
@@ -456,7 +457,6 @@ func TestEvent125_StatusTransition_ForbiddenTransitions(t *testing.T) {
 		from, to string
 	}{
 		{"draft", "archived"},
-		{"published", "draft"},
 		{"cancelled", "draft"},
 		{"cancelled", "published"},
 		{"archived", "draft"},
