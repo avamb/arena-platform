@@ -61,6 +61,15 @@ func Modules() []domain.Entry {
 	}
 }
 
+// PlatformWebhookSecrets names the owners of the process-env webhook
+// signing secrets (STRIPE_WEBHOOK_SECRET, ALLPAY_WEBHOOK_SECRET): the legacy
+// un-suffixed webhook route's platform-level fallback when no organization
+// config supplies one. Keyed by provider name, so hcheckout can apply them
+// without naming a provider.
+func PlatformWebhookSecrets(stripeSecret, allPaySecret string) map[string]string {
+	return map[string]string{stripe.Name: stripeSecret, allpay.Name: allPaySecret}
+}
+
 var registry = domain.MustRegistry(Modules()...)
 
 // Registry is the process-wide registry built from Modules. It holds

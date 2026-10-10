@@ -39,8 +39,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/flitt"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 )
@@ -724,13 +724,15 @@ type stripeEventEnvelope struct {
 // to EventType, data.object.last_payment_error.code/message map to
 // FailureCode/FailureMessage, and the raw body is kept as EventPayload for
 // the audit trail either way.
+//
+// A body of a provider whose callbacks only the per-config route can verify
+// (Capabilities.WebhookConfigRouteOnly) never reaches this parser: that route
+// hands processPaymentWebhook the module's own NormalizedEvent
+// (webhookRequestFromEvent), and every other route refuses such a body.
 func parseWebhookPaymentIntentRequest(body []byte) (webhookPaymentIntentRequest, error) {
 	var probe map[string]json.RawMessage
 	if err := json.Unmarshal(body, &probe); err != nil {
 		return webhookPaymentIntentRequest{}, err
-	}
-	if flitt.LooksLikeCallback(body) {
-		return parseFlittCallback(body)
 	}
 	_, hasType := probe["type"]
 	_, hasData := probe["data"]
@@ -764,43 +766,49 @@ func parseWebhookPaymentIntentRequest(body []byte) (webhookPaymentIntentRequest,
 	return req, nil
 }
 
-// flittEventPrefix marks event types synthesised from a Flitt callback
-// order_status ("flitt.order.approved"). processPaymentWebhook refuses these
-// on the legacy route, where nothing proves the body came from Flitt.
-const flittEventPrefix = "flitt.order."
+// eventKindToState maps a module's normalized event kind onto the payment
+// intent state it moves the intent to. A kind absent here moves nothing: it
+// is acknowledged without a transition (a declined attempt that leaves the
+// provider's order open for another card, a refund, a dispute, an
+// intermediate status).
+var eventKindToState = map[payments.EventKind]string{
+	payments.EventPaymentRequiresAction: "requires_action",
+	payments.EventPaymentProcessing:     "processing",
+	payments.EventPaymentAuthorized:     "authorized",
+	payments.EventPaymentSucceeded:      "succeeded",
+	payments.EventPaymentFailed:         "failed",
+	payments.EventPaymentExpired:        "failed",
+	payments.EventPaymentManualReview:   "manual_review",
+}
 
-// parseFlittCallback turns a Flitt callback body into the normalised request.
+// webhookRequestFromEvent turns a module's VERIFIED NormalizedEvent into the
+// request the shared state machine runs on. Used by the per-config route for
+// a provider whose module owns the whole normalization
+// (Capabilities.WebhookConfigRouteOnly: Flitt):
 //
-//   - ProviderPaymentID is order_id: arena checkout session id, the value
-//     stored as payment_intents.provider_payment_id.
-//   - EventType is "flitt.order.<order_status>".
-//   - The numeric payment_id Flitt assigns becomes the charge reference
-//     (refunds, audit).
-//
-// Signature checking is NOT done here: the per-config route verified the body
-// before it got this far.
-func parseFlittCallback(body []byte) (webhookPaymentIntentRequest, error) {
-	cb, err := flitt.ParseCallbackUnverified(body)
-	if err != nil {
-		return webhookPaymentIntentRequest{}, err
-	}
+//   - ProviderPaymentID is what arena stored as provider_payment_id (for
+//     Flitt our own order id, the checkout session UUID);
+//   - EventType is the provider's event name (the idempotency key half);
+//   - ProviderChargeRef becomes the charge reference (refunds, audit);
+//   - the target state comes from the event KIND, so a kind the core does
+//     not map (Flitt "declined") is acknowledged without a transition.
+func webhookRequestFromEvent(ev payments.NormalizedEvent) webhookPaymentIntentRequest {
 	req := webhookPaymentIntentRequest{
-		ProviderPaymentID: cb.OrderID,
-		EventType:         flittEventPrefix + cb.OrderStatus,
-		EventPayload:      json.RawMessage(body),
-		HostedPaymentID:   cb.PaymentID,
+		ProviderPaymentID: ev.ProviderPaymentID,
+		EventType:         ev.Type,
+		TargetState:       eventKindToState[ev.Kind],
+		EventPayload:      ev.Raw,
+		HostedPaymentID:   ev.ProviderChargeRef,
 	}
-	if cb.OrderStatus != flitt.StatusApproved {
-		if cb.ResponseCode != "" {
-			code := cb.ResponseCode
-			req.FailureCode = &code
-		}
-		if cb.ResponseDescription != "" {
-			msg := cb.ResponseDescription
-			req.FailureMessage = &msg
-		}
+	if ev.FailureCode != "" {
+		code := ev.FailureCode
+		req.FailureCode = &code
 	}
-	return req, nil
+	if ev.FailureMessage != "" {
+		msg := ev.FailureMessage
+		req.FailureMessage = &msg
+	}
+	return req
 }
 
 // webhookEventTypeToState maps normalized provider event types to payment intent states.
@@ -830,20 +838,10 @@ var webhookEventTypeToState = map[string]string{
 	// the intent here is what lets the buyer's widget stop showing a
 	// "continue to payment" button for a dead Stripe page.
 	"checkout.session.expired": "failed",
-	// Flitt hosted checkout. Only two of its order statuses move an intent:
-	//
-	//   approved - the money settled.
-	//   expired  - the order outlived its lifetime unpaid.
-	//
-	// "declined" is deliberately ABSENT. A declined card does not close a
-	// Flitt order: the buyer may try another card on the same page until it
-	// expires. Failing the intent on the first decline would make the intent
-	// terminal, and the later approval of that very order would then be
-	// ignored - a paid purchase lost. processing/created/reversed are
-	// acknowledged without a transition too (reversals are refunds, which
-	// follow the refund flow).
-	"flitt.order.approved": "succeeded",
-	"flitt.order.expired":  "failed",
+	// Flitt's order statuses are NOT here: the Flitt module normalizes its
+	// callback into an event kind (adapters/flitt NormalizeCallback, where
+	// the "declined is not a failure" rule lives) and the per-config route
+	// maps the kind through eventKindToState.
 	// Shorthand aliases used by mock provider tests.
 	"mock.requires_action": "requires_action",
 	"mock.processing":      "processing",
@@ -967,10 +965,15 @@ type webhookRoute struct {
 	// from a known account at all.
 	ForeignEventIsOK bool
 	// ExpectedProvider, when set, is the provider whose config the URL names;
-	// an intent recorded under another provider is "not ours". Set only for
-	// Flitt: its callbacks are matched by OUR order id (a UUID), so a Flitt
-	// signature must never be able to move a Stripe intent of the same org.
+	// an intent recorded under another provider is "not ours". Set for a
+	// provider with Capabilities.WebhookConfigRouteOnly (Flitt): its
+	// callbacks are matched by OUR order id (a UUID), so a Flitt signature
+	// must never be able to move a Stripe intent of the same org.
 	ExpectedProvider string
+	// Event, when set, is the module's own normalization of the VERIFIED
+	// body (per-config route, Capabilities.WebhookConfigRouteOnly). The
+	// state machine then runs on it instead of parsing the body.
+	Event *payments.NormalizedEvent
 }
 
 // processPaymentWebhook is the shared body of both webhook entry points. The
@@ -985,11 +988,30 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 	}
 	ctx := r.Context()
 
-	req, parseErr := parseWebhookPaymentIntentRequest(body)
-	err := parseErr
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("webhook.invalid_json", "request body is not valid JSON", r))
-		return
+	var req webhookPaymentIntentRequest
+	if route.Event != nil {
+		req = webhookRequestFromEvent(*route.Event)
+	} else {
+		if !json.Valid(body) {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("webhook.invalid_json", "request body is not valid JSON", r))
+			return
+		}
+		if d, configOnly := configRouteOnlyProvider(body); configOnly {
+			// A body of a provider that signs its callbacks with the key of
+			// the config named in the URL (Flitt). Nothing on this route can
+			// vouch for it: refuse rather than guess.
+			h.recordWebhookEvent(observability.PaymentWebhookEventOther, webhookOutcomeRejected)
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
+				"webhook."+d.Name+"_requires_config_route",
+				d.Title+" callbacks must be delivered to /v1/payment-intents/webhook/{config_id}", r))
+			return
+		}
+		parsed, parseErr := parseWebhookPaymentIntentRequest(body)
+		if parseErr != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("webhook.invalid_json", "request body is not valid JSON", r))
+			return
+		}
+		req = parsed
 	}
 
 	if req.ProviderPaymentID == "" {
@@ -1045,17 +1067,6 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 	// A hosted session that expired unpaid fails the intent with a specific,
 	// machine-readable code so the order-status surface can tell "the buyer
 	// walked away" from "the card was declined".
-	if strings.HasPrefix(req.EventType, flittEventPrefix) && route.ExpectedProvider != "flitt" {
-		// A Flitt body is authenticated by the payment key of the config named
-		// in the URL. The legacy route has no such config, so it cannot vouch
-		// for one: refuse rather than guess.
-		h.recordWebhookEvent(observability.PaymentWebhookEventOther, webhookOutcomeRejected)
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			"webhook.flitt_requires_config_route",
-			"Flitt callbacks must be delivered to /v1/payment-intents/webhook/{config_id}", r))
-		return
-	}
-
 	if req.EventType == eventCheckoutSessionExpired && req.FailureCode == nil {
 		code := failureCodeSessionExpired
 		msg := "the hosted checkout session expired before it was paid"

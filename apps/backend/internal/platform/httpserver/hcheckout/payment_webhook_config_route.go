@@ -33,7 +33,6 @@ package hcheckout
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -43,7 +42,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/flitt"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
@@ -115,7 +113,8 @@ func (h *Handler) HandlePaymentIntentWebhookForConfig(w http.ResponseWriter, r *
 		return
 	}
 
-	if sigErr := h.verifyConfigWebhookSignature(r, body, cfg, secret); sigErr != nil {
+	event, entryDesc, sigErr := h.verifyConfigWebhookSignature(r, body, cfg)
+	if sigErr != nil {
 		h.logger.Warn("webhook: invalid signature on the per-config route; rejecting request",
 			slog.String("config_id", configID.String()),
 			slog.String("provider", cfg.Provider),
@@ -130,18 +129,20 @@ func (h *Handler) HandlePaymentIntentWebhookForConfig(w http.ResponseWriter, r *
 	}
 
 	orgID := cfg.OrgID
-	expectedProvider := ""
-	if strings.EqualFold(cfg.Provider, "flitt") {
-		// A Flitt-signed callback may only move a Flitt payment of this org.
-		expectedProvider = "flitt"
-	}
-	h.processPaymentWebhook(w, r, body, webhookRoute{
-		Kind:             observability.RouteKindConfig,
-		ExpectedOrgID:    &orgID,
-		ExpectedProvider: expectedProvider,
+	route := webhookRoute{
+		Kind:          observability.RouteKindConfig,
+		ExpectedOrgID: &orgID,
 		// The whole reason this route exists.
 		ForeignEventIsOK: true,
-	})
+	}
+	if entryDesc.Capabilities.WebhookConfigRouteOnly {
+		// A callback signed with a config-route-only provider's key (Flitt)
+		// may only move a payment of THAT provider of this org, and the
+		// module's own normalization is what the state machine runs on.
+		route.ExpectedProvider = entryDesc.Name
+		route.Event = &event
+	}
+	h.processPaymentWebhook(w, r, body, route)
 }
 
 // usableWebhookConfig loads the config named in the URL and decides whether
@@ -172,44 +173,30 @@ func (h *Handler) usableWebhookConfig(r *http.Request, configID uuid.UUID) (gen.
 	return cfg, true
 }
 
-// verifyConfigWebhookSignature checks the request against ONE secret — the
-// one belonging to the config in the URL.
+// verifyConfigWebhookSignature checks the request against ONE config — the
+// one in the URL — through that provider's module (payments.WebhookParser),
+// built from the config's own secrets: Stripe's Stripe-Signature t=,v1= HMAC
+// with the replay tolerance, AllPay's X-AllPay-Signature, Flitt's in-body
+// signature under the payment key with merchant_id compared first. On
+// success it returns the module's normalization and the descriptor.
 //
 // It deliberately does not reuse verifyWebhookSignature: that helper falls
 // back to the process-env secrets and resolves the org from the body, both of
 // which would defeat the point of this route. Here the provider comes from
-// the config row, so the expected header is known too.
-func (h *Handler) verifyConfigWebhookSignature(r *http.Request, body []byte, cfg gen.PaymentProviderConfigRow, secret string) error {
-	if strings.EqualFold(cfg.Provider, "flitt") {
-		// The signature rides in the body, not a header. The merchant id is
-		// compared first and BEFORE the hash: it is the cheap check, and a
-		// callback addressed to another merchant is not this config's even
-		// when a shared payment key would let it verify.
-		cb, err := flitt.ParseCallbackUnverified(body)
-		if err != nil {
-			return fmt.Errorf("flitt: unreadable callback: %w", err)
-		}
-		if want := SecretFieldFromConfig(cfg, "merchant_id"); want == "" || cb.MerchantID != want {
-			return errors.New("flitt: callback merchant_id does not match this config")
-		}
-		_, err = flitt.VerifyCallback(body, secret)
-		return err
+// the config row, so the expected scheme is known too.
+func (h *Handler) verifyConfigWebhookSignature(r *http.Request, body []byte, cfg gen.PaymentProviderConfigRow) (payments.NormalizedEvent, payments.Descriptor, error) {
+	parser, d, ok := webhookParserFor(cfg.Provider, payments.SecretsFromJSON(cfg.Secrets))
+	if !ok {
+		return payments.NormalizedEvent{}, payments.Descriptor{}, errNoWebhookModule
 	}
-	if strings.EqualFold(cfg.Provider, "allpay") {
-		header := r.Header.Get("X-AllPay-Signature")
-		if header == "" {
-			return errNoSignatureHeader
-		}
-		return payments.VerifyAllPaySignature(header, body, secret)
+	ev, err := parser.VerifyAndParse(r.Context(), payments.WebhookInput{Body: body, Header: r.Header})
+	if err != nil {
+		return payments.NormalizedEvent{}, payments.Descriptor{}, err
 	}
-	header := r.Header.Get("Stripe-Signature")
-	if header == "" {
-		return errNoSignatureHeader
-	}
-	return payments.VerifyStripeSignature(header, body, secret, payments.DefaultWebhookTolerance)
+	return ev, d, nil
 }
 
-// errNoSignatureHeader is returned when the expected provider signature
-// header is absent entirely.
-var errNoSignatureHeader = errors.New(
-	"hcheckout: no provider signature header present on the per-config webhook route")
+// errNoWebhookModule is returned when the config's provider has no module
+// that can verify a delivery: nothing it receives can be trusted.
+var errNoWebhookModule = errors.New(
+	"hcheckout: the config's provider has no webhook-verifying module")

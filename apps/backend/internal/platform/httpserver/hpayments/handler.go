@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 )
 
@@ -33,13 +34,11 @@ type Handler struct {
 	pool                 TxStarter
 	audit                audit.Writer
 	logger               *slog.Logger
-	// stripeBaseURL overrides the Stripe API root used when VERIFYING a
-	// stored credential. Empty means the real Stripe. It exists so a test
-	// can point the check at a stub without a network call; see
-	// WithStripeBaseURL.
-	stripeBaseURL string
-	// flittBaseURL is the same test seam for Flitt credential verification.
-	flittBaseURL string
+	// providerOptions carries the provider endpoint overrides used when
+	// VERIFYING a stored credential. Empty values mean the real providers.
+	// They exist so a test can point the check at a stub without a network
+	// call; see WithStripeBaseURL / WithFlittBaseURL.
+	providerOptions payments.Options
 }
 
 // New constructs a Handler from the caller's dependencies. Nil queries and a
@@ -76,13 +75,13 @@ func (h *Handler) WithMembershipQueries(q *gen.Queries) *Handler {
 // the accepted/refused branches must be able to answer it. The value must
 // carry the /v1 segment — the adapter concatenates endpoints onto it.
 func (h *Handler) WithStripeBaseURL(base string) *Handler {
-	h.stripeBaseURL = base
+	h.providerOptions.StripeAPIBaseURL = base
 	return h
 }
 
 // WithFlittBaseURL points Flitt credential verification at a different API
 // root (a stub in tests). Empty means the real https://pay.flitt.com/api.
 func (h *Handler) WithFlittBaseURL(base string) *Handler {
-	h.flittBaseURL = base
+	h.providerOptions.FlittAPIBaseURL = base
 	return h
 }

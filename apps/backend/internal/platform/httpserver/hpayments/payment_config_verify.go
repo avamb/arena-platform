@@ -29,9 +29,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/flitt"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/stripe"
+	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
@@ -71,24 +70,26 @@ func normalizeSecretPatch(patch map[string]string) map[string]string {
 //
 // A provider we have no verifier for is NOT a failure: it simply cannot be
 // asked, and its config stays "unverified" forever, which is the honest
-// state. Only Stripe is wired today.
+// state. Which providers can be asked is the registry's answer: the module
+// must implement payments.CredentialVerifier, and every secret its
+// descriptor marks as a Credential must be stored.
 func (h *Handler) CredentialVerifierFor(row gen.PaymentProviderConfigRow) (payments.CredentialVerifier, bool) {
-	if row.Provider == "flitt" {
-		merchantID := storedSecretValue(row.Secrets, "merchant_id")
-		paymentKey := storedSecretValue(row.Secrets, "payment_key")
-		if merchantID == "" || paymentKey == "" {
+	d, known := descriptorFor(row.Provider)
+	if !known {
+		return nil, false
+	}
+	secrets := payments.SecretsFromJSON(row.Secrets)
+	for _, key := range d.CredentialKeys() {
+		if secrets[key] == "" {
 			return nil, false
 		}
-		return flitt.New(flitt.Config{MerchantID: merchantID, PaymentKey: paymentKey, BaseURL: h.flittBaseURL}), true
 	}
-	if row.Provider != "stripe" {
+	module, err := paymodules.Registry().Build(d.Name, secrets, h.providerOptions)
+	if err != nil {
 		return nil, false
 	}
-	apiKey := storedSecretValue(row.Secrets, "api_key")
-	if apiKey == "" {
-		return nil, false
-	}
-	return stripe.New(stripe.Config{SecretKey: apiKey, BaseURL: h.stripeBaseURL}), true
+	verifier, ok := module.(payments.CredentialVerifier)
+	return verifier, ok
 }
 
 // verifyAndRecord asks the provider about the row's credential and writes the

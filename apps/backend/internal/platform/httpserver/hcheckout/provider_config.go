@@ -29,6 +29,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
 )
 
 // Provider-config error codes (422).
@@ -148,9 +149,15 @@ func ResolveProviderConfig(ctx context.Context, q *gen.Queries, orgID uuid.UUID,
 	return SelectProviderConfig(rows, provider, kyb)
 }
 
+// defaultWebhookSecretKey is the secrets key read for a provider whose
+// descriptor names no webhook secret (a declared provider, or one arena does
+// not know) — the key the lookup used before the registry existed.
+const defaultWebhookSecretKey = "webhook_secret"
+
 // WebhookSecretFromConfig extracts the provider's webhook signing secret
-// from a config's secrets blob (stripe: webhook_secret; allpay:
-// secret_key; flitt: payment_key). Empty when absent.
+// from a config's secrets blob: the key the provider's Descriptor marks as
+// its WebhookSecret (a module that signs callbacks with its request key,
+// like Flitt's payment key, marks that one). Empty when absent.
 func WebhookSecretFromConfig(cfg gen.PaymentProviderConfigRow) string {
 	if len(cfg.Secrets) == 0 {
 		return ""
@@ -159,14 +166,11 @@ func WebhookSecretFromConfig(cfg gen.PaymentProviderConfigRow) string {
 	if err := json.Unmarshal(cfg.Secrets, &m); err != nil {
 		return ""
 	}
-	key := "webhook_secret"
-	switch {
-	case strings.EqualFold(cfg.Provider, "allpay"):
-		key = "secret_key"
-	case strings.EqualFold(cfg.Provider, "flitt"):
-		// Flitt has no separate webhook secret: the payment key that signs
-		// requests also signs callbacks.
-		key = "payment_key"
+	key := defaultWebhookSecretKey
+	if e, ok := paymodules.Registry().Get(cfg.Provider); ok {
+		if k := e.Descriptor.WebhookSecretKey(); k != "" {
+			key = k
+		}
 	}
 	if v, ok := m[key].(string); ok {
 		return strings.TrimSpace(v)
@@ -235,21 +239,22 @@ func providerPaymentIDFromEnvelope(body []byte) string {
 }
 
 // webhookSecretsFromOrgConfig locates the organization behind an inbound
-// webhook body (refund_id or payment_intent_id) and returns the Stripe /
-// AllPay webhook secrets from its usable payment_provider_configs rows.
-// Empty strings mean "no per-org secret" — the caller falls back to the
-// process-env secrets. Never errors: a lookup problem simply yields the
-// fallback, and the signature is still verified.
-func (h *Handler) webhookSecretsFromOrgConfig(ctx context.Context, body []byte) (stripeSecret, allPaySecret string) {
+// webhook body (refund_id or payment_intent_id) and returns, per provider the
+// legacy route can authenticate (legacyWebhookProviders), the webhook secret
+// from its usable payment_provider_configs row. A missing entry means "no
+// per-org secret": the caller falls back to the process-env secrets. Never
+// errors: a lookup problem simply yields the fallback, and the signature is
+// still verified.
+func (h *Handler) webhookSecretsFromOrgConfig(ctx context.Context, body []byte) map[string]string {
 	if h.orgQueries == nil {
-		return "", ""
+		return nil
 	}
 	var probe struct {
 		RefundID        string `json:"refund_id"`
 		PaymentIntentID string `json:"payment_intent_id"`
 	}
 	if err := json.Unmarshal(body, &probe); err != nil {
-		return "", ""
+		return nil
 	}
 	var orgID uuid.UUID
 	switch {
@@ -265,41 +270,43 @@ func (h *Handler) webhookSecretsFromOrgConfig(ctx context.Context, body []byte) 
 		// all rejected 401.
 		id := providerPaymentIDFromEnvelope(body)
 		if id == "" || h.paymentIntentQueries == nil {
-			return "", ""
+			return nil
 		}
 		pi, err := h.paymentIntentQueries.GetPaymentIntentByProviderID(ctx, id)
 		if err != nil {
-			return "", ""
+			return nil
 		}
 		orgID = pi.OrgID
 	case probe.RefundID != "" && h.refundQueries != nil:
 		id, err := uuid.Parse(probe.RefundID)
 		if err != nil {
-			return "", ""
+			return nil
 		}
 		ref, err := h.refundQueries.GetRefundByID(ctx, id)
 		if err != nil {
-			return "", ""
+			return nil
 		}
 		orgID = ref.OrgID
 	case probe.PaymentIntentID != "" && h.paymentIntentQueries != nil:
 		id, err := uuid.Parse(probe.PaymentIntentID)
 		if err != nil {
-			return "", ""
+			return nil
 		}
 		pi, err := h.paymentIntentQueries.GetPaymentIntentByID(ctx, id)
 		if err != nil {
-			return "", ""
+			return nil
 		}
 		orgID = pi.OrgID
 	default:
-		return "", ""
+		return nil
 	}
-	if cfg, cfgErr := ResolveProviderConfig(ctx, h.orgQueries, orgID, "stripe"); cfgErr == nil {
-		stripeSecret = WebhookSecretFromConfig(cfg)
+	out := map[string]string{}
+	for _, provider := range legacyWebhookProviders() {
+		if cfg, cfgErr := ResolveProviderConfig(ctx, h.orgQueries, orgID, provider); cfgErr == nil {
+			if secret := WebhookSecretFromConfig(cfg); secret != "" {
+				out[provider] = secret
+			}
+		}
 	}
-	if cfg, cfgErr := ResolveProviderConfig(ctx, h.orgQueries, orgID, "allpay"); cfgErr == nil {
-		allPaySecret = WebhookSecretFromConfig(cfg)
-	}
-	return stripeSecret, allPaySecret
+	return out
 }

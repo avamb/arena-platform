@@ -18,39 +18,53 @@ import (
 	"time"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Provider catalogue + required-secret rules
 // ─────────────────────────────────────────────────────────────────────────────
 
-// SupportedPaymentProviders lists the provider slugs the platform knows
-// how to talk to. Anything else is rejected at create-time so we never
-// store credentials for a provider we cannot wire to.
-var SupportedPaymentProviders = map[string]bool{
-	"stripe":        true,
-	"allpay":        true,
-	"flitt":         true,
-	"cloudpayments": true,
-	"yookassa":      true,
-	"manual":        true,
+// SupportedPaymentProviders lists the provider slugs the platform knows.
+// Anything else is rejected at create-time so we never store credentials
+// for a provider we cannot wire to. Derived from the module registry
+// (internal/app/payments/modules.go) since PAY-01 — never list a provider
+// here by name.
+var SupportedPaymentProviders = providerSet()
+
+func providerSet() map[string]bool {
+	names := paymodules.Registry().Names()
+	out := make(map[string]bool, len(names))
+	for _, n := range names {
+		out[n] = true
+	}
+	return out
 }
 
-// requiredSecretFields lists the secret jsonb keys that MUST be
-// populated for a given provider before the config can be marked
-// "configured". The lists are intentionally minimal — adapters can
-// still surface their own runtime errors when extra optional secrets
-// are missing.
-var requiredSecretFields = map[string][]string{
-	"stripe": {"api_key", "webhook_secret"},
-	"allpay": {"merchant_id", "secret_key"},
-	// flitt: merchant_id is the numeric id from the portal; payment_key signs
-	// every request AND verifies every callback, so there is no separate
-	// webhook secret. (The portal's "credit key" is for payouts — never used.)
-	"flitt":         {"merchant_id", "payment_key"},
-	"cloudpayments": {"public_id", "api_secret"},
-	"yookassa":      {"shop_id", "secret_key"},
-	"manual":        {}, // manual provider has no credentials
+// descriptorFor returns the registered descriptor for an EXACT provider
+// slug. The create path lower-cases and trims before it asks, and the
+// stored value is that normalized slug; a row whose provider somehow is not
+// canonical is treated as unknown, as the map lookups this replaced did.
+func descriptorFor(provider string) (payments.Descriptor, bool) {
+	e, ok := paymodules.Registry().Get(provider)
+	if !ok || e.Descriptor.Name != provider {
+		return payments.Descriptor{}, false
+	}
+	return e.Descriptor, true
+}
+
+// requiredSecretFields lists the secret jsonb keys that MUST be populated
+// for a given provider before the config can be marked "configured" — the
+// descriptor's Required secrets. The lists are intentionally minimal —
+// adapters can still surface their own runtime errors when extra optional
+// secrets are missing.
+func requiredSecretFields(provider string) ([]string, bool) {
+	d, ok := descriptorFor(provider)
+	if !ok {
+		return nil, false
+	}
+	return d.RequiredSecretKeys(), true
 }
 
 // supportedModes is the set of legal `mode` values.
@@ -185,7 +199,7 @@ func ExtractStoredSecretKeys(raw json.RawMessage) []string {
 // given provider that are either missing from the secrets jsonb or are
 // present with an empty/whitespace value.
 func ComputeMissingRequiredFields(provider string, secrets json.RawMessage) []string {
-	required, ok := requiredSecretFields[provider]
+	required, ok := requiredSecretFields(provider)
 	if !ok || len(required) == 0 {
 		return nil
 	}
@@ -253,25 +267,4 @@ func MergeSecrets(existing json.RawMessage, patch map[string]string) (json.RawMe
 		return nil, false, fmt.Errorf("marshal merged secrets: %w", err)
 	}
 	return out, changed, nil
-}
-
-// storedSecretValue reads one secret value out of the secrets jsonb.
-//
-// The ONLY function in this package that returns a secret VALUE — everything
-// else deliberately exposes keys alone (see ExtractStoredSecretKeys). It
-// exists so a credential can be handed to the provider for verification, and
-// its result must never reach a response, a log or an audit payload.
-func storedSecretValue(raw json.RawMessage, field string) string {
-	if len(raw) == 0 {
-		return ""
-	}
-	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return ""
-	}
-	s, ok := m[field].(string)
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(s)
 }
