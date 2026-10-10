@@ -44,6 +44,11 @@ func (s *RefundModuleSource) Descriptor(provider string) (payments.Descriptor, b
 func (s *RefundModuleSource) Build(ctx context.Context, orgID uuid.UUID, provider string) (payments.Module, error) {
 	cfg, cfgErr := ResolveProviderConfig(ctx, s.queries, orgID, provider)
 	if cfgErr != nil {
+		if cfgErr.Transient {
+			// The configuration could not be read: an unknown outcome the
+			// engine retries, never a refusal.
+			return nil, cfgErr
+		}
 		return nil, &refunds.ConfigError{Code: cfgErr.Code, Message: cfgErr.Message}
 	}
 	return paymodules.Registry().Build(provider, payments.SecretsFromJSON(cfg.Secrets), s.opts)

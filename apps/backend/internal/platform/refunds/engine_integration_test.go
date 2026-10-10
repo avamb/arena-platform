@@ -49,6 +49,22 @@ type fakeModule struct {
 	resolved int
 	// beforeRefund runs inside Refund, before the answer.
 	beforeRefund func(req payments.RefundRequest) bool
+	// buildErrs scripts what fakeSource.Build answers, one entry per call
+	// (nil = build the module); the last entry repeats.
+	buildErrs []error
+}
+
+func (m *fakeModule) nextBuildErr() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.buildErrs) == 0 {
+		return nil
+	}
+	err := m.buildErrs[0]
+	if len(m.buildErrs) > 1 {
+		m.buildErrs = m.buildErrs[1:]
+	}
+	return err
 }
 
 func (m *fakeModule) Descriptor() payments.Descriptor {
@@ -105,6 +121,9 @@ func (s fakeSource) Descriptor(p string) (payments.Descriptor, bool) {
 }
 
 func (s fakeSource) Build(context.Context, uuid.UUID, string) (payments.Module, error) {
+	if err := s.m.nextBuildErr(); err != nil {
+		return nil, err
+	}
 	return s.m, nil
 }
 
@@ -257,6 +276,11 @@ func (f *fixture) count(t *testing.T, sql string) int {
 }
 
 func (f *fixture) engine(m *fakeModule, withCanceller bool) *refunds.Engine {
+	return f.engineWith(m, withCanceller, nil)
+}
+
+// engineWith builds an engine and lets the test adjust its options first.
+func (f *fixture) engineWith(m *fakeModule, withCanceller bool, adjust func(o *refunds.Options)) *refunds.Engine {
 	q := gen.New(f.pool)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	opts := refunds.Options{DB: f.pool, Modules: fakeSource{m: m}, Audit: audit.NewPGWriter(f.pool), Logger: logger,
@@ -264,7 +288,24 @@ func (f *fixture) engine(m *fakeModule, withCanceller bool) *refunds.Engine {
 	if withCanceller {
 		opts.CancelTicket = htickets.New(q, q, nil, q, q, q, nil, nil, f.pool, f.pool, audit.NewPGWriter(f.pool), logger, nil, nil, nil).RefundCanceller()
 	}
+	if adjust != nil {
+		adjust(&opts)
+	}
 	return refunds.New(opts)
+}
+
+func (f *fixture) exec(t *testing.T, sql string, args ...any) {
+	t.Helper()
+	if _, err := f.pool.Exec(context.Background(), sql, args...); err != nil {
+		t.Fatalf("exec %q: %v", sql, err)
+	}
+}
+
+// staleMarker ages a refund's in-flight marker past CallStaleAfter, as if
+// its last provider call started two minutes ago.
+func (f *fixture) staleMarker(t *testing.T, id uuid.UUID) {
+	t.Helper()
+	f.exec(t, `UPDATE refunds SET provider_attempted_at = now() - interval '2 minutes' WHERE id = $1`, id)
 }
 
 func (f *fixture) batch(key string, cancel bool, items ...refunds.Item) refunds.BatchInput {
@@ -334,6 +375,10 @@ func TestEngine_SuccessCancelsTheTicketOnlyAfterTheProvider(t *testing.T) {
 	}
 }
 
+// TestEngine_DeclineLeavesTicketsValid covers a refusal on the FIRST
+// attempt only — the provider was reached once and said no, so nothing can
+// have moved. A refusal after an unknown outcome is
+// TestEngine_RefusalAfterAnUnknownOutcomeGoesToManualReview.
 func TestEngine_DeclineLeavesTicketsValid(t *testing.T) {
 	f := newFixture(t, testPool(t), "pay03fake")
 	m := &fakeModule{partial: true, answers: []func(payments.RefundRequest) (payments.RefundResult, error){declined}}
@@ -342,8 +387,9 @@ func TestEngine_DeclineLeavesTicketsValid(t *testing.T) {
 		t.Fatalf("CreateBatch: %v", err)
 	}
 	r := res.Refunds[0]
-	if r.State != refunds.StateFailed || deref(r.FailureCode) != "card_closed" {
-		t.Fatalf("refund = %s / %s; want failed with the provider's code", r.State, deref(r.FailureCode))
+	if r.State != refunds.StateFailed || deref(r.FailureCode) != "card_closed" || r.ProviderAttempts != 1 {
+		t.Fatalf("refund = %s / %s attempts %d; want failed with the provider's code on the first attempt",
+			r.State, deref(r.FailureCode), r.ProviderAttempts)
 	}
 	if st, _ := f.ticketStatus(t, f.tickets[0]); st != "active" {
 		t.Fatalf("ticket = %s; a refused refund must not cancel it", st)
@@ -399,12 +445,22 @@ func TestEngine_PendingThatFailsLaterGoesToManualReview(t *testing.T) {
 	}
 	_, _ = f.pool.Exec(context.Background(), `UPDATE refunds SET updated_at = now() - interval '11 minutes' WHERE id = $1`, res.Refunds[0].ID)
 	m.lookup = payments.RefundResult{Status: payments.RefundFailed, FailureCode: "insufficient_funds"}
-	if _, err := e.Sweep(context.Background(), time.Now(), nil); err != nil {
+	n := &recordingNotifier{}
+	if _, err := e.Sweep(context.Background(), time.Now(), n); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := e.GetRefund(context.Background(), res.Refunds[0].ID)
 	if got.State != refunds.StateManualReview || deref(got.FailureCode) != "insufficient_funds" {
 		t.Fatalf("refund = %s %s; want manual_review (the ticket is already cancelled)", got.State, deref(got.FailureCode))
+	}
+	// PAY-03 review M1: accepted, then failed — the money did not go back
+	// and the ticket is gone. An operator is told once, ids and amount only.
+	if len(n.texts) != 1 || !strings.Contains(n.texts[0], got.ID.String()) || !strings.Contains(n.texts[0], "insufficient_funds") ||
+		strings.Contains(n.texts[0], "buyer@example.com") {
+		t.Fatalf("alerts = %v; want one alert naming the refund and the code, no buyer data", n.texts)
+	}
+	if _, err := e.Sweep(context.Background(), time.Now(), n); err != nil || len(n.texts) != 1 {
+		t.Fatalf("second pass re-alerted: %v %v", n.texts, err)
 	}
 }
 
@@ -578,10 +634,11 @@ func TestEngine_StuckRefundIsParkedWithAnAlert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _ = f.pool.Exec(context.Background(), `UPDATE refunds SET created_at = now() - interval '25 hours' WHERE id = $1`, res.Refunds[0].ID)
+	f.exec(t, `UPDATE refunds SET created_at = now() - interval '25 hours', approved_at = now() - interval '25 hours',
+		provider_attempted_at = now() - interval '2 minutes' WHERE id = $1`, res.Refunds[0].ID)
 	n := &recordingNotifier{}
 	rep, err := e.Sweep(context.Background(), time.Now(), n)
-	if err != nil || rep.Stuck != 1 || rep.Retried != 0 {
+	if err != nil || rep.Stuck != 1 || rep.Retried != 0 || rep.Alerted != 1 {
 		t.Fatalf("sweep: %+v %v", rep, err)
 	}
 	got, _ := e.GetRefund(context.Background(), res.Refunds[0].ID)
@@ -609,9 +666,21 @@ func TestEngine_SweepRepairsATicketLeftActive(t *testing.T) {
 		t.Fatalf("ticket = %s; want still active before the repair", st)
 	}
 	_, _ = f.pool.Exec(context.Background(), `UPDATE refunds SET updated_at = now() - interval '2 minutes' WHERE id = $1`, res.Refunds[0].ID)
-	rep, err := f.engine(m, true).Sweep(context.Background(), time.Now(), nil)
+	var published [][]string
+	repairer := f.engineWith(m, true, func(o *refunds.Options) {
+		o.PublishRefunded = func(_ context.Context, ids []string, _, _, _ string, _ int64) { published = append(published, ids) }
+	})
+	rep, err := repairer.Sweep(context.Background(), time.Now(), nil)
 	if err != nil || rep.Repaired != 1 {
 		t.Fatalf("sweep: %+v %v", rep, err)
+	}
+	// The first settle could not cancel, so it published nothing; the repair
+	// publishes v1.ticket.refunded once, and a later pass has nothing to do.
+	if len(published) != 1 || len(published[0]) != 1 || published[0][0] != f.tickets[0].String() {
+		t.Fatalf("published = %v; want the repaired ticket once", published)
+	}
+	if rep, err := repairer.Sweep(context.Background(), time.Now(), nil); err != nil || rep.Repaired != 0 || len(published) != 1 {
+		t.Fatalf("second pass: %+v %v published %v", rep, err, published)
 	}
 	if st, link := f.ticketStatus(t, f.tickets[0]); st != "cancelled" || link == nil {
 		t.Fatalf("ticket = %s link %v; want cancelled by the repair", st, link)

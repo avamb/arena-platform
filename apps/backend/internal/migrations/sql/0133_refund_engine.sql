@@ -19,6 +19,11 @@
 --     ticket is cancelled once the provider accepts;
 --   * refunds.provider_attempts / provider_attempted_at — the "a call is in
 --     flight" marker refund.sweep respects (never re-call within a minute);
+--   * refunds.repair_attempts / repair_attempted_at — refund.sweep's bounded
+--     retries of a ticket cancellation after an accepted refund;
+--   * refunds.review_alerted_at — whether the ops alert of a refund that
+--     went to manual_review was sent (arena-worker sends it, whichever
+--     process moved the row);
 --   * a unique (provider, provider_refund_id) so one provider refund maps to
 --     one row, and at most one live CANCELLING refund per ticket;
 --   * usage_records.tickets_refunded — the counter PAY-11 bills from (only
@@ -66,7 +71,10 @@ ALTER TABLE refunds
     ADD COLUMN batch_id              uuid    REFERENCES refund_batches(id),
     ADD COLUMN cancel_ticket         boolean NOT NULL DEFAULT false,
     ADD COLUMN provider_attempts     integer NOT NULL DEFAULT 0,
-    ADD COLUMN provider_attempted_at timestamptz;
+    ADD COLUMN provider_attempted_at timestamptz,
+    ADD COLUMN repair_attempts       integer NOT NULL DEFAULT 0,
+    ADD COLUMN repair_attempted_at   timestamptz,
+    ADD COLUMN review_alerted_at     timestamptz;
 
 CREATE UNIQUE INDEX refunds_provider_refund_uq
     ON refunds (provider, provider_refund_id)
@@ -110,6 +118,9 @@ DROP INDEX IF EXISTS refunds_live_ticket_cancel_uq;
 DROP INDEX IF EXISTS refunds_provider_refund_uq;
 
 ALTER TABLE refunds
+    DROP COLUMN IF EXISTS review_alerted_at,
+    DROP COLUMN IF EXISTS repair_attempted_at,
+    DROP COLUMN IF EXISTS repair_attempts,
     DROP COLUMN IF EXISTS provider_attempted_at,
     DROP COLUMN IF EXISTS provider_attempts,
     DROP COLUMN IF EXISTS cancel_ticket,

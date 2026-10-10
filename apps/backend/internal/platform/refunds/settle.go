@@ -22,9 +22,13 @@ func (e *Engine) settle(ctx context.Context, r Refund, pay Payment) {
 	if !r.Accepted() {
 		return
 	}
-	cancelled := e.cancelTickets(ctx, r, pay)
+	cancelled, ok := e.cancelTickets(ctx, r, pay)
 	e.projectOrder(ctx, r, pay)
-	if r.State == StateSucceeded {
+	// v1.ticket.refunded only once every due cancellation went through:
+	// otherwise refund.sweep's repair pass publishes it when it finishes
+	// the cancellation, so a site never hears "refunded" for a ticket that
+	// still admits, and never hears it twice.
+	if r.State == StateSucceeded && ok {
 		e.publish(ctx, r, pay, cancelled)
 	}
 }
@@ -34,16 +38,18 @@ func (e *Engine) settle(ctx context.Context, r Refund, pay Payment) {
 // the operation asked for it; an order-level refund (no ticket, the flat
 // POST /v1/refunds) of the WHOLE payment cancels every active ticket of the
 // order, unless a ticket already carries this refund (the flat cancel route
-// links its ticket before the money moves).
-func (e *Engine) cancelTickets(ctx context.Context, r Refund, pay Payment) []string {
+// links its ticket before the money moves). ok is false when a cancellation
+// that was due failed (the sweep's repair pass counts those).
+func (e *Engine) cancelTickets(ctx context.Context, r Refund, pay Payment) (ids []string, ok bool) {
 	if r.TicketID != nil {
+		ok = true
 		if r.CancelTicket {
-			e.cancelOne(ctx, CancelRequest{TicketID: *r.TicketID, RefundID: r.ID, Amount: r.Amount, Reason: deref(r.Reason)})
+			ok = e.cancelOne(ctx, CancelRequest{TicketID: *r.TicketID, RefundID: r.ID, Amount: r.Amount, Reason: deref(r.Reason)})
 		}
-		return []string{r.TicketID.String()}
+		return []string{r.TicketID.String()}, ok
 	}
 	if pay.CheckoutSessionID == nil || r.Amount < pay.Amount {
-		return nil
+		return nil, true
 	}
 	type target struct {
 		id    uuid.UUID
@@ -76,26 +82,33 @@ func (e *Engine) cancelTickets(ctx context.Context, r Refund, pay Payment) []str
 	})
 	if err != nil {
 		e.logger.Error("refunds: listing the order's tickets failed", "refund_id", r.ID.String(), "error", err.Error())
-		return nil
+		return nil, false
 	}
-	ids := make([]string, 0, len(targets))
+	ids = make([]string, 0, len(targets))
+	ok = true
 	for _, t := range targets {
-		e.cancelOne(ctx, CancelRequest{TicketID: t.id, RefundID: r.ID, Amount: t.price, Reason: deref(r.Reason)})
+		if !e.cancelOne(ctx, CancelRequest{TicketID: t.id, RefundID: r.ID, Amount: t.price, Reason: deref(r.Reason)}) {
+			ok = false
+		}
 		ids = append(ids, t.id.String())
 	}
-	return ids
+	return ids, ok
 }
 
-func (e *Engine) cancelOne(ctx context.Context, req CancelRequest) {
+// cancelOne reports whether the ticket is cancelled now (already cancelled
+// counts).
+func (e *Engine) cancelOne(ctx context.Context, req CancelRequest) bool {
 	if e.cancelTicket == nil {
 		e.logger.Warn("refunds: no ticket canceller wired; the sweep repair will cancel the ticket",
 			"refund_id", req.RefundID.String(), "ticket_id", req.TicketID.String())
-		return
+		return false
 	}
 	if err := e.cancelTicket(ctx, req); err != nil && !errors.Is(err, ErrTicketNotActive) {
 		e.logger.Error("refunds: ticket cancellation after an accepted refund failed; the sweep repair retries it",
 			"refund_id", req.RefundID.String(), "ticket_id", req.TicketID.String(), "error", err.Error())
+		return false
 	}
+	return true
 }
 
 // projectOrder moves the order to refunded (no active ticket left) or

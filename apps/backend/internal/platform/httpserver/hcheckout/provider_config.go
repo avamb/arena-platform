@@ -49,6 +49,12 @@ type ProviderConfigError struct {
 	Code    string
 	Message string
 	Details map[string]any
+	// Transient: the configuration could not be READ (a database error),
+	// as opposed to "the organization has no usable configuration". The
+	// checkout paths answer it like before (same code); the refund engine
+	// must treat it as an unknown outcome and retry, never as a refusal
+	// (PAY-03 review H1).
+	Transient bool
 }
 
 func (e *ProviderConfigError) Error() string { return e.Code + ": " + e.Message }
@@ -123,17 +129,19 @@ func SelectProviderConfig(rows []gen.PaymentProviderConfigRow, provider, kybStat
 func ResolveProviderConfig(ctx context.Context, q *gen.Queries, orgID uuid.UUID, provider string) (gen.PaymentProviderConfigRow, *ProviderConfigError) {
 	if q == nil {
 		return gen.PaymentProviderConfigRow{}, &ProviderConfigError{
-			Code:    ErrCodeProviderNotConfigured,
-			Message: "payment provider configs are not available",
-			Details: map[string]any{"provider": provider},
+			Code:      ErrCodeProviderNotConfigured,
+			Message:   "payment provider configs are not available",
+			Details:   map[string]any{"provider": provider},
+			Transient: true,
 		}
 	}
 	rows, err := q.ListPaymentProviderConfigsByOrg(ctx, orgID)
 	if err != nil {
 		return gen.PaymentProviderConfigRow{}, &ProviderConfigError{
-			Code:    ErrCodeProviderNotConfigured,
-			Message: "failed to load payment provider configs",
-			Details: map[string]any{"provider": provider},
+			Code:      ErrCodeProviderNotConfigured,
+			Message:   "failed to load payment provider configs",
+			Details:   map[string]any{"provider": provider},
+			Transient: true,
 		}
 	}
 	kyb := ""
@@ -141,9 +149,10 @@ func ResolveProviderConfig(ctx context.Context, q *gen.Queries, orgID uuid.UUID,
 		kyb = org.KybStatus
 	} else if !errors.Is(orgErr, pgx.ErrNoRows) {
 		return gen.PaymentProviderConfigRow{}, &ProviderConfigError{
-			Code:    ErrCodeProviderNotConfigured,
-			Message: "failed to load the organization",
-			Details: map[string]any{"provider": provider},
+			Code:      ErrCodeProviderNotConfigured,
+			Message:   "failed to load the organization",
+			Details:   map[string]any{"provider": provider},
+			Transient: true,
 		}
 	}
 	return SelectProviderConfig(rows, provider, kyb)

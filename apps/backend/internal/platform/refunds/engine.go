@@ -149,6 +149,12 @@ type Options struct {
 	// SweepOrgs restricts refund.sweep to these organizations. Tests only:
 	// production leaves it nil and sweeps every organization.
 	SweepOrgs []uuid.UUID
+	// SweepPassTimeout bounds one refund.sweep pass; DefaultSweepPassTimeout
+	// when zero. It must stay under the worker's stale-claim timeout.
+	SweepPassTimeout time.Duration
+	// SweepMaxCalls caps the provider calls of one pass; DefaultSweepMaxCalls
+	// when zero.
+	SweepMaxCalls int
 }
 
 // Engine drives refunds through payment modules.
@@ -162,6 +168,9 @@ type Engine struct {
 	logger          *slog.Logger
 	callTimeout     time.Duration
 	sweepOrgs       []uuid.UUID
+	// sweep bounds (sweep.go)
+	sweepPassTimeout time.Duration
+	sweepMaxCalls    int
 }
 
 // New builds an Engine. DB and Modules are required for anything to work;
@@ -174,9 +183,16 @@ func New(o Options) *Engine {
 	if o.CallTimeout <= 0 {
 		o.CallTimeout = DefaultCallTimeout
 	}
+	if o.SweepPassTimeout <= 0 {
+		o.SweepPassTimeout = DefaultSweepPassTimeout
+	}
+	if o.SweepMaxCalls <= 0 {
+		o.SweepMaxCalls = DefaultSweepMaxCalls
+	}
 	return &Engine{
 		db: o.DB, modules: o.Modules, cancelTicket: o.CancelTicket, publishRefunded: o.PublishRefunded,
 		audit: o.Audit, metrics: o.Metrics, logger: o.Logger, callTimeout: o.CallTimeout, sweepOrgs: o.SweepOrgs,
+		sweepPassTimeout: o.SweepPassTimeout, sweepMaxCalls: o.SweepMaxCalls,
 	}
 }
 
@@ -223,8 +239,9 @@ const (
 	// RouteUnsupported: a known provider arena cannot refund through.
 	RouteUnsupported Route = "unsupported"
 	// RouteUnknownProvider: a provider the registry does not know at all
-	// (the test-only mock provider); the flat routes keep their
-	// pre-engine behaviour for it.
+	// (the test-only mock provider). Refused like RouteUnsupported: no
+	// route may pretend to refund money arena cannot send back (PAY-03
+	// review).
 	RouteUnknownProvider Route = "unknown_provider"
 )
 
@@ -263,7 +280,7 @@ func RouteRefusal(route Route, provider string) *Error {
 	case RouteSellerSite:
 		return refusal(http.StatusConflict, CodeSellerSiteOrder,
 			"this order was paid on the seller's own site; the refund is made there", nil)
-	case RouteUnsupported:
+	case RouteUnsupported, RouteUnknownProvider:
 		return refusal(http.StatusUnprocessableEntity, CodeProviderNotSupported,
 			"arena cannot return money through this payment provider yet; refund it in the provider's dashboard",
 			map[string]any{"provider": provider})

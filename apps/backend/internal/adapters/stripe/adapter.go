@@ -246,12 +246,31 @@ func (e *apiError) Error() string {
 	return fmt.Sprintf("stripe: API error (status %d): %s", e.Status, e.raw)
 }
 
-// definitive reports whether Stripe refused the request for good: a 4xx
-// other than 409 (an idempotent request still in flight) and 429 (rate
-// limited). A 5xx or a transport error is an unknown outcome.
+// definitive reports whether STRIPE refused the request for good. Only a
+// 4xx that carries Stripe's own error object counts, and not:
+//   - 409 (an idempotent request still in flight) or 429 (rate limited);
+//   - an idempotency_error (the key was reused with other parameters — the
+//     first request's fate is unknown);
+//   - a 4xx WITHOUT a Stripe JSON body: that is a proxy or an edge (403,
+//     408 …) talking, and Stripe may never have seen — or may have
+//     completed — the request.
+//
+// Everything else, 5xx and transport errors included, is an unknown outcome
+// the refund engine retries with the same idempotency key (PAY-03 review M2).
 func (e *apiError) definitive() bool {
-	return e.Status >= 400 && e.Status < 500 && e.Status != http.StatusConflict && e.Status != http.StatusTooManyRequests
+	if e.Status < 400 || e.Status >= 500 || e.Status == http.StatusConflict || e.Status == http.StatusTooManyRequests {
+		return false
+	}
+	if e.Message == "" || e.Type == "" {
+		return false
+	}
+	return e.Type != "idempotency_error"
 }
+
+// stripeAlreadyRefunded is Stripe's code for "this charge was refunded
+// already" — possibly by an earlier attempt of this very refund, or by hand
+// in the dashboard. Never a plain failure: a human checks.
+const stripeAlreadyRefunded = "charge_already_refunded"
 
 // declinedError turns a definitive Stripe refusal into the provider-neutral
 // payments.RefundDeclinedError; any other error is returned as is.
@@ -264,14 +283,7 @@ func declinedError(err error) error {
 	if code == "" {
 		code = e.Type
 	}
-	if code == "" {
-		code = fmt.Sprintf("http_%d", e.Status)
-	}
-	msg := e.Message
-	if msg == "" {
-		msg = e.Error()
-	}
-	return &payments.RefundDeclinedError{Code: code, Message: msg}
+	return &payments.RefundDeclinedError{Code: code, Message: e.Message, NeedsReview: e.Code == stripeAlreadyRefunded}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

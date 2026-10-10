@@ -32,7 +32,24 @@ type callOutcome struct {
 	message string
 	// chargeRef is a reference the module resolved and arena must store.
 	chargeRef string
+	// review: a refusal that itself says the money may already be back
+	// (payments.RefundDeclinedError.NeedsReview) — manual_review, never
+	// failed.
+	review bool
 }
+
+// hadUnknownOutcome reports whether an EARLIER call of this refund ended
+// without an answer. Its request may have reached the provider and returned
+// the money, so a later refusal (a config error, a decline, "already
+// refunded") proves nothing about the money: such a refund goes to
+// manual_review, never to failed — failed would free the ticket for a
+// second refund (PAY-03 review H1). r is the row as claimed for the current
+// call, so the current attempt is already counted.
+func hadUnknownOutcome(r Refund) bool {
+	return r.ProviderAttempts > 1 || deref(r.ProviderStatus) == providerStatusUnknown
+}
+
+const providerStatusUnknown = "unknown_outcome"
 
 // ErrNotClaimable: the refund is not waiting for a provider call (already
 // answered, not approved yet, not an engine refund) or a call is in flight.
@@ -55,7 +72,12 @@ func (e *Engine) Drive(ctx context.Context, id uuid.UUID) (Refund, error) {
 		return Refund{}, err
 	}
 	out := e.call(ctx, r, pay)
-	return e.apply(ctx, r, pay, out)
+	// The provider's answer is recorded even when the caller's context ended
+	// meanwhile (a closed HTTP request, the sweep's pass deadline): losing
+	// an acceptance would leave a ticket valid for money already returned.
+	applyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), e.callTimeout)
+	defer cancel()
+	return e.apply(applyCtx, r, pay, out)
 }
 
 // claim stamps the call marker under the payment's lock. A refund is
@@ -143,7 +165,7 @@ func (e *Engine) call(ctx context.Context, r Refund, pay Payment) callOutcome {
 			resolved, rerr := resolver.ResolveChargeRef(callCtx, deref(pay.ProviderPaymentID))
 			if rerr != nil {
 				if code, msg, declined := payments.RefundDeclined(rerr); declined {
-					return callOutcome{kind: outcomeDeclined, code: code, message: msg}
+					return callOutcome{kind: outcomeDeclined, code: code, message: msg, review: payments.RefundDeclineNeedsReview(rerr)}
 				}
 				return callOutcome{kind: outcomeUnknown, code: "charge_ref_lookup_failed", message: rerr.Error()}
 			}
@@ -165,6 +187,7 @@ func (e *Engine) call(ctx context.Context, r Refund, pay Payment) callOutcome {
 	case err != nil:
 		if code, msg, declined := payments.RefundDeclined(err); declined {
 			out.kind, out.code, out.message = outcomeDeclined, code, msg
+			out.review = payments.RefundDeclineNeedsReview(err)
 		} else {
 			out.kind, out.code, out.message = outcomeUnknown, "provider_unavailable", err.Error()
 		}
@@ -208,12 +231,29 @@ func (e *Engine) apply(ctx context.Context, claimed Refund, pay Payment, out cal
 		if err != nil {
 			return err
 		}
-		if cur.State != StateProviderPending || cur.ProviderRefundID != nil {
-			// Someone else (a webhook, a concurrent sweep) got there first.
+		late := false
+		switch {
+		case cur.State == StateProviderPending && cur.ProviderRefundID == nil:
+			updated, err = recordOutcome(ctx, tx, claimed, out, pay)
+		case cur.ProviderRefundID == nil && cur.State == StateManualReview && (out.kind == outcomeSucceeded || out.kind == outcomePending):
+			// The sweep parked the row while this call was in flight (or an
+			// operator did). The provider's ACCEPTANCE is the truth about
+			// the money and must never be lost: record it and settle, so
+			// the ticket is cancelled (PAY-03 review H2).
+			late = true
+			updated, err = recordOutcome(ctx, tx, claimed, out, pay)
+		default:
+			// Someone else (a webhook, a concurrent drive) recorded an
+			// answer first, or the row left provider_pending and this
+			// answer is not an acceptance: keep the row, audit the answer.
 			updated = cur
-			return nil
+			return e.writeAudit(ctx, tx, audit.Event{
+				ActorType: "system", Action: "v1.refund.provider_late_answer",
+				ResourceType: "refund", ResourceID: cur.ID.String(),
+				Metadata: map[string]any{"outcome": out.kind, "state": cur.State, "failure_code": out.code,
+					"provider_refund_id": out.result.ProviderRefundID, "order_id": uuidString(cur.OrderID)},
+			})
 		}
-		updated, err = recordOutcome(ctx, tx, cur, out, pay)
 		if err != nil {
 			return err
 		}
@@ -226,7 +266,7 @@ func (e *Engine) apply(ctx context.Context, claimed Refund, pay Payment, out cal
 				"payment_intent_id": pay.ID.String(), "provider": deref(cur.Provider),
 				"outcome": out.kind, "state": updated.State, "amount": cur.Amount, "currency": cur.Currency,
 				"provider_refund_id": deref(updated.ProviderRefundID), "failure_code": out.code,
-				"attempt": cur.ProviderAttempts,
+				"attempt": claimed.ProviderAttempts, "late_answer": late,
 			},
 		})
 	})
@@ -236,9 +276,21 @@ func (e *Engine) apply(ctx context.Context, claimed Refund, pay Payment, out cal
 	if changed {
 		e.logger.Info("refunds: provider answered",
 			"refund_id", updated.ID.String(), "outcome", out.kind, "state", updated.State)
+		if updated.State == StateManualReview {
+			e.logReview(updated)
+		}
 		e.settle(ctx, updated, pay)
 	}
 	return updated, nil
+}
+
+// logReview is THE log line an operator searches for: every refund the
+// engine moves to manual_review writes it, in whichever process moved it.
+// refund.sweep also sends one ops alert per such row (review_alerted_at).
+func (e *Engine) logReview(r Refund) {
+	e.logger.Error("refunds: REFUND NEEDS MANUAL REVIEW",
+		"event", "refund_manual_review", "refund_id", r.ID.String(), "order_id", uuidString(r.OrderID),
+		"amount", r.Amount, "currency", r.Currency, "failure_code", deref(r.FailureCode))
 }
 
 // recordOutcome writes one outcome onto a provider_pending row.
@@ -254,10 +306,24 @@ func recordOutcome(ctx context.Context, tx pgx.Tx, cur Refund, out callOutcome, 
 		       WHERE id = $1 RETURNING ` + refundColumns
 		args = []any{cur.ID, out.result.ProviderRefundID, string(out.result.Status)}
 	case outcomePending:
-		sql = `UPDATE refunds SET provider_refund_id = $2, provider_status = $3, failure_code = NULL,
-		       failure_reason = NULL, updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
+		// state is set too: a late acceptance brings a parked row back.
+		sql = `UPDATE refunds SET state = 'provider_pending', provider_refund_id = $2, provider_status = $3,
+		       failure_code = NULL, failure_reason = NULL, updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
 		args = []any{cur.ID, out.result.ProviderRefundID, string(out.result.Status)}
 	case outcomeDeclined:
+		if out.review || hadUnknownOutcome(cur) {
+			// The money's whereabouts are not known (an earlier call had no
+			// answer, or the provider says it was refunded already): never
+			// failed — that would free the ticket for a second refund.
+			reason := "the provider refused this attempt, but an earlier attempt had no answer and may have returned the money; check the provider dashboard: " + out.message
+			if out.review {
+				reason = "the provider says the money may already be back; check the provider dashboard: " + out.message
+			}
+			sql = `UPDATE refunds SET state = 'manual_review', provider_refund_id = $2, provider_status = 'declined',
+			       failure_code = $3, failure_reason = $4, updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
+			args = []any{cur.ID, strPtr(out.result.ProviderRefundID), truncate(out.code, 100), truncate(reason, 500)}
+			break
+		}
 		sql = `UPDATE refunds SET state = 'failed', failed_at = now(), provider_refund_id = $2,
 		       provider_status = 'failed', failure_code = $3, failure_reason = $4, updated_at = now()
 		       WHERE id = $1 RETURNING ` + refundColumns
@@ -266,7 +332,7 @@ func recordOutcome(ctx context.Context, tx pgx.Tx, cur Refund, out callOutcome, 
 		// Unknown: nothing is known about the money. Stay provider_pending
 		// without a provider refund id; refund.sweep calls again with the
 		// same idempotency key once the claim goes stale.
-		sql = `UPDATE refunds SET provider_status = 'unknown_outcome', failure_code = $2, failure_reason = $3,
+		sql = `UPDATE refunds SET provider_status = '` + providerStatusUnknown + `', failure_code = $2, failure_reason = $3,
 		       updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
 		args = []any{cur.ID, truncate(out.code, 100), truncate(out.message, 500)}
 	}

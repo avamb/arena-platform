@@ -11,6 +11,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 )
 
 // MarkApprovedTx moves a requested refund to provider_pending as an engine
@@ -22,5 +24,5 @@ func MarkApprovedTx(ctx context.Context, tx pgx.Tx, refundID uuid.UUID, provider
 		SET    state = 'provider_pending', approved_at = COALESCE(approved_at, now()),
 		       provider = $2, updated_at = now()
 		WHERE  id = $1 AND state = 'requested' AND settlement = 'provider'
-		RETURNING `+refundColumns, refundID, provider))
+		RETURNING `+refundColumns, refundID, payments.NormalizeProviderName(provider)))
 }

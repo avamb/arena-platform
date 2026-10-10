@@ -67,8 +67,44 @@ func TestRouteRefusal_CodesAndStatuses(t *testing.T) {
 	if e := RouteRefusal(RouteArenaProvider, "x"); e != nil {
 		t.Errorf("arena provider refused: %+v", e)
 	}
-	if e := RouteRefusal(RouteUnknownProvider, "x"); e != nil {
-		t.Errorf("unknown provider refused here (the flat routes keep the legacy path): %+v", e)
+	// PAY-03 review: a provider the registry does not know is refused like
+	// an unsupported one — no route pretends to refund it.
+	if e := RouteRefusal(RouteUnknownProvider, "x"); e == nil || e.Status != http.StatusUnprocessableEntity || e.Code != CodeProviderNotSupported {
+		t.Errorf("unknown provider: %+v", e)
+	}
+}
+
+// TestReplayMatches_RefusesADifferentRequest: an Idempotency-Key replay
+// answers the first batch only when the request is the same one.
+func TestReplayMatches_RefusesADifferentRequest(t *testing.T) {
+	order, t1, t2 := uuid.New(), uuid.New(), uuid.New()
+	amt := func(v int64) *int64 { return &v }
+	stored := storedBatch{
+		BatchResult:   BatchResult{OrderID: order, Refunds: []Refund{{TicketID: &t1, Amount: 500}, {TicketID: &t2, Amount: 700}}},
+		Reason:        "sick",
+		CancelTickets: true,
+	}
+	base := BatchInput{OrderID: order, Reason: "sick", CancelTickets: true,
+		Items: []Item{{TicketID: t1}, {TicketID: t2, Amount: amt(700)}}}
+	if err := replayMatches(stored, base); err != nil {
+		t.Fatalf("same request refused: %v", err)
+	}
+	cases := map[string]func(in *BatchInput){
+		"order":   func(in *BatchInput) { in.OrderID = uuid.New() },
+		"reason":  func(in *BatchInput) { in.Reason = "other" },
+		"flags":   func(in *BatchInput) { in.CancelTickets = false },
+		"notify":  func(in *BatchInput) { in.NotifyBuyer = true },
+		"tickets": func(in *BatchInput) { in.Items = in.Items[:1] },
+		"swap":    func(in *BatchInput) { in.Items = []Item{{TicketID: t1}, {TicketID: uuid.New()}} },
+		"amounts": func(in *BatchInput) { in.Items = []Item{{TicketID: t1}, {TicketID: t2, Amount: amt(600)}} },
+	}
+	for name, mutate := range cases {
+		in := base
+		in.Items = append([]Item(nil), base.Items...)
+		mutate(&in)
+		if err := replayMatches(stored, in); err == nil || err.Code != CodeIdempotencyKeyReused || err.Status != http.StatusConflict {
+			t.Errorf("%s: got %+v, want 409 %s", name, err, CodeIdempotencyKeyReused)
+		}
 	}
 }
 

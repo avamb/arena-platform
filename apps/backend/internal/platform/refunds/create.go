@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 )
 
@@ -117,10 +118,10 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 	}); err != nil {
 		return BatchResult{}, err
 	}
+	// One spelling of the provider everywhere below: the descriptor lookup,
+	// the stored refunds.provider and the module the engine builds.
+	pay.Provider = payments.NormalizeProviderName(pay.Provider)
 	route := e.RouteFor(pay.Provider, ord.Source)
-	if route == RouteUnknownProvider {
-		route = RouteUnsupported
-	}
 	if ref := RouteRefusal(route, pay.Provider); ref != nil {
 		return BatchResult{}, ref
 	}
@@ -136,11 +137,10 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 			return err
 		}
 		if found {
-			if replay.OrderID != in.OrderID {
-				return refusal(http.StatusConflict, CodeIdempotencyKeyReused,
-					"this Idempotency-Key was already used for another order", nil)
+			if rerr := replayMatches(replay, in); rerr != nil {
+				return rerr
 			}
-			res = replay
+			res = replay.BatchResult
 			return nil
 		}
 		plan, perr := planBatch(ctx, tx, in, ord, pay, desc.Capabilities.PartialRefund)
@@ -173,6 +173,24 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 			},
 		})
 	})
+	if errors.Is(err, errBatchKeyRace) {
+		// A concurrent call with the same key (for another order, so under
+		// another payment's lock) committed first: answer as its replay.
+		err = e.inTx(ctx, func(tx pgx.Tx) error {
+			replay, found, ferr := findBatch(ctx, tx, in.OrgID, in.IdempotencyKey)
+			if ferr != nil {
+				return ferr
+			}
+			if !found {
+				return errBatchKeyRace
+			}
+			if rerr := replayMatches(replay, in); rerr != nil {
+				return rerr
+			}
+			res = replay.BatchResult
+			return nil
+		})
+	}
 	if err != nil {
 		var refErr *Error
 		if errors.As(err, &refErr) {
@@ -220,10 +238,62 @@ func loadOrderPayment(ctx context.Context, tx pgx.Tx, orgID, orderID uuid.UUID) 
 	return o, pay, err
 }
 
-func findBatch(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, key string) (BatchResult, bool, error) {
-	var res BatchResult
-	err := tx.QueryRow(ctx, `SELECT id, order_id FROM refund_batches WHERE org_id = $1 AND idempotency_key = $2`,
-		orgID, key).Scan(&res.BatchID, &res.OrderID)
+// errBatchKeyRace: the batch insert lost a race on the (org, key) unique
+// constraint to a concurrent call; CreateBatch answers that call's batch.
+var errBatchKeyRace = errors.New("refunds: idempotency key taken by a concurrent call")
+
+// storedBatch is a batch found by its Idempotency-Key, with the request
+// fields a replay must repeat.
+type storedBatch struct {
+	BatchResult
+	Reason        string
+	CancelTickets bool
+	NotifyBuyer   bool
+}
+
+// replayMatches refuses a replay whose request differs from the first one:
+// same key, different order, tickets, amounts, reason or flags is a client
+// bug, never "the same operation" (PAY-03 review).
+func replayMatches(b storedBatch, in BatchInput) *Error {
+	reused := func(what string) *Error {
+		return refusal(http.StatusConflict, CodeIdempotencyKeyReused,
+			"this Idempotency-Key was already used for a different refund request", map[string]any{"differs": what})
+	}
+	if b.OrderID != in.OrderID {
+		return reused("order")
+	}
+	if b.Reason != in.Reason {
+		return reused("reason")
+	}
+	if b.CancelTickets != in.CancelTickets || b.NotifyBuyer != in.NotifyBuyer {
+		return reused("flags")
+	}
+	byTicket := make(map[uuid.UUID]int64, len(b.Refunds))
+	for _, r := range b.Refunds {
+		if r.TicketID != nil {
+			byTicket[*r.TicketID] = r.Amount
+		}
+	}
+	if len(byTicket) != len(in.Items) {
+		return reused("tickets")
+	}
+	for _, it := range in.Items {
+		amount, ok := byTicket[it.TicketID]
+		if !ok {
+			return reused("tickets")
+		}
+		if it.Amount != nil && *it.Amount != amount {
+			return reused("amounts")
+		}
+	}
+	return nil
+}
+
+func findBatch(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, key string) (storedBatch, bool, error) {
+	var res storedBatch
+	err := tx.QueryRow(ctx, `SELECT id, order_id, reason, cancel_tickets, notify_buyer
+		FROM refund_batches WHERE org_id = $1 AND idempotency_key = $2`,
+		orgID, key).Scan(&res.BatchID, &res.OrderID, &res.Reason, &res.CancelTickets, &res.NotifyBuyer)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return res, false, nil
 	}
@@ -345,6 +415,10 @@ func insertBatch(ctx context.Context, tx pgx.Tx, in BatchInput, pay Payment, pla
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
 		in.OrgID, in.OrderID, pay.ID, in.IdempotencyKey, in.Reason, in.NotifyBuyer, in.CancelTickets,
 		strPtr(in.Actor.ID), strPtr(in.Via)).Scan(&res.BatchID); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "refund_batches_org_idempotency_key_uq" {
+			return res, errBatchKeyRace
+		}
 		return res, err
 	}
 	state := StateRequested

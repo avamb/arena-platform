@@ -394,6 +394,18 @@ type RefundDeclinedError struct {
 	Code string
 	// Message is the provider's human text, for the operator.
 	Message string
+	// NeedsReview: the refusal itself says the money may ALREADY be back
+	// (Stripe charge_already_refunded — a refund made in the dashboard, or
+	// by an earlier attempt). No new refund may be made, but the engine must
+	// not mark the refund failed either: a human checks (manual_review).
+	NeedsReview bool
+}
+
+// RefundDeclineNeedsReview reports whether err is a refusal that leaves the
+// money's whereabouts to a human (RefundDeclinedError.NeedsReview).
+func RefundDeclineNeedsReview(err error) bool {
+	var declined *RefundDeclinedError
+	return errors.As(err, &declined) && declined.NeedsReview
 }
 
 func (e *RefundDeclinedError) Error() string {
