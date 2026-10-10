@@ -18,6 +18,7 @@ func TestValidEventTransitions_ContainsExactlyTheDocumentedEdges(t *testing.T) {
 			EventStatusCancelled: true,
 		},
 		EventStatusPublished: {
+			EventStatusDraft:     true,
 			EventStatusCancelled: true,
 			EventStatusArchived:  true,
 		},
@@ -57,7 +58,7 @@ func TestIsValidEventTransition(t *testing.T) {
 	// Documented allowed edges. Every other from×to pair MUST be false.
 	allowed := map[string]map[string]bool{
 		"draft":     {"published": true, "cancelled": true},
-		"published": {"cancelled": true, "archived": true},
+		"published": {"draft": true, "cancelled": true, "archived": true},
 		"cancelled": {"archived": true},
 		"archived":  {},
 	}

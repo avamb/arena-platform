@@ -1914,3 +1914,65 @@ other = "Order №{{.Num}} has no active tickets: refunded or cancelled ones are
 
 ["bot.resend.private_only"]
 other = "Buyers' addresses are shown and typed only in a private chat with the bot. Open the order there."
+["bot.evs.publish_btn"]
+other = "▶ Publish"
+
+["bot.evs.off_btn"]
+other = "⏸ Take off sale"
+
+["bot.evs.archive_btn"]
+other = "🗄 Archive"
+
+["bot.evs.delete_btn"]
+other = "🗑 Delete"
+
+["bot.evs.off_ask"]
+other = "⏸ <b>Take «{{.Name}}» off sale?</b>\n\nThe event disappears from your ticket page and from the sites that sell it, and nobody can buy a ticket until you publish it again.\n\n<b>Tickets already sold stay valid</b>: buyers keep them, and nothing is refunded or cancelled."
+
+["bot.evs.off_yes_btn"]
+other = "✔ Yes, take off sale"
+
+["bot.evs.archive_ask"]
+other = "🗄 <b>Archive «{{.Name}}»?</b>\n\nSales stop and the event moves to the archive.\n\n<b>Tickets already sold stay valid</b>: buyers keep them, and nothing is refunded or cancelled. An archived event cannot be put on sale again."
+
+["bot.evs.archive_yes_btn"]
+other = "✔ Yes, archive"
+
+["bot.evs.published_done"]
+other = "✔ «{{.Name}}» is published and on sale."
+
+["bot.evs.off_done"]
+other = "✔ «{{.Name}}» is off sale. Tickets already sold stay valid."
+
+["bot.evs.archived_done"]
+other = "✔ «{{.Name}}» is archived. Tickets already sold stay valid."
+
+["bot.evs.deleted_done"]
+other = "✔ «{{.Name}}» is deleted."
+
+["bot.evs.delete_ask"]
+other = "⚠️ <b>Last step — nothing is deleted yet.</b>\n\n«{{.Name}}»: dates: {{.N}}, no paid orders, no tickets sold. The event and its dates will be deleted. This cannot be undone.\n\nTo delete, <b>type the word {{.Word}}</b> and send it as a message. To keep the event, press «Back»."
+
+["bot.evs.delete_wrong"]
+other = "That is not the word, so nothing was deleted. To delete, type exactly: {{.Word}}"
+
+["bot.evs.delete_blocked"]
+other = "🚫 <b>«{{.Name}}» cannot be deleted.</b>\n\nIt has {{.Orders}} paid order(s) and {{.Tickets}} ticket(s) sold. The buyers hold valid tickets, so the event stays. You can archive it instead: sales stop and the event leaves your lists, and the tickets stay valid."
+
+["bot.evs.delete_blocked_arch"]
+other = "🚫 <b>«{{.Name}}» cannot be deleted.</b>\n\nIt has {{.Orders}} paid order(s) and {{.Tickets}} ticket(s) sold, and the buyers hold valid tickets. The event stays in the archive."
+
+["bot.evs.delete_word"]
+other = "DELETE"
+
+["bot.evs.need_session"]
+other = "The event cannot be published yet: it has no date. Add a date first (Edit)."
+
+["bot.evs.need_tier"]
+other = "The event cannot be published yet: every date needs at least one ticket category with a price. Fix it in Edit."
+
+["bot.evs.not_allowed"]
+other = "This change is not possible for the event in its current state."
+
+["bot.evs.archive_instead_btn"]
+other = "🗄 Archive instead"

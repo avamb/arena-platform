@@ -80,6 +80,11 @@ func TestManagerPermissions0129_OrganizerPassesEveryEventCenterGate(t *testing.T
 		{"report.read", http.MethodGet, "/v1/events/" + random + "/report", ""},
 		{"report.generate", http.MethodPost, "/v1/events/" + random + "/report", ""},
 		{"tier.update", http.MethodPatch, orgPath + "/events/" + random + "/sessions/" + random + "/tiers/" + random, `{"name":"x"}`},
+		// EC-10: the event card's status buttons (granted since 0014/0074, driven here
+		// so the first live run under the manager does not find a 403).
+		{"event.publish", http.MethodPost, orgPath + "/events/" + random + "/status", `{"status":"published"}`},
+		{"event.delete", http.MethodDelete, orgPath + "/events/" + random, ""},
+		{"event.delete", http.MethodGet, orgPath + "/events/" + random + "/delete-impact", ""},
 	}
 
 	for _, g := range gates {
