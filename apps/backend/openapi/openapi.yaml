@@ -7374,14 +7374,16 @@ components:
           type: [integer, "null"]
           format: int64
           description: |
-            AB-48 (public feed only) - the effective scheduled price right
-            now; `price_amount` stays the tier's base.
+            AB-48 - the price buyers pay right now: the scheduled window in
+            force, else the base price (`price_amount` stays the tier's
+            base). Filled by the category list and the public feed; absent on
+            the single-category read and the PATCH answer.
         next_price_change_at:
           type: [string, "null"]
           format: date-time
           description: |
-            AB-48 (public feed only) - when the effective price next
-            changes ("price rises on <date>"); null if unknown.
+            AB-48 - when the effective price next changes ("price rises on
+            <date>"); null if unknown. Filled where `current_price` is.
         is_open:
           type: boolean
           description: |
@@ -10990,7 +10992,10 @@ components:
           type: [string, "null"]
           description: |
             Optional free-form identifier of the requesting actor
-            (admin user id, support ticket id, etc.).
+            (admin user id, support ticket id, etc.). The prefix
+            `ticket.cancel:` (any case) is reserved for the refund that
+            `POST /v1/tickets/{id}/cancel` writes and is rejected with
+            400 `refund.reserved_requested_by`.
 
     ApproveRefundRequest:
       type: object

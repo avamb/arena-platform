@@ -4697,7 +4697,10 @@ type CreateRefundRequest struct {
 	Reason *string `json:"reason"`
 
 	// RequestedBy Optional free-form identifier of the requesting actor
-	// (admin user id, support ticket id, etc.).
+	// (admin user id, support ticket id, etc.). The prefix
+	// `ticket.cancel:` (any case) is reserved for the refund that
+	// `POST /v1/tickets/{id}/cancel` writes and is rejected with
+	// 400 `refund.reserved_requested_by`.
 	RequestedBy *string `json:"requested_by"`
 }
 
@@ -12051,8 +12054,10 @@ type TicketTierItem struct {
 	// currency cascades here.
 	Currency string `json:"currency"`
 
-	// CurrentPrice AB-48 (public feed only) - the effective scheduled price right
-	// now; `price_amount` stays the tier's base.
+	// CurrentPrice AB-48 - the price buyers pay right now: the scheduled window in
+	// force, else the base price (`price_amount` stays the tier's
+	// base). Filled by the category list and the public feed; absent on
+	// the single-category read and the PATCH answer.
 	CurrentPrice *int64 `json:"current_price"`
 
 	// GaUnitCount AB-48 step 3 (admin list endpoint only) - number of GA units in
@@ -12082,8 +12087,8 @@ type TicketTierItem struct {
 	// Name Human-readable tier name. Required; trimmed of whitespace.
 	Name string `json:"name"`
 
-	// NextPriceChangeAt AB-48 (public feed only) - when the effective price next
-	// changes ("price rises on <date>"); null if unknown.
+	// NextPriceChangeAt AB-48 - when the effective price next changes ("price rises on
+	// <date>"); null if unknown. Filled where `current_price` is.
 	NextPriceChangeAt *time.Time `json:"next_price_change_at"`
 
 	// NextTierId List endpoint only. The category this one hands its free places to

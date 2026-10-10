@@ -381,9 +381,75 @@ var (
 	ErrRefundChargeRefMissing = errors.New("payments: the payment has no provider charge reference")
 )
 
+// RefundDeclinedError is returned by Refund (or ResolveChargeRef) when the
+// provider ANSWERED and refused: no money moved and repeating the same
+// request cannot change that (a closed card, an amount above what is left,
+// an unknown payment, a revoked key). The refund engine marks the refund
+// failed and leaves the tickets valid. Any other error is an UNKNOWN outcome
+// (timeout, connection reset, 5xx, rate limit): the provider may or may not
+// have acted, so the engine keeps the refund pending and retries with the
+// same idempotency key (PAY-03).
+type RefundDeclinedError struct {
+	// Code is the provider's machine-readable reason ("charge_already_refunded").
+	Code string
+	// Message is the provider's human text, for the operator.
+	Message string
+	// NeedsReview: the refusal itself says the money may ALREADY be back
+	// (Stripe charge_already_refunded — a refund made in the dashboard, or
+	// by an earlier attempt). No new refund may be made, but the engine must
+	// not mark the refund failed either: a human checks (manual_review).
+	NeedsReview bool
+}
+
+// RefundDeclineNeedsReview reports whether err is a refusal that leaves the
+// money's whereabouts to a human (RefundDeclinedError.NeedsReview).
+func RefundDeclineNeedsReview(err error) bool {
+	var declined *RefundDeclinedError
+	return errors.As(err, &declined) && declined.NeedsReview
+}
+
+func (e *RefundDeclinedError) Error() string {
+	return "payments: refund declined by the provider: " + e.Code + ": " + e.Message
+}
+
+// RefundDeclined reports whether err means "no money moved, and retrying the
+// same request will not change it": a *RefundDeclinedError, or one of the
+// refusals a module raises before any network call. It returns a stable
+// code and a message for the operator.
+func RefundDeclined(err error) (code, message string, ok bool) {
+	var declined *RefundDeclinedError
+	switch {
+	case err == nil:
+		return "", "", false
+	case errors.As(err, &declined):
+		code = declined.Code
+		if code == "" {
+			code = "declined"
+		}
+		return code, declined.Message, true
+	case errors.Is(err, ErrRefundAmountInvalid):
+		return "amount_invalid", err.Error(), true
+	case errors.Is(err, ErrRefundExceedsPayment):
+		return "amount_exceeds_payment", err.Error(), true
+	case errors.Is(err, ErrRefundChargeRefMissing):
+		return "charge_ref_missing", err.Error(), true
+	}
+	return "", "", false
+}
+
 // Refunder drives a refund through the provider.
 type Refunder interface {
 	Refund(ctx context.Context, req RefundRequest) (RefundResult, error)
+}
+
+// ChargeRefResolver finds the id a refund is driven through when arena
+// stored only the payment's own id — a Stripe hosted Checkout Session (cs_…)
+// whose pi_… never reached payment_intents.provider_charge_ref (a payment
+// made before migration 0103, or a webhook without data.object.
+// payment_intent). The engine stores the answer before it refunds. A
+// provider whose payment id IS the refund reference returns it unchanged.
+type ChargeRefResolver interface {
+	ResolveChargeRef(ctx context.Context, providerPaymentID string) (string, error)
 }
 
 // RefundLookup reads a refund's status back from the provider.

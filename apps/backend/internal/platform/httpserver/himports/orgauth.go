@@ -47,8 +47,8 @@ func actorIsMemberOfOrg(ctx context.Context, q *gen.Queries, orgID uuid.UUID) (b
 // requireOrgMembership verifies that the authenticated actor may act on
 // orgID. On failure it writes the appropriate HTTP error and returns false;
 // the caller must stop handler execution when false is returned. When
-// membershipQueries is nil (test environments without the field wired), the
-// check is skipped and true is returned.
+// membershipQueries is nil the check fails closed (403), like every other
+// org guard (SEC-1; it used to be skipped).
 func (h *Handler) requireOrgMembership(w http.ResponseWriter, r *http.Request, orgID uuid.UUID) bool {
 	if auth.HasSuperadminOrgAccess(r.Context()) {
 		if _, ok := httputil.RequireAdminReason(w, r); !ok {
@@ -60,7 +60,11 @@ func (h *Handler) requireOrgMembership(w http.ResponseWriter, r *http.Request, o
 		return allowed
 	}
 	if h.membershipQueries == nil {
-		return true
+		// SEC-1: fail closed, like every other org guard.
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+			"org.access_denied", "caller is not a member of this organization", r,
+		))
+		return false
 	}
 	member, err := actorIsMemberOfOrg(r.Context(), h.membershipQueries, orgID)
 	if err != nil {

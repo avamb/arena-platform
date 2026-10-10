@@ -74,7 +74,7 @@ func (h *Handler) HandleListTeam(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, ok := h.requireOrgMembership(w, r, orgID); !ok {
+	if _, ok := h.requireOrgMembership(w, r, orgID, "membership.read"); !ok {
 		return
 	}
 	rows, err := h.queries.ListBotTeam(r.Context(), orgID)

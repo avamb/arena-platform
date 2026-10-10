@@ -36,7 +36,10 @@ func TestRefundOrgIsolation_FlatRoutesStayInsideTheOrganization(t *testing.T) {
 	paid := func(org uuid.UUID, state string) uuid.UUID {
 		t.Helper()
 		ref := "pay00-" + uuid.NewString()
-		pi, err := f.q.InsertPaymentIntent(ctx, nil, org, "mock", &ref, 1000, "EUR", state, nil, nil)
+		// A real refundable provider: since PAY-03 an unknown one (the old
+		// "mock") is refused before the guard matters. The organization has no
+		// Stripe config, so approving drives the refund straight to failed.
+		pi, err := f.q.InsertPaymentIntent(ctx, nil, org, "stripe", &ref, 1000, "EUR", state, nil, nil)
 		if err != nil {
 			t.Fatalf("InsertPaymentIntent: %v", err)
 		}

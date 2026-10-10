@@ -144,6 +144,22 @@ WHERE  s.id         = $1
   AND  s.deleted_at IS NULL
   AND  e.deleted_at IS NULL;
 
+-- name: SessionInEventAndOrg :one
+-- SessionInEventAndOrg reports whether an active session belongs to the given
+-- event AND that event to the given organization (SEC-2). Routes that carry
+-- {org_id}/{event_id}/{session_id} in their path use it to answer 404 for a
+-- session of another organization or another event.
+SELECT EXISTS (
+    SELECT 1
+    FROM   sessions s
+    JOIN   events   e ON e.id = s.event_id
+    WHERE  s.id         = $1
+      AND  s.event_id   = $2
+      AND  e.org_id     = $3
+      AND  s.deleted_at IS NULL
+      AND  e.deleted_at IS NULL
+);
+
 -- name: GetSessionCurrency :one
 -- GetSessionCurrency returns the ISO 4217 currency of an active session.
 -- Used by the seating bind's tier auto-creation so every minted tier is

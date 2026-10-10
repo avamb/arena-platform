@@ -182,3 +182,42 @@ func TestEscapeHTML(t *testing.T) {
 		t.Errorf("EscapeHTML = %q, want %q", got, want)
 	}
 }
+
+// TestTelegramNotifier_SendConfirmed_ReportsFailure (PAY-03 third review,
+// M1): a caller that must not forget an alert learns that it was not
+// delivered — every attempt failed, or its context ended first — and a
+// delivered message reports success.
+func TestTelegramNotifier_SendConfirmed_ReportsFailure(t *testing.T) {
+	var fail atomic.Bool
+	fail.Store(true)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if fail.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	defer srv.Close()
+	n := NewTelegramNotifier("TOKEN", "1", "", WithBaseURL(srv.URL), WithLogger(discardLogger()))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := n.SendConfirmed(ctx, "down"); err == nil {
+		t.Fatal("SendConfirmed reported success for an undelivered message")
+	}
+	done, stop := context.WithCancel(context.Background())
+	stop()
+	if err := n.SendConfirmed(done, "no time"); err == nil {
+		t.Fatal("SendConfirmed reported success with its context already done")
+	}
+	fail.Store(false)
+	if err := n.SendConfirmed(ctx, "up"); err != nil {
+		t.Fatalf("SendConfirmed on a delivered message: %v", err)
+	}
+	confirming, ok := New("", "", "", discardLogger()).(interface {
+		SendConfirmed(context.Context, string) error
+	})
+	if !ok || confirming.SendConfirmed(ctx, "logged") != nil {
+		t.Fatal("the logging no-op must implement SendConfirmed and confirm")
+	}
+}

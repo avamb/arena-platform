@@ -2545,3 +2545,173 @@ other = "‹ Al evento"
 
 ["bot.prom.event_org_note"]
 other = "«{{.Name}}» no tiene un promotor aparte: el promotor es la propia organización. Para elegir otro, edita el evento."
+["bot.cat.btn"]
+other = "🎟 Categorías"
+
+["bot.cat.list_title"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\nCategorías: {{.Total}} · pág. {{.Page}}/{{.Pages}}"
+
+["bot.cat.list_empty"]
+other = "Esta fecha aún no tiene categorías. Añádelas en el editor del evento (Editar → Entradas)."
+
+["bot.cat.list_hint"]
+other = "Toca una categoría para cerrarla o abrirla, cambiar su precio, su ventana de venta o su número de plazas."
+
+["bot.cat.line"]
+other = "{{.Chip}} <b>{{.Name}}</b> · {{.Price}}\n      {{.Value}}"
+
+["bot.cat.places"]
+other = "{{.Sold}} vendidas · {{.Held}} retenidas · {{.Available}} libres de {{.Total}}"
+
+["bot.cat.places_none"]
+other = "sin plazas propias"
+
+["bot.cat.price_free"]
+other = "gratis"
+
+["bot.cat.price_pwyw"]
+other = "importe a elegir"
+
+["bot.cat.gone"]
+other = "Esta pantalla ya no está abierta. Abre el evento de nuevo desde el menú."
+
+["bot.cat.gone_one"]
+other = "Esa categoría ya no está en esta fecha. Aquí tienes la lista tal como está ahora."
+
+["bot.cat.state_open"]
+other = "a la venta"
+
+["bot.cat.state_closed"]
+other = "cerrada, sin ventas nuevas"
+
+["bot.cat.card_head"]
+other = "🎟 <b>{{.Name}}</b> · {{.State}}\n📅 {{.When}}"
+
+["bot.cat.card_price"]
+other = "💶 Precio: {{.Price}}"
+
+["bot.cat.card_next_price"]
+other = "      El precio programado cambia el {{.When}}."
+
+["bot.cat.card_places"]
+other = "📊 Plazas: {{.Value}}"
+
+["bot.cat.card_window"]
+other = "🗓 Ventana de venta: {{.Value}}"
+
+["bot.cat.card_session_end"]
+other = "⏱ La fecha entera deja de venderse el {{.When}}; la ventana de una categoría no puede alargarlo."
+
+["bot.cat.window_both"]
+other = "del {{.Min}} al {{.Max}} inclusive"
+
+["bot.cat.window_from"]
+other = "desde el {{.Date}}"
+
+["bot.cat.window_until"]
+other = "hasta el {{.Date}} inclusive"
+
+["bot.cat.window_none"]
+other = "sin límite"
+
+["bot.cat.note_free"]
+other = "💶 Una categoría gratuita: no tiene precio que cambiar."
+
+["bot.cat.note_pwyw"]
+other = "💶 Una categoría de importe a elegir: su rango de importes se cambia en la consola de administración."
+
+["bot.cat.note_chain"]
+other = "↪ Esta categoría pasa sola sus plazas libres a «{{.Name}}», por fecha o cuando se agota su tramo. Para que siga funcionando, aquí solo se puede cambiar su precio; las fechas y los tramos se cambian en Editar → Entradas del evento."
+
+["bot.cat.note_chain_target"]
+other = "↪ Esta categoría recibe sola las plazas libres de la anterior. Para que siga funcionando, aquí solo se puede cambiar su precio; las fechas y los tramos se cambian en Editar → Entradas del evento."
+
+["bot.cat.note_seated"]
+other = "🪑 Las plazas de esta categoría salen del plano de la sala, así que su número no se cambia aquí."
+
+["bot.cat.close_btn"]
+other = "⏸ Cerrar ventas"
+
+["bot.cat.open_btn"]
+other = "▶ Abrir ventas"
+
+["bot.cat.price_btn"]
+other = "💶 Precio"
+
+["bot.cat.window_btn"]
+other = "🗓 Ventana de venta"
+
+["bot.cat.qty_btn"]
+other = "🔢 Plazas"
+
+["bot.cat.cancel_btn"]
+other = "‹ Volver a la categoría"
+
+["bot.cat.closed_done"]
+other = "⏸ Cerrada: no se venden entradas nuevas de esta categoría. Las entradas ya vendidas y los carritos ya empezados se quedan como están."
+
+["bot.cat.opened_done"]
+other = "▶ Abierta de nuevo: la categoría vende."
+
+["bot.cat.q_price"]
+other = "💶 <b>Nuevo precio</b> de «{{.Name}}», ahora {{.Price}}.\n\nEscribe el importe en {{.Currency}}, por ejemplo 25 o 25,50. Vale solo para compras NUEVAS: los pedidos ya pagados y los carritos ya empezados conservan su precio."
+
+["bot.cat.err_price"]
+other = "⚠ Eso no es un precio: escribe un importe positivo con dos decimales como máximo, por ejemplo 25 o 25,50."
+
+["bot.cat.price_confirm"]
+other = "💶 <b>{{.Name}}</b>: {{.Old}} → {{.New}}\n\nEl nuevo precio vale solo para compras nuevas. Los pedidos ya pagados y los carritos ya empezados conservan su precio. ¿Guardarlo?"
+
+["bot.cat.price_save_btn"]
+other = "✔ Guardar el precio"
+
+["bot.cat.price_saved"]
+other = "✔ Precio guardado: {{.Price}} para las compras nuevas."
+
+["bot.cat.price_saved_window"]
+other = "✔ Precio guardado: {{.Price}} para las compras nuevas (se cambió el precio programado que está en vigor ahora)."
+
+["bot.cat.q_qty"]
+other = "🔢 <b>Nuevo número de plazas</b> de «{{.Name}}». Ahora: {{.Value}}.\n\nEscribe el número. No puede ser menor que las plazas ya vendidas o retenidas ({{.Limit}})."
+
+["bot.cat.err_qty"]
+other = "⚠ Escribe un número entero de plazas, de 1 a 1000000."
+
+["bot.cat.err_qty_below"]
+other = "⚠ No guardado: son menos plazas de las que la categoría ya ha vendido o retenido. No puede bajar de {{.Limit}}."
+
+["bot.cat.err_qty_seated"]
+other = "⚠ No guardado: las plazas de esta categoría salen del plano de la sala, así que su número no se cambia aquí."
+
+["bot.cat.qty_saved"]
+other = "✔ Guardado: la categoría ahora tiene {{.Total}} plazas."
+
+["bot.cat.window_screen"]
+other = "🗓 <b>Ventana de venta</b> de «{{.Name}}»: {{.Value}}.\n\nLa categoría vende solo dentro de su ventana. El fin de ventas de la fecha entera sigue valiendo."
+
+["bot.cat.window_from_btn"]
+other = "▶ Primer día…"
+
+["bot.cat.window_until_btn"]
+other = "⏹ Último día…"
+
+["bot.cat.window_remove_btn"]
+other = "✕ Quitar este límite"
+
+["bot.cat.q_wstart"]
+other = "🗓 <b>Primer día de venta</b> de «{{.Name}}». Ahora: {{.Value}}.\nLa venta empieza a medianoche de ese día, hora del recinto."
+
+["bot.cat.q_wend"]
+other = "🗓 <b>Último día de venta</b> de «{{.Name}}», inclusive. Ahora: {{.Value}}.\nLa venta se detiene al final de ese día, hora del recinto."
+
+["bot.cat.cap_note"]
+other = "La fecha entera deja de venderse el {{.When}}: un último día posterior no cambia nada."
+
+["bot.cat.err_window"]
+other = "⚠ No guardado: el último día debe ser posterior al primero."
+
+["bot.cat.window_saved"]
+other = "✔ Ventana de venta guardada."
+
+["bot.cat.window_removed"]
+other = "✔ Límite quitado."

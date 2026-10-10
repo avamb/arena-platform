@@ -96,6 +96,12 @@ func (n *noopNotifier) Send(_ context.Context, text string) error {
 	return nil
 }
 
+// SendConfirmed logs like Send. With Telegram not configured the log line IS
+// the delivery, so it always reports success.
+func (n *noopNotifier) SendConfirmed(ctx context.Context, text string) error {
+	return n.Send(ctx, text)
+}
+
 // TelegramNotifier delivers messages via the Telegram Bot API's sendMessage
 // method (HTML parse mode) over plain net/http.
 type TelegramNotifier struct {
@@ -177,6 +183,15 @@ type sendMessageRequest struct {
 // Telegram outage must never be treated as a reason to stop the caller's
 // (read-only, best-effort) work.
 func (n *TelegramNotifier) Send(ctx context.Context, text string) error {
+	_ = n.SendConfirmed(ctx, text) // failures are logged there; Send never fails its caller
+	return nil
+}
+
+// SendConfirmed delivers like Send but REPORTS a failed delivery — every
+// attempt failed, or ctx ended first — to a caller that must not forget an
+// alert it could not send (refund.sweep clears an owed refund alert only
+// after a confirmed delivery). The failure is logged here too.
+func (n *TelegramNotifier) SendConfirmed(ctx context.Context, text string) error {
 	full := text
 	if n.envLabel != "" {
 		full = fmt.Sprintf("<b>[%s]</b> %s", EscapeHTML(n.envLabel), text)
@@ -193,7 +208,7 @@ func (n *TelegramNotifier) Send(ctx context.Context, text string) error {
 		// Marshalling a struct of plain strings cannot realistically fail;
 		// log and bail rather than panic.
 		n.logger.Error("opsalert: failed to marshal Telegram request", "error", err.Error())
-		return nil
+		return fmt.Errorf("opsalert: marshal request: %w", err)
 	}
 
 	url := fmt.Sprintf("%s/bot%s/sendMessage", n.baseURL, n.botToken)
@@ -205,7 +220,7 @@ func (n *TelegramNotifier) Send(ctx context.Context, text string) error {
 			select {
 			case <-ctx.Done():
 				n.logger.Warn("opsalert: send aborted (context done)", "error", ctx.Err())
-				return nil
+				return fmt.Errorf("opsalert: send aborted: %w", ctx.Err())
 			case <-time.After(delay):
 			}
 		}
@@ -226,7 +241,7 @@ func (n *TelegramNotifier) Send(ctx context.Context, text string) error {
 		"attempts", maxSendAttempts,
 		"error", lastErr.Error(),
 	)
-	return nil
+	return fmt.Errorf("opsalert: Telegram send failed after %d attempts: %w", maxSendAttempts, lastErr)
 }
 
 // attemptSend performs a single HTTP POST to the Telegram sendMessage

@@ -358,6 +358,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	if text != "" && b.promoterText(ctx, chatID, from, text) {
 		return
 	}
+	if text != "" && b.categoryText(ctx, chatID, from, text) {
+		return
+	}
 	if text != "" && b.ordersText(ctx, chatID, from, text) {
 		return
 	}
@@ -410,6 +413,9 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	if parts[0] != "pr" { // and the promoter dialog (EC-14)
 		b.leavePromoter(ctx, from.ID)
 	}
+	if parts[0] != "ct" { // and the category dialog (EC-15)
+		b.leaveCategories(ctx, from.ID)
+	}
 	switch parts[0] {
 	case "el":
 		b.eventsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "el:"))
@@ -423,6 +429,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.promoCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pm:"))
 	case "pr":
 		b.promoterCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pr:"))
+	case "ct":
+		b.categoryCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ct:"))
 	case "home":
 		b.clearTeamDialog(ctx, from.ID)
 		b.showHome(ctx, chatID, &msgID, from, "")

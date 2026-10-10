@@ -252,6 +252,7 @@ func run() error {
 	registerOpsWatchdogHandler(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerEventWatchHandler(registry, pool.Pool, cfg, salesNotifier, logger)
 	registerOnboardingHandlers(registry, pool.Pool, cfg, opsNotifier, logger)
+	registerRefundSweepHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 
 	// 7b. Idempotency cleanup startup scheduling (feature #48) ---------------
 	// Enqueue an idempotency.cleanup job immediately if none is already
@@ -293,6 +294,7 @@ func run() error {
 	} else {
 		logger.Info("reservation expire sweep job scheduled at startup")
 	}
+	scheduleRefundSweep(rootCtx, pool.Pool, logger)
 	if err := tierchain.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: the next category opens a little later than announced.
 		logger.Warn("could not schedule initial tier chain sweep job", "error", err.Error())

@@ -20,6 +20,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
@@ -89,6 +90,12 @@ type tierResponse struct {
 	// SellLimit is how many tickets this category sells before its places
 	// pass to NextTierID (migration 0114). List endpoint only.
 	SellLimit *int32 `json:"sell_limit,omitempty"`
+	// CurrentPrice is the price buyers pay NOW: the scheduled window in force
+	// (AB-48), else the base price_amount. NextPriceChangeAt is when it next
+	// changes, if known. List endpoint only; both were documented in the
+	// OpenAPI schema long before the handler filled them.
+	CurrentPrice      *int64  `json:"current_price,omitempty"`
+	NextPriceChangeAt *string `json:"next_price_change_at,omitempty"`
 }
 
 // TierResponse is the exported alias of tierResponse for use by the httpserver
@@ -269,6 +276,11 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The session must be this organization's (after the cheap 400s above).
+	if !h.requireSessionInOrg(w, r, sessionID, orgID) {
+		return
+	}
+
 	// Currency follows the session (AB-38). Resolved after every syntactic
 	// validation so cheap 400s never cost a DB round trip; resolving it
 	// also verifies the session exists before the INSERT.
@@ -426,6 +438,9 @@ func (h *Handler) HandleListTiers(w http.ResponseWriter, r *http.Request) {
 	if !h.requireOrgMembership(w, r, h.tierQueries, orgID) {
 		return
 	}
+	if !h.requireSessionInOrg(w, r, sessionID, orgID) {
+		return
+	}
 
 	rows, err := h.tierQueries.ListTicketTiersBySession(ctx, sessionID)
 	if err != nil {
@@ -467,9 +482,24 @@ func (h *Handler) HandleListTiers(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// The price in force now, one round trip for the whole list. Non-fatal
+	// like the counters: a failure leaves current_price absent.
+	effective, effErr := priceresolve.ForTiers(ctx, h.tierQueries, rows, time.Now().UTC())
+	if effErr != nil {
+		h.logger.Warn("tier: effective prices failed (non-fatal)", slog.String("error", effErr.Error()))
+	}
+
 	result := make([]tierResponse, 0, len(rows))
 	for _, t := range rows {
 		tr := tierFromRow(t)
+		if eff, ok := effective[t.ID]; ok && effErr == nil {
+			amount := eff.Amount
+			tr.CurrentPrice = &amount
+			if eff.NextChangeAt != nil {
+				next := eff.NextChangeAt.UTC().Format(time.RFC3339)
+				tr.NextPriceChangeAt = &next
+			}
+		}
 		if next, ok := nextTier[t.ID]; ok {
 			s := next.String()
 			tr.NextTierID = &s
@@ -566,6 +596,9 @@ func (h *Handler) HandleGetTier(w http.ResponseWriter, r *http.Request) {
 	if !h.requireOrgMembership(w, r, h.tierQueries, orgID) {
 		return
 	}
+	if !h.requireSessionInOrg(w, r, sessionID, orgID) {
+		return
+	}
 
 	tier, err := h.tierQueries.GetTicketTierByID(ctx, tierID, sessionID)
 	if err != nil {
@@ -651,6 +684,9 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 	if !h.requireOrgMembership(w, r, h.tierQueries, orgID) {
 		return
 	}
+	if !h.requireSessionInOrg(w, r, sessionID, orgID) {
+		return
+	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
@@ -717,6 +753,24 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("tier: get for update failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"tier.get_failed", "failed to get ticket tier", r,
+		))
+		return
+	}
+
+	// The window the row will have AFTER this patch: a request that moves only
+	// one edge is judged against the stored other edge, otherwise the CHECK
+	// ticket_tiers_sale_window_order fails in the UPDATE and answers 500.
+	effectiveStart, effectiveEnd := current.SaleWindowStart, current.SaleWindowEnd
+	if setSaleStart {
+		effectiveStart = saleStart
+	}
+	if setSaleEnd {
+		effectiveEnd = saleEnd
+	}
+	if effectiveStart != nil && effectiveEnd != nil && !effectiveEnd.After(*effectiveStart) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"tier.invalid_sale_window", "sale_window_end must be after sale_window_start", r,
+			map[string]any{"field": "sale_window_end"},
 		))
 		return
 	}
@@ -1048,6 +1102,9 @@ func (h *Handler) HandleDeleteTier(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !h.requireOrgMembership(w, r, h.tierQueries, orgID) {
+		return
+	}
+	if !h.requireSessionInOrg(w, r, sessionID, orgID) {
 		return
 	}
 

@@ -388,6 +388,32 @@ func (q *Queries) GetSessionOrgContext(ctx context.Context, sessionID uuid.UUID)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SessionInEventAndOrg
+// ─────────────────────────────────────────────────────────────────────────────
+
+const sessionInEventAndOrg = `-- name: SessionInEventAndOrg :one
+SELECT EXISTS (
+    SELECT 1
+    FROM   sessions s
+    JOIN   events   e ON e.id = s.event_id
+    WHERE  s.id         = $1
+      AND  s.event_id   = $2
+      AND  e.org_id     = $3
+      AND  s.deleted_at IS NULL
+      AND  e.deleted_at IS NULL
+)`
+
+// SessionInEventAndOrg reports whether an active session belongs to the given
+// event AND that event to the given organization (SEC-2). Routes that carry
+// {org_id}/{event_id}/{session_id} in their path use it to answer 404 for a
+// session of another organization or another event.
+func (q *Queries) SessionInEventAndOrg(ctx context.Context, sessionID, eventID, orgID uuid.UUID) (bool, error) {
+	var ok bool
+	err := q.db.QueryRow(ctx, sessionInEventAndOrg, sessionID, eventID, orgID).Scan(&ok)
+	return ok, err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GetSessionCurrency
 // ─────────────────────────────────────────────────────────────────────────────
 
