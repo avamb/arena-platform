@@ -3318,19 +3318,76 @@ type BotInvitationCreateResponse struct {
 	Invitation BotInvitation `json:"invitation"`
 }
 
+// BotInvitationResendRequest Optional body of the resend route.
+type BotInvitationResendRequest struct {
+	// Locale Language of the new letter (`en`, `ru`, `es`); absent means the invitee's own language.
+	Locale *string `json:"locale,omitempty"`
+}
+
+// BotInvitationResendResponse Response of POST /v1/organizations/{org_id}/bot-invitations/{id}/resend.
+type BotInvitationResendResponse struct {
+	// DeepLink The new `https://t.me/<bot>?start=inv_<code>`, present ONLY for the platform superadmin with the bot username configured.
+	DeepLink *string `json:"deep_link,omitempty"`
+
+	// Invitation The invitation with its new expiry; the old code no longer works.
+	Invitation BotInvitation `json:"invitation"`
+
+	// ResendAvailableAt The earliest time another resend is accepted (ten minutes after this one).
+	ResendAvailableAt time.Time `json:"resend_available_at"`
+}
+
+// BotInvitationRevokeResponse Response of DELETE /v1/organizations/{org_id}/bot-invitations/{id}.
+type BotInvitationRevokeResponse struct {
+	// Email The invitee e-mail.
+	Email string `json:"email"`
+
+	// InvitationId The invitation that was annulled.
+	InvitationId openapi_types.UUID `json:"invitation_id"`
+
+	// KeptReason Why the membership stayed (absent when it was removed):
+	// `accepted` (they joined - use the remove-member flow),
+	// `member_before` (they were a member before the invitation),
+	// `other_invitation` (another live invitation keeps them in),
+	// `in_use` (they already work here through the bot),
+	// `role_changed` (the owner changed the role after the invitation),
+	// `last_owner` (removing them would leave the organization without an owner).
+	KeptReason *string `json:"kept_reason,omitempty"`
+
+	// MembershipRemoved True when the membership the invitation had created was removed too (the person never accepted and takes part in nothing else).
+	MembershipRemoved bool `json:"membership_removed"`
+
+	// Revoked Always true on 200 - the code no longer redeems.
+	Revoked bool `json:"revoked"`
+}
+
 // BotTeamMember One member of the organization as the Telegram event-center bot shows it.
 type BotTeamMember struct {
 	// Email The member's e-mail, the name the bot shows.
 	Email string `json:"email"`
 
+	// InvitationExpiresAt When the invitation's code stops working. Absent with `invitation_state`.
+	InvitationExpiresAt *time.Time `json:"invitation_expires_at,omitempty"`
+
+	// InvitationId Id of that invitation, what the revoke and resend routes take. Absent with `invitation_state`.
+	InvitationId *openapi_types.UUID `json:"invitation_id,omitempty"`
+
 	// InvitationPending Whether a bot invitation for this organization is still unopened and unexpired.
 	InvitationPending bool `json:"invitation_pending"`
+
+	// InvitationState Where the person's bot invitation stands: `accepted`, `waiting`
+	// (sent, not opened, not expired) or `expired`. Absent for a member
+	// who has no bot invitation (added another way). Plain string on
+	// purpose: an inline enum would rename generated Go constants.
+	InvitationState *string `json:"invitation_state,omitempty"`
 
 	// JoinedAt When the membership was created.
 	JoinedAt time.Time `json:"joined_at"`
 
 	// MembershipRole The underlying membership role, org_admin or organizer.
 	MembershipRole string `json:"membership_role"`
+
+	// ResendAvailableAt Present for a `waiting` or `expired` invitation whose letter went out less than ten minutes ago - the earliest time a resend is accepted.
+	ResendAvailableAt *time.Time `json:"resend_available_at,omitempty"`
 
 	// Role Bot role, "owner" (org_admin) or "manager" (organizer). Not an enum on purpose — a second enum with these values would rename the generated Go constants of BotInvitationCreateRequest.
 	Role string `json:"role"`
@@ -14220,6 +14277,9 @@ type UpdateOrganizationBankAccountJSONRequestBody = UpdateBankAccountRequest
 
 // CreateOrganizationBotInvitationJSONRequestBody defines body for CreateOrganizationBotInvitation for application/json ContentType.
 type CreateOrganizationBotInvitationJSONRequestBody = BotInvitationCreateRequest
+
+// ResendOrganizationBotInvitationJSONRequestBody defines body for ResendOrganizationBotInvitation for application/json ContentType.
+type ResendOrganizationBotInvitationJSONRequestBody = BotInvitationResendRequest
 
 // CreateChannelJSONRequestBody defines body for CreateChannel for application/json ContentType.
 type CreateChannelJSONRequestBody = CreateChannelRequest

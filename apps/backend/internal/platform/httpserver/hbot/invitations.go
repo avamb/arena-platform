@@ -186,6 +186,7 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 	// 2. The membership. An existing one keeps its role: the bot never
 	// widens what a person already holds.
 	membershipRole := ""
+	membershipCreated := false
 	existing, err := q.ListMembershipsByUser(ctx, userID)
 	if err != nil {
 		h.logger.Error("hbot: list memberships failed", slog.String("error", err.Error()))
@@ -217,6 +218,7 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		membershipRole = m.Role
+		membershipCreated = true
 	}
 	effectiveRole := BotRoleFor(membershipRole)
 
@@ -227,7 +229,7 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 			invitedBy = &parsed
 		}
 	}
-	inv, err := q.InsertBotInvitation(ctx, orgID, userID, email, effectiveRole, users.TokenHash(code), invitedBy, expiresAt)
+	inv, err := q.InsertBotInvitation(ctx, orgID, userID, email, effectiveRole, users.TokenHash(code), invitedBy, expiresAt, membershipCreated)
 	if err != nil {
 		h.logger.Error("hbot: insert invitation failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -373,9 +375,9 @@ func (h *Handler) HandleAcceptInvitation(w http.ResponseWriter, r *http.Request)
 		))
 		return
 	}
-	if err != nil || inv.AcceptedAt != nil || !inv.ExpiresAt.After(h.now()) {
+	if err != nil || inv.AcceptedAt != nil || inv.RevokedAt != nil || !inv.ExpiresAt.After(h.now()) {
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-			"bot.invitation_not_found", "the invitation does not exist, was already used or has expired", r,
+			"bot.invitation_not_found", "the invitation does not exist, was already used, revoked or has expired", r,
 		))
 		return
 	}

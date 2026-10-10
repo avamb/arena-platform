@@ -2580,6 +2580,76 @@ components:
           type: string
           format: date-time
           description: When the membership was created.
+        invitation_state:
+          type: string
+          description: |
+            Where the person's bot invitation stands: `accepted`, `waiting`
+            (sent, not opened, not expired) or `expired`. Absent for a member
+            who has no bot invitation (added another way). Plain string on
+            purpose: an inline enum would rename generated Go constants.
+        invitation_id:
+          type: string
+          format: uuid
+          description: Id of that invitation, what the revoke and resend routes take. Absent with `invitation_state`.
+        invitation_expires_at:
+          type: string
+          format: date-time
+          description: When the invitation's code stops working. Absent with `invitation_state`.
+        resend_available_at:
+          type: string
+          format: date-time
+          description: Present for a `waiting` or `expired` invitation whose letter went out less than ten minutes ago - the earliest time a resend is accepted.
+    BotInvitationRevokeResponse:
+      type: object
+      description: Response of DELETE /v1/organizations/{org_id}/bot-invitations/{id}.
+      required: [invitation_id, email, revoked, membership_removed]
+      properties:
+        invitation_id:
+          type: string
+          format: uuid
+          description: The invitation that was annulled.
+        email:
+          type: string
+          description: The invitee e-mail.
+        revoked:
+          type: boolean
+          description: Always true on 200 - the code no longer redeems.
+        membership_removed:
+          type: boolean
+          description: True when the membership the invitation had created was removed too (the person never accepted and takes part in nothing else).
+        kept_reason:
+          type: string
+          description: |
+            Why the membership stayed (absent when it was removed):
+            `accepted` (they joined - use the remove-member flow),
+            `member_before` (they were a member before the invitation),
+            `other_invitation` (another live invitation keeps them in),
+            `in_use` (they already work here through the bot),
+            `role_changed` (the owner changed the role after the invitation),
+            `last_owner` (removing them would leave the organization without an owner).
+    BotInvitationResendRequest:
+      type: object
+      description: Optional body of the resend route.
+      properties:
+        locale:
+          type: string
+          description: Language of the new letter (`en`, `ru`, `es`); absent means the invitee's own language.
+    BotInvitationResendResponse:
+      type: object
+      description: Response of POST /v1/organizations/{org_id}/bot-invitations/{id}/resend.
+      required: [invitation, resend_available_at]
+      properties:
+        invitation:
+          allOf:
+            - $ref: "#/components/schemas/BotInvitation"
+          description: The invitation with its new expiry; the old code no longer works.
+        resend_available_at:
+          type: string
+          format: date-time
+          description: The earliest time another resend is accepted (ten minutes after this one).
+        deep_link:
+          type: string
+          description: The new `https://t.me/<bot>?start=inv_<code>`, present ONLY for the platform superadmin with the bot username configured.
     BotTeamResponse:
       type: object
       description: The organization's owners and managers, owners first.
@@ -18515,14 +18585,175 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/bot-invitations/{id}:
+    delete:
+      operationId: revokeOrganizationBotInvitation
+      summary: Revoke a bot invitation
+      description: |
+        Annuls the invitation's code (the row is kept). When the person never
+        accepted it and takes part in nothing else, the membership the
+        invitation created is removed too; otherwise it stays and
+        `kept_reason` says why (an accepted invitation only has its row
+        voided - use the remove-member flow for the person). Requires
+        `membership.revoke`, which the manager role does not hold. An
+        invitation of another organization answers 404 like a missing one.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the bot invitation.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The invitation is annulled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotInvitationRevokeResponse"
+        "400":
+          description: org_id or id is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller lacks `membership.revoke` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such invitation in this organization (`bot.invitation_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The invitation was already revoked (`bot.invitation_revoked`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The invitation could not be updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/bot-invitations/{id}/resend:
+    post:
+      operationId: resendOrganizationBotInvitation
+      summary: Send a bot invitation letter again
+      description: |
+        Mints a NEW code for a not-yet-accepted, not-revoked invitation (the
+        old link stops working), gives it a fresh 7-day life and queues a new
+        `bot.invitation_email` job, in one transaction. An expired invitation
+        can be resent. At most one letter per ten minutes per invitation
+        (429 `bot.invitation_resend_too_soon` with `Retry-After`). Requires
+        `membership.grant`, which the manager role does not hold. An
+        invitation of another organization answers 404 like a missing one.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 primary key of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the bot invitation.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotInvitationResendRequest"
+      responses:
+        "200":
+          description: A new letter is queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotInvitationResendResponse"
+        "400":
+          description: org_id or id is not a UUID, or the body is not valid JSON.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The caller lacks `membership.grant` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such invitation in this organization (`bot.invitation_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The invitation was already accepted (`bot.invitation_accepted`) or revoked (`bot.invitation_revoked`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: The last letter went out less than ten minutes ago (`bot.invitation_resend_too_soon`, `Retry-After` in seconds).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The invitation could not be updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/bot-team:
     get:
       operationId: listOrganizationBotTeam
       summary: The organization's team as the Telegram event-center bot shows it
       description: |
         Owners (org_admin) first, then managers (organizer), each with
-        whether a Telegram account is linked and whether a bot invitation is
-        still waiting to be opened. Requires `membership.read`; the caller
+        whether a Telegram account is linked, whether a bot invitation is
+        still waiting to be opened and where that invitation stands
+        (`invitation_state`: accepted, waiting, expired, with its id for the
+        revoke and resend routes). Requires `membership.read`; the caller
         must be a member of the organization, an organization API key of it,
         or the platform superadmin.
       tags: [v1]
