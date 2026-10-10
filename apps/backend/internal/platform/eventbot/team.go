@@ -28,6 +28,24 @@ type TeamMember struct {
 	MembershipRole    string    `json:"membership_role"`
 	TelegramLinked    bool      `json:"telegram_linked"`
 	InvitationPending bool      `json:"invitation_pending"`
+	// Where the person's bot invitation stands (EC-16): "accepted", "waiting"
+	// or "expired"; empty for a member who has none. InvitationID is what the
+	// revoke and resend routes take.
+	InvitationState string    `json:"invitation_state"`
+	InvitationID    uuid.UUID `json:"invitation_id"`
+}
+
+// Invitation states as GET .../bot-team prints them.
+const (
+	invStateAccepted = "accepted"
+	invStateWaiting  = "waiting"
+	invStateExpired  = "expired"
+)
+
+// revokable reports whether the member has an invitation the owner can still
+// annul or send again.
+func (m TeamMember) revokable() bool {
+	return (m.InvitationState == invStateWaiting || m.InvitationState == invStateExpired) && m.InvitationID != uuid.Nil
 }
 
 // Team lists the organization's owners and managers.
@@ -170,11 +188,18 @@ func (b *Bot) showTeam(ctx context.Context, chatID int64, editMsgID *int, from *
 	rows := [][]models.InlineKeyboardButton{}
 	for _, m := range members {
 		marks := ""
-		if m.TelegramLinked {
+		switch {
+		case m.TelegramLinked:
 			marks += b.texts.T(loc, "bot.team_linked_mark", nil)
-		} else if m.InvitationPending {
+		case m.InvitationState == invStateWaiting:
+			marks += b.texts.T(loc, "bot.team.state_waiting", nil)
+		case m.InvitationState == invStateExpired:
+			marks += b.texts.T(loc, "bot.team.state_expired", nil)
+		case m.InvitationState == invStateAccepted:
+			marks += b.texts.T(loc, "bot.team.state_accepted", nil)
+		case m.InvitationPending:
 			marks += b.texts.T(loc, "bot.team_pending_mark", nil)
-		} else {
+		default:
 			marks += b.texts.T(loc, "bot.team_not_linked_mark", nil)
 		}
 		self := m.UserID == id.Link.UserID
@@ -187,6 +212,17 @@ func (b *Bot) showTeam(ctx context.Context, chatID int64, editMsgID *int, from *
 		}
 		sb.WriteString("\n")
 		sb.WriteString(b.texts.T(loc, "bot.team_member_line", map[string]any{"Email": Esc(m.Email), "Role": b.texts.T(loc, roleKey, nil), "Marks": marks}))
+		if !self && m.revokable() {
+			rows = append(rows,
+				[]models.InlineKeyboardButton{{
+					Text:         b.texts.T(loc, "bot.team.resend_btn", map[string]any{"Email": truncate(m.Email, 36)}),
+					CallbackData: "team:rs:" + m.UserID.String(),
+				}},
+				[]models.InlineKeyboardButton{{
+					Text:         b.texts.T(loc, "bot.team.revoke_btn", map[string]any{"Email": truncate(m.Email, 36)}),
+					CallbackData: "team:ri:" + m.UserID.String(),
+				}})
+		}
 		if !self {
 			rows = append(rows, []models.InlineKeyboardButton{{
 				Text:         b.texts.T(loc, "bot.team_remove_btn", map[string]any{"Email": truncate(m.Email, 40)}),
@@ -265,6 +301,8 @@ func (b *Bot) teamCallback(ctx context.Context, chatID int64, msgID int, from *m
 		}
 		prefix := b.texts.T(loc, "bot.team_invited", map[string]any{"Email": Esc(res.Email), "Role": b.texts.T(loc, roleKey, nil)}) + "\n\n"
 		b.showTeam(ctx, chatID, &msgID, from, prefix)
+	case "rs", "ri":
+		b.teamInvitationCallback(ctx, chatID, msgID, from, id, jwt, parts)
 	case "rm":
 		if len(parts) < 2 {
 			return
