@@ -988,14 +988,20 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 	}
 	ctx := r.Context()
 
+	// The WHOLE body must be one JSON value on every route, also when a
+	// module already parsed it into route.Event: a module's streaming
+	// decoder stops after the first value, so a genuinely signed callback
+	// with bytes appended would otherwise be processed (and its raw payload
+	// could not be stored as jsonb).
+	if !json.Valid(body) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("webhook.invalid_json", "request body is not valid JSON", r))
+		return
+	}
+
 	var req webhookPaymentIntentRequest
 	if route.Event != nil {
 		req = webhookRequestFromEvent(*route.Event)
 	} else {
-		if !json.Valid(body) {
-			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("webhook.invalid_json", "request body is not valid JSON", r))
-			return
-		}
 		if d, configOnly := configRouteOnlyProvider(body); configOnly {
 			// A body of a provider that signs its callbacks with the key of
 			// the config named in the URL (Flitt). Nothing on this route can
