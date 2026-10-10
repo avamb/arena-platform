@@ -723,58 +723,35 @@ func TestAllPay136_HostedCheckoutURL_NilResponse(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TestAllPay136_RoutingPolicy_Integration
+// TestAllPay136_Registry_Integration
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestAllPay136_RoutingPolicy_Integration(t *testing.T) {
-	adapter := allpayadapter.New(allpayadapter.Config{APIKey: "key"})
-
-	policy := payments.NewPaymentRoutingPolicy()
-	policy.Register(adapter)
-
-	if policy.Len() != 1 {
-		t.Errorf("policy.Len() = %d; want 1", policy.Len())
-	}
-
-	resolved, err := policy.ResolveProvider(payments.ChannelConfig{
-		Provider:    "allpay",
-		PaymentMode: "direct_merchant",
-	})
+func TestAllPay136_Registry_Integration(t *testing.T) {
+	reg, err := payments.NewRegistry(allpayadapter.Entry())
 	if err != nil {
-		t.Fatalf("ResolveProvider(allpay, direct_merchant) error: %v", err)
+		t.Fatalf("NewRegistry: %v", err)
 	}
-	if resolved.ProviderName() != "allpay" {
-		t.Errorf("resolved.ProviderName() = %q; want %q", resolved.ProviderName(), "allpay")
+	if got := reg.Names(); len(got) != 1 || got[0] != "allpay" {
+		t.Errorf("reg.Names() = %v; want [allpay]", got)
+	}
+	resolved, err := reg.Build("allpay", map[string]string{"merchant_id": "m", "secret_key": "key"}, payments.Options{})
+	if err != nil {
+		t.Fatalf("Build(allpay) error: %v", err)
+	}
+	if resolved.Descriptor().Name != "allpay" {
+		t.Errorf("resolved.Descriptor().Name = %q; want %q", resolved.Descriptor().Name, "allpay")
+	}
+	if _, ok := resolved.(*allpayadapter.Adapter); !ok {
+		t.Errorf("resolved module is %T; want *allpay.Adapter", resolved)
 	}
 }
 
-func TestAllPay136_RoutingPolicy_MerchantOfRecord(t *testing.T) {
-	adapter := allpayadapter.New(allpayadapter.Config{APIKey: "key"})
-
-	policy := payments.NewPaymentRoutingPolicy()
-	policy.Register(adapter)
-
-	resolved, err := policy.ResolveProvider(payments.ChannelConfig{
-		Provider:    "allpay",
-		PaymentMode: "merchant_of_record",
-	})
+func TestAllPay136_Registry_UnknownProvider(t *testing.T) {
+	reg, err := payments.NewRegistry()
 	if err != nil {
-		t.Fatalf("ResolveProvider(allpay, merchant_of_record) error: %v", err)
+		t.Fatalf("NewRegistry: %v", err)
 	}
-	if resolved.ProviderName() != "allpay" {
-		t.Errorf("resolved.ProviderName() = %q; want %q", resolved.ProviderName(), "allpay")
-	}
-}
-
-func TestAllPay136_RoutingPolicy_UnknownProvider(t *testing.T) {
-	policy := payments.NewPaymentRoutingPolicy()
-	// No adapters registered.
-
-	_, err := policy.ResolveProvider(payments.ChannelConfig{
-		Provider:    "allpay",
-		PaymentMode: "direct_merchant",
-	})
-	if !errors.Is(err, payments.ErrUnknownProvider) {
+	if _, err := reg.Build("allpay", nil, payments.Options{}); !errors.Is(err, payments.ErrUnknownProvider) {
 		t.Errorf("expected ErrUnknownProvider; got %v", err)
 	}
 }

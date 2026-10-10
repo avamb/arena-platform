@@ -95,9 +95,9 @@ func New(cfg Config) *Adapter {
 	}
 }
 
-// ProviderName returns "allpay", the canonical key used in PaymentRoutingPolicy.
+// ProviderName returns Name, the canonical registry key.
 func (a *Adapter) ProviderName() string {
-	return "allpay"
+	return Name
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
