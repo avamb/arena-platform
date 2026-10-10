@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -95,5 +96,56 @@ func TestEngine_AttemptedRefundParkedForBudgetKeepsCounting(t *testing.T) {
 	// a person to decide, and B's reason says so.
 	if st, _ := f.ticketStatus(t, f.tickets[0]); st != "active" || !strings.Contains(deref(b.FailureReason), "still valid") {
 		t.Fatalf("ticket 1 = %s, B reason %q; want the ticket left for a person", st, deref(b.FailureReason))
+	}
+}
+
+// TestEngine_WholeOrderRefundCutByTheDeadlineEndsRefunded (M-3): ONE
+// whole-payment refund covers both tickets, and the caller's deadline ends
+// after the first cancellation. The first settle projects the order while a
+// ticket is still active (partially_refunded); the sweep's repair cancels
+// the second ticket later — and the order must then read refunded, not stay
+// partially_refunded with no ticket left.
+func TestEngine_WholeOrderRefundCutByTheDeadlineEndsRefunded(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	ctx := context.Background()
+	e := f.engineWith(&fakeModule{partial: true}, true, func(o *refunds.Options) {
+		o.CallTimeout = 300 * time.Millisecond // the drive's whole apply budget
+		inner := o.CancelTicket
+		o.CancelTicket = func(ctx context.Context, req refunds.CancelRequest) error {
+			time.Sleep(400 * time.Millisecond) // a slow cancellation
+			return inner(ctx, req)
+		}
+	})
+	id := f.rawRefund(t, f.payment, 5000, "provider_pending", "")
+	r, err := e.Drive(ctx, id)
+	if err != nil || r.State != refunds.StateSucceeded {
+		t.Fatalf("Drive: %v %s", err, r.State)
+	}
+	active := 0
+	for _, tk := range f.tickets {
+		if st, _ := f.ticketStatus(t, tk); st == "active" {
+			active++
+		}
+	}
+	if active != 1 {
+		t.Fatalf("active tickets after the first settle = %d; the deadline must cut the loop after one", active)
+	}
+	for i := 0; i < 3; i++ {
+		f.exec(t, `UPDATE refunds SET updated_at = now() - interval '2 minutes', repair_attempted_at = NULL WHERE org_id = $1`, f.org)
+		if _, err := e.Sweep(ctx, time.Now(), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tk := range f.tickets {
+		if st, _ := f.ticketStatus(t, tk); st != "cancelled" {
+			t.Fatalf("ticket %s = %s after the repair", tk, st)
+		}
+	}
+	var status string
+	var events int
+	_ = f.pool.QueryRow(ctx, `SELECT status FROM orders WHERE id = $1`, f.order).Scan(&status)
+	_ = f.pool.QueryRow(ctx, `SELECT count(*) FROM order_events WHERE order_id = $1 AND type = 'refunded'`, f.order).Scan(&events)
+	if status != "refunded" || events != 1 {
+		t.Fatalf("order = %s with %d refunded events; want refunded and exactly one event", status, events)
 	}
 }

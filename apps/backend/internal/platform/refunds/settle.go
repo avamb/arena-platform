@@ -226,14 +226,14 @@ func (e *Engine) projectOrder(ctx context.Context, r Refund, pay Payment) bool {
 			}
 			orderID = &id
 		}
-		var already bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM order_events
-			WHERE order_id = $1 AND type IN ('ticket_refunded', 'refunded') AND payload->>'refund_id' = $2)`,
-			*orderID, r.ID.String()).Scan(&already); err != nil {
+		// The status is recomputed on EVERY settle, even when this refund's
+		// event is already written: a settle cut short by its deadline
+		// projects while a ticket of its scope is still active, and only a
+		// later repair cancels it (fifth review, M-3). Only the event is
+		// written once; the order row lock serializes two settles of the
+		// same refund (a request and a repair) between check and insert.
+		if _, err := tx.Exec(ctx, `SELECT 1 FROM orders WHERE id = $1 FOR UPDATE`, *orderID); err != nil {
 			return err
-		}
-		if already {
-			return nil
 		}
 		if _, err := tx.Exec(ctx, `UPDATE orders o
 			SET status = CASE WHEN EXISTS (SELECT 1 FROM tickets t
@@ -242,6 +242,15 @@ func (e *Engine) projectOrder(ctx context.Context, r Refund, pay Payment) bool {
 			    updated_at = now()
 			WHERE o.id = $1 AND o.status IN ('paid', 'partially_refunded')`, *orderID); err != nil {
 			return err
+		}
+		var already bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM order_events
+			WHERE order_id = $1 AND type IN ('ticket_refunded', 'refunded') AND payload->>'refund_id' = $2)`,
+			*orderID, r.ID.String()).Scan(&already); err != nil {
+			return err
+		}
+		if already {
+			return nil
 		}
 		kind := "refunded"
 		payload := map[string]any{"refund_id": r.ID.String(), "amount": r.Amount, "currency": r.Currency,
