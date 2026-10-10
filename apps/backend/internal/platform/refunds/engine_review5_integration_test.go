@@ -131,6 +131,36 @@ func TestEngine_ForgedTicketCancelPrefixIsAnOrdinaryFlatRefund(t *testing.T) {
 	}
 }
 
+// TestEngine_DriveStopsCancellingWhenItsCallerGoesAway (LOW b): the
+// provider's answer is recorded on a context detached from the caller, but
+// once the caller is gone (a worker shutting down) no new ticket
+// cancellation is started there: the sweep's repair finishes it.
+func TestEngine_DriveStopsCancellingWhenItsCallerGoesAway(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	m := &fakeModule{partial: true}
+	e := f.engine(m, true)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	m.beforeRefund = func(payments.RefundRequest) bool { cancel(); return true }
+	res, err := e.CreateBatch(ctx, f.batch("k-shutdown", true, refunds.Item{TicketID: f.tickets[0]}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := f.refundState(t, res.Refunds[0].ID); r.State != refunds.StateSucceeded {
+		t.Fatalf("refund = %s; the acceptance must be recorded although the caller left", r.State)
+	}
+	if st, _ := f.ticketStatus(t, f.tickets[0]); st != "active" {
+		t.Fatalf("ticket = %s; no cancellation may start after the caller left", st)
+	}
+	f.exec(t, `UPDATE refunds SET updated_at = now() - interval '2 minutes' WHERE org_id = $1`, f.org)
+	if _, err := e.Sweep(context.Background(), time.Now(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := f.ticketStatus(t, f.tickets[0]); st != "cancelled" {
+		t.Fatalf("ticket = %s after the repair", st)
+	}
+}
+
 // TestEngine_WholeOrderRefundCutByTheDeadlineEndsRefunded (M-3): ONE
 // whole-payment refund covers both tickets, and the caller's deadline ends
 // after the first cancellation. The first settle projects the order while a

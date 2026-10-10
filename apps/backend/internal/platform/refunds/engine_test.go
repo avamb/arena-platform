@@ -193,6 +193,17 @@ func TestOptionsValidate_FailsFastOnUnsafeTimings(t *testing.T) {
 	if err := (Options{SweepPassTimeout: 4 * time.Minute}).Validate(); err == nil {
 		t.Error("a 4-minute pass plus the alert budget and a call overruns the worker's stale claim")
 	}
+	// Fifth review, LOW a: every section may overrun its deadline by its
+	// last item — a drive's call and recording plus one ticket cancellation
+	// and the settle writes (retry), a lookup plus the same tail, a repair's
+	// tail — and the alert section by one bookkeeping write. With a 3-minute
+	// pass that is ~350 s, past the worker's 300 s stale-claim timeout.
+	if err := (Options{SweepPassTimeout: 3 * time.Minute}).Validate(); err == nil {
+		t.Error("a 3-minute pass plus every section's settle overrun reaches the worker's stale claim")
+	}
+	if worst := SweepWorstCase(DefaultCallTimeout, DefaultSweepPassTimeout); worst >= WorkerStaleClaimTimeout {
+		t.Errorf("the default pass may take %s, not below %s", worst, WorkerStaleClaimTimeout)
+	}
 	defer func() {
 		if recover() == nil {
 			t.Error("New must panic on invalid timings")

@@ -19,7 +19,16 @@ import (
 
 // settle runs the after-acceptance steps.
 func (e *Engine) settle(ctx context.Context, r Refund, pay Payment) {
-	e.finish(ctx, r, pay)
+	e.finish(ctx, ctx, r, pay)
+}
+
+// settleUntil is settle whose cancellation loop also stops starting new
+// cancellations once stop is done. The drive path records an answer on a
+// context detached from its caller (so an acceptance is never lost); the
+// loop must still notice the caller going away — a worker shutting down
+// — and leave the rest to the sweep's repair (fifth review, LOW b).
+func (e *Engine) settleUntil(ctx, stop context.Context, r Refund, pay Payment) {
+	e.finish(ctx, stop, r, pay)
 }
 
 // Settlement timings (fourth review, M-a).
@@ -40,11 +49,12 @@ const (
 // them are done; only then is the refund stamped settled_at, so that the
 // sweep's repair (repairWhere) picks up whatever is left — a ticket still
 // active, an order not projected, a publish not claimed.
-func (e *Engine) finish(ctx context.Context, r Refund, pay Payment) bool {
+// stop, besides ctx, ends the starting of new ticket cancellations.
+func (e *Engine) finish(ctx, stop context.Context, r Refund, pay Payment) bool {
 	if !r.Accepted() {
 		return true
 	}
-	cancelled, ok := e.cancelTickets(ctx, r, pay)
+	cancelled, ok := e.cancelTickets(ctx, stop, r, pay)
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), settleWriteTimeout)
 	defer cancel()
 	if !e.projectOrder(wctx, r, pay) {
@@ -158,7 +168,7 @@ func (e *Engine) refundScope(ctx context.Context, r Refund, pay Payment) ([]scop
 // must not hold the caller far past its deadline, fourth review M-a). ok is
 // false when a due cancellation failed or was not started; the refund then
 // stays unsettled and the sweep's repair finishes it.
-func (e *Engine) cancelTickets(ctx context.Context, r Refund, pay Payment) (ids []string, ok bool) {
+func (e *Engine) cancelTickets(ctx, stop context.Context, r Refund, pay Payment) (ids []string, ok bool) {
 	scope, err := e.refundScope(ctx, r, pay)
 	if err != nil {
 		e.logger.Error("refunds: listing the refund's tickets failed", "refund_id", r.ID.String(), "error", err.Error())
@@ -171,7 +181,7 @@ func (e *Engine) cancelTickets(ctx context.Context, r Refund, pay Payment) (ids 
 		if !t.cancel || !t.active {
 			continue
 		}
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || stop.Err() != nil {
 			ok = false
 			continue
 		}

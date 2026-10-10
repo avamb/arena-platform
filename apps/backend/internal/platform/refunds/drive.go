@@ -89,7 +89,7 @@ func (e *Engine) drive(ctx context.Context, id uuid.UUID) (Refund, bool, error) 
 	// an acceptance would leave a ticket valid for money already returned.
 	applyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), e.callTimeout)
 	defer cancel()
-	updated, err := e.apply(applyCtx, r, pay, out)
+	updated, err := e.apply(applyCtx, ctx, r, pay, out)
 	return updated, true, err
 }
 
@@ -175,7 +175,7 @@ func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, erro
 			e.logger.Info("refunds: ticket cancellation handed over to the accepted refund",
 				"refund_id", handed.ID.String(), "from_refund_id", r.ID.String())
 			sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), e.callTimeout)
-			e.settle(sctx, *handed, pay)
+			e.settleUntil(sctx, ctx, *handed, pay)
 			cancel()
 		}
 		return r, pay, ErrNotClaimable
@@ -370,7 +370,7 @@ func (e *Engine) call(ctx context.Context, r Refund, pay Payment) callOutcome {
 
 // apply records the outcome, then — strictly after the commit, and only
 // when the provider accepted — settles the tickets.
-func (e *Engine) apply(ctx context.Context, claimed Refund, pay Payment, out callOutcome) (Refund, error) {
+func (e *Engine) apply(ctx, stop context.Context, claimed Refund, pay Payment, out callOutcome) (Refund, error) {
 	e.observe(out.kind)
 	var (
 		updated Refund
@@ -466,7 +466,7 @@ func (e *Engine) apply(ctx context.Context, claimed Refund, pay Payment, out cal
 				"amount", updated.Amount, "currency", updated.Currency,
 				"failure_code", "accepted_after_failure")
 		}
-		e.settle(ctx, updated, pay)
+		e.settleUntil(ctx, stop, updated, pay)
 	}
 	return updated, nil
 }

@@ -97,13 +97,27 @@ func (o Options) Validate() error {
 	if 2*call >= CallStaleAfter {
 		return fmt.Errorf("refunds: 2 x CallTimeout (%s) must stay below CallStaleAfter (%s)", 2*call, CallStaleAfter)
 	}
-	// The sections of a pass add up to the pass timeout plus the alert
-	// budget, and the last call of a section may overrun it by one call
-	// plus the recording of its answer.
-	if bound := pass + alertSectionBudget + 2*call; bound >= WorkerStaleClaimTimeout {
+	if bound := SweepWorstCase(call, pass); bound >= WorkerStaleClaimTimeout {
 		return fmt.Errorf("refunds: a sweep pass may take %s, not below the worker's stale-claim timeout %s", bound, WorkerStaleClaimTimeout)
 	}
 	return nil
+}
+
+// SweepWorstCase is the longest one refund.sweep pass can run with these
+// timings (fifth review, LOW a). The sections (park, retry, lookup, repair)
+// add up to the pass timeout, and each runs on its own deadline, so their
+// overruns add up too: the last item of a section may outlive its deadline
+// by what runs on detached contexts —
+//   - retry: a drive's call and the recording of its answer (2 x call),
+//     then one ticket cancellation already started (ticketCancelTimeout)
+//     and the settle writes (settleWriteTimeout);
+//   - lookup: one lookup call, then the same settle tail;
+//   - repair: the settle tail;
+//   - alerts: their own budget plus one bookkeeping write.
+func SweepWorstCase(call, pass time.Duration) time.Duration {
+	tail := ticketCancelTimeout + settleWriteTimeout
+	return pass + alertSectionBudget + alertWriteTimeout +
+		(2*call + tail) + (call + tail) + tail
 }
 
 // DB is what the engine needs from the pool: transactions only, so the

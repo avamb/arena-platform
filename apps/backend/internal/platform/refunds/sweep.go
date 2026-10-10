@@ -79,9 +79,12 @@ const (
 	// up for this long before it is parked for a human.
 	PendingParkAfter = 7 * 24 * time.Hour
 	// DefaultSweepPassTimeout sizes a pass's sections (see the file comment)
-	// so that a pass stays well under the worker's 5-minute stale-claim
-	// timeout and is never re-run concurrently.
-	DefaultSweepPassTimeout = 3 * time.Minute
+	// so that a pass, with every section's overrun (SweepWorstCase, about
+	// 290 s with the defaults), stays under the worker's 5-minute
+	// stale-claim timeout and is never re-run concurrently. It was 3
+	// minutes until the fifth review (LOW a) counted the settle tails: the
+	// worst case was then about 350 s.
+	DefaultSweepPassTimeout = 2 * time.Minute
 	// DefaultSweepMaxCalls caps the provider calls (retries + lookups) of
 	// one pass.
 	DefaultSweepMaxCalls = 40
@@ -426,7 +429,7 @@ func (e *Engine) repair(ctx context.Context, now time.Time) (int, error) {
 		}
 		// The same steps as the first settle; v1.ticket.refunded is published
 		// at most once (publish claims it).
-		if e.finish(ctx, r, pay) {
+		if e.finish(ctx, ctx, r, pay) {
 			repaired++
 		}
 	}
