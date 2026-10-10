@@ -166,29 +166,35 @@ type summaryRows struct {
 // loadSummaryRows runs every summary query for the given sessions. On a
 // failure it names the part that failed, for the log line.
 func (h *Handler) loadSummaryRows(ctx context.Context, sessionIDs []uuid.UUID) (summaryRows, string, error) {
+	return queriesSummaryRows(ctx, h.queries, sessionIDs)
+}
+
+// queriesSummaryRows is loadSummaryRows on an explicit query set, so the CSV
+// export (hexport) reads the very same aggregates through LoadSessionSummary.
+func queriesSummaryRows(ctx context.Context, q *gen.Queries, sessionIDs []uuid.UUID) (summaryRows, string, error) {
 	var (
 		r   summaryRows
 		err error
 	)
-	if r.places, err = h.queries.ListSessionSummaryPlaces(ctx, sessionIDs); err != nil {
+	if r.places, err = q.ListSessionSummaryPlaces(ctx, sessionIDs); err != nil {
 		return r, "places", err
 	}
-	if r.tiers, err = h.queries.ListSessionSummaryTiers(ctx, sessionIDs); err != nil {
+	if r.tiers, err = q.ListSessionSummaryTiers(ctx, sessionIDs); err != nil {
 		return r, "tiers", err
 	}
-	if r.orders, err = h.queries.ListSessionSummaryOrders(ctx, sessionIDs); err != nil {
+	if r.orders, err = q.ListSessionSummaryOrders(ctx, sessionIDs); err != nil {
 		return r, "orders", err
 	}
-	if r.tickets, err = h.queries.ListSessionSummaryTickets(ctx, sessionIDs); err != nil {
+	if r.tickets, err = q.ListSessionSummaryTickets(ctx, sessionIDs); err != nil {
 		return r, "tickets", err
 	}
-	if r.refunds, err = h.queries.ListSessionSummaryRefunds(ctx, sessionIDs); err != nil {
+	if r.refunds, err = q.ListSessionSummaryRefunds(ctx, sessionIDs); err != nil {
 		return r, "refunds", err
 	}
-	if r.promos, err = h.queries.ListSessionSummaryPromos(ctx, sessionIDs); err != nil {
+	if r.promos, err = q.ListSessionSummaryPromos(ctx, sessionIDs); err != nil {
 		return r, "promos", err
 	}
-	if r.complimentary, err = h.queries.ListSessionSummaryComplimentary(ctx, sessionIDs); err != nil {
+	if r.complimentary, err = q.ListSessionSummaryComplimentary(ctx, sessionIDs); err != nil {
 		return r, "complimentary", err
 	}
 	return r, "", nil

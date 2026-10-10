@@ -13394,6 +13394,12 @@ type ListOrgEventsParams struct {
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdEventsEventIdSalesCsvParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdSalesCsv.
+type GetV1OrganizationsOrgIdEventsEventIdSalesCsvParams struct {
+	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
 // DeleteSessionJSONBody defines parameters for DeleteSession.
 type DeleteSessionJSONBody struct {
 	// Notice What the organizer wants to say to the buyers of a session that is
@@ -13513,6 +13519,12 @@ type ListPromoCodeRedemptionsParams struct {
 	Format *string `form:"format,omitempty" json:"format,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdPromoCodesPromoCodeIdRedemptionsCsvParams defines parameters for GetV1OrganizationsOrgIdPromoCodesPromoCodeIdRedemptionsCsv.
+type GetV1OrganizationsOrgIdPromoCodesPromoCodeIdRedemptionsCsvParams struct {
+	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
 // ListPromotersParams defines parameters for ListPromoters.
 type ListPromotersParams struct {
 	// IncludeArchived Include archived promoters (true/false, default false).
@@ -13537,9 +13549,21 @@ type GetV1OrganizationsOrgIdSessionsSessionIdChangeImpactParams struct {
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdSessionsSessionIdSalesCsvParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdSalesCsv.
+type GetV1OrganizationsOrgIdSessionsSessionIdSalesCsvParams struct {
+	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdSessionsSessionIdSampleTicketParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdSampleTicket.
 type GetV1OrganizationsOrgIdSessionsSessionIdSampleTicketParams struct {
 	// Locale Language of the printed labels and the SAMPLE stamp (en, ru, cs).
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsvParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsv.
+type GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsvParams struct {
+	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
