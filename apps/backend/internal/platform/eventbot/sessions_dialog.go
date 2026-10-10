@@ -411,6 +411,7 @@ func (b *Bot) sesShowCard(ctx context.Context, chatID int64, msgID *int, jwt, lo
 	rows := [][]Button{}
 	if dlg.CanSales {
 		rows = append(rows, []Button{b.sesBtn(loc, "bot.ec.summary_btn", "sm", nil), b.sesBtn(loc, "bot.ec.csv_btn", "csv", nil)})
+		rows = append(rows, []Button{b.sesBtn(loc, "bot.ord.btn", "or", nil)})
 	}
 	if !it.cancelled() {
 		text += "\n" + b.sesSaleTimesLine(loc, it)
@@ -719,6 +720,15 @@ func (b *Bot) sessionsCallback(ctx context.Context, chatID int64, msgID int, fro
 		}
 		dlg.Cur, dlg.Step, dlg.Mode, dlg.Impact, dlg.MessageSet = n, sesStepCard, "", nil, false
 		b.sesShow(ctx, chatID, &msgID, id, jwt, from, dlg, "")
+	case data == "or":
+		if dlg.Cur < 0 || dlg.Cur >= len(dlg.Items) || !canViewSales(id) {
+			return
+		}
+		it := dlg.Items[dlg.Cur]
+		session, event := it.ID, dlg.EventID
+		b.showOrdersFresh(ctx, chatID, &msgID, from, ordersScope{
+			SessionID: &session, BackEvent: &event, Name: dlg.EventName + " · " + FormatWhen(it.Start, it.Tz),
+		})
 	case data == "sm" || data == "csv":
 		if dlg.Cur < 0 || dlg.Cur >= len(dlg.Items) || !canViewSales(id) {
 			return

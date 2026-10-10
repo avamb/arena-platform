@@ -234,6 +234,13 @@ func isEventsCallback(prefix string) bool {
 	return false
 }
 
+// isOrdersCallback reports whether a callback prefix belongs to the Orders
+// screens (the paging button's "noop" keeps them alive too); a press of
+// anything else ends their search / cancel-word dialog.
+func isOrdersCallback(prefix string) bool {
+	return prefix == "or" || prefix == "noop"
+}
+
 // ─── screens ──────────────────────────────────────────────────────────────────
 
 // showEvents is the list at the page asked for (page <= 0: where the person

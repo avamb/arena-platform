@@ -140,7 +140,7 @@ func (b *Bot) showEventCard(ctx context.Context, chatID int64, editMsgID *int, f
 			{Text: b.texts.T(loc, "bot.wz.copy_btn", nil), CallbackData: "wz:copy:" + eventID.String()},
 		},
 		[]models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.sample_btn", nil), CallbackData: "sample:" + eventID.String()}},
-		[]models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.ses.open_btn", nil), CallbackData: "ses:list:" + eventID.String()}},
+		b.sessionsOrdersRow(loc, id, eventID),
 		[]models.InlineKeyboardButton{
 			{Text: "« " + b.texts.T(loc, "bot.btn_back", nil), CallbackData: "el:b"},
 			{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"},
@@ -235,4 +235,14 @@ func nextSession(sessions []openapi.EventSummarySession, now time.Time) (openapi
 		}
 	}
 	return openapi.EventSummarySession{}, false
+}
+
+// sessionsOrdersRow is the card's "Sessions" button, with "Orders" (the
+// orders of this event) beside it for a role that may read orders.
+func (b *Bot) sessionsOrdersRow(loc string, id *Identity, eventID uuid.UUID) []models.InlineKeyboardButton {
+	row := []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.ses.open_btn", nil), CallbackData: "ses:list:" + eventID.String()}}
+	if canViewSales(id) {
+		row = append(row, models.InlineKeyboardButton{Text: b.texts.T(loc, "bot.ord.btn", nil), CallbackData: "or:e:" + eventID.String()})
+	}
+	return row
 }
