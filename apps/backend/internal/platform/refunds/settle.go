@@ -23,7 +23,7 @@ func (e *Engine) settle(ctx context.Context, r Refund, pay Payment) {
 		return
 	}
 	cancelled := e.cancelTickets(ctx, r, pay)
-	e.projectOrder(ctx, r)
+	e.projectOrder(ctx, r, pay)
 	if r.State == StateSucceeded {
 		e.publish(ctx, r, pay, cancelled)
 	}
@@ -99,16 +99,29 @@ func (e *Engine) cancelOne(ctx context.Context, req CancelRequest) {
 }
 
 // projectOrder moves the order to refunded (no active ticket left) or
-// partially_refunded, and appends one order_events row per refund.
-func (e *Engine) projectOrder(ctx context.Context, r Refund) {
-	if r.OrderID == nil {
+// partially_refunded, and appends one order_events row per refund. A flat
+// refund names no order; its payment's checkout session does.
+func (e *Engine) projectOrder(ctx context.Context, r Refund, pay Payment) {
+	if r.OrderID == nil && pay.CheckoutSessionID == nil {
 		return
 	}
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
+		orderID := r.OrderID
+		if orderID == nil {
+			var id uuid.UUID
+			err := tx.QueryRow(ctx, `SELECT id FROM orders WHERE checkout_session_id = $1`, *pay.CheckoutSessionID).Scan(&id)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			orderID = &id
+		}
 		var already bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM order_events
 			WHERE order_id = $1 AND type IN ('ticket_refunded', 'refunded') AND payload->>'refund_id' = $2)`,
-			*r.OrderID, r.ID.String()).Scan(&already); err != nil {
+			*orderID, r.ID.String()).Scan(&already); err != nil {
 			return err
 		}
 		if already {
@@ -119,7 +132,7 @@ func (e *Engine) projectOrder(ctx context.Context, r Refund) {
 			                                WHERE t.checkout_session_id = o.checkout_session_id AND t.status = 'active')
 			                  THEN 'partially_refunded' ELSE 'refunded' END,
 			    updated_at = now()
-			WHERE o.id = $1 AND o.status IN ('paid', 'partially_refunded')`, *r.OrderID); err != nil {
+			WHERE o.id = $1 AND o.status IN ('paid', 'partially_refunded')`, *orderID); err != nil {
 			return err
 		}
 		kind := "refunded"
@@ -134,7 +147,7 @@ func (e *Engine) projectOrder(ctx context.Context, r Refund) {
 			return err
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO order_events (order_id, type, actor, payload) VALUES ($1, $2, 'system', $3)`,
-			*r.OrderID, kind, raw)
+			*orderID, kind, raw)
 		return err
 	})
 	if err != nil {

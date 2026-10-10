@@ -68,8 +68,8 @@ func (e *Engine) Sweep(ctx context.Context, now time.Time, notifier Notifier) (S
 
 	retry, err := e.selectIDs(ctx, `SELECT id FROM refunds
 		WHERE settlement = 'provider' AND provider IS NOT NULL AND state = 'provider_pending'
-		  AND provider_refund_id IS NULL AND COALESCE(provider_attempted_at, created_at) <= $1
-		ORDER BY created_at LIMIT `+strconv.Itoa(sweepBatch), now.Add(-CallStaleAfter))
+		  AND provider_refund_id IS NULL AND COALESCE(provider_attempted_at, created_at) <= $1 AND (cardinality($2::uuid[]) = 0 OR org_id = ANY($2::uuid[]))
+		ORDER BY created_at LIMIT `+strconv.Itoa(sweepBatch), now.Add(-CallStaleAfter), e.scopeOrgs())
 	if err != nil {
 		return rep, fmt.Errorf("refunds: select retries: %w", err)
 	}
@@ -83,8 +83,8 @@ func (e *Engine) Sweep(ctx context.Context, now time.Time, notifier Notifier) (S
 
 	lookup, err := e.selectIDs(ctx, `SELECT id FROM refunds
 		WHERE settlement = 'provider' AND provider IS NOT NULL AND state = 'provider_pending'
-		  AND provider_refund_id IS NOT NULL AND updated_at <= $1
-		ORDER BY updated_at LIMIT `+strconv.Itoa(sweepBatch), now.Add(-LookupAfter))
+		  AND provider_refund_id IS NOT NULL AND updated_at <= $1 AND (cardinality($2::uuid[]) = 0 OR org_id = ANY($2::uuid[]))
+		ORDER BY updated_at LIMIT `+strconv.Itoa(sweepBatch), now.Add(-LookupAfter), e.scopeOrgs())
 	if err != nil {
 		return rep, fmt.Errorf("refunds: select lookups: %w", err)
 	}
@@ -104,8 +104,8 @@ func (e *Engine) Sweep(ctx context.Context, now time.Time, notifier Notifier) (S
 		            SELECT 1 FROM payment_intents p JOIN tickets t ON t.checkout_session_id = p.checkout_session_id
 		            WHERE p.id = r.payment_intent_id AND r.amount >= p.amount AND t.status = 'active')
 		           AND NOT EXISTS (SELECT 1 FROM tickets t2 WHERE t2.refund_id = r.id)))
-		  AND r.updated_at <= $1
-		ORDER BY r.updated_at LIMIT `+strconv.Itoa(sweepBatch), now.Add(-CallStaleAfter))
+		  AND r.updated_at <= $1 AND (cardinality($2::uuid[]) = 0 OR r.org_id = ANY($2::uuid[]))
+		ORDER BY r.updated_at LIMIT `+strconv.Itoa(sweepBatch), now.Add(-CallStaleAfter), e.scopeOrgs())
 	if err != nil {
 		return rep, fmt.Errorf("refunds: select repairs: %w", err)
 	}
@@ -116,7 +116,7 @@ func (e *Engine) Sweep(ctx context.Context, now time.Time, notifier Notifier) (S
 			continue
 		}
 		e.cancelTickets(ctx, r, pay)
-		e.projectOrder(ctx, r)
+		e.projectOrder(ctx, r, pay)
 		rep.Repaired++
 	}
 	return rep, nil
@@ -169,9 +169,9 @@ func (e *Engine) parkStuck(ctx context.Context, now time.Time) ([]Refund, error)
 			    failure_reason = COALESCE(failure_reason, 'the provider did not confirm this refund within 24 hours')
 			WHERE id IN (SELECT id FROM refunds
 			             WHERE settlement = 'provider' AND provider IS NOT NULL AND state = 'provider_pending'
-			               AND created_at <= $1 ORDER BY created_at LIMIT `+strconv.Itoa(sweepBatch)+`
+			               AND created_at <= $1 AND (cardinality($2::uuid[]) = 0 OR org_id = ANY($2::uuid[])) ORDER BY created_at LIMIT `+strconv.Itoa(sweepBatch)+`
 			             FOR UPDATE SKIP LOCKED)
-			RETURNING `+refundColumns, now.Add(-StuckAfter))
+			RETURNING `+refundColumns, now.Add(-StuckAfter), e.scopeOrgs())
 		if err != nil {
 			return err
 		}
@@ -379,4 +379,14 @@ func ScheduleInitialJob(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("refunds: enqueue initial sweep job: %w", err)
 	}
 	return nil
+}
+
+// scopeOrgs is the organization filter of a sweep pass: empty (every
+// organization) in production; tests set Options.SweepOrgs so a pass never
+// touches another test package's refunds in a shared database.
+func (e *Engine) scopeOrgs() []uuid.UUID {
+	if e.sweepOrgs == nil {
+		return []uuid.UUID{}
+	}
+	return e.sweepOrgs
 }

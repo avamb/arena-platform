@@ -146,6 +146,9 @@ type Options struct {
 	Logger          *slog.Logger
 	// CallTimeout bounds one provider call; DefaultCallTimeout when zero.
 	CallTimeout time.Duration
+	// SweepOrgs restricts refund.sweep to these organizations. Tests only:
+	// production leaves it nil and sweeps every organization.
+	SweepOrgs []uuid.UUID
 }
 
 // Engine drives refunds through payment modules.
@@ -158,6 +161,7 @@ type Engine struct {
 	metrics         *observability.Metrics
 	logger          *slog.Logger
 	callTimeout     time.Duration
+	sweepOrgs       []uuid.UUID
 }
 
 // New builds an Engine. DB and Modules are required for anything to work;
@@ -172,7 +176,7 @@ func New(o Options) *Engine {
 	}
 	return &Engine{
 		db: o.DB, modules: o.Modules, cancelTicket: o.CancelTicket, publishRefunded: o.PublishRefunded,
-		audit: o.Audit, metrics: o.Metrics, logger: o.Logger, callTimeout: o.CallTimeout,
+		audit: o.Audit, metrics: o.Metrics, logger: o.Logger, callTimeout: o.CallTimeout, sweepOrgs: o.SweepOrgs,
 	}
 }
 
