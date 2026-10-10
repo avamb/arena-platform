@@ -291,8 +291,10 @@ func TestSEC1_AuthorityIsCheckedInThePathOrganization(t *testing.T) {
 	if e.hasActive(t, caller, orgA, "org_admin") || !e.hasActive(t, other, orgA, "organizer") {
 		t.Error("an agent of A changed A's memberships with authority held in B")
 	}
-	// Reading the member list is a member's right (membership.read, 0011).
-	e.expect(t, http.StatusOK, http.MethodGet, a, tok, "", "")
+	// The agent role holds no membership.read in A, and authority held as
+	// owner of B does not carry over. In B the owner reads the list.
+	e.expect(t, http.StatusForbidden, http.MethodGet, a, tok, "", "")
+	e.expect(t, http.StatusOK, http.MethodGet, "/v1/organizations/"+orgB.String()+"/members", tok, "", "")
 }
 
 // An organization API key with membership scopes stays in its organization
