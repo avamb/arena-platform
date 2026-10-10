@@ -356,7 +356,10 @@ func (a *Adapter) Refund(ctx context.Context, req payments.RefundRequest) (payme
 
 	rawBody, _, err := a.doRequest(ctx, http.MethodPost, a.cfg.BaseURL+"/refunds", form, req.IdempotencyKey)
 	if err != nil {
-		return payments.RefundResult{}, fmt.Errorf("stripe: Refund: %w", err)
+		// A definitive 4xx is a *payments.RefundDeclinedError (no money
+		// moved); anything else stays an unknown outcome the engine
+		// retries with the same idempotency key.
+		return payments.RefundResult{}, fmt.Errorf("stripe: Refund: %w", declinedError(err))
 	}
 	var refund refundObject
 	if err := json.Unmarshal(rawBody, &refund); err != nil {
@@ -388,6 +391,47 @@ func (a *Adapter) RefundStatus(ctx context.Context, providerRefundID string) (pa
 		return payments.RefundResult{}, fmt.Errorf("stripe: RefundStatus: response has no refund id")
 	}
 	return refundResult(refund), nil
+}
+
+// ResolveChargeRef returns the pi_… a refund is driven through. A pi_… is
+// returned unchanged; a hosted Checkout Session (cs_…) is read back via
+// GET /v1/checkout/sessions/{id} for its payment_intent. A session Stripe
+// does not know, or one without a payment intent, is a
+// *payments.RefundDeclinedError — no refund is possible through it.
+//
+// Implements payments.ChargeRefResolver.
+func (a *Adapter) ResolveChargeRef(ctx context.Context, providerPaymentID string) (string, error) {
+	id := strings.TrimSpace(providerPaymentID)
+	switch {
+	case strings.HasPrefix(id, "pi_"):
+		return id, nil
+	case !strings.HasPrefix(id, "cs_"):
+		return "", &payments.RefundDeclinedError{Code: "charge_ref_unknown_shape", Message: "the stored payment id is neither a payment intent nor a checkout session"}
+	}
+	rawBody, _, err := a.doRequest(ctx, http.MethodGet, a.cfg.BaseURL+"/checkout/sessions/"+url.PathEscape(id), nil, "")
+	if err != nil {
+		return "", fmt.Errorf("stripe: ResolveChargeRef: %w", declinedError(err))
+	}
+	var session struct {
+		PaymentIntent json.RawMessage `json:"payment_intent"`
+	}
+	if err := json.Unmarshal(rawBody, &session); err != nil {
+		return "", fmt.Errorf("stripe: ResolveChargeRef: unmarshal response: %w", err)
+	}
+	// payment_intent is an id string, or an object when expanded.
+	var pi string
+	if err := json.Unmarshal(session.PaymentIntent, &pi); err != nil {
+		var obj struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(session.PaymentIntent, &obj) == nil {
+			pi = obj.ID
+		}
+	}
+	if !strings.HasPrefix(pi, "pi_") {
+		return "", &payments.RefundDeclinedError{Code: "charge_ref_missing", Message: "the checkout session has no payment intent"}
+	}
+	return pi, nil
 }
 
 func truncateRunes(s string, n int) string {

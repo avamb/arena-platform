@@ -22,6 +22,7 @@ package stripe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -216,15 +217,61 @@ func (a *Adapter) doRequest(ctx context.Context, method, endpoint string, form u
 	}
 
 	if resp.StatusCode >= 400 {
+		e := &apiError{Status: resp.StatusCode}
 		var apiErr stripeAPIError
 		if jsonErr := json.Unmarshal(rawBody, &apiErr); jsonErr == nil && apiErr.Error.Message != "" {
-			return nil, resp.StatusCode, fmt.Errorf("stripe: API error (status %d, type %s, code %s): %s",
-				resp.StatusCode, apiErr.Error.Type, apiErr.Error.Code, apiErr.Error.Message)
+			e.Type, e.Code, e.Message = apiErr.Error.Type, apiErr.Error.Code, apiErr.Error.Message
+		} else {
+			e.raw = string(rawBody)
 		}
-		return nil, resp.StatusCode, fmt.Errorf("stripe: API error (status %d): %s", resp.StatusCode, string(rawBody))
+		return nil, resp.StatusCode, e
 	}
 
 	return rawBody, resp.StatusCode, nil
+}
+
+// apiError is a Stripe answer with an HTTP status >= 400. Its text is the
+// one doRequest always produced; the fields let a caller tell a definitive
+// refusal from a transient failure (PAY-03).
+type apiError struct {
+	Status              int
+	Type, Code, Message string
+	raw                 string
+}
+
+func (e *apiError) Error() string {
+	if e.Message != "" {
+		return fmt.Sprintf("stripe: API error (status %d, type %s, code %s): %s", e.Status, e.Type, e.Code, e.Message)
+	}
+	return fmt.Sprintf("stripe: API error (status %d): %s", e.Status, e.raw)
+}
+
+// definitive reports whether Stripe refused the request for good: a 4xx
+// other than 409 (an idempotent request still in flight) and 429 (rate
+// limited). A 5xx or a transport error is an unknown outcome.
+func (e *apiError) definitive() bool {
+	return e.Status >= 400 && e.Status < 500 && e.Status != http.StatusConflict && e.Status != http.StatusTooManyRequests
+}
+
+// declinedError turns a definitive Stripe refusal into the provider-neutral
+// payments.RefundDeclinedError; any other error is returned as is.
+func declinedError(err error) error {
+	var e *apiError
+	if !errors.As(err, &e) || !e.definitive() {
+		return err
+	}
+	code := e.Code
+	if code == "" {
+		code = e.Type
+	}
+	if code == "" {
+		code = fmt.Sprintf("http_%d", e.Status)
+	}
+	msg := e.Message
+	if msg == "" {
+		msg = e.Error()
+	}
+	return &payments.RefundDeclinedError{Code: code, Message: msg}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

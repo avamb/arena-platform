@@ -220,6 +220,15 @@ type Metrics struct {
 	// Metric name: arena_payment_webhook_events_total.
 	PaymentWebhookEventsTotal *prometheus.CounterVec
 
+	// RefundProviderCallsTotal counts refund calls the refund engine made
+	// to a payment module, by outcome: succeeded, pending, declined (the
+	// provider refused, no money moved) or unknown (timeout / 5xx — the
+	// refund stays pending and refund.sweep retries it). PAY-03. The label
+	// set is fixed by the engine; no provider, org or amount label.
+	//
+	// Metric name: arena_payment_refund_provider_calls_total.
+	RefundProviderCallsTotal *prometheus.CounterVec
+
 	// IdempotencyCleanupDeletedTotal counts idempotency_keys rows deleted by
 	// the scheduled maintenance job (job_type='idempotency.cleanup'). Each
 	// cleanup run adds the number of rows purged. A rising value confirms the
@@ -381,6 +390,16 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 			},
 			[]string{LabelEventType, LabelOutcome},
 		),
+
+		RefundProviderCallsTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: MetricsNamespace,
+				Subsystem: subsystemPayment,
+				Name:      "refund_provider_calls_total",
+				Help:      "Total refund calls the refund engine made to a payment module, by outcome (succeeded, pending, declined, unknown).",
+			},
+			[]string{LabelOutcome},
+		),
 	}
 
 	for _, c := range []prometheus.Collector{
@@ -399,6 +418,7 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 		m.IdempotencyCleanupDeletedTotal,
 		m.PaymentWebhookSignatureFailuresTotal,
 		m.PaymentWebhookEventsTotal,
+		m.RefundProviderCallsTotal,
 	} {
 		if err := reg.Register(c); err != nil {
 			// If a peer test already registered the same metric on the

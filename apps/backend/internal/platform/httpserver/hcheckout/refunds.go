@@ -44,6 +44,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -249,6 +250,13 @@ func (h *Handler) HandleCreateRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// PAY-03: a payment arena cannot return money through (the seller's own
+	// site, a provider without a refund module) is refused before anything
+	// is written. Read on the pool BEFORE the transaction opens.
+	if !h.refundRouteAllowed(w, r, paymentIntentID) {
+		return
+	}
+
 	// ── Transactional protection (feature #361) ───────────────────────────────
 	// Begin a transaction and lock the payment intent row with FOR UPDATE.
 	// This serialises concurrent refund creation so concurrent duplicate
@@ -262,6 +270,16 @@ func (h *Handler) HandleCreateRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+
+	// The per-payment advisory lock every refund writer holds, first
+	// statement (the refund engine and arena-worker take the same one).
+	if lockErr := refunds.LockPayment(ctx, tx, paymentIntentID); lockErr != nil {
+		h.logger.Error("refund: payment lock failed", slog.String("error", lockErr.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"refund.tx_failed", "failed to begin transaction", r,
+		))
+		return
+	}
 
 	txq := h.refundQueries.WithTx(tx)
 
@@ -485,6 +503,16 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// PAY-03: decide the route BEFORE the transaction (pool reads). A
+	// refundable payment is driven through the refund engine after the
+	// commit; a payment arena cannot refund through is refused with nothing
+	// written; a provider the registry does not know at all (the test-only
+	// mock) keeps the old behaviour and waits for /v1/refunds/webhook.
+	pre, preOK := h.approvePrecheck(w, r, id)
+	if !preOK {
+		return
+	}
+
 	// ── Transactional protection (feature #361) ───────────────────────────────
 	// Wrap the entire approve flow in a transaction that locks the payment
 	// intent row. This prevents a race where two concurrent approvals of two
@@ -498,6 +526,16 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+
+	if pre.paymentIntentID != nil {
+		if lockErr := refunds.LockPayment(ctx, tx, *pre.paymentIntentID); lockErr != nil {
+			h.logger.Error("refund: approve payment lock failed", slog.String("error", lockErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"refund.tx_failed", "failed to begin transaction", r,
+			))
+			return
+		}
+	}
 
 	txq := h.refundQueries.WithTx(tx)
 
@@ -615,6 +653,21 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 
 	// Policy check: determine if manual review is required.
 	// Condition: partial refund AND checkout session exists AND some tickets not 'active'.
+	// The route again, from inside the transaction: the pre-check may not
+	// have been able to read the payment, and a refundable payment must
+	// NEVER fall through to the pre-engine "pretend" branch below.
+	route := refundRoute(ctx, txq, pi)
+	if ref := refunds.RouteRefusal(route, pi.Provider); ref != nil {
+		writeRefundError(w, r, ref)
+		return
+	}
+	if route == refunds.RouteArenaProvider && h.refundEngine == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			refunds.CodeEngineUnavailable, "refunds cannot be sent to the payment provider right now", r,
+		))
+		return
+	}
+
 	needsManualReview := h.refundNeedsManualReviewWithPI(ctx, refund, pi)
 
 	if needsManualReview {
@@ -653,6 +706,29 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Engine path (PAY-03): mark it an engine refund waiting for its
+	// provider call, commit, then call the provider OUTSIDE the transaction.
+	if route == refunds.RouteArenaProvider {
+		if _, markErr := refunds.MarkApprovedTx(ctx, tx, id, pi.Provider); markErr != nil {
+			h.logger.Error("refund: approve (engine) transition failed",
+				slog.String("id", id.String()), slog.String("error", markErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"refund.transition_failed", "failed to approve refund", r,
+			))
+			return
+		}
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			h.logger.Error("refund: approve (engine) tx commit failed",
+				slog.String("id", id.String()), slog.String("error", commitErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"refund.tx_commit_failed", "failed to commit refund transaction", r,
+			))
+			return
+		}
+		h.respondDrivenRefund(w, r, id)
+		return
+	}
+
 	// Standard path: requested → approved → provider_pending (all inside the tx).
 	approved, approveErr := txq.UpdateRefundState(ctx, id, "approved", nil, nil)
 	if approveErr != nil {
@@ -670,7 +746,9 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Immediately advance to provider_pending (simulating provider submission).
+	// A provider the registry does not know (the test-only mock provider):
+	// advance to provider_pending and wait for /v1/refunds/webhook, as
+	// before PAY-03. No real provider reaches this branch.
 	updated, pendingErr := txq.UpdateRefundState(ctx, approved.ID, "provider_pending", nil, nil)
 	if pendingErr != nil {
 		// Log but return the approved state — partial progress is still useful.
