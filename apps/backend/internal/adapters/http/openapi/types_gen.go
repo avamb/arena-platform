@@ -4688,7 +4688,10 @@ type CreateRefundRequest struct {
 	Reason *string `json:"reason"`
 
 	// RequestedBy Optional free-form identifier of the requesting actor
-	// (admin user id, support ticket id, etc.).
+	// (admin user id, support ticket id, etc.). The prefix
+	// `ticket.cancel:` (any case) is reserved for the refund that
+	// `POST /v1/tickets/{id}/cancel` writes and is rejected with
+	// 400 `refund.reserved_requested_by`.
 	RequestedBy *string `json:"requested_by"`
 }
 

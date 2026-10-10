@@ -50,6 +50,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
 
 // cancelBodyLimit caps the JSON payload for the cancel endpoint.
@@ -332,9 +333,7 @@ func (h *Handler) createAutomaticRefund(
 		return nil, ticket, errors.New("no payment intent resolved for automatic refund")
 	}
 	requestedBy := "ticket.cancel:" + ticket.ID.String()
-	refund, err := h.reservationQueries.InsertRefund(ctx,
-		intent.ID, intent.OrgID, amount, intent.Currency, &reason, &requestedBy,
-	)
+	refund, err := h.insertAutomaticRefund(ctx, intent, ticket.ID, amount, reason, requestedBy)
 	if err != nil {
 		return nil, ticket, err
 	}
@@ -355,6 +354,47 @@ func (h *Handler) createAutomaticRefund(
 		Amount:   refund.Amount,
 		Currency: refund.Currency,
 	}, updated, nil
+}
+
+// errAutomaticRefundExceeds: the payment has no room left for this refund.
+var errAutomaticRefundExceeds = errors.New("automatic refund would exceed the payment")
+
+// insertAutomaticRefund writes the requested refund under the payment's
+// refund lock (refunds.LockPayment), with the same budget check every
+// other refund writer runs, so it can never race the refund engine or
+// refund.sweep into an over-refund (PAY-03 review). Without a pool (unit
+// tests) it falls back to the plain insert. The refund is marked with the
+// ticket it speaks for (refunds.cancelled_ticket_id) in the same
+// transaction: the refund engine reads that marker, never requested_by,
+// which a POST /v1/refunds client controls (PAY-03 fifth review, M-4).
+func (h *Handler) insertAutomaticRefund(ctx context.Context, intent *gen.PaymentIntentRow, ticketID uuid.UUID, amount int64, reason, requestedBy string) (gen.RefundRow, error) {
+	if h.pool == nil {
+		return h.reservationQueries.InsertRefund(ctx, intent.ID, intent.OrgID, amount, intent.Currency, &reason, &requestedBy)
+	}
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return gen.RefundRow{}, err
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	if err := refunds.LockPayment(ctx, tx, intent.ID); err != nil {
+		return gen.RefundRow{}, err
+	}
+	q := h.reservationQueries.WithTx(tx)
+	already, err := q.SumNonFailedRefundsByIntent(ctx, intent.ID)
+	if err != nil {
+		return gen.RefundRow{}, err
+	}
+	if already+amount > intent.Amount {
+		return gen.RefundRow{}, errAutomaticRefundExceeds
+	}
+	row, err := q.InsertRefund(ctx, intent.ID, intent.OrgID, amount, intent.Currency, &reason, &requestedBy)
+	if err != nil {
+		return gen.RefundRow{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE refunds SET cancelled_ticket_id = $2 WHERE id = $1`, row.ID, ticketID); err != nil {
+		return gen.RefundRow{}, err
+	}
+	return row, tx.Commit(ctx)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

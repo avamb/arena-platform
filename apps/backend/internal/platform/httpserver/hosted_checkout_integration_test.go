@@ -61,15 +61,35 @@ const hostedTicketsBaseURL = "https://tickets.arena-integration.test"
 // stubStripe answers POST /v1/checkout/sessions with a fresh cs_… session per
 // call and records the form it was sent, so a test can assert the wire shape
 // the buyer's payment actually depended on.
+//
+// PAY-03 added the refund side (refund_engine_integration_test.go): POST
+// /v1/refunds answers with refundHandler when set, and GET
+// /v1/checkout/sessions/{id} reads a session back with the pi_… behind it.
 type stubStripe struct {
 	server   *httptest.Server
 	sessions []url.Values
+
+	// refundHandler answers POST /v1/refunds; nil answers 404.
+	refundHandler http.HandlerFunc
+	// sessionPI is the payment_intent GET /v1/checkout/sessions/{id}
+	// reports; empty answers 404.
+	sessionPI string
 }
 
 func newStubStripe(t *testing.T) *stubStripe {
 	t.Helper()
 	s := &stubStripe{}
 	s.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/refunds") && s.refundHandler != nil:
+			s.refundHandler(w, r)
+			return
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/checkout/sessions/") && s.sessionPI != "":
+			id := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w, `{"id":%q,"payment_intent":%q}`, id, s.sessionPI)
+			return
+		}
 		if !strings.HasSuffix(r.URL.Path, "/checkout/sessions") {
 			w.WriteHeader(http.StatusNotFound)
 			return

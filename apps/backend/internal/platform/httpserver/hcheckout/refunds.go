@@ -35,6 +35,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -44,6 +45,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -242,10 +244,29 @@ func (h *Handler) HandleCreateRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// "ticket.cancel:" labels the refund the ticket-cancel route writes; a
+	// client must not dress a flat refund up as one (PAY-03 fifth review,
+	// M-4 — the engine keys on refunds.cancelled_ticket_id, this keeps the
+	// audit trail honest too).
+	if req.RequestedBy != nil && strings.HasPrefix(strings.ToLower(strings.TrimSpace(*req.RequestedBy)), refunds.TicketCancelRequestedByPrefix) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"refund.reserved_requested_by", "requested_by must not start with "+refunds.TicketCancelRequestedByPrefix, r,
+			map[string]any{"field": "requested_by"},
+		))
+		return
+	}
+
 	if h.paymentIntentQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "payment intent queries not available", r,
 		))
+		return
+	}
+
+	// PAY-03: a payment arena cannot return money through (the seller's own
+	// site, a provider without a refund module) is refused before anything
+	// is written. Read on the pool BEFORE the transaction opens.
+	if !h.refundRouteAllowed(w, r, paymentIntentID) {
 		return
 	}
 
@@ -262,6 +283,16 @@ func (h *Handler) HandleCreateRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+
+	// The per-payment advisory lock every refund writer holds, first
+	// statement (the refund engine and arena-worker take the same one).
+	if lockErr := refunds.LockPayment(ctx, tx, paymentIntentID); lockErr != nil {
+		h.logger.Error("refund: payment lock failed", slog.String("error", lockErr.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"refund.tx_failed", "failed to begin transaction", r,
+		))
+		return
+	}
 
 	txq := h.refundQueries.WithTx(tx)
 
@@ -485,6 +516,15 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// PAY-03: decide the route BEFORE the transaction (pool reads). A
+	// refundable payment is driven through the refund engine after the
+	// commit; a payment arena cannot refund through (including a provider
+	// the registry does not know) is refused with nothing written.
+	pre, preOK := h.approvePrecheck(w, r, id)
+	if !preOK {
+		return
+	}
+
 	// ── Transactional protection (feature #361) ───────────────────────────────
 	// Wrap the entire approve flow in a transaction that locks the payment
 	// intent row. This prevents a race where two concurrent approvals of two
@@ -498,6 +538,32 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+
+	// The payment's advisory lock is taken UNCONDITIONALLY (PAY-03 review):
+	// when the pre-check could not name the payment, read it here — the
+	// refund's payment never changes — so no approval runs unlocked next to
+	// the engine or the sweep.
+	lockPI := pre.paymentIntentID
+	if lockPI == nil {
+		var pid *uuid.UUID
+		if qerr := tx.QueryRow(ctx, `SELECT payment_intent_id FROM refunds WHERE id = $1`, id).Scan(&pid); qerr != nil && !errors.Is(qerr, pgx.ErrNoRows) {
+			h.logger.Error("refund: approve payment read failed", slog.String("error", qerr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"refund.fetch_failed", "failed to retrieve refund", r,
+			))
+			return
+		}
+		lockPI = pid
+	}
+	if lockPI != nil {
+		if lockErr := refunds.LockPayment(ctx, tx, *lockPI); lockErr != nil {
+			h.logger.Error("refund: approve payment lock failed", slog.String("error", lockErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"refund.tx_failed", "failed to begin transaction", r,
+			))
+			return
+		}
+	}
 
 	txq := h.refundQueries.WithTx(tx)
 
@@ -615,6 +681,21 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 
 	// Policy check: determine if manual review is required.
 	// Condition: partial refund AND checkout session exists AND some tickets not 'active'.
+	// The route again, from inside the transaction: the pre-check may not
+	// have been able to read the payment, and a refundable payment must
+	// NEVER fall through to the pre-engine "pretend" branch below.
+	route := refundRoute(ctx, txq, pi)
+	if ref := refunds.RouteRefusal(route, pi.Provider); ref != nil {
+		writeRefundError(w, r, ref)
+		return
+	}
+	if route == refunds.RouteArenaProvider && h.refundEngine == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			refunds.CodeEngineUnavailable, "refunds cannot be sent to the payment provider right now", r,
+		))
+		return
+	}
+
 	needsManualReview := h.refundNeedsManualReviewWithPI(ctx, refund, pi)
 
 	if needsManualReview {
@@ -653,57 +734,37 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Standard path: requested → approved → provider_pending (all inside the tx).
-	approved, approveErr := txq.UpdateRefundState(ctx, id, "approved", nil, nil)
-	if approveErr != nil {
-		if errors.Is(approveErr, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("refund.not_found", "refund not found", r))
+	// Engine path (PAY-03): mark it an engine refund waiting for its
+	// provider call, commit, then call the provider OUTSIDE the transaction.
+	if route == refunds.RouteArenaProvider {
+		if _, markErr := refunds.MarkApprovedTx(ctx, tx, id, pi.Provider); markErr != nil {
+			h.logger.Error("refund: approve (engine) transition failed",
+				slog.String("id", id.String()), slog.String("error", markErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"refund.transition_failed", "failed to approve refund", r,
+			))
 			return
 		}
-		h.logger.Error("refund: approved transition failed",
-			slog.String("id", id.String()),
-			slog.String("error", approveErr.Error()),
-		)
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"refund.transition_failed", "failed to approve refund", r,
-		))
+		if commitErr := tx.Commit(ctx); commitErr != nil {
+			h.logger.Error("refund: approve (engine) tx commit failed",
+				slog.String("id", id.String()), slog.String("error", commitErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"refund.tx_commit_failed", "failed to commit refund transaction", r,
+			))
+			return
+		}
+		h.respondDrivenRefund(w, r, id)
 		return
 	}
 
-	// Immediately advance to provider_pending (simulating provider submission).
-	updated, pendingErr := txq.UpdateRefundState(ctx, approved.ID, "provider_pending", nil, nil)
-	if pendingErr != nil {
-		// Log but return the approved state — partial progress is still useful.
-		h.logger.Error("refund: provider_pending transition failed",
-			slog.String("id", id.String()),
-			slog.String("error", pendingErr.Error()),
-		)
-		// Still commit the 'approved' transition.
-		_ = tx.Commit(ctx) //nolint:errcheck
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{
-			"refund": refundFromRow(approved),
-		})
-		return
-	}
-
-	if commitErr := tx.Commit(ctx); commitErr != nil {
-		h.logger.Error("refund: approve tx commit failed",
-			slog.String("id", id.String()),
-			slog.String("error", commitErr.Error()),
-		)
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"refund.tx_commit_failed", "failed to commit refund transaction", r,
-		))
-		return
-	}
-
-	h.logger.Info("refund: approved → provider_pending",
-		slog.String("id", id.String()),
-	)
-
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"refund": refundFromRow(updated),
-	})
+	// No other route reaches here: seller-site, unsupported and unknown
+	// providers were refused above (RouteRefusal), and the engine route
+	// returned. The pre-PAY-03 "pretend" branch (approved → provider_pending
+	// with nothing ever calling the provider) is gone (PAY-03 review).
+	h.logger.Error("refund: approve reached no refund route", slog.String("id", id.String()), slog.String("route", string(route)))
+	httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		"refund.transition_failed", "failed to approve refund", r,
+	))
 }
 
 // refundNeedsManualReviewWithPI is the inner implementation of
@@ -946,6 +1007,30 @@ func (h *Handler) HandleRefundWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("refund_webhook.lookup_failed", "failed to locate refund", r))
+		return
+	}
+
+	// A refund the engine drives (refunds.provider set, PAY-03) is never
+	// moved by this legacy route: its state follows the provider's answer
+	// and the sweep, and a webhook flipping it to failed would free its
+	// ticket for a second refund. Acknowledge, write nothing (review M3).
+	var engineRow bool
+	if err := h.refundQueries.DB().QueryRow(ctx,
+		`SELECT provider IS NOT NULL FROM refunds WHERE id = $1`, refund.ID).Scan(&engineRow); err != nil {
+		h.logger.Error("refund_webhook: engine check failed",
+			slog.String("refund_id", refundID.String()),
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("refund_webhook.lookup_failed", "failed to locate refund", r))
+		return
+	}
+	if engineRow {
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
+			"acknowledged": true,
+			"event_type":   req.EventType,
+			"processed":    false,
+			"reason":       "refund is driven by the refund engine; this route does not change it",
+		})
 		return
 	}
 

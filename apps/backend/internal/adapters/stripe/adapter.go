@@ -22,6 +22,7 @@ package stripe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -216,15 +217,73 @@ func (a *Adapter) doRequest(ctx context.Context, method, endpoint string, form u
 	}
 
 	if resp.StatusCode >= 400 {
+		e := &apiError{Status: resp.StatusCode}
 		var apiErr stripeAPIError
 		if jsonErr := json.Unmarshal(rawBody, &apiErr); jsonErr == nil && apiErr.Error.Message != "" {
-			return nil, resp.StatusCode, fmt.Errorf("stripe: API error (status %d, type %s, code %s): %s",
-				resp.StatusCode, apiErr.Error.Type, apiErr.Error.Code, apiErr.Error.Message)
+			e.Type, e.Code, e.Message = apiErr.Error.Type, apiErr.Error.Code, apiErr.Error.Message
+		} else {
+			e.raw = string(rawBody)
 		}
-		return nil, resp.StatusCode, fmt.Errorf("stripe: API error (status %d): %s", resp.StatusCode, string(rawBody))
+		return nil, resp.StatusCode, e
 	}
 
 	return rawBody, resp.StatusCode, nil
+}
+
+// apiError is a Stripe answer with an HTTP status >= 400. Its text is the
+// one doRequest always produced; the fields let a caller tell a definitive
+// refusal from a transient failure (PAY-03).
+type apiError struct {
+	Status              int
+	Type, Code, Message string
+	raw                 string
+}
+
+func (e *apiError) Error() string {
+	if e.Message != "" {
+		return fmt.Sprintf("stripe: API error (status %d, type %s, code %s): %s", e.Status, e.Type, e.Code, e.Message)
+	}
+	return fmt.Sprintf("stripe: API error (status %d): %s", e.Status, e.raw)
+}
+
+// definitive reports whether STRIPE refused the request for good. Only a
+// 4xx that carries Stripe's own error object counts, and not:
+//   - 409 (an idempotent request still in flight) or 429 (rate limited);
+//   - an idempotency_error (the key was reused with other parameters — the
+//     first request's fate is unknown);
+//   - a 4xx WITHOUT a Stripe JSON body: that is a proxy or an edge (403,
+//     408 …) talking, and Stripe may never have seen — or may have
+//     completed — the request.
+//
+// Everything else, 5xx and transport errors included, is an unknown outcome
+// the refund engine retries with the same idempotency key (PAY-03 review M2).
+func (e *apiError) definitive() bool {
+	if e.Status < 400 || e.Status >= 500 || e.Status == http.StatusConflict || e.Status == http.StatusTooManyRequests {
+		return false
+	}
+	if e.Message == "" || e.Type == "" {
+		return false
+	}
+	return e.Type != "idempotency_error"
+}
+
+// stripeAlreadyRefunded is Stripe's code for "this charge was refunded
+// already" — possibly by an earlier attempt of this very refund, or by hand
+// in the dashboard. Never a plain failure: a human checks.
+const stripeAlreadyRefunded = "charge_already_refunded"
+
+// declinedError turns a definitive Stripe refusal into the provider-neutral
+// payments.RefundDeclinedError; any other error is returned as is.
+func declinedError(err error) error {
+	var e *apiError
+	if !errors.As(err, &e) || !e.definitive() {
+		return err
+	}
+	code := e.Code
+	if code == "" {
+		code = e.Type
+	}
+	return &payments.RefundDeclinedError{Code: code, Message: e.Message, NeedsReview: e.Code == stripeAlreadyRefunded}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

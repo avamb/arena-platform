@@ -58,6 +58,13 @@ type CancelTicketParams struct {
 	// disagree, and the v1.ticket.cancelled consumers (the site webhook
 	// carries refund_price) never observe the ticket without its amount.
 	Refund *CancelRefundRecord
+	// RefundID, when non-nil, is a refund arena drove through the payment
+	// provider and the provider already ACCEPTED (the refund engine, PAY-03:
+	// money first, then the ticket). The cancellation links the ticket to it
+	// (tickets.refund_id) and stamps refund_date and refund_price
+	// (RefundAmount) in the same transaction. Mutually exclusive with Refund,
+	// which books money a seller returned outside arena.
+	RefundID *uuid.UUID
 }
 
 // CancelRefundRecord is the refund decision CancelTicketTx records with the
@@ -219,6 +226,22 @@ func (h *Handler) CancelTicketTx(ctx context.Context, p CancelTicketParams) (Can
 			}
 		}
 		cancelled = recorded
+	} else if p.RefundID != nil {
+		now := time.Now().UTC()
+		recorded, recErr := txq.SetTicketRefundRecord(ctx, cancelled.ID, p.RefundID, &now, p.RefundAmount)
+		if recErr != nil {
+			h.logger.Error("ticket.cancel: provider refund link failed",
+				slog.String("id", p.TicketID.String()),
+				slog.String("error", recErr.Error()),
+			)
+			return out, &CancelTicketError{
+				Status:  http.StatusInternalServerError,
+				Code:    "ticket.refund_record_failed",
+				Message: "failed to record the refund",
+				Err:     recErr,
+			}
+		}
+		cancelled = recorded
 	}
 
 	// Audit: who cancelled what, when, why, and the refund decision.
@@ -235,6 +258,9 @@ func (h *Handler) CancelTicketTx(ctx context.Context, p CancelTicketParams) (Can
 		}
 		if p.ActorLabel != "" {
 			meta["actor"] = p.ActorLabel
+		}
+		if p.RefundID != nil {
+			meta["refund_id"] = p.RefundID.String()
 		}
 		if auditErr := h.audit.WriteTx(ctx, tx, audit.Event{
 			OccurredAt:   time.Now().UTC(),

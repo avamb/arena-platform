@@ -13,6 +13,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
 
 const pgUniqueViolation = "23505"
@@ -276,6 +277,11 @@ type Handler struct {
 	// payment intent of a given organization (org_access.go). Nil fails
 	// closed.
 	rowOrgAccess RowOrgAccess
+
+	// refundEngine drives approved refunds through the payment module
+	// (refund_engine.go, PAY-03). Nil: a refundable payment's approval
+	// answers 503 and writes nothing.
+	refundEngine *refunds.Engine
 }
 
 // WithMetrics wires the Prometheus collectors used by the payment-webhook
