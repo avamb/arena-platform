@@ -4646,6 +4646,10 @@ type CreatePromoCodeRequestStatus string
 
 // CreatePromoterRequest Body of POST /v1/organizations/{org_id}/promoters.
 type CreatePromoterRequest struct {
+	// Address Optional postal address, at most 300 characters (400
+	// `promoter.invalid_address` otherwise). Blank is stored as null.
+	Address *string `json:"address"`
+
 	// Email Optional contact e-mail. Blank is stored as null.
 	Email *string `json:"email"`
 
@@ -4664,6 +4668,11 @@ type CreatePromoterRequest struct {
 	// `promoter.duplicate_slug` when a promoter or an organization
 	// already uses it.
 	Slug *string `json:"slug"`
+
+	// Website Optional website. "https://" is added when no scheme is typed; it
+	// must be an http(s) address with a host of at most 300 characters
+	// (400 `promoter.invalid_website` otherwise). Blank is stored as null.
+	Website *string `json:"website"`
 }
 
 // CreateRefundRequest Request body for `POST /v1/refunds`. Creates a new refund row
@@ -9830,6 +9839,9 @@ type PromoRedemptionListResponse struct {
 // `https://tickets.arenasoldout.com/{slug}`, listing the events
 // linked to it; `/{slug}/{event_slug}` is one of them.
 type Promoter struct {
+	// Address Postal address, free text of at most 300 characters (migration 0139); null when not set.
+	Address *string `json:"address"`
+
 	// Archived True when the promoter is archived and can no longer be linked to an event.
 	Archived bool `json:"archived"`
 
@@ -9873,6 +9885,9 @@ type Promoter struct {
 
 	// UpdatedAt Last update timestamp (RFC 3339).
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// Website Website, an http(s) address of at most 300 characters (migration 0139); null when not set.
+	Website *string `json:"website"`
 }
 
 // PromoterEnvelope Single-promoter response envelope.
@@ -12625,6 +12640,9 @@ type UpdatePromoCodeRequestStatus string
 // is tri-state: absent = keep, null = clear, value = set. `name` can
 // be changed but never cleared.
 type UpdatePromoterRequest struct {
+	// Address Postal address (see CreatePromoterRequest.address); null or blank clears it.
+	Address *string `json:"address"`
+
 	// Archived true archives the promoter, false restores it.
 	Archived *bool `json:"archived,omitempty"`
 
@@ -12647,6 +12665,9 @@ type UpdatePromoterRequest struct {
 	// `promoter.invalid_slug`, 409 `promoter.duplicate_slug`), null or
 	// blank = the promoter has no page any more.
 	Slug *string `json:"slug"`
+
+	// Website Website (see CreatePromoterRequest.website); null or blank clears it.
+	Website *string `json:"website"`
 }
 
 // UpdateSeatingPlanRequest Request body for PATCH /v1/seating-plans/{id}. Every field is

@@ -5575,7 +5575,7 @@ components:
 
     Promoter:
       type: object
-      required: [id, org_id, name, legal_id, phone, phone_hidden, email, slug, archived, archived_at, created_at, updated_at]
+      required: [id, org_id, name, legal_id, phone, phone_hidden, email, slug, address, website, archived, archived_at, created_at, updated_at]
       description: |
         A promoter of the organization's events (migration 0113). The
         organization selling an event is often, but not always, its
@@ -5631,6 +5631,14 @@ components:
             (case-insensitive). Assigned from the name on creation when
             not given; null = the promoter has no page.
           example: "teatrkolibel"
+        address:
+          type: [string, "null"]
+          description: Postal address, free text of at most 300 characters (migration 0139); null when not set.
+          example: "Dlouha 12, 110 00 Praha 1"
+        website:
+          type: [string, "null"]
+          description: Website, an http(s) address of at most 300 characters (migration 0139); null when not set.
+          example: "https://partner.example"
         archived:
           type: boolean
           description: True when the promoter is archived and can no longer be linked to an event.
@@ -5695,6 +5703,17 @@ components:
             `promoter.duplicate_slug` when a promoter or an organization
             already uses it.
           example: "teatrkolibel"
+        address:
+          type: [string, "null"]
+          description: |
+            Optional postal address, at most 300 characters (400
+            `promoter.invalid_address` otherwise). Blank is stored as null.
+        website:
+          type: [string, "null"]
+          description: |
+            Optional website. "https://" is added when no scheme is typed; it
+            must be an http(s) address with a host of at most 300 characters
+            (400 `promoter.invalid_website` otherwise). Blank is stored as null.
 
     UpdatePromoterRequest:
       type: object
@@ -5727,6 +5746,12 @@ components:
             Public page address (see Promoter.slug): value = set (400
             `promoter.invalid_slug`, 409 `promoter.duplicate_slug`), null or
             blank = the promoter has no page any more.
+        address:
+          type: [string, "null"]
+          description: Postal address (see CreatePromoterRequest.address); null or blank clears it.
+        website:
+          type: [string, "null"]
+          description: Website (see CreatePromoterRequest.website); null or blank clears it.
 
     SetEventPromoterRequest:
       type: object

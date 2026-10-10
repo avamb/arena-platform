@@ -2380,3 +2380,168 @@ other = "Este evento no tiene sesiones próximas para elegir."
 
 ["bot.promo.err_incomplete"]
 other = "Falta algo en el código. Vuelve y revisa los pasos."
+
+["bot.prom.btn"]
+other = "🎭 Promotores"
+
+["bot.prom.list_title"]
+other = "🎭 <b>Promotores</b> · {{.Org}} · {{.Total}} en total · pág. {{.Page}}/{{.Pages}}"
+
+["bot.prom.list_hint"]
+other = "Toca un promotor para ver y cambiar sus datos."
+
+["bot.prom.empty"]
+other = "Aún no hay promotores. Un promotor es un socio cuyos eventos vendes; puedes añadirlo al crear o editar un evento."
+
+["bot.prom.card"]
+other = "🎭 <b>{{.Name}}</b>"
+
+["bot.prom.line_address"]
+other = "📍 Dirección: {{.Value}}"
+
+["bot.prom.line_tax"]
+other = "🧾 NIF / IČO / EIN: {{.Value}}"
+
+["bot.prom.line_phone"]
+other = "📞 Teléfono: {{.Value}}"
+
+["bot.prom.line_email"]
+other = "✉ E-mail: {{.Value}}"
+
+["bot.prom.line_website"]
+other = "🌐 Sitio web: {{.Value}}"
+
+["bot.prom.line_page"]
+other = "🔗 Página pública: {{.Value}}"
+
+["bot.prom.none"]
+other = "sin indicar"
+
+["bot.prom.now"]
+other = "Ahora: {{.Value}}"
+
+["bot.prom.btn_name"]
+other = "✏ Nombre"
+
+["bot.prom.btn_address"]
+other = "✏ Dirección"
+
+["bot.prom.btn_tax"]
+other = "✏ NIF / IČO"
+
+["bot.prom.btn_phone"]
+other = "✏ Teléfono"
+
+["bot.prom.btn_email"]
+other = "✏ E-mail"
+
+["bot.prom.btn_website"]
+other = "✏ Sitio web"
+
+["bot.prom.btn_page"]
+other = "✏ Enlace de la página"
+
+["bot.prom.btn_archive"]
+other = "🗄 Archivar"
+
+["bot.prom.q_name"]
+other = "✏ <b>Nuevo nombre</b> del promotor. Se imprime en las entradas como organizador. Dos promotores activos no pueden tener el mismo nombre."
+
+["bot.prom.q_address"]
+other = "✏ <b>Dirección</b> del promotor en un solo mensaje, hasta 300 caracteres."
+
+["bot.prom.q_tax"]
+other = "✏ <b>Identificación fiscal</b> tal como figura en los documentos del promotor (NIF, IČO, EIN…), hasta 40 caracteres."
+
+["bot.prom.q_phone"]
+other = "✏ <b>Teléfono</b> con el prefijo del país, por ejemplo +420 123 456 789."
+
+["bot.prom.q_email"]
+other = "✏ <b>E-mail</b> del promotor."
+
+["bot.prom.email_note"]
+other = "A esta dirección se invita a escribir a los compradores cuando se cambia o se cancela una fecha de los eventos del promotor, así que tiene que funcionar."
+
+["bot.prom.q_website"]
+other = "✏ <b>Sitio web</b>, por ejemplo partner.example. Si no escribes https://, se añade solo."
+
+["bot.prom.q_page"]
+other = "✏ <b>Dirección de la página</b>: el final del enlace, {{.URL}}<b>dirección</b>. Letras latinas a–z, cifras y guiones sueltos, de 2 a 64 caracteres, por ejemplo teatr-kolibel. Las direcciones son comunes a todas las organizaciones de la plataforma, así que una ocupada se rechaza."
+
+["bot.prom.clear_btn"]
+other = "🧹 Borrar"
+
+["bot.prom.cancel_btn"]
+other = "‹ Volver a la ficha"
+
+["bot.prom.saved"]
+other = "✔ Guardado."
+
+["bot.prom.saved_page"]
+other = "✔ Guardado. La página pública ahora se abre en {{.URL}}"
+
+["bot.prom.cleared"]
+other = "✔ Borrado."
+
+["bot.prom.err_name_empty"]
+other = "⚠ El nombre no puede estar vacío. Escríbelo de nuevo."
+
+["bot.prom.err_name_long"]
+other = "⚠ El nombre es demasiado largo (120 caracteres como máximo). Escribe uno más corto."
+
+["bot.prom.err_name_taken"]
+other = "⚠ Otro promotor activo ya tiene ese nombre. Escribe otro."
+
+["bot.prom.err_address_long"]
+other = "⚠ La dirección debe tener de 1 a 300 caracteres. Escríbela de nuevo."
+
+["bot.prom.err_tax"]
+other = "⚠ La identificación fiscal debe tener de 1 a 40 caracteres en una sola línea. Escríbela de nuevo."
+
+["bot.prom.err_phone"]
+other = "⚠ Eso no parece un teléfono: usa cifras, espacios, +, ( ), - o ., de 6 a 15 cifras. Escríbelo de nuevo."
+
+["bot.prom.err_email"]
+other = "⚠ Eso no parece una dirección de e-mail. Escríbela de nuevo."
+
+["bot.prom.err_website"]
+other = "⚠ Un sitio web es una dirección como partner.example o https://partner.example, sin espacios. Escríbela de nuevo."
+
+["bot.prom.err_slug_invalid"]
+other = "⚠ La dirección de la página tiene de 2 a 64 caracteres: letras latinas a–z, cifras y guiones sueltos, ni al principio ni al final. Escríbela de nuevo."
+
+["bot.prom.err_slug_taken"]
+other = "⚠ Esa dirección ya la usa otro promotor u otra organización. Escribe otra."
+
+["bot.prom.slug_confirm"]
+other = "🔗 La dirección de la página va a cambiar:\n{{.Old}}\n→ {{.New}}\n\nLos enlaces que ya hayas repartido con la dirección antigua dejarán de abrirse. ¿Guardar la nueva dirección?"
+
+["bot.prom.slug_save_btn"]
+other = "✔ Guardar la nueva dirección"
+
+["bot.prom.archive_ask"]
+other = "🗄 <b>¿Archivar a {{.Name}}?</b>\n\nDesaparece de la lista, ya no se podrá elegir para un evento nuevo, y su página pública y los enlaces de sus eventos con esa dirección dejarán de abrirse. Los eventos que ya lo nombran conservan el nombre: en las entradas y en los correos sigue figurando como organizador. No se borra nada."
+
+["bot.prom.archive_yes_btn"]
+other = "🗄 Sí, archivar"
+
+["bot.prom.archived_done"]
+other = "🗄 {{.Name}} está archivado."
+
+["bot.prom.gone"]
+other = "Este promotor ya no está en la lista (archivado o eliminado). Aquí tienes la lista tal como está ahora."
+
+["bot.prom.event_line"]
+other = "🎭 Promotor: <b>{{.Name}}</b>"
+
+["bot.prom.event_line_org"]
+other = "🎭 Promotor: la propia organización"
+
+["bot.prom.event_btn"]
+other = "🎭 Promotor"
+
+["bot.prom.event_back_btn"]
+other = "‹ Al evento"
+
+["bot.prom.event_org_note"]
+other = "«{{.Name}}» no tiene un promotor aparte: el promotor es la propia organización. Para elegir otro, edita el evento."

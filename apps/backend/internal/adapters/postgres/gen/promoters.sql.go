@@ -32,13 +32,16 @@ type OrgPromoterRow struct {
 	UpdatedAt  time.Time  `json:"updated_at"`
 	// PhoneHidden keeps Phone out of letters to buyers (migration 0121).
 	PhoneHidden bool `json:"phone_hidden"`
+	// Address and Website are optional free text (migration 0139).
+	Address *string `json:"address"`
+	Website *string `json:"website"`
 }
 
-const orgPromoterColumns = `id, org_id, name, legal_id, phone, email, slug, archived_at, created_at, updated_at, phone_hidden`
+const orgPromoterColumns = `id, org_id, name, legal_id, phone, email, slug, archived_at, created_at, updated_at, phone_hidden, address, website`
 
 func scanOrgPromoterRow(row interface{ Scan(dest ...any) error }) (OrgPromoterRow, error) {
 	var p OrgPromoterRow
-	err := row.Scan(&p.ID, &p.OrgID, &p.Name, &p.LegalID, &p.Phone, &p.Email, &p.Slug, &p.ArchivedAt, &p.CreatedAt, &p.UpdatedAt, &p.PhoneHidden)
+	err := row.Scan(&p.ID, &p.OrgID, &p.Name, &p.LegalID, &p.Phone, &p.Email, &p.Slug, &p.ArchivedAt, &p.CreatedAt, &p.UpdatedAt, &p.PhoneHidden, &p.Address, &p.Website)
 	return p, err
 }
 
@@ -142,6 +145,22 @@ RETURNING ` + orgPromoterColumns
 // organization's promoter.
 func (q *Queries) SetOrgPromoterPhoneHidden(ctx context.Context, id, orgID uuid.UUID, hidden bool) (OrgPromoterRow, error) {
 	return scanOrgPromoterRow(q.db.QueryRow(ctx, setOrgPromoterPhoneHidden, id, orgID, hidden))
+}
+
+const setOrgPromoterAddressWebsite = `-- name: SetOrgPromoterAddressWebsite :one
+UPDATE org_promoters
+SET    address    = $3,
+       website    = $4,
+       updated_at = now()
+WHERE  id = $1
+  AND  org_id = $2
+RETURNING ` + orgPromoterColumns
+
+// SetOrgPromoterAddressWebsite writes the complete, already-merged address and
+// website of a promoter (migration 0139). Returns pgx.ErrNoRows for an unknown
+// id or another organization's promoter.
+func (q *Queries) SetOrgPromoterAddressWebsite(ctx context.Context, id, orgID uuid.UUID, address, website *string) (OrgPromoterRow, error) {
+	return scanOrgPromoterRow(q.db.QueryRow(ctx, setOrgPromoterAddressWebsite, id, orgID, address, website))
 }
 
 const promoterSlugTaken = `-- name: PromoterSlugTaken :one

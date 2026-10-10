@@ -11916,6 +11916,16 @@ export interface components {
              * @example teatrkolibel
              */
             slug: string | null;
+            /**
+             * @description Postal address, free text of at most 300 characters (migration 0139); null when not set.
+             * @example Dlouha 12, 110 00 Praha 1
+             */
+            address: string | null;
+            /**
+             * @description Website, an http(s) address of at most 300 characters (migration 0139); null when not set.
+             * @example https://partner.example
+             */
+            website: string | null;
             /** @description True when the promoter is archived and can no longer be linked to an event. */
             archived: boolean;
             /**
@@ -11966,6 +11976,17 @@ export interface components {
              * @example teatrkolibel
              */
             slug?: string | null;
+            /**
+             * @description Optional postal address, at most 300 characters (400
+             *     `promoter.invalid_address` otherwise). Blank is stored as null.
+             */
+            address?: string | null;
+            /**
+             * @description Optional website. "https://" is added when no scheme is typed; it
+             *     must be an http(s) address with a host of at most 300 characters
+             *     (400 `promoter.invalid_website` otherwise). Blank is stored as null.
+             */
+            website?: string | null;
         };
         /**
          * @description Body of PATCH /v1/organizations/{org_id}/promoters/{id}. Every field
@@ -11991,6 +12012,10 @@ export interface components {
              *     blank = the promoter has no page any more.
              */
             slug?: string | null;
+            /** @description Postal address (see CreatePromoterRequest.address); null or blank clears it. */
+            address?: string | null;
+            /** @description Website (see CreatePromoterRequest.website); null or blank clears it. */
+            website?: string | null;
         };
         /** @description Body of PUT /v1/organizations/{org_id}/events/{id}/promoter. */
         SetEventPromoterRequest: {
