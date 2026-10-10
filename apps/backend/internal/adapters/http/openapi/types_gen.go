@@ -3894,6 +3894,51 @@ type CompleteCheckoutRequest struct {
 	PaymentProvider *string `json:"payment_provider,omitempty"`
 }
 
+// ComplimentaryCreateRequest Issue complimentary tickets. At most 50 tickets per operation; more
+// goes in several operations (400 `complimentary.qty_too_large`).
+// `batch_id` makes a retry safe: repeating an (organization, batch_id)
+// pair returns the first result with `idempotent_replay: true` and
+// sends no second letter.
+type ComplimentaryCreateRequest struct {
+	// BatchId Idempotency key, unique per organization.
+	BatchId string `json:"batch_id"`
+
+	// IssuedBy Free-text label of who issued it.
+	IssuedBy *string `json:"issued_by,omitempty"`
+
+	// Notes Internal note.
+	Notes *string `json:"notes,omitempty"`
+
+	// Qty Number of tickets, 1 to 50.
+	Qty int32 `json:"qty"`
+
+	// RecipientNames Guest names, aligned with `recipients` by index; an empty entry means no name.
+	RecipientNames *[]string `json:"recipient_names,omitempty"`
+
+	// Recipients Recipient e-mail addresses, one per ticket in order; each is
+	// validated (400 `complimentary.invalid_recipient`). Shorter than
+	// `qty` leaves the remaining tickets anonymous.
+	Recipients *[]string `json:"recipients,omitempty"`
+
+	// SessionId Session (date) the tickets are valid for.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// TierId Category to issue in; required on a general-admission session.
+	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
+}
+
+// ComplimentaryCreateResponse The issuance that was created, or the existing one on a replay.
+type ComplimentaryCreateResponse struct {
+	// IdempotentReplay True when the batch_id already existed and nothing new was created.
+	IdempotentReplay bool `json:"idempotent_replay"`
+
+	// Issuance The issuance row (id, org_id, session_id, tier_id, qty, recipients, batch_id, status, issued_by, notes, created_at, updated_at).
+	Issuance map[string]interface{} `json:"issuance"`
+
+	// Tickets The tickets of the issuance with their numbers and holders.
+	Tickets []map[string]interface{} `json:"tickets"`
+}
+
 // ComplimentaryIssuance A complimentary (free / comp) ticket issuance granted to a named
 // recipient outside the normal paid checkout flow. Issuances consume
 // inventory and generate a standard ticket. They can be revoked before
@@ -3938,6 +3983,106 @@ type ComplimentaryIssuance struct {
 
 // ComplimentaryIssuanceStatus `issued` — ticket is active; `revoked` — ticket has been voided.
 type ComplimentaryIssuanceStatus string
+
+// ComplimentaryListItem One complimentary issuance in the paged list: the issuance row with
+// the event, date and category it is for, its tickets and a derived
+// state.
+type ComplimentaryListItem struct {
+	// BatchId Idempotency key the issuance was created under.
+	BatchId string `json:"batch_id"`
+
+	// CreatedAt When the issuance was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId Event the session belongs to.
+	EventId *openapi_types.UUID `json:"event_id"`
+
+	// EventName Name of the event.
+	EventName *string `json:"event_name"`
+
+	// Id UUIDv7 of the issuance (the id the revoke route takes).
+	Id openapi_types.UUID `json:"id"`
+
+	// IssuedBy Free-text label of who issued it, when given.
+	IssuedBy *string `json:"issued_by"`
+
+	// Notes Internal note, when given.
+	Notes *string `json:"notes"`
+
+	// OrgId Organization that issued it.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Qty Number of tickets in the issuance.
+	Qty int32 `json:"qty"`
+
+	// Recipients Recipient e-mail addresses in ticket order.
+	Recipients []string `json:"recipients"`
+
+	// SessionId Session (date) the tickets are valid for.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// SessionStartAt Start of the session, RFC 3339 in UTC.
+	SessionStartAt *time.Time `json:"session_start_at"`
+
+	// State Derived state: `valid` (issued, not scanned), `revoked`
+	// (annulled) or `used` (at least one ticket scanned at the door,
+	// or parked for manual review because of that).
+	State string `json:"state"`
+
+	// Status Raw issuance status (issued, revoked, manual_review).
+	Status string `json:"status"`
+
+	// TicketCount Number of ticket rows of the issuance.
+	TicketCount int64 `json:"ticket_count"`
+
+	// Tickets The tickets of the issuance, oldest first.
+	Tickets []ComplimentaryTicketItem `json:"tickets"`
+
+	// TierId Category the tickets were issued in; null for an untiered issuance.
+	TierId *openapi_types.UUID `json:"tier_id"`
+
+	// TierName Name of the category.
+	TierName *string `json:"tier_name"`
+
+	// UpdatedAt When the issuance last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// VenueTimezone IANA timezone of the venue, when known.
+	VenueTimezone *string `json:"venue_timezone"`
+}
+
+// ComplimentaryListResponse One page of complimentary issuances, newest first.
+type ComplimentaryListResponse struct {
+	// HasMore True when another page follows this one.
+	HasMore bool `json:"has_more"`
+
+	// Issuances The issuances of this page.
+	Issuances []ComplimentaryListItem `json:"issuances"`
+
+	// Total Issuances that match the filters, over all pages.
+	Total int64 `json:"total"`
+}
+
+// ComplimentaryTicketItem One ticket of a complimentary issuance, as the invitations list shows it.
+type ComplimentaryTicketItem struct {
+	// HolderEmail E-mail address the invitation was sent to; null for an anonymous ticket.
+	HolderEmail *string `json:"holder_email"`
+
+	// HolderName Name of the guest typed on the invitation; null when none was given.
+	HolderName *string `json:"holder_name"`
+
+	// Id UUIDv7 of the ticket.
+	Id openapi_types.UUID `json:"id"`
+
+	// Status Ticket status (active, revoked, cancelled, transferred).
+	Status string `json:"status"`
+
+	// SystemTicketId The ticket number the guest and the organizer see (tickets.system_ticket_id).
+	SystemTicketId int64 `json:"system_ticket_id"`
+
+	// Used True once the ticket has been scanned at the door.
+	Used bool `json:"used"`
+}
 
 // ConfirmCheckoutRequest Request body for `POST /v1/checkout/{id}/confirm`.
 //
@@ -13655,13 +13800,19 @@ type PutChannelWPWebhookParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
-// CreateComplimentaryIssuanceJSONBody defines parameters for CreateComplimentaryIssuance.
-type CreateComplimentaryIssuanceJSONBody struct {
-	Note           *string             `json:"note,omitempty"`
-	RecipientEmail openapi_types.Email `json:"recipient_email"`
-	RecipientName  *string             `json:"recipient_name,omitempty"`
-	SessionId      openapi_types.UUID  `json:"session_id"`
-	TierId         openapi_types.UUID  `json:"tier_id"`
+// ListComplimentaryIssuancesParams defines parameters for ListComplimentaryIssuances.
+type ListComplimentaryIssuancesParams struct {
+	// Limit Page size, 1 to 100 (default 20).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Rows to skip (default 0).
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// State Only issuances in this state - valid, revoked or used. Absent means all.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// SessionId Only issuances for this session (date).
+	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
 }
 
 // GetV1OrganizationsOrgIdCustomersParams defines parameters for GetV1OrganizationsOrgIdCustomers.
@@ -14227,7 +14378,7 @@ type PutChannelWPWebhookJSONRequestBody PutChannelWPWebhookJSONBody
 type CreateOrgCityJSONRequestBody = CreateOrgCityRequest
 
 // CreateComplimentaryIssuanceJSONRequestBody defines body for CreateComplimentaryIssuance for application/json ContentType.
-type CreateComplimentaryIssuanceJSONRequestBody CreateComplimentaryIssuanceJSONBody
+type CreateComplimentaryIssuanceJSONRequestBody = ComplimentaryCreateRequest
 
 // CreateEventJSONRequestBody defines body for CreateEvent for application/json ContentType.
 type CreateEventJSONRequestBody = CreateEventRequest
