@@ -35,6 +35,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -239,6 +240,18 @@ func (h *Handler) HandleCreateRefund(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"refund.missing_currency", "currency is required", r,
 			map[string]any{"field": "currency"},
+		))
+		return
+	}
+
+	// "ticket.cancel:" labels the refund the ticket-cancel route writes; a
+	// client must not dress a flat refund up as one (PAY-03 fifth review,
+	// M-4 — the engine keys on refunds.cancelled_ticket_id, this keeps the
+	// audit trail honest too).
+	if req.RequestedBy != nil && strings.HasPrefix(strings.ToLower(strings.TrimSpace(*req.RequestedBy)), refunds.TicketCancelRequestedByPrefix) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"refund.reserved_requested_by", "requested_by must not start with "+refunds.TicketCancelRequestedByPrefix, r,
+			map[string]any{"field": "requested_by"},
 		))
 		return
 	}

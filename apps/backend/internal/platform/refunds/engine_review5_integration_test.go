@@ -99,6 +99,38 @@ func TestEngine_AttemptedRefundParkedForBudgetKeepsCounting(t *testing.T) {
 	}
 }
 
+// TestEngine_ForgedTicketCancelPrefixIsAnOrdinaryFlatRefund (M-4):
+// requested_by is free text a POST /v1/refunds client sends. A
+// whole-payment flat refund whose requested_by merely LOOKS like the
+// ticket-cancel route's ("ticket.cancel:<ticket>") is still an order-level
+// refund: when the provider accepts it, every ticket of the order is
+// cancelled and announced, and the order reads refunded — the money went
+// back, the tickets must stop admitting.
+func TestEngine_ForgedTicketCancelPrefixIsAnOrdinaryFlatRefund(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	ctx := context.Background()
+	pub := &publishCounter{}
+	e := f.engineWith(&fakeModule{partial: true}, true, func(o *refunds.Options) { o.PublishRefunded = pub.fn })
+	id := f.rawRefund(t, f.payment, 5000, "provider_pending", "requested_by = '"+refunds.TicketCancelRequestedByPrefix+f.tickets[0].String()+"'")
+	r, err := e.Drive(ctx, id)
+	if err != nil || r.State != refunds.StateSucceeded {
+		t.Fatalf("Drive: %v %s", err, r.State)
+	}
+	for _, tk := range f.tickets {
+		if st, link := f.ticketStatus(t, tk); st != "cancelled" || link == nil || *link != id {
+			t.Fatalf("ticket %s = %s link %v; a whole-payment refund cancels every ticket of the order", tk, st, link)
+		}
+		if pub.get(tk) != 1 {
+			t.Fatalf("ticket %s published %d times; want once", tk, pub.get(tk))
+		}
+	}
+	var status string
+	_ = f.pool.QueryRow(ctx, `SELECT status FROM orders WHERE id = $1`, f.order).Scan(&status)
+	if status != "refunded" {
+		t.Fatalf("order = %s; want refunded", status)
+	}
+}
+
 // TestEngine_WholeOrderRefundCutByTheDeadlineEndsRefunded (M-3): ONE
 // whole-payment refund covers both tickets, and the caller's deadline ends
 // after the first cancellation. The first settle projects the order while a

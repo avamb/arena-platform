@@ -6,7 +6,6 @@ package refunds
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,24 +14,28 @@ import (
 
 // Refund is one refunds row as the engine sees it.
 type Refund struct {
-	ID                  uuid.UUID
-	OrgID               uuid.UUID
-	PaymentIntentID     uuid.UUID
-	OrderID             *uuid.UUID
-	TicketID            *uuid.UUID
-	BatchID             *uuid.UUID
-	Amount              int64
-	Currency            string
-	Reason              *string
-	RequestedBy         *string
-	State               string
-	Settlement          string
-	Provider            *string
-	ProviderRefundID    *string
-	ProviderStatus      *string
-	FailureCode         *string
-	FailureReason       *string
-	CancelTicket        bool
+	ID               uuid.UUID
+	OrgID            uuid.UUID
+	PaymentIntentID  uuid.UUID
+	OrderID          *uuid.UUID
+	TicketID         *uuid.UUID
+	BatchID          *uuid.UUID
+	Amount           int64
+	Currency         string
+	Reason           *string
+	RequestedBy      *string
+	State            string
+	Settlement       string
+	Provider         *string
+	ProviderRefundID *string
+	ProviderStatus   *string
+	FailureCode      *string
+	FailureReason    *string
+	CancelTicket     bool
+	// CancelledTicketID: the ticket POST /v1/tickets/{id}/cancel cancelled
+	// before writing this ticket-less refund (migration 0138, fifth review
+	// M-4). Only that route sets it; requested_by is client text.
+	CancelledTicketID   *uuid.UUID
 	ProviderAttempts    int32
 	ProviderAttemptedAt *time.Time
 	CreatedAt           time.Time
@@ -50,14 +53,16 @@ func (r Refund) Accepted() bool {
 // ticket the operator already cancelled (linked through tickets.refund_id),
 // never for the rest of the order, however large its amount (PAY-03 fourth
 // review, H-1: a whole-payment refund of an adult ticket must not cancel
-// the free child ticket bought with it).
+// the free child ticket bought with it). It is decided by the marker that
+// route writes (cancelled_ticket_id), never by requested_by, which a client
+// of POST /v1/refunds controls (fifth review, M-4).
 func (r Refund) fromTicketCancel() bool {
-	return r.TicketID == nil && strings.HasPrefix(deref(r.RequestedBy), TicketCancelRequestedByPrefix)
+	return r.TicketID == nil && r.CancelledTicketID != nil
 }
 
 const refundColumns = `id, org_id, payment_intent_id, order_id, ticket_id, batch_id, amount, currency, reason, requested_by,
        state, settlement, provider, provider_refund_id, provider_status, failure_code, failure_reason,
-       cancel_ticket, provider_attempts, provider_attempted_at, created_at, updated_at`
+       cancel_ticket, provider_attempts, provider_attempted_at, created_at, updated_at, cancelled_ticket_id`
 
 func scanRefund(row pgx.Row) (Refund, error) {
 	return scanRefundWith(row)
@@ -70,7 +75,7 @@ func scanRefundWith(row pgx.Row, extra ...any) (Refund, error) {
 	var pi *uuid.UUID
 	dest := append(extra, &r.ID, &r.OrgID, &pi, &r.OrderID, &r.TicketID, &r.BatchID, &r.Amount, &r.Currency, &r.Reason, &r.RequestedBy,
 		&r.State, &r.Settlement, &r.Provider, &r.ProviderRefundID, &r.ProviderStatus, &r.FailureCode, &r.FailureReason,
-		&r.CancelTicket, &r.ProviderAttempts, &r.ProviderAttemptedAt, &r.CreatedAt, &r.UpdatedAt)
+		&r.CancelTicket, &r.ProviderAttempts, &r.ProviderAttemptedAt, &r.CreatedAt, &r.UpdatedAt, &r.CancelledTicketID)
 	err := row.Scan(dest...)
 	if pi != nil {
 		r.PaymentIntentID = *pi

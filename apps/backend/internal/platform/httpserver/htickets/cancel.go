@@ -333,7 +333,7 @@ func (h *Handler) createAutomaticRefund(
 		return nil, ticket, errors.New("no payment intent resolved for automatic refund")
 	}
 	requestedBy := "ticket.cancel:" + ticket.ID.String()
-	refund, err := h.insertAutomaticRefund(ctx, intent, amount, reason, requestedBy)
+	refund, err := h.insertAutomaticRefund(ctx, intent, ticket.ID, amount, reason, requestedBy)
 	if err != nil {
 		return nil, ticket, err
 	}
@@ -363,8 +363,11 @@ var errAutomaticRefundExceeds = errors.New("automatic refund would exceed the pa
 // refund lock (refunds.LockPayment), with the same budget check every
 // other refund writer runs, so it can never race the refund engine or
 // refund.sweep into an over-refund (PAY-03 review). Without a pool (unit
-// tests) it falls back to the plain insert.
-func (h *Handler) insertAutomaticRefund(ctx context.Context, intent *gen.PaymentIntentRow, amount int64, reason, requestedBy string) (gen.RefundRow, error) {
+// tests) it falls back to the plain insert. The refund is marked with the
+// ticket it speaks for (refunds.cancelled_ticket_id) in the same
+// transaction: the refund engine reads that marker, never requested_by,
+// which a POST /v1/refunds client controls (PAY-03 fifth review, M-4).
+func (h *Handler) insertAutomaticRefund(ctx context.Context, intent *gen.PaymentIntentRow, ticketID uuid.UUID, amount int64, reason, requestedBy string) (gen.RefundRow, error) {
 	if h.pool == nil {
 		return h.reservationQueries.InsertRefund(ctx, intent.ID, intent.OrgID, amount, intent.Currency, &reason, &requestedBy)
 	}
@@ -386,6 +389,9 @@ func (h *Handler) insertAutomaticRefund(ctx context.Context, intent *gen.Payment
 	}
 	row, err := q.InsertRefund(ctx, intent.ID, intent.OrgID, amount, intent.Currency, &reason, &requestedBy)
 	if err != nil {
+		return gen.RefundRow{}, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE refunds SET cancelled_ticket_id = $2 WHERE id = $1`, row.ID, ticketID); err != nil {
 		return gen.RefundRow{}, err
 	}
 	return row, tx.Commit(ctx)

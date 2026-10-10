@@ -250,7 +250,10 @@ func refusal(status int, code, msg string, details map[string]any) *Error {
 // TicketCancelRequestedByPrefix starts refunds.requested_by of the refund
 // POST /v1/tickets/{id}/cancel writes for refund_mode=automatic (htickets
 // cancel.go): a ticket-less refund that speaks for that ONE ticket, which
-// the operator already cancelled (PAY-03 fourth review, H-1).
+// the operator already cancelled (PAY-03 fourth review, H-1). It is only a
+// label: the engine reads the meaning from refunds.cancelled_ticket_id, and
+// POST /v1/refunds refuses a requested_by that starts with it (fifth
+// review, M-4).
 const TicketCancelRequestedByPrefix = "ticket.cancel:"
 
 // Error codes (spec 36 §8).

@@ -29,9 +29,9 @@ func (f *fixture) ticketCancelRefund(t *testing.T, ticket uuid.UUID, amount int6
 	f.exec(t, `UPDATE tickets SET status = 'cancelled', updated_at = now() WHERE id = $1`, ticket)
 	var id uuid.UUID
 	if err := f.pool.QueryRow(context.Background(), `INSERT INTO refunds
-		(payment_intent_id, org_id, amount, currency, reason, requested_by)
-		VALUES ($1, $2, $3, 'EUR', 'adult ticket cancelled', $4) RETURNING id`,
-		f.payment, f.org, amount, refunds.TicketCancelRequestedByPrefix+ticket.String()).Scan(&id); err != nil {
+		(payment_intent_id, org_id, amount, currency, reason, requested_by, cancelled_ticket_id)
+		VALUES ($1, $2, $3, 'EUR', 'adult ticket cancelled', $4, $5) RETURNING id`,
+		f.payment, f.org, amount, refunds.TicketCancelRequestedByPrefix+ticket.String(), ticket).Scan(&id); err != nil {
 		t.Fatalf("ticket-cancel refund: %v", err)
 	}
 	f.exec(t, `UPDATE tickets SET refund_id = $1, refund_date = now(), refund_price = $2 WHERE id = $3`, id, amount, ticket)

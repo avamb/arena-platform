@@ -35,6 +35,12 @@
 --     refusing never blocks the others, and it is given up after a cap;
 --   * refunds.refunded_published_at — v1.ticket.refunded was claimed for
 --     publication, so it is published at most once;
+--   * refunds.cancelled_ticket_id — the ticket POST /v1/tickets/{id}/cancel
+--     cancelled before it wrote this ticket-less refund: such a refund
+--     speaks for that one ticket only. requested_by is free text a client of
+--     POST /v1/refunds sends, so it cannot carry that meaning (PAY-03 fifth
+--     review, M-4); existing rows are backfilled where the ticket's own
+--     refund link agrees with requested_by;
 --   * refunds.settled_at — every step after the provider accepted (ticket
 --     cancellations, the order projection, the publish once it succeeded)
 --     is done; refund.sweep's repair finishes an accepted refund without it;
@@ -94,7 +100,15 @@ ALTER TABLE refunds
     ADD COLUMN alert_lease_until     timestamptz,
     ADD COLUMN alert_attempts        integer NOT NULL DEFAULT 0,
     ADD COLUMN refunded_published_at timestamptz,
-    ADD COLUMN settled_at            timestamptz;
+    ADD COLUMN settled_at            timestamptz,
+    ADD COLUMN cancelled_ticket_id   uuid;
+
+UPDATE refunds r
+SET    cancelled_ticket_id = t.id
+FROM   tickets t
+WHERE  t.refund_id = r.id
+  AND  r.ticket_id IS NULL
+  AND  r.requested_by = 'ticket.cancel:' || t.id::text;
 
 CREATE UNIQUE INDEX refunds_provider_refund_uq
     ON refunds (provider, provider_refund_id)
@@ -144,6 +158,7 @@ DROP INDEX IF EXISTS refunds_live_ticket_cancel_uq;
 DROP INDEX IF EXISTS refunds_provider_refund_uq;
 
 ALTER TABLE refunds
+    DROP COLUMN IF EXISTS cancelled_ticket_id,
     DROP COLUMN IF EXISTS settled_at,
     DROP COLUMN IF EXISTS refunded_published_at,
     DROP COLUMN IF EXISTS alert_attempts,
