@@ -5931,6 +5931,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One-screen overview of an event
+         * @description The session summary over every session of the event (EC-06): places,
+         *     categories merged across sessions, the money per currency, orders,
+         *     tickets, the door count, refunds, promo codes and invitations as
+         *     totals, plus one entry per session with its own figures. Read-only
+         *     and free of buyer data. The event must belong to this org, an event
+         *     of another organization is invisible. Requires the `order.read`
+         *     permission.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsEventIdSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/summary": {
         parameters: {
             query?: never;
@@ -9764,8 +9790,11 @@ export interface components {
         /**
          * @description One-screen overview of a session: places by status, categories with
          *     what was paid for them, the money per currency, orders, tickets,
-         *     refunds and the promo codes used. Read-only. Carries no buyer data,
-         *     only counts, amounts in minor units and ids.
+         *     the door count, refunds, the promo codes used and the invitations.
+         *     Read-only. Carries no buyer data, only counts, amounts in minor
+         *     units and ids. The same aggregates over every session of an event
+         *     are GET .../events/{event_id}/summary (EventSummary); both are built
+         *     by one assembly.
          */
         SessionSummary: {
             /** @description The session the summary is about. */
@@ -9975,10 +10004,376 @@ export interface components {
                 orders: number;
                 /**
                  * Format: int64
+                 * @description promo_code_redemptions rows recorded for those orders (one
+                 *     per order since migration 0108, so at most `orders`; a
+                 *     widget order paid before 2026-09-22 has none).
+                 */
+                redemptions: number;
+                /**
+                 * Format: int64
                  * @description Discount those orders took, minor units.
                  */
                 discount: number;
             }[];
+            /** @description The door count of the session. */
+            entered: components["schemas"]["SummaryEntered"];
+            /** @description Invitations of the session, whichever way they were issued. */
+            complimentary: components["schemas"]["SummaryComplimentary"];
+        };
+        /** @description How many valid tickets were scanned at the door ("entered N of M"). */
+        SummaryEntered: {
+            /**
+             * Format: int64
+             * @description Valid tickets already scanned (tickets.used_at set).
+             */
+            used: number;
+            /**
+             * Format: int64
+             * @description Every valid ticket.
+             */
+            total: number;
+        };
+        /**
+         * @description Invitations: paid orders written with source=complimentary (the
+         *     gateway's CREATE_ORDER_EXT `complimentary` flag) and the valid
+         *     tickets of either invitation path (such orders, or the admin
+         *     complimentary flow with tickets.complimentary_issuance_id).
+         */
+        SummaryComplimentary: {
+            /**
+             * Format: int64
+             * @description Paid orders with source=complimentary.
+             */
+            orders: number;
+            /**
+             * Format: int64
+             * @description Valid tickets issued as invitations by either path.
+             */
+            tickets: number;
+        };
+        /** @description Tickets by status. used and complimentary are subsets of active. */
+        SummaryTickets: {
+            /**
+             * Format: int64
+             * @description Valid tickets.
+             */
+            active: number;
+            /**
+             * Format: int64
+             * @description Cancelled tickets.
+             */
+            cancelled: number;
+            /**
+             * Format: int64
+             * @description Tickets transferred to another holder.
+             */
+            transferred: number;
+            /**
+             * Format: int64
+             * @description Valid tickets already scanned at the door.
+             */
+            used: number;
+            /**
+             * Format: int64
+             * @description Valid tickets issued through the admin complimentary flow.
+             */
+            complimentary: number;
+        };
+        /** @description Money of one currency in minor units. */
+        SummaryMoneyItem: {
+            /** @description ISO 4217 currency. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Orders that were paid, including ones refunded later.
+             */
+            paid_orders: number;
+            /**
+             * Format: int64
+             * @description Total of those orders.
+             */
+            paid: number;
+            /**
+             * Format: int64
+             * @description Service charge included in paid.
+             */
+            service_charge: number;
+            /**
+             * Format: int64
+             * @description Discounts already deducted from paid.
+             */
+            discount: number;
+            /**
+             * Format: int64
+             * @description Succeeded refunds.
+             */
+            refunded: number;
+            /**
+             * Format: int64
+             * @description paid minus refunded.
+             */
+            net: number;
+            /**
+             * Format: int64
+             * @description Orders still waiting for payment.
+             */
+            pending_orders: number;
+            /**
+             * Format: int64
+             * @description Total of the orders still waiting for payment.
+             */
+            pending: number;
+        };
+        /** @description One group of orders. */
+        SummaryOrdersItem: {
+            /** @description Order status. */
+            status: string;
+            /** @description Where the orders came from (bil24_gateway, public_feed, checkout_api, complimentary). */
+            source: string;
+            /** @description ISO 4217 currency. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Number of orders in the group.
+             */
+            orders: number;
+            /**
+             * Format: int64
+             * @description Sum of the order totals, minor units.
+             */
+            total: number;
+        };
+        /** @description One group of refunds. */
+        SummaryRefundsItem: {
+            /** @description provider when arena drives the refund, external when the selling site returned the money itself. */
+            settlement: string;
+            /** @description Refund state. */
+            state: string;
+            /** @description ISO 4217 currency. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Number of refunds in the group.
+             */
+            refunds: number;
+            /**
+             * Format: int64
+             * @description Sum of the refund amounts, minor units.
+             */
+            amount: number;
+        };
+        /** @description One promo code's share of the paid orders. */
+        SummaryPromoItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the promo code.
+             */
+            id: string;
+            /** @description The code string. */
+            code: string;
+            /** @description ISO 4217 currency of the orders. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Paid orders that used the code.
+             */
+            orders: number;
+            /**
+             * Format: int64
+             * @description promo_code_redemptions rows recorded for those orders, at most `orders`.
+             */
+            redemptions: number;
+            /**
+             * Format: int64
+             * @description Discount those orders took, minor units.
+             */
+            discount: number;
+        };
+        /** @description One category of one session with its places and what was paid for it. */
+        SummaryTierItem: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the category.
+             */
+            id: string;
+            /** @description Name of the category. */
+            name: string;
+            /** @description seated when the category owns plan seats, ga otherwise. */
+            kind: string;
+            /**
+             * Format: int64
+             * @description Current list price in minor units.
+             */
+            price_amount: number;
+            /** @description ISO 4217 currency of the list price. */
+            currency: string;
+            /** @description False when the category accepts no new hold. */
+            is_open: boolean;
+            /** @description Places of this category by status. */
+            places: components["schemas"]["SessionPlaceCounts"];
+            /**
+             * Format: int64
+             * @description Order lines of this category in orders that were paid.
+             */
+            paid_items: number;
+            /**
+             * Format: int64
+             * @description What buyers paid for this category in minor units, after discounts and with the service charge.
+             */
+            paid_revenue: number;
+        };
+        /**
+         * @description One row of the event's category table: the categories of every
+         *     session that share a name, a currency and a list price, merged. A
+         *     category priced differently in two sessions is two rows; the
+         *     per-session entries keep each category's own id.
+         */
+        EventSummaryTierItem: {
+            /** @description Name of the category. */
+            name: string;
+            /** @description seated when the category owns plan seats, ga otherwise. */
+            kind: string;
+            /**
+             * Format: int64
+             * @description List price in minor units shared by the merged categories.
+             */
+            price_amount: number;
+            /** @description ISO 4217 currency of the list price. */
+            currency: string;
+            /** @description True when the category is open in at least one session. */
+            is_open: boolean;
+            /** @description How many sessions the row stands for. */
+            sessions: number;
+            /** @description Places of the merged categories by status. */
+            places: components["schemas"]["SessionPlaceCounts"];
+            /**
+             * Format: int64
+             * @description Order lines of the merged categories in orders that were paid.
+             */
+            paid_items: number;
+            /**
+             * Format: int64
+             * @description What buyers paid for them in minor units, after discounts and with the service charge.
+             */
+            paid_revenue: number;
+        };
+        /** @description One session of the event with the same figures its own session summary shows. */
+        EventSummarySession: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the session.
+             */
+            id: string;
+            /**
+             * Format: date-time
+             * @description Start of the session, RFC3339 in UTC.
+             */
+            start_at: string;
+            /**
+             * Format: date-time
+             * @description End of the session, RFC3339 in UTC.
+             */
+            end_at: string;
+            /** @description Session status (draft, scheduled, cancelled, completed). */
+            status: string;
+            /**
+             * Format: int32
+             * @description Stated capacity of the session.
+             */
+            capacity_total: number;
+            /** @description True when a seating plan is bound to the session. */
+            has_seating_plan: boolean;
+            /** @description Name of the venue, null when the session has none. */
+            venue_name: string | null;
+            /** @description IANA timezone of the venue, null when unknown. */
+            venue_timezone: string | null;
+            /** @description Places of the session, split by kind. */
+            places: {
+                /** @description Seats of the seating plan. */
+                seats: components["schemas"]["SessionPlaceCounts"];
+                /** @description General admission places. */
+                ga: components["schemas"]["SessionPlaceCounts"];
+            };
+            /** @description Categories of the session in display order. */
+            tiers: components["schemas"]["SummaryTierItem"][];
+            /** @description The bottom line of the session, one entry per currency. */
+            money: components["schemas"]["SummaryMoneyItem"][];
+            /** @description Order totals grouped by status, source and currency. */
+            orders: components["schemas"]["SummaryOrdersItem"][];
+            /** @description Tickets of the session by status. */
+            tickets: components["schemas"]["SummaryTickets"];
+            /** @description The door count of the session. */
+            entered: components["schemas"]["SummaryEntered"];
+            /** @description Refund totals grouped by settlement, state and currency. */
+            refunds: components["schemas"]["SummaryRefundsItem"][];
+            /** @description Promo codes the paid orders of the session used, sorted by code. */
+            promos: components["schemas"]["SummaryPromoItem"][];
+            /** @description Invitations of the session. */
+            complimentary: components["schemas"]["SummaryComplimentary"];
+        };
+        /**
+         * @description The session summary over every session of an event (EC-06): the same
+         *     places, categories, money, orders, tickets, door count, refunds,
+         *     promo codes and invitations as totals, plus one entry per session
+         *     with its own figures, so a multi-session event reads as totals and a
+         *     list. Built by the same assembly as SessionSummary. Read-only, no
+         *     buyer data.
+         */
+        EventSummary: {
+            /** @description The event the summary is about. */
+            event: {
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the event.
+                 */
+                id: string;
+                /**
+                 * Format: uuid
+                 * @description UUIDv7 of the owning organization.
+                 */
+                org_id: string;
+                /** @description Name of the event as stored. */
+                name: string;
+                /** @description Event status (draft, published, cancelled, archived). */
+                status: string;
+                /**
+                 * Format: date-time
+                 * @description Earliest start over the event's active, non-cancelled sessions, RFC3339 in UTC.
+                 */
+                first_session_at: string | null;
+                /**
+                 * Format: date-time
+                 * @description Latest end over the same sessions, RFC3339 in UTC.
+                 */
+                last_session_at: string | null;
+                /** @description Number of sessions in `sessions` — every non-deleted session, cancelled ones included. */
+                session_count: number;
+            };
+            /** @description Places of every session, split by kind. */
+            places: {
+                /** @description Seats of the seating plans. */
+                seats: components["schemas"]["SessionPlaceCounts"];
+                /** @description General admission places. */
+                ga: components["schemas"]["SessionPlaceCounts"];
+            };
+            /** @description The event's category table, merged across sessions. */
+            tiers: components["schemas"]["EventSummaryTierItem"][];
+            /** @description The bottom line of the whole event, one entry per currency. */
+            money: components["schemas"]["SummaryMoneyItem"][];
+            /** @description Order totals of every session grouped by status, source and currency. */
+            orders: components["schemas"]["SummaryOrdersItem"][];
+            /** @description Tickets of every session by status. */
+            tickets: components["schemas"]["SummaryTickets"];
+            /** @description The door count over every session. */
+            entered: components["schemas"]["SummaryEntered"];
+            /** @description Refund totals of every session grouped by settlement, state and currency. */
+            refunds: components["schemas"]["SummaryRefundsItem"][];
+            /** @description Promo codes the paid orders of every session used, merged by code and sorted. */
+            promos: components["schemas"]["SummaryPromoItem"][];
+            /** @description Invitations over every session. */
+            complimentary: components["schemas"]["SummaryComplimentary"];
+            /** @description Every non-deleted session of the event in start order, each with its own figures. */
+            sessions: components["schemas"]["EventSummarySession"][];
         };
         /**
          * @description A single active venue (physical event location owned by one organization).
@@ -10934,6 +11329,36 @@ export interface components {
              * @example Partner Agency s.r.o.
              */
             promoter_name?: string | null;
+            /**
+             * @description Where the event stands in its sale, computed on the server from
+             *     its active, non-cancelled sessions (EC-02) so every client shows
+             *     the same chip. One of `on_sale` (a session that has not ended,
+             *     whose own sales end has not passed, still has a free place in a
+             *     category that is open and inside its sale window — the hold
+             *     gate's own rule), `sold_out` (future sessions exist but no free
+             *     place is left in any live category of any of them), `upcoming`
+             *     (future sessions exist but none is selling: the sale has not
+             *     opened yet, only a closed category has places, or sales ended
+             *     before the start) and `archived` (every session has ended, the
+             *     event has no session, or the event is cancelled/archived). Empty
+             *     only when the lookup failed.
+             * @example on_sale
+             */
+            sales_state: string;
+            /**
+             * Format: date-time
+             * @description Start of the earliest active session that has not ended yet
+             *     (RFC 3339, UTC) — a session running right now counts. Null when
+             *     every session has ended or the event has none.
+             * @example 2026-11-15T19:00:00Z
+             */
+            next_session_at: string | null;
+            /**
+             * @description Number of active, non-cancelled sessions of the event, past ones
+             *     included — the same count the hosted page reports.
+             * @example 2
+             */
+            session_count: number;
             /**
              * @description Discovery visibility for the cross-tenant GET /v1/events surface.
              *     `public` events appear in the default list; `unlisted` and
@@ -40090,6 +40515,85 @@ export interface operations {
                 };
             };
             /** @description Order not found, or not linked to this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdEventsEventIdSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The event summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSummary"];
+                };
+            };
+            /** @description org_id or event_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found, or not part of this organization. */
             404: {
                 headers: {
                     [name: string]: unknown;
