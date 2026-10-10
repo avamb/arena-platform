@@ -571,6 +571,7 @@ type Querier interface {
 
 	// Session → owning-org resolution (Bil24 RESERVATION wiring)
 	GetSessionOrgContext(ctx context.Context, sessionID uuid.UUID) (SessionOrgContextRow, error)
+	SessionInEventAndOrg(ctx context.Context, sessionID, eventID, orgID uuid.UUID) (bool, error)
 
 	// Public session seating — unauthenticated schema + seat-status endpoints (feature #307, Wave SEAT-B3)
 	GetPublicSessionSchema(ctx context.Context, sessionID uuid.UUID) (PublicSessionSchemaRow, error)

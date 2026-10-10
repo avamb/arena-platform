@@ -117,15 +117,7 @@ func (h *Handler) HandleListInventory(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
-	if !ok {
-		return
-	}
-	_, ok = httputil.UUIDPathParam(w, r, "event_id")
-	if !ok {
-		return
-	}
-	sessionID, ok := httputil.UUIDPathParam(w, r, "session_id")
+	sessionID, ok := h.pathOrgEventSession(w, r)
 	if !ok {
 		return
 	}
@@ -165,15 +157,7 @@ func (h *Handler) HandleInitInventory(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
-	if !ok {
-		return
-	}
-	_, ok = httputil.UUIDPathParam(w, r, "event_id")
-	if !ok {
-		return
-	}
-	sessionID, ok := httputil.UUIDPathParam(w, r, "session_id")
+	sessionID, ok := h.pathOrgEventSession(w, r)
 	if !ok {
 		return
 	}
@@ -226,15 +210,7 @@ func (h *Handler) HandleReserveCapacity(w http.ResponseWriter, r *http.Request) 
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
-	if !ok {
-		return
-	}
-	_, ok = httputil.UUIDPathParam(w, r, "event_id")
-	if !ok {
-		return
-	}
-	sessionID, ok := httputil.UUIDPathParam(w, r, "session_id")
+	sessionID, ok := h.pathOrgEventSession(w, r)
 	if !ok {
 		return
 	}
@@ -288,15 +264,7 @@ func (h *Handler) HandleReleaseCapacity(w http.ResponseWriter, r *http.Request) 
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
-	if !ok {
-		return
-	}
-	_, ok = httputil.UUIDPathParam(w, r, "event_id")
-	if !ok {
-		return
-	}
-	sessionID, ok := httputil.UUIDPathParam(w, r, "session_id")
+	sessionID, ok := h.pathOrgEventSession(w, r)
 	if !ok {
 		return
 	}
@@ -350,15 +318,7 @@ func (h *Handler) HandleConfirmCapacity(w http.ResponseWriter, r *http.Request) 
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
-	if !ok {
-		return
-	}
-	_, ok = httputil.UUIDPathParam(w, r, "event_id")
-	if !ok {
-		return
-	}
-	sessionID, ok := httputil.UUIDPathParam(w, r, "session_id")
+	sessionID, ok := h.pathOrgEventSession(w, r)
 	if !ok {
 		return
 	}

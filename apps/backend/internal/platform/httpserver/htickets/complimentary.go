@@ -163,6 +163,12 @@ func (h *Handler) HandleCreateComplimentaryIssuance(w http.ResponseWriter, r *ht
 		tierID = &tid
 	}
 
+	// SEC-2: the session (and category) of the body must be the path
+	// organization's, before anything is read or written on their behalf.
+	if !h.requireIssuanceTarget(w, r, orgID, sessionID, tierID) {
+		return
+	}
+
 	ctx := r.Context()
 
 	// ── Idempotency check ────────────────────────────────────────────────────
@@ -425,9 +431,21 @@ func (h *Handler) HandleGetComplimentaryIssuance(w http.ResponseWriter, r *http.
 		))
 		return
 	}
+	orgID, err := uuid.Parse(chi.URLParam(r, "org_id"))
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
+			"complimentary.invalid_org_id", "org_id must be a valid UUID", r,
+		))
+		return
+	}
 
 	ctx := r.Context()
 	issuance, err := h.complimentaryQueries.GetComplimentaryIssuanceByID(ctx, id)
+	// SEC-2: an issuance of another organization reads as not found (it lists
+	// the recipients' e-mail addresses).
+	if err == nil && issuance.OrgID != orgID {
+		err = pgx.ErrNoRows
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
