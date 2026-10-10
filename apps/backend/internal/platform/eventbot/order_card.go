@@ -15,9 +15,9 @@ package eventbot
 // Cancelling is irreversible (the hold is released, the order is closed), so
 // it is never one tap: the button only opens a prompt that asks for the
 // localized cancel word, the same one the Sessions dialog asks for, and a
-// wrong word cancels nothing. Resending the tickets (EC-13) and refunds (the
-// money stage) are not built: there are no buttons for them yet — they join
-// orderCardKeyboard when their stages land.
+// wrong word cancels nothing. "Resend tickets" (EC-13) is added to the card by
+// withResendButton (resend.go); refunds (the money stage) are not built: there
+// is no button for them yet.
 
 import (
 	"context"
@@ -70,7 +70,7 @@ func (b *Bot) showOrderCard(ctx context.Context, chatID int64, editMsgID *int, f
 	private := chatID == from.ID
 	html := note + b.orderCardText(loc, detail, meta, private, false)
 	plain := note + b.orderCardText(loc, detail, meta, private, true)
-	kb := b.orderCardKeyboard(loc, detail)
+	kb := b.withResendButton(b.orderCardKeyboard(loc, detail), id, detail, private) // EC-13, resend.go
 	if err := b.replyChecked(ctx, chatID, editMsgID, clipMessage(html, maxMessageRunes), kb); err != nil && html != plain {
 		// A client that refuses the call/WhatsApp links still gets the card.
 		b.reply(ctx, chatID, editMsgID, clipMessage(plain, maxMessageRunes), kb)

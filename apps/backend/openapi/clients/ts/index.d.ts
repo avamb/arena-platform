@@ -6250,6 +6250,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/orders/{order_id}/resend-tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send an order's tickets again
+         * @description Queues the ticket e-mail of a paid order again (EC-13, spec 35 section 6.4).
+         *     Every ACTIVE ticket of the order is requeued, so the buyer gets one
+         *     letter with all the tickets; refunded and cancelled tickets are not
+         *     sent. Without a body the letter goes to the order's own address (the
+         *     buyer's, else the first holder's). With `email` it goes to that address
+         *     once: the address lives on the delivery task, expires after 24 hours and
+         *     never replaces the order's buyer e-mail. The call writes a
+         *     `tickets_resent` row into the order history and an audit event that
+         *     records only whether a different address was used. An order sold through
+         *     a seller's own site (a channel with an active WordPress webhook, or the
+         *     Bil24-protocol gateway source) answers 409 `order.seller_site_order`
+         *     and queues nothing: that site sends its own letters. Requires the
+         *     `ticket.update` permission.
+         */
+        post: operations["postV1OrganizationsOrgIdOrdersOrderIdResendTickets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/tickets/{id}/scans": {
         parameters: {
             query?: never;
@@ -9595,6 +9627,37 @@ export interface components {
             attributes: components["schemas"]["CustomerAttributeItem"][];
             /** @description Consent records for this customer within the requesting org. */
             consents: components["schemas"]["CustomerConsentItem"][];
+        };
+        /**
+         * @description Body of the resend-tickets route. Every field is optional; an empty body
+         *     sends the tickets to the order's own address.
+         */
+        OrderResendTicketsRequest: {
+            /**
+             * @description A one-time address for this resend. It is stored on the delivery task
+             *     for 24 hours and never changes the order's buyer e-mail. An empty
+             *     string or null means "the order's own address".
+             */
+            email?: string | null;
+        };
+        /** @description What the resend queued. */
+        OrderResendTicketsResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the order.
+             */
+            order_id: string;
+            /** @description How many active tickets were queued. Refunded and cancelled tickets are not sent. */
+            queued_tickets: number;
+            /** @description True when the letter goes to a one-time address that is not the order's own. */
+            different_address: boolean;
+            /** @description The address the letter goes to with most characters hidden, such as `a***@e******.com`. */
+            recipient_masked: string;
+            /**
+             * Format: date-time
+             * @description When the one-time address stops being valid (24 hours after the request). Null for the order's own address.
+             */
+            expires_at: string | null;
         };
         /**
          * @description One order, as returned by both the org-scoped orders list and the
@@ -41794,6 +41857,107 @@ export interface operations {
                 };
             };
             /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdOrdersOrderIdResendTickets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OrderResendTicketsRequest"];
+            };
+        };
+        responses: {
+            /** @description The tickets were queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResendTicketsResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID, or `email` is not a valid address (`order.invalid_email`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`ticket.update`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order is not paid (`order.not_paid`), has no active tickets (`order.no_active_tickets`), or was sold through a seller site (`order.seller_site_order`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order has no e-mail address and none was given (`order.no_recipient`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Delivery store unavailable (database not wired). */
             503: {
                 headers: {
                     [name: string]: unknown;

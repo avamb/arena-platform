@@ -275,6 +275,10 @@ func (b *Bot) ordersCallback(ctx context.Context, chatID int64, msgID int, from 
 	kind, arg, _ := strings.Cut(data, ":")
 
 	switch kind {
+	case "r":
+		// "Resend tickets" (EC-13): its own dialog, so the list behind the card stays.
+		b.resendCallback(ctx, chatID, msgID, from, arg)
+		return
 	case "new":
 		b.renderOrders(ctx, chatID, &msgID, id, jwt, newOrdersDialog(orgID), "")
 		return
