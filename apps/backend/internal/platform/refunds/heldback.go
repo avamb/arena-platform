@@ -95,12 +95,14 @@ func noteHeldBackReplacement(ctx context.Context, tx pgx.Tx, held *Refund, pay P
 		ticketPrice = *price
 	}
 	covered := lateConfirmed && lateAmount >= held.Amount && price != nil && confirmed >= ticketPrice
-	args := []any{lateID, held.ID, held.Amount, lateAmount, confirmed, ticketPrice}
-	reason := fmt.Sprintf(reasonHeldBackNotCovered, args...)
+	// Arguments spelled out at every call: go vet (Go 1.24 in CI) refuses an
+	// indexed format fed through a spread slice.
+	reason := fmt.Sprintf(reasonHeldBackNotCovered, lateID, held.ID, held.Amount, lateAmount, confirmed, ticketPrice)
 	if covered {
-		reason = fmt.Sprintf(reasonHeldBackCovered, args...)
+		reason = fmt.Sprintf(reasonHeldBackCovered, lateID, held.ID, held.Amount, lateAmount, confirmed, ticketPrice)
+		lateReason := fmt.Sprintf(reasonLateCovered, lateID, held.ID, held.Amount, lateAmount, confirmed, ticketPrice)
 		if _, err := tx.Exec(ctx, `UPDATE refunds SET failure_reason = $2, updated_at = now() WHERE id = $1`,
-			lateID, fmt.Sprintf(reasonLateCovered, args...)); err != nil {
+			lateID, lateReason); err != nil {
 			return err
 		}
 	}
