@@ -231,12 +231,12 @@
 |---|---|---|
 | EC-00 | P2 | Волна «сайт как продавец» (SCN-05/06, вместе с PAY-15): события `order.session_changed`, `order.resend_requested` на сайт, письма от сайта, снятие `session.change_site_unsupported` и `order.seller_site_order` для их заказов; плагины Lampyris и Vino |
 | EC-01 | P0 | **Сделано 09.10 (миграция 0130).** `bot_dialogs` + `DialogStore` (`eventbot/dialogs.go`), диалог команды переведён и переживает перезапуск; «диалог устарел» один раз; черновик: напоминание через 24 ч, удаление через 7 дней с уведомлением (`draft_sweep.go`); лимит 30 сообщений и 120 нажатий в минуту (`ratelimit.go`); `X-Client-Channel` → `audit_events.metadata.via` (`audit.WithVia`, middleware). Диалоги сеансов и заявки остаются в памяти — EC-40 |
-| EC-02 | P0 | Список ивентов: «Идут/Архив», чипы, поиск, поле `sales_state` |
-| EC-03 | P0 | Карточка: по категориям, возвраты и нетто, «вошло», промокоды |
-| EC-04 | P0 | Заказы: вкладки, поиск (проверка покрытия штрихкода и номера), пагинация |
-| EC-05 | P0 | Карточка заказа с контактами, билетами, доставкой, причиной неоплаты |
-| EC-06 | P1 | Сводка по сеансу и ивенту |
-| EC-07 | P0 | `csvexport` и маршруты выгрузок, кнопка в боте, тесты формата |
+| EC-02 | P0 | **Сервер сделан 10.10, экран бота ещё нет.** `GET /v1/organizations/{org_id}/events` отдаёт `sales_state` (`on_sale`/`upcoming`/`sold_out`/`archived`), `next_session_at`, `session_count`, считается на сервере (`hcatalog/sales_state.go`, запрос `event_sales_state.sql`). Фильтры «Идут/Архив», чипы и поиск — в боте |
+| EC-03 | P0 | **Сервер сделан 10.10, экран бота ещё нет.** Сводка сеанса дополнена: `promo_codes`, `complimentary_tickets`/`complimentary_orders`, `entered {used,total}` (`horders/summary_core.go`). Карточка в боте — позже |
+| EC-04 | P0 | **Сервер сделан 10.10, экран бота ещё нет.** `GET .../orders`: один `q` (13 цифр = штрихкод любого органа, до 12 цифр или `#` = `orders.system_id`, `@` = точный e-mail, телефон = нормализованные цифры, иначе похожесть), фильтры `session_id`/`event_id` (чужой = 404), `tab` (`recent`/`paid`/`unpaid`), `total_count`, `has_more`, поля ивента и сеанса в строках (`horders/search.go`, `gen/orders_search.sql.go`). Экран бота с `limit=5` — ещё не сделан |
+| EC-05 | P0 | **Сервер сделан 10.10, экран бота ещё нет.** `GET .../orders/{order_id}`: `delivery` по билетам и `delivery_state`, `payment` (последнее платёжное намерение или null), `unpaid_reason`, билеты со штрихкодом, категорией, ценой, `used_at`, местом, `channel {id,name,kind}` (`horders/detail.go`). Экран бота — ещё не сделан |
+| EC-06 | P1 | **Сервер сделан 10.10, экран бота ещё нет.** `GET /v1/organizations/{org_id}/events/{event_id}/summary` (`order.read`, чужая организация — 404): те же агрегаты по всем сеансам плюс `sessions[]` (`horders/event_summary.go`) |
+| EC-07 | P0 | **Сделано 10.10 (сервер), кнопка в боте ждёт.** `internal/platform/csvexport` (BOM, `;`, CRLF, `="…"` для штрихкодов/телефонов/длинных чисел, защита от формул, деньги точкой + колонка валюты, дата в зоне площадки, en/ru/es) и `httpserver/hexport`: `sessions/{id}/sales.csv`, `events/{id}/sales.csv`, `sessions/{id}/summary.csv`, `promo-codes/{id}/redemptions.csv` (потоком по keyset, 413 `export.too_many_rows` выше 50 000 строк, чужая организация — 404); охранный тест запрещает `encoding/csv` в обработчиках. Кнопка «Скачать CSV» в боте — отдельным шагом |
 | EC-08 | P2 | Экран «Уведомления» со ссылкой |
 | EC-10 | P1 | Опубликовать, снять, архив, удалить (гард `event.has_paid_orders`) |
 | EC-11 | P1 | Промокоды |

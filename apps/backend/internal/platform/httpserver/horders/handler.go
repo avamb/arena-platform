@@ -17,13 +17,10 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"math"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -55,46 +52,6 @@ type Handler struct {
 // with a 503 dependency.database_unavailable envelope.
 func New(queries *gen.Queries, pool TxStarter, logger *slog.Logger) *Handler {
 	return &Handler{queries: queries, pool: pool, logger: logger}
-}
-
-func parsePagination(w http.ResponseWriter, r *http.Request) (limit, offset int32, ok bool) {
-	limit = defaultLimit
-	offset = 0
-	if v := r.URL.Query().Get("limit"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n <= 0 || n > maxLimit || n > math.MaxInt32 {
-			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-				"orders.invalid_limit", "limit must be a positive integer up to 200", r))
-			return 0, 0, false
-		}
-		limit = int32(n) // #nosec G109 -- bounded above by maxLimit (200) and math.MaxInt32
-	}
-	if v := r.URL.Query().Get("offset"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 0 || n > math.MaxInt32 {
-			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-				"orders.invalid_offset", "offset must be a non-negative integer", r))
-			return 0, 0, false
-		}
-		offset = int32(n) // #nosec G109 -- bounded above by math.MaxInt32
-	}
-	return limit, offset, true
-}
-
-// parseTimeParam parses an RFC3339 query parameter, returning nil (and ok)
-// when the parameter is absent so the corresponding SQL filter is skipped.
-func parseTimeParam(w http.ResponseWriter, r *http.Request, name string) (*time.Time, bool) {
-	v := strings.TrimSpace(r.URL.Query().Get(name))
-	if v == "" {
-		return nil, true
-	}
-	t, err := time.Parse(time.RFC3339, v)
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			"orders.invalid_"+name, name+" must be an RFC3339 timestamp", r))
-		return nil, false
-	}
-	return &t, true
 }
 
 // orderSummary is the shape returned for one order by both the list and
@@ -153,9 +110,11 @@ func orderSummary(o gen.OrderRow) map[string]any {
 	return m
 }
 
-// HandleList serves GET /v1/organizations/{org_id}/orders. Supported filters:
-// q (trgm fuzzy match over buyer_name/buyer_email/buyer_phone), status,
-// session_id, from/to (RFC3339 created_at range), plus limit/offset paging.
+// HandleList serves GET /v1/organizations/{org_id}/orders (EC-04, spec 35
+// §5.5). Filters: q (one value classified into barcode / order number /
+// e-mail / phone / name similarity — see classifyQuery), tab (recent |
+// paid | unpaid — see tabFilter), status, session_id, event_id, from/to
+// (RFC3339 created_at range), plus limit/offset paging with total_count.
 func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 	if h.queries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable,
@@ -176,49 +135,70 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 			httputil.ErrorEnvelope("orders.invalid_query", "q must be at most 200 characters", r))
 		return
 	}
-	status := strings.TrimSpace(r.URL.Query().Get("status"))
-
-	var sessionID *uuid.UUID
-	if v := strings.TrimSpace(r.URL.Query().Get("session_id")); v != "" {
-		id, err := uuid.Parse(v)
-		if err != nil {
-			httputil.WriteJSON(w, http.StatusBadRequest,
-				httputil.ErrorEnvelope("orders.invalid_session_id", "session_id must be a valid UUID", r))
-			return
-		}
-		sessionID = &id
+	tab, ok := tabFilter(r.URL.Query().Get("tab"))
+	if !ok {
+		httputil.WriteJSON(w, http.StatusBadRequest,
+			httputil.ErrorEnvelope("orders.invalid_tab", "tab must be recent, paid or unpaid", r))
+		return
 	}
+	params := gen.OrderSearchParams{
+		OrgID:  orgID,
+		Status: strings.TrimSpace(r.URL.Query().Get("status")),
+		Tab:    tab,
+	}
+	classifyQuery(q).apply(&params)
 
-	from, ok := parseTimeParam(w, r, "from")
+	params.SessionID, ok = h.scopedIDParam(w, r, orgID, "session_id", h.orgOwnsSession)
 	if !ok {
 		return
 	}
-	to, ok := parseTimeParam(w, r, "to")
+	params.EventID, ok = h.scopedIDParam(w, r, orgID, "event_id", h.orgOwnsEvent)
 	if !ok {
 		return
 	}
+	if params.From, ok = parseTimeParam(w, r, "from"); !ok {
+		return
+	}
+	if params.To, ok = parseTimeParam(w, r, "to"); !ok {
+		return
+	}
 
-	rows, err := h.queries.ListOrdersByOrg(r.Context(), orgID, status, q, sessionID, from, to, limit, offset)
+	rows, err := h.queries.SearchOrdersByOrg(r.Context(), params, limit, offset)
 	if err != nil {
 		h.logger.Error("horders: list failed", slog.Any("error", err))
 		httputil.WriteJSON(w, http.StatusInternalServerError,
 			httputil.ErrorEnvelope("orders.internal", "failed to list orders", r))
 		return
 	}
+	total, err := h.queries.CountOrdersByOrg(r.Context(), params)
+	if err != nil {
+		h.logger.Error("horders: count failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError,
+			httputil.ErrorEnvelope("orders.internal", "failed to count orders", r))
+		return
+	}
 
 	out := make([]map[string]any, 0, len(rows))
 	for _, o := range rows {
-		out = append(out, orderSummary(o))
+		m := orderSummary(o.OrderRow)
+		m["event_name"] = o.EventName
+		m["session_start_at"] = o.SessionStartAt.UTC().Format(time.RFC3339)
+		m["session_timezone"] = o.SessionTimezone
+		out = append(out, m)
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"orders": out,
-		"limit":  limit,
-		"offset": offset,
+		"orders":      out,
+		"limit":       limit,
+		"offset":      offset,
+		"total_count": total,
+		"has_more":    int64(offset)+int64(len(out)) < total,
 	})
 }
 
 // HandleGet serves GET /v1/organizations/{org_id}/orders/{id} — order detail
-// including its line items, audit-trail events, and any issued tickets.
+// including its line items, audit-trail events, issued tickets (with
+// category, price, EAN-13 and entry time), per-ticket delivery, the payment
+// behind the order, the unpaid reason and the sales channel (EC-05).
 func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 	if h.queries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable,
@@ -257,11 +237,7 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TicketRow deliberately has no order_id column (see the comment on
-	// SetTicketOrder), so tickets are resolved per-item via order_items.ticket_id
-	// rather than a bulk "tickets by order" query.
 	items := make([]map[string]any, 0, len(itemRows))
-	tickets := make([]map[string]any, 0, len(itemRows))
 	for _, it := range itemRows {
 		item := map[string]any{
 			"id":         it.ID.String(),
@@ -280,29 +256,19 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 		}
 		if it.TicketID != nil {
 			item["ticket_id"] = it.TicketID.String()
-			ticket, terr := h.queries.GetTicketByID(r.Context(), *it.TicketID)
-			if terr != nil {
-				if !errors.Is(terr, pgx.ErrNoRows) {
-					h.logger.Error("horders: get ticket failed", slog.Any("error", terr))
-					httputil.WriteJSON(w, http.StatusInternalServerError,
-						httputil.ErrorEnvelope("orders.internal", "failed to load order tickets", r))
-					return
-				}
-			} else {
-				tickets = append(tickets, map[string]any{
-					"id":           ticket.ID.String(),
-					"status":       ticket.Status,
-					"holder_email": ticket.HolderEmail,
-					"seat_sector":  ticket.SeatSector,
-					"seat_row":     ticket.SeatRow,
-					"seat_number":  ticket.SeatNumber,
-					"issued_at":    ticket.IssuedAt.Format(time.RFC3339),
-				})
-			}
 		} else {
 			item["ticket_id"] = nil
 		}
 		items = append(items, item)
+	}
+
+	// Tickets, delivery, payment and channel (EC-05) — see detail.go.
+	extras, err := h.loadDetailExtras(r.Context(), order)
+	if err != nil {
+		h.logger.Error("horders: load tickets failed", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError,
+			httputil.ErrorEnvelope("orders.internal", "failed to load order tickets", r))
+		return
 	}
 
 	eventRows, err := h.queries.ListOrderEventsByOrder(r.Context(), orderID)
@@ -325,8 +291,13 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 
 	resp := orderSummary(order)
 	resp["items"] = items
-	resp["tickets"] = tickets
+	resp["tickets"] = extras.tickets
 	resp["events"] = events
+	resp["delivery"] = extras.delivery
+	resp["delivery_state"] = extras.state
+	resp["payment"] = extras.payment
+	resp["unpaid_reason"] = extras.reason
+	resp["channel"] = extras.channel
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 

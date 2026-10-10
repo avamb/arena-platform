@@ -173,7 +173,7 @@ func TestPromoCodes0108_LiveDB(t *testing.T) {
 		t.Errorf("filter by an unused code: %v %+v", err, only)
 	}
 
-	promos, err := q.ListSessionSummaryPromos(ctx, sessID)
+	promos, err := q.ListSessionSummaryPromos(ctx, []uuid.UUID{sessID})
 	if err != nil {
 		t.Fatalf("ListSessionSummaryPromos: %v", err)
 	}

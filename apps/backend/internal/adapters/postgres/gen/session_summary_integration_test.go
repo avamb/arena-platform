@@ -125,7 +125,7 @@ func TestSessionSummary_LiveDB(t *testing.T) {
 		t.Errorf("foreign org: got %v, want pgx.ErrNoRows", err)
 	}
 
-	places, err := q.ListSessionSummaryPlaces(ctx, sessID)
+	places, err := q.ListSessionSummaryPlaces(ctx, []uuid.UUID{sessID})
 	if err != nil {
 		t.Fatalf("ListSessionSummaryPlaces: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestSessionSummary_LiveDB(t *testing.T) {
 		t.Errorf("places: %+v", p)
 	}
 
-	tiers, err := q.ListSessionSummaryTiers(ctx, sessID)
+	tiers, err := q.ListSessionSummaryTiers(ctx, []uuid.UUID{sessID})
 	if err != nil {
 		t.Fatalf("ListSessionSummaryTiers: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestSessionSummary_LiveDB(t *testing.T) {
 		t.Errorf("tiers: %+v", tiers)
 	}
 
-	orders, err := q.ListSessionSummaryOrders(ctx, sessID)
+	orders, err := q.ListSessionSummaryOrders(ctx, []uuid.UUID{sessID})
 	if err != nil {
 		t.Fatalf("ListSessionSummaryOrders: %v", err)
 	}
@@ -155,15 +155,38 @@ func TestSessionSummary_LiveDB(t *testing.T) {
 		t.Errorf("orders: %+v", orders)
 	}
 
-	tickets, err := q.GetSessionSummaryTickets(ctx, sessID)
+	ticketRows, err := q.ListSessionSummaryTickets(ctx, []uuid.UUID{sessID})
 	if err != nil {
-		t.Fatalf("GetSessionSummaryTickets: %v", err)
+		t.Fatalf("ListSessionSummaryTickets: %v", err)
 	}
-	if tickets.Active != 1 || tickets.Cancelled != 0 || tickets.Used != 0 {
+	if len(ticketRows) != 1 {
+		t.Fatalf("ticket rows: %+v", ticketRows)
+	}
+	if tickets := ticketRows[0]; tickets.SessionID != sessID || tickets.Active != 1 || tickets.Cancelled != 0 || tickets.Used != 0 {
 		t.Errorf("tickets: %+v", tickets)
 	}
 
-	refunds, err := q.ListSessionSummaryRefunds(ctx, sessID)
+	compl, err := q.ListSessionSummaryComplimentary(ctx, []uuid.UUID{sessID})
+	if err != nil {
+		t.Fatalf("ListSessionSummaryComplimentary: %v", err)
+	}
+	if len(compl) != 1 || compl[0].SessionID != sessID || compl[0].Orders != 0 || compl[0].Tickets != 0 {
+		t.Errorf("complimentary: %+v", compl)
+	}
+
+	evHeader, err := q.GetEventSummaryHeader(ctx, evtID, orgID)
+	if err != nil || evHeader.OrgID != orgID || evHeader.Name != "Summary Event "+nonce {
+		t.Errorf("GetEventSummaryHeader: %+v %v", evHeader, err)
+	}
+	if _, err := q.GetEventSummaryHeader(ctx, evtID, uuid.New()); !errors.Is(err, pgx.ErrNoRows) {
+		t.Errorf("foreign org event header: got %v, want pgx.ErrNoRows", err)
+	}
+	evSessions, err := q.ListEventSummarySessions(ctx, evtID)
+	if err != nil || len(evSessions) != 1 || evSessions[0].ID != sessID || evSessions[0].VenueName == nil {
+		t.Errorf("ListEventSummarySessions: %+v %v", evSessions, err)
+	}
+
+	refunds, err := q.ListSessionSummaryRefunds(ctx, []uuid.UUID{sessID})
 	if err != nil {
 		t.Fatalf("ListSessionSummaryRefunds: %v", err)
 	}
