@@ -1721,3 +1721,66 @@ other = "✔ El pedido está cancelado y sus plazas vuelven a estar libres."
 
 ["bot.ord.cancel_not_possible"]
 other = "Este pedido ya no se puede cancelar: ya no está pendiente de pago."
+
+["bot.evs.publish_btn"]
+other = "▶ Publicar"
+
+["bot.evs.off_btn"]
+other = "⏸ Retirar de la venta"
+
+["bot.evs.archive_btn"]
+other = "🗄 Archivar"
+
+["bot.evs.delete_btn"]
+other = "🗑 Eliminar"
+
+["bot.evs.off_ask"]
+other = "⏸ <b>¿Retirar «{{.Name}}» de la venta?</b>\n\nEl evento desaparece de tu página de entradas y de las webs que lo venden, y nadie podrá comprar entradas hasta que lo publiques de nuevo.\n\n<b>Las entradas ya vendidas siguen siendo válidas</b>: los compradores las conservan y no se devuelve ni se anula nada."
+
+["bot.evs.off_yes_btn"]
+other = "✔ Sí, retirar de la venta"
+
+["bot.evs.archive_ask"]
+other = "🗄 <b>¿Archivar «{{.Name}}»?</b>\n\nLa venta se detiene y el evento pasa al archivo.\n\n<b>Las entradas ya vendidas siguen siendo válidas</b>: los compradores las conservan y no se devuelve ni se anula nada. Un evento archivado no se puede volver a poner a la venta."
+
+["bot.evs.archive_yes_btn"]
+other = "✔ Sí, archivar"
+
+["bot.evs.published_done"]
+other = "✔ «{{.Name}}» está publicado y a la venta."
+
+["bot.evs.off_done"]
+other = "✔ «{{.Name}}» está retirado de la venta. Las entradas ya vendidas siguen siendo válidas."
+
+["bot.evs.archived_done"]
+other = "✔ «{{.Name}}» está archivado. Las entradas ya vendidas siguen siendo válidas."
+
+["bot.evs.deleted_done"]
+other = "✔ «{{.Name}}» está eliminado."
+
+["bot.evs.delete_ask"]
+other = "⚠️ <b>Último paso: todavía no se ha eliminado nada.</b>\n\n«{{.Name}}»: fechas: {{.N}}, sin pedidos pagados y sin entradas vendidas. El evento y sus fechas se eliminarán. No se puede deshacer.\n\nPara eliminar, <b>escribe la palabra {{.Word}}</b> y envíala como mensaje. Para conservar el evento, pulsa «Atrás»."
+
+["bot.evs.delete_wrong"]
+other = "Esa no es la palabra, así que no se ha eliminado nada. Para eliminar, escribe exactamente: {{.Word}}"
+
+["bot.evs.delete_blocked"]
+other = "🚫 <b>«{{.Name}}» no se puede eliminar.</b>\n\nTiene {{.Orders}} pedido(s) pagado(s) y {{.Tickets}} entrada(s) vendida(s). Los compradores tienen entradas válidas, así que el evento se queda. Puedes archivarlo: la venta se detiene, el evento sale de tus listas y las entradas siguen siendo válidas."
+
+["bot.evs.delete_blocked_arch"]
+other = "🚫 <b>«{{.Name}}» no se puede eliminar.</b>\n\nTiene {{.Orders}} pedido(s) pagado(s) y {{.Tickets}} entrada(s) vendida(s), y los compradores tienen entradas válidas. El evento se queda en el archivo."
+
+["bot.evs.delete_word"]
+other = "ELIMINAR"
+
+["bot.evs.need_session"]
+other = "Todavía no se puede publicar: el evento no tiene ninguna fecha. Añade primero una fecha («Editar»)."
+
+["bot.evs.need_tier"]
+other = "Todavía no se puede publicar: cada fecha necesita al menos una categoría de entradas con precio. Corrígelo en «Editar»."
+
+["bot.evs.not_allowed"]
+other = "Este cambio no es posible con el evento en su estado actual."
+
+["bot.evs.archive_instead_btn"]
+other = "🗄 Mejor archivar"
