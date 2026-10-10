@@ -95,7 +95,7 @@ func TestEngine_AttemptedRefundParkedForBudgetKeepsCounting(t *testing.T) {
 	}
 	// Nobody knows whether B's money went back: the ticket stays valid for
 	// a person to decide, and B's reason says so.
-	if st, _ := f.ticketStatus(t, f.tickets[0]); st != "active" || !strings.Contains(deref(b.FailureReason), "STILL VALID") {
+	if st, _ := f.ticketStatus(t, f.tickets[0]); st != "active" || !strings.Contains(deref(b.FailureReason), "Only if the ticket is still active") {
 		t.Fatalf("ticket 1 = %s, B reason %q; want the ticket left for a person", st, deref(b.FailureReason))
 	}
 }

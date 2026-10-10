@@ -144,7 +144,7 @@ func TestEngine_ReplacementIsNotSentWhenALateAcceptanceTookItsMoney(t *testing.T
 	}
 	// Sixth review, MEDIUM-1: B may never be claimed (left requested,
 	// rejected), so A's reason must not promise anything B would do.
-	if r := deref(a.Refunds[0].FailureReason); !strings.Contains(r, "STILL VALID") || strings.Contains(r, "cancellation over") {
+	if r := deref(a.Refunds[0].FailureReason); !strings.Contains(r, "Only if the ticket is still active") || strings.Contains(r, "cancellation over") {
 		t.Fatalf("A reason %q; want the ticket said to be still valid, no promised hand-over", r)
 	}
 	if len(b.Refunds) != 1 || b.Refunds[0].State != refunds.StateRequested {
@@ -166,7 +166,7 @@ func TestEngine_ReplacementIsNotSentWhenALateAcceptanceTookItsMoney(t *testing.T
 	// a guess): nothing cancels ticket 1 automatically. B was never sent,
 	// so it gives its cancel_ticket up and blocks nothing; A stays parked
 	// as it was. Both reasons and the alert say that the money went back
-	// once, through A, that the ticket is STILL VALID and how a person
+	// once, through A, that the ticket stays as it is and how a person
 	// cancels it.
 	aid := a.Refunds[0].ID
 	if st, link := f.ticketStatus(t, f.tickets[0]); st != "active" || link != nil {
@@ -182,7 +182,7 @@ func TestEngine_ReplacementIsNotSentWhenALateAcceptanceTookItsMoney(t *testing.T
 		t.Fatal("B still holds cancel_ticket; a refund that is never sent must not block the ticket")
 	}
 	for name, reason := range map[string]string{"A": deref(ra.FailureReason), "B": deref(rb.FailureReason)} {
-		for _, want := range []string{aid.String(), "STILL VALID", "Nothing was sent twice", "refund_mode=none"} {
+		for _, want := range []string{aid.String(), "Only if the ticket is still active", "cover its price", "Nothing was sent twice", "refund_mode=none"} {
 			if !strings.Contains(reason, want) {
 				t.Fatalf("%s reason %q; want it to contain %q", name, reason, want)
 			}
@@ -199,7 +199,7 @@ func TestEngine_ReplacementIsNotSentWhenALateAcceptanceTookItsMoney(t *testing.T
 	if !strings.Contains(joined, bid.String()) || !strings.Contains(joined, "budget_taken_by_another_refund") {
 		t.Fatalf("alerts = %v; want one about B", n.texts)
 	}
-	for _, want := range []string{"STILL VALID", f.tickets[0].String(), "refund_mode=none"} {
+	for _, want := range []string{"is still active", f.tickets[0].String(), "refund_mode=none"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("alerts = %v; want them to contain %q", n.texts, want)
 		}

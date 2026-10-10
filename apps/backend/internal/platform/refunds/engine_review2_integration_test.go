@@ -307,6 +307,18 @@ func TestEngine_LateAcceptanceRevivesAFailedRefundWithAnAlert(t *testing.T) {
 			if len(n.texts) != 1 || !strings.Contains(n.texts[0], r.ID.String()) || !strings.Contains(n.texts[0], want) {
 				t.Fatalf("alerts = %v; want one about the revived refund (%s)", n.texts, want)
 			}
+			// Seventh review, item 2: the replacement already cancelled the
+			// ticket. Neither the reason nor the alert may call it still
+			// valid or tell a person to cancel it.
+			if replaced {
+				if reason := deref(f.refundState(t, r.ID).FailureReason); strings.Contains(reason, "The ticket is STILL VALID") {
+					t.Fatalf("reason %q calls a cancelled ticket still valid", reason)
+				}
+				if strings.Contains(n.texts[0], "STILL VALID") || strings.Contains(n.texts[0], "still active") ||
+					!strings.Contains(n.texts[0], "already cancelled") {
+					t.Fatalf("alert %q; want it to say the ticket is already cancelled", n.texts[0])
+				}
+			}
 		})
 	}
 }

@@ -484,6 +484,9 @@ func (e *Engine) alertReviews(ctx context.Context, n Notifier) (int, error) {
 		rows  []Refund
 		due   []time.Time
 		fails []int
+		// tickets: each refund's ticket status when the alert is built, so
+		// an alert never asserts a stale ticket state (seventh review).
+		tickets []string
 	)
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
 		// The pick is a MATERIALIZED CTE, evaluated exactly once: as an
@@ -498,7 +501,8 @@ func (e *Engine) alertReviews(ctx context.Context, n Notifier) (int, error) {
 			ORDER BY alert_attempts, alert_due_at LIMIT `+strconv.Itoa(alertsPerPass)+` FOR UPDATE SKIP LOCKED)
 			UPDATE refunds SET alert_lease_until = now() + $2::interval
 			FROM picked WHERE id = picked.picked_id
-			RETURNING alert_attempts, alert_due_at, `+refundColumns, e.scopeOrgs(), intervalText(alertLease))
+			RETURNING alert_attempts, alert_due_at, (SELECT t.status FROM tickets t WHERE t.id = refunds.ticket_id), `+refundColumns,
+			e.scopeOrgs(), intervalText(alertLease))
 		if err != nil {
 			return err
 		}
@@ -507,12 +511,13 @@ func (e *Engine) alertReviews(ctx context.Context, n Notifier) (int, error) {
 			var (
 				at   time.Time
 				fail int
+				tst  *string
 			)
-			r, err := scanRefundWith(res, &fail, &at)
+			r, err := scanRefundWith(res, &fail, &at, &tst)
 			if err != nil {
 				return err
 			}
-			rows, due, fails = append(rows, r), append(due, at), append(fails, fail)
+			rows, due, fails, tickets = append(rows, r), append(due, at), append(fails, fail), append(tickets, deref(tst))
 		}
 		return res.Err()
 	})
@@ -535,7 +540,7 @@ func (e *Engine) alertReviews(ctx context.Context, n Notifier) (int, error) {
 	sent := 0
 	for k, i := range order {
 		r := rows[i]
-		if derr := deliver(ctx, n, alertText(r)); derr != nil {
+		if derr := deliver(ctx, n, alertText(r, tickets[i])); derr != nil {
 			e.logger.Warn("refunds: ops alert not delivered; the next pass retries it", "refund_id", r.ID.String(), "error", derr.Error())
 			if ctx.Err() == nil {
 				// The section's own deadline is not the message's fault.
@@ -554,24 +559,54 @@ func (e *Engine) alertReviews(ctx context.Context, n Notifier) (int, error) {
 	return sent, nil
 }
 
-// alertText is the ops message of one owed alert.
-func alertText(r Refund) string {
+// alertText is the ops message of one owed alert. ticketStatus is the
+// refund's ticket's status read when the alert is built ("" when the refund
+// names no ticket). The text never asserts a ticket state it did not read
+// and never tells a person to cancel unconditionally (seventh review).
+func alertText(r Refund, ticketStatus string) string {
 	esc := opsalert.EscapeHTML
 	if r.State == StateManualReview {
 		text := fmt.Sprintf("Refund %s (%d %s via %s) needs manual review: %s. Order %s.",
 			r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), esc(deref(r.FailureCode)), uuidString(r.OrderID))
-		switch deref(r.FailureCode) {
+		code := deref(r.FailureCode)
+		if code == failureLateOverBudget && deref(r.ProviderStatus) != string(payments.RefundSucceeded) {
+			text += " The provider accepted it as pending and has not confirmed it yet; arena does not read it back: check in the provider dashboard whether it completed."
+		}
+		switch code {
 		case failureBudgetTaken, failureBudgetAfterUnanswered, failureLateOverBudget:
-			if r.TicketID != nil {
-				// Sixth review: nothing cancels this ticket automatically.
-				text += fmt.Sprintf(" Ticket %s is STILL VALID. Check the provider dashboard; if the buyer's money for it is back, cancel it without a refund: POST /v1/tickets/%s/cancel with refund_mode=none.",
+			if r.TicketID == nil {
+				break
+			}
+			// Sixth review: nothing cancels this ticket automatically.
+			if ticketStatus == "active" {
+				text += fmt.Sprintf(" Ticket %s is still active. Check the provider dashboard first; only if the buyer's money for it is back, cancel it without a refund: POST /v1/tickets/%s/cancel with refund_mode=none.",
 					r.TicketID, r.TicketID)
+			} else {
+				text += fmt.Sprintf(" Ticket %s is already %s: if another refund also returned its money, the buyer was refunded twice; recover the excess at the provider.",
+					r.TicketID, esc(ticketStatusWord(ticketStatus)))
 			}
 		}
 		return text
 	}
-	return fmt.Sprintf("Refund %s (%d %s via %s) was accepted by the provider late, after it had been parked or marked failed: accepted_late. Its ticket is cancelled; check for a manual duplicate refund. Order %s.",
-		r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), uuidString(r.OrderID))
+	ticket := "It names no ticket: check the order's tickets."
+	if r.TicketID != nil {
+		if ticketStatus == "active" {
+			ticket = "Its ticket is still active (this refund does not cancel it)."
+		} else {
+			ticket = "Its ticket is " + esc(ticketStatusWord(ticketStatus)) + "."
+		}
+	}
+	return fmt.Sprintf("Refund %s (%d %s via %s) was accepted by the provider late, after it had been parked or marked failed: accepted_late. %s Check for a manual duplicate refund. Order %s.",
+		r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), ticket, uuidString(r.OrderID))
+}
+
+// ticketStatusWord names a ticket status for an alert; a missing ticket
+// row reads "gone".
+func ticketStatusWord(s string) string {
+	if s == "" {
+		return "gone"
+	}
+	return s
 }
 
 // alertWriteTimeout bounds each bookkeeping write of the alert section, on a

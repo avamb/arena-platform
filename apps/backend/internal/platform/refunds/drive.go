@@ -504,11 +504,17 @@ func overBudget(ctx context.Context, tx pgx.Tx, cur Refund, pay Payment) (bool, 
 // gives it back: a person cancels the ticket (sixth review — money first,
 // never cancel a ticket on a guess).
 func recordOverBudget(ctx context.Context, tx pgx.Tx, cur Refund, out callOutcome) (Refund, error) {
+	// A pending acceptance is not a confirmation, and a parked row is never
+	// read back by the lookup: its reason says so (seventh review, item 3).
+	reason := reasonLateOverBudgetPending
+	if out.result.Status == payments.RefundSucceeded {
+		reason = reasonLateOverBudget
+	}
 	return scanRefund(tx.QueryRow(ctx, `UPDATE refunds SET state = 'manual_review', failed_at = NULL,
 		provider_refund_id = $2, provider_status = $3, cancel_ticket = false,
 		failure_code = 'late_acceptance_over_budget', failure_reason = $4,
 		`+reviewAlertSQL+`, updated_at = now() WHERE id = $1 RETURNING `+refundColumns,
-		cur.ID, out.result.ProviderRefundID, string(out.result.Status), reasonLateOverBudget))
+		cur.ID, out.result.ProviderRefundID, string(out.result.Status), reason))
 }
 
 // reviveCancelSQL keeps cancel_ticket only when no other live cancelling
