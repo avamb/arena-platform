@@ -1832,6 +1832,66 @@ other = "Este cambio no es posible con el evento en su estado actual."
 ["bot.evs.archive_instead_btn"]
 other = "🗄 Mejor archivar"
 
+["bot.team.state_waiting"]
+other = ", invitación enviada, aún sin abrir"
+
+["bot.team.state_expired"]
+other = ", invitación caducada"
+
+["bot.team.state_accepted"]
+other = ", invitación aceptada"
+
+["bot.team.revoke_btn"]
+other = "Revocar invitación: {{.Email}}"
+
+["bot.team.resend_btn"]
+other = "Reenviar el correo: {{.Email}}"
+
+["bot.team.revoke_confirm"]
+other = "¿Revocar la invitación de {{.Email}}? El enlace del correo dejará de funcionar y, si todavía no se ha unido, saldrá del equipo."
+
+["bot.team.revoke_yes_btn"]
+other = "Sí, revocar"
+
+["bot.team.revoked_removed"]
+other = "Invitación de {{.Email}} revocada. El enlace ya no funciona y no está en el equipo."
+
+["bot.team.revoked_kept"]
+other = "Invitación de {{.Email}} revocada, el enlace ya no funciona. Sigue en el equipo: {{.Reason}}"
+
+["bot.team.resent"]
+other = "Un correo nuevo con un enlace nuevo ha salido a {{.Email}}. El enlace anterior ya no funciona."
+
+["bot.team.resend_too_soon"]
+other = "El último correo a {{.Email}} salió hace menos de diez minutos. Inténtalo un poco más tarde."
+
+["bot.team.invitation_gone"]
+other = "Esa invitación ya no existe o ya fue aceptada."
+
+["bot.team.revoke_failed"]
+other = "No se pudo revocar la invitación. Inténtalo de nuevo."
+
+["bot.team.resend_failed"]
+other = "No se pudo reenviar el correo. Inténtalo de nuevo."
+
+["bot.team.kept_accepted"]
+other = "ya se ha unido (para sacarlo usa «Quitar»)."
+
+["bot.team.kept_member_before"]
+other = "ya era miembro antes de esta invitación."
+
+["bot.team.kept_other_invitation"]
+other = "otra invitación lo mantiene dentro."
+
+["bot.team.kept_in_use"]
+other = "ya trabaja en esta organización a través del bot."
+
+["bot.team.kept_role_changed"]
+other = "le cambiaste el rol después de invitarle."
+
+["bot.team.kept_last_owner"]
+other = "es el único propietario."
+
 ["bot.inv.btn"]
 other = "🎟 Invitaciones"
 

@@ -3,14 +3,14 @@
 -- Wrappers are hand-maintained in gen/bot.sql.go.
 
 -- name: InsertBotInvitation :one
-INSERT INTO bot_invitations (org_id, user_id, email, role, code_hash, invited_by, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO bot_invitations (org_id, user_id, email, role, code_hash, invited_by, expires_at, membership_created)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
-          accepted_at, accepted_telegram_user_id, created_at;
+          accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at;
 
 -- name: GetBotInvitationByCodeHash :one
 SELECT id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
-       accepted_at, accepted_telegram_user_id, created_at
+       accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at
 FROM   bot_invitations
 WHERE  code_hash = $1;
 
@@ -20,9 +20,90 @@ SET    accepted_at               = now(),
        accepted_telegram_user_id = $2
 WHERE  id = $1
   AND  accepted_at IS NULL
+  AND  revoked_at IS NULL
   AND  expires_at > now()
 RETURNING id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
-          accepted_at, accepted_telegram_user_id, created_at;
+          accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at;
+
+-- name: GetBotInvitationInOrgForUpdate :one
+-- Lock an invitation of the organization (EC-16). A missing row and a row of
+-- another organization answer alike.
+SELECT id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
+       accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at
+FROM   bot_invitations
+WHERE  id = $1 AND org_id = $2
+FOR UPDATE;
+
+-- name: GetBotInvitationInOrg :one
+SELECT id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
+       accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at
+FROM   bot_invitations
+WHERE  id = $1 AND org_id = $2;
+
+-- name: RevokeBotInvitation :one
+UPDATE bot_invitations
+SET    revoked_at = now()
+WHERE  id = $1
+  AND  revoked_at IS NULL
+RETURNING id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
+          accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at;
+
+-- name: CountOtherLiveBotInvitations :one
+-- The OTHER invitations that still keep the person in the organization:
+-- accepted ones, and unaccepted ones that neither expired nor were revoked.
+SELECT count(*)
+FROM   bot_invitations
+WHERE  user_id = $1
+  AND  org_id  = $2
+  AND  id <> $3
+  AND  revoked_at IS NULL
+  AND (accepted_at IS NOT NULL OR expires_at > now());
+
+-- name: BotInvitationCreatedMembership :one
+-- Whether ANY invitation of the person to the organization (revoked or not)
+-- inserted the membership: a second invitation to someone the first one
+-- brought in finds the membership already there and records created=false.
+SELECT EXISTS (
+    SELECT 1 FROM bot_invitations
+    WHERE  user_id = $1 AND org_id = $2 AND membership_created
+);
+
+-- name: BotUserWorksInOrg :one
+-- Whether the person has already started working in the organization through
+-- the bot by another route than accepting THIS invitation.
+SELECT EXISTS (
+           SELECT 1 FROM bot_telegram_links l
+           WHERE  l.user_id = $1 AND l.revoked_at IS NULL AND l.current_org_id = $2
+       )
+    OR EXISTS (
+           SELECT 1 FROM bot_drafts d
+           JOIN   bot_telegram_links l ON l.telegram_user_id = d.telegram_user_id
+           WHERE  l.user_id = $1 AND d.org_id = $2
+       )
+    OR EXISTS (
+           SELECT 1 FROM bot_dialogs g
+           JOIN   bot_telegram_links l ON l.telegram_user_id = g.telegram_user_id
+           WHERE  l.user_id = $1 AND g.org_id = $2
+       );
+
+-- name: CountActiveOrgAdmins :one
+SELECT count(*) FROM memberships WHERE org_id = $1 AND role = 'org_admin' AND status = 'active';
+
+-- name: ResendBotInvitation :one
+-- A fresh code and expiry for a not-yet-accepted, not-revoked invitation, only
+-- when the last letter went out at least $5 seconds ago (one statement, so two
+-- concurrent resends cannot both pass).
+UPDATE bot_invitations
+SET    code_hash    = $3,
+       expires_at   = $4,
+       last_sent_at = now()
+WHERE  id = $1
+  AND  org_id = $2
+  AND  accepted_at IS NULL
+  AND  revoked_at IS NULL
+  AND  last_sent_at <= now() - make_interval(secs => $5::int)
+RETURNING id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
+          accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at;
 
 -- name: GetBotTelegramLink :one
 SELECT telegram_user_id, user_id, telegram_username, locale, defaults, current_org_id,
@@ -157,9 +238,21 @@ SELECT u.id      AS user_id,
                WHERE l.user_id = u.id AND l.revoked_at IS NULL)              AS telegram_linked,
        EXISTS (SELECT 1 FROM bot_invitations i
                WHERE i.user_id = u.id AND i.org_id = m.org_id
-                 AND i.accepted_at IS NULL AND i.expires_at > now())         AS invitation_pending
+                 AND i.revoked_at IS NULL
+                 AND i.accepted_at IS NULL AND i.expires_at > now())         AS invitation_pending,
+       inv.id           AS invitation_id,
+       inv.accepted_at  AS invitation_accepted_at,
+       inv.expires_at   AS invitation_expires_at,
+       inv.last_sent_at AS invitation_last_sent_at
 FROM   memberships m
 JOIN   users u ON u.id = m.user_id
+LEFT JOIN LATERAL (
+           SELECT i.id, i.accepted_at, i.expires_at, i.last_sent_at
+           FROM   bot_invitations i
+           WHERE  i.user_id = u.id AND i.org_id = m.org_id AND i.revoked_at IS NULL
+           ORDER  BY (i.accepted_at IS NOT NULL) DESC, i.created_at DESC
+           LIMIT  1
+       ) inv ON true
 WHERE  m.org_id = $1
   AND  m.status = 'active'
   AND  m.role IN ('org_admin', 'organizer')

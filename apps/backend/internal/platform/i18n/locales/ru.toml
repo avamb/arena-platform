@@ -1971,6 +1971,66 @@ other = "Для ивента в его нынешнем состоянии эт�
 ["bot.evs.archive_instead_btn"]
 other = "🗄 Лучше в архив"
 
+["bot.team.state_waiting"]
+other = ", приглашение отправлено, ещё не открыто"
+
+["bot.team.state_expired"]
+other = ", приглашение истекло"
+
+["bot.team.state_accepted"]
+other = ", приглашение принято"
+
+["bot.team.revoke_btn"]
+other = "Отозвать приглашение: {{.Email}}"
+
+["bot.team.resend_btn"]
+other = "Отправить письмо ещё раз: {{.Email}}"
+
+["bot.team.revoke_confirm"]
+other = "Отозвать приглашение для {{.Email}}? Ссылка из письма перестанет работать, а если человек ещё не присоединился, он будет убран из команды."
+
+["bot.team.revoke_yes_btn"]
+other = "Да, отозвать"
+
+["bot.team.revoked_removed"]
+other = "Приглашение для {{.Email}} отозвано. Ссылка не работает, человека нет в команде."
+
+["bot.team.revoked_kept"]
+other = "Приглашение для {{.Email}} отозвано, ссылка не работает. Человек остаётся в команде: {{.Reason}}"
+
+["bot.team.resent"]
+other = "Новое письмо со свежей ссылкой ушло на {{.Email}}. Старая ссылка больше не работает."
+
+["bot.team.resend_too_soon"]
+other = "Последнее письмо на {{.Email}} ушло меньше десяти минут назад. Попробуйте чуть позже."
+
+["bot.team.invitation_gone"]
+other = "Такого приглашения уже нет или оно уже принято."
+
+["bot.team.revoke_failed"]
+other = "Не удалось отозвать приглашение. Попробуйте ещё раз."
+
+["bot.team.resend_failed"]
+other = "Не удалось отправить письмо ещё раз. Попробуйте ещё раз."
+
+["bot.team.kept_accepted"]
+other = "он уже присоединился (чтобы убрать, нажмите «Убрать»)."
+
+["bot.team.kept_member_before"]
+other = "он был участником команды до этого приглашения."
+
+["bot.team.kept_other_invitation"]
+other = "его удерживает другое приглашение."
+
+["bot.team.kept_in_use"]
+other = "он уже работает в этой организации через бота."
+
+["bot.team.kept_role_changed"]
+other = "вы сменили ему роль после приглашения."
+
+["bot.team.kept_last_owner"]
+other = "он единственный владелец."
+
 ["bot.inv.btn"]
 other = "🎟 Приглашения"
 

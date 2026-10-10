@@ -26,6 +26,17 @@ func (s *Server) mountBotRoutes(r chi.Router) {
 		s.applyAuth(pr, "membership.read", "memberships")
 		pr.Get("/organizations/{org_id}/bot-team", s.handleListBotTeam)
 	})
+	// EC-16: send the letter again (membership.grant, like the invitation
+	// itself) and take an invitation back (membership.revoke, because it may
+	// remove the membership it created). The manager holds neither.
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "membership.grant", "memberships")
+		pr.Post("/organizations/{org_id}/bot-invitations/{id}/resend", s.handleResendBotInvitation)
+	})
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "membership.revoke", "memberships")
+		pr.Delete("/organizations/{org_id}/bot-invitations/{id}", s.handleRevokeBotInvitation)
+	})
 	serviceToken := ""
 	if s.cfg != nil {
 		serviceToken = s.cfg.BotServiceToken
