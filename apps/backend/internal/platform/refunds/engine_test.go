@@ -178,3 +178,25 @@ func TestTruncateAndInterval(t *testing.T) {
 		t.Errorf("intervalText = %q", got)
 	}
 }
+
+// TestOptionsValidate_FailsFastOnUnsafeTimings (third review, L2): a call
+// plus the recording of its answer must fit inside CallStaleAfter, and a
+// sweep pass inside the worker's stale-claim timeout; New refuses anything
+// else at construction.
+func TestOptionsValidate_FailsFastOnUnsafeTimings(t *testing.T) {
+	if err := (Options{}).Validate(); err != nil {
+		t.Fatalf("the defaults must validate: %v", err)
+	}
+	if err := (Options{CallTimeout: 30 * time.Second}).Validate(); err == nil {
+		t.Error("2 x 30s CallTimeout reaches CallStaleAfter and must be refused")
+	}
+	if err := (Options{SweepPassTimeout: 4 * time.Minute}).Validate(); err == nil {
+		t.Error("a 4-minute pass plus the alert budget and a call overruns the worker's stale claim")
+	}
+	defer func() {
+		if recover() == nil {
+			t.Error("New must panic on invalid timings")
+		}
+	}()
+	New(Options{CallTimeout: time.Minute})
+}

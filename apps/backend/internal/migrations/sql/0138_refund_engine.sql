@@ -19,12 +19,17 @@
 --     ticket is cancelled once the provider accepts;
 --   * refunds.provider_attempts / provider_attempted_at — the "a call is in
 --     flight" marker refund.sweep respects (never re-call within a minute);
+--   * refunds.first_attempted_at — when the provider was first asked: no
+--     re-POST once it is 23 hours old (Stripe keeps an idempotency key for
+--     24 hours from the first request);
 --   * refunds.repair_attempts / repair_attempted_at — refund.sweep's bounded
 --     retries of a ticket cancellation after an accepted refund;
 --   * refunds.alert_due_at / review_alerted_at — an ops alert is owed
 --     (set on every move into manual_review, and when a late provider
 --     acceptance revives a failed refund) / when the last one was sent;
 --     arena-worker's refund.sweep sends it, whichever process moved the row;
+--   * refunds.alert_lease_until — the pass sending an owed alert holds it;
+--     alert_due_at is cleared only after a confirmed delivery;
 --   * refunds.refunded_published_at — v1.ticket.refunded was claimed for
 --     publication, so it is published at most once;
 --   * a unique (provider, provider_refund_id) so one provider refund maps to
@@ -75,10 +80,12 @@ ALTER TABLE refunds
     ADD COLUMN cancel_ticket         boolean NOT NULL DEFAULT false,
     ADD COLUMN provider_attempts     integer NOT NULL DEFAULT 0,
     ADD COLUMN provider_attempted_at timestamptz,
+    ADD COLUMN first_attempted_at    timestamptz,
     ADD COLUMN repair_attempts       integer NOT NULL DEFAULT 0,
     ADD COLUMN repair_attempted_at   timestamptz,
     ADD COLUMN review_alerted_at     timestamptz,
     ADD COLUMN alert_due_at          timestamptz,
+    ADD COLUMN alert_lease_until     timestamptz,
     ADD COLUMN refunded_published_at timestamptz;
 
 CREATE UNIQUE INDEX refunds_provider_refund_uq
@@ -127,10 +134,12 @@ DROP INDEX IF EXISTS refunds_provider_refund_uq;
 
 ALTER TABLE refunds
     DROP COLUMN IF EXISTS refunded_published_at,
+    DROP COLUMN IF EXISTS alert_lease_until,
     DROP COLUMN IF EXISTS alert_due_at,
     DROP COLUMN IF EXISTS review_alerted_at,
     DROP COLUMN IF EXISTS repair_attempted_at,
     DROP COLUMN IF EXISTS repair_attempts,
+    DROP COLUMN IF EXISTS first_attempted_at,
     DROP COLUMN IF EXISTS provider_attempted_at,
     DROP COLUMN IF EXISTS provider_attempts,
     DROP COLUMN IF EXISTS cancel_ticket,

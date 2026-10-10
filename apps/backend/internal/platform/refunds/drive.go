@@ -64,16 +64,24 @@ var ErrNotClaimable = errors.New("refunds: refund is not waiting for a provider 
 // claims the call, the idempotency key is the refund id, and a refund that
 // is not waiting for a call is returned unchanged.
 func (e *Engine) Drive(ctx context.Context, id uuid.UUID) (Refund, error) {
+	r, _, err := e.drive(ctx, id)
+	return r, err
+}
+
+// drive is Drive that also reports whether a provider call was made: a
+// refund that was not claimable (in flight elsewhere, already answered) is
+// "skipped", never an unanswered call (third review, L1).
+func (e *Engine) drive(ctx context.Context, id uuid.UUID) (Refund, bool, error) {
 	r, pay, err := e.claim(ctx, id)
 	if errors.Is(err, ErrNotClaimable) {
 		cur, gerr := e.GetRefund(ctx, id)
 		if gerr != nil {
-			return Refund{}, gerr
+			return Refund{}, false, gerr
 		}
-		return cur, nil
+		return cur, false, nil
 	}
 	if err != nil {
-		return Refund{}, err
+		return Refund{}, false, err
 	}
 	out := e.call(ctx, r, pay)
 	// The provider's answer is recorded even when the caller's context ended
@@ -81,17 +89,20 @@ func (e *Engine) Drive(ctx context.Context, id uuid.UUID) (Refund, error) {
 	// an acceptance would leave a ticket valid for money already returned.
 	applyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), e.callTimeout)
 	defer cancel()
-	return e.apply(applyCtx, r, pay, out)
+	updated, err := e.apply(applyCtx, r, pay, out)
+	return updated, true, err
 }
 
 // claim stamps the call marker under the payment's lock. A refund is
 // claimable when it is an engine refund in provider_pending with no
 // provider refund id, no call of it started within CallStaleAfter, no
 // OTHER refund of the same payment is mid-call (one call per payment at a
-// time, spec §7 step 3), and it was approved less than StuckAfter ago: a
-// provider keeps an idempotency key for about a day (Stripe: 24 hours), so
-// a later re-POST with the same key could create a SECOND refund. Such a
-// row is only ever parked (second review, item 2).
+// time, spec §7 step 3), and its FIRST provider attempt (or, never
+// attempted, its approval) is less than StuckAfter (23 hours) old: Stripe
+// keeps an idempotency key for 24 hours from the first request, so a later
+// re-POST with the same key could create a SECOND refund; the hour of
+// margin covers a POST that lands a call timeout after the check. Such a
+// row is only ever parked (second review item 2, third review M2).
 func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, error) {
 	var (
 		r   Refund
@@ -125,11 +136,12 @@ func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, erro
 		}
 		claimed, err := scanRefund(tx.QueryRow(ctx, `
 			UPDATE refunds
-			SET    provider_attempts = provider_attempts + 1, provider_attempted_at = now(), updated_at = now()
+			SET    provider_attempts = provider_attempts + 1, provider_attempted_at = now(),
+			       first_attempted_at = COALESCE(first_attempted_at, now()), updated_at = now()
 			WHERE  id = $1 AND settlement = 'provider' AND state = 'provider_pending'
 			  AND  provider IS NOT NULL AND provider_refund_id IS NULL
 			  AND  (provider_attempted_at IS NULL OR provider_attempted_at <= now() - $2::interval)
-			  AND  COALESCE(approved_at, created_at) > now() - $3::interval
+			  AND  COALESCE(first_attempted_at, approved_at, created_at) > now() - $3::interval
 			RETURNING `+refundColumns, id, intervalText(CallStaleAfter), intervalText(StuckAfter)))
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotClaimable
@@ -173,7 +185,9 @@ func (e *Engine) call(ctx context.Context, r Refund, pay Payment) callOutcome {
 		var cfg *ConfigError
 		switch {
 		case errors.As(err, &cfg):
-			return callOutcome{kind: outcomeDeclined, code: cfg.Code, message: cfg.Message}
+			// No usable configuration is not a provider verdict: a human
+			// fixes the organization's setup (third review, L3).
+			return callOutcome{kind: outcomeDeclined, review: true, code: cfg.Code, message: cfg.Message}
 		case deterministicModuleError(err):
 			return callOutcome{kind: outcomeDeclined, review: true, code: "payment_module_unavailable", message: err.Error()}
 		}
@@ -194,7 +208,9 @@ func (e *Engine) call(ctx context.Context, r Refund, pay Payment) callOutcome {
 			resolved, rerr := resolver.ResolveChargeRef(callCtx, deref(pay.ProviderPaymentID))
 			if rerr != nil {
 				if code, msg, declined := payments.RefundDeclined(rerr); declined {
-					return callOutcome{kind: outcomeDeclined, code: code, message: msg, review: payments.RefundDeclineNeedsReview(rerr)}
+					// The charge reference could not be found: the refund
+					// never reached the refund endpoint (third review, L3).
+					return callOutcome{kind: outcomeDeclined, code: code, message: msg, review: true}
 				}
 				return callOutcome{kind: outcomeUnknown, code: "charge_ref_lookup_failed", message: rerr.Error()}
 			}
@@ -281,7 +297,21 @@ func (e *Engine) apply(ctx context.Context, claimed Refund, pay Payment, out cal
 			// also owes an ops alert — the failure may already have let a
 			// second refund of the same ticket through.
 			late, revived = true, cur.State == StateFailed
-			updated, err = recordOutcome(ctx, tx, cur, out, pay, revived)
+			over := false
+			if revived {
+				if over, err = overBudget(ctx, tx, cur, pay); err != nil {
+					return err
+				}
+			}
+			if over {
+				// The failure let another refund take this money's place:
+				// counting this one as an ordinary success would hide a
+				// double refund. Park it with its provider id (third
+				// review, M3); it does not cancel or publish anything.
+				updated, err = recordOverBudget(ctx, tx, cur, out)
+			} else {
+				updated, err = recordOutcome(ctx, tx, cur, out, pay, revived)
+			}
 		default:
 			// Someone else (a webhook, a concurrent drive) recorded an
 			// answer first, or the row left provider_pending and this
@@ -319,7 +349,7 @@ func (e *Engine) apply(ctx context.Context, claimed Refund, pay Payment, out cal
 		if updated.State == StateManualReview {
 			e.logReview(updated)
 		}
-		if revived {
+		if revived && updated.State != StateManualReview {
 			e.logger.Error("refunds: REFUND NEEDS MANUAL REVIEW",
 				"event", "refund_manual_review", "refund_id", updated.ID.String(), "order_id", uuidString(updated.OrderID),
 				"amount", updated.Amount, "currency", updated.Currency,
@@ -341,9 +371,46 @@ func (e *Engine) logReview(r Refund) {
 
 // acceptAlertSQL is the alert bookkeeping of an ACCEPTED outcome: leaving
 // manual_review clears the last alert, so a later return to manual_review
-// is announced again (second review, item 4); reviving a failed row owes a
-// new alert ($4).
-const acceptAlertSQL = `review_alerted_at = NULL, alert_due_at = CASE WHEN $4::boolean THEN now() END`
+// is announced again (second review, item 4). An alert is owed when a
+// failed row is revived ($4), and when an operator was ALREADY told about
+// this refund (review_alerted_at, read before the update): the follow-up
+// says it was accepted late (third review, M5).
+const acceptAlertSQL = `alert_due_at = CASE WHEN $4::boolean OR review_alerted_at IS NOT NULL THEN now() END,
+	review_alerted_at = NULL`
+
+// overBudget reports whether recording cur as accepted would push the live
+// refunds of its payment, or of its ticket, past what was paid. Read under
+// the payment's advisory lock the caller holds.
+func overBudget(ctx context.Context, tx pgx.Tx, cur Refund, pay Payment) (bool, error) {
+	var payUsed, ticketUsed int64
+	var ticketPrice *int64
+	err := tx.QueryRow(ctx, `SELECT
+		(SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
+		  WHERE payment_intent_id = $1 AND id <> $2 AND state NOT IN ('failed', 'rejected')),
+		(SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
+		  WHERE $3::uuid IS NOT NULL AND ticket_id = $3 AND id <> $2 AND state NOT IN ('failed', 'rejected')),
+		(SELECT oi.total FROM order_items oi WHERE $3::uuid IS NOT NULL AND oi.ticket_id = $3 LIMIT 1)`,
+		pay.ID, cur.ID, cur.TicketID).Scan(&payUsed, &ticketUsed, &ticketPrice)
+	if err != nil {
+		return false, err
+	}
+	if payUsed+cur.Amount > pay.Amount {
+		return true, nil
+	}
+	return ticketPrice != nil && ticketUsed+cur.Amount > *ticketPrice, nil
+}
+
+// recordOverBudget parks a late acceptance that would exceed the payment or
+// the ticket: the provider id is kept, cancel_ticket is dropped (the other
+// refund owns the cancellation) and an alert is owed.
+func recordOverBudget(ctx context.Context, tx pgx.Tx, cur Refund, out callOutcome) (Refund, error) {
+	return scanRefund(tx.QueryRow(ctx, `UPDATE refunds SET state = 'manual_review', failed_at = NULL,
+		provider_refund_id = $2, provider_status = $3, cancel_ticket = false,
+		failure_code = 'late_acceptance_over_budget',
+		failure_reason = 'the provider accepted this refund after it had been marked failed, and another refund has since taken its amount: the buyer may have been refunded twice; check the provider dashboard',
+		`+reviewAlertSQL+`, updated_at = now() WHERE id = $1 RETURNING `+refundColumns,
+		cur.ID, out.result.ProviderRefundID, string(out.result.Status)))
+}
 
 // reviveCancelSQL keeps cancel_ticket only when no other live cancelling
 // refund of the ticket exists: a failed row revived by a late acceptance

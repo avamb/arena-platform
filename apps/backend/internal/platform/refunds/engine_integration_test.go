@@ -49,6 +49,11 @@ type fakeModule struct {
 	resolved int
 	// beforeRefund runs inside Refund, before the answer.
 	beforeRefund func(req payments.RefundRequest) bool
+	// block: Refund waits until its context is done (a provider that never
+	// answers) and returns the context's error.
+	block bool
+	// resolveErr is what ResolveChargeRef answers when set.
+	resolveErr error
 	// buildErrs scripts what fakeSource.Build answers, one entry per call
 	// (nil = build the module); the last entry repeats.
 	buildErrs []error
@@ -75,10 +80,17 @@ func (m *fakeModule) Descriptor() payments.Descriptor {
 		Refund: true, PartialRefund: m.partial, AsyncRefund: true, RefundLookup: true}}
 }
 
-func (m *fakeModule) Refund(_ context.Context, req payments.RefundRequest) (payments.RefundResult, error) {
+func (m *fakeModule) Refund(ctx context.Context, req payments.RefundRequest) (payments.RefundResult, error) {
 	active := true
 	if m.beforeRefund != nil {
 		active = m.beforeRefund(req)
+	}
+	if m.block {
+		m.mu.Lock()
+		m.calls = append(m.calls, fakeCall{key: req.IdempotencyKey, amount: req.AmountMinor, ticketActive: active})
+		m.mu.Unlock()
+		<-ctx.Done()
+		return payments.RefundResult{}, ctx.Err()
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -105,6 +117,9 @@ func (m *fakeModule) ResolveChargeRef(_ context.Context, id string) (string, err
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.resolved++
+	if m.resolveErr != nil {
+		return "", m.resolveErr
+	}
 	return "pi_from_" + id, nil
 }
 
@@ -646,7 +661,7 @@ func TestEngine_StuckRefundIsParkedWithAnAlert(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.exec(t, `UPDATE refunds SET created_at = now() - interval '25 hours', approved_at = now() - interval '25 hours',
-		provider_attempted_at = now() - interval '2 minutes' WHERE id = $1`, res.Refunds[0].ID)
+		first_attempted_at = now() - interval '24 hours', provider_attempted_at = now() - interval '2 minutes' WHERE id = $1`, res.Refunds[0].ID)
 	n := &recordingNotifier{}
 	rep, err := e.Sweep(context.Background(), time.Now(), n)
 	if err != nil || rep.Stuck != 1 || rep.Retried != 0 || rep.Alerted != 1 {

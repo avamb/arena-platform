@@ -186,7 +186,8 @@ func TestEngine_ParkRacingAnInFlightCallKeepsTheAcceptance(t *testing.T) {
 	var sweepErr error
 	m.beforeRefund = func(req payments.RefundRequest) bool {
 		// Old enough to be "stuck" by the clock — but the call is in flight.
-		f.exec(t, `UPDATE refunds SET created_at = now() - interval '25 hours', approved_at = now() - interval '25 hours' WHERE id = $1`, req.IdempotencyKey)
+		f.exec(t, `UPDATE refunds SET created_at = now() - interval '25 hours', approved_at = now() - interval '25 hours',
+			first_attempted_at = now() - interval '24 hours' WHERE id = $1`, req.IdempotencyKey)
 		rep, err := e.Sweep(context.Background(), time.Now(), nil)
 		parkedDuringCall, sweepErr = rep.Stuck, err
 		// Parked regardless, as an operator would.

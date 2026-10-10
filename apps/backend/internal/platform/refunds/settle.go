@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -33,64 +34,102 @@ func (e *Engine) settle(ctx context.Context, r Refund, pay Payment) {
 	}
 }
 
-// cancelTickets cancels what the refund pays back and returns the ids of
-// the tickets it covers. A ticket-level refund cancels its own ticket when
-// the operation asked for it; an order-level refund (no ticket, the flat
-// POST /v1/refunds) of the WHOLE payment cancels every active ticket of the
-// order, unless a ticket already carries this refund (the flat cancel route
-// links its ticket before the money moves). ok is false when a cancellation
-// that was due failed (the sweep's repair pass counts those).
-func (e *Engine) cancelTickets(ctx context.Context, r Refund, pay Payment) (ids []string, ok bool) {
-	if r.TicketID != nil {
-		ok = true
-		if r.CancelTicket {
-			ok = e.cancelOne(ctx, CancelRequest{TicketID: *r.TicketID, RefundID: r.ID, Amount: r.Amount, Reason: deref(r.Reason)})
-		}
-		return []string{r.TicketID.String()}, ok
-	}
-	if pay.CheckoutSessionID == nil || r.Amount < pay.Amount {
-		return nil, true
-	}
-	type target struct {
-		id    uuid.UUID
-		price int64
-	}
-	var (
-		targets    []target
-		attributed bool
-	)
+// ticketCancelTimeout bounds ONE ticket cancellation, on a context of its
+// own: a slow or expiring caller context must not stop the loop half-way
+// through an order (third review, H1).
+const ticketCancelTimeout = 10 * time.Second
+
+// scopeTicket is one ticket a refund covers.
+type scopeTicket struct {
+	id     uuid.UUID
+	price  int64
+	active bool
+	// cancel: this refund is the one that cancels the ticket.
+	cancel bool
+}
+
+// refundScope lists the tickets a refund covers (third review, H1/M4):
+//   - a ticket-level refund covers its ticket; it cancels it when
+//     cancel_ticket is set. A money-only refund of a ticket whose
+//     cancellation ANOTHER live refund owns covers nothing (that refund
+//     speaks for the ticket);
+//   - an order-level refund (no ticket, the flat POST /v1/refunds) of the
+//     WHOLE payment covers every ticket of the order that it cancelled
+//     already (tickets.refund_id) plus every active ticket no other live
+//     refund owns — the set stays the same however many times it is
+//     settled, so a cancellation that failed half-way is finished later;
+//   - a partial order-level refund covers nothing (its tickets were put on
+//     review hold when the provider accepted it).
+func (e *Engine) refundScope(ctx context.Context, r Refund, pay Payment) ([]scopeTicket, error) {
+	var out []scopeTicket
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
-		var err error
-		if attributed, err = ticketsLinkedTo(ctx, tx, r.ID); err != nil || attributed {
-			return err
+		var (
+			rows pgx.Rows
+			err  error
+		)
+		switch {
+		case r.TicketID != nil:
+			rows, err = tx.Query(ctx, `SELECT t.id, COALESCE(oi.total, 0)::bigint, t.status = 'active', $2::boolean
+				FROM tickets t LEFT JOIN order_items oi ON oi.ticket_id = t.id
+				WHERE t.id = $1 AND ($2::boolean OR NOT EXISTS (
+					SELECT 1 FROM refunds o WHERE o.ticket_id = t.id AND o.id <> $3
+					  AND o.cancel_ticket AND o.state NOT IN ('failed', 'rejected')))`,
+				*r.TicketID, r.CancelTicket, r.ID)
+		case pay.CheckoutSessionID != nil && r.Amount >= pay.Amount:
+			rows, err = tx.Query(ctx, `SELECT t.id, COALESCE(oi.total, 0)::bigint, t.status = 'active', true
+				FROM tickets t LEFT JOIN order_items oi ON oi.ticket_id = t.id
+				WHERE t.checkout_session_id = $1
+				  AND (t.refund_id = $2 OR (t.status = 'active' AND t.refund_id IS NULL AND NOT EXISTS (
+				       SELECT 1 FROM refunds o WHERE o.ticket_id = t.id AND o.id <> $2
+				         AND o.cancel_ticket AND o.state NOT IN ('failed', 'rejected'))))
+				ORDER BY t.ordinal, t.id`, *pay.CheckoutSessionID, r.ID)
+		default:
+			return nil
 		}
-		rows, err := tx.Query(ctx, `SELECT t.id, COALESCE(oi.total, 0)::bigint FROM tickets t
-			LEFT JOIN order_items oi ON oi.ticket_id = t.id
-			WHERE t.checkout_session_id = $1 AND t.status = 'active' ORDER BY t.ordinal, t.id`, *pay.CheckoutSessionID)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var t target
-			if err := rows.Scan(&t.id, &t.price); err != nil {
+			var t scopeTicket
+			if err := rows.Scan(&t.id, &t.price, &t.active, &t.cancel); err != nil {
 				return err
 			}
-			targets = append(targets, t)
+			out = append(out, t)
 		}
 		return rows.Err()
 	})
+	return out, err
+}
+
+// cancelTickets cancels every active ticket of the refund's scope that it
+// is due to cancel, each on its own deadline, and returns the ids of the
+// whole scope. ok is false when a due cancellation failed (the sweep's
+// repair pass finishes it: its query selects refunds whose scope still has
+// an active ticket).
+func (e *Engine) cancelTickets(ctx context.Context, r Refund, pay Payment) (ids []string, ok bool) {
+	scope, err := e.refundScope(ctx, r, pay)
 	if err != nil {
-		e.logger.Error("refunds: listing the order's tickets failed", "refund_id", r.ID.String(), "error", err.Error())
+		e.logger.Error("refunds: listing the refund's tickets failed", "refund_id", r.ID.String(), "error", err.Error())
 		return nil, false
 	}
-	ids = make([]string, 0, len(targets))
+	ids = make([]string, 0, len(scope))
 	ok = true
-	for _, t := range targets {
-		if !e.cancelOne(ctx, CancelRequest{TicketID: t.id, RefundID: r.ID, Amount: t.price, Reason: deref(r.Reason)}) {
+	for _, t := range scope {
+		ids = append(ids, t.id.String())
+		if !t.cancel || !t.active {
+			continue
+		}
+		amount := t.price
+		if r.TicketID != nil {
+			amount = r.Amount
+		}
+		tctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ticketCancelTimeout)
+		done := e.cancelOne(tctx, CancelRequest{TicketID: t.id, RefundID: r.ID, Amount: amount, Reason: deref(r.Reason)})
+		cancel()
+		if !done {
 			ok = false
 		}
-		ids = append(ids, t.id.String())
 	}
 	return ids, ok
 }

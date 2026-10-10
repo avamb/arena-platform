@@ -48,11 +48,18 @@ const refundColumns = `id, org_id, payment_intent_id, order_id, ticket_id, batch
        cancel_ticket, provider_attempts, provider_attempted_at, created_at, updated_at`
 
 func scanRefund(row pgx.Row) (Refund, error) {
+	return scanRefundWith(row)
+}
+
+// scanRefundWith scans a row whose refundColumns are PRECEDED by extra
+// selected columns, into extra.
+func scanRefundWith(row pgx.Row, extra ...any) (Refund, error) {
 	var r Refund
 	var pi *uuid.UUID
-	err := row.Scan(&r.ID, &r.OrgID, &pi, &r.OrderID, &r.TicketID, &r.BatchID, &r.Amount, &r.Currency, &r.Reason,
+	dest := append(extra, &r.ID, &r.OrgID, &pi, &r.OrderID, &r.TicketID, &r.BatchID, &r.Amount, &r.Currency, &r.Reason,
 		&r.State, &r.Settlement, &r.Provider, &r.ProviderRefundID, &r.ProviderStatus, &r.FailureCode, &r.FailureReason,
 		&r.CancelTicket, &r.ProviderAttempts, &r.ProviderAttemptedAt, &r.CreatedAt, &r.UpdatedAt)
+	err := row.Scan(dest...)
 	if pi != nil {
 		r.PaymentIntentID = *pi
 	}

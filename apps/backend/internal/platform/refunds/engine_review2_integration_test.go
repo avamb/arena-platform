@@ -189,58 +189,125 @@ func TestEngine_InterleavedAttemptsJudgeTheLockedRow(t *testing.T) {
 	}
 }
 
-// TestEngine_LateAcceptanceRevivesAFailedRefundWithAnAlert (item 3): a row
-// that went to failed while a call was in flight — and whose ticket a
-// SECOND refund already took — is revived by the provider's late
-// acceptance without colliding with the second refund, audited as a late
-// answer, and an ops alert says to check for a double refund.
+// liveSums are the live (not failed, not rejected) refund totals of the
+// fixture's first ticket and payment, and the part of them that is accepted
+// (succeeded, or pending with a provider id).
+func (f *fixture) liveSums(t *testing.T) (ticketLive, ticketAccepted, paymentLive int64) {
+	t.Helper()
+	if err := f.pool.QueryRow(context.Background(), `SELECT
+		COALESCE(SUM(amount) FILTER (WHERE ticket_id = $2 AND state NOT IN ('failed', 'rejected')), 0)::bigint,
+		COALESCE(SUM(amount) FILTER (WHERE ticket_id = $2 AND (state = 'succeeded'
+			OR (state = 'provider_pending' AND provider_refund_id IS NOT NULL))), 0)::bigint,
+		COALESCE(SUM(amount) FILTER (WHERE state NOT IN ('failed', 'rejected')), 0)::bigint
+		FROM refunds WHERE payment_intent_id = $1`, f.payment, f.tickets[0]).Scan(&ticketLive, &ticketAccepted, &paymentLive); err != nil {
+		t.Fatalf("sums: %v", err)
+	}
+	return
+}
+
+// TestEngine_LateAcceptanceRevivesAFailedRefundWithAnAlert (second review
+// item 3, third review M3): a row that went to failed while its call was in
+// flight is revived by the provider's late acceptance — re-checked under the
+// payment lock against the ticket price and the payment:
+//   - nothing took its place: it is recorded as succeeded, the ticket is
+//     cancelled, the live sums stay within the ticket price and the payment,
+//     and an ops alert says it was accepted late;
+//   - a SECOND refund has consumed the ticket's budget: it is parked in
+//     manual_review as late_acceptance_over_budget (never counted as an
+//     ordinary success), keeps its provider id, cancels and publishes
+//     nothing, and an alert is sent.
 func TestEngine_LateAcceptanceRevivesAFailedRefundWithAnAlert(t *testing.T) {
-	f := newFixture(t, testPool(t), "pay03fake")
+	pool := testPool(t)
 	ctx := context.Background()
-	m := &fakeModule{partial: true, answers: []func(payments.RefundRequest) (payments.RefundResult, error){pending, succeeded}}
-	e := f.engine(m, true)
-	var first atomic.Bool
-	var second refunds.BatchResult
-	m.beforeRefund = func(req payments.RefundRequest) bool {
-		if first.CompareAndSwap(false, true) { // the outer call only; the second refund's call skips this
-			f.exec(t, `UPDATE refunds SET state = 'failed', failed_at = now(), failure_code = 'operator' WHERE id = $1`, req.IdempotencyKey)
-			var err error
-			second, err = e.CreateBatch(ctx, f.batch("k-revive-2", true, refunds.Item{TicketID: f.tickets[0]}))
-			if err != nil {
-				t.Errorf("second refund: %v", err)
+	for _, replaced := range []bool{false, true} {
+		t.Run(fmt.Sprintf("replaced=%v", replaced), func(t *testing.T) {
+			f := newFixture(t, pool, "pay03fake")
+			answers := []func(payments.RefundRequest) (payments.RefundResult, error){succeeded}
+			if replaced {
+				answers = []func(payments.RefundRequest) (payments.RefundResult, error){pending, succeeded}
 			}
-		}
-		return true
-	}
-	res, err := e.CreateBatch(ctx, f.batch("k-revive", true, refunds.Item{TicketID: f.tickets[0]}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	r := res.Refunds[0]
-	if r.State != refunds.StateSucceeded || deref(r.ProviderRefundID) != "re_"+r.ID.String() {
-		t.Fatalf("revived refund = %s / %s; want succeeded with the provider id", r.State, deref(r.ProviderRefundID))
-	}
-	if r.CancelTicket {
-		t.Fatalf("the revived refund kept cancel_ticket while the second refund owns the cancellation")
-	}
-	if len(second.Refunds) != 1 || second.Refunds[0].State != refunds.StateProviderPending {
-		t.Fatalf("second refund = %+v", second.Refunds)
-	}
-	if st, _ := f.ticketStatus(t, f.tickets[0]); st != "cancelled" {
-		t.Fatalf("ticket = %s; want cancelled", st)
-	}
-	var late int
-	_ = f.pool.QueryRow(ctx, `SELECT count(*) FROM audit_events WHERE action = 'v1.refund.provider_result'
-		AND resource_id = $1 AND (metadata->>'late_answer')::boolean`, r.ID.String()).Scan(&late)
-	if late != 1 {
-		t.Fatalf("late-answer audit rows = %d", late)
-	}
-	n := &recordingNotifier{}
-	if _, err := e.Sweep(ctx, time.Now(), n); err != nil {
-		t.Fatal(err)
-	}
-	if len(n.texts) != 1 || !strings.Contains(n.texts[0], r.ID.String()) || !strings.Contains(n.texts[0], "accepted_after_failure") {
-		t.Fatalf("alerts = %v; want one about the revived refund", n.texts)
+			m := &fakeModule{partial: true, answers: answers}
+			published := map[string]int{}
+			var mu sync.Mutex
+			e := f.engineWith(m, true, func(o *refunds.Options) {
+				o.PublishRefunded = func(_ context.Context, ids []string, _, refundID, _ string, _ int64) {
+					mu.Lock()
+					defer mu.Unlock()
+					published[refundID] += len(ids)
+				}
+			})
+			var first atomic.Bool
+			var second refunds.BatchResult
+			m.beforeRefund = func(req payments.RefundRequest) bool {
+				if first.CompareAndSwap(false, true) { // the outer call only
+					f.exec(t, `UPDATE refunds SET state = 'failed', failed_at = now(), failure_code = 'operator' WHERE id = $1`, req.IdempotencyKey)
+					if replaced {
+						var err error
+						second, err = e.CreateBatch(ctx, f.batch("k-revive-2", true, refunds.Item{TicketID: f.tickets[0]}))
+						if err != nil {
+							t.Errorf("second refund: %v", err)
+						}
+					}
+				}
+				return true
+			}
+			res, err := e.CreateBatch(ctx, f.batch("k-revive", true, refunds.Item{TicketID: f.tickets[0]}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := res.Refunds[0]
+			if deref(r.ProviderRefundID) != "re_"+r.ID.String() {
+				t.Fatalf("the provider id must be recorded: %q", deref(r.ProviderRefundID))
+			}
+			ticketLive, ticketAccepted, paymentLive := f.liveSums(t)
+			if replaced {
+				if r.State != refunds.StateManualReview || deref(r.FailureCode) != "late_acceptance_over_budget" || r.CancelTicket {
+					t.Fatalf("over budget: %s / %s cancel %v; want manual_review late_acceptance_over_budget without cancel_ticket",
+						r.State, deref(r.FailureCode), r.CancelTicket)
+				}
+				if len(second.Refunds) != 1 || second.Refunds[0].State != refunds.StateProviderPending {
+					t.Fatalf("second refund = %+v", second.Refunds)
+				}
+				// Only the replacement counts as accepted; the excess is
+				// visible as a live manual_review row, never as a success.
+				if ticketAccepted != 2500 || ticketLive != 5000 || paymentLive != 5000 {
+					t.Fatalf("sums: ticket accepted %d live %d, payment live %d", ticketAccepted, ticketLive, paymentLive)
+				}
+				if published[r.ID.String()] != 0 {
+					t.Fatalf("the parked refund published v1.ticket.refunded for a ticket another refund owns")
+				}
+			} else {
+				if r.State != refunds.StateSucceeded {
+					t.Fatalf("within budget: %s; want succeeded", r.State)
+				}
+				if ticketAccepted != 2500 || ticketLive > 2500 || paymentLive > 5000 {
+					t.Fatalf("sums: ticket accepted %d live %d (price 2500), payment live %d (paid 5000)", ticketAccepted, ticketLive, paymentLive)
+				}
+				if published[r.ID.String()] != 1 {
+					t.Fatalf("published = %v; want the revived refund's ticket once", published)
+				}
+			}
+			if st, _ := f.ticketStatus(t, f.tickets[0]); st != "cancelled" {
+				t.Fatalf("ticket = %s; want cancelled", st)
+			}
+			var late int
+			_ = f.pool.QueryRow(ctx, `SELECT count(*) FROM audit_events WHERE action = 'v1.refund.provider_result'
+				AND resource_id = $1 AND (metadata->>'late_answer')::boolean`, r.ID.String()).Scan(&late)
+			if late != 1 {
+				t.Fatalf("late-answer audit rows = %d", late)
+			}
+			n := &recordingNotifier{}
+			if _, err := e.Sweep(ctx, time.Now(), n); err != nil {
+				t.Fatal(err)
+			}
+			want := "accepted_late"
+			if replaced {
+				want = "late_acceptance_over_budget"
+			}
+			if len(n.texts) != 1 || !strings.Contains(n.texts[0], r.ID.String()) || !strings.Contains(n.texts[0], want) {
+				t.Fatalf("alerts = %v; want one about the revived refund (%s)", n.texts, want)
+			}
+		})
 	}
 }
 
@@ -258,7 +325,7 @@ func TestEngine_SecondEntryIntoManualReviewAlertsAgain(t *testing.T) {
 		// The call outlives its marker and the approval is a day old: the
 		// sweep parks the row and alerts while the call is in flight.
 		f.exec(t, `UPDATE refunds SET approved_at = now() - interval '25 hours', created_at = now() - interval '25 hours',
-			provider_attempted_at = now() - interval '2 minutes' WHERE id = $1`, req.IdempotencyKey)
+			first_attempted_at = now() - interval '24 hours', provider_attempted_at = now() - interval '2 minutes' WHERE id = $1`, req.IdempotencyKey)
 		rep, err := e.Sweep(ctx, time.Now(), n)
 		if err != nil || rep.Stuck != 1 || rep.Alerted != 1 {
 			t.Errorf("park during the call: %+v %v", rep, err)
@@ -297,8 +364,9 @@ func TestEngine_SecondEntryIntoManualReviewAlertsAgain(t *testing.T) {
 
 // TestEngine_ProviderBrownoutDoesNotStarveRepairAndAlerts (item 5): ten
 // payments whose calls never answer must not eat the pass — the retry
-// section stops after its own deadline or maxUnknownPerPass, and the
-// repair and the alerts still happen.
+// section stops at its own deadline or maxUnknownPerPass, and the repair
+// and the alerts still happen. The fake BLOCKS until its context is done,
+// like a provider that never answers.
 func TestEngine_ProviderBrownoutDoesNotStarveRepairAndAlerts(t *testing.T) {
 	f := newFixture(t, testPool(t), "pay03fake")
 	ctx := context.Background()
@@ -315,24 +383,24 @@ func TestEngine_ProviderBrownoutDoesNotStarveRepairAndAlerts(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		f.rawRefund(t, f.extraPayment(t), 100, "provider_pending", retry)
 	}
-	m.answers = []func(payments.RefundRequest) (payments.RefundResult, error){
-		func(payments.RefundRequest) (payments.RefundResult, error) {
-			time.Sleep(150 * time.Millisecond)
-			return payments.RefundResult{}, fmt.Errorf("context deadline exceeded")
-		},
-	}
+	m.block = true
 	n := &recordingNotifier{}
-	e := f.engineWith(m, true, func(o *refunds.Options) { o.SweepPassTimeout = 2400 * time.Millisecond })
+	// Each call blocks for its 500 ms call timeout; the retry section has
+	// 1.2 s, so the deadline — not the unanswered-call cap — ends it.
+	e := f.engineWith(m, true, func(o *refunds.Options) {
+		o.SweepPassTimeout, o.CallTimeout = 2400*time.Millisecond, 500*time.Millisecond
+	})
 	rep, _ := e.Sweep(ctx, time.Now(), n)
-	if rep.Calls > 5 || rep.Calls == 0 || rep.Unknown != rep.Calls {
-		t.Fatalf("slow brownout pass: %+v; want a few calls, all unknown, within the retry budget", rep)
+	if rep.Calls >= 5 || rep.Calls == 0 || rep.Unknown != rep.Calls {
+		t.Fatalf("blocking brownout pass: %+v; want fewer than 5 calls, all unanswered, ended by the retry deadline", rep)
 	}
 	if rep.Repaired != 1 || rep.Alerted != 1 || len(n.texts) != 1 || !strings.Contains(n.texts[0], review.String()) {
 		t.Fatalf("pass %+v alerts %v; repair and alerts must still run", rep, n.texts)
 	}
-	// Fast timeouts: the pass stops at maxUnknownPerPass, not at ten.
+	// Fast failures: the pass stops at maxUnknownPerPass, not at ten.
 	f.exec(t, `UPDATE refunds SET provider_attempted_at = now() - interval '2 minutes'
 		WHERE org_id = $1 AND state = 'provider_pending' AND provider_refund_id IS NULL`, f.org)
+	m.block = false
 	m.answers = []func(payments.RefundRequest) (payments.RefundResult, error){timeout}
 	rep, _ = f.engine(m, true).Sweep(ctx, time.Now(), n)
 	if rep.Calls != 5 || rep.Unknown != 5 {
@@ -391,9 +459,12 @@ func TestEngine_DeterministicModuleErrorsGoStraightToReview(t *testing.T) {
 	}
 }
 
-// TestEngine_ConcurrentRepairsPublishOnce (item 7): two sweep passes
-// repairing the same refund at the same time publish v1.ticket.refunded
-// exactly once.
+// TestEngine_ConcurrentRepairsPublishOnce (second review item 7, third
+// review M4): two sweep passes repairing the same refund at the same time
+// publish v1.ticket.refunded exactly once — and so does any LATER settle of
+// the same refund (a request and a repair racing, a replayed settle): the
+// refunded_published_at claim is what stops it, the repair lock alone does
+// not.
 func TestEngine_ConcurrentRepairsPublishOnce(t *testing.T) {
 	f := newFixture(t, testPool(t), "pay03fake")
 	ctx := context.Background()
@@ -428,6 +499,24 @@ func TestEngine_ConcurrentRepairsPublishOnce(t *testing.T) {
 	}
 	if st, _ := f.ticketStatus(t, f.tickets[0]); st != "cancelled" {
 		t.Fatalf("ticket = %s", st)
+	}
+	// Two more settles of the same succeeded refund, concurrently.
+	r, err := e.GetRefund(ctx, res.Refunds[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := e.SettleForTest(ctx, r); err != nil {
+				t.Errorf("settle: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	if published != 1 {
+		t.Fatalf("published %d times after re-settling; the claim must hold", published)
 	}
 }
 

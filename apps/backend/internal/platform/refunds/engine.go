@@ -32,6 +32,7 @@ package refunds
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -66,13 +67,44 @@ const (
 
 // Timings.
 const (
-	// DefaultCallTimeout bounds one provider call.
-	DefaultCallTimeout = 30 * time.Second
+	// DefaultCallTimeout bounds one provider call (module build, charge
+	// reference, refund) and, separately, the recording of its answer.
+	DefaultCallTimeout = 25 * time.Second
 	// CallStaleAfter: a refund whose last call started longer ago than this
 	// and has no provider refund id may be called again (same idempotency
-	// key). Spec §7: never touch one younger than a minute.
+	// key). Spec §7: never touch one younger than a minute. A call plus the
+	// recording of its answer (2 x CallTimeout) must fit inside it, or a
+	// second attempt could start while the first is still alive.
 	CallStaleAfter = time.Minute
+	// WorkerStaleClaimTimeout mirrors the worker's default stale-claim
+	// timeout (internal/platform/worker): a sweep pass that outlives it is
+	// handed to another worker while it still runs.
+	WorkerStaleClaimTimeout = 5 * time.Minute
 )
+
+// Validate checks the timing options against the fixed limits above
+// (third review, L2). New panics on an invalid configuration: the options
+// are code, not user input, so a bad value must stop the process at start-up
+// rather than double-refund in production.
+func (o Options) Validate() error {
+	call, pass := o.CallTimeout, o.SweepPassTimeout
+	if call <= 0 {
+		call = DefaultCallTimeout
+	}
+	if pass <= 0 {
+		pass = DefaultSweepPassTimeout
+	}
+	if 2*call >= CallStaleAfter {
+		return fmt.Errorf("refunds: 2 x CallTimeout (%s) must stay below CallStaleAfter (%s)", 2*call, CallStaleAfter)
+	}
+	// The sections of a pass add up to the pass timeout plus the alert
+	// budget, and the last call of a section may overrun it by one call
+	// plus the recording of its answer.
+	if bound := pass + alertSectionBudget + 2*call; bound >= WorkerStaleClaimTimeout {
+		return fmt.Errorf("refunds: a sweep pass may take %s, not below the worker's stale-claim timeout %s", bound, WorkerStaleClaimTimeout)
+	}
+	return nil
+}
 
 // DB is what the engine needs from the pool: transactions only, so the
 // hcheckout handler's narrow TxStarter and a *pgxpool.Pool both fit.
@@ -177,6 +209,9 @@ type Engine struct {
 // a nil CancelTicket means accepted refunds leave tickets to refund.sweep's
 // repair pass (which then also has none) — only tests do that.
 func New(o Options) *Engine {
+	if err := o.Validate(); err != nil {
+		panic(err)
+	}
 	if o.Logger == nil {
 		o.Logger = slog.Default()
 	}
