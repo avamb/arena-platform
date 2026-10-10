@@ -5893,10 +5893,13 @@ export interface paths {
         };
         /**
          * Search / list orders within an organization
-         * @description Org-scoped order search (feature #489, W1-A6d, spec §14.2). The
-         *     optional `q` parameter performs a trigram fuzzy match over
-         *     buyer_name/buyer_email/buyer_phone; omit it to list every order in
-         *     the org. Requires the `order.read` permission.
+         * @description Org-scoped order search (feature #489, W1-A6d, spec §14.2; event
+         *     center EC-04, spec 35 §5.5). ONE `q` parameter finds an order by a
+         *     ticket barcode, its number, the buyer's e-mail or phone, or a name
+         *     (see the parameter). `tab` groups the statuses the way the event
+         *     center shows them, `session_id` / `event_id` narrow the list to one
+         *     session or event of this organization, and every page carries
+         *     `total_count` and `has_more`. Requires the `order.read` permission.
          */
         get: operations["getV1OrganizationsOrgIdOrders"];
         put?: never;
@@ -5916,8 +5919,11 @@ export interface paths {
         };
         /**
          * Get order detail within an organization
-         * @description Returns the order detail (feature #489, W1-A6d, spec §14.2): the
-         *     order plus its line items, issued tickets and audit-trail events.
+         * @description Returns the order detail (feature #489, W1-A6d, spec §14.2; event
+         *     center EC-05, spec 35 §5.6): the order plus its line items, issued
+         *     tickets (category, price, EAN-13, entry time), audit-trail events,
+         *     per-ticket delivery with an order-level `delivery_state`, the
+         *     payment behind the order, `unpaid_reason` and the sales channel.
          *     The order must belong to this org — an id belonging to another
          *     organization is invisible, even by direct id lookup. Requires the
          *     `order.read` permission.
@@ -9663,6 +9669,23 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * @description One row of the org-scoped order list (EC-04): the order plus the
+         *     event name and the session start (UTC) with the venue's zone, so a
+         *     client prints "number · status · total · buyer · date" without a
+         *     second call.
+         */
+        OrderListItem: components["schemas"]["OrderSummary"] & {
+            /** @description Name of the event the order's session belongs to. */
+            event_name: string;
+            /**
+             * Format: date-time
+             * @description Start of the order's session, UTC.
+             */
+            session_start_at: string;
+            /** @description IANA zone of the session's venue — render session_start_at in it. */
+            session_timezone: string;
+        };
         /** @description One line item of an order (feature */
         OrderItemSummary: {
             /**
@@ -9698,13 +9721,22 @@ export interface components {
             /** @description Item total, in minor currency units. */
             total: number;
         };
-        /** @description A ticket issued for one of the order's line items. */
+        /**
+         * @description A ticket issued for one of the order's line items, with what the
+         *     order card prints (EC-05): its category, the price the buyer paid
+         *     for this unit, its EAN-13 and when it was scanned at the door.
+         */
         OrderTicketSummary: {
             /**
              * Format: uuid
              * @description UUIDv7 primary key of the ticket row.
              */
             id: string;
+            /**
+             * Format: uuid
+             * @description The order line this ticket was issued for.
+             */
+            item_id: string;
             /** @description Ticket lifecycle status. */
             status: string;
             /** @description Ticket holder's email, if captured. */
@@ -9715,11 +9747,44 @@ export interface components {
             seat_row: string | null;
             /** @description Seat number, for reserved-seating sessions. */
             seat_number: string | null;
+            /** @description The seat parts that exist joined with " / " (e.g. "A / 3 / 12"); null for general admission. */
+            seat_label: string | null;
             /**
              * Format: date-time
              * @description When the ticket was issued.
              */
             issued_at: string;
+            /**
+             * Format: date-time
+             * @description When the ticket was cancelled, if it was.
+             */
+            cancelled_at: string | null;
+            /**
+             * Format: int64
+             * @description Bigint ticket number printed on the e-ticket and sent to the sites.
+             */
+            system_ticket_id: number;
+            /**
+             * Format: uuid
+             * @description Category (ticket tier) of the line.
+             */
+            tier_id: string;
+            /** @description Name of the category; null when the tier row is gone. */
+            tier_name: string | null;
+            /**
+             * Format: int64
+             * @description What the buyer paid for this unit, in minor currency units (order_items.total, after discount and fee; 0 for an invitation).
+             */
+            price: number;
+            /** @description ISO 4217 currency of the order. */
+            currency: string;
+            /** @description The ticket's EAN-13 — the stored credential, or for a ticket issued before stored credentials the legacy deterministic code, the same number every export and PDF of that ticket carries. */
+            barcode: string;
+            /**
+             * Format: date-time
+             * @description When the ticket was scanned at the door (latest scan of its barcodes, any authority); null if never.
+             */
+            used_at: string | null;
         };
         /** @description One audit-trail event recorded against an order. */
         OrderEventSummary: {
@@ -9740,19 +9805,130 @@ export interface components {
              */
             created_at: string;
         };
+        /** @description The ticket e-mail delivery job of one ticket (delivery_jobs). */
+        OrderDeliveryEntry: {
+            /**
+             * Format: uuid
+             * @description The ticket this delivery is for.
+             */
+            ticket_id: string;
+            /** @description delivery_jobs.status — pending, processing, sent, failed, skipped or disabled — or `none` when the ticket has no job row. */
+            status: string;
+            /**
+             * Format: date-time
+             * @description When the letter was accepted for delivery, for a sent job.
+             */
+            sent_at: string | null;
+            /** @description Error of the last failed attempt, if any. */
+            last_error: string | null;
+        };
+        /**
+         * @description The payment intent the order card speaks about: a succeeded one if
+         *     any (the payment behind a paid order), else the newest failed one
+         *     (the buyer's last attempt that got a verdict, with the provider's
+         *     code), else the newest of all (an open hosted page the buyer may
+         *     still finish).
+         */
+        OrderPaymentSummary: {
+            /**
+             * Format: uuid
+             * @description Payment intent id.
+             */
+            id: string;
+            /** @description Payment provider (stripe, flitt, mock, ...). */
+            provider: string;
+            /** @description Intent state — created, requires_action, processing, authorized, succeeded, failed or manual_review. */
+            state: string;
+            /** @description The provider's id of the hosted session or payment. */
+            provider_payment_id: string | null;
+            /** @description The provider's charge reference behind a hosted session, once known. */
+            provider_charge_ref: string | null;
+            /**
+             * Format: int64
+             * @description Amount of the intent, in minor currency units.
+             */
+            amount: number;
+            /** @description ISO 4217 currency of the intent. */
+            currency: string;
+            /** @description The provider's failure code of a failed intent (e.g. card_declined). */
+            failure_code: string | null;
+            /** @description The provider's failure message of a failed intent. */
+            failure_message: string | null;
+            /** @description The provider-hosted payment page of the intent, if the flow used one. */
+            hosted_checkout_url: string | null;
+            /**
+             * Format: date-time
+             * @description When the intent was created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the intent last changed.
+             */
+            updated_at: string;
+        };
+        /** @description The sales channel the order was placed through and how the buyer reached the checkout. */
+        OrderChannelSummary: {
+            /**
+             * Format: uuid
+             * @description Sales channel id.
+             */
+            id: string;
+            /** @description Channel name; empty when the channel row was deleted since. */
+            name: string;
+            /**
+             * @description `site` for a bil24_gateway order or any order of a channel that
+             *     holds a gateway token (a selling site through the gateway);
+             *     otherwise `hosted_page` when the channel has
+             *     settings.hosted_page.enabled (the platform's own event/promoter
+             *     page); otherwise `widget` (public_feed / checkout_api /
+             *     complimentary on a plain channel).
+             */
+            kind: string;
+        };
         /**
          * @description Order detail returned by GET
          *     /v1/organizations/{org_id}/orders/{id} (feature #489, W1-A6d, spec
-         *     §14.2): the order fields plus its line items, issued tickets and
-         *     audit-trail events.
+         *     §14.2; EC-05, spec 35 §5.6): the order fields plus its line items,
+         *     issued tickets, audit-trail events, delivery, payment, unpaid
+         *     reason and channel.
          */
         OrderDetail: components["schemas"]["OrderSummary"] & {
             /** @description Line items of the order. */
             items: components["schemas"]["OrderItemSummary"][];
-            /** @description Tickets issued for this order's line items. */
+            /** @description Tickets issued for this order's line items, in line order. */
             tickets: components["schemas"]["OrderTicketSummary"][];
             /** @description Audit-trail events recorded against the order. */
             events: components["schemas"]["OrderEventSummary"][];
+            /** @description The ticket e-mail delivery of every issued ticket, in line order. */
+            delivery: components["schemas"]["OrderDeliveryEntry"][];
+            /**
+             * @description The tickets' delivery folded into one word: `sent` when
+             *     every ticket's letter went out; `pending` while any job is
+             *     pending or processing; `failed` when a job failed and none
+             *     is pending; `none` otherwise (no tickets, no jobs, or only
+             *     skipped/disabled ones).
+             */
+            delivery_state: string;
+            /** @description The payment intent behind the order (see OrderPaymentSummary for which one); null when the order has none — a gateway order paid on the selling site, an invitation, a free order. */
+            payment: components["schemas"]["OrderPaymentSummary"] | null;
+            /**
+             * @description Why the order is not paid, derived from the status and the
+             *     chosen payment intent; empty for paid, partially_refunded and
+             *     refunded. `cancelled` — status cancelled; `manual_review` —
+             *     a payment arrived that could not complete the checkout and
+             *     waits for an operator; `payment_failed` — the intent failed
+             *     (the provider's code is in payment.failure_code);
+             *     `awaiting_payment` — pending_payment with no failed intent,
+             *     the buyer may still pay; `payment_abandoned` — expired or
+             *     abandoned with an intent that never reached a verdict (the
+             *     buyer opened the payment page and left); `hold_expired` —
+             *     expired or abandoned with no intent at all (the buyer never
+             *     started paying).
+             */
+            unpaid_reason: string;
+            /** @description The sales channel of the order and how the buyer reached the checkout. */
+            channel: components["schemas"]["OrderChannelSummary"];
         };
         /** @description Places of a session, or of one category, by status. */
         SessionPlaceCounts: {
@@ -40380,12 +40556,51 @@ export interface operations {
     getV1OrganizationsOrgIdOrders: {
         parameters: {
             query?: {
-                /** @description Fuzzy search text over buyer_name/buyer_email/buyer_phone, max 200 chars. */
+                /**
+                 * @description One search value, max 200 characters, read in this precedence:
+                 *     exactly 13 digits (spaces/dashes ignored) is a ticket barcode —
+                 *     the EAN-13 of a ticket of the order, in any barcode authority,
+                 *     including the legacy deterministic code of a ticket that has
+                 *     no stored credential; a bare number of up to 12 digits, or one
+                 *     prefixed with `#`, is the order number (`system_id`); a value
+                 *     containing `@` is an exact, case-insensitive e-mail match on
+                 *     `buyer_email` or on an e-mail identity of the order's customer;
+                 *     a value that normalizes to a phone (optional leading +, 7-15
+                 *     digits after dropping spaces, dots, dashes and parentheses) is
+                 *     matched on the digits of `buyer_phone` (leading 00/+ stripped on
+                 *     both sides), on a 9+ digit suffix of them (a national number
+                 *     typed without its country code) and on the customer's phone
+                 *     identities; anything else is the pg_trgm similarity over
+                 *     buyer_name / buyer_email / buyer_phone. A bare number is ALSO
+                 *     tried as a phone, so a national number typed without + still
+                 *     finds its order.
+                 */
                 q?: string;
+                /**
+                 * @description Status group, event-center style. `recent` (default) is every
+                 *     status, newest first; `paid` is paid, partially_refunded and
+                 *     refunded (money was taken, whatever was returned later);
+                 *     `unpaid` is pending_payment, expired, cancelled, abandoned and
+                 *     manual_review (no confirmed payment behind the order;
+                 *     manual_review is a payment that could not complete the checkout
+                 *     and waits for an operator). Every `orders.status` belongs to
+                 *     exactly one of the two groups. Any other value is 400
+                 *     `orders.invalid_tab`. Combines with `status` (AND).
+                 */
+                tab?: string;
                 /** @description Filter by order lifecycle status (e.g. pending_payment, paid, cancelled, expired). */
                 status?: string;
-                /** @description Filter to orders placed for this session. */
+                /**
+                 * @description Filter to orders placed for this session. A session of another
+                 *     organization, or an unknown id, answers 404
+                 *     `orders.session_id_not_found` — never an empty page.
+                 */
                 session_id?: string;
+                /**
+                 * @description Filter to orders of this event. An event of another organization,
+                 *     or an unknown id, answers 404 `orders.event_id_not_found`.
+                 */
+                event_id?: string;
                 /** @description Only orders created at or after this RFC3339 timestamp. */
                 from?: string;
                 /** @description Only orders created at or before this RFC3339 timestamp. */
@@ -40411,13 +40626,23 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        orders: components["schemas"]["OrderSummary"][];
+                        /** @description The page, newest first. */
+                        orders: components["schemas"]["OrderListItem"][];
+                        /** @description Page size applied. */
                         limit: number;
+                        /** @description Offset applied. */
                         offset: number;
+                        /**
+                         * Format: int64
+                         * @description Orders matching the same filters across every page.
+                         */
+                        total_count: number;
+                        /** @description True when offset plus the page's length is below total_count. */
+                        has_more: boolean;
                     };
                 };
             };
-            /** @description org_id path parameter, q, status, session_id, from, to, limit or offset invalid. */
+            /** @description org_id path parameter, q, tab, status, session_id, event_id, from, to, limit or offset invalid. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -40437,6 +40662,15 @@ export interface operations {
             };
             /** @description Actor does not hold the required permission (`order.read`). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description session_id or event_id names a row of another organization or an unknown one (`orders.session_id_not_found` / `orders.event_id_not_found`). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
