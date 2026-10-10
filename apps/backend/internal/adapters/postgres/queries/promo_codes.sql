@@ -124,9 +124,11 @@ FOR UPDATE;
 SELECT p.id                                   AS promo_code_id,
        count(r.id)::int                       AS uses,
        COALESCE(sum(r.discount_amount), 0)::bigint AS discount_total,
-       max(r.redeemed_at)                     AS last_used_at
+       max(r.redeemed_at)                     AS last_used_at,
+       CASE WHEN count(DISTINCT o.currency) = 1 THEN min(o.currency) END AS discount_currency
 FROM promo_codes p
 LEFT JOIN promo_code_redemptions r ON r.promo_code_id = p.id
+LEFT JOIN orders o ON o.id = r.order_id
 WHERE p.org_id = $1 AND p.deleted_at IS NULL
 GROUP BY p.id;
 
@@ -135,7 +137,7 @@ GROUP BY p.id;
 -- first, with the order it paid for. $2 narrows it to one code; NULL means all.
 SELECT r.id, r.promo_code_id, p.code, r.redeemed_at, r.discount_amount, r.order_amount,
        r.order_id, o.system_id AS order_number, o.status AS order_status, o.currency,
-       o.buyer_email, o.session_id, r.channel_id, c.name AS channel_name
+       o.buyer_email, o.buyer_name, o.session_id, r.channel_id, c.name AS channel_name
 FROM promo_code_redemptions r
 JOIN promo_codes p ON p.id = r.promo_code_id
 LEFT JOIN orders o         ON o.id = r.order_id
