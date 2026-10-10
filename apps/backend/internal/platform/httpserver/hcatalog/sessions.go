@@ -346,6 +346,11 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if !h.requireOrgMembership(w, r, h.sessionQueries, orgID) {
 		return
 	}
+	// SEC-2 H7: membership of the path organization does not prove the event
+	// (and so its sessions) belongs to it. A foreign event reads as not found.
+	if !h.requireEventInOrg(w, r, eventID, orgID) {
+		return
+	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
@@ -705,6 +710,11 @@ func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 	if !h.requireOrgMembership(w, r, h.sessionQueries, orgID) {
 		return
 	}
+	// SEC-2 H7: membership of the path organization does not prove the event
+	// (and so its sessions) belongs to it. A foreign event reads as not found.
+	if !h.requireEventInOrg(w, r, eventID, orgID) {
+		return
+	}
 
 	rows, err := h.sessionQueries.ListSessionsByEvent(ctx, eventID)
 	if err != nil {
@@ -758,6 +768,11 @@ func (h *Handler) HandleGetSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !h.requireOrgMembership(w, r, h.sessionQueries, orgID) {
+		return
+	}
+	// SEC-2 H7: membership of the path organization does not prove the event
+	// (and so its sessions) belongs to it. A foreign event reads as not found.
+	if !h.requireEventInOrg(w, r, eventID, orgID) {
 		return
 	}
 
@@ -875,6 +890,11 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !h.requireOrgMembership(w, r, h.sessionQueries, orgID) {
+		return
+	}
+	// SEC-2 H7: membership of the path organization does not prove the event
+	// (and so its sessions) belongs to it. A foreign event reads as not found.
+	if !h.requireEventInOrg(w, r, eventID, orgID) {
 		return
 	}
 
@@ -1319,6 +1339,11 @@ func (h *Handler) HandleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !h.requireOrgMembership(w, r, h.sessionQueries, orgID) {
+		return
+	}
+	// SEC-2 H7: membership of the path organization does not prove the event
+	// (and so its sessions) belongs to it. A foreign event reads as not found.
+	if !h.requireEventInOrg(w, r, eventID, orgID) {
 		return
 	}
 
