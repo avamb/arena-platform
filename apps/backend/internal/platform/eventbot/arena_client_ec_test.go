@@ -80,7 +80,7 @@ func TestDownloadCSV_SendsTheBotsHeadersAndCountsRows(t *testing.T) {
 
 func TestDownloadCSV_TooManyRowsIs413(t *testing.T) {
 	t.Parallel()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
 		_, _ = w.Write([]byte(`{"error":{"code":"export.too_many_rows","message":"narrow it"}}`))
@@ -95,7 +95,7 @@ func TestDownloadCSV_TooManyRowsIs413(t *testing.T) {
 
 func TestDownloadCSV_ForeignRowIs404(t *testing.T) {
 	t.Parallel()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`{"error":{"code":"session.not_found","message":"x"}}`))
 	}))
@@ -109,7 +109,7 @@ func TestDownloadCSV_ForeignRowIs404(t *testing.T) {
 
 func TestDownloadCSV_OverTheByteCapIsRefused(t *testing.T) {
 	t.Parallel()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		chunk := []byte(strings.Repeat("x", 1<<20))
 		for i := 0; i < 21; i++ {
 			_, _ = w.Write(chunk)
