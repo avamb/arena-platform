@@ -27,6 +27,11 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		"Warnings": "", "URL": "u", "State": "s", "Text": "tx", "Until": "d", "Limit": "5", "Raw": "r", "Tickets": "t", "Issued": 2, "Cancelled": 1, "Active": 1, "Min": "01.01.2026", "Max": "02.01.2026",
 		"Old": "o", "New": "n", "Contact": "c", "Letters": "", "Time": "19:30", "Now": "now", "Hours": 1, "Start": "19:30", "SalesEnd": "21:00", "Doors": "19:00", "Word": "CANCEL", "Subject": "s", "Zone": "Europe/Madrid",
 		"Message": "m", "Pct": 40, "Links": "l", "Url": "https://x.test/a",
+		// the event-center screens (ec_keys.go)
+		"Filter": "f", "Search": "s", "Legend": "lg", "Query": "q", "Count": 1, "Amount": "1 EUR", "Net": "1 EUR", "Used": 1,
+		"Code": "C", "Discount": "1 EUR", "Closed": "", "Places": 5, "Revenue": "1 EUR", "Transferred": 1, "Pending": "1 EUR",
+		"Unavailable": 1, "Scope": "sc", "Charge": "1 EUR", "RefundCount": 1, "Refunded": "1 EUR", "External": "1 EUR",
+		"PendingOrders": 1, "Rows": 3, "What": "w", "Bot": "@Bot",
 	}
 	for _, loc := range SupportedLocales {
 		for _, key := range MessageKeys {

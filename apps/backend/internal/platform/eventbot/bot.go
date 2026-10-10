@@ -288,6 +288,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		if i := strings.Index(cmd, "@"); i > 0 {
 			cmd = cmd[:i]
 		}
+		if cmd != "/events" {
+			b.leaveEvents(ctx, from.ID) // a command ends the events list's search
+		}
 		switch cmd {
 		case "/start":
 			arg = strings.TrimSpace(arg)
@@ -304,7 +307,7 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 			b.showHome(ctx, chatID, nil, from, "")
 			return
 		case "/events":
-			b.showEvents(ctx, chatID, nil, from, 1)
+			b.showEventsFresh(ctx, chatID, nil, from, "")
 			return
 		case "/new":
 			b.wizardStart(ctx, chatID, nil, from, false)
@@ -331,6 +334,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		return
 	}
 	if text != "" && b.sessionsText(ctx, chatID, from, text) {
+		return
+	}
+	if text != "" && b.eventsText(ctx, chatID, from, text) {
 		return
 	}
 	if m.Document != nil || len(m.Photo) > 0 {
@@ -361,7 +367,14 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	msgID := cq.Message.Message.ID
 	from := &cq.From
 	parts := strings.Split(cq.Data, ":")
+	if !isEventsCallback(parts[0]) {
+		b.leaveEvents(ctx, from.ID) // any other screen ends the events list's search
+	}
 	switch parts[0] {
+	case "el":
+		b.eventsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "el:"))
+	case "ec":
+		b.ecCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ec:"))
 	case "home":
 		b.clearTeamDialog(ctx, from.ID)
 		b.showHome(ctx, chatID, &msgID, from, "")
@@ -370,7 +383,7 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	case "scanner":
 		b.showScanner(ctx, chatID, &msgID, from)
 	case "events":
-		page := 1
+		page := 0 // 0: the page the list was on
 		if len(parts) > 1 {
 			_, _ = fmt.Sscanf(parts[1], "%d", &page)
 		}
@@ -541,7 +554,7 @@ func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *model
 	loc := id.Locale()
 	rows := [][]models.InlineKeyboardButton{
 		{{Text: b.texts.T(loc, "bot.wz.new_event_btn", nil), CallbackData: "wz:new"}},
-		{{Text: b.texts.T(loc, "bot.btn_events", nil), CallbackData: "events:1"}},
+		{{Text: b.texts.T(loc, "bot.btn_events", nil), CallbackData: "el:new"}},
 	}
 	if isOwner(id) {
 		if b.ownerIsAlone(ctx, id, jwt) {
@@ -553,6 +566,7 @@ func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *model
 	if len(id.Memberships) > 1 {
 		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_org", nil), CallbackData: "org"}})
 	}
+	rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.ec.notif_btn", nil), CallbackData: "ec:nt"}})
 	rows = append(rows, b.scannerRow(loc))
 	rows = append(rows, []models.InlineKeyboardButton{
 		{Text: b.texts.T(loc, "bot.btn_lang", nil), CallbackData: "lang"},
