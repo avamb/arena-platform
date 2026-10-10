@@ -5410,6 +5410,11 @@ type EventItem struct {
 	// otherwise the canonical name stored on the events row.
 	Name string `json:"name"`
 
+	// NextSessionAt Start of the earliest active session that has not ended yet
+	// (RFC 3339, UTC) — a session running right now counts. Null when
+	// every session has ended or the event has none.
+	NextSessionAt *time.Time `json:"next_session_at"`
+
 	// OrgId Owning organization. Immutable after creation. Only this org may
 	// mutate the event.
 	OrgId openapi_types.UUID `json:"org_id"`
@@ -5428,6 +5433,24 @@ type EventItem struct {
 	// PromoterName Name of the event's promoter, which the ticket PDF prints as
 	// "Organizer". Null when the organization itself is the promoter.
 	PromoterName *string `json:"promoter_name"`
+
+	// SalesState Where the event stands in its sale, computed on the server from
+	// its active, non-cancelled sessions (EC-02) so every client shows
+	// the same chip. One of `on_sale` (a session that has not ended,
+	// whose own sales end has not passed, still has a free place in a
+	// category that is open and inside its sale window — the hold
+	// gate's own rule), `sold_out` (future sessions exist but no free
+	// place is left in any live category of any of them), `upcoming`
+	// (future sessions exist but none is selling: the sale has not
+	// opened yet, only a closed category has places, or sales ended
+	// before the start) and `archived` (every session has ended, the
+	// event has no session, or the event is cancelled/archived). Empty
+	// only when the lookup failed.
+	SalesState string `json:"sales_state"`
+
+	// SessionCount Number of active, non-cancelled sessions of the event, past ones
+	// included — the same count the hosted page reports.
+	SessionCount int `json:"session_count"`
 
 	// ShortDescription Short marketing description shown in cards and previews (AB-45c).
 	// Tri-state PATCH: absent=keep, null=clear, value=set.
@@ -5524,6 +5547,167 @@ type EventPublicationListResponse struct {
 	// Publications Zero or more publication rows for the event. May be
 	// empty when the event has not yet been published.
 	Publications []EventPublication `json:"publications"`
+}
+
+// EventSummary The session summary over every session of an event (EC-06): the same
+// places, categories, money, orders, tickets, door count, refunds,
+// promo codes and invitations as totals, plus one entry per session
+// with its own figures, so a multi-session event reads as totals and a
+// list. Built by the same assembly as SessionSummary. Read-only, no
+// buyer data.
+type EventSummary struct {
+	// Complimentary Invitations over every session.
+	Complimentary SummaryComplimentary `json:"complimentary"`
+
+	// Entered The door count over every session.
+	Entered SummaryEntered `json:"entered"`
+
+	// Event The event the summary is about.
+	Event struct {
+		// FirstSessionAt Earliest start over the event's active, non-cancelled sessions, RFC3339 in UTC.
+		FirstSessionAt *time.Time `json:"first_session_at"`
+
+		// Id UUIDv7 of the event.
+		Id openapi_types.UUID `json:"id"`
+
+		// LastSessionAt Latest end over the same sessions, RFC3339 in UTC.
+		LastSessionAt *time.Time `json:"last_session_at"`
+
+		// Name Name of the event as stored.
+		Name string `json:"name"`
+
+		// OrgId UUIDv7 of the owning organization.
+		OrgId openapi_types.UUID `json:"org_id"`
+
+		// SessionCount Number of sessions in `sessions` — every non-deleted session, cancelled ones included.
+		SessionCount int `json:"session_count"`
+
+		// Status Event status (draft, published, cancelled, archived).
+		Status string `json:"status"`
+	} `json:"event"`
+
+	// Money The bottom line of the whole event, one entry per currency.
+	Money []SummaryMoneyItem `json:"money"`
+
+	// Orders Order totals of every session grouped by status, source and currency.
+	Orders []SummaryOrdersItem `json:"orders"`
+
+	// Places Places of every session, split by kind.
+	Places struct {
+		// Ga General admission places.
+		Ga SessionPlaceCounts `json:"ga"`
+
+		// Seats Seats of the seating plans.
+		Seats SessionPlaceCounts `json:"seats"`
+	} `json:"places"`
+
+	// Promos Promo codes the paid orders of every session used, merged by code and sorted.
+	Promos []SummaryPromoItem `json:"promos"`
+
+	// Refunds Refund totals of every session grouped by settlement, state and currency.
+	Refunds []SummaryRefundsItem `json:"refunds"`
+
+	// Sessions Every non-deleted session of the event in start order, each with its own figures.
+	Sessions []EventSummarySession `json:"sessions"`
+
+	// Tickets Tickets of every session by status.
+	Tickets SummaryTickets `json:"tickets"`
+
+	// Tiers The event's category table, merged across sessions.
+	Tiers []EventSummaryTierItem `json:"tiers"`
+}
+
+// EventSummarySession One session of the event with the same figures its own session summary shows.
+type EventSummarySession struct {
+	// CapacityTotal Stated capacity of the session.
+	CapacityTotal int32 `json:"capacity_total"`
+
+	// Complimentary Invitations of the session.
+	Complimentary SummaryComplimentary `json:"complimentary"`
+
+	// EndAt End of the session, RFC3339 in UTC.
+	EndAt time.Time `json:"end_at"`
+
+	// Entered The door count of the session.
+	Entered SummaryEntered `json:"entered"`
+
+	// HasSeatingPlan True when a seating plan is bound to the session.
+	HasSeatingPlan bool `json:"has_seating_plan"`
+
+	// Id UUIDv7 of the session.
+	Id openapi_types.UUID `json:"id"`
+
+	// Money The bottom line of the session, one entry per currency.
+	Money []SummaryMoneyItem `json:"money"`
+
+	// Orders Order totals grouped by status, source and currency.
+	Orders []SummaryOrdersItem `json:"orders"`
+
+	// Places Places of the session, split by kind.
+	Places struct {
+		// Ga General admission places.
+		Ga SessionPlaceCounts `json:"ga"`
+
+		// Seats Seats of the seating plan.
+		Seats SessionPlaceCounts `json:"seats"`
+	} `json:"places"`
+
+	// Promos Promo codes the paid orders of the session used, sorted by code.
+	Promos []SummaryPromoItem `json:"promos"`
+
+	// Refunds Refund totals grouped by settlement, state and currency.
+	Refunds []SummaryRefundsItem `json:"refunds"`
+
+	// StartAt Start of the session, RFC3339 in UTC.
+	StartAt time.Time `json:"start_at"`
+
+	// Status Session status (draft, scheduled, cancelled, completed).
+	Status string `json:"status"`
+
+	// Tickets Tickets of the session by status.
+	Tickets SummaryTickets `json:"tickets"`
+
+	// Tiers Categories of the session in display order.
+	Tiers []SummaryTierItem `json:"tiers"`
+
+	// VenueName Name of the venue, null when the session has none.
+	VenueName *string `json:"venue_name"`
+
+	// VenueTimezone IANA timezone of the venue, null when unknown.
+	VenueTimezone *string `json:"venue_timezone"`
+}
+
+// EventSummaryTierItem One row of the event's category table: the categories of every
+// session that share a name, a currency and a list price, merged. A
+// category priced differently in two sessions is two rows; the
+// per-session entries keep each category's own id.
+type EventSummaryTierItem struct {
+	// Currency ISO 4217 currency of the list price.
+	Currency string `json:"currency"`
+
+	// IsOpen True when the category is open in at least one session.
+	IsOpen bool `json:"is_open"`
+
+	// Kind seated when the category owns plan seats, ga otherwise.
+	Kind string `json:"kind"`
+
+	// Name Name of the category.
+	Name string `json:"name"`
+
+	// PaidItems Order lines of the merged categories in orders that were paid.
+	PaidItems int64 `json:"paid_items"`
+
+	// PaidRevenue What buyers paid for them in minor units, after discounts and with the service charge.
+	PaidRevenue int64 `json:"paid_revenue"`
+
+	// Places Places of the merged categories by status.
+	Places SessionPlaceCounts `json:"places"`
+
+	// PriceAmount List price in minor units shared by the merged categories.
+	PriceAmount int64 `json:"price_amount"`
+
+	// Sessions How many sessions the row stands for.
+	Sessions int `json:"sessions"`
 }
 
 // EventTranslations Optional map of locale code → translated event name and description.
@@ -10717,9 +10901,18 @@ type SessionStateSnapshot struct {
 
 // SessionSummary One-screen overview of a session: places by status, categories with
 // what was paid for them, the money per currency, orders, tickets,
-// refunds and the promo codes used. Read-only. Carries no buyer data,
-// only counts, amounts in minor units and ids.
+// the door count, refunds, the promo codes used and the invitations.
+// Read-only. Carries no buyer data, only counts, amounts in minor
+// units and ids. The same aggregates over every session of an event
+// are GET .../events/{event_id}/summary (EventSummary); both are built
+// by one assembly.
 type SessionSummary struct {
+	// Complimentary Invitations of the session, whichever way they were issued.
+	Complimentary SummaryComplimentary `json:"complimentary"`
+
+	// Entered The door count of the session.
+	Entered SummaryEntered `json:"entered"`
+
 	// Money The bottom line, one entry per currency.
 	Money []struct {
 		// Currency ISO 4217 currency.
@@ -10793,6 +10986,11 @@ type SessionSummary struct {
 
 		// Orders Paid orders that used the code.
 		Orders int64 `json:"orders"`
+
+		// Redemptions promo_code_redemptions rows recorded for those orders (one
+		// per order since migration 0108, so at most `orders`; a
+		// widget order paid before 2026-09-22 has none).
+		Redemptions int64 `json:"redemptions"`
 	} `json:"promos"`
 
 	// Refunds Refund totals grouped by settlement, state and currency.
@@ -10941,6 +11139,162 @@ type StartCheckoutRequest struct {
 
 	// UserId Optional buyer UUID; `null` for anonymous buyers.
 	UserId *openapi_types.UUID `json:"user_id"`
+}
+
+// SummaryComplimentary Invitations: paid orders written with source=complimentary (the
+// gateway's CREATE_ORDER_EXT `complimentary` flag) and the valid
+// tickets of either invitation path (such orders, or the admin
+// complimentary flow with tickets.complimentary_issuance_id).
+type SummaryComplimentary struct {
+	// Orders Paid orders with source=complimentary.
+	Orders int64 `json:"orders"`
+
+	// Tickets Valid tickets issued as invitations by either path.
+	Tickets int64 `json:"tickets"`
+}
+
+// SummaryEntered How many valid tickets were scanned at the door ("entered N of M").
+type SummaryEntered struct {
+	// Total Every valid ticket.
+	Total int64 `json:"total"`
+
+	// Used Valid tickets already scanned (tickets.used_at set).
+	Used int64 `json:"used"`
+}
+
+// SummaryMoneyItem Money of one currency in minor units.
+type SummaryMoneyItem struct {
+	// Currency ISO 4217 currency.
+	Currency string `json:"currency"`
+
+	// Discount Discounts already deducted from paid.
+	Discount int64 `json:"discount"`
+
+	// Net paid minus refunded.
+	Net int64 `json:"net"`
+
+	// Paid Total of those orders.
+	Paid int64 `json:"paid"`
+
+	// PaidOrders Orders that were paid, including ones refunded later.
+	PaidOrders int64 `json:"paid_orders"`
+
+	// Pending Total of the orders still waiting for payment.
+	Pending int64 `json:"pending"`
+
+	// PendingOrders Orders still waiting for payment.
+	PendingOrders int64 `json:"pending_orders"`
+
+	// Refunded Succeeded refunds.
+	Refunded int64 `json:"refunded"`
+
+	// ServiceCharge Service charge included in paid.
+	ServiceCharge int64 `json:"service_charge"`
+}
+
+// SummaryOrdersItem One group of orders.
+type SummaryOrdersItem struct {
+	// Currency ISO 4217 currency.
+	Currency string `json:"currency"`
+
+	// Orders Number of orders in the group.
+	Orders int64 `json:"orders"`
+
+	// Source Where the orders came from (bil24_gateway, public_feed, checkout_api, complimentary).
+	Source string `json:"source"`
+
+	// Status Order status.
+	Status string `json:"status"`
+
+	// Total Sum of the order totals, minor units.
+	Total int64 `json:"total"`
+}
+
+// SummaryPromoItem One promo code's share of the paid orders.
+type SummaryPromoItem struct {
+	// Code The code string.
+	Code string `json:"code"`
+
+	// Currency ISO 4217 currency of the orders.
+	Currency string `json:"currency"`
+
+	// Discount Discount those orders took, minor units.
+	Discount int64 `json:"discount"`
+
+	// Id UUIDv7 of the promo code.
+	Id openapi_types.UUID `json:"id"`
+
+	// Orders Paid orders that used the code.
+	Orders int64 `json:"orders"`
+
+	// Redemptions promo_code_redemptions rows recorded for those orders, at most `orders`.
+	Redemptions int64 `json:"redemptions"`
+}
+
+// SummaryRefundsItem One group of refunds.
+type SummaryRefundsItem struct {
+	// Amount Sum of the refund amounts, minor units.
+	Amount int64 `json:"amount"`
+
+	// Currency ISO 4217 currency.
+	Currency string `json:"currency"`
+
+	// Refunds Number of refunds in the group.
+	Refunds int64 `json:"refunds"`
+
+	// Settlement provider when arena drives the refund, external when the selling site returned the money itself.
+	Settlement string `json:"settlement"`
+
+	// State Refund state.
+	State string `json:"state"`
+}
+
+// SummaryTickets Tickets by status. used and complimentary are subsets of active.
+type SummaryTickets struct {
+	// Active Valid tickets.
+	Active int64 `json:"active"`
+
+	// Cancelled Cancelled tickets.
+	Cancelled int64 `json:"cancelled"`
+
+	// Complimentary Valid tickets issued through the admin complimentary flow.
+	Complimentary int64 `json:"complimentary"`
+
+	// Transferred Tickets transferred to another holder.
+	Transferred int64 `json:"transferred"`
+
+	// Used Valid tickets already scanned at the door.
+	Used int64 `json:"used"`
+}
+
+// SummaryTierItem One category of one session with its places and what was paid for it.
+type SummaryTierItem struct {
+	// Currency ISO 4217 currency of the list price.
+	Currency string `json:"currency"`
+
+	// Id UUIDv7 of the category.
+	Id openapi_types.UUID `json:"id"`
+
+	// IsOpen False when the category accepts no new hold.
+	IsOpen bool `json:"is_open"`
+
+	// Kind seated when the category owns plan seats, ga otherwise.
+	Kind string `json:"kind"`
+
+	// Name Name of the category.
+	Name string `json:"name"`
+
+	// PaidItems Order lines of this category in orders that were paid.
+	PaidItems int64 `json:"paid_items"`
+
+	// PaidRevenue What buyers paid for this category in minor units, after discounts and with the service charge.
+	PaidRevenue int64 `json:"paid_revenue"`
+
+	// Places Places of this category by status.
+	Places SessionPlaceCounts `json:"places"`
+
+	// PriceAmount Current list price in minor units.
+	PriceAmount int64 `json:"price_amount"`
 }
 
 // TicketCredentialItem A bearer credential issued for a single ticket. There is at most
