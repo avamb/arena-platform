@@ -13417,14 +13417,16 @@ export interface components {
             sell_limit?: number | null;
             /**
              * Format: int64
-             * @description AB-48 (public feed only) - the effective scheduled price right
-             *     now; `price_amount` stays the tier's base.
+             * @description AB-48 - the price buyers pay right now: the scheduled window in
+             *     force, else the base price (`price_amount` stays the tier's
+             *     base). Filled by the category list and the public feed; absent on
+             *     the single-category read and the PATCH answer.
              */
             current_price?: number | null;
             /**
              * Format: date-time
-             * @description AB-48 (public feed only) - when the effective price next
-             *     changes ("price rises on <date>"); null if unknown.
+             * @description AB-48 - when the effective price next changes ("price rises on
+             *     <date>"); null if unknown. Filled where `current_price` is.
              */
             next_price_change_at?: string | null;
             /**

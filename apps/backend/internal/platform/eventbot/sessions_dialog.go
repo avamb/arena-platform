@@ -416,6 +416,9 @@ func (b *Bot) sesShowCard(ctx context.Context, chatID int64, msgID *int, jwt, lo
 	if !it.cancelled() {
 		text += "\n" + b.sesSaleTimesLine(loc, it)
 		text += "\n\n" + b.sesT(loc, "bot.ses.card_hint", nil)
+		if dlg.CanSales {
+			rows = append(rows, []Button{b.sesBtn(loc, "bot.cat.btn", "ct", nil)}) // categories of the date (EC-15)
+		}
 		rows = append(rows,
 			[]Button{b.sesBtn(loc, "bot.ses.move_btn", "mv", nil)},
 			[]Button{b.sesBtn(loc, "bot.ses.sales_end_btn", "se", nil), b.sesBtn(loc, "bot.ses.doors_btn", "dr", nil)},
@@ -729,6 +732,13 @@ func (b *Bot) sessionsCallback(ctx context.Context, chatID int64, msgID int, fro
 		b.showOrdersFresh(ctx, chatID, &msgID, from, ordersScope{
 			SessionID: &session, BackEvent: &event, Name: dlg.EventName + " · " + FormatWhen(it.Start, it.Tz),
 		})
+	case data == "ct":
+		if dlg.Cur < 0 || dlg.Cur >= len(dlg.Items) || !canCategories(id) || dlg.Items[dlg.Cur].cancelled() {
+			return
+		}
+		session, event, name := dlg.Items[dlg.Cur].ID, dlg.EventID, dlg.EventName
+		b.sessions.clear(from.ID)
+		b.categoriesOpen(ctx, chatID, &msgID, id, jwt, event, session, name)
 	case data == "sm" || data == "csv":
 		if dlg.Cur < 0 || dlg.Cur >= len(dlg.Items) || !canViewSales(id) {
 			return
