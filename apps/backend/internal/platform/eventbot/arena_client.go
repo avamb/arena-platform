@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -69,17 +70,18 @@ func APIErrorCode(err error) string {
 }
 
 func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body any, out any) error {
+	route := routeOf(path)
 	var reader io.Reader
 	if body != nil {
 		raw, err := json.Marshal(body)
 		if err != nil {
-			return fmt.Errorf("encode %s %s: %w", method, path, err)
+			return fmt.Errorf("encode %s %s: %w", method, route, err)
 		}
 		reader = bytes.NewReader(raw)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
 	if err != nil {
-		return fmt.Errorf("build %s %s: %w", method, path, err)
+		return fmt.Errorf("build %s %s: %w", method, route, err)
 	}
 	req.Header.Set("Accept", "application/json")
 	// Every organization route lets a platform superadmin act across
@@ -99,12 +101,12 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 	}
 	res, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("%s %s: %w", method, path, err)
+		return fmt.Errorf("%s %s: %w", method, route, unwrapURLError(err))
 	}
 	defer res.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))
 	if err != nil {
-		return fmt.Errorf("read %s %s: %w", method, path, err)
+		return fmt.Errorf("read %s %s: %w", method, route, err)
 	}
 	if res.StatusCode < 200 || res.StatusCode > 299 {
 		ae := &APIError{Status: res.StatusCode}
@@ -131,7 +133,7 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 		return nil
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return fmt.Errorf("decode %s %s: %w", method, path, err)
+		return fmt.Errorf("decode %s %s: %w", method, route, err)
 	}
 	return nil
 }
@@ -284,4 +286,22 @@ func (c *ArenaClient) SessionSummary(ctx context.Context, jwt string, orgID, ses
 	path := "/v1/organizations/" + orgID.String() + "/sessions/" + sessionID.String() + "/summary"
 	err := c.do(ctx, http.MethodGet, path, jwt, nil, &out)
 	return out, err
+}
+
+// routeOf is a request path without its query string. Errors are logged by
+// the callers, and the orders search puts what the organizer typed — a buyer's
+// e-mail or phone — in the query: the log line carries the route only.
+func routeOf(path string) string {
+	route, _, _ := strings.Cut(path, "?")
+	return route
+}
+
+// unwrapURLError drops the request URL net/http repeats inside its error
+// (with the query string), keeping the cause.
+func unwrapURLError(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return ue.Err
+	}
+	return err
 }

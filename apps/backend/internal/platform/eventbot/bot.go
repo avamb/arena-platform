@@ -291,6 +291,7 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		if cmd != "/events" {
 			b.leaveEvents(ctx, from.ID) // a command ends the events list's search
 		}
+		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
 		switch cmd {
 		case "/start":
 			arg = strings.TrimSpace(arg)
@@ -339,6 +340,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	if text != "" && b.eventsText(ctx, chatID, from, text) {
 		return
 	}
+	if text != "" && b.ordersText(ctx, chatID, from, text) {
+		return
+	}
 	if m.Document != nil || len(m.Photo) > 0 {
 		if b.wizardPoster(ctx, chatID, from, m) {
 			return
@@ -370,11 +374,16 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	if !isEventsCallback(parts[0]) {
 		b.leaveEvents(ctx, from.ID) // any other screen ends the events list's search
 	}
+	if !isOrdersCallback(parts[0]) {
+		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
+	}
 	switch parts[0] {
 	case "el":
 		b.eventsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "el:"))
 	case "ec":
 		b.ecCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ec:"))
+	case "or":
+		b.ordersCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "or:"))
 	case "home":
 		b.clearTeamDialog(ctx, from.ID)
 		b.showHome(ctx, chatID, &msgID, from, "")
@@ -555,6 +564,9 @@ func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *model
 	rows := [][]models.InlineKeyboardButton{
 		{{Text: b.texts.T(loc, "bot.wz.new_event_btn", nil), CallbackData: "wz:new"}},
 		{{Text: b.texts.T(loc, "bot.btn_events", nil), CallbackData: "el:new"}},
+	}
+	if canViewSales(id) {
+		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.ord.btn", nil), CallbackData: "or:new"}})
 	}
 	if isOwner(id) {
 		if b.ownerIsAlone(ctx, id, jwt) {

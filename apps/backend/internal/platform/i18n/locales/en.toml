@@ -1695,3 +1695,174 @@ other = "<b>Notifications</b>\n\nThis bot does not send sales alerts. They come 
 
 ["bot.ec.notif_manager"]
 other = "<b>Notifications</b>\n\nThis bot does not send sales alerts. They come from {{.Bot}}: a message for every paid order and every refund, within seconds.\n\nOnly the owner of the organization chooses which chats receive them. Ask the owner to add you to the group chat or to connect a new one. The messages carry the buyer's contacts."
+
+["bot.ord.btn"]
+other = "Orders"
+
+["bot.ord.list_title"]
+other = "<b>Orders: {{.Org}}</b>{{.Scope}}\n{{.Tab}} · {{.Total}} · page {{.Page}} of {{.Pages}}.{{.Search}}\n{{.Legend}}\nTap an order to open it. To search, type a barcode, an order number, an e-mail, a phone or a name."
+
+["bot.ord.legend"]
+other = "✅ paid  ⏳ waiting for payment  ⌛ expired  ✖ cancelled  ↩ refunded"
+
+["bot.ord.tab_recent"]
+other = "Latest"
+
+["bot.ord.tab_paid"]
+other = "Paid"
+
+["bot.ord.tab_unpaid"]
+other = "Unpaid"
+
+["bot.ord.scope_line"]
+other = "\nOnly: {{.Name}}"
+
+["bot.ord.scope_all_btn"]
+other = "All orders"
+
+["bot.ord.empty_recent"]
+other = "No orders yet. They appear here as soon as somebody starts buying."
+
+["bot.ord.empty_paid"]
+other = "No paid orders yet."
+
+["bot.ord.empty_unpaid"]
+other = "No unpaid orders."
+
+["bot.ord.search_none"]
+other = "No orders found for “{{.Query}}”. Type a barcode, an order number, an e-mail, a phone or a name — or clear the search."
+
+["bot.ord.st_paid"]
+other = "Paid"
+
+["bot.ord.st_pending_payment"]
+other = "Waiting for payment"
+
+["bot.ord.st_expired"]
+other = "Expired"
+
+["bot.ord.st_cancelled"]
+other = "Cancelled"
+
+["bot.ord.st_partially_refunded"]
+other = "Partly refunded"
+
+["bot.ord.st_refunded"]
+other = "Refunded"
+
+["bot.ord.st_manual_review"]
+other = "Needs a check"
+
+["bot.ord.card_head"]
+other = "<b>Order №{{.Num}}</b>\n{{.Chip}} {{.Status}} · {{.Amount}} · {{.When}}"
+
+["bot.ord.card_event"]
+other = "\n\n🎭 <b>{{.Name}}</b>\n📅 {{.Date}}"
+
+["bot.ord.card_buyer"]
+other = "\n\n👤 {{.Name}}{{.Contacts}}"
+
+["bot.ord.buyer_unknown"]
+other = "<i>Buyer not specified</i>"
+
+["bot.ord.contacts_private"]
+other = "\n\n👤 The buyer's contacts are shown only in a private chat with the bot."
+
+["bot.ord.phone_call"]
+other = "call"
+
+["bot.ord.phone_wa"]
+other = "WhatsApp"
+
+["bot.ord.tickets_head"]
+other = "\n\n🎟 <b>Tickets: {{.N}}</b>"
+
+["bot.ord.tickets_more"]
+other = "… and {{.N}} more"
+
+["bot.ord.no_tickets"]
+other = "\n\n🎟 No tickets issued."
+
+["bot.ord.ticket_line"]
+other = "• {{.Tier}} · {{.Price}} · <code>{{.Code}}</code>{{.Seat}} · {{.Status}}{{.Entered}}"
+
+["bot.ord.seat"]
+other = " · seat {{.Label}}"
+
+["bot.ord.entered"]
+other = " · ✔ entered {{.When}}"
+
+["bot.ord.tk_active"]
+other = "valid"
+
+["bot.ord.tk_cancelled"]
+other = "cancelled"
+
+["bot.ord.tk_transferred"]
+other = "transferred"
+
+["bot.ord.channel_line"]
+other = "\n\n🛒 Sold through: {{.Channel}}"
+
+["bot.ord.channel_hosted_page"]
+other = "the event page on Arena"
+
+["bot.ord.channel_widget"]
+other = "the ticket widget on a website"
+
+["bot.ord.channel_site"]
+other = "a partner website"
+
+["bot.ord.channel_other"]
+other = "another channel"
+
+["bot.ord.payment_line"]
+other = "\n💳 Payment: {{.Provider}}"
+
+["bot.ord.delivery_sent"]
+other = "📧 The tickets were e-mailed to the buyer."
+
+["bot.ord.delivery_pending"]
+other = "📧 The e-mail with the tickets is queued and not sent yet."
+
+["bot.ord.delivery_failed"]
+other = "📧 The e-mail with the tickets could not be delivered."
+
+["bot.ord.reason_payment_failed"]
+other = "⚠️ The payment did not go through: the card or the bank refused it. The buyer can try again."
+
+["bot.ord.reason_payment_abandoned"]
+other = "⚠️ The buyer opened the payment page and left without paying. The seats were released."
+
+["bot.ord.reason_hold_expired"]
+other = "⌛ The buyer never started paying within the reserved time, so the seats were released."
+
+["bot.ord.reason_cancelled"]
+other = "✖ The order was cancelled. Its seats are free again."
+
+["bot.ord.reason_awaiting_payment"]
+other = "⏳ The buyer has not paid yet. The seats stay reserved until the payment time runs out."
+
+["bot.ord.reason_manual_review"]
+other = "⚠️ A payment arrived that could not complete this order, so it waits for a check. Write to support."
+
+["bot.ord.reason_unknown"]
+other = "This order is not paid."
+
+["bot.ord.reason_provider"]
+other = "Message from the payment provider: {{.Msg}}"
+
+["bot.ord.cancel_btn"]
+other = "Cancel unpaid order"
+
+["bot.ord.cancel_ask"]
+other = "⚠️ <b>Last step — nothing is cancelled yet.</b>\n\nOrder №{{.Num}} · {{.Amount}}\nThe order will be closed and the seats held for it released. This cannot be undone.\n\nTo cancel, <b>type the word {{.Word}}</b> and send it as a message. To keep the order, press «Back»."
+
+["bot.ord.cancel_wrong"]
+other = "That is not the word, so nothing was cancelled. To cancel, type exactly: {{.Word}}"
+
+["bot.ord.cancel_done"]
+other = "✔ The order is cancelled and its seats are free again."
+
+["bot.ord.cancel_not_possible"]
+other = "This order can no longer be cancelled: it is not waiting for payment any more."

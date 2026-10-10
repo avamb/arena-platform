@@ -1689,3 +1689,174 @@ other = "<b>Уведомления</b>\n\nЭтот бот не присылае�
 
 ["bot.ec.notif_manager"]
 other = "<b>Уведомления</b>\n\nЭтот бот не присылает оповещения о продажах. Они приходят из {{.Bot}}: сообщение о каждом оплаченном заказе и каждом возврате, за секунды.\n\nКакие чаты получают оповещения, решает только владелец организации. Попросите владельца добавить вас в чат или подключить новый. В сообщениях есть контакты покупателей."
+
+["bot.ord.btn"]
+other = "Заказы"
+
+["bot.ord.list_title"]
+other = "<b>Заказы: {{.Org}}</b>{{.Scope}}\n{{.Tab}} · {{.Total}} · страница {{.Page}} из {{.Pages}}.{{.Search}}\n{{.Legend}}\nНажмите на заказ, чтобы открыть его. Для поиска напишите штрихкод, номер заказа, e-mail, телефон или имя."
+
+["bot.ord.legend"]
+other = "✅ оплачен  ⏳ ждёт оплаты  ⌛ истёк  ✖ отменён  ↩ возврат"
+
+["bot.ord.tab_recent"]
+other = "Последние"
+
+["bot.ord.tab_paid"]
+other = "Оплаченные"
+
+["bot.ord.tab_unpaid"]
+other = "Неоплаченные"
+
+["bot.ord.scope_line"]
+other = "\nТолько: {{.Name}}"
+
+["bot.ord.scope_all_btn"]
+other = "Все заказы"
+
+["bot.ord.empty_recent"]
+other = "Заказов пока нет. Они появятся здесь, как только кто-нибудь начнёт покупать."
+
+["bot.ord.empty_paid"]
+other = "Оплаченных заказов пока нет."
+
+["bot.ord.empty_unpaid"]
+other = "Неоплаченных заказов нет."
+
+["bot.ord.search_none"]
+other = "По запросу «{{.Query}}» заказов не нашлось. Напишите штрихкод, номер заказа, e-mail, телефон или имя — или сбросьте поиск."
+
+["bot.ord.st_paid"]
+other = "Оплачен"
+
+["bot.ord.st_pending_payment"]
+other = "Ждёт оплаты"
+
+["bot.ord.st_expired"]
+other = "Истёк"
+
+["bot.ord.st_cancelled"]
+other = "Отменён"
+
+["bot.ord.st_partially_refunded"]
+other = "Возвращён частично"
+
+["bot.ord.st_refunded"]
+other = "Возвращён"
+
+["bot.ord.st_manual_review"]
+other = "Требует проверки"
+
+["bot.ord.card_head"]
+other = "<b>Заказ №{{.Num}}</b>\n{{.Chip}} {{.Status}} · {{.Amount}} · {{.When}}"
+
+["bot.ord.card_event"]
+other = "\n\n🎭 <b>{{.Name}}</b>\n📅 {{.Date}}"
+
+["bot.ord.card_buyer"]
+other = "\n\n👤 {{.Name}}{{.Contacts}}"
+
+["bot.ord.buyer_unknown"]
+other = "<i>Покупатель не указан</i>"
+
+["bot.ord.contacts_private"]
+other = "\n\n👤 Контакты покупателя показываются только в личном чате с ботом."
+
+["bot.ord.phone_call"]
+other = "позвонить"
+
+["bot.ord.phone_wa"]
+other = "WhatsApp"
+
+["bot.ord.tickets_head"]
+other = "\n\n🎟 <b>Билетов: {{.N}}</b>"
+
+["bot.ord.tickets_more"]
+other = "… и ещё {{.N}}"
+
+["bot.ord.no_tickets"]
+other = "\n\n🎟 Билеты не выпущены."
+
+["bot.ord.ticket_line"]
+other = "• {{.Tier}} · {{.Price}} · <code>{{.Code}}</code>{{.Seat}} · {{.Status}}{{.Entered}}"
+
+["bot.ord.seat"]
+other = " · место {{.Label}}"
+
+["bot.ord.entered"]
+other = " · ✔ вошёл {{.When}}"
+
+["bot.ord.tk_active"]
+other = "действует"
+
+["bot.ord.tk_cancelled"]
+other = "отменён"
+
+["bot.ord.tk_transferred"]
+other = "передан"
+
+["bot.ord.channel_line"]
+other = "\n\n🛒 Продан через: {{.Channel}}"
+
+["bot.ord.channel_hosted_page"]
+other = "страницу ивента в Arena"
+
+["bot.ord.channel_widget"]
+other = "виджет билетов на сайте"
+
+["bot.ord.channel_site"]
+other = "сайт-партнёр"
+
+["bot.ord.channel_other"]
+other = "другой канал"
+
+["bot.ord.payment_line"]
+other = "\n💳 Оплата: {{.Provider}}"
+
+["bot.ord.delivery_sent"]
+other = "📧 Билеты отправлены покупателю на почту."
+
+["bot.ord.delivery_pending"]
+other = "📧 Письмо с билетами стоит в очереди и ещё не отправлено."
+
+["bot.ord.delivery_failed"]
+other = "📧 Письмо с билетами не удалось доставить."
+
+["bot.ord.reason_payment_failed"]
+other = "⚠️ Оплата не прошла: карту или банк отказали. Покупатель может попробовать ещё раз."
+
+["bot.ord.reason_payment_abandoned"]
+other = "⚠️ Покупатель открыл страницу оплаты и ушёл, не заплатив. Места освобождены."
+
+["bot.ord.reason_hold_expired"]
+other = "⌛ Покупатель так и не начал платить за время брони, поэтому места освобождены."
+
+["bot.ord.reason_cancelled"]
+other = "✖ Заказ отменён. Его места снова свободны."
+
+["bot.ord.reason_awaiting_payment"]
+other = "⏳ Покупатель ещё не заплатил. Места держатся за ним, пока не истечёт время на оплату."
+
+["bot.ord.reason_manual_review"]
+other = "⚠️ Пришёл платёж, который не смог завершить этот заказ, поэтому он ждёт проверки. Напишите в поддержку."
+
+["bot.ord.reason_unknown"]
+other = "Этот заказ не оплачен."
+
+["bot.ord.reason_provider"]
+other = "Сообщение платёжного провайдера: {{.Msg}}"
+
+["bot.ord.cancel_btn"]
+other = "Отменить неоплаченный заказ"
+
+["bot.ord.cancel_ask"]
+other = "⚠️ <b>Последний шаг — пока ничего не отменено.</b>\n\nЗаказ №{{.Num}} · {{.Amount}}\nЗаказ будет закрыт, а удерживаемые за ним места освобождены. Отменить это действие нельзя.\n\nЧтобы отменить, <b>напишите слово {{.Word}}</b> и отправьте его сообщением. Чтобы оставить заказ, нажмите «Назад»."
+
+["bot.ord.cancel_wrong"]
+other = "Это не то слово, поэтому ничего не отменено. Чтобы отменить, напишите ровно: {{.Word}}"
+
+["bot.ord.cancel_done"]
+other = "✔ Заказ отменён, его места снова свободны."
+
+["bot.ord.cancel_not_possible"]
+other = "Этот заказ уже нельзя отменить: он больше не ждёт оплаты."

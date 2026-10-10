@@ -93,6 +93,16 @@ func TestManagerPermissions0129_OrganizerPassesEveryEventCenterGate(t *testing.T
 		}
 	}
 
+	// The owner holds every one of them too (0129 said so; order.write was
+	// the one it did not, until 0131).
+	owner := member("org_admin")
+	for _, g := range gates {
+		st, out := f.do(t, g.method, g.path, owner, g.body)
+		if st == http.StatusForbidden || st == http.StatusUnauthorized {
+			t.Errorf("owner %s %s (%s): refused with %d %v", g.method, g.path, g.perm, st, out)
+		}
+	}
+
 	// The control: an agent still has none of the manager's new authority
 	// (agents sell; refunds and promo codes are not theirs).
 	for _, g := range gates {
