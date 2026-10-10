@@ -219,9 +219,9 @@ func (b *Bot) promoCallback(ctx context.Context, chatID int64, msgID int, from *
 		}
 		b.promoShowCard(ctx, chatID, &msgID, id, jwt, st, st.IDs[i], "")
 	case "c":
-		b.promoCreatePress(ctx, chatID, &msgID, from, id, jwt, st, step, arg)
+		b.promoCreatePress(ctx, chatID, &msgID, id, jwt, st, step, arg)
 	case "k":
-		b.promoPickPress(ctx, chatID, &msgID, from, id, jwt, st, step, arg)
+		b.promoPickPress(ctx, chatID, &msgID, id, jwt, st, step, arg)
 	}
 }
 
@@ -259,7 +259,7 @@ func (b *Bot) promoCodePress(ctx context.Context, chatID int64, msgID int, from 
 		}
 		b.promoShowCard(ctx, chatID, &msgID, id, jwt, st, codeID, b.texts.T(loc, "bot.promo.sess_all_done", map[string]any{"Code": Esc(it.Code)})+"\n\n")
 	case "so":
-		b.promoEditStart(ctx, chatID, &msgID, from, id, jwt, st, codeID)
+		b.promoEditStart(ctx, chatID, &msgID, id, jwt, st, codeID)
 	case "u":
 		b.promoShowUsage(ctx, chatID, &msgID, id, jwt, st, codeID, 1)
 	case "up":
@@ -655,7 +655,7 @@ func (b *Bot) promoText(ctx context.Context, chatID int64, from *models.User, te
 		b.leavePromo(ctx, from.ID)
 		return false
 	}
-	b.promoDraftInput(ctx, chatID, edit, from, id, jwt, st, text, "")
+	b.promoDraftInput(ctx, chatID, edit, id, jwt, st, text, "")
 	return true
 }
 

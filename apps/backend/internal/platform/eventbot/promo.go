@@ -541,7 +541,7 @@ func promoApply(d *promoDraft, text, data string, env promoEnv) string {
 		if d.fixed() {
 			cur = d.Currency
 		}
-		out, key := d.promoPicker.press(data, cur, false)
+		out, key := d.press(data, cur, false)
 		switch out {
 		case pickEvent:
 			d.goTo(pmStepPick)

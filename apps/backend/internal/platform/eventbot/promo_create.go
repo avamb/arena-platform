@@ -77,7 +77,7 @@ func (b *Bot) promoStart(ctx context.Context, chatID int64, editMsgID *int, id *
 // ─── presses and typed text ───────────────────────────────────────────────────
 
 // promoCreatePress handles "pm:c:<data>".
-func (b *Bot) promoCreatePress(ctx context.Context, chatID int64, editMsgID *int, from *models.User, id *Identity, jwt string, st promoDialog, step, data string) {
+func (b *Bot) promoCreatePress(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt string, st promoDialog, step, data string) {
 	loc := id.Locale()
 	if st.Draft == nil || !strings.HasPrefix(step, "c_") {
 		b.promoGone(ctx, chatID, editMsgID, loc)
@@ -89,11 +89,11 @@ func (b *Bot) promoCreatePress(ctx context.Context, chatID int64, editMsgID *int
 		return
 	case "go":
 		if st.Draft.Step == pmStepConfirm {
-			b.promoCreate(ctx, chatID, editMsgID, from, id, jwt, st)
+			b.promoCreate(ctx, chatID, editMsgID, id, jwt, st)
 			return
 		}
 	}
-	b.promoDraftInput(ctx, chatID, editMsgID, from, id, jwt, st, "", data)
+	b.promoDraftInput(ctx, chatID, editMsgID, id, jwt, st, "", data)
 }
 
 // promoGone answers a press with no live dialog behind it.
@@ -130,7 +130,7 @@ func promoButtonOnly(step string) bool {
 
 // promoDraftInput feeds a typed text or a button's data to the dialog and
 // draws the result.
-func (b *Bot) promoDraftInput(ctx context.Context, chatID int64, editMsgID *int, from *models.User, id *Identity, jwt string, st promoDialog, text, data string) {
+func (b *Bot) promoDraftInput(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt string, st promoDialog, text, data string) {
 	loc := id.Locale()
 	d := st.Draft
 	step := d.Step
@@ -177,13 +177,13 @@ func noteLine(note string) string {
 
 // promoPickPress handles "pm:k:<data>": the picker of the dialog or of the
 // edit, whichever is open.
-func (b *Bot) promoPickPress(ctx context.Context, chatID int64, editMsgID *int, from *models.User, id *Identity, jwt string, st promoDialog, step, data string) {
+func (b *Bot) promoPickPress(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt string, st promoDialog, step, data string) {
 	loc := id.Locale()
 	switch {
 	case st.Draft != nil && (step == pmStepEvent || step == pmStepPick):
-		b.promoDraftInput(ctx, chatID, editMsgID, from, id, jwt, st, "", data)
+		b.promoDraftInput(ctx, chatID, editMsgID, id, jwt, st, "", data)
 	case st.Edit != nil && (step == pmStepEditEv || step == pmStepEditPick):
-		b.promoEditPress(ctx, chatID, editMsgID, from, id, jwt, st, step, data)
+		b.promoEditPress(ctx, chatID, editMsgID, id, jwt, st, step, data)
 	default:
 		b.promoGone(ctx, chatID, editMsgID, loc)
 	}
@@ -516,7 +516,7 @@ func (b *Bot) promoCurrencies(ctx context.Context, jwt string, orgID uuid.UUID, 
 
 // promoCreate makes the call and shows what came of it: the new code's card,
 // or the plain reason it was refused.
-func (b *Bot) promoCreate(ctx context.Context, chatID int64, editMsgID *int, from *models.User, id *Identity, jwt string, st promoDialog) {
+func (b *Bot) promoCreate(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt string, st promoDialog) {
 	loc := id.Locale()
 	d := st.Draft
 	in, ok := d.create()
@@ -597,7 +597,7 @@ func (b *Bot) promoShowSessions(ctx context.Context, chatID int64, editMsgID *in
 
 // promoEditStart opens the event chooser of the "only the checked sessions"
 // edit.
-func (b *Bot) promoEditStart(ctx context.Context, chatID int64, editMsgID *int, from *models.User, id *Identity, jwt string, st promoDialog, codeID uuid.UUID) {
+func (b *Bot) promoEditStart(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt string, st promoDialog, codeID uuid.UUID) {
 	loc := id.Locale()
 	orgID := id.Current.OrgID
 	it, err := b.arena.GetPromoCode(ctx, jwt, orgID, codeID)
@@ -656,7 +656,7 @@ func (b *Bot) promoShowEdit(ctx context.Context, chatID int64, editMsgID *int, i
 
 // promoEditPress applies one press of the edit's picker and, on "Done",
 // writes the new session list.
-func (b *Bot) promoEditPress(ctx context.Context, chatID int64, editMsgID *int, from *models.User, id *Identity, jwt string, st promoDialog, step, data string) {
+func (b *Bot) promoEditPress(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt string, st promoDialog, step, data string) {
 	loc := id.Locale()
 	orgID := id.Current.OrgID
 	e := st.Edit

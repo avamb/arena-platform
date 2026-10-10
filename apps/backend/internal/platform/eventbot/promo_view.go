@@ -138,7 +138,7 @@ func (b *Bot) promoCardLine(loc, key, text string) string {
 func (b *Bot) promoCardText(loc string, it openapi.PromoCodeItem, now time.Time, sessionLines []string, more int) string {
 	state := promoState(it, now)
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s <b>%s</b> · %s", PromoChip(state), Esc(it.Code), b.promoStatusWord(loc, state)))
+	fmt.Fprintf(&sb, "%s <b>%s</b> · %s", PromoChip(state), Esc(it.Code), b.promoStatusWord(loc, state))
 	sb.WriteString("\n\n" + b.promoCardLine(loc, "bot.promo.card_discount", b.promoDiscountText(loc, it)))
 	if string(it.DiscountType) == promoTypeFixed {
 		sb.WriteString("\n" + b.texts.T(loc, "bot.promo.card_rule", nil))
@@ -191,7 +191,7 @@ func (b *Bot) promoUsageRow(loc string, r openapi.PromoRedemptionItem) string {
 func (b *Bot) promoSummaryText(loc string, d *promoDraft) string {
 	it := d.item()
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("<b>%s</b>", Esc(d.Code)))
+	fmt.Fprintf(&sb, "<b>%s</b>", Esc(d.Code))
 	sb.WriteString("\n\n" + b.promoCardLine(loc, "bot.promo.card_discount", b.promoDiscountText(loc, it)))
 	if d.fixed() {
 		sb.WriteString("\n" + b.texts.T(loc, "bot.promo.card_rule", nil))

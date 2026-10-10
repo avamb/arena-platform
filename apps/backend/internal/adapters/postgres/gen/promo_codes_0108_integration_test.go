@@ -153,6 +153,13 @@ func TestPromoCodes0108_LiveDB(t *testing.T) {
 	if u := byID[scoped.ID]; u.Uses != 1 || u.DiscountTotal != 4500 || u.LastUsedAt == nil {
 		t.Errorf("usage of the used code: %+v", u)
 	}
+	// The sum of discounts is one amount only when the orders share a currency.
+	if u := byID[scoped.ID]; u.DiscountCurrency == nil || *u.DiscountCurrency != "CZK" {
+		t.Errorf("the discount currency of a code used in CZK only: %v", u.DiscountCurrency)
+	}
+	if u := byID[plain.ID]; u.DiscountCurrency != nil {
+		t.Errorf("a never-used code has no discount currency: %v", *u.DiscountCurrency)
+	}
 	if u, ok := byID[plain.ID]; !ok || u.Uses != 0 || u.LastUsedAt != nil {
 		t.Errorf("a never-used code still has a row: %+v (%v)", u, ok)
 	}
@@ -166,7 +173,7 @@ func TestPromoCodes0108_LiveDB(t *testing.T) {
 	}
 	r := report[0]
 	if r.Code != "ARENA10" || r.OrderNumber == nil || r.OrderStatus == nil || *r.OrderStatus != "paid" ||
-		r.BuyerEmail == nil || *r.BuyerEmail != email || r.ChannelName == nil || r.SessionID == nil || *r.SessionID != sessID {
+		r.BuyerEmail == nil || *r.BuyerEmail != email || r.BuyerName == nil || *r.BuyerName != "x" || r.ChannelName == nil || r.SessionID == nil || *r.SessionID != sessID {
 		t.Errorf("report row: %+v", r)
 	}
 	if only, err := q.ListPromoCodeRedemptionsByOrg(ctx, orgID, &plain.ID); err != nil || len(only) != 0 {
