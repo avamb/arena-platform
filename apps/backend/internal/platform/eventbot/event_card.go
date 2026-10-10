@@ -116,6 +116,8 @@ func (b *Bot) showEventCard(ctx context.Context, chatID int64, editMsgID *int, f
 		"Name": Esc(event.Name), "Status": EventChip(event.SalesState) + " " + b.statusText(loc, string(event.Status)), "Link": link,
 	})
 
+	head += b.promoterEventLine(loc, *event) // who promotes it (EC-14)
+
 	var sum *openapi.EventSummary
 	if canViewSales(id) {
 		s, err := b.arena.EventSummary(ctx, jwt, orgID, eventID)
@@ -143,6 +145,9 @@ func (b *Bot) showEventCard(ctx context.Context, chatID int64, editMsgID *int, f
 		b.sessionsOrdersRow(loc, id, eventID),
 	)
 	if row := b.promoEventRow(loc, id, eventID); row != nil { // promo codes of the event (EC-11)
+		rows = append(rows, row)
+	}
+	if row := b.promoterEventRow(loc, id, eventID); row != nil { // the event's promoter (EC-14)
 		rows = append(rows, row)
 	}
 	// The categories of an event with a single live date (EC-15); with several

@@ -355,6 +355,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	if text != "" && b.promoText(ctx, chatID, from, text) {
 		return
 	}
+	if text != "" && b.promoterText(ctx, chatID, from, text) {
+		return
+	}
 	if text != "" && b.categoryText(ctx, chatID, from, text) {
 		return
 	}
@@ -407,6 +410,9 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	if parts[0] != "pm" { // any other screen ends the promo-code dialog (EC-11)
 		b.leavePromo(ctx, from.ID)
 	}
+	if parts[0] != "pr" { // and the promoter dialog (EC-14)
+		b.leavePromoter(ctx, from.ID)
+	}
 	if parts[0] != "ct" { // and the category dialog (EC-15)
 		b.leaveCategories(ctx, from.ID)
 	}
@@ -421,6 +427,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.inviteCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "iv:"))
 	case "pm":
 		b.promoCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pm:"))
+	case "pr":
+		b.promoterCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pr:"))
 	case "ct":
 		b.categoryCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ct:"))
 	case "home":
@@ -611,6 +619,9 @@ func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *model
 		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.inv.btn", nil), CallbackData: "iv:new"}})
 	}
 	if row := b.promoMenuRow(loc, id); row != nil { // promo codes (EC-11)
+		rows = append(rows, row)
+	}
+	if row := b.promoterMenuRow(loc, id); row != nil { // promoters (EC-14)
 		rows = append(rows, row)
 	}
 	if isOwner(id) {

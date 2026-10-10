@@ -23,9 +23,11 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -48,6 +50,9 @@ type PromoterResponse struct {
 	Phone   *string `json:"phone"`
 	Email   *string `json:"email"`
 	Slug    *string `json:"slug"`
+	// Address and Website are optional free text (migration 0139).
+	Address *string `json:"address"`
+	Website *string `json:"website"`
 	// PhoneHidden keeps Phone out of letters to buyers.
 	PhoneHidden bool    `json:"phone_hidden"`
 	Archived    bool    `json:"archived"`
@@ -66,6 +71,8 @@ func PromoterFromRow(p gen.OrgPromoterRow) PromoterResponse {
 		Phone:       p.Phone,
 		Email:       p.Email,
 		Slug:        p.Slug,
+		Address:     p.Address,
+		Website:     p.Website,
 		PhoneHidden: p.PhoneHidden,
 		Archived:    p.ArchivedAt != nil,
 		CreatedAt:   p.CreatedAt.UTC().Format(time.RFC3339),
@@ -112,6 +119,46 @@ const promoterSlugConstraint = "org_promoters_slug_uq"
 func isPromoterSlugConflict(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation && pgErr.ConstraintName == promoterSlugConstraint
+}
+
+// promoterTextMaxLen bounds a promoter's address and website (migration 0139).
+const promoterTextMaxLen = 300
+
+// NormalizePromoterAddress trims an address, folds line breaks and runs of
+// blanks into single spaces and reports whether it fits. Blank is "not set".
+func NormalizePromoterAddress(raw string) (value *string, ok bool) {
+	s := strings.Join(strings.Fields(raw), " ")
+	if s == "" {
+		return nil, true
+	}
+	if utf8.RuneCountInString(s) > promoterTextMaxLen {
+		return nil, false
+	}
+	return &s, true
+}
+
+// NormalizePromoterWebsite trims a website, adds https:// when no scheme was
+// typed and reports whether the result is an http(s) address with a host.
+// Blank is "not set".
+func NormalizePromoterWebsite(raw string) (value *string, ok bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return nil, true
+	}
+	if strings.ContainsAny(s, " \t\r\n") {
+		return nil, false
+	}
+	if !strings.Contains(s, "://") {
+		s = "https://" + s
+	}
+	if utf8.RuneCountInString(s) > promoterTextMaxLen {
+		return nil, false
+	}
+	u, err := url.Parse(s)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || !strings.Contains(u.Hostname(), ".") {
+		return nil, false
+	}
+	return &s, true
 }
 
 // promoterSlugMaxLen bounds a promoter page slug.
@@ -276,7 +323,9 @@ type createPromoterRequest struct {
 	Email   *string `json:"email"`
 	// Slug is the promoter's public page address (migration 0117); absent
 	// or empty = derived from the name.
-	Slug *string `json:"slug"`
+	Slug    *string `json:"slug"`
+	Address *string `json:"address"`
+	Website *string `json:"website"`
 }
 
 // HandleCreatePromoter creates a promoter of the organization.
@@ -302,6 +351,23 @@ func (h *Handler) HandleCreatePromoter(w http.ResponseWriter, r *http.Request) {
 			"promoter.invalid_name", "name is required", r, map[string]any{"field": "name"},
 		))
 		return
+	}
+	var address, website *string
+	if req.Address != nil {
+		a, ok := NormalizePromoterAddress(*req.Address)
+		if !ok {
+			writePromoterTextError(w, r, "address")
+			return
+		}
+		address = a
+	}
+	if req.Website != nil {
+		wsite, ok := NormalizePromoterWebsite(*req.Website)
+		if !ok {
+			writePromoterTextError(w, r, "website")
+			return
+		}
+		website = wsite
 	}
 
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -364,6 +430,13 @@ func (h *Handler) HandleCreatePromoter(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("promoter.insert_failed", "failed to create promoter", r))
 		return
 	}
+	if address != nil || website != nil {
+		if p, err = qtx.SetOrgPromoterAddressWebsite(ctx, p.ID, orgID, address, website); err != nil {
+			h.logger.Error("promoter: address/website insert failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("promoter.insert_failed", "failed to create promoter", r))
+			return
+		}
+	}
 	if err := h.promoterAudit(ctx, tx, r, "v1.promoter.create", "promoter", p.ID.String(), map[string]any{
 		"org_id": orgID.String(), "promoter_name": p.Name,
 	}); err != nil {
@@ -394,6 +467,21 @@ type updatePromoterRequest struct {
 	PhoneHidden *bool `json:"phone_hidden"`
 	// Slug: absent = keep, null = no page, value = the new page address.
 	Slug optionalString `json:"slug"`
+	// Address and Website: absent = keep, null or blank = clear, value = set.
+	Address optionalString `json:"address"`
+	Website optionalString `json:"website"`
+}
+
+// writePromoterTextError answers 400 for an address or website that does not
+// fit (too long, or a website that is not an http(s) address).
+func writePromoterTextError(w http.ResponseWriter, r *http.Request, field string) {
+	msg := "address must be at most 300 characters"
+	if field == "website" {
+		msg = "website must be an http(s) address of at most 300 characters"
+	}
+	httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+		"promoter.invalid_"+field, msg, r, map[string]any{"field": field},
+	))
 }
 
 // HandleUpdatePromoter edits, archives or restores a promoter.
@@ -450,6 +538,29 @@ func (h *Handler) HandleUpdatePromoter(w http.ResponseWriter, r *http.Request) {
 	legalID := normalizeOptionalText(resolveStr(req.LegalID, current.LegalID))
 	phone := normalizeOptionalText(resolveStr(req.Phone, current.Phone))
 	email := normalizeOptionalText(resolveStr(req.Email, current.Email))
+	address, website := current.Address, current.Website
+	if req.Address.Present {
+		address = nil
+		if req.Address.Value != nil {
+			a, ok := NormalizePromoterAddress(*req.Address.Value)
+			if !ok {
+				writePromoterTextError(w, r, "address")
+				return
+			}
+			address = a
+		}
+	}
+	if req.Website.Present {
+		website = nil
+		if req.Website.Value != nil {
+			wsite, ok := NormalizePromoterWebsite(*req.Website.Value)
+			if !ok {
+				writePromoterTextError(w, r, "website")
+				return
+			}
+			website = wsite
+		}
+	}
 	archived := current.ArchivedAt != nil
 	if req.Archived != nil {
 		archived = *req.Archived
@@ -506,6 +617,14 @@ func (h *Handler) HandleUpdatePromoter(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("promoter: update failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("promoter.update_failed", "failed to update promoter", r))
 		return
+	}
+	if req.Address.Present || req.Website.Present {
+		updated, err = qtx.SetOrgPromoterAddressWebsite(ctx, promoterID, orgID, address, website)
+		if err != nil {
+			h.logger.Error("promoter: address/website update failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("promoter.update_failed", "failed to update promoter", r))
+			return
+		}
 	}
 	if req.PhoneHidden != nil && *req.PhoneHidden != updated.PhoneHidden {
 		updated, err = qtx.SetOrgPromoterPhoneHidden(ctx, promoterID, orgID, *req.PhoneHidden)
