@@ -333,7 +333,7 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 		SELECT t.id, t.status, oi.total,
 		       COALESCE((SELECT SUM(r.amount) FROM refunds r
 		                  WHERE r.ticket_id = t.id AND r.state NOT IN ('failed', 'rejected')
-		                  AND NOT (COALESCE(r.failure_code, '') = 'budget_taken_by_another_refund' AND r.provider_refund_id IS NULL)), 0)::bigint,
+		                  AND `+countsAgainstBudgetSQL+`), 0)::bigint,
 		       EXISTS (SELECT 1 FROM refunds r
 		                WHERE r.ticket_id = t.id AND r.cancel_ticket AND r.state NOT IN ('failed', 'rejected'))
 		FROM   tickets t
@@ -395,7 +395,7 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 	var already int64
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
 		WHERE payment_intent_id = $1 AND state NOT IN ('failed', 'rejected')
-		  AND NOT (COALESCE(failure_code, '') = 'budget_taken_by_another_refund' AND provider_refund_id IS NULL)`, pay.ID).Scan(&already); err != nil {
+		  AND `+countsAgainstBudgetSQL, pay.ID).Scan(&already); err != nil {
 		return nil, err
 	}
 	if already+batchTotal > pay.Amount {

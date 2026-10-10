@@ -198,13 +198,21 @@ func (e *Engine) parkOverBudget(ctx context.Context, tx pgx.Tx, id uuid.UUID, pa
 	if err != nil || !over {
 		return nil, err
 	}
+	// A refund that was never sent cannot have moved any money: it stops
+	// counting against the budget. One whose earlier call ended without an
+	// answer may have created the refund at the provider under its
+	// idempotency key: it keeps counting, under a code of its own (fifth
+	// review, M-1).
+	code, reason := failureBudgetTaken, reasonBudgetTakenNeverSent
+	if cur.ProviderAttempts > 0 {
+		code, reason = failureBudgetAfterUnanswered, reasonBudgetAfterUnanswered
+	}
 	parked, err := scanRefund(tx.QueryRow(ctx, `UPDATE refunds SET state = 'manual_review',
-		failure_code = 'budget_taken_by_another_refund',
-		failure_reason = 'another refund of this payment or ticket was accepted by the provider after this one was created (a refund marked failed was accepted late): sending this one could refund the buyer twice; check the provider dashboard',
+		failure_code = $3, failure_reason = $4,
 		`+reviewAlertSQL+`, updated_at = now()
 		WHERE id = $1 AND settlement = 'provider' AND state = 'provider_pending' AND provider_refund_id IS NULL
 		  AND (provider_attempted_at IS NULL OR provider_attempted_at <= now() - $2::interval)
-		RETURNING `+refundColumns, id, intervalText(CallStaleAfter)))
+		RETURNING `+refundColumns, id, intervalText(CallStaleAfter), code, reason))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil // a call is in flight; the claim below refuses it too
 	}
@@ -213,12 +221,28 @@ func (e *Engine) parkOverBudget(ctx context.Context, tx pgx.Tx, id uuid.UUID, pa
 	}
 	if err := e.writeAudit(ctx, tx, audit.Event{ActorType: "system", Action: "v1.refund.manual_review",
 		ResourceType: "refund", ResourceID: parked.ID.String(),
-		Metadata: map[string]any{"reason": "budget_taken_by_another_refund", "order_id": uuidString(parked.OrderID),
-			"amount": parked.Amount, "currency": parked.Currency, "provider": deref(parked.Provider)}}); err != nil {
+		Metadata: map[string]any{"reason": code, "order_id": uuidString(parked.OrderID),
+			"amount": parked.Amount, "currency": parked.Currency, "provider": deref(parked.Provider),
+			"provider_attempts": parked.ProviderAttempts}}); err != nil {
 		return nil, err
 	}
 	return &parked, nil
 }
+
+// Budget park codes and reasons (fourth review M-b, fifth review M-1).
+const (
+	failureBudgetTaken           = "budget_taken_by_another_refund"
+	failureBudgetAfterUnanswered = "budget_exceeded_after_unanswered_call"
+	reasonBudgetTakenNeverSent   = "this refund was never sent to the provider: another refund of this payment or ticket was accepted by the provider after this one was created (a refund marked failed was accepted late), so sending this one could refund the buyer twice. The ticket is still valid; a person must decide whether to cancel it; check the provider dashboard"
+	reasonBudgetAfterUnanswered  = "another refund of this payment or ticket was accepted by the provider after this one was created, and an earlier call of this refund had no answer, so it may have reached the provider too: the buyer may have been refunded twice. It is not sent again and still counts against the payment. The ticket is still valid; check the provider dashboard"
+)
+
+// countsAgainstBudgetSQL is true for a live refund row that counts against
+// its payment's and ticket's budget: every row except one parked for the
+// budget BEFORE any provider call (fifth review, M-1 — an attempted row may
+// have moved money and keeps counting). Unqualified: use it where the
+// refunds row is the innermost table.
+const countsAgainstBudgetSQL = `NOT (COALESCE(failure_code, '') = '` + failureBudgetTaken + `' AND provider_attempts = 0)`
 
 // deterministicModuleError reports an error that repeating the call can
 // never change and that proves the provider was NOT reached: the module is
@@ -452,10 +476,10 @@ func overBudget(ctx context.Context, tx pgx.Tx, cur Refund, pay Payment) (bool, 
 	err := tx.QueryRow(ctx, `SELECT
 		(SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
 		  WHERE payment_intent_id = $1 AND id <> $2 AND state NOT IN ('failed', 'rejected')
-		    AND NOT (COALESCE(failure_code, '') = 'budget_taken_by_another_refund' AND provider_refund_id IS NULL)),
+		    AND `+countsAgainstBudgetSQL+`),
 		(SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
 		  WHERE $3::uuid IS NOT NULL AND ticket_id = $3 AND id <> $2 AND state NOT IN ('failed', 'rejected')
-		    AND NOT (COALESCE(failure_code, '') = 'budget_taken_by_another_refund' AND provider_refund_id IS NULL)),
+		    AND `+countsAgainstBudgetSQL+`),
 		(SELECT oi.total FROM order_items oi WHERE $3::uuid IS NOT NULL AND oi.ticket_id = $3 LIMIT 1)`,
 		pay.ID, cur.ID, cur.TicketID).Scan(&payUsed, &ticketUsed, &ticketPrice)
 	if err != nil {
