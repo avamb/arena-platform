@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/tests/pgtest"
 )
 
@@ -31,7 +32,7 @@ func TestAdminOrganizationLegalPatchGetRoundTrip(t *testing.T) {
 	req.Header.Set("X-Admin-Reason", "verify legal entity persistence")
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", created.ID.String())
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	req = req.WithContext(auth.WithSuperadminOrgAccess(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)))
 	patchRec := httptest.NewRecorder()
 	h.HandleAdminUpdateOrg(patchRec, req)
 	if patchRec.Code != http.StatusOK {
