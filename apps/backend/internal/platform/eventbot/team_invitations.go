@@ -44,7 +44,7 @@ func (b *Bot) teamInvitationCallback(ctx context.Context, chatID int64, msgID in
 	email := Esc(member.Email)
 	switch parts[0] {
 	case "rs":
-		err := b.arena.ResendInvitation(ctx, jwt, orgID, member.InvitationID, loc)
+		err := b.arena.ResendTeamInvitation(ctx, jwt, orgID, member.InvitationID, loc)
 		switch {
 		case err == nil:
 			b.showTeam(ctx, chatID, &msgID, from, b.texts.T(loc, "bot.team.resent", map[string]any{"Email": email})+"\n\n")
@@ -65,7 +65,7 @@ func (b *Bot) teamInvitationCallback(ctx context.Context, chatID int64, msgID in
 				}}})
 			return
 		}
-		res, err := b.arena.RevokeInvitation(ctx, jwt, orgID, member.InvitationID)
+		res, err := b.arena.RevokeTeamInvitation(ctx, jwt, orgID, member.InvitationID)
 		switch {
 		case err == nil:
 			b.showTeam(ctx, chatID, &msgID, from, b.revokedText(loc, member.Email, res)+"\n\n")

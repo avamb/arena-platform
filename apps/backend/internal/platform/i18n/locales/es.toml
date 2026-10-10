@@ -1892,6 +1892,162 @@ other = "le cambiaste el rol después de invitarle."
 ["bot.team.kept_last_owner"]
 other = "es el único propietario."
 
+["bot.inv.btn"]
+other = "🎟 Invitaciones"
+
+["bot.inv.hub"]
+other = "🎟 <b>Invitaciones</b> · {{.Org}}\n\nEntradas gratuitas para invitados: entradas reales con código de barras, que llegan a cada invitado por e-mail. Ocupan plazas de la categoría como las vendidas y puedes anular una más tarde.\n\nComo máximo {{.Max}} entradas por operación; para más, haz varias operaciones."
+
+["bot.inv.issue_btn"]
+other = "➕ Emitir invitaciones"
+
+["bot.inv.list_btn"]
+other = "📋 Invitaciones emitidas"
+
+["bot.inv.ev_title"]
+other = "🎟 <b>Invitaciones</b> · {{.Org}}\n\nElige el evento ({{.Page}}/{{.Pages}}):"
+
+["bot.inv.ev_empty"]
+other = "Ningún evento tiene una fecha por venir, así que no hay a dónde invitar."
+
+["bot.inv.se_title"]
+other = "🎟 <b>{{.Name}}</b>\n\nElige la fecha ({{.Page}}/{{.Pages}}). Las plazas libres se muestran junto a cada fecha:"
+
+["bot.inv.se_empty"]
+other = "<b>{{.Name}}</b> no tiene fechas por venir (no se ofrecen las pasadas ni las canceladas)."
+
+["bot.inv.ti_title"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nElige la categoría. Las invitaciones ocuparán plazas de ella:"
+
+["bot.inv.ti_empty"]
+other = "<b>{{.Name}}</b> · {{.When}}\n\nEsta fecha no tiene ninguna categoría de entrada general desde la que emitir."
+
+["bot.inv.ti_seated"]
+other = "<b>{{.Name}}</b> · {{.When}}\n\nEsta fecha tiene plano de asientos. Una invitación sin asiento gastaría una plaza y dejaría el asiento a la venta, así que de momento no se pueden emitir aquí invitaciones para ella."
+
+["bot.inv.ti_full"]
+other = "La categoría «{{.Tier}}» no tiene plazas libres."
+
+["bot.inv.free_label"]
+other = "libres {{.N}}"
+
+["bot.inv.qty_ask"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\nCategoría: {{.Tier}} · plazas libres: {{.N}}\n\n¿Cuántas entradas? Pulsa un número o escríbelo. Como máximo {{.Max}} por operación; para más, haz varias operaciones."
+
+["bot.inv.qty_bad"]
+other = "Eso no es un número. Escribe cuántas entradas, por ejemplo 4."
+
+["bot.inv.qty_over_max"]
+other = "Como máximo {{.Max}} entradas por operación. Escribe un número menor y haz el resto en otra operación."
+
+["bot.inv.qty_over_free"]
+other = "En «{{.Tier}}» solo quedan {{.N}} plazas libres. Escribe un número menor."
+
+["bot.inv.rcpt_ask"]
+other = "¿Quiénes son los {{.N}} invitados? Envíalos uno por línea, con el formato <code>Nombre, e-mail</code> o solo el e-mail:\n\n<code>Ana Novak, ana@example.com\nboris@example.com</code>\n\nFaltan por indicar: {{.Left}}. Puedes enviarlos en varios mensajes, pero un mensaje se acepta entero o no se acepta. Cada invitado recibe su propia invitación, así que una dirección solo puede estar una vez en la lista."
+
+["bot.inv.rcpt_got"]
+other = "Aceptados hasta ahora ({{.Got}} de {{.N}}):\n{{.List}}"
+
+["bot.inv.rcpt_bad"]
+other = "No se ha aceptado nada de ese mensaje. Corrige estas líneas y vuelve a enviar el mensaje:\n{{.List}}"
+
+["bot.inv.bad_line"]
+other = "Línea {{.Line}}: «{{.Text}}» — {{.Reason}}"
+
+["bot.inv.reason_email"]
+other = "no hay un e-mail válido"
+
+["bot.inv.reason_name"]
+other = "el nombre es demasiado largo"
+
+["bot.inv.reason_repeat"]
+other = "este e-mail ya está en la lista"
+
+["bot.inv.reason_several"]
+other = "hay más de un e-mail en la línea (un invitado por línea)"
+
+["bot.inv.rcpt_too_many"]
+other = "Ese mensaje tiene {{.Sent}} invitados pero solo faltan {{.Left}}. Envía exactamente los que faltan o pulsa «Atrás» para cambiar la cantidad."
+
+["bot.inv.confirm"]
+other = "🎟 <b>¿Enviar las invitaciones?</b>\n\n{{.Name}}\n{{.When}} · {{.Tier}}\nEntradas: {{.N}}\n\n{{.List}}\n\nSon entradas reales con código de barras: ocupan {{.N}} plazas de la categoría y cada invitado recibe un e-mail con su entrada. Puedes anular una más tarde."
+
+["bot.inv.send_btn"]
+other = "✉️ Enviar"
+
+["bot.inv.done"]
+other = "✔ Invitaciones emitidas: {{.N}}. Los e-mails van de camino.\n\n{{.List}}"
+
+["bot.inv.partial"]
+other = "⚠ Emitidas {{.Done}} de {{.N}}. Se detuvo porque {{.Why}}"
+
+["bot.inv.partial_done"]
+other = "Emitidas:\n{{.List}}"
+
+["bot.inv.partial_left"]
+other = "Sin emitir:\n{{.List}}"
+
+["bot.inv.retry_btn"]
+other = "↻ Reintentar"
+
+["bot.inv.why_full"]
+other = "no hay plazas libres suficientes en la categoría."
+
+["bot.inv.why_rejected"]
+other = "el servidor no aceptó los datos de un invitado."
+
+["bot.inv.why_gone"]
+other = "el evento o la fecha ya no existe."
+
+["bot.inv.why_error"]
+other = "hubo un error temporal. No se pierde nada: pulsa «Reintentar» y solo se emitirán las que faltan."
+
+["bot.inv.list_title"]
+other = "🎟 <b>Invitaciones</b> · {{.Org}}\nEmitidas: {{.Total}} · página {{.Page}}/{{.Pages}}\n{{.Legend}}"
+
+["bot.inv.legend"]
+other = "✔ válida  ✕ anulada  ● usada en la puerta"
+
+["bot.inv.list_empty"]
+other = "Todavía no se ha emitido ninguna invitación."
+
+["bot.inv.state_valid"]
+other = "válida"
+
+["bot.inv.state_revoked"]
+other = "anulada"
+
+["bot.inv.state_used"]
+other = "usada en la puerta"
+
+["bot.inv.card"]
+other = "🎟 <b>{{.Event}}</b>\n{{.When}} · {{.Tier}}\n\nInvitado:\n{{.Guests}}\n\nEstado: {{.State}}\nEmitida: {{.Issued}}"
+
+["bot.inv.revoke_btn"]
+other = "🚫 Anular invitación"
+
+["bot.inv.revoke_ask"]
+other = "🚫 <b>¿Anular esta invitación?</b>\n\n{{.Guest}}\n{{.Event}} · {{.When}}\n\nLa entrada y su código de barras dejan de funcionar al instante y la plaza vuelve a la venta. No se puede deshacer y Arena no avisa al invitado: escríbele tú.\n\nPara anular, escribe la palabra <b>{{.Word}}</b> como mensaje."
+
+["bot.inv.revoke_wrong"]
+other = "Esa no es la palabra, así que no se ha anulado nada. Para anular, escribe {{.Word}} o pulsa «Atrás»."
+
+["bot.inv.revoke_word"]
+other = "ANULAR"
+
+["bot.inv.revoke_done"]
+other = "✔ La invitación de {{.Guest}} está anulada. La plaza vuelve a estar a la venta."
+
+["bot.inv.revoke_already"]
+other = "La invitación de {{.Guest}} ya estaba anulada."
+
+["bot.inv.revoke_used"]
+other = "La invitación de {{.Guest}} ya se escaneó en la puerta, así que no se anuló. Queda marcada para revisión manual."
+
+["bot.inv.private_only"]
+other = "Las direcciones de los invitados solo se muestran y se escriben en un chat privado con el bot. Abre Invitaciones allí."
+
 ["bot.promo.btn"]
 other = "🏷 Códigos promocionales"
 

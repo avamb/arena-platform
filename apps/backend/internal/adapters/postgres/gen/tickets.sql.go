@@ -415,7 +415,7 @@ SELECT t.system_ticket_id,
        COALESCE(t_en.value, ci.slug) AS venue_city,
        v.timezone                    AS venue_timezone,
        tt.name                       AS tier_name,
-       COALESCE(NULLIF(btrim(ord.buyer_name), ''), cu.display_name) AS holder_name,
+       COALESCE(NULLIF(btrim(t.holder_name), ''), NULLIF(btrim(ord.buyer_name), ''), cu.display_name) AS holder_name,
        oi.total                      AS price_minor,
        NULLIF(btrim(ord.currency), '') AS price_currency,
        COALESCE(s.poster_media_id, e.poster_media_id) AS poster_media_id,
@@ -474,8 +474,9 @@ type TicketPresentationRow struct {
 	// had one configured; the renderer then falls back to UTC.
 	VenueTimezone *string `json:"venue_timezone"`
 	TierName      *string `json:"tier_name"`
-	// HolderName is orders.buyer_name, falling back to the linked
-	// customers.display_name. NULL when neither is known.
+	// HolderName is tickets.holder_name (the name typed on an invitation,
+	// migration 0136), else orders.buyer_name, falling back to the linked
+	// customers.display_name. NULL when none is known.
 	HolderName *string `json:"holder_name"`
 	// PriceMinor is order_items.total for this ticket's own unit, in MINOR
 	// units — what the buyer actually paid for it, after its share of the

@@ -436,7 +436,7 @@ type Querier interface {
 	GetComplimentaryIssuanceByID(ctx context.Context, id uuid.UUID) (ComplimentaryIssuanceRow, error)
 	ListComplimentaryIssuancesByOrg(ctx context.Context, orgID uuid.UUID) ([]ComplimentaryIssuanceRow, error)
 	UpdateComplimentaryIssuanceStatus(ctx context.Context, id uuid.UUID, newStatus string) (ComplimentaryIssuanceRow, error)
-	InsertComplimentaryTicket(ctx context.Context, complimentaryIssuanceID uuid.UUID, sessionID uuid.UUID, tierID *uuid.UUID, holderEmail, seatKey *string) (ComplimentaryTicketRow, error)
+	InsertComplimentaryTicket(ctx context.Context, complimentaryIssuanceID uuid.UUID, sessionID uuid.UUID, tierID *uuid.UUID, holderEmail, seatKey, holderName *string) (ComplimentaryTicketRow, error)
 	ListTicketsByComplimentaryIssuance(ctx context.Context, complimentaryIssuanceID uuid.UUID) ([]ComplimentaryTicketRow, error)
 	// Complimentary revocation — feature #150
 	HasScannedTicketsForIssuance(ctx context.Context, complimentaryIssuanceID uuid.UUID) (bool, error)

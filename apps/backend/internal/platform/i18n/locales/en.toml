@@ -2037,6 +2037,162 @@ other = "you changed their role after inviting them."
 ["bot.team.kept_last_owner"]
 other = "they are the only owner."
 
+["bot.inv.btn"]
+other = "🎟 Invitations"
+
+["bot.inv.hub"]
+other = "🎟 <b>Invitations</b> · {{.Org}}\n\nFree tickets for guests: real tickets with a barcode, sent to each guest by e-mail. They take places from the category like sold tickets, and you can annul one later.\n\nAt most {{.Max}} tickets in one operation; for more, do several operations."
+
+["bot.inv.issue_btn"]
+other = "➕ Issue invitations"
+
+["bot.inv.list_btn"]
+other = "📋 Issued invitations"
+
+["bot.inv.ev_title"]
+other = "🎟 <b>Invitations</b> · {{.Org}}\n\nChoose the event ({{.Page}}/{{.Pages}}):"
+
+["bot.inv.ev_empty"]
+other = "No event has a date to come, so there is nobody to invite to."
+
+["bot.inv.se_title"]
+other = "🎟 <b>{{.Name}}</b>\n\nChoose the date ({{.Page}}/{{.Pages}}). The free places are shown beside each date:"
+
+["bot.inv.se_empty"]
+other = "<b>{{.Name}}</b> has no date to come (past and cancelled dates are not offered)."
+
+["bot.inv.ti_title"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nChoose the category. The invitations take places from it:"
+
+["bot.inv.ti_empty"]
+other = "<b>{{.Name}}</b> · {{.When}}\n\nThis date has no general-admission category to issue from."
+
+["bot.inv.ti_seated"]
+other = "<b>{{.Name}}</b> · {{.When}}\n\nThis date has a seating plan. An invitation without a seat would use up a place and leave the seat on sale, so invitations cannot be issued for it here yet."
+
+["bot.inv.ti_full"]
+other = "The category «{{.Tier}}» has no free places left."
+
+["bot.inv.free_label"]
+other = "free {{.N}}"
+
+["bot.inv.qty_ask"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\nCategory: {{.Tier}} · free places: {{.N}}\n\nHow many tickets? Press a number or type it. At most {{.Max}} in one operation; for more, do several operations."
+
+["bot.inv.qty_bad"]
+other = "That is not a number. Type how many tickets, for example 4."
+
+["bot.inv.qty_over_max"]
+other = "At most {{.Max}} tickets in one operation. Type a smaller number and do the rest in another operation."
+
+["bot.inv.qty_over_free"]
+other = "Only {{.N}} free places are left in «{{.Tier}}». Type a smaller number."
+
+["bot.inv.rcpt_ask"]
+other = "Who are the {{.N}} guests? Send them one per line, either <code>Name, e-mail</code> or just the e-mail:\n\n<code>Anna Novak, anna@example.com\nboris@example.com</code>\n\nStill needed: {{.Left}}. You may send them in several messages, but a message is accepted whole or not at all. Each guest gets an invitation of their own, so an address can be on the list only once."
+
+["bot.inv.rcpt_got"]
+other = "Accepted so far ({{.Got}} of {{.N}}):\n{{.List}}"
+
+["bot.inv.rcpt_bad"]
+other = "Nothing from that message was accepted. Fix these lines and send the message again:\n{{.List}}"
+
+["bot.inv.bad_line"]
+other = "Line {{.Line}}: «{{.Text}}» — {{.Reason}}"
+
+["bot.inv.reason_email"]
+other = "no valid e-mail address"
+
+["bot.inv.reason_name"]
+other = "the name is too long"
+
+["bot.inv.reason_repeat"]
+other = "this e-mail is already on the list"
+
+["bot.inv.reason_several"]
+other = "more than one e-mail on a line (one guest per line)"
+
+["bot.inv.rcpt_too_many"]
+other = "That message has {{.Sent}} guests but only {{.Left}} more are needed. Send exactly the missing ones, or press «Back» to change the quantity."
+
+["bot.inv.confirm"]
+other = "🎟 <b>Send the invitations?</b>\n\n{{.Name}}\n{{.When}} · {{.Tier}}\nTickets: {{.N}}\n\n{{.List}}\n\nThese are real tickets with a barcode: they take {{.N}} places from the category and each guest receives an e-mail with the ticket. You can annul one later."
+
+["bot.inv.send_btn"]
+other = "✉️ Send"
+
+["bot.inv.done"]
+other = "✔ Invitations issued: {{.N}}. The e-mails are on their way.\n\n{{.List}}"
+
+["bot.inv.partial"]
+other = "⚠ Issued {{.Done}} of {{.N}}. Stopped because {{.Why}}"
+
+["bot.inv.partial_done"]
+other = "Issued:\n{{.List}}"
+
+["bot.inv.partial_left"]
+other = "Not issued:\n{{.List}}"
+
+["bot.inv.retry_btn"]
+other = "↻ Try again"
+
+["bot.inv.why_full"]
+other = "there are not enough free places in the category."
+
+["bot.inv.why_rejected"]
+other = "the server did not accept a guest's data."
+
+["bot.inv.why_gone"]
+other = "the event or the date no longer exists."
+
+["bot.inv.why_error"]
+other = "of a temporary error. Nothing is lost: press «Try again» and only the missing ones are issued."
+
+["bot.inv.list_title"]
+other = "🎟 <b>Invitations</b> · {{.Org}}\nIssued: {{.Total}} · page {{.Page}}/{{.Pages}}\n{{.Legend}}"
+
+["bot.inv.legend"]
+other = "✔ valid  ✕ annulled  ● used at the door"
+
+["bot.inv.list_empty"]
+other = "No invitations have been issued yet."
+
+["bot.inv.state_valid"]
+other = "valid"
+
+["bot.inv.state_revoked"]
+other = "annulled"
+
+["bot.inv.state_used"]
+other = "used at the door"
+
+["bot.inv.card"]
+other = "🎟 <b>{{.Event}}</b>\n{{.When}} · {{.Tier}}\n\nGuest:\n{{.Guests}}\n\nStatus: {{.State}}\nIssued: {{.Issued}}"
+
+["bot.inv.revoke_btn"]
+other = "🚫 Annul invitation"
+
+["bot.inv.revoke_ask"]
+other = "🚫 <b>Annul this invitation?</b>\n\n{{.Guest}}\n{{.Event}} · {{.When}}\n\nThe ticket and its barcode stop working at once and the place goes back on sale. This cannot be undone, and Arena does not tell the guest: write to them yourself.\n\nTo annul, type the word <b>{{.Word}}</b> as a message."
+
+["bot.inv.revoke_wrong"]
+other = "That is not the word, so nothing was annulled. To annul, type {{.Word}}, or press «Back»."
+
+["bot.inv.revoke_word"]
+other = "ANNUL"
+
+["bot.inv.revoke_done"]
+other = "✔ The invitation for {{.Guest}} is annulled. The place is back on sale."
+
+["bot.inv.revoke_already"]
+other = "The invitation for {{.Guest}} was already annulled."
+
+["bot.inv.revoke_used"]
+other = "The invitation for {{.Guest}} has already been scanned at the door, so it was not annulled. It is marked for manual review."
+
+["bot.inv.private_only"]
+other = "Guests' addresses are shown and typed only in a private chat with the bot. Open Invitations there."
+
 ["bot.promo.btn"]
 other = "🏷 Promo codes"
 
