@@ -6057,6 +6057,39 @@ components:
           description: Always true on success; confirms the soft delete.
           example: true
 
+    EventDeleteImpact:
+      type: object
+      required: [event_id, status, sessions, paid_orders, tickets, can_delete, can_archive, blocked]
+      description: |
+        Dry run of deleting an event: what the delete would touch and whether
+        it is allowed. Nothing is written.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: The event.
+        status:
+          type: string
+          description: The event's current lifecycle status (draft, published, cancelled or archived).
+        sessions:
+          type: integer
+          description: Live (not deleted) sessions of the event.
+        paid_orders:
+          type: integer
+          description: Orders that were ever paid (paid, partially_refunded or refunded).
+        tickets:
+          type: integer
+          description: Tickets issued for any session of the event, whatever their status.
+        can_delete:
+          type: boolean
+          description: False when the event has paid orders or tickets; such an event can only be archived.
+        can_archive:
+          type: boolean
+          description: Whether the lifecycle allows moving the event to archived from its current status.
+        blocked:
+          type: string
+          description: Empty when the event may be deleted, otherwise why not (has_paid_orders).
+
     # ───────────────────────────────────────────────────────────────────────
     # Event Artists — AB-45 (feature #437)
     # CRUD child-table for performer/artist metadata on an event.
@@ -23170,7 +23203,11 @@ paths:
       description: |
         Marks the event as deleted (sets deleted_at = now()) and writes an
         audit_events row inside the same transaction. Owner-gated: a
-        non-owner request resolves to 404. Requires JWT + the `event.delete`
+        non-owner request resolves to 404. An event that has sold anything (a
+        paid, partially refunded or refunded order, or any issued ticket)
+        cannot be deleted: the answer is 409 `event.has_paid_orders` and the
+        event can only be archived. `GET .../delete-impact` says beforehand
+        what a delete would touch. Requires JWT + the `event.delete`
         permission.
       tags: [v1]
       security:
@@ -23221,6 +23258,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            The event has paid orders or issued tickets (`event.has_paid_orders`).
+            `error.details` carries `paid_orders`, `tickets` and `sessions`.
+            Nothing is changed; archive the event instead.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: Internal server error (event.delete_failed / event.audit_failed / event.commit_failed).
           content:
@@ -23240,10 +23286,15 @@ paths:
       summary: Transition an event to a new lifecycle status
       description: |
         Validates and applies a status transition according to the event
-        lifecycle (draft → published → cancelled|archived). Re-applying the
-        same status is a no-op (HTTP 200). Owner-gated: org_id in the path
-        must match the event's owning organization. Requires JWT + the
-        `event.publish` permission.
+        lifecycle (draft → published → cancelled|archived). A published event
+        may also go back to `draft`: that is "take off sale". The event leaves
+        every public surface and the sites are told, while its sessions, orders
+        and sold tickets stay exactly as they are, and publishing it again
+        restores the channels it was sold in. Every real transition is written
+        to the audit log (`v1.event.status_update`, with `from_status` and
+        `to_status`). Re-applying the same status is a no-op (HTTP 200).
+        Owner-gated: org_id in the path must match the event's owning
+        organization. Requires JWT + the `event.publish` permission.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -23334,6 +23385,76 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database pool or event queries unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/delete-impact:
+    get:
+      operationId: getV1OrganizationsOrgIdEventsEventIdDeleteImpact
+      summary: Dry run of deleting an event
+      description: |
+        Says what deleting the event would touch, BEFORE it is deleted: its
+        live sessions, the orders that were ever paid (paid, partially
+        refunded, refunded) and the tickets issued for it, and whether the
+        delete is allowed. An event with paid orders or tickets cannot be
+        deleted (`can_delete` false, `blocked` `has_paid_orders`) and can only
+        be archived (`can_archive`). Writes nothing. Requires the
+        `event.delete` permission; an event of another organization is a 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the owning organization.
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The impact of deleting the event.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventDeleteImpact"
+        "400":
+          description: org_id or event_id is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.delete` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found, already deleted, or owned by a different organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (event.delete_impact_failed).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database or event queries unavailable.
           content:
             application/json:
               schema:

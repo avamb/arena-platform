@@ -56,6 +56,8 @@ func (s *Server) mountEventRoutes(r chi.Router) {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "event.delete", "events")
 			pr.Delete("/organizations/{org_id}/events/{id}", s.handleDeleteEvent)
+			// Dry run of the delete: sessions, paid orders, tickets (EC-10).
+			pr.Get("/organizations/{org_id}/events/{event_id}/delete-impact", s.handleEventDeleteImpact)
 		})
 		// AB-45: event artists CRUD
 		r.Group(func(pr chi.Router) {

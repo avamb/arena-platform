@@ -10,6 +10,7 @@ package eventbot
 //	ec:ce:<event>      sales CSV of the event    ec:cs:<session>  of one date
 //	ec:cm:<session>    summary CSV of one date
 //	ec:nt              the Notifications screen
+//	ec:ev:<event>:<act> a status button: publish, take off sale, archive, delete (evstatus.go)
 //
 // The ids are in the payload (a UUID plus its prefix is 43 bytes, inside
 // Telegram's 64), because a button on a card must keep meaning THAT event
@@ -27,6 +28,9 @@ import (
 // ecCallback handles every "ec:<data>" press.
 func (b *Bot) ecCallback(ctx context.Context, chatID int64, msgID int, from *models.User, data string) {
 	kind, arg, _ := strings.Cut(data, ":")
+	if kind != "ev" {
+		b.leaveEvStatus(ctx, from.ID) // anything but the status buttons ends a delete question
+	}
 	if kind == "nt" {
 		if id, _, ok := b.ecIdentity(ctx, chatID, &msgID, from); ok {
 			b.showNotifications(ctx, chatID, &msgID, id)
@@ -41,6 +45,8 @@ func (b *Bot) ecCallback(ctx context.Context, chatID int64, msgID int, from *mod
 	switch kind {
 	case "o":
 		b.showEventCard(ctx, chatID, &msgID, from, target, flag == "1")
+	case "ev":
+		b.evStatusCallback(ctx, chatID, msgID, from, target, flag)
 	case "es":
 		b.showEventSummary(ctx, chatID, &msgID, from, target)
 	case "ss":

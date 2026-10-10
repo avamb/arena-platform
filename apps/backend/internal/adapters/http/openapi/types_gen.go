@@ -5321,6 +5321,34 @@ type EventContactResponse struct {
 	Contact OrganizerContact `json:"contact"`
 }
 
+// EventDeleteImpact Dry run of deleting an event: what the delete would touch and whether
+// it is allowed. Nothing is written.
+type EventDeleteImpact struct {
+	// Blocked Empty when the event may be deleted, otherwise why not (has_paid_orders).
+	Blocked string `json:"blocked"`
+
+	// CanArchive Whether the lifecycle allows moving the event to archived from its current status.
+	CanArchive bool `json:"can_archive"`
+
+	// CanDelete False when the event has paid orders or tickets; such an event can only be archived.
+	CanDelete bool `json:"can_delete"`
+
+	// EventId The event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// PaidOrders Orders that were ever paid (paid, partially_refunded or refunded).
+	PaidOrders int `json:"paid_orders"`
+
+	// Sessions Live (not deleted) sessions of the event.
+	Sessions int `json:"sessions"`
+
+	// Status The event's current lifecycle status (draft, published, cancelled or archived).
+	Status string `json:"status"`
+
+	// Tickets Tickets issued for any session of the event, whatever their status.
+	Tickets int `json:"tickets"`
+}
+
 // EventDeleteResponse Soft-delete response envelope.
 type EventDeleteResponse struct {
 	// Deleted Always true on success; confirms the soft delete.
