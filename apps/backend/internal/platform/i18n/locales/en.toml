@@ -1977,6 +1977,66 @@ other = "This change is not possible for the event in its current state."
 ["bot.evs.archive_instead_btn"]
 other = "🗄 Archive instead"
 
+["bot.team.state_waiting"]
+other = ", invitation sent, not opened yet"
+
+["bot.team.state_expired"]
+other = ", invitation expired"
+
+["bot.team.state_accepted"]
+other = ", invitation accepted"
+
+["bot.team.revoke_btn"]
+other = "Revoke invitation: {{.Email}}"
+
+["bot.team.resend_btn"]
+other = "Resend e-mail: {{.Email}}"
+
+["bot.team.revoke_confirm"]
+other = "Revoke the invitation for {{.Email}}? The link in the e-mail stops working, and if they have not joined yet they are removed from the team."
+
+["bot.team.revoke_yes_btn"]
+other = "Yes, revoke"
+
+["bot.team.revoked_removed"]
+other = "Invitation for {{.Email}} revoked. The link no longer works and they are not in the team."
+
+["bot.team.revoked_kept"]
+other = "Invitation for {{.Email}} revoked, the link no longer works. They stay in the team: {{.Reason}}"
+
+["bot.team.resent"]
+other = "A new e-mail with a fresh link went to {{.Email}}. The old link no longer works."
+
+["bot.team.resend_too_soon"]
+other = "The last e-mail to {{.Email}} went out less than ten minutes ago. Try again a little later."
+
+["bot.team.invitation_gone"]
+other = "That invitation no longer exists or has already been accepted."
+
+["bot.team.revoke_failed"]
+other = "Could not revoke the invitation. Please try again."
+
+["bot.team.resend_failed"]
+other = "Could not send the e-mail again. Please try again."
+
+["bot.team.kept_accepted"]
+other = "they have already joined (use «Remove» to take them out)."
+
+["bot.team.kept_member_before"]
+other = "they were a member before this invitation."
+
+["bot.team.kept_other_invitation"]
+other = "another invitation keeps them in."
+
+["bot.team.kept_in_use"]
+other = "they already work in this organization through the bot."
+
+["bot.team.kept_role_changed"]
+other = "you changed their role after inviting them."
+
+["bot.team.kept_last_owner"]
+other = "they are the only owner."
+
 ["bot.inv.btn"]
 other = "🎟 Invitations"
 

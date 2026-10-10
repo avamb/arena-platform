@@ -27,27 +27,40 @@ type BotInvitationRow struct {
 	AcceptedAt             *time.Time `json:"accepted_at"`
 	AcceptedTelegramUserID *int64     `json:"accepted_telegram_user_id"`
 	CreatedAt              time.Time  `json:"created_at"`
+	// RevokedAt is set when the owner annulled the invitation (migration
+	// 0137); its code no longer redeems.
+	RevokedAt *time.Time `json:"revoked_at"`
+	// MembershipCreated is true when the transaction that created the
+	// invitation also inserted the membership - only then may a revocation
+	// remove that membership.
+	MembershipCreated bool `json:"membership_created"`
+	// LastSentAt is when the letter last went out (creation or resend).
+	LastSentAt time.Time `json:"last_sent_at"`
 }
 
 const botInvitationColumns = `id, org_id, user_id, email, role, code_hash, invited_by, expires_at,
-          accepted_at, accepted_telegram_user_id, created_at`
+          accepted_at, accepted_telegram_user_id, created_at, revoked_at, membership_created, last_sent_at`
 
 func scanBotInvitationRow(row interface{ Scan(dest ...any) error }) (BotInvitationRow, error) {
 	var r BotInvitationRow
 	err := row.Scan(&r.ID, &r.OrgID, &r.UserID, &r.Email, &r.Role, &r.CodeHash, &r.InvitedBy,
-		&r.ExpiresAt, &r.AcceptedAt, &r.AcceptedTelegramUserID, &r.CreatedAt)
+		&r.ExpiresAt, &r.AcceptedAt, &r.AcceptedTelegramUserID, &r.CreatedAt,
+		&r.RevokedAt, &r.MembershipCreated, &r.LastSentAt)
 	return r, err
 }
 
 const insertBotInvitation = `-- name: InsertBotInvitation :one
-INSERT INTO bot_invitations (org_id, user_id, email, role, code_hash, invited_by, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO bot_invitations (org_id, user_id, email, role, code_hash, invited_by, expires_at, membership_created)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING ` + botInvitationColumns
 
 // InsertBotInvitation stores a new one-time invitation. invitedBy is nil when
 // the platform superadmin issued it outside any organization membership.
-func (q *Queries) InsertBotInvitation(ctx context.Context, orgID, userID uuid.UUID, email, role, codeHash string, invitedBy *uuid.UUID, expiresAt time.Time) (BotInvitationRow, error) {
-	return scanBotInvitationRow(q.db.QueryRow(ctx, insertBotInvitation, orgID, userID, email, role, codeHash, invitedBy, expiresAt))
+// membershipCreated says the caller's transaction inserted the membership too
+// (false when the person was already a member): only then may revoking the
+// invitation remove that membership.
+func (q *Queries) InsertBotInvitation(ctx context.Context, orgID, userID uuid.UUID, email, role, codeHash string, invitedBy *uuid.UUID, expiresAt time.Time, membershipCreated bool) (BotInvitationRow, error) {
+	return scanBotInvitationRow(q.db.QueryRow(ctx, insertBotInvitation, orgID, userID, email, role, codeHash, invitedBy, expiresAt, membershipCreated))
 }
 
 const getBotInvitationByCodeHash = `-- name: GetBotInvitationByCodeHash :one
@@ -67,14 +80,142 @@ SET    accepted_at               = now(),
        accepted_telegram_user_id = $2
 WHERE  id = $1
   AND  accepted_at IS NULL
+  AND  revoked_at IS NULL
   AND  expires_at > now()
 RETURNING ` + botInvitationColumns
 
 // AcceptBotInvitation marks the invitation used by telegramUserID. It answers
-// pgx.ErrNoRows when the row was already accepted or has expired, so two
-// concurrent redemptions cannot both succeed.
+// pgx.ErrNoRows when the row was already accepted, was revoked or has
+// expired, so two concurrent redemptions cannot both succeed.
 func (q *Queries) AcceptBotInvitation(ctx context.Context, id uuid.UUID, telegramUserID int64) (BotInvitationRow, error) {
 	return scanBotInvitationRow(q.db.QueryRow(ctx, acceptBotInvitation, id, telegramUserID))
+}
+
+const getBotInvitationInOrgForUpdate = `-- name: GetBotInvitationInOrgForUpdate :one
+SELECT ` + botInvitationColumns + `
+FROM   bot_invitations
+WHERE  id = $1 AND org_id = $2
+FOR UPDATE`
+
+// GetBotInvitationInOrgForUpdate locks and returns an invitation of the
+// organization (pgx.ErrNoRows for a missing one or one of another
+// organization - the same answer, so an id cannot be probed across tenants).
+func (q *Queries) GetBotInvitationInOrgForUpdate(ctx context.Context, id, orgID uuid.UUID) (BotInvitationRow, error) {
+	return scanBotInvitationRow(q.db.QueryRow(ctx, getBotInvitationInOrgForUpdate, id, orgID))
+}
+
+const getBotInvitationInOrg = `-- name: GetBotInvitationInOrg :one
+SELECT ` + botInvitationColumns + `
+FROM   bot_invitations
+WHERE  id = $1 AND org_id = $2`
+
+// GetBotInvitationInOrg returns an invitation of the organization.
+func (q *Queries) GetBotInvitationInOrg(ctx context.Context, id, orgID uuid.UUID) (BotInvitationRow, error) {
+	return scanBotInvitationRow(q.db.QueryRow(ctx, getBotInvitationInOrg, id, orgID))
+}
+
+const revokeBotInvitation = `-- name: RevokeBotInvitation :one
+UPDATE bot_invitations
+SET    revoked_at = now()
+WHERE  id = $1
+  AND  revoked_at IS NULL
+RETURNING ` + botInvitationColumns
+
+// RevokeBotInvitation annuls the invitation (pgx.ErrNoRows when it already
+// was). The row stays; its code no longer redeems.
+func (q *Queries) RevokeBotInvitation(ctx context.Context, id uuid.UUID) (BotInvitationRow, error) {
+	return scanBotInvitationRow(q.db.QueryRow(ctx, revokeBotInvitation, id))
+}
+
+const countOtherLiveBotInvitations = `-- name: CountOtherLiveBotInvitations :one
+SELECT count(*)
+FROM   bot_invitations
+WHERE  user_id = $1
+  AND  org_id  = $2
+  AND  id <> $3
+  AND  revoked_at IS NULL
+  AND (accepted_at IS NOT NULL OR expires_at > now())`
+
+// CountOtherLiveBotInvitations counts the OTHER invitations that still keep
+// the person in the organization: accepted ones, and ones not yet accepted
+// that neither expired nor were revoked.
+func (q *Queries) CountOtherLiveBotInvitations(ctx context.Context, userID, orgID, exceptID uuid.UUID) (int64, error) {
+	var n int64
+	err := q.db.QueryRow(ctx, countOtherLiveBotInvitations, userID, orgID, exceptID).Scan(&n)
+	return n, err
+}
+
+const botInvitationCreatedMembership = `-- name: BotInvitationCreatedMembership :one
+SELECT EXISTS (
+    SELECT 1 FROM bot_invitations
+    WHERE  user_id = $1 AND org_id = $2 AND membership_created
+)`
+
+// BotInvitationCreatedMembership reports whether any invitation of the person
+// to the organization, revoked or not, inserted the membership.
+func (q *Queries) BotInvitationCreatedMembership(ctx context.Context, userID, orgID uuid.UUID) (bool, error) {
+	var ok bool
+	err := q.db.QueryRow(ctx, botInvitationCreatedMembership, userID, orgID).Scan(&ok)
+	return ok, err
+}
+
+const botUserWorksInOrg = `-- name: BotUserWorksInOrg :one
+SELECT EXISTS (
+           SELECT 1 FROM bot_telegram_links l
+           WHERE  l.user_id = $1 AND l.revoked_at IS NULL AND l.current_org_id = $2
+       )
+    OR EXISTS (
+           SELECT 1 FROM bot_drafts d
+           JOIN   bot_telegram_links l ON l.telegram_user_id = d.telegram_user_id
+           WHERE  l.user_id = $1 AND d.org_id = $2
+       )
+    OR EXISTS (
+           SELECT 1 FROM bot_dialogs g
+           JOIN   bot_telegram_links l ON l.telegram_user_id = g.telegram_user_id
+           WHERE  l.user_id = $1 AND g.org_id = $2
+       )`
+
+// BotUserWorksInOrg reports whether the person has already started working in
+// the organization through the bot by another route than accepting THIS
+// invitation: a live Telegram link whose current organization it is, a wizard
+// draft or an open dialog there. (A person who was a member of another
+// organization has a Telegram link from it and may open this one at once,
+// because the membership exists from the moment of the invitation.)
+func (q *Queries) BotUserWorksInOrg(ctx context.Context, userID, orgID uuid.UUID) (bool, error) {
+	var b bool
+	err := q.db.QueryRow(ctx, botUserWorksInOrg, userID, orgID).Scan(&b)
+	return b, err
+}
+
+const countActiveOrgAdmins = `-- name: CountActiveOrgAdmins :one
+SELECT count(*) FROM memberships WHERE org_id = $1 AND role = 'org_admin' AND status = 'active'`
+
+// CountActiveOrgAdmins counts the organization's active owners.
+func (q *Queries) CountActiveOrgAdmins(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	var n int64
+	err := q.db.QueryRow(ctx, countActiveOrgAdmins, orgID).Scan(&n)
+	return n, err
+}
+
+const resendBotInvitation = `-- name: ResendBotInvitation :one
+UPDATE bot_invitations
+SET    code_hash    = $3,
+       expires_at   = $4,
+       last_sent_at = now()
+WHERE  id = $1
+  AND  org_id = $2
+  AND  accepted_at IS NULL
+  AND  revoked_at IS NULL
+  AND  last_sent_at <= now() - make_interval(secs => $5::int)
+RETURNING ` + botInvitationColumns
+
+// ResendBotInvitation gives a not-yet-accepted, not-revoked invitation a
+// fresh code and expiry and stamps last_sent_at, in ONE statement that also
+// enforces the minimum interval since the last letter - two concurrent
+// resends cannot both pass. pgx.ErrNoRows when the row does not qualify (the
+// caller re-reads it to say why).
+func (q *Queries) ResendBotInvitation(ctx context.Context, id, orgID uuid.UUID, codeHash string, expiresAt time.Time, minIntervalSeconds int32) (BotInvitationRow, error) {
+	return scanBotInvitationRow(q.db.QueryRow(ctx, resendBotInvitation, id, orgID, codeHash, expiresAt, minIntervalSeconds))
 }
 
 // BotTelegramLinkRow mirrors one bot_telegram_links row: which arena user a
@@ -434,6 +575,14 @@ type BotTeamMemberRow struct {
 	JoinedAt          time.Time `json:"joined_at"`
 	TelegramLinked    bool      `json:"telegram_linked"`
 	InvitationPending bool      `json:"invitation_pending"`
+	// The person's most relevant invitation of this organization that was not
+	// revoked (an accepted one, else the latest): its id, when it was
+	// accepted, when it expires and when its letter last went out. All nil
+	// when they have none (a member added another way).
+	InvitationID         *uuid.UUID `json:"invitation_id"`
+	InvitationAcceptedAt *time.Time `json:"invitation_accepted_at"`
+	InvitationExpiresAt  *time.Time `json:"invitation_expires_at"`
+	InvitationLastSentAt *time.Time `json:"invitation_last_sent_at"`
 }
 
 const listBotTeam = `-- name: ListBotTeam :many
@@ -445,9 +594,21 @@ SELECT u.id      AS user_id,
                WHERE l.user_id = u.id AND l.revoked_at IS NULL)              AS telegram_linked,
        EXISTS (SELECT 1 FROM bot_invitations i
                WHERE i.user_id = u.id AND i.org_id = m.org_id
-                 AND i.accepted_at IS NULL AND i.expires_at > now())         AS invitation_pending
+                 AND i.revoked_at IS NULL
+                 AND i.accepted_at IS NULL AND i.expires_at > now())         AS invitation_pending,
+       inv.id           AS invitation_id,
+       inv.accepted_at  AS invitation_accepted_at,
+       inv.expires_at   AS invitation_expires_at,
+       inv.last_sent_at AS invitation_last_sent_at
 FROM   memberships m
 JOIN   users u ON u.id = m.user_id
+LEFT JOIN LATERAL (
+           SELECT i.id, i.accepted_at, i.expires_at, i.last_sent_at
+           FROM   bot_invitations i
+           WHERE  i.user_id = u.id AND i.org_id = m.org_id AND i.revoked_at IS NULL
+           ORDER  BY (i.accepted_at IS NOT NULL) DESC, i.created_at DESC
+           LIMIT  1
+       ) inv ON true
 WHERE  m.org_id = $1
   AND  m.status = 'active'
   AND  m.role IN ('org_admin', 'organizer')
@@ -463,7 +624,8 @@ func (q *Queries) ListBotTeam(ctx context.Context, orgID uuid.UUID) ([]BotTeamMe
 	var out []BotTeamMemberRow
 	for rows.Next() {
 		var r BotTeamMemberRow
-		if err := rows.Scan(&r.UserID, &r.Email, &r.MembershipRole, &r.JoinedAt, &r.TelegramLinked, &r.InvitationPending); err != nil {
+		if err := rows.Scan(&r.UserID, &r.Email, &r.MembershipRole, &r.JoinedAt, &r.TelegramLinked, &r.InvitationPending,
+			&r.InvitationID, &r.InvitationAcceptedAt, &r.InvitationExpiresAt, &r.InvitationLastSentAt); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

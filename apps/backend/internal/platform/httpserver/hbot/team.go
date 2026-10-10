@@ -19,6 +19,39 @@ type TeamMember struct {
 	TelegramLinked    bool      `json:"telegram_linked"`
 	InvitationPending bool      `json:"invitation_pending"`
 	JoinedAt          time.Time `json:"joined_at"`
+
+	// Where the person's invitation stands (EC-16): InvitationState is
+	// accepted, waiting (sent, not yet opened, not expired) or expired, and
+	// absent for a member who has no bot invitation (added another way).
+	// InvitationID is the id the revoke and resend routes take;
+	// ResendAvailableAt is when a resend is allowed again (waiting and
+	// expired only; absent once the minimum interval has passed).
+	InvitationState     string     `json:"invitation_state,omitempty"`
+	InvitationID        *uuid.UUID `json:"invitation_id,omitempty"`
+	InvitationExpiresAt *time.Time `json:"invitation_expires_at,omitempty"`
+	ResendAvailableAt   *time.Time `json:"resend_available_at,omitempty"`
+}
+
+// Invitation states of a team member.
+const (
+	InvitationAccepted = "accepted"
+	InvitationWaiting  = "waiting"
+	InvitationExpired  = "expired"
+)
+
+// InvitationStateOf names where an invitation stands: accepted once opened, else
+// waiting until it expires, then expired. A person with no invitation row has
+// no state ("").
+func InvitationStateOf(hasInvitation bool, acceptedAt, expiresAt *time.Time, now time.Time) string {
+	switch {
+	case !hasInvitation:
+		return ""
+	case acceptedAt != nil:
+		return InvitationAccepted
+	case expiresAt != nil && expiresAt.After(now):
+		return InvitationWaiting
+	}
+	return InvitationExpired
 }
 
 // TeamResponse is GET /v1/organizations/{org_id}/bot-team.
@@ -54,7 +87,7 @@ func (h *Handler) HandleListTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	out := TeamResponse{Members: make([]TeamMember, 0, len(rows))}
 	for _, m := range rows {
-		out.Members = append(out.Members, TeamMember{
+		member := TeamMember{
 			UserID:            m.UserID,
 			Email:             m.Email,
 			Role:              BotRoleFor(m.MembershipRole),
@@ -62,7 +95,18 @@ func (h *Handler) HandleListTeam(w http.ResponseWriter, r *http.Request) {
 			TelegramLinked:    m.TelegramLinked,
 			InvitationPending: m.InvitationPending,
 			JoinedAt:          m.JoinedAt,
-		})
+		}
+		member.InvitationState = InvitationStateOf(m.InvitationID != nil, m.InvitationAcceptedAt, m.InvitationExpiresAt, h.now())
+		if member.InvitationState != "" {
+			member.InvitationID = m.InvitationID
+			member.InvitationExpiresAt = m.InvitationExpiresAt
+		}
+		if (member.InvitationState == InvitationWaiting || member.InvitationState == InvitationExpired) && m.InvitationLastSentAt != nil {
+			if at := m.InvitationLastSentAt.Add(ResendMinInterval); at.After(h.now()) {
+				member.ResendAvailableAt = &at
+			}
+		}
+		out.Members = append(out.Members, member)
 	}
 	httputil.WriteJSON(w, http.StatusOK, out)
 }

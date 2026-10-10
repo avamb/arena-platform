@@ -1071,6 +1071,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/bot-invitations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a bot invitation
+         * @description Annuls the invitation's code (the row is kept). When the person never
+         *     accepted it and takes part in nothing else, the membership the
+         *     invitation created is removed too; otherwise it stays and
+         *     `kept_reason` says why (an accepted invitation only has its row
+         *     voided - use the remove-member flow for the person). Requires
+         *     `membership.revoke`, which the manager role does not hold. An
+         *     invitation of another organization answers 404 like a missing one.
+         */
+        delete: operations["revokeOrganizationBotInvitation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/bot-invitations/{id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a bot invitation letter again
+         * @description Mints a NEW code for a not-yet-accepted, not-revoked invitation (the
+         *     old link stops working), gives it a fresh 7-day life and queues a new
+         *     `bot.invitation_email` job, in one transaction. An expired invitation
+         *     can be resent. At most one letter per ten minutes per invitation
+         *     (429 `bot.invitation_resend_too_soon` with `Retry-After`). Requires
+         *     `membership.grant`, which the manager role does not hold. An
+         *     invitation of another organization answers 404 like a missing one.
+         */
+        post: operations["resendOrganizationBotInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/bot-team": {
         parameters: {
             query?: never;
@@ -1081,8 +1133,10 @@ export interface paths {
         /**
          * The organization's team as the Telegram event-center bot shows it
          * @description Owners (org_admin) first, then managers (organizer), each with
-         *     whether a Telegram account is linked and whether a bot invitation is
-         *     still waiting to be opened. Requires `membership.read`; the caller
+         *     whether a Telegram account is linked, whether a bot invitation is
+         *     still waiting to be opened and where that invitation stands
+         *     (`invitation_state`: accepted, waiting, expired, with its id for the
+         *     revoke and resend routes). Requires `membership.read`; the caller
          *     must be a member of the organization, an organization API key of it,
          *     or the platform superadmin.
          */
@@ -9161,6 +9215,69 @@ export interface components {
              * @description When the membership was created.
              */
             joined_at: string;
+            /**
+             * @description Where the person's bot invitation stands: `accepted`, `waiting`
+             *     (sent, not opened, not expired) or `expired`. Absent for a member
+             *     who has no bot invitation (added another way). Plain string on
+             *     purpose: an inline enum would rename generated Go constants.
+             */
+            invitation_state?: string;
+            /**
+             * Format: uuid
+             * @description Id of that invitation, what the revoke and resend routes take. Absent with `invitation_state`.
+             */
+            invitation_id?: string;
+            /**
+             * Format: date-time
+             * @description When the invitation's code stops working. Absent with `invitation_state`.
+             */
+            invitation_expires_at?: string;
+            /**
+             * Format: date-time
+             * @description Present for a `waiting` or `expired` invitation whose letter went out less than ten minutes ago - the earliest time a resend is accepted.
+             */
+            resend_available_at?: string;
+        };
+        /** @description Response of DELETE /v1/organizations/{org_id}/bot-invitations/{id}. */
+        BotInvitationRevokeResponse: {
+            /**
+             * Format: uuid
+             * @description The invitation that was annulled.
+             */
+            invitation_id: string;
+            /** @description The invitee e-mail. */
+            email: string;
+            /** @description Always true on 200 - the code no longer redeems. */
+            revoked: boolean;
+            /** @description True when the membership the invitation had created was removed too (the person never accepted and takes part in nothing else). */
+            membership_removed: boolean;
+            /**
+             * @description Why the membership stayed (absent when it was removed):
+             *     `accepted` (they joined - use the remove-member flow),
+             *     `member_before` (they were a member before the invitation),
+             *     `other_invitation` (another live invitation keeps them in),
+             *     `in_use` (they already work here through the bot),
+             *     `role_changed` (the owner changed the role after the invitation),
+             *     `last_owner` (removing them would leave the organization without an owner).
+             */
+            kept_reason?: string;
+        };
+        /** @description Optional body of the resend route. */
+        BotInvitationResendRequest: {
+            /** @description Language of the new letter (`en`, `ru`, `es`); absent means the invitee's own language. */
+            locale?: string;
+        };
+        /** @description Response of POST /v1/organizations/{org_id}/bot-invitations/{id}/resend. */
+        BotInvitationResendResponse: {
+            /** @description The invitation with its new expiry; the old code no longer works. */
+            invitation: components["schemas"]["BotInvitation"];
+            /**
+             * Format: date-time
+             * @description The earliest time another resend is accepted (ten minutes after this one).
+             */
+            resend_available_at: string;
+            /** @description The new `https://t.me/<bot>?start=inv_<code>`, present ONLY for the platform superadmin with the bot username configured. */
+            deep_link?: string;
         };
         /** @description The organization's owners and managers, owners first. */
         BotTeamResponse: {
@@ -23527,6 +23644,177 @@ export interface operations {
             };
             /** @description Database not wired */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    revokeOrganizationBotInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the organization. */
+                org_id: string;
+                /** @description UUIDv7 of the bot invitation. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invitation is annulled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotInvitationRevokeResponse"];
+                };
+            };
+            /** @description org_id or id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks `membership.revoke` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such invitation in this organization (`bot.invitation_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The invitation was already revoked (`bot.invitation_revoked`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The invitation could not be updated. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    resendOrganizationBotInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 primary key of the organization. */
+                org_id: string;
+                /** @description UUIDv7 of the bot invitation. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BotInvitationResendRequest"];
+            };
+        };
+        responses: {
+            /** @description A new letter is queued. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotInvitationResendResponse"];
+                };
+            };
+            /** @description org_id or id is not a UUID, or the body is not valid JSON. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks `membership.grant` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such invitation in this organization (`bot.invitation_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The invitation was already accepted (`bot.invitation_accepted`) or revoked (`bot.invitation_revoked`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The last letter went out less than ten minutes ago (`bot.invitation_resend_too_soon`, `Retry-After` in seconds). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The invitation could not be updated. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
