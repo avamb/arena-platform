@@ -109,6 +109,17 @@ type allocationAccess struct {
 // allocationForPath loads {id} and decides whether the caller may touch it
 // through the path organization. It writes the response itself when not.
 func (s *Server) allocationForPath(w http.ResponseWriter, r *http.Request) (allocationAccess, bool) {
+	// Without the lookup queries (unit-test servers) keep the PR2-31 rule: the
+	// caller must at least be a member of the path organization. Never open.
+	if s.allocationQueries == nil {
+		if !s.enforceOrgMembership(w, r, "org_id") {
+			return allocationAccess{}, false
+		}
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.org_access_unavailable", "organization lookup is unavailable", r,
+		))
+		return allocationAccess{}, false
+	}
 	notFound := func() (allocationAccess, bool) {
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 			"allocation.not_found", "external allocation not found", r,
@@ -176,6 +187,17 @@ func peekBody(r *http.Request) []byte {
 // handler would reject on its own (bad JSON, bad UUIDs) is passed through: it is
 // answered 400 before anything is read or written.
 func (s *Server) guardAllocationCreate(w http.ResponseWriter, r *http.Request) bool {
+	// Without the lookup queries (unit-test servers) keep the PR2-31 rule: the
+	// caller must at least be a member of the path organization. Never open.
+	if s.allocationQueries == nil {
+		if !s.enforceOrgMembership(w, r, "org_id") {
+			return false
+		}
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.org_access_unavailable", "organization lookup is unavailable", r,
+		))
+		return false
+	}
 	partnerOrg, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return false
@@ -183,8 +205,15 @@ func (s *Server) guardAllocationCreate(w http.ResponseWriter, r *http.Request) b
 	var probe struct {
 		SessionID string  `json:"session_id"`
 		TierID    *string `json:"tier_id"`
+		QuotaQty  int32   `json:"quota_qty"`
+		Status    string  `json:"status"`
 	}
 	if err := json.Unmarshal(peekBody(r), &probe); err != nil {
+		return true
+	}
+	// A body the handler rejects on its own (no quota, unknown status) is
+	// answered 400 before anything is read: pass it through.
+	if probe.QuotaQty <= 0 || (probe.Status != "" && probe.Status != "pending" && probe.Status != "active") {
 		return true
 	}
 	sessionID, err := uuid.Parse(probe.SessionID)

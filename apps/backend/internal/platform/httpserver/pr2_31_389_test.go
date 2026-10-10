@@ -134,13 +134,26 @@ func buildPR231Server(t *testing.T, memberDBTX gen.DBTX, issuanceDBTX gen.DBTX) 
 		Auth:                 stub,
 		Pool:                 &dbDownPool{},
 		MembershipQueries:    gen.New(memberDBTX),
-		AllocationQueries:    gen.New(nil),
+		AllocationQueries:    gen.New(&noRowsDBTX{}),
 		InventoryQueries:     gen.New(nil),
 		ComplimentaryQueries: gen.New(issuanceDBTX),
 		BarcodeQueries:       gen.New(nil),
 		CredentialQueries:    gen.New(nil),
 		Audit:                &captureAuditWriter{},
 	})
+}
+
+// noRowsDBTX answers every single-row read with pgx.ErrNoRows: the allocation
+// guards (SEC-2) look the session or allocation up before answering, and a
+// stranger's id is simply not found.
+type noRowsDBTX struct{ emptyMembershipDBTX }
+
+type errRow struct{ err error }
+
+func (e errRow) Scan(_ ...any) error { return e.err }
+
+func (n *noRowsDBTX) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
+	return errRow{err: pgx.ErrNoRows}
 }
 
 func doPR231Request(t *testing.T, s *Server, method, path, body string) *httptest.ResponseRecorder {
@@ -175,7 +188,7 @@ func pr231GuardedSurfaces(orgID, resourceID uuid.UUID) []struct {
 		body   string
 	}{
 		{"AllocationCreate", http.MethodPost, "/v1/organizations/" + org + "/external-allocations",
-			`{"session_id":"` + res + `","operator_name":"X","qty":1}`},
+			`{"session_id":"` + res + `","operator_name":"X","quota_qty":1}`},
 		{"AllocationList", http.MethodGet, "/v1/organizations/" + org + "/external-allocations", ""},
 		{"AllocationGet", http.MethodGet, "/v1/organizations/" + org + "/external-allocations/" + res, ""},
 		{"AllocationPatch", http.MethodPatch, "/v1/organizations/" + org + "/external-allocations/" + res,
@@ -197,7 +210,16 @@ func TestPR231_OrgScopedSurfacesDeniedForNonMember(t *testing.T) {
 	for _, tc := range pr231GuardedSurfaces(uuid.New(), uuid.New()) {
 		t.Run(tc.name, func(t *testing.T) {
 			w := doPR231Request(t, s, tc.method, tc.path, tc.body)
-			assertOrgAccessDenied(t, w)
+			switch tc.name {
+			case "AllocationCreate", "AllocationGet", "AllocationPatch":
+				// SEC-2: a session or allocation the caller has no part in is
+				// the route's own 404, never a 403 that confirms it exists.
+				if w.Code != http.StatusNotFound {
+					t.Fatalf("expected 404, got %d (body: %s)", w.Code, w.Body.String())
+				}
+			default:
+				assertOrgAccessDenied(t, w)
+			}
 		})
 	}
 }
