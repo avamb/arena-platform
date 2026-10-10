@@ -505,9 +505,8 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 
 	// PAY-03: decide the route BEFORE the transaction (pool reads). A
 	// refundable payment is driven through the refund engine after the
-	// commit; a payment arena cannot refund through is refused with nothing
-	// written; a provider the registry does not know at all (the test-only
-	// mock) keeps the old behaviour and waits for /v1/refunds/webhook.
+	// commit; a payment arena cannot refund through (including a provider
+	// the registry does not know) is refused with nothing written.
 	pre, preOK := h.approvePrecheck(w, r, id)
 	if !preOK {
 		return
@@ -527,8 +526,24 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	if pre.paymentIntentID != nil {
-		if lockErr := refunds.LockPayment(ctx, tx, *pre.paymentIntentID); lockErr != nil {
+	// The payment's advisory lock is taken UNCONDITIONALLY (PAY-03 review):
+	// when the pre-check could not name the payment, read it here — the
+	// refund's payment never changes — so no approval runs unlocked next to
+	// the engine or the sweep.
+	lockPI := pre.paymentIntentID
+	if lockPI == nil {
+		var pid *uuid.UUID
+		if qerr := tx.QueryRow(ctx, `SELECT payment_intent_id FROM refunds WHERE id = $1`, id).Scan(&pid); qerr != nil && !errors.Is(qerr, pgx.ErrNoRows) {
+			h.logger.Error("refund: approve payment read failed", slog.String("error", qerr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"refund.fetch_failed", "failed to retrieve refund", r,
+			))
+			return
+		}
+		lockPI = pid
+	}
+	if lockPI != nil {
+		if lockErr := refunds.LockPayment(ctx, tx, *lockPI); lockErr != nil {
 			h.logger.Error("refund: approve payment lock failed", slog.String("error", lockErr.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 				"refund.tx_failed", "failed to begin transaction", r,
@@ -729,59 +744,14 @@ func (h *Handler) HandleApproveRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Standard path: requested → approved → provider_pending (all inside the tx).
-	approved, approveErr := txq.UpdateRefundState(ctx, id, "approved", nil, nil)
-	if approveErr != nil {
-		if errors.Is(approveErr, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("refund.not_found", "refund not found", r))
-			return
-		}
-		h.logger.Error("refund: approved transition failed",
-			slog.String("id", id.String()),
-			slog.String("error", approveErr.Error()),
-		)
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"refund.transition_failed", "failed to approve refund", r,
-		))
-		return
-	}
-
-	// A provider the registry does not know (the test-only mock provider):
-	// advance to provider_pending and wait for /v1/refunds/webhook, as
-	// before PAY-03. No real provider reaches this branch.
-	updated, pendingErr := txq.UpdateRefundState(ctx, approved.ID, "provider_pending", nil, nil)
-	if pendingErr != nil {
-		// Log but return the approved state — partial progress is still useful.
-		h.logger.Error("refund: provider_pending transition failed",
-			slog.String("id", id.String()),
-			slog.String("error", pendingErr.Error()),
-		)
-		// Still commit the 'approved' transition.
-		_ = tx.Commit(ctx) //nolint:errcheck
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{
-			"refund": refundFromRow(approved),
-		})
-		return
-	}
-
-	if commitErr := tx.Commit(ctx); commitErr != nil {
-		h.logger.Error("refund: approve tx commit failed",
-			slog.String("id", id.String()),
-			slog.String("error", commitErr.Error()),
-		)
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"refund.tx_commit_failed", "failed to commit refund transaction", r,
-		))
-		return
-	}
-
-	h.logger.Info("refund: approved → provider_pending",
-		slog.String("id", id.String()),
-	)
-
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"refund": refundFromRow(updated),
-	})
+	// No other route reaches here: seller-site, unsupported and unknown
+	// providers were refused above (RouteRefusal), and the engine route
+	// returned. The pre-PAY-03 "pretend" branch (approved → provider_pending
+	// with nothing ever calling the provider) is gone (PAY-03 review).
+	h.logger.Error("refund: approve reached no refund route", slog.String("id", id.String()), slog.String("route", string(route)))
+	httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		"refund.transition_failed", "failed to approve refund", r,
+	))
 }
 
 // refundNeedsManualReviewWithPI is the inner implementation of
@@ -1024,6 +994,30 @@ func (h *Handler) HandleRefundWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("refund_webhook.lookup_failed", "failed to locate refund", r))
+		return
+	}
+
+	// A refund the engine drives (refunds.provider set, PAY-03) is never
+	// moved by this legacy route: its state follows the provider's answer
+	// and the sweep, and a webhook flipping it to failed would free its
+	// ticket for a second refund. Acknowledge, write nothing (review M3).
+	var engineRow bool
+	if err := h.refundQueries.DB().QueryRow(ctx,
+		`SELECT provider IS NOT NULL FROM refunds WHERE id = $1`, refund.ID).Scan(&engineRow); err != nil {
+		h.logger.Error("refund_webhook: engine check failed",
+			slog.String("refund_id", refundID.String()),
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("refund_webhook.lookup_failed", "failed to locate refund", r))
+		return
+	}
+	if engineRow {
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
+			"acknowledged": true,
+			"event_type":   req.EventType,
+			"processed":    false,
+			"reason":       "refund is driven by the refund engine; this route does not change it",
+		})
 		return
 	}
 

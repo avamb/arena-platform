@@ -215,6 +215,7 @@ func TestRefundEngineHTTP_ApproveDrivesStripeAndCancelsAfterwards(t *testing.T) 
 	if st, _ = pf.do(t, http.MethodPost, "/v1/refunds/"+refundID+"/approve", key, "{}"); st != http.StatusConflict || len(calls) != 1 {
 		t.Fatalf("second approve: %d, %d calls", st, len(calls))
 	}
+	legacyWebhookLeavesEngineRefundAlone(t, ts, srv.pgxPool, refundID)
 
 	// ── 2. Stripe refuses: the refund fails, the tickets stay valid.
 	f2 := newPay03Order(t, srv.pgxPool, org, "stripe")
@@ -257,5 +258,37 @@ func TestRefundEngineHTTP_ApproveDrivesStripeAndCancelsAfterwards(t *testing.T) 
 		if n != 0 {
 			t.Fatalf("%s: %d refunds written", provider, n)
 		}
+	}
+}
+
+// legacyWebhookLeavesEngineRefundAlone (PAY-03 review M3): the legacy
+// POST /v1/refunds/webhook never moves a refund the engine drives — a
+// correctly signed "failed" for a refund Stripe accepted is acknowledged
+// with processed:false and writes nothing (no state change, no event row).
+func legacyWebhookLeavesEngineRefundAlone(t *testing.T, ts *httptest.Server, pool *pgxpool.Pool, refundID string) {
+	t.Helper()
+	ctx := context.Background()
+	body := []byte(fmt.Sprintf(`{"refund_id":%q,"provider_refund_id":"re_pay03_ok","event_type":"mock.refund.failed"}`, refundID))
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/v1/refunds/webhook", strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Stripe-Signature", signStripe("whsec_pay03", body))
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(raw), `"processed":false`) || !strings.Contains(string(raw), "refund engine") {
+		t.Fatalf("legacy webhook on an engine refund: %d %s; want 200 processed:false", resp.StatusCode, raw)
+	}
+	var state string
+	var events int
+	_ = pool.QueryRow(ctx, `SELECT state FROM refunds WHERE id = $1`, refundID).Scan(&state)
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM refund_events WHERE refund_id = $1`, refundID).Scan(&events)
+	if state != "succeeded" || events != 0 {
+		t.Fatalf("after the legacy webhook: state %s, %d event rows; want succeeded and nothing written", state, events)
 	}
 }
