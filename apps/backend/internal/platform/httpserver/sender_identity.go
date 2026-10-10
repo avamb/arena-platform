@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/brevo"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hiam"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
@@ -11,7 +12,7 @@ import (
 // superadmin. It never exposes Brevo credentials and is deliberately
 // unavailable until the platform operator configures BREVO_API_KEY.
 func (s *Server) handleAdminOrganizationSenderDNS(w http.ResponseWriter, r *http.Request) {
-	if _, ok := requireAdminReason(w, r); !ok {
+	if _, ok := requireAdminReason(w, r); !ok || !hiam.RequirePlatformSuperadmin(w, r) {
 		return
 	}
 	if s.orgQueries == nil || s.cfg == nil || s.cfg.BrevoAPIKey == "" {

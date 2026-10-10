@@ -507,6 +507,11 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 
 	// Syntax is clean — now hit the DB: venue existence / org ownership /
 	// capacity default / geography-derived currency in one round trip.
+	// SEC-2 H7: the event must belong to the path organization. It sits after
+	// the pure body validation (which touches no data) and before the first read.
+	if !h.requireEventInOrg(w, r, eventID, orgID) {
+		return
+	}
 	venueCtx, ok := h.resolveVenueContext(w, r, orgID, venueID)
 	if !ok {
 		return
@@ -705,6 +710,11 @@ func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 	if !h.requireOrgMembership(w, r, h.sessionQueries, orgID) {
 		return
 	}
+	// SEC-2 H7: membership of the path organization does not prove the event
+	// (and so its sessions) belongs to it. A foreign event reads as not found.
+	if !h.requireEventInOrg(w, r, eventID, orgID) {
+		return
+	}
 
 	rows, err := h.sessionQueries.ListSessionsByEvent(ctx, eventID)
 	if err != nil {
@@ -758,6 +768,11 @@ func (h *Handler) HandleGetSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !h.requireOrgMembership(w, r, h.sessionQueries, orgID) {
+		return
+	}
+	// SEC-2 H7: membership of the path organization does not prove the event
+	// (and so its sessions) belongs to it. A foreign event reads as not found.
+	if !h.requireEventInOrg(w, r, eventID, orgID) {
 		return
 	}
 
@@ -875,6 +890,11 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !h.requireOrgMembership(w, r, h.sessionQueries, orgID) {
+		return
+	}
+	// SEC-2 H7: membership of the path organization does not prove the event
+	// (and so its sessions) belongs to it. A foreign event reads as not found.
+	if !h.requireEventInOrg(w, r, eventID, orgID) {
 		return
 	}
 
@@ -1319,6 +1339,11 @@ func (h *Handler) HandleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !h.requireOrgMembership(w, r, h.sessionQueries, orgID) {
+		return
+	}
+	// SEC-2 H7: membership of the path organization does not prove the event
+	// (and so its sessions) belongs to it. A foreign event reads as not found.
+	if !h.requireEventInOrg(w, r, eventID, orgID) {
 		return
 	}
 

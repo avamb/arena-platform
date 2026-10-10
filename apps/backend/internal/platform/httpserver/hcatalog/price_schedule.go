@@ -177,6 +177,9 @@ func (h *Handler) HandleGetTierPriceSchedule(w http.ResponseWriter, r *http.Requ
 	if !h.requireOrgMembership(w, r, h.tierQueries, orgID) {
 		return
 	}
+	if !h.requireSessionInOrg(w, r, sessionID, orgID) {
+		return
+	}
 	tier, err := h.tierQueries.GetTicketTierByID(ctx, tierID, sessionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -221,6 +224,9 @@ func (h *Handler) HandlePutTierPriceSchedule(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if !h.requireOrgMembership(w, r, h.tierQueries, orgID) {
+		return
+	}
+	if !h.requireSessionInOrg(w, r, sessionID, orgID) {
 		return
 	}
 
@@ -421,6 +427,15 @@ func (h *Handler) HandleBulkSessionPricing(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if !h.requireOrgMembership(w, r, h.tierQueries, orgID) {
+		return
+	}
+	if h.eventQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "database is not available", r,
+		))
+		return
+	}
+	if !h.requireEventInOrg(w, r, eventID, orgID) {
 		return
 	}
 

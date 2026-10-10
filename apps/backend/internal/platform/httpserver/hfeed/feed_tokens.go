@@ -39,6 +39,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -90,6 +91,28 @@ func FeedTokenFromRow(ft gen.FeedTokenRow) FeedTokenResponse {
 	return r
 }
 
+// requireChannelInOrg closes the SEC-2 hole of the feed-token routes: they
+// carry {org_id} and the caller's membership of it is checked, but nothing tied
+// {channel_id} to that organization, so a member of organization B listed,
+// minted, read and revoked organization A's feed tokens (the response carries
+// the RAW token, a usable credential) by A's channel UUID. A channel of another
+// organization — or one that does not exist — reads as not found.
+func (h *Handler) requireChannelInOrg(w http.ResponseWriter, r *http.Request, orgID, channelID uuid.UUID) bool {
+	_, err := h.feedTokenQueries.GetSalesChannelByID(r.Context(), channelID, orgID)
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("channel.not_found", "channel not found", r))
+		return false
+	}
+	h.logger.Error("feed_token: channel lookup failed", slog.String("error", err.Error()))
+	httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		"feed_token.channel_lookup_failed", "failed to look up the channel", r,
+	))
+	return false
+}
+
 // GenerateFeedToken returns a cryptographically random 32-byte hex string
 // suitable for use as a public feed token credential.
 func GenerateFeedToken() (string, error) {
@@ -120,7 +143,7 @@ func (h *Handler) HandleCreateFeedToken(w http.ResponseWriter, r *http.Request) 
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
@@ -128,7 +151,6 @@ func (h *Handler) HandleCreateFeedToken(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("feed_token.invalid_body", "cannot read request body: "+err.Error(), r))
@@ -141,6 +163,11 @@ func (h *Handler) HandleCreateFeedToken(w http.ResponseWriter, r *http.Request) 
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("feed_token.invalid_json", "request body is not valid JSON", r))
 			return
 		}
+	}
+
+	// SEC-2 H3: after the body validation (no data read), before any lookup.
+	if !h.requireChannelInOrg(w, r, orgID, channelID) {
+		return
 	}
 	req.Label = strings.TrimSpace(req.Label)
 
@@ -190,12 +217,15 @@ func (h *Handler) HandleListFeedTokens(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
 	channelID, ok := httputil.UUIDPathParam(w, r, "channel_id")
 	if !ok {
+		return
+	}
+	if !h.requireChannelInOrg(w, r, orgID, channelID) {
 		return
 	}
 
@@ -230,7 +260,7 @@ func (h *Handler) HandleGetFeedToken(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	_, ok := httputil.UUIDPathParam(w, r, "org_id")
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
 	if !ok {
 		return
 	}
@@ -240,6 +270,9 @@ func (h *Handler) HandleGetFeedToken(w http.ResponseWriter, r *http.Request) {
 	}
 	tokenID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+	if !h.requireChannelInOrg(w, r, orgID, channelID) {
 		return
 	}
 
@@ -287,6 +320,9 @@ func (h *Handler) HandleRevokeFeedToken(w http.ResponseWriter, r *http.Request) 
 	}
 	tokenID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+	if !h.requireChannelInOrg(w, r, orgID, channelID) {
 		return
 	}
 

@@ -35,6 +35,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
@@ -255,7 +256,7 @@ func TestAdminOnboardingEmailIntegration_OrgInvitation(t *testing.T) {
 	r.Header.Set("X-Admin-Reason", "integration: invitation email")
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("org_id", orgID.String())
-	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+	r = r.WithContext(auth.WithSuperadminOrgAccess(context.WithValue(r.Context(), chi.RouteCtxKey, rctx)))
 	srv.handleAdminAddMember(w, r)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("POST members: status = %d (body: %s)", w.Code, w.Body.String())

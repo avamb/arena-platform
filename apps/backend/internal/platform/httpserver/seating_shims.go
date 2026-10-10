@@ -85,6 +85,10 @@ func (s *Server) handleBindSessionSeating(w http.ResponseWriter, r *http.Request
 	if !s.enforceOrgMembership(w, r, "org_id") {
 		return
 	}
+	// SEC-2: the session must be the path organization's (org_isolation_guards.go).
+	if !s.requireSessionInPathOrg(w, r, "id") {
+		return
+	}
 	s.seatingHandler().HandleBindSessionSeating(w, r)
 }
 
@@ -92,6 +96,9 @@ func (s *Server) handleBindSessionSeating(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handlePatchSessionSeats(w http.ResponseWriter, r *http.Request) {
 	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	if !s.requireSessionInPathOrg(w, r, "id") {
 		return
 	}
 	s.seatingHandler().HandlePatchSessionSeats(w, r)

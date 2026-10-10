@@ -29,6 +29,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
 )
@@ -270,7 +271,8 @@ func TestAdminAddMember_NewEmail_EnqueuesInvitationEmailInTx_NoTokenInLogs(t *te
 	req.Header.Set("X-Admin-Reason", "invite")
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("org_id", orgID.String())
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	// The admin console is the platform superadmin (SEC-1 gate).
+	req = req.WithContext(auth.WithSuperadminOrgAccess(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)))
 	rec := httptest.NewRecorder()
 	h.HandleAdminAddMember(rec, req)
 
@@ -328,7 +330,8 @@ func TestAdminAddMember_ExistingUserID_EnqueuesNoEmail(t *testing.T) {
 	req.Header.Set("X-Admin-Reason", "grant")
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("org_id", orgID.String())
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	// The admin console is the platform superadmin (SEC-1 gate).
+	req = req.WithContext(auth.WithSuperadminOrgAccess(context.WithValue(req.Context(), chi.RouteCtxKey, rctx)))
 	rec := httptest.NewRecorder()
 	h.HandleAdminAddMember(rec, req)
 

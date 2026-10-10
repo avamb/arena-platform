@@ -61,12 +61,15 @@ ORDER  BY joined_at ASC, id ASC;
 -- organization memberships plus global user_roles assignments (org_id IS
 -- NULL). Scoped user_roles are intentionally excluded because the current
 -- permission checker has no per-resource user_roles scope enforcement.
+-- SEC-1: platform roles (platform_superadmin, platform_operator) count only
+-- from a global user_roles row; a membership row carrying one grants nothing.
 SELECT DISTINCT role
 FROM (
     SELECT m.role
     FROM   memberships m
     WHERE  m.user_id = $1
       AND  m.status  = 'active'
+      AND  m.role NOT IN ('platform_superadmin', 'platform_operator')
 
     UNION
 
@@ -139,6 +142,7 @@ FROM (
     WHERE  m.user_id = $1
       AND  m.org_id  = $2
       AND  m.status  = 'active'
+      AND  m.role NOT IN ('platform_superadmin', 'platform_operator')
 
     UNION
 
