@@ -55,6 +55,10 @@ func Declared(d Descriptor) Entry {
 	return Entry{Descriptor: d}
 }
 
+// Implemented reports whether the entry has a module behind it, as opposed
+// to a provider that is only Declared.
+func (e Entry) Implemented() bool { return e.New != nil }
+
 // Build constructs the module.
 func (e Entry) Build(secrets map[string]string, opts Options) (Module, error) {
 	if e.New == nil {
@@ -151,6 +155,31 @@ func (r *Registry) NamesWhere(keep func(Descriptor) bool) []string {
 		}
 	}
 	return out
+}
+
+// ModuleNames lists the providers that have a module behind them (not merely
+// Declared), in registration order.
+func (r *Registry) ModuleNames() []string {
+	if r == nil {
+		return nil
+	}
+	out := make([]string, 0, len(r.order))
+	for _, name := range r.order {
+		if r.entries[name].Implemented() {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// IsModule reports whether name is EXACTLY (no case folding, no trimming) the
+// canonical name of a provider with a module behind it. This is the rule for
+// a value arena stores and later acts on — sales_channels.provider — which
+// replaced the sales_channels_provider_check list in migration 0132 (PAY-02):
+// a new module joins by its registration alone, no migration.
+func (r *Registry) IsModule(name string) bool {
+	e, ok := r.Get(name)
+	return ok && e.Descriptor.Name == name && e.Implemented()
 }
 
 // Build looks the provider up and constructs its module. An unknown name is

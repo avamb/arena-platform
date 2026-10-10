@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+
+	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
 )
 
 // Check results.
@@ -130,13 +132,15 @@ func (s *Service) runChecks(ctx context.Context, q querier, app *Application, se
 	} else {
 		add("duplicate", CheckWarn, strings.Join(dups, "; "))
 	}
-	switch a.String("payment_provider") {
-	case "stripe", "flitt":
-		add("payment_provider", CheckPass, a.String("payment_provider"))
-	case "":
+	// A provider is "supported" when the module registry has a module for it
+	// that renders a hosted payment page (PAY-02), never by a hand-kept list.
+	switch choice := a.String("payment_provider"); {
+	case choice == "":
 		add("payment_provider", CheckFail, "not chosen")
+	case providerAccepted(choice):
+		add("payment_provider", CheckPass, choice)
 	default:
-		add("payment_provider", CheckWarn, a.String("payment_provider")+": not supported yet")
+		add("payment_provider", CheckWarn, choice+": not supported yet")
 	}
 
 	for i := range out {
@@ -251,4 +255,11 @@ func (s *Service) Checks(ctx context.Context, id uuid.UUID) ([]Check, error) {
 		}
 	}
 	return out, nil
+}
+
+// providerAccepted reports whether the applicant's provider choice is one a
+// new workspace's channel starts on as is.
+func providerAccepted(choice string) bool {
+	_, ok := paymodules.ChannelProviderForChoice(choice)
+	return ok
 }

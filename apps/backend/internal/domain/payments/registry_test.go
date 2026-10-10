@@ -122,3 +122,21 @@ func TestSecretsFromJSON(t *testing.T) {
 		t.Errorf("garbage blob = %v, want an empty map", got)
 	}
 }
+
+// PAY-02: the channel-provider rule. Only an entry with a module counts, and
+// only by its exact canonical name.
+func TestRegistry_ModuleNamesAndIsModule(t *testing.T) {
+	reg := payments.MustRegistry(entryFor("alpha"), payments.Declared(payments.Descriptor{Name: "beta", Title: "Beta"}), entryFor("gamma"))
+	if got, want := reg.ModuleNames(), []string{"alpha", "gamma"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("ModuleNames = %v; want %v", got, want)
+	}
+	for name, want := range map[string]bool{"alpha": true, "gamma": true, "beta": false, "Alpha": false, " alpha": false, "": false, "delta": false} {
+		if got := reg.IsModule(name); got != want {
+			t.Errorf("IsModule(%q) = %v; want %v", name, got, want)
+		}
+	}
+	var nilReg *payments.Registry
+	if nilReg.ModuleNames() != nil || nilReg.IsModule("alpha") {
+		t.Error("a nil registry must know no modules")
+	}
+}

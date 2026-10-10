@@ -27,6 +27,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
@@ -140,13 +141,8 @@ func ValidateChannelConfig(paymentMode, provider, providerAccountID string) stri
 		return fmt.Sprintf("payment_mode must be 'direct_merchant' or 'merchant_of_record', got %q", paymentMode)
 	}
 
-	switch provider {
-	case "stripe", "allpay", "flitt":
-		// valid
-	case "":
-		return "provider is required"
-	default:
-		return fmt.Sprintf("provider must be 'stripe', 'allpay' or 'flitt', got %q", provider)
+	if msg := ValidateChannelProvider(provider); msg != "" {
+		return msg
 	}
 
 	if paymentMode == "direct_merchant" && strings.TrimSpace(providerAccountID) == "" {
@@ -274,7 +270,7 @@ func (h *Handler) HandleCreateChannel(w http.ResponseWriter, r *http.Request) {
 		req.PaymentMode = "direct_merchant"
 	}
 	if req.Provider == "" {
-		req.Provider = "stripe"
+		req.Provider = paymodules.DefaultChannelProvider()
 	}
 	if req.FeePercent == "" {
 		req.FeePercent = "0.00"
@@ -528,10 +524,10 @@ func (h *Handler) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 			))
 			return
 		}
-		if req.Provider != "" && req.Provider != "stripe" && req.Provider != "allpay" && req.Provider != "flitt" {
+		if req.Provider != "" && ValidateChannelProvider(req.Provider) != "" {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"channel.invalid_config",
-				fmt.Sprintf("provider must be 'stripe', 'allpay' or 'flitt', got %q", req.Provider),
+				ValidateChannelProvider(req.Provider),
 				r,
 				map[string]any{"field": "provider"},
 			))

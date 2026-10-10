@@ -23,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/geoslug"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
@@ -67,8 +68,9 @@ type WorkspaceInput struct {
 	OwnerFirstName string
 	OwnerLastName  string
 
-	// PaymentProvider is the form's choice; only stripe and flitt are
-	// provider values, anything else starts on stripe and the owner changes it.
+	// PaymentProvider is the form's choice; a provider whose module renders a
+	// hosted payment page is taken as is, anything else starts on the default
+	// provider (paymodules.ChannelProviderForChoice) and the owner changes it.
 	PaymentProvider string
 	// FeePercent is the channel's service charge, "0.00" when empty.
 	FeePercent string
@@ -138,10 +140,9 @@ WHERE id = $1`,
 		return ws, fmt.Errorf("provisioning: set legal fields: %w", err)
 	}
 
-	provider := "stripe"
-	if in.PaymentProvider == "flitt" {
-		provider = "flitt"
-	}
+	// The form's choice when it names a module with a hosted payment page,
+	// otherwise the default provider; the owner changes it later (PAY-02).
+	provider, _ := paymodules.ChannelProviderForChoice(in.PaymentProvider)
 	fee := in.FeePercent
 	if fee == "" {
 		fee = "0.00"
