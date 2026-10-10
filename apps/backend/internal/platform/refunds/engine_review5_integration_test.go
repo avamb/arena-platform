@@ -271,7 +271,7 @@ func TestEngine_FlatBudgetSumMatchesTheEngine(t *testing.T) {
 }
 
 // TestEngine_WholeOrderRefundCutByTheDeadlineEndsRefunded (M-3): ONE
-// whole-payment refund covers both tickets, and the caller's deadline ends
+// whole-payment refund covers both tickets, and the caller goes away
 // after the first cancellation. The first settle projects the order while a
 // ticket is still active (partially_refunded); the sweep's repair cancels
 // the second ticket later — and the order must then read refunded, not stay
@@ -279,16 +279,21 @@ func TestEngine_FlatBudgetSumMatchesTheEngine(t *testing.T) {
 func TestEngine_WholeOrderRefundCutByTheDeadlineEndsRefunded(t *testing.T) {
 	f := newFixture(t, testPool(t), "pay03fake")
 	ctx := context.Background()
+	// Deterministic (sixth review, LOW-4): the caller goes away right after
+	// the FIRST cancellation, so the loop starts no second one — no
+	// real-time window a slow runner could miss.
+	caller, leave := context.WithCancel(ctx)
+	defer leave()
 	e := f.engineWith(&fakeModule{partial: true}, true, func(o *refunds.Options) {
-		o.CallTimeout = 300 * time.Millisecond // the drive's whole apply budget
 		inner := o.CancelTicket
 		o.CancelTicket = func(ctx context.Context, req refunds.CancelRequest) error {
-			time.Sleep(400 * time.Millisecond) // a slow cancellation
-			return inner(ctx, req)
+			err := inner(ctx, req)
+			leave()
+			return err
 		}
 	})
 	id := f.rawRefund(t, f.payment, 5000, "provider_pending", "")
-	r, err := e.Drive(ctx, id)
+	r, err := e.Drive(caller, id)
 	if err != nil || r.State != refunds.StateSucceeded {
 		t.Fatalf("Drive: %v %s", err, r.State)
 	}
@@ -299,7 +304,7 @@ func TestEngine_WholeOrderRefundCutByTheDeadlineEndsRefunded(t *testing.T) {
 		}
 	}
 	if active != 1 {
-		t.Fatalf("active tickets after the first settle = %d; the deadline must cut the loop after one", active)
+		t.Fatalf("active tickets after the first settle = %d; the caller leaving must cut the loop after one", active)
 	}
 	for i := 0; i < 3; i++ {
 		f.exec(t, `UPDATE refunds SET updated_at = now() - interval '2 minutes', repair_attempted_at = NULL WHERE org_id = $1`, f.org)
