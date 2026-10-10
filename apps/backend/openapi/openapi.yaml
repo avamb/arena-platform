@@ -8782,6 +8782,7 @@ components:
         - currency
         - uses
         - discount_total
+        - discount_currency
         - last_used_at
         - max_uses
         - max_uses_per_customer
@@ -8852,6 +8853,13 @@ components:
           type: integer
           format: int64
           description: Sum of the discounts those orders took, in minor units.
+        discount_currency:
+          type: [string, "null"]
+          description: |
+            ISO 4217 currency of `discount_total` when every order that used
+            the code was in one currency; `null` when the code was never used
+            or its orders are in several currencies (the sum is then not one
+            amount).
         last_used_at:
           type: [string, "null"]
           format: date-time
@@ -8968,6 +8976,7 @@ components:
         - order_status
         - currency
         - buyer_email
+        - buyer_name
         - session_id
         - channel_id
         - channel_name
@@ -9012,6 +9021,9 @@ components:
         buyer_email:
           type: [string, "null"]
           description: E-mail the order was bought under.
+        buyer_name:
+          type: [string, "null"]
+          description: Name the order was bought under (the buyer's own words); null when the order carries none.
         session_id:
           type: [string, "null"]
           format: uuid
