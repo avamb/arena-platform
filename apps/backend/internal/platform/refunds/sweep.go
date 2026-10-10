@@ -486,12 +486,18 @@ func (e *Engine) alertReviews(ctx context.Context, n Notifier) (int, error) {
 		fails []int
 	)
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
-		res, err := tx.Query(ctx, `UPDATE refunds SET alert_lease_until = now() + $2::interval
-			WHERE id IN (SELECT id FROM refunds
-			             WHERE settlement = 'provider' AND provider IS NOT NULL AND alert_due_at IS NOT NULL
-			               AND (alert_lease_until IS NULL OR alert_lease_until < now())
-			               AND (cardinality($1::uuid[]) = 0 OR org_id = ANY($1::uuid[]))
-			             ORDER BY alert_attempts, alert_due_at LIMIT `+strconv.Itoa(alertsPerPass)+` FOR UPDATE SKIP LOCKED)
+		// The pick is a MATERIALIZED CTE, evaluated exactly once: as an
+		// `id IN (SELECT … LIMIT … SKIP LOCKED)` subquery the planner may
+		// run it more than once and lease more than alertsPerPass rows (CI
+		// saw 18 of a 15 cap, sixth review).
+		res, err := tx.Query(ctx, `WITH picked AS MATERIALIZED (
+			SELECT id AS picked_id FROM refunds
+			WHERE settlement = 'provider' AND provider IS NOT NULL AND alert_due_at IS NOT NULL
+			  AND (alert_lease_until IS NULL OR alert_lease_until < now())
+			  AND (cardinality($1::uuid[]) = 0 OR org_id = ANY($1::uuid[]))
+			ORDER BY alert_attempts, alert_due_at LIMIT `+strconv.Itoa(alertsPerPass)+` FOR UPDATE SKIP LOCKED)
+			UPDATE refunds SET alert_lease_until = now() + $2::interval
+			FROM picked WHERE id = picked.picked_id
 			RETURNING alert_attempts, alert_due_at, `+refundColumns, e.scopeOrgs(), intervalText(alertLease))
 		if err != nil {
 			return err
