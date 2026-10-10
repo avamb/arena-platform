@@ -83,7 +83,7 @@ func sessionBase(id sweepIDs, event, session uuid.UUID) string {
 	return orgPath(id) + "/events/" + event.String() + "/sessions/" + session.String()
 }
 
-func qtyBody(id sweepIDs) string { return `{"quantity":5}` }
+func qtyBody(_ sweepIDs) string { return `{"quantity":5}` }
 
 func futureTime(hours int) string {
 	return time.Now().UTC().Add(time.Duration(hours) * time.Hour).Truncate(time.Hour).Format(time.RFC3339)
@@ -98,7 +98,7 @@ func sweepRows() []sweepRow {
 			path: func(id sweepIDs) string { return orgPath(id) + "/channels/" + id.Channel.String() + "/feed-tokens" }},
 		{hole: "H3", name: "feed token mint", route: "POST /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens", perm: "feed_token.create",
 			path:          func(id sweepIDs) string { return orgPath(id) + "/channels/" + id.Channel.String() + "/feed-tokens" },
-			body:          func(id sweepIDs) string { return `{"label":"sweep"}` },
+			body:          func(_ sweepIDs) string { return `{"label":"sweep"}` },
 			controlStatus: 201},
 		{hole: "H3", name: "feed token get", route: "GET /v1/organizations/{org_id}/channels/{channel_id}/feed-tokens/{id}", perm: "feed_token.read",
 			path: func(id sweepIDs) string {
@@ -115,7 +115,7 @@ func sweepRows() []sweepRow {
 			path: func(id sweepIDs) string { return sessionBase(id, id.Event, id.Session1) + "/inventory" }},
 		{hole: "H4", name: "inventory init", route: "POST " + inv, perm: "inventory.reserve",
 			path:          func(id sweepIDs) string { return sessionBase(id, id.Event, id.Session2) + "/inventory" },
-			body:          func(id sweepIDs) string { return `{"capacity_total":1}` },
+			body:          func(_ sweepIDs) string { return `{"capacity_total":1}` },
 			controlStatus: 201},
 		{hole: "H4", name: "inventory reserve", route: "POST " + inv + "/reserve", perm: "inventory.reserve",
 			path: func(id sweepIDs) string { return sessionBase(id, id.Event, id.Session1) + "/inventory/reserve" }, body: qtyBody},
@@ -139,7 +139,7 @@ func sweepRows() []sweepRow {
 			path: func(id sweepIDs) string { return orgPath(id) + "/external-allocations/" + id.Alloc.String() }},
 		{hole: "H5", name: "allocation patch", route: "PATCH /v1/organizations/{org_id}/external-allocations/{id}", perm: "allocation.update",
 			path: func(id sweepIDs) string { return orgPath(id) + "/external-allocations/" + id.Alloc.String() },
-			body: func(id sweepIDs) string { return `{"status":"active"}` }},
+			body: func(_ sweepIDs) string { return `{"status":"active"}` }},
 		{hole: "H5", name: "allocation create (no category)", route: "POST /v1/organizations/{org_id}/external-allocations", perm: "allocation.create",
 			path: func(id sweepIDs) string { return orgPath(id) + "/external-allocations" },
 			body: func(id sweepIDs) string {
@@ -178,10 +178,10 @@ func sweepRows() []sweepRow {
 			controlStatus: 201},
 		{hole: "H7", name: "session cancel (patch)", route: "PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}", perm: "session.update",
 			path: func(id sweepIDs) string { return sessionBase(id, id.Event, id.Session4) },
-			body: func(id sweepIDs) string { return `{"status":"cancelled"}` }},
+			body: func(_ sweepIDs) string { return `{"status":"cancelled"}` }},
 		{hole: "H7", name: "session move (patch)", route: "PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}", perm: "session.update",
 			path: func(id sweepIDs) string { return sessionBase(id, id.Event, id.Session4) },
-			body: func(id sweepIDs) string {
+			body: func(_ sweepIDs) string {
 				return fmt.Sprintf(`{"start_at":%q,"end_at":%q}`, futureTime(24*50), futureTime(24*50+2))
 			}},
 		{hole: "H7", name: "session delete", route: "DELETE /v1/organizations/{org_id}/events/{event_id}/sessions/{id}", perm: "session.delete",
@@ -199,7 +199,7 @@ func sweepRows() []sweepRow {
 			}},
 		{hole: "H8", name: "seat block", route: "PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/seats", perm: "event_session.assign_seating_plan",
 			path: func(id sweepIDs) string { return sessionBase(id, id.Event, id.Session3) + "/seats" },
-			body: func(id sweepIDs) string { return `{"action":"block","seat_keys":["S|A|1","S|A|2"]}` }},
+			body: func(_ sweepIDs) string { return `{"action":"block","seat_keys":["S|A|1","S|A|2"]}` }},
 	}
 	return rows
 }
