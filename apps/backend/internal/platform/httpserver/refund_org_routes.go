@@ -209,13 +209,19 @@ func (s *Server) handleCreateOrderRefunds(w http.ResponseWriter, r *http.Request
 
 type refundQueueItemJSON struct {
 	refundItemJSON
+	OrderID      *string `json:"order_id"`
 	OrderNumber  *int64  `json:"order_number"`
 	EventName    *string `json:"event_name"`
 	TicketNumber *int64  `json:"ticket_number"`
 }
 
 func queueItem(it refunds.ListItem) refundQueueItemJSON {
-	return refundQueueItemJSON{refundItem(it.Refund), it.OrderSystemID, it.EventName, it.TicketNumber}
+	var orderID *string
+	if it.OrderID != nil {
+		v := it.OrderID.String()
+		orderID = &v
+	}
+	return refundQueueItemJSON{refundItem(it.Refund), orderID, it.OrderSystemID, it.EventName, it.TicketNumber}
 }
 
 func (s *Server) handleListOrgRefunds(w http.ResponseWriter, r *http.Request) {

@@ -3390,6 +3390,10 @@ components:
         - type: object
           description: Order, event and ticket the refund belongs to.
           properties:
+            order_id:
+              type: [string, "null"]
+              format: uuid
+              description: UUID of the order, null for a refund without an order.
             order_number:
               type: [integer, "null"]
               format: int64

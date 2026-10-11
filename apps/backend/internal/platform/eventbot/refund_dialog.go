@@ -430,15 +430,21 @@ func (b *Bot) sendRefund(ctx context.Context, chatID int64, editMsgID *int, from
 
 // refundResultText lists what each refund came to.
 func (b *Bot) refundResultText(loc string, st refundDialog, res openapi.CreateOrderRefundsResponse) string {
+	head := b.texts.T(loc, "bot.ref.done_head", map[string]any{"Num": st.Num})
+	return head + b.refundLines(loc, Esc(providerName(st.Provider)), res.Refunds)
+}
+
+// refundLines is one line per refund with its state in words; provider is
+// already escaped.
+func (b *Bot) refundLines(loc, provider string, refunds []openapi.OrderRefundItem) string {
 	var sb strings.Builder
-	sb.WriteString(b.texts.T(loc, "bot.ref.done_head", map[string]any{"Num": st.Num}))
-	for i, rf := range res.Refunds {
+	for i, rf := range refunds {
 		var status string
 		switch rf.State {
 		case "succeeded":
 			status = b.texts.T(loc, "bot.ref.st_succeeded", nil)
 		case "provider_pending":
-			status = b.texts.T(loc, "bot.ref.st_pending", map[string]any{"Provider": Esc(providerName(st.Provider))})
+			status = b.texts.T(loc, "bot.ref.st_pending", map[string]any{"Provider": provider})
 		case "failed":
 			status = b.texts.T(loc, "bot.ref.st_failed", map[string]any{"Why": Esc(deref(rf.FailureReason))})
 		case "manual_review":

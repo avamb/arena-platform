@@ -2814,3 +2814,48 @@ other = "Ya hay una devolución en curso para alguna de estas entradas del pedid
 
 ["bot.ref.err_changed"]
 other = "El pedido n.º {{.Num}} cambió mientras elegías. Ábrelo de nuevo y empieza la devolución otra vez."
+
+["bot.rq.btn"]
+other = "💸 Devoluciones"
+
+["bot.rq.title"]
+other = "<b>Devoluciones · {{.Filter}}</b> ({{.Count}})"
+
+["bot.rq.f_review"]
+other = "Requieren revisión"
+
+["bot.rq.f_failed"]
+other = "Fallidas"
+
+["bot.rq.f_pending"]
+other = "En curso"
+
+["bot.rq.f_done"]
+other = "Devueltas"
+
+["bot.rq.empty"]
+other = "No hay nada aquí."
+
+["bot.rq.row"]
+other = "{{.Chip}} <b>{{.Order}}</b> · {{.Amount}}{{.Event}}"
+
+["bot.rq.retry_btn"]
+other = "🔁 Reintentar {{.Order}}"
+
+["bot.rq.order_btn"]
+other = "📄 Pedido {{.Order}}"
+
+["bot.rq.retry_ask"]
+other = "¿Enviar esta devolución al proveedor otra vez? Se crea una devolución nueva para la misma entrada y el mismo importe. Si pudo haberse hecho ya, se rechaza."
+
+["bot.rq.retry_yes"]
+other = "Sí, enviarla otra vez"
+
+["bot.rq.retry_done"]
+other = "<b>Devolución enviada de nuevo</b>"
+
+["bot.rq.not_retryable"]
+other = "Esta devolución no se puede reenviar: el proveedor puede haber devuelto ya el dinero. Soporte la revisará."
+
+["bot.rq.provider_word"]
+other = "el proveedor"

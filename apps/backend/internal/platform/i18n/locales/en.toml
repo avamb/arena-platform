@@ -2959,3 +2959,48 @@ other = "A refund of one of these tickets is already in progress for order #{{.N
 
 ["bot.ref.err_changed"]
 other = "Order #{{.Num}} changed while you were choosing. Open it again and start the refund again."
+
+["bot.rq.btn"]
+other = "💸 Refunds"
+
+["bot.rq.title"]
+other = "<b>Refunds · {{.Filter}}</b> ({{.Count}})"
+
+["bot.rq.f_review"]
+other = "Need a check"
+
+["bot.rq.f_failed"]
+other = "Failed"
+
+["bot.rq.f_pending"]
+other = "In progress"
+
+["bot.rq.f_done"]
+other = "Returned"
+
+["bot.rq.empty"]
+other = "Nothing here."
+
+["bot.rq.row"]
+other = "{{.Chip}} <b>{{.Order}}</b> · {{.Amount}}{{.Event}}"
+
+["bot.rq.retry_btn"]
+other = "🔁 Retry {{.Order}}"
+
+["bot.rq.order_btn"]
+other = "📄 Order {{.Order}}"
+
+["bot.rq.retry_ask"]
+other = "Send this refund to the provider again? A new refund is created for the same ticket and amount. A refund that may already have gone through is refused."
+
+["bot.rq.retry_yes"]
+other = "Yes, send it again"
+
+["bot.rq.retry_done"]
+other = "<b>Refund sent again</b>"
+
+["bot.rq.not_retryable"]
+other = "This refund cannot be sent again: the provider may already have returned the money. Support will check it."
+
+["bot.rq.provider_word"]
+other = "the provider"

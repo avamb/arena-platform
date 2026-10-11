@@ -10044,6 +10044,11 @@ export interface components {
         /** @description A refund in the organization's queue, with what is needed to place it. */
         OrderRefundQueueItem: components["schemas"]["OrderRefundItem"] & {
             /**
+             * Format: uuid
+             * @description UUID of the order, null for a refund without an order.
+             */
+            order_id?: string | null;
+            /**
              * Format: int64
              * @description The order's number (`orders.system_id`), null for a refund without an order.
              */

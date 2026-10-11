@@ -8769,6 +8769,9 @@ type OrderRefundQueueItem struct {
 	// Id UUID of the refund.
 	Id openapi_types.UUID `json:"id"`
 
+	// OrderId UUID of the order, null for a refund without an order.
+	OrderId *openapi_types.UUID `json:"order_id"`
+
 	// OrderNumber The order's number (`orders.system_id`), null for a refund without an order.
 	OrderNumber *int64 `json:"order_number"`
 

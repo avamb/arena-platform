@@ -2953,3 +2953,48 @@ other = "Возврат по одному из этих билетов зака�
 
 ["bot.ref.err_changed"]
 other = "Заказ №{{.Num}} изменился, пока вы выбирали. Откройте его снова и начните возврат заново."
+
+["bot.rq.btn"]
+other = "💸 Возвраты"
+
+["bot.rq.title"]
+other = "<b>Возвраты · {{.Filter}}</b> ({{.Count}})"
+
+["bot.rq.f_review"]
+other = "Нужна проверка"
+
+["bot.rq.f_failed"]
+other = "Не удались"
+
+["bot.rq.f_pending"]
+other = "В процессе"
+
+["bot.rq.f_done"]
+other = "Возвращены"
+
+["bot.rq.empty"]
+other = "Здесь пусто."
+
+["bot.rq.row"]
+other = "{{.Chip}} <b>{{.Order}}</b> · {{.Amount}}{{.Event}}"
+
+["bot.rq.retry_btn"]
+other = "🔁 Повторить {{.Order}}"
+
+["bot.rq.order_btn"]
+other = "📄 Заказ {{.Order}}"
+
+["bot.rq.retry_ask"]
+other = "Отправить этот возврат провайдеру ещё раз? Создаётся новый возврат по тому же билету на ту же сумму. Если возврат мог уже пройти, повтор будет отклонён."
+
+["bot.rq.retry_yes"]
+other = "Да, отправить ещё раз"
+
+["bot.rq.retry_done"]
+other = "<b>Возврат отправлен повторно</b>"
+
+["bot.rq.not_retryable"]
+other = "Этот возврат нельзя отправить повторно: провайдер мог уже вернуть деньги. Его проверит поддержка."
+
+["bot.rq.provider_word"]
+other = "провайдером"
