@@ -80,6 +80,9 @@ func (h *Handler) HandleAdminListTicketScanEvents(w http.ResponseWriter, r *http
 		}
 		limit = parsed
 	}
+	if !h.ticketOrgAllowed(w, r, ticketID, false, "ticket.not_found", "ticket not found") {
+		return
+	}
 
 	rows, err := h.feedTokenQueries.ListScanEventsByTicketID(r.Context(), ticketID, int32(limit))
 	if err != nil {

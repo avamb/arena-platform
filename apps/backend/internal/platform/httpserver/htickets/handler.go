@@ -64,6 +64,10 @@ type Handler struct {
 	// (tickets_shims.go, arena-worker, the MACS integration test) opt in
 	// individually.
 	outboxWriter OutboxWriter
+
+	// rowOrgAccess keeps the flat ticket routes inside the caller's
+	// organization (org_access.go). Nil fails closed.
+	rowOrgAccess RowOrgAccess
 }
 
 // WithOutboxWriter attaches the transactional outbox writer used to publish
