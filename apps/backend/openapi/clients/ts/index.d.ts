@@ -40485,7 +40485,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Invoice not found. */
+            /** @description No invoice matches `{id}` inside the caller's organizations (`billing.not_found`). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -40532,7 +40532,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Invoice not found. */
+            /** @description No invoice matches `{id}` inside the caller's organizations (`billing.not_found`). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -40586,7 +40586,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Invoice not found. */
+            /** @description No invoice matches `{id}` inside the caller's organizations (`billing.not_found`). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -40639,7 +40639,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Invoice not found. */
+            /** @description No invoice matches `{id}` inside the caller's organizations (`billing.not_found`). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -40686,7 +40686,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Invoice not found. */
+            /** @description No invoice matches `{id}` inside the caller's organizations (`billing.not_found`). */
             404: {
                 headers: {
                     [name: string]: unknown;

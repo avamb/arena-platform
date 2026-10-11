@@ -28,7 +28,7 @@ func (s *Server) billingHandler() *hbilling.Handler {
 		s.stripeBilling,
 		s.stripeConnect,
 		s.logger,
-	)
+	).WithRowOrgAccess(s.rowOrgAccess)
 }
 
 // ─── type aliases ─────────────────────────────────────────────────────────────

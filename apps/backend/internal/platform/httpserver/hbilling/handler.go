@@ -25,6 +25,10 @@ type Handler struct {
 	stripeBilling  StripeBillingHelper
 	stripeConnect  StripeConnectHelper
 	logger         *slog.Logger
+
+	// rowOrgAccess keeps the flat invoice routes inside the caller's
+	// organization (org_access.go). Nil fails closed.
+	rowOrgAccess RowOrgAccess
 }
 
 // New constructs a Handler from the caller's dependencies. Nil queries and

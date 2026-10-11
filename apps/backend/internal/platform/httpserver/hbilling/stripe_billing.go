@@ -104,6 +104,10 @@ func (h *Handler) HandlePushInvoiceToStripe(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if !h.invoiceOrgAllowed(w, r, invoice.OrgID, true) {
+		return
+	}
+
 	if invoice.State != "issued" {
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope("stripe_billing.wrong_state",
 			fmt.Sprintf("invoice must be in 'issued' state to push to Stripe; current state: %s", invoice.State), r))
