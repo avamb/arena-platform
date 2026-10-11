@@ -6454,6 +6454,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/refunds/{refund_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a failed or never-sent refund again
+         * @description Starts a NEW one-ticket refund operation from a refund the provider
+         *     refused, or one that was parked before any provider call, and sends it
+         *     at once with a new idempotency key. The old row stays as it is. A refund
+         *     whose provider call ended without an answer, or that the provider
+         *     accepted, is refused with refund.not_retryable: repeating it could
+         *     return the money twice. Requires the `refund.approve` permission.
+         */
+        post: operations["postV1OrganizationsOrgIdRefundsRefundIdRetry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/refunds/{refund_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close a refund waiting for manual review
+         * @description A platform operator closes a refund parked in manual_review after
+         *     checking the provider's dashboard. Outcome `refunded` means the money
+         *     went back: the refund becomes succeeded and its tickets are cancelled.
+         *     Outcome `not_refunded` means no money moved: the refund becomes failed
+         *     and its tickets can be refunded again. A note is required and is kept
+         *     in the audit trail. Platform superadmin only, with X-Admin-Reason.
+         */
+        post: operations["postV1OrganizationsOrgIdRefundsRefundIdResolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/tickets/{id}/scans": {
         parameters: {
             query?: never;
@@ -10076,6 +10126,13 @@ export interface components {
             replayed: boolean;
             /** @description One refund per ticket, in the state they reached by the time of the answer. */
             refunds: components["schemas"]["OrderRefundItem"][];
+        };
+        /** @description What a platform operator found at the provider for a refund in manual review. */
+        ResolveOrderRefundRequest: {
+            /** @description refunded when the money went back at the provider, not_refunded when it did not. */
+            outcome: string;
+            /** @description What was checked, up to 1000 characters. Kept in the audit trail. */
+            note: string;
         };
         /**
          * @description One order, as returned by both the org-scoped orders list and the
@@ -43208,6 +43265,177 @@ export interface operations {
             };
             /** @description Refund not found in this organization (refund.not_found). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refunds are not available (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdRefundsRefundIdRetry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the refund */
+                refund_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new operation and its refund in the state it reached. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateOrderRefundsResponse"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold refund.approve or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refund not found in this organization (refund.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The refund cannot be sent again (refund.not_retryable) or another refund of the payment blocks it. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refunds are not available (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdRefundsRefundIdResolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the refund */
+                refund_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveOrderRefundRequest"];
+            };
+        };
+        responses: {
+            /** @description The refund after closing. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderRefundItem"];
+                };
+            };
+            /** @description Invalid outcome or missing note (refund.invalid_request). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a platform operator (refund.resolve_superadmin_only). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refund not found in this organization (refund.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The refund is not waiting for manual review (refund.not_in_review). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

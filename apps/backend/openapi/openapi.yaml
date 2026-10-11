@@ -3509,6 +3509,18 @@ components:
           items:
             $ref: "#/components/schemas/OrderRefundItem"
 
+    ResolveOrderRefundRequest:
+      type: object
+      description: What a platform operator found at the provider for a refund in manual review.
+      required: [outcome, note]
+      properties:
+        outcome:
+          type: string
+          description: "refunded when the money went back at the provider, not_refunded when it did not."
+        note:
+          type: string
+          description: What was checked, up to 1000 characters. Kept in the audit trail.
+
     OrderSummary:
       type: object
       required:
@@ -38101,6 +38113,156 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: "Refund not found in this organization (refund.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Refunds are not available (database not wired)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/refunds/{refund_id}/retry:
+    post:
+      operationId: postV1OrganizationsOrgIdRefundsRefundIdRetry
+      summary: Send a failed or never-sent refund again
+      description: |
+        Starts a NEW one-ticket refund operation from a refund the provider
+        refused, or one that was parked before any provider call, and sends it
+        at once with a new idempotency key. The old row stays as it is. A refund
+        whose provider call ended without an answer, or that the provider
+        accepted, is refused with refund.not_retryable: repeating it could
+        return the money twice. Requires the `refund.approve` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: refund_id
+          in: path
+          required: true
+          description: UUIDv7 of the refund
+          schema: { type: string, format: uuid }
+      responses:
+        "202":
+          description: The new operation and its refund in the state it reached.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateOrderRefundsResponse"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold refund.approve or is not a member of the organization."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Refund not found in this organization (refund.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The refund cannot be sent again (refund.not_retryable) or another refund of the payment blocks it."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Refunds are not available (database not wired)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/refunds/{refund_id}/resolve:
+    post:
+      operationId: postV1OrganizationsOrgIdRefundsRefundIdResolve
+      summary: Close a refund waiting for manual review
+      description: |
+        A platform operator closes a refund parked in manual_review after
+        checking the provider's dashboard. Outcome `refunded` means the money
+        went back: the refund becomes succeeded and its tickets are cancelled.
+        Outcome `not_refunded` means no money moved: the refund becomes failed
+        and its tickets can be refunded again. A note is required and is kept
+        in the audit trail. Platform superadmin only, with X-Admin-Reason.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: refund_id
+          in: path
+          required: true
+          description: UUIDv7 of the refund
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveOrderRefundRequest"
+      responses:
+        "200":
+          description: The refund after closing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderRefundItem"
+        "400":
+          description: "Invalid outcome or missing note (refund.invalid_request)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Not a platform operator (refund.resolve_superadmin_only)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Refund not found in this organization (refund.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The refund is not waiting for manual review (refund.not_in_review)."
           content:
             application/json:
               schema:

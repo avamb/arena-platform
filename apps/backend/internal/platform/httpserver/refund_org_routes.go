@@ -39,6 +39,11 @@ func (s *Server) mountRefundOrgRoutes(r chi.Router) {
 		s.applyAuth(pr, "refund.create", "refunds")
 		pr.Post("/organizations/{org_id}/orders/{order_id}/refunds", s.handleCreateOrderRefunds)
 	})
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "refund.approve", "refunds")
+		pr.Post("/organizations/{org_id}/refunds/{refund_id}/retry", s.handleRetryOrgRefund)
+		pr.Post("/organizations/{org_id}/refunds/{refund_id}/resolve", s.handleResolveOrgRefund)
+	})
 }
 
 type refundItemJSON struct {

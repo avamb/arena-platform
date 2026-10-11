@@ -274,6 +274,8 @@ var orgIsolationAuditedSafe = map[string]string{
 	"GET /v1/organizations/{org_id}/orders/{order_id}/refund-options":    "refunds.Engine.Options (order loaded inside the path org; covered by TestRefundOrgRoutes_OptionsCreateReplayAndIsolation)",
 	"POST /v1/organizations/{org_id}/orders/{order_id}/refunds":          "refunds.Engine.CreateBatch (order loaded inside the path org; covered by TestRefundOrgRoutes_OptionsCreateReplayAndIsolation)",
 	"GET /v1/organizations/{org_id}/refunds/{refund_id}":                 "refunds.Engine.Get (refund loaded inside the path org; covered by TestRefundOrgRoutes_QueueAndDetailStayInsideTheOrganization)",
+	"POST /v1/organizations/{org_id}/refunds/{refund_id}/retry":          "refunds.Engine.Retry (refund loaded inside the path org; covered by TestRefundOrgRoutes_RetryAndResolve)",
+	"POST /v1/organizations/{org_id}/refunds/{refund_id}/resolve":        "refunds.Engine.Resolve (refund loaded inside the path org; covered by TestRefundOrgRoutes_RetryAndResolve)",
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/sample-ticket": "hsample",
 
 	// hcheckout promo codes, hpayments payment configs, hbankaccounts, hapikeys,

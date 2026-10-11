@@ -10743,6 +10743,15 @@ type ReservationEnvelope struct {
 	Reservation Reservation `json:"reservation"`
 }
 
+// ResolveOrderRefundRequest What a platform operator found at the provider for a refund in manual review.
+type ResolveOrderRefundRequest struct {
+	// Note What was checked, up to 1000 characters. Kept in the audit trail.
+	Note string `json:"note"`
+
+	// Outcome refunded when the money went back at the provider, not_refunded when it did not.
+	Outcome string `json:"outcome"`
+}
+
 // RevokeMembershipRequest Request body for
 // `DELETE /v1/organizations/{org_id}/members/{user_id}`. The role
 // must be supplied because a user may hold multiple roles in the
@@ -14827,6 +14836,9 @@ type CreatePromoterJSONRequestBody = CreatePromoterRequest
 
 // UpdatePromoterJSONRequestBody defines body for UpdatePromoter for application/json ContentType.
 type UpdatePromoterJSONRequestBody = UpdatePromoterRequest
+
+// PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody defines body for PostV1OrganizationsOrgIdRefundsRefundIdResolve for application/json ContentType.
+type PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody = ResolveOrderRefundRequest
 
 // PostV1OrganizationsOrgIdVenuesJSONRequestBody defines body for PostV1OrganizationsOrgIdVenues for application/json ContentType.
 type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest

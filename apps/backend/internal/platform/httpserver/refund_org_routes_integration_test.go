@@ -19,6 +19,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
 
 func refundOrgPost(t *testing.T, pf *prom0113Fixture, path, key, idem, body string) (int, map[string]any) {
@@ -222,5 +223,99 @@ func TestRefundOrgRoutes_QueueAndDetailStayInsideTheOrganization(t *testing.T) {
 	// ...and the path organization is not a way in.
 	if st, _ = pf.do(t, http.MethodGet, base+"/refunds", otherKey, ""); st != http.StatusForbidden && st != http.StatusNotFound {
 		t.Fatalf("a key of another organization on this path: %d; want 403/404", st)
+	}
+}
+
+// A refund the provider refused can be sent again as a NEW operation, one
+// the provider never saw cannot be retried blindly, and only a platform
+// operator closes a refund in manual review (PAY-06c).
+func TestRefundOrgRoutes_RetryAndResolve(t *testing.T) {
+	stub := newStubStripe(t)
+	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) { c.StripeAPIBaseURL = stub.baseURL() })
+	ts := httptest.NewServer(srv.Router())
+	t.Cleanup(ts.Close)
+	pf := &prom0113Fixture{ts: ts, client: ts.Client(), q: gen.New(srv.pgxPool)}
+	user, err := pf.q.InsertUser(context.Background(), "pay06c-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf.userID = user.ID
+	org := pf.org(t, "PAY06C")
+	other := pf.org(t, "PAY06COTHER")
+	key := pf.key(t, org, "refund.read", "refund.create", "refund.approve")
+	otherKey := pf.key(t, other, "refund.read", "refund.approve")
+	stub.sessionPI = "pi_pay06c_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
+	declined := true
+	stub.refundHandler = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if declined {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprint(w, `{"error":{"type":"invalid_request_error","code":"refund_declined","message":"declined for the test"}}`)
+			return
+		}
+		_, _ = fmt.Fprint(w, `{"id":"re_pay06c","status":"succeeded"}`)
+	}
+	f := newPay03Order(t, srv.pgxPool, org, "stripe")
+	base := "/v1/organizations/" + org.String()
+
+	body := fmt.Sprintf(`{"items":[{"ticket_id":%q}],"reason":"retry test"}`, f.tickets[0])
+	st, created := refundOrgPost(t, pf, base+"/orders/"+f.order.String()+"/refunds", key, "pay06c-"+uuid.NewString(), body)
+	if st != http.StatusAccepted {
+		t.Fatalf("create: %d %v", st, created)
+	}
+	first := created["refunds"].([]any)[0].(map[string]any)
+	firstID := first["id"].(string)
+	if first["state"] != "failed" {
+		t.Fatalf("first refund = %v; want failed", first)
+	}
+
+	// another organization cannot reach it
+	otherBase := "/v1/organizations/" + other.String()
+	if st, out := refundOrgPost(t, pf, otherBase+"/refunds/"+firstID+"/retry", otherKey, "", `{}`); st != http.StatusNotFound || prom0113Code(out) != "refund.not_found" {
+		t.Fatalf("foreign retry: %d %v; want 404 refund.not_found", st, out)
+	}
+
+	// retry sends a NEW refund and the provider takes it
+	declined = false
+	st, out := refundOrgPost(t, pf, base+"/refunds/"+firstID+"/retry", key, "", `{}`)
+	if st != http.StatusAccepted {
+		t.Fatalf("retry: %d %v", st, out)
+	}
+	second := out["refunds"].([]any)[0].(map[string]any)
+	if second["id"] == firstID || second["state"] != "succeeded" {
+		t.Fatalf("retried refund = %v; want a new succeeded refund", second)
+	}
+	// a second press replays the first retry and sends nothing new
+	st, out = refundOrgPost(t, pf, base+"/refunds/"+firstID+"/retry", key, "", `{}`)
+	if st != http.StatusAccepted || out["replayed"] != true {
+		t.Fatalf("retry replay: %d %v; want replayed", st, out)
+	}
+	// an accepted refund is not retryable
+	st, out = refundOrgPost(t, pf, base+"/refunds/"+second["id"].(string)+"/retry", key, "", `{}`)
+	if st != http.StatusConflict || prom0113Code(out) != "refund.not_retryable" {
+		t.Fatalf("retry of a succeeded refund: %d %v; want 409 refund.not_retryable", st, out)
+	}
+
+	// resolve: an organization key is not a platform operator
+	if st, out = refundOrgPost(t, pf, base+"/refunds/"+firstID+"/resolve", key, "", `{"outcome":"not_refunded","note":"x"}`); st != http.StatusForbidden {
+		t.Fatalf("resolve by an org key: %d %v; want 403", st, out)
+	}
+
+	// the engine closes a manual_review refund both ways
+	ctx := context.Background()
+	engine := srv.refundEngine()
+	secondID := uuid.MustParse(second["id"].(string))
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE refunds SET state='manual_review', provider_attempts=2 WHERE id=$1`, secondID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Resolve(ctx, refunds.ResolveInput{OrgID: org, RefundID: secondID, Outcome: "not_refunded"}); err == nil {
+		t.Fatal("resolve without a note succeeded")
+	}
+	got, err := engine.Resolve(ctx, refunds.ResolveInput{OrgID: org, RefundID: secondID, Outcome: "not_refunded", Note: "dashboard shows nothing"})
+	if err != nil || got.State != "failed" {
+		t.Fatalf("resolve not_refunded = %v, %v; want failed", got.State, err)
+	}
+	if _, err := engine.Resolve(ctx, refunds.ResolveInput{OrgID: org, RefundID: secondID, Outcome: "refunded", Note: "again"}); err == nil {
+		t.Fatal("resolving a refund that is no longer in review succeeded")
 	}
 }
