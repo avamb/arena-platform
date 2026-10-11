@@ -272,8 +272,8 @@ func TestOrgIsolationFlatSweep_TicketOfCancelledSessionStaysReachable(t *testing
 				if row.controlStatus != 0 && want == http.StatusOK {
 					want = row.controlStatus
 				}
-				if row.admin && who == "foreign-owner" {
-					send = reason
+				if row.admin {
+					send = reason // the support-console routes demand the header from every caller
 				}
 				status, out := e.doFlatReason(t, row, id, token, send)
 				if status != want {
