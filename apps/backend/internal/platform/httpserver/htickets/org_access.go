@@ -44,9 +44,10 @@ func (h *Handler) rowOrgAllowed(w http.ResponseWriter, r *http.Request, orgID uu
 	return h.rowOrgAccess(w, r, orgID, write, notFoundCode, notFoundMessage)
 }
 
-// ticketOrgAllowed resolves the organization of ticketID (through its session's
-// event) and applies the guard. A missing ticket answers the same 404 as a
-// foreign one.
+// ticketOrgAllowed resolves the organization of ticketID and applies the guard. The
+// organization comes from the ticket's own source rows, not from its session,
+// so a ticket of a cancelled session stays reachable. A missing ticket answers
+// the same 404 as a foreign one.
 func (h *Handler) ticketOrgAllowed(w http.ResponseWriter, r *http.Request, ticketID uuid.UUID, write bool, notFoundCode, notFoundMessage string) bool {
 	if h.ticketQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
@@ -59,13 +60,9 @@ func (h *Handler) ticketOrgAllowed(w http.ResponseWriter, r *http.Request, ticke
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(notFoundCode, notFoundMessage, r))
 		return false
 	}
-	t, err := h.ticketQueries.GetTicketByID(ctx, ticketID)
+	orgID, err := h.ticketQueries.GetTicketOrgID(ctx, ticketID)
 	if err == nil {
-		row, oerr := h.ticketQueries.GetSessionOrgContext(ctx, t.SessionID)
-		if oerr == nil {
-			return h.rowOrgAllowed(w, r, row.OrgID, write, notFoundCode, notFoundMessage)
-		}
-		err = oerr
+		return h.rowOrgAllowed(w, r, orgID, write, notFoundCode, notFoundMessage)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return notFound()
