@@ -1177,6 +1177,51 @@ func TestHostedCheckout_ConfigRoute_ForeignPaymentIsAcknowledged(t *testing.T) {
 	}
 }
 
+// TestHostedCheckout_ConfigRoute_UnmappedKindsAreAcknowledged pins the M1 rule
+// of spec 36: on the per-config route a Stripe event is decided by its
+// normalized KIND alone. A refund or dispute names no payment, an unpaid
+// completed session is not a payment, and an event type the module does not
+// know moves nothing - every one of them is a 200 acknowledgement that writes
+// no idempotency row (a 400 would make Stripe retry for days).
+func TestHostedCheckout_ConfigRoute_UnmappedKindsAreAcknowledged(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	f := newHostedOrgFixture(t, ctx, pool, "cfgkinds")
+	defer f.cleanup()
+
+	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
+
+	id := "cs_test_kinds_" + uuid.New().String()[:8]
+	refundID := "re_test_" + uuid.New().String()[:8]
+	cases := map[string][]byte{
+		"unpaid completed session": sessionCompletedEvent(id, "pi_x", "unpaid"),
+		"refund created":           []byte(`{"id":"evt_r","type":"refund.created","data":{"object":{"id":"` + refundID + `","object":"refund","status":"succeeded","payment_intent":"pi_x","amount":500}}}`),
+		"dispute opened":           []byte(`{"id":"evt_d","type":"charge.dispute.created","data":{"object":{"id":"dp_x","object":"dispute"}}}`),
+		"unknown type":             []byte(`{"id":"evt_u","type":"customer.created","data":{"object":{"id":"cus_x"}}}`),
+	}
+	for name, event := range cases {
+		code, body := postSignedWebhookTo(t, srv, f.configWebhookPath(), event, f.webhookSecret)
+		if code != http.StatusOK {
+			t.Errorf("%s = %d, want 200; body: %s", name, code, body)
+			continue
+		}
+		var resp map[string]any
+		if err := json.Unmarshal(body, &resp); err != nil {
+			t.Errorf("%s: decode: %v (body: %s)", name, err, body)
+			continue
+		}
+		if processed, _ := resp["processed"].(bool); processed {
+			t.Errorf("%s was PROCESSED; body: %s", name, body)
+		}
+	}
+	for _, key := range []string{id, refundID, "dp_x", "cus_x"} {
+		if n := countPaymentIntentEvents(t, ctx, pool, key); n != 0 {
+			t.Errorf("payment_intent_events rows for %s = %d, want 0", key, n)
+		}
+	}
+}
+
 // TestHostedCheckout_ConfigRoute_RejectsAnotherOrgsSignature proves the
 // signature is checked against THIS config's secret and nothing else — no
 // environment fallback, no other organizer's key.
