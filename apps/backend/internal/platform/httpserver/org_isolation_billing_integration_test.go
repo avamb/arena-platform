@@ -14,8 +14,11 @@ package httpserver
 //   - an organization API key. billing.read can be carried by a key, so the
 //     read is 404, while billing.admin is a forbidden scope for keys, so the
 //     mutations are 403.
-//   - a user with an org_admin membership of B AND the global `admin` role,
-//     the only non-superadmin shape that holds billing.admin: 404 on all.
+//
+// The only holder of billing.admin besides those is the global `admin` role,
+// which also holds superadmin.read (migration 0034): a platform superadmin
+// acts everywhere, so it is not an attacker here. The control run below uses
+// it on organization B's own invoice.
 //
 // Organization A's invoice row must be exactly what it was after every call.
 // The POST /v1/billing/stripe/push-invoice/{id} route is mounted only when a
@@ -66,7 +69,6 @@ func (e *billEnv) callers() []billCaller {
 		{"b-owner-jwt", e.owner, http.StatusNotFound, http.StatusForbidden},
 		{"b-manager-jwt", e.mgr, http.StatusForbidden, http.StatusForbidden},
 		{"b-api-key", e.key, http.StatusNotFound, http.StatusForbidden},
-		{"b-admin-role-jwt", e.admin, http.StatusNotFound, http.StatusNotFound},
 	}
 }
 
