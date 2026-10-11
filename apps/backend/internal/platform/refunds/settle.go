@@ -106,7 +106,9 @@ type scopeTicket struct {
 //     speaks for the ticket);
 //   - a refund written by the ticket-cancel route (fromTicketCancel, its
 //     cancelled_ticket_id marker) covers that ticket when the ticket links
-//     back to it through tickets.refund_id, and cancels nothing (fifth
+//     back to it through tickets.refund_id OR carries no link at all (the
+//     route writes the link best-effort, a failed write must not silence
+//     the refund; a ticket linked to ANOTHER refund is that refund's), and cancels nothing (fifth
 //     review, M-4): the operator cancelled its ticket before the refund existed,
 //     and its amount — even the whole payment — is that ticket's money;
 //   - an order-level refund (no ticket, the flat POST /v1/refunds) of the
@@ -134,7 +136,7 @@ func (e *Engine) refundScope(ctx context.Context, r Refund, pay Payment) ([]scop
 		case r.fromTicketCancel():
 			rows, err = tx.Query(ctx, `SELECT t.id, COALESCE(oi.total, 0)::bigint, t.status = 'active', false
 				FROM tickets t LEFT JOIN order_items oi ON oi.ticket_id = t.id
-				WHERE t.refund_id = $1 AND t.id = $2`, r.ID, *r.CancelledTicketID)
+				WHERE t.id = $2 AND (t.refund_id = $1 OR t.refund_id IS NULL)`, r.ID, *r.CancelledTicketID)
 		case pay.CheckoutSessionID != nil && r.Amount >= pay.Amount:
 			rows, err = tx.Query(ctx, `SELECT t.id, COALESCE(oi.total, 0)::bigint, t.status = 'active', true
 				FROM tickets t LEFT JOIN order_items oi ON oi.ticket_id = t.id
