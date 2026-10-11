@@ -690,6 +690,9 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 			))
 			return
 		}
+		if !h.posterMediaInOrg(w, r, "event.invalid_poster_media_id", parsed, orgID) {
+			return
+		}
 		posterMediaID = &parsed
 	}
 

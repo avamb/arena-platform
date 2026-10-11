@@ -28915,6 +28915,18 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description `poster_media_id` does not name a media object of this organization
+             *     (`event.invalid_poster_media_id`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal server error (event.update_failed). */
             500: {
                 headers: {

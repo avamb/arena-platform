@@ -23695,6 +23695,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            `poster_media_id` does not name a media object of this organization
+            (`event.invalid_poster_media_id`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: Internal server error (event.update_failed).
           content:
