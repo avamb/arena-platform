@@ -17662,10 +17662,12 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
     get:
       operationId: getV1Organizations
-      summary: List all active organizations
+      summary: List the organizations the caller may read
       description: |
-        Returns a JSON array of all active (non-soft-deleted) organizations ordered
+        Returns a JSON array of active (non-soft-deleted) organizations ordered
         by creation time ascending. Requires JWT authentication and "org.read" permission.
+        A platform superadmin receives every organization, an organization API key
+        its own, and any other caller the organizations they hold a membership in.
       tags: [v1]
       security:
         - bearerAuth: []

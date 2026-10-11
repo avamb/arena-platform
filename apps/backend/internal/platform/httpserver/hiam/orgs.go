@@ -43,6 +43,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgread"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
@@ -367,9 +368,23 @@ func (h *Handler) HandleListOrgs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Only the organizations the caller may read (package orgread): a
+	// platform superadmin sees all, an API key its own, a user the ones they
+	// belong to.
+	reader := orgread.New(ctx, h.membershipQueries)
 	result := make([]orgResponse, 0, len(rows))
 	for _, o := range rows {
-		result = append(result, responseFromOrganization(o))
+		can, readErr := reader.Can(o.ID)
+		if readErr != nil {
+			h.logger.Error("org: list access check failed", slog.String("error", readErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"org.list_failed", "failed to list organizations", r,
+			))
+			return
+		}
+		if can {
+			result = append(result, responseFromOrganization(o))
+		}
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"organizations": result})
 }
