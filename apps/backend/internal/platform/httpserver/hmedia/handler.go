@@ -14,6 +14,8 @@ type Handler struct {
 	// publicBase, when set, names the API origin a host-relative signed
 	// download URL (the local backend) is absolutized onto in GET /v1/media/{id}.
 	publicBase func() string
+	// rowOrgAccess keeps a caller inside its organizations (org_access.go).
+	rowOrgAccess RowOrgAccess
 }
 
 // New constructs a Handler. media may be nil; each method guards against it

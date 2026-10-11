@@ -125,6 +125,17 @@ func (h *Handler) CreateMedia(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		orgID = &id
+		// The upload is filed under that organization: only its members
+		// may do so. Checked before any byte reaches storage.
+		if h.rowOrgAccess == nil {
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+				"dependency.org_access_unavailable", "organization access guard is not configured", r,
+			))
+			return
+		}
+		if !h.rowOrgAccess(w, r, id, false, "media.org_not_found", "organization not found") {
+			return
+		}
 	}
 
 	file, header, err := r.FormFile("file")
@@ -237,6 +248,9 @@ func (h *Handler) GetMedia(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	if !h.mediaOrgAllowed(w, r, obj.OrgID, false) {
+		return
+	}
 
 	signedURL, err := h.media.SignedURL(id, obj.StorageKey, signedURLTTL)
 	if err != nil {
@@ -267,6 +281,21 @@ func (h *Handler) DeleteMedia(w http.ResponseWriter, r *http.Request) {
 
 	id, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+	obj, err := h.media.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, mediastore.ErrNotFound) {
+			writeMediaNotFound(w, r)
+			return
+		}
+		h.logger.Error("media: get before delete failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"media.delete_failed", "failed to soft-delete media object", r,
+		))
+		return
+	}
+	if !h.mediaOrgAllowed(w, r, obj.OrgID, true) {
 		return
 	}
 

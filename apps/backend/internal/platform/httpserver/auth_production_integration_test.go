@@ -28,8 +28,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 )
 
 // productionIntegrationServer constructs a full *Server backed by a real
@@ -95,7 +97,19 @@ func productionIntegrationServerCfg(t *testing.T, mutate func(*config.Config)) (
 		mutate(cfg)
 	}
 
+	// A local-disk media store, so /v1/media is served (the org isolation
+	// sweep reaches it) instead of answering media.storage_unavailable.
+	mediaStore, err := storage.NewLocalStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewLocalStorage: %v", err)
+	}
+	media, err := mediastore.New(mediastore.Options{Pool: pool, Storage: mediaStore})
+	if err != nil {
+		t.Fatalf("mediastore.New: %v", err)
+	}
+
 	srv := New(Options{
+		Media:  media,
 		Config: cfg,
 		// Pool must be set explicitly: mountAuthRoutes gates on s.pool, which
 		// is wired from Options.Pool only (PgxPool feeds the *Queries
