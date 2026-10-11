@@ -6355,6 +6355,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/orders/{order_id}/refund-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What can be refunded on an order
+         * @description Reads, without changing anything, how the money of an order goes back
+         *     and what is left to return per ticket (PAY-06, spec 36 section 8). The
+         *     answer is advice: the create call checks every rule again. An order
+         *     paid on a seller's own site answers `route` `seller_site` with a
+         *     `refusal`, an order arena took no money for answers `none`. Requires
+         *     the `refund.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdOrdersOrderIdRefundOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/orders/{order_id}/refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refund tickets of an order
+         * @description Records one refund operation and, when the caller also holds
+         *     `refund.approve`, sends it to the payment provider at once (PAY-06,
+         *     spec 36 section 8). The `Idempotency-Key` header is required and
+         *     unique per organization: repeating the call with the same key and the
+         *     same request answers the first operation (`replayed` true) and writes
+         *     nothing, the same key with a different request is 409
+         *     `refund.idempotency_key_reused`. Money goes first: a ticket is
+         *     cancelled only after the provider accepted its refund. The answer is
+         *     202 with one refund per ticket in the state it reached. Requires the
+         *     `refund.create` permission.
+         */
+        post: operations["postV1OrganizationsOrgIdOrdersOrderIdRefunds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/tickets/{id}/scans": {
         parameters: {
             query?: never;
@@ -9794,6 +9848,142 @@ export interface components {
              * @description When the one-time address stops being valid (24 hours after the request). Null for the order's own address.
              */
             expires_at: string | null;
+        };
+        /** @description One refund row of an order, as the organizer's refund API reports it. */
+        OrderRefundItem: {
+            /**
+             * Format: uuid
+             * @description UUID of the refund.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The ticket the refund is for; null for a refund of the whole payment.
+             */
+            ticket_id: string | null;
+            /**
+             * Format: int64
+             * @description Amount in minor units of the currency.
+             */
+            amount: number;
+            /** @description ISO 4217 currency code. */
+            currency: string;
+            /** @description One of requested, approved, provider_pending, succeeded, failed, manual_review. */
+            state: string;
+            /** @description The provider's own status of the refund, when it has answered. */
+            provider_status?: string | null;
+            /** @description The provider's id of the refund, once it accepted it. */
+            provider_refund_id?: string | null;
+            /** @description Machine-readable reason when the provider refused or the refund needs review. */
+            failure_code?: string | null;
+            /** @description Human-readable reason that goes with failure_code. */
+            failure_reason?: string | null;
+            /** @description True when the ticket is cancelled once the provider accepts the refund. */
+            cancel_ticket: boolean;
+            /**
+             * Format: date-time
+             * @description When the refund was recorded.
+             */
+            created_at: string;
+        };
+        /** @description What can still be returned for one ticket of an order. */
+        OrderRefundTicketOption: {
+            /**
+             * Format: uuid
+             * @description UUID of the ticket.
+             */
+            ticket_id: string;
+            /** @description Ticket status; only an active ticket can be refunded. */
+            status: string;
+            /**
+             * Format: int64
+             * @description What the buyer paid for this ticket in minor units, null when the order item carries no price.
+             */
+            paid: number | null;
+            /**
+             * Format: int64
+             * @description Minor units already refunded or on their way to the buyer.
+             */
+            refunded: number;
+            /**
+             * Format: int64
+             * @description Minor units that can still be returned for this ticket.
+             */
+            refundable: number;
+            /** @description True when a refund that cancels this ticket is already under way. */
+            in_progress: boolean;
+        };
+        /**
+         * @description What an organizer may do about the money of an order (PAY-06). `route`
+         *     says who returns it: `arena_provider` (arena sends the refund to the
+         *     payment provider), `seller_site` (the seller's own site refunds),
+         *     `unsupported` or `unknown_provider` (arena cannot send money back
+         *     through this provider) or `none` (arena took no money for the order).
+         */
+        OrderRefundOptions: {
+            /**
+             * Format: uuid
+             * @description UUID of the order.
+             */
+            order_id: string;
+            /** @description How the money goes back, see the schema description. */
+            route: string;
+            /** @description Payment provider of the order; empty when arena took no payment. */
+            provider: string;
+            /** @description ISO 4217 currency of the payment; empty when arena took no payment. */
+            currency: string;
+            /** @description True when the provider can return less than the whole payment. */
+            partial_refund: boolean;
+            /** @description Every ticket of the order with what can still be returned. */
+            tickets: components["schemas"]["OrderRefundTicketOption"][];
+            /** @description Refunds of the order that are not finished or need an operator. */
+            active_refunds: components["schemas"]["OrderRefundItem"][];
+            /** @description Present when arena cannot send a refund for this order, with the error code and message the create call would answer. */
+            refusal?: {
+                /** @description Error code, such as refund.seller_site_order. */
+                code?: string;
+                /** @description Human-readable explanation. */
+                message?: string;
+            };
+        };
+        /** @description One refund operation on an order. */
+        CreateOrderRefundsRequest: {
+            /** @description The tickets to return money for, each named once (at most 200). */
+            items: {
+                /**
+                 * Format: uuid
+                 * @description UUID of the ticket.
+                 */
+                ticket_id: string;
+                /**
+                 * Format: int64
+                 * @description Minor units to return. Omitted means everything that is left on the ticket. A part is allowed only when the provider supports partial refunds.
+                 */
+                amount?: number | null;
+            }[];
+            /** @description Why the money is returned. Required, it reaches the provider and the audit trail. */
+            reason: string;
+            /** @description Cancel each ticket once the provider accepts its refund. Defaults to true; false is a money-only partial refund. */
+            cancel_tickets?: boolean;
+            /** @description Send the buyer a letter about the refund. Defaults to true. */
+            notify_buyer?: boolean;
+        };
+        /** @description The refund operation as recorded, one refund per ticket. */
+        CreateOrderRefundsResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the operation.
+             */
+            batch_id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the order.
+             */
+            order_id: string;
+            /** @description True when the Idempotency-Key was already used and this is the first call's answer. */
+            replayed: boolean;
+            /** @description One refund per ticket, in the state they reached by the time of the answer. */
+            refunds: components["schemas"]["OrderRefundItem"][];
         };
         /**
          * @description One order, as returned by both the org-scoped orders list and the
@@ -42604,6 +42794,189 @@ export interface operations {
                 };
             };
             /** @description Delivery store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdOrdersOrderIdRefundOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The refund options of the order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderRefundOptions"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`refund.read`) or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refunds are not available (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdOrdersOrderIdRefunds: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-chosen key of 1 to 255 characters that identifies this operation. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOrderRefundsRequest"];
+            };
+        };
+        responses: {
+            /** @description The operation was recorded (or is the replay of an earlier one). */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateOrderRefundsResponse"];
+                };
+            };
+            /** @description Invalid request (`refund.invalid_request`): missing Idempotency-Key or reason, no tickets, a non-positive amount, a repeated ticket. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`refund.create`) or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization (`refund.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not refundable: `refund.seller_site_order`, `refund.nothing_to_refund`, `refund.ticket_not_refundable`, `refund.amount_exceeds_refundable`, `refund.in_progress` or `refund.idempotency_key_reused`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The provider cannot send this refund (`refund.provider_not_supported`, `refund.partial_not_supported`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refunds are not available right now (`refund.engine_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;
