@@ -1,6 +1,13 @@
 package httpserver
 
-import "github.com/go-chi/chi/v5"
+import (
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+)
 
 // mountReportRoutes mounts post-event report endpoints (feature #159).
 func (s *Server) mountReportRoutes(r chi.Router) {
@@ -190,6 +197,21 @@ func (s *Server) mountImpersonationRoutes(r chi.Router) {
 	})
 }
 
+// requirePlatformSuperadmin refuses every caller that the server did not mark
+// as a platform superadmin. The webhook subscriber registry is one table for
+// all organizations, so organization owners and API keys never reach it.
+func (s *Server) requirePlatformSuperadmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !auth.HasSuperadminOrgAccess(r.Context()) {
+			httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+				"webhook.superadmin_only", "platform superadmin access is required", r,
+			))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // mountWebhookSubscriberRoutes mounts WordPress webhook subscriber registry
 // (feature #156).
 func (s *Server) mountWebhookSubscriberRoutes(r chi.Router) {
@@ -198,6 +220,7 @@ func (s *Server) mountWebhookSubscriberRoutes(r chi.Router) {
 	}
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "webhook.subscriber.manage", "webhooks")
+		pr.Use(s.requirePlatformSuperadmin)
 		pr.Get("/webhooks/subscribers", s.handleListWebhookSubscribers)
 		pr.Get("/webhooks/subscribers/{id}", s.handleGetWebhookSubscriber)
 		// Recent-deliveries listing (Feature #294 — S-3 admin UI). Read-only;
@@ -209,6 +232,7 @@ func (s *Server) mountWebhookSubscriberRoutes(r chi.Router) {
 	if s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "webhook.subscriber.manage", "webhooks")
+			pr.Use(s.requirePlatformSuperadmin)
 			pr.Post("/webhooks/subscribers", s.handleRegisterWebhookSubscriber)
 			pr.Patch("/webhooks/subscribers/{id}", s.handleUpdateWebhookSubscriber)
 			pr.Delete("/webhooks/subscribers/{id}", s.handleDeactivateWebhookSubscriber)
