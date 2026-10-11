@@ -110,7 +110,8 @@ func TestAdminResendTicketDeliveryIntegration_ResetsTerminalJobToPending(t *test
 	}()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	h := New(q, q, q, q, q, q, q, nil, pool, pool, nil, logger, nil, nil, nil)
+	h := New(q, q, q, q, q, q, q, nil, pool, pool, nil, logger, nil, nil, nil).
+		WithRowOrgAccess(func(http.ResponseWriter, *http.Request, uuid.UUID, bool, string, string) bool { return true })
 	tickets, err := h.IssueTicketsForCheckout(ctx, cs)
 	if err != nil {
 		t.Fatalf("IssueTicketsForCheckout: %v", err)

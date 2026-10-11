@@ -588,6 +588,9 @@ func (h *Handler) HandleListTickets(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	if !h.checkoutOrgAllowed(w, r, id, "checkout.not_found", "checkout session not found") {
+		return
+	}
 
 	tickets, err := h.ticketQueries.ListTicketsByCheckoutSession(ctx, id)
 	if err != nil {
