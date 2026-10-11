@@ -131,7 +131,24 @@ func (h *Handler) HandleQuote(w http.ResponseWriter, r *http.Request) {
 	}
 	quantity := int32(quantity64)
 
+	if !h.rowOrgAllowed(w, r, orgID, false, "pricing.org_not_found", "organization not found") {
+		return
+	}
+
 	// ── Look up ticket tier ──────────────────────────────────────────────────
+
+	// The session must belong to the organization the caller named (and was
+	// just proven to belong to): a tier of another organization reads like a
+	// missing one.
+	if sc, scErr := h.tierQueries.GetSessionOrgContext(ctx, sessionID); scErr != nil || sc.OrgID != orgID {
+		if scErr != nil && !errors.Is(scErr, pgx.ErrNoRows) {
+			h.logger.Error("pricing: session org lookup failed", slog.String("error", scErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("pricing.tier_lookup_failed", "failed to retrieve ticket tier", r))
+			return
+		}
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("pricing.tier_not_found", "ticket tier not found", r))
+		return
+	}
 
 	tier, err := h.tierQueries.GetTicketTierByID(ctx, tierID, sessionID)
 	if err != nil {

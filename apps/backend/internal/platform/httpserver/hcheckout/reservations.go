@@ -346,6 +346,14 @@ func (h *Handler) HandleCreateReservation(w http.ResponseWriter, r *http.Request
 		))
 		return
 	}
+	// The organization, the session and the channel named in the body must
+	// all be the caller's own: none of them is otherwise tied to the others.
+	if !h.rowOrgAllowed(w, r, orgID, true, "reservation.org_not_found", "organization not found") {
+		return
+	}
+	if !h.sessionAndChannelInOrg(w, r, sessionID, channelID, orgID) {
+		return
+	}
 
 	// Mutually-exclusive seats / quantity validation. The admission_mode
 	// gate is enforced later (once we know it) so the caller still gets a
@@ -588,6 +596,9 @@ func (h *Handler) HandleGetReservation(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	if !h.reservationOrgAllowed(w, r, res, false) {
+		return
+	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"reservation": reservationFromRow(res),
@@ -628,6 +639,9 @@ func (h *Handler) HandleActivateReservation(w http.ResponseWriter, r *http.Reque
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.get_failed", "failed to get reservation", r,
 		))
+		return
+	}
+	if !h.reservationOrgAllowed(w, r, current, true) {
 		return
 	}
 
@@ -705,6 +719,9 @@ func (h *Handler) HandleCancelReservation(w http.ResponseWriter, r *http.Request
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reservation.get_failed", "failed to get reservation", r,
 		))
+		return
+	}
+	if !h.reservationOrgAllowed(w, r, current, true) {
 		return
 	}
 

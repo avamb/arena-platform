@@ -32272,6 +32272,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Organization, session or channel not found, or not the caller's own (`reservation.org_not_found`, `reservation.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /**
              * @description Insufficient capacity available for the requested quantity
              *     (`reservation.over_capacity`).
@@ -33253,6 +33262,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Organization, reservation or channel not found, or not the caller's own (`checkout.org_not_found`, `reservation.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal server error (`checkout.start_failed`). */
             500: {
                 headers: {
@@ -33646,6 +33664,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Checkout session not found, or it belongs to another organization (`checkout.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /**
              * @description State machine rejected the transition. Possible codes:
              *     `checkout.invalid_transition` (session not in
@@ -33740,6 +33767,15 @@ export interface operations {
             };
             /** @description Caller lacks the `checkout.abandon` permission. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Checkout session not found, or it belongs to another organization (`checkout.not_found`). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

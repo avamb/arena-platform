@@ -196,6 +196,9 @@ func (h *Handler) HandlePriceBreakdown(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	if !h.rowOrgAllowed(w, r, cs.OrgID, false, "checkout.not_found", "checkout session not found") {
+		return
+	}
 
 	bd, ok := buildPriceBreakdown(ctx, cs)
 	if !ok {
