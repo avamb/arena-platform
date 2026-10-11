@@ -177,6 +177,24 @@ func (h *Handler) HandleCreateExternalAllocation(w http.ResponseWriter, r *http.
 
 	ctx := r.Context()
 
+	// The category must be one of the allocated session's own.
+	if tierID != nil && h.inventoryQueries != nil {
+		if _, tErr := h.inventoryQueries.GetTicketTierByID(ctx, *tierID, sessionID); tErr != nil {
+			if errors.Is(tErr, pgx.ErrNoRows) {
+				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+					"allocation.invalid_tier_id", "tier_id does not belong to this session", r,
+					map[string]any{"field": "tier_id"},
+				))
+				return
+			}
+			h.logger.Error("external_allocation: tier lookup failed", slog.String("error", tErr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"allocation.tier_lookup_failed", "failed to look up the tier", r,
+			))
+			return
+		}
+	}
+
 	// If creating as 'active', we need to atomically reserve inventory + insert allocation.
 	if req.Status == "active" {
 		if h.inventoryQueries == nil {
