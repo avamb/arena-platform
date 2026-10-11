@@ -66,7 +66,7 @@ func (m *mediaSweep) seedMedia(t *testing.T, org *uuid.UUID) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
 	m.exec(t, `INSERT INTO media_objects (id, org_id, owner_type, storage_backend, storage_key, content_type, byte_size, checksum_sha256)
-	           VALUES ($1, $2, 'event_poster', 'local', $3, 'image/png', 4, 'sweep')`, id, org, "sweep/"+id.String())
+	           VALUES ($1, $2, 'event_poster', 'local', $3, 'image/png', 4, repeat('0', 64))`, id, org, "sweep/"+id.String())
 	t.Cleanup(func() { _, _ = m.pool.Exec(context.Background(), `DELETE FROM media_objects WHERE id = $1`, id) })
 	return id
 }
