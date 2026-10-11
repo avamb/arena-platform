@@ -487,6 +487,10 @@ func (h *Handler) HandleGetInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.invoiceOrgAllowed(w, r, invoice.OrgID, false) {
+		return
+	}
+
 	lines, err := h.billingQueries.ListInvoiceLines(r.Context(), id)
 	if err != nil {
 		h.logger.Error("billing: list invoice lines failed", slog.Any("error", err))
@@ -584,6 +588,10 @@ func (h *Handler) handleInvoiceTransition(w http.ResponseWriter, r *http.Request
 		}
 		h.logger.Error("billing: get invoice for transition failed", slog.Any("error", err))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("billing.internal", "failed to fetch invoice", r))
+		return
+	}
+
+	if !h.invoiceOrgAllowed(w, r, invoice.OrgID, true) {
 		return
 	}
 
