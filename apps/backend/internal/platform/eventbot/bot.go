@@ -137,10 +137,10 @@ func New(opts Options) (*Bot, error) {
 		selfOnboarding: opts.SelfOnboarding,
 		noticeEvery:    opts.NoticeEvery,
 		siteButton:     opts.SiteButton,
-		onb:            newOnbDialogs(),
 		onbForms:       &onbFormCache{m: map[string]onbFormEntry{}},
 	}
 	b.sessions = newSessionDialogs(b.dialogs)
+	b.onb = newOnbDialogs(b.dialogs)
 	if b.texts == nil {
 		b.texts = NewTexts(nil)
 	}

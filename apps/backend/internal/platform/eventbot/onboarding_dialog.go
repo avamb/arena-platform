@@ -13,6 +13,7 @@ package eventbot
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -28,7 +29,6 @@ import (
 )
 
 const (
-	onbDialogTTL    = 30 * time.Minute
 	onbNoticeEvery  = 45 * time.Second
 	onbFormCacheTTL = 10 * time.Minute
 )
@@ -51,36 +51,89 @@ type onbDialog struct {
 	locale   string
 	sel      map[string]map[string]bool
 	infoDone map[string]bool
-	expires  time.Time
+	// dropped is set by clear(); a dropped dialog is not written back.
+	dropped bool
 }
 
-// onbDialogs is still process memory (it only holds the first four answers;
-// everything after them lives on the server); it is due to move onto
-// DialogStore (dialogs.go, the bot_dialogs table) like the team invite.
-type onbDialogs struct {
-	mu sync.Mutex
-	m  map[int64]*onbDialog
+// onbDialogJSON is the stored form of onbDialog (the fields are unexported).
+type onbDialogJSON struct {
+	Step     onbStep                    `json:"step"`
+	First    string                     `json:"first,omitempty"`
+	Last     string                     `json:"last,omitempty"`
+	Phone    string                     `json:"phone,omitempty"`
+	Locale   string                     `json:"locale,omitempty"`
+	Sel      map[string]map[string]bool `json:"sel,omitempty"`
+	InfoDone map[string]bool            `json:"info_done,omitempty"`
 }
 
-func newOnbDialogs() *onbDialogs { return &onbDialogs{m: map[int64]*onbDialog{}} }
+func (d onbDialog) MarshalJSON() ([]byte, error) {
+	return json.Marshal(onbDialogJSON{d.step, d.first, d.last, d.phone, d.locale, d.sel, d.infoDone})
+}
 
-// get returns the live dialog of an account, creating an empty one.
-func (d *onbDialogs) get(tg int64) *onbDialog {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	cur := d.m[tg]
-	if cur == nil || time.Now().After(cur.expires) {
-		cur = &onbDialog{sel: map[string]map[string]bool{}, infoDone: map[string]bool{}}
-		d.m[tg] = cur
+func (d *onbDialog) UnmarshalJSON(raw []byte) error {
+	var j onbDialogJSON
+	if err := json.Unmarshal(raw, &j); err != nil {
+		return err
 	}
-	cur.expires = time.Now().Add(onbDialogTTL)
+	*d = onbDialog{step: j.Step, first: j.First, last: j.Last, phone: j.Phone, locale: j.Locale, sel: j.Sel, infoDone: j.InfoDone}
+	return nil
+}
+
+func newOnbDialog() *onbDialog {
+	return &onbDialog{sel: map[string]map[string]bool{}, infoDone: map[string]bool{}}
+}
+
+// onbDialogKind is the bot_dialogs kind of the application dialog (EC-40).
+const onbDialogKind = "onboarding"
+
+// onbDialogs keeps the first four answers of an application (name, phone,
+// e-mail, language) and the half-ticked multiselect in bot_dialogs, so a bot
+// restart loses nothing. Everything after the first four answers lives on the
+// server. Entry points read the dialog with get and write it back once with
+// save when they are done, unless they cleared it.
+type onbDialogs struct {
+	store DialogStore
+}
+
+func newOnbDialogs(store DialogStore) *onbDialogs { return &onbDialogs{store: store} }
+
+// get returns the live dialog of an account, or an empty one when there is
+// none or it expired (an applicant who comes back after 30 minutes starts the
+// first four answers again; the application itself is on the server).
+func (d *onbDialogs) get(ctx context.Context, tg int64) *onbDialog {
+	cur := newOnbDialog()
+	if _, found, _, err := d.store.Load(ctx, tg, onbDialogKind, cur); err != nil || !found {
+		if err != nil {
+			slog.Default().Error("onboarding dialog: load failed", "error", err.Error())
+		}
+		return newOnbDialog()
+	}
+	if cur.sel == nil {
+		cur.sel = map[string]map[string]bool{}
+	}
+	if cur.infoDone == nil {
+		cur.infoDone = map[string]bool{}
+	}
 	return cur
 }
 
-func (d *onbDialogs) clear(tg int64) {
-	d.mu.Lock()
-	delete(d.m, tg)
-	d.mu.Unlock()
+// save writes the dialog back and slides its expiry.
+func (d *onbDialogs) save(ctx context.Context, tg int64, cur *onbDialog) {
+	if cur == nil || cur.dropped {
+		return
+	}
+	if err := d.store.Save(ctx, tg, nil, onbDialogKind, "open", cur, dialogTTL); err != nil {
+		slog.Default().Error("onboarding dialog: save failed", "error", err.Error())
+	}
+}
+
+func (d *onbDialogs) clear(ctx context.Context, tg int64, cur *onbDialog) {
+	if cur != nil {
+		cur.dropped = true
+	}
+	if err := d.store.Delete(ctx, tg, onbDialogKind); err != nil {
+		slog.Default().Error("onboarding dialog: delete failed", "error", err.Error())
+	}
 }
 
 // onbFormCache keeps the form definition per language for a few minutes.
@@ -167,7 +220,8 @@ func (b *Bot) sendMarkup(ctx context.Context, chatID int64, text string, markup 
 // way in for an invited person and the way to apply for everybody else. An
 // open application takes them straight back to where they stopped.
 func (b *Bot) onbWelcome(ctx context.Context, chatID int64, from *models.User) {
-	d := b.onb.get(from.ID)
+	d := b.onb.get(ctx, from.ID)
+	defer b.onb.save(ctx, from.ID, d)
 	if app, err := b.arena.OnboardingCurrent(ctx, from.ID); err == nil {
 		b.onbRoute(ctx, chatID, from, d, &app)
 		return
@@ -188,7 +242,8 @@ func (b *Bot) onbWelcome(ctx context.Context, chatID int64, from *models.User) {
 // no extra "press Apply" step. An open application takes them back to where
 // they stopped, as the welcome screen does.
 func (b *Bot) onbApplyDirect(ctx context.Context, chatID int64, from *models.User) {
-	d := b.onb.get(from.ID)
+	d := b.onb.get(ctx, from.ID)
+	defer b.onb.save(ctx, from.ID, d)
 	if app, err := b.arena.OnboardingCurrent(ctx, from.ID); err == nil {
 		b.onbRoute(ctx, chatID, from, d, &app)
 		return
@@ -205,7 +260,8 @@ func (b *Bot) onbApplyDirect(ctx context.Context, chatID int64, from *models.Use
 
 // onbMessage handles a text or a contact from somebody who is not linked.
 func (b *Bot) onbMessage(ctx context.Context, chatID int64, from *models.User, m *models.Message) {
-	d := b.onb.get(from.ID)
+	d := b.onb.get(ctx, from.ID)
+	defer b.onb.save(ctx, from.ID, d)
 	text := strings.TrimSpace(m.Text)
 	loc := b.onbLocale(from, d, nil)
 
@@ -697,7 +753,8 @@ func (b *Bot) onbCallback(ctx context.Context, chatID int64, msgID int, from *mo
 	if len(parts) < 2 {
 		return
 	}
-	d := b.onb.get(from.ID)
+	d := b.onb.get(ctx, from.ID)
+	defer b.onb.save(ctx, from.ID, d)
 	loc := b.onbLocale(from, d, nil)
 
 	switch parts[1] {
@@ -863,7 +920,7 @@ func (b *Bot) onbSubmit(ctx context.Context, chatID int64, from *models.User, d 
 		}
 		return
 	}
-	b.onb.clear(from.ID)
+	b.onb.clear(ctx, from.ID, d)
 	b.send(ctx, chatID, b.texts.T(loc, "bot.onb.submitted", nil), nil)
 }
 
