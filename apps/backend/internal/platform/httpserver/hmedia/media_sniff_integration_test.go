@@ -55,7 +55,8 @@ func TestCreateMedia_SniffsTheTypeOfAnUntypedUpload(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM media_objects WHERE org_id = $1`, org.ID)
 		_, _ = pool.Exec(ctx, `DELETE FROM organizations WHERE id = $1`, org.ID)
 	}()
-	h := New(repo, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	h := New(repo, slog.New(slog.NewJSONHandler(io.Discard, nil))).
+		WithRowOrgAccess(func(http.ResponseWriter, *http.Request, uuid.UUID, bool, string, string) bool { return true })
 
 	upload := func(named string) string {
 		t.Helper()

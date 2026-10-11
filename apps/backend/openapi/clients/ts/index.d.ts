@@ -36653,6 +36653,18 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description `org_id` names an organization the caller does not belong to
+             *     (`media.org_not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Media storage backend is not configured (MEDIA_BACKEND unset). */
             503: {
                 headers: {
@@ -36705,7 +36717,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Media object not found or already soft-deleted. */
+            /**
+             * @description Media object not found, already soft-deleted, or owned by an
+             *     organization the caller does not belong to (`media.not_found`).
+             */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -36762,7 +36777,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Media object not found or already soft-deleted. */
+            /**
+             * @description Media object not found, already soft-deleted, or owned by an
+             *     organization the caller does not belong to (`media.not_found`).
+             */
             404: {
                 headers: {
                     [name: string]: unknown;

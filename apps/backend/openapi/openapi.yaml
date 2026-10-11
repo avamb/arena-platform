@@ -31801,6 +31801,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            `org_id` names an organization the caller does not belong to
+            (`media.org_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Media storage backend is not configured (MEDIA_BACKEND unset).
           content:
@@ -31853,7 +31861,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: Media object not found or already soft-deleted.
+          description: |
+            Media object not found, already soft-deleted, or owned by an
+            organization the caller does not belong to (`media.not_found`).
           content:
             application/json:
               schema:
@@ -31898,7 +31908,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: Media object not found or already soft-deleted.
+          description: |
+            Media object not found, already soft-deleted, or owned by an
+            organization the caller does not belong to (`media.not_found`).
           content:
             application/json:
               schema:
