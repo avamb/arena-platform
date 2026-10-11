@@ -89,7 +89,7 @@ func TestOrgIsolationCatalog_SeatingBindNeedsAVisiblePlan(t *testing.T) {
 		t.Fatalf("version of A's plan: %v", err)
 	}
 	path := fmt.Sprintf("/v1/organizations/%s/events/%s/sessions/%s/seating", e.orgB, wB.event, wB.s1)
-	body := fmt.Sprintf(`{"seating_plan_version_id":%q,"admission_mode":"general_admission","auto_create_tiers":true}`, versionA)
+	body := fmt.Sprintf(`{"seating_plan_version_id":%q,"admission_mode":"general_admission","category_tier_map":{},"auto_create_tiers":true}`, versionA)
 	bind := func() (int, string) {
 		status, out := e.do(t, "POST", path, e.owner, body)
 		code := ""
