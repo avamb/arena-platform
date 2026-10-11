@@ -240,6 +240,7 @@ func normalizeEvent(body []byte) payments.NormalizedEvent {
 		ev.ProviderRefundID = ev.ProviderPaymentID
 		ev.ProviderPaymentID = ""
 		ev.FailureCode = obj.FailureReason
+		ev.RefundStatus = refundResult(refundObject{ID: ev.ProviderRefundID, Status: obj.Status, FailureReason: obj.FailureReason}).Status
 	case "charge.dispute.created":
 		ev.Kind = payments.EventDisputeOpened
 		ev.ProviderPaymentID = ""

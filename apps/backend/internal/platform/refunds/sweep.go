@@ -703,9 +703,17 @@ func (e *Engine) lookup(ctx context.Context, id uuid.UUID) error {
 		e.observe(outcomeUnknown)
 		return e.touch(ctx, id)
 	}
+	return e.applyStatus(ctx, id, pay, res)
+}
+
+// applyStatus records a provider's reading of an ACCEPTED refund (the sweep's
+// RefundLookup or a refund webhook) on the locked row. It only ever moves a
+// provider_pending row: an answer for a row that already left that state is
+// kept out, so a replayed or reordered delivery changes nothing.
+func (e *Engine) applyStatus(ctx context.Context, id uuid.UUID, pay Payment, res payments.RefundResult) error {
 	var updated Refund
 	changed := false
-	err = e.inTx(ctx, func(tx pgx.Tx) error {
+	err := e.inTx(ctx, func(tx pgx.Tx) error {
 		if err := LockPayment(ctx, tx, pay.ID); err != nil {
 			return err
 		}

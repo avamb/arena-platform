@@ -296,6 +296,9 @@ type NormalizedEvent struct {
 	// as the provider sent them; zero when absent).
 	AmountMinor int64
 	Currency    string
+	// RefundStatus is the refund's outcome on a refund event (Kind
+	// EventRefundUpdated), in arena's vocabulary; empty otherwise.
+	RefundStatus RefundStatus
 	// FailureCode / FailureMessage, when the delivery explains a failure.
 	FailureCode    string
 	FailureMessage string

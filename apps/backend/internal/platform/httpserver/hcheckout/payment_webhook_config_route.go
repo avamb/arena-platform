@@ -132,6 +132,7 @@ func (h *Handler) HandlePaymentIntentWebhookForConfig(w http.ResponseWriter, r *
 	route := webhookRoute{
 		Kind:          observability.RouteKindConfig,
 		ExpectedOrgID: &orgID,
+		Provider:      entryDesc.Name,
 		// The whole reason this route exists.
 		ForeignEventIsOK: true,
 	}

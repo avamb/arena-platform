@@ -150,3 +150,27 @@ func TestStripeModule_EmptySecretNeverVerifies(t *testing.T) {
 		t.Fatal("a delivery verified against an empty secret")
 	}
 }
+
+// A refund event carries the refund's outcome in arena's vocabulary, so the
+// core never reads Stripe's status strings.
+func TestStripeModule_RefundEventCarriesTheOutcome(t *testing.T) {
+	module, _ := stripe.Entry().Build(map[string]string{stripe.SecretWebhookSecret: moduleWebhookSecret}, payments.Options{})
+	parser := module.(payments.WebhookParser)
+	cases := map[string]payments.RefundStatus{
+		"succeeded": payments.RefundSucceeded,
+		"pending":   payments.RefundPending,
+		"failed":    payments.RefundFailed,
+		"canceled":  payments.RefundFailed,
+	}
+	for status, want := range cases {
+		body := []byte(`{"id":"evt_r","type":"refund.updated","data":{"object":{"id":"re_1","object":"refund","status":"` + status + `","failure_reason":"expired_or_canceled_card"}}}`)
+		ev, err := parser.VerifyAndParse(t.Context(), payments.WebhookInput{Body: body, Header: stripeSigned(moduleWebhookSecret, body)})
+		if err != nil {
+			t.Fatalf("%s: %v", status, err)
+		}
+		if ev.Kind != payments.EventRefundUpdated || ev.ProviderRefundID != "re_1" || ev.ProviderPaymentID != "" || ev.RefundStatus != want {
+			t.Errorf("%s: kind=%q refund=%q payment=%q status=%q; want refund_updated re_1 \"\" %q",
+				status, ev.Kind, ev.ProviderRefundID, ev.ProviderPaymentID, ev.RefundStatus, want)
+		}
+	}
+}
