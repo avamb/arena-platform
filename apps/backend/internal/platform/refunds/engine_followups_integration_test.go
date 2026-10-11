@@ -74,3 +74,27 @@ func TestEngine_TicketCancelRefundPublishesEvenWhenTheLinkFailed(t *testing.T) {
 		t.Fatalf("settled_at %v err %v; the refund must settle", settled, err)
 	}
 }
+
+// TestEngine_TicketCancelRefundWritesATicketRefundedOrderEvent (PAY-03
+// follow-up 4): a refund written by the ticket-cancel route speaks for one
+// ticket, so its order event is ticket_refunded naming that ticket, the same
+// as a ticket-level refund — not the order-wide refunded.
+func TestEngine_TicketCancelRefundWritesATicketRefundedOrderEvent(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	ctx := context.Background()
+	adult := f.tickets[0]
+	id := f.ticketCancelRefund(t, adult, 2500)
+	f.approveNow(t, id)
+	r, err := f.engine(&fakeModule{partial: true}, true).Drive(ctx, id)
+	if err != nil || r.State != refunds.StateSucceeded {
+		t.Fatalf("Drive: %v %s", err, r.State)
+	}
+	var kind, ticket string
+	if err := f.pool.QueryRow(ctx, `SELECT type, COALESCE(payload->>'ticket_id', '') FROM order_events
+		WHERE order_id = $1 AND payload->>'refund_id' = $2`, f.order, id.String()).Scan(&kind, &ticket); err != nil {
+		t.Fatalf("order event: %v", err)
+	}
+	if kind != "ticket_refunded" || ticket != adult.String() {
+		t.Fatalf("order event %q for ticket %q; want ticket_refunded for %s", kind, ticket, adult)
+	}
+}

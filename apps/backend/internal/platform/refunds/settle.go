@@ -267,9 +267,14 @@ func (e *Engine) projectOrder(ctx context.Context, r Refund, pay Payment) bool {
 		kind := "refunded"
 		payload := map[string]any{"refund_id": r.ID.String(), "amount": r.Amount, "currency": r.Currency,
 			"provider_refund_id": deref(r.ProviderRefundID), "refund_mode": "automatic"}
-		if r.TicketID != nil {
+		switch {
+		case r.TicketID != nil:
 			kind = "ticket_refunded"
 			payload["ticket_id"] = r.TicketID.String()
+		case r.fromTicketCancel():
+			// The ticket-cancel route's refund speaks for one ticket too.
+			kind = "ticket_refunded"
+			payload["ticket_id"] = r.CancelledTicketID.String()
 		}
 		raw, err := json.Marshal(payload)
 		if err != nil {
