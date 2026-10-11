@@ -544,7 +544,7 @@ func (e *Engine) alertReviews(ctx context.Context, n Notifier) (int, error) {
 			e.logger.Warn("refunds: ops alert not delivered; the next pass retries it", "refund_id", r.ID.String(), "error", derr.Error())
 			if ctx.Err() == nil {
 				// The section's own deadline is not the message's fault.
-				e.alertFailed(ctx, r, due[i])
+				e.alertFailed(ctx, r, due[i], sent > 0)
 			}
 			rest := make([]Refund, 0, len(order)-k)
 			for _, j := range order[k:] {
@@ -630,10 +630,13 @@ func (e *Engine) alertDelivered(ctx context.Context, r Refund, due time.Time) {
 
 // alertFailed counts a refused delivery against its row and releases it.
 // An alert refused MaxAlertAttempts times and owed for longer than
-// alertGiveUpAfter is given up: Telegram is evidently up (the failures are
-// spread over a day of passes that delivered other alerts first) and will
-// never take this message.
-func (e *Engine) alertFailed(ctx context.Context, r Refund, due time.Time) {
+// alertGiveUpAfter is given up ONLY when telegramUp: another alert was
+// delivered earlier in the same pass, so Telegram demonstrably works and
+// will never take this message. While nothing at all can be delivered
+// (an outage, a revoked bot token) the refusal says nothing about the
+// message, and giving up would lose an alert that was never really tried —
+// it stays owed and goes out when Telegram answers again.
+func (e *Engine) alertFailed(ctx context.Context, r Refund, due time.Time, telegramUp bool) {
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), alertWriteTimeout)
 	defer cancel()
 	var (
@@ -642,10 +645,10 @@ func (e *Engine) alertFailed(ctx context.Context, r Refund, due time.Time) {
 	)
 	if err := e.inTx(wctx, func(tx pgx.Tx) error {
 		return tx.QueryRow(wctx, `UPDATE refunds SET alert_lease_until = NULL, alert_attempts = alert_attempts + 1,
-			alert_due_at = CASE WHEN alert_attempts + 1 >= $3 AND alert_due_at = $2 AND alert_due_at < now() - $4::interval
+			alert_due_at = CASE WHEN $5::boolean AND alert_attempts + 1 >= $3 AND alert_due_at = $2 AND alert_due_at < now() - $4::interval
 			                    THEN NULL ELSE alert_due_at END
 			WHERE id = $1 RETURNING alert_attempts, alert_due_at IS NULL`,
-			r.ID, due, MaxAlertAttempts, intervalText(alertGiveUpAfter)).Scan(&attempts, &gaveUp)
+			r.ID, due, MaxAlertAttempts, intervalText(alertGiveUpAfter), telegramUp).Scan(&attempts, &gaveUp)
 	}); err != nil {
 		e.logger.Warn("refunds: counting an undelivered alert failed; its lease expires", "refund_id", r.ID.String(), "error", err.Error())
 		return
