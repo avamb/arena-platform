@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
@@ -52,7 +53,7 @@ func (h *Handler) processRefundWebhook(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 	if !found {
-		ack("not an arena refund", false)
+		h.recordDashboardRefund(w, r, route, ack)
 		return
 	}
 	h.recordWebhookEvent(ev.Type, webhookOutcomeProcessed)
@@ -60,5 +61,52 @@ func (h *Handler) processRefundWebhook(w http.ResponseWriter, r *http.Request, r
 		"acknowledged": true,
 		"event_type":   ev.Type,
 		"processed":    true,
+	})
+}
+
+// recordDashboardRefund handles a verified refund event no arena refund
+// carries: a refund the organizer made in the provider's dashboard (spec 36
+// section 7). A succeeded one of one of this organization's payments is
+// recorded with origin provider_dashboard and the AB-49 inbound policy is
+// applied: a refund that covers the payment cancels the order's tickets, a
+// smaller one flags them for human review. Anything else is acknowledged
+// untouched (the organizer's provider account also serves their other sites).
+func (h *Handler) recordDashboardRefund(w http.ResponseWriter, r *http.Request, route webhookRoute, ack func(string, bool)) {
+	ev := *route.Event
+	res, err := h.refundEngine.RecordDashboardRefund(r.Context(), *route.ExpectedOrgID, route.Provider, ev)
+	if err != nil {
+		// Including refunds.ErrRefundInFlight: the provider redelivers.
+		h.logger.Error("webhook: recording a dashboard refund failed",
+			slog.String("provider", route.Provider),
+			slog.String("provider_refund_id", ev.ProviderRefundID),
+			slog.String("error", err.Error()),
+		)
+		h.recordWebhookEvent(ev.Type, webhookOutcomeError)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"webhook.refund_failed", "failed to record the refund event", r))
+		return
+	}
+	if !res.Found {
+		ack("not an arena refund", false)
+		return
+	}
+	if !res.Created {
+		ack("refund already recorded", false)
+		return
+	}
+	if res.Payment.CheckoutSessionID != nil {
+		row := gen.RefundRow{ID: res.Refund.ID, Amount: res.Refund.Amount, Currency: res.Refund.Currency}
+		if res.Full {
+			h.applyFullInboundRefundCancellation(r.Context(), row, *res.Payment.CheckoutSessionID)
+		} else {
+			h.applyPartialInboundRefundHold(r.Context(), row, *res.Payment.CheckoutSessionID)
+		}
+	}
+	h.recordWebhookEvent(ev.Type, webhookOutcomeProcessed)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"acknowledged": true,
+		"event_type":   ev.Type,
+		"processed":    true,
+		"origin":       "provider_dashboard",
 	})
 }
