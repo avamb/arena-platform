@@ -96,6 +96,9 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	if key, ok := ctx.Value(idempotencyKeyCtx{}).(string); ok && key != "" {
+		req.Header.Set("Idempotency-Key", key)
+	}
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
@@ -304,4 +307,13 @@ func unwrapURLError(err error) error {
 		return ue.Err
 	}
 	return err
+}
+
+// idempotencyKeyCtx carries an Idempotency-Key for one call (do sends it when
+// present). Used by the refund screens: a retry or a double press of the same
+// confirmed operation replays the first answer instead of refunding twice.
+type idempotencyKeyCtx struct{}
+
+func withIdempotencyKey(ctx context.Context, key string) context.Context {
+	return context.WithValue(ctx, idempotencyKeyCtx{}, key)
 }

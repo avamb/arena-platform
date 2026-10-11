@@ -294,7 +294,8 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
 		// and an event's delete question (its typed word)
 		b.leaveEvStatus(ctx, from.ID)
-		b.leavePromo(ctx, from.ID) // and a promo-code question (EC-11)
+		b.leavePromo(ctx, from.ID)  // and a promo-code question (EC-11)
+		b.leaveRefund(ctx, from.ID) // and a refund question: its word is never an answer after a command (EC-21)
 		switch cmd {
 		case "/start":
 			arg = strings.TrimSpace(arg)
@@ -349,6 +350,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	if text != "" && b.resendText(ctx, chatID, from, text) {
 		return
 	}
+	if text != "" && b.refundText(ctx, chatID, from, text) {
+		return
+	}
 	if text != "" && b.inviteText(ctx, chatID, from, text) {
 		return
 	}
@@ -397,6 +401,9 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	}
 	if !isOrdersCallback(parts[0]) {
 		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
+	}
+	if !strings.HasPrefix(cq.Data, "or:f:") {
+		b.leaveRefund(ctx, from.ID) // any other press ends the "Refund" dialog (EC-21)
 	}
 	if !strings.HasPrefix(cq.Data, "or:r:") {
 		b.leaveResend(ctx, from.ID) // any other press ends the "Resend tickets" dialog (EC-13)

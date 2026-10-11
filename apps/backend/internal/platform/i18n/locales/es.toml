@@ -2715,3 +2715,102 @@ other = "✔ Ventana de venta guardada."
 
 ["bot.cat.window_removed"]
 other = "✔ Límite quitado."
+
+["bot.ref.btn"]
+other = "💸 Devolver dinero"
+
+["bot.ref.private_only"]
+other = "Las devoluciones se hacen en un chat privado con el bot."
+
+["bot.ref.site"]
+other = "El pedido n.º {{.Num}} se vendió en la web del vendedor, así que el dinero se devuelve allí. Desde Arena no se puede devolver."
+
+["bot.ref.unsupported"]
+other = "Arena todavía no puede devolver dinero con {{.Provider}}. Devuélvelo desde el panel del proveedor para el pedido n.º {{.Num}}."
+
+["bot.ref.nothing"]
+other = "No hay nada que devolver en el pedido n.º {{.Num}}: todas las entradas ya están devueltas o hay una devolución en curso."
+
+["bot.ref.pick"]
+other = "<b>Devolución · pedido n.º {{.Num}}</b>\nElige las entradas cuyo dinero devolver. El dinero vuelve con {{.Provider}} a la tarjeta con la que se pagó."
+
+["bot.ref.select_all"]
+other = "Seleccionar todas"
+
+["bot.ref.continue"]
+other = "Continuar · {{.Amount}}"
+
+["bot.ref.none_selected"]
+other = "Selecciona al menos una entrada."
+
+["bot.ref.partial_btn"]
+other = "Parte del importe"
+
+["bot.ref.partial_ask"]
+other = "Escribe el importe a devolver por esta entrada, como máximo {{.Amount}}."
+
+["bot.ref.partial_bad"]
+other = "Ese importe no es válido. Escribe un número mayor que 0 y que no supere lo que se puede devolver por la entrada."
+
+["bot.ref.reason_ask"]
+other = "¿Por qué se devuelve el dinero? Elige un motivo o escribe el tuyo."
+
+["bot.ref.reason1"]
+other = "El comprador pidió la devolución"
+
+["bot.ref.reason2"]
+other = "Evento cancelado o aplazado"
+
+["bot.ref.reason3"]
+other = "Pedido duplicado"
+
+["bot.ref.reason_other_btn"]
+other = "Otro motivo"
+
+["bot.ref.reason_text_ask"]
+other = "Escribe el motivo (hasta 300 caracteres). Queda guardado en el registro."
+
+["bot.ref.reason_bad"]
+other = "El motivo debe tener entre 1 y 300 caracteres."
+
+["bot.ref.confirm"]
+other = "¿<b>Devolver {{.Amount}}</b> por {{.N}} entrada(s) del pedido n.º {{.Num}} con {{.Provider}}?\nMotivo: {{.Reason}}\n\nLas entradas dejan de ser válidas al instante. No se puede deshacer.\n\nEscribe <b>{{.Word}}</b> para confirmar."
+
+["bot.ref.letter_on_btn"]
+other = "✉️ Carta al comprador: sí"
+
+["bot.ref.letter_off_btn"]
+other = "✉️ Carta al comprador: no"
+
+["bot.ref.word"]
+other = "DEVOLVER"
+
+["bot.ref.word_wrong"]
+other = "Esa no es la palabra de confirmación. No se devolvió nada. Escribe {{.Word}} para confirmar o vuelve atrás."
+
+["bot.ref.done_head"]
+other = "<b>Devolución solicitada · pedido n.º {{.Num}}</b>"
+
+["bot.ref.line"]
+other = "{{.N}}. {{.Amount}} — {{.Status}}"
+
+["bot.ref.st_succeeded"]
+other = "✅ devuelto"
+
+["bot.ref.st_pending"]
+other = "⏳ aceptado por {{.Provider}}, esperando confirmación"
+
+["bot.ref.st_failed"]
+other = "❌ no se pudo: {{.Why}}"
+
+["bot.ref.st_review"]
+other = "⚠️ requiere revisión manual del soporte"
+
+["bot.ref.st_other"]
+other = "{{.State}}"
+
+["bot.ref.err_progress"]
+other = "Ya hay una devolución en curso para alguna de estas entradas del pedido n.º {{.Num}}. Abre el pedido para verla."
+
+["bot.ref.err_changed"]
+other = "El pedido n.º {{.Num}} cambió mientras elegías. Ábrelo de nuevo y empieza la devolución otra vez."

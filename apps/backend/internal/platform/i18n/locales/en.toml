@@ -2860,3 +2860,102 @@ other = "✔ Sale window saved."
 
 ["bot.cat.window_removed"]
 other = "✔ Limit removed."
+
+["bot.ref.btn"]
+other = "💸 Refund"
+
+["bot.ref.private_only"]
+other = "Refunds are made in a private chat with the bot."
+
+["bot.ref.site"]
+other = "Order #{{.Num}} was sold through the seller's own site, so the money is returned there. Arena cannot return it from here."
+
+["bot.ref.unsupported"]
+other = "Arena cannot return money through {{.Provider}} yet. Return it in the provider's dashboard for order #{{.Num}}."
+
+["bot.ref.nothing"]
+other = "There is nothing to refund on order #{{.Num}}: every ticket is already refunded or a refund is in progress."
+
+["bot.ref.pick"]
+other = "<b>Refund · order #{{.Num}}</b>\nChoose the tickets to return money for. The money goes back through {{.Provider}} to the card it was paid with."
+
+["bot.ref.select_all"]
+other = "Select all"
+
+["bot.ref.continue"]
+other = "Continue · {{.Amount}}"
+
+["bot.ref.none_selected"]
+other = "Select at least one ticket."
+
+["bot.ref.partial_btn"]
+other = "Part of the amount"
+
+["bot.ref.partial_ask"]
+other = "Type the amount to return for this ticket, up to {{.Amount}}."
+
+["bot.ref.partial_bad"]
+other = "That is not a valid amount. Type a number greater than 0 and not more than the ticket's refundable amount."
+
+["bot.ref.reason_ask"]
+other = "Why is the money returned? Pick a reason or type your own."
+
+["bot.ref.reason1"]
+other = "Buyer asked for a refund"
+
+["bot.ref.reason2"]
+other = "Event cancelled or moved"
+
+["bot.ref.reason3"]
+other = "Duplicate order"
+
+["bot.ref.reason_other_btn"]
+other = "Another reason"
+
+["bot.ref.reason_text_ask"]
+other = "Type the reason (up to 300 characters). It is kept in the audit trail."
+
+["bot.ref.reason_bad"]
+other = "The reason must be between 1 and 300 characters."
+
+["bot.ref.confirm"]
+other = "<b>Return {{.Amount}}</b> for {{.N}} ticket(s) of order #{{.Num}} through {{.Provider}}?\nReason: {{.Reason}}\n\nThe tickets stop being valid at once. This cannot be undone.\n\nType <b>{{.Word}}</b> to confirm."
+
+["bot.ref.letter_on_btn"]
+other = "✉️ Letter to the buyer: on"
+
+["bot.ref.letter_off_btn"]
+other = "✉️ Letter to the buyer: off"
+
+["bot.ref.word"]
+other = "REFUND"
+
+["bot.ref.word_wrong"]
+other = "That is not the confirmation word. Nothing was refunded. Type {{.Word}} to confirm or go back."
+
+["bot.ref.done_head"]
+other = "<b>Refund requested · order #{{.Num}}</b>"
+
+["bot.ref.line"]
+other = "{{.N}}. {{.Amount}} — {{.Status}}"
+
+["bot.ref.st_succeeded"]
+other = "✅ returned"
+
+["bot.ref.st_pending"]
+other = "⏳ accepted by {{.Provider}}, waiting for confirmation"
+
+["bot.ref.st_failed"]
+other = "❌ failed: {{.Why}}"
+
+["bot.ref.st_review"]
+other = "⚠️ needs a manual check by support"
+
+["bot.ref.st_other"]
+other = "{{.State}}"
+
+["bot.ref.err_progress"]
+other = "A refund of one of these tickets is already in progress for order #{{.Num}}. Open the order to see it."
+
+["bot.ref.err_changed"]
+other = "Order #{{.Num}} changed while you were choosing. Open it again and start the refund again."
