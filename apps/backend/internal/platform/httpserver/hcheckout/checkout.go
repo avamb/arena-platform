@@ -216,6 +216,13 @@ func (h *Handler) HandleStartCheckout(w http.ResponseWriter, r *http.Request) {
 		userID = &parsed
 	}
 
+	if !h.rowOrgAllowed(w, r, orgID, true, "checkout.org_not_found", "organization not found") {
+		return
+	}
+	if !h.reservationInOrgForCheckout(w, r, reservationID, orgID, channelID) {
+		return
+	}
+
 	cs, err := h.checkoutQueries.InsertCheckoutSession(ctx, orgID, channelID, reservationID, userID)
 	if err != nil {
 		h.logger.Error("checkout: start failed",
@@ -266,6 +273,9 @@ func (h *Handler) HandleGetCheckoutSession(w http.ResponseWriter, r *http.Reques
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.get_failed", "failed to retrieve checkout session", r))
+		return
+	}
+	if !h.rowOrgAllowed(w, r, cs.OrgID, false, "checkout.not_found", "checkout session not found") {
 		return
 	}
 
@@ -367,6 +377,9 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("checkout.get_failed", "failed to retrieve checkout session", r))
+		return
+	}
+	if !h.rowOrgAllowed(w, r, checkoutSession.OrgID, true, "checkout.not_found", "checkout session not found") {
 		return
 	}
 
@@ -926,6 +939,9 @@ func (h *Handler) HandleCompleteCheckout(w http.ResponseWriter, r *http.Request)
 	// When no payment_intent_id is supplied, attempt the free-checkout
 	// completion path.  The DB query only succeeds if the session's total = 0.
 	if req.PaymentIntentID == "" {
+		if !h.checkoutOrgAllowed(w, r, id, true) {
+			return
+		}
 		// ── PR2-12 (feature #368): Pre-load session for promo redemption ──────
 		// Fetch the session INSIDE the branch (after all validations) so the pre-load
 		// only runs when we're actually about to complete. On any error we fall back
@@ -1021,6 +1037,9 @@ func (h *Handler) HandleCompleteCheckout(w http.ResponseWriter, r *http.Request)
 			"checkout.missing_payment_provider", "payment_provider is required", r,
 			map[string]any{"field": "payment_provider"},
 		))
+		return
+	}
+	if !h.checkoutOrgAllowed(w, r, id, true) {
 		return
 	}
 
@@ -1144,6 +1163,10 @@ func (h *Handler) HandleAbandonCheckout(w http.ResponseWriter, r *http.Request) 
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("checkout.invalid_id", "checkout session id must be a valid UUID", r))
+		return
+	}
+
+	if !h.checkoutOrgAllowed(w, r, id, true) {
 		return
 	}
 

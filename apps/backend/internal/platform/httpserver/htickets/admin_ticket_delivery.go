@@ -62,6 +62,9 @@ func (h *Handler) HandleAdminGetTicketDelivery(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return
 	}
+	if !h.ticketOrgAllowed(w, r, ticketID, false, "ticket_delivery.ticket_not_found", "ticket not found") {
+		return
+	}
 
 	dj, err := h.deliveryJobQueries.GetDeliveryJobByTicketID(r.Context(), ticketID)
 	if err != nil {
@@ -120,6 +123,9 @@ func (h *Handler) HandleAdminResendTicketDelivery(w http.ResponseWriter, r *http
 	}
 	ticketID, ok := httputil.UUIDPathParam(w, r, "id")
 	if !ok {
+		return
+	}
+	if !h.ticketOrgAllowed(w, r, ticketID, true, "ticket_delivery.ticket_not_found", "ticket not found") {
 		return
 	}
 	ctx := r.Context()
