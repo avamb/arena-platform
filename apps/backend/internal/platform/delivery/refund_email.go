@@ -1,0 +1,260 @@
+// refund_email.go — the refund.buyer_email worker job: the letter Arena
+// writes to a buyer whose money went back (PAY-07, spec 36 section 7 step 5).
+//
+// The refund engine queues one job per refund operation (refund_batches) a
+// minute after a refund settles. The handler claims the operation's refunds
+// that the provider ACCEPTED and that no letter covers yet, mails them in ONE
+// letter and marks them. Rules it keeps:
+//
+//   - nothing is mailed unless the operation asked for it (notify_buyer);
+//   - the letter states the amount and the usual bank delay and promises
+//     nothing else; a money-only refund does not say the tickets are void;
+//   - a refund is claimed before the send and the claim is given back when
+//     the send fails, so a redelivered job never mails twice and a failed one
+//     is retried; a claim older than ten minutes (a crashed worker) is taken
+//     over;
+//   - a buyer without an address, or a deployment without a production sender,
+//     ends the refunds as notified (skipped) rather than retrying forever;
+//   - buyer addresses never reach the logs.
+package delivery
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
+)
+
+// RefundEmailOptions are the dependencies of the refund.buyer_email job.
+type RefundEmailOptions struct {
+	// HandlerOptions supplies the sender, media resolver, templates and the
+	// query set shared with ticket.deliver.
+	HandlerOptions
+	// DB reads the batch, its refunds, the order and the organizer contact.
+	DB sessionchange.DB
+}
+
+// NewRefundEmailHandler builds the worker handler of refunds.JobTypeBuyerEmail.
+func NewRefundEmailHandler(opts RefundEmailOptions) worker.HandlerFunc {
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	renderer := opts.Templates
+	if renderer == nil {
+		r, err := templates.New()
+		if err != nil {
+			return func(context.Context, []byte) error {
+				return fmt.Errorf("delivery: refund e-mail templates unavailable: %w", err)
+			}
+		}
+		renderer = r
+	}
+	h := &refundEmail{opts: opts, logger: logger, renderer: renderer}
+	// The ticket payload resolution (branding, presentation) is the one the
+	// change letter uses; share it instead of copying it.
+	h.payloads = &changeEmail{opts: ChangeEmailOptions{HandlerOptions: opts.HandlerOptions, DB: opts.DB}, logger: logger, renderer: renderer}
+	return h.handle
+}
+
+type refundEmail struct {
+	opts     RefundEmailOptions
+	logger   *slog.Logger
+	renderer *templates.Renderer
+	payloads *changeEmail
+}
+
+// claimedRefund is one refund this job owns until it is mailed or released.
+type claimedRefund struct {
+	ID           uuid.UUID
+	TicketID     *uuid.UUID
+	Amount       int64
+	Currency     string
+	CancelTicket bool
+}
+
+const claimBuyerNoticeSQL = `
+UPDATE refunds SET buyer_notice_claimed_at = now()
+WHERE  batch_id = $1
+  AND  buyer_notified_at IS NULL
+  AND  (state = 'succeeded' OR (state = 'provider_pending' AND provider_refund_id IS NOT NULL))
+  AND  (buyer_notice_claimed_at IS NULL OR buyer_notice_claimed_at < now() - interval '10 minutes')
+RETURNING id, ticket_id, amount, currency, cancel_ticket`
+
+func (h *refundEmail) handle(ctx context.Context, payload []byte) error {
+	var p refunds.BuyerEmailPayload
+	if err := json.Unmarshal(payload, &p); err != nil {
+		h.logger.Error("delivery: malformed refund e-mail payload", slog.String("error", err.Error()))
+		return nil // permanent
+	}
+	batchID, err := uuid.Parse(p.BatchID)
+	if err != nil {
+		h.logger.Error("delivery: invalid batch id in refund e-mail payload")
+		return nil
+	}
+
+	var orderID, orgID uuid.UUID
+	var notify bool
+	if err := h.opts.DB.QueryRow(ctx,
+		`SELECT order_id, org_id, notify_buyer FROM refund_batches WHERE id = $1`, batchID).
+		Scan(&orderID, &orgID, &notify); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return fmt.Errorf("delivery: read refund batch: %w", err)
+	}
+	if !notify {
+		return nil
+	}
+
+	rows, err := h.opts.DB.Query(ctx, claimBuyerNoticeSQL, batchID)
+	if err != nil {
+		return fmt.Errorf("delivery: claim refunds: %w", err)
+	}
+	var claimed []claimedRefund
+	for rows.Next() {
+		var c claimedRefund
+		if err := rows.Scan(&c.ID, &c.TicketID, &c.Amount, &c.Currency, &c.CancelTicket); err != nil {
+			rows.Close()
+			return err
+		}
+		claimed = append(claimed, c)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(claimed) == 0 {
+		return nil // already mailed, or nothing accepted yet
+	}
+	ids := make([]uuid.UUID, len(claimed))
+	for i, c := range claimed {
+		ids[i] = c.ID
+	}
+
+	recipient, err := sessionchange.LoadOrderRecipient(ctx, h.opts.DB, orderID)
+	if err != nil {
+		h.release(ctx, ids)
+		return fmt.Errorf("delivery: read order %s: %w", orderID, err)
+	}
+	if recipient.Email == "" {
+		return h.done(ctx, ids, "no address for the buyer")
+	}
+	if h.opts.Sender == nil || email.IsDevOnly(h.opts.Sender) {
+		return h.done(ctx, ids, "no production e-mail sender configured")
+	}
+
+	msg, err := h.buildMessage(ctx, orderID, orgID, recipient, claimed)
+	if err != nil {
+		h.release(ctx, ids)
+		return err
+	}
+	if sendErr := h.opts.Sender.Send(ctx, msg); sendErr != nil {
+		h.release(ctx, ids)
+		h.logger.Warn("delivery: refund e-mail send failed; worker will retry", slog.String("batch_id", batchID.String()))
+		return fmt.Errorf("delivery: send refund e-mail for batch %s: %w", batchID, sendErr)
+	}
+	if err := h.markNotified(ctx, ids); err != nil {
+		// The letter is out; a lost mark would mail it again after the claim
+		// goes stale, which is the lesser evil than reporting a failure that
+		// retries a sent letter right now.
+		h.logger.Error("delivery: could not mark refunds as mailed", slog.String("batch_id", batchID.String()), slog.String("error", err.Error()))
+	}
+	h.logger.Info("delivery: refund e-mail sent",
+		slog.String("batch_id", batchID.String()), slog.Int("refunds", len(claimed)))
+	return nil
+}
+
+// done ends the claimed refunds without a letter.
+func (h *refundEmail) done(ctx context.Context, ids []uuid.UUID, reason string) error {
+	if err := h.markNotified(ctx, ids); err != nil {
+		return err
+	}
+	h.logger.Info("delivery: refund e-mail not sent", slog.String("reason", reason), slog.Int("refunds", len(ids)))
+	return nil
+}
+
+func (h *refundEmail) markNotified(ctx context.Context, ids []uuid.UUID) error {
+	_, err := h.opts.DB.Exec(ctx, `UPDATE refunds SET buyer_notified_at = now() WHERE id = ANY($1)`, ids)
+	return err
+}
+
+// release gives the claim back so the retry (or the next job) can take it.
+func (h *refundEmail) release(ctx context.Context, ids []uuid.UUID) {
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if _, err := h.opts.DB.Exec(rctx, `UPDATE refunds SET buyer_notice_claimed_at = NULL WHERE id = ANY($1) AND buyer_notified_at IS NULL`, ids); err != nil {
+		h.logger.Warn("delivery: could not release the refund e-mail claim", slog.String("error", err.Error()))
+	}
+}
+
+// buildMessage renders the letter for the claimed refunds.
+func (h *refundEmail) buildMessage(ctx context.Context, orderID, orgID uuid.UUID, recipient sessionchange.OrderRecipient, claimed []claimedRefund) (email.Message, error) {
+	var (
+		total       int64
+		currency    string
+		anyCancel   bool
+		lines       []templates.TicketLine
+		first       Payload
+		haveFirst   bool
+		orderEvents uuid.UUID
+	)
+	_ = h.opts.DB.QueryRow(ctx, `SELECT event_id FROM orders WHERE id = $1`, orderID).Scan(&orderEvents)
+	for _, c := range claimed {
+		total += c.Amount
+		if currency == "" {
+			currency = c.Currency
+		}
+		anyCancel = anyCancel || c.CancelTicket
+		line := templates.TicketLine{Price: formatMoney(c.Amount, c.Currency)}
+		if c.TicketID != nil {
+			tp := h.payloads.ticketPayload(ctx, *c.TicketID, recipient.LocaleHint)
+			line.Number = pdf.DisplayNumber(tp.TicketNumber, c.TicketID.String())
+			line.Tier = tp.TierName
+			line.Seat = templates.FormatSeat(recipient.LocaleHint, tp.SeatSector, tp.SeatRow, tp.SeatNumber)
+			if !haveFirst {
+				first, haveFirst = tp, true
+			}
+		}
+		lines = append(lines, line)
+	}
+	if !haveFirst {
+		first = Payload{Locale: recipient.LocaleHint}
+	}
+	branding := resolveBranding(ctx, h.opts.Media, first, h.logger).Branding
+
+	data := templates.Data{
+		RecipientEmail: recipient.Email,
+		HolderName:     first.HolderName,
+		EventName:      defaultStr(first.EventName, "Arena Event"),
+		SessionStart:   formatSessionForEmail(first.SessionStart, first.SessionTZ),
+		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),
+		Branding:       branding,
+		Tickets:        lines,
+		Refund:         &templates.RefundData{Total: formatMoney(total, currency), TicketsCancelled: anyCancel},
+	}
+	out, err := h.renderer.Render(templates.TemplateKindRefund, recipient.LocaleHint, data)
+	if err != nil {
+		return email.Message{}, fmt.Errorf("delivery: render refund e-mail: %w", err)
+	}
+	// Replies go to the organizer when one is known and complete.
+	if orderEvents != uuid.Nil {
+		if contact, cerr := sessionchange.ResolveContact(ctx, h.opts.DB, orderEvents, orgID); cerr == nil && contact.Complete() {
+			first.OrgContactEmail = strings.TrimSpace(contact.Email)
+		}
+	}
+	return ticketEmailMessage(first, recipient.Email, out.Subject, out.HTMLBody, out.TextBody), nil
+}

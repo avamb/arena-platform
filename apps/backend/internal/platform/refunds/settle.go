@@ -70,6 +70,9 @@ func (e *Engine) finish(ctx, stop context.Context, r Refund, pay Payment) bool {
 	if ok {
 		ok = e.markSettled(wctx, r)
 	}
+	if ok {
+		e.queueBuyerNotice(wctx, r)
+	}
 	return ok
 }
 

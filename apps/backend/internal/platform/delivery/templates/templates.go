@@ -3,7 +3,7 @@
 //
 // Templates live next to this file as <name>.<locale>.tmpl, where:
 //
-//   - name   ∈ {"ticket", "invitation", "change", "cancel"}  (the email kind)
+//   - name   ∈ {"ticket", "invitation", "change", "cancel", "refund"}  (the email kind)
 //   - locale ∈ {"en", "de", "es", "fr", "he", "cs", "ru"}  (the AllPay
 //     markets baseline plus cs/ru, added for the Czech-market launch —
 //     feature #565 — where many buyers are Russian-speaking, plus fr for
@@ -61,6 +61,11 @@ const TemplateKindChange = "change"
 // TemplateKindCancel is sent to a buyer when the organizer cancelled the
 // session. It carries no attachment and makes no promise about money.
 const TemplateKindCancel = "cancel"
+
+// TemplateKindRefund is sent to a buyer when money for their tickets was
+// returned (PAY-07). It states the amount and the usual bank delay and
+// promises nothing beyond that.
+const TemplateKindRefund = "refund"
 
 // Data is the value passed to every template. Fields are intentionally
 // strings (not domain structs) so the template author can ignore nil checks
@@ -125,10 +130,24 @@ type Data struct {
 	// cancel e-mails (one ticket each) and older callers use.
 	Tickets []TicketLine
 
+	// Refund is what the refund e-mail says; nil for every other kind. The
+	// refunded tickets themselves are listed in Tickets, each with the
+	// amount returned for it in Price.
+	Refund *RefundData
+
 	// Payment is the purchase summary printed as the "Payment" block of the
 	// ticket e-mail. nil omits the block: an invitation, a free ticket or an
 	// order whose money is not known pays nothing to show.
 	Payment *PaymentData
+}
+
+// RefundData is the refund e-mail's own block.
+type RefundData struct {
+	// Total is everything returned in this letter, pre-formatted ("25.00 EUR").
+	Total string
+	// TicketsCancelled says the refunded tickets no longer admit; false for a
+	// money-only partial refund.
+	TicketsCancelled bool
 }
 
 // TicketLine is one ticket of a multi-ticket e-mail. Every field is a
