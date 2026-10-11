@@ -45,6 +45,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgread"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
@@ -465,9 +466,14 @@ func (h *Handler) HandleListVenues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	reader := orgread.New(ctx, h.membershipQueries)
 	result := make([]venueResponse, 0, len(rows))
 	for _, v := range rows {
-		result = append(result, venueFromRow(v))
+		resp := venueFromRow(v)
+		if !h.redactForeignVenueContacts(w, r, reader, v.OrgID, &resp) {
+			return
+		}
+		result = append(result, resp)
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"venues": result})
 }
@@ -503,9 +509,33 @@ func (h *Handler) HandleGetVenue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resp := venueFromRow(v)
+	if !h.redactForeignVenueContacts(w, r, orgread.New(ctx, h.membershipQueries), v.OrgID, &resp) {
+		return
+	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"venue": venueFromRow(v),
+		"venue": resp,
 	})
+}
+
+// redactForeignVenueContacts drops the contact phone and e-mail of a venue
+// that belongs to an organization the caller may not read. The venue catalog
+// is shared for reading (name, address, zone), the contacts are not. It
+// writes a 500 and returns false only when the membership lookup fails.
+func (h *Handler) redactForeignVenueContacts(w http.ResponseWriter, r *http.Request, reader *orgread.Reader, owner uuid.UUID, resp *venueResponse) bool {
+	own, err := reader.Can(owner)
+	if err != nil {
+		h.logger.Error("venue: contact visibility lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"venue.list_failed", "failed to read venues", r,
+		))
+		return false
+	}
+	if !own {
+		resp.ContactPhone = nil
+		resp.ContactEmail = nil
+	}
+	return true
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
