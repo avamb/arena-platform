@@ -760,6 +760,10 @@ func (h *Handler) HandleValidatePromoCode(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if !h.rowOrgAllowed(w, r, orgID, false, "promo.not_found", "promo code not found") {
+		return
+	}
+
 	// Step 1: look up the promo code.
 	pc, err := h.promoQueries.GetPromoCodeByCode(ctx, orgID, req.Code)
 	if err != nil {
