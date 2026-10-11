@@ -66,7 +66,7 @@ func NewRefundEmailHandler(opts RefundEmailOptions) worker.HandlerFunc {
 	h := &refundEmail{opts: opts, logger: logger, renderer: renderer}
 	// The ticket payload resolution (branding, presentation) is the one the
 	// change letter uses; share it instead of copying it.
-	h.payloads = &changeEmail{opts: ChangeEmailOptions{HandlerOptions: opts.HandlerOptions, DB: opts.DB}, logger: logger, renderer: renderer}
+	h.payloads = &changeEmail{opts: ChangeEmailOptions(opts), logger: logger, renderer: renderer}
 	return h.handle
 }
 
