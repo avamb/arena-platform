@@ -71,6 +71,14 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
+// publicSeatingVisibility lists the plan visibilities any organization may
+// bind to its sessions. shared_read is "other allowed organizations", and no
+// allow-list exists yet, so it stays with its owner.
+var publicSeatingVisibility = map[string]bool{
+	"public_template":   true,
+	"operator_verified": true,
+}
+
 // bindBodyLimit caps the JSON payload for the binding endpoint. A single
 // category_tier_map entry is ~50 bytes and even the largest realistic plan
 // keeps well under 64 KiB.
@@ -345,6 +353,23 @@ func (h *Handler) bindSessionSeatingCore(
 		h.logger.Error("seating: bind parent plan lookup failed", slog.String("error", err.Error()))
 		return nil, bindErr(http.StatusInternalServerError,
 			"seating.bind_failed", "failed to bind seating plan", nil)
+	}
+	// The plan must be visible to the session's organization: its own, or a
+	// public one (a template or one verified by the operator). A private plan
+	// of another organization reads like an unknown version.
+	if !auth.HasSuperadminOrgAccess(r.Context()) {
+		sessionOrg, orgErr := qtx.GetSessionOrgContext(ctx, sessionID)
+		if orgErr != nil {
+			h.logger.Error("seating: bind session organization lookup failed", slog.String("error", orgErr.Error()))
+			return nil, bindErr(http.StatusInternalServerError,
+				"seating.bind_failed", "failed to bind seating plan", nil)
+		}
+		if parentPlan.OwnerOrgID != sessionOrg.OrgID && !publicSeatingVisibility[parentPlan.Visibility] {
+			return nil, bindErr(http.StatusBadRequest,
+				"seating.version_not_found",
+				"seating_plan_version_id does not exist",
+				map[string]any{"field": "seating_plan_version_id"})
+		}
 	}
 	// How many General Admission places the session already owns, and how
 	// many of them belong to a category. Plan 08_architecture/23 decisions

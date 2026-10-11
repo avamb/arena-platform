@@ -1448,6 +1448,10 @@ export interface paths {
          *     ordered by creation time ascending. Requires JWT authentication and the
          *     "venue.read" permission. This is the shared cross-tenant read surface
          *     used by the SuperAdmin venue picker and global event-creation flows.
+         *     `contact_phone` and `contact_email` are returned only for venues of an
+         *     organization the caller may read (own organization, an API key's
+         *     organization, or a platform superadmin); for every other venue both are
+         *     `null`. `GET /v1/venues/{id}` follows the same rule.
          */
         get: operations["getV1Venues"];
         put?: never;
