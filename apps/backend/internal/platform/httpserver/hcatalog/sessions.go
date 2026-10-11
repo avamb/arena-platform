@@ -574,6 +574,9 @@ func (h *Handler) HandleCreateSession(w http.ResponseWriter, r *http.Request) {
 			))
 			return
 		}
+		if !h.posterMediaInOrg(w, r, "session.invalid_poster_media_id", parsed, orgID) {
+			return
+		}
 		posterMediaID = &parsed
 	}
 
@@ -1147,6 +1150,9 @@ func (h *Handler) HandleUpdateSession(w http.ResponseWriter, r *http.Request) {
 				"session.invalid_poster_media_id", "poster_media_id must be a valid UUID", r,
 				map[string]any{"field": "poster_media_id"},
 			))
+			return
+		}
+		if !h.posterMediaInOrg(w, r, "session.invalid_poster_media_id", parsed, orgID) {
 			return
 		}
 		newPosterMediaID = &parsed
