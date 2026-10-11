@@ -8,6 +8,7 @@ package httpserver
 import (
 	"net/http"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hiam"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hwordpress"
 )
 
@@ -47,4 +48,16 @@ func (s *Server) handleUpdateWebhookSubscriber(w http.ResponseWriter, r *http.Re
 
 func (s *Server) handleListRecentWebhookDeliveries(w http.ResponseWriter, r *http.Request) {
 	s.wordpressHandler().HandleListRecentWebhookDeliveries(w, r)
+}
+
+// requirePlatformSuperadminMW refuses every caller without the superadmin
+// marker (set by markSuperadminOrgAccess inside applyAuth, so it must be
+// installed after applyAuth) with 403 superadmin.required.
+func requirePlatformSuperadminMW(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !hiam.RequirePlatformSuperadmin(w, r) {
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

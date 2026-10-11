@@ -4233,7 +4233,11 @@ export interface paths {
          *     returned by `POST /v1/webhooks/subscribers` at registration
          *     time.
          *
-         *     Requires JWT + the `webhook.subscriber.manage` permission.
+         *     Requires JWT + the `webhook.subscriber.manage` permission, and
+         *     the caller must be the platform superadmin: the registry is
+         *     platform-wide, so an organization owner or an API key that
+         *     holds the permission is refused with 403
+         *     `superadmin.required`.
          */
         get: operations["listWebhookSubscribers"];
         put?: never;
@@ -4253,7 +4257,11 @@ export interface paths {
          *     or `null`, the server normalises it to the empty array
          *     (wildcard — receive every event type).
          *
-         *     Requires JWT + the `webhook.subscriber.manage` permission.
+         *     Requires JWT + the `webhook.subscriber.manage` permission, and
+         *     the caller must be the platform superadmin: the registry is
+         *     platform-wide, so an organization owner or an API key that
+         *     holds the permission is refused with 403
+         *     `superadmin.required`.
          */
         post: operations["registerWebhookSubscriber"];
         delete?: never;
@@ -4275,7 +4283,11 @@ export interface paths {
          *     by `{id}`. The `signing_secret` is NOT included — it is only
          *     emitted at registration time.
          *
-         *     Requires JWT + the `webhook.subscriber.manage` permission.
+         *     Requires JWT + the `webhook.subscriber.manage` permission, and
+         *     the caller must be the platform superadmin: the registry is
+         *     platform-wide, so an organization owner or an API key that
+         *     holds the permission is refused with 403
+         *     `superadmin.required`.
          */
         get: operations["getWebhookSubscriber"];
         put?: never;
@@ -4288,7 +4300,11 @@ export interface paths {
          *     and the dispatcher stops sending events to its
          *     `callback_url`.
          *
-         *     Requires JWT + the `webhook.subscriber.manage` permission.
+         *     Requires JWT + the `webhook.subscriber.manage` permission, and
+         *     the caller must be the platform superadmin: the registry is
+         *     platform-wide, so an organization owner or an API key that
+         *     holds the permission is refused with 403
+         *     `superadmin.required`.
          */
         delete: operations["deactivateWebhookSubscriber"];
         options?: never;
@@ -4302,7 +4318,11 @@ export interface paths {
          *
          *     Backs the SuperAdmin webhooks admin UI (Feature #294 — S-3).
          *
-         *     Requires JWT + the `webhook.subscriber.manage` permission.
+         *     Requires JWT + the `webhook.subscriber.manage` permission, and
+         *     the caller must be the platform superadmin: the registry is
+         *     platform-wide, so an organization owner or an API key that
+         *     holds the permission is refused with 403
+         *     `superadmin.required`.
          */
         patch: operations["updateWebhookSubscriber"];
         trace?: never;
@@ -4331,7 +4351,11 @@ export interface paths {
          *
          *     Backs the SuperAdmin webhooks admin UI (Feature #294 — S-3).
          *
-         *     Requires JWT + the `webhook.subscriber.manage` permission.
+         *     Requires JWT + the `webhook.subscriber.manage` permission, and
+         *     the caller must be the platform superadmin: the registry is
+         *     platform-wide, so an organization owner or an API key that
+         *     holds the permission is refused with 403
+         *     `superadmin.required`.
          */
         get: operations["listRecentWebhookDeliveries"];
         put?: never;
@@ -35821,7 +35845,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /**
+             * @description Caller lacks the `webhook.subscriber.manage` permission
+             *     (`permissions.denied`) or is not the platform superadmin
+             *     (`superadmin.required`).
+             */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -35904,7 +35932,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /**
+             * @description Caller lacks the `webhook.subscriber.manage` permission
+             *     (`permissions.denied`) or is not the platform superadmin
+             *     (`superadmin.required`).
+             */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -35991,7 +36023,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /**
+             * @description Caller lacks the `webhook.subscriber.manage` permission
+             *     (`permissions.denied`) or is not the platform superadmin
+             *     (`superadmin.required`).
+             */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -36074,7 +36110,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /**
+             * @description Caller lacks the `webhook.subscriber.manage` permission
+             *     (`permissions.denied`) or is not the platform superadmin
+             *     (`superadmin.required`).
+             */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -36175,7 +36215,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /**
+             * @description Caller lacks the `webhook.subscriber.manage` permission
+             *     (`permissions.denied`) or is not the platform superadmin
+             *     (`superadmin.required`).
+             */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -36279,7 +36323,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /**
+             * @description Caller lacks the `webhook.subscriber.manage` permission
+             *     (`permissions.denied`) or is not the platform superadmin
+             *     (`superadmin.required`).
+             */
             403: {
                 headers: {
                     [name: string]: unknown;

@@ -191,13 +191,17 @@ func (s *Server) mountImpersonationRoutes(r chi.Router) {
 }
 
 // mountWebhookSubscriberRoutes mounts WordPress webhook subscriber registry
-// (feature #156).
+// (feature #156). The registry is platform-wide (a subscriber row names no
+// organization) and its POST hands out a signing secret, so every route is
+// the platform superadmin's: an org owner or an API key that holds
+// webhook.subscriber.manage is still refused with 403 superadmin.required.
 func (s *Server) mountWebhookSubscriberRoutes(r chi.Router) {
 	if !s.authEnabled() || s.webhookSubQueries == nil {
 		return
 	}
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "webhook.subscriber.manage", "webhooks")
+		pr.Use(requirePlatformSuperadminMW)
 		pr.Get("/webhooks/subscribers", s.handleListWebhookSubscribers)
 		pr.Get("/webhooks/subscribers/{id}", s.handleGetWebhookSubscriber)
 		// Recent-deliveries listing (Feature #294 — S-3 admin UI). Read-only;
@@ -209,6 +213,7 @@ func (s *Server) mountWebhookSubscriberRoutes(r chi.Router) {
 	if s.pool != nil {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "webhook.subscriber.manage", "webhooks")
+			pr.Use(requirePlatformSuperadminMW)
 			pr.Post("/webhooks/subscribers", s.handleRegisterWebhookSubscriber)
 			pr.Patch("/webhooks/subscribers/{id}", s.handleUpdateWebhookSubscriber)
 			pr.Delete("/webhooks/subscribers/{id}", s.handleDeactivateWebhookSubscriber)

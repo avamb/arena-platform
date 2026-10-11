@@ -30844,7 +30844,11 @@ paths:
         returned by `POST /v1/webhooks/subscribers` at registration
         time.
 
-        Requires JWT + the `webhook.subscriber.manage` permission.
+        Requires JWT + the `webhook.subscriber.manage` permission, and
+        the caller must be the platform superadmin: the registry is
+        platform-wide, so an organization owner or an API key that
+        holds the permission is refused with 403
+        `superadmin.required`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -30896,7 +30900,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Caller lacks the `webhook.subscriber.manage` permission.
+          description: |
+            Caller lacks the `webhook.subscriber.manage` permission
+            (`permissions.denied`) or is not the platform superadmin
+            (`superadmin.required`).
           content:
             application/json:
               schema:
@@ -30935,7 +30942,11 @@ paths:
         or `null`, the server normalises it to the empty array
         (wildcard — receive every event type).
 
-        Requires JWT + the `webhook.subscriber.manage` permission.
+        Requires JWT + the `webhook.subscriber.manage` permission, and
+        the caller must be the platform superadmin: the registry is
+        platform-wide, so an organization owner or an API key that
+        holds the permission is refused with 403
+        `superadmin.required`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -31007,7 +31018,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Caller lacks the `webhook.subscriber.manage` permission.
+          description: |
+            Caller lacks the `webhook.subscriber.manage` permission
+            (`permissions.denied`) or is not the platform superadmin
+            (`superadmin.required`).
           content:
             application/json:
               schema:
@@ -31047,7 +31061,11 @@ paths:
         by `{id}`. The `signing_secret` is NOT included — it is only
         emitted at registration time.
 
-        Requires JWT + the `webhook.subscriber.manage` permission.
+        Requires JWT + the `webhook.subscriber.manage` permission, and
+        the caller must be the platform superadmin: the registry is
+        platform-wide, so an organization owner or an API key that
+        holds the permission is refused with 403
+        `superadmin.required`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -31099,7 +31117,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Caller lacks the `webhook.subscriber.manage` permission.
+          description: |
+            Caller lacks the `webhook.subscriber.manage` permission
+            (`permissions.denied`) or is not the platform superadmin
+            (`superadmin.required`).
           content:
             application/json:
               schema:
@@ -31137,7 +31158,11 @@ paths:
 
         Backs the SuperAdmin webhooks admin UI (Feature #294 — S-3).
 
-        Requires JWT + the `webhook.subscriber.manage` permission.
+        Requires JWT + the `webhook.subscriber.manage` permission, and
+        the caller must be the platform superadmin: the registry is
+        platform-wide, so an organization owner or an API key that
+        holds the permission is refused with 403
+        `superadmin.required`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -31197,7 +31222,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Caller lacks the `webhook.subscriber.manage` permission.
+          description: |
+            Caller lacks the `webhook.subscriber.manage` permission
+            (`permissions.denied`) or is not the platform superadmin
+            (`superadmin.required`).
           content:
             application/json:
               schema:
@@ -31233,7 +31261,11 @@ paths:
         and the dispatcher stops sending events to its
         `callback_url`.
 
-        Requires JWT + the `webhook.subscriber.manage` permission.
+        Requires JWT + the `webhook.subscriber.manage` permission, and
+        the caller must be the platform superadmin: the registry is
+        platform-wide, so an organization owner or an API key that
+        holds the permission is refused with 403
+        `superadmin.required`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -31273,7 +31305,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Caller lacks the `webhook.subscriber.manage` permission.
+          description: |
+            Caller lacks the `webhook.subscriber.manage` permission
+            (`permissions.denied`) or is not the platform superadmin
+            (`superadmin.required`).
           content:
             application/json:
               schema:
@@ -31321,7 +31356,11 @@ paths:
 
         Backs the SuperAdmin webhooks admin UI (Feature #294 — S-3).
 
-        Requires JWT + the `webhook.subscriber.manage` permission.
+        Requires JWT + the `webhook.subscriber.manage` permission, and
+        the caller must be the platform superadmin: the registry is
+        platform-wide, so an organization owner or an API key that
+        holds the permission is refused with 403
+        `superadmin.required`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -31392,7 +31431,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Caller lacks the `webhook.subscriber.manage` permission.
+          description: |
+            Caller lacks the `webhook.subscriber.manage` permission
+            (`permissions.denied`) or is not the platform superadmin
+            (`superadmin.required`).
           content:
             application/json:
               schema:

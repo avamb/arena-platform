@@ -181,6 +181,18 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
     ]);
   });
 
+  it("webhook.subscriber.manage without superadmin.read hides the Webhook Subscribers entry", () => {
+    // The webhook subscriber registry is superadmin only on the backend
+    // (403 superadmin.required for an organization owner who holds the
+    // permission through org_admin), so the sidebar must not offer it.
+    const out = visibleNavEntries(
+      NAV_ENTRIES,
+      new Set(["webhook.subscriber.manage"]),
+      "global",
+    );
+    expect(ids(out)).not.toContain("webhooks");
+  });
+
   it("superadmin.read alone shows the Users entry in the SuperAdmin sidebar", () => {
     const out = visibleNavEntries(
       NAV_ENTRIES,

@@ -59,6 +59,12 @@ describe("Webhook subscribers UI helpers", () => {
     });
     expect(mapCreateServerError(denied).form).toMatch(/webhook\.subscriber\.manage/);
 
+    const notSuperadmin = new ApiError(403, {
+      code: "superadmin.required",
+      message: "this route is reserved for the platform superadmin",
+    });
+    expect(mapCreateServerError(notSuperadmin).form).toMatch(/platform superadmin/);
+
     const valErr = new ApiError(400, {
       code: "validation_error",
       message: "callback_url is required",

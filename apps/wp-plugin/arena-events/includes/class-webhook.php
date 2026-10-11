@@ -13,8 +13,10 @@
  *   The platform signs every delivery with:
  *     X-Arena-Signature: sha256=<hex(HMAC-SHA256(secret, body))>
  *   This class verifies the signature using the secret stored in
- *   arena_webhook_secret (set via the admin settings page or returned by
- *   the platform's POST /v1/webhooks/subscribers registration endpoint).
+ *   arena_webhook_secret (entered on the plugin's settings page). The secret
+ *   is generated when the Arena platform superadmin registers this site through
+ *   POST /v1/webhooks/subscribers, a superadmin-only endpoint; the operator
+ *   hands it to the site owner.
  *
  * Local state update strategy:
  *   - order_paid:         Find the arena_event post matching the event's arena_event_id

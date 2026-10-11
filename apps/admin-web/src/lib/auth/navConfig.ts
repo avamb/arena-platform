@@ -337,10 +337,10 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     id: "webhooks",
     label: "Webhook Subscribers",
     to: "/webhooks",
-    permission: { anyOf: ["webhook.subscriber.manage"] },
+    permission: { allOf: ["superadmin.read", "webhook.subscriber.manage"] },
     scopeKinds: ["global", "platform"],
     purpose:
-      "Register, edit, and pause HTTP endpoints that receive signed outbox events. Requires webhook.subscriber.manage.",
+      "Register, edit, and pause HTTP endpoints that receive signed outbox events. Platform superadmin only (superadmin.read + webhook.subscriber.manage).",
   },
   {
     id: "customer_imports",

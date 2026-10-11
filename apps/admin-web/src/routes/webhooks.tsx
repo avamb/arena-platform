@@ -12,8 +12,10 @@
  *   DELETE /v1/webhooks/subscribers/{id}
  *   GET    /v1/webhooks/subscribers/{id}/recent-deliveries
  *
- * RBAC: `webhook.subscriber.manage` (same permission the create/list
- * endpoints already enforce).
+ * RBAC: platform superadmin only. The backend requires
+ * `webhook.subscriber.manage` AND the superadmin marker on every route
+ * (403 `superadmin.required` for an organization owner who holds the
+ * permission), because the registry is platform-wide.
  *
  * UI shape (matches the master spec for this feature):
  *
@@ -977,6 +979,8 @@ export function mapCreateServerError(err: ApiError): CreateFormErrors {
       return { callbackUrl: "A subscriber with this callback URL already exists." };
     case "permissions.denied":
       return { form: "Your account is missing webhook.subscriber.manage." };
+    case "superadmin.required":
+      return { form: "Only the platform superadmin can manage webhook subscribers." };
     case "service_unavailable":
       return { form: "Webhook service is not available. Retry shortly." };
     default:

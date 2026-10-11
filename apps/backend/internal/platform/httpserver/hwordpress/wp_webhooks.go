@@ -2,10 +2,11 @@
 //
 // Feature #156 — WordPress webhook receiver: subscriber registration.
 //
-// This file implements the platform-side endpoint that allows WordPress sites
-// (or any other subscriber) to register themselves as webhook recipients.
-// The registration response includes a generated signing secret that the WP
-// plugin stores in arena_webhook_secret for HMAC-SHA256 signature verification.
+// This file implements the platform-side registry of webhook recipients
+// (WordPress sites or any other subscriber). The platform superadmin
+// registers a site; the registration response includes a generated signing
+// secret that the operator hands to the site owner, who stores it in the WP
+// plugin's arena_webhook_secret for HMAC-SHA256 signature verification.
 //
 // Routes (mounted in mount_admin.go via wordpress_shims.go):
 //
@@ -14,7 +15,10 @@
 //	GET    /v1/webhooks/subscribers/{id}     — get a specific subscriber
 //	DELETE /v1/webhooks/subscribers/{id}     — deactivate a subscriber
 //
-// All routes require JWT auth + webhook.subscriber.manage permission.
+// All routes require JWT auth + webhook.subscriber.manage permission AND the
+// platform superadmin (requirePlatformSuperadminMW in mount_admin.go): the
+// registry is platform-wide, so an org owner who holds the permission is
+// refused with 403 superadmin.required.
 //
 // Security notes:
 //   - The signing_secret is returned exactly once (at registration). It is

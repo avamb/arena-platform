@@ -5,8 +5,11 @@
  * Provides an admin settings page where administrators configure:
  *   - feed_token:           The public API feed token issued by the Arena platform
  *   - api_base_url:         The Arena API base URL (default: https://api.arena.abhteam.com)
- *   - webhook_secret:       The HMAC-SHA256 signing secret returned by the platform's
- *                           POST /v1/webhooks/subscribers registration endpoint.
+ *   - webhook_secret:       The HMAC-SHA256 signing secret the Arena platform generates
+ *                           when its superadmin registers this site as a webhook
+ *                           subscriber (POST /v1/webhooks/subscribers is a
+ *                           superadmin-only endpoint; the secret is shown once and
+ *                           handed to the site owner).
  *                           Used to verify the X-Arena-Signature header on incoming webhooks.
  *   - email_notifications:  When enabled, the webhook receiver sends customer emails
  *                           for order_paid, ticket_issued, and refund_succeeded events.
@@ -243,8 +246,8 @@ class Arena_Events_Settings {
 	public static function render_webhook_section_description(): void {
 		echo '<p>' . esc_html__(
 			'Configure the webhook secret to verify incoming events from the Arena platform. ' .
-			'Register this site as a subscriber via the platform admin or POST /v1/webhooks/subscribers ' .
-			'to receive a generated secret.',
+			'Ask the Arena platform operator to register this site as a webhook subscriber; ' .
+			'the operator gives you the generated secret, which is shown only once.',
 			'arena-events'
 		) . '</p>';
 	}
