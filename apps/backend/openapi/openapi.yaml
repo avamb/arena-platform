@@ -3383,6 +3383,79 @@ components:
               type: string
               description: Human-readable explanation.
 
+    OrderRefundQueueItem:
+      description: A refund in the organization's queue, with what is needed to place it.
+      allOf:
+        - $ref: "#/components/schemas/OrderRefundItem"
+        - type: object
+          description: Order, event and ticket the refund belongs to.
+          properties:
+            order_number:
+              type: [integer, "null"]
+              format: int64
+              description: The order's number (`orders.system_id`), null for a refund without an order.
+            event_name:
+              type: [string, "null"]
+              description: Name of the event of the order.
+            ticket_number:
+              type: [integer, "null"]
+              format: int64
+              description: Number of the ticket the refund is for, null for a refund of the whole payment.
+
+    OrderRefundQueue:
+      type: object
+      description: One page of the organization's refunds, newest first.
+      required: [refunds, total, has_more]
+      properties:
+        refunds:
+          type: array
+          description: The refunds of this page.
+          items:
+            $ref: "#/components/schemas/OrderRefundQueueItem"
+        total:
+          type: integer
+          description: How many refunds match the filter.
+        has_more:
+          type: boolean
+          description: True when another page follows.
+
+    OrderRefundHistoryEntry:
+      type: object
+      description: One step of a refund's life, read from the audit trail.
+      required: [action, at]
+      properties:
+        action:
+          type: string
+          description: Audit action, such as `v1.refund.batch_create` or `v1.refund.provider_result`.
+        at:
+          type: string
+          format: date-time
+          description: When the step happened.
+        outcome:
+          type: [string, "null"]
+          description: The provider's answer for a provider step, when the step has one.
+        state:
+          type: [string, "null"]
+          description: The refund state after the step, when the step has one.
+        failure_code:
+          type: [string, "null"]
+          description: Machine-readable reason of a refusal, when the step has one.
+
+    OrderRefundDetail:
+      type: object
+      description: A refund with its history.
+      required: [refund, history]
+      properties:
+        refund:
+          allOf:
+            - $ref: "#/components/schemas/OrderRefundQueueItem"
+          description: The refund.
+        history:
+          type: array
+          description: The steps of the refund, oldest first.
+          items:
+            $ref: "#/components/schemas/OrderRefundHistoryEntry"
+
     CreateOrderRefundsRequest:
       type: object
       description: One refund operation on an order.
@@ -37898,6 +37971,148 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Refunds are not available right now (`refund.engine_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/refunds:
+    get:
+      operationId: getV1OrganizationsOrgIdRefunds
+      summary: The organization's refund queue
+      description: |
+        Pages the refunds of the organization, newest first (PAY-06, spec 36
+        section 8). `state` keeps one state, such as `manual_review` for the
+        refunds that need an operator, `event_id` keeps the refunds of one
+        event's orders. Requires the `refund.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: state
+          in: query
+          required: false
+          description: One refund state (requested, approved, provider_pending, succeeded, failed, manual_review, rejected).
+          schema: { type: string }
+        - name: event_id
+          in: query
+          required: false
+          description: Keep only refunds of orders of this event.
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1 to 100, default 50.
+          schema: { type: integer }
+        - name: offset
+          in: query
+          required: false
+          description: How many refunds to skip.
+          schema: { type: integer }
+      responses:
+        "200":
+          description: One page of the queue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderRefundQueue"
+        "400":
+          description: "Invalid filter (refund.invalid_request or a path parameter that is not a UUID)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold the required permission (refund.read) or is not a member of the organization."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Refunds are not available (database not wired)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/refunds/{refund_id}:
+    get:
+      operationId: getV1OrganizationsOrgIdRefundsRefundId
+      summary: One refund with its history
+      description: |
+        Reads one refund of the organization with the steps of its life from
+        the audit trail. A refund of another organization is the route's own
+        404. Requires the `refund.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: refund_id
+          in: path
+          required: true
+          description: UUIDv7 of the refund
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The refund and its history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderRefundDetail"
+        "400":
+          description: "A path parameter is not a UUID."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold the required permission (refund.read) or is not a member of the organization."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Refund not found in this organization (refund.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Refunds are not available (database not wired)."
           content:
             application/json:
               schema:

@@ -148,3 +148,79 @@ func TestRefundOrgRoutes_OptionsCreateReplayAndIsolation(t *testing.T) {
 		t.Fatalf("read-only key create: %d; want 403", st)
 	}
 }
+
+func TestRefundOrgRoutes_QueueAndDetailStayInsideTheOrganization(t *testing.T) {
+	stub := newStubStripe(t)
+	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) { c.StripeAPIBaseURL = stub.baseURL() })
+	ts := httptest.NewServer(srv.Router())
+	t.Cleanup(ts.Close)
+	pf := &prom0113Fixture{ts: ts, client: ts.Client(), q: gen.New(srv.pgxPool)}
+	user, err := pf.q.InsertUser(context.Background(), "pay06b-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf.userID = user.ID
+	org := pf.org(t, "PAY06B")
+	other := pf.org(t, "PAY06BOTHER")
+	key := pf.key(t, org, "refund.read", "refund.create", "refund.approve")
+	otherKey := pf.key(t, other, "refund.read")
+	stub.refundHandler = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"id":"re_pay06b","status":"succeeded"}`)
+	}
+	stub.sessionPI = "pi_pay06b_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
+	f := newPay03Order(t, srv.pgxPool, org, "stripe")
+	base := "/v1/organizations/" + org.String()
+
+	body := fmt.Sprintf(`{"items":[{"ticket_id":%q}],"reason":"queue test"}`, f.tickets[0])
+	st, created := refundOrgPost(t, pf, base+"/orders/"+f.order.String()+"/refunds", key, "pay06b-"+uuid.NewString(), body)
+	if st != http.StatusAccepted {
+		t.Fatalf("create: %d %v", st, created)
+	}
+	refundID := created["refunds"].([]any)[0].(map[string]any)["id"].(string)
+
+	// ── the queue lists it, with the order number
+	st, out := pf.do(t, http.MethodGet, base+"/refunds", key, "")
+	if st != http.StatusOK || out["total"] != float64(1) || out["has_more"] != false {
+		t.Fatalf("queue: %d %v", st, out)
+	}
+	row := out["refunds"].([]any)[0].(map[string]any)
+	if row["id"] != refundID || row["state"] != "succeeded" || row["order_number"] == nil || row["event_name"] == nil {
+		t.Fatalf("queue row = %v", row)
+	}
+	// ── filters
+	if st, out = pf.do(t, http.MethodGet, base+"/refunds?state=manual_review", key, ""); st != http.StatusOK || out["total"] != float64(0) {
+		t.Fatalf("state filter: %d %v; want an empty queue", st, out)
+	}
+	if st, out = pf.do(t, http.MethodGet, base+"/refunds?state=succeeded&limit=1&offset=0", key, ""); st != http.StatusOK || out["total"] != float64(1) {
+		t.Fatalf("succeeded filter: %d %v", st, out)
+	}
+	if st, out = pf.do(t, http.MethodGet, base+"/refunds?state=nonsense", key, ""); st != http.StatusBadRequest || prom0113Code(out) != "refund.invalid_request" {
+		t.Fatalf("bad state: %d %v; want 400 refund.invalid_request", st, out)
+	}
+	if st, out = pf.do(t, http.MethodGet, base+"/refunds?limit=-1", key, ""); st != http.StatusBadRequest {
+		t.Fatalf("bad limit: %d %v; want 400", st, out)
+	}
+
+	// ── detail with history
+	st, out = pf.do(t, http.MethodGet, base+"/refunds/"+refundID, key, "")
+	if st != http.StatusOK || out["refund"].(map[string]any)["id"] != refundID {
+		t.Fatalf("detail: %d %v", st, out)
+	}
+	if hist, _ := out["history"].([]any); len(hist) == 0 {
+		t.Fatalf("detail history is empty: %v", out)
+	}
+
+	// ── another organization sees none of it
+	otherBase := "/v1/organizations/" + other.String()
+	if st, out = pf.do(t, http.MethodGet, otherBase+"/refunds", otherKey, ""); st != http.StatusOK || out["total"] != float64(0) {
+		t.Fatalf("foreign queue: %d %v; want empty", st, out)
+	}
+	if st, out = pf.do(t, http.MethodGet, otherBase+"/refunds/"+refundID, otherKey, ""); st != http.StatusNotFound || prom0113Code(out) != "refund.not_found" {
+		t.Fatalf("foreign detail: %d %v; want 404 refund.not_found", st, out)
+	}
+	// ...and the path organization is not a way in.
+	if st, _ = pf.do(t, http.MethodGet, base+"/refunds", otherKey, ""); st != http.StatusForbidden && st != http.StatusNotFound {
+		t.Fatalf("a key of another organization on this path: %d; want 403/404", st)
+	}
+}
