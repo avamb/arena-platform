@@ -111,6 +111,9 @@ func newSweepEnv(t *testing.T) *sweepEnv {
 	for _, r := range sweepRows() {
 		scopeSet[r.perm] = true
 	}
+	for _, r := range flatSweepRows() {
+		scopeSet[r.perm] = true
+	}
 	var scopes []string
 	for s := range scopeSet {
 		scopes = append(scopes, s)

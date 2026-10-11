@@ -51,10 +51,31 @@ func (h *Handler) checkPromoScope(
 	orgID uuid.UUID, in promoScopeInput,
 ) (promoScope, bool) {
 	for _, raw := range in.TierIDs {
-		if _, err := uuid.Parse(strings.TrimSpace(raw)); err != nil {
+		tid, err := uuid.Parse(strings.TrimSpace(raw))
+		if err != nil {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 				"promo.invalid_tier_id", "applies_to_tier_ids must hold tier UUIDs", r,
 				map[string]any{"field": "applies_to_tier_ids", "value": raw},
+			))
+			return promoScope{}, false
+		}
+		// A tier of another organization reads like an unknown one.
+		var owned bool
+		if err := h.promoQueries.DB().QueryRow(ctx, `
+			SELECT EXISTS (
+			  SELECT 1 FROM ticket_tiers t
+			  JOIN sessions s ON s.id = t.session_id
+			  JOIN events e ON e.id = s.event_id
+			  WHERE t.id = $1 AND e.org_id = $2)`, tid, orgID).Scan(&owned); err != nil {
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"promo.tier_lookup_failed", "failed to look up a tier", r,
+			))
+			return promoScope{}, false
+		}
+		if !owned {
+			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
+				"promo.invalid_tier", "tier does not belong to this organization", r,
+				map[string]any{"field": "applies_to_tier_ids", "value": tid.String()},
 			))
 			return promoScope{}, false
 		}

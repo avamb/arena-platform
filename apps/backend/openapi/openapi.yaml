@@ -23699,6 +23699,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            `poster_media_id` does not name a media object of this organization
+            (`event.invalid_poster_media_id`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: Internal server error (event.update_failed).
           content:
@@ -27310,6 +27318,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Organization, session or channel not found, or not the caller's own (`reservation.org_not_found`, `reservation.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "409":
           description: |
             Insufficient capacity available for the requested quantity
@@ -28236,6 +28250,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Organization, reservation or channel not found, or not the caller's own (`checkout.org_not_found`, `reservation.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: |
             Internal server error (`checkout.start_failed`).
@@ -28620,6 +28640,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Checkout session not found, or it belongs to another organization (`checkout.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "409":
           description: |
             State machine rejected the transition. Possible codes:
@@ -28701,6 +28727,12 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Caller lacks the `checkout.abandon` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Checkout session not found, or it belongs to another organization (`checkout.not_found`).
           content:
             application/json:
               schema:
@@ -28958,6 +28990,14 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Caller lacks the `ticket.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            No checkout session matches `{id}` inside the caller's
+            organizations (`checkout.not_found`).
           content:
             application/json:
               schema:
@@ -29652,6 +29692,14 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Caller lacks the `credential.read` permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            No ticket matches `{id}` inside the caller's organizations
+            (`ticket.not_found`).
           content:
             application/json:
               schema:
@@ -32121,8 +32169,9 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: |
-            No delivery has ever been attempted for the ticket
-            (`ticket_delivery.not_found`).
+            No ticket matches `{id}` inside the caller's organizations
+            (`ticket_delivery.ticket_not_found`), or no delivery has ever
+            been attempted for the ticket (`ticket_delivery.not_found`).
           content:
             application/json:
               schema:
@@ -32241,7 +32290,7 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: |
-            No ticket matches `{id}`
+            No ticket matches `{id}` inside the caller's organizations
             (`ticket_delivery.ticket_not_found`).
           content:
             application/json:
@@ -37561,7 +37610,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: Ticket not found.
+          description: No ticket matches `{id}` inside the callers organizations (`ticket.not_found`).
           content:
             application/json:
               schema:

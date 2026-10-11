@@ -248,6 +248,9 @@ func (h *Handler) HandleGetCredential(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	if !h.ticketOrgAllowed(w, r, ticketID, false, "ticket.not_found", "ticket not found") {
+		return
+	}
 
 	// ── Try to fetch existing credential (lazy-generate if absent) ────────────
 	cred, err := h.credentialQueries.GetCredentialByTicketID(ctx, ticketID, credType)

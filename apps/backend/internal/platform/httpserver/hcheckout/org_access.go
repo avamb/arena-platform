@@ -14,9 +14,14 @@
 package hcheckout
 
 import (
+	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
@@ -47,4 +52,96 @@ func (h *Handler) rowOrgAllowed(w http.ResponseWriter, r *http.Request, orgID uu
 		return false
 	}
 	return h.rowOrgAccess(w, r, orgID, write, notFoundCode, notFoundMessage)
+}
+
+// checkoutOrgAllowed applies the guard to a checkout session row. A refusal
+// is the route's own 404, so a foreign id reads like a missing one.
+func (h *Handler) checkoutOrgAllowed(w http.ResponseWriter, r *http.Request, id uuid.UUID, write bool) bool {
+	if h.checkoutQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "database is not available", r,
+		))
+		return false
+	}
+	cs, err := h.checkoutQueries.GetCheckoutSessionByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"checkout.not_found", "checkout session not found", r,
+			))
+			return false
+		}
+		h.logger.Error("checkout: org lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"checkout.get_failed", "failed to retrieve checkout session", r,
+		))
+		return false
+	}
+	return h.rowOrgAllowed(w, r, cs.OrgID, write, "checkout.not_found", "checkout session not found")
+}
+
+// reservationOrgAllowed applies the guard to a reservation row.
+func (h *Handler) reservationOrgAllowed(w http.ResponseWriter, r *http.Request, res gen.ReservationRow, write bool) bool {
+	return h.rowOrgAllowed(w, r, res.OrgID, write, "reservation.not_found", "reservation not found")
+}
+
+// sessionAndChannelInOrg proves the session and the sales channel named in a
+// request body both belong to orgID. A mismatch is the route's own 404.
+func (h *Handler) sessionAndChannelInOrg(w http.ResponseWriter, r *http.Request, sessionID, channelID, orgID uuid.UUID) bool {
+	if h.reservationQueries == nil || h.channelQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "database is not available", r,
+		))
+		return false
+	}
+	sc, err := h.reservationQueries.GetSessionOrgContext(r.Context(), sessionID)
+	if err == nil && sc.OrgID != orgID {
+		err = pgx.ErrNoRows
+	}
+	if err == nil {
+		_, err = h.channelQueries.GetSalesChannelByID(r.Context(), channelID, orgID)
+	}
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"reservation.not_found", "session or channel not found", r,
+			))
+			return false
+		}
+		h.logger.Error("reservation: org lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"reservation.create_failed", "failed to create reservation", r,
+		))
+		return false
+	}
+	return true
+}
+
+// reservationInOrgForCheckout proves the reservation a checkout is started
+// for is the named organization's own, on the named channel.
+func (h *Handler) reservationInOrgForCheckout(w http.ResponseWriter, r *http.Request, reservationID, orgID, channelID uuid.UUID) bool {
+	if h.reservationQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "database is not available", r,
+		))
+		return false
+	}
+	res, err := h.reservationQueries.GetReservationByID(r.Context(), reservationID)
+	if err == nil && (res.OrgID != orgID || res.ChannelID != channelID) {
+		err = pgx.ErrNoRows
+	}
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"reservation.not_found", "reservation not found", r,
+			))
+			return false
+		}
+		h.logger.Error("checkout: start reservation lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"checkout.start_failed", "failed to create checkout session", r,
+		))
+		return false
+	}
+	return true
 }

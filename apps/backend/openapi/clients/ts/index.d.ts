@@ -28919,6 +28919,18 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description `poster_media_id` does not name a media object of this organization
+             *     (`event.invalid_poster_media_id`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal server error (event.update_failed). */
             500: {
                 headers: {
@@ -32276,6 +32288,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Organization, session or channel not found, or not the caller's own (`reservation.org_not_found`, `reservation.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /**
              * @description Insufficient capacity available for the requested quantity
              *     (`reservation.over_capacity`).
@@ -33257,6 +33278,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Organization, reservation or channel not found, or not the caller's own (`checkout.org_not_found`, `reservation.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Internal server error (`checkout.start_failed`). */
             500: {
                 headers: {
@@ -33650,6 +33680,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description Checkout session not found, or it belongs to another organization (`checkout.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /**
              * @description State machine rejected the transition. Possible codes:
              *     `checkout.invalid_transition` (session not in
@@ -33744,6 +33783,15 @@ export interface operations {
             };
             /** @description Caller lacks the `checkout.abandon` permission. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Checkout session not found, or it belongs to another organization (`checkout.not_found`). */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -33954,6 +34002,18 @@ export interface operations {
             };
             /** @description Caller lacks the `ticket.read` permission. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description No checkout session matches `{id}` inside the caller's
+             *     organizations (`checkout.not_found`).
+             */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -34560,6 +34620,18 @@ export interface operations {
             };
             /** @description Caller lacks the `credential.read` permission. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description No ticket matches `{id}` inside the caller's organizations
+             *     (`ticket.not_found`).
+             */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36937,8 +37009,9 @@ export interface operations {
                 };
             };
             /**
-             * @description No delivery has ever been attempted for the ticket
-             *     (`ticket_delivery.not_found`).
+             * @description No ticket matches `{id}` inside the caller's organizations
+             *     (`ticket_delivery.ticket_not_found`), or no delivery has ever
+             *     been attempted for the ticket (`ticket_delivery.not_found`).
              */
             404: {
                 headers: {
@@ -37043,7 +37116,7 @@ export interface operations {
                 };
             };
             /**
-             * @description No ticket matches `{id}`
+             * @description No ticket matches `{id}` inside the caller's organizations
              *     (`ticket_delivery.ticket_not_found`).
              */
             404: {
@@ -42589,7 +42662,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Ticket not found. */
+            /** @description No ticket matches `{id}` inside the callers organizations (`ticket.not_found`). */
             404: {
                 headers: {
                     [name: string]: unknown;
