@@ -13,7 +13,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgread"
 )
 
 func (h *Handler) HandleGetReport(w http.ResponseWriter, r *http.Request) {
@@ -46,6 +48,10 @@ func (h *Handler) HandleGetReport(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"reconciliation.get_failed", "failed to retrieve reconciliation report", r,
 		))
+		return
+	}
+
+	if !h.reportReadable(w, r, report) {
 		return
 	}
 
@@ -101,4 +107,39 @@ func (h *Handler) HandleListExceptions(w http.ResponseWriter, r *http.Request) {
 		"exceptions": reportList,
 		"total":      len(reportList),
 	})
+}
+
+// reportReadable lets a report be read by the partner organization it is
+// about and by the organization that owns the allocated session; anyone else
+// gets the route's own 404, the same answer as for a missing report.
+func (h *Handler) reportReadable(w http.ResponseWriter, r *http.Request, report gen.ReconciliationReportRow) bool {
+	ctx := r.Context()
+	reader := orgread.New(ctx, h.queries)
+	allowed, err := reader.Can(report.PartnerOrgID)
+	if err == nil && !allowed {
+		var alloc gen.ExternalAllocationRow
+		if alloc, err = h.queries.GetExternalAllocationByID(ctx, report.AllocationID); err == nil {
+			var sc gen.SessionOrgContextRow
+			if sc, err = h.queries.GetSessionOrgContext(ctx, alloc.SessionID); err == nil {
+				allowed, err = reader.Can(sc.OrgID)
+			}
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			allowed, err = false, nil
+		}
+	}
+	if err != nil {
+		h.logger.Error("reconciliation: report access check failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"reconciliation.get_failed", "failed to retrieve reconciliation report", r,
+		))
+		return false
+	}
+	if !allowed {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"reconciliation.not_found", "reconciliation report not found", r,
+		))
+		return false
+	}
+	return true
 }

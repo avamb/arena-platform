@@ -809,9 +809,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List all active organizations
-         * @description Returns a JSON array of all active (non-soft-deleted) organizations ordered
+         * List the organizations the caller may read
+         * @description Returns a JSON array of active (non-soft-deleted) organizations ordered
          *     by creation time ascending. Requires JWT authentication and "org.read" permission.
+         *     A platform superadmin receives every organization, an organization API key
+         *     its own, and any other caller the organizations they hold a membership in.
          */
         get: operations["getV1Organizations"];
         put?: never;
