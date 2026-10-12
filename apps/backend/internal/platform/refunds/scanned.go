@@ -71,16 +71,25 @@ const ticketScannedSQL = `(t.used_at IS NOT NULL OR EXISTS (
 	           JOIN events se_ev ON se_ev.id = ss.event_id
 	           WHERE se.ticket_id = t.id AND se.result = 'admitted' AND se.org_id = se_ev.org_id))`
 
+// noScanSinceGrantSQL is true when ticket t was not scanned after its
+// exception sx was granted: the exception covers the scans before it (a show
+// stopped half-way, a scan made by mistake), and a later scan is a real entry.
+const noScanSinceGrantSQL = `NOT (t.used_at > sx.created_at
+	OR EXISTS (SELECT 1 FROM barcodes gb WHERE gb.ticket_id = t.id AND gb.scanned_at > sx.created_at)
+	OR EXISTS (SELECT 1 FROM scan_events ge WHERE ge.ticket_id = t.id AND ge.result = 'admitted' AND ge.scanned_at > sx.created_at))`
+
 // scanExemptLiveSQL is true for a ticket t with a platform superadmin's
 // exception that is still unspent and unexpired (refund_scan_exceptions,
-// one per ticket).
+// one per ticket), and no scan since it was granted.
 const scanExemptLiveSQL = `EXISTS (SELECT 1 FROM refund_scan_exceptions sx
-	WHERE sx.ticket_id = t.id AND sx.used_at IS NULL AND sx.expires_at > now())`
+	WHERE sx.ticket_id = t.id AND sx.used_at IS NULL AND sx.expires_at > now() AND ` + noScanSinceGrantSQL + `)`
 
 // scanExemptForRefundSQL also lets through the refund r that spent the
-// exception, at its approval and its claim.
+// exception, at its approval and its claim (a scan since the grant still
+// stops it before any money is sent).
 const scanExemptForRefundSQL = `EXISTS (SELECT 1 FROM refund_scan_exceptions sx
-	WHERE sx.ticket_id = t.id AND ((sx.used_at IS NULL AND sx.expires_at > now()) OR sx.used_by_refund = r.id))`
+	WHERE sx.ticket_id = t.id AND ((sx.used_at IS NULL AND sx.expires_at > now()) OR sx.used_by_refund = r.id)
+	  AND ` + noScanSinceGrantSQL + `)`
 
 // ticketBlockedSQL is a scanned ticket t without a live exception: no refund
 // may be created for it.

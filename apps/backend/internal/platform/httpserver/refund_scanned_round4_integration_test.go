@@ -151,7 +151,7 @@ func (e *scanEnv) exceptionUsedBy(t *testing.T, i int) string {
 // through (it was the refund's, not a pending promise).
 func TestRefundScanned_FlatRefundSpendsTheExceptionWhenWritten(t *testing.T) {
 	e := newScanEnv(t)
-	e.exec(t, `UPDATE tickets SET used_at = now() WHERE id = $1`, e.f.tickets[0])
+	e.exec(t, `UPDATE tickets SET used_at = now() - interval '1 hour' WHERE id = $1`, e.f.tickets[0])
 	e.grantException(t, 0)
 	body := fmt.Sprintf(`{"payment_intent_id":%q,"amount":5000,"currency":"EUR","reason":"show cancelled"}`, e.f.pay)
 	st, out := e.pf.do(t, http.MethodPost, "/v1/refunds", e.key, body)
@@ -222,5 +222,19 @@ func TestRefundScanned_CancelBodyWithTrailingDataIsRefused(t *testing.T) {
 	}
 	if got, _ := e.f.ticket(t, 0); got != "active" {
 		t.Fatalf("ticket is %q; want active", got)
+	}
+}
+
+// N7: an exception covers the scans made before it was granted (a show
+// stopped half-way, a scan made by mistake). A scan after the grant is a real
+// entry, and no refund goes through on the exception any more.
+func TestRefundScanned_ScanAfterTheGrantVoidsTheException(t *testing.T) {
+	e := newScanEnv(t)
+	e.exec(t, `UPDATE tickets SET used_at = now() - interval '1 hour' WHERE id = $1`, e.f.tickets[0])
+	e.grantException(t, 0)
+	e.scanEvent(t, e.org, 0)
+	st, out := e.createRefund(t, 0)
+	if st != http.StatusConflict || prom0113Code(out) != refunds.CodeTicketScanned {
+		t.Fatalf("refund after a scan that followed the exception: %d %v; want 409 %s", st, out, refunds.CodeTicketScanned)
 	}
 }
