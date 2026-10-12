@@ -1,6 +1,7 @@
 param(
   [Parameter(Mandatory=$true)][string]$Task,
   [Parameter(Mandatory=$true)][string]$Worktree,
+  [Parameter(Mandatory=$true)][string]$RuntimeRoot,
   [switch]$Approved,
   [string]$CredentialTarget = 'Venue_SVG_Generator/Anthropic/APIKey'
 )
@@ -12,10 +13,16 @@ $runner = Join-Path $root 'orchestration\m1-write-task-runner.mjs'
 $taskPath = Join-Path $root $Task
 if (-not (Test-Path -LiteralPath $taskPath)) { throw 'Task packet not found.' }
 if (-not (Test-Path -LiteralPath $Worktree)) { throw 'Dedicated worktree not found.' }
+$runtime = (Resolve-Path -LiteralPath $RuntimeRoot).Path
+if (-not (Test-Path -LiteralPath (Join-Path $runtime 'sdk_experiments\package.json'))) { throw 'Runtime SDK package not found.' }
+$expectedRuntime = (Resolve-Path -LiteralPath (Join-Path (Split-Path -Parent $root) 'Venue_SVG_Generator')).Path
+if ($runtime -ne $expectedRuntime) { throw 'RuntimeRoot must be the main Venue_SVG_Generator checkout.' }
+if ((Resolve-Path -LiteralPath $Worktree).Path -eq $runtime) { throw 'RuntimeRoot must be separate from the writable worktree.' }
+$env:M1_RUNTIME_ROOT = $runtime
 $node = (Get-Command node -ErrorAction Stop).Source
 & $node $runner --task $Task --worktree $Worktree --preflight --approved
 if ($LASTEXITCODE -ne 0) { throw 'M1 preflight failed; credential was not read.' }
-$helper = Join-Path $root 'sdk_experiments\windows-credential.ps1'
+$helper = Join-Path $runtime 'sdk_experiments\windows-credential.ps1'
 $secret = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $helper -Action GetForPipe -Target $CredentialTarget
 if ($LASTEXITCODE -ne 0 -or $null -eq $secret) { throw 'Credential Manager retrieval failed.' }
 if ($secret -is [Array]) { $secret = $secret -join '' }
