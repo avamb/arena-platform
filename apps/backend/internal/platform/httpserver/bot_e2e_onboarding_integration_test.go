@@ -82,6 +82,10 @@ func TestBotE2E_OnboardingApplication(t *testing.T) {
 
 	// 1. A stranger sees the way to apply, not "you need an invitation".
 	say(e2eMessageAs(tgUser, "/start"), "подайте заявку")
+	// The language button redraws the welcome in the language just chosen
+	// (it used to repeat the old one), and the choice survives the press.
+	say(e2eCallbackAs(tgUser, "onb:lang:es"), "envía tu solicitud")
+	say(e2eCallbackAs(tgUser, "onb:lang:ru"), "подайте заявку")
 	say(e2eCallbackAs(tgUser, "onb:start"), "Как вас зовут")
 	// The shared link t.me/<bot>?start=apply goes straight to the first question.
 	say(e2eMessageAs(tgUser, "/start apply"), "Как вас зовут")
@@ -93,6 +97,13 @@ func TestBotE2E_OnboardingApplication(t *testing.T) {
 	say(e2eContactAs(tgUser, tgUser, "34600111222"), "Ваш e-mail")
 	say(e2eMessageAs(tgUser, "not-an-email"), "не похоже")
 	say(e2eMessageAs(tgUser, email), "6-значный код")
+	// The application now holds the applicant's name, phone and e-mail: the
+	// dialog row must not keep them (they would sit in bot_dialogs and the
+	// backups for the rest of the dialog's life).
+	var left int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM bot_dialogs WHERE telegram_user_id = $1 AND kind = 'onboarding'`, tgUser).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("the onboarding dialog survived the application's creation (%d rows, %v)", left, err)
+	}
 
 	var appID, phone, source string
 	if err := pool.QueryRow(ctx, `SELECT id::text, applicant_phone, source FROM onboarding_applications WHERE applicant_email = $1`, email).Scan(&appID, &phone, &source); err != nil {

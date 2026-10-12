@@ -565,6 +565,23 @@ func (q *Queries) DeleteExpiredBotDialogs(ctx context.Context, before time.Time)
 	return tag.RowsAffected(), nil
 }
 
+const deleteExpiredStrangerBotDialogs = `-- name: DeleteExpiredStrangerBotDialogs :execrows
+DELETE FROM bot_dialogs d
+WHERE  d.expires_at < $1
+  AND  NOT EXISTS (SELECT 1 FROM bot_telegram_links l
+                   WHERE l.telegram_user_id = d.telegram_user_id AND l.revoked_at IS NULL)`
+
+// DeleteExpiredStrangerBotDialogs removes the expired dialogs of accounts
+// with no live Telegram link (organizer applicants) at once: they hold a
+// name and a phone and get no day of grace.
+func (q *Queries) DeleteExpiredStrangerBotDialogs(ctx context.Context, now time.Time) (int64, error) {
+	tag, err := q.db.Exec(ctx, deleteExpiredStrangerBotDialogs, now)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 // ─── team ─────────────────────────────────────────────────────────────────────
 
 // BotTeamMemberRow is one member of the organization as the bot shows it.

@@ -37,7 +37,10 @@ const (
 	// table. A person who comes back an hour later with the e-mail they were
 	// asked for should still hear "this dialog has expired" rather than have
 	// the address taken for a stray message, so only dialogs abandoned for a
-	// day are swept; Load deletes the rest when it reports them.
+	// day are swept; Load deletes the rest when it reports them. A person
+	// with no live Telegram link (an organizer applicant, whose dialog holds
+	// a name and a phone) gets no such grace: the sweep deletes theirs as
+	// soon as it expires.
 	dialogKeepExpired = 24 * time.Hour
 )
 
@@ -159,9 +162,16 @@ func (b *Bot) dialogSweepLoop(ctx context.Context) {
 }
 
 // sweepDialogs deletes the dialogs that expired more than dialogKeepExpired
-// before now.
+// before now, and every expired dialog of an account with no live link.
 func (b *Bot) sweepDialogs(ctx context.Context, now time.Time) {
 	if b.queries == nil {
+		return
+	}
+	strangers, err := b.queries.DeleteExpiredStrangerBotDialogs(ctx, now)
+	if err != nil {
+		if ctx.Err() == nil {
+			b.logger.Warn("eventbot: dialog sweep failed", slog.String("error", err.Error()))
+		}
 		return
 	}
 	n, err := b.queries.DeleteExpiredBotDialogs(ctx, now.Add(-dialogKeepExpired))
@@ -171,6 +181,7 @@ func (b *Bot) sweepDialogs(ctx context.Context, now time.Time) {
 		}
 		return
 	}
+	n += strangers
 	if n > 0 {
 		b.logger.Info("eventbot: expired dialogs swept", slog.Int64("count", n))
 	}
