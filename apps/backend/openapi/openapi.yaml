@@ -37821,7 +37821,9 @@ paths:
         answer is advice: the create call checks every rule again. An order
         paid on a seller's own site answers `route` `seller_site` with a
         `refusal`, an order arena took no money for answers `none`. Requires
-        the `refund.read` permission.
+        the `refund.read` permission. Only tickets that are lines of this
+        order are listed: a ticket that a transfer moved to another holder or
+        order is not offered here and cannot be refunded through this API.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -37868,7 +37870,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "500":
-          description: Internal server error.
+          description: "Internal server error (`refund.options_failed`)."
           content:
             application/json:
               schema:
@@ -37894,7 +37896,9 @@ paths:
         `refund.idempotency_key_reused`. Money goes first: a ticket is
         cancelled only after the provider accepted its refund. The answer is
         202 with one refund per ticket in the state it reached. Requires the
-        `refund.create` permission.
+        `refund.create` permission. There is no organization-scoped approve
+        route: a refund created without `refund.approve` stays `requested`
+        and is approved through `POST /v1/refunds/{id}/approve`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -37964,7 +37968,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "500":
-          description: Internal server error.
+          description: "Internal server error (`refund.create_failed`)."
           content:
             application/json:
               schema:

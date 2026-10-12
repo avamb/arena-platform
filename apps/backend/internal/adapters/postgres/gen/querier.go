@@ -308,6 +308,9 @@ type Querier interface {
 	InsertTicket(ctx context.Context, checkoutSessionID uuid.UUID, sessionID uuid.UUID, tierID *uuid.UUID, holderEmail *string, seatKey *string, seatSector *string, seatRow *string, seatNumber *string, ordinal int32) (TicketRow, error)
 	ListTicketsByCheckoutSession(ctx context.Context, checkoutSessionID uuid.UUID) ([]TicketRow, error)
 	GetTicketByID(ctx context.Context, id uuid.UUID) (TicketRow, error)
+	// GetTicketOrgID resolves a ticket's organization without the deleted_at
+	// filters of GetSessionOrgContext (tickets of cancelled sessions stay reachable).
+	GetTicketOrgID(ctx context.Context, ticketID uuid.UUID) (uuid.UUID, error)
 	// GetTicketPresentationByID resolves the order / event / session / venue /
 	// tier / holder / price / poster values the ticket e-mail and PDF print,
 	// at render time.
