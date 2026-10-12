@@ -56,6 +56,9 @@ type BatchInput struct {
 	// beforePlan runs inside the writing transaction, under the payment lock,
 	// before a fresh batch is planned; an error rolls everything back.
 	beforePlan func(ctx context.Context, tx pgx.Tx) error
+	// afterInsert runs inside the same transaction once a fresh batch is
+	// written; an error rolls everything back.
+	afterInsert func(ctx context.Context, tx pgx.Tx, created BatchResult) error
 }
 
 // BatchResult is the outcome of CreateBatch.
@@ -173,6 +176,11 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 			return err
 		}
 		res = created
+		if in.afterInsert != nil {
+			if err := in.afterInsert(ctx, tx, created); err != nil {
+				return err
+			}
+		}
 		ids := make([]string, 0, len(created.Refunds))
 		tickets := make([]string, 0, len(created.Refunds))
 		var total int64
