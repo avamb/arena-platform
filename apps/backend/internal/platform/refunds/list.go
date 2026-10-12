@@ -52,7 +52,38 @@ type ListItem struct {
 	// CreatorLabelIsEmail: the label is the member's e-mail (they have no
 	// name). The API hides it from callers that act with an API key.
 	CreatorLabelIsEmail bool
+	// Replaced: a retry of this refund was already started (its
+	// "retry-<id>" operation exists), so retrying it again is not offered.
+	Replaced bool
+	// RetryBlocked: a retry would be refused by the same ticket and budget
+	// checks a new refund goes through (the ticket is no longer active, is on
+	// review hold, another live refund cancels it, or what is left of the
+	// ticket or the payment is less than this refund).
+	RetryBlocked bool
 }
+
+// replacedColumn tells whether a retry operation of the refund exists.
+const replacedColumn = `EXISTS (SELECT 1 FROM refund_batches rb WHERE rb.org_id = r.org_id AND rb.idempotency_key = 'retry-' || r.id::text)`
+
+// liveAgainstBudget is countsAgainstBudgetSQL for a refunds row aliased o,
+// plus the live-state filter.
+const liveAgainstBudget = `o.state NOT IN ('failed', 'rejected')
+	AND NOT (o.state = 'manual_review' AND o.provider_attempts = 0 AND o.provider_refund_id IS NULL AND o.provider IS NOT NULL)`
+
+// retryBlockedColumn mirrors planBatch for the one-ticket operation a retry
+// of r starts (same ticket, same amount, r itself left out: a retry closes
+// a parked r first and a failed r counts for nothing).
+const retryBlockedColumn = `NOT COALESCE((
+	SELECT tk.status = 'active' AND NOT tk.review_hold AND oi.total IS NOT NULL
+	   AND NOT EXISTS (SELECT 1 FROM refunds o WHERE o.ticket_id = tk.id AND o.id <> r.id AND o.cancel_ticket
+	                   AND o.state NOT IN ('failed', 'rejected'))
+	   AND oi.total - COALESCE((SELECT SUM(o.amount) FROM refunds o WHERE o.ticket_id = tk.id AND o.id <> r.id
+	                            AND ` + liveAgainstBudget + `), 0) >= r.amount
+	   AND (SELECT pi.amount FROM payment_intents pi WHERE pi.id = r.payment_intent_id)
+	       - COALESCE((SELECT SUM(o.amount) FROM refunds o WHERE o.payment_intent_id = r.payment_intent_id AND o.id <> r.id
+	                   AND ` + liveAgainstBudget + `), 0) >= r.amount
+	FROM tickets tk JOIN order_items oi ON oi.ticket_id = tk.id AND oi.order_id = r.order_id
+	WHERE tk.id = r.ticket_id), false)`
 
 // creatorJoins and creatorColumns resolve who asked for a refund from
 // requested_by: an API key of THIS organization (its name), or a member of it
@@ -104,7 +135,7 @@ func (e *Engine) List(ctx context.Context, orgID uuid.UUID, f ListFilter) (ListP
 		if err := tx.QueryRow(ctx, `SELECT count(*)`+from+where, orgID, f.State, f.EventID).Scan(&page.Total); err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, `SELECT o.system_id, ev.name, t.system_ticket_id, `+creatorColumns+`, `+prefixedColumns("r")+from+creatorJoins+where+`
+		rows, err := tx.Query(ctx, `SELECT o.system_id, ev.name, t.system_ticket_id, `+creatorColumns+`, `+replacedColumn+`, `+retryBlockedColumn+`, `+prefixedColumns("r")+from+creatorJoins+where+`
 			ORDER BY r.created_at DESC, r.id DESC LIMIT $4 OFFSET $5`,
 			orgID, f.State, f.EventID, f.Limit, f.Offset)
 		if err != nil {
@@ -113,7 +144,7 @@ func (e *Engine) List(ctx context.Context, orgID uuid.UUID, f ListFilter) (ListP
 		defer rows.Close()
 		for rows.Next() {
 			var it ListItem
-			r, err := scanRefundWith(rows, &it.OrderSystemID, &it.EventName, &it.TicketNumber, &it.CreatorKind, &it.CreatorLabel, &it.CreatorLabelIsEmail)
+			r, err := scanRefundWith(rows, &it.OrderSystemID, &it.EventName, &it.TicketNumber, &it.CreatorKind, &it.CreatorLabel, &it.CreatorLabelIsEmail, &it.Replaced, &it.RetryBlocked)
 			if err != nil {
 				return err
 			}
@@ -165,13 +196,13 @@ const historyLimit = 100
 func (e *Engine) Get(ctx context.Context, orgID, refundID uuid.UUID) (Detail, error) {
 	var d Detail
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
-		row := tx.QueryRow(ctx, `SELECT o.system_id, ev.name, t.system_ticket_id, `+creatorColumns+`, `+prefixedColumns("r")+`
+		row := tx.QueryRow(ctx, `SELECT o.system_id, ev.name, t.system_ticket_id, `+creatorColumns+`, `+replacedColumn+`, `+retryBlockedColumn+`, `+prefixedColumns("r")+`
 			FROM refunds r
 			LEFT JOIN orders o ON o.id = r.order_id AND o.org_id = r.org_id
 			LEFT JOIN events ev ON ev.id = o.event_id
 			LEFT JOIN tickets t ON t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)`+creatorJoins+`
 			WHERE r.id = $1 AND r.org_id = $2`, refundID, orgID)
-		r, err := scanRefundWith(row, &d.OrderSystemID, &d.EventName, &d.TicketNumber, &d.CreatorKind, &d.CreatorLabel, &d.CreatorLabelIsEmail)
+		r, err := scanRefundWith(row, &d.OrderSystemID, &d.EventName, &d.TicketNumber, &d.CreatorKind, &d.CreatorLabel, &d.CreatorLabelIsEmail, &d.Replaced, &d.RetryBlocked)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return refusal(http.StatusNotFound, CodeRefundNotFound, "refund not found", nil)
 		}

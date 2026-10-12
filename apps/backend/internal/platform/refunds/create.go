@@ -48,6 +48,17 @@ type BatchInput struct {
 	// Approved: the caller holds refund.approve, so the rows skip
 	// 'requested' and are driven at once (spec §7 step 2).
 	Approved bool
+
+	// paymentID, when set, is the payment the refund must go through (a
+	// retry goes through the payment of the refund it replaces, not the
+	// order's newest one).
+	paymentID *uuid.UUID
+	// beforePlan runs inside the writing transaction, under the payment lock,
+	// before a fresh batch is planned; an error rolls everything back.
+	beforePlan func(ctx context.Context, tx pgx.Tx) error
+	// afterInsert runs inside the same transaction once a fresh batch is
+	// written; an error rolls everything back.
+	afterInsert func(ctx context.Context, tx pgx.Tx, created BatchResult) error
 }
 
 // BatchResult is the outcome of CreateBatch.
@@ -114,6 +125,14 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 	if err := e.inTx(ctx, func(tx pgx.Tx) error {
 		var err error
 		ord, pay, err = loadOrderPayment(ctx, tx, in.OrgID, in.OrderID)
+		if err == nil && in.paymentID != nil && *in.paymentID != pay.ID {
+			pay, err = scanPayment(tx.QueryRow(ctx, `SELECT `+paymentColumns+` FROM payment_intents
+				WHERE id = $1 AND org_id = $2 AND checkout_session_id = $3 AND state = 'succeeded'`,
+				*in.paymentID, in.OrgID, ord.CheckoutSessionID))
+			if errors.Is(err, pgx.ErrNoRows) {
+				err = refusal(http.StatusConflict, CodeNothingToRefund, "the refund's payment is no longer refundable", nil)
+			}
+		}
 		return err
 	}); err != nil {
 		return BatchResult{}, err
@@ -143,6 +162,11 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 			res = replay.BatchResult
 			return nil
 		}
+		if in.beforePlan != nil {
+			if err := in.beforePlan(ctx, tx); err != nil {
+				return err
+			}
+		}
 		plan, perr := planBatch(ctx, tx, in, ord, pay, desc.Capabilities.PartialRefund)
 		if perr != nil {
 			return perr
@@ -152,6 +176,11 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 			return err
 		}
 		res = created
+		if in.afterInsert != nil {
+			if err := in.afterInsert(ctx, tx, created); err != nil {
+				return err
+			}
+		}
 		ids := make([]string, 0, len(created.Refunds))
 		tickets := make([]string, 0, len(created.Refunds))
 		var total int64
@@ -327,6 +356,7 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 		paid       *int64
 		refunded   int64
 		liveCancel bool
+		onHold     bool
 	}
 	info := make(map[uuid.UUID]*ticketInfo, len(ids))
 	rows, err := tx.Query(ctx, `
@@ -335,7 +365,8 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 		                  WHERE r.ticket_id = t.id AND r.state NOT IN ('failed', 'rejected')
 		                  AND `+countsAgainstBudgetSQL+`), 0)::bigint,
 		       EXISTS (SELECT 1 FROM refunds r
-		                WHERE r.ticket_id = t.id AND r.cancel_ticket AND r.state NOT IN ('failed', 'rejected'))
+		                WHERE r.ticket_id = t.id AND r.cancel_ticket AND r.state NOT IN ('failed', 'rejected')),
+		       t.review_hold
 		FROM   tickets t
 		LEFT JOIN order_items oi ON oi.ticket_id = t.id AND oi.order_id = $2
 		WHERE  t.id = ANY($1) AND t.checkout_session_id = $3`, ids, ord.ID, ord.CheckoutSessionID)
@@ -345,7 +376,7 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 	for rows.Next() {
 		var id uuid.UUID
 		ti := &ticketInfo{}
-		if err := rows.Scan(&id, &ti.status, &ti.paid, &ti.refunded, &ti.liveCancel); err != nil {
+		if err := rows.Scan(&id, &ti.status, &ti.paid, &ti.refunded, &ti.liveCancel, &ti.onHold); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -371,6 +402,11 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 			return nil, notRefundable(it.TicketID, "not_active")
 		case ti.paid == nil:
 			return nil, notRefundable(it.TicketID, "no_price")
+		case ti.onHold:
+			// A refund made outside arena left this order's tickets under
+			// review: how much of that money belongs to this ticket is a
+			// person's call, so no refund is sent for it until they decide.
+			return nil, notRefundable(it.TicketID, "review_hold")
 		case ti.liveCancel:
 			return nil, refusal(http.StatusConflict, CodeInProgress, "a refund of this ticket is already in progress",
 				map[string]any{"ticket_id": it.TicketID.String()})

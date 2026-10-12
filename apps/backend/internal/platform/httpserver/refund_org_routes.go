@@ -39,6 +39,12 @@ func (s *Server) mountRefundOrgRoutes(r chi.Router) {
 		s.applyAuth(pr, "refund.create", "refunds")
 		pr.Post("/organizations/{org_id}/orders/{order_id}/refunds", s.handleCreateOrderRefunds)
 	})
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "refund.approve", "refunds")
+		pr.Post("/organizations/{org_id}/refunds/{refund_id}/retry", s.handleRetryOrgRefund)
+		pr.Post("/organizations/{org_id}/refunds/{refund_id}/resolve", s.handleResolveOrgRefund)
+		pr.Post("/organizations/{org_id}/tickets/{ticket_id}/review-hold/clear", s.handleClearTicketReviewHold)
+	})
 }
 
 type refundItemJSON struct {
@@ -103,16 +109,21 @@ func (s *Server) handleRefundOptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type ticketJSON struct {
-		TicketID   string `json:"ticket_id"`
-		Status     string `json:"status"`
-		Paid       *int64 `json:"paid"`
-		Refunded   int64  `json:"refunded"`
-		Refundable int64  `json:"refundable"`
-		InProgress bool   `json:"in_progress"`
+		TicketID   string  `json:"ticket_id"`
+		Status     string  `json:"status"`
+		Paid       *int64  `json:"paid"`
+		Refunded   int64   `json:"refunded"`
+		Refundable int64   `json:"refundable"`
+		InProgress bool    `json:"in_progress"`
+		Reason     *string `json:"not_refundable_reason"`
 	}
 	tickets := make([]ticketJSON, 0, len(opts.Tickets))
 	for _, t := range opts.Tickets {
-		tickets = append(tickets, ticketJSON{t.TicketID.String(), t.Status, t.Paid, t.Refunded, t.Refundable, t.InProgress})
+		var reason *string
+		if t.NotRefundableReason != "" {
+			reason = &t.NotRefundableReason
+		}
+		tickets = append(tickets, ticketJSON{t.TicketID.String(), t.Status, t.Paid, t.Refunded, t.Refundable, t.InProgress, reason})
 	}
 	active := make([]refundItemJSON, 0, len(opts.Active))
 	for _, a := range opts.Active {
@@ -213,14 +224,24 @@ type refundCreatorJSON struct {
 
 type refundQueueItemJSON struct {
 	refundItemJSON
+	OrderID      *string            `json:"order_id"`
 	OrderNumber  *int64             `json:"order_number"`
 	EventName    *string            `json:"event_name"`
 	TicketNumber *int64             `json:"ticket_number"`
 	Creator      *refundCreatorJSON `json:"creator"`
+	// Retryable: the retry route would accept this refund (it provably moved
+	// no money and has not been retried yet). The route still decides.
+	Retryable bool `json:"retryable"`
 }
 
 func queueItem(r *http.Request, it refunds.ListItem) refundQueueItemJSON {
-	out := refundQueueItemJSON{refundItem(it.Refund), it.OrderSystemID, it.EventName, it.TicketNumber, nil}
+	var orderID *string
+	if it.OrderID != nil {
+		v := it.OrderID.String()
+		orderID = &v
+	}
+	out := refundQueueItemJSON{refundItem(it.Refund), orderID, it.OrderSystemID, it.EventName, it.TicketNumber, nil,
+		refunds.Retryable(it.Refund) && !it.Replaced && !it.RetryBlocked}
 	if it.CreatorKind != nil {
 		label := it.CreatorLabel
 		if it.CreatorLabelIsEmail && callerIsAPIKey(r) {

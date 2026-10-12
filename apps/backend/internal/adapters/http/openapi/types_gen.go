@@ -8869,6 +8869,9 @@ type OrderRefundQueueItem struct {
 	// Id UUID of the refund.
 	Id openapi_types.UUID `json:"id"`
 
+	// OrderId UUID of the order, null for a refund without an order.
+	OrderId *openapi_types.UUID `json:"order_id"`
+
 	// OrderNumber The order's number (`orders.system_id`), null for a refund without an order.
 	OrderNumber *int64 `json:"order_number"`
 
@@ -8877,6 +8880,9 @@ type OrderRefundQueueItem struct {
 
 	// ProviderStatus The provider's own status of the refund, when it has answered.
 	ProviderStatus *string `json:"provider_status"`
+
+	// Retryable True when the retry route would accept this refund - it provably moved no money and has not been retried yet. The route still decides.
+	Retryable *bool `json:"retryable,omitempty"`
 
 	// State One of requested, approved, provider_pending, succeeded, failed, manual_review.
 	State string `json:"state"`
@@ -8892,6 +8898,9 @@ type OrderRefundQueueItem struct {
 type OrderRefundTicketOption struct {
 	// InProgress True when a refund that cancels this ticket is already under way.
 	InProgress bool `json:"in_progress"`
+
+	// NotRefundableReason Why `refundable` is 0 although the ticket is active and has money left, such as `review_hold` (a refund made outside arena put the order's tickets under review). Null otherwise.
+	NotRefundableReason *string `json:"not_refundable_reason"`
 
 	// Paid What the buyer paid for this ticket in minor units, null when the order item carries no price.
 	Paid *int64 `json:"paid"`
@@ -10846,6 +10855,15 @@ type ReservationEnvelope struct {
 	// `sales_channels.reservation_ttl_override ->
 	// organizations.reservation_ttl_seconds -> 1200 s system default`.
 	Reservation Reservation `json:"reservation"`
+}
+
+// ResolveOrderRefundRequest What a platform operator found at the provider for a refund in manual review.
+type ResolveOrderRefundRequest struct {
+	// Note What was checked, up to 1000 characters. Kept in the audit trail.
+	Note string `json:"note"`
+
+	// Outcome refunded when the money went back at the provider; refunded_beyond_payment when it went back although the payment was already covered; not_refunded when the provider shows it did not go through (the ticket can then be refunded again with a new refund).
+	Outcome string `json:"outcome"`
 }
 
 // RevokeMembershipRequest Request body for
@@ -14493,6 +14511,15 @@ type GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsvParams struct {
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
+// PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear.
+type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody struct {
+	// ConfirmUnattributed The unattributed amount (minor units) the operator was shown. Required when that amount is above zero.
+	ConfirmUnattributed *int64 `json:"confirm_unattributed,omitempty"`
+
+	// Note What was decided, up to 1000 characters. Kept in the audit trail.
+	Note string `json:"note"`
+}
+
 // CreatePaymentIntentParams defines parameters for CreatePaymentIntent.
 type CreatePaymentIntentParams struct {
 	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
@@ -14974,6 +15001,12 @@ type CreatePromoterJSONRequestBody = CreatePromoterRequest
 
 // UpdatePromoterJSONRequestBody defines body for UpdatePromoter for application/json ContentType.
 type UpdatePromoterJSONRequestBody = UpdatePromoterRequest
+
+// PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody defines body for PostV1OrganizationsOrgIdRefundsRefundIdResolve for application/json ContentType.
+type PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody = ResolveOrderRefundRequest
+
+// PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear for application/json ContentType.
+type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody
 
 // PostV1OrganizationsOrgIdVenuesJSONRequestBody defines body for PostV1OrganizationsOrgIdVenues for application/json ContentType.
 type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest
