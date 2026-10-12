@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 )
 
 func TestPermOrg_ARoleInAnotherOrganizationGivesNothingHere(t *testing.T) {
@@ -38,5 +40,18 @@ func TestPermOrg_ARoleInAnotherOrganizationGivesNothingHere(t *testing.T) {
 	// a real manager of A is not stopped by the permission check
 	if st, out := e.do(t, http.MethodPost, "/v1/refunds", mgrTok, "", body); st == http.StatusForbidden || st == http.StatusNotFound {
 		t.Errorf("a manager of the payment's own organization was refused: %d %s", st, out)
+	}
+}
+
+// The production wiring decides per organization; a checker that cannot read
+// roles inside one organization would refuse to mount (PERM-ORG).
+func TestPermOrg_ProductionCheckerDecidesPerOrganization(t *testing.T) {
+	srv, _ := productionIntegrationServer(t)
+	dc, ok := srv.perms.(*permissions.DBChecker)
+	if !ok {
+		t.Fatalf("production permission checker is %T, want *permissions.DBChecker", srv.perms)
+	}
+	if !dc.DecidesPerOrganization() {
+		t.Fatal("production permission checker cannot resolve roles per organization")
 	}
 }

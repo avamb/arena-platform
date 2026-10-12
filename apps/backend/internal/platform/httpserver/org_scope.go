@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 )
 
@@ -58,3 +59,11 @@ func pathOrganization(r *http.Request) (uuid.UUID, bool) {
 	id, err := uuid.Parse(raw)
 	return id, err == nil
 }
+
+// The per-organization decision rests on these two facts; if either stops
+// holding the build fails instead of the checker quietly deciding from the
+// union of all memberships (PERM-ORG).
+var (
+	_ permissions.OrgMembershipQuerier = (*gen.Queries)(nil)
+	_ permissions.OrgChecker           = (*permissions.DBChecker)(nil)
+)

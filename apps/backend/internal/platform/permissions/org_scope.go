@@ -57,12 +57,25 @@ type OrgChecker interface {
 	CheckInOrg(ctx context.Context, action string, orgID uuid.UUID) error
 }
 
+// DecidesPerOrganization reports whether the checker can resolve a caller's
+// roles inside one organization. The production wiring must answer true; the
+// server refuses to start a router whose checker does not.
+func (c *DBChecker) DecidesPerOrganization() bool {
+	_, ok := c.memberships.(OrgMembershipQuerier)
+	return ok
+}
+
 // CheckInOrg is Check with the organization named explicitly.
 func (c *DBChecker) CheckInOrg(ctx context.Context, action string, orgID uuid.UUID) error {
 	return c.Check(WithOrgScope(ctx, orgID), action, "")
 }
 
 type orgCheckerKey struct{}
+
+// ErrNoOrgMembershipQuerier is returned when a request names an organization
+// but the checker cannot resolve roles inside one. It never falls back to the
+// union of all memberships: the caller is then decided from its JWT roles only.
+var ErrNoOrgMembershipQuerier = errors.New("permissions: membership querier cannot resolve roles inside an organization")
 
 // WithOrgChecker returns ctx carrying the checker the route's gate used, so a
 // handler that learns the row's organization later can ask the same question
@@ -116,9 +129,11 @@ func AllowedInOrg(ctx context.Context, orgID uuid.UUID) (bool, error) {
 // behaviour, kept for routes that name no organization).
 func (c *DBChecker) membershipRoles(ctx context.Context, userID uuid.UUID) ([]string, error) {
 	if orgID, ok := OrgScopeFromContext(ctx); ok {
-		if oq, ok := c.memberships.(OrgMembershipQuerier); ok {
-			return oq.GetActiveRolesForUserInOrg(ctx, userID, orgID)
+		oq, ok := c.memberships.(OrgMembershipQuerier)
+		if !ok {
+			return nil, ErrNoOrgMembershipQuerier
 		}
+		return oq.GetActiveRolesForUserInOrg(ctx, userID, orgID)
 	}
 	if c.memberships == nil {
 		return nil, fmt.Errorf("permissions: no membership querier")

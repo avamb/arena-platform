@@ -2,6 +2,7 @@ package permissions
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -147,6 +148,10 @@ func (c *DBChecker) Check(ctx context.Context, action, resource string) error {
 		uid, err := uuid.Parse(actor.ID)
 		if err == nil {
 			memberRoles, err := c.membershipRoles(ctx, uid)
+			if errors.Is(err, ErrNoOrgMembershipQuerier) {
+				// A wiring defect, never a reason to decide from the union.
+				return err
+			}
 			if err == nil {
 				roles = append(roles, memberRoles...)
 			}

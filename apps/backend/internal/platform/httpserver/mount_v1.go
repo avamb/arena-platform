@@ -101,6 +101,12 @@ func (s *Server) applyAuthAcrossOrgs(pr chi.Router, perm, scope string) {
 }
 
 func (s *Server) applyAuthScoped(pr chi.Router, perm, scope string, orgScope bool) {
+	if dc, ok := s.perms.(*permissions.DBChecker); ok && !dc.DecidesPerOrganization() {
+		// A database checker that cannot read roles inside one organization
+		// would decide every org-scoped route wrongly: refuse to mount.
+		// allow:panic: boot-time wiring invariant, runs while routes mount.
+		panic("httpserver: permission checker cannot resolve roles per organization")
+	}
 	pr.Use(s.authMiddleware())
 	pr.Use(s.orgScopedFor(perm, orgScope))
 	pr.Use(permissions.RequirePermission(s.perms, perm, scope))
