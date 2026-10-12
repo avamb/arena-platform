@@ -551,10 +551,20 @@ func (b *Bot) startSendRefund(ctx context.Context, chatID int64, msgID int, from
 	// anything, and the person knows it is under way.
 	b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.sending", nil), nil)
 	tg := from.ID
-	b.goBackground(func() {
+	b.goBackground("refund send", func() {
 		wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), refundSendWindow)
 		defer cancel()
 		b.sendRefund(wctx, chatID, msgID, tg, id, st)
+	}, func() {
+		// Whether the call went out is unknown: the dialog goes back to the
+		// final screen with the same key, which replays rather than repeats.
+		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		if b.ownsSending(cctx, tg, st.Key) {
+			st.SendingAt = time.Time{}
+			b.saveRefund(cctx, tg, st, refStepFinal)
+		}
+		b.reply(cctx, chatID, &msgID, b.texts.T(id.Locale(), "bot.ref.err_timeout", nil), b.resendResultKeyboard(id.Locale(), st.OrderID))
 	})
 }
 

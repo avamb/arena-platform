@@ -1,0 +1,27 @@
+package eventbot
+
+import (
+	"io"
+	"log/slog"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+// A panic in background work (a refund send, a queue retry) must not take the
+// bot down for everyone, and the work's own clean-up still runs.
+func TestGoBackground_RecoversAPanicAndRunsTheCleanUp(t *testing.T) {
+	b := &Bot{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	var cleaned atomic.Bool
+	b.goBackground("test", func() { panic("boom") }, func() { cleaned.Store(true) })
+	done := make(chan struct{})
+	go func() { b.bg.wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("background work never finished")
+	}
+	if !cleaned.Load() {
+		t.Fatal("the clean-up of the panicking work did not run")
+	}
+}
