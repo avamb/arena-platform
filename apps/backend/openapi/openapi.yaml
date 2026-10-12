@@ -5823,8 +5823,9 @@ components:
       description: |
         Public-safe organization branding slice returned by
         GET /v1/public/pages/{org_slug}/{event_slug}. Only columns that are
-        safe to expose to an anonymous visitor are included — never legal,
-        KYB, or contact fields.
+        safe to expose to an anonymous visitor are included — never KYB or
+        contact fields. The seller's legal identity is the separate,
+        per-channel `seller` block of the page response.
       properties:
         slug:
           type: string
@@ -5940,6 +5941,100 @@ components:
             published through different channels.
           example: "ft_9f8c1e2a3b4d5e6f7a8b9c0d1e2f3a4b"
 
+    HostedPageSellerAddress:
+      type: object
+      description: |
+        Registered address of the seller (the `legal_address_*` columns of the
+        organization). Empty parts are omitted.
+      properties:
+        line1:
+          type: string
+          description: First address line.
+          example: "Calle Mayor 1"
+        line2:
+          type: string
+          description: Second address line.
+          example: "Planta 2"
+        city:
+          type: string
+          description: City.
+          example: "Madrid"
+        postal_code:
+          type: string
+          description: Postal code.
+          example: "28013"
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 country code of the address (the organization country when the legal address names none).
+          example: "ES"
+
+    HostedPageSellerContact:
+      type: object
+      description: |
+        Contact the operator chose to publish for the channel
+        (`settings.hosted_page.public_contact`). It is the ONLY source of a
+        published contact; the organization's own contact e-mail and phone
+        are never used. Unset keys are omitted.
+      properties:
+        email:
+          type: string
+          description: Public contact e-mail.
+          example: "tickets@example.com"
+        phone:
+          type: string
+          description: Public contact phone number.
+          example: "+34 600 000 000"
+
+    HostedPageSeller:
+      type: object
+      required: [legal_name]
+      description: |
+        Legal identity of the seller of record, i.e. the organization that owns
+        the page. Present only when the channel the page is sold through has
+        `settings.hosted_page.show_seller = true` (default off). Empty values
+        are omitted.
+      properties:
+        legal_name:
+          type: string
+          description: Registered legal name; the organization name when none is stored.
+          example: "Teatro Ejemplo S.L."
+        tax_id:
+          type: string
+          description: Tax or VAT identifier.
+          example: "ESB12345678"
+        tax_scheme:
+          type: string
+          description: Scheme of `tax_id` (eu_vat, gb_vat, il_vat, us_ein or other).
+          example: "eu_vat"
+        registration_number:
+          type: string
+          description: Company registration number.
+          example: "B12345678"
+        address:
+          description: Registered address; omitted when no address part is stored.
+          allOf:
+            - $ref: "#/components/schemas/HostedPageSellerAddress"
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 country of the seller (legal address country, else the organization country).
+          example: "ES"
+        public_contact:
+          description: The channel's published contact; omitted when the channel sets none.
+          allOf:
+            - $ref: "#/components/schemas/HostedPageSellerContact"
+
+    HostedPagePromoter:
+      type: object
+      required: [name]
+      description: |
+        The promoter an event is shown under (a partner or brand named as the
+        organizer of the show). Present only together with `seller`.
+      properties:
+        name:
+          type: string
+          description: Promoter display name.
+          example: "Cultura Viva"
+
     HostedPageResponse:
       type: object
       required: [org, event, feed_token, default_locale]
@@ -5967,6 +6062,18 @@ components:
           type: string
           description: Organization default locale, used when no `?lang=` is present.
           example: "en"
+        seller:
+          description: |
+            Legal identity of the seller. Omitted unless the channel has
+            `settings.hosted_page.show_seller = true`.
+          allOf:
+            - $ref: "#/components/schemas/HostedPageSeller"
+        promoter:
+          description: |
+            The promoter the event is linked to. Omitted unless `seller` is
+            present and the event has a promoter.
+          allOf:
+            - $ref: "#/components/schemas/HostedPagePromoter"
 
     HostedPromoterPageResponse:
       type: object
@@ -6003,6 +6110,18 @@ components:
             (still a 200, not a 404).
           items:
             $ref: "#/components/schemas/HostedPageEvent"
+        seller:
+          description: |
+            Legal identity of the seller. Omitted unless the channel has
+            `settings.hosted_page.show_seller = true`.
+          allOf:
+            - $ref: "#/components/schemas/HostedPageSeller"
+        promoter:
+          description: |
+            The promoter whose own page this is. Omitted unless `seller` is
+            present and the slug names a promoter rather than the organization.
+          allOf:
+            - $ref: "#/components/schemas/HostedPagePromoter"
 
     CreateEventRequest:
       type: object
@@ -32760,6 +32879,14 @@ paths:
             top of the ticket prices at checkout; the widget shows it as
             a cart line so the buyer sees the total before the payment
             page does.
+          * `show_withdrawal_notice` — boolean. True when the seller
+            organization is in the EU/EEA (the country of its legal
+            address, else the organization country: the 27 EU states
+            plus IS, LI and NO). The widget then tells the buyer before
+            payment that tickets for an event on a specific date are not
+            covered by the right of withdrawal. False for every other
+            country (Israel included, which has its own cancellation
+            regime) and when the country is unknown.
           * `poster_media_id` — resolved cover: session's own value when
             set, otherwise the event fallback. Same on `poster_url`.
           * `media_gallery: SessionMediaItem[]` — ordered per-session

@@ -210,7 +210,7 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	say(strings.Repeat("Ы", 201), "до 200 знаков") // an over-long name is refused, with a plain hint
 	say(eventName, "Возраст")
 	// "Cancel" asks first: one tap must not wipe the draft.
-	press("wz:cancel", "Выйти из создания ивента")
+	press("wz:cancel", "Выйти из создания мероприятия")
 	press("wz:cancel:no", "Возраст")
 	press("wz:age:16+", "От чьего имени")
 	press("wz:prom:org", "афишу")
@@ -250,7 +250,7 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	press("wz:yes", "С какой даты")
 	sayDate("01.12.2099", "2099-12-01", "Новая цена с 01.12.2099") // 1 Dec or 12 Jan: both offered
 	say("30", "Добавить ещё одно")
-	press("wz:done", "Описание ивента")
+	press("wz:done", "Описание мероприятия")
 
 	// Step 4 — extra; the organization has no sales channel, so none is asked.
 	press("wz:skip", "Валюта цен")
@@ -360,13 +360,13 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	// Every part is one short screen and the answer returns to the card; the
 	// poster of the event is never asked about, it stays as it is.
 	press("wz:e:name", "Сейчас")
-	say(renamed, "Правка ивента")
+	say(renamed, "Правка мероприятия")
 	press("wz:e:age", "Сейчас")
-	press("wz:age:18+", "Правка ивента")
+	press("wz:age:18+", "Правка мероприятия")
 	press("wz:e:tickets", "Как назвать билет")
 	press("wz:default", "Цена билета")
 	say("27,50", "Цена меняется")
-	press("wz:no", "Правка ивента")
+	press("wz:no", "Правка мероприятия")
 	// The bot compares updated_at as the API prints it - whole seconds - so
 	// a change inside the same second as the load is invisible. On a fast
 	// machine the whole edit above fits in one second, which made a plain
@@ -443,14 +443,14 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	// "delete" removes it.
 	press("wz:new", "Как называется")
 	say("Черновик "+eventName, "Возраст")
-	press("wz:cancel", "Выйти из создания ивента")
+	press("wz:cancel", "Выйти из создания мероприятия")
 	press("wz:cancel:keep", "Черновик сохранён")
 	if _, err := q.GetBotDraft(ctx, e2eWizardTelegramUser, f.orgID); err != nil {
 		t.Fatalf("the kept draft is gone: %v", err)
 	}
-	press("wz:new", "незаконченный ивент")
+	press("wz:new", "незаконченное мероприятие")
 	press("wz:resume", "Возраст")
-	press("wz:cancel", "Выйти из создания ивента")
+	press("wz:cancel", "Выйти из создания мероприятия")
 	press("wz:cancel:drop", "Черновик удалён")
 	if _, err := q.GetBotDraft(ctx, e2eWizardTelegramUser, f.orgID); err == nil {
 		t.Fatal("the dropped draft must be deleted")

@@ -389,10 +389,10 @@ func TestBotE2E_PromoCodes(t *testing.T) {
 	if !strings.Contains(scope, seed.nameA) {
 		t.Errorf("the scope question must name the event:\n%s", scope)
 	}
-	owner.press("pm:c:pick", "Отметьте сеансы ивента")
+	owner.press("pm:c:pick", "Отметьте сеансы мероприятия")
 	owner.press("pm:k:ok", "Отметьте хотя бы один сеанс")
-	owner.press("pm:k:t:0", "Отметьте сеансы ивента")
-	owner.press("pm:k:t:1", "Отметьте сеансы ивента")
+	owner.press("pm:k:t:0", "Отметьте сеансы мероприятия")
+	owner.press("pm:k:t:1", "Отметьте сеансы мероприятия")
 	ticked(2, "FIVE")
 	owner.press("pm:k:ok", "На сколько покупок действует")
 	owner.press("pm:c:skip", "один покупатель")
@@ -446,15 +446,15 @@ func TestBotE2E_PromoCodes(t *testing.T) {
 	_ = cur
 	manager.say("euros", "трёхбуквенный код")
 	manager.press("pm:c:cur:CZK", "Где действует код?")
-	manager.press("pm:c:pick", "Выберите ивент")
-	manager.press("pm:k:ev:0", "Отметьте сеансы ивента") // event A: its dates sell in EUR
+	manager.press("pm:c:pick", "Выберите мероприятие")
+	manager.press("pm:k:ev:0", "Отметьте сеансы мероприятия") // event A: its dates sell in EUR
 	manager.press("pm:k:t:0", "продаётся в другой валюте")
 	if got := pmTicked(t, pool, pmManagerTG); got != 0 {
 		t.Errorf("a session in another currency must not be ticked: %d", got)
 	}
-	manager.press("pm:k:chev", "Выберите ивент")
-	manager.press("pm:k:ev:1", "Отметьте сеансы ивента") // event B: CZK
-	manager.press("pm:k:t:0", "Отметьте сеансы ивента")
+	manager.press("pm:k:chev", "Выберите мероприятие")
+	manager.press("pm:k:ev:1", "Отметьте сеансы мероприятия") // event B: CZK
+	manager.press("pm:k:t:0", "Отметьте сеансы мероприятия")
 	manager.press("pm:k:ok", "На сколько покупок действует")
 	manager.press("pm:c:skip", "один покупатель")
 	manager.press("pm:c:skip", "До какого дня")
@@ -481,7 +481,7 @@ func TestBotE2E_PromoCodes(t *testing.T) {
 			t.Errorf("the list lacks %q:\n%s", w, all)
 		}
 	}
-	forA := owner.press("pm:l:"+seed.eventA.String(), "Для ивента")
+	forA := owner.press("pm:l:"+seed.eventA.String(), "Для мероприятия")
 	for _, code := range []string{"SUMMER25", "FIVE", "MGR20"} { // club codes and the one naming A's sessions
 		if !strings.Contains(forA, code) {
 			t.Errorf("event A's list lacks %s:\n%s", code, forA)
@@ -490,7 +490,7 @@ func TestBotE2E_PromoCodes(t *testing.T) {
 	if strings.Contains(forA, "MGRFIX") || !strings.Contains(forA, "Кодов: 3") {
 		t.Errorf("event A's list must not hold the code of event B:\n%s", forA)
 	}
-	forB := owner.press("pm:l:"+seed.eventB.String(), "Для ивента")
+	forB := owner.press("pm:l:"+seed.eventB.String(), "Для мероприятия")
 	if !strings.Contains(forB, "MGRFIX") || strings.Contains(forB, "FIVE") || !strings.Contains(forB, "Кодов: 3") {
 		t.Errorf("event B's list:\n%s", forB)
 	}
@@ -500,10 +500,10 @@ func TestBotE2E_PromoCodes(t *testing.T) {
 	if !strings.Contains(sess, "все сеансы, включая будущие") {
 		t.Errorf("a club code says so:\n%s", sess)
 	}
-	owner.press(data("so", summer.ID), "Выберите ивент")
-	owner.press("pm:k:ev:0", "Отметьте сеансы ивента")
+	owner.press(data("so", summer.ID), "Выберите мероприятие")
+	owner.press("pm:k:ev:0", "Отметьте сеансы мероприятия")
 	owner.press("pm:k:ok", "Отметьте хотя бы один сеанс") // an empty list would be a club code
-	owner.press("pm:k:t:0", "Отметьте сеансы ивента")
+	owner.press("pm:k:t:0", "Отметьте сеансы мероприятия")
 	ticked(1, "SUMMER25 edit")
 	saved := owner.press("pm:k:ok", "теперь действует только на отмеченные сеансы")
 	if !strings.Contains(saved, "сеансов: 1") {
@@ -513,35 +513,35 @@ func TestBotE2E_PromoCodes(t *testing.T) {
 		t.Errorf("SUMMER25 sessions = %v", got.Sessions)
 	}
 	// Add a date of the other event: the first stays.
-	owner.press(data("so", summer.ID), "Выберите ивент")
-	owner.press("pm:k:ev:1", "Отметьте сеансы ивента")
-	owner.press("pm:k:t:0", "Отметьте сеансы ивента")
+	owner.press(data("so", summer.ID), "Выберите мероприятие")
+	owner.press("pm:k:ev:1", "Отметьте сеансы мероприятия")
+	owner.press("pm:k:t:0", "Отметьте сеансы мероприятия")
 	owner.press("pm:k:ok", "теперь действует только на отмеченные сеансы")
 	if got := mustPmCode(t, pool, f.orgID, "SUMMER25"); !sameStrings(got.Sessions, seed.sessA[0], seed.sessB) {
 		t.Errorf("SUMMER25 sessions after the second event = %v", got.Sessions)
 	}
 	// Taking event A's date away leaves event B's: ending with nothing ticked is fine.
-	owner.press(data("so", summer.ID), "Выберите ивент")
-	owner.press("pm:k:ev:0", "Отметьте сеансы ивента")
+	owner.press(data("so", summer.ID), "Выберите мероприятие")
+	owner.press("pm:k:ev:0", "Отметьте сеансы мероприятия")
 	ticked(1, "A's date is ticked already")
-	owner.press("pm:k:t:0", "Отметьте сеансы ивента") // untick it
+	owner.press("pm:k:t:0", "Отметьте сеансы мероприятия") // untick it
 	ticked(0, "A's date unticked")
 	owner.press("pm:k:ok", "теперь действует только на отмеченные сеансы")
 	if got := mustPmCode(t, pool, f.orgID, "SUMMER25"); !sameStrings(got.Sessions, seed.sessB) {
 		t.Errorf("SUMMER25 sessions after removing A's = %v", got.Sessions)
 	}
 	// ... but never when it would empty the whole list (that is "all sessions").
-	owner.press(data("so", summer.ID), "Выберите ивент")
-	owner.press("pm:k:ev:1", "Отметьте сеансы ивента")
-	owner.press("pm:k:t:0", "Отметьте сеансы ивента")
+	owner.press(data("so", summer.ID), "Выберите мероприятие")
+	owner.press("pm:k:ev:1", "Отметьте сеансы мероприятия")
+	owner.press("pm:k:t:0", "Отметьте сеансы мероприятия")
 	ticked(0, "B's only date unticked")
 	owner.press("pm:k:ok", "Отметьте хотя бы один сеанс")
 	if got := mustPmCode(t, pool, f.orgID, "SUMMER25"); !sameStrings(got.Sessions, seed.sessB) {
 		t.Errorf("a refused edit changes nothing: %v", got.Sessions)
 	}
 	// A fixed code in EUR cannot be given a CZK date.
-	owner.press(data("so", five.ID), "Выберите ивент")
-	owner.press("pm:k:ev:1", "Отметьте сеансы ивента")
+	owner.press(data("so", five.ID), "Выберите мероприятие")
+	owner.press("pm:k:ev:1", "Отметьте сеансы мероприятия")
 	owner.press("pm:k:t:0", "продаётся в другой валюте")
 	// Back to every session, including future ones: the empty list is stored.
 	owner.press(data("sa", summer.ID), "теперь действует на все сеансы")
@@ -609,7 +609,7 @@ func TestBotE2E_PromoCodes(t *testing.T) {
 
 	// ── delete: a wrong word, going away, then the word ───────────────────────
 	ask := owner.press(data("del", five.ID), "Удалить код FIVE")
-	if !strings.Contains(ask, "Использован раз: 0") || !strings.Contains(ask, "УДАЛИТЬ") || !strings.Contains(ask, "название останется занятым") {
+	if !strings.Contains(ask, "Использован раз: 0") || !strings.Contains(ask, "УДАЛИТЬ") || !strings.Contains(ask, "останется занятым") {
 		t.Errorf("delete question:\n%s", ask)
 	}
 	if mustPmCode(t, pool, f.orgID, "FIVE").Deleted {
