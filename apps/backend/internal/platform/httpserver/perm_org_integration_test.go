@@ -47,6 +47,13 @@ func TestPermOrg_ARoleInAnotherOrganizationGivesNothingHere(t *testing.T) {
 	denied(http.MethodGet, a+"/payment-configs", tok, "")
 	denied(http.MethodGet, a+"/payment-configs", mgrTok, "")
 	e.expect(t, http.StatusOK, http.MethodGet, a+"/payment-configs", ownerTok, "", "")
+	// The case that the union used to let through: owner of B, manager of A.
+	ownerBManagerA := e.user(t, "owner-b-manager-a")
+	e.member(t, ownerBManagerA, orgA, "organizer")
+	e.member(t, ownerBManagerA, orgB, "org_admin")
+	obmaTok := e.token(t, ownerBManagerA)
+	denied(http.MethodGet, a+"/payment-configs", obmaTok, "")
+	e.expect(t, http.StatusOK, http.MethodGet, b+"/payment-configs", obmaTok, "", "")
 
 	// flat route: the payment belongs to A, the role that passes the gate is B's
 	f := newPay03Order(t, e.srv.pgxPool, orgA, "stripe")
@@ -99,3 +106,4 @@ func TestPermOrg_ProductionCheckerDecidesPerOrganization(t *testing.T) {
 		t.Fatal("production permission checker cannot resolve roles per organization")
 	}
 }
+
