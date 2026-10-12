@@ -3026,6 +3026,9 @@ other = "This ticket can no longer be refunded (it changed, is no longer valid o
 ["bot.rq.err_refused"]
 other = "Arena did not send the refund again: the refund or its order changed meanwhile. Nothing was sent; open the order to see its state."
 
+["bot.rq.err_partial"]
+other = "This payment provider returns only the whole payment at once, and part of it is already back. Nothing was sent; return the rest in the provider's dashboard."
+
 ["bot.rq.retry_done"]
 other = "<b>Refund sent again</b>"
 

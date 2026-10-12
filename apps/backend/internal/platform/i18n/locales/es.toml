@@ -2881,6 +2881,9 @@ other = "Esta entrada ya no se puede devolver (cambió, ya no es válida o está
 ["bot.rq.err_refused"]
 other = "Arena no reenvió la devolución: la devolución o su pedido cambiaron mientras tanto. No se envió nada; abre el pedido para ver su estado."
 
+["bot.rq.err_partial"]
+other = "Este proveedor de pagos solo devuelve el pago completo de una vez, y una parte ya se devolvió. No se envió nada; devuelve el resto en el panel del proveedor."
+
 ["bot.rq.retry_done"]
 other = "<b>Devolución enviada de nuevo</b>"
 

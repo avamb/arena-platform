@@ -29,3 +29,18 @@ func TestQueueRetryAsk_FollowsTheRefundsOwnChoices(t *testing.T) {
 		t.Errorf("full refund with a letter: %q", text)
 	}
 }
+
+// A refused queue retry is named by its own reason: a malformed call and a
+// provider that returns only the whole payment are not "changed meanwhile".
+func TestQueueRetryErrorKey_NamesBadRequestAndPartialRefusal(t *testing.T) {
+	b := &Bot{}
+	if got := b.queueRetryErrorKey(&APIError{Status: 400, Code: "refund.invalid_request"}); got != "bot.rq.err_refused" {
+		t.Errorf("400: %q; want bot.rq.err_refused", got)
+	}
+	if got := b.queueRetryErrorKey(&APIError{Status: 422, Code: "refund.partial_not_supported"}); got != "bot.rq.err_partial" {
+		t.Errorf("422 partial: %q; want bot.rq.err_partial", got)
+	}
+	if got := b.queueRetryErrorKey(&APIError{Status: 422, Code: "refund.provider_not_supported"}); got != "bot.ref.err_unsupported" {
+		t.Errorf("422 unsupported: %q; want bot.ref.err_unsupported", got)
+	}
+}

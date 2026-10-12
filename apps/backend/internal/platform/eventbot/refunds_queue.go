@@ -300,6 +300,10 @@ func (b *Bot) startQueueRetry(ctx context.Context, chatID int64, msgID int, id *
 	})
 }
 
+// codePartialNotSupported: the provider returns only the whole payment at
+// once and part of it is already back.
+const codePartialNotSupported = "refund.partial_not_supported"
+
 // queueRetryErrorKey picks the text for a refused retry.
 func (b *Bot) queueRetryErrorKey(ae *APIError) string {
 	switch {
@@ -315,8 +319,10 @@ func (b *Bot) queueRetryErrorKey(ae *APIError) string {
 		// Any other refusal: the refund or its order changed. Never "order
 		// № changed" without a number.
 		return "bot.rq.err_refused"
-	case ae.Status == http.StatusNotFound:
+	case ae.Status == http.StatusNotFound || ae.Status == http.StatusBadRequest:
 		return "bot.rq.err_refused"
+	case ae.Status == http.StatusUnprocessableEntity && ae.Code == codePartialNotSupported:
+		return "bot.rq.err_partial"
 	}
 	return b.refundErrorKey(ae)
 }
