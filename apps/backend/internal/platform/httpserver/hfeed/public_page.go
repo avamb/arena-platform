@@ -43,7 +43,9 @@ import (
 )
 
 // hostedPageOrgResponse is the org-branding slice of the hosted page response.
-// Only public-safe columns are exposed — never legal/KYB/contact fields.
+// Only public-safe columns are exposed — never KYB or contact fields. The
+// seller's legal identity travels in the separate, per-channel switchable
+// `seller` block (public_page_seller.go).
 type hostedPageOrgResponse struct {
 	Slug    string  `json:"slug"`
 	Name    string  `json:"name"`
@@ -94,6 +96,10 @@ type hostedPageResponse struct {
 	Event         hostedPageEventResponse `json:"event"`
 	FeedToken     string                  `json:"feed_token"`
 	DefaultLocale string                  `json:"default_locale"`
+	// Seller / Promoter are present only on a channel that switched
+	// settings.hosted_page.show_seller on.
+	Seller   *hostedPageSellerResponse   `json:"seller,omitempty"`
+	Promoter *hostedPagePromoterResponse `json:"promoter,omitempty"`
 }
 
 // hostedPromoterPageResponse is the full JSON envelope for GET
@@ -102,6 +108,10 @@ type hostedPromoterPageResponse struct {
 	Org           hostedPageOrgResponse     `json:"org"`
 	DefaultLocale string                    `json:"default_locale"`
 	Events        []hostedPageEventResponse `json:"events"`
+	// Seller / Promoter: see hostedPageResponse. Promoter is set only on a
+	// promoter's own page.
+	Seller   *hostedPageSellerResponse   `json:"seller,omitempty"`
+	Promoter *hostedPagePromoterResponse `json:"promoter,omitempty"`
 }
 
 // HandlePublicPage resolves the hosted-page context for an (org_slug,
@@ -206,6 +216,7 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 	resp.Event.FirstSessionTimezone = resolved.FirstSessionTimezone
 	resp.Event.SessionCount = resolved.SessionCount
 	resp.Event.FirstSessionDoorsAt = rfc3339UTC(resolved.FirstSessionDoorsAt)
+	resp.Seller, resp.Promoter = h.sellerBlocks(ctx, resolved.OrgID, resolved.FeedToken, &resolved.EventID)
 
 	// Venue name(s) are cheap (one aggregate query keyed by event id) and
 	// presentational — a lookup failure must not turn a resolved page into a
@@ -319,6 +330,10 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 	if org.OrgLogoMediaID != nil {
 		url := h.mediaFileURL(ctx, *org.OrgLogoMediaID)
 		resp.Org.LogoURL = &url
+	}
+	resp.Seller, _ = h.sellerBlocks(ctx, org.OrgID, "", nil)
+	if resp.Seller != nil && promoterID != nil {
+		resp.Promoter = &hostedPagePromoterResponse{Name: org.OrgName}
 	}
 
 	var events []gen.HostedPromoterPageEventRow

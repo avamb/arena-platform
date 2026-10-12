@@ -46,11 +46,12 @@ func (s *Server) ticketsHandler() *htickets.Handler {
 // ─── AB-49 ticket cancellation shim ──────────────────────────────────────────
 //
 // Flat path: POST /v1/tickets/{id}/cancel. No {org_id} URL segment, so the
-// ticket's owning org is resolved via its session (GetSessionOrgContext) and
-// membership is enforced before the htickets handler runs — same tenant
+// ticket's owning org is resolved from its own source rows (GetTicketOrgID) and
+// the organization guard runs before the htickets handler (a foreign ticket
+// answers the route's own 404) — same tenant
 // model as the AB-39 seating shims.
 func (s *Server) handleCancelTicket(w http.ResponseWriter, r *http.Request) {
-	if s.ticketQueries == nil || s.sessionQueries == nil {
+	if s.ticketQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
 		))
@@ -60,25 +61,13 @@ func (s *Server) handleCancelTicket(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ticket, err := s.ticketQueries.GetTicketByID(r.Context(), id)
+	// The organization comes from the ticket's own source rows, not from its
+	// session: a ticket of a cancelled (soft-deleted) session stays reachable.
+	orgID, err := s.ticketQueries.GetTicketOrgID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 				"ticket.not_found", "ticket not found", r,
-			))
-			return
-		}
-		s.logger.Error("ticket.cancel: shim lookup failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"ticket.lookup_failed", "failed to load ticket", r,
-		))
-		return
-	}
-	orgCtx, err := s.sessionQueries.GetSessionOrgContext(r.Context(), ticket.SessionID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-				"session.not_found", "the ticket's session no longer exists", r,
 			))
 			return
 		}
@@ -88,7 +77,7 @@ func (s *Server) handleCancelTicket(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
-	if !s.enforceMembershipInOrg(w, r, orgCtx.OrgID) {
+	if !s.rowOrgAccess(w, r, orgID, true, "ticket.not_found", "ticket not found") {
 		return
 	}
 	s.ticketsHandler().HandleCancelTicket(w, r)

@@ -25,7 +25,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -35,8 +34,6 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 )
-
-const sesDialogTTL = 30 * time.Minute
 
 // Dialog modes.
 const (
@@ -112,58 +109,78 @@ type sessionDialog struct {
 	// CanSales: the person may read sales figures, so the card offers the
 	// summary and the export of the date (event_summary.go, event_csv.go).
 	CanSales bool
-	expires  time.Time
+	// dropped is set by drop(); a dropped dialog is not written back.
+	dropped bool
 }
 
-// sessionDialogs is still process memory, so a bot restart drops a move or
-// cancellation half-way; it is due to move onto DialogStore (dialogs.go, the
-// bot_dialogs table) the way the team invite already has.
+// sesDialogKind is the bot_dialogs kind of the Sessions dialog (EC-40).
+const sesDialogKind = "sessions"
+
+// sessionDialogs keeps the Sessions dialog in bot_dialogs (DialogStore), so a
+// bot restart or a deploy no longer drops a move or a cancellation half-way.
+// The handlers mutate the *sessionDialog they were given, so every entry
+// point writes it back once when it is done (save), unless it dropped the
+// dialog first.
 type sessionDialogs struct {
-	mu     sync.Mutex
-	byID   map[int64]*sessionDialog
-	lapsed map[int64]bool
+	store DialogStore
 }
 
-func newSessionDialogs() *sessionDialogs {
-	return &sessionDialogs{byID: map[int64]*sessionDialog{}, lapsed: map[int64]bool{}}
+func newSessionDialogs(store DialogStore) *sessionDialogs {
+	return &sessionDialogs{store: store}
 }
 
-func (s *sessionDialogs) put(id int64, d *sessionDialog) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	d.expires = time.Now().Add(sesDialogTTL)
-	delete(s.lapsed, id)
-	s.byID[id] = d
+// put stores a fresh dialog and starts its 30 minutes.
+func (s *sessionDialogs) put(ctx context.Context, id int64, d *sessionDialog) {
+	d.dropped = false
+	s.save(ctx, id, d)
 }
 
-func (s *sessionDialogs) get(id int64) (*sessionDialog, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	d, ok := s.byID[id]
-	if !ok {
-		return nil, false
+// save writes the dialog back and slides its expiry. A dropped dialog stays
+// gone.
+func (s *sessionDialogs) save(ctx context.Context, id int64, d *sessionDialog) {
+	if d == nil || d.dropped {
+		return
 	}
-	if time.Now().After(d.expires) {
-		delete(s.byID, id)
-		s.lapsed[id] = true
-		return nil, false
+	org := d.OrgID
+	if err := s.store.Save(ctx, id, &org, sesDialogKind, d.Step, d, dialogTTL); err != nil {
+		slog.Default().Error("sessions dialog: save failed", "error", err.Error())
 	}
-	d.expires = time.Now().Add(sesDialogTTL)
-	return d, true
 }
 
-func (s *sessionDialogs) clear(id int64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.byID, id)
+// get returns the live dialog. expired is true exactly once after it lapsed,
+// and only when it lapsed on a step that waits for typed text: a text typed
+// after a card or a list expired is just a stray text, not an answer that
+// went missing.
+func (s *sessionDialogs) get(ctx context.Context, id int64) (d *sessionDialog, ok, expired bool) {
+	var dlg sessionDialog
+	step, found, lapsed, err := s.store.Load(ctx, id, sesDialogKind, &dlg)
+	if err != nil {
+		slog.Default().Error("sessions dialog: load failed", "error", err.Error())
+		return nil, false, false
+	}
+	if !found {
+		return nil, false, lapsed && sesWaitsForText(step)
+	}
+	return &dlg, true, false
 }
 
-func (s *sessionDialogs) takeLapsed(id int64) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	was := s.lapsed[id]
-	delete(s.lapsed, id)
-	return was
+// sesWaitsForText: the steps whose answer is a typed text.
+func sesWaitsForText(step string) bool {
+	switch step {
+	case sesStepDate, sesStepTime, sesStepMsg, sesStepEmail, sesStepPhone, sesStepType, sesStepSalesEnd, sesStepDoors:
+		return true
+	}
+	return false
+}
+
+// drop ends the dialog; the entry point that holds d will not write it back.
+func (s *sessionDialogs) drop(ctx context.Context, id int64, d *sessionDialog) {
+	if d != nil {
+		d.dropped = true
+	}
+	if err := s.store.Delete(ctx, id, sesDialogKind); err != nil {
+		slog.Default().Error("sessions dialog: delete failed", "error", err.Error())
+	}
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -305,7 +322,7 @@ func (b *Bot) sessionsOpen(ctx context.Context, chatID int64, editMsgID *int, fr
 	if editMsgID != nil {
 		dlg.MsgID = *editMsgID
 	}
-	b.sessions.put(from.ID, dlg)
+	b.sessions.put(ctx, from.ID, dlg)
 	b.sesShow(ctx, chatID, editMsgID, id, jwt, from, dlg, "")
 }
 
@@ -690,13 +707,13 @@ func (b *Bot) sessionsCallback(ctx context.Context, chatID int64, msgID int, fro
 		return
 	}
 	loc := id.Locale()
-	dlg, ok := b.sessions.get(from.ID)
+	dlg, ok, _ := b.sessions.get(ctx, from.ID)
 	if !ok || dlg.OrgID != id.Current.OrgID {
-		b.sessions.takeLapsed(from.ID)
 		b.reply(ctx, chatID, &msgID, b.sesT(loc, "bot.ses.expired", nil), b.backKeyboard(loc, "events:1"))
 		return
 	}
 	dlg.MsgID = msgID
+	defer b.sessions.save(ctx, from.ID, dlg)
 
 	// The calendar's own callbacks.
 	if dlg.Step == sesStepDate && (data == calNoop || strings.HasPrefix(data, calCallback) ||
@@ -707,10 +724,10 @@ func (b *Bot) sessionsCallback(ctx context.Context, chatID int64, msgID int, fro
 
 	switch {
 	case data == "event":
-		b.sessions.clear(from.ID)
+		b.sessions.drop(ctx, from.ID, dlg)
 		b.showEvent(ctx, chatID, &msgID, from, dlg.EventID, 1)
 	case data == "home":
-		b.sessions.clear(from.ID)
+		b.sessions.drop(ctx, from.ID, dlg)
 		b.showHome(ctx, chatID, &msgID, from, "")
 	case data == "card":
 		dlg.Step, dlg.Mode, dlg.Impact = sesStepCard, "", nil
@@ -737,7 +754,7 @@ func (b *Bot) sessionsCallback(ctx context.Context, chatID int64, msgID int, fro
 			return
 		}
 		session, event, name := dlg.Items[dlg.Cur].ID, dlg.EventID, dlg.EventName
-		b.sessions.clear(from.ID)
+		b.sessions.drop(ctx, from.ID, dlg)
 		b.categoriesOpen(ctx, chatID, &msgID, id, jwt, event, session, name)
 	case data == "sm" || data == "csv":
 		if dlg.Cur < 0 || dlg.Cur >= len(dlg.Items) || !canViewSales(id) {
@@ -981,18 +998,28 @@ func (b *Bot) sesGoFailed(ctx context.Context, chatID int64, msgID *int, id *Ide
 // message to buyers, the organizer's e-mail or phone. It reports whether the
 // text was taken.
 func (b *Bot) sessionsText(ctx context.Context, chatID int64, from *models.User, text string) bool {
-	dlg, ok := b.sessions.get(from.ID)
+	dlg, ok, expired := b.sessions.get(ctx, from.ID)
+	if expired {
+		// Said once, instead of the typed answer falling through to whatever
+		// handles stray text.
+		if id, _, err := b.resolveIdentity(ctx, from.ID); err == nil {
+			b.reply(ctx, chatID, nil, b.sesT(id.Locale(), "bot.ses.expired", nil), nil)
+			return true
+		}
+		return false
+	}
 	if !ok {
 		return false
 	}
-	switch dlg.Step {
-	case sesStepDate, sesStepTime, sesStepMsg, sesStepEmail, sesStepPhone, sesStepType, sesStepSalesEnd, sesStepDoors:
-	default:
+	// Judged BEFORE the dialog is saved back: a stray text on a card or a
+	// list must not slide the dialog's expiry forward.
+	if !sesWaitsForText(dlg.Step) {
 		return false
 	}
+	defer b.sessions.save(ctx, from.ID, dlg)
 	id, jwt, err := b.resolveIdentity(ctx, from.ID)
 	if err != nil || id.Current == nil || id.Current.OrgID != dlg.OrgID {
-		b.sessions.clear(from.ID)
+		b.sessions.drop(ctx, from.ID, dlg)
 		return false
 	}
 	loc := id.Locale()

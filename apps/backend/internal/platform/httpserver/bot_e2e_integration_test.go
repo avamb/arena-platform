@@ -295,7 +295,7 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 		t.Errorf("accepted message should name the role: %s", accepted)
 	}
 	// The first message also says what to do next, naming the button below.
-	if !strings.Contains(accepted, "Как это работает") || !strings.Contains(accepted, "+ Ивент") {
+	if !strings.Contains(accepted, "Как это работает") || !strings.Contains(accepted, "+ Мероприятие") {
 		t.Errorf("accepted message should give the steps: %s", accepted)
 	}
 	tg.waitFor(t, "Что будем делать?")
@@ -308,7 +308,7 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 	// 3. "My events" goes through arena-api as the linked manager: the
 	//    organization has no events yet, and the API said so with a 200.
 	tg.push(e2eCallback("events:1"))
-	tg.waitFor(t, "Ивентов пока нет")
+	tg.waitFor(t, "Мероприятий пока нет")
 
 	// 3b. The ticket-scanner screen is one press from the menu.
 	tg.push(e2eCallback("scanner"))

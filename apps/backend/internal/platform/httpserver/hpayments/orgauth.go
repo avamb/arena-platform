@@ -11,6 +11,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 )
 
 // actorIsMemberOfOrg reports whether the authenticated actor holds an active
@@ -36,7 +37,9 @@ func actorIsMemberOfOrg(ctx context.Context, q *gen.Queries, orgID uuid.UUID) (b
 	}
 	for _, m := range memberships {
 		if m.OrgID == orgID {
-			return true, nil
+			// A membership is not enough: the gate's permission must be held
+			// in THIS organization, not through a role of another one.
+			return permissions.AllowedInOrg(ctx, orgID)
 		}
 	}
 	return false, nil
