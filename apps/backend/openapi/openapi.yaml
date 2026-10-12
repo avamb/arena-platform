@@ -3265,6 +3265,185 @@ components:
           format: date-time
           description: When the one-time address stops being valid (24 hours after the request). Null for the order's own address.
 
+    OrderRefundItem:
+      type: object
+      description: One refund row of an order, as the organizer's refund API reports it.
+      required: [id, ticket_id, amount, currency, state, cancel_ticket, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the refund.
+        ticket_id:
+          type: [string, "null"]
+          format: uuid
+          description: The ticket the refund is for; null for a refund of the whole payment.
+        amount:
+          type: integer
+          format: int64
+          description: Amount in minor units of the currency.
+        currency:
+          type: string
+          description: ISO 4217 currency code.
+        state:
+          type: string
+          description: One of requested, approved, provider_pending, succeeded, failed, manual_review.
+        provider_status:
+          type: [string, "null"]
+          description: The provider's own status of the refund, when it has answered.
+        provider_refund_id:
+          type: [string, "null"]
+          description: The provider's id of the refund, once it accepted it.
+        failure_code:
+          type: [string, "null"]
+          description: Machine-readable reason when the provider refused or the refund needs review.
+        failure_reason:
+          type: [string, "null"]
+          description: Human-readable reason that goes with failure_code.
+        cancel_ticket:
+          type: boolean
+          description: True when the ticket is cancelled once the provider accepts the refund.
+        created_at:
+          type: string
+          format: date-time
+          description: When the refund was recorded.
+
+    OrderRefundTicketOption:
+      type: object
+      description: What can still be returned for one ticket of an order.
+      required: [ticket_id, status, paid, refunded, refundable, in_progress]
+      properties:
+        ticket_id:
+          type: string
+          format: uuid
+          description: UUID of the ticket.
+        status:
+          type: string
+          description: Ticket status; only an active ticket can be refunded.
+        paid:
+          type: [integer, "null"]
+          format: int64
+          description: What the buyer paid for this ticket in minor units, null when the order item carries no price.
+        refunded:
+          type: integer
+          format: int64
+          description: Minor units already refunded or on their way to the buyer.
+        refundable:
+          type: integer
+          format: int64
+          description: Minor units that can still be returned for this ticket.
+        in_progress:
+          type: boolean
+          description: True when a refund that cancels this ticket is already under way.
+
+    OrderRefundOptions:
+      type: object
+      description: |
+        What an organizer may do about the money of an order (PAY-06). `route`
+        says who returns it: `arena_provider` (arena sends the refund to the
+        payment provider), `seller_site` (the seller's own site refunds),
+        `unsupported` or `unknown_provider` (arena cannot send money back
+        through this provider) or `none` (arena took no money for the order).
+      required: [order_id, route, provider, currency, partial_refund, payment_left, tickets, active_refunds]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+          description: UUID of the order.
+        payment_left:
+          type: integer
+          format: int64
+          description: |
+            What is left of the whole payment, in minor units (0 when arena
+            took no payment). Each ticket's `refundable` is capped by it on its
+            own, so the tickets together may offer more than this amount; no
+            refund operation returns more.
+        route:
+          type: string
+          description: How the money goes back, see the schema description.
+        provider:
+          type: string
+          description: Payment provider of the order; empty when arena took no payment.
+        currency:
+          type: string
+          description: ISO 4217 currency of the payment; empty when arena took no payment.
+        partial_refund:
+          type: boolean
+          description: True when the provider can return less than the whole payment.
+        tickets:
+          type: array
+          description: Every ticket of the order with what can still be returned.
+          items:
+            $ref: "#/components/schemas/OrderRefundTicketOption"
+        active_refunds:
+          type: array
+          description: Refunds of the order that are not finished or need an operator.
+          items:
+            $ref: "#/components/schemas/OrderRefundItem"
+        refusal:
+          type: object
+          description: Present when arena cannot send a refund for this order, with the error code and message the create call would answer.
+          properties:
+            code:
+              type: string
+              description: Error code, such as refund.seller_site_order.
+            message:
+              type: string
+              description: Human-readable explanation.
+
+    CreateOrderRefundsRequest:
+      type: object
+      description: One refund operation on an order.
+      required: [items, reason]
+      properties:
+        items:
+          type: array
+          description: The tickets to return money for, each named once (at most 200).
+          items:
+            type: object
+            description: One ticket of the operation.
+            required: [ticket_id]
+            properties:
+              ticket_id:
+                type: string
+                format: uuid
+                description: UUID of the ticket.
+              amount:
+                type: [integer, "null"]
+                format: int64
+                description: Minor units to return. Omitted means everything that is left on the ticket. A part is allowed only when the provider supports partial refunds.
+        reason:
+          type: string
+          description: Why the money is returned. Required, it reaches the provider and the audit trail.
+        cancel_tickets:
+          type: boolean
+          description: Cancel each ticket once the provider accepts its refund. Defaults to true; false is a money-only partial refund.
+        notify_buyer:
+          type: boolean
+          description: Send the buyer a letter about the refund. Defaults to true.
+
+    CreateOrderRefundsResponse:
+      type: object
+      description: The refund operation as recorded, one refund per ticket.
+      required: [batch_id, order_id, replayed, refunds]
+      properties:
+        batch_id:
+          type: string
+          format: uuid
+          description: UUID of the operation.
+        order_id:
+          type: string
+          format: uuid
+          description: UUID of the order.
+        replayed:
+          type: boolean
+          description: True when the Idempotency-Key was already used and this is the first call's answer.
+        refunds:
+          type: array
+          description: One refund per ticket, in the state they reached by the time of the answer.
+          items:
+            $ref: "#/components/schemas/OrderRefundItem"
+
     OrderSummary:
       type: object
       required:
@@ -37775,6 +37954,175 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Delivery store unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/orders/{order_id}/refund-options:
+    get:
+      operationId: getV1OrganizationsOrgIdOrdersOrderIdRefundOptions
+      summary: What can be refunded on an order
+      description: |
+        Reads, without changing anything, how the money of an order goes back
+        and what is left to return per ticket (PAY-06, spec 36 section 8). The
+        answer is advice: the create call checks every rule again. An order
+        paid on a seller's own site answers `route` `seller_site` with a
+        `refusal`, an order arena took no money for answers `none`. Requires
+        the `refund.read` permission. Only tickets that are lines of this
+        order are listed: a ticket that a transfer moved to another holder or
+        order is not offered here and cannot be refunded through this API.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: order_id
+          in: path
+          required: true
+          description: UUIDv7 of the order
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The refund options of the order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderRefundOptions"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`refund.read`) or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Order not found, or not linked to this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`refund.options_failed`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Refunds are not available (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/orders/{order_id}/refunds:
+    post:
+      operationId: postV1OrganizationsOrgIdOrdersOrderIdRefunds
+      summary: Refund tickets of an order
+      description: |
+        Records one refund operation and, when the caller also holds
+        `refund.approve`, sends it to the payment provider at once (PAY-06,
+        spec 36 section 8). The `Idempotency-Key` header is required and
+        unique per organization: repeating the call with the same key and the
+        same request answers the first operation (`replayed` true) and writes
+        nothing, the same key with a different request is 409
+        `refund.idempotency_key_reused`. Money goes first: a ticket is
+        cancelled only after the provider accepted its refund. The answer is
+        202 with one refund per ticket in the state it reached. Requires the
+        `refund.create` permission. There is no organization-scoped approve
+        route: a refund created without `refund.approve` stays `requested`
+        and is approved through `POST /v1/refunds/{id}/approve`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: order_id
+          in: path
+          required: true
+          description: UUIDv7 of the order
+          schema: { type: string, format: uuid }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Client-chosen key of 1 to 255 characters that identifies this operation.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderRefundsRequest"
+      responses:
+        "202":
+          description: The operation was recorded (or is the replay of an earlier one).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateOrderRefundsResponse"
+        "400":
+          description: "Invalid request (`refund.invalid_request`): missing Idempotency-Key or reason, no tickets, a non-positive amount, a repeated ticket."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`refund.create`) or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Order not found, or not linked to this organization (`refund.order_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "Not refundable: `refund.seller_site_order`, `refund.nothing_to_refund`, `refund.ticket_not_refundable`, `refund.amount_exceeds_refundable`, `refund.in_progress` or `refund.idempotency_key_reused`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The provider cannot send this refund (`refund.provider_not_supported`, `refund.partial_not_supported`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`refund.create_failed`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Refunds are not available right now (`refund.engine_unavailable`).
           content:
             application/json:
               schema:

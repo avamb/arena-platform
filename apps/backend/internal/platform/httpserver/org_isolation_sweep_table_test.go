@@ -271,6 +271,8 @@ var orgIsolationAuditedSafe = map[string]string{
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/summary.csv":   "horders",
 	"POST /v1/organizations/{org_id}/orders/{id}/cancel":                 "horders",
 	"POST /v1/organizations/{org_id}/orders/{order_id}/resend-tickets":   "horders",
+	"GET /v1/organizations/{org_id}/orders/{order_id}/refund-options":    "refunds.Engine.Options (order loaded inside the path org; covered by TestRefundOrgRoutes_OptionsCreateReplayAndIsolation)",
+	"POST /v1/organizations/{org_id}/orders/{order_id}/refunds":          "refunds.Engine.CreateBatch (order loaded inside the path org; covered by TestRefundOrgRoutes_OptionsCreateReplayAndIsolation)",
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/sample-ticket": "hsample",
 
 	// hcheckout promo codes, hpayments payment configs, hbankaccounts, hapikeys,
