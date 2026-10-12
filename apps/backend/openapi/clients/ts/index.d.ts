@@ -10090,6 +10090,8 @@ export interface components {
                 /** @description The member's name or e-mail, or the API key's name. */
                 label?: string | null;
             } | null;
+            /** @description True when the retry route would accept this refund - it provably moved no money and has not been retried yet. The route still decides. */
+            retryable?: boolean;
         };
         /** @description One page of the organization's refunds, newest first. */
         OrderRefundQueue: {

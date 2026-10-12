@@ -419,6 +419,17 @@ func TestRefundOrgRoutes_RetryAndResolveReviewFixes(t *testing.T) {
 		t.Fatalf("the replaced refund is %s/%v; want failed/replaced_by_retry", state, code)
 	}
 
+	// ── the queue says which rows may be retried: the replaced one no longer
+	st, queue := pf.do(t, http.MethodGet, base+"/refunds?state=failed&limit=100", key, "")
+	if st != http.StatusOK {
+		t.Fatalf("queue: %d %v", st, queue)
+	}
+	for _, r := range queue["refunds"].([]any) {
+		if m := r.(map[string]any); m["id"] == parked && m["retryable"] != false {
+			t.Fatalf("the replaced refund is still offered for a retry: %v", m)
+		}
+	}
+
 	// ── a retry that fails too: the first refund is not retried again
 	f2 := newPay03Order(t, srv.pgxPool, org, "stripe")
 	declined = true
@@ -436,6 +447,15 @@ func TestRefundOrgRoutes_RetryAndResolveReviewFixes(t *testing.T) {
 		t.Fatalf("second retry of the same refund: %d %v; want 409 refund.already_replaced", st, out)
 	}
 	declined = false
+	st, queue = pf.do(t, http.MethodGet, base+"/refunds?state=failed&limit=100", key, "")
+	offered := map[string]any{}
+	for _, r := range queue["refunds"].([]any) {
+		m := r.(map[string]any)
+		offered[m["id"].(string)] = m["retryable"]
+	}
+	if offered[failedA] != false {
+		t.Fatalf("a refund that was already retried is offered again: %v", offered)
+	}
 
 	// ── resolve: the note stays in the audit trail, the row keeps its reason,
 	//    a refund found refunded carries no failure, and the budget is checked

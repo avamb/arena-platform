@@ -5,6 +5,7 @@ var queueKeys = []string{
 	"bot.rq.btn", "bot.rq.title", "bot.rq.f_review", "bot.rq.f_failed", "bot.rq.f_pending", "bot.rq.f_done",
 	"bot.rq.empty", "bot.rq.row", "bot.rq.retry_btn", "bot.rq.order_btn", "bot.rq.retry_ask", "bot.rq.retry_yes",
 	"bot.rq.retry_done", "bot.rq.not_retryable", "bot.rq.provider_word",
+	"bot.rq.retry_no", "bot.rq.already_replaced",
 }
 
 func init() {

@@ -21,9 +21,12 @@ package eventbot
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-telegram/bot/models"
 	"github.com/google/uuid"
@@ -40,8 +43,9 @@ var queueFilters = []struct{ key, state string }{
 }
 
 const (
-	queueDefaultFilter = "review"
-	codeNotRetryable   = "refund.not_retryable"
+	queueDefaultFilter  = "review"
+	codeNotRetryable    = "refund.not_retryable"
+	codeAlreadyReplaced = "refund.already_replaced"
 )
 
 func queueState(filter string) (string, bool) {
@@ -68,17 +72,10 @@ func queueChip(state string) string {
 	return "•"
 }
 
-// queueRetryable says whether the row gets a "Retry" button. The server has
-// the last word; this only keeps the button off rows that can never qualify.
-func queueRetryable(it openapi.OrderRefundQueueItem) bool {
-	switch it.State {
-	case "failed":
-		return it.TicketId != nil
-	case "manual_review":
-		return it.TicketId != nil && it.ProviderRefundId == nil
-	}
-	return false
-}
+// queueRetryable says whether the row gets a "Retry" button: the server's own
+// verdict (it provably moved no money and was not retried yet). The retry
+// route still decides when the button is pressed.
+func queueRetryable(it openapi.OrderRefundQueueItem) bool { return it.Retryable != nil && *it.Retryable }
 
 // queueMenuRow is the main menu's row for the queue.
 func (b *Bot) queueMenuRow(loc string, id *Identity) []models.InlineKeyboardButton {
@@ -119,7 +116,7 @@ func (b *Bot) queueCallback(ctx context.Context, chatID int64, msgID int, from *
 			return
 		}
 		if parts[0] == "rt" {
-			b.askQueueRetry(ctx, chatID, &msgID, loc, refundID)
+			b.askQueueRetry(ctx, chatID, &msgID, id, jwt, refundID)
 			return
 		}
 		b.doQueueRetry(ctx, chatID, &msgID, id, jwt, refundID)
@@ -223,10 +220,37 @@ func clipRunes(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
-func (b *Bot) askQueueRetry(ctx context.Context, chatID int64, editMsgID *int, loc string, refundID uuid.UUID) {
-	b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.rq.retry_ask", nil), &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-		{{Text: b.texts.T(loc, "bot.rq.retry_yes", nil), CallbackData: "rq:ry:" + refundID.String()}},
+// askQueueRetry is the first of two steps: it names the order, the ticket and
+// the amount that would be sent again and sends nothing. The second step is a
+// button that carries the refund's id.
+func (b *Bot) askQueueRetry(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt string, refundID uuid.UUID) {
+	loc := id.Locale()
+	list := &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 		{{Text: "« " + b.texts.T(loc, "bot.btn_back", nil), CallbackData: "rq:l:" + queueDefaultFilter + ":1"}},
+	}}
+	it, err := b.arena.RefundGet(ctx, jwt, id.Current.OrgID, refundID)
+	if err != nil {
+		b.ecError(ctx, chatID, editMsgID, id, err, "rq:l:"+queueDefaultFilter+":1")
+		return
+	}
+	if !queueRetryable(it) {
+		// It changed since the list was drawn (retried, or accepted late).
+		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.rq.not_retryable", nil), list)
+		return
+	}
+	order, ticket := "—", "—"
+	if it.OrderNumber != nil {
+		order = "№" + strconv.FormatInt(*it.OrderNumber, 10)
+	}
+	if it.TicketNumber != nil {
+		ticket = "№" + strconv.FormatInt(*it.TicketNumber, 10)
+	}
+	amount := FormatMoney(it.Amount, it.Currency, loc)
+	b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.rq.retry_ask", map[string]any{
+		"Order": order, "Tickets": ticket, "Amount": amount,
+	}), &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+		{{Text: b.texts.T(loc, "bot.rq.retry_yes", map[string]any{"Amount": amount}), CallbackData: "rq:ry:" + refundID.String()}},
+		{{Text: b.texts.T(loc, "bot.rq.retry_no", nil), CallbackData: "rq:l:" + queueDefaultFilter + ":1"}},
 	}})
 }
 
@@ -236,16 +260,42 @@ func (b *Bot) doQueueRetry(ctx context.Context, chatID int64, editMsgID *int, id
 		{{Text: "« " + b.texts.T(loc, "bot.btn_back", nil), CallbackData: "rq:l:" + queueDefaultFilter + ":1"}},
 		{{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}},
 	}}
-	res, err := b.arena.RetryRefund(ctx, jwt, id.Current.OrgID, refundID)
+	b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.ref.sending", nil), nil)
+	var (
+		res openapi.CreateOrderRefundsResponse
+		err error
+	)
+	// An answer that never came is asked for again: the retry operation has a
+	// key derived from the refund, so this reads the one already started.
+	for attempt := 0; attempt <= refundReplayAttempts; attempt++ {
+		res, err = b.arena.RetryRefund(ctx, jwt, id.Current.OrgID, refundID)
+		var ae *APIError
+		if err == nil || errors.As(err, &ae) || ctx.Err() != nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(refundReplayPause):
+		}
+	}
+	var ae *APIError
 	switch {
 	case err == nil:
 		text := b.texts.T(loc, "bot.rq.retry_done", nil) + b.refundLines(loc, Esc(b.texts.T(loc, "bot.rq.provider_word", nil)), res.Refunds)
 		b.reply(ctx, chatID, editMsgID, text, back)
-	case IsAPIError(err, http.StatusConflict) && APIErrorCode(err) == codeNotRetryable:
+	case errors.As(err, &ae) && ae.Status == http.StatusConflict && ae.Code == codeNotRetryable:
 		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.rq.not_retryable", nil), back)
-	case IsAPIError(err, http.StatusConflict):
-		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.ref.err_progress", map[string]any{"Num": "—"}), back)
+	case errors.As(err, &ae) && ae.Status == http.StatusConflict && ae.Code == codeAlreadyReplaced:
+		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.rq.already_replaced", nil), back)
+	case errors.As(err, &ae):
+		key := b.refundErrorKey(ae)
+		if key == "" {
+			key = "bot.ref.err_timeout"
+		}
+		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, key, map[string]any{"Num": "—", "Provider": Esc(b.texts.T(loc, "bot.rq.provider_word", nil))}), back)
 	default:
-		b.ecError(ctx, chatID, editMsgID, id, err, "rq:l:"+queueDefaultFilter+":1")
+		// No answer at all: the retry may be under way. Never "failed".
+		b.logger.Warn("eventbot: refund retry got no answer", slog.String("error", err.Error()))
+		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.ref.err_timeout", nil), back)
 	}
 }

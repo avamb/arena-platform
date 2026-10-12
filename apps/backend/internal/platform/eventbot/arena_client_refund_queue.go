@@ -25,10 +25,25 @@ func (c *ArenaClient) RefundQueue(ctx context.Context, jwt string, orgID uuid.UU
 	return out, err
 }
 
+// RefundGet reads one refund of the organization with its queue fields
+// (GET .../refunds/{id}).
+func (c *ArenaClient) RefundGet(ctx context.Context, jwt string, orgID, refundID uuid.UUID) (openapi.OrderRefundQueueItem, error) {
+	var out openapi.OrderRefundDetail
+	err := c.do(ctx, http.MethodGet, "/v1/organizations/"+orgID.String()+"/refunds/"+refundID.String(), jwt, nil, &out)
+	return out.Refund, err
+}
+
 // RetryRefund sends a failed or never-sent refund again as a new operation
-// (POST .../refunds/{id}/retry).
+// (POST .../refunds/{id}/retry). The route is idempotent per refund (the
+// server derives the operation's key from the refund id), so repeating the
+// call after an answer was lost returns the operation already started. Like a
+// create, it waits as long as the server may work.
 func (c *ArenaClient) RetryRefund(ctx context.Context, jwt string, orgID, refundID uuid.UUID) (openapi.CreateOrderRefundsResponse, error) {
 	var out openapi.CreateOrderRefundsResponse
-	err := c.do(ctx, http.MethodPost, "/v1/organizations/"+orgID.String()+"/refunds/"+refundID.String()+"/retry", jwt, map[string]any{}, &out)
+	slow := *c
+	hc := *c.http
+	hc.Timeout = refundCallTimeout
+	slow.http = &hc
+	err := slow.do(ctx, http.MethodPost, "/v1/organizations/"+orgID.String()+"/refunds/"+refundID.String()+"/retry", jwt, map[string]any{}, &out)
 	return out, err
 }

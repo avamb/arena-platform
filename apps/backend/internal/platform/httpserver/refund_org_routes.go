@@ -243,6 +243,9 @@ type refundQueueItemJSON struct {
 	EventName    *string            `json:"event_name"`
 	TicketNumber *int64             `json:"ticket_number"`
 	Creator      *refundCreatorJSON `json:"creator"`
+	// Retryable: the retry route would accept this refund (it provably moved
+	// no money and has not been retried yet). The route still decides.
+	Retryable bool `json:"retryable"`
 }
 
 func queueItem(it refunds.ListItem) refundQueueItemJSON {
@@ -251,7 +254,8 @@ func queueItem(it refunds.ListItem) refundQueueItemJSON {
 		v := it.OrderID.String()
 		orderID = &v
 	}
-	out := refundQueueItemJSON{refundItem(it.Refund), orderID, it.OrderSystemID, it.EventName, it.TicketNumber, nil}
+	out := refundQueueItemJSON{refundItem(it.Refund), orderID, it.OrderSystemID, it.EventName, it.TicketNumber, nil,
+		refunds.Retryable(it.Refund) && !it.Replaced}
 	if it.CreatorKind != nil {
 		out.Creator = &refundCreatorJSON{Kind: *it.CreatorKind, Label: it.CreatorLabel}
 	}

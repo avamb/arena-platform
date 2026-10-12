@@ -2846,10 +2846,16 @@ other = "🔁 Reintentar {{.Order}}"
 other = "📄 Pedido {{.Order}}"
 
 ["bot.rq.retry_ask"]
-other = "¿Enviar esta devolución al proveedor otra vez? Se crea una devolución nueva para la misma entrada y el mismo importe. Si pudo haberse hecho ya, se rechaza."
+other = "¿Enviar esta devolución otra vez? Pedido {{.Order}}, entrada {{.Tickets}}, importe <b>{{.Amount}}</b>. Se crea una devolución nueva para la misma entrada e importe; una que pudo haberse hecho ya se rechaza."
 
 ["bot.rq.retry_yes"]
-other = "Sí, enviarla otra vez"
+other = "Sí, enviar {{.Amount}} otra vez"
+
+["bot.rq.retry_no"]
+other = "Cancelar"
+
+["bot.rq.already_replaced"]
+other = "Esta devolución ya se reenvió, así que no se puede reintentar. Mira la devolución más reciente en la lista."
 
 ["bot.rq.retry_done"]
 other = "<b>Devolución enviada de nuevo</b>"

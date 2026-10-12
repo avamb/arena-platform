@@ -58,7 +58,8 @@ func TestBotE2E_RefundQueue_FailedRefundIsRetried(t *testing.T) {
 	d.press("or:f:t:1", "Возврат · заказ №")
 	d.press("or:f:go", "Почему возвращаются деньги")
 	d.press("or:f:r:3", "ВЕРНУТЬ")
-	d.say("вернуть", "не удалось")
+	d.say("вернуть", "Последняя проверка")
+	d.press("or:f:ok", "не удалось")
 	var failedID uuid.UUID
 	if err := pool.QueryRow(ctx, `SELECT id FROM refunds WHERE order_id = $1 AND state = 'failed'`, seed.anna).Scan(&failedID); err != nil {
 		t.Fatalf("the declined refund is not in the database: %v", err)
@@ -76,7 +77,10 @@ func TestBotE2E_RefundQueue_FailedRefundIsRetried(t *testing.T) {
 
 	// Retry asks first and sends nothing until the second press.
 	declined = false
-	d.press("rq:rt:"+failedID.String(), "Отправить этот возврат")
+	ask := d.press("rq:rt:"+failedID.String(), "Отправить этот возврат")
+	if !strings.Contains(ask, "Заказ №") || !strings.Contains(ask, "25") {
+		t.Errorf("the question names neither the order nor the amount:\n%s", ask)
+	}
 	var n int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM refunds WHERE order_id = $1`, seed.anna).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("refunds after the question = %d (%v); want 1", n, err)
@@ -99,9 +103,10 @@ func TestBotE2E_RefundQueue_FailedRefundIsRetried(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT id FROM refunds WHERE order_id = $1 AND state = 'succeeded'`, seed.anna).Scan(&okID); err != nil {
 		t.Fatal(err)
 	}
-	d.press("rq:rt:"+okID.String(), "Отправить этот возврат")
-	again := d.press("rq:ry:"+okID.String(), "нельзя отправить повторно")
-	_ = again
+	d.press("rq:rt:"+okID.String(), "нельзя отправить повторно")
+	d.press("rq:ry:"+okID.String(), "нельзя отправить повторно")
+	// the refund that was retried once is not offered again
+	d.press("rq:rt:"+failedID.String(), "нельзя отправить повторно")
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM refunds WHERE order_id = $1`, seed.anna).Scan(&n); err != nil || n != 2 {
 		t.Fatalf("refunds after a refused retry = %d (%v); want 2", n, err)
 	}

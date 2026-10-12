@@ -8793,6 +8793,9 @@ type OrderRefundQueueItem struct {
 	// ProviderStatus The provider's own status of the refund, when it has answered.
 	ProviderStatus *string `json:"provider_status"`
 
+	// Retryable True when the retry route would accept this refund - it provably moved no money and has not been retried yet. The route still decides.
+	Retryable *bool `json:"retryable,omitempty"`
+
 	// State One of requested, approved, provider_pending, succeeded, failed, manual_review.
 	State string `json:"state"`
 

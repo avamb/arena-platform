@@ -2991,10 +2991,16 @@ other = "🔁 Retry {{.Order}}"
 other = "📄 Order {{.Order}}"
 
 ["bot.rq.retry_ask"]
-other = "Send this refund to the provider again? A new refund is created for the same ticket and amount. A refund that may already have gone through is refused."
+other = "Send this refund again? Order {{.Order}}, ticket {{.Tickets}}, amount <b>{{.Amount}}</b>. A new refund is created for the same ticket and amount; one that may already have gone through is refused."
 
 ["bot.rq.retry_yes"]
-other = "Yes, send it again"
+other = "Yes, send {{.Amount}} again"
+
+["bot.rq.retry_no"]
+other = "Cancel"
+
+["bot.rq.already_replaced"]
+other = "This refund was already sent again, so it cannot be retried. Look at the newer refund in the list."
 
 ["bot.rq.retry_done"]
 other = "<b>Refund sent again</b>"
