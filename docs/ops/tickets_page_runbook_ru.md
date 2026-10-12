@@ -218,11 +218,13 @@ SET settings = jsonb_set(
     updated_at = now()
 WHERE id = '<channel_id>' AND org_id = '<org_id>' AND deleted_at IS NULL
   AND settings #>> '{hosted_page,enabled}' = 'true'
-RETURNING settings ? 'gateway' AS gateway_kept, settings->'hosted_page' AS hosted_page;
+RETURNING settings ?| array['gateway','gateway_token_hash'] AS gateway_kept, settings->'hosted_page' AS hosted_page;
 -- ровно одна строка, hosted_page содержит show_seller=true и public_contact;
 -- если строк 0 или больше одной — ROLLBACK; иначе:
 COMMIT;
 ```
+
+Признак `gateway_kept` может быть `false` у старых каналов, где ключ шлюза лежит на верхнем уровне (`gateway_token_hash`), либо у каналов вообще без шлюза: это не потеря данных. Поэтому до UPDATE прочитайте `SELECT settings - 'hosted_page' FROM sales_channels WHERE id = '<channel_id>'` и после него (до COMMIT, в той же транзакции) тот же запрос: результаты обязаны совпасть.
 
 Откат: тем же приёмом поставить `show_seller` в `false`
 (`jsonb_set(settings, '{hosted_page,show_seller}', 'false'::jsonb, true)`), блоки
