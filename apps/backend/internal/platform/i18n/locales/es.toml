@@ -405,7 +405,7 @@ other = "Ponle un nombre al evento, de hasta 200 caracteres."
 other = "¿Restricción de edad?"
 
 ["bot.wz.ask_promoter"]
-other = "¿A nombre de quién va el evento? El promotor es el nombre que aparece impreso en la entrada como organizador, con su propia página de entradas. Normalmente es {{.Org}}. Para otro teatro o marca, elígelo o añade uno nuevo. Para el próximo evento puedes elegir otro."
+other = "¿A nombre de quién va el evento? El promotor es el nombre que los compradores ven como organizador: en la entrada, en el PDF y en la página propia del promotor. Normalmente es {{.Org}}. Para otro teatro o marca, elígelo o añade uno nuevo. Para el próximo evento puedes elegir otro."
 
 ["bot.wz.promoter_org"]
 other = "La propia organización"
@@ -414,7 +414,7 @@ other = "La propia organización"
 other = "+ Nuevo promotor (marca)…"
 
 ["bot.wz.ask_promoter_name"]
-other = "El nombre del promotor, tal como debe aparecer en la entrada."
+other = "El nombre del promotor. Los compradores lo ven como organizador en la entrada, en el PDF y en la página del promotor."
 
 ["bot.wz.err_promoter_name"]
 other = "Indica el nombre del promotor."
@@ -1086,10 +1086,10 @@ other = "➡ Siguiente: confirmar la cancelación de todo"
 other = "Algunos pedidos ({{.N}}) se hicieron a través de tu sitio WordPress. Ese sitio escribe el correo a sus compradores, y trasladar o cancelar una sesión con esos pedidos aún no está soportado: escribe al soporte de Arena y lo haremos a mano. No se ha cambiado nada."
 
 ["bot.ses.contact_ask_email"]
-other = "Para trasladar la sesión, los compradores necesitan una dirección a la que escribir; aparecerá en el correo. Escribe el correo de contacto (organizador: {{.Name}})."
+other = "Para trasladar la sesión, los compradores necesitan una dirección a la que escribir. Los compradores la ven en el correo y en el PDF de la entrada. Escribe el correo de contacto. Mejor un buzón compartido que uno personal (organizador: {{.Name}})."
 
 ["bot.ses.contact_ask_phone"]
-other = "El teléfono de contacto es opcional. Escribe el número u omítelo."
+other = "El teléfono de contacto es opcional. Los compradores solo lo ven si tú lo permites. Escribe el número u omítelo."
 
 ["bot.ses.contact_no_phone_btn"]
 other = "Sin teléfono"

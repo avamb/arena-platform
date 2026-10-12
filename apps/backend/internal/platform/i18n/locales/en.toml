@@ -549,7 +549,7 @@ other = "Please give the event a name, up to 200 characters."
 other = "Age restriction?"
 
 ["bot.wz.ask_promoter"]
-other = "Whose name is the event under? The promoter is the name printed on the ticket as the organizer, with its own ticket page. Usually that is {{.Org}}. For another theatre or brand, pick it or add a new one. For the next event you can choose another."
+other = "Whose name is the event under? The promoter is the name buyers see as the organizer: on the ticket, in the e-ticket PDF and on the promoter's own ticket page. Usually that is {{.Org}}. For another theatre or brand, pick it or add a new one. For the next event you can choose another."
 
 ["bot.wz.promoter_org"]
 other = "The organization itself"
@@ -558,7 +558,7 @@ other = "The organization itself"
 other = "+ New promoter (brand)…"
 
 ["bot.wz.ask_promoter_name"]
-other = "The promoter's name, as it should appear on the ticket."
+other = "The promoter's name. Buyers see it as the organizer on the ticket, in the e-ticket PDF and on the promoter's ticket page."
 
 ["bot.wz.err_promoter_name"]
 other = "Please give the promoter's name."
@@ -1231,10 +1231,10 @@ other = "➡ Next: confirm cancelling everything"
 other = "Some orders ({{.N}}) were placed through your WordPress site. That site writes the letter to its buyers, and moving or cancelling a session with such orders is not supported yet — write to Arena support and we will do it by hand. Nothing was changed."
 
 ["bot.ses.contact_ask_email"]
-other = "To move the session the buyers need an address they can write to; it appears in the letter. Type the contact e-mail (organizer: {{.Name}})."
+other = "To move the session, buyers need an address to write to. Buyers see it in the letter and in the e-ticket PDF. Type the contact e-mail. Use a shared mailbox, not a personal one (organizer: {{.Name}})."
 
 ["bot.ses.contact_ask_phone"]
-other = "A contact phone is optional. Type the number or skip it."
+other = "A contact phone is optional. Buyers see it only if you allow it. Type the number or skip it."
 
 ["bot.ses.contact_no_phone_btn"]
 other = "No phone"
