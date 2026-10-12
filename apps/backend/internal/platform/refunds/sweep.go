@@ -160,6 +160,9 @@ func (e *Engine) Sweep(ctx context.Context, now time.Time, notifier Notifier) (S
 	section(t/6, "park", func(ctx context.Context) error {
 		n, err := e.parkStuck(ctx, now)
 		rep.Stuck = n
+		if perr := e.purgeScanTraces(ctx, now); perr != nil && err == nil {
+			err = perr
+		}
 		return err
 	})
 	section(t/2, "retry", func(ctx context.Context) error {
@@ -870,4 +873,26 @@ func ScheduleInitialJob(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("refunds: enqueue initial sweep job: %w", err)
 	}
 	return nil
+}
+
+// Retention of the scan-blocked refund journal (it holds personal data): the
+// per-address delivery marks only stop a retried notice job from mailing an
+// address twice, and the attempt journal keeps its counts but forgets the
+// person's name.
+const (
+	scanNoticeMarksKeep = "30 days"
+	scanBlockLabelKeep  = "180 days"
+)
+
+func (e *Engine) purgeScanTraces(ctx context.Context, now time.Time) error {
+	return e.inTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `DELETE FROM refund_scan_notice_sends WHERE sent_at < $1::timestamptz - $2::interval`,
+			now, scanNoticeMarksKeep); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `UPDATE refund_scan_blocks SET actor_label = NULL
+			WHERE actor_label IS NOT NULL AND last_at < $1::timestamptz - $2::interval
+			  AND (cardinality($3::uuid[]) = 0 OR org_id = ANY($3::uuid[]))`, now, scanBlockLabelKeep, e.scopeOrgs())
+		return err
+	})
 }

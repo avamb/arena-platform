@@ -223,3 +223,22 @@ func (q *Queries) GetUserExportData(ctx context.Context, id uuid.UUID) (UserExpo
 	)
 	return r, err
 }
+
+const forgetUserRefundScanTraces = `-- name: ForgetUserRefundScanTraces :exec
+WITH blocks AS (
+    UPDATE refund_scan_blocks SET actor_label = NULL
+    WHERE actor_key = 'user:' || $1::uuid::text AND actor_label IS NOT NULL
+    RETURNING 1
+)
+DELETE FROM refund_scan_notice_sends
+WHERE lower(email) = (SELECT lower(email) FROM users WHERE id = $1::uuid)
+`
+
+// ForgetUserRefundScanTraces forgets a user who is being erased in the journal
+// of scan-blocked refunds: the attempts they made lose their name (the counts
+// stay) and the marks of notices delivered to their address are deleted. Run
+// it BEFORE AnonymizeUser, which replaces the address.
+func (q *Queries) ForgetUserRefundScanTraces(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, forgetUserRefundScanTraces, id)
+	return err
+}
