@@ -10004,7 +10004,7 @@ components:
       description: |
         The cart to price, in the shape of `PublicFeedCheckoutStartRequest`
         (seated `seats`, general-admission `ga_items`, or both) plus the
-        optional promo code.
+        optional promo code. The quote takes no buyer details.
       required: [session_id]
       properties:
         session_id:
@@ -10026,19 +10026,6 @@ components:
           description: |
             Promotional code to apply. Absent, null or blank prices the cart
             without a discount.
-        holder_email:
-          type: string
-          format: email
-          description: |
-            The buyer's e-mail, when already known. It only feeds the
-            per-customer usage cap of the promo code; without it that one
-            check is skipped here and `checkout/start` still enforces it.
-            Superseded by `buyer.email` when `buyer` is present.
-        buyer:
-          allOf:
-            - $ref: "#/components/schemas/PublicBuyerInfo"
-          description: |
-            Structured buyer info; only `buyer.email` is read by the quote.
 
     PublicFeedCheckoutQuoteResponse:
       type: object
@@ -33204,8 +33191,7 @@ paths:
         "422":
           description: |
             The promo code does not apply (`promo.not_applicable`,
-            `promo.minimum_not_reached`, `promo.exhausted`,
-            `promo.per_customer_limit`), the session's admission mode does not
+            `promo.minimum_not_reached`, `promo.exhausted`), the session's admission mode does not
             match the lines, or a category cannot be priced here.
           content:
             application/json:

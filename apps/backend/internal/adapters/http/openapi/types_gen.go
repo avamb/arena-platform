@@ -9926,19 +9926,10 @@ type PublicBuyerInfo struct {
 
 // PublicFeedCheckoutQuoteRequest The cart to price, in the shape of `PublicFeedCheckoutStartRequest`
 // (seated `seats`, general-admission `ga_items`, or both) plus the
-// optional promo code.
+// optional promo code. The quote takes no buyer details.
 type PublicFeedCheckoutQuoteRequest struct {
-	// Buyer Structured buyer info; only `buyer.email` is read by the quote.
-	Buyer *PublicBuyerInfo `json:"buyer,omitempty"`
-
 	// GaItems GA items for GA or hybrid sessions.
 	GaItems *[]PublicGAItem `json:"ga_items,omitempty"`
-
-	// HolderEmail The buyer's e-mail, when already known. It only feeds the
-	// per-customer usage cap of the promo code; without it that one
-	// check is skipped here and `checkout/start` still enforces it.
-	// Superseded by `buyer.email` when `buyer` is present.
-	HolderEmail *openapi_types.Email `json:"holder_email,omitempty"`
 
 	// PromoCode Promotional code to apply. Absent, null or blank prices the cart
 	// without a discount.

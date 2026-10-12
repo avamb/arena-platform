@@ -30,6 +30,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -356,27 +357,24 @@ func TestPublicQuote_UsageCaps(t *testing.T) {
 		t.Fatalf("paid webhook = %d; body: %s", c, b)
 	}
 
-	// The same buyer is over the cap; anyone else is not; no e-mail skips the
-	// per-customer check (start enforces it again).
-	if e := f.quoteErr(t, srv, f.gaCart(1, "ONCEEACH", f.buyerMail), http.StatusUnprocessableEntity); e.Error.Code != "promo.per_customer_limit" {
-		t.Errorf("same buyer: error code = %q, want promo.per_customer_limit", e.Error.Code)
+	// The quote takes no buyer details, so it cannot tell whether an address
+	// already used a code: it answers the same for the buyer who is over the
+	// cap, for anybody else and for a request that names no one.
+	for _, email := range []string{f.buyerMail, "someone-else-" + f.buyerMail, ""} {
+		if got := f.mustQuote(t, srv, f.gaCart(1, "ONCEEACH", email)); !got.PromoApplied {
+			t.Errorf("quote for %q = %+v, want the code to apply whoever asks", email, got)
+		}
 	}
-	if got := f.mustQuote(t, srv, f.gaCart(1, "ONCEEACH", "someone-else-"+f.buyerMail)); !got.PromoApplied {
-		t.Errorf("another buyer = %+v, want the code to apply", got)
-	}
-	if got := f.mustQuote(t, srv, f.gaCart(1, "ONCEEACH", "")); !got.PromoApplied {
-		t.Errorf("no e-mail = %+v, want the per-customer check skipped", got)
-	}
-	// And the start the quote predicted would be refused, with the platform's code.
-	if c, b := f.startWithPromo(t, srv, 1, "ONCEEACH"); c != http.StatusUnprocessableEntity {
-		t.Errorf("second start with the same buyer = %d, want 422; body: %s", c, b)
+	// checkout/start is where the per-customer cap bites, with the platform's code.
+	if c, b := f.startWithPromo(t, srv, 1, "ONCEEACH"); c != http.StatusUnprocessableEntity || !strings.Contains(string(b), "promo.per_customer_limit") {
+		t.Errorf("second start with the same buyer = %d %s, want 422 promo.per_customer_limit", c, b)
 	}
 
 	// ── Total cap: one recorded use exhausts max_uses=1 for everybody. ─────────
 	if err := q.InsertPromoCodeRedemption(ctx, capID, nil, nil, 250, 2500, nil, nil, nil); err != nil {
 		t.Fatalf("InsertPromoCodeRedemption: %v", err)
 	}
-	if e := f.quoteErr(t, srv, f.gaCart(1, "FIRSTONE", "someone-else-"+f.buyerMail), http.StatusUnprocessableEntity); e.Error.Code != "promo.exhausted" {
+	if e := f.quoteErr(t, srv, f.gaCart(1, "FIRSTONE", ""), http.StatusUnprocessableEntity); e.Error.Code != "promo.exhausted" {
 		t.Errorf("exhausted code: error code = %q, want promo.exhausted", e.Error.Code)
 	}
 }

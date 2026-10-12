@@ -17,9 +17,9 @@
 // calls no payment provider. A quote leaves nothing behind.
 //
 // Request body: the lines of checkout/start (session_id, seats[], ga_items[])
-// plus the optional promo_code and the buyer's e-mail (buyer.email or
-// holder_email). The e-mail only feeds the per-customer promo cap; without it
-// that one check is skipped and checkout/start still enforces it.
+// plus the optional promo_code. The quote never sees who is buying, so it
+// cannot answer whether a given address already used a code: the per-customer
+// cap is checked by checkout/start only.
 package hfeed
 
 import (
@@ -29,7 +29,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -42,12 +41,10 @@ import (
 // PublicFeedCheckoutQuoteRequest is the JSON body for
 // POST /v1/public/feeds/{feed_token}/checkout/quote.
 type PublicFeedCheckoutQuoteRequest struct {
-	SessionID   string           `json:"session_id"`
-	HolderEmail string           `json:"holder_email,omitempty"`
-	PromoCode   *string          `json:"promo_code"`
-	Seats       []string         `json:"seats,omitempty"`
-	GaItems     []PublicGAItem   `json:"ga_items,omitempty"`
-	Buyer       *PublicBuyerInfo `json:"buyer,omitempty"`
+	SessionID string         `json:"session_id"`
+	PromoCode *string        `json:"promo_code"`
+	Seats     []string       `json:"seats,omitempty"`
+	GaItems   []PublicGAItem `json:"ga_items,omitempty"`
 }
 
 // PublicFeedCheckoutQuoteResponse is the 200 body.
@@ -103,11 +100,6 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 		))
 		return
 	}
-	buyerEmail := strings.TrimSpace(req.HolderEmail)
-	if req.Buyer != nil && strings.TrimSpace(req.Buyer.Email) != "" {
-		buyerEmail = strings.TrimSpace(req.Buyer.Email)
-	}
-
 	hasSeats := len(req.Seats) > 0
 	hasGA := len(req.GaItems) > 0
 	if !hasSeats && !hasGA {
@@ -258,7 +250,7 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 	if promoRow != nil {
 		var errCode string
 		discount, _, errCode = h.applyPromoDiscount(ctx, h.promoQueries, promoRow,
-			hcheckout.TierLinesForSession(lines, sessionID.String(), currency), buyerEmail)
+			hcheckout.TierLinesForSession(lines, sessionID.String(), currency), "")
 		if errCode != "" {
 			writePublicPromoError(w, r, errCode)
 			return

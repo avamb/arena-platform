@@ -15750,7 +15750,7 @@ export interface components {
         /**
          * @description The cart to price, in the shape of `PublicFeedCheckoutStartRequest`
          *     (seated `seats`, general-admission `ga_items`, or both) plus the
-         *     optional promo code.
+         *     optional promo code. The quote takes no buyer details.
          */
         PublicFeedCheckoutQuoteRequest: {
             /**
@@ -15767,16 +15767,6 @@ export interface components {
              *     without a discount.
              */
             promo_code?: string | null;
-            /**
-             * Format: email
-             * @description The buyer's e-mail, when already known. It only feeds the
-             *     per-customer usage cap of the promo code; without it that one
-             *     check is skipped here and `checkout/start` still enforces it.
-             *     Superseded by `buyer.email` when `buyer` is present.
-             */
-            holder_email?: string;
-            /** @description Structured buyer info; only `buyer.email` is read by the quote. */
-            buyer?: components["schemas"]["PublicBuyerInfo"];
         };
         /** @description The priced cart. Nothing was held, reserved or created. */
         PublicFeedCheckoutQuoteResponse: {
@@ -37825,8 +37815,7 @@ export interface operations {
             };
             /**
              * @description The promo code does not apply (`promo.not_applicable`,
-             *     `promo.minimum_not_reached`, `promo.exhausted`,
-             *     `promo.per_customer_limit`), the session's admission mode does not
+             *     `promo.minimum_not_reached`, `promo.exhausted`), the session's admission mode does not
              *     match the lines, or a category cannot be priced here.
              */
             422: {
