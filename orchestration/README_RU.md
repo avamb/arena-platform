@@ -62,3 +62,22 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\orchestration\run-supe
 ```
 
 Codex CLI review не имитируется: mock packet помечает `codex_cli_invoked=false`. Реальный Codex review остаётся отдельным проверяемым шагом до PASS и PR.
+
+## Подготовленная M2 real queue
+
+`supervisor-queue-m2-v1.json` содержит одну ограниченную задачу `m2-vector-pdf-adapter-v1` с бюджетом `$5` внутри session limit `$20`. Она создаёт только source-only vector-PDF adapter; закрытый PDF fixture нужен для отдельного acceptance и не включается в Git. Supervisor останавливается после Claude result на `PENDING_CODEX_REVIEW`, если structured Codex review не дал `PASS`.
+
+Offline preflight:
+
+```powershell
+Set-Location 'C:\Projects\Venue_SVG_Generator-supervisor'
+node orchestration/supervisor.mjs --preflight --queue orchestration/supervisor-queue-m2-v1.json
+```
+
+Точная команда единственного платного запуска после отдельного разрешения владельца:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\orchestration\run-supervisor.ps1 -Queue .\orchestration\supervisor-queue-m2-v1.json -Approved
+```
+
+Команда не запускалась. Свежая Console confirmation и `-Approved` обязательны; результат Claude, Codex verdict, usage и стоимость должны быть сохранены до перехода к следующей задаче.

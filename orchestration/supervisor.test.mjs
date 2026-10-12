@@ -8,6 +8,7 @@ import { parseCodexJsonl, validateCodexReview } from './codex-review.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SUPERVISOR = path.join(ROOT, 'orchestration', 'supervisor.mjs');
 const QUEUE = path.join(ROOT, 'orchestration', 'supervisor-queue-v1.json');
+const REAL_QUEUE = path.join(ROOT, 'orchestration', 'supervisor-queue-m2-v1.json');
 
 function run(args) {
   return spawnSync(process.execPath, [SUPERVISOR, ...args], { cwd: ROOT, encoding: 'utf8', windowsHide: true });
@@ -34,4 +35,13 @@ test('Codex review contract accepts PASS and fail-closes REJECT/BLOCKED', () => 
   assert.equal(validateCodexReview({ verdict: 'PASS', findings: [], tests_passed: false, scope_ok: true }).verdict, 'REJECT');
   assert.equal(parseCodexJsonl('{"type":"item.completed","item":{"verdict":"REJECT","findings":["test failed"],"tests_passed":false,"scope_ok":true}}').verdict, 'REJECT');
   assert.equal(parseCodexJsonl('{"type":"message","text":"unstructured"}').verdict, 'BLOCKED');
+});
+
+test('prepared real queue validates scope and budget without credential/API access', () => {
+  const result = run(['--preflight', '--queue', REAL_QUEUE]);
+  assert.equal(result.status, 0, result.stderr);
+  const payload = JSON.parse(result.stdout.trim());
+  assert.equal(payload.status, 'SUPERVISOR_PREFLIGHT_PASSED');
+  assert.equal(payload.configured_budget_usd, 5);
+  assert.equal(payload.api_calls, 0);
 });

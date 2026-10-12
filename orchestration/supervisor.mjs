@@ -99,6 +99,11 @@ function validateQueue(queueFile, mode = 'mock') {
     assert.equal(task.task_id, entry.task_id);
     assert.equal(entry.mode, mode, `task ${entry.task_id} mode mismatch`);
     assert.ok(task.budget_usd <= queue.max_task_budget_usd, `task ${entry.task_id} exceeds queue task budget`);
+    if (mode === 'real') {
+      assert.ok(['m1', 'generic'].includes(entry.launcher), `unsupported launcher for ${entry.task_id}`);
+      assert.equal(typeof entry.worktree, 'string', `worktree is required for ${entry.task_id}`);
+      assert.ok(['run', 'disabled'].includes(entry.codex_review), `invalid Codex review mode for ${entry.task_id}`);
+    }
     configured += task.budget_usd;
     assert.ok(configured <= queue.session_budget_usd, 'configured task budgets exceed session budget');
     return { entry, task };
