@@ -94,7 +94,7 @@ func TestBotE2E_SuperadminWorksInEveryOrganization(t *testing.T) {
 	tg.waitSince(t, m, "Что будем делать?")
 	m = tg.mark()
 	tg.push(e2eCallbackAs(saTG, "events:1"))
-	tg.waitSince(t, m, "Ивентов пока нет")
+	tg.waitSince(t, m, "Мероприятий пока нет")
 
 	// 2. The foreign organization is offered and can be switched to, although
 	//    the operator has no membership there.
@@ -113,7 +113,7 @@ func TestBotE2E_SuperadminWorksInEveryOrganization(t *testing.T) {
 	//    superadmin bypass (X-Admin-Reason is sent by the client).
 	m = tg.mark()
 	tg.push(e2eCallbackAs(saTG, "events:1"))
-	tg.waitSince(t, m, "Ивентов пока нет")
+	tg.waitSince(t, m, "Мероприятий пока нет")
 	m = tg.mark()
 	tg.push(e2eCallbackAs(saTG, "team"))
 	team := tg.waitSince(t, m, "Сотрудники: ")
