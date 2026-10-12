@@ -333,6 +333,12 @@ func (s *Server) handlePublicPromoterPage(w http.ResponseWriter, r *http.Request
 
 // ─── public feed checkout handler shim ────────────────────────────────────────
 
+// handlePublicFeedCheckoutQuote prices a public cart (with an optional promo
+// code) without holding anything.
+func (s *Server) handlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePublicFeedCheckoutQuote(w, r)
+}
+
 func (s *Server) handlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandlePublicFeedCheckoutStart(w, r)
 }

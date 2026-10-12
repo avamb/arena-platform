@@ -145,7 +145,7 @@ describe('wiring from the feed session to the pay button', () => {
   });
 
   it('passes the flag and the pay label to the buyer form, not to the cart step', () => {
-    expect(cartSheetSource).toContain('withdrawalNotice={shouldShowWithdrawalNotice(showWithdrawalNotice, total.amount + fee)}');
+    expect(cartSheetSource).toContain('withdrawalNotice={shouldShowWithdrawalNotice(showWithdrawalNotice, payTotal)}');
     expect(cartSheetSource).toContain('submitText={payLabel}');
     expect(cartSheetSource).toContain('showWithdrawalNotice = false');
   });

@@ -4866,6 +4866,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/feeds/{feed_token}/checkout/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Price a public cart, with an optional promo code, without holding it
+         * @description Read-only counterpart of `checkout/start`. It prices the same lines
+         *     through the same pipeline (the channel's service charge, tier price
+         *     windows, seat tier bindings, promo validation and usage caps) and
+         *     answers the breakdown the payment page would ask for, so a widget can
+         *     show the discounted total before the buyer pays.
+         *
+         *     It takes no lock, holds no seat, reserves no capacity and creates no
+         *     reservation, checkout session, order or payment. It does not check
+         *     that a category is on sale; `checkout/start` does, and a seat that is
+         *     gone or taken is refused with the same 409 as there.
+         *
+         *     No JWT required: the feed token in the path is the credential.
+         *     Rate-limited per token and per IP, like every public feed route.
+         *
+         *     A code that does not fit the cart is answered with a small, stable
+         *     set of 422 codes. `promo.not_applicable` covers an unknown, paused,
+         *     not-yet-valid or expired code and one that belongs to another event,
+         *     category or currency, so the answer never tells a buyer which codes
+         *     exist. `promo.minimum_not_reached`, `promo.exhausted` and
+         *     `promo.per_customer_limit` are only answered for a code that does fit.
+         */
+        post: operations["quotePublicFeedCheckout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/payment-return": {
         parameters: {
             query?: never;
@@ -15707,6 +15746,51 @@ export interface components {
              *     payment BEFORE arena releases the seats.
              */
             expires_at: string;
+        };
+        /**
+         * @description The cart to price, in the shape of `PublicFeedCheckoutStartRequest`
+         *     (seated `seats`, general-admission `ga_items`, or both) plus the
+         *     optional promo code.
+         */
+        PublicFeedCheckoutQuoteRequest: {
+            /**
+             * Format: uuid
+             * @description UUID of the event session the cart belongs to.
+             */
+            session_id: string;
+            /** @description Seat keys for seated or hybrid sessions. */
+            seats?: string[];
+            /** @description GA items for GA or hybrid sessions. */
+            ga_items?: components["schemas"]["PublicGAItem"][];
+            /**
+             * @description Promotional code to apply. Absent, null or blank prices the cart
+             *     without a discount.
+             */
+            promo_code?: string | null;
+            /**
+             * Format: email
+             * @description The buyer's e-mail, when already known. It only feeds the
+             *     per-customer usage cap of the promo code; without it that one
+             *     check is skipped here and `checkout/start` still enforces it.
+             *     Superseded by `buyer.email` when `buyer` is present.
+             */
+            holder_email?: string;
+            /** @description Structured buyer info; only `buyer.email` is read by the quote. */
+            buyer?: components["schemas"]["PublicBuyerInfo"];
+        };
+        /** @description The priced cart. Nothing was held, reserved or created. */
+        PublicFeedCheckoutQuoteResponse: {
+            /**
+             * @description The breakdown `checkout/start` would store for the same cart:
+             *     subtotal, promo discount, service charge, total and currency.
+             *     Widgets render these numbers verbatim.
+             */
+            pricing: components["schemas"]["PricingBreakdownItem"];
+            /**
+             * @description True when a `promo_code` was sent and its discount is part of
+             *     `pricing`.
+             */
+            promo_applied: boolean;
         };
         /**
          * @description A single widget funnel telemetry event.  No PII is stored — the only
@@ -37630,6 +37714,12 @@ export interface operations {
              *     `checkout.payment_not_configured` when the organization has no
              *     usable payment provider config for it.
              *
+             *     A refused `promo_code` is answered with the same stable codes as
+             *     `checkout/quote`: `promo.not_applicable`,
+             *     `promo.minimum_not_reached`, `promo.exhausted` or
+             *     `promo.per_customer_limit`. The code is matched without regard to
+             *     case and surrounding spaces.
+             *
              *     For a cart with a total above zero both payment codes are decided
              *     BEFORE the reservation becomes durable, so a refused checkout
              *     leaves no hold, no held seats and no reserved capacity behind.
@@ -37662,6 +37752,101 @@ export interface operations {
              *     which replaces an origin 502 with its own plain-text stub page, so
              *     the JSON error envelope never reaches the widget or the buyer.
              */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    quotePublicFeedCheckout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Public feed token that scopes the available sessions. */
+                feed_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicFeedCheckoutQuoteRequest"];
+            };
+        };
+        responses: {
+            /** @description The priced cart. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicFeedCheckoutQuoteResponse"];
+                };
+            };
+            /** @description Invalid body or field. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not published to this feed token. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A ticket category is not in this session. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A requested seat is gone or taken (`reservation.seats_conflict`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The promo code does not apply (`promo.not_applicable`,
+             *     `promo.minimum_not_reached`, `promo.exhausted`,
+             *     `promo.per_customer_limit`), the session's admission mode does not
+             *     match the lines, or a category cannot be priced here.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Rate limited (feed.rate_limited). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
             503: {
                 headers: {
                     [name: string]: unknown;

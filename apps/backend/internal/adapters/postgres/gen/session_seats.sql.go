@@ -408,6 +408,39 @@ func (q *Queries) LockSessionSeatsForHold(ctx context.Context, sessionID uuid.UU
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ListSessionSeatsByKeys
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listSessionSeatsByKeys = `-- name: ListSessionSeatsByKeys :many
+SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind
+FROM   session_seats
+WHERE  session_id = $1
+  AND  seat_key   = ANY($2::text[])
+ORDER  BY seat_key ASC`
+
+// ListSessionSeatsByKeys is LockSessionSeatsForHold without the row locks:
+// the same rows in the same order, readable outside a transaction. It prices
+// a cart (the public checkout quote) without touching the seats it prices.
+func (q *Queries) ListSessionSeatsByKeys(ctx context.Context, sessionID uuid.UUID, seatKeys []string) ([]SessionSeatRow, error) {
+	rows, err := q.db.Query(ctx, listSessionSeatsByKeys, sessionID, seatKeys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var seats []SessionSeatRow
+	for rows.Next() {
+		s, err := scanSessionSeatRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		seats = append(seats, s)
+	}
+	return seats, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // HoldSessionSeat
 // ─────────────────────────────────────────────────────────────────────────────
 

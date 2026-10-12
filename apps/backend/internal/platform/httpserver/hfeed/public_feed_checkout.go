@@ -407,93 +407,31 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		}
 	}
 
-	// ── 7. Validate GA tier(s) exist in this session ──────────────────────────
-	if h.tierQueries == nil && hasGA {
-		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.tier_unavailable", "tier service is not available", r,
-		))
+	// ── 7. Price the GA lines ─────────────────────────────────────────────────
+	// Shared with checkout/quote (public_feed_pricing.go): one resolution of
+	// the tiers, their price windows and the pricing-pipeline input.
+	pricedGA, priceErr := h.priceGAItems(ctx, sessionID, req.GaItems, parsedGATierIDs)
+	if priceErr != "" {
+		h.writePricingError(w, r, priceErr)
 		return
 	}
-
-	// Look up first GA tier (for pricing; we'll compute per-item below).
-	// For a pure GA single-tier request, this follows the original #153 flow.
-	type gaItemPriced struct {
-		tierID    uuid.UUID
-		qty       int32
-		unitPrice int64
-		currency  string
-	}
-	pricedGA := make([]gaItemPriced, 0, len(req.GaItems))
-
-	for i, item := range req.GaItems {
-		tierID := parsedGATierIDs[i]
-		tier, err := h.tierQueries.GetTicketTierByID(ctx, tierID, sessionID)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-					"checkout.tier_not_found", "ticket tier not found in this session", r,
-				))
-				return
-			}
-			h.logger.Error("public_feed_checkout: tier lookup failed",
-				slog.String("tier_id", tierID.String()),
-				slog.String("error", err.Error()),
-			)
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"checkout.tier_lookup_failed", "failed to retrieve ticket tier", r,
-			))
-			return
-		}
-		unitPrice, priceErr := h.publicTierUnitPrice(ctx, h.tierQueries, tier)
-		if priceErr != "" {
-			h.writePricingError(w, r, priceErr)
-			return
-		}
-		pricedGA = append(pricedGA, gaItemPriced{
-			tierID:    tierID,
-			qty:       item.Quantity,
-			unitPrice: unitPrice,
-			currency:  tier.Currency,
-		})
-	}
-
-	// GA pricing lines (guardrail #15 — every line is priced platform-side
-	// and fed through the shared pricing pipeline). The seated branch appends
-	// its per-tier seat lines to these before computing the breakdown.
-	gaLines := make([]hcheckout.PricingLineInput, 0, len(pricedGA))
-	for _, g := range pricedGA {
-		gaLines = append(gaLines, hcheckout.PricingLineInput{
-			TierID:    g.tierID.String(),
-			Quantity:  g.qty,
-			UnitPrice: g.unitPrice,
-		})
-	}
+	gaLines := gaPricingLines(pricedGA)
 
 	// ── 8. Promo code lookup ───────────────────────────────────────────────────
 	// Only the row fetch happens here; validation (min-order-amount etc.) runs
 	// once the FULL platform-computed subtotal is known — for seated carts that
 	// includes the seat prices resolved inside the hold transaction.
-	var promoRow *gen.PromoCodeRow
-
-	if req.PromoCode != nil && *req.PromoCode != "" && h.promoQueries != nil {
-		row, err := h.promoQueries.GetPromoCodeByCode(ctx, checkCtx.OrgID, *req.PromoCode)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
-					"promo.not_found", "promo code not found", r,
-				))
-				return
-			}
-			h.logger.Error("public_feed_checkout: promo lookup failed",
-				slog.String("promo_code", *req.PromoCode),
-				slog.String("error", err.Error()),
-			)
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"checkout.promo_lookup_failed", "failed to retrieve promo code", r,
-			))
+	promoRow, promoLookupErr := h.findPromoCode(ctx, checkCtx.OrgID, derefOr(req.PromoCode))
+	if promoLookupErr != nil {
+		if errors.Is(promoLookupErr, pgx.ErrNoRows) {
+			writePublicPromoError(w, r, "promo.not_found")
 			return
 		}
-		promoRow = &row
+		h.logger.Error("public_feed_checkout: promo lookup failed",
+			slog.String("error", promoLookupErr.Error()),
+		)
+		writePublicPromoError(w, r, "checkout.promo_lookup_failed")
+		return
 	}
 
 	// ── 9. Mint checkout_token ────────────────────────────────────────────────
@@ -530,17 +468,11 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	var gaPromoCodeID *uuid.UUID
 	if !hasSeats {
 		// Validate the promo against the platform-computed GA subtotal.
-		gaCurrency := ""
-		if len(pricedGA) > 0 {
-			gaCurrency = pricedGA[0].currency
-		}
-		gaPromoLines := hcheckout.TierLinesForSession(gaLines, sessionID.String(), gaCurrency)
+		gaPromoLines := hcheckout.TierLinesForSession(gaLines, sessionID.String(), cartCurrency(pricedGA, ""))
 		var promoErrCode string
 		gaDiscount, gaPromoCodeID, promoErrCode = h.applyPromoDiscount(ctx, h.promoQueries, promoRow, gaPromoLines, req.HolderEmail)
 		if promoErrCode != "" {
-			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
-				promoErrCode, "promo code is not applicable", r,
-			))
+			writePublicPromoError(w, r, promoErrCode)
 			return
 		}
 	}
@@ -793,10 +725,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		}
 		lines := append(seatLines, gaLines...)
 
-		currency := seatCurrency
-		if len(pricedGA) > 0 {
-			currency = pricedGA[0].currency
-		}
+		currency := cartCurrency(pricedGA, seatCurrency)
 		if currency == "" {
 			currency = "EUR" // defensive default: no tier bound anywhere
 		}
@@ -983,10 +912,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// path (see TestSeatC2_ComputePricingLines_SingleLine_MatchesSingleTier).
 	// Computed BEFORE the commit so the pre-flight below can still roll the
 	// hold back.
-	currency := ""
-	if len(pricedGA) > 0 {
-		currency = pricedGA[0].currency
-	}
+	currency := cartCurrency(pricedGA, "")
 	bd := hcheckout.ComputePricingLines(gaLines, discount, currency, pricingRules)
 
 	// A paid cart that could never have been charged must not survive this
@@ -1126,6 +1052,10 @@ func (h *Handler) writePricingError(w http.ResponseWriter, r *http.Request, code
 	case "dependency.tier_unavailable":
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			code, "tier service is not available", r,
+		))
+	case "checkout.tier_lookup_failed":
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			code, "failed to retrieve ticket tier", r,
 		))
 	case "checkout.tier_not_found":
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(

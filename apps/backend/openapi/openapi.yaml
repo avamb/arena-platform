@@ -9999,6 +9999,65 @@ components:
             from now, so the provider's hosted session always stops accepting
             payment BEFORE arena releases the seats.
 
+    PublicFeedCheckoutQuoteRequest:
+      type: object
+      description: |
+        The cart to price, in the shape of `PublicFeedCheckoutStartRequest`
+        (seated `seats`, general-admission `ga_items`, or both) plus the
+        optional promo code.
+      required: [session_id]
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: UUID of the event session the cart belongs to.
+        seats:
+          type: array
+          items:
+            type: string
+          description: Seat keys for seated or hybrid sessions.
+        ga_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicGAItem"
+          description: GA items for GA or hybrid sessions.
+        promo_code:
+          type: [string, "null"]
+          description: |
+            Promotional code to apply. Absent, null or blank prices the cart
+            without a discount.
+        holder_email:
+          type: string
+          format: email
+          description: |
+            The buyer's e-mail, when already known. It only feeds the
+            per-customer usage cap of the promo code; without it that one
+            check is skipped here and `checkout/start` still enforces it.
+            Superseded by `buyer.email` when `buyer` is present.
+        buyer:
+          allOf:
+            - $ref: "#/components/schemas/PublicBuyerInfo"
+          description: |
+            Structured buyer info; only `buyer.email` is read by the quote.
+
+    PublicFeedCheckoutQuoteResponse:
+      type: object
+      description: The priced cart. Nothing was held, reserved or created.
+      required: [pricing, promo_applied]
+      properties:
+        pricing:
+          allOf:
+            - $ref: "#/components/schemas/PricingBreakdownItem"
+          description: |
+            The breakdown `checkout/start` would store for the same cart:
+            subtotal, promo discount, service charge, total and currency.
+            Widgets render these numbers verbatim.
+        promo_applied:
+          type: boolean
+          description: |
+            True when a `promo_code` was sent and its discount is part of
+            `pricing`.
+
     WidgetFunnelEventInput:
       type: object
       description: |
@@ -33037,6 +33096,12 @@ paths:
             `checkout.payment_not_configured` when the organization has no
             usable payment provider config for it.
 
+            A refused `promo_code` is answered with the same stable codes as
+            `checkout/quote`: `promo.not_applicable`,
+            `promo.minimum_not_reached`, `promo.exhausted` or
+            `promo.per_customer_limit`. The code is matched without regard to
+            case and surrounding spaces.
+
             For a cart with a total above zero both payment codes are decided
             BEFORE the reservation becomes durable, so a refused checkout
             leaves no hold, no held seats and no reserved capacity behind.
@@ -33061,6 +33126,99 @@ paths:
             502 on purpose: this endpoint is public and fronted by Cloudflare,
             which replaces an origin 502 with its own plain-text stub page, so
             the JSON error envelope never reaches the widget or the buyer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/feeds/{feed_token}/checkout/quote:
+    post:
+      operationId: quotePublicFeedCheckout
+      summary: Price a public cart, with an optional promo code, without holding it
+      description: |
+        Read-only counterpart of `checkout/start`. It prices the same lines
+        through the same pipeline (the channel's service charge, tier price
+        windows, seat tier bindings, promo validation and usage caps) and
+        answers the breakdown the payment page would ask for, so a widget can
+        show the discounted total before the buyer pays.
+
+        It takes no lock, holds no seat, reserves no capacity and creates no
+        reservation, checkout session, order or payment. It does not check
+        that a category is on sale; `checkout/start` does, and a seat that is
+        gone or taken is refused with the same 409 as there.
+
+        No JWT required: the feed token in the path is the credential.
+        Rate-limited per token and per IP, like every public feed route.
+
+        A code that does not fit the cart is answered with a small, stable
+        set of 422 codes. `promo.not_applicable` covers an unknown, paused,
+        not-yet-valid or expired code and one that belongs to another event,
+        category or currency, so the answer never tells a buyer which codes
+        exist. `promo.minimum_not_reached`, `promo.exhausted` and
+        `promo.per_customer_limit` are only answered for a code that does fit.
+      tags: [v1, public]
+      parameters:
+        - name: feed_token
+          in: path
+          required: true
+          description: Public feed token that scopes the available sessions.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublicFeedCheckoutQuoteRequest"
+      responses:
+        "200":
+          description: The priced cart.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicFeedCheckoutQuoteResponse"
+        "400":
+          description: Invalid body or field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Session not published to this feed token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: A ticket category is not in this session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: A requested seat is gone or taken (`reservation.seats_conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            The promo code does not apply (`promo.not_applicable`,
+            `promo.minimum_not_reached`, `promo.exhausted`,
+            `promo.per_customer_limit`), the session's admission mode does not
+            match the lines, or a category cannot be priced here.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited (feed.rate_limited).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
           content:
             application/json:
               schema:

@@ -9924,6 +9924,45 @@ type PublicBuyerInfo struct {
 	Phone *string `json:"phone"`
 }
 
+// PublicFeedCheckoutQuoteRequest The cart to price, in the shape of `PublicFeedCheckoutStartRequest`
+// (seated `seats`, general-admission `ga_items`, or both) plus the
+// optional promo code.
+type PublicFeedCheckoutQuoteRequest struct {
+	// Buyer Structured buyer info; only `buyer.email` is read by the quote.
+	Buyer *PublicBuyerInfo `json:"buyer,omitempty"`
+
+	// GaItems GA items for GA or hybrid sessions.
+	GaItems *[]PublicGAItem `json:"ga_items,omitempty"`
+
+	// HolderEmail The buyer's e-mail, when already known. It only feeds the
+	// per-customer usage cap of the promo code; without it that one
+	// check is skipped here and `checkout/start` still enforces it.
+	// Superseded by `buyer.email` when `buyer` is present.
+	HolderEmail *openapi_types.Email `json:"holder_email,omitempty"`
+
+	// PromoCode Promotional code to apply. Absent, null or blank prices the cart
+	// without a discount.
+	PromoCode *string `json:"promo_code"`
+
+	// Seats Seat keys for seated or hybrid sessions.
+	Seats *[]string `json:"seats,omitempty"`
+
+	// SessionId UUID of the event session the cart belongs to.
+	SessionId openapi_types.UUID `json:"session_id"`
+}
+
+// PublicFeedCheckoutQuoteResponse The priced cart. Nothing was held, reserved or created.
+type PublicFeedCheckoutQuoteResponse struct {
+	// Pricing The breakdown `checkout/start` would store for the same cart:
+	// subtotal, promo discount, service charge, total and currency.
+	// Widgets render these numbers verbatim.
+	Pricing PricingBreakdownItem `json:"pricing"`
+
+	// PromoApplied True when a `promo_code` was sent and its discount is part of
+	// `pricing`.
+	PromoApplied bool `json:"promo_applied"`
+}
+
 // PublicFeedCheckoutStartRequest defines model for PublicFeedCheckoutStartRequest.
 type PublicFeedCheckoutStartRequest struct {
 	// Buyer Structured buyer contact info for `POST checkout/start` (feature #321 WID-0d).
@@ -14654,6 +14693,9 @@ type PaymentIntentWebhookForConfigJSONRequestBody = PaymentIntentWebhookRequest
 
 // TransitionPaymentIntentJSONRequestBody defines body for TransitionPaymentIntent for application/json ContentType.
 type TransitionPaymentIntentJSONRequestBody = TransitionPaymentIntentRequest
+
+// QuotePublicFeedCheckoutJSONRequestBody defines body for QuotePublicFeedCheckout for application/json ContentType.
+type QuotePublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutQuoteRequest
 
 // StartPublicFeedCheckoutJSONRequestBody defines body for StartPublicFeedCheckout for application/json ContentType.
 type StartPublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutStartRequest

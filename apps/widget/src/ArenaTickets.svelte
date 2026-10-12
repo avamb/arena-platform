@@ -21,12 +21,14 @@
    * WID-R1: wires the full purchase loop:
    *   selecting → (mini-cart) → cart sheet / buyer form → redirecting → order-status
    */
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { parseLocale, parseFeedToken, parseSessionId, isRtlLocale } from './utils.js';
-  import { fetchFeedEvent, fetchFeedEvents, postCheckoutStart, getCheckoutStatus, postCheckoutRecover, ApiError } from './api.js';
+  import { fetchFeedEvent, fetchFeedEvents, postCheckoutStart, postCheckoutQuote, getCheckoutStatus, postCheckoutRecover, ApiError } from './api.js';
   import type { FeedSession, FeedEvent, Geometry, CategoryPrice, SeatStatusValue } from './types.js';
   import type { BuyerFormValues } from './lib/checkout.js';
-  import { buildCheckoutPayload, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet, filterCartWithoutConflicts } from './lib/checkout.js';
+  import { buildCheckoutPayload, buildQuotePayload, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet, filterCartWithoutConflicts } from './lib/checkout.js';
+  import { cartQuoteKey, toPromoQuote, promoErrorMessage, isPromoErrorCode } from './lib/promo.js';
+  import type { PromoQuote } from './lib/promo.js';
   import { toggleSeatSelection } from './lib/selection.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
   import {
@@ -244,6 +246,113 @@
   const effectiveCart = $derived({ ...cart, expiresAt: holdExpiresAt });
 
   const cartCount = $derived(totalSelectionCount(selectedSeatKeys, gaQuantities));
+
+  // ── Promo code ─────────────────────────────────────────────────────────────
+  //
+  // The cart sheet never computes a discount: the code is checked by the
+  // platform (`checkout/quote`, which holds nothing) and the sheet shows the
+  // amounts that come back. `promoCode` is the applied code; `promoQuote` is
+  // the platform's answer for ONE exact cart (`cartKey`), and the sheet uses it
+  // only while the cart still has that key.
+
+  let promoCode = $state<string | null>(null);
+  let promoQuote = $state<PromoQuote | null>(null);
+  let promoBusy = $state(false);
+  let promoErrorText = $state<string | null>(null);
+  let promoNote = $state<string | null>(null);
+  /** Counts quote requests; an answer to an older one is dropped. */
+  let quoteSeq = 0;
+
+  const cartKey = $derived(
+    selectedSession ? cartQuoteKey(selectedSession.id, [...selectedSeatKeys], buildGaItems(gaQuantities)) : '',
+  );
+
+  /** The words for a failed quote request. */
+  function quoteFailureText(err: unknown): string {
+    if (parseConflictsFromApiError(err).length > 0) return t.conflict_notice;
+    return promoErrorMessage(err instanceof ApiError ? err.code : undefined, t);
+  }
+
+  function dropPromo(): void {
+    quoteSeq += 1;
+    promoCode = null;
+    promoQuote = null;
+    promoBusy = false;
+  }
+
+  async function handleApplyPromo(raw: string): Promise<void> {
+    const code = raw.trim();
+    promoNote = null;
+    if (!code) {
+      promoErrorText = t.promo_error_empty;
+      return;
+    }
+    if (!selectedSession || !normFeedToken) return;
+    const seq = ++quoteSeq;
+    const key = cartKey;
+    promoBusy = true;
+    promoErrorText = null;
+    try {
+      const res = await postCheckoutQuote(
+        normFeedToken,
+        buildQuotePayload(selectedSession.id, [...selectedSeatKeys], buildGaItems(gaQuantities), code),
+        resolvedApiBase,
+      );
+      if (seq !== quoteSeq) return;
+      promoCode = code;
+      promoQuote = toPromoQuote(code, key, res);
+    } catch (err) {
+      if (seq !== quoteSeq) return;
+      promoErrorText = quoteFailureText(err);
+    } finally {
+      if (seq === quoteSeq) promoBusy = false;
+    }
+  }
+
+  function handleRemovePromo(): void {
+    dropPromo();
+    promoErrorText = null;
+    promoNote = t.promo_removed;
+  }
+
+  /**
+   * The cart changed under an applied code (a line was removed): ask again for
+   * the new cart. A code that stops fitting is taken off with the reason.
+   */
+  async function refreshPromoQuote(code: string, key: string): Promise<void> {
+    if (!selectedSession || !normFeedToken) return;
+    const seq = ++quoteSeq;
+    promoBusy = true;
+    try {
+      const res = await postCheckoutQuote(
+        normFeedToken,
+        buildQuotePayload(selectedSession.id, [...selectedSeatKeys], buildGaItems(gaQuantities), code),
+        resolvedApiBase,
+      );
+      if (seq !== quoteSeq) return;
+      promoQuote = toPromoQuote(code, key, res);
+    } catch (err) {
+      if (seq !== quoteSeq) return;
+      dropPromo();
+      promoErrorText = quoteFailureText(err);
+    } finally {
+      if (seq === quoteSeq) promoBusy = false;
+    }
+  }
+
+  $effect(() => {
+    const key = cartKey;
+    const lines = cart.lines.length;
+    untrack(() => {
+      if (!promoCode) return;
+      if (lines === 0) {
+        dropPromo();
+        return;
+      }
+      if (promoQuote && promoQuote.cartKey === key) return;
+      void refreshPromoQuote(promoCode, key);
+    });
+  });
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -548,6 +657,7 @@
         seats,
         gaItems,
         selectedSession.buyer_fields as import('./lib/checkout.js').BuyerFieldConfig[],
+        promoCode,
       );
       // Where the hosted payment page returns the buyer. Origin + pathname
       // only — the backend appends `?checkout_token=…` itself, which is what
@@ -592,6 +702,14 @@
       if (conflicts.length > 0) {
         conflictKeys = conflictKeySet(conflicts);
         checkoutError = t.conflict_notice;
+      } else if (err instanceof ApiError && isPromoErrorCode(err.code)) {
+        // The quote said yes but start says no (a cap was used up in between,
+        // or the buyer's e-mail is over the per-customer limit, which a quote
+        // cannot know before the e-mail is typed). The code comes off so the
+        // total on the sheet is the total the buyer will pay.
+        conflictKeys = new Set();
+        checkoutError = `${promoErrorMessage(err.code, t)} ${t.promo_removed}`;
+        dropPromo();
       } else {
         conflictKeys = new Set();
         checkoutError = err instanceof Error ? err.message : t.error_checkout;
@@ -923,6 +1041,14 @@
         locale={normLocale}
         submitting={checkoutSubmitting}
         submitError={checkoutError}
+        {promoCode}
+        {promoQuote}
+        {cartKey}
+        {promoBusy}
+        promoError={promoErrorText}
+        {promoNote}
+        onApplyPromo={handleApplyPromo}
+        onRemovePromo={handleRemovePromo}
         {conflictKeys}
         onContinueWithoutConflicts={handleContinueWithoutConflicts}
         onClose={closeCartSheet}
