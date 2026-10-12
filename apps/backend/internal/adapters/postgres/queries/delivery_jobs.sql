@@ -65,5 +65,6 @@ LIMIT  $1;
 -- name: GetTicketSellerCountries :one
 -- GetTicketSellerCountries reads the legal-address country and the plain
 -- country of the organization that sells ticket $1's event (the ticket e-mail
--- prints the withdrawal notice for EU/EEA sellers). See
+-- prints the withdrawal notice for EU/EEA sellers). No row for a ticket
+-- issued as an operator invitation (complimentary_issuance_id). See
 -- gen/delivery_group.sql.go for the statement.
