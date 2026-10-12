@@ -16,7 +16,7 @@ func TestWebhookWarnings(t *testing.T) {
 	id := uuid.New()
 	cb := "https://api.example.test/v1/payment-intents/webhook/" + id.String()
 	status, body := http.StatusOK, ""
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(body))
 	}))
