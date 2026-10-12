@@ -241,7 +241,7 @@ func queueItem(r *http.Request, it refunds.ListItem) refundQueueItemJSON {
 		orderID = &v
 	}
 	out := refundQueueItemJSON{refundItem(it.Refund), orderID, it.OrderSystemID, it.EventName, it.TicketNumber, nil,
-		refunds.Retryable(it.Refund) && !it.Replaced}
+		refunds.Retryable(it.Refund) && !it.Replaced && !it.RetryBlocked}
 	if it.CreatorKind != nil {
 		label := it.CreatorLabel
 		if it.CreatorLabelIsEmail && callerIsAPIKey(r) {
