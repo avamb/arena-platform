@@ -129,11 +129,15 @@ type refundDialog struct {
 	MsgID    int            `json:"msg_id,omitempty"`
 	// SendingAt is when the confirmed operation went to the server.
 	SendingAt time.Time `json:"sending_at,omitempty"`
+	// RunID names the bot process that sent it: after a restart nothing is
+	// with the server for this dialog any more, whatever the clock says.
+	RunID string `json:"run_id,omitempty"`
 }
 
-// sendingNow reports a dialog whose operation is with the server right now.
-func sendingNow(step string, st refundDialog) bool {
-	return step == refStepSending && time.Since(st.SendingAt) < refundSendWindow
+// sendingNow reports a dialog whose operation is with the server right now:
+// sent by THIS process, within the send window.
+func (b *Bot) sendingNow(step string, st refundDialog) bool {
+	return step == refStepSending && st.RunID == b.runID && time.Since(st.SendingAt) < refundSendWindow
 }
 
 // ─── who sees the button ──────────────────────────────────────────────────────
@@ -230,7 +234,7 @@ func (b *Bot) saveRefund(ctx context.Context, tg int64, st refundDialog, step st
 func (b *Bot) leaveIdleRefund(ctx context.Context, tg int64) {
 	var st refundDialog
 	step, found, _, err := b.dialogs.Load(ctx, tg, refundDialogKind, &st)
-	if err == nil && found && sendingNow(step, st) {
+	if err == nil && found && b.sendingNow(step, st) {
 		return
 	}
 	b.leaveRefund(ctx, tg)
@@ -262,7 +266,7 @@ func (b *Bot) refundCallback(ctx context.Context, chatID int64, msgID int, from 
 		b.logger.Error("eventbot: refund dialog load failed", slog.Int64("telegram_user_id", from.ID), slog.String("error", err.Error()))
 		return
 	}
-	if found && sendingNow(step, st) {
+	if found && b.sendingNow(step, st) {
 		// The operation is with the server: nothing here may change it or
 		// start another one until its answer is in.
 		b.reply(ctx, chatID, nil, b.texts.T(loc, "bot.ref.still_sending", map[string]any{"Num": st.Num}), nil)
@@ -545,6 +549,7 @@ func (b *Bot) showRefundFinal(ctx context.Context, chatID int64, editMsgID *int,
 func (b *Bot) startSendRefund(ctx context.Context, chatID int64, msgID int, from *models.User, id *Identity, st refundDialog) {
 	loc := id.Locale()
 	st.SendingAt = time.Now().UTC()
+	st.RunID = b.runID
 	st.MsgID = msgID
 	b.saveRefund(ctx, from.ID, st, refStepSending)
 	// The buttons go away while the server works: a second press cannot start

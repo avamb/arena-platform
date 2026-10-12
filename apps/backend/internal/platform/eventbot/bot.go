@@ -105,6 +105,9 @@ type Bot struct {
 	onb            *onbDialogs
 	onbForms       *onbFormCache
 
+	// runID names this process (a refund dialog marks the send it started
+	// with it, so a restart is told from a send still under way).
+	runID string
 	// bg tracks the work started off the single update worker (a refund
 	// call that may wait minutes for the provider), so Run can let it end.
 	bg bgGroup
@@ -194,6 +197,7 @@ func New(opts Options) (*Bot, error) {
 		logger = slog.Default()
 	}
 	b := &Bot{
+		runID:   uuid.NewString(),
 		queries: opts.Queries,
 		arena:   opts.Arena,
 		minter:  opts.Minter,
