@@ -27,6 +27,7 @@ import {
   buildStripeWebhookUrl,
   buildStripeConfigWebhookUrl,
   STRIPE_WEBHOOK_EVENTS,
+  webhookWarningText,
   STRIPE_CHECKOUT_SESSION_EVENTS,
   StripeWebhookConfigUrlsView,
   STRIPE_API_KEY_PERMISSIONS,
@@ -291,6 +292,12 @@ describe("STRIPE_WEBHOOK_EVENTS", () => {
     );
   });
 
+  it("tells the operator to subscribe the endpoint to refund events", () => {
+    expect(STRIPE_WEBHOOK_EVENTS).toContain("refund.updated");
+    expect(STRIPE_WEBHOOK_EVENTS).toContain("refund.created");
+    expect(STRIPE_WEBHOOK_EVENTS).toContain("refund.failed");
+  });
+
   it("does not include mock provider aliases", () => {
     // Mock aliases are test-only shorthands that must not be registered in Stripe
     for (const evt of STRIPE_WEBHOOK_EVENTS) {
@@ -298,9 +305,9 @@ describe("STRIPE_WEBHOOK_EVENTS", () => {
     }
   });
 
-  it("only includes payment_intent.* / checkout.session.* events (Stripe naming convention)", () => {
+  it("only includes payment_intent.* / checkout.session.* / refund.* events (Stripe naming convention)", () => {
     for (const evt of STRIPE_WEBHOOK_EVENTS) {
-      expect(evt).toMatch(/^(payment_intent|checkout\.session)\./);
+      expect(evt).toMatch(/^(payment_intent|checkout\.session|refund)\./);
     }
   });
 });
@@ -342,18 +349,21 @@ describe("buildStripeConfigWebhookUrl", () => {
 });
 
 describe("STRIPE_CHECKOUT_SESSION_EVENTS", () => {
-  it("is exactly the four hosted-Checkout events the per-config endpoint needs", () => {
+  it("is exactly the hosted-Checkout and refund events the per-config endpoint needs", () => {
     expect([...STRIPE_CHECKOUT_SESSION_EVENTS]).toEqual([
       "checkout.session.completed",
       "checkout.session.expired",
       "checkout.session.async_payment_succeeded",
       "checkout.session.async_payment_failed",
+      "refund.created",
+      "refund.updated",
+      "refund.failed",
     ]);
   });
 
   it("names no payment_intent.* event (those belong to the shared endpoint)", () => {
     for (const evt of STRIPE_CHECKOUT_SESSION_EVENTS) {
-      expect(evt).toMatch(/^checkout\.session\./);
+      expect(evt).toMatch(/^(checkout\.session|refund)\./);
     }
   });
 
@@ -406,7 +416,7 @@ describe("StripeWebhookConfigUrlsView", () => {
     );
   });
 
-  it("names all four checkout.session.* events as the required set", () => {
+  it("names the checkout.session.* and refund.* events as the required set", () => {
     const html = render([makeConfig()]);
     for (const evt of STRIPE_CHECKOUT_SESSION_EVENTS) {
       expect(html).toContain(evt);
@@ -596,6 +606,7 @@ describe("StripeApiKeyPermissionsView", () => {
     expect(required.map((p) => p.resource).sort()).toEqual([
       "Balance",
       "Checkout Sessions",
+      "Refunds",
     ]);
     expect(
       required.find((p) => p.resource === "Checkout Sessions")?.endpoint,
@@ -613,5 +624,13 @@ describe("StripeApiKeyPermissionsView", () => {
     // The key's scope and the signing secret are unrelated; conflating them
     // is how an operator ends up granting Webhook Endpoints access.
     expect(html).toContain("webhook_secret");
+  });
+});
+
+describe("webhookWarningText", () => {
+  it("explains the two warnings of the verify route and shows an unknown code as it is", () => {
+    expect(webhookWarningText("refund_events_not_subscribed")).toMatch(/refund\.updated/);
+    expect(webhookWarningText("webhook_endpoint_not_found")).toMatch(/Webhooks/);
+    expect(webhookWarningText("something_new")).toBe("something_new");
   });
 });
