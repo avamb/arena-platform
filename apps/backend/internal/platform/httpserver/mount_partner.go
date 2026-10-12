@@ -9,16 +9,16 @@ func (s *Server) mountAllocationRoutes(r chi.Router) {
 		return
 	}
 	r.Group(func(pr chi.Router) {
-		s.applyAuth(pr, "allocation.read", "allocations")
+		s.applyAuthAcrossOrgs(pr, "allocation.read", "allocations")
 		pr.Get("/organizations/{org_id}/external-allocations", s.handleListExternalAllocations)
 		pr.Get("/organizations/{org_id}/external-allocations/{id}", s.handleGetExternalAllocation)
 	})
 	r.Group(func(pr chi.Router) {
-		s.applyAuth(pr, "allocation.create", "allocations")
+		s.applyAuthAcrossOrgs(pr, "allocation.create", "allocations")
 		pr.Post("/organizations/{org_id}/external-allocations", s.handleCreateExternalAllocation)
 	})
 	r.Group(func(pr chi.Router) {
-		s.applyAuth(pr, "allocation.update", "allocations")
+		s.applyAuthAcrossOrgs(pr, "allocation.update", "allocations")
 		pr.Patch("/organizations/{org_id}/external-allocations/{id}", s.handlePatchExternalAllocation)
 	})
 }
