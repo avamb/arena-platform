@@ -276,3 +276,19 @@ func TestRefundScanned_ExceptionGrantIsIdempotentAndRenewable(t *testing.T) {
 		t.Fatalf("grant after the exception was spent: %v; want %s", err, refunds.CodeScanExceptionExists)
 	}
 }
+
+// An exception that expired unused lets nothing through any more.
+func TestRefundScanned_ExpiredExceptionLetsNothingThrough(t *testing.T) {
+	e := newScanEnv(t)
+	e.exec(t, `UPDATE tickets SET used_at = now() - interval '1 hour' WHERE id = $1`, e.f.tickets[0])
+	e.grantException(t, 0)
+	e.exec(t, `UPDATE refund_scan_exceptions SET created_at = now() - interval '3 hours', expires_at = now() - interval '1 minute' WHERE ticket_id = $1`, e.f.tickets[0])
+	e.exec(t, `UPDATE tickets SET used_at = now() - interval '4 hours' WHERE id = $1`, e.f.tickets[0])
+	st, out := e.createRefund(t, 0)
+	if st != http.StatusConflict || prom0113Code(out) != refunds.CodeTicketScanned {
+		t.Fatalf("refund on an expired exception: %d %v; want 409 %s", st, out, refunds.CodeTicketScanned)
+	}
+	if e.calls.Load() != 0 {
+		t.Fatalf("the provider was called %d time(s)", e.calls.Load())
+	}
+}

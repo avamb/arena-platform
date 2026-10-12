@@ -79,6 +79,15 @@ func TestScanException_SuperadminOnlyInsideTheOrganization(t *testing.T) {
 	if out := e.expect(t, http.StatusForbidden, http.MethodPost, path, ownerJWT, "", body); sec1Code(out) != "refund.scan_exception_superadmin_only" {
 		t.Errorf("owner: code %q", sec1Code(out))
 	}
+	manager := e.user(t, "scanexc-manager")
+	e.member(t, manager, org, "organizer")
+	if out := e.expect(t, http.StatusForbidden, http.MethodPost, path, e.token(t, manager), "", body); sec1Code(out) != "refund.scan_exception_superadmin_only" {
+		t.Errorf("manager: code %q", sec1Code(out))
+	}
+	key := e.key(t, org, "refund.read", "refund.create", "refund.approve")
+	if out := e.expect(t, http.StatusForbidden, http.MethodPost, path, key, "", body); sec1Code(out) != "refund.scan_exception_superadmin_only" {
+		t.Errorf("API key: code %q", sec1Code(out))
+	}
 	if out := e.expect(t, http.StatusBadRequest, http.MethodPost, path, super, "", body); sec1Code(out) != "superadmin.missing_reason" {
 		t.Errorf("no reason: code %q", sec1Code(out))
 	}
