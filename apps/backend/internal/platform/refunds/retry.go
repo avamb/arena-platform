@@ -45,6 +45,11 @@ func Retryable(r Refund) bool {
 	if r.Settlement != "provider" || r.Provider == nil || r.TicketID == nil || r.OrderID == nil || r.ProviderRefundID != nil {
 		return false
 	}
+	if r.FailureCode != nil && *r.FailureCode == failureTicketScanned {
+		// Refused for a scanned ticket: a retry would be refused the same way
+		// and notify the owners again.
+		return false
+	}
 	switch r.State {
 	case StateFailed:
 		return true

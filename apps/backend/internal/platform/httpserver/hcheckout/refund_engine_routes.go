@@ -32,6 +32,13 @@ func (h *Handler) refusedScanned(w http.ResponseWriter, r *http.Request, orgID, 
 	writeRefundError(w, r, refunds.ScannedRefusal(ticket))
 }
 
+// scanCheckUnavailable answers when whether a ticket was scanned could not be
+// read: 503, the caller retries; nothing is written.
+func scanCheckUnavailable(w http.ResponseWriter, r *http.Request) {
+	httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+		refunds.CodeEngineUnavailable, "whether the ticket was scanned could not be checked; try again", r))
+}
+
 // writeRefundError answers a refunds.Error.
 func writeRefundError(w http.ResponseWriter, r *http.Request, e *refunds.Error) {
 	if len(e.Details) > 0 {
@@ -58,7 +65,13 @@ func (h *Handler) refundRouteAllowed(w http.ResponseWriter, r *http.Request, pay
 		return false
 	}
 	if h.refundEngine != nil {
-		if ticket, scanned, serr := h.refundEngine.ScannedTicketOfPayment(r.Context(), paymentIntentID); serr == nil && scanned {
+		ticket, scanned, serr := h.refundEngine.ScannedTicketOfPayment(r.Context(), paymentIntentID)
+		if serr != nil {
+			// The check could not be made: never let a refund through on a guess.
+			scanCheckUnavailable(w, r)
+			return false
+		}
+		if scanned {
 			h.refusedScanned(w, r, pi.OrgID, ticket)
 			return false
 		}
@@ -98,7 +111,12 @@ func (h *Handler) approvePrecheck(w http.ResponseWriter, r *http.Request, id uui
 		return res, true
 	}
 	if h.refundEngine != nil {
-		if ticket, scanned, serr := h.refundEngine.ScannedTicketForRefund(ctx, id); serr == nil && scanned {
+		ticket, scanned, serr := h.refundEngine.ScannedTicketForRefund(ctx, id)
+		if serr != nil {
+			scanCheckUnavailable(w, r)
+			return res, false
+		}
+		if scanned {
 			h.refusedScanned(w, r, rf.OrgID, ticket)
 			return res, false
 		}

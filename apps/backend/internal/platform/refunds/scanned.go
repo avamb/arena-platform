@@ -17,6 +17,10 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 )
 
+// failureTicketScanned is the failure_code of a refund stopped because its
+// ticket was scanned.
+const failureTicketScanned = "ticket_scanned"
+
 // CodeTicketScanned is the 409 of a refund for a ticket that was scanned.
 const CodeTicketScanned = "refund.ticket_scanned"
 
@@ -41,8 +45,18 @@ type ScannedAlertPayload struct {
 // ticketScannedSQL is true for a ticket t that was used: it carries used_at,
 // or ANY barcode of it (whatever authority, the legacy_bil24 import's
 // included) is scanned.
+//
+// An admitted scan event of the ticket's own organization counts too: the
+// scanner records it even when stamping used_at failed.
 const ticketScannedSQL = `(t.used_at IS NOT NULL OR EXISTS (
-	SELECT 1 FROM barcodes sb WHERE sb.ticket_id = t.id AND (sb.status = 'scanned' OR sb.scanned_at IS NOT NULL)))`
+	SELECT 1 FROM barcodes sb WHERE sb.ticket_id = t.id AND (sb.status = 'scanned' OR sb.scanned_at IS NOT NULL))
+	OR EXISTS (SELECT 1 FROM scan_events se
+	           JOIN sessions ss ON ss.id = t.session_id
+	           JOIN events se_ev ON se_ev.id = ss.event_id
+	           WHERE se.ticket_id = t.id AND se.result = 'admitted' AND se.org_id = se_ev.org_id))`
+
+// scannedOrder makes "the first scanned ticket" the same one every time.
+const scannedOrder = ` ORDER BY t.system_ticket_id NULLS LAST, t.id`
 
 func scannedRefusal(ticket uuid.UUID) *Error {
 	return refusal(http.StatusConflict, CodeTicketScanned,
@@ -78,21 +92,22 @@ func (e *Engine) RecordScannedBlock(ctx context.Context, orgID, ticketID uuid.UU
 		}
 		key := actorKey(actor)
 		// Throttle: this actor already told the owners about this ticket
-		// within the interval -> journal the attempt, send nothing.
-		notify := true
-		if err := tx.QueryRow(wctx, `SELECT notified_at IS NULL OR notified_at < now() - $3::interval
-			FROM refund_scan_blocks WHERE ticket_id = $1 AND actor_key = $2 FOR UPDATE`,
-			ticketID, key, scannedNotifyEvery).Scan(&notify); err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return err
-		}
-		if _, err := tx.Exec(wctx, `
+		// within the interval -> journal the attempt, send nothing. The
+		// decision is made by the upsert itself, so two first attempts at
+		// once cannot both notify: the second waits on the unique key and
+		// then sees the first one's notified_at.
+		var notify bool
+		if err := tx.QueryRow(wctx, `
 			INSERT INTO refund_scan_blocks (org_id, ticket_id, actor_key, actor_label, notified_at)
 			VALUES ($1, $2, $3, NULLIF($4, ''), now())
 			ON CONFLICT (ticket_id, actor_key) DO UPDATE
 			   SET attempts = refund_scan_blocks.attempts + 1, last_at = now(),
 			       actor_label = COALESCE(NULLIF($4, ''), refund_scan_blocks.actor_label),
-			       notified_at = CASE WHEN $5 THEN now() ELSE refund_scan_blocks.notified_at END`,
-			orgID, ticketID, key, label, notify); err != nil {
+			       notified_at = CASE WHEN refund_scan_blocks.notified_at IS NULL
+			                            OR refund_scan_blocks.notified_at < now() - $5::interval
+			                          THEN now() ELSE refund_scan_blocks.notified_at END
+			RETURNING notified_at = now()`,
+			orgID, ticketID, key, label, scannedNotifyEvery).Scan(&notify); err != nil {
 			return err
 		}
 		if notify {
@@ -124,7 +139,7 @@ func (e *Engine) ScannedTicketOfPayment(ctx context.Context, paymentIntentID uui
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
 		err := tx.QueryRow(ctx, `SELECT t.id FROM payment_intents pi
 			JOIN tickets t ON t.checkout_session_id = pi.checkout_session_id
-			WHERE pi.id = $1 AND t.status = 'active' AND `+ticketScannedSQL+` LIMIT 1`, paymentIntentID).Scan(&id)
+			WHERE pi.id = $1 AND t.status = 'active' AND `+ticketScannedSQL+scannedOrder+` LIMIT 1`, paymentIntentID).Scan(&id)
 		if err == nil {
 			found = true
 			return nil
@@ -143,10 +158,15 @@ func (e *Engine) ScannedTicketOfPayment(ctx context.Context, paymentIntentID uui
 // scanned is failed (nothing was sent) and the attempt is journaled.
 func (e *Engine) blockScannedAtClaim(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*Refund, uuid.UUID, error) {
 	var ticket uuid.UUID
+	// A refund of the whole payment (no ticket of its own) is held to every
+	// active ticket sold with that payment.
 	err := tx.QueryRow(ctx, `SELECT t.id FROM refunds r
-		JOIN tickets t ON t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)
+		JOIN payment_intents pi ON pi.id = r.payment_intent_id
+		JOIN tickets t ON (t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)
+		                   OR (COALESCE(r.ticket_id, r.cancelled_ticket_id) IS NULL
+		                       AND t.checkout_session_id = pi.checkout_session_id AND t.status = 'active'))
 		WHERE r.id = $1 AND r.state = 'provider_pending' AND r.provider_refund_id IS NULL AND r.provider_attempts = 0
-		  AND `+ticketScannedSQL, id).Scan(&ticket)
+		  AND `+ticketScannedSQL+scannedOrder+` LIMIT 1`, id).Scan(&ticket)
 	if err == pgx.ErrNoRows {
 		return nil, uuid.Nil, nil
 	}
@@ -154,9 +174,9 @@ func (e *Engine) blockScannedAtClaim(ctx context.Context, tx pgx.Tx, id uuid.UUI
 		return nil, uuid.Nil, err
 	}
 	r, err := scanRefund(tx.QueryRow(ctx, `UPDATE refunds SET state = 'failed', failed_at = now(),
-		failure_code = 'ticket_scanned', failure_reason = $2, updated_at = now()
+		failure_code = $3, failure_reason = $2, updated_at = now()
 		WHERE id = $1 AND state = 'provider_pending' RETURNING `+refundColumns, id,
-		"the ticket was scanned at the gate before the refund was sent; nothing was sent to the provider"))
+		"the ticket was scanned at the gate before the refund was sent; nothing was sent to the provider", failureTicketScanned))
 	if err != nil {
 		return nil, uuid.Nil, err
 	}
@@ -177,7 +197,7 @@ func (e *Engine) ScannedTicketForRefund(ctx context.Context, refundID uuid.UUID)
 			JOIN payment_intents pi ON pi.id = r.payment_intent_id
 			JOIN tickets t ON (t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)
 			                   OR (COALESCE(r.ticket_id, r.cancelled_ticket_id) IS NULL AND t.checkout_session_id = pi.checkout_session_id AND t.status = 'active'))
-			WHERE r.id = $1 AND `+ticketScannedSQL+` LIMIT 1`, refundID).Scan(&id)
+			WHERE r.id = $1 AND `+ticketScannedSQL+scannedOrder+` LIMIT 1`, refundID).Scan(&id)
 		if err == nil {
 			found = true
 			return nil
@@ -188,4 +208,17 @@ func (e *Engine) ScannedTicketForRefund(ctx context.Context, refundID uuid.UUID)
 		return err
 	})
 	return id, found, err
+}
+
+// TicketScanned reports whether the ticket was scanned at the gate (the same
+// rule every refund check uses).
+func (e *Engine) TicketScanned(ctx context.Context, ticketID uuid.UUID) (bool, error) {
+	var scanned bool
+	err := e.inTx(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT `+ticketScannedSQL+` FROM tickets t WHERE t.id = $1`, ticketID).Scan(&scanned)
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return scanned, err
 }
