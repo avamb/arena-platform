@@ -318,6 +318,11 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		parsedGATierIDs = append(parsedGATierIDs, tid)
 	}
 
+	if code, msg := checkCartCaps(req.Seats, req.GaItems); code != "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(code, msg, r))
+		return
+	}
+
 	ctx := r.Context()
 
 	// ── 6. Validate session belongs to this feed token ────────────────────────

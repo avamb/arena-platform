@@ -127,7 +127,7 @@ func TestPublicCart_CapsAreRefusedBeforeTheDatabase(t *testing.T) {
 		{"too many seats", capBody(0, 1, 101), "checkout.cart_too_large"},
 		{"line quantity", capBody(1, 51, 0), "checkout.invalid_qty"},
 	}
-	for _, route := range []string{"/checkout/quote"} {
+	for _, route := range []string{"/checkout/quote", "/checkout/start"} {
 		for _, c := range cases {
 			req := httptest.NewRequest(http.MethodPost, "/v1/public/feeds/cap-token"+route, strings.NewReader(c.body))
 			req.Header.Set("Content-Type", "application/json")
