@@ -91,6 +91,10 @@ func (h *Handler) recordDashboardRefund(w http.ResponseWriter, r *http.Request, 
 			"webhook.refund_failed", "failed to record the refund event", r))
 		return
 	}
+	if res.Unconfirmed {
+		ack("refund could not be confirmed with the provider; an operator is alerted", false)
+		return
+	}
 	if res.MaybeOurs {
 		ack("arena refund not recorded yet; it will be read back", false)
 		return

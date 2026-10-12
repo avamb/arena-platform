@@ -40,7 +40,16 @@ type DashboardRefund struct {
 	// Capped: the provider's amount exceeded what was still refundable and
 	// the row was written with the remainder (an alert is owed).
 	Capped bool
+	// Unconfirmed: the refund belongs to a payment of this organization but
+	// could not be read back from the provider after MaxDashboardConfirmAttempts
+	// deliveries. Nothing is written; the operator is alerted (log) and the
+	// delivery is acknowledged so the provider stops retrying.
+	Unconfirmed bool
 }
+
+// MaxDashboardConfirmAttempts is how many deliveries of one dashboard refund
+// may fail to be read back before arena stops asking the provider to retry.
+const MaxDashboardConfirmAttempts = 8
 
 // DashboardApply runs INSIDE the transaction that wrote the row, so the
 // row and its consequences (ticket cancellation, order status) commit
@@ -81,8 +90,33 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 		}
 		return out, nil
 	}
+	// Look for the payment the event names BEFORE asking the provider: the
+	// organizer's account also refunds payments of their other sites, and
+	// those must cost neither a provider call nor a log line.
+	if chargeRef != "" {
+		known, err := e.knownPayment(ctx, orgID, provider, chargeRef)
+		if err != nil {
+			return out, err
+		}
+		if !known {
+			return out, nil
+		}
+	}
 	confirmed, ok, err := e.confirmProviderRefund(ctx, orgID, provider, refundID)
 	if err != nil {
+		if errors.Is(err, ErrCannotConfirm) && chargeRef != "" {
+			attempts, cerr := e.noteUnconfirmed(ctx, orgID, provider, refundID, err)
+			if cerr != nil {
+				return out, errors.Join(err, cerr)
+			}
+			if attempts >= MaxDashboardConfirmAttempts {
+				out.Unconfirmed = true
+				e.logger.Error("refunds: A REFUND MADE AT THE PROVIDER COULD NOT BE CONFIRMED; nothing recorded, check the provider dashboard",
+					"event", "dashboard_refund_unconfirmed", "provider", provider, "provider_refund_id", refundID,
+					"charge_ref", chargeRef, "attempts", attempts, "error", err.Error())
+				return out, nil
+			}
+		}
 		return out, err
 	}
 	if !ok {
@@ -99,15 +133,7 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 			WHERE org_id = $1 AND provider = $2 AND (provider_charge_ref = $3 OR provider_payment_id = $3)
 			ORDER BY created_at DESC LIMIT 1`, orgID, provider, chargeRef))
 		if errors.Is(err, pgx.ErrNoRows) {
-			var missing int
-			if qerr := tx.QueryRow(ctx, `SELECT count(*) FROM payment_intents
-				WHERE org_id = $1 AND provider = $2 AND state = 'succeeded' AND COALESCE(provider_charge_ref, '') = ''`,
-				orgID, provider).Scan(&missing); qerr == nil && missing > 0 {
-				e.logger.Error("refunds: A REFUND MADE AT THE PROVIDER MATCHES NO PAYMENT, and paid payments of this organization have no charge reference stored",
-					"event", "dashboard_refund_unmatched", "provider", provider, "provider_refund_id", refundID,
-					"charge_ref", chargeRef, "payments_without_charge_ref", missing)
-			}
-			return nil
+			return nil // not a payment of this organization
 		}
 		if err != nil {
 			return err
@@ -189,6 +215,35 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 		return nil
 	})
 	return out, err
+}
+
+// knownPayment reports whether chargeRef names a payment of this organization.
+func (e *Engine) knownPayment(ctx context.Context, orgID uuid.UUID, provider, chargeRef string) (bool, error) {
+	var known bool
+	err := e.inTx(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM payment_intents
+			WHERE org_id = $1 AND provider = $2 AND (provider_charge_ref = $3 OR provider_payment_id = $3))`,
+			orgID, provider, chargeRef).Scan(&known)
+	})
+	return known, err
+}
+
+// noteUnconfirmed records one delivery whose refund could not be read back
+// and returns how many such deliveries this refund has had.
+func (e *Engine) noteUnconfirmed(ctx context.Context, orgID uuid.UUID, provider, refundID string, cause error) (int, error) {
+	var n int
+	err := e.inTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `INSERT INTO audit_events (occurred_at, actor_type, action, resource_type, resource_id, metadata)
+			VALUES (now(), 'system', 'v1.refund.dashboard_unconfirmed', 'provider_refund', $1,
+			        jsonb_build_object('org_id', $2::text, 'provider', $3::text, 'error', $4::text))`,
+			refundID, orgID, provider, truncate(cause.Error(), 300)); err != nil {
+			return err
+		}
+		return tx.QueryRow(ctx, `SELECT count(*) FROM audit_events
+			WHERE action = 'v1.refund.dashboard_unconfirmed' AND resource_type = 'provider_refund'
+			  AND resource_id = $1 AND metadata->>'org_id' = $2::text`, refundID, orgID).Scan(&n)
+	})
+	return n, err
 }
 
 // confirmProviderRefund reads the refund back from the provider. ok is false
