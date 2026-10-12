@@ -206,7 +206,16 @@ func FormatScanException(r Refund, note, expiresAt string) string {
 		fmt.Fprintf(&b, "📝 Note: %s\n", esc(note))
 	}
 	if t, err := time.Parse(time.RFC3339, expiresAt); err == nil {
-		fmt.Fprintf(&b, "⏳ Valid for one refund until %s UTC\n", t.UTC().Format("2006-01-02 15:04")) // allow:timeformat
+		// In the venue's zone (Madrid when it has none), never in UTC.
+		zone := r.TimeZone
+		loc, lerr := time.LoadLocation(zone)
+		if zone == "" || lerr != nil {
+			zone = "Europe/Madrid"
+			loc, lerr = time.LoadLocation(zone)
+		}
+		if lerr == nil {
+			fmt.Fprintf(&b, "⏳ Valid for one refund until %s (%s)\n", t.In(loc).Format("2006-01-02 15:04"), zone) // allow:timeformat
+		}
 	}
 	b.WriteString("Nothing has been refunded yet.")
 	return b.String()

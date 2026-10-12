@@ -374,7 +374,7 @@ func TestDispatcher_AnnouncesAScanExceptionToTheOrganizationAndTheOperator(t *te
 	}
 	for _, s := range snd.sent {
 		if !strings.Contains(s.text, "allowed by the platform operator") || !strings.Contains(s.text, "show &lt;cancelled&gt;") ||
-			!strings.Contains(s.text, "2026-10-14 18:00 UTC") {
+			!strings.Contains(s.text, "2026-10-14 20:00 (Europe/Madrid)") {
 			t.Errorf("message lacks the exception, its note or its expiry:\n%s", s.text)
 		}
 		if strings.Contains(s.text, "inna@example.com") {

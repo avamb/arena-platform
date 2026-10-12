@@ -72,17 +72,18 @@ func NewScannedAlertHandler(opts ScannedAlertOptions) worker.HandlerFunc {
 			return nil
 		}
 		var (
-			orgName, eventName string
-			ticketNumber       *int64
-			orderNumber        *int64
+			orgName, eventName, venueZone string
+			ticketNumber                  *int64
+			orderNumber                   *int64
 		)
-		err := opts.DB.QueryRow(ctx, `SELECT org.name, ev.name, t.system_ticket_id, o.system_id
+		err := opts.DB.QueryRow(ctx, `SELECT org.name, ev.name, t.system_ticket_id, o.system_id, COALESCE(v.timezone, '')
 			FROM tickets t
 			JOIN sessions s ON s.id = t.session_id
 			JOIN events ev ON ev.id = s.event_id AND ev.org_id = $2
 			JOIN organizations org ON org.id = ev.org_id
+			LEFT JOIN venues v ON v.id = s.venue_id
 			LEFT JOIN orders o ON o.id = t.order_id
-			WHERE t.id = $1`, ticketID, orgID).Scan(&orgName, &eventName, &ticketNumber, &orderNumber)
+			WHERE t.id = $1`, ticketID, orgID).Scan(&orgName, &eventName, &ticketNumber, &orderNumber, &venueZone)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil // the ticket is gone or not this organization's
 		}
@@ -140,7 +141,7 @@ func NewScannedAlertHandler(opts ScannedAlertOptions) worker.HandlerFunc {
 			data.Alert.Actor = ""
 			data.Alert.Reason = p.Note
 			if until, perr := time.Parse(time.RFC3339, p.Until); perr == nil {
-				data.Alert.Until = until.UTC().Format("2006-01-02 15:04") + " UTC" // allow:timeformat
+				data.Alert.Until = exceptionUntil(until, venueZone)
 			}
 		}
 		noticeID, _ := uuid.Parse(p.NoticeID)
@@ -181,4 +182,17 @@ func NewScannedAlertHandler(opts ScannedAlertOptions) worker.HandlerFunc {
 		}
 		return firstErr
 	}
+}
+
+// exceptionUntil shows when a scan exception ends in the venue's zone, Madrid
+// when the venue has none (the organizations sell in Europe), never in UTC.
+func exceptionUntil(at time.Time, zone string) string {
+	loc, err := time.LoadLocation(zone)
+	if zone == "" || err != nil {
+		zone = "Europe/Madrid"
+		if loc, err = time.LoadLocation(zone); err != nil {
+			return at.UTC().Format("2006-01-02 15:04") + " UTC" // allow:timeformat
+		}
+	}
+	return at.In(loc).Format("2006-01-02 15:04") + " (" + zone + ")" // allow:timeformat
 }
