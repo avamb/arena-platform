@@ -50,6 +50,7 @@ func fullAnswers(country string) map[string]any {
 		"event_types": []any{"concert", "theatre"}, "seating": "ga", "events_per_year": "6-20",
 		"tickets_per_year": "500-5k", "payment_provider": "stripe",
 		"accept_terms": true, "accept_privacy": true, "confirm_authority": true,
+		"phone": "+34 600 111 222",
 	}
 }
 
@@ -210,15 +211,18 @@ func TestLifecycle_DraftToApproval(t *testing.T) {
 	if role != "org_admin" || kyb != "unverified" || mode != "direct_merchant" {
 		t.Fatalf("workspace = role %s kyb %s mode %s", role, kyb, mode)
 	}
-	// The applicant's e-mail is their login. It must never be copied to the
-	// organization's contact column, where it could be mistaken for a public
-	// contact.
-	var contactEmail *string
-	if err := pool.QueryRow(ctx, `SELECT contact_email FROM organizations WHERE id = $1`, res.OrgID).Scan(&contactEmail); err != nil {
-		t.Fatalf("read contact_email: %v", err)
+	// The applicant's e-mail is their login and the phone is their own number.
+	// Neither may be copied to the organization's contact columns, where they
+	// could be mistaken for a public contact.
+	var contactEmail, contactPhone *string
+	if err := pool.QueryRow(ctx, `SELECT contact_email, contact_phone FROM organizations WHERE id = $1`, res.OrgID).Scan(&contactEmail, &contactPhone); err != nil {
+		t.Fatalf("read contact columns: %v", err)
 	}
 	if contactEmail != nil {
 		t.Fatalf("organizations.contact_email = %q after approval, want NULL", *contactEmail)
+	}
+	if contactPhone != nil {
+		t.Fatalf("organizations.contact_phone = %q after approval, want NULL", *contactPhone)
 	}
 	var setups int
 	_ = pool.QueryRow(ctx, `SELECT count(*) FROM worker_jobs WHERE job_type = 'auth.password_reset_email' AND payload->>'email' = $1`, email).Scan(&setups)

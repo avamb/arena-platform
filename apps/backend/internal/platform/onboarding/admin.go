@@ -245,9 +245,10 @@ func (s *Service) Approve(ctx context.Context, id uuid.UUID, actor Actor, review
 	}
 	a := app.Answers
 	now := s.now()
-	// ContactEmail stays empty on purpose: the applicant's e-mail is their login,
-	// not a public contact of the organization. A published contact is set by
-	// the operator on the channel (settings.hosted_page.public_contact).
+	// ContactEmail and ContactPhone stay empty on purpose: the applicant's
+	// e-mail is their login and their phone is their own number, neither is a
+	// public contact of the organization. A published contact is set by the
+	// operator on the channel (settings.hosted_page.public_contact).
 	ws, err := provisioning.CreateWorkspace(ctx, tx, provisioning.WorkspaceInput{
 		OrgName:            a.String("org_name"),
 		LegalName:          a.String("legal_name"),
@@ -261,7 +262,6 @@ func (s *Service) Approve(ctx context.Context, id uuid.UUID, actor Actor, review
 		AddressCity:        a.String("address_city"),
 		AddressCountry:     firstNonEmpty(a.String("address_country"), a.String("country")),
 		Website:            a.String("website"),
-		ContactPhone:       a.String("phone"),
 		OwnerEmail:         app.Email,
 		OwnerFirstName:     a.String("first_name"),
 		OwnerLastName:      a.String("last_name"),
