@@ -319,3 +319,52 @@ FROM (
 ) matched
 ORDER BY first_session_at ASC NULLS LAST, id ASC
 LIMIT 200;
+
+-- name: GetHostedPageSeller :one
+-- GetHostedPageSeller reads the SELLER block of a hosted page: the legal
+-- identity of the page's own organization (the seller of record) and the
+-- two per-channel settings that govern its publication,
+-- settings.hosted_page.show_seller (default off) and
+-- settings.hosted_page.public_contact ({"email","phone"}, the ONLY source of
+-- a published contact: organizations.contact_email/contact_phone are never
+-- selected here). The channel is the hosted-page-enabled, not deleted channel
+-- of the SAME organization that owns the given feed token ($2) -- or, when
+-- $2 is empty (the promoter landing page has no single token), the newest
+-- active token among the organization's eligible channels. Returns
+-- pgx.ErrNoRows when no such channel exists.
+SELECT
+    o.name, o.legal_name, o.tax_id, o.tax_id_scheme, o.registration_number,
+    o.legal_address_line1, o.legal_address_line2, o.legal_address_postal_code,
+    o.legal_address_city, o.legal_address_country, o.country,
+    COALESCE(sc.settings #>> '{hosted_page,show_seller}', '') = 'true' AS show_seller,
+    sc.settings #> '{hosted_page,public_contact}' AS public_contact
+FROM organizations o
+JOIN sales_channels sc ON sc.org_id = o.id
+JOIN agent_feed_tokens ft ON ft.sales_channel_id = sc.id
+WHERE o.id = $1
+  AND o.deleted_at IS NULL
+  AND sc.deleted_at IS NULL
+  AND sc.settings #>> '{hosted_page,enabled}' = 'true'
+  AND ft.is_active = true
+  AND ($2::text = '' OR ft.token = $2::text)
+ORDER BY ft.created_at DESC
+LIMIT 1;
+
+-- name: GetHostedPageEventPromoterName :one
+-- GetHostedPageEventPromoterName returns the name of the promoter an event is
+-- linked to (event_promoters, migration 0113). Both keys are matched so a row
+-- of another organization can never answer; pgx.ErrNoRows means the
+-- organization itself is the promoter.
+SELECT p.name
+FROM event_promoters epr
+JOIN org_promoters p ON p.id = epr.promoter_id AND p.org_id = epr.org_id
+WHERE epr.event_id = $1
+  AND epr.org_id   = $2;
+
+-- name: GetSellerCountries :one
+-- GetSellerCountries returns the two country columns that decide whether the
+-- consumer-withdrawal notice applies to the organization's sales
+-- (legal_address_country first, organizations.country as the fallback).
+SELECT legal_address_country, country
+FROM organizations
+WHERE id = $1;

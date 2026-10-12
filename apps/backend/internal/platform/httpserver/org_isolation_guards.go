@@ -20,6 +20,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 )
 
 // callerActsFor reports whether the caller may act inside orgID: a platform
@@ -37,7 +38,13 @@ func (s *Server) callerActsFor(r *http.Request, orgID uuid.UUID) (bool, error) {
 	if s.membershipQueries == nil {
 		return false, nil
 	}
-	return actorIsMemberOfOrgServer(ctx, s.membershipQueries, orgID)
+	member, err := actorIsMemberOfOrgServer(ctx, s.membershipQueries, orgID)
+	if err != nil || !member {
+		return false, err
+	}
+	// The route's permission must be held in THIS organization (PERM-ORG):
+	// the allocation routes are not scoped at the gate, so this is the check.
+	return permissions.AllowedInOrg(ctx, orgID)
 }
 
 // writeOrgLookupFailed answers an infrastructure failure of a guard.
@@ -288,6 +295,45 @@ func (s *Server) guardAllocationPatch(w http.ResponseWriter, r *http.Request) bo
 			"only the organizer of the session can activate or reconcile an allocation; a partner can report consumption or dispute it", r,
 		))
 		return false
+	}
+	return true
+}
+
+// reconciliationAllocationAccess is the organization check of a reconciliation
+// report, run by the handler once it has loaded the allocation the report
+// names: the caller must act for it, as its partner or as the organizer of its
+// session, with the route's permission held in that organization. Anything else
+// is the handler's own 404.
+func (s *Server) reconciliationAllocationAccess(w http.ResponseWriter, r *http.Request, alloc gen.ExternalAllocationRow) bool {
+	ctx := r.Context()
+	acts, err := s.callerActsFor(r, alloc.PartnerOrgID)
+	if err != nil {
+		s.writeOrgLookupFailed(w, r, "org membership check", err)
+		return false
+	}
+	if !acts && s.allocationQueries != nil {
+		sess, sErr := s.allocationQueries.GetSessionOrgContext(ctx, alloc.SessionID)
+		if sErr != nil && !errors.Is(sErr, pgx.ErrNoRows) {
+			s.writeOrgLookupFailed(w, r, "reconciliation session lookup", sErr)
+			return false
+		}
+		if sErr == nil {
+			if acts, err = s.callerActsFor(r, sess.OrgID); err != nil {
+				s.writeOrgLookupFailed(w, r, "org membership check", err)
+				return false
+			}
+		}
+	}
+	if !acts {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"reconciliation.allocation_not_found", "external allocation not found", r,
+		))
+		return false
+	}
+	if auth.HasSuperadminOrgAccess(ctx) {
+		if _, ok := httputil.RequireAdminReason(w, r); !ok {
+			return false
+		}
 	}
 	return true
 }

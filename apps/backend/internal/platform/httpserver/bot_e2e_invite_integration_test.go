@@ -255,7 +255,7 @@ func (e *invE2E) dialog(tg int64) (invState, bool) {
 func (e *invE2E) toCategory(d ecDriver, tier int) {
 	e.t.Helper()
 	d.press("iv:new", "Бесплатные билеты для гостей")
-	d.press("iv:i", "Выберите ивент")
+	d.press("iv:i", "Выберите мероприятие")
 	st, ok := e.dialog(d.id)
 	if !ok || st.Step != "ev" || len(st.EventIDs) != 2 {
 		e.t.Fatalf("events step = %+v %v, want the two events of the organization", st, ok)
@@ -542,7 +542,7 @@ func TestBotE2E_Invitations_CategoryRunsOutHalfWay(t *testing.T) {
 		`UPDATE session_seats SET status = 'sold' WHERE session_id = $1 AND tier_id = $2`, e.seed.session, e.seed.std); err != nil {
 		t.Fatal(err)
 	}
-	d.press("iv:i", "Выберите ивент")
+	d.press("iv:i", "Выберите мероприятие")
 	d.press("iv:eo:0", "Выберите дату")
 	d.press("iv:so:0", "Выберите категорию")
 	d.press("iv:to:1", "не осталось свободных мест")
@@ -598,7 +598,7 @@ func TestBotE2E_Invitations_RestartHomeExpiryAndSeatedDate(t *testing.T) {
 	d.press("iv:go", "Не найдено")
 
 	// The seated date: no invitation without a seat.
-	d.press("iv:i", "Выберите ивент")
+	d.press("iv:i", "Выберите мероприятие")
 	d.press("iv:eo:1", "Выберите дату")
 	d.press("iv:so:0", "есть схема зала")
 	if st, _ := e.dialog(d.id); st.Step != "ti" || len(st.TierIDs) != 0 {
