@@ -22,8 +22,11 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 )
 
 // flatIDs names the rows a flat-route request is built from.
@@ -98,6 +101,16 @@ func (e *sweepEnv) flatSnapshot(t *testing.T, w *sweepWorld, id flatIDs) map[str
 
 func (e *sweepEnv) doFlat(t *testing.T, row flatSweepRow, id flatIDs, token string) (int, map[string]any) {
 	t.Helper()
+	reason := ""
+	if row.admin {
+		reason = "org isolation sweep"
+	}
+	return e.doFlatReason(t, row, id, token, reason)
+}
+
+// doFlatReason is doFlat with an explicit X-Admin-Reason ("" sends none).
+func (e *sweepEnv) doFlatReason(t *testing.T, row flatSweepRow, id flatIDs, token, reason string) (int, map[string]any) {
+	t.Helper()
 	body := ""
 	if row.body != nil {
 		body = row.body(id)
@@ -111,8 +124,8 @@ func (e *sweepEnv) doFlat(t *testing.T, row flatSweepRow, id flatIDs, token stri
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if row.admin {
-		req.Header.Set("X-Admin-Reason", "org isolation sweep")
+	if reason != "" {
+		req.Header.Set("X-Admin-Reason", reason)
 	}
 	resp, err := e.ts.Client().Do(req)
 	if err != nil {
@@ -177,6 +190,170 @@ func TestOrgIsolationFlatSweep_OwnOrganizationStillWorks(t *testing.T) {
 			}
 			if status < 200 || status > 299 {
 				t.Errorf("own %s: status %d, want 2xx (%v)", row.name, status, out)
+			}
+		})
+	}
+}
+
+// ─── a cancelled session keeps its tickets reachable ────────────────────────
+
+// userIn creates a user holding role in org and returns a JWT whose only
+// authority is the membership row.
+func (e *sweepEnv) userIn(t *testing.T, org uuid.UUID, role string) string {
+	t.Helper()
+	ctx := context.Background()
+	u, err := e.q.InsertUser(ctx, "sweep-"+role+"-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatalf("InsertUser: %v", err)
+	}
+	if _, err := e.q.InsertMembership(ctx, u.ID, org, role); err != nil {
+		t.Fatalf("InsertMembership(%s): %v", role, err)
+	}
+	return e.jwtFor(t, u.ID)
+}
+
+func (e *sweepEnv) jwtFor(t *testing.T, user uuid.UUID) string {
+	t.Helper()
+	tok, _, err := auth.IssueJWT(e.secret, user, nil, nil, "arena-api", "arena-api", time.Hour)
+	if err != nil {
+		t.Fatalf("IssueJWT: %v", err)
+	}
+	return tok
+}
+
+// platformSuperadmin creates a user holding the global platform_superadmin role.
+func (e *sweepEnv) platformSuperadmin(t *testing.T) string {
+	t.Helper()
+	u, err := e.q.InsertUser(context.Background(), "sweep-super-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatalf("InsertUser: %v", err)
+	}
+	e.exec(t, `INSERT INTO user_roles (user_id, role_id, org_id)
+	           SELECT $1, id, NULL FROM roles WHERE name = 'platform_superadmin' AND org_id IS NULL`, u.ID)
+	t.Cleanup(func() {
+		_, _ = e.pool.Exec(context.Background(), `DELETE FROM user_roles WHERE user_id = $1`, u.ID)
+	})
+	return e.jwtFor(t, u.ID)
+}
+
+// The bot's session cancel soft-deletes the session and leaves its tickets
+// active. Support must still see the delivery status and the scans, resend the
+// ticket, read its credential and cancel it; a foreign organization still
+// gets the route's own 404.
+func TestOrgIsolationFlatSweep_TicketOfCancelledSessionStaysReachable(t *testing.T) {
+	e := newSweepEnv(t)
+	super := e.platformSuperadmin(t)
+	const reason = "support: cancelled session"
+	for _, row := range flatSweepRows() {
+		if row.name == "checkout tickets" {
+			continue // keyed by the checkout session, not by the ticket's session
+		}
+		row := row
+		for _, who := range []string{"own-owner", "superadmin", "foreign-owner"} {
+			who := who
+			t.Run(row.name+"/"+who, func(t *testing.T) {
+				orgA := e.newOrg(t, "A")
+				w := e.newWorld(t, orgA, e.orgC)
+				id := e.flatIDs(t, w)
+				if row.prepare != nil {
+					row.prepare(t, e, id)
+				}
+				e.exec(t, `UPDATE sessions SET deleted_at = now() WHERE id = $1`, w.s4)
+
+				token, send, want := "", "", http.StatusOK
+				switch who {
+				case "own-owner":
+					token = e.userIn(t, orgA, "org_admin")
+				case "superadmin":
+					token, send = super, reason
+				default:
+					token, want = e.owner, http.StatusNotFound
+				}
+				if row.controlStatus != 0 && want == http.StatusOK {
+					want = row.controlStatus
+				}
+				if row.admin {
+					send = reason // the support-console routes demand the header from every caller
+				}
+				status, out := e.doFlatReason(t, row, id, token, send)
+				if status != want {
+					t.Errorf("%s as %s on a cancelled session: status %d, want %d (%v)", row.name, who, status, want, out)
+				}
+			})
+		}
+	}
+}
+
+// Creating a credential is a write: a platform superadmin needs the reason for
+// it, but reading one that already exists stays a plain read.
+func TestOrgIsolationFlatSweep_CredentialCreateByPlatformSuperadminNeedsReason(t *testing.T) {
+	e := newSweepEnv(t)
+	super := e.platformSuperadmin(t)
+	orgA := e.newOrg(t, "A")
+	w := e.newWorld(t, orgA, e.orgC)
+	id := e.flatIDs(t, w)
+	row := flatSweepRows()[1]
+	if row.name != "ticket credential" {
+		t.Fatalf("row 1 is %q, want the credential row", row.name)
+	}
+	count := func() string { return e.flatSnapshot(t, w, id)["ticket credentials"] }
+
+	if status, out := e.doFlatReason(t, row, id, super, ""); status != http.StatusBadRequest || count() != "0" {
+		t.Fatalf("create without reason: status %d credentials %s, want 400 and 0 (%v)", status, count(), out)
+	}
+	if status, out := e.doFlatReason(t, row, id, super, "support: first look"); status != http.StatusOK || count() != "1" {
+		t.Fatalf("create with reason: status %d credentials %s, want 200 and 1 (%v)", status, count(), out)
+	}
+	if status, out := e.doFlatReason(t, row, id, super, ""); status != http.StatusOK {
+		t.Fatalf("read of an existing credential without reason: status %d, want 200 (%v)", status, out)
+	}
+}
+
+// POST /v1/tickets/{id}/cancel finds the ticket's organization the same way.
+// The world's ticket carries no sold-place bookkeeping, so the cancellation
+// itself may answer an error of its own once the guard let the caller in:
+// what is asserted is that the guard neither refuses the owner and the
+// superadmin (404/403) nor lets the foreign organization through.
+func TestOrgIsolationFlatSweep_CancelShimFindsTicketOfCancelledSession(t *testing.T) {
+	e := newSweepEnv(t)
+	super := e.platformSuperadmin(t)
+	body := `{"reason":"sweep","refund_mode":"none"}`
+	for _, who := range []string{"own-owner", "superadmin", "superadmin-no-reason", "foreign-owner"} {
+		who := who
+		t.Run(who, func(t *testing.T) {
+			orgA := e.newOrg(t, "A")
+			w := e.newWorld(t, orgA, e.orgC)
+			id := e.flatIDs(t, w)
+			e.exec(t, `UPDATE sessions SET deleted_at = now() WHERE id = $1`, w.s4)
+
+			token, reason := e.owner, ""
+			switch who {
+			case "own-owner":
+				token = e.userIn(t, orgA, "org_admin")
+			case "superadmin":
+				token, reason = super, "support: cancelled session"
+			case "superadmin-no-reason":
+				token = super
+			}
+			row := flatSweepRow{route: "POST /v1/tickets/{id}/cancel",
+				path: func(id flatIDs) string { return "/v1/tickets/" + id.Ticket.String() + "/cancel" },
+				body: func(flatIDs) string { return body }}
+			status, out := e.doFlatReason(t, row, id, token, reason)
+			errObj, _ := out["error"].(map[string]any)
+			code, _ := errObj["code"].(string)
+			switch who {
+			case "foreign-owner":
+				if status != http.StatusNotFound || code != "ticket.not_found" {
+					t.Errorf("foreign owner: status %d code %q, want the route's own 404 (%v)", status, code, out)
+				}
+			case "superadmin-no-reason":
+				if status != http.StatusBadRequest {
+					t.Errorf("superadmin without reason: status %d, want 400 (%v)", status, out)
+				}
+			default:
+				if status == http.StatusNotFound || status == http.StatusForbidden || status == http.StatusBadRequest {
+					t.Errorf("%s: status %d code %q, want the guard to let the caller in (%v)", who, status, code, out)
+				}
 			}
 		})
 	}

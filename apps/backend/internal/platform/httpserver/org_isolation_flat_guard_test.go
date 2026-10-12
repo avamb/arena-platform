@@ -121,7 +121,7 @@ var flatRouteFamilies = []flatFamily{
 	// ── rows of one organization behind a row guard ─────────────────────────
 	{"GET", "/v1/checkout/{id}/tickets", flatRowGuard, "htickets.RowOrgAccess"},
 	{"GET", "/v1/tickets/{id}/credential", flatRowGuard, "htickets.RowOrgAccess"},
-	{"POST", "/v1/tickets/{id}/cancel", flatRowGuard, "enforceMembershipInOrg on the ticket's session"},
+	{"POST", "/v1/tickets/{id}/cancel", flatRowGuard, "rowOrgAccess on the ticket's own organization"},
 	{"POST", "/v1/complimentary/{id}/revoke", flatRowGuard, "enforceMembershipInOrg on the issuance"},
 	{"*", "/v1/checkout/*", flatRowGuard, "hcheckout.RowOrgAccess"},
 	{"*", "/v1/reservations", flatRowGuard, "hcheckout.RowOrgAccess"},

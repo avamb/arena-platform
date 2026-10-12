@@ -327,6 +327,7 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 		paid       *int64
 		refunded   int64
 		liveCancel bool
+		onHold     bool
 	}
 	info := make(map[uuid.UUID]*ticketInfo, len(ids))
 	rows, err := tx.Query(ctx, `
@@ -335,7 +336,8 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 		                  WHERE r.ticket_id = t.id AND r.state NOT IN ('failed', 'rejected')
 		                  AND `+countsAgainstBudgetSQL+`), 0)::bigint,
 		       EXISTS (SELECT 1 FROM refunds r
-		                WHERE r.ticket_id = t.id AND r.cancel_ticket AND r.state NOT IN ('failed', 'rejected'))
+		                WHERE r.ticket_id = t.id AND r.cancel_ticket AND r.state NOT IN ('failed', 'rejected')),
+		       t.review_hold
 		FROM   tickets t
 		LEFT JOIN order_items oi ON oi.ticket_id = t.id AND oi.order_id = $2
 		WHERE  t.id = ANY($1) AND t.checkout_session_id = $3`, ids, ord.ID, ord.CheckoutSessionID)
@@ -345,7 +347,7 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 	for rows.Next() {
 		var id uuid.UUID
 		ti := &ticketInfo{}
-		if err := rows.Scan(&id, &ti.status, &ti.paid, &ti.refunded, &ti.liveCancel); err != nil {
+		if err := rows.Scan(&id, &ti.status, &ti.paid, &ti.refunded, &ti.liveCancel, &ti.onHold); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -371,6 +373,11 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 			return nil, notRefundable(it.TicketID, "not_active")
 		case ti.paid == nil:
 			return nil, notRefundable(it.TicketID, "no_price")
+		case ti.onHold:
+			// A refund made outside arena left this order's tickets under
+			// review: how much of that money belongs to this ticket is a
+			// person's call, so no refund is sent for it until they decide.
+			return nil, notRefundable(it.TicketID, "review_hold")
 		case ti.liveCancel:
 			return nil, refusal(http.StatusConflict, CodeInProgress, "a refund of this ticket is already in progress",
 				map[string]any{"ticket_id": it.TicketID.String()})
