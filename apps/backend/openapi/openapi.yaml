@@ -32879,6 +32879,14 @@ paths:
             top of the ticket prices at checkout; the widget shows it as
             a cart line so the buyer sees the total before the payment
             page does.
+          * `show_withdrawal_notice` — boolean. True when the seller
+            organization is in the EU/EEA (the country of its legal
+            address, else the organization country: the 27 EU states
+            plus IS, LI and NO). The widget then tells the buyer before
+            payment that tickets for an event on a specific date are not
+            covered by the right of withdrawal. False for every other
+            country (Israel included, which has its own cancellation
+            regime) and when the country is unknown.
           * `poster_media_id` — resolved cover: session's own value when
             set, otherwise the event fallback. Same on `poster_url`.
           * `media_gallery: SessionMediaItem[]` — ordered per-session

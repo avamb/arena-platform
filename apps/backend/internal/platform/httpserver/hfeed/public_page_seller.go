@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/withdrawal"
 )
 
 // hostedPageSellerAddress is the seller's registered address. Empty parts
@@ -159,4 +160,22 @@ func (h *Handler) sellerBlocks(ctx context.Context, orgID uuid.UUID, feedToken s
 		return seller, nil
 	}
 	return seller, &hostedPagePromoterResponse{Name: name}
+}
+
+// showWithdrawalNotice reports whether the widget must tell the buyer that
+// tickets for an event on a specific date carry no right of withdrawal: the
+// seller organization is in the EU/EEA. A failed lookup answers false and is
+// logged; an unknown country is false by the rule itself.
+func (h *Handler) showWithdrawalNotice(ctx context.Context, orgID uuid.UUID) bool {
+	c, err := h.publicFeedQueries.GetSellerCountries(ctx, orgID)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			h.logger.Warn("public_feed: seller country lookup failed",
+				slog.String("org_id", orgID.String()),
+				slog.String("error", err.Error()),
+			)
+		}
+		return false
+	}
+	return withdrawal.ForSeller(c.LegalAddressCountry, c.Country)
 }

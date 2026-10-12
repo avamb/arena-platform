@@ -249,3 +249,59 @@ func TestHostedPageSeller_BlockIsPerChannelAndNeverLeaksContact(t *testing.T) {
 		t.Fatalf("seller present after switching off: %s", raw)
 	}
 }
+
+func (f *sellerFixture) addSession(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	ctx := context.Background()
+	venueID, sessID := uuid.New(), uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO venues (id, org_id, name, timezone)
+		VALUES ($1, $2, 'Seller Venue', 'Europe/Madrid')`, venueID, f.orgID); err != nil {
+		t.Fatalf("insert venue: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, currency, currency_source)
+		VALUES ($1, $2, $3, now() + interval '5 day', now() + interval '5 day 2 hours', 10, 'EUR', 'override')`,
+		sessID, f.eventID, venueID); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM sessions WHERE id = $1`, sessID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM venues WHERE id = $1`, venueID)
+	})
+}
+
+// The widget's feed session says whether to print the withdrawal notice,
+// decided by the SELLER's country alone.
+func TestHostedPageSeller_WithdrawalNoticeFlagFollowsSellerCountry(t *testing.T) {
+	pool := sellerPool(t)
+	srv := buildHostedCheckoutServer(t, pool, "http://127.0.0.1:1")
+	il, es := "IL", "ES"
+	cases := []struct {
+		name         string
+		country      string
+		legalCountry *string
+		want         bool
+	}{
+		{"EU legal address", "GB", &es, true},
+		{"EU org country, no legal address", "DE", nil, true},
+		{"Israel legal address wins over EU org country", "ES", &il, false},
+		{"non-EU country", "GB", nil, false},
+		{"unknown country", "XX", nil, false},
+	}
+	for _, tc := range cases {
+		f := newSellerFixture(t, pool, "Legal "+tc.name, tc.country, tc.legalCountry)
+		f.addSession(t, pool)
+		code, body, raw := getJSON(t, srv, "/v1/public/feeds/"+f.token+"/events/"+f.eventID.String())
+		if code != http.StatusOK {
+			t.Fatalf("%s: status = %d: %s", tc.name, code, raw)
+		}
+		ev, _ := body["event"].(map[string]any)
+		sessions, _ := ev["sessions"].([]any)
+		if len(sessions) != 1 {
+			t.Fatalf("%s: want 1 session, got %s", tc.name, raw)
+		}
+		got, present := sessions[0].(map[string]any)["show_withdrawal_notice"].(bool)
+		if !present || got != tc.want {
+			t.Errorf("%s: show_withdrawal_notice = %v (present=%v), want %v", tc.name, got, present, tc.want)
+		}
+	}
+}
