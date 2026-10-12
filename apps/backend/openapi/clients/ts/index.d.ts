@@ -10013,7 +10013,7 @@ export interface components {
             creator?: {
                 /** @description `user`, `api_key` or `provider_dashboard` (a refund made in the payment provider's own dashboard). */
                 kind: string;
-                /** @description The member's name or e-mail, or the API key's name. */
+                /** @description The member's name, or their e-mail when they have none (null for a caller acting with an API key), or the API key's name. */
                 label?: string | null;
             } | null;
         };

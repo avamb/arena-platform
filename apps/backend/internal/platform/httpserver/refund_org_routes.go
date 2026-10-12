@@ -219,12 +219,24 @@ type refundQueueItemJSON struct {
 	Creator      *refundCreatorJSON `json:"creator"`
 }
 
-func queueItem(it refunds.ListItem) refundQueueItemJSON {
+func queueItem(r *http.Request, it refunds.ListItem) refundQueueItemJSON {
 	out := refundQueueItemJSON{refundItem(it.Refund), it.OrderSystemID, it.EventName, it.TicketNumber, nil}
 	if it.CreatorKind != nil {
-		out.Creator = &refundCreatorJSON{Kind: *it.CreatorKind, Label: it.CreatorLabel}
+		label := it.CreatorLabel
+		if it.CreatorLabelIsEmail && callerIsAPIKey(r) {
+			// A member's e-mail is shown to people of the organization and the
+			// platform, not to an integration acting with an API key.
+			label = nil
+		}
+		out.Creator = &refundCreatorJSON{Kind: *it.CreatorKind, Label: label}
 	}
 	return out
+}
+
+// callerIsAPIKey reports whether the request acts with an organization API key.
+func callerIsAPIKey(r *http.Request) bool {
+	actor, ok := auth.ActorFromContext(r.Context())
+	return ok && actor.IsService()
 }
 
 func (s *Server) handleListOrgRefunds(w http.ResponseWriter, r *http.Request) {
@@ -270,7 +282,7 @@ func (s *Server) handleListOrgRefunds(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]refundQueueItemJSON, 0, len(page.Items))
 	for _, it := range page.Items {
-		items = append(items, queueItem(it))
+		items = append(items, queueItem(r, it))
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"refunds": items, "total": page.Total, "has_more": page.HasMore})
 }
@@ -317,5 +329,5 @@ func (s *Server) handleGetOrgRefund(w http.ResponseWriter, r *http.Request) {
 	for _, h := range d.History {
 		history = append(history, historyJSON{h.Action, h.At.UTC().Format(time.RFC3339), nonEmpty(h.Outcome), nonEmpty(h.State), nonEmpty(h.FailureCode)})
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"refund": queueItem(d.ListItem), "history": history, "history_total": d.HistoryTotal})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"refund": queueItem(r, d.ListItem), "history": history, "history_total": d.HistoryTotal})
 }
