@@ -2963,6 +2963,83 @@ other = "A refund of one of these tickets is already in progress for order #{{.N
 ["bot.ref.err_changed"]
 other = "Order #{{.Num}} changed while you were choosing. Open it again and start the refund again."
 
+["bot.rq.btn"]
+other = "💸 Refunds"
+
+["bot.rq.title"]
+other = "<b>Refunds · {{.Filter}}</b> ({{.Count}})"
+
+["bot.rq.f_review"]
+other = "Need a check"
+
+["bot.rq.f_failed"]
+other = "Failed"
+
+["bot.rq.f_pending"]
+other = "In progress"
+
+["bot.rq.f_done"]
+other = "Returned"
+
+["bot.rq.empty"]
+other = "Nothing here."
+
+["bot.rq.row"]
+other = "{{.Chip}} <b>{{.Order}}</b> · {{.Amount}}{{.Event}}"
+
+["bot.rq.retry_btn"]
+other = "🔁 Retry {{.Order}}"
+
+["bot.rq.order_btn"]
+other = "📄 Order {{.Order}}"
+
+["bot.rq.retry_ask"]
+other = "Send this refund again? Order {{.Order}}, ticket {{.Tickets}}, amount <b>{{.Amount}}</b>. A new refund is created for the same ticket and amount; one that may already have gone through is refused.\n\n{{.TicketRule}} {{.Letter}}"
+
+["bot.rq.retry_cancels_ticket"]
+other = "The ticket stops being valid for entry, also when only part of its price is returned."
+
+["bot.rq.retry_keeps_ticket"]
+other = "The ticket stays valid: only money is returned, as in the first refund."
+
+["bot.rq.retry_letter"]
+other = "The buyer gets an e-mail about the refund."
+
+["bot.rq.retry_no_letter"]
+other = "No e-mail is sent to the buyer, as in the first refund."
+
+["bot.rq.retry_yes"]
+other = "Yes, send {{.Amount}} again"
+
+["bot.rq.retry_no"]
+other = "Cancel"
+
+["bot.rq.already_replaced"]
+other = "This refund was already sent again, so it cannot be retried. Look at the newer refund in the list."
+
+["bot.rq.still_sending"]
+other = "This refund is already being sent again. Wait for the answer here."
+
+["bot.rq.err_progress"]
+other = "Another refund of this ticket is in progress. Nothing was sent again; open the order to see it."
+
+["bot.rq.err_ticket"]
+other = "This ticket can no longer be refunded (it changed, is no longer valid or is under review). Nothing was sent again."
+
+["bot.rq.err_refused"]
+other = "Arena did not send the refund again: the refund or its order changed meanwhile. Nothing was sent; open the order to see its state."
+
+["bot.rq.err_partial"]
+other = "This payment provider returns only the whole payment at once, and part of it is already back. Nothing was sent; return the rest in the provider's dashboard."
+
+["bot.rq.retry_done"]
+other = "<b>Refund sent again</b>"
+
+["bot.rq.not_retryable"]
+other = "This refund cannot be sent again: the provider may already have returned the money. Support will check it."
+
+["bot.rq.provider_word"]
+other = "the provider"
 ["bot.ref.final"]
 other = "<b>Final check</b>\nOrder #{{.Num}} · {{.N}} ticket(s): {{.Tickets}}\nTo return: <b>{{.Amount}}</b> through {{.Provider}}\nLetter to the buyer: {{.Letter}}\n\nThese tickets stop being valid for entry, also when only part of their price is returned. The payment provider returns the money; this cannot be undone."
 

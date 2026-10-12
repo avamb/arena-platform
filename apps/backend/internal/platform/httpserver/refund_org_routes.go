@@ -257,6 +257,9 @@ type refundQueueItemJSON struct {
 	// Retryable: the retry route would accept this refund (it provably moved
 	// no money and has not been retried yet). The route still decides.
 	Retryable bool `json:"retryable"`
+	// NotifyBuyer: a retry would send the buyer the refund letter (the first
+	// refund's choice).
+	NotifyBuyer bool `json:"notify_buyer"`
 }
 
 func queueItem(r *http.Request, it refunds.ListItem) refundQueueItemJSON {
@@ -266,7 +269,7 @@ func queueItem(r *http.Request, it refunds.ListItem) refundQueueItemJSON {
 		orderID = &v
 	}
 	out := refundQueueItemJSON{refundItem(it.Refund), orderID, it.OrderSystemID, it.EventName, it.TicketNumber, nil,
-		refunds.Retryable(it.Refund) && !it.Replaced && !it.RetryBlocked}
+		refunds.Retryable(it.Refund) && !it.Replaced && !it.RetryBlocked, it.NotifyBuyer}
 	if it.CreatorKind != nil {
 		label := it.CreatorLabel
 		if it.CreatorLabelIsEmail && callerIsAPIKey(r) {

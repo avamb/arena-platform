@@ -10147,6 +10147,8 @@ export interface components {
             } | null;
             /** @description True when the retry route would accept this refund - it provably moved no money and has not been retried yet. The route still decides. */
             retryable?: boolean;
+            /** @description True when the refund asked for the buyer letter, the choice a retry of it inherits (true for a refund made outside an operation). */
+            notify_buyer?: boolean;
         };
         /** @description One page of the organization's refunds, newest first. */
         OrderRefundQueue: {

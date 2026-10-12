@@ -183,3 +183,27 @@ func TestRefundRoutesAndRefusalsHaveTheirOwnTexts(t *testing.T) {
 		}
 	}
 }
+
+// Round-2 review F6: a refused queue retry is explained by its own code, and
+// an unexpected 409 never reads "order № changed" without a number.
+func TestQueueRetryRefusalsHaveTheirOwnTexts(t *testing.T) {
+	t.Parallel()
+	b := ecTestBot(t)
+	for _, c := range []struct {
+		status int
+		code   string
+		want   string
+	}{
+		{http.StatusConflict, "refund.not_retryable", "bot.rq.not_retryable"},
+		{http.StatusConflict, "refund.already_replaced", "bot.rq.already_replaced"},
+		{http.StatusConflict, "refund.in_progress", "bot.rq.err_progress"},
+		{http.StatusConflict, "refund.ticket_not_refundable", "bot.rq.err_ticket"},
+		{http.StatusConflict, "refund.over_budget", "bot.rq.err_refused"},
+		{http.StatusNotFound, "refund.not_found", "bot.rq.err_refused"},
+		{http.StatusForbidden, "permissions.denied", "bot.ref.err_forbidden"},
+	} {
+		if got := b.queueRetryErrorKey(&APIError{Status: c.status, Code: c.code}); got != c.want {
+			t.Errorf("%d %s: %q; want %q", c.status, c.code, got, c.want)
+		}
+	}
+}

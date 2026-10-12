@@ -111,6 +111,8 @@ type Bot struct {
 	// bg tracks the work started off the single update worker (a refund
 	// call that may wait minutes for the provider), so Run can let it end.
 	bg bgGroup
+	// retrying holds the refund ids whose queue retry is under way.
+	retrying sync.Map
 }
 
 // bgGroup is the WaitGroup of the background work. Once Run starts waiting
@@ -521,6 +523,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.ordersCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "or:"))
 	case "iv":
 		b.inviteCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "iv:"))
+	case "rq":
+		b.queueCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "rq:"))
 	case "pm":
 		b.promoCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pm:"))
 	case "pr":
@@ -710,6 +714,9 @@ func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *model
 	}
 	if canViewSales(id) {
 		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.ord.btn", nil), CallbackData: "or:new"}})
+	}
+	if row := b.queueMenuRow(loc, id); row != nil { // refunds (EC-23)
+		rows = append(rows, row)
 	}
 	if canInvite(id) {
 		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.inv.btn", nil), CallbackData: "iv:new"}})

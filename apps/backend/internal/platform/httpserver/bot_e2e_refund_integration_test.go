@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
@@ -33,6 +34,59 @@ func refundCount(t *testing.T, srv *Server, order uuid.UUID) (n int, state strin
 		t.Fatal(err)
 	}
 	return n, state
+}
+
+// seedRefundableOrder makes Anna's seeded order refundable through a stub
+// Stripe: a succeeded payment, the organization's payment config, the
+// inventory row a ticket cancellation gives its place back to, and the
+// cleanup of everything a refund leaves behind.
+func seedRefundableOrder(t *testing.T, pool *pgxpool.Pool, orgID uuid.UUID, seed *ordBotSeed) (tickets []uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	tickets = resendTickets(t, pool, seed.anna)
+	if len(tickets) != 2 {
+		t.Fatalf("Anna's order has %d tickets, want 2", len(tickets))
+	}
+	var cs uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT checkout_session_id FROM orders WHERE id = $1`, seed.anna).Scan(&cs); err != nil {
+		t.Fatal(err)
+	}
+	// Cancelling a refunded ticket gives its place back, which needs the ledger row.
+	if _, err := pool.Exec(ctx, `INSERT INTO inventory_ledger (session_id, tier_id, capacity_total, capacity_sold)
+		SELECT $1, id, 100, 2 FROM ticket_tiers WHERE session_id = $1 LIMIT 1`, seed.session1); err != nil {
+		t.Fatalf("inventory ledger: %v", err)
+	}
+	ref := "cs_test_refundbot_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	pi, err := gen.New(pool).InsertPaymentIntent(ctx, &cs, orgID, "stripe", &ref, 5000, "EUR", "succeeded", nil, nil)
+	if err != nil {
+		t.Fatalf("payment intent: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE payment_intents SET provider_charge_ref = $2 WHERE id = $1`, pi.ID, "pi_refundbot_"+uuid.NewString()[:8]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO payment_provider_configs (org_id, provider, mode, secrets, status, is_active)
+		VALUES ($1, 'stripe', 'test', '{"api_key":"sk_test_refundbot","webhook_secret":"whsec_refundbot"}'::jsonb, 'configured', true)`, orgID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		c := context.Background()
+		for _, sql := range []string{
+			`UPDATE tickets SET refund_id = NULL WHERE order_id = $1`,
+			`DELETE FROM refunds WHERE order_id = $1`,
+			`DELETE FROM refund_batches WHERE order_id = $1`,
+			`DELETE FROM worker_jobs WHERE payload->>'ticket_id' = ANY($2)`,
+			`DELETE FROM outbox_events WHERE aggregate_id = ANY($2)`,
+		} {
+			if strings.Contains(sql, "$2") {
+				_, _ = pool.Exec(c, sql, seed.anna, []string{tickets[0].String(), tickets[1].String()})
+			} else {
+				_, _ = pool.Exec(c, sql, seed.anna)
+			}
+		}
+		_, _ = pool.Exec(c, `DELETE FROM payment_provider_configs WHERE org_id = $1`, orgID)
+	})
+
+	return tickets
 }
 
 func TestBotE2E_Refund_OwnerReturnsOneTicket(t *testing.T) {
@@ -56,49 +110,8 @@ func TestBotE2E_Refund_OwnerReturnsOneTicket(t *testing.T) {
 	linkECBotUser(t, f, srv, ecOwnerTG, "owner")
 	linkECBotUser(t, other, srv, ecOutsiderTG, "owner")
 
+	tickets := seedRefundableOrder(t, pool, f.orgID, seed)
 	ctx := context.Background()
-	tickets := resendTickets(t, pool, seed.anna)
-	if len(tickets) != 2 {
-		t.Fatalf("Anna's order has %d tickets, want 2", len(tickets))
-	}
-	var cs uuid.UUID
-	if err := pool.QueryRow(ctx, `SELECT checkout_session_id FROM orders WHERE id = $1`, seed.anna).Scan(&cs); err != nil {
-		t.Fatal(err)
-	}
-	// Cancelling a refunded ticket gives its place back, which needs the ledger row.
-	if _, err := pool.Exec(ctx, `INSERT INTO inventory_ledger (session_id, tier_id, capacity_total, capacity_sold)
-		SELECT $1, id, 100, 2 FROM ticket_tiers WHERE session_id = $1 LIMIT 1`, seed.session1); err != nil {
-		t.Fatalf("inventory ledger: %v", err)
-	}
-	ref := "cs_test_refundbot_" + strings.ReplaceAll(uuid.NewString(), "-", "")
-	pi, err := gen.New(pool).InsertPaymentIntent(ctx, &cs, f.orgID, "stripe", &ref, 5000, "EUR", "succeeded", nil, nil)
-	if err != nil {
-		t.Fatalf("payment intent: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `UPDATE payment_intents SET provider_charge_ref = $2 WHERE id = $1`, pi.ID, "pi_refundbot_"+uuid.NewString()[:8]); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO payment_provider_configs (org_id, provider, mode, secrets, status, is_active)
-		VALUES ($1, 'stripe', 'test', '{"api_key":"sk_test_refundbot","webhook_secret":"whsec_refundbot"}'::jsonb, 'configured', true)`, f.orgID); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		c := context.Background()
-		for _, sql := range []string{
-			`UPDATE tickets SET refund_id = NULL WHERE order_id = $1`,
-			`DELETE FROM refunds WHERE order_id = $1`,
-			`DELETE FROM refund_batches WHERE order_id = $1`,
-			`DELETE FROM worker_jobs WHERE payload->>'ticket_id' = ANY($2)`,
-			`DELETE FROM outbox_events WHERE aggregate_id = ANY($2)`,
-		} {
-			if strings.Contains(sql, "$2") {
-				_, _ = pool.Exec(c, sql, seed.anna, []string{tickets[0].String(), tickets[1].String()})
-			} else {
-				_, _ = pool.Exec(c, sql, seed.anna)
-			}
-		}
-		_, _ = pool.Exec(c, `DELETE FROM payment_provider_configs WHERE org_id = $1`, f.orgID)
-	})
 
 	tg := newStubTelegram(t)
 	stop := startDialogTestBot(t, pool, api, tg)

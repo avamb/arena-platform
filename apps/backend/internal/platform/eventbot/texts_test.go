@@ -24,7 +24,7 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		"Paid": "1 EUR", "Orders": 1, "Value": "x", "Label": "L", "Currency": "EUR", "N": 1, "Title": "t", "W": 1080, "H": 1350,
 		"Reason": "r", "City": "c", "Capacity": 80, "Date": "d", "List": "l", "Price": "p",
 		"Schedule": "", "Age": "18+", "Promoter": "", "Poster": "", "Published": "", "Link": "",
-		"Warnings": "", "URL": "u", "State": "s", "Text": "tx", "Until": "d", "Limit": "5", "Raw": "r", "Tickets": "t", "Letter": "l", "Issued": 2, "Cancelled": 1, "Active": 1, "Min": "01.01.2026", "Max": "02.01.2026",
+		"Warnings": "", "URL": "u", "State": "s", "Text": "tx", "Until": "d", "Limit": "5", "Raw": "r", "Tickets": "t", "Letter": "l", "TicketRule": "tr", "Issued": 2, "Cancelled": 1, "Active": 1, "Min": "01.01.2026", "Max": "02.01.2026",
 		"Old": "o", "New": "n", "Contact": "c", "Letters": "", "Time": "19:30", "Now": "now", "Hours": 1, "Start": "19:30", "SalesEnd": "21:00", "Doors": "19:00", "Word": "CANCEL", "Subject": "s", "Zone": "Europe/Madrid",
 		"Message": "m", "Pct": 40, "Links": "l", "Url": "https://x.test/a",
 		// the event-center screens (ec_keys.go)
@@ -35,7 +35,7 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		// the orders screens (ord_keys.go)
 		"Tab": "t", "Num": 1000000500, "Chip": "c", "Contacts": "", "Tier": "t", "Seat": "", "Entered": "", "Channel": "ch", "Provider": "stripe", "Msg": "m",
 		// the invitations screens (invite_keys.go)
-		"Left": 2, "Sent": 3, "Got": 1, "Guests": "g", "Guest": "g", "Event": "e", "Line": 2, "Done": 1, "Why": "w",
+		"Order": "№1", "Left": 2, "Sent": 3, "Got": 1, "Guests": "g", "Guest": "g", "Event": "e", "Line": 2, "Done": 1, "Why": "w",
 	}
 	for _, loc := range SupportedLocales {
 		for _, key := range MessageKeys {
