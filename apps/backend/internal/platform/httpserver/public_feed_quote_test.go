@@ -139,3 +139,15 @@ func TestPublicCart_CapsAreRefusedBeforeTheDatabase(t *testing.T) {
 		}
 	}
 }
+
+// A quote is a price for one cart at one moment: no answer of the route, a
+// refusal and a 429 included, may be stored by a browser or a proxy.
+func TestPublicQuote_IsNeverCached(t *testing.T) {
+	s := buildQuoteServer(t, 1, 100000)
+	for i, body := range []string{"", ""} { // the second one is rate limited
+		w := postQuote(s, "no-cache-token", body)
+		if got := w.Header().Get("Cache-Control"); got != "no-store" {
+			t.Errorf("response %d (%d): Cache-Control = %q, want no-store", i, w.Code, got)
+		}
+	}
+}

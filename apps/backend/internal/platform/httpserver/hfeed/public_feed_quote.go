@@ -58,6 +58,9 @@ type PublicFeedCheckoutQuoteResponse struct {
 // HandlePublicFeedCheckoutQuote serves
 // POST /v1/public/feeds/{feed_token}/checkout/quote.
 func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.Request) {
+	// A price is a statement about one moment and one cart: never stored by a
+	// browser, a proxy or a CDN, whatever the answer (even a refusal).
+	w.Header().Set("Cache-Control", "no-store")
 	if h.publicFeedQueries == nil || h.reservationQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
