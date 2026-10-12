@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "task_id": "orchestration-smoke-v1",
+      "completed_at": "2026-10-12T12:45:56.717Z",
+      "mode": "mock",
+      "status": "PASS",
+      "api_calls": 0,
+      "model": "claude-sonnet-5-5",
+      "reported_api_cost_usd": 0,
+      "usage": null,
+      "errors": []
+    },
+    {
+      "task_id": "orchestration-smoke-mock-v1",
+      "completed_at": "2026-10-12T12:46:08.285Z",
+      "mode": "mock",
+      "status": "PASS",
+      "api_calls": 0,
+      "model": "claude-sonnet-5-5",
+      "reported_api_cost_usd": 0,
+      "usage": null,
+      "errors": []
+    }
+  ],
+  "notes": "No new API calls were made by Phase A preparation. Existing experiment results remain in sdk_experiments/results."
+}
