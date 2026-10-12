@@ -33,6 +33,7 @@
       <tr><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;">Total paid</td><td style="padding:8px 0 4px 0;border-top:1px solid #dfe3e6;color:#22333D;font-weight:bold;white-space:nowrap;text-align:right;">{{.Total}}</td></tr>
     </table>
   </td></tr>{{end}}
+  {{if .WithdrawalNotice}}<tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Tickets for an event on a specific date are not covered by the right of withdrawal. Your order became binding when you paid.</td></tr>{{end}}
   <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">Open the file on your phone and show the barcode at the entrance — no need to print.</td></tr>
   <tr><td style="padding:8px 32px 16px 32px;color:#46555f;font-size:14px;line-height:1.6;">If you have any questions, just reply to this email.</td></tr>
   <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
@@ -76,7 +77,9 @@ Payment:
 {{end}}{{with .ServiceFee}}- Service fee: {{.}}
 {{end}}- Total paid: {{.Total}}
 {{end}}
-Open the file on your phone and show the barcode at the entrance — no need to print.
+{{if .WithdrawalNotice}}Tickets for an event on a specific date are not covered by the right of withdrawal. Your order became binding when you paid.
+
+{{end}}Open the file on your phone and show the barcode at the entrance — no need to print.
 If you have any questions, just reply to this email.
 
 Delivered to: {{.RecipientEmail}}
