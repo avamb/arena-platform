@@ -2991,7 +2991,19 @@ other = "🔁 Retry {{.Order}}"
 other = "📄 Order {{.Order}}"
 
 ["bot.rq.retry_ask"]
-other = "Send this refund again? Order {{.Order}}, ticket {{.Tickets}}, amount <b>{{.Amount}}</b>. A new refund is created for the same ticket and amount; one that may already have gone through is refused.\n\nThe ticket stops being valid for entry, also when only part of its price is returned, and the buyer gets an e-mail about the refund if the first one asked for it."
+other = "Send this refund again? Order {{.Order}}, ticket {{.Tickets}}, amount <b>{{.Amount}}</b>. A new refund is created for the same ticket and amount; one that may already have gone through is refused.\n\n{{.TicketRule}} {{.Letter}}"
+
+["bot.rq.retry_cancels_ticket"]
+other = "The ticket stops being valid for entry, also when only part of its price is returned."
+
+["bot.rq.retry_keeps_ticket"]
+other = "The ticket stays valid: only money is returned, as in the first refund."
+
+["bot.rq.retry_letter"]
+other = "The buyer gets an e-mail about the refund."
+
+["bot.rq.retry_no_letter"]
+other = "No e-mail is sent to the buyer, as in the first refund."
 
 ["bot.rq.retry_yes"]
 other = "Yes, send {{.Amount}} again"

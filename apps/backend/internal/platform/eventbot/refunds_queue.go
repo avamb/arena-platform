@@ -240,6 +240,17 @@ func (b *Bot) askQueueRetry(ctx context.Context, chatID int64, editMsgID *int, i
 		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.rq.not_retryable", nil), list)
 		return
 	}
+	amount := FormatMoney(it.Amount, it.Currency, loc)
+	b.reply(ctx, chatID, editMsgID, b.queueRetryAskText(loc, it), &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+		{{Text: b.texts.T(loc, "bot.rq.retry_yes", map[string]any{"Amount": amount}), CallbackData: "rq:ry:" + refundID.String()}},
+		{{Text: b.texts.T(loc, "bot.rq.retry_no", nil), CallbackData: "rq:l:" + queueDefaultFilter + ":1"}},
+	}})
+}
+
+// queueRetryAskText is the retry question. A retry inherits the first
+// refund's choices (Engine.Retry), so the question names them: whether the
+// ticket is cancelled and whether the buyer gets the letter.
+func (b *Bot) queueRetryAskText(loc string, it openapi.OrderRefundQueueItem) string {
 	order, ticket := "—", "—"
 	if it.OrderNumber != nil {
 		order = "№" + strconv.FormatInt(*it.OrderNumber, 10)
@@ -247,13 +258,18 @@ func (b *Bot) askQueueRetry(ctx context.Context, chatID int64, editMsgID *int, i
 	if it.TicketNumber != nil {
 		ticket = "№" + strconv.FormatInt(*it.TicketNumber, 10)
 	}
-	amount := FormatMoney(it.Amount, it.Currency, loc)
-	b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.rq.retry_ask", map[string]any{
-		"Order": order, "Tickets": ticket, "Amount": amount,
-	}), &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-		{{Text: b.texts.T(loc, "bot.rq.retry_yes", map[string]any{"Amount": amount}), CallbackData: "rq:ry:" + refundID.String()}},
-		{{Text: b.texts.T(loc, "bot.rq.retry_no", nil), CallbackData: "rq:l:" + queueDefaultFilter + ":1"}},
-	}})
+	ticketLine := b.texts.T(loc, "bot.rq.retry_keeps_ticket", nil)
+	if it.CancelTicket {
+		ticketLine = b.texts.T(loc, "bot.rq.retry_cancels_ticket", nil)
+	}
+	letterLine := b.texts.T(loc, "bot.rq.retry_letter", nil)
+	if it.NotifyBuyer != nil && !*it.NotifyBuyer {
+		letterLine = b.texts.T(loc, "bot.rq.retry_no_letter", nil)
+	}
+	return b.texts.T(loc, "bot.rq.retry_ask", map[string]any{
+		"Order": order, "Tickets": ticket, "Amount": FormatMoney(it.Amount, it.Currency, loc),
+		"TicketRule": ticketLine, "Letter": letterLine,
+	})
 }
 
 // startQueueRetry sends the retry OFF the bot's single update worker: the

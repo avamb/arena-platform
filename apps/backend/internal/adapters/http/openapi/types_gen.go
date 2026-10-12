@@ -8787,6 +8787,9 @@ type OrderRefundQueueItem struct {
 	// Id UUID of the refund.
 	Id openapi_types.UUID `json:"id"`
 
+	// NotifyBuyer True when the refund asked for the buyer letter, the choice a retry of it inherits (true for a refund made outside an operation).
+	NotifyBuyer *bool `json:"notify_buyer,omitempty"`
+
 	// OrderId UUID of the order, null for a refund without an order.
 	OrderId *openapi_types.UUID `json:"order_id"`
 
