@@ -7,6 +7,7 @@ package refunds_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -164,8 +165,9 @@ func TestEngine_RefundWebhookReversalOfASucceededRefund(t *testing.T) {
 		t.Fatalf("ApplyProviderRefund = %v %v", found, err)
 	}
 	got, _ := e.GetRefund(ctx, r.ID)
-	if got.State != refunds.StateManualReview || got.FailureCode == nil || *got.FailureCode != "canceled" {
-		t.Fatalf("refund = %s %v; want manual_review canceled", got.State, got.FailureCode)
+	if got.State != refunds.StateManualReview || got.FailureCode == nil || *got.FailureCode != "reversed_after_success" ||
+		got.FailureReason == nil || !strings.Contains(*got.FailureReason, "canceled") {
+		t.Fatalf("refund = %s %v %v; want manual_review reversed_after_success naming the provider's code", got.State, got.FailureCode, got.FailureReason)
 	}
 	var alertOwed bool
 	if err := f.pool.QueryRow(ctx, `SELECT alert_due_at IS NOT NULL FROM refunds WHERE id = $1`, r.ID).Scan(&alertOwed); err != nil {

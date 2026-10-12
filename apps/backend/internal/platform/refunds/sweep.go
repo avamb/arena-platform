@@ -569,6 +569,15 @@ func alertText(r Refund, ticketStatus string) string {
 		text := fmt.Sprintf("Refund %s (%d %s via %s) needs manual review: %s. Order %s.",
 			r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), esc(deref(r.FailureCode)), uuidString(r.OrderID))
 		code := deref(r.FailureCode)
+		if code == failureReversedAfterSuccess {
+			text = fmt.Sprintf("Refund %s (%d %s via %s) was reversed by the provider after it had succeeded: the money did not go back to the buyer. Order %s.",
+				r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), uuidString(r.OrderID))
+			if r.TicketID != nil {
+				text += fmt.Sprintf(" Ticket %s is %s.", r.TicketID, esc(ticketStatusWord(ticketStatus)))
+			}
+			text += " Check the provider dashboard and decide with the organizer whether to refund again or restore the ticket."
+			return text
+		}
 		if code == failureLateOverBudget && deref(r.ProviderStatus) != string(payments.RefundSucceeded) {
 			text += " The provider accepted it as pending and has not confirmed it yet; arena does not read it back: check in the provider dashboard whether it completed."
 		}
