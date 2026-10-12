@@ -6303,8 +6303,9 @@ type HostedPageEvent struct {
 
 // HostedPageOrg Public-safe organization branding slice returned by
 // GET /v1/public/pages/{org_slug}/{event_slug}. Only columns that are
-// safe to expose to an anonymous visitor are included — never legal,
-// KYB, or contact fields.
+// safe to expose to an anonymous visitor are included — never KYB or
+// contact fields. The seller's legal identity is the separate,
+// per-channel `seller` block of the page response.
 type HostedPageOrg struct {
 	// LogoUrl Public URL of the organization logo, or null when none is set.
 	LogoUrl *string `json:"logo_url"`
@@ -6314,6 +6315,13 @@ type HostedPageOrg struct {
 
 	// Slug Organization slug, unique among active organizations.
 	Slug string `json:"slug"`
+}
+
+// HostedPagePromoter The promoter an event is shown under (a partner or brand named as the
+// organizer of the show). Present only together with `seller`.
+type HostedPagePromoter struct {
+	// Name Promoter display name.
+	Name string `json:"name"`
 }
 
 // HostedPageResponse Response envelope for GET /v1/public/pages/{org_slug}/{event_slug} —
@@ -6334,6 +6342,72 @@ type HostedPageResponse struct {
 
 	// Org Public-safe organization branding.
 	Org HostedPageOrg `json:"org"`
+
+	// Promoter The promoter the event is linked to. Omitted unless `seller` is
+	// present and the event has a promoter.
+	Promoter *HostedPagePromoter `json:"promoter,omitempty"`
+
+	// Seller Legal identity of the seller. Omitted unless the channel has
+	// `settings.hosted_page.show_seller = true`.
+	Seller *HostedPageSeller `json:"seller,omitempty"`
+}
+
+// HostedPageSeller Legal identity of the seller of record, i.e. the organization that owns
+// the page. Present only when the channel the page is sold through has
+// `settings.hosted_page.show_seller = true` (default off). Empty values
+// are omitted.
+type HostedPageSeller struct {
+	// Address Registered address; omitted when no address part is stored.
+	Address *HostedPageSellerAddress `json:"address,omitempty"`
+
+	// Country ISO 3166-1 alpha-2 country of the seller (legal address country, else the organization country).
+	Country *string `json:"country,omitempty"`
+
+	// LegalName Registered legal name; the organization name when none is stored.
+	LegalName string `json:"legal_name"`
+
+	// PublicContact The channel's published contact; omitted when the channel sets none.
+	PublicContact *HostedPageSellerContact `json:"public_contact,omitempty"`
+
+	// RegistrationNumber Company registration number.
+	RegistrationNumber *string `json:"registration_number,omitempty"`
+
+	// TaxId Tax or VAT identifier.
+	TaxId *string `json:"tax_id,omitempty"`
+
+	// TaxScheme Scheme of `tax_id` (eu_vat, gb_vat, il_vat, us_ein or other).
+	TaxScheme *string `json:"tax_scheme,omitempty"`
+}
+
+// HostedPageSellerAddress Registered address of the seller (the `legal_address_*` columns of the
+// organization). Empty parts are omitted.
+type HostedPageSellerAddress struct {
+	// City City.
+	City *string `json:"city,omitempty"`
+
+	// Country ISO 3166-1 alpha-2 country code of the address (the organization country when the legal address names none).
+	Country *string `json:"country,omitempty"`
+
+	// Line1 First address line.
+	Line1 *string `json:"line1,omitempty"`
+
+	// Line2 Second address line.
+	Line2 *string `json:"line2,omitempty"`
+
+	// PostalCode Postal code.
+	PostalCode *string `json:"postal_code,omitempty"`
+}
+
+// HostedPageSellerContact Contact the operator chose to publish for the channel
+// (`settings.hosted_page.public_contact`). It is the ONLY source of a
+// published contact; the organization's own contact e-mail and phone
+// are never used. Unset keys are omitted.
+type HostedPageSellerContact struct {
+	// Email Public contact e-mail.
+	Email *string `json:"email,omitempty"`
+
+	// Phone Public contact phone number.
+	Phone *string `json:"phone,omitempty"`
 }
 
 // HostedPromoterPageResponse Response envelope for GET /v1/public/pages/{org_slug} — the promoter
@@ -6361,6 +6435,14 @@ type HostedPromoterPageResponse struct {
 
 	// Org Public-safe organization branding.
 	Org HostedPageOrg `json:"org"`
+
+	// Promoter The promoter whose own page this is. Omitted unless `seller` is
+	// present and the slug names a promoter rather than the organization.
+	Promoter *HostedPagePromoter `json:"promoter,omitempty"`
+
+	// Seller Legal identity of the seller. Omitted unless the channel has
+	// `settings.hosted_page.show_seller = true`.
+	Seller *HostedPageSeller `json:"seller,omitempty"`
 }
 
 // ImpersonateRequest defines model for ImpersonateRequest.

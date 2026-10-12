@@ -12080,8 +12080,9 @@ export interface components {
         /**
          * @description Public-safe organization branding slice returned by
          *     GET /v1/public/pages/{org_slug}/{event_slug}. Only columns that are
-         *     safe to expose to an anonymous visitor are included — never legal,
-         *     KYB, or contact fields.
+         *     safe to expose to an anonymous visitor are included — never KYB or
+         *     contact fields. The seller's legal identity is the separate,
+         *     per-channel `seller` block of the page response.
          */
         HostedPageOrg: {
             /**
@@ -12207,6 +12208,103 @@ export interface components {
             feed_token?: string;
         };
         /**
+         * @description Registered address of the seller (the `legal_address_*` columns of the
+         *     organization). Empty parts are omitted.
+         */
+        HostedPageSellerAddress: {
+            /**
+             * @description First address line.
+             * @example Calle Mayor 1
+             */
+            line1?: string;
+            /**
+             * @description Second address line.
+             * @example Planta 2
+             */
+            line2?: string;
+            /**
+             * @description City.
+             * @example Madrid
+             */
+            city?: string;
+            /**
+             * @description Postal code.
+             * @example 28013
+             */
+            postal_code?: string;
+            /**
+             * @description ISO 3166-1 alpha-2 country code of the address (the organization country when the legal address names none).
+             * @example ES
+             */
+            country?: string;
+        };
+        /**
+         * @description Contact the operator chose to publish for the channel
+         *     (`settings.hosted_page.public_contact`). It is the ONLY source of a
+         *     published contact; the organization's own contact e-mail and phone
+         *     are never used. Unset keys are omitted.
+         */
+        HostedPageSellerContact: {
+            /**
+             * @description Public contact e-mail.
+             * @example tickets@example.com
+             */
+            email?: string;
+            /**
+             * @description Public contact phone number.
+             * @example +34 600 000 000
+             */
+            phone?: string;
+        };
+        /**
+         * @description Legal identity of the seller of record, i.e. the organization that owns
+         *     the page. Present only when the channel the page is sold through has
+         *     `settings.hosted_page.show_seller = true` (default off). Empty values
+         *     are omitted.
+         */
+        HostedPageSeller: {
+            /**
+             * @description Registered legal name; the organization name when none is stored.
+             * @example Teatro Ejemplo S.L.
+             */
+            legal_name: string;
+            /**
+             * @description Tax or VAT identifier.
+             * @example ESB12345678
+             */
+            tax_id?: string;
+            /**
+             * @description Scheme of `tax_id` (eu_vat, gb_vat, il_vat, us_ein or other).
+             * @example eu_vat
+             */
+            tax_scheme?: string;
+            /**
+             * @description Company registration number.
+             * @example B12345678
+             */
+            registration_number?: string;
+            /** @description Registered address; omitted when no address part is stored. */
+            address?: components["schemas"]["HostedPageSellerAddress"];
+            /**
+             * @description ISO 3166-1 alpha-2 country of the seller (legal address country, else the organization country).
+             * @example ES
+             */
+            country?: string;
+            /** @description The channel's published contact; omitted when the channel sets none. */
+            public_contact?: components["schemas"]["HostedPageSellerContact"];
+        };
+        /**
+         * @description The promoter an event is shown under (a partner or brand named as the
+         *     organizer of the show). Present only together with `seller`.
+         */
+        HostedPagePromoter: {
+            /**
+             * @description Promoter display name.
+             * @example Cultura Viva
+             */
+            name: string;
+        };
+        /**
          * @description Response envelope for GET /v1/public/pages/{org_slug}/{event_slug} —
          *     the resolver behind the shared hosted sales page
          *     (tickets.arenasoldout.com/{org_slug}/{event_slug}). `feed_token` is
@@ -12229,6 +12327,16 @@ export interface components {
              * @example en
              */
             default_locale: string;
+            /**
+             * @description Legal identity of the seller. Omitted unless the channel has
+             *     `settings.hosted_page.show_seller = true`.
+             */
+            seller?: components["schemas"]["HostedPageSeller"];
+            /**
+             * @description The promoter the event is linked to. Omitted unless `seller` is
+             *     present and the event has a promoter.
+             */
+            promoter?: components["schemas"]["HostedPagePromoter"];
         };
         /**
          * @description Response envelope for GET /v1/public/pages/{org_slug} — the promoter
@@ -12260,6 +12368,16 @@ export interface components {
              *     (still a 200, not a 404).
              */
             events: components["schemas"]["HostedPageEvent"][];
+            /**
+             * @description Legal identity of the seller. Omitted unless the channel has
+             *     `settings.hosted_page.show_seller = true`.
+             */
+            seller?: components["schemas"]["HostedPageSeller"];
+            /**
+             * @description The promoter whose own page this is. Omitted unless `seller` is
+             *     present and the slug names a promoter rather than the organization.
+             */
+            promoter?: components["schemas"]["HostedPagePromoter"];
         };
         /**
          * @description Create-time payload for POST /v1/organizations/{org_id}/events.
