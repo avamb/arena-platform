@@ -32,3 +32,26 @@ func TestEngine_RefundParkedBeforeAnyCallDoesNotCountAgainstThePayment(t *testin
 		t.Fatalf("refunds = %+v; want one succeeded", res.Refunds)
 	}
 }
+
+// A refund that names no ticket (made in the provider dashboard, say) reduces
+// what is left of the payment; no ticket is offered more than that.
+func TestEngine_OptionsCapTicketsAtWhatIsLeftOfThePayment(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	ctx := context.Background()
+	if _, err := f.pool.Exec(ctx, `INSERT INTO refunds (payment_intent_id, org_id, order_id, amount, currency, reason, state, settlement,
+		provider, provider_refund_id, provider_status, succeeded_at, settled_at)
+		SELECT id, org_id, $2, 4000, currency, 'order level', 'succeeded', 'provider', 'pay03fake', 're_order_level_'||gen_random_uuid(), 'succeeded', now(), now()
+		FROM payment_intents WHERE id = $1`, f.payment, f.order); err != nil {
+		t.Fatal(err)
+	}
+	e := f.engine(&fakeModule{partial: true}, true)
+	opts, err := e.Options(ctx, f.org, f.order)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tk := range opts.Tickets {
+		if tk.Refundable != 1000 {
+			t.Errorf("ticket %s refundable %d; want 1000 (5000 paid, 4000 already back)", tk.TicketID, tk.Refundable)
+		}
+	}
+}
