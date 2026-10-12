@@ -3401,6 +3401,17 @@ components:
               type: [integer, "null"]
               format: int64
               description: Number of the ticket the refund is for, null for a refund of the whole payment.
+            creator:
+              type: [object, "null"]
+              description: Who asked for the refund; null when that cannot be told (for example a person who is not a member of the organization).
+              required: [kind]
+              properties:
+                kind:
+                  type: string
+                  description: "`user`, `api_key` or `provider_dashboard` (a refund made in the payment provider's own dashboard)."
+                label:
+                  type: [string, "null"]
+                  description: The member's name or e-mail, or the API key's name.
 
     OrderRefundQueue:
       type: object
@@ -3444,7 +3455,7 @@ components:
     OrderRefundDetail:
       type: object
       description: A refund with its history.
-      required: [refund, history]
+      required: [refund, history, history_total]
       properties:
         refund:
           allOf:
@@ -3452,9 +3463,12 @@ components:
           description: The refund.
         history:
           type: array
-          description: The steps of the refund, oldest first.
+          description: The latest steps of the refund (at most 100), oldest first.
           items:
             $ref: "#/components/schemas/OrderRefundHistoryEntry"
+        history_total:
+          type: integer
+          description: How many steps the refund has in all; more than `history` holds when the refund has a long life.
 
     CreateOrderRefundsRequest:
       type: object

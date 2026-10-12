@@ -172,7 +172,11 @@ func (s *Server) handleCreateOrderRefunds(w http.ResponseWriter, r *http.Request
 		in.Items = append(in.Items, refunds.Item{TicketID: id, Amount: it.Amount})
 	}
 	if actor, ok := auth.ActorFromContext(r.Context()); ok {
-		in.Actor = refunds.Actor{Type: "user", ID: actor.ID}
+		kind := "user"
+		if actor.IsService() {
+			kind = "api_key" // ID is the API key's id; the queue resolves its name
+		}
+		in.Actor = refunds.Actor{Type: kind, ID: actor.ID}
 	}
 	if via, ok := audit.ClientChannelFromContext(r.Context()); ok {
 		in.Via = via
@@ -202,15 +206,25 @@ func (s *Server) handleCreateOrderRefunds(w http.ResponseWriter, r *http.Request
 	})
 }
 
+type refundCreatorJSON struct {
+	Kind  string  `json:"kind"`
+	Label *string `json:"label"`
+}
+
 type refundQueueItemJSON struct {
 	refundItemJSON
-	OrderNumber  *int64  `json:"order_number"`
-	EventName    *string `json:"event_name"`
-	TicketNumber *int64  `json:"ticket_number"`
+	OrderNumber  *int64             `json:"order_number"`
+	EventName    *string            `json:"event_name"`
+	TicketNumber *int64             `json:"ticket_number"`
+	Creator      *refundCreatorJSON `json:"creator"`
 }
 
 func queueItem(it refunds.ListItem) refundQueueItemJSON {
-	return refundQueueItemJSON{refundItem(it.Refund), it.OrderSystemID, it.EventName, it.TicketNumber}
+	out := refundQueueItemJSON{refundItem(it.Refund), it.OrderSystemID, it.EventName, it.TicketNumber, nil}
+	if it.CreatorKind != nil {
+		out.Creator = &refundCreatorJSON{Kind: *it.CreatorKind, Label: it.CreatorLabel}
+	}
+	return out
 }
 
 func (s *Server) handleListOrgRefunds(w http.ResponseWriter, r *http.Request) {
@@ -303,5 +317,5 @@ func (s *Server) handleGetOrgRefund(w http.ResponseWriter, r *http.Request) {
 	for _, h := range d.History {
 		history = append(history, historyJSON{h.Action, h.At.UTC().Format(time.RFC3339), nonEmpty(h.Outcome), nonEmpty(h.State), nonEmpty(h.FailureCode)})
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"refund": queueItem(d.ListItem), "history": history})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"refund": queueItem(d.ListItem), "history": history, "history_total": d.HistoryTotal})
 }

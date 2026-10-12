@@ -10009,6 +10009,13 @@ export interface components {
              * @description Number of the ticket the refund is for, null for a refund of the whole payment.
              */
             ticket_number?: number | null;
+            /** @description Who asked for the refund; null when that cannot be told (for example a person who is not a member of the organization). */
+            creator?: {
+                /** @description `user`, `api_key` or `provider_dashboard` (a refund made in the payment provider's own dashboard). */
+                kind: string;
+                /** @description The member's name or e-mail, or the API key's name. */
+                label?: string | null;
+            } | null;
         };
         /** @description One page of the organization's refunds, newest first. */
         OrderRefundQueue: {
@@ -10039,8 +10046,10 @@ export interface components {
         OrderRefundDetail: {
             /** @description The refund. */
             refund: components["schemas"]["OrderRefundQueueItem"];
-            /** @description The steps of the refund, oldest first. */
+            /** @description The latest steps of the refund (at most 100), oldest first. */
             history: components["schemas"]["OrderRefundHistoryEntry"][];
+            /** @description How many steps the refund has in all; more than `history` holds when the refund has a long life. */
+            history_total: number;
         };
         /** @description One refund operation on an order. */
         CreateOrderRefundsRequest: {
