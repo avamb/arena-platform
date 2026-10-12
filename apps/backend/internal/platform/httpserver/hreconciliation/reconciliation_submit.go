@@ -102,6 +102,18 @@ func (h *Handler) HandleSubmitReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The caller must act for the allocation (its partner or the organizer of
+	// its session) before anything about it is revealed or written.
+	if h.allocationAccess == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.org_access_unavailable", "organization lookup is unavailable", r,
+		))
+		return
+	}
+	if !h.allocationAccess(w, r, allocation) {
+		return
+	}
+
 	// Only active/disputed allocations may be reconciled.
 	if allocation.Status != "active" && allocation.Status != "disputed" {
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
