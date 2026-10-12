@@ -81,7 +81,7 @@ func TestEventCard_Figures_En(t *testing.T) {
 		"Refunds: 2 for 13 EUR, net 87 EUR", // two succeeded refunds, the requested one is not counted
 		"Entered: 4 of 10",
 		"Invitations: 2",
-		"SPRING&lt; — used 2 times, discount 5 EUR",
+		"SPRING&lt;: used 2 times, discount 5 EUR",
 		"Categories:",
 		"• Standing &lt;b&gt; — 25 EUR — 12/50 — 90 EUR",
 		"• VIP (closed) — 90 EUR — 0/10 — 0 EUR",
