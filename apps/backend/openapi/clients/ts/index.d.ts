@@ -23405,7 +23405,10 @@ export interface operations {
     grantOrganizationMembership: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else. */
+                "X-Admin-Reason"?: string;
+            };
             path: {
                 /** @description UUIDv7 primary key of the organization to grant the role in. */
                 org_id: string;
@@ -23512,7 +23515,10 @@ export interface operations {
     revokeOrganizationMembership: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else. */
+                "X-Admin-Reason"?: string;
+            };
             path: {
                 /** @description UUIDv7 primary key of the organization the role is scoped to. */
                 org_id: string;
@@ -29933,6 +29939,7 @@ export interface operations {
              *     `session.seating_plan_not_applicable`, plus the seating bind
              *     errors (`seating.version_not_found`, ...) when a seated
              *     create fails its inline bind.
+             *     A `poster_media_id` that is not a UUID is `session.invalid_poster_media_id`.
              */
             400: {
                 headers: {
@@ -29964,6 +29971,7 @@ export interface operations {
              * @description Semantically invalid. Possible error codes:
              *     `session.venue_org_mismatch`, `session.invalid_currency`,
              *     `session.currency_unresolvable`.
+             *     A `poster_media_id` that is not a media object of this organization is `session.invalid_poster_media_id`.
              */
             422: {
                 headers: {
@@ -30189,6 +30197,7 @@ export interface operations {
              *     sum of its category quantities;
              *     `error.details.reason = "category_sum"`),
              *     `session.invalid_venue_id`, `session.venue_not_found`.
+             *     A `poster_media_id` that is not a UUID is `session.invalid_poster_media_id`.
              */
             400: {
                 headers: {
@@ -30239,6 +30248,7 @@ export interface operations {
              *     `session.change_site_unsupported` (an affected order was sold
              *     through a website), `session.change_message_too_long`
              *     (`notice.message` over 1000 characters).
+             *     A `poster_media_id` that is not a media object of this organization is `session.invalid_poster_media_id`.
              */
             422: {
                 headers: {
@@ -32184,7 +32194,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Ticket tier not found (`pricing.tier_not_found`). */
+            /** @description Ticket tier not found (`pricing.tier_not_found`). A tier that does not exist or belongs to another organization is `pricing.tier_not_found`. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -32761,6 +32771,7 @@ export interface operations {
             /**
              * @description A session in `applies_to_session_ids` does not belong to this
              *     organization (`promo.invalid_session`).
+             *     An `applies_to_tier_ids` entry that is not a category of this organization is `promo.invalid_tier`.
              */
             422: {
                 headers: {
@@ -33083,6 +33094,7 @@ export interface operations {
             /**
              * @description A session in `applies_to_session_ids` does not belong to this
              *     organization (`promo.invalid_session`).
+             *     An `applies_to_tier_ids` entry that is not a category of this organization is `promo.invalid_tier`.
              */
             422: {
                 headers: {
@@ -33169,7 +33181,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Promo code not found (`promo.not_found`). */
+            /** @description Promo code not found (`promo.not_found`). A promo code of another organization reads like a missing one (`promo.not_found`). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -33844,7 +33856,10 @@ export interface operations {
     cancelTicket: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else. */
+                "X-Admin-Reason"?: string;
+            };
             path: {
                 /** @description Ticket UUID to cancel. */
                 id: string;
@@ -33892,10 +33907,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /**
-             * @description Caller lacks `ticket.cancel` or is not a member of the
-             *     ticket's owning organization (`org.access_denied`).
-             */
+            /** @description Caller lacks the `ticket.cancel` permission. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -33907,6 +33919,7 @@ export interface operations {
             /**
              * @description Ticket not found (`ticket.not_found`), or its session no
              *     longer exists (`session.not_found`).
+             *     A ticket of another organization reads like a missing one (`ticket.not_found`); the route never answers 403 for it.
              */
             404: {
                 headers: {
@@ -33957,7 +33970,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database pool or ticket queries unavailable. */
+            /** @description Database pool or ticket queries unavailable. The organization access guard is not configured (`dependency.org_access_unavailable`): the route fails closed. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -34057,7 +34070,10 @@ export interface operations {
     createPaymentIntent: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else. */
+                "X-Admin-Reason"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -34155,6 +34171,7 @@ export interface operations {
             /**
              * @description Database pool or payment intent queries unavailable
              *     (`dependency.database_unavailable`).
+             *     The organization access guard is not configured (`dependency.org_access_unavailable`): the route fails closed.
              */
             503: {
                 headers: {
@@ -34241,6 +34258,7 @@ export interface operations {
             /**
              * @description Payment intent queries unavailable
              *     (`dependency.database_unavailable`).
+             *     The organization access guard is not configured (`dependency.org_access_unavailable`): the route fails closed.
              */
             503: {
                 headers: {
@@ -34355,6 +34373,7 @@ export interface operations {
             /**
              * @description Database pool or payment intent queries unavailable
              *     (`dependency.database_unavailable`).
+             *     The organization access guard is not configured (`dependency.org_access_unavailable`): the route fails closed.
              */
             503: {
                 headers: {
@@ -34677,7 +34696,10 @@ export interface operations {
     createRefund: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else. */
+                "X-Admin-Reason"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -34759,6 +34781,7 @@ export interface operations {
             /**
              * @description Database pool, refund queries, or payment intent queries
              *     unavailable (`dependency.database_unavailable`).
+             *     The organization access guard is not configured (`dependency.org_access_unavailable`): the route fails closed.
              */
             503: {
                 headers: {
@@ -34844,6 +34867,7 @@ export interface operations {
             /**
              * @description Refund queries unavailable
              *     (`dependency.database_unavailable`).
+             *     The organization access guard is not configured (`dependency.org_access_unavailable`): the route fails closed.
              */
             503: {
                 headers: {
@@ -34858,7 +34882,10 @@ export interface operations {
     approveRefund: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else. */
+                "X-Admin-Reason"?: string;
+            };
             path: {
                 /** @description Refund UUID. */
                 id: string;
@@ -34956,6 +34983,7 @@ export interface operations {
             /**
              * @description Database pool or refund queries unavailable
              *     (`dependency.database_unavailable`).
+             *     The organization access guard is not configured (`dependency.org_access_unavailable`): the route fails closed.
              */
             503: {
                 headers: {
@@ -34970,7 +34998,10 @@ export interface operations {
     rejectRefund: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else. */
+                "X-Admin-Reason"?: string;
+            };
             path: {
                 /** @description Refund UUID. */
                 id: string;
@@ -35064,6 +35095,7 @@ export interface operations {
             /**
              * @description Database pool or refund queries unavailable
              *     (`dependency.database_unavailable`).
+             *     The organization access guard is not configured (`dependency.org_access_unavailable`): the route fails closed.
              */
             503: {
                 headers: {
@@ -35904,7 +35936,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /** @description Caller lacks the `webhook.subscriber.manage` permission, or is not a platform superadmin (`webhook.superadmin_only`): the subscriber registry spans every organization, so organization owners and API keys never reach it. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -35987,7 +36019,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /** @description Caller lacks the `webhook.subscriber.manage` permission, or is not a platform superadmin (`webhook.superadmin_only`): the subscriber registry spans every organization, so organization owners and API keys never reach it. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -36074,7 +36106,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /** @description Caller lacks the `webhook.subscriber.manage` permission, or is not a platform superadmin (`webhook.superadmin_only`): the subscriber registry spans every organization, so organization owners and API keys never reach it. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -36157,7 +36189,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /** @description Caller lacks the `webhook.subscriber.manage` permission, or is not a platform superadmin (`webhook.superadmin_only`): the subscriber registry spans every organization, so organization owners and API keys never reach it. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -36258,7 +36290,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /** @description Caller lacks the `webhook.subscriber.manage` permission, or is not a platform superadmin (`webhook.superadmin_only`): the subscriber registry spans every organization, so organization owners and API keys never reach it. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -36362,7 +36394,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /** @description Caller lacks the `webhook.subscriber.manage` permission, or is not a platform superadmin (`webhook.superadmin_only`): the subscriber registry spans every organization, so organization owners and API keys never reach it. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -39881,7 +39913,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExternalAllocation"];
                 };
             };
-            /** @description Invalid request. */
+            /** @description Invalid request. A `tier_id` that is not a UUID is `allocation.invalid_tier_id`. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -39892,6 +39924,15 @@ export interface operations {
             };
             /** @description Unauthorized. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A `tier_id` that is not a category of the allocated session is `allocation.invalid_tier_id`. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
