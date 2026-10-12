@@ -44,6 +44,7 @@ func (s *Server) mountRefundOrgRoutes(r chi.Router) {
 		s.applyAuth(pr, "refund.approve", "refunds")
 		pr.Post("/organizations/{org_id}/refunds/{refund_id}/retry", s.handleRetryOrgRefund)
 		pr.Post("/organizations/{org_id}/refunds/{refund_id}/resolve", s.handleResolveOrgRefund)
+		pr.Post("/organizations/{org_id}/tickets/{ticket_id}/review-hold/clear", s.handleClearTicketReviewHold)
 	})
 }
 
@@ -238,18 +239,40 @@ type refundCreatorJSON struct {
 
 type refundQueueItemJSON struct {
 	refundItemJSON
+	OrderID      *string            `json:"order_id"`
 	OrderNumber  *int64             `json:"order_number"`
 	EventName    *string            `json:"event_name"`
 	TicketNumber *int64             `json:"ticket_number"`
 	Creator      *refundCreatorJSON `json:"creator"`
+	// Retryable: the retry route would accept this refund (it provably moved
+	// no money and has not been retried yet). The route still decides.
+	Retryable bool `json:"retryable"`
 }
 
-func queueItem(it refunds.ListItem) refundQueueItemJSON {
-	out := refundQueueItemJSON{refundItem(it.Refund), it.OrderSystemID, it.EventName, it.TicketNumber, nil}
+func queueItem(r *http.Request, it refunds.ListItem) refundQueueItemJSON {
+	var orderID *string
+	if it.OrderID != nil {
+		v := it.OrderID.String()
+		orderID = &v
+	}
+	out := refundQueueItemJSON{refundItem(it.Refund), orderID, it.OrderSystemID, it.EventName, it.TicketNumber, nil,
+		refunds.Retryable(it.Refund) && !it.Replaced}
 	if it.CreatorKind != nil {
-		out.Creator = &refundCreatorJSON{Kind: *it.CreatorKind, Label: it.CreatorLabel}
+		label := it.CreatorLabel
+		if it.CreatorLabelIsEmail && callerIsAPIKey(r) {
+			// A member's e-mail is shown to people of the organization and the
+			// platform, not to an integration acting with an API key.
+			label = nil
+		}
+		out.Creator = &refundCreatorJSON{Kind: *it.CreatorKind, Label: label}
 	}
 	return out
+}
+
+// callerIsAPIKey reports whether the request acts with an organization API key.
+func callerIsAPIKey(r *http.Request) bool {
+	actor, ok := auth.ActorFromContext(r.Context())
+	return ok && actor.IsService()
 }
 
 func (s *Server) handleListOrgRefunds(w http.ResponseWriter, r *http.Request) {
@@ -295,7 +318,7 @@ func (s *Server) handleListOrgRefunds(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]refundQueueItemJSON, 0, len(page.Items))
 	for _, it := range page.Items {
-		items = append(items, queueItem(it))
+		items = append(items, queueItem(r, it))
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"refunds": items, "total": page.Total, "has_more": page.HasMore})
 }
@@ -342,5 +365,5 @@ func (s *Server) handleGetOrgRefund(w http.ResponseWriter, r *http.Request) {
 	for _, h := range d.History {
 		history = append(history, historyJSON{h.Action, h.At.UTC().Format(time.RFC3339), nonEmpty(h.Outcome), nonEmpty(h.State), nonEmpty(h.FailureCode)})
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"refund": queueItem(d.ListItem), "history": history, "history_total": d.HistoryTotal})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"refund": queueItem(r, d.ListItem), "history": history, "history_total": d.HistoryTotal})
 }

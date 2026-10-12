@@ -8762,7 +8762,7 @@ type OrderRefundQueueItem struct {
 		// Kind `user`, `api_key` or `provider_dashboard` (a refund made in the payment provider's own dashboard).
 		Kind string `json:"kind"`
 
-		// Label The member's name or e-mail, or the API key's name.
+		// Label The member's name, or their e-mail when they have none (null for a caller acting with an API key), or the API key's name.
 		Label *string `json:"label"`
 	} `json:"creator"`
 
@@ -8781,6 +8781,9 @@ type OrderRefundQueueItem struct {
 	// Id UUID of the refund.
 	Id openapi_types.UUID `json:"id"`
 
+	// OrderId UUID of the order, null for a refund without an order.
+	OrderId *openapi_types.UUID `json:"order_id"`
+
 	// OrderNumber The order's number (`orders.system_id`), null for a refund without an order.
 	OrderNumber *int64 `json:"order_number"`
 
@@ -8789,6 +8792,9 @@ type OrderRefundQueueItem struct {
 
 	// ProviderStatus The provider's own status of the refund, when it has answered.
 	ProviderStatus *string `json:"provider_status"`
+
+	// Retryable True when the retry route would accept this refund - it provably moved no money and has not been retried yet. The route still decides.
+	Retryable *bool `json:"retryable,omitempty"`
 
 	// State One of requested, approved, provider_pending, succeeded, failed, manual_review.
 	State string `json:"state"`
@@ -10769,7 +10775,7 @@ type ResolveOrderRefundRequest struct {
 	// Note What was checked, up to 1000 characters. Kept in the audit trail.
 	Note string `json:"note"`
 
-	// Outcome refunded when the money went back at the provider, not_refunded when it did not.
+	// Outcome refunded when the money went back at the provider; refunded_beyond_payment when it went back although the payment was already covered; not_refunded when the provider shows it did not go through (the ticket can then be refunded again with a new refund).
 	Outcome string `json:"outcome"`
 }
 
@@ -14406,6 +14412,12 @@ type GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsvParams struct {
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
+// PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear.
+type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody struct {
+	// Note What was decided, up to 1000 characters. Kept in the audit trail.
+	Note string `json:"note"`
+}
+
 // ListPublicFeedEventsParams defines parameters for ListPublicFeedEvents.
 type ListPublicFeedEventsParams struct {
 	// CityId Optional filter by publication city scope.
@@ -14860,6 +14872,9 @@ type UpdatePromoterJSONRequestBody = UpdatePromoterRequest
 
 // PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody defines body for PostV1OrganizationsOrgIdRefundsRefundIdResolve for application/json ContentType.
 type PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody = ResolveOrderRefundRequest
+
+// PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear for application/json ContentType.
+type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody
 
 // PostV1OrganizationsOrgIdVenuesJSONRequestBody defines body for PostV1OrganizationsOrgIdVenues for application/json ContentType.
 type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest

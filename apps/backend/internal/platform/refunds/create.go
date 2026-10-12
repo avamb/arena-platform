@@ -48,6 +48,14 @@ type BatchInput struct {
 	// Approved: the caller holds refund.approve, so the rows skip
 	// 'requested' and are driven at once (spec §7 step 2).
 	Approved bool
+
+	// paymentID, when set, is the payment the refund must go through (a
+	// retry goes through the payment of the refund it replaces, not the
+	// order's newest one).
+	paymentID *uuid.UUID
+	// beforePlan runs inside the writing transaction, under the payment lock,
+	// before a fresh batch is planned; an error rolls everything back.
+	beforePlan func(ctx context.Context, tx pgx.Tx) error
 }
 
 // BatchResult is the outcome of CreateBatch.
@@ -114,6 +122,14 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 	if err := e.inTx(ctx, func(tx pgx.Tx) error {
 		var err error
 		ord, pay, err = loadOrderPayment(ctx, tx, in.OrgID, in.OrderID)
+		if err == nil && in.paymentID != nil && *in.paymentID != pay.ID {
+			pay, err = scanPayment(tx.QueryRow(ctx, `SELECT `+paymentColumns+` FROM payment_intents
+				WHERE id = $1 AND org_id = $2 AND checkout_session_id = $3 AND state = 'succeeded'`,
+				*in.paymentID, in.OrgID, ord.CheckoutSessionID))
+			if errors.Is(err, pgx.ErrNoRows) {
+				err = refusal(http.StatusConflict, CodeNothingToRefund, "the refund's payment is no longer refundable", nil)
+			}
+		}
 		return err
 	}); err != nil {
 		return BatchResult{}, err
@@ -142,6 +158,11 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 			}
 			res = replay.BatchResult
 			return nil
+		}
+		if in.beforePlan != nil {
+			if err := in.beforePlan(ctx, tx); err != nil {
+				return err
+			}
 		}
 		plan, perr := planBatch(ctx, tx, in, ord, pay, desc.Capabilities.PartialRefund)
 		if perr != nil {

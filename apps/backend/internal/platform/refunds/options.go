@@ -79,6 +79,17 @@ func (e *Engine) Options(ctx context.Context, orgID, orderID uuid.UUID) (OrderOp
 			out.PartialRefund = desc.Capabilities.PartialRefund
 		}
 
+		// What is left of the payment: a refund that names no ticket (made in
+		// the provider dashboard, or a flat refund of the payment) reduces it
+		// without reducing any one ticket, and no ticket may offer more.
+		var taken int64
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
+			WHERE payment_intent_id = $1 AND state NOT IN ('failed', 'rejected') AND `+countsAgainstBudgetSQL,
+			pay.ID).Scan(&taken); err != nil {
+			return err
+		}
+		paymentLeft := pay.Amount - taken
+
 		rows, err := tx.Query(ctx, `
 			SELECT t.id, t.status, oi.total,
 			       COALESCE((SELECT SUM(r.amount) FROM refunds r
@@ -103,7 +114,7 @@ func (e *Engine) Options(ctx context.Context, orgID, orderID uuid.UUID) (OrderOp
 				return err
 			}
 			if t.Paid != nil && t.Status == "active" {
-				if left := *t.Paid - t.Refunded; left > 0 {
+				if left := min(*t.Paid-t.Refunded, paymentLeft); left > 0 {
 					if onHold {
 						t.NotRefundableReason = "review_hold"
 					} else {
