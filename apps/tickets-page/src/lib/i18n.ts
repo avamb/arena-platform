@@ -113,7 +113,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     sellerLabel: 'Prodávající',
     organizerLabel: 'Pořadatel',
     registrationNo: 'Registrační číslo',
-    taxId: 'Daňové ID',
+    taxId: 'DIČ',
     vatId: 'DIČ',
     einId: 'EIN',
   },

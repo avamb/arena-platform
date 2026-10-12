@@ -94,7 +94,7 @@ describe('renderSellerBlock', () => {
     expect(taxLabel('us_ein', 'en')).toBe('EIN');
     expect(taxLabel('other', 'en')).toBe('Tax ID');
     expect(taxLabel(undefined, 'en')).toBe('Tax ID');
-    expect(taxLabel('something_new', 'cs')).toBe('Daňové ID');
+    expect(taxLabel('something_new', 'cs')).toBe('DIČ');
     const el = renderSellerBlock({ legal_name: 'N', tax_id: '99', tax_scheme: 'other' }, null, 'en')!;
     expect(el.textContent).toContain('Tax ID: 99');
   });
