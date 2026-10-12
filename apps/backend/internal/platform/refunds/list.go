@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -124,20 +125,14 @@ func (e *Engine) List(ctx context.Context, orgID uuid.UUID, f ListFilter) (ListP
 	return page, nil
 }
 
-// prefixedColumns is refundColumns with every column qualified by alias.
+// prefixedColumns is refundColumns with every column qualified by alias,
+// derived from refundColumns itself so the two never drift apart.
 func prefixedColumns(alias string) string {
-	cols := []string{"id", "org_id", "payment_intent_id", "order_id", "ticket_id", "batch_id", "amount", "currency",
-		"reason", "requested_by", "state", "settlement", "provider", "provider_refund_id", "provider_status",
-		"failure_code", "failure_reason", "cancel_ticket", "provider_attempts", "provider_attempted_at",
-		"created_at", "updated_at", "cancelled_ticket_id"}
-	out := ""
+	cols := strings.Split(refundColumns, ",")
 	for i, c := range cols {
-		if i > 0 {
-			out += ", "
-		}
-		out += alias + "." + c
+		cols[i] = alias + "." + strings.TrimSpace(c)
 	}
-	return out
+	return strings.Join(cols, ", ")
 }
 
 // HistoryEntry is one step of a refund's life, read from the audit trail.
