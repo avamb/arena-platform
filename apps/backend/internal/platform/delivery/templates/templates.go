@@ -145,9 +145,13 @@ type Data struct {
 type RefundData struct {
 	// Total is everything returned in this letter, pre-formatted ("25.00 EUR").
 	Total string
-	// TicketsCancelled says the refunded tickets no longer admit; false for a
-	// money-only partial refund.
+	// TicketsCancelled says EVERY refunded ticket of the letter no longer
+	// admits; false for a money-only partial refund.
 	TicketsCancelled bool
+	// SomeTicketsCancelled says some, but not all, of the letter's tickets no
+	// longer admit: each of them carries TicketLine.Void, the others stay
+	// valid.
+	SomeTicketsCancelled bool
 }
 
 // TicketLine is one ticket of a multi-ticket e-mail. Every field is a
@@ -163,6 +167,9 @@ type TicketLine struct {
 	// Price is what the buyer paid for this ticket ("25.00 EUR"); empty for
 	// a free ticket or when it is not known.
 	Price string
+	// Void marks a ticket the refund letter reports as no longer valid for
+	// entry (its real state is cancelled).
+	Void bool
 }
 
 // PaymentData is the "Payment" block of the ticket e-mail: the numbers of the

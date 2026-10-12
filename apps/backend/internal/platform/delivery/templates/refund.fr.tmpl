@@ -14,11 +14,11 @@
   <p style="margin:0 0 12px 0;">Nous avons remboursé <strong>{{.Refund.Total}}</strong> pour vos billets de <strong>{{.EventName}}</strong>{{with .SessionStart}} ({{.}}){{end}}.</p>
   <p style="margin:0 0 6px 0;font-weight:bold;color:#22333D;">Billets remboursés</p>
   <table cellpadding="4" style="border-collapse:collapse;font-size:14px;">
-    {{range .Tickets}}<tr><td>Billet {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td><td style="text-align:right;">{{.Price}}</td></tr>{{end}}
+    {{range .Tickets}}<tr><td>Billet {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{if .Void}} · <strong>n'est plus valable</strong>{{end}}</td><td style="text-align:right;">{{.Price}}</td></tr>{{end}}
     <tr><td style="border-top:1px solid #eceff1;"><strong>Total remboursé</strong></td><td style="border-top:1px solid #eceff1;text-align:right;"><strong>{{.Refund.Total}}</strong></td></tr>
   </table>
   <p style="margin:16px 0 12px 0;">L'argent revient sur le moyen de paiement que vous avez utilisé. Votre banque met généralement 5 à 10 jours ouvrés à l'afficher.</p>
-  {{if .Refund.TicketsCancelled}}<p style="margin:0 0 12px 0;">Les billets remboursés ne sont plus valables pour l'entrée.</p>{{end}}
+  {{if .Refund.TicketsCancelled}}<p style="margin:0 0 12px 0;">Les billets remboursés ne sont plus valables pour l'entrée.</p>{{else if .Refund.SomeTicketsCancelled}}<p style="margin:0 0 12px 0;">Seuls les billets marqués « n'est plus valable » ne permettent plus l'entrée ; vos autres billets restent valables.</p>{{end}}
   <p style="margin:0 0 12px 0;">Des questions ? Répondez à cet e-mail.</p>
   <p style="font-size:12px;color:#666">Envoyé à : {{.RecipientEmail}}</p>
   </td></tr>
@@ -48,11 +48,12 @@ Bonjour{{with .HolderName}} {{.}}{{end}},
 Nous avons remboursé {{.Refund.Total}} pour vos billets de {{.EventName}}{{with .SessionStart}} ({{.}}){{end}}.
 
 Billets remboursés:
-{{range .Tickets}}- Billet {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}: {{.Price}}
+{{range .Tickets}}- Billet {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{if .Void}} · n'est plus valable{{end}}: {{.Price}}
 {{end}}Total remboursé: {{.Refund.Total}}
 
 L'argent revient sur le moyen de paiement que vous avez utilisé. Votre banque met généralement 5 à 10 jours ouvrés à l'afficher.
 {{if .Refund.TicketsCancelled}}Les billets remboursés ne sont plus valables pour l'entrée.
+{{else if .Refund.SomeTicketsCancelled}}Seuls les billets marqués « n'est plus valable » ne permettent plus l'entrée ; vos autres billets restent valables.
 {{end}}
 Des questions ? Répondez à cet e-mail.
 

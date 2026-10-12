@@ -75,3 +75,52 @@ func TestRender_Refund_MoneyOnlyRefundDoesNotSayTheTicketsAreVoid(t *testing.T) 
 		t.Error("a money-only refund must not say the tickets are void")
 	}
 }
+
+// Round-2 review R2-5: one letter can cover a ticket that is void and one
+// that stays valid; each line says it for itself.
+func TestRender_Refund_MarksOnlyTheVoidTickets(t *testing.T) {
+	r, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	marks := map[string]string{"en": "no longer valid", "ru": "больше не действует", "cs": "již neplatí",
+		"de": "nicht mehr gültig", "es": "ya no es válida", "fr": "n'est plus valable", "he": "אינו תקף עוד"}
+	for _, loc := range SupportedLocales {
+		mark, ok := marks[loc]
+		if !ok {
+			t.Fatalf("%s: no marker known to the test", loc)
+		}
+		d := refundData()
+		d.Tickets[0].Void = true
+		d.Refund.TicketsCancelled, d.Refund.SomeTicketsCancelled = false, true
+		out, err := r.Render(TemplateKindRefund, loc, d)
+		if err != nil {
+			t.Fatalf("%s: %v", loc, err)
+		}
+		var line1, line2 string
+		for _, l := range strings.Split(out.TextBody, "\n") {
+			if strings.Contains(l, "1001") {
+				line1 = l
+			}
+			if strings.Contains(l, "1002") {
+				line2 = l
+			}
+		}
+		if !strings.Contains(line1, mark) || strings.Contains(line2, mark) {
+			t.Errorf("%s: void marker on the wrong line:\n%q\n%q", loc, line1, line2)
+		}
+		all, _ := r.Render(TemplateKindRefund, loc, refundData())
+		allSentence := ""
+		for _, l := range strings.Split(all.TextBody, "\n") {
+			if strings.Contains(l, "1001") || strings.Contains(l, "1002") {
+				continue
+			}
+			if strings.Contains(strings.ToLower(l), strings.ToLower(mark)) || (loc == "en" && strings.Contains(l, "no longer valid for entry")) {
+				allSentence = l
+			}
+		}
+		if allSentence != "" && strings.Contains(out.TextBody, allSentence) {
+			t.Errorf("%s: a mixed letter repeats the all-tickets sentence %q", loc, allSentence)
+		}
+	}
+}

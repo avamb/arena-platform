@@ -14,11 +14,11 @@
   <p style="margin:0 0 12px 0;">Wir haben <strong>{{.Refund.Total}}</strong> für Ihre Tickets zu <strong>{{.EventName}}</strong>{{with .SessionStart}} ({{.}}){{end}} zurückerstattet.</p>
   <p style="margin:0 0 6px 0;font-weight:bold;color:#22333D;">Erstattete Tickets</p>
   <table cellpadding="4" style="border-collapse:collapse;font-size:14px;">
-    {{range .Tickets}}<tr><td>Ticket {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td><td style="text-align:right;">{{.Price}}</td></tr>{{end}}
+    {{range .Tickets}}<tr><td>Ticket {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{if .Void}} · <strong>nicht mehr gültig</strong>{{end}}</td><td style="text-align:right;">{{.Price}}</td></tr>{{end}}
     <tr><td style="border-top:1px solid #eceff1;"><strong>Insgesamt erstattet</strong></td><td style="border-top:1px solid #eceff1;text-align:right;"><strong>{{.Refund.Total}}</strong></td></tr>
   </table>
   <p style="margin:16px 0 12px 0;">Das Geld geht auf die Zahlungsart zurück, mit der Sie bezahlt haben. Ihre Bank braucht dafür meist 5–10 Werktage.</p>
-  {{if .Refund.TicketsCancelled}}<p style="margin:0 0 12px 0;">Die erstatteten Tickets gelten nicht mehr als Eintritt.</p>{{end}}
+  {{if .Refund.TicketsCancelled}}<p style="margin:0 0 12px 0;">Die erstatteten Tickets gelten nicht mehr als Eintritt.</p>{{else if .Refund.SomeTicketsCancelled}}<p style="margin:0 0 12px 0;">Nur die mit „nicht mehr gültig“ markierten Tickets gelten nicht mehr als Eintritt; Ihre anderen Tickets bleiben gültig.</p>{{end}}
   <p style="margin:0 0 12px 0;">Fragen? Antworten Sie auf diese E-Mail.</p>
   <p style="font-size:12px;color:#666">Zugestellt an: {{.RecipientEmail}}</p>
   </td></tr>
@@ -48,11 +48,12 @@ Guten Tag{{with .HolderName}} {{.}}{{end}},
 Wir haben {{.Refund.Total}} für Ihre Tickets zu {{.EventName}}{{with .SessionStart}} ({{.}}){{end}} zurückerstattet.
 
 Erstattete Tickets:
-{{range .Tickets}}- Ticket {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}: {{.Price}}
+{{range .Tickets}}- Ticket {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{if .Void}} · nicht mehr gültig{{end}}: {{.Price}}
 {{end}}Insgesamt erstattet: {{.Refund.Total}}
 
 Das Geld geht auf die Zahlungsart zurück, mit der Sie bezahlt haben. Ihre Bank braucht dafür meist 5–10 Werktage.
 {{if .Refund.TicketsCancelled}}Die erstatteten Tickets gelten nicht mehr als Eintritt.
+{{else if .Refund.SomeTicketsCancelled}}Nur die mit „nicht mehr gültig“ markierten Tickets gelten nicht mehr als Eintritt; Ihre anderen Tickets bleiben gültig.
 {{end}}
 Fragen? Antworten Sie auf diese E-Mail.
 

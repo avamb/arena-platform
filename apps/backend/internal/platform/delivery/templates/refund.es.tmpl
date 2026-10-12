@@ -14,11 +14,11 @@
   <p style="margin:0 0 12px 0;">Hemos enviado un reembolso de <strong>{{.Refund.Total}}</strong> por tus entradas para <strong>{{.EventName}}</strong>{{with .SessionStart}} ({{.}}){{end}}.</p>
   <p style="margin:0 0 6px 0;font-weight:bold;color:#22333D;">Entradas reembolsadas</p>
   <table cellpadding="4" style="border-collapse:collapse;font-size:14px;">
-    {{range .Tickets}}<tr><td>Entrada {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td><td style="text-align:right;">{{.Price}}</td></tr>{{end}}
+    {{range .Tickets}}<tr><td>Entrada {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{if .Void}} · <strong>ya no es válida</strong>{{end}}</td><td style="text-align:right;">{{.Price}}</td></tr>{{end}}
     <tr><td style="border-top:1px solid #eceff1;"><strong>Total reembolsado</strong></td><td style="border-top:1px solid #eceff1;text-align:right;"><strong>{{.Refund.Total}}</strong></td></tr>
   </table>
   <p style="margin:16px 0 12px 0;">El dinero vuelve al medio de pago que usaste. Tu banco suele tardar de 5 a 10 días hábiles en mostrarlo.</p>
-  {{if .Refund.TicketsCancelled}}<p style="margin:0 0 12px 0;">Las entradas reembolsadas ya no son válidas para entrar.</p>{{end}}
+  {{if .Refund.TicketsCancelled}}<p style="margin:0 0 12px 0;">Las entradas reembolsadas ya no son válidas para entrar.</p>{{else if .Refund.SomeTicketsCancelled}}<p style="margin:0 0 12px 0;">Solo las entradas marcadas «ya no es válida» dejan de servir para entrar; tus demás entradas siguen siendo válidas.</p>{{end}}
   <p style="margin:0 0 12px 0;">¿Tienes preguntas? Responde a este correo.</p>
   <p style="font-size:12px;color:#666">Enviado a: {{.RecipientEmail}}</p>
   </td></tr>
@@ -48,11 +48,12 @@ Hola{{with .HolderName}} {{.}}{{end}},
 Hemos enviado un reembolso de {{.Refund.Total}} por tus entradas para {{.EventName}}{{with .SessionStart}} ({{.}}){{end}}.
 
 Entradas reembolsadas:
-{{range .Tickets}}- Entrada {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}: {{.Price}}
+{{range .Tickets}}- Entrada {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{if .Void}} · ya no es válida{{end}}: {{.Price}}
 {{end}}Total reembolsado: {{.Refund.Total}}
 
 El dinero vuelve al medio de pago que usaste. Tu banco suele tardar de 5 a 10 días hábiles en mostrarlo.
 {{if .Refund.TicketsCancelled}}Las entradas reembolsadas ya no son válidas para entrar.
+{{else if .Refund.SomeTicketsCancelled}}Solo las entradas marcadas «ya no es válida» dejan de servir para entrar; tus demás entradas siguen siendo válidas.
 {{end}}
 ¿Tienes preguntas? Responde a este correo.
 

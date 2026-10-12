@@ -14,11 +14,11 @@
   <p style="margin:0 0 12px 0;">We have sent a refund of <strong>{{.Refund.Total}}</strong> for your tickets to <strong>{{.EventName}}</strong>{{with .SessionStart}} ({{.}}){{end}}.</p>
   <p style="margin:0 0 6px 0;font-weight:bold;color:#22333D;">Refunded tickets</p>
   <table cellpadding="4" style="border-collapse:collapse;font-size:14px;">
-    {{range .Tickets}}<tr><td>Ticket {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td><td style="text-align:right;">{{.Price}}</td></tr>{{end}}
+    {{range .Tickets}}<tr><td>Ticket {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{if .Void}} · <strong>no longer valid</strong>{{end}}</td><td style="text-align:right;">{{.Price}}</td></tr>{{end}}
     <tr><td style="border-top:1px solid #eceff1;"><strong>Total refunded</strong></td><td style="border-top:1px solid #eceff1;text-align:right;"><strong>{{.Refund.Total}}</strong></td></tr>
   </table>
   <p style="margin:16px 0 12px 0;">The money returns to the payment method you used. Your bank usually needs 5–10 business days to show it.</p>
-  {{if .Refund.TicketsCancelled}}<p style="margin:0 0 12px 0;">The refunded tickets are no longer valid for entry.</p>{{end}}
+  {{if .Refund.TicketsCancelled}}<p style="margin:0 0 12px 0;">The refunded tickets are no longer valid for entry.</p>{{else if .Refund.SomeTicketsCancelled}}<p style="margin:0 0 12px 0;">Only the tickets marked “no longer valid” can no longer be used for entry; your other tickets stay valid.</p>{{end}}
   <p style="margin:0 0 12px 0;">Questions? Reply to this e-mail.</p>
   <p style="font-size:12px;color:#666">Delivered to: {{.RecipientEmail}}</p>
   </td></tr>
@@ -48,11 +48,12 @@ Hello{{with .HolderName}} {{.}}{{end}},
 We have sent a refund of {{.Refund.Total}} for your tickets to {{.EventName}}{{with .SessionStart}} ({{.}}){{end}}.
 
 Refunded tickets:
-{{range .Tickets}}- Ticket {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}: {{.Price}}
+{{range .Tickets}}- Ticket {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{if .Void}} · no longer valid{{end}}: {{.Price}}
 {{end}}Total refunded: {{.Refund.Total}}
 
 The money returns to the payment method you used. Your bank usually needs 5–10 business days to show it.
 {{if .Refund.TicketsCancelled}}The refunded tickets are no longer valid for entry.
+{{else if .Refund.SomeTicketsCancelled}}Only the tickets marked “no longer valid” can no longer be used for entry; your other tickets stay valid.
 {{end}}
 Questions? Reply to this e-mail.
 

@@ -205,6 +205,29 @@ func TestRefundBuyerEmail_OneLetterPerOperation(t *testing.T) {
 		t.Fatalf("after the sweep the operation has %d jobs; want 1", n)
 	}
 
+	// ── R2-5: one letter, one void ticket and one still valid; each line
+	//    says it for itself, never "the tickets" for both
+	f7 := newOrder("seven")
+	b7 := create(f7, true)
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE tickets SET status = 'active' WHERE id = $1`, f7.tickets[1]); err != nil {
+		t.Fatal(err)
+	}
+	before7 := len(sender.sent())
+	if err := run(b7); err != nil {
+		t.Fatalf("handler mixed: %v", err)
+	}
+	got7 := sender.sent()
+	if len(got7) != before7+1 {
+		t.Fatalf("mixed letter not sent: %d", len(got7)-before7)
+	}
+	body := got7[before7].TextBody
+	if strings.Contains(body, "The refunded tickets are no longer valid for entry.") {
+		t.Fatalf("a letter with a still valid ticket says all tickets are void:\n%s", body)
+	}
+	if strings.Count(body, "· no longer valid:") != 1 || !strings.Contains(body, "your other tickets stay valid") {
+		t.Fatalf("mixed letter must mark exactly one ticket and say the others stay valid:\n%s", body)
+	}
+
 	// ── a refund the provider only accepted as pending sends no letter yet
 	stub.refundHandler = func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

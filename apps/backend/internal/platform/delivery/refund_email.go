@@ -237,21 +237,44 @@ func (h *refundEmail) buildMessage(ctx context.Context, orderID, orgID uuid.UUID
 	if !haveFirst {
 		first = Payload{Locale: recipient.LocaleHint}
 	}
-	// "The tickets are no longer valid" is said from the tickets' real state,
+	// "No longer valid" is said per ticket from the ticket's real state,
 	// never from the cancel_ticket intent of the refund: a refund can be
-	// money-only, or its cancellation can still be pending.
+	// money-only, or its cancellation can still be pending, and one letter
+	// can cover both kinds.
 	var ticketIDs []uuid.UUID
 	for _, c := range claimed {
 		if c.TicketID != nil {
 			ticketIDs = append(ticketIDs, *c.TicketID)
 		}
 	}
+	void := map[uuid.UUID]bool{}
 	if len(ticketIDs) > 0 {
-		if err := h.opts.DB.QueryRow(ctx,
-			`SELECT EXISTS (SELECT 1 FROM tickets WHERE id = ANY($1) AND status = 'cancelled')`, ticketIDs).Scan(&anyCancel); err != nil {
+		rows, err := h.opts.DB.Query(ctx, `SELECT id FROM tickets WHERE id = ANY($1) AND status = 'cancelled'`, ticketIDs)
+		if err != nil {
+			return email.Message{}, fmt.Errorf("delivery: read ticket states for the refund e-mail: %w", err)
+		}
+		for rows.Next() {
+			var id uuid.UUID
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return email.Message{}, fmt.Errorf("delivery: read ticket states for the refund e-mail: %w", err)
+			}
+			void[id] = true
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
 			return email.Message{}, fmt.Errorf("delivery: read ticket states for the refund e-mail: %w", err)
 		}
 	}
+	voidCount := 0
+	for i, c := range claimed {
+		if c.TicketID != nil && void[*c.TicketID] {
+			lines[i].Void = true
+			voidCount++
+		}
+	}
+	allVoid := voidCount > 0 && voidCount == len(lines)
+	anyCancel = voidCount > 0
 	branding := resolveBranding(ctx, h.opts.Media, first, h.logger).Branding
 
 	data := templates.Data{
@@ -262,7 +285,8 @@ func (h *refundEmail) buildMessage(ctx context.Context, orderID, orgID uuid.UUID
 		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),
 		Branding:       branding,
 		Tickets:        lines,
-		Refund:         &templates.RefundData{Total: formatMoney(total, currency), TicketsCancelled: anyCancel},
+		Refund: &templates.RefundData{Total: formatMoney(total, currency),
+			TicketsCancelled: allVoid, SomeTicketsCancelled: anyCancel && !allVoid},
 	}
 	out, err := h.renderer.Render(templates.TemplateKindRefund, recipient.LocaleHint, data)
 	if err != nil {
