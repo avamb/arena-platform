@@ -8,8 +8,9 @@
 -- bot_telegram_links, which only a linked person has, so a stranger's dialog
 -- could not be stored.
 --
--- The reference is dropped. A dialog row is short lived by design (30 minutes,
--- swept after a day), carries no organization data for a stranger (org_id is
+-- The reference is dropped. A dialog row is short lived by design (30 minutes;
+-- a stranger's row is deleted as soon as it expires, a linked person's after a
+-- day), carries no organization data for a stranger (org_id is
 -- NULL) and the sweep deletes whatever an unlinked account leaves behind.
 --
 -- No permission is seeded, so the superadmin parity guard has nothing to check.
