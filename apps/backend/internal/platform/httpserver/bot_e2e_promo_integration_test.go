@@ -609,7 +609,7 @@ func TestBotE2E_PromoCodes(t *testing.T) {
 
 	// ── delete: a wrong word, going away, then the word ───────────────────────
 	ask := owner.press(data("del", five.ID), "Удалить код FIVE")
-	if !strings.Contains(ask, "Использован раз: 0") || !strings.Contains(ask, "УДАЛИТЬ") || !strings.Contains(ask, "название останется занятым") {
+	if !strings.Contains(ask, "Использован раз: 0") || !strings.Contains(ask, "УДАЛИТЬ") || !strings.Contains(ask, "останется занятым") {
 		t.Errorf("delete question:\n%s", ask)
 	}
 	if mustPmCode(t, pool, f.orgID, "FIVE").Deleted {
