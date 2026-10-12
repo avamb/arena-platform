@@ -42,7 +42,7 @@ node orchestration/m1-write-mock.mjs
 
 ## Worktree и платный запуск
 
-Подготовленные A4–A6 и M1 изменения проверены и зафиксированы в reviewed commit `4f2accb`; `main` синхронизирован с `origin/main`. Для разработки создан отдельный чистый worktree на ветке `feature/m1-xlsx-productization`:
+Подготовленные A4–A6 и M1 изменения проверены и зафиксированы в reviewed commits `c145a96`, `4f2accb` и `4d98cab`; `main` синхронизирован с `origin/main`. Для разработки создан отдельный чистый worktree на ветке `feature/m1-xlsx-productization`:
 
 ```powershell
 git worktree add 'C:\Projects\Venue_SVG_Generator-m1' feature/m1-xlsx-productization
