@@ -38317,6 +38317,103 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/tickets/{ticket_id}/review-hold/clear:
+    post:
+      operationId: postV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear
+      summary: Lift a ticket's review hold
+      description: |
+        A platform operator lifts the review hold a refund that named no ticket
+        (a partial refund made in the provider dashboard, for example) put on
+        the ticket, once they have decided which tickets that refund covers.
+        While a ticket is on hold no refund of it can be created. A note is
+        required and is kept in the audit trail together with the reason the
+        hold carried. Platform superadmin only, with X-Admin-Reason.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: ticket_id
+          in: path
+          required: true
+          description: UUIDv7 of the ticket
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: What the operator decided.
+              required: [note]
+              properties:
+                note:
+                  type: string
+                  description: What was decided, up to 1000 characters. Kept in the audit trail.
+      responses:
+        "200":
+          description: The hold is lifted.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: The ticket after the hold was lifted.
+                required: [ticket_id, review_hold]
+                properties:
+                  ticket_id:
+                    type: string
+                    format: uuid
+                    description: UUIDv7 of the ticket.
+                  review_hold:
+                    type: boolean
+                    description: Always false.
+        "400":
+          description: "Missing note (refund.invalid_request) or X-Admin-Reason missing (superadmin.missing_reason)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Not a platform operator (ticket.review_hold_superadmin_only)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Ticket not found in this organization (ticket.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The ticket is not on review hold (ticket.not_on_review_hold)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Database not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/admin/tickets/{id}/scans:
     get:
       operationId: adminListTicketScanEvents

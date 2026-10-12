@@ -6524,6 +6524,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/tickets/{ticket_id}/review-hold/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lift a ticket's review hold
+         * @description A platform operator lifts the review hold a refund that named no ticket
+         *     (a partial refund made in the provider dashboard, for example) put on
+         *     the ticket, once they have decided which tickets that refund covers.
+         *     While a ticket is on hold no refund of it can be created. A note is
+         *     required and is kept in the audit trail together with the reason the
+         *     hold carried. Platform superadmin only, with X-Admin-Reason.
+         */
+        post: operations["postV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/tickets/{id}/scans": {
         parameters: {
             query?: never;
@@ -43484,6 +43509,109 @@ export interface operations {
                 };
             };
             /** @description Refunds are not available (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the ticket */
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description What was decided, up to 1000 characters. Kept in the audit trail. */
+                    note: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The hold is lifted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /**
+                         * Format: uuid
+                         * @description UUIDv7 of the ticket.
+                         */
+                        ticket_id: string;
+                        /** @description Always false. */
+                        review_hold: boolean;
+                    };
+                };
+            };
+            /** @description Missing note (refund.invalid_request) or X-Admin-Reason missing (superadmin.missing_reason). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a platform operator (ticket.review_hold_superadmin_only). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket not found in this organization (ticket.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The ticket is not on review hold (ticket.not_on_review_hold). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired. */
             503: {
                 headers: {
                     [name: string]: unknown;

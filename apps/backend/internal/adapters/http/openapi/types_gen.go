@@ -14400,6 +14400,12 @@ type GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsvParams struct {
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
+// PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear.
+type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody struct {
+	// Note What was decided, up to 1000 characters. Kept in the audit trail.
+	Note string `json:"note"`
+}
+
 // ListPublicFeedEventsParams defines parameters for ListPublicFeedEvents.
 type ListPublicFeedEventsParams struct {
 	// CityId Optional filter by publication city scope.
@@ -14854,6 +14860,9 @@ type UpdatePromoterJSONRequestBody = UpdatePromoterRequest
 
 // PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody defines body for PostV1OrganizationsOrgIdRefundsRefundIdResolve for application/json ContentType.
 type PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody = ResolveOrderRefundRequest
+
+// PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear for application/json ContentType.
+type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody
 
 // PostV1OrganizationsOrgIdVenuesJSONRequestBody defines body for PostV1OrganizationsOrgIdVenues for application/json ContentType.
 type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest
