@@ -146,6 +146,29 @@ func (e *scanEnv) exceptionUsedBy(t *testing.T, i int) string {
 	return by
 }
 
+// N3: a flat refund of the payment spends the exception in the transaction
+// that writes it, so an approval after the exception's expiry still goes
+// through (it was the refund's, not a pending promise).
+func TestRefundScanned_FlatRefundSpendsTheExceptionWhenWritten(t *testing.T) {
+	e := newScanEnv(t)
+	e.exec(t, `UPDATE tickets SET used_at = now() WHERE id = $1`, e.f.tickets[0])
+	e.grantException(t, 0)
+	body := fmt.Sprintf(`{"payment_intent_id":%q,"amount":5000,"currency":"EUR","reason":"show cancelled"}`, e.f.pay)
+	st, out := e.pf.do(t, http.MethodPost, "/v1/refunds", e.key, body)
+	if st != http.StatusCreated {
+		t.Fatalf("flat refund on the exception: %d %v", st, out)
+	}
+	id := out["refund"].(map[string]any)["id"].(string)
+	if by := e.exceptionUsedBy(t, 0); by != id {
+		t.Fatalf("exception used by %q; want the new refund %s", by, id)
+	}
+	e.exec(t, `UPDATE refund_scan_exceptions SET expires_at = now() - interval '1 minute', created_at = now() - interval '2 minutes' WHERE ticket_id = $1`, e.f.tickets[0])
+	st, out = e.pf.do(t, http.MethodPost, "/v1/refunds/"+id+"/approve", e.key, "")
+	if st != http.StatusOK || out["refund"].(map[string]any)["state"] != "succeeded" {
+		t.Fatalf("approval after the exception's expiry: %d %v; want 200 succeeded", st, out)
+	}
+}
+
 // N3: an automatic refund of the ticket-cancel route spends the exception in
 // the transaction that writes the refund.
 func TestRefundScanned_AutomaticCancelSpendsTheExceptionWithItsRefund(t *testing.T) {

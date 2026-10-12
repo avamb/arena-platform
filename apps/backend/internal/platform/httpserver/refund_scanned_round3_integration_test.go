@@ -330,15 +330,18 @@ func TestRefundScanned_ExceptionHonouredByCancelAndFlatCreate(t *testing.T) {
 	}
 	grant(0)
 	grant(1)
-	if st, out := e.pf.do(t, http.MethodPost, "/v1/refunds", e.key, flat); st != http.StatusCreated && st != http.StatusOK {
+	st, out := e.pf.do(t, http.MethodPost, "/v1/refunds", e.key, flat)
+	if st != http.StatusCreated && st != http.StatusOK {
 		t.Fatalf("flat create with live exceptions: %d %v; want it written", st, out)
 	}
-	// cancel with a manual refund spends ticket 0's exception
-	if st, out := e.pf.do(t, http.MethodPost, "/v1/tickets/"+e.f.tickets[0].String()+"/cancel", e.key,
-		`{"reason":"scan3","refund_mode":"manual"}`); st != http.StatusOK {
-		t.Fatalf("cancel with an exception: %d %v; want 200", st, out)
+	// The flat refund owns both exceptions from the moment it is written
+	// (round 4, N3), so they let nothing else through.
+	id := out["refund"].(map[string]any)["id"].(string)
+	if n := e.count(t, `SELECT count(*) FROM refund_scan_exceptions WHERE org_id = $1 AND used_by_refund::text = $2`, e.org, id); n != 2 {
+		t.Fatalf("exceptions owned by the flat refund = %d; want 2", n)
 	}
-	if n := e.count(t, `SELECT count(*) FROM refund_scan_exceptions WHERE ticket_id = $1 AND used_at IS NOT NULL`, e.f.tickets[0]); n != 1 {
-		t.Fatalf("the cancellation did not spend the exception (%d)", n)
+	if st, out := e.pf.do(t, http.MethodPost, "/v1/tickets/"+e.f.tickets[0].String()+"/cancel", e.key,
+		`{"reason":"scan3","refund_mode":"manual"}`); st != http.StatusConflict || prom0113Code(out) != refunds.CodeTicketScanned {
+		t.Fatalf("cancel with money after the exception was spent: %d %v; want 409", st, out)
 	}
 }
