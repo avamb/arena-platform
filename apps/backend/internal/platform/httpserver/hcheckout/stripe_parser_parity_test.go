@@ -39,6 +39,11 @@ func TestStripeEnvelopeParsers_AgreeOnEveryHandledEvent(t *testing.T) {
 		"session no payment required": `{"id":"evt_5","type":"checkout.session.completed","data":{"object":{"id":"cs_5","payment_status":"no_payment_required"}}}`,
 		"session async succeeded":     `{"id":"evt_6","type":"checkout.session.async_payment_succeeded","data":{"object":{"id":"cs_6","payment_status":"paid","payment_intent":"pi_6"}}}`,
 		"session expired":             `{"id":"evt_7","type":"checkout.session.expired","data":{"object":{"id":"cs_7"}}}`,
+		"session async failed":        `{"id":"evt_8","type":"checkout.session.async_payment_failed","data":{"object":{"id":"cs_8","payment_status":"unpaid","payment_intent":"pi_8"}}}`,
+		"intent processing":           `{"id":"evt_9","type":"payment_intent.processing","data":{"object":{"id":"pi_9"}}}`,
+		"intent requires action":      `{"id":"evt_10","type":"payment_intent.requires_action","data":{"object":{"id":"pi_10"}}}`,
+		"intent capturable":           `{"id":"evt_11","type":"payment_intent.amount_capturable_updated","data":{"object":{"id":"pi_11"}}}`,
+		"unhandled type":              `{"id":"evt_12","type":"customer.created","data":{"object":{"id":"cus_12"}}}`,
 	}
 	for name, body := range bodies {
 		t.Run(name, func(t *testing.T) {
@@ -64,6 +69,15 @@ func TestStripeEnvelopeParsers_AgreeOnEveryHandledEvent(t *testing.T) {
 			moduleMoney := ev.Kind == payments.EventPaymentSucceeded
 			if core.EventType == "checkout.session.completed" && coreMoney != moduleMoney {
 				t.Errorf("session completed: core says money=%v, module says money=%v", coreMoney, moduleMoney)
+			}
+			// The decision that matters is the state the intent ends in:
+			// compare what each path would actually do, not only its inputs.
+			coreState := webhookEventTypeToState[core.EventType]
+			if core.EventType == "checkout.session.completed" && core.PaymentStatus != checkoutSessionPaid {
+				coreState = "" // acknowledged and left for the later event
+			}
+			if moduleState := eventKindToState[ev.Kind]; coreState != moduleState {
+				t.Errorf("final state: core=%q module=%q (kind %q)", coreState, moduleState, ev.Kind)
 			}
 			if core.FailureCode != nil && *core.FailureCode != ev.FailureCode {
 				t.Errorf("failure code core=%q module=%q", *core.FailureCode, ev.FailureCode)
