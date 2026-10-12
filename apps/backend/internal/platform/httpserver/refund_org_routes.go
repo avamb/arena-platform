@@ -135,7 +135,7 @@ func (s *Server) handleRefundOptions(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{
 		"order_id": opts.OrderID.String(), "route": string(opts.Route), "provider": opts.Provider,
 		"currency": opts.Currency, "partial_refund": opts.PartialRefund,
-		"tickets": tickets, "active_refunds": active,
+		"payment_left": opts.PaymentLeft, "tickets": tickets, "active_refunds": active,
 	}
 	if opts.Refusal != nil {
 		resp["refusal"] = map[string]any{"code": opts.Refusal.Code, "message": opts.Refusal.Message}
@@ -266,7 +266,7 @@ func queueItem(r *http.Request, it refunds.ListItem) refundQueueItemJSON {
 		orderID = &v
 	}
 	out := refundQueueItemJSON{refundItem(it.Refund), orderID, it.OrderSystemID, it.EventName, it.TicketNumber, nil,
-		refunds.Retryable(it.Refund) && !it.Replaced}
+		refunds.Retryable(it.Refund) && !it.Replaced && !it.RetryBlocked}
 	if it.CreatorKind != nil {
 		label := it.CreatorLabel
 		if it.CreatorLabelIsEmail && callerIsAPIKey(r) {
