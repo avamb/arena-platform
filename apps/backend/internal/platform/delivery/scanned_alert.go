@@ -138,7 +138,7 @@ func NewScannedAlertHandler(opts ScannedAlertOptions) worker.HandlerFunc {
 			// A superadmin allowed one refund of the scanned ticket.
 			kind = templates.TemplateKindScanException
 			data.Alert.Actor = ""
-			data.Alert.Reason = p.Reason
+			data.Alert.Reason = p.Note
 			if until, perr := time.Parse(time.RFC3339, p.Until); perr == nil {
 				data.Alert.Until = until.UTC().Format("2006-01-02 15:04") + " UTC" // allow:timeformat
 			}

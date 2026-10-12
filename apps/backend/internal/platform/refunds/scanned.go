@@ -48,10 +48,11 @@ type ScannedAlertPayload struct {
 	// that have not received it yet.
 	NoticeID string `json:"notice_id,omitempty"`
 	// Kind is empty for a blocked refund and ScannedAlertKindException for a
-	// superadmin's exception (with its Reason and its Until, RFC 3339).
-	Kind   string `json:"kind,omitempty"`
-	Reason string `json:"reason,omitempty"`
-	Until  string `json:"until,omitempty"`
+	// superadmin's exception (with its Note and its Until, RFC 3339). The
+	// operator's X-Admin-Reason never travels here: it stays in the audit.
+	Kind  string `json:"kind,omitempty"`
+	Note  string `json:"note,omitempty"`
+	Until string `json:"until,omitempty"`
 }
 
 // ScannedAlertKindException marks the owners' e-mail about an exception.

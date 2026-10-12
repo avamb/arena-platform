@@ -6553,8 +6553,9 @@ export interface paths {
          *     it, and the exception ends at `expires_at` (at most 24 hours) in any
          *     case. A ticket gets at most one exception. The grant is audited with
          *     the X-Admin-Reason, the organization's owners get an e-mail and the
-         *     sales bot tells the organization's group and the operator. Platform
-         *     superadmin only, with X-Admin-Reason.
+         *     sales bot tells the organization's group and the operator; those two
+         *     notices carry the `note` (cut to 500 characters), never the
+         *     X-Admin-Reason. Platform superadmin only, with X-Admin-Reason.
          */
         post: operations["postV1OrganizationsOrgIdTicketsTicketIdScanRefundException"];
         delete?: never;
@@ -43607,7 +43608,7 @@ export interface operations {
                 "application/json": {
                     /** @description Hours the exception is valid, 1 to 24; 24 when left out. */
                     hours?: number;
-                    /** @description A comment of up to 1000 characters, kept in the audit trail. */
+                    /** @description A comment of up to 1000 characters, kept in the audit trail; its first 500 characters are shown to the organization's owners and its group. */
                     note?: string;
                 };
             };

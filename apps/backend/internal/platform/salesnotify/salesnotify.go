@@ -253,7 +253,7 @@ func (d *Dispatcher) compose(ctx context.Context, ev outbox.Event) (key string, 
 		if err != nil {
 			return "", 0, "", "", err
 		}
-		text := FormatScanException(r, payloadString(ev.Payload, "reason", ""), payloadString(ev.Payload, "expires_at", ""))
+		text := FormatScanException(r, payloadString(ev.Payload, "note", ""), payloadString(ev.Payload, "expires_at", ""))
 		return "scanexc:" + ev.ID, TriggerTicketRefunded, d.withFooter(text), r.OrgID, nil
 	default: // v1.ticket.refunded / v1.ticket.cancelled
 		id := payloadString(ev.Payload, "ticket_id", ev.AggregateID)

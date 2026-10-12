@@ -102,6 +102,24 @@ func TestScanException_SuperadminOnlyInsideTheOrganization(t *testing.T) {
 	if audited != 1 || mailed != 1 || announced != 1 {
 		t.Fatalf("grant: audit %d, owner e-mail %d, sales-bot event %d; want 1 each", audited, mailed, announced)
 	}
+	// Round 4, N6: the operator's X-Admin-Reason stays in the audit trail;
+	// the owners and the organization's group get the note, nothing else.
+	var jobPayload, eventPayload string
+	_ = e.srv.pgxPool.QueryRow(ctx, `SELECT payload::text FROM worker_jobs WHERE job_type = $1 AND payload->>'kind' = 'exception' AND payload->>'ticket_id' = $2`,
+		refunds.JobTypeScannedAlertEmail, f.tickets[0].String()).Scan(&jobPayload)
+	_ = e.srv.pgxPool.QueryRow(ctx, `SELECT payload::text FROM outbox_events WHERE event_type = $1 AND aggregate_id = $2`,
+		refunds.EventScanExceptionGranted, f.tickets[0].String()).Scan(&eventPayload)
+	for name, p := range map[string]string{"owner e-mail job": jobPayload, "sales-bot event": eventPayload} {
+		if strings.Contains(p, "support ticket 7") || !strings.Contains(p, "the show was stopped after the first act") {
+			t.Errorf("%s payload carries the admin reason or lacks the note: %s", name, p)
+		}
+	}
+	var auditedReason string
+	_ = e.srv.pgxPool.QueryRow(ctx, `SELECT metadata->>'reason' FROM audit_events WHERE action = 'v1.refund.scan_exception_grant' AND resource_id = $1`,
+		f.tickets[0].String()).Scan(&auditedReason)
+	if auditedReason != "support ticket 7" {
+		t.Errorf("audited reason = %q; want the X-Admin-Reason", auditedReason)
+	}
 
 	// ── with it: one refund passes, the next is refused again
 	if st, out := refund(1000); st != http.StatusAccepted || !strings.Contains(out, `"succeeded"`) {

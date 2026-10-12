@@ -55,6 +55,18 @@ type ScanException struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+// maxShownNote bounds the note the owners and the sales bot are shown (a
+// Telegram message is at most 4096 characters).
+const maxShownNote = 500
+
+func shownNote(note string) string {
+	r := []rune(strings.TrimSpace(note))
+	if len(r) <= maxShownNote {
+		return string(r)
+	}
+	return string(r[:maxShownNote]) + "…"
+}
+
 // GrantScanException records the exception for a scanned ticket of the
 // organization and, in the same transaction, the audit row, the owners'
 // e-mail job and the sales-bot event. A ticket of another organization is
@@ -98,15 +110,18 @@ func (e *Engine) GrantScanException(ctx context.Context, in ScanExceptionInput) 
 		if err != nil {
 			return err
 		}
+		// The owners and the organization's group see the note, bounded; the
+		// operator's reason stays in the audit event below.
+		shown := shownNote(in.Note)
 		payload, _ := json.Marshal(ScannedAlertPayload{OrgID: in.OrgID.String(), TicketID: in.TicketID.String(),
 			NoticeID: uuid.NewString(), Kind: ScannedAlertKindException,
-			Reason: in.Reason, Until: out.ExpiresAt.UTC().Format(time.RFC3339)})
+			Note: shown, Until: out.ExpiresAt.UTC().Format(time.RFC3339)})
 		if _, err := tx.Exec(ctx, `INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
 			VALUES ($1, $2::jsonb, 5, 'pending', now())`, JobTypeScannedAlertEmail, payload); err != nil {
 			return err
 		}
 		evPayload, _ := json.Marshal(map[string]any{"ticket_id": in.TicketID.String(), "org_id": in.OrgID.String(),
-			"reason": in.Reason, "expires_at": out.ExpiresAt.UTC().Format(time.RFC3339)})
+			"note": shown, "expires_at": out.ExpiresAt.UTC().Format(time.RFC3339)})
 		if _, err := tx.Exec(ctx, `INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
 			VALUES ('ticket', $1, $2, $3::jsonb)`, in.TicketID.String(), EventScanExceptionGranted, evPayload); err != nil {
 			return err

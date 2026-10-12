@@ -190,7 +190,7 @@ func FormatRefund(r Refund) string {
 
 // FormatScanException renders the notice that a platform superadmin allowed
 // one refund of a ticket that was already scanned. No buyer data.
-func FormatScanException(r Refund, reason, expiresAt string) string {
+func FormatScanException(r Refund, note, expiresAt string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "⚠️ <b>Refund of a used ticket allowed by the platform operator</b> - %s\n\n", esc(r.OrgName))
 	writeEvent(&b, r.EventName, r.StartAt, r.TimeZone, r.VenueName)
@@ -199,8 +199,11 @@ func FormatScanException(r Refund, reason, expiresAt string) string {
 	} else {
 		fmt.Fprintf(&b, "\n🧾 Ticket #%d\n", r.TicketNumber)
 	}
-	if reason != "" {
-		fmt.Fprintf(&b, "📝 Reason: %s\n", esc(reason))
+	if note != "" {
+		if r := []rune(note); len(r) > 500 {
+			note = string(r[:500]) + "…"
+		}
+		fmt.Fprintf(&b, "📝 Note: %s\n", esc(note))
 	}
 	if t, err := time.Parse(time.RFC3339, expiresAt); err == nil {
 		fmt.Fprintf(&b, "⏳ Valid for one refund until %s UTC\n", t.UTC().Format("2006-01-02 15:04")) // allow:timeformat

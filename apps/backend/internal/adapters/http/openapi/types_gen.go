@@ -14435,7 +14435,7 @@ type PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody struct {
 	// Hours Hours the exception is valid, 1 to 24; 24 when left out.
 	Hours *int `json:"hours,omitempty"`
 
-	// Note A comment of up to 1000 characters, kept in the audit trail.
+	// Note A comment of up to 1000 characters, kept in the audit trail; its first 500 characters are shown to the organization's owners and its group.
 	Note *string `json:"note,omitempty"`
 }
 

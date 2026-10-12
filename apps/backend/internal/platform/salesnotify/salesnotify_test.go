@@ -366,7 +366,7 @@ func TestDispatcher_AnnouncesAScanExceptionToTheOrganizationAndTheOperator(t *te
 	snd := &fakeSender{}
 	d := NewDispatcher(store, snd, nil)
 	ev := outbox.Event{ID: "row-x", EventType: EventScanExceptionGranted, AggregateID: "t-9",
-		Payload: map[string]any{"ticket_id": "t-9", "reason": "show <cancelled>", "expires_at": "2026-10-14T18:00:00Z"}}
+		Payload: map[string]any{"ticket_id": "t-9", "note": "show <cancelled>", "expires_at": "2026-10-14T18:00:00Z"}}
 	d.Handle(context.Background(), ev)
 	d.Handle(context.Background(), ev)
 	if len(snd.sent) != 2 {
@@ -375,7 +375,7 @@ func TestDispatcher_AnnouncesAScanExceptionToTheOrganizationAndTheOperator(t *te
 	for _, s := range snd.sent {
 		if !strings.Contains(s.text, "allowed by the platform operator") || !strings.Contains(s.text, "show &lt;cancelled&gt;") ||
 			!strings.Contains(s.text, "2026-10-14 18:00 UTC") {
-			t.Errorf("message lacks the exception, its reason or its expiry:\n%s", s.text)
+			t.Errorf("message lacks the exception, its note or its expiry:\n%s", s.text)
 		}
 		if strings.Contains(s.text, "inna@example.com") {
 			t.Errorf("an operator notice must not carry buyer data:\n%s", s.text)
