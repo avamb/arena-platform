@@ -42,3 +42,7 @@ MCP, subagents, `arena_new`, private archive и confirmation-файлы запр
 сохраняет latch, diff/audit, usage, reported cost, result, review и checkpoint и не
 повторяет запрос автоматически. Платный запуск требует отдельного `-Approved`; до
 этого используется только `m1-write-mock.mjs`.
+
+## Supervisor v1 (offline-prepared)
+
+`orchestration/supervisor.mjs` последовательно читает queue и запускает задачи без одновременной записи в worktree. Queue ограничивает общий session budget `$20`, одну задачу `$5`, correction attempts `2` и `max_retries=0`. Mock E2E записывает только ignored run state, сохраняет checkpoint и может продолжиться с `--resume`. Mock review явно не является запуском Codex CLI. Реальный режим требует `-Approved`, свежего Console confirmation и существующего runner; при неизвестной стоимости или конфликте процесс останавливается.

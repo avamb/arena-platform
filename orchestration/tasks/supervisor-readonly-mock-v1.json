@@ -1,0 +1,17 @@
+{
+  "task_id": "supervisor-readonly-mock-v1",
+  "objective": "Offline supervisor smoke task: inspect PRODUCT_SPEC.md and ROADMAP.md and report one gap.",
+  "inputs": ["PRODUCT_SPEC.md", "ROADMAP.md"],
+  "allowed_paths": ["PRODUCT_SPEC.md", "ROADMAP.md"],
+  "read_paths": ["PRODUCT_SPEC.md", "ROADMAP.md"],
+  "write_paths": [],
+  "forbidden_paths": ["arena_new", "ChatExport_2026-10-11", "sdk_experiments/console-confirmation.json", "sdk_experiments/workspace-confirmation.json"],
+  "commands": [],
+  "budget_usd": 0,
+  "max_turns": 0,
+  "max_retries": 0,
+  "timeout_ms": 30000,
+  "api_allowed": false,
+  "acceptance": ["api_calls=0", "read scope is limited to approved inputs", "unknowns are explicit"],
+  "status": "ready"
+}

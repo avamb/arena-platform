@@ -1,0 +1,17 @@
+{
+  "task_id": "supervisor-write-isolation-mock-v1",
+  "objective": "Offline supervisor smoke task: prove that a mock result is written only inside the supervisor run directory.",
+  "inputs": ["AGENT_WORKFLOW.md", "BUDGET_POLICY.md"],
+  "allowed_paths": ["AGENT_WORKFLOW.md", "BUDGET_POLICY.md"],
+  "read_paths": ["AGENT_WORKFLOW.md", "BUDGET_POLICY.md"],
+  "write_paths": [],
+  "forbidden_paths": ["arena_new", "ChatExport_2026-10-11", "sdk_experiments/console-confirmation.json", "sdk_experiments/workspace-confirmation.json"],
+  "commands": [],
+  "budget_usd": 0,
+  "max_turns": 0,
+  "max_retries": 0,
+  "timeout_ms": 30000,
+  "api_allowed": false,
+  "acceptance": ["api_calls=0", "write scope stays under orchestration/runs/supervisor", "interruption is resumable"],
+  "status": "ready"
+}
