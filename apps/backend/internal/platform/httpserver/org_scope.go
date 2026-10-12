@@ -49,9 +49,13 @@ func (s *Server) orgScopedFor(perm string, scoped bool) func(http.Handler) http.
 // `{id}` of the organization routes themselves (`/organizations/{id}`), whose
 // parameter is named differently.
 func pathOrganization(r *http.Request) (uuid.UUID, bool) {
-	raw := chi.URLParam(r, "org_id")
-	if raw == "" && strings.HasSuffix(chi.RouteContext(r.Context()).RoutePattern(), "/organizations/{id}") {
-		raw = chi.URLParam(r, "id")
+	rc := chi.RouteContext(r.Context())
+	if rc == nil {
+		return uuid.Nil, false
+	}
+	raw := rc.URLParam("org_id")
+	if raw == "" && strings.HasSuffix(rc.RoutePattern(), "/organizations/{id}") {
+		raw = rc.URLParam("id")
 	}
 	if raw == "" {
 		return uuid.Nil, false
