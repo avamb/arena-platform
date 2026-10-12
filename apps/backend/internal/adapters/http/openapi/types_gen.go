@@ -10763,7 +10763,7 @@ type ResolveOrderRefundRequest struct {
 	// Note What was checked, up to 1000 characters. Kept in the audit trail.
 	Note string `json:"note"`
 
-	// Outcome refunded when the money went back at the provider, not_refunded when it did not.
+	// Outcome refunded when the money went back at the provider; refunded_beyond_payment when it went back although the payment was already covered; not_refunded when the provider shows it did not go through (the ticket can then be refunded again with a new refund).
 	Outcome string `json:"outcome"`
 }
 

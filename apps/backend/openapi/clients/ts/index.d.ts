@@ -6501,15 +6501,21 @@ export interface paths {
          * Close a refund waiting for manual review
          * @description A platform operator closes a refund parked in manual_review after
          *     checking the provider's dashboard. Outcome `refunded` means the money
-         *     went back: the refund becomes succeeded and its tickets are cancelled.
-         *     Outcome `not_refunded` means no money moved: the refund becomes failed
-         *     and its tickets can be refunded again. A refund that never reached the
-         *     provider cannot be closed as refunded (refund.never_sent), nor can one
-         *     that would put the payment's refunds above what was paid
-         *     (refund.over_budget). A note is required and is kept in the audit
-         *     trail only; the refund keeps the reason it was parked with, except that
-         *     one closed as refunded carries no failure. Platform superadmin only,
-         *     with X-Admin-Reason.
+         *     went back: the refund becomes succeeded and settles like any accepted
+         *     refund (its ticket is cancelled only when the refund was meant to
+         *     cancel it). Outcome `refunded_beyond_payment` records a refund whose
+         *     money really went back although the payment was already covered (the
+         *     buyer was refunded twice): it becomes succeeded and cancels nothing.
+         *     Outcome `not_refunded` is only for a refund the provider dashboard
+         *     shows did NOT go through (failed or canceled there): it becomes failed
+         *     and its ticket can be refunded again, which sends a NEW refund to the
+         *     provider, so choosing it for a refund that did go through returns the
+         *     money twice. A refund that never reached the provider cannot be closed
+         *     as refunded (refund.never_sent), nor as `refunded` when it would put
+         *     the payment's refunds above what was paid (refund.over_budget). A note
+         *     is required and is kept in the audit trail only; the refund keeps the
+         *     reason it was parked with, except that one closed as refunded carries
+         *     no failure. Platform superadmin only, with X-Admin-Reason.
          */
         post: operations["postV1OrganizationsOrgIdRefundsRefundIdResolve"];
         delete?: never;
@@ -10154,7 +10160,7 @@ export interface components {
         };
         /** @description What a platform operator found at the provider for a refund in manual review. */
         ResolveOrderRefundRequest: {
-            /** @description refunded when the money went back at the provider, not_refunded when it did not. */
+            /** @description refunded when the money went back at the provider; refunded_beyond_payment when it went back although the payment was already covered; not_refunded when the provider shows it did not go through (the ticket can then be refunded again with a new refund). */
             outcome: string;
             /** @description What was checked, up to 1000 characters. Kept in the audit trail. */
             note: string;
@@ -43423,7 +43429,7 @@ export interface operations {
                     "application/json": components["schemas"]["OrderRefundItem"];
                 };
             };
-            /** @description Invalid outcome or missing note (refund.invalid_request). */
+            /** @description Invalid outcome or missing note (refund.invalid_request), or X-Admin-Reason missing (superadmin.missing_reason). */
             400: {
                 headers: {
                     [name: string]: unknown;
