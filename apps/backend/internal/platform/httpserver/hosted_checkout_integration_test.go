@@ -42,6 +42,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -75,6 +76,31 @@ type stubStripe struct {
 	// sessionPI is the payment_intent GET /v1/checkout/sessions/{id}
 	// reports; empty answers 404.
 	sessionPI string
+
+	// refundObjects answers GET /v1/refunds/{id}: refund id -> JSON body;
+	// an id not in the map is 404, a body that is empty answers 500.
+	refundMu      sync.Mutex
+	refundObjects map[string]string
+	// refundReadKeys records the bearer key each GET /v1/refunds/{id} used.
+	refundReadKeys map[string]string
+}
+
+// refundReadKey is the API key the last read of refund id was made with.
+func (s *stubStripe) refundReadKey(id string) string {
+	s.refundMu.Lock()
+	defer s.refundMu.Unlock()
+	return s.refundReadKeys[id]
+}
+
+// setRefund registers the refund object GET /v1/refunds/{id} reports.
+func (s *stubStripe) setRefund(id, status string, amount int, currency, paymentIntent string) {
+	s.refundMu.Lock()
+	defer s.refundMu.Unlock()
+	if s.refundObjects == nil {
+		s.refundObjects = map[string]string{}
+	}
+	s.refundObjects[id] = fmt.Sprintf(`{"id":%q,"object":"refund","status":%q,"amount":%d,"currency":%q,"payment_intent":%q}`,
+		id, status, amount, currency, paymentIntent)
 }
 
 func newStubStripe(t *testing.T) *stubStripe {
@@ -84,6 +110,25 @@ func newStubStripe(t *testing.T) *stubStripe {
 		switch {
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/refunds") && s.refundHandler != nil:
 			s.refundHandler(w, r)
+			return
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/refunds/"):
+			id := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
+			s.refundMu.Lock()
+			body, ok := s.refundObjects[id]
+			if s.refundReadKeys == nil {
+				s.refundReadKeys = map[string]string{}
+			}
+			s.refundReadKeys[id] = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+			s.refundMu.Unlock()
+			switch {
+			case !ok:
+				w.WriteHeader(http.StatusNotFound)
+			case body == "":
+				w.WriteHeader(http.StatusInternalServerError)
+			default:
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = fmt.Fprint(w, body)
+			}
 			return
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/checkout/sessions/") && s.sessionPI != "":
 			id := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]

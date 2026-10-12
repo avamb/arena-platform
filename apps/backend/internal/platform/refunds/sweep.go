@@ -178,10 +178,17 @@ func (e *Engine) Sweep(ctx context.Context, now time.Time, notifier Notifier) (S
 		// is nearly spent.
 		actx, cancel := context.WithTimeout(context.WithoutCancel(ctx), alertSectionBudget)
 		n, err := e.alertReviews(actx, notifier)
-		cancel()
 		rep.Alerted = n
 		if err != nil {
 			errs = append(errs, fmt.Errorf("refunds: sweep alerts: %w", err))
+		}
+		// Provider refund events arena gave up on (no refunds row carries
+		// their alert), inside the SAME budget: SweepWorstCase is unchanged.
+		pn, perr := e.alertProviderEvents(actx, notifier)
+		cancel()
+		rep.Alerted += pn
+		if perr != nil {
+			errs = append(errs, fmt.Errorf("refunds: sweep provider-event alerts: %w", perr))
 		}
 	}
 	return rep, errors.Join(errs...)
@@ -565,6 +572,20 @@ func (e *Engine) alertReviews(ctx context.Context, n Notifier) (int, error) {
 // and never tells a person to cancel unconditionally (seventh review).
 func alertText(r Refund, ticketStatus string) string {
 	esc := opsalert.EscapeHTML
+	if deref(r.RequestedBy) == "provider_dashboard" {
+		head := fmt.Sprintf("Refund %s (%d %s via %s) was made in the provider's own dashboard", r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)))
+		switch deref(r.FailureCode) {
+		case failureReversedAfterSuccess:
+			return head + fmt.Sprintf(" and was reversed by the provider afterwards: the money did not go back to the buyer. Check the provider dashboard and decide with the organizer what happens to the order's tickets. Order %s.", uuidString(r.OrderID))
+		case DashboardCapped:
+			return head + fmt.Sprintf(" for more than was left of the payment; it was recorded as what was left (%d %s). The order's tickets were cancelled only if that completed the whole payment; otherwise they are on review hold. Check the provider dashboard for the difference. Order %s.", r.Amount, esc(r.Currency), uuidString(r.OrderID))
+		case DashboardOverPayment:
+			return head + fmt.Sprintf(" after the payment was already fully refunded; nothing was applied and it is parked for review. Check the provider dashboard: the buyer may have been refunded twice. Order %s.", uuidString(r.OrderID))
+		case DashboardLegacyParked:
+			return head + fmt.Sprintf(" while the same payment has a refund parked for review from before the refund engine. They may be the same money: check the provider dashboard and resolve the parked refund accordingly. Order %s.", uuidString(r.OrderID))
+		}
+		return head + fmt.Sprintf(" and does not cover the whole payment. The order's tickets are on review hold: decide which tickets it covers. Order %s.", uuidString(r.OrderID))
+	}
 	if r.State == StateManualReview {
 		text := fmt.Sprintf("Refund %s (%d %s via %s) needs manual review: %s. Order %s.",
 			r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), esc(deref(r.FailureCode)), uuidString(r.OrderID))

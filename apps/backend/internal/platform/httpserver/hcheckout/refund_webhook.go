@@ -1,11 +1,13 @@
 package hcheckout
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
 
 // processRefundWebhook handles a VERIFIED refund event of the per-config route
@@ -33,6 +35,10 @@ func (h *Handler) processRefundWebhook(w http.ResponseWriter, r *http.Request, r
 		ack("refund event; nothing to record", false)
 		return
 	}
+	if route.ConfigID != nil {
+		// Read the refund back with the configuration that verified it.
+		r = r.WithContext(refunds.WithProviderConfig(r.Context(), *route.ConfigID))
+	}
 	res := payments.RefundResult{
 		ProviderRefundID: ev.ProviderRefundID,
 		Status:           ev.RefundStatus,
@@ -40,6 +46,10 @@ func (h *Handler) processRefundWebhook(w http.ResponseWriter, r *http.Request, r
 		FailureMessage:   ev.FailureMessage,
 	}
 	found, err := h.refundEngine.ApplyProviderRefund(r.Context(), *route.ExpectedOrgID, route.Provider, ev.ProviderRefundID, res)
+	if errors.Is(err, refunds.ErrProviderEventGivenUp) {
+		ack("refund could not be confirmed with the provider; an operator is alerted", false)
+		return
+	}
 	if err != nil {
 		h.logger.Error("webhook: recording a refund event failed",
 			slog.String("provider", route.Provider),
@@ -52,7 +62,7 @@ func (h *Handler) processRefundWebhook(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 	if !found {
-		ack("not an arena refund", false)
+		h.recordDashboardRefund(w, r, route, ack)
 		return
 	}
 	h.recordWebhookEvent(ev.Type, webhookOutcomeProcessed)
@@ -60,5 +70,64 @@ func (h *Handler) processRefundWebhook(w http.ResponseWriter, r *http.Request, r
 		"acknowledged": true,
 		"event_type":   ev.Type,
 		"processed":    true,
+	})
+}
+
+// recordDashboardRefund handles a verified refund event no arena refund
+// carries: a refund the organizer made in the provider's dashboard (spec 36
+// section 7). A succeeded one of one of this organization's payments is
+// recorded with origin provider_dashboard and the AB-49 inbound policy is
+// applied: a refund that covers the payment cancels the order's tickets, a
+// smaller one flags them for human review. Anything else is acknowledged
+// untouched (the organizer's provider account also serves their other sites).
+func (h *Handler) recordDashboardRefund(w http.ResponseWriter, r *http.Request, route webhookRoute, ack func(string, bool)) {
+	ev := *route.Event
+	var outcome dashboardOutcome
+	res, err := h.refundEngine.RecordDashboardRefund(r.Context(), *route.ExpectedOrgID, route.Provider, ev, h.dashboardApply(&outcome))
+	if err != nil {
+		// Including refunds.ErrCannotConfirm: the provider redelivers.
+		h.logger.Error("webhook: recording a dashboard refund failed",
+			slog.String("provider", route.Provider),
+			slog.String("provider_refund_id", ev.ProviderRefundID),
+			slog.String("error", err.Error()),
+		)
+		h.recordWebhookEvent(ev.Type, webhookOutcomeError)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"webhook.refund_failed", "failed to record the refund event", r))
+		return
+	}
+	if res.Unconfirmed {
+		ack("refund could not be confirmed with the provider; an operator is alerted", false)
+		return
+	}
+	if res.MaybeOurs {
+		ack("arena refund not recorded yet; it will be read back", false)
+		return
+	}
+	if !res.Found {
+		ack("not an arena refund", false)
+		return
+	}
+	if res.Parked {
+		h.recordWebhookEvent(ev.Type, webhookOutcomeProcessed)
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
+			"acknowledged": true,
+			"event_type":   ev.Type,
+			"processed":    true,
+			"origin":       "provider_dashboard",
+			"reason":       "the payment was already fully refunded; recorded for review",
+		})
+		return
+	}
+	if !res.Created {
+		ack("refund already recorded", false)
+		return
+	}
+	h.recordWebhookEvent(ev.Type, webhookOutcomeProcessed)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"acknowledged": true,
+		"event_type":   ev.Type,
+		"processed":    true,
+		"origin":       "provider_dashboard",
 	})
 }

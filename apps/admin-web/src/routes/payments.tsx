@@ -153,7 +153,8 @@ export function buildStripeConfigWebhookUrl(
  * The ONLY Stripe events an organizer subscribes their per-config endpoint
  * to. The widget takes money through a hosted Stripe Checkout Session, and
  * that payment is reported exclusively through `checkout.session.*` — see
- * hcheckout/payment_intents.go.
+ * hcheckout/payment_intents.go. The `refund.*` events report refunds: the
+ * ones arena sent, and the ones made in the Stripe Dashboard.
  *
  * Deliberately a separate, narrower list than STRIPE_WEBHOOK_EVENTS (which
  * enumerates every type the handler understands, including the legacy
@@ -164,7 +165,28 @@ export const STRIPE_CHECKOUT_SESSION_EVENTS: readonly string[] = [
   "checkout.session.expired",
   "checkout.session.async_payment_succeeded",
   "checkout.session.async_payment_failed",
+  // Refund events: without them arena never learns about a refund made in the
+  // Stripe Dashboard, and a refund it sent itself is only confirmed by the
+  // periodic read-back instead of at once.
+  "refund.created",
+  "refund.updated",
+  "refund.failed",
 ];
+
+/**
+ * Human wording for the codes of `webhook_warnings` in the answer of
+ * POST .../payment-configs/{id}/verify. An unknown code is shown as it is.
+ */
+export function webhookWarningText(code: string): string {
+  switch (code) {
+    case "refund_events_not_subscribed":
+      return "Your Stripe webhook endpoint does not receive refund events. Add refund.updated (and refund.created, refund.failed) to it in Stripe, or refunds made in the Stripe Dashboard will not reach arena.";
+    case "webhook_endpoint_not_found":
+      return "Stripe has no webhook endpoint with this configuration's URL. Register it in Stripe Dashboard → Developers → Webhooks, or no payment or refund will be confirmed.";
+    default:
+      return code;
+  }
+}
 
 /**
  * What an organizer's Stripe API key must be allowed to do.
@@ -182,7 +204,7 @@ export interface StripeKeyPermission {
   readonly resource: string;
   readonly access: "Read" | "Write";
   readonly endpoint: string;
-  readonly need: "required" | "future";
+  readonly need: "required" | "optional" | "future";
   readonly why: string;
 }
 
@@ -204,9 +226,16 @@ export const STRIPE_API_KEY_PERMISSIONS: readonly StripeKeyPermission[] = [
   {
     resource: "Refunds",
     access: "Write",
-    endpoint: "POST /v1/refunds",
-    need: "future",
-    why: "refunds, once they have an admin surface",
+    endpoint: "POST /v1/refunds, GET /v1/refunds/{id}",
+    need: "required",
+    why: "sends a refund from arena and reads its answer back; without it no refund can be sent",
+  },
+  {
+    resource: "Webhook Endpoints",
+    access: "Read",
+    endpoint: "GET /v1/webhook_endpoints",
+    need: "optional",
+    why: "lets Check warn when your webhook endpoint misses the refund events; nothing breaks without it",
   },
   {
     resource: "PaymentIntents",
@@ -238,6 +267,9 @@ export const STRIPE_WEBHOOK_EVENTS: readonly string[] = [
   "checkout.session.expired",
   "checkout.session.async_payment_succeeded",
   "checkout.session.async_payment_failed",
+  "refund.created",
+  "refund.updated",
+  "refund.failed",
 ];
 
 /**
@@ -317,6 +349,8 @@ interface PaymentConfigListEnvelope {
 
 interface PaymentConfigEnvelope {
   readonly payment_config: PaymentConfig;
+  /** Advisory findings of the verify route about the webhook endpoint. */
+  readonly webhook_warnings?: readonly string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -798,7 +832,12 @@ export function StripeApiKeyPermissionsView() {
               {p.resource} — {p.access}
             </code>{" "}
             <span style={mutedHintStyle}>
-              {p.need === "required" ? "required" : "not needed yet"} —{" "}
+              {p.need === "required"
+                ? "required"
+                : p.need === "optional"
+                  ? "optional"
+                  : "not needed yet"}{" "}
+              —{" "}
               {p.why} (<code style={monoStyle}>{p.endpoint}</code>)
             </span>
           </li>
@@ -879,8 +918,13 @@ export function StripeWebhookConfigUrlsView({
       </div>
       <p style={setupPanelTextStyle}>
         Register the URL below as a separate endpoint in your Stripe
-        Dashboard and subscribe it to <strong>only</strong> these four
-        events — nothing else. The config id in the path is what lets the
+        Dashboard and subscribe it to <strong>only</strong> these events —
+        nothing else. The four <code style={monoStyle}>checkout.session.*</code>{" "}
+        events confirm payments; the three{" "}
+        <code style={monoStyle}>refund.*</code> events tell arena about
+        refunds, including the ones you make yourself in the Stripe
+        Dashboard — without them such a refund never reaches arena and the
+        buyer&rsquo;s tickets stay valid. The config id in the path is what lets the
         platform verify the signature with this organization&rsquo;s own{" "}
         <code style={monoStyle}>webhook_secret</code>.
       </p>
@@ -1222,6 +1266,7 @@ function StatusBadge({
 function VerifyButton({ config }: { config: PaymentConfig }) {
   const queryClient = useQueryClient();
   const [error, setError] = useState<ApiError | null>(null);
+  const [warnings, setWarnings] = useState<readonly string[]>([]);
 
   const mutation = useMutation<PaymentConfigEnvelope, ApiError, void>({
     mutationFn: () =>
@@ -1229,8 +1274,9 @@ function VerifyButton({ config }: { config: PaymentConfig }) {
         method: "POST",
         path: `/v1/organizations/${config.org_id}/payment-configs/${config.id}/verify`,
       }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       setError(null);
+      setWarnings(data.webhook_warnings ?? []);
       queryClient.invalidateQueries({ queryKey: ["payment_configs"] });
     },
     // A failed REQUEST is not a failed credential: the verdict lives on the
@@ -1239,20 +1285,32 @@ function VerifyButton({ config }: { config: PaymentConfig }) {
   });
 
   return (
-    <button
-      type="button"
-      style={rowActionButtonStyle}
-      onClick={() => mutation.mutate()}
-      disabled={mutation.isPending}
-      title={
-        error
-          ? `Could not run the check: ${error.message}`
-          : "Ask the provider whether this credential works"
-      }
-      data-testid={`payments-verify-${config.id}`}
-    >
-      {mutation.isPending ? "Checking…" : "Check"}
-    </button>
+    <>
+      <button
+        type="button"
+        style={rowActionButtonStyle}
+        onClick={() => mutation.mutate()}
+        disabled={mutation.isPending}
+        title={
+          error
+            ? `Could not run the check: ${error.message}`
+            : "Ask the provider whether this credential works"
+        }
+        data-testid={`payments-verify-${config.id}`}
+      >
+        {mutation.isPending ? "Checking…" : "Check"}
+      </button>
+      {warnings.map((code) => (
+        <div
+          key={code}
+          role="alert"
+          style={{ color: "#92400e", fontSize: 12, marginTop: 4, maxWidth: 360 }}
+          data-testid={`payments-webhook-warning-${config.id}`}
+        >
+          {webhookWarningText(code)}
+        </div>
+      ))}
+    </>
   );
 }
 

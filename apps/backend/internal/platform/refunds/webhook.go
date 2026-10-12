@@ -49,13 +49,32 @@ func (e *Engine) ApplyProviderRefund(ctx context.Context, orgID uuid.UUID, provi
 	// so the provider redelivers the event later.
 	read, ok, err := e.readBack(ctx, r)
 	if err != nil {
-		return true, err
+		// Bounded like a dashboard refund's read-back (a 404 included): after
+		// MaxDashboardConfirmAttempts failed deliveries the refund is left as
+		// it is, a visible record is written and the operator is alerted.
+		attempts, cerr := e.noteUnconfirmed(ctx, orgID, provider, providerRefundID, err)
+		if cerr != nil {
+			return true, errors.Join(err, cerr)
+		}
+		if attempts < MaxDashboardConfirmAttempts {
+			return true, err
+		}
+		if rerr := e.recordUnresolved(ctx, UnresolvedEvent{OrgID: orgID, Provider: provider, ProviderRefundID: providerRefundID,
+			Kind: UnresolvedKnownUnconfirmed, RefundID: &id, Attempts: attempts, Detail: err.Error()}); rerr != nil {
+			return true, errors.Join(err, rerr)
+		}
+		return true, ErrProviderEventGivenUp
 	}
 	if ok {
 		res = read
 	}
 	return true, e.applyStatus(ctx, id, pay, res, true)
 }
+
+// ErrProviderEventGivenUp: the event's refund could not be read back after
+// MaxDashboardConfirmAttempts deliveries; nothing moved, a record was written
+// and the operator is alerted. The caller acknowledges the delivery.
+var ErrProviderEventGivenUp = errors.New("refunds: the provider's refund could not be read back; an operator is alerted")
 
 // readBack asks the provider for the refund's current status. ok is false
 // when the provider offers no read-back (the event is then all there is).
