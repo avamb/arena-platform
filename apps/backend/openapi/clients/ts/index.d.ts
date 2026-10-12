@@ -9975,6 +9975,14 @@ export interface components {
              * @description UUID of the order.
              */
             order_id: string;
+            /**
+             * Format: int64
+             * @description What is left of the whole payment, in minor units (0 when arena
+             *     took no payment). Each ticket's `refundable` is capped by it on its
+             *     own, so the tickets together may offer more than this amount; no
+             *     refund operation returns more.
+             */
+            payment_left: number;
             /** @description How the money goes back, see the schema description. */
             route: string;
             /** @description Payment provider of the order; empty when arena took no payment. */

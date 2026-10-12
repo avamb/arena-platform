@@ -8715,6 +8715,12 @@ type OrderRefundOptions struct {
 	// PartialRefund True when the provider can return less than the whole payment.
 	PartialRefund bool `json:"partial_refund"`
 
+	// PaymentLeft What is left of the whole payment, in minor units (0 when arena
+	// took no payment). Each ticket's `refundable` is capped by it on its
+	// own, so the tickets together may offer more than this amount; no
+	// refund operation returns more.
+	PaymentLeft int64 `json:"payment_left"`
+
 	// Provider Payment provider of the order; empty when arena took no payment.
 	Provider string `json:"provider"`
 

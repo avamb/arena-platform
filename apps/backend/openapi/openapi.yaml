@@ -3344,12 +3344,20 @@ components:
         payment provider), `seller_site` (the seller's own site refunds),
         `unsupported` or `unknown_provider` (arena cannot send money back
         through this provider) or `none` (arena took no money for the order).
-      required: [order_id, route, provider, currency, partial_refund, tickets, active_refunds]
+      required: [order_id, route, provider, currency, partial_refund, payment_left, tickets, active_refunds]
       properties:
         order_id:
           type: string
           format: uuid
           description: UUID of the order.
+        payment_left:
+          type: integer
+          format: int64
+          description: |
+            What is left of the whole payment, in minor units (0 when arena
+            took no payment). Each ticket's `refundable` is capped by it on its
+            own, so the tickets together may offer more than this amount; no
+            refund operation returns more.
         route:
           type: string
           description: How the money goes back, see the schema description.
