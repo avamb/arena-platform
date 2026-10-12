@@ -127,3 +127,36 @@ func TestRefundScanned_RetryInheritsTheExceptionOfARefusedRefund(t *testing.T) {
 		t.Fatalf("the retry was journaled as a blocked attempt (%d rows)", n)
 	}
 }
+
+func (e *scanEnv) grantException(t *testing.T, i int) {
+	t.Helper()
+	if _, err := e.srv.refundEngine().GrantScanException(context.Background(), refunds.ScanExceptionInput{OrgID: e.org,
+		TicketID: e.f.tickets[i], Actor: refunds.Actor{Type: "user", ID: uuid.NewString()}, Reason: "show cancelled"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (e *scanEnv) exceptionUsedBy(t *testing.T, i int) string {
+	t.Helper()
+	var by string
+	if err := e.srv.pgxPool.QueryRow(context.Background(), `SELECT COALESCE(used_by_refund::text, CASE WHEN used_at IS NULL THEN '' ELSE 'spent' END)
+		FROM refund_scan_exceptions WHERE ticket_id = $1`, e.f.tickets[i]).Scan(&by); err != nil {
+		t.Fatal(err)
+	}
+	return by
+}
+
+// N5: anything after the JSON object is refused, so the scan check and the
+// handler can never read two different requests out of one body.
+func TestRefundScanned_CancelBodyWithTrailingDataIsRefused(t *testing.T) {
+	e := newScanEnv(t, "ticket.cancel", "refund.read")
+	e.exec(t, `UPDATE tickets SET used_at = now() WHERE id = $1`, e.f.tickets[0])
+	st, out := e.pf.do(t, http.MethodPost, "/v1/tickets/"+e.f.tickets[0].String()+"/cancel", e.key,
+		`{"reason":"r","refund_mode":"automatic","refund_amount":2500} x`)
+	if st != http.StatusBadRequest {
+		t.Fatalf("cancel body with trailing data: %d %v; want 400", st, out)
+	}
+	if got, _ := e.f.ticket(t, 0); got != "active" {
+		t.Fatalf("ticket is %q; want active", got)
+	}
+}

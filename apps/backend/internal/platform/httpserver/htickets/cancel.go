@@ -38,6 +38,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -244,6 +245,14 @@ func readCancelTicketRequest(w http.ResponseWriter, r *http.Request) (cancelTick
 	if err := dec.Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"ticket.invalid_body", "request body is not valid JSON: "+err.Error(), r,
+		))
+		return req, false
+	}
+	// One JSON object and nothing after it: a body with trailing data could
+	// be read as two different requests by two readers.
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
+			"ticket.invalid_body", "request body must hold exactly one JSON object", r,
 		))
 		return req, false
 	}
