@@ -216,14 +216,16 @@ func ScannedRefusalWithNotice(ticket uuid.UUID, notice string) *Error {
 }
 
 // ScannedTicketOfPayment reports a scanned ticket among those sold with the
-// payment (a refund of the whole payment would take its money back).
+// payment (a refund of the whole payment would take its money back). A
+// cancelled ticket counts too: cancelling a scanned ticket without money is
+// allowed, and must not open the way to returning its money with the rest.
 func (e *Engine) ScannedTicketOfPayment(ctx context.Context, paymentIntentID uuid.UUID) (uuid.UUID, bool, error) {
 	var id uuid.UUID
 	found := false
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
 		err := tx.QueryRow(ctx, `SELECT t.id FROM payment_intents pi
 			JOIN tickets t ON t.checkout_session_id = pi.checkout_session_id
-			WHERE pi.id = $1 AND t.status = 'active' AND `+ticketBlockedSQL+scannedOrder+` LIMIT 1`, paymentIntentID).Scan(&id)
+			WHERE pi.id = $1 AND `+ticketBlockedSQL+scannedOrder+` LIMIT 1`, paymentIntentID).Scan(&id)
 		if err == nil {
 			found = true
 			return nil
@@ -243,12 +245,12 @@ func (e *Engine) ScannedTicketOfPayment(ctx context.Context, paymentIntentID uui
 func (e *Engine) blockScannedAtClaim(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*Refund, uuid.UUID, error) {
 	var ticket uuid.UUID
 	// A refund of the whole payment (no ticket of its own) is held to every
-	// active ticket sold with that payment.
+	// ticket sold with that payment, a cancelled one included.
 	err := tx.QueryRow(ctx, `SELECT t.id FROM refunds r
 		JOIN payment_intents pi ON pi.id = r.payment_intent_id
 		JOIN tickets t ON (t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)
 		                   OR (COALESCE(r.ticket_id, r.cancelled_ticket_id) IS NULL
-		                       AND t.checkout_session_id = pi.checkout_session_id AND t.status = 'active'))
+		                       AND t.checkout_session_id = pi.checkout_session_id))
 		WHERE r.id = $1 AND r.state = 'provider_pending' AND r.provider_refund_id IS NULL AND r.provider_attempts = 0
 		  AND `+ticketBlockedForRefundSQL+scannedOrder+` LIMIT 1`, id).Scan(&ticket)
 	if err == pgx.ErrNoRows {
@@ -259,7 +261,7 @@ func (e *Engine) blockScannedAtClaim(ctx context.Context, tx pgx.Tx, id uuid.UUI
 			JOIN payment_intents pi ON pi.id = r.payment_intent_id
 			JOIN tickets t ON (t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)
 			                   OR (COALESCE(r.ticket_id, r.cancelled_ticket_id) IS NULL
-			                       AND t.checkout_session_id = pi.checkout_session_id AND t.status = 'active'))
+			                       AND t.checkout_session_id = pi.checkout_session_id))
 			WHERE r.id = $1 AND sx.ticket_id = t.id AND sx.used_at IS NULL AND sx.expires_at > now()
 			  AND r.state = 'provider_pending' AND r.provider_attempts = 0`, id)
 		return nil, uuid.Nil, serr
@@ -282,7 +284,7 @@ func ScannedRefusal(ticket uuid.UUID) *Error { return scannedRefusal(ticket) }
 
 // ScannedTicketForRefund reports the scanned ticket a stored refund would
 // return money for: its own ticket, or, for a refund of the whole payment,
-// any active ticket sold with it.
+// any ticket sold with it (a cancelled one included).
 func (e *Engine) ScannedTicketForRefund(ctx context.Context, refundID uuid.UUID) (uuid.UUID, bool, error) {
 	var id uuid.UUID
 	found := false
@@ -290,7 +292,7 @@ func (e *Engine) ScannedTicketForRefund(ctx context.Context, refundID uuid.UUID)
 		err := tx.QueryRow(ctx, `SELECT t.id FROM refunds r
 			JOIN payment_intents pi ON pi.id = r.payment_intent_id
 			JOIN tickets t ON (t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)
-			                   OR (COALESCE(r.ticket_id, r.cancelled_ticket_id) IS NULL AND t.checkout_session_id = pi.checkout_session_id AND t.status = 'active'))
+			                   OR (COALESCE(r.ticket_id, r.cancelled_ticket_id) IS NULL AND t.checkout_session_id = pi.checkout_session_id))
 			WHERE r.id = $1 AND `+ticketBlockedForRefundSQL+scannedOrder+` LIMIT 1`, refundID).Scan(&id)
 		if err == nil {
 			found = true
