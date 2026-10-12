@@ -19,6 +19,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
@@ -252,4 +253,54 @@ func TestRefundScanned_OwnersNoticeIsHonest(t *testing.T) {
 	if len(box.msgs) != 1 || box.msgs[0].To != contact {
 		t.Fatalf("notice = %+v; want one to the contact address %s", box.msgs, contact)
 	}
+}
+
+// failingMailbox refuses one address while fail is set.
+type failingMailbox struct {
+	scannedMailbox
+	failTo string
+}
+
+func (m *failingMailbox) Send(ctx context.Context, msg email.Message) error {
+	if m.failTo != "" && msg.To == m.failTo {
+		return fmt.Errorf("mailbox %s refused", msg.To)
+	}
+	return m.scannedMailbox.Send(ctx, msg)
+}
+
+// Item 8: when one owner's address fails, the retried job mails only that
+// address; the owners who already have the notice do not get it twice.
+func TestRefundScanned_RetryMailsOnlyTheAddressThatFailed(t *testing.T) {
+	e := newScanEnv(t)
+	ctx := context.Background()
+	second, err := e.pf.q.InsertUser(ctx, "scan3-b-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.exec(t, `INSERT INTO memberships (user_id, org_id, role, status) VALUES ($1, $2, 'org_admin', 'active')`, second.ID, e.org)
+	e.exec(t, `UPDATE tickets SET used_at = now() WHERE id = $1`, e.f.tickets[0])
+	if st, _ := e.createRefund(t, 0); st != http.StatusConflict {
+		t.Fatalf("create: %d; want 409", st)
+	}
+	var payload []byte
+	if err := e.srv.pgxPool.QueryRow(ctx, `SELECT payload::text FROM worker_jobs WHERE job_type = $1 AND payload->>'org_id' = $2`,
+		refunds.JobTypeScannedAlertEmail, e.org.String()).Scan(&payload); err != nil {
+		t.Fatal(err)
+	}
+	box := &failingMailbox{failTo: second.Email}
+	handler := delivery.NewScannedAlertHandler(delivery.ScannedAlertOptions{Sender: box, DB: e.srv.pgxPool})
+	if err := handler(ctx, payload); err == nil {
+		t.Fatal("a failed address must make the job retry")
+	}
+	if len(box.msgs) != 1 {
+		t.Fatalf("first run sent %d; want 1", len(box.msgs))
+	}
+	box.failTo = ""
+	if err := handler(ctx, payload); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if len(box.msgs) != 2 || box.msgs[1].To != second.Email {
+		t.Fatalf("after the retry: %+v; want exactly one more letter, to %s", box.msgs, second.Email)
+	}
+	e.exec(t, `DELETE FROM refund_scan_notice_sends WHERE email = ANY($1)`, []string{box.msgs[0].To, box.msgs[1].To})
 }

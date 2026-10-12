@@ -43,6 +43,10 @@ type ScannedAlertPayload struct {
 	OrgID      string `json:"org_id"`
 	TicketID   string `json:"ticket_id"`
 	ActorLabel string `json:"actor_label"`
+	// NoticeID keys the per-address delivery marks of this one notice
+	// (refund_scan_notice_sends): a retried job mails only the addresses
+	// that have not received it yet.
+	NoticeID string `json:"notice_id,omitempty"`
 }
 
 // ticketScannedSQL is true for a ticket t that was used: it carries used_at,
@@ -144,7 +148,8 @@ func (e *Engine) RecordScannedBlock(ctx context.Context, orgID, ticketID uuid.UU
 		}
 		if notify {
 			if reachable {
-				payload, _ := json.Marshal(ScannedAlertPayload{OrgID: orgID.String(), TicketID: ticketID.String(), ActorLabel: label})
+				payload, _ := json.Marshal(ScannedAlertPayload{OrgID: orgID.String(), TicketID: ticketID.String(), ActorLabel: label,
+					NoticeID: uuid.NewString()})
 				if _, err := tx.Exec(wctx, `INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
 					VALUES ($1, $2::jsonb, 5, 'pending', now())`, JobTypeScannedAlertEmail, payload); err != nil {
 					return err

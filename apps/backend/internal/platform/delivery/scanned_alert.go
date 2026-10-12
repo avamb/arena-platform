@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
@@ -26,6 +27,8 @@ import (
 type ScannedAlertDB interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	// Exec writes the per-address delivery marks.
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
 // ScannedAlertOptions are the dependencies of the job.
@@ -129,8 +132,21 @@ func NewScannedAlertHandler(opts ScannedAlertOptions) worker.HandlerFunc {
 		if orderNumber != nil {
 			data.Alert.OrderNumber = strconv.FormatInt(*orderNumber, 10)
 		}
+		noticeID, _ := uuid.Parse(p.NoticeID)
+		sent := func(addr string) bool {
+			if noticeID == uuid.Nil {
+				return false
+			}
+			var done bool
+			_ = opts.DB.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM refund_scan_notice_sends WHERE notice_id = $1 AND email = $2)`,
+				noticeID, addr).Scan(&done)
+			return done
+		}
 		var firstErr error
 		for _, o := range owners {
+			if sent(o.email) {
+				continue // a retry: this address already has the notice
+			}
 			data.RecipientEmail = o.email
 			out, rerr := renderer.Render(templates.TemplateKindRefundBlocked, o.locale, data)
 			if rerr != nil {
@@ -142,6 +158,13 @@ func NewScannedAlertHandler(opts ScannedAlertOptions) worker.HandlerFunc {
 				logger.Warn("delivery: refund-blocked alert not sent", slog.String("org_id", orgID.String()))
 				if firstErr == nil {
 					firstErr = serr
+				}
+				continue
+			}
+			if noticeID != uuid.Nil {
+				if _, merr := opts.DB.Exec(ctx, `INSERT INTO refund_scan_notice_sends (notice_id, email) VALUES ($1, $2)
+					ON CONFLICT DO NOTHING`, noticeID, o.email); merr != nil {
+					logger.Warn("delivery: refund-blocked alert sent but not marked", slog.String("org_id", orgID.String()))
 				}
 			}
 		}
