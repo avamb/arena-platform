@@ -183,10 +183,25 @@ function realTaskResult(task, entry, sessionDir, approved) {
 function reviewPendingTask(task, entry, sessionDir, result) {
   if (entry.codex_review !== 'run') return result;
   const worktree = entry.worktree ?? ROOT;
+  const diffProbe = spawnSync('git', ['-C', worktree, 'diff', '--no-ext-diff', '--binary'], {
+    encoding: 'utf8', windowsHide: true, timeout: 10000,
+  });
+  const statusProbe = spawnSync('git', ['-C', worktree, 'status', '--short'], {
+    encoding: 'utf8', windowsHide: true, timeout: 10000,
+  });
+  const sdkResultPath = path.join(ROOT, 'orchestration', 'runs', task.task_id, 'result.json');
+  let sdkEvidence = null;
+  if (existsSync(sdkResultPath)) {
+    try { sdkEvidence = JSON.parse(readFileSync(sdkResultPath, 'utf8')); } catch { sdkEvidence = { parse_error: true }; }
+  }
   const prompt = [
     'Review the current uncommitted task implementation in this worktree.',
     `Task objective: ${task.objective}`,
     `Acceptance criteria: ${task.acceptance.join('; ')}`,
+    `Git status:\n${redact(statusProbe.stdout ?? '')}`,
+    `Git diff:\n${redact(diffProbe.stdout ?? '')}`,
+    `Claude result and test evidence:\n${redact(sdkEvidence ?? result)}`,
+    'Do not infer PASS from missing evidence. Check scope, provenance, tests and product criteria independently.',
     'Run only safe read-only checks. Return only the required JSON review schema.',
   ].join('\n');
   const review = runCodexReview({ worktree, prompt, schemaPath: path.join(ROOT, 'orchestration', 'codex-review.schema.json'), timeoutMs: task.timeout_ms });
