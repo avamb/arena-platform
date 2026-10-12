@@ -332,8 +332,8 @@ func TestEngine_ConfigAndChargeRefRefusalsNeedReview(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if r := res.Refunds[0]; r.State != refunds.StateManualReview || r.ProviderAttempts != 1 {
-				t.Fatalf("refund = %s attempts %d; want manual_review on the first attempt", r.State, r.ProviderAttempts)
+			if r := res.Refunds[0]; r.State != refunds.StateManualReview || r.ProviderAttempts != 0 {
+				t.Fatalf("refund = %s attempts %d; want manual_review with no attempt used (nothing reached the provider)", r.State, r.ProviderAttempts)
 			}
 			n := &recordingNotifier{}
 			if _, err := e.Sweep(context.Background(), time.Now(), n); err != nil || len(n.texts) != 1 {

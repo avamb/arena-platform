@@ -456,8 +456,8 @@ func TestEngine_DeterministicModuleErrorsGoStraightToReview(t *testing.T) {
 				t.Fatal(err)
 			}
 			r := res.Refunds[0]
-			if r.State != refunds.StateManualReview || deref(r.FailureCode) != c.wantCode || r.ProviderAttempts != 1 {
-				t.Fatalf("refund = %s / %s attempts %d; want manual_review %s on the first attempt",
+			if r.State != refunds.StateManualReview || deref(r.FailureCode) != c.wantCode || r.ProviderAttempts != 0 {
+				t.Fatalf("refund = %s / %s attempts %d; want manual_review %s with no attempt used (nothing reached the provider)",
 					r.State, deref(r.FailureCode), r.ProviderAttempts, c.wantCode)
 			}
 			n := &recordingNotifier{}
