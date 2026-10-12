@@ -177,3 +177,28 @@ func TestEngine_RefundWebhookReversalOfASucceededRefund(t *testing.T) {
 		t.Error("a reversed refund owes no alert")
 	}
 }
+
+// Round-3 review R3-3: a reversal the provider confirmed moved no money, so
+// the reversed refund no longer counts against the payment.
+func TestEngine_ReversedRefundLeavesThePaymentsBudget(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	e, r, m := pendingRefundWith(t, f, "k-hook-reversed-budget")
+	ctx := context.Background()
+	m.lookup = payments.RefundResult{Status: payments.RefundSucceeded}
+	if _, err := e.ApplyProviderRefund(ctx, f.org, "pay03fake", *r.ProviderRefundID, payments.RefundResult{Status: payments.RefundSucceeded}); err != nil {
+		t.Fatal(err)
+	}
+	m.lookup = payments.RefundResult{Status: payments.RefundFailed, FailureCode: "canceled"}
+	if _, err := e.ApplyProviderRefund(ctx, f.org, "pay03fake", *r.ProviderRefundID, payments.RefundResult{Status: payments.RefundFailed}); err != nil {
+		t.Fatal(err)
+	}
+	// Half of the payment went back through a refund that names no ticket.
+	f.exec(t, `INSERT INTO refunds (payment_intent_id, org_id, order_id, amount, currency, reason, state, settlement,
+		provider, provider_refund_id, provider_status, succeeded_at, settled_at)
+		SELECT id, org_id, $2, 2500, currency, 'order level', 'succeeded', 'provider', 'pay03fake', 're_half_'||gen_random_uuid(), 'succeeded', now(), now()
+		FROM payment_intents WHERE id = $1`, f.payment, f.order)
+	m.answers = append(m.answers, succeeded)
+	if _, err := e.CreateBatch(ctx, f.batch("k-after-reversal", true, refunds.Item{TicketID: f.tickets[1]})); err != nil {
+		t.Fatalf("refund of the other ticket after a reversal: %v (the reversed refund still counts)", err)
+	}
+}
