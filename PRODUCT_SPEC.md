@@ -33,3 +33,11 @@
 - Aribau XLSX source-only содержит 1166 мест; старый SVG имеет version mismatch и 12 дополнительных мест.
 - Arena Admin Preview сейчас не выводит `decor_svg`; Widget выводит только санитизированный декоративный слой.
 - Фактический Console balance, expiry и spend limit должны быть перепроверены перед новым платным запуском; этот документ не заменяет подтверждение Console.
+
+## Текущий статус после M1
+
+M1 XLSX Productization объединён в `main`. Подтверждены профили Hunter College (907 мест) и Aribau (1166 мест), `seating-json-v1`, source-only provenance, deterministic diagnostic SVG и обязательная fixture acceptance gate. Клиентские XLSX и frozen source-only baselines остаются локальными и не входят в Git.
+
+## Следующая продуктовая граница
+
+M2 начинается с одного source-only адаптера нового формата. Первый кандидат — vector PDF, потому что его геометрию можно проверять детерминированно до AI. Raster JPG/PNG/PDF и AI semantic enrichment остаются отдельными экспериментами с unknown/quarantine и бюджетным gate. Bil24/Arena exporters и UI проходят отдельную локальную проверку и не считаются готовыми по одному факту генерации SVG.

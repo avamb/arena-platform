@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { safeDiagnosticText } from './sdk-telemetry.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const requireSdk = createRequire(path.join(ROOT, 'sdk_experiments', 'package.json'));
+const RUNTIME_ROOT = path.resolve(process.env.VENUE_SVG_RUNTIME_ROOT || path.join(path.dirname(ROOT), 'Venue_SVG_Generator'));
+const requireSdk = createRequire(path.join(RUNTIME_ROOT, 'sdk_experiments', 'package.json'));
 const { query } = requireSdk('@anthropic-ai/claude-agent-sdk');
 const cli = requireSdk.resolve('@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe');
 const workspaceId = 'wrkspc_01XadYi6gMSqYzdMR5KqiHhr';
@@ -62,7 +63,7 @@ try {
     prompt: 'Return one short acknowledgement.',
     options: {
       pathToClaudeCodeExecutable: cli,
-      cwd: path.join(ROOT, 'sdk_experiments', 'workspace'),
+      cwd: path.join(RUNTIME_ROOT, 'sdk_experiments', 'workspace'),
       env,
       model: 'claude-sonnet-5-5',
       maxTurns: 1,

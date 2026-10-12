@@ -6,9 +6,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const RUNTIME_ROOT = path.resolve(process.env.VENUE_SVG_RUNTIME_ROOT || path.join(path.dirname(ROOT), 'Venue_SVG_Generator'));
 const oldRunner = readFileSync(path.join(ROOT, 'sdk_experiments', 'runner.mjs'), 'utf8');
 const newRunner = readFileSync(path.join(ROOT, 'orchestration', 'sdk-task-runner.mjs'), 'utf8');
-const sdkPackage = JSON.parse(readFileSync(path.join(ROOT, 'sdk_experiments', 'node_modules', '@anthropic-ai', 'claude-agent-sdk', 'package.json'), 'utf8'));
+const sdkPackage = JSON.parse(readFileSync(path.join(RUNTIME_ROOT, 'sdk_experiments', 'node_modules', '@anthropic-ai', 'claude-agent-sdk', 'package.json'), 'utf8'));
 
 test('documents SDK process parity and intentional differences offline', () => {
   assert.equal(sdkPackage.version, '0.3.296');
