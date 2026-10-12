@@ -90,8 +90,10 @@ func TestScanException_SuperadminOnlyInsideTheOrganization(t *testing.T) {
 	}
 
 	e.expect(t, http.StatusCreated, http.MethodPost, path, super, "support ticket 7", body)
-	if out := e.expect(t, http.StatusConflict, http.MethodPost, path, super, "support ticket 7", body); sec1Code(out) != refunds.CodeScanExceptionExists {
-		t.Errorf("second grant: code %q", sec1Code(out))
+	// The same operator sending it again (the first answer was lost) gets the
+	// same exception back, and nothing is announced twice.
+	if out := e.expect(t, http.StatusOK, http.MethodPost, path, super, "support ticket 7", body); !strings.Contains(out, `"replayed":true`) {
+		t.Errorf("second grant by the same operator: %s; want the same exception, replayed", out)
 	}
 	var audited, mailed, announced int
 	_ = e.srv.pgxPool.QueryRow(ctx, `SELECT count(*) FROM audit_events WHERE action = 'v1.refund.scan_exception_grant' AND resource_id = $1`, f.tickets[0].String()).Scan(&audited)

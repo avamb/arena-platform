@@ -2,9 +2,10 @@
 -- of a ticket that was already scanned at the gate go through (a show
 -- cancelled half-way, a scan made by mistake; owner decision 2026-10-13).
 --
--- One exception per ticket, ever (UNIQUE ticket_id). It is valid until
--- expires_at (at most 24 hours after it was granted) and is spent by the
--- first refund that uses it: used_at and used_by_refund record that refund,
+-- One row per ticket (UNIQUE ticket_id): one that expired unused is granted
+-- again on the same row, a spent one is final. It is valid until expires_at
+-- (at most 24 hours after it was granted) and is spent by the first refund
+-- that uses it: used_at and used_by_refund record that refund,
 -- so the refund keeps passing the scan check at its claim while no other
 -- refund of the ticket can.
 --

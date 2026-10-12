@@ -6,9 +6,11 @@ package httpserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -236,5 +238,41 @@ func TestRefundScanned_ScanAfterTheGrantVoidsTheException(t *testing.T) {
 	st, out := e.createRefund(t, 0)
 	if st != http.StatusConflict || prom0113Code(out) != refunds.CodeTicketScanned {
 		t.Fatalf("refund after a scan that followed the exception: %d %v; want 409 %s", st, out, refunds.CodeTicketScanned)
+	}
+}
+
+// N8: a grant whose answer was lost can be sent again by the same operator
+// and answers the same exception (no second notice); one that expired unused
+// can be granted again; a spent one cannot.
+func TestRefundScanned_ExceptionGrantIsIdempotentAndRenewable(t *testing.T) {
+	e := newScanEnv(t)
+	ctx := context.Background()
+	e.exec(t, `UPDATE tickets SET used_at = now() - interval '1 hour' WHERE id = $1`, e.f.tickets[0])
+	actor := refunds.Actor{Type: "user", ID: uuid.NewString()}
+	grant := func() (refunds.ScanException, error) {
+		return e.srv.refundEngine().GrantScanException(ctx, refunds.ScanExceptionInput{OrgID: e.org, TicketID: e.f.tickets[0],
+			Actor: actor, Reason: "show cancelled"})
+	}
+	notices := func() int {
+		return e.count(t, `SELECT count(*) FROM outbox_events WHERE event_type = $1 AND aggregate_id = $2`,
+			refunds.EventScanExceptionGranted, e.f.tickets[0].String())
+	}
+	first, err := grant()
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := grant()
+	if err != nil || again.ID != first.ID || !again.Replayed || notices() != 1 {
+		t.Fatalf("repeated grant: %+v err=%v notices=%d; want the same exception, replayed, one notice", again, err, notices())
+	}
+	e.exec(t, `UPDATE refund_scan_exceptions SET created_at = now() - interval '3 hours', expires_at = now() - interval '1 hour' WHERE ticket_id = $1`, e.f.tickets[0])
+	renewed, err := grant()
+	if err != nil || renewed.Replayed || !renewed.ExpiresAt.After(time.Now()) || notices() != 2 {
+		t.Fatalf("grant after an unused exception expired: %+v err=%v notices=%d; want a fresh one and a second notice", renewed, err, notices())
+	}
+	e.exec(t, `UPDATE refund_scan_exceptions SET used_at = now() WHERE ticket_id = $1`, e.f.tickets[0])
+	var refErr *refunds.Error
+	if _, err := grant(); !errors.As(err, &refErr) || refErr.Code != refunds.CodeScanExceptionExists {
+		t.Fatalf("grant after the exception was spent: %v; want %s", err, refunds.CodeScanExceptionExists)
 	}
 }

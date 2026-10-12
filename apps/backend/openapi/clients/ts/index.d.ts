@@ -6551,7 +6551,9 @@ export interface paths {
          *     mistake). Every check that refuses a scanned ticket with
          *     refund.ticket_scanned honours it; the first refund that uses it spends
          *     it, and the exception ends at `expires_at` (at most 24 hours) in any
-         *     case. A ticket gets at most one exception. The grant is audited with
+         *     case. A ticket has at most one exception at a time: one that expired
+         *     unused may be granted again, a spent one is final, and a scan of the
+         *     ticket after the grant voids it (that scan is a real entry). The grant is audited with
          *     the X-Admin-Reason, the organization's owners get an e-mail and the
          *     sales bot tells the organization's group and the operator; those two
          *     notices carry the `note` (cut to 500 characters), never the
@@ -43614,6 +43616,41 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The same operator asked again for an exception that is still live and unused (the first answer was lost); the same exception, nothing announced again. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description The exception. */
+                        scan_exception: {
+                            /**
+                             * Format: uuid
+                             * @description UUIDv7 of the exception.
+                             */
+                            id: string;
+                            /**
+                             * Format: uuid
+                             * @description UUIDv7 of the ticket.
+                             */
+                            ticket_id: string;
+                            /**
+                             * Format: date-time
+                             * @description When it was granted (RFC 3339, UTC).
+                             */
+                            created_at: string;
+                            /**
+                             * Format: date-time
+                             * @description Until when it can be used (RFC 3339, UTC).
+                             */
+                            expires_at: string;
+                            /** @description True when the same operator asked again for an exception that is still live and unused; nothing new was written or announced. */
+                            replayed?: boolean;
+                        };
+                    };
+                };
+            };
             /** @description The exception is recorded. */
             201: {
                 headers: {
@@ -43643,6 +43680,8 @@ export interface operations {
                              * @description Until when it can be used (RFC 3339, UTC).
                              */
                             expires_at: string;
+                            /** @description True when the same operator asked again for an exception that is still live and unused; nothing new was written or announced. */
+                            replayed?: boolean;
                         };
                     };
                 };
@@ -43683,7 +43722,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The ticket was not scanned (refund.ticket_not_scanned) or already had its exception (refund.scan_exception_exists). */
+            /** @description The ticket was not scanned (refund.ticket_not_scanned) or its exception was already used, or another operator granted one that is still live (refund.scan_exception_exists). */
             409: {
                 headers: {
                     [name: string]: unknown;

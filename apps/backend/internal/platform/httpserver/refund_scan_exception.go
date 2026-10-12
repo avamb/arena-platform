@@ -62,5 +62,9 @@ func (s *Server) handleGrantScanException(w http.ResponseWriter, r *http.Request
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("refund.scan_exception_failed", "failed to record the exception", r))
 		return
 	}
-	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"scan_exception": ex})
+	status := http.StatusCreated
+	if ex.Replayed {
+		status = http.StatusOK
+	}
+	httputil.WriteJSON(w, status, map[string]any{"scan_exception": ex})
 }

@@ -53,6 +53,9 @@ type ScanException struct {
 	TicketID  uuid.UUID `json:"ticket_id"`
 	CreatedAt time.Time `json:"created_at"`
 	ExpiresAt time.Time `json:"expires_at"`
+	// Replayed: the same operator asked again for an exception that is still
+	// live and unused (the first answer was lost); nothing new was written.
+	Replayed bool `json:"replayed"`
 }
 
 // maxShownNote bounds the note the owners and the sales bot are shown (a
@@ -98,14 +101,45 @@ func (e *Engine) GrantScanException(ctx context.Context, in ScanExceptionInput) 
 		if !scanned {
 			return refusal(http.StatusConflict, CodeTicketNotScanned, "the ticket was not scanned at the gate; it needs no exception", nil)
 		}
-		err = tx.QueryRow(ctx, `INSERT INTO refund_scan_exceptions (org_id, ticket_id, granted_by, reason, note, expires_at)
-			VALUES ($1, $2, $3, $4, NULLIF($5, ''), now() + make_interval(hours => $6))
-			RETURNING id, ticket_id, created_at, expires_at`,
-			in.OrgID, in.TicketID, actorKey(in.Actor), in.Reason, in.Note, in.Hours).
-			Scan(&out.ID, &out.TicketID, &out.CreatedAt, &out.ExpiresAt)
+		// One row per ticket. The same operator asking again for a live,
+		// unused exception gets it back (the first answer was lost); one that
+		// expired unused is granted afresh; a spent one is final.
+		var (
+			prevID           uuid.UUID
+			prevBy           string
+			prevUsed, prevOK bool
+		)
+		perr := tx.QueryRow(ctx, `SELECT id, granted_by, used_at IS NOT NULL, expires_at > now()
+			FROM refund_scan_exceptions WHERE ticket_id = $1 FOR UPDATE`, in.TicketID).Scan(&prevID, &prevBy, &prevUsed, &prevOK)
+		switch {
+		case errors.Is(perr, pgx.ErrNoRows):
+			err = tx.QueryRow(ctx, `INSERT INTO refund_scan_exceptions (org_id, ticket_id, granted_by, reason, note, expires_at)
+				VALUES ($1, $2, $3, $4, NULLIF($5, ''), now() + make_interval(hours => $6))
+				RETURNING id, ticket_id, created_at, expires_at`,
+				in.OrgID, in.TicketID, actorKey(in.Actor), in.Reason, in.Note, in.Hours).
+				Scan(&out.ID, &out.TicketID, &out.CreatedAt, &out.ExpiresAt)
+		case perr != nil:
+			return perr
+		case prevUsed:
+			return refusal(http.StatusConflict, CodeScanExceptionExists, "this ticket's exception was already used",
+				map[string]any{"exception_id": prevID.String()})
+		case prevOK && prevBy == actorKey(in.Actor):
+			out.Replayed = true
+			return tx.QueryRow(ctx, `SELECT id, ticket_id, created_at, expires_at FROM refund_scan_exceptions WHERE id = $1`, prevID).
+				Scan(&out.ID, &out.TicketID, &out.CreatedAt, &out.ExpiresAt)
+		case prevOK:
+			return refusal(http.StatusConflict, CodeScanExceptionExists, "this ticket already has a live exception",
+				map[string]any{"exception_id": prevID.String()})
+		default:
+			err = tx.QueryRow(ctx, `UPDATE refund_scan_exceptions SET granted_by = $2, reason = $3, note = NULLIF($4, ''),
+				created_at = now(), expires_at = now() + make_interval(hours => $5)
+				WHERE id = $1 RETURNING id, ticket_id, created_at, expires_at`,
+				prevID, actorKey(in.Actor), in.Reason, in.Note, in.Hours).
+				Scan(&out.ID, &out.TicketID, &out.CreatedAt, &out.ExpiresAt)
+		}
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return refusal(http.StatusConflict, CodeScanExceptionExists, "this ticket already had its one exception", nil)
+			return refusal(http.StatusConflict, CodeScanExceptionExists, "this ticket already has an exception", nil)
 		}
 		if err != nil {
 			return err
