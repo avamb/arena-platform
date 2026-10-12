@@ -65,6 +65,13 @@ const (
 // engine existed: no provider, manual_review. None of them called a provider.
 const legacyParkedSQL = `(provider IS NULL AND state = 'manual_review')`
 
+// reachedProviderSQL selects refunds whose money may have moved: the
+// provider was called for them, it answered with a refund id, or the money
+// is already back (succeeded, an external settlement among them). A refund
+// still requested, approved or claimed but never sent moved nothing, and the
+// engine's own budget check parks it if a dashboard refund took its money.
+const reachedProviderSQL = `(state = 'succeeded' OR provider_attempts > 0 OR provider_refund_id IS NOT NULL)`
+
 // MaxDashboardConfirmAttempts is how many deliveries of one dashboard refund
 // may fail to be read back before arena stops asking the provider to retry.
 const MaxDashboardConfirmAttempts = 8
@@ -179,12 +186,13 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 		// refused refund moved no money. A refund parked before the refund
 		// engine existed (no provider, manual_review) never called a provider
 		// either: this dashboard refund may well be that money, so it is not
-		// counted, and the operator is told to resolve the parked one.
+		// counted, and the operator is told to resolve the parked one. Only
+		// refunds that reached the provider count (reachedProviderSQL).
 		var (
 			taken  int64
 			legacy []uuid.UUID
 		)
-		if err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(amount) FILTER (WHERE NOT (`+legacyParkedSQL+`)), 0)::bigint,
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(amount) FILTER (WHERE NOT (`+legacyParkedSQL+`) AND `+reachedProviderSQL+`), 0)::bigint,
 			       COALESCE(array_agg(id) FILTER (WHERE `+legacyParkedSQL+`), '{}')
 			FROM refunds WHERE payment_intent_id = $1 AND state NOT IN ('failed', 'rejected') AND `+countsAgainstBudgetSQL,
 			pay.ID).Scan(&taken, &legacy); err != nil {
