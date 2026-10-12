@@ -135,13 +135,14 @@ func TestResolveBranding_NilMediaResolver_DoesNotPanic(t *testing.T) {
 
 func TestResolveBranding_OrgEmptyDefaults_PlatformIdentificationPreserved(t *testing.T) {
 	// EU "commercial communications" rule: every email must identify a
-	// legal entity. When the org omits LegalName / ContactEmail we
-	// substitute the platform values so the footer is never empty.
+	// legal entity. When the org omits LegalName we substitute the platform
+	// value so the footer is never empty. A missing ContactEmail is NOT
+	// substituted: no contact line beats a placeholder nobody reads.
 	got := resolveBranding(context.Background(), nil, Payload{}, slog.Default())
 	if got.Branding.LegalName == "" {
 		t.Error("LegalName must not be empty (EU min-identification rule)")
 	}
-	if got.Branding.ContactEmail == "" {
-		t.Error("ContactEmail must not be empty (EU min-identification rule)")
+	if got.Branding.ContactEmail != "" {
+		t.Errorf("ContactEmail = %q, want empty", got.Branding.ContactEmail)
 	}
 }
