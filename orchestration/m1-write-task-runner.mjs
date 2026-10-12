@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -41,8 +41,11 @@ function validateConsole() {
 }
 function preflight(task, worktree, approved, { mock = false } = {}) {
   if (!existsSync(worktree)) throw new Error('dedicated worktree does not exist');
-  if (!existsSync(path.join(worktree, '.git'))) throw new Error('worktree must be a dedicated Git worktree');
-  if (!mock && path.resolve(worktree).toLowerCase() === ROOT.toLowerCase()) throw new Error('main checkout cannot be used as the M1 worktree');
+  const gitMarker = path.join(worktree, '.git');
+  if (!existsSync(gitMarker)) throw new Error('worktree must be a dedicated Git worktree');
+  if (!mock && lstatSync(gitMarker).isDirectory()) {
+    throw new Error('main checkout cannot be used as the M1 worktree');
+  }
   validateM1Task(task, worktree);
   for (const file of task.inputs) if (!existsSync(path.resolve(worktree, file))) throw new Error(`worktree input missing: ${file}`);
   if (approved) return validateConsole();
