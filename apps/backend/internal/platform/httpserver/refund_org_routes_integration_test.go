@@ -340,3 +340,156 @@ func TestRefundOrgRoutes_RetryAndResolve(t *testing.T) {
 		t.Fatal("resolving a refund that is no longer in review succeeded")
 	}
 }
+
+// Review fixes of the retry and resolve routes: a refusal before the provider
+// is reached does not use up an attempt, a never-sent refund is replaced (not
+// duplicated) by its retry, a refund is retried once, an operator cannot
+// close a never-sent refund as refunded or push a payment over budget, the
+// operator's note stays out of the organizer's view, and a ticket under
+// review is not refundable.
+func TestRefundOrgRoutes_RetryAndResolveReviewFixes(t *testing.T) {
+	stub := newStubStripe(t)
+	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) { c.StripeAPIBaseURL = stub.baseURL() })
+	ts := httptest.NewServer(srv.Router())
+	t.Cleanup(ts.Close)
+	pf := &prom0113Fixture{ts: ts, client: ts.Client(), q: gen.New(srv.pgxPool)}
+	ctx := context.Background()
+	user, err := pf.q.InsertUser(ctx, "pay06r-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf.userID = user.ID
+	org := pf.org(t, "PAY06R")
+	key := pf.key(t, org, "refund.read", "refund.create", "refund.approve")
+	stub.sessionPI = "pi_pay06r_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
+	declined := false
+	stub.refundHandler = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if declined {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprint(w, `{"error":{"type":"invalid_request_error","code":"refund_declined","message":"declined for the test"}}`)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"id":"re_%s","status":"succeeded"}`, uuid.NewString()[:8])
+	}
+	base := "/v1/organizations/" + org.String()
+	engine := srv.refundEngine()
+	create := func(f *pay03Fixture, ticket int) (int, map[string]any) {
+		body := fmt.Sprintf(`{"items":[{"ticket_id":%q}],"reason":"review fixes"}`, f.tickets[ticket])
+		return refundOrgPost(t, pf, base+"/orders/"+f.order.String()+"/refunds", key, "pay06r-"+uuid.NewString(), body)
+	}
+	one := func(out map[string]any) map[string]any { return out["refunds"].([]any)[0].(map[string]any) }
+	rowOf := func(id string) (state string, attempts int, code *string, reason *string) {
+		if err := srv.pgxPool.QueryRow(ctx, `SELECT state, provider_attempts, failure_code, failure_reason FROM refunds WHERE id = $1`, id).
+			Scan(&state, &attempts, &code, &reason); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+
+	// ── a refusal before the provider does not count as an attempt; the
+	//    never-sent refund is replaced by its retry, once
+	f := newPay03Order(t, srv.pgxPool, org, "stripe")
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE payment_provider_configs SET is_active = false WHERE org_id = $1`, org); err != nil {
+		t.Fatal(err)
+	}
+	st, out := create(f, 0)
+	if st != http.StatusAccepted {
+		t.Fatalf("create without a usable configuration: %d %v", st, out)
+	}
+	parked := one(out)["id"].(string)
+	state, attempts, _, _ := rowOf(parked)
+	if state != "manual_review" || attempts != 0 {
+		t.Fatalf("parked refund = %s with %d attempt(s); want manual_review and 0 (nothing reached the provider)", state, attempts)
+	}
+	secondID := uuid.MustParse(parked)
+	if _, err := engine.Resolve(ctx, refunds.ResolveInput{OrgID: org, RefundID: secondID, Outcome: "refunded", Note: "checked"}); err == nil ||
+		!strings.Contains(err.Error(), "never reached the provider") {
+		t.Fatalf("closing a never-sent refund as refunded: %v; want a refusal", err)
+	}
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE payment_provider_configs SET is_active = true WHERE org_id = $1`, org); err != nil {
+		t.Fatal(err)
+	}
+	st, out = refundOrgPost(t, pf, base+"/refunds/"+parked+"/retry", key, "", `{}`)
+	if st != http.StatusAccepted || one(out)["state"] != "succeeded" {
+		t.Fatalf("retry of the never-sent refund: %d %v; want a succeeded replacement", st, out)
+	}
+	if state, _, code, _ := rowOf(parked); state != "failed" || code == nil || *code != "replaced_by_retry" {
+		t.Fatalf("the replaced refund is %s/%v; want failed/replaced_by_retry", state, code)
+	}
+
+	// ── a retry that fails too: the first refund is not retried again
+	f2 := newPay03Order(t, srv.pgxPool, org, "stripe")
+	declined = true
+	st, out = create(f2, 0)
+	failedA := one(out)["id"].(string)
+	if st != http.StatusAccepted || one(out)["state"] != "failed" {
+		t.Fatalf("declined create: %d %v", st, out)
+	}
+	st, out = refundOrgPost(t, pf, base+"/refunds/"+failedA+"/retry", key, "", `{}`)
+	if st != http.StatusAccepted || one(out)["state"] != "failed" {
+		t.Fatalf("declined retry: %d %v", st, out)
+	}
+	st, out = refundOrgPost(t, pf, base+"/refunds/"+failedA+"/retry", key, "", `{}`)
+	if st != http.StatusConflict || prom0113Code(out) != "refund.already_replaced" {
+		t.Fatalf("second retry of the same refund: %d %v; want 409 refund.already_replaced", st, out)
+	}
+	declined = false
+
+	// ── resolve: the note stays in the audit trail, the row keeps its reason,
+	//    a refund found refunded carries no failure, and the budget is checked
+	f3 := newPay03Order(t, srv.pgxPool, org, "stripe")
+	st, out = create(f3, 0)
+	id3 := one(out)["id"].(string)
+	if st != http.StatusAccepted {
+		t.Fatalf("create: %d %v", st, out)
+	}
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE refunds SET state='manual_review', provider_attempts=2, failure_code='unknown_outcome',
+		failure_reason='check the dashboard', settled_at = NULL WHERE id=$1`, id3); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE refunds SET amount = 9000 WHERE id=$1`, id3); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Resolve(ctx, refunds.ResolveInput{OrgID: org, RefundID: uuid.MustParse(id3), Outcome: "refunded", Note: "ok"}); err == nil ||
+		!strings.Contains(err.Error(), "more than was paid") {
+		t.Fatalf("resolve over budget: %v; want a refusal", err)
+	}
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE refunds SET amount = 2500 WHERE id=$1`, id3); err != nil {
+		t.Fatal(err)
+	}
+	got, err := engine.Resolve(ctx, refunds.ResolveInput{OrgID: org, RefundID: uuid.MustParse(id3), Outcome: "refunded", Note: "SECRET OPERATOR NOTE"})
+	if err != nil || got.State != "succeeded" || got.FailureCode != nil || got.FailureReason != nil {
+		t.Fatalf("resolve refunded = %+v, %v; want succeeded with no failure", got, err)
+	}
+	st, detail := pf.do(t, http.MethodGet, base+"/refunds/"+id3, key, "")
+	if raw, _ := json.Marshal(detail); st != http.StatusOK || strings.Contains(string(raw), "SECRET OPERATOR NOTE") {
+		t.Fatalf("the organizer sees the operator's note: %d %s", st, raw)
+	}
+	var noted bool
+	_ = srv.pgxPool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM audit_events WHERE resource_id = $1 AND action = 'v1.refund.resolve'
+		AND metadata->>'note' = 'SECRET OPERATOR NOTE' AND metadata->>'previous_failure_code' = 'unknown_outcome')`, id3).Scan(&noted)
+	if !noted {
+		t.Fatal("the audit event does not carry the note and the original failure code")
+	}
+
+	// ── a ticket under review is not refundable (options and create)
+	f4 := newPay03Order(t, srv.pgxPool, org, "stripe")
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE tickets SET review_hold = true, review_hold_reason = 'test' WHERE id = $1`, f4.tickets[0]); err != nil {
+		t.Fatal(err)
+	}
+	st, opts := pf.do(t, http.MethodGet, base+"/orders/"+f4.order.String()+"/refund-options", key, "")
+	held := false
+	for _, tk := range opts["tickets"].([]any) {
+		m := tk.(map[string]any)
+		if m["ticket_id"] == f4.tickets[0].String() && m["not_refundable_reason"] == "review_hold" && m["refundable"] == float64(0) {
+			held = true
+		}
+	}
+	if st != http.StatusOK || !held {
+		t.Fatalf("options of a ticket under review: %d %v; want refundable 0 with reason review_hold", st, opts)
+	}
+	if st, out = create(f4, 0); st != http.StatusConflict || prom0113Code(out) != "refund.ticket_not_refundable" {
+		t.Fatalf("refund of a ticket under review: %d %v; want 409 refund.ticket_not_refundable", st, out)
+	}
+}

@@ -6471,10 +6471,15 @@ export interface paths {
          * Send a failed or never-sent refund again
          * @description Starts a NEW one-ticket refund operation from a refund the provider
          *     refused, or one that was parked before any provider call, and sends it
-         *     at once with a new idempotency key. The old row stays as it is. A refund
-         *     whose provider call ended without an answer, or that the provider
-         *     accepted, is refused with refund.not_retryable: repeating it could
-         *     return the money twice. Requires the `refund.approve` permission.
+         *     at once with a new idempotency key. A refund the provider refused stays
+         *     as it is; one that was parked before any provider call is closed as
+         *     failed with the code `replaced_by_retry`. A refund whose provider call
+         *     ended without an answer, or that the provider accepted, is refused with
+         *     refund.not_retryable: repeating it could return the money twice. A
+         *     refund is retried once: repeating the call answers the replacement, and
+         *     when the replacement failed too the call is refused with
+         *     refund.already_replaced and names it. Requires the `refund.approve`
+         *     permission.
          */
         post: operations["postV1OrganizationsOrgIdRefundsRefundIdRetry"];
         delete?: never;
@@ -6498,8 +6503,13 @@ export interface paths {
          *     checking the provider's dashboard. Outcome `refunded` means the money
          *     went back: the refund becomes succeeded and its tickets are cancelled.
          *     Outcome `not_refunded` means no money moved: the refund becomes failed
-         *     and its tickets can be refunded again. A note is required and is kept
-         *     in the audit trail. Platform superadmin only, with X-Admin-Reason.
+         *     and its tickets can be refunded again. A refund that never reached the
+         *     provider cannot be closed as refunded (refund.never_sent), nor can one
+         *     that would put the payment's refunds above what was paid
+         *     (refund.over_budget). A note is required and is kept in the audit
+         *     trail only; the refund keeps the reason it was parked with, except that
+         *     one closed as refunded carries no failure. Platform superadmin only,
+         *     with X-Admin-Reason.
          */
         post: operations["postV1OrganizationsOrgIdRefundsRefundIdResolve"];
         delete?: never;
@@ -10011,6 +10021,8 @@ export interface components {
             refundable: number;
             /** @description True when a refund that cancels this ticket is already under way. */
             in_progress: boolean;
+            /** @description Why `refundable` is 0 although the ticket is active and has money left, such as `review_hold` (a refund made outside arena put the order's tickets under review). Null otherwise. */
+            not_refundable_reason?: string | null;
         };
         /**
          * @description What an organizer may do about the money of an order (PAY-06). `route`
@@ -43355,7 +43367,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The refund cannot be sent again (refund.not_retryable) or another refund of the payment blocks it. */
+            /** @description The refund cannot be sent again (refund.not_retryable), it was already retried and the retry failed (refund.already_replaced), or another refund of the payment blocks it. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -43447,7 +43459,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The refund is not waiting for manual review (refund.not_in_review). */
+            /** @description The refund is not waiting for manual review (refund.not_in_review), never reached the provider (refund.never_sent) or would exceed the payment (refund.over_budget). */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -8805,6 +8805,9 @@ type OrderRefundTicketOption struct {
 	// InProgress True when a refund that cancels this ticket is already under way.
 	InProgress bool `json:"in_progress"`
 
+	// NotRefundableReason Why `refundable` is 0 although the ticket is active and has money left, such as `review_hold` (a refund made outside arena put the order's tickets under review). Null otherwise.
+	NotRefundableReason *string `json:"not_refundable_reason"`
+
 	// Paid What the buyer paid for this ticket in minor units, null when the order item carries no price.
 	Paid *int64 `json:"paid"`
 

@@ -108,16 +108,21 @@ func (s *Server) handleRefundOptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type ticketJSON struct {
-		TicketID   string `json:"ticket_id"`
-		Status     string `json:"status"`
-		Paid       *int64 `json:"paid"`
-		Refunded   int64  `json:"refunded"`
-		Refundable int64  `json:"refundable"`
-		InProgress bool   `json:"in_progress"`
+		TicketID   string  `json:"ticket_id"`
+		Status     string  `json:"status"`
+		Paid       *int64  `json:"paid"`
+		Refunded   int64   `json:"refunded"`
+		Refundable int64   `json:"refundable"`
+		InProgress bool    `json:"in_progress"`
+		Reason     *string `json:"not_refundable_reason"`
 	}
 	tickets := make([]ticketJSON, 0, len(opts.Tickets))
 	for _, t := range opts.Tickets {
-		tickets = append(tickets, ticketJSON{t.TicketID.String(), t.Status, t.Paid, t.Refunded, t.Refundable, t.InProgress})
+		var reason *string
+		if t.NotRefundableReason != "" {
+			reason = &t.NotRefundableReason
+		}
+		tickets = append(tickets, ticketJSON{t.TicketID.String(), t.Status, t.Paid, t.Refunded, t.Refundable, t.InProgress, reason})
 	}
 	active := make([]refundItemJSON, 0, len(opts.Active))
 	for _, a := range opts.Active {

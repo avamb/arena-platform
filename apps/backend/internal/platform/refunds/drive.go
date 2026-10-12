@@ -36,6 +36,12 @@ type callOutcome struct {
 	// (payments.RefundDeclinedError.NeedsReview) — manual_review, never
 	// failed.
 	review bool
+	// neverReached: the refusal happened before anything could reach the
+	// provider's refund endpoint (no usable configuration, a module that
+	// refuses the request, a charge reference that does not exist). The
+	// claim's attempt does not count, so the row is a "never sent" one and
+	// an operator may retry it.
+	neverReached bool
 }
 
 // hadUnknownOutcome reports whether an EARLIER call of this refund ended
@@ -282,15 +288,15 @@ func (e *Engine) call(ctx context.Context, r Refund, pay Payment) callOutcome {
 		case errors.As(err, &cfg):
 			// No usable configuration is not a provider verdict: a human
 			// fixes the organization's setup (third review, L3).
-			return callOutcome{kind: outcomeDeclined, review: true, code: cfg.Code, message: cfg.Message}
+			return callOutcome{kind: outcomeDeclined, review: true, neverReached: true, code: cfg.Code, message: cfg.Message}
 		case deterministicModuleError(err):
-			return callOutcome{kind: outcomeDeclined, review: true, code: "payment_module_unavailable", message: err.Error()}
+			return callOutcome{kind: outcomeDeclined, review: true, neverReached: true, code: "payment_module_unavailable", message: err.Error()}
 		}
 		return callOutcome{kind: outcomeUnknown, code: "module_unavailable", message: err.Error()}
 	}
 	refunder, ok := module.(payments.Refunder)
 	if !ok {
-		return callOutcome{kind: outcomeDeclined, review: true, code: failureCodeUnknownProvider, message: "the payment module cannot refund"}
+		return callOutcome{kind: outcomeDeclined, review: true, neverReached: true, code: failureCodeUnknownProvider, message: "the payment module cannot refund"}
 	}
 
 	var out callOutcome
@@ -305,7 +311,7 @@ func (e *Engine) call(ctx context.Context, r Refund, pay Payment) callOutcome {
 				if code, msg, declined := payments.RefundDeclined(rerr); declined {
 					// The charge reference could not be found: the refund
 					// never reached the refund endpoint (third review, L3).
-					return callOutcome{kind: outcomeDeclined, code: code, message: msg, review: true}
+					return callOutcome{kind: outcomeDeclined, code: code, message: msg, review: true, neverReached: true}
 				}
 				return callOutcome{kind: outcomeUnknown, code: "charge_ref_lookup_failed", message: rerr.Error()}
 			}
@@ -331,6 +337,7 @@ func (e *Engine) call(ctx context.Context, r Refund, pay Payment) callOutcome {
 			// charge reference) is a configuration or data problem a human
 			// must look at, not a provider verdict (second review, item 6).
 			out.review = payments.RefundDeclineNeedsReview(err) || deterministicModuleError(err)
+			out.neverReached = deterministicModuleError(err)
 		} else {
 			out.kind, out.code, out.message = outcomeUnknown, "provider_unavailable", err.Error()
 		}
@@ -552,7 +559,16 @@ func recordOutcome(ctx context.Context, tx pgx.Tx, cur Refund, out callOutcome, 
 			if out.review {
 				reason = "the refund needs a human; check the provider dashboard: " + out.message
 			}
-			sql = `UPDATE refunds SET state = 'manual_review', provider_refund_id = $2, provider_status = 'declined',
+			// A refusal that never reached the provider does not use up an
+			// attempt: the row stays a "never sent" one (retryable by an
+			// operator), instead of looking like a call that may have moved
+			// money.
+			releaseAttempt := ``
+			if out.neverReached {
+				releaseAttempt = `provider_attempts = GREATEST(provider_attempts - 1, 0),
+			       first_attempted_at = CASE WHEN provider_attempts <= 1 THEN NULL ELSE first_attempted_at END, `
+			}
+			sql = `UPDATE refunds SET state = 'manual_review', provider_refund_id = $2, provider_status = 'declined', ` + releaseAttempt + `
 			       failure_code = $3, failure_reason = $4, ` + reviewAlertSQL + `, updated_at = now()
 			       WHERE id = $1 RETURNING ` + refundColumns
 			args = []any{cur.ID, strPtr(out.result.ProviderRefundID), truncate(out.code, 100), truncate(reason, 500)}
