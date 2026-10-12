@@ -151,6 +151,15 @@ func TestPermOrg_AllocationSidesDecideInTheirOrganization(t *testing.T) {
 	if st, out := e.do(t, http.MethodGet, one, agentOfPartner, ""); st != http.StatusForbidden && st != http.StatusNotFound {
 		t.Errorf("an agent of the partner reads the allocation: %d %v, want a refusal", st, out)
 	}
+
+	// The reverse split the union let through: an agent of the partner B who
+	// owns an unrelated organization D. Owning D used to carry allocation.read
+	// into B; now B is decided from B's roles alone.
+	orgD := e.newOrg(t, "D")
+	agentBOwnerD := p.userToken(t, map[uuid.UUID]string{e.orgB: "agent", orgD: "org_admin"})
+	if st, out := e.do(t, http.MethodGet, one, agentBOwnerD, ""); st != http.StatusNotFound {
+		t.Errorf("an agent of the partner who owns another organization reads the allocation: %d %v, want 404", st, out)
+	}
 }
 
 // P3: flat routes that load a row of A, one case per guard family.
