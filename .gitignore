@@ -12,6 +12,14 @@ sdk_experiments/console-confirmation.json
 sdk_experiments/workspace-confirmation.json
 sdk_experiments/.runtime-home/
 sdk_experiments/results/
+
+# Dataset manifests, evaluator-only references and local result stores
+**/results/
+dataset_audit/
+poc_registry/
+benchmark_v1/converter_inputs/
+benchmark_v1/evaluator_only/
+benchmark_v1/**/claude-input/
 sdk_experiments/node_modules/
 
 # Private Telegram archive and source plans
