@@ -318,7 +318,7 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
 		// and an event's delete question (its typed word)
 		b.leaveEvStatus(ctx, from.ID)
-		b.leavePromo(ctx, from.ID)  // and a promo-code question (EC-11)
+		b.leavePromo(ctx, from.ID)      // and a promo-code question (EC-11)
 		b.leaveIdleRefund(ctx, from.ID) // and a refund question: its word is never an answer after a command (EC-21)
 		switch cmd {
 		case "/start":
