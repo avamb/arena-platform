@@ -23,6 +23,10 @@ type TicketOption struct {
 	Refundable int64
 	// InProgress: a live refund that cancels this ticket already exists.
 	InProgress bool
+	// TicketNumber is the number printed on the ticket (system_ticket_id) and
+	// SeatLabel the place ("A / 3 / 12"), nil for general admission.
+	TicketNumber *int64
+	SeatLabel    *string
 	// NotRefundableReason says why Refundable is 0 for an active ticket that
 	// still has money left ("review_hold": a refund made outside arena put
 	// the order's tickets under review). Empty otherwise.
@@ -82,7 +86,8 @@ func (e *Engine) Options(ctx context.Context, orgID, orderID uuid.UUID) (OrderOp
 			                  AND `+countsAgainstBudgetSQL+`), 0)::bigint,
 			       EXISTS (SELECT 1 FROM refunds r
 			                WHERE r.ticket_id = t.id AND r.cancel_ticket AND r.state NOT IN ('failed', 'rejected')),
-			       t.review_hold
+			       t.review_hold, t.system_ticket_id,
+			       NULLIF(concat_ws(' / ', NULLIF(btrim(t.seat_sector), ''), NULLIF(btrim(t.seat_row), ''), NULLIF(btrim(t.seat_number), '')), '')
 			FROM   order_items oi
 			JOIN   tickets t ON t.id = oi.ticket_id
 			WHERE  oi.order_id = $1
@@ -94,7 +99,7 @@ func (e *Engine) Options(ctx context.Context, orgID, orderID uuid.UUID) (OrderOp
 		for rows.Next() {
 			var t TicketOption
 			var onHold bool
-			if err := rows.Scan(&t.TicketID, &t.Status, &t.Paid, &t.Refunded, &t.InProgress, &onHold); err != nil {
+			if err := rows.Scan(&t.TicketID, &t.Status, &t.Paid, &t.Refunded, &t.InProgress, &onHold, &t.TicketNumber, &t.SeatLabel); err != nil {
 				return err
 			}
 			if t.Paid != nil && t.Status == "active" {

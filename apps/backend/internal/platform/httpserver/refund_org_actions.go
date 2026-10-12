@@ -49,7 +49,9 @@ func (s *Server) handleRetryOrgRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actor, via := refundActor(r)
-	res, err := engine.Retry(r.Context(), refunds.RetryInput{OrgID: orgID, RefundID: refundID, Actor: actor, Via: via})
+	wctx, cancel := refundWorkCtx(r)
+	defer cancel()
+	res, err := engine.Retry(wctx, refunds.RetryInput{OrgID: orgID, RefundID: refundID, Actor: actor, Via: via})
 	if err != nil {
 		s.writeRefundActionError(w, r, "retry", err)
 		return
@@ -94,7 +96,9 @@ func (s *Server) handleResolveOrgRefund(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	actor, via := refundActor(r)
-	out, err := engine.Resolve(r.Context(), refunds.ResolveInput{OrgID: orgID, RefundID: refundID,
+	wctx, cancel := refundWorkCtx(r)
+	defer cancel()
+	out, err := engine.Resolve(wctx, refunds.ResolveInput{OrgID: orgID, RefundID: refundID,
 		Outcome: body.Outcome, Note: body.Note, Actor: actor, Via: via})
 	if err != nil {
 		s.writeRefundActionError(w, r, "resolve", err)

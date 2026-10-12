@@ -8817,11 +8817,17 @@ type OrderRefundTicketOption struct {
 	// Refunded Minor units already refunded or on their way to the buyer.
 	Refunded int64 `json:"refunded"`
 
+	// SeatLabel The place as "sector / row / seat" with the parts that exist, null for a general-admission ticket.
+	SeatLabel *string `json:"seat_label"`
+
 	// Status Ticket status; only an active ticket can be refunded.
 	Status string `json:"status"`
 
 	// TicketId UUID of the ticket.
 	TicketId openapi_types.UUID `json:"ticket_id"`
+
+	// TicketNumber The number printed on the ticket, null for a ticket without one.
+	TicketNumber *int64 `json:"ticket_number"`
 }
 
 // OrderResendTicketsRequest Body of the resend-tickets route. Every field is optional; an empty body

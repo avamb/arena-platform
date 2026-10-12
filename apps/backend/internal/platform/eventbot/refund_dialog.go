@@ -29,10 +29,12 @@ package eventbot
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-telegram/bot/models"
 	"github.com/google/uuid"
@@ -48,6 +50,7 @@ const (
 	refStepReason    = "reason"
 	refStepReasonTxt = "reason_text"
 	refStepWord      = "word"
+	refStepFinal     = "final"
 
 	maxRefundReasonLen = 300
 	refundQuickReasons = 3
@@ -56,13 +59,39 @@ const (
 	refundRouteArena   = "arena_provider"
 	refundRouteSite    = "seller_site"
 	codeRefundProgress = "refund.in_progress"
+	codeRefundNotFit   = "refund.ticket_not_refundable"
+	codeRefundUnsupp   = "refund.provider_not_supported"
+	codeRefundUnavail  = "refund.engine_unavailable"
+
+	// refundReplayAttempts is how many times the bot repeats a create call
+	// that got no answer (the same Idempotency-Key, so the server answers the
+	// operation it already started instead of starting another).
+	refundReplayAttempts = 3
 )
+
+// refundReplayPause separates two repeats of a create call with no answer.
+var refundReplayPause = 3 * time.Second
 
 type refundTicket struct {
 	ID         uuid.UUID `json:"id"`
 	Refundable int64     `json:"refundable"`
 	Amount     int64     `json:"amount"` // 0 = everything that is refundable
 	Sel        bool      `json:"sel"`
+	Number     int64     `json:"number,omitempty"` // the number printed on the ticket
+	Seat       string    `json:"seat,omitempty"`
+}
+
+// label names the ticket the way the buyer's PDF does: its number and, for a
+// seat, the place. The position is the fallback for a ticket without a number.
+func (t refundTicket) label(pos int) string {
+	out := "№" + strconv.Itoa(pos+1)
+	if t.Number > 0 {
+		out = "№" + strconv.FormatInt(t.Number, 10)
+	}
+	if t.Seat != "" {
+		out += " (" + t.Seat + ")"
+	}
+	return out
 }
 
 // refundDialog is the state between two messages.
@@ -150,7 +179,11 @@ func newRefundDialog(orgID uuid.UUID, num int64, opts openapi.OrderRefundOptions
 	}
 	for _, t := range opts.Tickets {
 		if t.Refundable > 0 && !t.InProgress {
-			d.Tickets = append(d.Tickets, refundTicket{ID: t.TicketId, Refundable: t.Refundable, Sel: true})
+			rt := refundTicket{ID: t.TicketId, Refundable: t.Refundable, Sel: true, Seat: deref(t.SeatLabel)}
+			if t.TicketNumber != nil {
+				rt.Number = *t.TicketNumber
+			}
+			d.Tickets = append(d.Tickets, rt)
 		}
 	}
 	return d
@@ -246,8 +279,18 @@ func (b *Bot) refundCallback(ctx context.Context, chatID int64, msgID int, from 
 		st.NoLetter = !st.NoLetter
 		st.Key = "" // the summary changed: a new operation
 		b.showRefundWord(ctx, chatID, &msgID, id, st, "")
+	case "ok":
+		// The one press that sends money back. Only valid on the final
+		// screen: a stale button of an earlier screen does nothing.
+		if step != refStepFinal || st.Key == "" {
+			b.showRefundPick(ctx, chatID, &msgID, id, st, "")
+			return
+		}
+		b.sendRefund(ctx, chatID, &msgID, from, id, jwt, st)
+	case "no":
+		b.leaveRefund(ctx, from.ID)
+		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.cancelled", nil), b.resendResultKeyboard(loc, st.OrderID))
 	}
-	_ = step
 }
 
 // startRefund opens the dialog after reading the options afresh.
@@ -312,7 +355,7 @@ func (b *Bot) showRefundPick(ctx context.Context, chatID int64, editMsgID *int, 
 		if t.Sel {
 			mark = "☑"
 		}
-		label := mark + " " + strconv.Itoa(i+1) + " · " + FormatMoney(t.amountOf(), st.Currency, loc)
+		label := mark + " " + t.label(i) + " · " + FormatMoney(t.amountOf(), st.Currency, loc)
 		row = append(row, models.InlineKeyboardButton{Text: label, CallbackData: "or:f:t:" + strconv.Itoa(i)})
 		if len(row) == 2 {
 			rows, row = append(rows, row), nil
@@ -387,45 +430,138 @@ func (b *Bot) showRefundWord(ctx context.Context, chatID int64, editMsgID *int, 
 	}})
 }
 
+// ticketsLine names the selected tickets for the final screen (at most 10).
+func (d refundDialog) ticketsLine() string {
+	var parts []string
+	for n, i := range d.selected() {
+		if n == 10 {
+			parts = append(parts, "…")
+			break
+		}
+		parts = append(parts, d.Tickets[i].label(i))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// showRefundFinal is the screen after the typed word: the whole operation in
+// one place and two buttons. Money moves only on the "yes" press.
+func (b *Bot) showRefundFinal(ctx context.Context, chatID int64, editMsgID *int, id *Identity, st refundDialog) {
+	loc := id.Locale()
+	if editMsgID != nil {
+		st.MsgID = *editMsgID
+	}
+	if st.Key == "" {
+		st.Key = "tg-" + uuid.NewString()
+	}
+	b.saveRefund(ctx, id.Link.TelegramUserID, st, refStepFinal)
+	letter := "bot.ref.letter_yes"
+	if st.NoLetter {
+		letter = "bot.ref.letter_no"
+	}
+	amount := FormatMoney(st.total(), st.Currency, loc)
+	text := b.texts.T(loc, "bot.ref.final", map[string]any{
+		"Num": st.Num, "N": len(st.selected()), "Tickets": Esc(st.ticketsLine()), "Amount": amount,
+		"Provider": Esc(providerName(st.Provider)), "Letter": b.texts.T(loc, letter, nil),
+	})
+	b.reply(ctx, chatID, editMsgID, text, &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+		{{Text: b.texts.T(loc, "bot.ref.yes_btn", map[string]any{"Amount": amount}), CallbackData: "or:f:ok"}},
+		{{Text: b.texts.T(loc, "bot.ref.no_btn", nil), CallbackData: "or:f:no"}},
+	}})
+}
+
 // ─── the call ─────────────────────────────────────────────────────────────────
 
 func (b *Bot) sendRefund(ctx context.Context, chatID int64, editMsgID *int, from *models.User, id *Identity, jwt string, st refundDialog) {
 	loc := id.Locale()
+	back := b.resendResultKeyboard(loc, st.OrderID)
+	// The buttons go away while the server works: a second press cannot start
+	// anything, and the person knows it is under way.
+	b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.ref.sending", nil), nil)
 	req := openapi.CreateOrderRefundsRequest{Reason: st.Reason}
 	notify := !st.NoLetter
 	req.NotifyBuyer = &notify
 	for _, i := range st.selected() {
 		t := st.Tickets[i]
+		// The amount on the screen is the amount sent, always. Left out, the
+		// server would refund whatever is left at that moment, which may
+		// differ from what the person confirmed.
+		amount := t.amountOf()
 		item := struct {
 			Amount   *int64             `json:"amount"`
 			TicketId openapi_types.UUID `json:"ticket_id"`
-		}{TicketId: t.ID}
-		if t.Amount > 0 && t.Amount < t.Refundable {
-			amount := t.Amount
-			item.Amount = &amount
-		}
+		}{TicketId: t.ID, Amount: &amount}
 		req.Items = append(req.Items, item)
 	}
-	res, err := b.arena.CreateRefunds(ctx, jwt, st.OrgID, st.OrderID, st.Key, req)
-	back := b.resendResultKeyboard(loc, st.OrderID)
+	var (
+		res openapi.CreateOrderRefundsResponse
+		err error
+	)
+	// A call with no answer (the bot's wait ended, the connection dropped) is
+	// repeated with the SAME key: the server answers the operation it already
+	// started, it never starts a second one.
+	for attempt := 0; attempt <= refundReplayAttempts; attempt++ {
+		res, err = b.arena.CreateRefunds(ctx, jwt, st.OrgID, st.OrderID, st.Key, req)
+		var ae *APIError
+		if err == nil || errors.As(err, &ae) {
+			break
+		}
+		if ctx.Err() != nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(refundReplayPause):
+		}
+	}
+	var ae *APIError
 	switch {
 	case err == nil:
 		b.leaveRefund(ctx, from.ID)
 		b.reply(ctx, chatID, editMsgID, b.refundResultText(loc, st, res), back)
-	case IsAPIError(err, http.StatusConflict):
-		b.leaveRefund(ctx, from.ID)
-		key := "bot.ref.err_changed"
-		switch APIErrorCode(err) {
-		case codeRefundProgress:
-			key = "bot.ref.err_progress"
-		case codeSellerSiteOrder:
-			key = "bot.ref.site"
+	case errors.As(err, &ae):
+		// The server ANSWERED: nothing was refunded by this call. 5xx other
+		// than the documented 503 is an unknown state, so the dialog stays
+		// and the same key may be pressed again.
+		key := b.refundErrorKey(ae)
+		if key == "" {
+			b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.ref.err_timeout", nil), back)
+			return
 		}
-		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, key, map[string]any{"Num": st.Num, "Provider": ""}), back)
+		b.leaveRefund(ctx, from.ID)
+		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, key, map[string]any{"Num": st.Num, "Provider": Esc(providerName(st.Provider))}), back)
 	default:
-		// Keep the dialog (and its key): pressing the word again replays or retries.
-		b.ecError(ctx, chatID, editMsgID, id, err, "or:v:"+st.OrderID.String())
+		// No answer at all after the repeats: the refund may well be under
+		// way. Keep the dialog (and its key) and say so; never "failed".
+		b.logger.Warn("eventbot: refund call got no answer", slog.Int64("telegram_user_id", from.ID), slog.String("error", err.Error()))
+		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.ref.err_timeout", nil), back)
 	}
+}
+
+// refundErrorKey picks the text for an answer of the create route; "" means
+// the answer says nothing about the refund (an internal error), so the person
+// is told to look at the order instead of that nothing happened.
+func (b *Bot) refundErrorKey(ae *APIError) string {
+	switch {
+	case ae.Status == http.StatusConflict && ae.Code == codeRefundProgress:
+		return "bot.ref.err_progress"
+	case ae.Status == http.StatusConflict && ae.Code == codeSellerSiteOrder:
+		return "bot.ref.site"
+	case ae.Status == http.StatusConflict && ae.Code == codeRefundNotFit:
+		return "bot.ref.err_ticket"
+	case ae.Status == http.StatusConflict:
+		return "bot.ref.err_changed"
+	case ae.Status == http.StatusUnprocessableEntity && ae.Code == codeRefundUnsupp:
+		return "bot.ref.err_unsupported"
+	case ae.Status == http.StatusUnprocessableEntity:
+		return "bot.ref.err_unsupported"
+	case ae.Status == http.StatusBadRequest:
+		return "bot.ref.err_changed"
+	case ae.Status == http.StatusServiceUnavailable && ae.Code == codeRefundUnavail:
+		return "bot.ref.err_unavailable"
+	case ae.Status == http.StatusNotFound:
+		return "bot.ref.err_changed"
+	}
+	return ""
 }
 
 // refundResultText lists what each refund came to.
@@ -458,6 +594,9 @@ func (b *Bot) refundResultText(loc string, st refundDialog, res openapi.CreateOr
 // refundText takes the text typed while the dialog waits for a part-amount, a
 // reason or the confirm word. It reports whether the text was taken.
 func (b *Bot) refundText(ctx context.Context, chatID int64, from *models.User, text string) bool {
+	if chatID != from.ID {
+		return false // the dialog lives in the private chat only; a group's text is not an answer
+	}
 	var st refundDialog
 	step, found, expired, err := b.dialogs.Load(ctx, from.ID, refundDialogKind, &st)
 	if err != nil {
@@ -472,10 +611,10 @@ func (b *Bot) refundText(ctx context.Context, chatID int64, from *models.User, t
 		b.resendGone(ctx, chatID, nil, loc, true)
 		return true
 	}
-	if !found || (step != refStepAmount && step != refStepReasonTxt && step != refStepWord) {
+	if !found || (step != refStepAmount && step != refStepReasonTxt && step != refStepWord && step != refStepFinal) {
 		return false
 	}
-	id, jwt, err := b.resolveIdentity(ctx, from.ID)
+	id, _, err := b.resolveIdentity(ctx, from.ID)
 	if err != nil || id.Current == nil || id.Current.OrgID != st.OrgID || !canRefund(id) {
 		b.leaveRefund(ctx, from.ID)
 		return false
@@ -484,10 +623,6 @@ func (b *Bot) refundText(ctx context.Context, chatID int64, from *models.User, t
 	var edit *int
 	if st.MsgID != 0 {
 		edit = &st.MsgID
-	}
-	if chatID != from.ID {
-		b.reply(ctx, chatID, edit, b.texts.T(loc, "bot.ref.private_only", nil), b.refundBackKeyboard(loc))
-		return true
 	}
 	text = strings.TrimSpace(text)
 	switch step {
@@ -512,7 +647,9 @@ func (b *Bot) refundText(ctx context.Context, chatID int64, from *models.User, t
 			b.showRefundWord(ctx, chatID, edit, id, st, b.texts.T(loc, "bot.ref.word_wrong", map[string]any{"Word": b.refundWord(loc)})+"\n\n")
 			return true
 		}
-		b.sendRefund(ctx, chatID, edit, from, id, jwt, st)
+		b.showRefundFinal(ctx, chatID, edit, id, st)
+	case refStepFinal:
+		b.showRefundFinal(ctx, chatID, edit, id, st) // only the buttons send money
 	}
 	return true
 }
