@@ -31,13 +31,17 @@ WHERE org_id = $1 AND code = $2 AND deleted_at IS NULL;
 -- name: GetPromoCodeByCodeCI :one
 -- Fetch by org_id + code matched case-insensitively (Bil24 gateway, spec §7.6:
 -- buyers type the code by hand in the WordPress checkout).
+-- Deterministic when several codes of one organization differ only in case
+-- (the table's UNIQUE (org_id, code) is case-sensitive): the code typed EXACTLY
+-- wins, otherwise the oldest, with the id as the last tie-break. The widget
+-- (checkout/start and checkout/quote) and the gateway all use this one query.
 SELECT id, org_id, code, discount_type, discount_value, applies_to_tier_ids,
        applies_to_session_ids, currency,
        max_uses, max_uses_per_customer, valid_from, valid_until, min_order_amount,
        status, created_at, updated_at, deleted_at
 FROM promo_codes
 WHERE org_id = $1 AND lower(code) = lower($2) AND deleted_at IS NULL
-ORDER BY created_at
+ORDER BY (code = $2) DESC, created_at, id
 LIMIT 1;
 
 -- name: ListPromoCodesByOrg :many

@@ -221,7 +221,7 @@ const getPromoCodeByCodeCI = `-- name: GetPromoCodeByCodeCI :one
 SELECT ` + promoCodeColumns + `
 FROM promo_codes
 WHERE org_id = $1 AND lower(code) = lower($2) AND deleted_at IS NULL
-ORDER BY created_at
+ORDER BY (code = $2) DESC, created_at, id
 LIMIT 1`
 
 // GetPromoCodeByCodeCI fetches an active promo code by org_id + code, matching
@@ -229,6 +229,10 @@ LIMIT 1`
 // mandates a case-insensitive match on promo_codes.code because the WordPress
 // checkout lets buyers type the code by hand. The admin CRUD keeps using the
 // exact-match GetPromoCodeByCode.
+//
+// Deterministic when several codes of one organization differ only in case
+// (UNIQUE (org_id, code) is case-sensitive): the code typed EXACTLY wins,
+// otherwise the oldest, with the id as the last tie-break.
 //
 // Returns pgx.ErrNoRows when nothing matches or the row is soft-deleted.
 func (q *Queries) GetPromoCodeByCodeCI(ctx context.Context, orgID uuid.UUID, code string) (PromoCodeRow, error) {

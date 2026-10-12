@@ -580,6 +580,52 @@ func TestPublicQuote_StartAcceptsTheCodeAsTypedAndRefusesLikeTheQuote(t *testing
 	}
 }
 
+// Codes of one organization may differ only in case (UNIQUE (org_id, code) is
+// case-sensitive). Which one a typed text names must not depend on row order:
+// the exact spelling wins, otherwise the oldest, and checkout/start picks the
+// very same row the quote did.
+func TestPublicQuote_CodesDifferingInCaseResolveDeterministically(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	f := newHostedOrgFixture(t, ctx, pool, "q7")
+	defer f.cleanup()
+	defer f.cleanupPromos()
+
+	stripe := newStubStripe(t)
+	srv := buildHostedCheckoutServer(t, pool, stripe.baseURL())
+
+	f.insertPromo(t, ctx, "Spring", "percent", 5, "", "")  // older
+	f.insertPromo(t, ctx, "SPRING", "percent", 20, "", "") // newer
+
+	want := map[string]int64{
+		"SPRING": 500, // the exact spelling wins, although it is the newer row
+		"Spring": 125, // exact too
+		"spring": 125, // no exact match: the oldest
+		"sPRING": 125,
+	}
+	for typed, discount := range want {
+		qb := f.mustQuote(t, srv, f.gaCart(1, typed, ""))
+		if qb.Pricing.Discount != discount {
+			t.Errorf("quote %q: discount %d, want %d", typed, qb.Pricing.Discount, discount)
+		}
+	}
+	// checkout/start resolves the typed text to the same row as the quote.
+	code, body := f.startWithPromo(t, srv, 1, "spring")
+	if code != http.StatusCreated {
+		t.Fatalf("start = %d, want 201; body: %s", code, body)
+	}
+	var start hostedStartResponse
+	if err := json.Unmarshal(body, &start); err != nil {
+		t.Fatalf("decode start: %v", err)
+	}
+	csID, _ := uuid.Parse(start.CheckoutSession.ID)
+	cs, err := gen.New(pool).GetCheckoutSessionByID(ctx, csID)
+	if err != nil || cs.Discount == nil || *cs.Discount != 125 {
+		t.Fatalf("start discount = %v (err %v), want 125 like the quote", cs.Discount, err)
+	}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Request validation
 // ─────────────────────────────────────────────────────────────────────────────
