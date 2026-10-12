@@ -178,13 +178,28 @@ type FeedTokenBuyerFlagsRow struct {
 	// FeePercent is the channel's service charge ("5.00" = 5 %), the widget's
 	// cart shows it as a line; the checkout applies the same value.
 	FeePercent string
+	// PromoCodesAvailable is true when the channel's organization has a promo
+	// code that is active, inside its date window and not used up. Existence
+	// only: whether a code fits a cart is the quote route's decision.
+	PromoCodesAvailable bool
 }
 
 const getFeedTokenBuyerFlags = `-- name: GetFeedTokenBuyerFlags :one
 SELECT
     sc.collect_name,
     sc.collect_phone,
-    sc.fee_percent
+    sc.fee_percent,
+    EXISTS (
+        SELECT 1
+        FROM promo_codes p
+        WHERE p.org_id     = sc.org_id
+          AND p.deleted_at IS NULL
+          AND p.status     = 'active'
+          AND (p.valid_from  IS NULL OR p.valid_from  <= now())
+          AND (p.valid_until IS NULL OR p.valid_until >  now())
+          AND (p.max_uses IS NULL
+               OR p.max_uses > (SELECT COUNT(*) FROM promo_code_redemptions r WHERE r.promo_code_id = p.id))
+    ) AS promo_codes_available
 FROM agent_feed_tokens ft
 JOIN sales_channels sc ON sc.id = ft.sales_channel_id
 WHERE ft.token     = $1
@@ -200,6 +215,6 @@ WHERE ft.token     = $1
 func (q *Queries) GetFeedTokenBuyerFlags(ctx context.Context, feedToken string) (FeedTokenBuyerFlagsRow, error) {
 	row := q.db.QueryRow(ctx, getFeedTokenBuyerFlags, feedToken)
 	var r FeedTokenBuyerFlagsRow
-	err := row.Scan(&r.CollectName, &r.CollectPhone, &r.FeePercent)
+	err := row.Scan(&r.CollectName, &r.CollectPhone, &r.FeePercent, &r.PromoCodesAvailable)
 	return r, err
 }

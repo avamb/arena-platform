@@ -275,6 +275,11 @@ type publicFeedSessionResponse struct {
 	// checkout (channelPricingRules). The widget shows it as a cart line so
 	// the buyer sees the total before the payment page does.
 	ServiceFeePercent string `json:"service_fee_percent"`
+	// PromoCodesAvailable is true when the organization has at least one promo
+	// code that is active, inside its date window and not used up. The widget
+	// shows its promo field only then. It says nothing about which code, nor
+	// whether one fits a cart: checkout/quote decides that.
+	PromoCodesAvailable bool `json:"promo_codes_available"`
 	// Timezone is the IANA zone of the session's venue (`venues.timezone`),
 	// "" when the venue has none. The widget formats the session chips in
 	// it: a buyer whose phone lives in another zone (found 2026-09-29 — an
@@ -715,6 +720,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	// (feature #321 WID-0d). Non-fatal: defaults to email-only on error.
 	defaultBuyerFields := buildBuyerFields(false, false)
 	serviceFeePercent := "0.00"
+	promoCodesAvailable := false
 	if h.publicFeedQueries != nil {
 		flags, flagsErr := h.publicFeedQueries.GetFeedTokenBuyerFlags(ctx, feedToken)
 		if flagsErr == nil {
@@ -722,6 +728,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 			if strings.TrimSpace(flags.FeePercent) != "" {
 				serviceFeePercent = flags.FeePercent
 			}
+			promoCodesAvailable = flags.PromoCodesAvailable
 		} else if !errors.Is(flagsErr, pgx.ErrNoRows) {
 			h.logger.Error("public_feed: get buyer flags failed",
 				slog.String("feed_token", feedToken),
@@ -761,6 +768,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 			for _, sess := range sessions {
 				sessResp := h.publicFeedSessionFromRow(ctx, sess, defaultBuyerFields)
 				sessResp.ServiceFeePercent = serviceFeePercent
+				sessResp.PromoCodesAvailable = promoCodesAvailable
 				sessResp.Timezone = h.venueTimezone(ctx, sess.VenueID, venueTimezones)
 				sessResp.applySeatingLinks(admissionByID[sess.ID.String()])
 				sessResp.applyPosterFallback(eventResp.PosterMediaID, eventResp.PosterURL)

@@ -99,10 +99,28 @@ WHERE ft.token     = $1
 -- Returns pgx.ErrNoRows when the token is unknown, revoked, or its linked
 -- sales channel has been soft-deleted.
 -- Feature #321 WID-0d.
+--
+-- promo_codes_available says whether the channel's organization has at least
+-- one promo code a buyer could still use right now: not deleted, status
+-- 'active', inside its date window, uses not exhausted (max_uses). It looks at
+-- nothing else (per-customer limit, event or category scope, currency, minimum
+-- order): the checkout/quote route stays the authority on whether a code fits a
+-- cart. The widget shows its promo field only when this is true.
 SELECT
     sc.collect_name,
     sc.collect_phone,
-    sc.fee_percent
+    sc.fee_percent,
+    EXISTS (
+        SELECT 1
+        FROM promo_codes p
+        WHERE p.org_id     = sc.org_id
+          AND p.deleted_at IS NULL
+          AND p.status     = 'active'
+          AND (p.valid_from  IS NULL OR p.valid_from  <= now())
+          AND (p.valid_until IS NULL OR p.valid_until >  now())
+          AND (p.max_uses IS NULL
+               OR p.max_uses > (SELECT COUNT(*) FROM promo_code_redemptions r WHERE r.promo_code_id = p.id))
+    ) AS promo_codes_available
 FROM agent_feed_tokens ft
 JOIN sales_channels sc ON sc.id = ft.sales_channel_id
 WHERE ft.token     = $1

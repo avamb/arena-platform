@@ -4710,6 +4710,11 @@ export interface paths {
          *         top of the ticket prices at checkout; the widget shows it as
          *         a cart line so the buyer sees the total before the payment
          *         page does.
+         *       * `promo_codes_available` — true when the organization has at
+         *         least one promo code that is active, inside its date window
+         *         and not used up. The widget shows its promo field only then.
+         *         It reveals that such a code exists, never which one, and not
+         *         whether one fits a cart: `checkout/quote` decides that.
          *       * `poster_media_id` — resolved cover: session's own value when
          *         set, otherwise the event fallback. Same on `poster_url`.
          *       * `media_gallery: SessionMediaItem[]` — ordered per-session
