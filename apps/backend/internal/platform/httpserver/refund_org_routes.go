@@ -132,7 +132,7 @@ func (s *Server) handleRefundOptions(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]any{
 		"order_id": opts.OrderID.String(), "route": string(opts.Route), "provider": opts.Provider,
 		"currency": opts.Currency, "partial_refund": opts.PartialRefund,
-		"tickets": tickets, "active_refunds": active,
+		"payment_left": opts.PaymentLeft, "tickets": tickets, "active_refunds": active,
 	}
 	if opts.Refusal != nil {
 		resp["refusal"] = map[string]any{"code": opts.Refusal.Code, "message": opts.Refusal.Message}
