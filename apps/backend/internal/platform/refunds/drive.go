@@ -248,8 +248,12 @@ func (e *Engine) parkOverBudget(ctx context.Context, tx pgx.Tx, id uuid.UUID, pa
 // gen.SumNonFailedRefundsByIntent, the flat routes' sum, carries the same
 // rule (fifth review, LOW d). Unqualified: use it where the refunds row is
 // the innermost table.
+//
+// A refund the provider reversed after it had succeeded (and confirmed on
+// read-back) moved no money either and leaves the budget while it is parked.
 const countsAgainstBudgetSQL = `NOT (state = 'manual_review' AND provider_attempts = 0 AND provider_refund_id IS NULL
-	AND COALESCE(failure_code, '') IN ('` + failureBudgetTaken + `', 'stuck_provider_pending'))`
+	AND COALESCE(failure_code, '') IN ('` + failureBudgetTaken + `', 'stuck_provider_pending'))
+	AND NOT (state = 'manual_review' AND COALESCE(failure_code, '') = '` + failureReversedAfterSuccess + `')`
 
 // deterministicModuleError reports an error that repeating the call can
 // never change and that proves the provider was NOT reached: the module is

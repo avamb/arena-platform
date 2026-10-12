@@ -54,10 +54,7 @@ func (e *Engine) ApplyProviderRefund(ctx context.Context, orgID uuid.UUID, provi
 	if ok {
 		res = read
 	}
-	if r.State == StateSucceeded && res.Status == payments.RefundFailed {
-		return true, e.reverseSucceeded(ctx, id, pay, res)
-	}
-	return true, e.applyStatus(ctx, id, pay, res)
+	return true, e.applyStatus(ctx, id, pay, res, true)
 }
 
 // readBack asks the provider for the refund's current status. ok is false
@@ -87,48 +84,36 @@ func (e *Engine) readBack(ctx context.Context, r Refund) (payments.RefundResult,
 	return res, true, nil
 }
 
-// reverseSucceeded parks a SUCCEEDED refund the provider now reports failed or
-// canceled: the tickets were cancelled and the money did not go back after
-// all. Nothing is undone automatically; an operator is alerted and decides.
-func (e *Engine) reverseSucceeded(ctx context.Context, id uuid.UUID, pay Payment, res payments.RefundResult) error {
-	var (
-		updated Refund
-		changed bool
-	)
-	err := e.inTx(ctx, func(tx pgx.Tx) error {
-		if err := LockPayment(ctx, tx, pay.ID); err != nil {
-			return err
-		}
-		cur, err := getRefund(ctx, tx, id, true)
-		if err != nil {
-			return err
-		}
-		if cur.State != StateSucceeded {
-			return nil // another delivery got here first
-		}
-		code := res.FailureCode
-		if code == "" {
-			code = "failed_after_success"
-		}
-		reason := "the provider reports this refund failed or was canceled after it had succeeded; " +
-			"its tickets were cancelled. Check the provider dashboard before acting: " + res.FailureMessage
-		if updated, err = scanRefund(tx.QueryRow(ctx, `UPDATE refunds SET state = 'manual_review', provider_status = $2,
-			failure_code = $3, failure_reason = $4, `+reviewAlertSQL+`, updated_at = now()
-			WHERE id = $1 RETURNING `+refundColumns,
-			id, string(res.Status), truncate(code, 100), truncate(reason, 500))); err != nil {
-			return err
-		}
-		changed = true
-		return e.writeAudit(ctx, tx, audit.Event{ActorType: "system", Action: "v1.refund.provider_reversed",
-			ResourceType: "refund", ResourceID: id.String(),
-			Metadata: map[string]any{"state": updated.State, "provider_status": string(res.Status),
-				"order_id": uuidString(updated.OrderID), "amount": updated.Amount, "currency": updated.Currency}})
-	})
+// failureReversedAfterSuccess is the failure_code of a succeeded refund the
+// provider later reported failed or canceled (a reversal).
+const failureReversedAfterSuccess = "reversed_after_success"
+
+// reverseTx parks a SUCCEEDED refund the provider now reports failed or
+// canceled, inside the caller's transaction (which holds the payment lock and
+// read the row as succeeded): the tickets may already be void and the money
+// did not go back after all. Nothing is undone automatically; an operator is
+// alerted and decides.
+func (e *Engine) reverseTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, res payments.RefundResult) (Refund, error) {
+	// One stable code for every reversal, whatever the provider called it
+	// (its own code goes into the reason): the alert, the queue and the
+	// budget rule all key on it.
+	reason := "the provider reports this refund failed or was canceled after it had succeeded, so the money did not go back"
+	if res.FailureCode != "" {
+		reason += " (" + res.FailureCode + ")"
+	}
+	reason += "; its tickets may already be void. Check the provider dashboard before acting"
+	if res.FailureMessage != "" {
+		reason += ": " + res.FailureMessage
+	}
+	updated, err := scanRefund(tx.QueryRow(ctx, `UPDATE refunds SET state = 'manual_review', provider_status = $2,
+		failure_code = $3, failure_reason = $4, `+reviewAlertSQL+`, updated_at = now()
+		WHERE id = $1 RETURNING `+refundColumns,
+		id, string(res.Status), failureReversedAfterSuccess, truncate(reason, 500)))
 	if err != nil {
-		return err
+		return Refund{}, err
 	}
-	if changed {
-		e.logReview(updated)
-	}
-	return nil
+	return updated, e.writeAudit(ctx, tx, audit.Event{ActorType: "system", Action: "v1.refund.provider_reversed",
+		ResourceType: "refund", ResourceID: id.String(),
+		Metadata: map[string]any{"state": updated.State, "provider_status": string(res.Status),
+			"order_id": uuidString(updated.OrderID), "amount": updated.Amount, "currency": updated.Currency}})
 }

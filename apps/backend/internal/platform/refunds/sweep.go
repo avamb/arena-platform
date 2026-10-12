@@ -581,6 +581,15 @@ func alertText(r Refund, ticketStatus string) string {
 		text := fmt.Sprintf("Refund %s (%d %s via %s) needs manual review: %s. Order %s.",
 			r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), esc(deref(r.FailureCode)), uuidString(r.OrderID))
 		code := deref(r.FailureCode)
+		if code == failureReversedAfterSuccess {
+			text = fmt.Sprintf("Refund %s (%d %s via %s) was reversed by the provider after it had succeeded: the money did not go back to the buyer. Order %s.",
+				r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), uuidString(r.OrderID))
+			if r.TicketID != nil {
+				text += fmt.Sprintf(" Ticket %s is %s.", r.TicketID, esc(ticketStatusWord(ticketStatus)))
+			}
+			text += " Check the provider dashboard and decide with the organizer whether to refund again or restore the ticket."
+			return text
+		}
 		if code == failureLateOverBudget && deref(r.ProviderStatus) != string(payments.RefundSucceeded) {
 			text += " The provider accepted it as pending and has not confirmed it yet; arena does not read it back: check in the provider dashboard whether it completed."
 		}
@@ -715,14 +724,17 @@ func (e *Engine) lookup(ctx context.Context, id uuid.UUID) error {
 		e.observe(outcomeUnknown)
 		return e.touch(ctx, id)
 	}
-	return e.applyStatus(ctx, id, pay, res)
+	return e.applyStatus(ctx, id, pay, res, false)
 }
 
 // applyStatus records a provider's reading of an ACCEPTED refund (the sweep's
 // RefundLookup or a refund webhook) on the locked row. It only ever moves a
 // provider_pending row: an answer for a row that already left that state is
 // kept out, so a replayed or reordered delivery changes nothing.
-func (e *Engine) applyStatus(ctx context.Context, id uuid.UUID, pay Payment, res payments.RefundResult) error {
+// With reversible set (a provider's webhook), a confirmed failure of a refund
+// that is SUCCEEDED when the lock is held reverses it (reverseTx); the choice
+// is made on the locked row, never on one read before the provider call.
+func (e *Engine) applyStatus(ctx context.Context, id uuid.UUID, pay Payment, res payments.RefundResult, reversible bool) error {
 	var updated Refund
 	changed := false
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
@@ -732,6 +744,13 @@ func (e *Engine) applyStatus(ctx context.Context, id uuid.UUID, pay Payment, res
 		cur, err := getRefund(ctx, tx, id, true)
 		if err != nil {
 			return err
+		}
+		if reversible && cur.State == StateSucceeded && res.Status == payments.RefundFailed {
+			if updated, err = e.reverseTx(ctx, tx, id, res); err != nil {
+				return err
+			}
+			changed = true
+			return nil
 		}
 		if cur.State != StateProviderPending {
 			updated = cur
