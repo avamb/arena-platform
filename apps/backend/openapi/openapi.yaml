@@ -38346,7 +38346,11 @@ paths:
         the ticket, once they have decided which tickets that refund covers.
         While a ticket is on hold no refund of it can be created. A note is
         required and is kept in the audit trail together with the reason the
-        hold carried. Platform superadmin only, with X-Admin-Reason.
+        hold carried. When money returned on the ticket's payment names no
+        ticket, lifting the hold lets this ticket be refunded in full on top
+        of it: the call is refused with that amount
+        (ticket.review_hold_unattributed) until `confirm_unattributed`
+        repeats it. Platform superadmin only, with X-Admin-Reason.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -38373,6 +38377,10 @@ paths:
                 note:
                   type: string
                   description: What was decided, up to 1000 characters. Kept in the audit trail.
+                confirm_unattributed:
+                  type: integer
+                  format: int64
+                  description: The unattributed amount (minor units) the operator was shown. Required when that amount is above zero.
       responses:
         "200":
           description: The hold is lifted.
@@ -38381,7 +38389,7 @@ paths:
               schema:
                 type: object
                 description: The ticket after the hold was lifted.
-                required: [ticket_id, review_hold]
+                required: [ticket_id, review_hold, unattributed_amount, currency]
                 properties:
                   ticket_id:
                     type: string
@@ -38390,6 +38398,13 @@ paths:
                   review_hold:
                     type: boolean
                     description: Always false.
+                  unattributed_amount:
+                    type: integer
+                    format: int64
+                    description: Money returned on the payment by refunds that name no ticket, in minor units; kept in the audit trail.
+                  currency:
+                    type: string
+                    description: ISO 4217 currency of the payment.
         "400":
           description: "Missing note (refund.invalid_request) or X-Admin-Reason missing (superadmin.missing_reason)."
           content:
@@ -38415,7 +38430,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
-          description: "The ticket is not on review hold (ticket.not_on_review_hold)."
+          description: "The ticket is not on review hold (ticket.not_on_review_hold), or money returned on its payment names no ticket and confirm_unattributed does not repeat that amount (ticket.review_hold_unattributed, with unattributed_amount and currency in the details)."
           content:
             application/json:
               schema:

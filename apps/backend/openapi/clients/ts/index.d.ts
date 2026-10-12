@@ -6544,7 +6544,11 @@ export interface paths {
          *     the ticket, once they have decided which tickets that refund covers.
          *     While a ticket is on hold no refund of it can be created. A note is
          *     required and is kept in the audit trail together with the reason the
-         *     hold carried. Platform superadmin only, with X-Admin-Reason.
+         *     hold carried. When money returned on the ticket's payment names no
+         *     ticket, lifting the hold lets this ticket be refunded in full on top
+         *     of it: the call is refused with that amount
+         *     (ticket.review_hold_unattributed) until `confirm_unattributed`
+         *     repeats it. Platform superadmin only, with X-Admin-Reason.
          */
         post: operations["postV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear"];
         delete?: never;
@@ -43555,6 +43559,11 @@ export interface operations {
                 "application/json": {
                     /** @description What was decided, up to 1000 characters. Kept in the audit trail. */
                     note: string;
+                    /**
+                     * Format: int64
+                     * @description The unattributed amount (minor units) the operator was shown. Required when that amount is above zero.
+                     */
+                    confirm_unattributed?: number;
                 };
             };
         };
@@ -43573,6 +43582,13 @@ export interface operations {
                         ticket_id: string;
                         /** @description Always false. */
                         review_hold: boolean;
+                        /**
+                         * Format: int64
+                         * @description Money returned on the payment by refunds that name no ticket, in minor units; kept in the audit trail.
+                         */
+                        unattributed_amount: number;
+                        /** @description ISO 4217 currency of the payment. */
+                        currency: string;
                     };
                 };
             };
@@ -43612,7 +43628,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The ticket is not on review hold (ticket.not_on_review_hold). */
+            /** @description The ticket is not on review hold (ticket.not_on_review_hold), or money returned on its payment names no ticket and confirm_unattributed does not repeat that amount (ticket.review_hold_unattributed, with unattributed_amount and currency in the details). */
             409: {
                 headers: {
                     [name: string]: unknown;

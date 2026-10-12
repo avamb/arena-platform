@@ -14414,6 +14414,9 @@ type GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsvParams struct {
 
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody struct {
+	// ConfirmUnattributed The unattributed amount (minor units) the operator was shown. Required when that amount is above zero.
+	ConfirmUnattributed *int64 `json:"confirm_unattributed,omitempty"`
+
 	// Note What was decided, up to 1000 characters. Kept in the audit trail.
 	Note string `json:"note"`
 }
