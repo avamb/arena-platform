@@ -4,14 +4,17 @@ package refunds_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
 
@@ -134,5 +137,38 @@ func TestEngine_CreateLeavesTheCallToTheSweepWhenTheBudgetIsSpent(t *testing.T) 
 	r := res.Refunds[0]
 	if r.State != refunds.StateProviderPending || r.ProviderAttempts != 0 {
 		t.Fatalf("refund = %s with %d attempt(s); want provider_pending and never attempted", r.State, r.ProviderAttempts)
+	}
+}
+
+// failingRetryAudit refuses the retry's own audit event and writes the rest.
+type failingRetryAudit struct{ audit.Writer }
+
+func (w failingRetryAudit) WriteTx(ctx context.Context, tx pgx.Tx, ev audit.Event) error {
+	if ev.Action == "v1.refund.retry" {
+		return errors.New("audit store down")
+	}
+	return w.Writer.WriteTx(ctx, tx, ev)
+}
+
+// The record of a retry is written with the replacement it names: a retry
+// whose audit cannot be written leaves no replacement and the parked refund
+// as it was.
+func TestEngine_RetryAuditIsWrittenWithTheReplacement(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	ctx := context.Background()
+	id := parkedNeverSent(t, f)
+	e := f.engineWith(&fakeModule{partial: true, answers: []func(payments.RefundRequest) (payments.RefundResult, error){succeeded}}, true,
+		func(o *refunds.Options) { o.Audit = failingRetryAudit{audit.NewPGWriter(f.pool)} })
+	if _, err := e.Retry(ctx, retryInput(f, id)); err == nil {
+		t.Fatal("a retry whose audit failed succeeded")
+	}
+	var n int
+	var state string
+	if err := f.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM refunds WHERE payment_intent_id = $1 AND id <> $2), state
+		FROM refunds WHERE id = $2`, f.payment, id).Scan(&n, &state); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 || state != "manual_review" {
+		t.Fatalf("after a retry whose audit failed: %d other refund(s), parked refund %s; want 0 and manual_review", n, state)
 	}
 }

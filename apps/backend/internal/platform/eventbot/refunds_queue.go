@@ -268,11 +268,19 @@ func (b *Bot) startQueueRetry(ctx context.Context, chatID int64, msgID int, id *
 		return
 	}
 	b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.sending", nil), nil)
-	b.goBackground(func() {
+	b.goBackground("queue retry", func() {
 		defer b.retrying.Delete(refundID)
 		wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), refundSendWindow)
 		defer cancel()
 		b.doQueueRetry(wctx, chatID, msgID, id, refundID)
+	}, func() {
+		// Whether the retry went out is unknown: say so, and let the queue
+		// show its state (a second press replays the same operation).
+		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		b.reply(cctx, chatID, &msgID, b.texts.T(loc, "bot.ref.err_timeout", nil), &models.InlineKeyboardMarkup{
+			InlineKeyboard: [][]models.InlineKeyboardButton{{{Text: "« " + b.texts.T(loc, "bot.btn_back", nil),
+				CallbackData: "rq:l:" + queueDefaultFilter + ":1"}}}})
 	})
 }
 

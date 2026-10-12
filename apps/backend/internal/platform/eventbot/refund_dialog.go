@@ -129,11 +129,15 @@ type refundDialog struct {
 	MsgID    int            `json:"msg_id,omitempty"`
 	// SendingAt is when the confirmed operation went to the server.
 	SendingAt time.Time `json:"sending_at,omitempty"`
+	// RunID names the bot process that sent it: after a restart nothing is
+	// with the server for this dialog any more, whatever the clock says.
+	RunID string `json:"run_id,omitempty"`
 }
 
-// sendingNow reports a dialog whose operation is with the server right now.
-func sendingNow(step string, st refundDialog) bool {
-	return step == refStepSending && time.Since(st.SendingAt) < refundSendWindow
+// sendingNow reports a dialog whose operation is with the server right now:
+// sent by THIS process, within the send window.
+func (b *Bot) sendingNow(step string, st refundDialog) bool {
+	return step == refStepSending && st.RunID == b.runID && time.Since(st.SendingAt) < refundSendWindow
 }
 
 // ─── who sees the button ──────────────────────────────────────────────────────
@@ -218,11 +222,13 @@ func newRefundDialog(orgID uuid.UUID, num int64, opts openapi.OrderRefundOptions
 
 // ─── state in bot_dialogs ─────────────────────────────────────────────────────
 
-func (b *Bot) saveRefund(ctx context.Context, tg int64, st refundDialog, step string) {
+func (b *Bot) saveRefund(ctx context.Context, tg int64, st refundDialog, step string) bool {
 	orgID := st.OrgID
 	if err := b.dialogs.Save(ctx, tg, &orgID, refundDialogKind, step, st, dialogTTL); err != nil {
 		b.logger.Error("eventbot: refund dialog save failed", slog.Int64("telegram_user_id", tg), slog.String("error", err.Error()))
+		return false
 	}
+	return true
 }
 
 // leaveIdleRefund ends the dialog when the person goes elsewhere, but never
@@ -230,7 +236,7 @@ func (b *Bot) saveRefund(ctx context.Context, tg int64, st refundDialog, step st
 func (b *Bot) leaveIdleRefund(ctx context.Context, tg int64) {
 	var st refundDialog
 	step, found, _, err := b.dialogs.Load(ctx, tg, refundDialogKind, &st)
-	if err == nil && found && sendingNow(step, st) {
+	if err == nil && found && b.sendingNow(step, st) {
 		return
 	}
 	b.leaveRefund(ctx, tg)
@@ -262,7 +268,7 @@ func (b *Bot) refundCallback(ctx context.Context, chatID int64, msgID int, from 
 		b.logger.Error("eventbot: refund dialog load failed", slog.Int64("telegram_user_id", from.ID), slog.String("error", err.Error()))
 		return
 	}
-	if found && sendingNow(step, st) {
+	if found && b.sendingNow(step, st) {
 		// The operation is with the server: nothing here may change it or
 		// start another one until its answer is in.
 		b.reply(ctx, chatID, nil, b.texts.T(loc, "bot.ref.still_sending", map[string]any{"Num": st.Num}), nil)
@@ -545,16 +551,32 @@ func (b *Bot) showRefundFinal(ctx context.Context, chatID int64, editMsgID *int,
 func (b *Bot) startSendRefund(ctx context.Context, chatID int64, msgID int, from *models.User, id *Identity, st refundDialog) {
 	loc := id.Locale()
 	st.SendingAt = time.Now().UTC()
+	st.RunID = b.runID
 	st.MsgID = msgID
-	b.saveRefund(ctx, from.ID, st, refStepSending)
+	if !b.saveRefund(ctx, from.ID, st, refStepSending) {
+		// Without the record of the send, a second press could start
+		// another one: nothing is sent, the person is told to try again.
+		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.err_unavailable", nil), b.resendResultKeyboard(loc, st.OrderID))
+		return
+	}
 	// The buttons go away while the server works: a second press cannot start
 	// anything, and the person knows it is under way.
 	b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.sending", nil), nil)
 	tg := from.ID
-	b.goBackground(func() {
+	b.goBackground("refund send", func() {
 		wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), refundSendWindow)
 		defer cancel()
 		b.sendRefund(wctx, chatID, msgID, tg, id, st)
+	}, func() {
+		// Whether the call went out is unknown: the dialog goes back to the
+		// final screen with the same key, which replays rather than repeats.
+		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		if b.ownsSending(cctx, tg, st.Key) {
+			st.SendingAt = time.Time{}
+			b.saveRefund(cctx, tg, st, refStepFinal)
+		}
+		b.reply(cctx, chatID, &msgID, b.texts.T(id.Locale(), "bot.ref.err_timeout", nil), b.resendResultKeyboard(id.Locale(), st.OrderID))
 	})
 }
 
@@ -742,7 +764,9 @@ func (b *Bot) refundText(ctx context.Context, chatID int64, from *models.User, t
 		b.resendGone(ctx, chatID, nil, loc, true)
 		return true
 	}
-	if !found || (step != refStepAmount && step != refStepReasonTxt && step != refStepWord && step != refStepFinal && step != refStepSending) {
+	// A refund with the server waits for buttons only: a typed text then
+	// belongs to whatever other dialog asked for it.
+	if !found || (step != refStepAmount && step != refStepReasonTxt && step != refStepWord && step != refStepFinal) {
 		return false
 	}
 	id, _, err := b.resolveIdentity(ctx, from.ID)
@@ -781,8 +805,6 @@ func (b *Bot) refundText(ctx context.Context, chatID int64, from *models.User, t
 		b.showRefundFinal(ctx, chatID, edit, id, st, "")
 	case refStepFinal:
 		b.showRefundFinal(ctx, chatID, edit, id, st, "") // only the buttons send money
-	case refStepSending:
-		b.reply(ctx, chatID, nil, b.texts.T(loc, "bot.ref.still_sending", map[string]any{"Num": st.Num}), nil)
 	}
 	return true
 }

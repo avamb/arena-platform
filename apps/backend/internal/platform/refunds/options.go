@@ -41,6 +41,10 @@ type OrderOptions struct {
 	Currency string
 	// PartialRefund: the provider can return less than the whole payment.
 	PartialRefund bool
+	// PaymentLeft is what is left of the whole payment. Each ticket's
+	// Refundable is capped by it on its own, so the tickets together may
+	// offer more than this; no refund operation can return more.
+	PaymentLeft int64
 	// Refusal explains a route the engine cannot drive (nil when it can).
 	Refusal *Error
 	Tickets []TicketOption
@@ -88,7 +92,8 @@ func (e *Engine) Options(ctx context.Context, orgID, orderID uuid.UUID) (OrderOp
 			pay.ID).Scan(&taken); err != nil {
 			return err
 		}
-		paymentLeft := pay.Amount - taken
+		paymentLeft := max(pay.Amount-taken, 0)
+		out.PaymentLeft = paymentLeft
 
 		rows, err := tx.Query(ctx, `
 			SELECT t.id, t.status, oi.total,

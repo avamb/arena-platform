@@ -41,6 +41,9 @@ func (s *Server) handleClearTicketReviewHold(w http.ResponseWriter, r *http.Requ
 	}
 	var body struct {
 		Note string `json:"note"`
+		// ConfirmUnattributed repeats the unattributed amount the operator
+		// was shown, so the hold cannot be lifted over money they never saw.
+		ConfirmUnattributed *int64 `json:"confirm_unattributed"`
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<16))
 	if err != nil || json.Unmarshal(raw, &body) != nil || strings.TrimSpace(body.Note) == "" || len([]rune(body.Note)) > 1000 {
@@ -64,11 +67,24 @@ func (s *Server) handleClearTicketReviewHold(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	actor, via := refundActor(r)
-	var previous string
+	var (
+		previous     string
+		unattributed int64
+		currency     string
+		unconfirmed  bool
+	)
 	err = pgx.BeginFunc(ctx, s.pgxPool, func(tx pgx.Tx) error {
 		if err := tx.QueryRow(ctx, `SELECT COALESCE(review_hold_reason, '') FROM tickets WHERE id = $1 AND review_hold FOR UPDATE`,
 			ticketID).Scan(&previous); err != nil {
 			return err
+		}
+		var err error
+		if unattributed, currency, err = refunds.UnattributedForTicket(ctx, tx, ticketID); err != nil {
+			return err
+		}
+		if unattributed > 0 && (body.ConfirmUnattributed == nil || *body.ConfirmUnattributed != unattributed) {
+			unconfirmed = true
+			return nil
 		}
 		if _, err := q.WithTx(tx).ClearTicketReviewHold(ctx, ticketID); err != nil {
 			return err
@@ -79,8 +95,15 @@ func (s *Server) handleClearTicketReviewHold(w http.ResponseWriter, r *http.Requ
 		return s.audit.WriteTx(ctx, tx, audit.Event{ActorType: actor.Type, ActorID: actor.ID,
 			Action: "v1.ticket.review_hold_clear", ResourceType: "ticket", ResourceID: ticketID.String(),
 			Metadata: map[string]any{"org_id": orgID.String(), "note": strings.TrimSpace(body.Note),
-				"previous_reason": previous, "via": via}})
+				"previous_reason": previous, "via": via, "unattributed_amount": unattributed, "currency": currency}})
 	})
+	if err == nil && unconfirmed {
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails("ticket.review_hold_unattributed",
+			"money returned on this payment names no ticket; lifting the hold lets this ticket be refunded in full on top of it. "+
+				"Repeat the amount in confirm_unattributed to lift it anyway", r,
+			map[string]any{"unattributed_amount": unattributed, "currency": currency}))
+		return
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope("ticket.not_on_review_hold", "the ticket is not on review hold", r))
 		return
@@ -90,5 +113,6 @@ func (s *Server) handleClearTicketReviewHold(w http.ResponseWriter, r *http.Requ
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("ticket.review_hold_clear_failed", "failed to lift the review hold", r))
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"ticket_id": ticketID.String(), "review_hold": false})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"ticket_id": ticketID.String(), "review_hold": false,
+		"unattributed_amount": unattributed, "currency": currency})
 }
