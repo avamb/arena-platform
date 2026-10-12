@@ -438,6 +438,22 @@ func TestRefundOrgRoutes_RetryAndResolveReviewFixes(t *testing.T) {
 	if st != http.StatusAccepted || one(out)["state"] != "failed" {
 		t.Fatalf("declined create: %d %v", st, out)
 	}
+	queueRow := func(id string) map[string]any {
+		st, q := pf.do(t, http.MethodGet, base+"/refunds?state=failed&limit=100", key, "")
+		if st != http.StatusOK {
+			t.Fatalf("queue: %d %v", st, q)
+		}
+		for _, r := range q["refunds"].([]any) {
+			if m := r.(map[string]any); m["id"] == id {
+				return m
+			}
+		}
+		t.Fatalf("refund %s missing from the queue", id)
+		return nil
+	}
+	if m := queueRow(failedA); m["retryable"] != true || m["order_id"] != f2.order.String() {
+		t.Fatalf("a refused refund in the queue: %v; want retryable and its order id", m)
+	}
 	st, out = refundOrgPost(t, pf, base+"/refunds/"+failedA+"/retry", key, "", `{}`)
 	if st != http.StatusAccepted || one(out)["state"] != "failed" {
 		t.Fatalf("declined retry: %d %v", st, out)
@@ -447,14 +463,8 @@ func TestRefundOrgRoutes_RetryAndResolveReviewFixes(t *testing.T) {
 		t.Fatalf("second retry of the same refund: %d %v; want 409 refund.already_replaced", st, out)
 	}
 	declined = false
-	st, queue = pf.do(t, http.MethodGet, base+"/refunds?state=failed&limit=100", key, "")
-	offered := map[string]any{}
-	for _, r := range queue["refunds"].([]any) {
-		m := r.(map[string]any)
-		offered[m["id"].(string)] = m["retryable"]
-	}
-	if offered[failedA] != false {
-		t.Fatalf("a refund that was already retried is offered again: %v", offered)
+	if m := queueRow(failedA); m["retryable"] != false {
+		t.Fatalf("a refund that was already retried is offered again: %v", m)
 	}
 
 	// ── resolve: the note stays in the audit trail, the row keeps its reason,
