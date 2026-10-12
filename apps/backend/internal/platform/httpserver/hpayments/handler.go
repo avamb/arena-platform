@@ -11,6 +11,7 @@ package hpayments
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -39,6 +40,9 @@ type Handler struct {
 	// They exist so a test can point the check at a stub without a network
 	// call; see WithStripeBaseURL / WithFlittBaseURL.
 	providerOptions payments.Options
+	// callbackBase is the public API origin providers post events to; it
+	// builds the per-config webhook URL the subscription check looks for.
+	callbackBase string
 }
 
 // New constructs a Handler from the caller's dependencies. Nil queries and a
@@ -83,5 +87,12 @@ func (h *Handler) WithStripeBaseURL(base string) *Handler {
 // root (a stub in tests). Empty means the real https://pay.flitt.com/api.
 func (h *Handler) WithFlittBaseURL(base string) *Handler {
 	h.providerOptions.FlittAPIBaseURL = base
+	return h
+}
+
+// WithCallbackBase sets the public API origin used to build the per-config
+// webhook URL for the subscription check. Empty disables that check.
+func (h *Handler) WithCallbackBase(base string) *Handler {
+	h.callbackBase = strings.TrimRight(base, "/")
 	return h
 }

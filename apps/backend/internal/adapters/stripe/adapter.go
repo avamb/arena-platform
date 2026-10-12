@@ -631,3 +631,39 @@ func (a *Adapter) VerifyCredentials(ctx context.Context) error {
 		return fmt.Errorf("%w: %s", payments.ErrProviderUnreachable, err.Error())
 	}
 }
+
+// CheckWebhookSubscription reads the account's webhook endpoints
+// (GET /v1/webhook_endpoints) and reports whether the one with callbackURL
+// receives refund updates. A restricted key without the right to read
+// endpoints answers an error: the caller treats it as "unknown".
+//
+// Implements payments.WebhookSubscriptionChecker.
+func (a *Adapter) CheckWebhookSubscription(ctx context.Context, callbackURL string) (payments.WebhookSubscription, error) {
+	body, _, err := a.doRequest(ctx, http.MethodGet, a.cfg.BaseURL+"/webhook_endpoints?limit=100", nil, "")
+	if err != nil {
+		return payments.WebhookSubscription{}, err
+	}
+	var list struct {
+		Data []struct {
+			URL           string   `json:"url"`
+			Status        string   `json:"status"`
+			EnabledEvents []string `json:"enabled_events"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &list); err != nil {
+		return payments.WebhookSubscription{}, fmt.Errorf("stripe: decode webhook endpoints: %w", err)
+	}
+	var out payments.WebhookSubscription
+	for _, ep := range list.Data {
+		if ep.URL != callbackURL || ep.Status == "disabled" {
+			continue
+		}
+		out.EndpointFound = true
+		for _, ev := range ep.EnabledEvents {
+			if ev == "*" || ev == "refund.updated" {
+				out.RefundEventsSubscribed = true
+			}
+		}
+	}
+	return out, nil
+}
