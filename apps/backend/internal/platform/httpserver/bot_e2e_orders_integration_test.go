@@ -322,7 +322,7 @@ func ordScreens(t *testing.T, pool *pgxpool.Pool, s *ordBotSeed, d ecDriver, pen
 		s.eventName1, "<b>Anna Orderova</b>", "✉ " + s.annaEmail,
 		`href="tel:+34611222333"`, `href="https://wa.me/34611222333"`, "+34 611 222 333",
 		"Билетов: 2", "Parterre · 25 EUR · <code>" + s.annaCode + "</code> · место A / 3 / 12 · действует",
-		"✔ вошёл", "страницу ивента в Arena (Orders Channel", "Билеты отправлены покупателю",
+		"✔ вошёл", "страницу мероприятия в Arena (Orders Channel", "Билеты отправлены покупателю",
 	} {
 		if !strings.Contains(card, w) {
 			t.Errorf("Anna's card lacks %q:\n%s", w, card)

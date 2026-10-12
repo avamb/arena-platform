@@ -123,3 +123,28 @@ func (q *Queries) GetDeliveryPaymentSummaryByTicketID(
 	)
 	return r, err
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GetTicketSellerCountries
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getTicketSellerCountries = `-- name: GetTicketSellerCountries :one
+SELECT o.legal_address_country, o.country
+FROM   tickets t
+JOIN   sessions s      ON s.id = t.session_id
+JOIN   events e        ON e.id = s.event_id
+JOIN   organizations o ON o.id = e.org_id
+WHERE  t.id = $1
+  AND  t.complimentary_issuance_id IS NULL`
+
+// GetTicketSellerCountries returns the two country columns of the organization
+// that sells the event a ticket belongs to (legal-address country and plain
+// country), the inputs of the withdrawal-notice rule printed in the ticket
+// e-mail. Returns pgx.ErrNoRows when the ticket has no session AND for a
+// ticket issued as an operator invitation (complimentary_issuance_id set):
+// those are gifts, not purchases, so no withdrawal sentence applies.
+func (q *Queries) GetTicketSellerCountries(ctx context.Context, ticketID uuid.UUID) (SellerCountriesRow, error) {
+	var r SellerCountriesRow
+	err := q.db.QueryRow(ctx, getTicketSellerCountries, ticketID).Scan(&r.LegalAddressCountry, &r.Country)
+	return r, err
+}
