@@ -892,25 +892,25 @@ export const PAYMENT_COMMIT_I18N: Record<string, PaymentCommitStrings> = {
   },
   ru: {
     withdrawal_notice:
-      'На билеты на мероприятие в определённую дату право на отказ от договора не распространяется. Ваш заказ становится обязательным после оплаты.',
+      'На билеты на мероприятие в определённую дату право на отказ от договора не распространяется. Ваш заказ становится окончательным после оплаты.',
     pay_label: 'Оплатить {amount}',
     pay_label_plain: 'Оплатить',
   },
   cs: {
     withdrawal_notice:
-      'Na vstupenky na akci v konkrétní termín se nevztahuje právo na odstoupení od smlouvy. Vaše objednávka se stává závaznou zaplacením.',
+      'Na vstupenky na akci konanou v určitém termínu se nevztahuje právo na odstoupení od smlouvy. Objednávka se stává závaznou okamžikem zaplacení.',
     pay_label: 'Zaplatit {amount}',
     pay_label_plain: 'Zaplatit',
   },
   he: {
     withdrawal_notice:
-      'על כרטיסים לאירוע בתאריך מסוים לא חלה זכות הביטול. ההזמנה נעשית מחייבת עם ביצוע התשלום.',
+      'על כרטיסים לאירוע במועד קבוע לא חלה זכות הביטול. ההזמנה שלכם הופכת למחייבת עם התשלום.',
     pay_label: 'לתשלום {amount}',
     pay_label_plain: 'לתשלום',
   },
   es: {
     withdrawal_notice:
-      'Las entradas para un evento en una fecha concreta no están sujetas al derecho de desistimiento. Su pedido pasa a ser vinculante al realizar el pago.',
+      'Las entradas para un evento en una fecha concreta no están sujetas al derecho de desistimiento. Tu pedido pasa a ser vinculante al realizar el pago.',
     pay_label: 'Pagar {amount}',
     pay_label_plain: 'Pagar ahora',
   },

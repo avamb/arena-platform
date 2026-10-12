@@ -50,9 +50,21 @@ describe('withdrawal notice in the buyer form', () => {
 
   it('uses the buyer language for the notice, Spanish and Czech included', () => {
     expect(formHtml({ withdrawalNotice: true, locale: 'es' })).toContain('derecho de desistimiento');
-    expect(formHtml({ withdrawalNotice: true, locale: 'cs' })).toContain('právo na odstoupení od smlouvy');
+    expect(formHtml({ withdrawalNotice: true, locale: 'cs' })).toContain('se nevztahuje právo na odstoupení od smlouvy');
     expect(formHtml({ withdrawalNotice: true, locale: 'es-ES' })).toContain('derecho de desistimiento');
     expect(formHtml({ withdrawalNotice: true, locale: 'xx' })).toContain(EN_NOTICE);
+  });
+
+  it('speaks to a Spanish buyer as tú and keeps the agreed Czech, Russian and Hebrew sentences', () => {
+    expect(PAYMENT_COMMIT_I18N.es!.withdrawal_notice).toContain('Tu pedido pasa a ser vinculante');
+    expect(PAYMENT_COMMIT_I18N.es!.withdrawal_notice).not.toContain('Su pedido');
+    expect(PAYMENT_COMMIT_I18N.cs!.withdrawal_notice).toBe(
+      'Na vstupenky na akci konanou v určitém termínu se nevztahuje právo na odstoupení od smlouvy. Objednávka se stává závaznou okamžikem zaplacení.',
+    );
+    expect(PAYMENT_COMMIT_I18N.ru!.withdrawal_notice).toContain('становится окончательным после оплаты');
+    expect(PAYMENT_COMMIT_I18N.he!.withdrawal_notice).toBe(
+      'על כרטיסים לאירוע במועד קבוע לא חלה זכות הביטול. ההזמנה שלכם הופכת למחייבת עם התשלום.',
+    );
   });
 
   it('keeps the notice in the reading direction (logical CSS, no physical sides)', () => {
