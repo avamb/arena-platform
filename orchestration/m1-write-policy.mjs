@@ -112,6 +112,13 @@ export function validateM1Task(task, worktreeRoot) {
   return true;
 }
 
+export function buildM1Prompt(task) {
+  const inputs = task.inputs.map(file => `- ${file}`).join('\n');
+  const reads = task.read_paths.map(file => `- ${file}`).join('\n');
+  const writes = task.write_paths.map(file => `- ${file}`).join('\n');
+  return `${task.objective}\n\nApproved input files (read only):\n${inputs}\n\nApproved read paths:\n${reads}\n\nApproved write paths (the only paths you may create or edit):\n${writes}\n\nExpected outputs:\n${(task.expected_outputs ?? []).map(item => `- ${item}`).join('\n')}\n\nAcceptance criteria:\n${task.acceptance.map(item => `- ${item}`).join('\n')}\n\nReturn JSON with summary, changed_files, tests, risks, incomplete_components. Report incomplete work explicitly; never claim PASS without evidence. Do not read or use reference SVG files.`;
+}
+
 export function redactM1(value) {
   let text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
   for (const pattern of SECRET_PATTERNS) text = text.replace(pattern, '[REDACTED]');

@@ -364,6 +364,89 @@
         "message": "SDK completed successfully"
       },
       "errors": []
+    },
+    {
+      "task_id": "m1-xlsx-productization-v2",
+      "completed_at": "2026-10-12T19:46:16.189Z",
+      "mode": "sdk-write",
+      "status": "PENDING_CODEX_REVIEW",
+      "api_calls": 1,
+      "model": "claude-sonnet-5-5",
+      "reported_api_cost_usd": 0.21801190000000004,
+      "billing": {
+        "status": "UNKNOWN",
+        "sdk_reported_cost_usd": 0.21801190000000004,
+        "usage_present": true,
+        "actual_billing": "UNKNOWN"
+      },
+      "usage": {
+        "input_tokens": 12,
+        "cache_creation_input_tokens": 35560,
+        "cache_read_input_tokens": 85079,
+        "output_tokens": 12058,
+        "output_tokens_details": {
+          "thinking_tokens": 2155
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 35560
+        },
+        "inference_geo": "global",
+        "iterations": [],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "error_classification": {
+        "kind": "success",
+        "success": true,
+        "message": "SDK completed successfully"
+      },
+      "errors": []
+    },
+    {
+      "task_id": "orchestration-telemetry-mock-v2",
+      "completed_at": "2026-10-12T20:14:35.949Z",
+      "mode": "mock",
+      "status": "PASS",
+      "api_calls": 0,
+      "model": "claude-sonnet-5-5",
+      "reported_api_cost_usd": 0,
+      "billing": {
+        "status": "NOT_APPLICABLE",
+        "sdk_reported_cost_usd": 0,
+        "actual_billing": "NOT_APPLICABLE"
+      },
+      "usage": null,
+      "terminal": {
+        "subtype": "success",
+        "is_error": false,
+        "api_error_status": null,
+        "stop_reason": null,
+        "terminal_reason": null,
+        "startup_failure_reason": null,
+        "errors": [],
+        "terminal_error_text": null,
+        "num_turns": 0,
+        "duration_ms": null,
+        "duration_api_ms": null,
+        "result_present": true,
+        "usage_present": false,
+        "model_usage_present": false,
+        "sdk_reported_cost_usd": 0
+      },
+      "assistant_errors": [],
+      "diagnostic_stderr": [],
+      "error_classification": {
+        "kind": "success",
+        "success": true,
+        "message": "SDK completed successfully"
+      },
+      "errors": []
     }
   ],
   "notes": "No new API calls were made by Phase A preparation. Existing experiment results remain in sdk_experiments/results."

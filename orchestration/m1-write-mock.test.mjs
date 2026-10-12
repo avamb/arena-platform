@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createM1ToolPolicy } from './m1-write-policy.mjs';
+import { buildM1Prompt, createM1ToolPolicy } from './m1-write-policy.mjs';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -30,4 +30,14 @@ test('M1 task packet excludes private sources, reference SVGs and shell commands
   assert.equal(task.inputs.some(item => /ChatExport|\.svg$|evaluator_only|console-confirmation|workspace-confirmation/i.test(item)), false);
   assert.equal(task.forbidden_paths.includes('arena_new'), true);
   assert.equal(task.max_retries, 0);
+});
+
+test('M1 v2 prompt carries paths, outputs and non-success review guard', () => {
+  const task = JSON.parse(readFileSync(new URL('./tasks/m1-xlsx-productization-v2.json', import.meta.url), 'utf8'));
+  const prompt = buildM1Prompt(task);
+  assert.equal(task.task_id, 'm1-xlsx-productization-v2');
+  assert.deepEqual({ budget: task.budget_usd, turns: task.max_turns, timeout: task.timeout_ms, retries: task.max_retries }, { budget: 10, turns: 6, timeout: 300000, retries: 0 });
+  for (const item of [...task.inputs, ...task.read_paths, ...task.write_paths, ...task.expected_outputs]) assert.equal(prompt.includes(`- ${item}`), true, `missing prompt item: ${item}`);
+  assert.match(prompt, /Report incomplete work explicitly/);
+  assert.match(prompt, /never claim PASS without evidence/);
 });

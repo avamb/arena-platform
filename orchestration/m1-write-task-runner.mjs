@@ -5,11 +5,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
-import { createM1ToolPolicy, M1_ALLOWED_TOOLS, M1_FORBIDDEN_TOOL_NAMES, redactM1, validateM1Task } from './m1-write-policy.mjs';
+import { buildM1Prompt, createM1ToolPolicy, M1_ALLOWED_TOOLS, M1_FORBIDDEN_TOOL_NAMES, redactM1, validateM1Task } from './m1-write-policy.mjs';
 import { appendSafeDiagnostic, billingRecord, captureAssistantDiagnostics, captureTerminalDiagnostic, classifyTerminal } from './sdk-telemetry.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const RUNTIME_ROOT = path.resolve(process.env.M1_RUNTIME_ROOT || ROOT);
 const ORCH = path.join(ROOT, 'orchestration');
+const RUNTIME_ORCH = path.join(RUNTIME_ROOT, 'orchestration');
 const RUN_ROOT = path.join(ORCH, 'runs');
 const LEDGER = path.join(ORCH, 'ledger.json');
 const MODEL = 'claude-sonnet-5-5';
@@ -29,8 +31,8 @@ function parseJson(text) {
   try { return JSON.parse(String(text ?? '').trim().replace(/^```json\s*/i, '').replace(/\s*```$/i, '')); } catch { return null; }
 }
 function validateConsole() {
-  const consoleData = JSON.parse(readFileSync(path.join(ROOT, 'sdk_experiments/console-confirmation.json'), 'utf8'));
-  const workspace = JSON.parse(readFileSync(path.join(ROOT, 'sdk_experiments/workspace-confirmation.json'), 'utf8'));
+  const consoleData = JSON.parse(readFileSync(path.join(RUNTIME_ROOT, 'sdk_experiments/console-confirmation.json'), 'utf8'));
+  const workspace = JSON.parse(readFileSync(path.join(RUNTIME_ROOT, 'sdk_experiments/workspace-confirmation.json'), 'utf8'));
   for (const key of ['key_workspace_confirmed', 'promotional_credit_eligible', 'auto_reload_disabled', 'spending_limits_reviewed']) assert.equal(consoleData[key], true, `${key} is not confirmed`);
   assert.ok(Number(consoleData.promotional_balance_usd) >= MAX_BUDGET_USD, 'promotional balance is below M1 budget');
   assert.ok(new Date().toISOString().slice(0, 10) < consoleData.promotional_expiry, 'promotional grant is expired');
@@ -78,14 +80,14 @@ async function execute({ taskFile, worktree, approved, keyStdin }) {
   const audit = [], errors = [], diagnosticStderr = [], assistantErrors = [];
   let terminal = null, rawResult = null, usage = null, reportedCost = null, timedOut = false;
   const workspaceId = identity.workspace_id;
-  const requireSdk = createRequire(path.join(ROOT, 'sdk_experiments/package.json'));
+  const requireSdk = createRequire(path.join(RUNTIME_ROOT, 'sdk_experiments/package.json'));
   const { query } = requireSdk('@anthropic-ai/claude-agent-sdk');
   const cli = requireSdk.resolve('@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe');
   const env = {
     PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP,
     USERPROFILE: process.env.USERPROFILE, ANTHROPIC_API_KEY: key, ANTHROPIC_WORKSPACE_ID: workspaceId,
     ANTHROPIC_CUSTOM_HEADERS: `anthropic-workspace-id: ${workspaceId}`, ANTHROPIC_BASE_URL: 'https://api.anthropic.com',
-    CLAUDE_CONFIG_DIR: path.join(ORCH, 'runtime', 'm1', task.task_id), CLAUDE_CODE_MAX_RETRIES: '0',
+    CLAUDE_CONFIG_DIR: path.join(RUNTIME_ORCH, 'runtime', 'm1', task.task_id), CLAUDE_CODE_MAX_RETRIES: '0',
     CLAUDE_CODE_STARTUP_FAILURE_RESULTS: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', DISABLE_TELEMETRY: '1',
     DISABLE_ERROR_REPORTING: '1', DISABLE_AUTOUPDATER: '1', CLAUDE_AGENT_SDK_CLIENT_APP: 'venue-svg-orchestrator-m1',
   };
@@ -94,7 +96,7 @@ async function execute({ taskFile, worktree, approved, keyStdin }) {
   let stream;
   try {
     stream = query({
-      prompt: `${task.objective}\nRead only the approved input files. You may write/edit only paths under write_paths. Return JSON with summary, changed_files, tests, risks. Do not use or mention reference SVG files.`,
+      prompt: buildM1Prompt(task),
       options: {
         pathToClaudeCodeExecutable: cli, cwd: worktree, env, model: MODEL, effort: 'low', maxTurns: task.max_turns,
         maxBudgetUsd: task.budget_usd, tools: M1_ALLOWED_TOOLS, allowedTools: M1_ALLOWED_TOOLS,
@@ -119,14 +121,15 @@ async function execute({ taskFile, worktree, approved, keyStdin }) {
   if (!classification.success) errors.push(classification.message);
   const changedFiles = audit.filter(item => item.phase === 'post' && ['Write', 'Edit'].includes(item.tool)).map(item => item.path);
   const gitDiff = collectGitDiff(worktree);
-  const result = { task_id: task.task_id, status: classification.success && errors.length === 0 ? 'PENDING_CODEX_REVIEW' : 'FAIL', mode: 'sdk-write', api_calls: 1, model: MODEL, max_turns: task.max_turns, max_budget_usd: task.budget_usd, reported_api_cost_usd: reportedCost, billing: billingRecord({ mode: 'sdk', reportedCost, usage }), usage, terminal, assistant_errors: assistantErrors, diagnostic_stderr: diagnosticStderr, error_classification: classification, errors, audit, diff: { changed_files: changedFiles, outside_scope: audit.some(item => ['Write', 'Edit'].includes(item.tool) && item.allowed === false), patch_available: gitDiff.patch.length > 0, status: gitDiff.status }, structured_result: structured ?? { summary: null, changed_files: [], tests: [], risks: ['No valid structured result'] }, input_hashes: Object.fromEntries(task.inputs.map(file => [file, sha256(path.join(worktree, file))])) };
+  const result = { task_id: task.task_id, status: classification.success && errors.length === 0 ? 'PENDING_CODEX_REVIEW' : 'FAIL', mode: 'sdk-write', attempt_created: true, attempted_api_calls: 1, sdk_actual_api_calls: 1, api_calls: 1, model: MODEL, configured_max_turns: task.max_turns, sdk_reported_turns: terminal?.num_turns ?? null, max_turns: task.max_turns, max_budget_usd: task.budget_usd, reported_api_cost_usd: reportedCost, billing: billingRecord({ mode: 'sdk', reportedCost, usage }), usage, terminal, assistant_errors: assistantErrors, diagnostic_stderr: diagnosticStderr, error_classification: classification, errors, audit, diff: { changed_files: changedFiles, outside_scope: audit.some(item => ['Write', 'Edit'].includes(item.tool) && item.allowed === false), patch_available: gitDiff.patch.length > 0, status: gitDiff.status }, structured_result: structured ?? { summary: null, changed_files: [], tests: [], risks: ['No valid structured result'] }, input_hashes: Object.fromEntries(task.inputs.map(file => [file, sha256(path.join(worktree, file))])) };
   const review = { review_version: 1, status: result.status === 'PENDING_CODEX_REVIEW' ? 'PENDING_CODEX_REVIEW' : 'FAIL', checks: { sdk_execution: classification.success, write_paths_audited: audit.filter(item => ['Write', 'Edit'].includes(item.tool)).every(item => item.allowed), no_production_scope: true, tests: 'Codex must run acceptance tests outside the Claude process' }, notes: 'No automatic fix or retry. Codex review and owner approval are required before merge.' };
   writeArtifact(runDir, 'result.json', JSON.parse(redactM1(result)));
   writeArtifact(runDir, 'review.json', review);
-  writeArtifact(runDir, 'checkpoint.json', { task_id: task.task_id, status: review.status, result: 'result.json', review: 'review.json', api_calls: 1, reported_api_cost_usd: reportedCost, note: 'No automatic retry; merge requires owner approval.' });
+  writeArtifact(runDir, 'checkpoint.json', { task_id: task.task_id, status: review.status, result: 'result.json', review: 'review.json', attempted_api_calls: 1, sdk_actual_api_calls: 1, configured_max_turns: task.max_turns, sdk_reported_turns: terminal?.num_turns ?? null, api_calls: 1, reported_api_cost_usd: reportedCost, note: 'No automatic retry; merge requires owner approval.' });
   writeArtifact(runDir, 'diff-audit.json', result.diff);
   writeFileSync(path.join(runDir, 'changes.diff'), gitDiff.patch + (gitDiff.status ? `\n# git status\n${gitDiff.status}\n` : ''), { flag: 'wx' });
-  appendLedger({ task_id: task.task_id, completed_at: new Date().toISOString(), mode: 'sdk-write', status: result.status, api_calls: 1, model: MODEL, reported_api_cost_usd: reportedCost, billing: result.billing, usage, error_classification: classification, errors });
+  appendLedger({ task_id: task.task_id, completed_at: new Date().toISOString(), mode: 'sdk-write', status: result.status, attempt_created: true, attempted_api_calls: 1, sdk_actual_api_calls: 1, configured_max_turns: task.max_turns, sdk_reported_turns: terminal?.num_turns ?? null, api_calls: 1, model: MODEL, reported_api_cost_usd: reportedCost, billing: result.billing, usage, error_classification: classification, errors });
+  console.log(JSON.stringify({ status: result.status, task_id: task.task_id, api_calls: result.api_calls, model: result.model, reported_api_cost_usd: result.reported_api_cost_usd, terminal_reason: terminal?.terminal_reason ?? null, error_classification: result.error_classification, changed_files: result.diff.changed_files }));
   process.exitCode = result.status === 'PENDING_CODEX_REVIEW' ? 0 : 1;
 }
 
