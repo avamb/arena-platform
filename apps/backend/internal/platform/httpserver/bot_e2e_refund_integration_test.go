@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/uuid"
@@ -39,7 +40,12 @@ func TestBotE2E_Refund_OwnerReturnsOneTicket(t *testing.T) {
 	f := newBotInviteFixture(t, pool)
 	other := newBotInviteFixture(t, pool)
 	stripe := newStubStripe(t)
+	// hold, when set, keeps the provider call waiting until it is closed.
+	var hold atomic.Pointer[chan struct{}]
 	stripe.refundHandler = func(w http.ResponseWriter, r *http.Request) {
+		if h := hold.Load(); h != nil {
+			<-*h
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprint(w, `{"id":"re_bot_e2e","status":"succeeded"}`)
 	}
@@ -124,6 +130,16 @@ func TestBotE2E_Refund_OwnerReturnsOneTicket(t *testing.T) {
 	if !strings.Contains(final, "25 EUR") || !strings.Contains(final, "№") {
 		t.Errorf("the final screen does not state the amount:\n%s", final)
 	}
+	// Owner decision 13.10 (R2-8): the final screen says the tickets become
+	// invalid, also for a part of the amount.
+	if !strings.Contains(final, "перестанут действовать") {
+		t.Errorf("the final screen does not say the tickets become invalid:\n%s", final)
+	}
+	// R2-2: a "yes" button of another screen (another key) sends nothing.
+	d.press("or:f:ok:000000000000", "от старого экрана")
+	if n, _ := refundCount(t, srv, seed.anna); n != 0 {
+		t.Fatalf("a stale yes button created %d refund(s)", n)
+	}
 	if n, _ := refundCount(t, srv, seed.anna); n != 0 {
 		t.Fatalf("the typed word alone created %d refund(s); only the button may", n)
 	}
@@ -138,7 +154,23 @@ func TestBotE2E_Refund_OwnerReturnsOneTicket(t *testing.T) {
 	d.press("or:f:go", "Почему возвращаются деньги")
 	d.press("or:f:r:1", "ВЕРНУТЬ")
 	d.say("вернуть", "Последняя проверка")
-	done := d.press("or:f:ok", "Возврат запрошен")
+	var key string
+	if err := pool.QueryRow(ctx, `SELECT state->>'key' FROM bot_dialogs WHERE telegram_user_id = $1 AND kind = 'refund'`, ecOwnerTG).Scan(&key); err != nil {
+		t.Fatalf("dialog key: %v", err)
+	}
+	tag := strings.TrimPrefix(key, "tg-")[:12]
+	// R2-1: while the provider takes its time the bot keeps answering.
+	held := make(chan struct{})
+	hold.Store(&held)
+	sentMark := tg.mark()
+	d.press("or:f:ok:"+tag, "Отправляю возврат")
+	d.press("home", "")
+	if n, _ := refundCount(t, srv, seed.anna); n != 1 {
+		t.Fatalf("refunds while the provider waits = %d; want the one being sent", n)
+	}
+	d.press("or:f:s:"+seed.anna.String(), "ещё отправляется")
+	close(held)
+	done := tg.waitSince(t, sentMark, "Возврат запрошен")
 	if !strings.Contains(done, "возвращено") {
 		t.Errorf("the result does not say the money is back:\n%s", done)
 	}
