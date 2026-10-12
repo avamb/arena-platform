@@ -6,6 +6,7 @@ package refunds_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -15,6 +16,12 @@ import (
 )
 
 func pendingRefund(t *testing.T, f *fixture, key string) (*refunds.Engine, refunds.Refund) {
+	t.Helper()
+	e, r, _ := pendingRefundWith(t, f, key)
+	return e, r
+}
+
+func pendingRefundWith(t *testing.T, f *fixture, key string) (*refunds.Engine, refunds.Refund, *fakeModule) {
 	t.Helper()
 	m := &fakeModule{partial: true, answers: []func(payments.RefundRequest) (payments.RefundResult, error){pending}}
 	e := f.engine(m, true)
@@ -26,13 +33,14 @@ func pendingRefund(t *testing.T, f *fixture, key string) (*refunds.Engine, refun
 	if r.State != refunds.StateProviderPending || r.ProviderRefundID == nil {
 		t.Fatalf("refund = %+v; want provider_pending with a provider id", r)
 	}
-	return e, r
+	return e, r, m
 }
 
 func TestEngine_RefundWebhookSucceededSettlesAPendingRefund(t *testing.T) {
 	f := newFixture(t, testPool(t), "pay03fake")
-	e, r := pendingRefund(t, f, "k-hook-ok")
+	e, r, m := pendingRefundWith(t, f, "k-hook-ok")
 	ctx := context.Background()
+	m.lookup = payments.RefundResult{Status: payments.RefundSucceeded}
 
 	found, err := e.ApplyProviderRefund(ctx, f.org, "pay03fake", *r.ProviderRefundID,
 		payments.RefundResult{ProviderRefundID: *r.ProviderRefundID, Status: payments.RefundSucceeded})
@@ -56,8 +64,9 @@ func TestEngine_RefundWebhookSucceededSettlesAPendingRefund(t *testing.T) {
 
 func TestEngine_RefundWebhookFailureGoesToManualReview(t *testing.T) {
 	f := newFixture(t, testPool(t), "pay03fake")
-	e, r := pendingRefund(t, f, "k-hook-fail")
+	e, r, m := pendingRefundWith(t, f, "k-hook-fail")
 	ctx := context.Background()
+	m.lookup = payments.RefundResult{Status: payments.RefundFailed, FailureCode: "insufficient_funds"}
 
 	if found, err := e.ApplyProviderRefund(ctx, f.org, "pay03fake", *r.ProviderRefundID,
 		payments.RefundResult{Status: payments.RefundFailed, FailureCode: "insufficient_funds"}); err != nil || !found {
@@ -68,6 +77,7 @@ func TestEngine_RefundWebhookFailureGoesToManualReview(t *testing.T) {
 		t.Fatalf("state = %s; want manual_review (the ticket is already cancelled)", got.State)
 	}
 	// A later "succeeded" cannot silently overwrite the operator's queue.
+	m.lookup = payments.RefundResult{Status: payments.RefundSucceeded}
 	if _, err := e.ApplyProviderRefund(ctx, f.org, "pay03fake", *r.ProviderRefundID,
 		payments.RefundResult{Status: payments.RefundSucceeded}); err != nil {
 		t.Fatal(err)
@@ -94,5 +104,74 @@ func TestEngine_RefundWebhookStaysInsideTheOrganizationAndProvider(t *testing.T)
 	}
 	if got, _ := e.GetRefund(ctx, r.ID); got.State != refunds.StateProviderPending {
 		t.Fatalf("state = %s; nothing may have moved it", got.State)
+	}
+}
+
+// The event body is a hint: the refund is read back from the provider before
+// anything moves, and a read that fails is an error (the provider redelivers).
+func TestEngine_RefundWebhookReadsTheRefundBack(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	e, r, m := pendingRefundWith(t, f, "k-hook-readback")
+	ctx := context.Background()
+
+	m.lookup = payments.RefundResult{Status: payments.RefundPending}
+	if _, err := e.ApplyProviderRefund(ctx, f.org, "pay03fake", *r.ProviderRefundID,
+		payments.RefundResult{Status: payments.RefundSucceeded}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := e.GetRefund(ctx, r.ID); got.State != refunds.StateProviderPending {
+		t.Fatalf("an event the provider does not confirm moved the refund to %s", got.State)
+	}
+	m.lookupErr = errors.New("provider unreachable")
+	if found, err := e.ApplyProviderRefund(ctx, f.org, "pay03fake", *r.ProviderRefundID,
+		payments.RefundResult{Status: payments.RefundSucceeded}); err == nil || !found {
+		t.Fatalf("unreadable refund = %v %v; want found with an error", found, err)
+	}
+	if got, _ := e.GetRefund(ctx, r.ID); got.State != refunds.StateProviderPending {
+		t.Fatalf("state = %s after an unreadable refund; want provider_pending", got.State)
+	}
+}
+
+// A refund that already SUCCEEDED and is later reported failed or canceled by
+// the provider goes to manual_review with an alert owed; an event the provider
+// does not confirm changes nothing.
+func TestEngine_RefundWebhookReversalOfASucceededRefund(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	e, r, m := pendingRefundWith(t, f, "k-hook-reversed")
+	ctx := context.Background()
+	m.lookup = payments.RefundResult{Status: payments.RefundSucceeded}
+	if _, err := e.ApplyProviderRefund(ctx, f.org, "pay03fake", *r.ProviderRefundID,
+		payments.RefundResult{Status: payments.RefundSucceeded}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := e.GetRefund(ctx, r.ID); got.State != refunds.StateSucceeded {
+		t.Fatalf("state = %s; want succeeded", got.State)
+	}
+
+	// The provider still says succeeded: a "failed" event is not believed.
+	if _, err := e.ApplyProviderRefund(ctx, f.org, "pay03fake", *r.ProviderRefundID,
+		payments.RefundResult{Status: payments.RefundFailed}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := e.GetRefund(ctx, r.ID); got.State != refunds.StateSucceeded {
+		t.Fatalf("an unconfirmed failure moved a succeeded refund to %s", got.State)
+	}
+
+	// The provider confirms the reversal.
+	m.lookup = payments.RefundResult{Status: payments.RefundFailed, FailureCode: "canceled"}
+	if found, err := e.ApplyProviderRefund(ctx, f.org, "pay03fake", *r.ProviderRefundID,
+		payments.RefundResult{Status: payments.RefundFailed}); err != nil || !found {
+		t.Fatalf("ApplyProviderRefund = %v %v", found, err)
+	}
+	got, _ := e.GetRefund(ctx, r.ID)
+	if got.State != refunds.StateManualReview || got.FailureCode == nil || *got.FailureCode != "canceled" {
+		t.Fatalf("refund = %s %v; want manual_review canceled", got.State, got.FailureCode)
+	}
+	var alertOwed bool
+	if err := f.pool.QueryRow(ctx, `SELECT alert_due_at IS NOT NULL FROM refunds WHERE id = $1`, r.ID).Scan(&alertOwed); err != nil {
+		t.Fatal(err)
+	}
+	if !alertOwed {
+		t.Error("a reversed refund owes no alert")
 	}
 }

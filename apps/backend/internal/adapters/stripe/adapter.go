@@ -632,6 +632,21 @@ func (a *Adapter) VerifyCredentials(ctx context.Context) error {
 	}
 }
 
+// receivesRefundEvents reports whether an endpoint's event list covers every
+// way a refund reaches arena: its creation (a refund made in the dashboard is
+// usually born succeeded and only sends refund.created), its updates
+// (refund.updated, or the older charge.refund.updated) and its failure.
+func receivesRefundEvents(events []string) bool {
+	has := map[string]bool{}
+	for _, ev := range events {
+		has[ev] = true
+	}
+	if has["*"] {
+		return true
+	}
+	return has["refund.created"] && (has["refund.updated"] || has["charge.refund.updated"]) && has["refund.failed"]
+}
+
 // CheckWebhookSubscription reads the account's webhook endpoints
 // (GET /v1/webhook_endpoints) and reports whether the one with callbackURL
 // receives refund updates. A restricted key without the right to read
@@ -659,11 +674,7 @@ func (a *Adapter) CheckWebhookSubscription(ctx context.Context, callbackURL stri
 			continue
 		}
 		out.EndpointFound = true
-		for _, ev := range ep.EnabledEvents {
-			if ev == "*" || ev == "refund.updated" {
-				out.RefundEventsSubscribed = true
-			}
-		}
+		out.RefundEventsSubscribed = receivesRefundEvents(ep.EnabledEvents)
 	}
 	return out, nil
 }

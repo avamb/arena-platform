@@ -49,8 +49,9 @@ type CredentialVerifier interface {
 type WebhookSubscription struct {
 	// EndpointFound is false when no registered endpoint has the callback URL.
 	EndpointFound bool
-	// RefundEventsSubscribed is true when the endpoint receives refund
-	// updates; meaningful only when EndpointFound.
+	// RefundEventsSubscribed is true when the endpoint receives every refund
+	// event arena needs (created, updated, failed); meaningful only when
+	// EndpointFound.
 	RefundEventsSubscribed bool
 }
 
