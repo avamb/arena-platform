@@ -6421,6 +6421,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organization's refund queue
+         * @description Pages the refunds of the organization, newest first (PAY-06, spec 36
+         *     section 8). `state` keeps one state, such as `manual_review` for the
+         *     refunds that need an operator, `event_id` keeps the refunds of one
+         *     event's orders. Requires the `refund.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdRefunds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/refunds/{refund_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One refund with its history
+         * @description Reads one refund of the organization with the steps of its life from
+         *     the audit trail. A refund of another organization is the route's own
+         *     404. Requires the `refund.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdRefundsRefundId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/tickets/{id}/scans": {
         parameters: {
             query?: never;
@@ -9965,6 +10010,62 @@ export interface components {
                 /** @description Human-readable explanation. */
                 message?: string;
             };
+        };
+        /** @description A refund in the organization's queue, with what is needed to place it. */
+        OrderRefundQueueItem: components["schemas"]["OrderRefundItem"] & {
+            /**
+             * Format: int64
+             * @description The order's number (`orders.system_id`), null for a refund without an order.
+             */
+            order_number?: number | null;
+            /** @description Name of the event of the order. */
+            event_name?: string | null;
+            /**
+             * Format: int64
+             * @description Number of the ticket the refund is for, null for a refund of the whole payment.
+             */
+            ticket_number?: number | null;
+            /** @description Who asked for the refund; null when that cannot be told (for example a person who is not a member of the organization). */
+            creator?: {
+                /** @description `user`, `api_key` or `provider_dashboard` (a refund made in the payment provider's own dashboard). */
+                kind: string;
+                /** @description The member's name, or their e-mail when they have none (null for a caller acting with an API key), or the API key's name. */
+                label?: string | null;
+            } | null;
+        };
+        /** @description One page of the organization's refunds, newest first. */
+        OrderRefundQueue: {
+            /** @description The refunds of this page. */
+            refunds: components["schemas"]["OrderRefundQueueItem"][];
+            /** @description How many refunds match the filter. */
+            total: number;
+            /** @description True when another page follows. */
+            has_more: boolean;
+        };
+        /** @description One step of a refund's life, read from the audit trail. */
+        OrderRefundHistoryEntry: {
+            /** @description Audit action, such as `v1.refund.batch_create` or `v1.refund.provider_result`. */
+            action: string;
+            /**
+             * Format: date-time
+             * @description When the step happened.
+             */
+            at: string;
+            /** @description The provider's answer for a provider step, when the step has one. */
+            outcome?: string | null;
+            /** @description The refund state after the step, when the step has one. */
+            state?: string | null;
+            /** @description Machine-readable reason of a refusal, when the step has one. */
+            failure_code?: string | null;
+        };
+        /** @description A refund with its history. */
+        OrderRefundDetail: {
+            /** @description The refund. */
+            refund: components["schemas"]["OrderRefundQueueItem"];
+            /** @description The latest steps of the refund (at most 100), oldest first. */
+            history: components["schemas"]["OrderRefundHistoryEntry"][];
+            /** @description How many steps the refund has in all; more than `history` holds when the refund has a long life. */
+            history_total: number;
         };
         /** @description One refund operation on an order. */
         CreateOrderRefundsRequest: {
@@ -43177,6 +43278,162 @@ export interface operations {
                 };
             };
             /** @description Refunds are not available right now (`refund.engine_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdRefunds: {
+        parameters: {
+            query?: {
+                /** @description One refund state (requested, approved, provider_pending, succeeded, failed, manual_review, rejected). */
+                state?: string;
+                /** @description Keep only refunds of orders of this event. */
+                event_id?: string;
+                /** @description Page size, 1 to 100, default 50. */
+                limit?: number;
+                /** @description How many refunds to skip. */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the queue. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderRefundQueue"];
+                };
+            };
+            /** @description Invalid filter (refund.invalid_request or a path parameter that is not a UUID). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (refund.read) or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refunds are not available (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdRefundsRefundId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the refund */
+                refund_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The refund and its history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderRefundDetail"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (refund.read) or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refund not found in this organization (refund.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refunds are not available (database not wired). */
             503: {
                 headers: {
                     [name: string]: unknown;

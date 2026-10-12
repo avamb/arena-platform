@@ -8713,6 +8713,36 @@ type OrderPaymentSummary struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// OrderRefundDetail A refund with its history.
+type OrderRefundDetail struct {
+	// History The latest steps of the refund (at most 100), oldest first.
+	History []OrderRefundHistoryEntry `json:"history"`
+
+	// HistoryTotal How many steps the refund has in all; more than `history` holds when the refund has a long life.
+	HistoryTotal int `json:"history_total"`
+
+	// Refund The refund.
+	Refund OrderRefundQueueItem `json:"refund"`
+}
+
+// OrderRefundHistoryEntry One step of a refund's life, read from the audit trail.
+type OrderRefundHistoryEntry struct {
+	// Action Audit action, such as `v1.refund.batch_create` or `v1.refund.provider_result`.
+	Action string `json:"action"`
+
+	// At When the step happened.
+	At time.Time `json:"at"`
+
+	// FailureCode Machine-readable reason of a refusal, when the step has one.
+	FailureCode *string `json:"failure_code"`
+
+	// Outcome The provider's answer for a provider step, when the step has one.
+	Outcome *string `json:"outcome"`
+
+	// State The refund state after the step, when the step has one.
+	State *string `json:"state"`
+}
+
 // OrderRefundItem One refund row of an order, as the organizer's refund API reports it.
 type OrderRefundItem struct {
 	// Amount Amount in minor units of the currency.
@@ -8790,6 +8820,72 @@ type OrderRefundOptions struct {
 
 	// Tickets Every ticket of the order with what can still be returned.
 	Tickets []OrderRefundTicketOption `json:"tickets"`
+}
+
+// OrderRefundQueue One page of the organization's refunds, newest first.
+type OrderRefundQueue struct {
+	// HasMore True when another page follows.
+	HasMore bool `json:"has_more"`
+
+	// Refunds The refunds of this page.
+	Refunds []OrderRefundQueueItem `json:"refunds"`
+
+	// Total How many refunds match the filter.
+	Total int `json:"total"`
+}
+
+// OrderRefundQueueItem defines model for OrderRefundQueueItem.
+type OrderRefundQueueItem struct {
+	// Amount Amount in minor units of the currency.
+	Amount int64 `json:"amount"`
+
+	// CancelTicket True when the ticket is cancelled once the provider accepts the refund.
+	CancelTicket bool `json:"cancel_ticket"`
+
+	// CreatedAt When the refund was recorded.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Creator Who asked for the refund; null when that cannot be told (for example a person who is not a member of the organization).
+	Creator *struct {
+		// Kind `user`, `api_key` or `provider_dashboard` (a refund made in the payment provider's own dashboard).
+		Kind string `json:"kind"`
+
+		// Label The member's name, or their e-mail when they have none (null for a caller acting with an API key), or the API key's name.
+		Label *string `json:"label"`
+	} `json:"creator"`
+
+	// Currency ISO 4217 currency code.
+	Currency string `json:"currency"`
+
+	// EventName Name of the event of the order.
+	EventName *string `json:"event_name"`
+
+	// FailureCode Machine-readable reason when the provider refused or the refund needs review.
+	FailureCode *string `json:"failure_code"`
+
+	// FailureReason Human-readable reason that goes with failure_code.
+	FailureReason *string `json:"failure_reason"`
+
+	// Id UUID of the refund.
+	Id openapi_types.UUID `json:"id"`
+
+	// OrderNumber The order's number (`orders.system_id`), null for a refund without an order.
+	OrderNumber *int64 `json:"order_number"`
+
+	// ProviderRefundId The provider's id of the refund, once it accepted it.
+	ProviderRefundId *string `json:"provider_refund_id"`
+
+	// ProviderStatus The provider's own status of the refund, when it has answered.
+	ProviderStatus *string `json:"provider_status"`
+
+	// State One of requested, approved, provider_pending, succeeded, failed, manual_review.
+	State string `json:"state"`
+
+	// TicketId The ticket the refund is for; null for a refund of the whole payment.
+	TicketId *openapi_types.UUID `json:"ticket_id"`
+
+	// TicketNumber Number of the ticket the refund is for, null for a refund of the whole payment.
+	TicketNumber *int64 `json:"ticket_number"`
 }
 
 // OrderRefundTicketOption What can still be returned for one ticket of an order.
@@ -14344,6 +14440,21 @@ type GetV1OrganizationsOrgIdPromoCodesPromoCodeIdRedemptionsCsvParams struct {
 type ListPromotersParams struct {
 	// IncludeArchived Include archived promoters (true/false, default false).
 	IncludeArchived *bool `form:"include_archived,omitempty" json:"include_archived,omitempty"`
+}
+
+// GetV1OrganizationsOrgIdRefundsParams defines parameters for GetV1OrganizationsOrgIdRefunds.
+type GetV1OrganizationsOrgIdRefundsParams struct {
+	// State One refund state (requested, approved, provider_pending, succeeded, failed, manual_review, rejected).
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// EventId Keep only refunds of orders of this event.
+	EventId *openapi_types.UUID `form:"event_id,omitempty" json:"event_id,omitempty"`
+
+	// Limit Page size, 1 to 100, default 50.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset How many refunds to skip.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // GetV1OrganizationsOrgIdSessionsSessionIdChangeImpactParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdChangeImpact.
