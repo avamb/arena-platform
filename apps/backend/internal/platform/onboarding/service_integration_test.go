@@ -210,6 +210,16 @@ func TestLifecycle_DraftToApproval(t *testing.T) {
 	if role != "org_admin" || kyb != "unverified" || mode != "direct_merchant" {
 		t.Fatalf("workspace = role %s kyb %s mode %s", role, kyb, mode)
 	}
+	// The applicant's e-mail is their login. It must never be copied to the
+	// organization's contact column, where it could be mistaken for a public
+	// contact.
+	var contactEmail *string
+	if err := pool.QueryRow(ctx, `SELECT contact_email FROM organizations WHERE id = $1`, res.OrgID).Scan(&contactEmail); err != nil {
+		t.Fatalf("read contact_email: %v", err)
+	}
+	if contactEmail != nil {
+		t.Fatalf("organizations.contact_email = %q after approval, want NULL", *contactEmail)
+	}
 	var setups int
 	_ = pool.QueryRow(ctx, `SELECT count(*) FROM worker_jobs WHERE job_type = 'auth.password_reset_email' AND payload->>'email' = $1`, email).Scan(&setups)
 	if setups != 1 {
