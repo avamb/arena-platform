@@ -17,6 +17,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 )
 
 // actorIsMemberOfOrgServer reports whether the authenticated actor holds an
@@ -104,6 +105,25 @@ func (s *Server) enforceMembershipInOrg(w http.ResponseWriter, r *http.Request, 
 		))
 		return false
 	}
+	return s.requirePermissionInOrg(w, r, orgID)
+}
+
+// requirePermissionInOrg answers 403 permissions.denied when the caller, a
+// member of orgID, does not hold the route's permission IN orgID (PERM-ORG):
+// a role held in another organization never answers for this one.
+func (s *Server) requirePermissionInOrg(w http.ResponseWriter, r *http.Request, orgID uuid.UUID) bool {
+	allowed, err := permissions.AllowedInOrg(r.Context(), orgID)
+	if err != nil {
+		s.logger.Error("server: org permission check failed", "error", err.Error())
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"permissions.internal_error", "An internal error occurred while evaluating permissions.", r))
+		return false
+	}
+	if !allowed {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+			"permissions.denied", "You do not have permission to perform this action.", r))
+		return false
+	}
 	return true
 }
 
@@ -148,6 +168,11 @@ func (s *Server) rowOrgAccess(w http.ResponseWriter, r *http.Request, orgID uuid
 	}
 	if !member {
 		return notFound()
+	}
+	// The row's organization is known now: the caller must hold the gate's
+	// permission THERE (PERM-ORG).
+	if !s.requirePermissionInOrg(w, r, orgID) {
+		return false
 	}
 	return true
 }

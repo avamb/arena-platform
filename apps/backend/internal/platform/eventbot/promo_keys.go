@@ -28,7 +28,7 @@ var promoKeys = []string{
 	"bot.promo.q_amount", "bot.promo.q_currency", "bot.promo.q_scope", "bot.promo.q_scope_event",
 	"bot.promo.scope_all_btn", "bot.promo.scope_pick_btn", "bot.promo.q_event", "bot.promo.q_pick",
 	"bot.promo.pick_done_btn", "bot.promo.pick_event_btn", "bot.promo.q_total", "bot.promo.q_per",
-	"bot.promo.skip_btn", "bot.promo.skip_exp_btn", "bot.promo.q_expiry", "bot.promo.q_status",
+	"bot.promo.one_btn", "bot.promo.skip_btn", "bot.promo.skip_exp_btn", "bot.promo.q_expiry", "bot.promo.q_status",
 	"bot.promo.status_active_btn", "bot.promo.status_paused_btn", "bot.promo.summary",
 	"bot.promo.create_btn", "bot.promo.cancel_btn", "bot.promo.err_code_empty",
 	"bot.promo.err_code_long", "bot.promo.err_code_chars", "bot.promo.err_code_dup",

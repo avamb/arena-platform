@@ -644,3 +644,19 @@ func TestPromoKeys_AreRegisteredAndTranslated(t *testing.T) {
 		t.Error("delete word rules")
 	}
 }
+
+// The "1: once per buyer" button answers the per-buyer question with 1 and
+// moves on; it must not depend on the total limit that came before it.
+func TestPromo_OncePerBuyerButton(t *testing.T) {
+	for _, total := range []*int32{nil, ptr32(1), ptr32(50)} {
+		d := &promoDraft{Step: pmStepPer, MaxUses: total}
+		if key := answer(d, "", "one"); key != "" {
+			t.Fatalf("total=%v: refused with %q", total, key)
+		}
+		if d.PerBuyer == nil || *d.PerBuyer != 1 || d.Step != pmStepExpiry {
+			t.Fatalf("total=%v: per buyer=%v step=%s", total, d.PerBuyer, d.Step)
+		}
+	}
+}
+
+func ptr32(n int32) *int32 { return &n }
