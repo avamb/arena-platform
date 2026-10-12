@@ -224,7 +224,7 @@ func TestRefundBuyerEmail_OneLetterPerOperation(t *testing.T) {
 	if strings.Contains(body, "The refunded tickets are no longer valid for entry.") {
 		t.Fatalf("a letter with a still valid ticket says all tickets are void:\n%s", body)
 	}
-	if strings.Count(body, "· no longer valid:") != 1 || !strings.Contains(body, "your other tickets stay valid") {
+	if strings.Count(body, "· no longer valid:") != 1 || !strings.Contains(body, "the other tickets in the list above stay valid") {
 		t.Fatalf("mixed letter must mark exactly one ticket and say the others stay valid:\n%s", body)
 	}
 
