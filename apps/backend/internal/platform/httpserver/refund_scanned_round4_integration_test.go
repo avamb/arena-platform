@@ -146,6 +146,27 @@ func (e *scanEnv) exceptionUsedBy(t *testing.T, i int) string {
 	return by
 }
 
+// N4: a manual cancellation the handler refuses (here an unknown field) does
+// not burn the exception.
+func TestRefundScanned_RefusedManualCancelKeepsTheException(t *testing.T) {
+	e := newScanEnv(t, "ticket.cancel", "refund.read")
+	e.exec(t, `UPDATE tickets SET used_at = now() WHERE id = $1`, e.f.tickets[0])
+	e.grantException(t, 0)
+	st, out := e.pf.do(t, http.MethodPost, "/v1/tickets/"+e.f.tickets[0].String()+"/cancel", e.key,
+		`{"reason":"show cancelled","refund_mode":"manual","surprise":1}`)
+	if st != http.StatusBadRequest {
+		t.Fatalf("cancel with an unknown field: %d %v; want 400", st, out)
+	}
+	if by := e.exceptionUsedBy(t, 0); by != "" {
+		t.Fatalf("a refused cancellation spent the exception (%q)", by)
+	}
+	st, out = e.pf.do(t, http.MethodPost, "/v1/tickets/"+e.f.tickets[0].String()+"/cancel", e.key,
+		`{"reason":"show cancelled","refund_mode":"manual"}`)
+	if st != http.StatusOK || e.exceptionUsedBy(t, 0) != "spent" {
+		t.Fatalf("manual cancel on the exception: %d %v, exception %q; want 200 and spent", st, out, e.exceptionUsedBy(t, 0))
+	}
+}
+
 // N5: anything after the JSON object is refused, so the scan check and the
 // handler can never read two different requests out of one body.
 func TestRefundScanned_CancelBodyWithTrailingDataIsRefused(t *testing.T) {

@@ -182,6 +182,7 @@ func (h *Handler) HandleCancelTicket(w http.ResponseWriter, r *http.Request) {
 		RefundAmount: req.RefundAmount,
 		ActorType:    "user",
 		ActorID:      actor.ID,
+		ScanGuard:    true,
 	})
 	if cancelErr != nil {
 		httputil.WriteJSON(w, cancelErr.Status, httputil.ErrorEnvelope(

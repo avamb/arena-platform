@@ -327,3 +327,46 @@ func (e *Engine) TicketScanned(ctx context.Context, ticketID uuid.UUID, spend bo
 	}
 	return scanned, err
 }
+
+// GuardTicketMoneyTx is the scan rule inside the transaction that writes the
+// money decision for one ticket (the ticket-cancel route): it reports whether
+// money may NOT be returned for the ticket, and, when it may and spend is
+// set, spends a live superadmin exception on refundID (nil for a decision
+// that writes no refund row). Deciding and spending in the writer's own
+// transaction means a request that is refused later never burns the
+// exception, and a refund written on it owns it from the start.
+func GuardTicketMoneyTx(ctx context.Context, tx pgx.Tx, ticketID uuid.UUID, refundID *uuid.UUID, spend bool) (bool, error) {
+	var blocked bool
+	if err := tx.QueryRow(ctx, `SELECT `+ticketBlockedSQL+` FROM tickets t WHERE t.id = $1`, ticketID).Scan(&blocked); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	if blocked || !spend {
+		return blocked, nil
+	}
+	_, err := tx.Exec(ctx, spendScanExceptionSQL, refundID, ticketID)
+	return false, err
+}
+
+// GuardPaymentMoneyTx is the same for a refund of the whole payment (the flat
+// create route): blocked when any ticket sold with the payment is scanned
+// without a live exception (that ticket is returned); otherwise every live
+// exception of the payment's tickets is spent on refundID.
+func GuardPaymentMoneyTx(ctx context.Context, tx pgx.Tx, paymentIntentID, refundID uuid.UUID) (uuid.UUID, bool, error) {
+	var ticket uuid.UUID
+	err := tx.QueryRow(ctx, `SELECT t.id FROM payment_intents pi
+		JOIN tickets t ON t.checkout_session_id = pi.checkout_session_id
+		WHERE pi.id = $1 AND `+ticketBlockedSQL+scannedOrder+` LIMIT 1`, paymentIntentID).Scan(&ticket)
+	if err == nil {
+		return ticket, true, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, false, err
+	}
+	_, err = tx.Exec(ctx, `UPDATE refund_scan_exceptions sx SET used_at = now(), used_by_refund = $1
+		FROM payment_intents pi JOIN tickets t ON t.checkout_session_id = pi.checkout_session_id
+		WHERE pi.id = $2 AND sx.ticket_id = t.id AND sx.used_at IS NULL AND sx.expires_at > now()`, refundID, paymentIntentID)
+	return uuid.Nil, false, err
+}
