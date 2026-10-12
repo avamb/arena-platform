@@ -208,7 +208,7 @@ other = "Time is up: an invitation waits for the address and role for 30 minutes
 other = "This dialog has expired after 30 minutes without an answer. Start again from the menu."
 
 ["bot.too_many_messages"]
-other = "Too many messages — please wait a minute."
+other = "You sent too many messages. Wait one minute."
 
 ["bot.team_ask_role"]
 other = "What may {{.Email}} do?"
@@ -570,7 +570,7 @@ other = "This promoter already exists — pick it from the list."
 other = "The promoter's tax or company id, if any. You can skip this."
 
 ["bot.wz.ask_poster"]
-other = "Send the poster. Best <b>as a file</b>, so nothing is lost:\n• on the phone: paperclip 📎 → “File” → pick the picture;\n• on the computer: paperclip 📎 → pick the picture → tick “Send as a document” in the send window.\nA plain photo works too, but Telegram compresses it.\n\nPNG or JPG up to 5 MB, 4:5 (1080×1350) or square, at least 1000 px wide. Keep everything important in the centre: the site crops the top and bottom in cards. Without a poster the event card on the site will not open, but you can add the poster later."
+other = "Send the poster as a file, so the quality stays the same. A plain photo also works, but Telegram compresses it.\n\n<b>On a phone:</b>\n1. Tap the paperclip 📎.\n2. Tap “File”.\n3. Select the picture.\n\n<b>On a computer:</b>\n1. Click the paperclip 📎.\n2. Select the picture.\n3. In the send window, select the check box “Send as a document”.\n\n<b>Requirements:</b>\n• PNG or JPG, maximum 5 MB.\n• Ratio 4:5 (1080×1350) or square.\n• Minimum width 1000 px.\n\nThe site crops the top and the bottom of the poster in cards. Put the important parts in the center.\n\nWithout a poster, the event card does not open on the site. You can add the poster later."
 
 ["bot.wz.poster_bad_type"]
 other = "The poster must be a PNG or JPG image."
@@ -663,7 +663,7 @@ other = "How many places are on sale for this date? A number, for example 80."
 other = "The venue “{{.Venue}}” holds {{.Capacity}}. How many places are on sale for this date? Keep {{.Capacity}} or type a number, for example 80."
 
 ["bot.wz.err_capacity"]
-other = "A whole number of at least 1 is needed, for example 80."
+other = "Type a whole number, 1 or more. Example: 80."
 
 ["bot.wz.session_added"]
 other = "Date {{.N}}: {{.When}}, {{.Venue}}, {{.City}}, {{.Capacity}} places."
@@ -1288,7 +1288,7 @@ other = "Arena Sold Out events and sales in Telegram"
 other = "CANCEL"
 
 ["bot.ses.type_ask"]
-other = "⚠️ <b>Last step — nothing is cancelled yet.</b>\n\n{{.Subject}}\nBuyer emails to send (orders): {{.Orders}}. This cannot be undone.{{if .Orders}}\n\n💶 The platform does NOT refund the money: the orders stay paid and the tickets stay valid. Settle refunds with the buyers yourself.{{end}}\n\nTo cancel, <b>type the word {{.Word}}</b> and send it as a message. To keep the session, press «Back»."
+other = "⚠️ <b>Warning: this cannot be undone.</b>\nNothing is canceled yet.\n\n{{.Subject}}\nE-mails to buyers: {{.Orders}}.{{if .Orders}}\n\n💶 The platform does NOT refund the money. The orders stay paid. The tickets stay valid. Settle refunds with the buyers yourself.{{end}}\n\nTo cancel, <b>type {{.Word}}</b> and send it. To keep the session, press «Back»."
 
 ["bot.ses.type_subject_one"]
 other = "Session: <b>{{.Old}}</b>"
@@ -1303,7 +1303,7 @@ other = "That is not the word, so nothing was cancelled. To cancel, type exactly
 other = "💶 No money was refunded automatically and the tickets stay valid. Settle refunds with the buyers yourself."
 
 ["bot.wz.tz_suggest_note"]
-other = "For the city «{{.City}}» I found the zone {{.Zone}}. Press the button to confirm it."
+other = "The time zone for {{.City}} is {{.Zone}}. Press the button to confirm."
 
 # ── organizer application (bot.onb.*) ──
 
