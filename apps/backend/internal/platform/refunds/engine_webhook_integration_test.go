@@ -7,6 +7,7 @@ package refunds_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -164,8 +165,9 @@ func TestEngine_RefundWebhookReversalOfASucceededRefund(t *testing.T) {
 		t.Fatalf("ApplyProviderRefund = %v %v", found, err)
 	}
 	got, _ := e.GetRefund(ctx, r.ID)
-	if got.State != refunds.StateManualReview || got.FailureCode == nil || *got.FailureCode != "canceled" {
-		t.Fatalf("refund = %s %v; want manual_review canceled", got.State, got.FailureCode)
+	if got.State != refunds.StateManualReview || got.FailureCode == nil || *got.FailureCode != "reversed_after_success" ||
+		got.FailureReason == nil || !strings.Contains(*got.FailureReason, "canceled") {
+		t.Fatalf("refund = %s %v %v; want manual_review reversed_after_success naming the provider's code", got.State, got.FailureCode, got.FailureReason)
 	}
 	var alertOwed bool
 	if err := f.pool.QueryRow(ctx, `SELECT alert_due_at IS NOT NULL FROM refunds WHERE id = $1`, r.ID).Scan(&alertOwed); err != nil {
@@ -173,5 +175,52 @@ func TestEngine_RefundWebhookReversalOfASucceededRefund(t *testing.T) {
 	}
 	if !alertOwed {
 		t.Error("a reversed refund owes no alert")
+	}
+}
+
+// Round-3 review R3-3: a reversal the provider confirmed moved no money, so
+// the reversed refund no longer counts against the payment.
+func TestEngine_ReversedRefundLeavesThePaymentsBudget(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	e, r, m := pendingRefundWith(t, f, "k-hook-reversed-budget")
+	ctx := context.Background()
+	m.lookup = payments.RefundResult{Status: payments.RefundSucceeded}
+	if _, err := e.ApplyProviderRefund(ctx, f.org, "pay03fake", *r.ProviderRefundID, payments.RefundResult{Status: payments.RefundSucceeded}); err != nil {
+		t.Fatal(err)
+	}
+	m.lookup = payments.RefundResult{Status: payments.RefundFailed, FailureCode: "canceled"}
+	if _, err := e.ApplyProviderRefund(ctx, f.org, "pay03fake", *r.ProviderRefundID, payments.RefundResult{Status: payments.RefundFailed}); err != nil {
+		t.Fatal(err)
+	}
+	// Half of the payment went back through a refund that names no ticket.
+	f.exec(t, `INSERT INTO refunds (payment_intent_id, org_id, order_id, amount, currency, reason, state, settlement,
+		provider, provider_refund_id, provider_status, succeeded_at, settled_at)
+		SELECT id, org_id, $2, 2500, currency, 'order level', 'succeeded', 'provider', 'pay03fake', 're_half_'||gen_random_uuid(), 'succeeded', now(), now()
+		FROM payment_intents WHERE id = $1`, f.payment, f.order)
+	m.answers = append(m.answers, succeeded)
+	if _, err := e.CreateBatch(ctx, f.batch("k-after-reversal", true, refunds.Item{TicketID: f.tickets[1]})); err != nil {
+		t.Fatalf("refund of the other ticket after a reversal: %v (the reversed refund still counts)", err)
+	}
+}
+
+// Round-3 review R3-9: what to do with a confirmed failure is decided on the
+// row as it stands under the lock, not as it stood before the read-back: a
+// refund another delivery settled meanwhile is reversed, not left as is.
+func TestEngine_RefundWebhookDecidesOnTheLockedRow(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	e, r, m := pendingRefundWith(t, f, "k-hook-locked-row")
+	ctx := context.Background()
+	m.lookup = payments.RefundResult{Status: payments.RefundFailed, FailureCode: "canceled"}
+	m.onLookup = func() {
+		// Another delivery recorded the refund as succeeded while this one
+		// was reading it back.
+		f.exec(t, `UPDATE refunds SET state = 'succeeded', provider_status = 'succeeded', succeeded_at = now(), settled_at = now() WHERE id = $1`, r.ID)
+	}
+	if _, err := e.ApplyProviderRefund(ctx, f.org, "pay03fake", *r.ProviderRefundID, payments.RefundResult{Status: payments.RefundFailed}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := e.GetRefund(ctx, r.ID)
+	if got.State != refunds.StateManualReview || got.FailureCode == nil || *got.FailureCode != "reversed_after_success" {
+		t.Fatalf("refund = %s %v; want the confirmed failure applied to the settled row as a reversal", got.State, got.FailureCode)
 	}
 }

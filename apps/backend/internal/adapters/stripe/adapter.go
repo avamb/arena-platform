@@ -674,7 +674,7 @@ func (a *Adapter) CheckWebhookSubscription(ctx context.Context, callbackURL stri
 			continue
 		}
 		out.EndpointFound = true
-		out.RefundEventsSubscribed = receivesRefundEvents(ep.EnabledEvents)
+		out.RefundEventsSubscribed = out.RefundEventsSubscribed || receivesRefundEvents(ep.EnabledEvents)
 	}
 	return out, nil
 }

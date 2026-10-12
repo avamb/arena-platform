@@ -334,7 +334,8 @@ FROM   refunds
 WHERE  payment_intent_id = $1
   AND  state NOT IN ('failed', 'rejected')
   AND  NOT (state = 'manual_review' AND provider_attempts = 0 AND provider_refund_id IS NULL
-            AND COALESCE(failure_code, '') IN ('budget_taken_by_another_refund', 'stuck_provider_pending'))`
+            AND COALESCE(failure_code, '') IN ('budget_taken_by_another_refund', 'stuck_provider_pending'))
+  AND  NOT (state = 'manual_review' AND COALESCE(failure_code, '') = 'reversed_after_success')`
 
 // SumNonFailedRefundsByIntent returns the total amount already committed to
 // non-failed refunds for the given payment intent. This is used to compute the
