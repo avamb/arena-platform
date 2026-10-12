@@ -29,6 +29,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -240,14 +241,17 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 	// ── Promo: the same lookup and the same two checks as checkout/start ───────
 	var discount int64
 	promoApplied := false
+	if strings.TrimSpace(derefOr(req.PromoCode)) != "" && h.promoAttemptsBlocked(w, r, feedToken) {
+		return
+	}
 	promoRow, lookupErr := h.findPromoCode(ctx, checkCtx.OrgID, derefOr(req.PromoCode))
 	if lookupErr != nil {
 		if errors.Is(lookupErr, pgx.ErrNoRows) {
-			writePublicPromoError(w, r, "promo.not_found")
+			h.refusePromo(w, r, feedToken, "promo.not_found")
 			return
 		}
 		h.logger.Error("public_feed_quote: promo lookup failed", slog.String("error", lookupErr.Error()))
-		writePublicPromoError(w, r, "checkout.promo_lookup_failed")
+		h.refusePromo(w, r, feedToken, "checkout.promo_lookup_failed")
 		return
 	}
 	if promoRow != nil {
@@ -255,7 +259,7 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 		discount, _, errCode = h.applyPromoDiscount(ctx, h.promoQueries, promoRow,
 			hcheckout.TierLinesForSession(lines, sessionID.String(), currency), "")
 		if errCode != "" {
-			writePublicPromoError(w, r, errCode)
+			h.refusePromo(w, r, feedToken, errCode)
 			return
 		}
 		// A code that fits but takes nothing off (free tickets, an eligible

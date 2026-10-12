@@ -426,16 +426,19 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// Only the row fetch happens here; validation (min-order-amount etc.) runs
 	// once the FULL platform-computed subtotal is known — for seated carts that
 	// includes the seat prices resolved inside the hold transaction.
+	if strings.TrimSpace(derefOr(req.PromoCode)) != "" && h.promoAttemptsBlocked(w, r, feedToken) {
+		return
+	}
 	promoRow, promoLookupErr := h.findPromoCode(ctx, checkCtx.OrgID, derefOr(req.PromoCode))
 	if promoLookupErr != nil {
 		if errors.Is(promoLookupErr, pgx.ErrNoRows) {
-			writePublicPromoError(w, r, "promo.not_found")
+			h.refusePromo(w, r, feedToken, "promo.not_found")
 			return
 		}
 		h.logger.Error("public_feed_checkout: promo lookup failed",
 			slog.String("error", promoLookupErr.Error()),
 		)
-		writePublicPromoError(w, r, "checkout.promo_lookup_failed")
+		h.refusePromo(w, r, feedToken, "checkout.promo_lookup_failed")
 		return
 	}
 
@@ -477,7 +480,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		var promoErrCode string
 		gaDiscount, gaPromoCodeID, promoErrCode = h.applyPromoDiscount(ctx, h.promoQueries, promoRow, gaPromoLines, req.HolderEmail)
 		if promoErrCode != "" {
-			writePublicPromoError(w, r, promoErrCode)
+			h.refusePromo(w, r, feedToken, promoErrCode)
 			return
 		}
 	}

@@ -36,6 +36,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
 
 // quoteBody is the decoded 200 answer.
@@ -660,6 +661,62 @@ func TestPublicQuote_FreeTicketsAreNotAPromoApplied(t *testing.T) {
 	if paid := f.mustQuote(t, srv, f.gaCart(1, "TEN", "")); !paid.PromoApplied {
 		t.Errorf("paid cart with the code = %+v, want promo_applied true", paid)
 	}
+}
+
+// Telling an accepted code from a refused one must not be possible at the
+// speed of the general limits: refused attempts spend their own, tighter
+// budget, and once it is spent every request that names a code is answered
+// 429, a valid code included. A request without a code, and accepted codes,
+// never spend it.
+func TestPublicQuote_RefusedCodesSpendTheirOwnBudget(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	f := newHostedOrgFixture(t, ctx, pool, "q9")
+	defer f.cleanup()
+	defer f.cleanupPromos()
+
+	stripe := newStubStripe(t)
+	srv := buildHostedCheckoutServer(t, pool, stripe.baseURL(), func(c *config.Config) {
+		c.PublicPromoFailIPLimit = 3
+		c.PublicPromoFailTokenLimit = 0
+	})
+	f.insertPromo(t, ctx, "TEN", "percent", 10, "", "")
+
+	// Accepted codes and code-less requests are free, however many.
+	for i := 0; i < 10; i++ {
+		f.mustQuote(t, srv, f.gaCart(1, "TEN", ""))
+		f.mustQuote(t, srv, f.gaCart(1, "", ""))
+	}
+	// Three refusals spend the budget (quote and start draw on the same one).
+	for i := 0; i < 2; i++ {
+		f.quoteErr(t, srv, f.gaCart(1, "NOPE", ""), http.StatusUnprocessableEntity)
+	}
+	if c, b := f.startWithPromo(t, srv, 1, "NOPE"); c != http.StatusUnprocessableEntity {
+		t.Fatalf("start with a refused code = %d, want 422; body: %s", c, b)
+	}
+	// Now every request naming a code is turned away, the valid one too...
+	rawCode, rawBody := f.quote(t, srv, f.gaCart(1, "TEN", ""))
+	if rawCode != http.StatusTooManyRequests || !strings.Contains(string(rawBody), "promo.rate_limited") {
+		t.Fatalf("valid code after the budget = %d %s, want 429 promo.rate_limited", rawCode, rawBody)
+	}
+	if c, b := f.startWithPromo(t, srv, 1, "TEN"); c != http.StatusTooManyRequests {
+		t.Errorf("start with a valid code after the budget = %d %s, want 429", c, b)
+	}
+	// ...and says when to come back.
+	req := httptest.NewRequest(http.MethodPost, "/v1/public/feeds/"+f.feedToken+"/checkout/quote",
+		strings.NewReader(`{"session_id":"`+f.sessionID.String()+`","ga_items":[{"tier_id":"`+f.tierID.String()+`","quantity":1}],"promo_code":"TEN"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.router.ServeHTTP(rec, req)
+	if rec.Header().Get("Retry-After") == "" {
+		t.Error("429 promo.rate_limited carries no Retry-After")
+	}
+	// A request that names no code is still served.
+	if got := f.mustQuote(t, srv, f.gaCart(1, "", "")); got.PromoApplied {
+		t.Errorf("code-less quote = %+v", got)
+	}
+	f.nothingCreated(t, ctx, stripe)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -62,6 +62,14 @@ type publicFeedRateLimiter struct {
 	checkoutTokens     map[string]*rateLimiterWindow
 	ips                map[string]*rateLimiterWindow
 	lastSweep          time.Time
+
+	// Refused promo-code attempts (see config.PublicPromoFailTokenLimit):
+	// counted only when a code is refused, checked before a request that
+	// names one is evaluated. A limit <= 0 disables that check.
+	promoFailTokenLimit int
+	promoFailIPLimit    int
+	promoFailTokens     map[string]*rateLimiterWindow
+	promoFailIPs        map[string]*rateLimiterWindow
 }
 
 // newPublicFeedRateLimiter creates a rate limiter with the given per-minute
@@ -74,7 +82,20 @@ func newPublicFeedRateLimiter(feedTokenLimit, checkoutTokenLimit, ipLimit int) *
 		feedTokens:         make(map[string]*rateLimiterWindow),
 		checkoutTokens:     make(map[string]*rateLimiterWindow),
 		ips:                make(map[string]*rateLimiterWindow),
+		promoFailTokens:    make(map[string]*rateLimiterWindow),
+		promoFailIPs:       make(map[string]*rateLimiterWindow),
 	}
+}
+
+// newPublicFeedRateLimiterFromConfig builds the limiter from every public
+// limit on cfg (defaults when cfg is nil), the refused-promo ones included.
+func newPublicFeedRateLimiterFromConfig(cfg *config.Config) *publicFeedRateLimiter {
+	rl := newPublicFeedRateLimiter(publicFeedTokenRateLimit(cfg), publicCheckoutTokenRateLimit(cfg), publicAPIIPRateLimit(cfg))
+	rl.promoFailTokenLimit, rl.promoFailIPLimit = defaultPublicPromoFailTokenLimit, defaultPublicPromoFailIPLimit
+	if cfg != nil {
+		rl.promoFailTokenLimit, rl.promoFailIPLimit = cfg.PublicPromoFailTokenLimit, cfg.PublicPromoFailIPLimit
+	}
+	return rl
 }
 
 // sweepExpiredLocked drops every window that has already reset from all
@@ -90,6 +111,8 @@ func (rl *publicFeedRateLimiter) sweepExpiredLocked(now time.Time) {
 	sweepExpiredWindows(rl.feedTokens, now)
 	sweepExpiredWindows(rl.checkoutTokens, now)
 	sweepExpiredWindows(rl.ips, now)
+	sweepExpiredWindows(rl.promoFailTokens, now)
+	sweepExpiredWindows(rl.promoFailIPs, now)
 }
 
 // sweepExpiredWindows deletes every map entry whose window has already
@@ -163,6 +186,62 @@ func (rl *publicFeedRateLimiter) checkIP(ip string) (bool, int) {
 	return rl.check(rl.ips, ip, rl.ipLimit)
 }
 
+// windowFull reports whether key's window is already at limit, without
+// counting anything: the peek half of the refused-promo limit. limit <= 0
+// means disabled (never full).
+func (rl *publicFeedRateLimiter) windowFull(m map[string]*rateLimiterWindow, key string, limit int, now time.Time) (bool, int) {
+	if limit <= 0 {
+		return false, 0
+	}
+	w, ok := m[key]
+	if !ok || now.After(w.resetAt) || w.count < limit {
+		return false, 0
+	}
+	remaining := int(w.resetAt.Sub(now) / time.Second)
+	if w.resetAt.Sub(now)%time.Second != 0 || remaining < 1 {
+		remaining++
+	}
+	return true, remaining
+}
+
+// recordFailure counts one refused attempt in key's window.
+func (rl *publicFeedRateLimiter) recordFailure(m map[string]*rateLimiterWindow, key string, limit int, now time.Time) {
+	if limit <= 0 {
+		return
+	}
+	if w, ok := m[key]; ok && !now.After(w.resetAt) {
+		w.count++
+		return
+	}
+	m[key] = &rateLimiterWindow{count: 1, resetAt: now.Add(time.Minute)}
+}
+
+// PromoFailuresBlocked reports whether the refused-promo budget of this feed
+// token or of this client IP is spent, and when it renews. It counts nothing.
+func (rl *publicFeedRateLimiter) PromoFailuresBlocked(token, ip string) (bool, int) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	now := time.Now()
+	rl.sweepExpiredLocked(now)
+	fullTok, retryTok := rl.windowFull(rl.promoFailTokens, token, rl.promoFailTokenLimit, now)
+	fullIP, retryIP := rl.windowFull(rl.promoFailIPs, ip, rl.promoFailIPLimit, now)
+	retry := retryTok
+	if retryIP > retry {
+		retry = retryIP
+	}
+	return fullTok || fullIP, retry
+}
+
+// RecordPromoFailure counts one refused promo attempt against the feed token
+// and the client IP.
+func (rl *publicFeedRateLimiter) RecordPromoFailure(token, ip string) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	now := time.Now()
+	rl.recordFailure(rl.promoFailTokens, token, rl.promoFailTokenLimit, now)
+	rl.recordFailure(rl.promoFailIPs, ip, rl.promoFailIPLimit, now)
+}
+
 // CheckFeedToken / CheckCheckoutToken / CheckIP are exported adapter methods
 // so *publicFeedRateLimiter satisfies the hfeed.RateLimiter interface. They
 // forward to the private implementations above unchanged.
@@ -191,6 +270,8 @@ const (
 	defaultPublicFeedTokenRateLimit     = 20000
 	defaultPublicCheckoutTokenRateLimit = 120
 	defaultPublicAPIIPRateLimit         = 600
+	defaultPublicPromoFailTokenLimit    = 300
+	defaultPublicPromoFailIPLimit       = 10
 )
 
 func publicFeedTokenRateLimit(cfg *config.Config) int {

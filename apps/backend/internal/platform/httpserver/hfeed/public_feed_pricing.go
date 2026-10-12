@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -183,6 +184,51 @@ func publicPromoError(internal string) (code, message string) {
 	default:
 		return promoNotApplicable, "This code does not apply to this order."
 	}
+}
+
+// PromoFailureLimiter is the optional second half of the rate limiter: a
+// separate, tighter budget for promo codes that were REFUSED, so that telling
+// an accepted code from a refused one is no cheaper than the general limits
+// allow. A limiter that does not implement it leaves the route on the general
+// limits only.
+type PromoFailureLimiter interface {
+	// PromoFailuresBlocked reports whether the refused-code budget of the feed
+	// token or of the client IP is spent, and the seconds until it renews.
+	PromoFailuresBlocked(token, ip string) (blocked bool, retryAfterSeconds int)
+	// RecordPromoFailure counts one refused code against both.
+	RecordPromoFailure(token, ip string)
+}
+
+// promoAttemptsBlocked answers 429 promo.rate_limited when the refused-code
+// budget is spent. Call it before evaluating a request that names a code; the
+// caller returns at once on true.
+func (h *Handler) promoAttemptsBlocked(w http.ResponseWriter, r *http.Request, feedToken string) bool {
+	lim, ok := h.rl.(PromoFailureLimiter)
+	if !ok {
+		return false
+	}
+	blocked, retry := lim.PromoFailuresBlocked(feedToken, h.clientIP(r))
+	if !blocked {
+		return false
+	}
+	if retry < 1 {
+		retry = 1
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(retry))
+	httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
+		"promo.rate_limited", "too many code attempts; wait a minute and try again", r,
+	))
+	return true
+}
+
+// refusePromo records a refused code against the budget and answers it.
+func (h *Handler) refusePromo(w http.ResponseWriter, r *http.Request, feedToken, internal string) {
+	if internal != "checkout.promo_lookup_failed" {
+		if lim, ok := h.rl.(PromoFailureLimiter); ok {
+			lim.RecordPromoFailure(feedToken, h.clientIP(r))
+		}
+	}
+	writePublicPromoError(w, r, internal)
 }
 
 // writePublicPromoError answers a refused promo code on a public route: 422
