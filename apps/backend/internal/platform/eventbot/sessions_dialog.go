@@ -147,18 +147,30 @@ func (s *sessionDialogs) save(ctx context.Context, id int64, d *sessionDialog) {
 	}
 }
 
-// get returns the live dialog. expired is true exactly once after it lapsed.
+// get returns the live dialog. expired is true exactly once after it lapsed,
+// and only when it lapsed on a step that waits for typed text: a text typed
+// after a card or a list expired is just a stray text, not an answer that
+// went missing.
 func (s *sessionDialogs) get(ctx context.Context, id int64) (d *sessionDialog, ok, expired bool) {
 	var dlg sessionDialog
-	_, found, lapsed, err := s.store.Load(ctx, id, sesDialogKind, &dlg)
+	step, found, lapsed, err := s.store.Load(ctx, id, sesDialogKind, &dlg)
 	if err != nil {
 		slog.Default().Error("sessions dialog: load failed", "error", err.Error())
 		return nil, false, false
 	}
 	if !found {
-		return nil, false, lapsed
+		return nil, false, lapsed && sesWaitsForText(step)
 	}
 	return &dlg, true, false
+}
+
+// sesWaitsForText: the steps whose answer is a typed text.
+func sesWaitsForText(step string) bool {
+	switch step {
+	case sesStepDate, sesStepTime, sesStepMsg, sesStepEmail, sesStepPhone, sesStepType, sesStepSalesEnd, sesStepDoors:
+		return true
+	}
+	return false
 }
 
 // drop ends the dialog; the entry point that holds d will not write it back.
@@ -999,12 +1011,12 @@ func (b *Bot) sessionsText(ctx context.Context, chatID int64, from *models.User,
 	if !ok {
 		return false
 	}
-	defer b.sessions.save(ctx, from.ID, dlg)
-	switch dlg.Step {
-	case sesStepDate, sesStepTime, sesStepMsg, sesStepEmail, sesStepPhone, sesStepType, sesStepSalesEnd, sesStepDoors:
-	default:
+	// Judged BEFORE the dialog is saved back: a stray text on a card or a
+	// list must not slide the dialog's expiry forward.
+	if !sesWaitsForText(dlg.Step) {
 		return false
 	}
+	defer b.sessions.save(ctx, from.ID, dlg)
 	id, jwt, err := b.resolveIdentity(ctx, from.ID)
 	if err != nil || id.Current == nil || id.Current.OrgID != dlg.OrgID {
 		b.sessions.drop(ctx, from.ID, dlg)

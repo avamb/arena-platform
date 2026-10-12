@@ -275,6 +275,12 @@ type publicFeedSessionResponse struct {
 	// checkout (channelPricingRules). The widget shows it as a cart line so
 	// the buyer sees the total before the payment page does.
 	ServiceFeePercent string `json:"service_fee_percent"`
+	// ShowWithdrawalNotice is true when the seller organization is in the
+	// EU/EEA (legal-address country, else the organization country): the
+	// widget then tells the buyer before payment that tickets for an event
+	// on a specific date carry no right of withdrawal. False everywhere
+	// else, including an unknown country.
+	ShowWithdrawalNotice bool `json:"show_withdrawal_notice"`
 	// Timezone is the IANA zone of the session's venue (`venues.timezone`),
 	// "" when the venue has none. The widget formats the session chips in
 	// it: a buyer whose phone lives in another zone (found 2026-09-29 — an
@@ -730,6 +736,8 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
+	showWithdrawalNotice := h.showWithdrawalNotice(ctx, event.OrgID)
+
 	if h.sessionQueries != nil {
 		sessions, err := h.sessionQueries.ListSessionsByEvent(ctx, eventID)
 		if err != nil {
@@ -761,6 +769,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 			for _, sess := range sessions {
 				sessResp := h.publicFeedSessionFromRow(ctx, sess, defaultBuyerFields)
 				sessResp.ServiceFeePercent = serviceFeePercent
+				sessResp.ShowWithdrawalNotice = showWithdrawalNotice
 				sessResp.Timezone = h.venueTimezone(ctx, sess.VenueID, venueTimezones)
 				sessResp.applySeatingLinks(admissionByID[sess.ID.String()])
 				sessResp.applyPosterFallback(eventResp.PosterMediaID, eventResp.PosterURL)

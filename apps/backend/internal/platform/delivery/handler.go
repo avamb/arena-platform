@@ -533,11 +533,13 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		// The payment block: the order's money, only when this letter carries
 		// every ticket of a paid order.
 		var payment *templates.PaymentData
+		complimentaryOrder := false
 		if kind == templates.TemplateKindTicket && opts.DeliveryJobQueries != nil {
 			summary, sErr := opts.DeliveryJobQueries.GetDeliveryPaymentSummaryByTicketID(ctx, ticketID)
 			switch {
 			case sErr == nil:
 				payment = buildPaymentData(summary, p.SessionTZ, len(members))
+				complimentaryOrder = summary.OrderSource != nil && *summary.OrderSource == "complimentary"
 			case !errors.Is(sErr, pgx.ErrNoRows):
 				logger.Warn("delivery: payment summary lookup failed; sending without the payment block",
 					slog.String("ticket_id", ticketID.String()),
@@ -545,6 +547,8 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				)
 			}
 		}
+
+		withdrawalNotice := withdrawalNoticeFor(ctx, opts, logger, ticketID, kind, complimentaryOrder)
 
 		var htmlBody, textBody, subject string
 		if renderer != nil {
@@ -563,6 +567,8 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				Branding:       branding,
 				Tickets:        ticketLinesFor(kind, members, p.Locale, payment == nil),
 				Payment:        payment,
+
+				WithdrawalNotice: withdrawalNotice,
 			})
 			if rErr != nil {
 				return fail(fmt.Errorf("delivery: render templates for ticket %s: %w",
@@ -857,8 +863,10 @@ type resolveBrandingResult struct {
 //   - On a non-not-found resolver error (e.g. media-store outage), the
 //     handler logs a warning and falls back to the platform logo URL
 //     too — never blocks delivery on a media failure.
-//   - Empty text fields fall back to platform defaults so the email
-//     footer always identifies a legal entity (EU rule).
+//   - An empty name or legal name falls back to the platform default so
+//     the email footer always identifies a legal entity (EU rule). An
+//     empty contact e-mail does NOT: no contact line is printed rather
+//     than a placeholder address nobody reads.
 //
 // Returns a resolveBrandingResult carrying the branding strings and
 // the optional org-logo bytes for PDF embedding.
@@ -872,7 +880,7 @@ func resolveBranding(ctx context.Context, m MediaResolver, p Payload, logger *sl
 		LegalAddressPostalCode: p.OrgLegalAddressPostal,
 		LegalAddressCity:       p.OrgLegalAddressCity,
 		LegalAddressCountry:    p.OrgLegalAddressCountry,
-		ContactEmail:           defaultStr(p.OrgContactEmail, templates.PlatformContactEmail),
+		ContactEmail:           strings.TrimSpace(p.OrgContactEmail),
 	}
 	b.LogoAlt = b.OrgName
 
