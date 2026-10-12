@@ -55,7 +55,8 @@ const maxResolveNote = 1000
 // the provider, so the refund becomes succeeded and settles like any accepted
 // refund (its ticket is cancelled only if the refund was meant to cancel it).
 // refunded_beyond_payment: the money went back although the payment was
-// already covered; recorded as succeeded, nothing is cancelled. not_refunded:
+// already covered; recorded as succeeded, nothing is cancelled, announced or
+// mailed. not_refunded:
 // the provider shows this refund did not go through; it becomes failed and
 // its ticket can be refunded again, which sends a NEW refund.
 func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
@@ -149,7 +150,8 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 			provider_status = CASE WHEN $3 THEN 'succeeded' ELSE provider_status END,
 			succeeded_at = CASE WHEN $3 THEN now() ELSE succeeded_at END,
 			failed_at = CASE WHEN $3 THEN NULL ELSE now() END,
-			settled_at = CASE WHEN $3 THEN NULL ELSE settled_at END,
+			settled_at = CASE WHEN $4 THEN now() WHEN $3 THEN NULL ELSE settled_at END,
+			refunded_published_at = CASE WHEN $4 THEN COALESCE(refunded_published_at, now()) ELSE refunded_published_at END,
 			cancel_ticket = CASE WHEN $4 THEN false ELSE cancel_ticket END,
 			alert_due_at = NULL, updated_at = now()
 			WHERE id = $1 AND state = 'manual_review' RETURNING `+refundColumns, in.RefundID, state, clearFailure,
@@ -165,7 +167,10 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 	if err != nil {
 		return Refund{}, err
 	}
-	if out.State == StateSucceeded {
+	// A refund beyond the payment changes no ticket and owes no announcement:
+	// it is stamped settled and published above, so neither this call nor the
+	// sweep's repair cancels, announces or mails anything for it.
+	if out.State == StateSucceeded && in.Outcome != ResolveRefundedBeyondPayment {
 		e.settle(ctx, out, pay)
 	}
 	return out, nil

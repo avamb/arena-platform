@@ -50,3 +50,45 @@ func TestRefundResolve_HTTPSuperadminAndBeyondPayment(t *testing.T) {
 		t.Fatalf("resolved row = %s cancel_ticket=%v; want succeeded without a cancellation", state, cancel)
 	}
 }
+
+// A refund recorded as refunded beyond the payment changes no ticket: the
+// ticket stays valid, so no ticket.refunded event may go out for it, and the
+// sweep's repair must not pick it up later either.
+func TestRefundResolve_BeyondPaymentAnnouncesNothing(t *testing.T) {
+	e := newSec1Env(t)
+	org := e.org(t, "RESOLVE")
+	_, super := e.superadmin(t)
+	f := newPay03Order(t, e.srv.pgxPool, org, "stripe")
+	ctx := context.Background()
+	// The whole payment went back through a refund that names no ticket.
+	if _, err := e.srv.pgxPool.Exec(ctx, `INSERT INTO refunds (payment_intent_id, org_id, order_id, amount, currency, reason,
+		state, settlement, provider, provider_refund_id, provider_status, succeeded_at, settled_at)
+		VALUES ($1, $2, $3, 5000, 'EUR', 'order level', 'succeeded', 'provider', 'stripe', $4, 'succeeded', now(), now())`,
+		f.pay, org, f.order, "re_beyond_order_"+f.pay.String()[:8]); err != nil {
+		t.Fatal(err)
+	}
+	var parked string
+	if err := e.srv.pgxPool.QueryRow(ctx, `INSERT INTO refunds (payment_intent_id, org_id, order_id, ticket_id, amount, currency, reason,
+		state, settlement, provider, provider_refund_id, provider_attempts, failure_code, cancel_ticket)
+		VALUES ($1, $2, $3, $4, 2500, 'EUR', 'late', 'manual_review', 'provider', 'stripe', $5, 1, 'late_acceptance_over_budget', false)
+		RETURNING id::text`, f.pay, org, f.order, f.tickets[0], "re_beyond_late_"+f.pay.String()[:8]).Scan(&parked); err != nil {
+		t.Fatal(err)
+	}
+	path := "/v1/organizations/" + org.String() + "/refunds/" + parked + "/resolve"
+	e.expect(t, http.StatusOK, http.MethodPost, path, super, "checked the dashboard", `{"outcome":"refunded_beyond_payment","note":"seen at stripe twice"}`)
+
+	var events int
+	if err := e.srv.pgxPool.QueryRow(ctx, `SELECT count(*) FROM outbox_events
+		WHERE aggregate_id = $1::text AND event_type = 'v1.ticket.refunded'`, f.tickets[0]).Scan(&events); err != nil {
+		t.Fatal(err)
+	}
+	var settled, ticketStatus string
+	if err := e.srv.pgxPool.QueryRow(ctx, `SELECT (r.settled_at IS NOT NULL)::text, t.status FROM refunds r JOIN tickets t ON t.id = r.ticket_id
+		WHERE r.id = $1`, parked).Scan(&settled, &ticketStatus); err != nil {
+		t.Fatal(err)
+	}
+	if events != 0 || settled != "true" || ticketStatus != "active" {
+		t.Fatalf("after refunded_beyond_payment: %d ticket.refunded event(s), settled=%s, ticket %s; want 0, true, active",
+			events, settled, ticketStatus)
+	}
+}
