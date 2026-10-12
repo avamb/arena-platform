@@ -110,11 +110,35 @@ type Bot struct {
 	bg bgGroup
 }
 
-// bgGroup is the WaitGroup of the background work.
-type bgGroup struct{ wg sync.WaitGroup }
+// bgGroup is the WaitGroup of the background work. Once Run starts waiting
+// for it (close), no new work joins: a WaitGroup must not be added to while
+// it is being waited on, so later work runs on the caller's goroutine.
+type bgGroup struct {
+	mu     sync.Mutex
+	closed bool
+	wg     sync.WaitGroup
+}
 
-func (g *bgGroup) add()  { g.wg.Add(1) }
+// add joins the group and reports false once it is closed.
+func (g *bgGroup) add() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.closed {
+		return false
+	}
+	g.wg.Add(1)
+	return true
+}
+
 func (g *bgGroup) done() { g.wg.Done() }
+
+// close stops new work from joining; wait then waits for what joined.
+func (g *bgGroup) close() {
+	g.mu.Lock()
+	g.closed = true
+	g.mu.Unlock()
+}
+
 func (g *bgGroup) wait() { g.wg.Wait() }
 
 // backgroundDrain bounds how long Run waits for that work on shutdown.
@@ -124,9 +148,7 @@ const backgroundDrain = 15 * time.Second
 // is recovered and logged (it must not take the bot down for everyone), and
 // cleanup, when given, then puts the person's dialog back in a usable state.
 func (b *Bot) goBackground(name string, fn, cleanup func()) {
-	b.bg.add()
-	go func() {
-		defer b.bg.done()
+	run := func() {
 		defer func() {
 			if r := recover(); r != nil {
 				b.logger.Error("eventbot: background work panicked", slog.String("work", name),
@@ -137,6 +159,15 @@ func (b *Bot) goBackground(name string, fn, cleanup func()) {
 			}
 		}()
 		fn()
+	}
+	if !b.bg.add() {
+		// The bot is shutting down: do the work here rather than lose it.
+		run()
+		return
+	}
+	go func() {
+		defer b.bg.done()
+		run()
 	}()
 }
 
@@ -233,6 +264,7 @@ func (b *Bot) Run(ctx context.Context) error {
 	go b.draftSweepLoop(ctx)
 	b.tg.Start(ctx)
 	done := make(chan struct{})
+	b.bg.close()
 	go func() { b.bg.wait(); close(done) }()
 	select {
 	case <-done:
