@@ -3,7 +3,7 @@
 //
 // Templates live next to this file as <name>.<locale>.tmpl, where:
 //
-//   - name   ∈ {"ticket", "invitation", "change", "cancel"}  (the email kind)
+//   - name   ∈ {"ticket", "invitation", "change", "cancel", "refund"}  (the email kind)
 //   - locale ∈ {"en", "de", "es", "fr", "he", "cs", "ru"}  (the AllPay
 //     markets baseline plus cs/ru, added for the Czech-market launch —
 //     feature #565 — where many buyers are Russian-speaking, plus fr for
@@ -70,6 +70,11 @@ const TemplateKindRefundBlocked = "refund_blocked"
 // platform superadmin allowed one refund of a ticket that was already
 // scanned (owner decision 2026-10-13).
 const TemplateKindScanException = "refund_scan_exception"
+
+// TemplateKindRefund is sent to a buyer when money for their tickets was
+// returned (PAY-07). It states the amount and the usual bank delay and
+// promises nothing beyond that.
+const TemplateKindRefund = "refund"
 
 // Data is the value passed to every template. Fields are intentionally
 // strings (not domain structs) so the template author can ignore nil checks
@@ -138,6 +143,11 @@ type Data struct {
 	// "refund_blocked"); zero for every other kind.
 	Alert ScanAlertData
 
+	// Refund is what the refund e-mail says; nil for every other kind. The
+	// refunded tickets themselves are listed in Tickets, each with the
+	// amount returned for it in Price.
+	Refund *RefundData
+
 	// Payment is the purchase summary printed as the "Payment" block of the
 	// ticket e-mail. nil omits the block: an invitation, a free ticket or an
 	// order whose money is not known pays nothing to show.
@@ -165,6 +175,19 @@ type ScanAlertData struct {
 	Until  string
 }
 
+// RefundData is the refund e-mail's own block.
+type RefundData struct {
+	// Total is everything returned in this letter, pre-formatted ("25.00 EUR").
+	Total string
+	// TicketsCancelled says EVERY refunded ticket of the letter no longer
+	// admits; false for a money-only partial refund.
+	TicketsCancelled bool
+	// SomeTicketsCancelled says some, but not all, of the letter's tickets no
+	// longer admit: each of them carries TicketLine.Void, the others stay
+	// valid.
+	SomeTicketsCancelled bool
+}
+
 // TicketLine is one ticket of a multi-ticket e-mail. Every field is a
 // ready-to-print string; empty ones are omitted by the templates.
 type TicketLine struct {
@@ -178,6 +201,9 @@ type TicketLine struct {
 	// Price is what the buyer paid for this ticket ("25.00 EUR"); empty for
 	// a free ticket or when it is not known.
 	Price string
+	// Void marks a ticket the refund letter reports as no longer valid for
+	// entry (its real state is cancelled).
+	Void bool
 }
 
 // PaymentData is the "Payment" block of the ticket e-mail: the numbers of the

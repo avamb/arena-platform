@@ -132,6 +132,8 @@ func deliver(ctx context.Context, n Notifier, text string) error {
 // SweepReport counts what one pass did.
 type SweepReport struct {
 	Stuck, Retried, LookedUp, Repaired, Alerted int
+	// Notices: buyer letters queued again (PAY-07).
+	Notices int
 	// Calls is the number of provider calls the pass made; Unknown how many
 	// of the retries ended without an answer.
 	Calls, Unknown int
@@ -176,6 +178,11 @@ func (e *Engine) Sweep(ctx context.Context, now time.Time, notifier Notifier) (S
 		rep.Repaired = n
 		return err
 	})
+	section(t/6, "buyer letters", func(ctx context.Context) error {
+		n, err := e.requeueBuyerNotices(ctx, now)
+		rep.Notices = n
+		return err
+	})
 	if notifier != nil {
 		// A fresh context: alerts are sent even when the job's own context
 		// is nearly spent.
@@ -188,11 +195,20 @@ func (e *Engine) Sweep(ctx context.Context, now time.Time, notifier Notifier) (S
 		// Provider refund events arena gave up on (no refunds row carries
 		// their alert), inside the SAME budget: SweepWorstCase is unchanged.
 		pn, perr := e.alertProviderEvents(actx, notifier)
-		cancel()
 		rep.Alerted += pn
 		if perr != nil {
 			errs = append(errs, fmt.Errorf("refunds: sweep provider-event alerts: %w", perr))
 		}
+		// Lost buyer letters share the section's budget and its message cap,
+		// so the pass stays inside SweepWorstCase and Telegram's rate.
+		if left := alertsPerPass - n - pn; left > 0 && err == nil && actx.Err() == nil {
+			ln, lerr := e.alertLostBuyerNotices(actx, notifier, left)
+			rep.Alerted += ln
+			if lerr != nil {
+				errs = append(errs, fmt.Errorf("refunds: sweep lost buyer letters: %w", lerr))
+			}
+		}
+		cancel()
 	}
 	return rep, errors.Join(errs...)
 }

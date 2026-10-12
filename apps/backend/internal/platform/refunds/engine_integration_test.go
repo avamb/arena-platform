@@ -271,6 +271,9 @@ func (f *fixture) cleanup(t *testing.T) {
 		arg any
 	}{
 		{`UPDATE tickets SET refund_id = NULL WHERE order_id = $1`, f.order},
+		// The buyer-letter jobs the settles queued (a stray refund.buyer_email row
+		// makes the generic worker_jobs drains of other tests fail).
+		{`DELETE FROM worker_jobs WHERE job_type = 'refund.buyer_email' AND payload->>'batch_id' IN (SELECT id::text FROM refund_batches WHERE org_id = $1)`, f.org},
 		{`DELETE FROM refunds WHERE org_id = $1`, f.org},
 		{`DELETE FROM refund_batches WHERE org_id = $1`, f.org},
 		{`DELETE FROM order_events WHERE order_id = $1`, f.order},

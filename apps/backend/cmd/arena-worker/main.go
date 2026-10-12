@@ -533,6 +533,12 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		HandlerOptions: deliveryOpts,
 		DB:             pool,
 	}))
+	// refund.buyer_email is the letter about money that went back (PAY-07);
+	// the refund engine queues it once a refund of an operation settles.
+	reg.Register(refunds.JobTypeBuyerEmail, delivery.NewRefundEmailHandler(delivery.RefundEmailOptions{
+		HandlerOptions: deliveryOpts,
+		DB:             pool,
+	}))
 
 	// refund.scanned_alert_email tells an organization's owners that a refund
 	// of an already scanned ticket was refused (refunds.RecordScannedBlock
