@@ -1,8 +1,7 @@
 // org_scope.go — permissions are decided PER ORGANIZATION (PERM-ORG).
 //
-// DBChecker.Check used to resolve a caller's permissions from the roles of
-// ALL their memberships, so an agent of organization A who is a manager of
-// organization B passed `refund.create` on A's orders. A request that names
+// A caller's permissions are the roles they hold in the organization the
+// request acts in, not the roles of all their memberships. A request that names
 // an organization — through the `{org_id}` of its path, or through the
 // organization of the row a flat route loaded — now carries that
 // organization in its context, and the checker reads only the caller's
