@@ -10,7 +10,9 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hscanner"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
 
@@ -171,23 +173,31 @@ func (h *Handler) dashboardApply(out *dashboardOutcome) refunds.DashboardApply {
 				return err
 			}
 		}
-		return h.refundEngine.ProjectOrderTx(ctx, tx, res.Refund, res.Payment)
+		if err := h.refundEngine.ProjectOrderTx(ctx, tx, res.Refund, res.Payment); err != nil {
+			return err
+		}
+		return h.appendDashboardRefundEvents(ctx, tx, res, *out)
 	}
 }
 
-// publishDashboardRefund emits the post-commit events of a full dashboard
-// refund: the scanner refund event once, and v1.ticket.refunded per ticket
-// with that ticket's own amount.
-func (h *Handler) publishDashboardRefund(ctx context.Context, res refunds.DashboardRefund, out dashboardOutcome) {
+// appendDashboardRefundEvents writes the events of a full dashboard refund
+// to the outbox INSIDE the transaction that cancelled the tickets: the scanner
+// event for the refund and one v1.ticket.refunded per cancelled ticket. A
+// slow request or a crash after the commit can then no longer lose them.
+func (h *Handler) appendDashboardRefundEvents(ctx context.Context, tx pgx.Tx, res refunds.DashboardRefund, out dashboardOutcome) error {
 	if res.Payment.CheckoutSessionID == nil || len(out.cancelled) == 0 {
-		return
+		return nil
 	}
+	w := outbox.NewPGEventsWriter(nil)
 	cs := res.Payment.CheckoutSessionID.String()
-	if h.publishRefunded != nil {
-		h.publishRefunded(ctx, cs, res.Refund.ID.String(), res.Refund.Currency, res.Refund.Amount)
-	}
-	if h.publishRefundedV1 == nil {
-		return
+	refundID := res.Refund.ID.String()
+	if err := w.Append(ctx, tx, outbox.Event{
+		AggregateType: hscanner.ScannerAggregateType,
+		AggregateID:   refundID,
+		EventType:     hscanner.ScannerEventTicketRefunded,
+		Payload:       hscanner.BuildTicketRefundedPayload(cs, refundID, res.Refund.Currency, res.Refund.Amount),
+	}); err != nil {
+		return fmt.Errorf("outbox scanner refund event: %w", err)
 	}
 	for _, t := range out.cancelled {
 		amount, ok := out.amounts[t.ID]
@@ -201,6 +211,14 @@ func (h *Handler) publishDashboardRefund(ctx context.Context, res refunds.Dashbo
 				amount = res.Refund.Amount
 			}
 		}
-		h.publishRefundedV1(ctx, []string{t.ID.String()}, cs, res.Refund.ID.String(), res.Refund.Currency, amount)
+		if err := w.Append(ctx, tx, outbox.Event{
+			AggregateType: hscanner.TicketAggregateType,
+			AggregateID:   t.ID.String(),
+			EventType:     hscanner.TicketRefundedEventType,
+			Payload:       hscanner.BuildTicketRefundedV1Payload(t.ID.String(), cs, refundID, res.Refund.Currency, amount),
+		}); err != nil {
+			return fmt.Errorf("outbox ticket refunded event: %w", err)
+		}
 	}
+	return nil
 }

@@ -211,3 +211,40 @@ func TestRefundWebhook_DashboardRefundBesideAPreEngineParkedRefund(t *testing.T)
 		t.Fatalf("row = %s %s %d alert=%v; want succeeded 5000 dashboard_with_parked_legacy_refund with an alert", state, code, amount, alert)
 	}
 }
+
+// N5: the events of a full dashboard refund are written in the transaction
+// that records it and cancels the tickets, never after its commit on the
+// request's context (where a slow request would lose them for good).
+func TestRefundWebhook_DashboardRefundEventsCommitWithTheRefund(t *testing.T) {
+	e := newDashEnv(t, "DASHN5")
+	e.stub.setRefund("re_d3_events", "succeeded", 5000, "eur", e.piRef)
+	if st, out := e.post(t, "refund.created", "re_d3_events", e.piRef, 5000); st != http.StatusOK || out["processed"] != true {
+		t.Fatalf("full refund = %d %v", st, out)
+	}
+	ctx := context.Background()
+	var refundTx string
+	if err := e.srv.pgxPool.QueryRow(ctx, `SELECT xmin::text FROM refunds WHERE provider_refund_id = 're_d3_events'`).Scan(&refundTx); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := e.srv.pgxPool.Query(ctx, `SELECT xmin::text FROM outbox_events
+		WHERE event_type = 'v1.ticket.refunded' AND aggregate_id = ANY($1::text[])`,
+		[]string{e.f.tickets[0].String(), e.f.tickets[1].String()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	n := 0
+	for rows.Next() {
+		var tx string
+		if err := rows.Scan(&tx); err != nil {
+			t.Fatal(err)
+		}
+		n++
+		if tx != refundTx {
+			t.Errorf("v1.ticket.refunded written by transaction %s; the refund by %s", tx, refundTx)
+		}
+	}
+	if n != 2 {
+		t.Fatalf("%d v1.ticket.refunded events; want 2", n)
+	}
+}

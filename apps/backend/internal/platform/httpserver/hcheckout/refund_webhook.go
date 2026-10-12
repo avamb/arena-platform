@@ -118,9 +118,6 @@ func (h *Handler) recordDashboardRefund(w http.ResponseWriter, r *http.Request, 
 		ack("refund already recorded", false)
 		return
 	}
-	if res.Full {
-		h.publishDashboardRefund(r.Context(), res, outcome)
-	}
 	h.recordWebhookEvent(ev.Type, webhookOutcomeProcessed)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"acknowledged": true,
