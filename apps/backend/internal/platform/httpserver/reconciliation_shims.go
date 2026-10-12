@@ -21,7 +21,7 @@ func (s *Server) reconciliationHandler() *hreconciliation.Handler {
 		s.reconciliationQueries,
 		s.pool,
 		s.logger,
-	)
+	).WithAllocationAccess(s.reconciliationAllocationAccess)
 }
 
 // ─── source-grep witnesses ────────────────────────────────────────────────────
