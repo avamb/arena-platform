@@ -56,8 +56,8 @@ func (s *Server) cancelMoneyAllowedForScan(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	via, _ := audit.ClientChannelFromContext(r.Context())
-	engine.RecordScannedBlock(r.Context(), orgID, ticketID, actor, via)
-	e := refunds.ScannedRefusal(ticketID)
+	notice := engine.RecordScannedBlock(r.Context(), orgID, ticketID, actor, via)
+	e := refunds.ScannedRefusalWithNotice(ticketID, notice)
 	httputil.WriteJSON(w, e.Status, httputil.ErrorEnvelopeWithDetails(e.Code, e.Message, r, e.Details))
 	return false
 }

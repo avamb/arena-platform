@@ -21,6 +21,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
 
@@ -47,6 +48,10 @@ func newScanEnv(t *testing.T, scopes ...string) *scanEnv {
 	}
 	pf.userID = user.ID
 	org := pf.org(t, "SCAN3")
+	// An owner with an address, so the owners can be told.
+	if _, err := srv.pgxPool.Exec(ctx, `INSERT INTO memberships (user_id, org_id, role, status) VALUES ($1, $2, 'org_admin', 'active')`, user.ID, org); err != nil {
+		t.Fatal(err)
+	}
 	if len(scopes) == 0 {
 		scopes = []string{"refund.read", "refund.create", "refund.approve"}
 	}
@@ -65,6 +70,7 @@ func newScanEnv(t *testing.T, scopes ...string) *scanEnv {
 		_, _ = srv.pgxPool.Exec(c, `DELETE FROM refund_scan_blocks WHERE org_id = $1`, org)
 		_, _ = srv.pgxPool.Exec(c, `DELETE FROM worker_jobs WHERE job_type = $1 AND payload->>'org_id' = $2`, refunds.JobTypeScannedAlertEmail, org.String())
 		_, _ = srv.pgxPool.Exec(c, `DELETE FROM outbox_events WHERE payload->>'org_id' = $1`, org.String())
+		_, _ = srv.pgxPool.Exec(c, `DELETE FROM memberships WHERE org_id = $1`, org)
 	})
 	return &scanEnv{srv: srv, pf: pf, org: org, key: key, f: f, calls: calls}
 }
@@ -202,5 +208,48 @@ func TestRefundScanned_FirstScannedTicketIsStable(t *testing.T) {
 		if err != nil || !found || got != want {
 			t.Fatalf("pick %d = %s (%v, %v); want %s", i, got, found, err, want)
 		}
+	}
+}
+
+// Item 2: an organization with no owner address is never said to be told:
+// the refusal reports no_recipient and no e-mail is queued (the operator
+// still hears through the sales bot); with only the organization's contact
+// address, the notice goes there.
+func TestRefundScanned_OwnersNoticeIsHonest(t *testing.T) {
+	e := newScanEnv(t)
+	ctx := context.Background()
+	e.exec(t, `UPDATE tickets SET used_at = now() WHERE id = ANY($1)`, []uuid.UUID{e.f.tickets[0], e.f.tickets[1]})
+	e.exec(t, `DELETE FROM memberships WHERE org_id = $1`, e.org)
+	e.exec(t, `UPDATE organizations SET contact_email = NULL WHERE id = $1`, e.org)
+	st, out := e.createRefund(t, 0)
+	details, _ := out["error"].(map[string]any)["details"].(map[string]any)
+	if st != http.StatusConflict || details["owners_notice"] != "no_recipient" {
+		t.Fatalf("refusal with nobody to tell: %d %v; want owners_notice %s", st, out, "no_recipient")
+	}
+	if n := e.count(t, `SELECT count(*) FROM worker_jobs WHERE job_type = $1 AND payload->>'org_id' = $2`, refunds.JobTypeScannedAlertEmail, e.org.String()); n != 0 {
+		t.Fatalf("an e-mail job was queued for nobody (%d)", n)
+	}
+	if n := e.count(t, `SELECT count(*) FROM outbox_events WHERE event_type = $1 AND payload->>'org_id' = $2`, refunds.EventRefundBlockedScanned, e.org.String()); n != 1 {
+		t.Fatalf("operator events = %d; want 1", n)
+	}
+
+	contact := "contact-" + uuid.NewString()[:8] + "@example.test"
+	e.exec(t, `UPDATE organizations SET contact_email = $2 WHERE id = $1`, e.org, contact)
+	st, out = e.createRefund(t, 1)
+	details, _ = out["error"].(map[string]any)["details"].(map[string]any)
+	if st != http.StatusConflict || details["owners_notice"] != "queued" {
+		t.Fatalf("refusal with a contact address: %d %v; want owners_notice %s", st, out, "queued")
+	}
+	var payload []byte
+	if err := e.srv.pgxPool.QueryRow(ctx, `SELECT payload::text FROM worker_jobs WHERE job_type = $1 AND payload->>'org_id' = $2`,
+		refunds.JobTypeScannedAlertEmail, e.org.String()).Scan(&payload); err != nil {
+		t.Fatal(err)
+	}
+	box := &scannedMailbox{}
+	if err := delivery.NewScannedAlertHandler(delivery.ScannedAlertOptions{Sender: box, DB: e.srv.pgxPool})(ctx, payload); err != nil {
+		t.Fatalf("alert handler: %v", err)
+	}
+	if len(box.msgs) != 1 || box.msgs[0].To != contact {
+		t.Fatalf("notice = %+v; want one to the contact address %s", box.msgs, contact)
 	}
 }

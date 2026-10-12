@@ -218,7 +218,7 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 		if errors.As(err, &refErr) {
 			if refErr.Code == CodeTicketScanned {
 				if id, perr := uuid.Parse(fmt.Sprint(refErr.Details["ticket_id"])); perr == nil {
-					e.RecordScannedBlock(ctx, in.OrgID, id, in.Actor, in.Via)
+					refErr = ScannedRefusalWithNotice(id, e.RecordScannedBlock(ctx, in.OrgID, id, in.Actor, in.Via))
 				}
 			}
 			return BatchResult{}, refErr

@@ -287,6 +287,8 @@ func (b *Bot) queueRetryErrorKey(ae *APIError) string {
 		return "bot.rq.err_progress"
 	case ae.Status == http.StatusConflict && ae.Code == codeRefundNotFit:
 		return "bot.rq.err_ticket"
+	case ae.Status == http.StatusConflict && ae.Code == codeRefundScanned:
+		return scannedErrorKey(ae)
 	case ae.Status == http.StatusConflict:
 		// Any other refusal: the refund or its order changed. Never "order
 		// № changed" without a number.

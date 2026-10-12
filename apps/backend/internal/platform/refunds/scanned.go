@@ -1,7 +1,10 @@
 // scanned.go - a ticket that was already scanned at the gate is never
-// refunded (owner decision 2026-10-12). The refusal is hard on every surface
-// that creates or sends a refund: the organizer API, the bot, the flat
-// /v1/refunds routes and the engine's own claim. Money and statuses stay as
+// refunded (owner decision 2026-10-12). The refusal is hard on every arena
+// surface that creates or sends a refund: the organizer API, the bot, the
+// flat /v1/refunds routes, the ticket-cancel route and the engine's own
+// claim. It judges by the scans recorded in arena (used_at, barcodes, the
+// scanner's admitted scan events); an entry scanned only in MACS never
+// reaches arena, so such a ticket is not blocked. Money and statuses stay as
 // they are; the attempt is journaled and the owners are told once a day.
 package refunds
 
@@ -75,11 +78,23 @@ func actorKey(a Actor) string {
 	return t + ":" + a.ID
 }
 
+// What RecordScannedBlock did about telling the owners (error details
+// "owners_notice"): a notice was queued now, one went out within the last
+// day, or the organization has no address to send it to (the platform
+// operator still hears about it through the sales bot). Empty: unknown.
+const (
+	NoticeQueued      = "queued"
+	NoticeThrottled   = "throttled"
+	NoticeNoRecipient = "no_recipient"
+)
+
 // RecordScannedBlock journals a refused attempt on a scanned ticket and, at
 // most once per ticket and actor per day, queues the owners' e-mail and the
-// sales-bot message. Best effort: the refusal itself never depends on it.
-func (e *Engine) RecordScannedBlock(ctx context.Context, orgID, ticketID uuid.UUID, actor Actor, via string) {
+// sales-bot message. Best effort: the refusal itself never depends on it. It
+// reports what it did about the owners, "" when the journal failed.
+func (e *Engine) RecordScannedBlock(ctx context.Context, orgID, ticketID uuid.UUID, actor Actor, via string) string {
 	wctx := context.WithoutCancel(ctx)
+	notice := ""
 	err := e.inTx(wctx, func(tx pgx.Tx) error {
 		var label string
 		if actor.ID != "" {
@@ -110,13 +125,36 @@ func (e *Engine) RecordScannedBlock(ctx context.Context, orgID, ticketID uuid.UU
 			orgID, ticketID, key, label, scannedNotifyEvery).Scan(&notify); err != nil {
 			return err
 		}
+		// An owner with an address, or the organization's contact address.
+		var reachable bool
+		if err := tx.QueryRow(wctx, `SELECT EXISTS (
+				SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
+				WHERE m.org_id = $1 AND m.role = 'org_admin' AND m.status = 'active' AND btrim(u.email) <> '')
+			OR EXISTS (SELECT 1 FROM organizations o WHERE o.id = $1 AND btrim(COALESCE(o.contact_email, '')) <> '')`,
+			orgID).Scan(&reachable); err != nil {
+			return err
+		}
+		switch {
+		case !reachable:
+			notice = NoticeNoRecipient
+		case notify:
+			notice = NoticeQueued
+		default:
+			notice = NoticeThrottled
+		}
 		if notify {
-			payload, _ := json.Marshal(ScannedAlertPayload{OrgID: orgID.String(), TicketID: ticketID.String(), ActorLabel: label})
-			if _, err := tx.Exec(wctx, `INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
-				VALUES ($1, $2::jsonb, 5, 'pending', now())`, JobTypeScannedAlertEmail, payload); err != nil {
-				return err
+			if reachable {
+				payload, _ := json.Marshal(ScannedAlertPayload{OrgID: orgID.String(), TicketID: ticketID.String(), ActorLabel: label})
+				if _, err := tx.Exec(wctx, `INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
+					VALUES ($1, $2::jsonb, 5, 'pending', now())`, JobTypeScannedAlertEmail, payload); err != nil {
+					return err
+				}
+			} else {
+				e.logger.Error("refunds: a refund blocked by a scan has nobody to tell in the organization",
+					"org_id", orgID.String(), "ticket_id", ticketID.String())
 			}
-			evPayload, _ := json.Marshal(map[string]any{"ticket_id": ticketID.String(), "org_id": orgID.String(), "actor": label})
+			evPayload, _ := json.Marshal(map[string]any{"ticket_id": ticketID.String(), "org_id": orgID.String(), "actor": label,
+				"owners_unreachable": !reachable})
 			if _, err := tx.Exec(wctx, `INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
 				VALUES ('ticket', $1, $2, $3::jsonb)`, ticketID.String(), EventRefundBlockedScanned, evPayload); err != nil {
 				return err
@@ -124,11 +162,21 @@ func (e *Engine) RecordScannedBlock(ctx context.Context, orgID, ticketID uuid.UU
 		}
 		return e.writeAudit(wctx, tx, audit.Event{ActorType: actor.Type, ActorID: actor.ID,
 			Action: "v1.refund.blocked_scanned", ResourceType: "ticket", ResourceID: ticketID.String(),
-			Metadata: map[string]any{"org_id": orgID.String(), "notified": notify, "via": via}})
+			Metadata: map[string]any{"org_id": orgID.String(), "notified": notify, "owners_notice": notice, "via": via}})
 	})
 	if err != nil {
 		e.logger.Error("refunds: journaling a refund blocked by a scan failed", "ticket_id", ticketID.String(), "error", err.Error())
+		return ""
 	}
+	return notice
+}
+
+// ScannedRefusalWithNotice is ScannedRefusal carrying what was done about
+// the owners, so a client never claims they were told when they were not.
+func ScannedRefusalWithNotice(ticket uuid.UUID, notice string) *Error {
+	e := scannedRefusal(ticket)
+	e.Details["owners_notice"] = notice
+	return e
 }
 
 // ScannedTicketOfPayment reports a scanned ticket among those sold with the

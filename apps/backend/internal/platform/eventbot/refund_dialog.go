@@ -663,6 +663,17 @@ func (b *Bot) sendRefund(ctx context.Context, chatID int64, msgID int, tg int64,
 	}
 }
 
+// scannedErrorKey says the owners were told only when the server says so.
+func scannedErrorKey(ae *APIError) string {
+	switch ae.OwnersNotice {
+	case "queued", "throttled":
+		return "bot.ref.err_scanned_notified"
+	case "no_recipient":
+		return "bot.ref.err_scanned_nobody"
+	}
+	return "bot.ref.err_scanned"
+}
+
 // refundErrorKey picks the text for an answer of the create route; "" means
 // the answer says nothing about the refund (an internal error), so the person
 // is told to look at the order instead of that nothing happened.
@@ -673,7 +684,7 @@ func (b *Bot) refundErrorKey(ae *APIError) string {
 	case ae.Status == http.StatusConflict && ae.Code == codeRefundSite:
 		return "bot.ref.site"
 	case ae.Status == http.StatusConflict && ae.Code == codeRefundScanned:
-		return "bot.ref.err_scanned"
+		return scannedErrorKey(ae)
 	case ae.Status == http.StatusConflict && ae.Code == codeRefundNotFit:
 		return "bot.ref.err_ticket"
 	case ae.Status == http.StatusConflict:

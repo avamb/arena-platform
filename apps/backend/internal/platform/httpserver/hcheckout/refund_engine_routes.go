@@ -28,8 +28,8 @@ func (h *Handler) refusedScanned(w http.ResponseWriter, r *http.Request, orgID, 
 		}
 	}
 	via, _ := audit.ClientChannelFromContext(r.Context())
-	h.refundEngine.RecordScannedBlock(r.Context(), orgID, ticket, actor, via)
-	writeRefundError(w, r, refunds.ScannedRefusal(ticket))
+	notice := h.refundEngine.RecordScannedBlock(r.Context(), orgID, ticket, actor, via)
+	writeRefundError(w, r, refunds.ScannedRefusalWithNotice(ticket, notice))
 }
 
 // scanCheckUnavailable answers when whether a ticket was scanned could not be

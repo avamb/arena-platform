@@ -207,3 +207,18 @@ func TestQueueRetryRefusalsHaveTheirOwnTexts(t *testing.T) {
 		}
 	}
 }
+
+// Round-2 review, scanned block item 2: the bot says the owners were told
+// only when the server says a notice went out (or went out today).
+func TestScannedRefusalNamesWhatWasDone(t *testing.T) {
+	t.Parallel()
+	for notice, want := range map[string]string{
+		"queued": "bot.ref.err_scanned_notified", "throttled": "bot.ref.err_scanned_notified",
+		"no_recipient": "bot.ref.err_scanned_nobody", "": "bot.ref.err_scanned",
+	} {
+		ae := &APIError{Status: http.StatusConflict, Code: "refund.ticket_scanned", OwnersNotice: notice}
+		if got := scannedErrorKey(ae); got != want {
+			t.Errorf("notice %q: %q; want %q", notice, got, want)
+		}
+	}
+}

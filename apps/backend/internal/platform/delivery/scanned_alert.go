@@ -106,6 +106,18 @@ func NewScannedAlertHandler(opts ScannedAlertOptions) worker.HandlerFunc {
 		if err := rows.Err(); err != nil {
 			return err
 		}
+		if len(owners) == 0 {
+			// No owner with an address: the organization's contact address.
+			var contact, locale string
+			if err := opts.DB.QueryRow(ctx, `SELECT btrim(COALESCE(contact_email, '')), default_locale FROM organizations WHERE id = $1`, orgID).Scan(&contact, &locale); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+			if contact == "" {
+				logger.Error("delivery: refund-blocked alert has no recipient in the organization", slog.String("org_id", orgID.String()))
+				return nil
+			}
+			owners = append(owners, owner{email: contact, locale: locale})
+		}
 		data := templates.Data{
 			EventName: eventName,
 			Branding:  templates.Branding{OrgName: orgName},
