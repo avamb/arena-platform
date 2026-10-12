@@ -574,6 +574,12 @@ func promoApply(d *promoDraft, text, data string, env promoEnv) string {
 			d.goTo(pmStepExpiry)
 			return ""
 		}
+		if data == "one" {
+			one := int32(1)
+			d.PerBuyer = &one
+			d.goTo(pmStepExpiry)
+			return ""
+		}
 		if text == "" {
 			return ""
 		}

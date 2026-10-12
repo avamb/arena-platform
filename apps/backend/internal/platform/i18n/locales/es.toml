@@ -2301,10 +2301,13 @@ other = "✔ Listo ({{.N}})"
 other = "Otro evento"
 
 ["bot.promo.q_total"]
-other = "¿Cuántas veces se puede usar el código en total? Escribe un número, o sáltalo si no hay límite."
+other = "¿Para cuántas compras es válido este código promocional en total, entre todos los compradores? Escribe un número o pulsa «Omitir» si no hay límite."
 
 ["bot.promo.q_per"]
-other = "¿Cuántas veces puede usarlo un mismo comprador? Escribe un número, o sáltalo si no hay límite."
+other = "¿Cuántas veces puede usar este código un mismo comprador? El comprador se identifica por su e-mail. Una compra cuenta como un uso, aunque lleve varias entradas. Se cuentan juntas todas las sesiones en las que vale el código. Lo habitual es 1. Escribe un número o pulsa «Omitir» si no hay límite."
+
+["bot.promo.one_btn"]
+other = "1: una vez por comprador"
 
 ["bot.promo.skip_btn"]
 other = "Saltar (sin límite)"
