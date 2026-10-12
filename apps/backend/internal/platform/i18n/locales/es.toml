@@ -2846,7 +2846,19 @@ other = "🔁 Reintentar {{.Order}}"
 other = "📄 Pedido {{.Order}}"
 
 ["bot.rq.retry_ask"]
-other = "¿Enviar esta devolución otra vez? Pedido {{.Order}}, entrada {{.Tickets}}, importe <b>{{.Amount}}</b>. Se crea una devolución nueva para la misma entrada e importe; una que pudo haberse hecho ya se rechaza.\n\nLa entrada deja de ser válida para entrar, también cuando solo se devuelve una parte de su precio, y el comprador recibe un correo sobre la devolución si se pidió la primera vez."
+other = "¿Enviar esta devolución otra vez? Pedido {{.Order}}, entrada {{.Tickets}}, importe <b>{{.Amount}}</b>. Se crea una devolución nueva para la misma entrada e importe; una que pudo haberse hecho ya se rechaza.\n\n{{.TicketRule}} {{.Letter}}"
+
+["bot.rq.retry_cancels_ticket"]
+other = "La entrada deja de ser válida para entrar, también cuando solo se devuelve una parte de su precio."
+
+["bot.rq.retry_keeps_ticket"]
+other = "La entrada sigue siendo válida: solo se devuelve dinero, como en la primera devolución."
+
+["bot.rq.retry_letter"]
+other = "El comprador recibe un correo sobre la devolución."
+
+["bot.rq.retry_no_letter"]
+other = "No se envía ningún correo al comprador, como en la primera devolución."
 
 ["bot.rq.retry_yes"]
 other = "Sí, enviar {{.Amount}} otra vez"
@@ -2868,6 +2880,9 @@ other = "Esta entrada ya no se puede devolver (cambió, ya no es válida o está
 
 ["bot.rq.err_refused"]
 other = "Arena no reenvió la devolución: la devolución o su pedido cambiaron mientras tanto. No se envió nada; abre el pedido para ver su estado."
+
+["bot.rq.err_partial"]
+other = "Este proveedor de pagos solo devuelve el pago completo de una vez, y una parte ya se devolvió. No se envió nada; devuelve el resto en el panel del proveedor."
 
 ["bot.rq.retry_done"]
 other = "<b>Devolución enviada de nuevo</b>"

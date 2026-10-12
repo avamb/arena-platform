@@ -8715,6 +8715,12 @@ type OrderRefundOptions struct {
 	// PartialRefund True when the provider can return less than the whole payment.
 	PartialRefund bool `json:"partial_refund"`
 
+	// PaymentLeft What is left of the whole payment, in minor units (0 when arena
+	// took no payment). Each ticket's `refundable` is capped by it on its
+	// own, so the tickets together may offer more than this amount; no
+	// refund operation returns more.
+	PaymentLeft int64 `json:"payment_left"`
+
 	// Provider Payment provider of the order; empty when arena took no payment.
 	Provider string `json:"provider"`
 
@@ -8780,6 +8786,9 @@ type OrderRefundQueueItem struct {
 
 	// Id UUID of the refund.
 	Id openapi_types.UUID `json:"id"`
+
+	// NotifyBuyer True when the refund asked for the buyer letter, the choice a retry of it inherits (true for a refund made outside an operation).
+	NotifyBuyer *bool `json:"notify_buyer,omitempty"`
 
 	// OrderId UUID of the order, null for a refund without an order.
 	OrderId *openapi_types.UUID `json:"order_id"`
@@ -14414,6 +14423,9 @@ type GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsvParams struct {
 
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody struct {
+	// ConfirmUnattributed The unattributed amount (minor units) the operator was shown. Required when that amount is above zero.
+	ConfirmUnattributed *int64 `json:"confirm_unattributed,omitempty"`
+
 	// Note What was decided, up to 1000 characters. Kept in the audit trail.
 	Note string `json:"note"`
 }

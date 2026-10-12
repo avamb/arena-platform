@@ -240,6 +240,17 @@ func (b *Bot) askQueueRetry(ctx context.Context, chatID int64, editMsgID *int, i
 		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.rq.not_retryable", nil), list)
 		return
 	}
+	amount := FormatMoney(it.Amount, it.Currency, loc)
+	b.reply(ctx, chatID, editMsgID, b.queueRetryAskText(loc, it), &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+		{{Text: b.texts.T(loc, "bot.rq.retry_yes", map[string]any{"Amount": amount}), CallbackData: "rq:ry:" + refundID.String()}},
+		{{Text: b.texts.T(loc, "bot.rq.retry_no", nil), CallbackData: "rq:l:" + queueDefaultFilter + ":1"}},
+	}})
+}
+
+// queueRetryAskText is the retry question. A retry inherits the first
+// refund's choices (Engine.Retry), so the question names them: whether the
+// ticket is cancelled and whether the buyer gets the letter.
+func (b *Bot) queueRetryAskText(loc string, it openapi.OrderRefundQueueItem) string {
 	order, ticket := "—", "—"
 	if it.OrderNumber != nil {
 		order = "№" + strconv.FormatInt(*it.OrderNumber, 10)
@@ -247,13 +258,18 @@ func (b *Bot) askQueueRetry(ctx context.Context, chatID int64, editMsgID *int, i
 	if it.TicketNumber != nil {
 		ticket = "№" + strconv.FormatInt(*it.TicketNumber, 10)
 	}
-	amount := FormatMoney(it.Amount, it.Currency, loc)
-	b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.rq.retry_ask", map[string]any{
-		"Order": order, "Tickets": ticket, "Amount": amount,
-	}), &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-		{{Text: b.texts.T(loc, "bot.rq.retry_yes", map[string]any{"Amount": amount}), CallbackData: "rq:ry:" + refundID.String()}},
-		{{Text: b.texts.T(loc, "bot.rq.retry_no", nil), CallbackData: "rq:l:" + queueDefaultFilter + ":1"}},
-	}})
+	ticketLine := b.texts.T(loc, "bot.rq.retry_keeps_ticket", nil)
+	if it.CancelTicket {
+		ticketLine = b.texts.T(loc, "bot.rq.retry_cancels_ticket", nil)
+	}
+	letterLine := b.texts.T(loc, "bot.rq.retry_letter", nil)
+	if it.NotifyBuyer != nil && !*it.NotifyBuyer {
+		letterLine = b.texts.T(loc, "bot.rq.retry_no_letter", nil)
+	}
+	return b.texts.T(loc, "bot.rq.retry_ask", map[string]any{
+		"Order": order, "Tickets": ticket, "Amount": FormatMoney(it.Amount, it.Currency, loc),
+		"TicketRule": ticketLine, "Letter": letterLine,
+	})
 }
 
 // startQueueRetry sends the retry OFF the bot's single update worker: the
@@ -268,13 +284,25 @@ func (b *Bot) startQueueRetry(ctx context.Context, chatID int64, msgID int, id *
 		return
 	}
 	b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.sending", nil), nil)
-	b.goBackground(func() {
+	b.goBackground("queue retry", func() {
 		defer b.retrying.Delete(refundID)
 		wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), refundSendWindow)
 		defer cancel()
 		b.doQueueRetry(wctx, chatID, msgID, id, refundID)
+	}, func() {
+		// Whether the retry went out is unknown: say so, and let the queue
+		// show its state (a second press replays the same operation).
+		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		b.reply(cctx, chatID, &msgID, b.texts.T(loc, "bot.ref.err_timeout", nil), &models.InlineKeyboardMarkup{
+			InlineKeyboard: [][]models.InlineKeyboardButton{{{Text: "« " + b.texts.T(loc, "bot.btn_back", nil),
+				CallbackData: "rq:l:" + queueDefaultFilter + ":1"}}}})
 	})
 }
+
+// codePartialNotSupported: the provider returns only the whole payment at
+// once and part of it is already back.
+const codePartialNotSupported = "refund.partial_not_supported"
 
 // queueRetryErrorKey picks the text for a refused retry.
 func (b *Bot) queueRetryErrorKey(ae *APIError) string {
@@ -293,8 +321,10 @@ func (b *Bot) queueRetryErrorKey(ae *APIError) string {
 		// Any other refusal: the refund or its order changed. Never "order
 		// № changed" without a number.
 		return "bot.rq.err_refused"
-	case ae.Status == http.StatusNotFound:
+	case ae.Status == http.StatusNotFound || ae.Status == http.StatusBadRequest:
 		return "bot.rq.err_refused"
+	case ae.Status == http.StatusUnprocessableEntity && ae.Code == codePartialNotSupported:
+		return "bot.rq.err_partial"
 	}
 	return b.refundErrorKey(ae)
 }

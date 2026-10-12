@@ -85,6 +85,11 @@ func TestRefundOrgRoutes_OptionsCreateReplayAndIsolation(t *testing.T) {
 	if first["refundable"] != float64(2500) || first["status"] != "active" {
 		t.Fatalf("ticket option = %v; want 2500 refundable and active", first)
 	}
+	// The tickets' refundable amounts may each be capped by what is left of
+	// the payment, so the order also states that one total.
+	if out["payment_left"] != float64(5000) {
+		t.Fatalf("payment_left = %v; want 5000", out["payment_left"])
+	}
 
 	// ── another organization sees a missing order
 	otherBase := "/v1/organizations/" + other.String() + "/orders/" + f.order.String()

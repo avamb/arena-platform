@@ -141,16 +141,21 @@ func (e *Engine) Retry(ctx context.Context, in RetryInput) (BatchResult, error) 
 			return markReplacedTx(ctx, tx, cur)
 		}
 	}
+	// The retry is recorded with the replacement it names, in the same
+	// transaction: either both exist or neither does.
+	closesParked := cur.State == StateManualReview && prior == nil
+	in2.afterInsert = func(ctx context.Context, tx pgx.Tx, created BatchResult) error {
+		if len(created.Refunds) == 0 {
+			return nil
+		}
+		return e.writeAudit(ctx, tx, audit.Event{ActorType: in.Actor.Type, ActorID: in.Actor.ID,
+			Action: "v1.refund.retry", ResourceType: "refund", ResourceID: cur.ID.String(),
+			Metadata: map[string]any{"replacement_refund_id": created.Refunds[0].ID.String(), "via": in.Via,
+				"previous_state": cur.State, "closed_as_replaced": closesParked}})
+	}
 	res, err := e.CreateBatch(ctx, in2)
 	if err != nil {
 		return BatchResult{}, err
-	}
-	if !res.Replayed && len(res.Refunds) > 0 {
-		_ = e.inTx(ctx, func(tx pgx.Tx) error {
-			return e.writeAudit(ctx, tx, audit.Event{ActorType: in.Actor.Type, ActorID: in.Actor.ID,
-				Action: "v1.refund.retry", ResourceType: "refund", ResourceID: cur.ID.String(),
-				Metadata: map[string]any{"replacement_refund_id": res.Refunds[0].ID.String(), "via": in.Via}})
-		})
 	}
 	return res, nil
 }

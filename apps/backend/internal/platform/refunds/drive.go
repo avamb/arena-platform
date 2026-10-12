@@ -263,9 +263,12 @@ func (e *Engine) parkOverBudget(ctx context.Context, tx pgx.Tx, id uuid.UUID, pa
 // may have moved money and keeps counting. The exclusion holds only while the
 // row is still parked: once an operator resolves it (to succeeded, say) it
 // counts again. gen.SumNonFailedRefundsByIntent, the flat routes' sum, carries
-// the same rule. Unqualified: use it where the refunds row is the innermost
-// table.
-const countsAgainstBudgetSQL = `NOT (state = 'manual_review' AND provider_attempts = 0 AND provider_refund_id IS NULL)`
+// the same rule. A row without a provider was never the engine's (migration
+// 0138 moved the pre-engine rows to manual_review): it may stand for money
+// returned by hand, so it keeps counting until an operator closes it.
+// Unqualified: use it where the refunds row is the innermost table.
+const countsAgainstBudgetSQL = `NOT (state = 'manual_review' AND provider_attempts = 0 AND provider_refund_id IS NULL
+	AND provider IS NOT NULL)`
 
 // deterministicModuleError reports an error that repeating the call can
 // never change and that proves the provider was NOT reached: the module is
