@@ -113,7 +113,7 @@ func checkText(locale, key, text string) []styleFinding {
 	if strings.Contains(plain, ";") {
 		add("semicolon", "use two sentences or a list")
 	}
-	if reDash.MatchString(plain) {
+	if hasThoughtDash(locale, plain) {
 		add("dash", "a dash joins two thoughts: write two sentences")
 	}
 	for _, re := range styleForbidden[locale] {
@@ -132,6 +132,27 @@ func checkText(locale, key, text string) []styleFinding {
 		}
 	}
 	return res
+}
+
+// hasThoughtDash reports a dash that joins two thoughts in running text.
+// Russian is exempt: the dash (тире) is required punctuation there. A dash
+// between two template values ("{{.Code}} — {{.Role}}") is a field separator
+// and a text of six words or fewer is a label, so neither counts.
+func hasThoughtDash(locale, plain string) bool {
+	if locale == "ru" {
+		return false
+	}
+	if len(strings.Fields(plain)) <= 6 {
+		return false
+	}
+	for _, loc := range reDash.FindAllStringIndex(plain, -1) {
+		before, after := plain[:loc[0]], plain[loc[1]:]
+		if strings.HasSuffix(before, "X") && strings.HasPrefix(after, "X") {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func inStyleScope(key string) bool {
@@ -246,7 +267,10 @@ func TestTextStyle_CheckerRules(t *testing.T) {
 		locale, text, want string
 	}{
 		{"en", "Type a whole number, 1 or more. Example: 80.", ""},
-		{"en", "Too many messages — please wait.", "dash"},
+		{"en", "Too many messages and then — please wait a minute.", "dash"},
+		{"en", "Manager — events only", ""},
+		{"en", "• {{.Email}} — {{.Role}}{{.Marks}}", ""},
+		{"ru", "Владелец может всё — приглашать и убирать людей.", ""},
 		{"en", "Send the poster; then wait.", "semicolon"},
 		{"en", "The file {{.Name}} was deleted.", "passive"},
 		{"en", "Contact your client.", "glossary"},

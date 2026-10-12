@@ -187,7 +187,7 @@ other = ", no Telegram yet"
 other = " (you)"
 
 ["bot.team_hint"]
-other = "An owner can do everything, including inviting and removing people; a manager creates and edits events. To add a colleague, press «Invite» — they get an e-mail with a link to this bot."
+other = "An owner can do everything, including inviting and removing people. A manager creates and edits events. To add a colleague, press «Invite». They get an e-mail with a link to this bot."
 
 ["bot.team_invite_btn"]
 other = "＋ Invite"
@@ -256,10 +256,10 @@ other = "Welcome! One check before we start: please type the e-mail address the 
 other = "That does not look like an e-mail address. Please type it as in the invitation, for example name@company.com"
 
 ["bot.invite_accepted"]
-other = "<b>Done!</b> You are connected to <b>{{.Org}}</b> as {{.Role}}.\n\n<b>How it works</b>\n1. Press “+ Event” and type the event name. If you have a poster, send it: I read the details from it.\n2. Answer a few questions: date, venue, tickets. Before publishing I show you everything.\n3. You get the link for buyers and a sample ticket. You can share the link right away.\n\nSee sales under “My events”{{if .Owner}}; you can invite colleagues from the same menu{{end}}. All of it is in the menu below, and “Help” keeps this tip at hand."
+other = "<b>Done!</b> You are connected to <b>{{.Org}}</b> as {{.Role}}.\n\n<b>How it works</b>\n1. Press “+ Event” and type the event name. If you have a poster, send it: I read the details from it.\n2. Answer a few questions: date, venue, tickets. Before publishing I show you everything.\n3. You get the link for buyers and a sample ticket. You can share the link right away.\n\nSee sales under “My events”.{{if .Owner}} You can invite colleagues from the same menu.{{end}} All of it is in the menu below, and “Help” keeps this tip at hand."
 
 ["bot.invite_accepted_notice"]
-other = "✅ {{.Email}} accepted the invitation and joined the bot: organization <b>{{.Org}}</b>, role — {{.Role}}."
+other = "✅ {{.Email}} accepted the invitation and joined the bot: organization <b>{{.Org}}</b>, role: {{.Role}}."
 
 ["bot.invite_not_found"]
 other = "This invitation link does not work any more: it was already used, or it expired after 7 days. Ask the owner of your organization for a new one."
@@ -394,7 +394,7 @@ other = "Choose the language of the bot."
 other = "The bot now speaks English."
 
 ["bot.error_generic"]
-other = "Something went wrong on our side. Please try again in a minute; if it repeats, tell your Arena contact."
+other = "Something went wrong on our side. Please try again in a minute. If it repeats, tell your Arena contact."
 
 ["bot.access_lost"]
 other = "Your access to this organization was removed. If that is a mistake, ask its owner for a new invitation."
@@ -528,7 +528,7 @@ other = "Reading the poster…"
 other = "The poster says:\n{{.List}}\n\nI will offer these as hints: at each step press “From the poster” if it is right, or type your own."
 
 ["bot.wz.poster_read_none"]
-other = "I found nothing on the poster that I could offer — we fill it in by hand."
+other = "I found nothing on the poster that I could offer. We fill it in by hand."
 
 ["bot.wz.resume_btn"]
 other = "Continue"
@@ -564,7 +564,7 @@ other = "The promoter's name, as it should appear on the ticket."
 other = "Please give the promoter's name."
 
 ["bot.wz.err_promoter_dup"]
-other = "This promoter already exists — pick it from the list."
+other = "This promoter already exists. Pick it from the list."
 
 ["bot.wz.ask_promoter_legal"]
 other = "The promoter's tax or company id, if any. You can skip this."
@@ -579,13 +579,13 @@ other = "The poster must be a PNG or JPG image."
 other = "That is a PDF, but I need a PNG or JPG image. Open the PDF and save the poster page as an image (in Preview, Acrobat or an online “PDF to JPG” converter), or take a screenshot of the poster, then send it as a file."
 
 ["bot.wz.poster_too_big"]
-other = "The poster file is over 5 MB — save it with a lower quality."
+other = "The poster file is over 5 MB. Save it with a lower quality."
 
 ["bot.wz.poster_bad_ratio"]
-other = "The poster is {{.W}}×{{.H}} — it must be 4:5 (1080×1350) or square (1080×1080)."
+other = "The poster is {{.W}}×{{.H}}. It must be 4:5 (1080×1350) or square (1080×1080)."
 
 ["bot.wz.poster_too_small"]
-other = "The poster is {{.W}}×{{.H}}, too small — the width must be at least 1000 px. If you sent a photo, send the same file via the paperclip → “File”: Telegram will not compress it then."
+other = "The poster is {{.W}}×{{.H}}. This is too small: the width must be at least 1000 px. If you sent a photo, send the same file via the paperclip → “File”: Telegram will not compress it then."
 
 ["bot.wz.poster_failed"]
 other = "The poster could not be saved. Try again or skip this step."
@@ -606,7 +606,7 @@ other = "Start time? Type it as HH:MM, for example 19:30."
 other = "I did not understand the time. Type it as HH:MM, for example 19:30."
 
 ["bot.wz.ask_same_venue"]
-other = "Is date {{.N}} at the same place — {{.Venue}}, {{.City}}?"
+other = "Is date {{.N}} at the same place: {{.Venue}}, {{.City}}?"
 
 ["bot.wz.same_venue_btn"]
 other = "Yes, same place"
@@ -744,7 +744,7 @@ other = "The price changes in stages (early, regular, last)"
 other = "The buyer picks: for example an adult and a child ticket, or VIP and Standard. Each category has its own price and its own number of places."
 
 ["bot.wz.t_kind_sequence_hint"]
-other = "For example “Early” → “Regular” → “Last minute”. One category sells at a time; all share the hall's places."
+other = "For example “Early” → “Regular” → “Last minute”. One category sells at a time. All share the hall's places."
 
 ["bot.wz.ask_t_cat_name"]
 other = "Name of category {{.N}}? For example “VIP” or “Early”."
@@ -843,7 +843,7 @@ other = "The event will be created without publishing."
 other = "Selling on: {{.List}}."
 
 ["bot.wz.summary_footer"]
-other = "After “Publish” the event appears on your sales page; I will send the link here."
+other = "After “Publish” the event appears on your sales page. I will send the link here."
 
 ["bot.wz.publish_btn"]
 other = "Publish"
@@ -879,7 +879,7 @@ other = "🔗 Link to the event for buyers:\n{{.URL}}"
 other = "I will send the sales link as soon as it is ready."
 
 ["bot.wz.save_failed"]
-other = "Date {{.When}} was not saved. {{.Reason}}\n\nI kept the dates that were saved — press “Retry” and I will save the rest."
+other = "Date {{.When}} was not saved. {{.Reason}}\n\nI kept the dates that were saved. Press “Retry” and I will save the rest."
 
 ["bot.wz.retry_btn"]
 other = "Retry"
@@ -888,10 +888,10 @@ other = "Retry"
 other = "The event was not published into the site's channel: no right to publish there."
 
 ["bot.wz.warn_hosted_page_enabled"]
-other = "The sales page of this channel is now on — the link will open."
+other = "The sales page of this channel is now on. The link will open."
 
 ["bot.wz.warn_venue_timezone_kept"]
-other = "The venue already has a different time zone — the earlier one was kept."
+other = "The venue already has a different time zone. The earlier one was kept."
 
 ["bot.wz.warn_category_sold_out"]
 other = "A category with 0 places was created closed."
@@ -900,10 +900,10 @@ other = "A category with 0 places was created closed."
 other = "Publishing was skipped: the event did not pass the check."
 
 ["bot.wz.warn_poster_skipped"]
-other = "The poster was not saved — add it later."
+other = "The poster was not saved. Add it later."
 
 ["bot.wz.err_forbidden"]
-other = "You do not have the right for this action — tell the owner of your organization."
+other = "You do not have the right for this action. Tell the owner of your organization."
 
 
 ["bot.wz.edit_btn"]
@@ -922,13 +922,13 @@ other = "Save anyway"
 other = "Editing «{{.Name}}». Below is what arena has right now. Choose what to change: each change is a screen of its own. Existing dates cannot be changed, only new ones added."
 
 ["bot.wz.edit_footer"]
-other = "Press «Save changes» — the changes reach the sales page within a minute or two. Sold tickets are not affected: a new price applies to the next purchases."
+other = "Press «Save changes». The changes reach the sales page within a minute or two. Sold tickets are not affected: a new price applies to the next purchases."
 
 ["bot.wz.edit_seated"]
 other = "This event has a seating plan or no dates yet, so it cannot be edited from the bot. Use the admin page."
 
 ["bot.wz.edit_tickets_differ"]
-other = "The date {{.When}} carries other tickets than the first one; saving writes the tickets shown here to every date."
+other = "The date {{.When}} carries other tickets than the first one. Saving writes the tickets shown here to every date."
 
 ["bot.wz.edit_changed_meanwhile"]
 other = "«{{.Name}}» was changed elsewhere (the site or the admin) after you opened it. Save your version over it?"
@@ -946,7 +946,7 @@ other = "I could not read this event from arena. Try again in a minute."
 other = "📷 Fill in from a poster"
 
 ["bot.wz.ask_poster_first"]
-other = "Send the poster: I will read the name, date, time, venue and prices off it and offer them as answers. You confirm each value with a button.\n\nBest as a <b>file</b>, so the quality is kept:\n• on a phone: paperclip 📎 → “File” → the picture;\n• on a computer: paperclip 📎 → the picture → tick “Send as a document”.\n\nPNG or JPG up to 5 MB, 4:5 (1080×1350) or square, width from 1000 px. The picture goes to Claude (Anthropic) for reading: the poster only, no buyer data.\n\nChanged your mind? Press “Back” and type the name."
+other = "Send the poster: I will read the name, date, time, venue and prices off it and offer them as answers. You confirm each value with a button.\n\nBest as a <b>file</b>, so the quality is kept:\n• on a phone: paperclip 📎 → “File” → the picture.\n• on a computer: paperclip 📎 → the picture → tick “Send as a document”.\n\nPNG or JPG up to 5 MB, 4:5 (1080×1350) or square, width from 1000 px. The picture goes to Claude (Anthropic) for reading: the poster only, no buyer data.\n\nChanged your mind? Press “Back” and type the name."
 
 ["bot.wz.err_poster_first"]
 other = "I am waiting for a poster as a file or photo. To type the name instead, press “Back”."
@@ -1153,7 +1153,7 @@ other = "✖ Cancel the session"
 other = "To sessions"
 
 ["bot.ses.move_date_q"]
-other = "Now: <b>{{.Now}}</b>.\nWhich date should the session move to? It is the same session, not a new one — the tickets already sold stay in it."
+other = "Now: <b>{{.Now}}</b>.\nWhich date should the session move to? It is the same session, not a new one. The tickets already sold stay in it."
 
 ["bot.ses.move_time_q"]
 other = "New date: <b>{{.Date}}</b>.\nWhat time does it start? Type a time, for example 19:30."
@@ -1162,7 +1162,7 @@ other = "New date: <b>{{.Date}}</b>.\nWhat time does it start? Type a time, for 
 other = "Keep {{.Time}}"
 
 ["bot.ses.no_change"]
-other = "The date and time are the same as now — nothing to move."
+other = "The date and time are the same as now. Nothing to move."
 
 ["bot.ses.confirm_move"]
 other = "<b>Moving the session</b>\nWas: {{.Old}}\nWill be: <b>{{.New}}</b>"
@@ -1171,7 +1171,7 @@ other = "<b>Moving the session</b>\nWas: {{.Old}}\nWill be: <b>{{.New}}</b>"
 other = "<b>Canceling the session</b>\n{{.Old}}"
 
 ["bot.ses.confirm_cancel_all"]
-other = "<b>Canceling the whole event</b>\n\"{{.Name}}\": sessions to cancel — {{.N}}."
+other = "<b>Canceling the whole event</b>\n\"{{.Name}}\": sessions to cancel: {{.N}}."
 
 ["bot.ses.buyers_move"]
 other = "This session already has buyers: {{.Tickets}} tickets, {{.Orders}} orders. Each gets an email with the new date and a new ticket (PDF). Buyers will be able to write to you: {{.Contact}}."
@@ -1180,7 +1180,7 @@ other = "This session already has buyers: {{.Tickets}} tickets, {{.Orders}} orde
 other = "This session already has buyers: {{.Tickets}} tickets, {{.Orders}} orders. Each gets a cancellation email. Buyers will be able to write to you: {{.Contact}}."
 
 ["bot.ses.no_address"]
-other = "Orders without an email address: {{.N}} — they cannot be written to."
+other = "Orders without an email address: {{.N}}. We cannot write to these buyers."
 
 ["bot.ses.no_buyers"]
 other = "This session has no buyers yet, so no emails will be sent."
@@ -1189,7 +1189,7 @@ other = "This session has no buyers yet, so no emails will be sent."
 other = "Your message to the buyers:\n<i>{{.Text}}</i>"
 
 ["bot.ses.message_none"]
-other = "There is no message from you to the buyers — they get only the plain email with the new date."
+other = "There is no message from you to the buyers. They get only the plain email with the new date."
 
 ["bot.ses.refund_note"]
 other = "The email does not promise any money back: you settle refunds with the buyers yourself."
@@ -1228,10 +1228,10 @@ other = "➡ Next: confirm canceling everything"
 other = "➡ Next: confirm canceling everything"
 
 ["bot.ses.site_blocked"]
-other = "Some orders ({{.N}}) were placed through your WordPress site. That site writes the letter to its buyers, and moving or canceling a session with such orders is not supported yet — write to Arena support and we will do it by hand. Nothing was changed."
+other = "Some orders ({{.N}}) were placed through your WordPress site. That site writes the letter to its buyers, and moving or canceling a session with such orders is not supported yet. Write to Arena support and we will do it by hand. Nothing was changed."
 
 ["bot.ses.contact_ask_email"]
-other = "To move the session the buyers need an address they can write to; it appears in the letter. Type the contact e-mail (organizer: {{.Name}})."
+other = "To move the session the buyers need an address they can write to. It appears in the letter. Type the contact e-mail (organizer: {{.Name}})."
 
 ["bot.ses.contact_ask_phone"]
 other = "A contact phone is optional. Type the number or skip it."
@@ -1267,7 +1267,7 @@ other = "✔ The session is canceled.{{.Letters}}"
 other = "✔ Sessions canceled: {{.N}}.{{.Letters}}"
 
 ["bot.ses.partial"]
-other = "Sessions canceled: {{.N}}; the rest failed. Open the list and check which sessions are left."
+other = "Sessions canceled: {{.N}}. The rest failed. Open the list and check which sessions are left."
 
 ["bot.ses.failed"]
 other = "That did not work. Nothing was changed. Please try again a little later."
@@ -1481,7 +1481,7 @@ other = "Oceania"
 other = "Other countries"
 
 ["bot.wz.ask_sales_end"]
-other = "Ticket sales close at the start — {{.Time}}.\nSome events can keep selling after the start, for those who did not buy in time. Keep the start, or choose a later or earlier time if it suits your event."
+other = "Ticket sales close at the start: {{.Time}}.\nSome events can keep selling after the start, for those who did not buy in time. Keep the start, or choose a later or earlier time if it suits your event."
 
 ["bot.wz.sales_end_after_btn"]
 other = "{{.Min}} min after the start · {{.Time}}"
@@ -1601,7 +1601,7 @@ other = "Invitations: {{.N}}"
 other = "Promo codes:"
 
 ["bot.ec.promo_line"]
-other = "• {{.Code}} — used {{.Orders}} times, discount {{.Discount}}"
+other = "• {{.Code}}: used {{.Orders}} times, discount {{.Discount}}"
 
 ["bot.ec.more"]
 other = "…and {{.N}} more"
@@ -1730,7 +1730,7 @@ other = "No paid orders yet."
 other = "No unpaid orders."
 
 ["bot.ord.search_none"]
-other = "No orders found for “{{.Query}}”. Type a barcode, an order number, an e-mail, a phone or a name — or clear the search."
+other = "No orders found for “{{.Query}}”. Type a barcode, an order number, an e-mail, a phone or a name. Or clear the search."
 
 ["bot.ord.st_paid"]
 other = "Paid"
@@ -1856,7 +1856,7 @@ other = "Message from the payment provider: {{.Msg}}"
 other = "Cancel unpaid order"
 
 ["bot.ord.cancel_ask"]
-other = "⚠️ <b>Last step — nothing is canceled yet.</b>\n\nOrder №{{.Num}} · {{.Amount}}\nThe order will be closed and the seats held for it released. This cannot be undone.\n\nTo cancel, <b>type the word {{.Word}}</b> and send it as a message. To keep the order, press «Back»."
+other = "⚠️ <b>Last step: nothing is canceled yet.</b>\n\nOrder №{{.Num}} · {{.Amount}}\nThe order will be closed and the seats held for it released. This cannot be undone.\n\nTo cancel, <b>type the word {{.Word}}</b> and send it as a message. To keep the order, press «Back»."
 
 ["bot.ord.cancel_wrong"]
 other = "That is not the word, so nothing was canceled. To cancel, type exactly: {{.Word}}"
@@ -1951,7 +1951,7 @@ other = "✔ «{{.Name}}» is archived. Tickets already sold stay valid."
 other = "✔ «{{.Name}}» is deleted."
 
 ["bot.evs.delete_ask"]
-other = "⚠️ <b>Last step — nothing is deleted yet.</b>\n\n«{{.Name}}»: dates: {{.N}}, no paid orders, no tickets sold. The event and its dates will be deleted. This cannot be undone.\n\nTo delete, <b>type the word {{.Word}}</b> and send it as a message. To keep the event, press «Back»."
+other = "⚠️ <b>Last step: nothing is deleted yet.</b>\n\n«{{.Name}}»: dates: {{.N}}, no paid orders, no tickets sold. The event and its dates will be deleted. This cannot be undone.\n\nTo delete, <b>type the word {{.Word}}</b> and send it as a message. To keep the event, press «Back»."
 
 ["bot.evs.delete_wrong"]
 other = "That is not the word, so nothing was deleted. To delete, type exactly: {{.Word}}"
@@ -2041,7 +2041,7 @@ other = "they are the only owner."
 other = "🎟 Invitations"
 
 ["bot.inv.hub"]
-other = "🎟 <b>Invitations</b> · {{.Org}}\n\nFree tickets for guests: real tickets with a barcode, sent to each guest by e-mail. They take places from the category like sold tickets, and you can annul one later.\n\nAt most {{.Max}} tickets in one operation; for more, do several operations."
+other = "🎟 <b>Invitations</b> · {{.Org}}\n\nFree tickets for guests: real tickets with a barcode, sent to each guest by e-mail. They take places from the category like sold tickets, and you can annul one later.\n\nAt most {{.Max}} tickets in one operation. For more, do several operations."
 
 ["bot.inv.issue_btn"]
 other = "➕ Issue invitations"
@@ -2077,7 +2077,7 @@ other = "The category «{{.Tier}}» has no free places left."
 other = "free {{.N}}"
 
 ["bot.inv.qty_ask"]
-other = "🎟 <b>{{.Name}}</b> · {{.When}}\nCategory: {{.Tier}} · free places: {{.N}}\n\nHow many tickets? Press a number or type it. At most {{.Max}} in one operation; for more, do several operations."
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\nCategory: {{.Tier}} · free places: {{.N}}\n\nHow many tickets? Press a number or type it. At most {{.Max}} in one operation. For more, do several operations."
 
 ["bot.inv.qty_bad"]
 other = "That is not a number. Type how many tickets, for example 4."
@@ -2539,7 +2539,7 @@ other = "🎭 <b>Promoters</b> · {{.Org}} · {{.Total}} in all · page {{.Page}
 other = "Tap a promoter to see and edit its details."
 
 ["bot.prom.empty"]
-other = "There are no promoters yet. A promoter is a partner whose events you sell; you can add one while creating or editing an event."
+other = "There are no promoters yet. A promoter is a partner whose events you sell. You can add one while creating or editing an event."
 
 ["bot.prom.card"]
 other = "🎭 <b>{{.Name}}</b>"
@@ -2748,7 +2748,7 @@ other = "📊 Places: {{.Value}}"
 other = "🗓 Sale window: {{.Value}}"
 
 ["bot.cat.card_session_end"]
-other = "⏱ The whole date stops selling at {{.When}}; no category window can extend that."
+other = "⏱ The whole date stops selling at {{.When}}. No category window can extend that."
 
 ["bot.cat.window_both"]
 other = "from {{.Min}} until {{.Max}} (inclusive)"
@@ -2769,10 +2769,10 @@ other = "💶 A free category: it has no price to change."
 other = "💶 A pay-what-you-want category: its price range is changed in the admin console."
 
 ["bot.cat.note_chain"]
-other = "↪ This category hands its free places on to «{{.Name}}» by itself, by date or when its step sells out. To keep that working only its price can be changed here; change dates or steps through Edit → Tickets of the event."
+other = "↪ This category hands its free places on to «{{.Name}}» by itself, by date or when its step sells out. To keep that working only its price can be changed here. Change dates or steps through Edit → Tickets of the event."
 
 ["bot.cat.note_chain_target"]
-other = "↪ This category takes over the free places of the previous one by itself. To keep that working only its price can be changed here; change dates or steps through Edit → Tickets of the event."
+other = "↪ This category takes over the free places of the previous one by itself. To keep that working only its price can be changed here. Change dates or steps through Edit → Tickets of the event."
 
 ["bot.cat.note_seated"]
 other = "🪑 The places of this category come from the seating plan, so their number is not changed here."
