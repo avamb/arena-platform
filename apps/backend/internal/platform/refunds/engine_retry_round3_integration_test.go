@@ -7,6 +7,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -114,6 +115,28 @@ func TestEngine_RetryUsesTheOriginalRefundsPayment(t *testing.T) {
 	}
 	if got := res.Refunds[0].PaymentIntentID; got != f.payment {
 		t.Fatalf("retry went through payment %s; want the original %s", got, f.payment)
+	}
+}
+
+// Round-2 review R2-6: a drive does not start a provider call that the
+// caller's remaining budget would cut short; the refund waits for the sweep,
+// never attempted, instead of ending as an unknown outcome.
+func TestEngine_CreateLeavesTheCallToTheSweepWhenTheBudgetIsSpent(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	m := &fakeModule{partial: true, answers: []func(payments.RefundRequest) (payments.RefundResult, error){succeeded}}
+	e := f.engineWith(m, true, func(o *refunds.Options) { o.CallTimeout = 10 * time.Second })
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	res, err := e.CreateBatch(ctx, f.batch("k-budget-spent", true, refunds.Item{TicketID: f.tickets[0]}))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if n := m.callCount(); n != 0 {
+		t.Fatalf("provider calls = %d; want none with 5 s left of a 10 s call", n)
+	}
+	r := res.Refunds[0]
+	if r.State != refunds.StateProviderPending || r.ProviderAttempts != 0 {
+		t.Fatalf("refund = %s with %d attempt(s); want provider_pending and never attempted", r.State, r.ProviderAttempts)
 	}
 }
 

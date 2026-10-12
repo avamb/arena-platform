@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -526,5 +527,100 @@ func TestRefundOrgRoutes_RetryAndResolveReviewFixes(t *testing.T) {
 	}
 	if st, out = create(f4, 0); st != http.StatusConflict || prom0113Code(out) != "refund.ticket_not_refundable" {
 		t.Fatalf("refund of a ticket under review: %d %v; want 409 refund.ticket_not_refundable", st, out)
+	}
+}
+
+// A client that hangs up while the provider is slow must not leave the refund
+// half driven: the work is detached from the request, and repeating the call
+// with the same Idempotency-Key reads the result.
+func TestRefundOrgRoutes_ClientHangUpDoesNotAbortTheRefund(t *testing.T) {
+	stub := newStubStripe(t)
+	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) { c.StripeAPIBaseURL = stub.baseURL() })
+	ts := httptest.NewServer(srv.Router())
+	t.Cleanup(ts.Close)
+	pf := &prom0113Fixture{ts: ts, client: ts.Client(), q: gen.New(srv.pgxPool)}
+	ctx := context.Background()
+	user, err := pf.q.InsertUser(ctx, "pay06h-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf.userID = user.ID
+	org := pf.org(t, "PAY06H")
+	key := pf.key(t, org, "refund.read", "refund.create", "refund.approve")
+	stub.sessionPI = "pi_pay06h_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
+	stub.refundHandler = func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(600 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"id":"re_pay06h","status":"succeeded"}`)
+	}
+	f := newPay03Order(t, srv.pgxPool, org, "stripe")
+	idem := "pay06h-" + uuid.NewString()
+	body := fmt.Sprintf(`{"items":[{"ticket_id":%q}],"reason":"hang up"}`, f.tickets[0])
+	path := "/v1/organizations/" + org.String() + "/orders/" + f.order.String() + "/refunds"
+
+	short, cancel := context.WithTimeout(ctx, 150*time.Millisecond)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(short, http.MethodPost, ts.URL+path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("Idempotency-Key", idem)
+	if resp, err := ts.Client().Do(req); err == nil {
+		resp.Body.Close()
+		t.Fatal("the slow call answered before the client gave up; the test proves nothing")
+	}
+
+	// the refund still completes on the server
+	deadline := time.Now().Add(5 * time.Second)
+	var state string
+	for time.Now().Before(deadline) {
+		_ = srv.pgxPool.QueryRow(ctx, `SELECT COALESCE(max(state), '') FROM refunds WHERE order_id = $1`, f.order).Scan(&state)
+		if state == "succeeded" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if state != "succeeded" {
+		t.Fatalf("after the client hung up the refund is %q; want succeeded", state)
+	}
+	// and the same key reads the result back
+	st, out := refundOrgPost(t, pf, path, key, idem, body)
+	if st != http.StatusAccepted || out["replayed"] != true {
+		t.Fatalf("replay after the hang-up: %d %v; want replayed", st, out)
+	}
+}
+
+// Round-2 review R2-3: a refund whose provider call outlasts the server's
+// WriteTimeout still reaches the caller. httptest's server has no write
+// timeout of its own, so the test sets one on the real http.Server.
+func TestRefundOrgRoutes_AnswerOutlivesWriteTimeout(t *testing.T) {
+	stub := newStubStripe(t)
+	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) { c.StripeAPIBaseURL = stub.baseURL() })
+	ts := httptest.NewUnstartedServer(srv.Router())
+	ts.Config.WriteTimeout = 500 * time.Millisecond
+	ts.Start()
+	t.Cleanup(ts.Close)
+	pf := &prom0113Fixture{ts: ts, client: ts.Client(), q: gen.New(srv.pgxPool)}
+	ctx := context.Background()
+	user, err := pf.q.InsertUser(ctx, "r23-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf.userID = user.ID
+	org := pf.org(t, "R23")
+	key := pf.key(t, org, "refund.read", "refund.create", "refund.approve")
+	stub.sessionPI = "pi_r23_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
+	stub.refundHandler = func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(1500 * time.Millisecond) // longer than the write timeout
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"id":"re_%s","status":"succeeded"}`, uuid.NewString()[:8])
+	}
+	f := newPay03Order(t, srv.pgxPool, org, "stripe")
+	body := fmt.Sprintf(`{"items":[{"ticket_id":%q}],"reason":"slow provider"}`, f.tickets[0])
+	st, out := refundOrgPost(t, pf, "/v1/organizations/"+org.String()+"/orders/"+f.order.String()+"/refunds", key, "r23-"+uuid.NewString(), body)
+	if st != http.StatusAccepted {
+		t.Fatalf("create through a slow provider: %d %v; want 202", st, out)
+	}
+	if got := out["refunds"].([]any)[0].(map[string]any)["state"]; got != "succeeded" {
+		t.Fatalf("refund state = %v; want succeeded", got)
 	}
 }

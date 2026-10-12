@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -116,6 +117,8 @@ func (s *Server) handleRefundOptions(w http.ResponseWriter, r *http.Request) {
 		Refundable int64   `json:"refundable"`
 		InProgress bool    `json:"in_progress"`
 		Reason     *string `json:"not_refundable_reason"`
+		Number     *int64  `json:"ticket_number"`
+		Seat       *string `json:"seat_label"`
 	}
 	tickets := make([]ticketJSON, 0, len(opts.Tickets))
 	for _, t := range opts.Tickets {
@@ -123,7 +126,7 @@ func (s *Server) handleRefundOptions(w http.ResponseWriter, r *http.Request) {
 		if t.NotRefundableReason != "" {
 			reason = &t.NotRefundableReason
 		}
-		tickets = append(tickets, ticketJSON{t.TicketID.String(), t.Status, t.Paid, t.Refunded, t.Refundable, t.InProgress, reason})
+		tickets = append(tickets, ticketJSON{t.TicketID.String(), t.Status, t.Paid, t.Refunded, t.Refundable, t.InProgress, reason, t.TicketNumber, t.SeatLabel})
 	}
 	active := make([]refundItemJSON, 0, len(opts.Active))
 	for _, a := range opts.Active {
@@ -196,7 +199,9 @@ func (s *Server) handleCreateOrderRefunds(w http.ResponseWriter, r *http.Request
 	// sent at once; a key without refund.approve leaves it for an approver.
 	in.Approved = s.perms != nil && s.perms.Check(r.Context(), "refund.approve", "refunds") == nil
 
-	res, err := engine.CreateBatch(r.Context(), in)
+	wctx, cancel := refundWorkCtx(w, r)
+	defer cancel()
+	res, err := engine.CreateBatch(wctx, in)
 	if err != nil {
 		var refErr *refunds.Error
 		if errors.As(err, &refErr) {
@@ -215,6 +220,26 @@ func (s *Server) handleCreateOrderRefunds(w http.ResponseWriter, r *http.Request
 		"batch_id": res.BatchID.String(), "order_id": res.OrderID.String(),
 		"replayed": res.Replayed, "refunds": items,
 	})
+}
+
+// refundWorkBudget bounds the engine work one request starts. The work is
+// detached from the request: a client that hangs up (a bot whose HTTP timeout
+// is shorter than a slow provider) must not leave a refund half driven. The
+// client repeats the call with the same Idempotency-Key to read the result.
+const refundWorkBudget = 2 * time.Minute
+
+// refundWriteSlack is the time after the work budget left to write the
+// answer.
+const refundWriteSlack = 15 * time.Second
+
+// refundWorkCtx is the detached context of the engine work, and it moves the
+// connection's write deadline past the work budget: the server's own
+// WriteTimeout (REQUEST_TIMEOUT + 5 s) is shorter than a slow provider, and
+// a refund that finished after it would otherwise reach the caller as a
+// dropped connection.
+func refundWorkCtx(w http.ResponseWriter, r *http.Request) (context.Context, context.CancelFunc) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(refundWorkBudget + refundWriteSlack))
+	return context.WithTimeout(context.WithoutCancel(r.Context()), refundWorkBudget)
 }
 
 type refundCreatorJSON struct {

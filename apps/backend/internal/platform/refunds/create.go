@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -231,6 +232,14 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 		return res, nil
 	}
 	for i, r := range res.Refunds {
+		if !e.timeForCall(ctx) {
+			// Too little of the caller's budget is left for a whole provider
+			// call: a call cut short would be an unknown outcome and a manual
+			// check. The rest stay provider_pending, never attempted, and
+			// refund.sweep sends them within minutes.
+			e.logger.Info("refunds: drive left to the sweep, the work budget is spent", "refund_id", r.ID.String())
+			continue
+		}
 		driven, derr := e.Drive(ctx, r.ID)
 		if derr != nil {
 			// The row is committed provider_pending; refund.sweep picks it
@@ -484,4 +493,14 @@ func insertBatch(ctx context.Context, tx pgx.Tx, in BatchInput, pay Payment, pla
 		res.Refunds = append(res.Refunds, r)
 	}
 	return res, nil
+}
+
+// driveSlack is what a drive needs besides the provider call itself (the
+// claim before it).
+const driveSlack = 2 * time.Second
+
+// timeForCall reports whether ctx leaves room for one whole provider call.
+func (e *Engine) timeForCall(ctx context.Context) bool {
+	dl, ok := ctx.Deadline()
+	return !ok || time.Until(dl) >= e.callTimeout+driveSlack
 }

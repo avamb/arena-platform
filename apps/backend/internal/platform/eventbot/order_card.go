@@ -71,6 +71,7 @@ func (b *Bot) showOrderCard(ctx context.Context, chatID int64, editMsgID *int, f
 	html := note + b.orderCardText(loc, detail, meta, private, false)
 	plain := note + b.orderCardText(loc, detail, meta, private, true)
 	kb := b.withResendButton(b.orderCardKeyboard(loc, detail), id, detail, private) // EC-13, resend.go
+	kb = b.withRefundButton(kb, id, detail, private)                                // EC-21, refund_dialog.go
 	if err := b.replyChecked(ctx, chatID, editMsgID, clipMessage(html, maxMessageRunes), kb); err != nil && html != plain {
 		// A client that refuses the call/WhatsApp links still gets the card.
 		b.reply(ctx, chatID, editMsgID, clipMessage(plain, maxMessageRunes), kb)

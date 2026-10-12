@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	tgbot "github.com/go-telegram/bot"
@@ -102,6 +104,84 @@ type Bot struct {
 	siteButton     bool
 	onb            *onbDialogs
 	onbForms       *onbFormCache
+
+	// runID names this process (a refund dialog marks the send it started
+	// with it, so a restart is told from a send still under way).
+	runID string
+	// bg tracks the work started off the single update worker (a refund
+	// call that may wait minutes for the provider), so Run can let it end.
+	bg bgGroup
+}
+
+// bgGroup is the WaitGroup of the background work. Once Run starts waiting
+// for it (close), no new work joins: a WaitGroup must not be added to while
+// it is being waited on, so later work runs on the caller's goroutine.
+type bgGroup struct {
+	mu     sync.Mutex
+	closed bool
+	wg     sync.WaitGroup
+}
+
+// add joins the group and reports false once it is closed.
+func (g *bgGroup) add() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.closed {
+		return false
+	}
+	g.wg.Add(1)
+	return true
+}
+
+func (g *bgGroup) done() { g.wg.Done() }
+
+// close stops new work from joining; wait then waits for what joined.
+func (g *bgGroup) close() {
+	g.mu.Lock()
+	g.closed = true
+	g.mu.Unlock()
+}
+
+func (g *bgGroup) wait() { g.wg.Wait() }
+
+// backgroundDrain bounds how long Run waits for that work on shutdown.
+const backgroundDrain = 15 * time.Second
+
+// goBackground runs fn off the update worker and tracks it. A panic in fn
+// is recovered and logged (it must not take the bot down for everyone), and
+// cleanup, when given, then puts the person's dialog back in a usable state.
+func (b *Bot) goBackground(name string, fn, cleanup func()) {
+	run := func() {
+		defer func() {
+			if r := recover(); r != nil {
+				b.logger.Error("eventbot: background work panicked", slog.String("work", name),
+					slog.Any("panic", r), slog.String("stack", string(debug.Stack())))
+				if cleanup != nil {
+					b.runCleanup(name, cleanup)
+				}
+			}
+		}()
+		fn()
+	}
+	if !b.bg.add() {
+		// The bot is shutting down: do the work here rather than lose it.
+		run()
+		return
+	}
+	go func() {
+		defer b.bg.done()
+		run()
+	}()
+}
+
+// runCleanup runs a panicked work's clean-up, itself guarded.
+func (b *Bot) runCleanup(name string, cleanup func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			b.logger.Error("eventbot: background clean-up panicked", slog.String("work", name), slog.Any("panic", r))
+		}
+	}()
+	cleanup()
 }
 
 // New builds the bot; it does not talk to Telegram until Run.
@@ -117,6 +197,7 @@ func New(opts Options) (*Bot, error) {
 		logger = slog.Default()
 	}
 	b := &Bot{
+		runID:   uuid.NewString(),
 		queries: opts.Queries,
 		arena:   opts.Arena,
 		minter:  opts.Minter,
@@ -186,6 +267,14 @@ func (b *Bot) Run(ctx context.Context) error {
 	go b.dialogSweepLoop(ctx)
 	go b.draftSweepLoop(ctx)
 	b.tg.Start(ctx)
+	done := make(chan struct{})
+	b.bg.close()
+	go func() { b.bg.wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(backgroundDrain):
+		b.logger.Warn("eventbot: background work still running at shutdown")
+	}
 	return nil
 }
 
@@ -294,7 +383,8 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
 		// and an event's delete question (its typed word)
 		b.leaveEvStatus(ctx, from.ID)
-		b.leavePromo(ctx, from.ID) // and a promo-code question (EC-11)
+		b.leavePromo(ctx, from.ID)      // and a promo-code question (EC-11)
+		b.leaveIdleRefund(ctx, from.ID) // and a refund question: its word is never an answer after a command (EC-21)
 		switch cmd {
 		case "/start":
 			arg = strings.TrimSpace(arg)
@@ -349,6 +439,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	if text != "" && b.resendText(ctx, chatID, from, text) {
 		return
 	}
+	if text != "" && b.refundText(ctx, chatID, from, text) {
+		return
+	}
 	if text != "" && b.inviteText(ctx, chatID, from, text) {
 		return
 	}
@@ -397,6 +490,9 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	}
 	if !isOrdersCallback(parts[0]) {
 		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
+	}
+	if !strings.HasPrefix(cq.Data, "or:f:") {
+		b.leaveIdleRefund(ctx, from.ID) // any other press ends the "Refund" dialog (EC-21)
 	}
 	if !strings.HasPrefix(cq.Data, "or:r:") {
 		b.leaveResend(ctx, from.ID) // any other press ends the "Resend tickets" dialog (EC-13)

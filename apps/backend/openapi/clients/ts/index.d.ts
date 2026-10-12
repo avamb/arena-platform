@@ -10068,6 +10068,13 @@ export interface components {
             refundable: number;
             /** @description True when a refund that cancels this ticket is already under way. */
             in_progress: boolean;
+            /**
+             * Format: int64
+             * @description The number printed on the ticket, null for a ticket without one.
+             */
+            ticket_number?: number | null;
+            /** @description The place as "sector / row / seat" with the parts that exist, null for a general-admission ticket. */
+            seat_label?: string | null;
             /** @description Why `refundable` is 0 although the ticket is active and has money left, such as `review_hold` (a refund made outside arena put the order's tickets under review). Null otherwise. */
             not_refundable_reason?: string | null;
         };
