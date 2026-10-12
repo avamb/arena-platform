@@ -102,7 +102,7 @@ func (s *Server) applyAuthAcrossOrgs(pr chi.Router, perm, scope string) {
 
 func (s *Server) applyAuthScoped(pr chi.Router, perm, scope string, orgScope bool) {
 	pr.Use(s.authMiddleware())
-	pr.Use(orgScopedFor(perm, orgScope))
+	pr.Use(s.orgScopedFor(perm, orgScope))
 	pr.Use(permissions.RequirePermission(s.perms, perm, scope))
 	pr.Use(s.markSuperadminOrgAccess)
 }

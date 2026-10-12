@@ -17,7 +17,9 @@ import (
 // route that loads a row later can ask the same question inside the row's
 // organization (rowOrgAccess). A path without a parseable org id is left
 // as it was.
-func orgScoped(perm string) func(http.Handler) http.Handler { return orgScopedFor(perm, true) }
+func (s *Server) orgScoped(perm string) func(http.Handler) http.Handler {
+	return s.orgScopedFor(perm, true)
+}
 
 // orgScopedFor is orgScoped with the path-organization scoping switchable.
 // With scoped=false only the required permission is recorded: the routes that
@@ -25,10 +27,15 @@ func orgScoped(perm string) func(http.Handler) http.Handler { return orgScopedFo
 // external allocation through the PARTNER's path, the caller's authority
 // being their membership in the session's organization) keep the union of
 // the caller's memberships and their handlers do the per-organization check.
-func orgScopedFor(perm string, scoped bool) func(http.Handler) http.Handler {
+//
+// Every route also carries the checker, so the membership guards that learn a
+// row's organization later decide the same permission inside it
+// (permissions.AllowedInOrg).
+func (s *Server) orgScopedFor(perm string, scoped bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := permissions.WithRequiredPermission(r.Context(), perm)
+			ctx = permissions.WithOrgChecker(ctx, s.perms)
 			if id, ok := pathOrganization(r); scoped && ok {
 				ctx = permissions.WithOrgScope(ctx, id)
 			}

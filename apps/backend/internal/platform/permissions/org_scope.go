@@ -12,6 +12,7 @@ package permissions
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -59,6 +60,54 @@ type OrgChecker interface {
 // CheckInOrg is Check with the organization named explicitly.
 func (c *DBChecker) CheckInOrg(ctx context.Context, action string, orgID uuid.UUID) error {
 	return c.Check(WithOrgScope(ctx, orgID), action, "")
+}
+
+type orgCheckerKey struct{}
+
+// WithOrgChecker returns ctx carrying the checker the route's gate used, so a
+// handler that learns the row's organization later can ask the same question
+// there through AllowedInOrg.
+func WithOrgChecker(ctx context.Context, c Checker) context.Context {
+	return context.WithValue(ctx, orgCheckerKey{}, AsOrgChecker(c))
+}
+
+// AsOrgChecker returns c itself when it decides per organization, and
+// otherwise an adapter that runs c.Check with the organization in the context
+// (AllowAll and DenyAll keep their answer).
+func AsOrgChecker(c Checker) OrgChecker {
+	if oc, ok := c.(OrgChecker); ok {
+		return oc
+	}
+	return scopedChecker{c}
+}
+
+type scopedChecker struct{ c Checker }
+
+func (s scopedChecker) CheckInOrg(ctx context.Context, action string, orgID uuid.UUID) error {
+	return s.c.Check(WithOrgScope(ctx, orgID), action, "")
+}
+
+// AllowedInOrg reports whether the caller holds, inside orgID, the permission
+// the route's gate asked for. A request that did not pass a gate (a handler
+// called directly) is allowed: membership is then the only rule. Every
+// membership guard calls it after confirming the membership, so a role held in
+// ANOTHER organization never answers for this one.
+func AllowedInOrg(ctx context.Context, orgID uuid.UUID) (bool, error) {
+	perm, ok := RequiredPermissionFromContext(ctx)
+	if !ok {
+		return true, nil
+	}
+	oc, ok := ctx.Value(orgCheckerKey{}).(OrgChecker)
+	if !ok {
+		return false, fmt.Errorf("permissions: gate recorded %q without a checker", perm)
+	}
+	if err := oc.CheckInOrg(ctx, perm, orgID); err != nil {
+		if errors.Is(err, ErrPermissionDenied) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // membershipRoles returns the roles the caller's memberships give them for
