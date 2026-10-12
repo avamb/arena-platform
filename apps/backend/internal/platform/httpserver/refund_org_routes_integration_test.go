@@ -418,6 +418,17 @@ func TestRefundOrgRoutes_RetryAndResolveReviewFixes(t *testing.T) {
 		t.Fatalf("the replaced refund is %s/%v; want failed/replaced_by_retry", state, code)
 	}
 
+	// ── the queue says which rows may be retried: the replaced one no longer
+	st, queue := pf.do(t, http.MethodGet, base+"/refunds?state=failed&limit=100", key, "")
+	if st != http.StatusOK {
+		t.Fatalf("queue: %d %v", st, queue)
+	}
+	for _, r := range queue["refunds"].([]any) {
+		if m := r.(map[string]any); m["id"] == parked && m["retryable"] != false {
+			t.Fatalf("the replaced refund is still offered for a retry: %v", m)
+		}
+	}
+
 	// ── a retry that fails too: the first refund is not retried again
 	f2 := newPay03Order(t, srv.pgxPool, org, "stripe")
 	declined = true
@@ -425,6 +436,22 @@ func TestRefundOrgRoutes_RetryAndResolveReviewFixes(t *testing.T) {
 	failedA := one(out)["id"].(string)
 	if st != http.StatusAccepted || one(out)["state"] != "failed" {
 		t.Fatalf("declined create: %d %v", st, out)
+	}
+	queueRow := func(id string) map[string]any {
+		st, q := pf.do(t, http.MethodGet, base+"/refunds?state=failed&limit=100", key, "")
+		if st != http.StatusOK {
+			t.Fatalf("queue: %d %v", st, q)
+		}
+		for _, r := range q["refunds"].([]any) {
+			if m := r.(map[string]any); m["id"] == id {
+				return m
+			}
+		}
+		t.Fatalf("refund %s missing from the queue", id)
+		return nil
+	}
+	if m := queueRow(failedA); m["retryable"] != true || m["order_id"] != f2.order.String() {
+		t.Fatalf("a refused refund in the queue: %v; want retryable and its order id", m)
 	}
 	st, out = refundOrgPost(t, pf, base+"/refunds/"+failedA+"/retry", key, "", `{}`)
 	if st != http.StatusAccepted || one(out)["state"] != "failed" {
@@ -435,6 +462,9 @@ func TestRefundOrgRoutes_RetryAndResolveReviewFixes(t *testing.T) {
 		t.Fatalf("second retry of the same refund: %d %v; want 409 refund.already_replaced", st, out)
 	}
 	declined = false
+	if m := queueRow(failedA); m["retryable"] != false {
+		t.Fatalf("a refund that was already retried is offered again: %v", m)
+	}
 
 	// ── resolve: the note stays in the audit trail, the row keeps its reason,
 	//    a refund found refunded carries no failure, and the budget is checked

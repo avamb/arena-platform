@@ -8781,6 +8781,9 @@ type OrderRefundQueueItem struct {
 	// Id UUID of the refund.
 	Id openapi_types.UUID `json:"id"`
 
+	// OrderId UUID of the order, null for a refund without an order.
+	OrderId *openapi_types.UUID `json:"order_id"`
+
 	// OrderNumber The order's number (`orders.system_id`), null for a refund without an order.
 	OrderNumber *int64 `json:"order_number"`
 
@@ -8789,6 +8792,9 @@ type OrderRefundQueueItem struct {
 
 	// ProviderStatus The provider's own status of the refund, when it has answered.
 	ProviderStatus *string `json:"provider_status"`
+
+	// Retryable True when the retry route would accept this refund - it provably moved no money and has not been retried yet. The route still decides.
+	Retryable *bool `json:"retryable,omitempty"`
 
 	// State One of requested, approved, provider_pending, succeeded, failed, manual_review.
 	State string `json:"state"`

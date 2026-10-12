@@ -6470,11 +6470,13 @@ export interface paths {
         /**
          * Send a failed or never-sent refund again
          * @description Starts a NEW one-ticket refund operation from a refund the provider
-         *     refused, or one that was parked before any provider call, and sends it
+         *     refused outright (failed, with no provider refund id), or one that was
+         *     parked before any provider call, and sends it
          *     at once with a new idempotency key. A refund the provider refused stays
          *     as it is; one that was parked before any provider call is closed as
          *     failed with the code `replaced_by_retry`. A refund whose provider call
-         *     ended without an answer, or that the provider accepted, is refused with
+         *     ended without an answer, or that the provider accepted (even one it
+         *     later reported failed), is refused with
          *     refund.not_retryable: repeating it could return the money twice. A
          *     refund is retried once: repeating the call answers the replacement, and
          *     when the replacement failed too the call is refused with
@@ -10091,6 +10093,11 @@ export interface components {
         /** @description A refund in the organization's queue, with what is needed to place it. */
         OrderRefundQueueItem: components["schemas"]["OrderRefundItem"] & {
             /**
+             * Format: uuid
+             * @description UUID of the order, null for a refund without an order.
+             */
+            order_id?: string | null;
+            /**
              * Format: int64
              * @description The order's number (`orders.system_id`), null for a refund without an order.
              */
@@ -10109,6 +10116,8 @@ export interface components {
                 /** @description The member's name, or their e-mail when they have none (null for a caller acting with an API key), or the API key's name. */
                 label?: string | null;
             } | null;
+            /** @description True when the retry route would accept this refund - it provably moved no money and has not been retried yet. The route still decides. */
+            retryable?: boolean;
         };
         /** @description One page of the organization's refunds, newest first. */
         OrderRefundQueue: {
