@@ -2,6 +2,7 @@ package eventbot
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -70,4 +71,33 @@ func TestOnbDialogsSurviveARestartExpireAndClear(t *testing.T) {
 	if d.get(ctx, 2).step != onbIdle {
 		t.Fatal("a cleared dialog starts empty")
 	}
+}
+
+// A dialog that is empty only because the store could not be read must not be
+// written back: that would replace the applicant's stored answers with blanks.
+func TestOnbDialogsDoNotOverwriteWhenTheLoadFailed(t *testing.T) {
+	ctx := context.Background()
+	clock := &testClock{t: time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)}
+	mem := newMemDialogStore(clock)
+	d := newOnbDialogs(mem)
+	first := d.get(ctx, 7)
+	first.step, first.first, first.phone = onbEmail, "Ana", "+34600111222"
+	d.save(ctx, 7, first)
+
+	broken := newOnbDialogs(failingLoadStore{mem})
+	empty := broken.get(ctx, 7)
+	if !empty.loadFailed {
+		t.Fatal("a failed read must mark the dialog")
+	}
+	broken.save(ctx, 7, empty) // the deferred write-back of the entry point
+	if got := d.get(ctx, 7); got.first != "Ana" || got.phone != "+34600111222" {
+		t.Fatalf("a failed read wiped the stored answers: %+v", got)
+	}
+}
+
+// failingLoadStore reads fail, everything else goes to the wrapped store.
+type failingLoadStore struct{ DialogStore }
+
+func (failingLoadStore) Load(context.Context, int64, string, any) (string, bool, bool, error) {
+	return "", false, false, errors.New("boom")
 }

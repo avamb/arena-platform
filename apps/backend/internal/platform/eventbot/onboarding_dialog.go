@@ -53,6 +53,10 @@ type onbDialog struct {
 	infoDone map[string]bool
 	// dropped is set by clear(); a dropped dialog is not written back.
 	dropped bool
+	// loadFailed marks a dialog that is EMPTY because the store could not be
+	// read, not because there was nothing stored: writing it back would
+	// replace the person's real answers with blanks.
+	loadFailed bool
 }
 
 // onbDialogJSON is the stored form of onbDialog (the fields are unexported).
@@ -105,6 +109,9 @@ func (d *onbDialogs) get(ctx context.Context, tg int64) *onbDialog {
 	if _, found, _, err := d.store.Load(ctx, tg, onbDialogKind, cur); err != nil || !found {
 		if err != nil {
 			slog.Default().Error("onboarding dialog: load failed", "error", err.Error())
+			failed := newOnbDialog()
+			failed.loadFailed = true
+			return failed
 		}
 		return newOnbDialog()
 	}
@@ -119,7 +126,7 @@ func (d *onbDialogs) get(ctx context.Context, tg int64) *onbDialog {
 
 // save writes the dialog back and slides its expiry.
 func (d *onbDialogs) save(ctx context.Context, tg int64, cur *onbDialog) {
-	if cur == nil || cur.dropped {
+	if cur == nil || cur.dropped || cur.loadFailed {
 		return
 	}
 	if err := d.store.Save(ctx, tg, nil, onbDialogKind, "open", cur, dialogTTL); err != nil {
@@ -222,6 +229,13 @@ func (b *Bot) sendMarkup(ctx context.Context, chatID int64, text string, markup 
 func (b *Bot) onbWelcome(ctx context.Context, chatID int64, from *models.User) {
 	d := b.onb.get(ctx, from.ID)
 	defer b.onb.save(ctx, from.ID, d)
+	b.onbWelcomeWith(ctx, chatID, from, d)
+}
+
+// onbWelcomeWith is onbWelcome for a caller that already holds the dialog: a
+// second load would read the stored copy, which lacks what the caller just
+// changed (the language button), and the two write-backs would fight.
+func (b *Bot) onbWelcomeWith(ctx context.Context, chatID int64, from *models.User, d *onbDialog) {
 	if app, err := b.arena.OnboardingCurrent(ctx, from.ID); err == nil {
 		b.onbRoute(ctx, chatID, from, d, &app)
 		return
@@ -272,7 +286,7 @@ func (b *Bot) onbMessage(ctx context.Context, chatID int64, from *models.User, m
 	app, err := b.arena.OnboardingCurrent(ctx, from.ID)
 	if err != nil {
 		if IsAPIError(err, http.StatusNotFound) {
-			b.onbWelcome(ctx, chatID, from)
+			b.onbWelcomeWith(ctx, chatID, from, d)
 			return
 		}
 		b.logger.Error("eventbot: onboarding lookup failed", slog.String("error", err.Error()))
@@ -328,8 +342,12 @@ func (b *Bot) onbCollect(ctx context.Context, chatID int64, from *models.User, d
 			b.onbStartFailed(ctx, chatID, loc, d, err)
 			return
 		}
-		d.step = onbIdle
+		// The application now holds the name, phone and e-mail: the dialog
+		// must not keep a stranger's personal data (nor have it end up in the
+		// database backups) for the rest of its lifetime.
+		d.step, d.first, d.last, d.phone = onbIdle, "", "", ""
 		b.onbRoute(ctx, chatID, from, d, &app)
+		b.onb.clear(ctx, from.ID, d)
 	}
 }
 
@@ -735,7 +753,7 @@ func (b *Bot) onbSaveFailed(ctx context.Context, chatID int64, from *models.User
 		b.send(ctx, chatID, b.texts.T(loc, textKey, map[string]any{"Label": Esc(label)}), nil)
 		b.onbAsk(ctx, chatID, from, d, app, key)
 	case IsAPIError(err, http.StatusConflict):
-		b.onbWelcome(ctx, chatID, from)
+		b.onbWelcomeWith(ctx, chatID, from, d)
 	default:
 		b.logger.Error("eventbot: onboarding save failed", slog.String("error", err.Error()))
 		b.send(ctx, chatID, b.texts.T(loc, "bot.error_generic", nil), nil)
@@ -762,7 +780,7 @@ func (b *Bot) onbCallback(ctx context.Context, chatID int64, msgID int, from *mo
 		if len(parts) > 2 {
 			d.locale = NormalizeLocale(parts[2])
 		}
-		b.onbWelcome(ctx, chatID, from)
+		b.onbWelcomeWith(ctx, chatID, from, d)
 		return
 	case "start":
 		if app, err := b.arena.OnboardingCurrent(ctx, from.ID); err == nil {
@@ -776,7 +794,7 @@ func (b *Bot) onbCallback(ctx context.Context, chatID int64, msgID int, from *mo
 
 	app, err := b.arena.OnboardingCurrent(ctx, from.ID)
 	if err != nil {
-		b.onbWelcome(ctx, chatID, from)
+		b.onbWelcomeWith(ctx, chatID, from, d)
 		return
 	}
 	loc = b.onbLocale(from, d, &app)
@@ -913,7 +931,7 @@ func (b *Bot) onbSubmit(ctx context.Context, chatID int64, from *models.User, d 
 			}
 			b.send(ctx, chatID, b.texts.T(loc, "bot.error_generic", nil), nil)
 		case IsAPIError(err, http.StatusConflict):
-			b.onbWelcome(ctx, chatID, from)
+			b.onbWelcomeWith(ctx, chatID, from, d)
 		default:
 			b.logger.Error("eventbot: onboarding submit failed", slog.String("error", err.Error()))
 			b.send(ctx, chatID, b.texts.T(loc, "bot.error_generic", nil), nil)
