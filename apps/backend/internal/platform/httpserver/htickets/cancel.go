@@ -369,6 +369,10 @@ func (h *Handler) createAutomaticRefund(
 // errAutomaticRefundExceeds: the payment has no room left for this refund.
 var errAutomaticRefundExceeds = errors.New("automatic refund would exceed the payment")
 
+// errAutomaticRefundScanned: the ticket was scanned and its exception is no
+// longer live.
+var errAutomaticRefundScanned = errors.New("automatic refund refused: the ticket was scanned at the gate")
+
 // insertAutomaticRefund writes the requested refund under the payment's
 // refund lock (refunds.LockPayment), with the same budget check every
 // other refund writer runs, so it can never race the refund engine or
@@ -403,6 +407,16 @@ func (h *Handler) insertAutomaticRefund(ctx context.Context, intent *gen.Payment
 	}
 	if _, err := tx.Exec(ctx, `UPDATE refunds SET cancelled_ticket_id = $2 WHERE id = $1`, row.ID, ticketID); err != nil {
 		return gen.RefundRow{}, err
+	}
+	// A scanned ticket got here on a superadmin's exception: the refund owns
+	// it from the moment it is written, so its later approval does not
+	// depend on the exception still being unexpired.
+	blocked, err := refunds.GuardTicketMoneyTx(ctx, tx, ticketID, &row.ID, true)
+	if err != nil {
+		return gen.RefundRow{}, err
+	}
+	if blocked {
+		return gen.RefundRow{}, errAutomaticRefundScanned
 	}
 	return row, tx.Commit(ctx)
 }

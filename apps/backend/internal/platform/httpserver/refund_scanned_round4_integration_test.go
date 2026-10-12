@@ -146,6 +146,26 @@ func (e *scanEnv) exceptionUsedBy(t *testing.T, i int) string {
 	return by
 }
 
+// N3: an automatic refund of the ticket-cancel route spends the exception in
+// the transaction that writes the refund.
+func TestRefundScanned_AutomaticCancelSpendsTheExceptionWithItsRefund(t *testing.T) {
+	e := newScanEnv(t, "ticket.cancel", "refund.read")
+	e.exec(t, `UPDATE tickets SET used_at = now() WHERE id = $1`, e.f.tickets[0])
+	e.grantException(t, 0)
+	st, out := e.pf.do(t, http.MethodPost, "/v1/tickets/"+e.f.tickets[0].String()+"/cancel", e.key,
+		`{"reason":"show cancelled","refund_mode":"automatic","refund_amount":2500}`)
+	if st != http.StatusOK {
+		t.Fatalf("automatic cancel on the exception: %d %v", st, out)
+	}
+	var refundID string
+	if err := e.srv.pgxPool.QueryRow(context.Background(), `SELECT id::text FROM refunds WHERE cancelled_ticket_id = $1`, e.f.tickets[0]).Scan(&refundID); err != nil {
+		t.Fatalf("no refund written: %v", err)
+	}
+	if by := e.exceptionUsedBy(t, 0); by != refundID {
+		t.Fatalf("exception used by %q; want the cancel route's refund %s", by, refundID)
+	}
+}
+
 // N4: a manual cancellation the handler refuses (here an unknown field) does
 // not burn the exception.
 func TestRefundScanned_RefusedManualCancelKeepsTheException(t *testing.T) {
