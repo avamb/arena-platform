@@ -372,3 +372,77 @@ func TestRefundBuyerEmail_RequeueCountsFailedSendsAndAlertsOnce(t *testing.T) {
 
 // buyerNoticeMax mirrors refunds.buyerNoticeMaxJobs.
 const buyerNoticeMax = 6
+
+// Round-3 review R3-3: a big operation is driven over several minutes. While
+// refunds of it are still waiting to be sent, the letter waits too, so the
+// buyer gets one letter for the operation instead of one per refund.
+func TestRefundBuyerEmail_WaitsForTheOperationsUnsentRefunds(t *testing.T) {
+	stub := newStubStripe(t)
+	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) { c.StripeAPIBaseURL = stub.baseURL() })
+	ts := httptest.NewServer(srv.Router())
+	t.Cleanup(ts.Close)
+	pf := &prom0113Fixture{ts: ts, client: ts.Client(), q: gen.New(srv.pgxPool)}
+	user, err := pf.q.InsertUser(context.Background(), "pay07w-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf.userID = user.ID
+	org := pf.org(t, "PAY07W")
+	ctx := context.Background()
+	stub.refundHandler = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"id":"re_`+uuid.NewString()[:8]+`","status":"succeeded"}`)
+	}
+	stub.sessionPI = "pi_pay07w_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
+	sender := &recordingSender{}
+	handler := delivery.NewRefundEmailHandler(delivery.RefundEmailOptions{
+		HandlerOptions: delivery.HandlerOptions{TicketQueries: pf.q, CredentialQueries: pf.q, DeliveryJobQueries: pf.q, Sender: sender},
+		DB:             srv.pgxPool,
+	})
+	f := newPay03Order(t, srv.pgxPool, org, "stripe")
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE orders SET buyer_email = 'wait@pay07.test', buyer_name = 'Ana Perez' WHERE id = $1`, f.order); err != nil {
+		t.Fatal(err)
+	}
+	res, err := srv.refundEngine().CreateBatch(ctx, refunds.BatchInput{
+		OrgID: org, OrderID: f.order, Reason: "pay07", CancelTickets: true, NotifyBuyer: true,
+		IdempotencyKey: "pay07w-" + uuid.NewString(), Approved: true,
+		Items: []refunds.Item{{TicketID: f.tickets[0]}, {TicketID: f.tickets[1]}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch := res.BatchID.String()
+	t.Cleanup(func() {
+		_, _ = srv.pgxPool.Exec(ctx, `DELETE FROM worker_jobs WHERE job_type = $1 AND payload->>'batch_id' = $2`, refunds.JobTypeBuyerEmail, batch)
+	})
+	// The second refund has not been sent yet (the create call ran out of
+	// time and the sweep has not reached it).
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE refunds SET state = 'provider_pending', provider_attempts = 0, provider_refund_id = NULL,
+		provider_status = NULL, succeeded_at = NULL, settled_at = NULL WHERE batch_id = $1 AND ticket_id = $2`, batch, f.tickets[1]); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(refunds.BuyerEmailPayload{BatchID: batch})
+	if err := handler(ctx, raw); err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if n := len(sender.sent()); n != 0 {
+		t.Fatalf("a letter went out while a refund of the operation was still unsent (%d letters)", n)
+	}
+	var later int
+	_ = srv.pgxPool.QueryRow(ctx, `SELECT count(*) FROM worker_jobs WHERE job_type = $1 AND payload->>'batch_id' = $2
+		AND status = 'pending' AND scheduled_at > now()`, refunds.JobTypeBuyerEmail, batch).Scan(&later)
+	if later != 1 {
+		t.Fatalf("pending letter jobs scheduled later = %d; want 1", later)
+	}
+	// Once it is through, one letter covers both.
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE refunds SET state = 'succeeded', provider_attempts = 1, provider_refund_id = 're_late_'||id::text,
+		provider_status = 'succeeded', succeeded_at = now(), settled_at = now() WHERE batch_id = $1 AND ticket_id = $2`, batch, f.tickets[1]); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler(ctx, raw); err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if msgs := sender.sent(); len(msgs) != 1 || !strings.Contains(msgs[0].TextBody, "50.00 EUR") {
+		t.Fatalf("letters = %d; want one covering both refunds (50.00 EUR)", len(msgs))
+	}
+}

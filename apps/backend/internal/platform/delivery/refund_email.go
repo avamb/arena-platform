@@ -98,6 +98,21 @@ WHERE  batch_id = $1
   AND  (buyer_notice_claimed_at IS NULL OR buyer_notice_claimed_at < now() - interval '10 minutes')
 RETURNING id, ticket_id, amount, currency, cancel_ticket`
 
+// refundLetterHoldSQL is true while the operation $1, younger than $2, still
+// has a refund that was not sent to the provider yet.
+const refundLetterHoldSQL = `SELECT EXISTS (
+	SELECT 1 FROM refunds r JOIN refund_batches b ON b.id = r.batch_id
+	WHERE r.batch_id = $1 AND r.provider_refund_id IS NULL AND r.provider_attempts = 0
+	  AND r.state IN ('requested', 'approved', 'provider_pending')
+	  AND b.created_at > now() - $2::interval)`
+
+// The letter of an operation waits for its unsent refunds at most
+// refundLetterHoldFor, looking again every refundLetterRecheck.
+const (
+	refundLetterHoldFor = "2 hours"
+	refundLetterRecheck = "2 minutes"
+)
+
 func (h *refundEmail) handle(ctx context.Context, payload []byte) error {
 	var p refunds.BuyerEmailPayload
 	if err := json.Unmarshal(payload, &p); err != nil {
@@ -121,6 +136,24 @@ func (h *refundEmail) handle(ctx context.Context, payload []byte) error {
 		return fmt.Errorf("delivery: read refund batch: %w", err)
 	}
 	if !notify {
+		return nil
+	}
+	// A big operation is driven over minutes (the create call's budget, then
+	// one refund per payment per sweep pass): while a refund of it is still
+	// waiting to be sent, the letter waits too, so the buyer gets one letter
+	// for the operation. It waits at most refundLetterHoldFor after the
+	// operation was created.
+	var waiting bool
+	if err := h.opts.DB.QueryRow(ctx, refundLetterHoldSQL, batchID, refundLetterHoldFor).Scan(&waiting); err != nil {
+		return fmt.Errorf("delivery: check unsent refunds: %w", err)
+	}
+	if waiting {
+		if _, err := h.opts.DB.Exec(ctx, `INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
+			SELECT $1, $2::jsonb, 5, 'pending', now() + $3::interval
+			WHERE NOT EXISTS (SELECT 1 FROM worker_jobs WHERE job_type = $1 AND status = 'pending' AND payload->>'batch_id' = $4)`,
+			refunds.JobTypeBuyerEmail, payload, refundLetterRecheck, batchID.String()); err != nil {
+			return fmt.Errorf("delivery: postpone refund e-mail: %w", err)
+		}
 		return nil
 	}
 
