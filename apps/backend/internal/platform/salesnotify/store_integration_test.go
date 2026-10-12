@@ -4,6 +4,7 @@ package salesnotify
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -74,21 +75,55 @@ func TestPGStore_SubscriptionsQueriesAndBookkeeping_LiveDB(t *testing.T) {
 	}
 
 	// The lookups run against whatever the database holds; a fresh one has
-	// no orders, which only skips the shape checks.
-	var orderID, ticketID string
-	_ = pool.QueryRow(ctx, `SELECT id::text FROM orders WHERE paid_at IS NOT NULL ORDER BY paid_at DESC LIMIT 1`).Scan(&orderID)
-	_ = pool.QueryRow(ctx, `SELECT id::text FROM tickets ORDER BY issued_at DESC LIMIT 1`).Scan(&ticketID)
-	if orderID != "" {
+	// no orders, which only skips the shape checks. Other packages' tests
+	// create and delete their own orders at the same moment, so a candidate
+	// that cannot be resolved (half built, or already deleted) is skipped:
+	// the shape check is for the first one that can.
+	rows, err := pool.Query(ctx, `SELECT id::text FROM orders WHERE paid_at IS NOT NULL ORDER BY paid_at DESC LIMIT 25`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var orderIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		orderIDs = append(orderIDs, id)
+	}
+	rows.Close()
+	for _, orderID := range orderIDs {
 		sale, err := st.SaleByOrder(ctx, orderID)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
 		if err != nil || sale.OrderNumber == 0 || sale.OrgName == "" || sale.EventName == "" || sale.Tickets() == 0 {
 			t.Fatalf("SaleByOrder(%s) = %+v, %v", orderID, sale, err)
 		}
+		break
 	}
-	if ticketID != "" {
+	rows, err = pool.Query(ctx, `SELECT id::text FROM tickets ORDER BY issued_at DESC LIMIT 25`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ticketIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		ticketIDs = append(ticketIDs, id)
+	}
+	rows.Close()
+	for _, ticketID := range ticketIDs {
 		r, err := st.RefundByTicket(ctx, ticketID)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
 		if err != nil || r.TicketNumber == 0 || r.OrgID == "" {
 			t.Fatalf("RefundByTicket(%s) = %+v, %v", ticketID, r, err)
 		}
+		break
 	}
 	if _, err := st.SaleByOrder(ctx, "01a0cdf2-0000-7000-8000-000000000000"); err != ErrNotFound {
 		t.Fatalf("unknown order: %v, want ErrNotFound", err)
