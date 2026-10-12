@@ -225,10 +225,14 @@ func TestRefundWebhook_DashboardRefundIsConfirmedCappedAndNeverStealsArenaRefund
 	if err := srv.pgxPool.QueryRow(ctx, `SELECT amount FROM refunds WHERE provider_refund_id = 're_c_big'`).Scan(&amount); err != nil || amount != 4000 {
 		t.Fatalf("capped amount %d (%v); want 4000", amount, err)
 	}
-	// nothing left at all: no row, still acknowledged
+	// nothing left at all: parked for an operator, still acknowledged
 	stub.setRefund("re_c_more", "succeeded", 500, "eur", piRef)
-	if code, _ := post(body("re_c_more", 500, "")); code != http.StatusOK || dashRows() != 2 {
-		t.Fatalf("refund beyond a fully refunded payment: code %d, %d row(s); want 200 and 2", code, dashRows())
+	if code, _ := post(body("re_c_more", 500, "")); code != http.StatusOK || dashRows() != 3 {
+		t.Fatalf("refund beyond a fully refunded payment: code %d, %d row(s); want 200 and 3", code, dashRows())
+	}
+	var parked string
+	if err := srv.pgxPool.QueryRow(ctx, `SELECT state FROM refunds WHERE provider_refund_id = 're_c_more'`).Scan(&parked); err != nil || parked != "manual_review" {
+		t.Fatalf("refund beyond the payment is %q (%v); want manual_review", parked, err)
 	}
 
 	// an event that names an arena refund is never recorded as a dashboard one

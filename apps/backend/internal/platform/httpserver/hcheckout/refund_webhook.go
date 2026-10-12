@@ -103,6 +103,17 @@ func (h *Handler) recordDashboardRefund(w http.ResponseWriter, r *http.Request, 
 		ack("not an arena refund", false)
 		return
 	}
+	if res.Parked {
+		h.recordWebhookEvent(ev.Type, webhookOutcomeProcessed)
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
+			"acknowledged": true,
+			"event_type":   ev.Type,
+			"processed":    true,
+			"origin":       "provider_dashboard",
+			"reason":       "the payment was already fully refunded; recorded for review",
+		})
+		return
+	}
 	if !res.Created {
 		ack("refund already recorded", false)
 		return

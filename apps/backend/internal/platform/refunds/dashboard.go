@@ -40,12 +40,30 @@ type DashboardRefund struct {
 	// Capped: the provider's amount exceeded what was still refundable and
 	// the row was written with the remainder (an alert is owed).
 	Capped bool
+	// Parked: the payment was already fully refunded; the refund was written
+	// in manual_review for an operator and nothing else moved.
+	Parked bool
+	// LegacyParked: refunds of the payment parked before the refund engine
+	// existed, which this dashboard refund may duplicate (an alert is owed).
+	LegacyParked []uuid.UUID
 	// Unconfirmed: the refund belongs to a payment of this organization but
 	// could not be read back from the provider after MaxDashboardConfirmAttempts
 	// deliveries. Nothing is written; the operator is alerted (log) and the
 	// delivery is acknowledged so the provider stops retrying.
 	Unconfirmed bool
 }
+
+// failure_code of a dashboard refund row: why an operator is alerted.
+const (
+	DashboardPartial      = "dashboard_partial"
+	DashboardCapped       = "dashboard_capped"
+	DashboardOverPayment  = "dashboard_over_payment"
+	DashboardLegacyParked = "dashboard_with_parked_legacy_refund"
+)
+
+// legacyParkedSQL selects refunds parked by migration 0138 before the refund
+// engine existed: no provider, manual_review. None of them called a provider.
+const legacyParkedSQL = `(provider IS NULL AND state = 'manual_review')`
 
 // MaxDashboardConfirmAttempts is how many deliveries of one dashboard refund
 // may fail to be read back before arena stops asking the provider to retry.
@@ -146,27 +164,31 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 			out.Found = false // not this payment's money
 			return nil
 		}
-		// What is still refundable: the payment minus every refund that
-		// counts against its budget (arena's own, earlier dashboard ones).
-		var taken int64
-		if err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
-			WHERE payment_intent_id = $1 AND state <> 'failed' AND `+countsAgainstBudgetSQL, pay.ID).Scan(&taken); err != nil {
+		// A replayed delivery is recognised BEFORE the budget: a refund that
+		// is already recorded must never look like money beyond the payment.
+		var seen bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM refunds WHERE provider = $1 AND provider_refund_id = $2)`,
+			provider, refundID).Scan(&seen); err != nil {
 			return err
 		}
-		amount := confirmed.AmountMinor
-		if left := pay.Amount - taken; amount > left {
-			out.Capped = true
-			amount = left
-		}
-		if amount <= 0 {
-			// The payment is already fully refunded, yet the provider says
-			// more money went back. A row would break the budget; nothing
-			// is written and the log is the alert.
-			out.Capped = true
-			e.logger.Error("refunds: A REFUND MADE AT THE PROVIDER EXCEEDS WHAT WAS LEFT OF THE PAYMENT; nothing recorded, check the provider dashboard",
-				"event", "dashboard_refund_over_payment", "provider", provider, "provider_refund_id", refundID,
-				"payment_intent_id", pay.ID.String(), "provider_amount", confirmed.AmountMinor)
+		if seen {
 			return nil
+		}
+		// What is still refundable: the payment minus every refund that
+		// counts against its budget (arena's own, earlier dashboard ones). A
+		// refused refund moved no money. A refund parked before the refund
+		// engine existed (no provider, manual_review) never called a provider
+		// either: this dashboard refund may well be that money, so it is not
+		// counted, and the operator is told to resolve the parked one.
+		var (
+			taken  int64
+			legacy []uuid.UUID
+		)
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(amount) FILTER (WHERE NOT (`+legacyParkedSQL+`)), 0)::bigint,
+			       COALESCE(array_agg(id) FILTER (WHERE `+legacyParkedSQL+`), '{}')
+			FROM refunds WHERE payment_intent_id = $1 AND state NOT IN ('failed', 'rejected') AND `+countsAgainstBudgetSQL,
+			pay.ID).Scan(&taken, &legacy); err != nil {
+			return err
 		}
 		var orderID *uuid.UUID
 		if pay.CheckoutSessionID != nil {
@@ -175,8 +197,42 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 				return err
 			}
 		}
-		// An alert is owed when the row is capped, or when it is smaller
-		// than the payment (tickets go under review hold).
+		amount := confirmed.AmountMinor
+		left := pay.Amount - taken
+		if left <= 0 {
+			// The payment is already fully refunded, yet the provider says
+			// more money went back: recorded as a parked row for an operator
+			// (the buyer may have been refunded twice). Nothing else moves.
+			r, err := scanRefund(tx.QueryRow(ctx, `
+				INSERT INTO refunds (payment_intent_id, org_id, order_id, amount, currency, reason, requested_by,
+				                     state, settlement, provider, provider_refund_id, provider_status, origin,
+				                     cancel_ticket, failure_code, failure_reason, alert_due_at)
+				VALUES ($1, $2, $3, $4, $5, 'refund made in the provider dashboard', 'provider_dashboard',
+				        'manual_review', 'provider', $6, $7, 'succeeded', 'provider_dashboard', false, $8,
+				        'the provider reports this refund after the payment was already fully refunded', now())
+				ON CONFLICT (provider, provider_refund_id) WHERE provider IS NOT NULL AND provider_refund_id IS NOT NULL DO NOTHING
+				RETURNING `+refundColumns, pay.ID, orgID, orderID, amount, pay.Currency, provider, refundID, DashboardOverPayment))
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			out.Parked, out.Refund = true, r
+			e.logReview(r)
+			return e.writeAudit(ctx, tx, audit.Event{ActorType: "system", Action: "v1.refund.dashboard",
+				ResourceType: "refund", ResourceID: r.ID.String(),
+				Metadata: map[string]any{"provider": provider, "amount": r.Amount, "currency": r.Currency,
+					"order_id": uuidString(r.OrderID), "over_payment": true}})
+		}
+		if amount > left {
+			out.Capped = true
+			amount = left
+		}
+		// An alert is owed when the row is capped, when it is smaller than
+		// the payment (tickets go under review hold) or when a parked
+		// pre-engine refund may be the same money. failure_code says which,
+		// so the alert says what actually happened.
 		r, err := scanRefund(tx.QueryRow(ctx, `
 			INSERT INTO refunds (payment_intent_id, org_id, order_id, amount, currency, reason, requested_by,
 			                     state, settlement, provider, provider_refund_id, provider_status, origin,
@@ -186,11 +242,12 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 			ON CONFLICT (provider, provider_refund_id) WHERE provider IS NOT NULL AND provider_refund_id IS NOT NULL DO NOTHING
 			RETURNING `+refundColumns, pay.ID, orgID, orderID, amount, pay.Currency, provider, refundID))
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil // a replayed delivery: already recorded
+			return nil // a delivery that raced this one home
 		}
 		if err != nil {
 			return err
 		}
+		out.LegacyParked = legacy
 		out.Created, out.Refund = true, r
 		var total int64
 		if err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
@@ -198,15 +255,33 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 			return err
 		}
 		out.Full = total >= pay.Amount
-		if out.Capped || !out.Full {
-			if _, err := tx.Exec(ctx, `UPDATE refunds SET alert_due_at = now() WHERE id = $1`, r.ID); err != nil {
+		code := ""
+		switch {
+		case len(legacy) > 0:
+			code = DashboardLegacyParked
+		case out.Capped:
+			code = DashboardCapped
+		case !out.Full:
+			code = DashboardPartial
+		}
+		if code != "" {
+			if r, err = scanRefund(tx.QueryRow(ctx, `UPDATE refunds SET alert_due_at = now(), failure_code = $2
+				WHERE id = $1 RETURNING `+refundColumns, r.ID, code)); err != nil {
 				return err
 			}
+			out.Refund = r
+		}
+		meta := map[string]any{"provider": provider, "amount": r.Amount, "provider_amount": confirmed.AmountMinor,
+			"currency": r.Currency, "order_id": uuidString(r.OrderID), "full": out.Full, "capped": out.Capped}
+		if len(legacy) > 0 {
+			ids := make([]string, 0, len(legacy))
+			for _, id := range legacy {
+				ids = append(ids, id.String())
+			}
+			meta["parked_pre_engine_refunds"] = ids
 		}
 		if err := e.writeAudit(ctx, tx, audit.Event{ActorType: "system", Action: "v1.refund.dashboard",
-			ResourceType: "refund", ResourceID: r.ID.String(),
-			Metadata: map[string]any{"provider": provider, "amount": r.Amount, "provider_amount": confirmed.AmountMinor,
-				"currency": r.Currency, "order_id": uuidString(r.OrderID), "full": out.Full, "capped": out.Capped}}); err != nil {
+			ResourceType: "refund", ResourceID: r.ID.String(), Metadata: meta}); err != nil {
 			return err
 		}
 		if apply != nil {

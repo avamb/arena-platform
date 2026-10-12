@@ -566,8 +566,16 @@ func (e *Engine) alertReviews(ctx context.Context, n Notifier) (int, error) {
 func alertText(r Refund, ticketStatus string) string {
 	esc := opsalert.EscapeHTML
 	if deref(r.RequestedBy) == "provider_dashboard" {
-		return fmt.Sprintf("Refund %s (%d %s via %s) was made in the provider's own dashboard and does not cover the whole payment, or was reduced to fit it. The order's tickets are on review hold: decide which tickets it covers. Order %s.",
-			r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), uuidString(r.OrderID))
+		head := fmt.Sprintf("Refund %s (%d %s via %s) was made in the provider's own dashboard", r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)))
+		switch deref(r.FailureCode) {
+		case DashboardCapped:
+			return head + fmt.Sprintf(" for more than was left of the payment; it was recorded as what was left and the order's tickets were cancelled. Check the provider dashboard for the difference. Order %s.", uuidString(r.OrderID))
+		case DashboardOverPayment:
+			return head + fmt.Sprintf(" after the payment was already fully refunded; nothing was applied and it is parked for review. Check the provider dashboard: the buyer may have been refunded twice. Order %s.", uuidString(r.OrderID))
+		case DashboardLegacyParked:
+			return head + fmt.Sprintf(" while the same payment has a refund parked for review from before the refund engine. They may be the same money: check the provider dashboard and resolve the parked refund accordingly. Order %s.", uuidString(r.OrderID))
+		}
+		return head + fmt.Sprintf(" and does not cover the whole payment. The order's tickets are on review hold: decide which tickets it covers. Order %s.", uuidString(r.OrderID))
 	}
 	if r.State == StateManualReview {
 		text := fmt.Sprintf("Refund %s (%d %s via %s) needs manual review: %s. Order %s.",

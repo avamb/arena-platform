@@ -146,3 +146,68 @@ func TestRefundWebhook_DashboardRefundForeignAndUnconfirmed(t *testing.T) {
 		t.Fatalf("an unconfirmed refund wrote %d row(s)", n)
 	}
 }
+
+func (e *dashEnv) row(t *testing.T, refundID string) (state, code string, amount int64, alert bool) {
+	t.Helper()
+	if err := e.srv.pgxPool.QueryRow(context.Background(), `SELECT state, COALESCE(failure_code, ''), amount, alert_due_at IS NOT NULL
+		FROM refunds WHERE payment_intent_id = $1 AND provider_refund_id = $2`, e.f.pay, refundID).Scan(&state, &code, &amount, &alert); err != nil {
+		t.Fatalf("refund %s: %v", refundID, err)
+	}
+	return state, code, amount, alert
+}
+
+// N4: a replay is recognised before the budget, a refund beyond a fully
+// refunded payment is parked for an operator, and a refused refund does not
+// count against the payment.
+func TestRefundWebhook_DashboardReplayOverPaymentAndRejectedRows(t *testing.T) {
+	e := newDashEnv(t, "DASHN4")
+	e.stub.setRefund("re_d3_full", "succeeded", 5000, "eur", e.piRef)
+	if st, out := e.post(t, "refund.created", "re_d3_full", e.piRef, 5000); st != http.StatusOK || out["processed"] != true {
+		t.Fatalf("full refund = %d %v", st, out)
+	}
+	// the same refund again: nothing new, and nothing parked
+	if st, out := e.post(t, "refund.updated", "re_d3_full", e.piRef, 5000); st != http.StatusOK {
+		t.Fatalf("replay = %d %v; want 200", st, out)
+	}
+	if n := e.count(t, `payment_intent_id = $1`, e.f.pay); n != 1 {
+		t.Fatalf("after a replay the payment has %d refunds; want 1", n)
+	}
+	// more money back than the payment: parked with an alert
+	e.stub.setRefund("re_d3_extra", "succeeded", 1000, "eur", e.piRef)
+	if st, out := e.post(t, "refund.created", "re_d3_extra", e.piRef, 1000); st != http.StatusOK {
+		t.Fatalf("over-payment refund = %d %v", st, out)
+	}
+	if state, code, amount, alert := e.row(t, "re_d3_extra"); state != "manual_review" || code != "dashboard_over_payment" || amount != 1000 || !alert {
+		t.Fatalf("over-payment row = %s %s %d alert=%v; want manual_review dashboard_over_payment 1000 with an alert", state, code, amount, alert)
+	}
+
+	// A rejected refund moved no money: a dashboard refund after it is
+	// recorded as it is, not reduced to nothing.
+	e2 := newDashEnv(t, "DASHN4R")
+	e2.exec(t, `INSERT INTO refunds (payment_intent_id, org_id, amount, currency, reason, state, settlement)
+	            VALUES ($1, $2, 5000, 'EUR', 'refused earlier', 'rejected', 'provider')`, e2.f.pay, e2.org)
+	e2.stub.setRefund("re_d3_after_rejected", "succeeded", 2500, "eur", e2.piRef)
+	if st, out := e2.post(t, "refund.created", "re_d3_after_rejected", e2.piRef, 2500); st != http.StatusOK {
+		t.Fatalf("refund after a rejected one = %d %v", st, out)
+	}
+	if state, code, amount, _ := e2.row(t, "re_d3_after_rejected"); state != "succeeded" || code != "dashboard_partial" || amount != 2500 {
+		t.Fatalf("row = %s %s %d; want succeeded dashboard_partial 2500", state, code, amount)
+	}
+}
+
+// F1: a refund parked before the refund engine existed never called a
+// provider; a dashboard refund of the same payment is recorded in full and the
+// operator is told the two may be the same money.
+func TestRefundWebhook_DashboardRefundBesideAPreEngineParkedRefund(t *testing.T) {
+	e := newDashEnv(t, "DASHF1")
+	e.exec(t, `INSERT INTO refunds (payment_intent_id, org_id, amount, currency, reason, state, settlement)
+	           VALUES ($1, $2, 5000, 'EUR', 'parked by migration 0138', 'manual_review', 'provider')`, e.f.pay, e.org)
+	e.stub.setRefund("re_d3_legacy", "succeeded", 5000, "eur", e.piRef)
+	if st, out := e.post(t, "refund.created", "re_d3_legacy", e.piRef, 5000); st != http.StatusOK || out["processed"] != true {
+		t.Fatalf("dashboard refund = %d %v", st, out)
+	}
+	state, code, amount, alert := e.row(t, "re_d3_legacy")
+	if state != "succeeded" || amount != 5000 || code != "dashboard_with_parked_legacy_refund" || !alert {
+		t.Fatalf("row = %s %s %d alert=%v; want succeeded 5000 dashboard_with_parked_legacy_refund with an alert", state, code, amount, alert)
+	}
+}
