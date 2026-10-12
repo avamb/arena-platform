@@ -103,7 +103,8 @@ func (e *Engine) Options(ctx context.Context, orgID, orderID uuid.UUID) (OrderOp
 			       EXISTS (SELECT 1 FROM refunds r
 			                WHERE r.ticket_id = t.id AND r.cancel_ticket AND r.state NOT IN ('failed', 'rejected')),
 			       t.review_hold, t.system_ticket_id,
-			       NULLIF(concat_ws(' / ', NULLIF(btrim(t.seat_sector), ''), NULLIF(btrim(t.seat_row), ''), NULLIF(btrim(t.seat_number), '')), '')
+			       NULLIF(concat_ws(' / ', NULLIF(btrim(t.seat_sector), ''), NULLIF(btrim(t.seat_row), ''), NULLIF(btrim(t.seat_number), '')), ''),
+			       `+ticketBlockedSQL+`
 			FROM   order_items oi
 			JOIN   tickets t ON t.id = oi.ticket_id
 			WHERE  oi.order_id = $1
@@ -114,15 +115,18 @@ func (e *Engine) Options(ctx context.Context, orgID, orderID uuid.UUID) (OrderOp
 		defer rows.Close()
 		for rows.Next() {
 			var t TicketOption
-			var onHold bool
-			if err := rows.Scan(&t.TicketID, &t.Status, &t.Paid, &t.Refunded, &t.InProgress, &onHold, &t.TicketNumber, &t.SeatLabel); err != nil {
+			var onHold, scanned bool
+			if err := rows.Scan(&t.TicketID, &t.Status, &t.Paid, &t.Refunded, &t.InProgress, &onHold, &t.TicketNumber, &t.SeatLabel, &scanned); err != nil {
 				return err
 			}
 			if t.Paid != nil && t.Status == "active" {
 				if left := min(*t.Paid-t.Refunded, paymentLeft); left > 0 {
-					if onHold {
+					switch {
+					case scanned:
+						t.NotRefundableReason = "ticket_scanned"
+					case onHold:
 						t.NotRefundableReason = "review_hold"
-					} else {
+					default:
 						t.Refundable = left
 					}
 				}

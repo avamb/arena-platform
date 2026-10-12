@@ -187,3 +187,55 @@ func FormatRefund(r Refund) string {
 	writeBuyer(&b, r.Buyer)
 	return b.String()
 }
+
+// FormatScanException renders the notice that a platform superadmin allowed
+// one refund of a ticket that was already scanned. No buyer data.
+func FormatScanException(r Refund, note, expiresAt string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "⚠️ <b>Refund of a used ticket allowed by the platform operator</b> - %s\n\n", esc(r.OrgName))
+	writeEvent(&b, r.EventName, r.StartAt, r.TimeZone, r.VenueName)
+	if r.OrderNumber != 0 {
+		fmt.Fprintf(&b, "\n🧾 Order #%d · ticket #%d\n", r.OrderNumber, r.TicketNumber)
+	} else {
+		fmt.Fprintf(&b, "\n🧾 Ticket #%d\n", r.TicketNumber)
+	}
+	if note != "" {
+		if r := []rune(note); len(r) > 500 {
+			note = string(r[:500]) + "…"
+		}
+		fmt.Fprintf(&b, "📝 Note: %s\n", esc(note))
+	}
+	if t, err := time.Parse(time.RFC3339, expiresAt); err == nil {
+		// In the venue's zone (Madrid when it has none), never in UTC.
+		zone := r.TimeZone
+		loc, lerr := time.LoadLocation(zone)
+		if zone == "" || lerr != nil {
+			zone = "Europe/Madrid"
+			loc, lerr = time.LoadLocation(zone)
+		}
+		if lerr == nil {
+			fmt.Fprintf(&b, "⏳ Valid for one refund until %s (%s)\n", t.In(loc).Format("2006-01-02 15:04"), zone) // allow:timeformat
+		}
+	}
+	b.WriteString("Nothing has been refunded yet.")
+	return b.String()
+}
+
+// FormatRefundBlocked renders the alert for a refund refused because the
+// ticket was already scanned at the gate. No buyer data: it is a security
+// notice about who tried, not a sale.
+func FormatRefundBlocked(r Refund, actor string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "⛔ <b>Refund blocked - the ticket was already used</b> - %s\n\n", esc(r.OrgName))
+	writeEvent(&b, r.EventName, r.StartAt, r.TimeZone, r.VenueName)
+	if r.OrderNumber != 0 {
+		fmt.Fprintf(&b, "\n🧾 Order #%d · ticket #%d\n", r.OrderNumber, r.TicketNumber)
+	} else {
+		fmt.Fprintf(&b, "\n🧾 Ticket #%d\n", r.TicketNumber)
+	}
+	if actor != "" {
+		fmt.Fprintf(&b, "👤 Tried by: %s\n", esc(actor))
+	}
+	b.WriteString("Nothing was refunded and the ticket is unchanged.")
+	return b.String()
+}

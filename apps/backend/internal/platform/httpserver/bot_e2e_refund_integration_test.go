@@ -47,6 +47,11 @@ func seedRefundableOrder(t *testing.T, pool *pgxpool.Pool, orgID uuid.UUID, seed
 	if len(tickets) != 2 {
 		t.Fatalf("Anna's order has %d tickets, want 2", len(tickets))
 	}
+	// The orders seed scans one of Anna's tickets at the door; a scanned ticket
+	// is never refundable, so the refund scenarios start from unscanned ones.
+	if _, err := pool.Exec(ctx, `UPDATE barcodes SET status = 'active', scanned_at = NULL WHERE ticket_id = ANY($1)`, tickets); err != nil {
+		t.Fatalf("unscan: %v", err)
+	}
 	var cs uuid.UUID
 	if err := pool.QueryRow(ctx, `SELECT checkout_session_id FROM orders WHERE id = $1`, seed.anna).Scan(&cs); err != nil {
 		t.Fatal(err)
@@ -208,6 +213,18 @@ func TestBotE2E_Refund_OwnerReturnsOneTicket(t *testing.T) {
 	var left int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM bot_dialogs WHERE telegram_user_id = $1 AND kind = 'refund'`, ecOwnerTG).Scan(&left); err != nil || left != 0 {
 		t.Errorf("the dialog must end after the refund (%d rows, %v)", left, err)
+	}
+
+	// ── a ticket already used at the gate is never offered again
+	if _, err := pool.Exec(ctx, `UPDATE tickets SET used_at = now() WHERE id = $1`, tickets[0]); err != nil {
+		t.Fatal(err)
+	}
+	used := d.press("or:f:s:"+seed.anna.String(), "уже использованы на входе")
+	if !strings.Contains(used, "возвращать здесь нечего") {
+		t.Errorf("the screen for a used ticket does not explain itself:\n%s", used)
+	}
+	if n, _ := refundCount(t, srv, seed.anna); n != 1 {
+		t.Fatalf("opening the refund of a used ticket changed the refunds: %d", n)
 	}
 
 	// ── a user of another organization reaches nothing

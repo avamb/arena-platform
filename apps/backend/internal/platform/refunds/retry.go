@@ -45,6 +45,11 @@ func Retryable(r Refund) bool {
 	if r.Settlement != "provider" || r.Provider == nil || r.TicketID == nil || r.OrderID == nil || r.ProviderRefundID != nil {
 		return false
 	}
+	if r.FailureCode != nil && *r.FailureCode == failureTicketScanned {
+		// Refused for a scanned ticket: a retry would be refused the same way
+		// and notify the owners again.
+		return false
+	}
 	switch r.State {
 	case StateFailed:
 		return true
@@ -130,6 +135,7 @@ func (e *Engine) Retry(ctx context.Context, in RetryInput) (BatchResult, error) 
 		IdempotencyKey: key,
 		Actor:          in.Actor, Via: in.Via, Approved: true,
 		paymentID: &payID,
+		retryOf:   &cur.ID,
 	}
 	if cur.State == StateManualReview && prior == nil {
 		in2.beforePlan = func(ctx context.Context, tx pgx.Tx) error {

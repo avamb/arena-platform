@@ -88,3 +88,16 @@ SELECT
     marketing_consent
 FROM users
 WHERE id = $1;
+
+-- name: ForgetUserRefundScanTraces :exec
+-- Forgets a user who is being erased in the journal of scan-blocked refunds:
+-- the attempts they made lose their name (the counts stay) and the marks of
+-- notices delivered to their address are deleted. Run BEFORE AnonymizeUser,
+-- which replaces the address.
+WITH blocks AS (
+    UPDATE refund_scan_blocks SET actor_label = NULL
+    WHERE actor_key = 'user:' || $1::uuid::text AND actor_label IS NOT NULL
+    RETURNING 1
+)
+DELETE FROM refund_scan_notice_sends
+WHERE lower(email) = (SELECT lower(email) FROM users WHERE id = $1::uuid);

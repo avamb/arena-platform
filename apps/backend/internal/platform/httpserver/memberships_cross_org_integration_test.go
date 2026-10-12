@@ -41,6 +41,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/apikeys"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
 
 type sec1Env struct {
@@ -54,7 +55,13 @@ type sec1Env struct {
 
 func newSec1Env(t *testing.T) *sec1Env {
 	t.Helper()
-	srv, secret := productionIntegrationServer(t)
+	return newSec1EnvCfg(t, nil)
+}
+
+// newSec1EnvCfg is newSec1Env with a hook to adjust the server's config.
+func newSec1EnvCfg(t *testing.T, adjust func(*config.Config)) *sec1Env {
+	t.Helper()
+	srv, secret := productionIntegrationServerCfg(t, adjust)
 	ts := httptest.NewServer(srv.Router())
 	e := &sec1Env{srv: srv, ts: ts, q: gen.New(srv.pgxPool), secret: secret}
 	t.Cleanup(func() {

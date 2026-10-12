@@ -57,6 +57,10 @@ type BatchInput struct {
 	// beforePlan runs inside the writing transaction, under the payment lock,
 	// before a fresh batch is planned; an error rolls everything back.
 	beforePlan func(ctx context.Context, tx pgx.Tx) error
+	// retryOf is the refund a retry replaces: a superadmin's scan exception
+	// that refund spent moved no money (only a refund that provably moved no
+	// money is retried), so the replacement inherits it.
+	retryOf *uuid.UUID
 	// afterInsert runs inside the same transaction once a fresh batch is
 	// written; an error rolls everything back.
 	afterInsert func(ctx context.Context, tx pgx.Tx, created BatchResult) error
@@ -224,6 +228,11 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 	if err != nil {
 		var refErr *Error
 		if errors.As(err, &refErr) {
+			if refErr.Code == CodeTicketScanned {
+				if id, perr := uuid.Parse(fmt.Sprint(refErr.Details["ticket_id"])); perr == nil {
+					refErr = ScannedRefusalWithNotice(id, e.RecordScannedBlock(ctx, in.OrgID, id, in.Actor, in.Via))
+				}
+			}
 			return BatchResult{}, refErr
 		}
 		return BatchResult{}, err
@@ -366,6 +375,7 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 		refunded   int64
 		liveCancel bool
 		onHold     bool
+		scanned    bool
 	}
 	info := make(map[uuid.UUID]*ticketInfo, len(ids))
 	rows, err := tx.Query(ctx, `
@@ -375,17 +385,19 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 		                  AND `+countsAgainstBudgetSQL+`), 0)::bigint,
 		       EXISTS (SELECT 1 FROM refunds r
 		                WHERE r.ticket_id = t.id AND r.cancel_ticket AND r.state NOT IN ('failed', 'rejected')),
-		       t.review_hold
+		       t.review_hold, `+ticketBlockedSQL+`
+		         AND NOT EXISTS (SELECT 1 FROM refund_scan_exceptions sx
+		                         WHERE sx.ticket_id = t.id AND $4::uuid IS NOT NULL AND sx.used_by_refund = $4::uuid)
 		FROM   tickets t
 		LEFT JOIN order_items oi ON oi.ticket_id = t.id AND oi.order_id = $2
-		WHERE  t.id = ANY($1) AND t.checkout_session_id = $3`, ids, ord.ID, ord.CheckoutSessionID)
+		WHERE  t.id = ANY($1) AND t.checkout_session_id = $3`, ids, ord.ID, ord.CheckoutSessionID, in.retryOf)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var id uuid.UUID
 		ti := &ticketInfo{}
-		if err := rows.Scan(&id, &ti.status, &ti.paid, &ti.refunded, &ti.liveCancel, &ti.onHold); err != nil {
+		if err := rows.Scan(&id, &ti.status, &ti.paid, &ti.refunded, &ti.liveCancel, &ti.onHold, &ti.scanned); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -411,6 +423,8 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 			return nil, notRefundable(it.TicketID, "not_active")
 		case ti.paid == nil:
 			return nil, notRefundable(it.TicketID, "no_price")
+		case ti.scanned:
+			return nil, scannedRefusal(it.TicketID)
 		case ti.onHold:
 			// A refund made outside arena left this order's tickets under
 			// review: how much of that money belongs to this ticket is a
@@ -489,6 +503,17 @@ func insertBatch(ctx context.Context, tx pgx.Tx, in BatchInput, pay Payment, pla
 					map[string]any{"ticket_id": p.TicketID.String()})
 			}
 			return res, err
+		}
+		// A scanned ticket got here on a superadmin's exception: this refund
+		// spends it, or takes over the one the refund it retries spent.
+		if _, err := tx.Exec(ctx, spendScanExceptionSQL, r.ID, p.TicketID); err != nil {
+			return res, err
+		}
+		if in.retryOf != nil {
+			if _, err := tx.Exec(ctx, `UPDATE refund_scan_exceptions SET used_by_refund = $1
+				WHERE ticket_id = $2 AND used_by_refund = $3`, r.ID, p.TicketID, *in.retryOf); err != nil {
+				return res, err
+			}
 		}
 		res.Refunds = append(res.Refunds, r)
 	}

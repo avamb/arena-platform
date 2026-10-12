@@ -1,0 +1,34 @@
+{{define "subject"}}Devolución permitida para la entrada usada {{.Alert.TicketNumber}} — {{.EventName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="es" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Se permitió devolver una entrada usada</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  <tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">Se permitió devolver una entrada usada</h1>
+  <p style="margin:0 0 12px 0;">El operador de la plataforma permitió una devolución de la entrada <strong>n.º {{.Alert.TicketNumber}}</strong> de <strong>{{.EventName}}</strong>{{with .Alert.OrderNumber}} (pedido n.º {{.}}){{end}}, aunque la entrada ya se escaneó en la puerta. La excepción vale hasta {{.Alert.Until}} y para una sola devolución.</p>
+  {{with .Alert.Reason}}<p style="margin:0 0 12px 0;">Nota: <strong>{{.}}</strong></p>{{end}}
+  <p style="margin:0 0 12px 0;">Todavía no se ha devuelto nada: la devolución se hace en Arena como siempre.</p>
+  </td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — mensaje automático</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}
+
+Se permitió devolver una entrada usada
+
+El operador de la plataforma permitió una devolución de la entrada n.º {{.Alert.TicketNumber}} de {{.EventName}}{{with .Alert.OrderNumber}} (pedido n.º {{.}}){{end}}, aunque la entrada ya se escaneó en la puerta. La excepción vale hasta {{.Alert.Until}} y para una sola devolución.
+{{with .Alert.Reason}}
+Nota: {{.}}
+{{end}}
+Todavía no se ha devuelto nada: la devolución se hace en Arena como siempre.
+
+Arena Platform — mensaje automático
+{{end}}

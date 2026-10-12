@@ -64,6 +64,7 @@ const (
 	refundRouteSite    = "seller_site"
 	codeRefundProgress = "refund.in_progress"
 	codeRefundSite     = "refund.seller_site_order"
+	codeRefundScanned  = "refund.ticket_scanned"
 	codeRefundNotFit   = "refund.ticket_not_refundable"
 	codeRefundUnsupp   = "refund.provider_not_supported"
 	codeRefundUnavail  = "refund.engine_unavailable"
@@ -398,11 +399,20 @@ func (b *Bot) startRefund(ctx context.Context, chatID int64, editMsgID *int, fro
 		return
 	}
 	st := newRefundDialog(id.Current.OrgID, detail.SystemId, opts)
+	scanned := scannedTicketsLine(opts)
 	if len(st.Tickets) == 0 {
-		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.ref.nothing", num), back)
+		key := "bot.ref.nothing"
+		if scanned != "" {
+			key = "bot.ref.scanned_all"
+		}
+		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, key, num), back)
 		return
 	}
-	b.showRefundPick(ctx, chatID, editMsgID, id, st, "")
+	note := ""
+	if scanned != "" {
+		note = b.texts.T(loc, "bot.ref.scanned_note", map[string]any{"Tickets": Esc(scanned)})
+	}
+	b.showRefundPick(ctx, chatID, editMsgID, id, st, note)
 }
 
 // ─── screens ──────────────────────────────────────────────────────────────────
@@ -675,6 +685,17 @@ func (b *Bot) sendRefund(ctx context.Context, chatID int64, msgID int, tg int64,
 	}
 }
 
+// scannedErrorKey says the owners were told only when the server says so.
+func scannedErrorKey(ae *APIError) string {
+	switch ae.OwnersNotice {
+	case "queued", "throttled":
+		return "bot.ref.err_scanned_notified"
+	case "no_recipient":
+		return "bot.ref.err_scanned_nobody"
+	}
+	return "bot.ref.err_scanned"
+}
+
 // refundErrorKey picks the text for an answer of the create route; "" means
 // the answer says nothing about the refund (an internal error), so the person
 // is told to look at the order instead of that nothing happened.
@@ -684,6 +705,8 @@ func (b *Bot) refundErrorKey(ae *APIError) string {
 		return "bot.ref.err_progress"
 	case ae.Status == http.StatusConflict && ae.Code == codeRefundSite:
 		return "bot.ref.site"
+	case ae.Status == http.StatusConflict && ae.Code == codeRefundScanned:
+		return scannedErrorKey(ae)
 	case ae.Status == http.StatusConflict && ae.Code == codeRefundNotFit:
 		return "bot.ref.err_ticket"
 	case ae.Status == http.StatusConflict:
@@ -807,4 +830,21 @@ func (b *Bot) refundText(ctx context.Context, chatID int64, from *models.User, t
 		b.showRefundFinal(ctx, chatID, edit, id, st, "") // only the buttons send money
 	}
 	return true
+}
+
+// scannedTicketsLine names the tickets the server will not refund because
+// they were already used at the gate ("" when there are none).
+func scannedTicketsLine(opts openapi.OrderRefundOptions) string {
+	var parts []string
+	for _, t := range opts.Tickets {
+		if t.NotRefundableReason == nil || *t.NotRefundableReason != "ticket_scanned" {
+			continue
+		}
+		label := "№"
+		if t.TicketNumber != nil {
+			label += strconv.FormatInt(*t.TicketNumber, 10)
+		}
+		parts = append(parts, label)
+	}
+	return strings.Join(parts, ", ")
 }

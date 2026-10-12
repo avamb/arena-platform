@@ -38,6 +38,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -181,6 +182,7 @@ func (h *Handler) HandleCancelTicket(w http.ResponseWriter, r *http.Request) {
 		RefundAmount: req.RefundAmount,
 		ActorType:    "user",
 		ActorID:      actor.ID,
+		ScanGuard:    true,
 	})
 	if cancelErr != nil {
 		httputil.WriteJSON(w, cancelErr.Status, httputil.ErrorEnvelope(
@@ -244,6 +246,14 @@ func readCancelTicketRequest(w http.ResponseWriter, r *http.Request) (cancelTick
 	if err := dec.Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"ticket.invalid_body", "request body is not valid JSON: "+err.Error(), r,
+		))
+		return req, false
+	}
+	// One JSON object and nothing after it: a body with trailing data could
+	// be read as two different requests by two readers.
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
+			"ticket.invalid_body", "request body must hold exactly one JSON object", r,
 		))
 		return req, false
 	}
@@ -359,6 +369,10 @@ func (h *Handler) createAutomaticRefund(
 // errAutomaticRefundExceeds: the payment has no room left for this refund.
 var errAutomaticRefundExceeds = errors.New("automatic refund would exceed the payment")
 
+// errAutomaticRefundScanned: the ticket was scanned and its exception is no
+// longer live.
+var errAutomaticRefundScanned = errors.New("automatic refund refused: the ticket was scanned at the gate")
+
 // insertAutomaticRefund writes the requested refund under the payment's
 // refund lock (refunds.LockPayment), with the same budget check every
 // other refund writer runs, so it can never race the refund engine or
@@ -393,6 +407,16 @@ func (h *Handler) insertAutomaticRefund(ctx context.Context, intent *gen.Payment
 	}
 	if _, err := tx.Exec(ctx, `UPDATE refunds SET cancelled_ticket_id = $2 WHERE id = $1`, row.ID, ticketID); err != nil {
 		return gen.RefundRow{}, err
+	}
+	// A scanned ticket got here on a superadmin's exception: the refund owns
+	// it from the moment it is written, so its later approval does not
+	// depend on the exception still being unexpired.
+	blocked, err := refunds.GuardTicketMoneyTx(ctx, tx, ticketID, &row.ID, true)
+	if err != nil {
+		return gen.RefundRow{}, err
+	}
+	if blocked {
+		return gen.RefundRow{}, errAutomaticRefundScanned
 	}
 	return row, tx.Commit(ctx)
 }

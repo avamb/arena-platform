@@ -14,6 +14,7 @@ var refundKeys = []string{
 	"bot.ref.st_review", "bot.ref.st_other", "bot.ref.err_progress", "bot.ref.err_changed",
 	"bot.ref.final", "bot.ref.yes_btn", "bot.ref.no_btn", "bot.ref.letter_yes", "bot.ref.letter_no", "bot.ref.cancelled",
 	"bot.ref.sending", "bot.ref.err_unsupported", "bot.ref.err_unavailable", "bot.ref.err_ticket", "bot.ref.err_timeout",
+	"bot.ref.err_scanned", "bot.ref.scanned_all", "bot.ref.scanned_note", "bot.ref.err_scanned_notified", "bot.ref.err_scanned_nobody",
 	"bot.ref.still_sending", "bot.ref.send_lost", "bot.ref.stale_btn", "bot.ref.err_forbidden", "bot.ref.st_queued",
 	"bot.ref.no_payment", "bot.ref.unknown_provider",
 }

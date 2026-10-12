@@ -8902,7 +8902,7 @@ type OrderRefundTicketOption struct {
 	// InProgress True when a refund that cancels this ticket is already under way.
 	InProgress bool `json:"in_progress"`
 
-	// NotRefundableReason Why `refundable` is 0 although the ticket is active and has money left, such as `review_hold` (a refund made outside arena put the order's tickets under review). Null otherwise.
+	// NotRefundableReason Why `refundable` is 0 although the ticket is active and has money left: `ticket_scanned` (the ticket was already scanned at the gate; never refunded) or `review_hold` (a refund made outside arena put the order's tickets under review). Null otherwise.
 	NotRefundableReason *string `json:"not_refundable_reason"`
 
 	// Paid What the buyer paid for this ticket in minor units, null when the order item carries no price.
@@ -14529,6 +14529,15 @@ type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody struct {
 	Note string `json:"note"`
 }
 
+// PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdScanRefundException.
+type PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody struct {
+	// Hours Hours the exception is valid, 1 to 24; 24 when left out.
+	Hours *int `json:"hours,omitempty"`
+
+	// Note A comment of up to 1000 characters, kept in the audit trail; its first 500 characters are shown to the organization's owners and its group.
+	Note *string `json:"note,omitempty"`
+}
+
 // CreatePaymentIntentParams defines parameters for CreatePaymentIntent.
 type CreatePaymentIntentParams struct {
 	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
@@ -15016,6 +15025,9 @@ type PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody = ResolveOrde
 
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear for application/json ContentType.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody
+
+// PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdScanRefundException for application/json ContentType.
+type PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody
 
 // PostV1OrganizationsOrgIdVenuesJSONRequestBody defines body for PostV1OrganizationsOrgIdVenues for application/json ContentType.
 type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest

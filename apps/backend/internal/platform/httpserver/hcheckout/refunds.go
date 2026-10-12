@@ -392,6 +392,22 @@ func (h *Handler) HandleCreateRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The scan rule again, inside the writing transaction: a scanned ticket
+	// sold with the payment blocks it unless a superadmin's exception is
+	// live, and the refund owns every exception it relies on from now on.
+	if h.refundEngine != nil {
+		blockedTicket, blocked, gerr := refunds.GuardPaymentMoneyTx(ctx, tx, paymentIntentID, refund.ID)
+		if gerr != nil {
+			scanCheckUnavailable(w, r)
+			return
+		}
+		if blocked {
+			_ = tx.Rollback(ctx)
+			h.refusedScanned(w, r, pi.OrgID, blockedTicket)
+			return
+		}
+	}
+
 	if commitErr := tx.Commit(ctx); commitErr != nil {
 		h.logger.Error("refund: tx commit failed",
 			slog.String("payment_intent_id", paymentIntentID.String()),

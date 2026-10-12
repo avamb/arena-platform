@@ -32,6 +32,8 @@
 //	                         — may be purged in a later cleanup pass
 //	orders / payments      RETAINED (accounting law — not yet implemented)
 //	audit_events           RETAINED (tamper-evident audit trail)
+//	refund_scan_blocks     actor_label set to NULL (the attempt counts stay)
+//	refund_scan_notice_sends  rows for the user's address deleted
 package hgdpr
 
 import (
@@ -229,6 +231,11 @@ func (p *GDPRProcessor) processExport(ctx context.Context, req gen.DataSubjectRe
 // user_id are retained per Russian accounting law (mandatory 5-year retention
 // for financial documents per Federal Law No. 402-FZ "On Accounting").
 func (p *GDPRProcessor) processDelete(ctx context.Context, req gen.DataSubjectRequestRow) error {
+	// The scan-blocked refund journal names the user and remembers the
+	// notices sent to their address: forget both while the address is known.
+	if err := p.queries.ForgetUserRefundScanTraces(ctx, req.UserID); err != nil {
+		return fmt.Errorf("processDelete: forget refund scan traces: %w", err)
+	}
 	// AnonymizeUser replaces PII with placeholder values and sets anonymized_at.
 	if err := p.queries.AnonymizeUser(ctx, req.UserID); err != nil {
 		return fmt.Errorf("processDelete: anonymize user: %w", err)

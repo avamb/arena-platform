@@ -2928,6 +2928,21 @@ other = "Una de las entradas ya no se puede devolver (cambió, ya no es válida 
 ["bot.ref.err_timeout"]
 other = "La respuesta tarda más de lo normal. No se ha perdido nada: abre el pedido en un minuto para ver el estado de la devolución. No la inicies de nuevo."
 
+["bot.ref.err_scanned"]
+other = "Esta entrada ya se usó en la puerta (un escaneo registrado en Arena), así que no se puede devolver. No se devolvió nada."
+
+["bot.ref.scanned_all"]
+other = "Pedido n.º {{.Num}}: las entradas ya se usaron en la puerta (escaneos registrados en Arena), no hay nada que devolver aquí."
+
+["bot.ref.scanned_note"]
+other = "No se ofrecen: {{.Tickets}} — ya usadas en la puerta (según los escaneos registrados en Arena; una entrada escaneada solo en MACS no se ve aquí).\n\n"
+
+["bot.ref.err_scanned_notified"]
+other = "Esta entrada ya se usó en la puerta (un escaneo registrado en Arena), así que no se puede devolver. No se devolvió nada. Los propietarios de la organización han sido avisados."
+
+["bot.ref.err_scanned_nobody"]
+other = "Esta entrada ya se usó en la puerta (un escaneo registrado en Arena), así que no se puede devolver. No se devolvió nada. Arena no tiene la dirección de los propietarios de la organización, así que se avisó al operador de la plataforma."
+
 ["bot.ref.still_sending"]
 other = "La devolución del pedido n.º {{.Num}} todavía se está enviando. Espera la respuesta aquí; hasta entonces no se puede cambiar nada."
 

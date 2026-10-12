@@ -3344,7 +3344,7 @@ components:
           description: The place as "sector / row / seat" with the parts that exist, null for a general-admission ticket.
         not_refundable_reason:
           type: [string, "null"]
-          description: Why `refundable` is 0 although the ticket is active and has money left, such as `review_hold` (a refund made outside arena put the order's tickets under review). Null otherwise.
+          description: "Why `refundable` is 0 although the ticket is active and has money left: `ticket_scanned` (the ticket was already scanned at the gate; never refunded) or `review_hold` (a refund made outside arena put the order's tickets under review). Null otherwise."
 
     OrderRefundOptions:
       type: object
@@ -29334,7 +29334,9 @@ paths:
           description: |
             Ticket is not active (`ticket.not_active`) — already
             cancelled, transferred or revoked. `details.current_status`
-            carries the state.
+            carries the state. A cancellation with `refund_mode` manual or
+            automatic of a ticket already scanned at the gate is refused
+            with `refund.ticket_scanned` before anything is cancelled.
           content:
             application/json:
               schema:
@@ -30209,6 +30211,13 @@ paths:
         refund); the approval handler routes partial refunds whose
         linked tickets are not all `active` to `manual_review`.
 
+        A payment with a ticket that was already scanned at the gate (a scan
+        recorded in arena) is refused with 409 `refund.ticket_scanned`: no
+        refund is written, the attempt is journaled and the organization's
+        owners are told at most once a day (`error.details.owners_notice`
+        says whether a notice was queued, one went out today, or there is no
+        address to send it to). A failure of that check answers 503.
+
         Requires JWT + the `refund.create` permission.
       tags: [v1]
       security:
@@ -30464,7 +30473,9 @@ paths:
         "409":
           description: |
             Refund is not in the `requested` state
-            (`refund.invalid_state`).
+            (`refund.invalid_state`), or a ticket it would return money for
+            was already scanned at the gate (`refund.ticket_scanned`, see
+            `error.details.owners_notice`).
           content:
             application/json:
               schema:
@@ -38223,7 +38234,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
-          description: "Not refundable: `refund.seller_site_order`, `refund.nothing_to_refund`, `refund.ticket_not_refundable`, `refund.amount_exceeds_refundable`, `refund.in_progress` or `refund.idempotency_key_reused`."
+          description: "Not refundable: `refund.seller_site_order`, `refund.nothing_to_refund`, `refund.ticket_not_refundable` (including a ticket under review), `refund.ticket_scanned` (the ticket was already scanned at the gate, by the scans recorded in arena: refused on every arena surface; the attempt is journaled and `error.details.owners_notice` says whether the owners are told), `refund.amount_exceeds_refundable`, `refund.in_progress` or `refund.idempotency_key_reused`."
           content:
             application/json:
               schema:
@@ -38554,6 +38565,161 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: "Refunds are not available (database not wired)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/tickets/{ticket_id}/scan-refund-exception:
+    post:
+      operationId: postV1OrganizationsOrgIdTicketsTicketIdScanRefundException
+      summary: Allow one refund of a ticket that was already scanned
+      description: |
+        A platform operator allows ONE refund of a ticket that was already
+        scanned at the gate (a show stopped half-way, a scan made by
+        mistake). Every check that refuses a scanned ticket with
+        refund.ticket_scanned honours it; the first refund that uses it spends
+        it, and the exception ends at `expires_at` (at most 24 hours) in any
+        case. A ticket has at most one exception at a time: one that expired
+        unused may be granted again, a spent one is final, and a scan of the
+        ticket after the grant voids it (that scan is a real entry). The grant is audited with
+        the X-Admin-Reason, the organization's owners get an e-mail and the
+        sales bot tells the organization's group and the operator; those two
+        notices carry the `note` (cut to 500 characters), never the
+        X-Admin-Reason. Platform superadmin only, with X-Admin-Reason.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: ticket_id
+          in: path
+          required: true
+          description: UUIDv7 of the ticket
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              description: How long the exception lives, and a comment.
+              properties:
+                hours:
+                  type: integer
+                  description: Hours the exception is valid, 1 to 24; 24 when left out.
+                note:
+                  type: string
+                  description: A comment of up to 1000 characters, kept in the audit trail; its first 500 characters are shown to the organization's owners and its group.
+      responses:
+        "200":
+          description: The same operator asked again for an exception that is still live and unused (the first answer was lost); the same exception, nothing announced again.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: The granted exception.
+                required: [scan_exception]
+                properties:
+                  scan_exception:
+                    type: object
+                    description: The exception.
+                    required: [id, ticket_id, created_at, expires_at]
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                        description: UUIDv7 of the exception.
+                      ticket_id:
+                        type: string
+                        format: uuid
+                        description: UUIDv7 of the ticket.
+                      created_at:
+                        type: string
+                        format: date-time
+                        description: When it was granted (RFC 3339, UTC).
+                      expires_at:
+                        type: string
+                        format: date-time
+                        description: Until when it can be used (RFC 3339, UTC).
+                      replayed:
+                        type: boolean
+                        description: True when the same operator asked again for an exception that is still live and unused; nothing new was written or announced.
+        "201":
+          description: The exception is recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: The granted exception.
+                required: [scan_exception]
+                properties:
+                  scan_exception:
+                    type: object
+                    description: The exception.
+                    required: [id, ticket_id, created_at, expires_at]
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                        description: UUIDv7 of the exception.
+                      ticket_id:
+                        type: string
+                        format: uuid
+                        description: UUIDv7 of the ticket.
+                      created_at:
+                        type: string
+                        format: date-time
+                        description: When it was granted (RFC 3339, UTC).
+                      expires_at:
+                        type: string
+                        format: date-time
+                        description: Until when it can be used (RFC 3339, UTC).
+                      replayed:
+                        type: boolean
+                        description: True when the same operator asked again for an exception that is still live and unused; nothing new was written or announced.
+        "400":
+          description: "Hours outside 1 to 24 or a note that is too long (refund.invalid_request), or X-Admin-Reason missing (superadmin.missing_reason)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Not a platform operator (refund.scan_exception_superadmin_only)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Ticket not found in this organization (ticket.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The ticket was not scanned (refund.ticket_not_scanned) or its exception was already used, or another operator granted one that is still live (refund.scan_exception_exists)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Refunds are not available (refund.engine_unavailable)."
           content:
             application/json:
               schema:

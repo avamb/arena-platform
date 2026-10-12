@@ -62,6 +62,15 @@ const TemplateKindChange = "change"
 // session. It carries no attachment and makes no promise about money.
 const TemplateKindCancel = "cancel"
 
+// TemplateKindRefundBlocked is sent to an organization's owners when a refund
+// of an already scanned ticket was refused (owner decision 2026-10-12).
+const TemplateKindRefundBlocked = "refund_blocked"
+
+// TemplateKindScanException is sent to an organization's owners when a
+// platform superadmin allowed one refund of a ticket that was already
+// scanned (owner decision 2026-10-13).
+const TemplateKindScanException = "refund_scan_exception"
+
 // Data is the value passed to every template. Fields are intentionally
 // strings (not domain structs) so the template author can ignore nil checks
 // and {{with}} blocks handle the "empty means omit" presentation rule.
@@ -125,6 +134,10 @@ type Data struct {
 	// cancel e-mails (one ticket each) and older callers use.
 	Tickets []TicketLine
 
+	// Alert carries what a refund-blocked notice says (kind
+	// "refund_blocked"); zero for every other kind.
+	Alert ScanAlertData
+
 	// Payment is the purchase summary printed as the "Payment" block of the
 	// ticket e-mail. nil omits the block: an invitation, a free ticket or an
 	// order whose money is not known pays nothing to show.
@@ -135,6 +148,21 @@ type Data struct {
 	// e-mail only). The delivery worker sets it from the seller's country;
 	// it stays false for invitations and for any other seller.
 	WithdrawalNotice bool
+}
+
+// ScanAlertData is the content of a refund-blocked notice.
+type ScanAlertData struct {
+	// TicketNumber is the buyer-facing ticket number; OrderNumber the order's
+	// (empty for an invitation).
+	TicketNumber string
+	OrderNumber  string
+	// Actor names who tried (a member's name or e-mail, an API key's name);
+	// empty when it cannot be told.
+	Actor string
+	// Reason and Until belong to a superadmin's exception: why it was
+	// granted and until when it is valid, ready to print.
+	Reason string
+	Until  string
 }
 
 // TicketLine is one ticket of a multi-ticket e-mail. Every field is a

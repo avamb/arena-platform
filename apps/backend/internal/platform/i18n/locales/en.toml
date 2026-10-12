@@ -3073,6 +3073,21 @@ other = "One of the tickets can no longer be refunded (it changed, is no longer 
 ["bot.ref.err_timeout"]
 other = "The answer is taking longer than expected. Nothing is lost: open the order in a minute to see the state of the refund. Do not start it again."
 
+["bot.ref.err_scanned"]
+other = "This ticket was already used at the gate (a scan recorded in Arena), so it cannot be refunded. Nothing was refunded."
+
+["bot.ref.scanned_all"]
+other = "Order #{{.Num}}: the ticket(s) were already used at the gate (scans recorded in Arena), so there is nothing to refund here."
+
+["bot.ref.scanned_note"]
+other = "Not offered: {{.Tickets}} - already used at the gate (scans recorded in Arena; an entry scanned only in MACS is not seen here).\n\n"
+
+["bot.ref.err_scanned_notified"]
+other = "This ticket was already used at the gate (a scan recorded in Arena), so it cannot be refunded. Nothing was refunded. The organization's owners have been notified."
+
+["bot.ref.err_scanned_nobody"]
+other = "This ticket was already used at the gate (a scan recorded in Arena), so it cannot be refunded. Nothing was refunded. Arena has no e-mail address of the organization's owners, so the platform operator was told instead."
+
 ["bot.ref.still_sending"]
 other = "The refund of order #{{.Num}} is still being sent. Wait for the answer here; nothing can be changed until then."
 
