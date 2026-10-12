@@ -91,14 +91,21 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 		if err != nil {
 			return err
 		}
-		if cur.Provider == nil || cur.State != StateManualReview {
+		if cur.State != StateManualReview {
 			return refusal(http.StatusConflict, CodeNotInReview, "only a refund waiting for manual review can be resolved",
 				map[string]any{"state": cur.State})
 		}
 		if pay, err = getPayment(ctx, tx, *piID); err != nil {
 			return err
 		}
-		if in.Outcome == ResolveRefunded || in.Outcome == ResolveRefundedBeyondPayment {
+		// A row without a provider predates the engine (migration 0138 moved
+		// it to manual_review): nothing about it is known but what the
+		// operator checked, so it is closed as stated and nothing settles.
+		legacy := cur.Provider == nil
+		if legacy && in.Outcome == ResolveRefundedBeyondPayment {
+			return bad("a refund recorded before the refund engine is closed as refunded or not_refunded")
+		}
+		if !legacy && (in.Outcome == ResolveRefunded || in.Outcome == ResolveRefundedBeyondPayment) {
 			// Nothing was sent: the money cannot have gone back through this
 			// row. (If the buyer was refunded by hand at the provider, that
 			// refund is its own row - the dashboard webhook records it.)
@@ -122,7 +129,7 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 					map[string]any{"refunds_total": live, "paid": pay.Amount})
 			}
 		}
-		if in.Outcome == ResolveRefunded {
+		if in.Outcome == ResolveRefunded && !legacy {
 			// Settling puts the amount into the payment's live sum: under the
 			// lock, it must still fit what was paid.
 			var live int64
@@ -155,14 +162,15 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 			cancel_ticket = CASE WHEN $4 THEN false ELSE cancel_ticket END,
 			alert_due_at = NULL, updated_at = now()
 			WHERE id = $1 AND state = 'manual_review' RETURNING `+refundColumns, in.RefundID, state, clearFailure,
-			in.Outcome == ResolveRefundedBeyondPayment))
+			in.Outcome == ResolveRefundedBeyondPayment || legacy))
 		if err != nil {
 			return err
 		}
 		return e.writeAudit(ctx, tx, audit.Event{ActorType: in.Actor.Type, ActorID: in.Actor.ID,
 			Action: "v1.refund.resolve", ResourceType: "refund", ResourceID: out.ID.String(),
 			Metadata: map[string]any{"outcome": in.Outcome, "state": state, "via": in.Via, "note": note,
-				"previous_failure_code": deref(cur.FailureCode), "previous_failure_reason": deref(cur.FailureReason)}})
+				"previous_failure_code": deref(cur.FailureCode), "previous_failure_reason": deref(cur.FailureReason),
+				"pre_engine": legacy}})
 	})
 	if err != nil {
 		return Refund{}, err
@@ -170,7 +178,7 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 	// A refund beyond the payment changes no ticket and owes no announcement:
 	// it is stamped settled and published above, so neither this call nor the
 	// sweep's repair cancels, announces or mails anything for it.
-	if out.State == StateSucceeded && in.Outcome != ResolveRefundedBeyondPayment {
+	if out.State == StateSucceeded && in.Outcome != ResolveRefundedBeyondPayment && out.Provider != nil {
 		e.settle(ctx, out, pay)
 	}
 	return out, nil
