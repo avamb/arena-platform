@@ -533,11 +533,13 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		// The payment block: the order's money, only when this letter carries
 		// every ticket of a paid order.
 		var payment *templates.PaymentData
+		complimentaryOrder := false
 		if kind == templates.TemplateKindTicket && opts.DeliveryJobQueries != nil {
 			summary, sErr := opts.DeliveryJobQueries.GetDeliveryPaymentSummaryByTicketID(ctx, ticketID)
 			switch {
 			case sErr == nil:
 				payment = buildPaymentData(summary, p.SessionTZ, len(members))
+				complimentaryOrder = summary.OrderSource != nil && *summary.OrderSource == "complimentary"
 			case !errors.Is(sErr, pgx.ErrNoRows):
 				logger.Warn("delivery: payment summary lookup failed; sending without the payment block",
 					slog.String("ticket_id", ticketID.String()),
@@ -545,6 +547,8 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				)
 			}
 		}
+
+		withdrawalNotice := withdrawalNoticeFor(ctx, opts, logger, ticketID, kind, complimentaryOrder)
 
 		var htmlBody, textBody, subject string
 		if renderer != nil {
@@ -563,6 +567,8 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				Branding:       branding,
 				Tickets:        ticketLinesFor(kind, members, p.Locale, payment == nil),
 				Payment:        payment,
+
+				WithdrawalNotice: withdrawalNotice,
 			})
 			if rErr != nil {
 				return fail(fmt.Errorf("delivery: render templates for ticket %s: %w",

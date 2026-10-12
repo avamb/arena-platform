@@ -61,3 +61,9 @@ LIMIT  $1;
 -- GetDeliveryPaymentSummaryByTicketID reads the order number, paid-at and the
 -- money of the purchase ticket $1 was issued for (the ticket e-mail's payment
 -- block). See gen/delivery_group.sql.go for the statement.
+
+-- name: GetTicketSellerCountries :one
+-- GetTicketSellerCountries reads the legal-address country and the plain
+-- country of the organization that sells ticket $1's event (the ticket e-mail
+-- prints the withdrawal notice for EU/EEA sellers). See
+-- gen/delivery_group.sql.go for the statement.

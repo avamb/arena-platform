@@ -129,6 +129,12 @@ type Data struct {
 	// ticket e-mail. nil omits the block: an invitation, a free ticket or an
 	// order whose money is not known pays nothing to show.
 	Payment *PaymentData
+
+	// WithdrawalNotice prints the sentence that tickets for an event on a
+	// specific date carry no right of withdrawal (EU/EEA sellers, ticket
+	// e-mail only). The delivery worker sets it from the seller's country;
+	// it stays false for invitations and for any other seller.
+	WithdrawalNotice bool
 }
 
 // TicketLine is one ticket of a multi-ticket e-mail. Every field is a
