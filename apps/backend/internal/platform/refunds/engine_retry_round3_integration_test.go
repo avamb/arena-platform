@@ -1,0 +1,115 @@
+//go:build integration
+
+package refunds_test
+
+import (
+	"context"
+	"sync"
+	"testing"
+
+	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
+)
+
+// parkedNeverSent inserts a refund of ticket 0 parked before any provider
+// call, with an operator alert owed.
+func parkedNeverSent(t *testing.T, f *fixture) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	if err := f.pool.QueryRow(context.Background(), `INSERT INTO refunds (payment_intent_id, org_id, order_id, ticket_id, amount, currency,
+		reason, state, settlement, provider, provider_attempts, failure_code, cancel_ticket, alert_due_at)
+		VALUES ($1, $2, $3, $4, 2500, 'EUR', 'parked', 'manual_review', 'provider', 'pay03fake', 0, 'provider_not_configured', true, now())
+		RETURNING id`, f.payment, f.org, f.order, f.tickets[0]).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+func retryInput(f *fixture, id uuid.UUID) refunds.RetryInput {
+	return refunds.RetryInput{OrgID: f.org, RefundID: id, Actor: refunds.Actor{Type: "user", ID: uuid.NewString()}}
+}
+
+// A retry whose replacement cannot be created leaves the parked refund
+// exactly as it was, its owed alert included.
+func TestEngine_FailedRetryKeepsTheParkedRefundAndItsAlert(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	ctx := context.Background()
+	id := parkedNeverSent(t, f)
+	f.exec(t, `UPDATE tickets SET status = 'cancelled' WHERE id = $1`, f.tickets[0])
+	e := f.engine(&fakeModule{partial: true}, true)
+	if _, err := e.Retry(ctx, retryInput(f, id)); err == nil {
+		t.Fatal("a retry of a cancelled ticket's refund succeeded")
+	}
+	var state, code string
+	var alert bool
+	if err := f.pool.QueryRow(ctx, `SELECT state, failure_code, alert_due_at IS NOT NULL FROM refunds WHERE id = $1`, id).Scan(&state, &code, &alert); err != nil {
+		t.Fatal(err)
+	}
+	if state != "manual_review" || code != "provider_not_configured" || !alert {
+		t.Fatalf("after a failed retry: %s %s alert=%v; want manual_review provider_not_configured with its alert", state, code, alert)
+	}
+}
+
+// Two retries at once make exactly one replacement.
+func TestEngine_ConcurrentRetriesMakeOneReplacement(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	ctx := context.Background()
+	id := parkedNeverSent(t, f)
+	m := &fakeModule{partial: true, answers: []func(payments.RefundRequest) (payments.RefundResult, error){succeeded}}
+	e := f.engine(m, true)
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	for i := range errs {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, errs[i] = e.Retry(ctx, retryInput(f, id))
+		}(i)
+	}
+	wg.Wait()
+	ok := 0
+	for _, err := range errs {
+		if err == nil {
+			ok++
+		}
+	}
+	if ok == 0 {
+		t.Fatalf("no retry succeeded: %v", errs)
+	}
+	var replacements int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM refunds WHERE ticket_id = $1 AND id <> $2`, f.tickets[0], id).Scan(&replacements); err != nil {
+		t.Fatal(err)
+	}
+	if replacements != 1 {
+		t.Fatalf("%d replacement refunds; want exactly 1", replacements)
+	}
+	var state string
+	_ = f.pool.QueryRow(ctx, `SELECT state FROM refunds WHERE id = $1`, id).Scan(&state)
+	if state != "failed" {
+		t.Fatalf("replaced refund is %s; want failed (replaced)", state)
+	}
+}
+
+// A retry goes through the payment of the refund it replaces, not the
+// order's newest payment.
+func TestEngine_RetryUsesTheOriginalRefundsPayment(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	ctx := context.Background()
+	id := parkedNeverSent(t, f)
+	ref := "cs_pay03_newer_" + uuid.NewString()
+	if _, err := gen.New(f.pool).InsertPaymentIntent(ctx, &f.cs, f.org, "pay03fake", &ref, 5000, "EUR", "succeeded", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	f.exec(t, `UPDATE payment_intents SET succeeded_at = now() + interval '1 minute' WHERE provider_payment_id = $1`, ref)
+	m := &fakeModule{partial: true, answers: []func(payments.RefundRequest) (payments.RefundResult, error){succeeded}}
+	res, err := f.engine(m, true).Retry(ctx, retryInput(f, id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res.Refunds[0].PaymentIntentID; got != f.payment {
+		t.Fatalf("retry went through payment %s; want the original %s", got, f.payment)
+	}
+}

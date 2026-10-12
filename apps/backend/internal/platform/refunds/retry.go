@@ -117,19 +117,11 @@ func (e *Engine) Retry(ctx context.Context, in RetryInput) (BatchResult, error) 
 	}
 	// A refund parked before any call still holds its ticket's "live
 	// cancellation" slot, which would refuse the replacement: it is closed as
-	// replaced first (no money moved, nothing was sent). If the replacement
-	// cannot be created the row goes back to review.
-	prevCode, prevReason := cur.FailureCode, cur.FailureReason
-	replaced := false
-	if cur.State == StateManualReview && prior == nil {
-		ok, rerr := e.markReplaced(ctx, cur)
-		if rerr != nil {
-			return BatchResult{}, rerr
-		}
-		replaced = ok
-	}
+	// replaced INSIDE the transaction that creates the replacement, so either
+	// both happen or neither does (its alert and state stay as they were).
 	amount := cur.Amount
-	res, err := e.CreateBatch(ctx, BatchInput{
+	payID := cur.PaymentIntentID
+	in2 := BatchInput{
 		OrgID: cur.OrgID, OrderID: *cur.OrderID,
 		Items:          []Item{{TicketID: *cur.TicketID, Amount: &amount}},
 		Reason:         reason,
@@ -137,11 +129,15 @@ func (e *Engine) Retry(ctx context.Context, in RetryInput) (BatchResult, error) 
 		NotifyBuyer:    notify,
 		IdempotencyKey: key,
 		Actor:          in.Actor, Via: in.Via, Approved: true,
-	})
-	if err != nil {
-		if replaced {
-			e.unmarkReplaced(ctx, cur.ID, prevCode, prevReason)
+		paymentID: &payID,
+	}
+	if cur.State == StateManualReview && prior == nil {
+		in2.beforePlan = func(ctx context.Context, tx pgx.Tx) error {
+			return markReplacedTx(ctx, tx, cur)
 		}
+	}
+	res, err := e.CreateBatch(ctx, in2)
+	if err != nil {
 		return BatchResult{}, err
 	}
 	if !res.Replayed && len(res.Refunds) > 0 {
@@ -154,37 +150,22 @@ func (e *Engine) Retry(ctx context.Context, in RetryInput) (BatchResult, error) 
 	return res, nil
 }
 
-// markReplaced closes a never-sent manual_review refund as failed with the
-// replaced_by_retry code, under the payment lock. Only a row that is still
-// parked, never attempted and without a provider id moves.
-func (e *Engine) markReplaced(ctx context.Context, cur Refund) (bool, error) {
-	moved := false
-	err := e.inTx(ctx, func(tx pgx.Tx) error {
-		if err := LockPayment(ctx, tx, cur.PaymentIntentID); err != nil {
-			return err
-		}
-		tag, err := tx.Exec(ctx, `UPDATE refunds SET state = 'failed', failed_at = now(), failure_code = $2,
-			failure_reason = 'replaced by a retry; nothing had been sent to the provider', alert_due_at = NULL,
-			updated_at = now()
-			WHERE id = $1 AND state = 'manual_review' AND provider_attempts = 0 AND provider_refund_id IS NULL`,
-			cur.ID, failureReplaced)
-		moved = err == nil && tag.RowsAffected() == 1
-		return err
-	})
-	return moved, err
-}
-
-// unmarkReplaced puts a row marked replaced back into review when the
-// replacement could not be created.
-func (e *Engine) unmarkReplaced(ctx context.Context, id uuid.UUID, code, reason *string) {
-	wctx := context.WithoutCancel(ctx)
-	err := e.inTx(wctx, func(tx pgx.Tx) error {
-		_, err := tx.Exec(wctx, `UPDATE refunds SET state = 'manual_review', failed_at = NULL, failure_code = $2,
-			failure_reason = $3, updated_at = now()
-			WHERE id = $1 AND state = 'failed' AND failure_code = $4`, id, code, reason, failureReplaced)
-		return err
-	})
+// markReplacedTx closes a never-sent manual_review refund as failed with the
+// replaced_by_retry code, inside the caller's transaction (which already
+// holds the payment lock). Only a row that is still parked, never attempted
+// and without a provider id moves; anything else refuses the retry.
+func markReplacedTx(ctx context.Context, tx pgx.Tx, cur Refund) error {
+	tag, err := tx.Exec(ctx, `UPDATE refunds SET state = 'failed', failed_at = now(), failure_code = $2,
+		failure_reason = 'replaced by a retry; nothing had been sent to the provider', alert_due_at = NULL,
+		updated_at = now()
+		WHERE id = $1 AND state = 'manual_review' AND provider_attempts = 0 AND provider_refund_id IS NULL`,
+		cur.ID, failureReplaced)
 	if err != nil {
-		e.logger.Error("refunds: putting a replaced refund back into review failed", "refund_id", id.String(), "error", err.Error())
+		return err
 	}
+	if tag.RowsAffected() != 1 {
+		return refusal(http.StatusConflict, CodeNotRetryable,
+			"this refund changed meanwhile and cannot be sent again", nil)
+	}
+	return nil
 }
