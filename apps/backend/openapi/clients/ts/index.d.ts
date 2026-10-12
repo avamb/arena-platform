@@ -3889,9 +3889,12 @@ export interface paths {
          *     refund); the approval handler routes partial refunds whose
          *     linked tickets are not all `active` to `manual_review`.
          *
-         *     A payment with a ticket that was already scanned at the gate is
-         *     refused with 409 `refund.ticket_scanned`; nothing is written and the
-         *     organization's owners are told once a day.
+         *     A payment with a ticket that was already scanned at the gate (a scan
+         *     recorded in arena) is refused with 409 `refund.ticket_scanned`: no
+         *     refund is written, the attempt is journaled and the organization's
+         *     owners are told at most once a day (`error.details.owners_notice`
+         *     says whether a notice was queued, one went out today, or there is no
+         *     address to send it to). A failure of that check answers 503.
          *
          *     Requires JWT + the `refund.create` permission.
          */
@@ -34329,7 +34332,9 @@ export interface operations {
             /**
              * @description Ticket is not active (`ticket.not_active`) — already
              *     cancelled, transferred or revoked. `details.current_status`
-             *     carries the state.
+             *     carries the state. A cancellation with `refund_mode` manual or
+             *     automatic of a ticket already scanned at the gate is refused
+             *     with `refund.ticket_scanned` before anything is cancelled.
              */
             409: {
                 headers: {
@@ -35341,7 +35346,9 @@ export interface operations {
             };
             /**
              * @description Refund is not in the `requested` state
-             *     (`refund.invalid_state`).
+             *     (`refund.invalid_state`), or a ticket it would return money for
+             *     was already scanned at the gate (`refund.ticket_scanned`, see
+             *     `error.details.owners_notice`).
              */
             409: {
                 headers: {
@@ -43174,7 +43181,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Not refundable: `refund.seller_site_order`, `refund.nothing_to_refund`, `refund.ticket_not_refundable` (including a ticket under review), `refund.ticket_scanned` (the ticket was already scanned at the gate: refused on every surface, the owners are notified once a day per ticket and actor), `refund.amount_exceeds_refundable`, `refund.in_progress` or `refund.idempotency_key_reused`. */
+            /** @description Not refundable: `refund.seller_site_order`, `refund.nothing_to_refund`, `refund.ticket_not_refundable` (including a ticket under review), `refund.ticket_scanned` (the ticket was already scanned at the gate, by the scans recorded in arena: refused on every arena surface; the attempt is journaled and `error.details.owners_notice` says whether the owners are told), `refund.amount_exceeds_refundable`, `refund.in_progress` or `refund.idempotency_key_reused`. */
             409: {
                 headers: {
                     [name: string]: unknown;
