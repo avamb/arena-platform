@@ -297,17 +297,11 @@ func (h *Handler) HandleUpdateSeatingPlan(w http.ResponseWriter, r *http.Request
 		overridesJSON = normalized
 	}
 
-	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "failed to begin transaction", r,
-		))
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	qtx := h.queries.WithTx(tx)
-
-	existing, err := qtx.GetSeatingPlanByID(ctx, id)
+	// Read the plan and decide the caller's right to it BEFORE the
+	// transaction: the per-organization check reads roles through the pool,
+	// and a pool connection taken while this request holds a transaction
+	// waits forever under a full pool.
+	existing, err := h.queries.GetSeatingPlanByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
@@ -326,7 +320,7 @@ func (h *Handler) HandleUpdateSeatingPlan(w http.ResponseWriter, r *http.Request
 	// actor's org scope is its active memberships (authz.go); a caller
 	// outside existing.OwnerOrgID gets the same 404 as a missing plan so
 	// foreign plan ids do not leak existence.
-	member, err := requireOrgMembership(w, r, qtx, existing.OwnerOrgID)
+	member, err := requireOrgMembership(w, r, h.queries, existing.OwnerOrgID)
 	if errors.Is(err, errResponseWritten) {
 		return
 	}
@@ -338,6 +332,40 @@ func (h *Handler) HandleUpdateSeatingPlan(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if !member {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"seating_plan.not_found", "seating plan not found", r,
+		))
+		return
+	}
+
+	ownerChecked := existing.OwnerOrgID
+
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "failed to begin transaction", r,
+		))
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	qtx := h.queries.WithTx(tx)
+
+	existing, err = qtx.GetSeatingPlanByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"seating_plan.not_found", "seating plan not found", r,
+			))
+			return
+		}
+		h.logger.Error("seating_plan: pre-update get failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"seating_plan.update_failed", "failed to update seating plan", r,
+		))
+		return
+	}
+	if existing.OwnerOrgID != ownerChecked {
+		// The plan changed hands between the check and the transaction.
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 			"seating_plan.not_found", "seating plan not found", r,
 		))

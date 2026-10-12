@@ -21,6 +21,7 @@ func (s *Server) mountExportRoutes(r chi.Router) {
 	}
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "order.read", "orders")
+		pr.Use(s.orgScoped("session.read"))
 		pr.Use(permissions.RequirePermission(s.perms, "session.read", "sessions"))
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/sales.csv", s.handleExportSessionSales)
 		pr.Get("/organizations/{org_id}/events/{event_id}/sales.csv", s.handleExportEventSales)

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-telegram/bot/models"
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
@@ -67,7 +68,8 @@ func TestSessionDialogs_LapseIsReportedOnce(t *testing.T) {
 	clock := &testClock{t: time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)}
 	d := newSessionDialogs(newMemDialogStore(clock))
 	const id = int64(9)
-	d.put(ctx, id, &sessionDialog{OrgID: uuid.New(), EventID: uuid.New(), Step: sesStepCard})
+	// A dialog that was waiting for a typed time: the lapse is worth saying.
+	d.put(ctx, id, &sessionDialog{OrgID: uuid.New(), EventID: uuid.New(), Step: sesStepTime})
 	if _, ok, _ := d.get(ctx, id); !ok {
 		t.Fatal("a fresh dialog must be live")
 	}
@@ -77,6 +79,23 @@ func TestSessionDialogs_LapseIsReportedOnce(t *testing.T) {
 	}
 	if _, ok, expired := d.get(ctx, id); ok || expired {
 		t.Fatalf("the lapse must be reported exactly once: ok=%v expired=%v", ok, expired)
+	}
+}
+
+// A card or a list that lapsed was not waiting for anything typed: a text
+// the person types afterwards is a stray text and goes on to whatever handles
+// it, not a "your answer was lost" message.
+func TestSessionDialogs_LapsedCardIsNotReported(t *testing.T) {
+	ctx := context.Background()
+	clock := &testClock{t: time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)}
+	d := newSessionDialogs(newMemDialogStore(clock))
+	const id = int64(9)
+	for _, step := range []string{sesStepCard, sesStepList, sesStepConfirm} {
+		d.put(ctx, id, &sessionDialog{OrgID: uuid.New(), EventID: uuid.New(), Step: step})
+		clock.advance(dialogTTL + time.Minute)
+		if _, ok, expired := d.get(ctx, id); ok || expired {
+			t.Fatalf("step %q lapsed: ok=%v expired=%v; want silence", step, ok, expired)
+		}
 	}
 }
 
@@ -148,5 +167,23 @@ func TestContactLabel_HidesAHiddenPhone(t *testing.T) {
 	}
 	if got := contactLabel(contactOf("", "a@b.c", "+34 600", false)); !strings.Contains(got, "+34 600") {
 		t.Errorf("a shown phone must appear: %q", got)
+	}
+}
+
+// A stray text typed on a card must not slide the dialog's expiry forward:
+// the write-back is for answers the dialog took.
+func TestSessionsText_StrayTextOnACardKeepsTheExpiry(t *testing.T) {
+	ctx := context.Background()
+	clock := &testClock{t: time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)}
+	b := &Bot{sessions: newSessionDialogs(newMemDialogStore(clock))}
+	const id = int64(9)
+	b.sessions.put(ctx, id, &sessionDialog{OrgID: uuid.New(), EventID: uuid.New(), Step: sesStepCard})
+	clock.advance(dialogTTL - 10*time.Minute)
+	if b.sessionsText(ctx, 1, &models.User{ID: id}, "hello") {
+		t.Fatal("a text on a card was taken as an answer")
+	}
+	clock.advance(11 * time.Minute)
+	if _, ok, _ := b.sessions.get(ctx, id); ok {
+		t.Fatal("the stray text slid the dialog's expiry forward")
 	}
 }

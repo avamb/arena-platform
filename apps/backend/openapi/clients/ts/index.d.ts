@@ -4717,6 +4717,14 @@ export interface paths {
          *         top of the ticket prices at checkout; the widget shows it as
          *         a cart line so the buyer sees the total before the payment
          *         page does.
+         *       * `show_withdrawal_notice` — boolean. True when the seller
+         *         organization is in the EU/EEA (the country of its legal
+         *         address, else the organization country: the 27 EU states
+         *         plus IS, LI and NO). The widget then tells the buyer before
+         *         payment that tickets for an event on a specific date are not
+         *         covered by the right of withdrawal. False for every other
+         *         country (Israel included, which has its own cancellation
+         *         regime) and when the country is unknown.
          *       * `poster_media_id` — resolved cover: session's own value when
          *         set, otherwise the event fallback. Same on `poster_url`.
          *       * `media_gallery: SessionMediaItem[]` — ordered per-session
@@ -12545,8 +12553,9 @@ export interface components {
         /**
          * @description Public-safe organization branding slice returned by
          *     GET /v1/public/pages/{org_slug}/{event_slug}. Only columns that are
-         *     safe to expose to an anonymous visitor are included — never legal,
-         *     KYB, or contact fields.
+         *     safe to expose to an anonymous visitor are included — never KYB or
+         *     contact fields. The seller's legal identity is the separate,
+         *     per-channel `seller` block of the page response.
          */
         HostedPageOrg: {
             /**
@@ -12672,6 +12681,103 @@ export interface components {
             feed_token?: string;
         };
         /**
+         * @description Registered address of the seller (the `legal_address_*` columns of the
+         *     organization). Empty parts are omitted.
+         */
+        HostedPageSellerAddress: {
+            /**
+             * @description First address line.
+             * @example Calle Mayor 1
+             */
+            line1?: string;
+            /**
+             * @description Second address line.
+             * @example Planta 2
+             */
+            line2?: string;
+            /**
+             * @description City.
+             * @example Madrid
+             */
+            city?: string;
+            /**
+             * @description Postal code.
+             * @example 28013
+             */
+            postal_code?: string;
+            /**
+             * @description ISO 3166-1 alpha-2 country code of the address (the organization country when the legal address names none).
+             * @example ES
+             */
+            country?: string;
+        };
+        /**
+         * @description Contact the operator chose to publish for the channel
+         *     (`settings.hosted_page.public_contact`). It is the ONLY source of a
+         *     published contact; the organization's own contact e-mail and phone
+         *     are never used. Unset keys are omitted.
+         */
+        HostedPageSellerContact: {
+            /**
+             * @description Public contact e-mail.
+             * @example tickets@example.com
+             */
+            email?: string;
+            /**
+             * @description Public contact phone number.
+             * @example +34 600 000 000
+             */
+            phone?: string;
+        };
+        /**
+         * @description Legal identity of the seller of record, i.e. the organization that owns
+         *     the page. Present only when the channel the page is sold through has
+         *     `settings.hosted_page.show_seller = true` (default off). Empty values
+         *     are omitted.
+         */
+        HostedPageSeller: {
+            /**
+             * @description Registered legal name; the organization name when none is stored.
+             * @example Teatro Ejemplo S.L.
+             */
+            legal_name: string;
+            /**
+             * @description Tax or VAT identifier.
+             * @example ESB12345678
+             */
+            tax_id?: string;
+            /**
+             * @description Scheme of `tax_id` (eu_vat, gb_vat, il_vat, us_ein or other).
+             * @example eu_vat
+             */
+            tax_scheme?: string;
+            /**
+             * @description Company registration number.
+             * @example B12345678
+             */
+            registration_number?: string;
+            /** @description Registered address; omitted when no address part is stored. */
+            address?: components["schemas"]["HostedPageSellerAddress"];
+            /**
+             * @description ISO 3166-1 alpha-2 country of the seller (legal address country, else the organization country).
+             * @example ES
+             */
+            country?: string;
+            /** @description The channel's published contact; omitted when the channel sets none. */
+            public_contact?: components["schemas"]["HostedPageSellerContact"];
+        };
+        /**
+         * @description The promoter an event is shown under (a partner or brand named as the
+         *     organizer of the show). Present only together with `seller`.
+         */
+        HostedPagePromoter: {
+            /**
+             * @description Promoter display name.
+             * @example Cultura Viva
+             */
+            name: string;
+        };
+        /**
          * @description Response envelope for GET /v1/public/pages/{org_slug}/{event_slug} —
          *     the resolver behind the shared hosted sales page
          *     (tickets.arenasoldout.com/{org_slug}/{event_slug}). `feed_token` is
@@ -12694,6 +12800,16 @@ export interface components {
              * @example en
              */
             default_locale: string;
+            /**
+             * @description Legal identity of the seller. Omitted unless the channel has
+             *     `settings.hosted_page.show_seller = true`.
+             */
+            seller?: components["schemas"]["HostedPageSeller"];
+            /**
+             * @description The promoter the event is linked to. Omitted unless `seller` is
+             *     present and the event has a promoter.
+             */
+            promoter?: components["schemas"]["HostedPagePromoter"];
         };
         /**
          * @description Response envelope for GET /v1/public/pages/{org_slug} — the promoter
@@ -12725,6 +12841,16 @@ export interface components {
              *     (still a 200, not a 404).
              */
             events: components["schemas"]["HostedPageEvent"][];
+            /**
+             * @description Legal identity of the seller. Omitted unless the channel has
+             *     `settings.hosted_page.show_seller = true`.
+             */
+            seller?: components["schemas"]["HostedPageSeller"];
+            /**
+             * @description The promoter whose own page this is. Omitted unless `seller` is
+             *     present and the slug names a promoter rather than the organization.
+             */
+            promoter?: components["schemas"]["HostedPagePromoter"];
         };
         /**
          * @description Create-time payload for POST /v1/organizations/{org_id}/events.
@@ -15301,9 +15427,14 @@ export interface components {
             max_uses: number | null;
             /**
              * Format: int32
-             * @description Per-customer redemption cap. `null` means unlimited. Enforced
-             *     in `promo-validate` only when a `user_id` is supplied;
-             *     anonymous validations bypass the per-customer counter.
+             * @description Per-customer redemption cap. `null` means unlimited. One
+             *     redemption is one paid order, whatever the number of tickets in
+             *     it, and it is counted when the order is paid. The count runs
+             *     over every session the code covers, not per session. The buyer
+             *     is the customer record on the Bil24 gateway, the buyer e-mail
+             *     (case-insensitive) on the widget and the tickets page, and the
+             *     `user_id` on `promo-validate`, which skips the counter when no
+             *     `user_id` is supplied.
              */
             max_uses_per_customer: number | null;
             /**
@@ -23865,7 +23996,10 @@ export interface operations {
     grantOrganizationMembership: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else. */
+                "X-Admin-Reason"?: string;
+            };
             path: {
                 /** @description UUIDv7 primary key of the organization to grant the role in. */
                 org_id: string;
@@ -23972,7 +24106,10 @@ export interface operations {
     revokeOrganizationMembership: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else. */
+                "X-Admin-Reason"?: string;
+            };
             path: {
                 /** @description UUIDv7 primary key of the organization the role is scoped to. */
                 org_id: string;
@@ -30393,6 +30530,7 @@ export interface operations {
              *     `session.seating_plan_not_applicable`, plus the seating bind
              *     errors (`seating.version_not_found`, ...) when a seated
              *     create fails its inline bind.
+             *     A `poster_media_id` that is not a UUID is `session.invalid_poster_media_id`.
              */
             400: {
                 headers: {
@@ -30424,6 +30562,7 @@ export interface operations {
              * @description Semantically invalid. Possible error codes:
              *     `session.venue_org_mismatch`, `session.invalid_currency`,
              *     `session.currency_unresolvable`.
+             *     A `poster_media_id` that is not a media object of this organization is `session.invalid_poster_media_id`.
              */
             422: {
                 headers: {
@@ -30649,6 +30788,7 @@ export interface operations {
              *     sum of its category quantities;
              *     `error.details.reason = "category_sum"`),
              *     `session.invalid_venue_id`, `session.venue_not_found`.
+             *     A `poster_media_id` that is not a UUID is `session.invalid_poster_media_id`.
              */
             400: {
                 headers: {
@@ -30699,6 +30839,7 @@ export interface operations {
              *     `session.change_site_unsupported` (an affected order was sold
              *     through a website), `session.change_message_too_long`
              *     (`notice.message` over 1000 characters).
+             *     A `poster_media_id` that is not a media object of this organization is `session.invalid_poster_media_id`.
              */
             422: {
                 headers: {
@@ -32644,7 +32785,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Ticket tier not found (`pricing.tier_not_found`). */
+            /** @description Ticket tier not found (`pricing.tier_not_found`). A tier that does not exist or belongs to another organization is `pricing.tier_not_found`. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -33221,6 +33362,7 @@ export interface operations {
             /**
              * @description A session in `applies_to_session_ids` does not belong to this
              *     organization (`promo.invalid_session`).
+             *     An `applies_to_tier_ids` entry that is not a category of this organization is `promo.invalid_tier`.
              */
             422: {
                 headers: {
@@ -33543,6 +33685,7 @@ export interface operations {
             /**
              * @description A session in `applies_to_session_ids` does not belong to this
              *     organization (`promo.invalid_session`).
+             *     An `applies_to_tier_ids` entry that is not a category of this organization is `promo.invalid_tier`.
              */
             422: {
                 headers: {
@@ -33629,7 +33772,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Promo code not found (`promo.not_found`). */
+            /** @description Promo code not found (`promo.not_found`). A promo code of another organization reads like a missing one (`promo.not_found`). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -34304,7 +34447,10 @@ export interface operations {
     cancelTicket: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else. */
+                "X-Admin-Reason"?: string;
+            };
             path: {
                 /** @description Ticket UUID to cancel. */
                 id: string;
@@ -34352,10 +34498,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /**
-             * @description Caller lacks `ticket.cancel` or is not a member of the
-             *     ticket's owning organization (`org.access_denied`).
-             */
+            /** @description Caller lacks the `ticket.cancel` permission. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -34367,6 +34510,7 @@ export interface operations {
             /**
              * @description Ticket not found (`ticket.not_found`), or its session no
              *     longer exists (`session.not_found`).
+             *     A ticket of another organization reads like a missing one (`ticket.not_found`); the route never answers 403 for it.
              */
             404: {
                 headers: {
@@ -34419,7 +34563,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database pool or ticket queries unavailable. */
+            /** @description Database pool or ticket queries unavailable. The organization access guard is not configured (`dependency.org_access_unavailable`): the route fails closed. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -34519,7 +34663,10 @@ export interface operations {
     createPaymentIntent: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else. */
+                "X-Admin-Reason"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -34617,6 +34764,7 @@ export interface operations {
             /**
              * @description Database pool or payment intent queries unavailable
              *     (`dependency.database_unavailable`).
+             *     The organization access guard is not configured (`dependency.org_access_unavailable`): the route fails closed.
              */
             503: {
                 headers: {
@@ -34703,6 +34851,7 @@ export interface operations {
             /**
              * @description Payment intent queries unavailable
              *     (`dependency.database_unavailable`).
+             *     The organization access guard is not configured (`dependency.org_access_unavailable`): the route fails closed.
              */
             503: {
                 headers: {
@@ -34817,6 +34966,7 @@ export interface operations {
             /**
              * @description Database pool or payment intent queries unavailable
              *     (`dependency.database_unavailable`).
+             *     The organization access guard is not configured (`dependency.org_access_unavailable`): the route fails closed.
              */
             503: {
                 headers: {
@@ -35139,7 +35289,10 @@ export interface operations {
     createRefund: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else. */
+                "X-Admin-Reason"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -35221,6 +35374,7 @@ export interface operations {
             /**
              * @description Database pool, refund queries, or payment intent queries
              *     unavailable (`dependency.database_unavailable`).
+             *     The organization access guard is not configured (`dependency.org_access_unavailable`): the route fails closed.
              */
             503: {
                 headers: {
@@ -35306,6 +35460,7 @@ export interface operations {
             /**
              * @description Refund queries unavailable
              *     (`dependency.database_unavailable`).
+             *     The organization access guard is not configured (`dependency.org_access_unavailable`): the route fails closed.
              */
             503: {
                 headers: {
@@ -35320,7 +35475,10 @@ export interface operations {
     approveRefund: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else. */
+                "X-Admin-Reason"?: string;
+            };
             path: {
                 /** @description Refund UUID. */
                 id: string;
@@ -35420,6 +35578,7 @@ export interface operations {
             /**
              * @description Database pool or refund queries unavailable
              *     (`dependency.database_unavailable`).
+             *     The organization access guard is not configured (`dependency.org_access_unavailable`): the route fails closed.
              */
             503: {
                 headers: {
@@ -35434,7 +35593,10 @@ export interface operations {
     rejectRefund: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else. */
+                "X-Admin-Reason"?: string;
+            };
             path: {
                 /** @description Refund UUID. */
                 id: string;
@@ -35528,6 +35690,7 @@ export interface operations {
             /**
              * @description Database pool or refund queries unavailable
              *     (`dependency.database_unavailable`).
+             *     The organization access guard is not configured (`dependency.org_access_unavailable`): the route fails closed.
              */
             503: {
                 headers: {
@@ -36368,7 +36531,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /** @description Caller lacks the `webhook.subscriber.manage` permission, or is not a platform superadmin (`webhook.superadmin_only`): the subscriber registry spans every organization, so organization owners and API keys never reach it. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -36451,7 +36614,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /** @description Caller lacks the `webhook.subscriber.manage` permission, or is not a platform superadmin (`webhook.superadmin_only`): the subscriber registry spans every organization, so organization owners and API keys never reach it. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -36538,7 +36701,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /** @description Caller lacks the `webhook.subscriber.manage` permission, or is not a platform superadmin (`webhook.superadmin_only`): the subscriber registry spans every organization, so organization owners and API keys never reach it. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -36621,7 +36784,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /** @description Caller lacks the `webhook.subscriber.manage` permission, or is not a platform superadmin (`webhook.superadmin_only`): the subscriber registry spans every organization, so organization owners and API keys never reach it. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -36722,7 +36885,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /** @description Caller lacks the `webhook.subscriber.manage` permission, or is not a platform superadmin (`webhook.superadmin_only`): the subscriber registry spans every organization, so organization owners and API keys never reach it. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -36826,7 +36989,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks the `webhook.subscriber.manage` permission. */
+            /** @description Caller lacks the `webhook.subscriber.manage` permission, or is not a platform superadmin (`webhook.superadmin_only`): the subscriber registry spans every organization, so organization owners and API keys never reach it. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -40345,7 +40508,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExternalAllocation"];
                 };
             };
-            /** @description Invalid request. */
+            /** @description Invalid request. A `tier_id` that is not a UUID is `allocation.invalid_tier_id`. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -40356,6 +40519,15 @@ export interface operations {
             };
             /** @description Unauthorized. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A `tier_id` that is not a category of the allocated session is `allocation.invalid_tier_id`. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

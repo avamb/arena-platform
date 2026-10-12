@@ -2,6 +2,7 @@ package permissions
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -146,11 +147,15 @@ func (c *DBChecker) Check(ctx context.Context, action, resource string) error {
 	if c.memberships != nil && actor.ID != "" {
 		uid, err := uuid.Parse(actor.ID)
 		if err == nil {
-			memberRoles, err := c.memberships.GetActiveRolesForUser(ctx, uid)
+			memberRoles, err := c.membershipRoles(ctx, uid)
+			if errors.Is(err, ErrNoOrgMembershipQuerier) {
+				// A wiring defect, never a reason to decide from the union.
+				return err
+			}
 			if err == nil {
 				roles = append(roles, memberRoles...)
 			}
-			// If GetActiveRolesForUser fails (e.g. DB blip), fall back to
+			// If the role lookup fails (e.g. DB blip), fall back to
 			// JWT-only roles rather than failing the whole request. Permission
 			// checks may be too restrictive in that case (safer than too permissive).
 		}

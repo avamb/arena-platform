@@ -6339,8 +6339,9 @@ type HostedPageEvent struct {
 
 // HostedPageOrg Public-safe organization branding slice returned by
 // GET /v1/public/pages/{org_slug}/{event_slug}. Only columns that are
-// safe to expose to an anonymous visitor are included — never legal,
-// KYB, or contact fields.
+// safe to expose to an anonymous visitor are included — never KYB or
+// contact fields. The seller's legal identity is the separate,
+// per-channel `seller` block of the page response.
 type HostedPageOrg struct {
 	// LogoUrl Public URL of the organization logo, or null when none is set.
 	LogoUrl *string `json:"logo_url"`
@@ -6350,6 +6351,13 @@ type HostedPageOrg struct {
 
 	// Slug Organization slug, unique among active organizations.
 	Slug string `json:"slug"`
+}
+
+// HostedPagePromoter The promoter an event is shown under (a partner or brand named as the
+// organizer of the show). Present only together with `seller`.
+type HostedPagePromoter struct {
+	// Name Promoter display name.
+	Name string `json:"name"`
 }
 
 // HostedPageResponse Response envelope for GET /v1/public/pages/{org_slug}/{event_slug} —
@@ -6370,6 +6378,72 @@ type HostedPageResponse struct {
 
 	// Org Public-safe organization branding.
 	Org HostedPageOrg `json:"org"`
+
+	// Promoter The promoter the event is linked to. Omitted unless `seller` is
+	// present and the event has a promoter.
+	Promoter *HostedPagePromoter `json:"promoter,omitempty"`
+
+	// Seller Legal identity of the seller. Omitted unless the channel has
+	// `settings.hosted_page.show_seller = true`.
+	Seller *HostedPageSeller `json:"seller,omitempty"`
+}
+
+// HostedPageSeller Legal identity of the seller of record, i.e. the organization that owns
+// the page. Present only when the channel the page is sold through has
+// `settings.hosted_page.show_seller = true` (default off). Empty values
+// are omitted.
+type HostedPageSeller struct {
+	// Address Registered address; omitted when no address part is stored.
+	Address *HostedPageSellerAddress `json:"address,omitempty"`
+
+	// Country ISO 3166-1 alpha-2 country of the seller (legal address country, else the organization country).
+	Country *string `json:"country,omitempty"`
+
+	// LegalName Registered legal name; the organization name when none is stored.
+	LegalName string `json:"legal_name"`
+
+	// PublicContact The channel's published contact; omitted when the channel sets none.
+	PublicContact *HostedPageSellerContact `json:"public_contact,omitempty"`
+
+	// RegistrationNumber Company registration number.
+	RegistrationNumber *string `json:"registration_number,omitempty"`
+
+	// TaxId Tax or VAT identifier.
+	TaxId *string `json:"tax_id,omitempty"`
+
+	// TaxScheme Scheme of `tax_id` (eu_vat, gb_vat, il_vat, us_ein or other).
+	TaxScheme *string `json:"tax_scheme,omitempty"`
+}
+
+// HostedPageSellerAddress Registered address of the seller (the `legal_address_*` columns of the
+// organization). Empty parts are omitted.
+type HostedPageSellerAddress struct {
+	// City City.
+	City *string `json:"city,omitempty"`
+
+	// Country ISO 3166-1 alpha-2 country code of the address (the organization country when the legal address names none).
+	Country *string `json:"country,omitempty"`
+
+	// Line1 First address line.
+	Line1 *string `json:"line1,omitempty"`
+
+	// Line2 Second address line.
+	Line2 *string `json:"line2,omitempty"`
+
+	// PostalCode Postal code.
+	PostalCode *string `json:"postal_code,omitempty"`
+}
+
+// HostedPageSellerContact Contact the operator chose to publish for the channel
+// (`settings.hosted_page.public_contact`). It is the ONLY source of a
+// published contact; the organization's own contact e-mail and phone
+// are never used. Unset keys are omitted.
+type HostedPageSellerContact struct {
+	// Email Public contact e-mail.
+	Email *string `json:"email,omitempty"`
+
+	// Phone Public contact phone number.
+	Phone *string `json:"phone,omitempty"`
 }
 
 // HostedPromoterPageResponse Response envelope for GET /v1/public/pages/{org_slug} — the promoter
@@ -6397,6 +6471,14 @@ type HostedPromoterPageResponse struct {
 
 	// Org Public-safe organization branding.
 	Org HostedPageOrg `json:"org"`
+
+	// Promoter The promoter whose own page this is. Omitted unless `seller` is
+	// present and the slug names a promoter rather than the organization.
+	Promoter *HostedPagePromoter `json:"promoter,omitempty"`
+
+	// Seller Legal identity of the seller. Omitted unless the channel has
+	// `settings.hosted_page.show_seller = true`.
+	Seller *HostedPageSeller `json:"seller,omitempty"`
 }
 
 // ImpersonateRequest defines model for ImpersonateRequest.
@@ -8820,7 +8902,7 @@ type OrderRefundTicketOption struct {
 	// InProgress True when a refund that cancels this ticket is already under way.
 	InProgress bool `json:"in_progress"`
 
-	// NotRefundableReason Why `refundable` is 0 although the ticket is active and has money left: `ticket_scanned` (the ticket was already scanned at the gate; never refunded) or `review_hold` (a refund made outside arena put the order's tickets under review). Null otherwise.
+	// NotRefundableReason Why `refundable` is 0 although the ticket is active and has money left, such as `review_hold` (a refund made outside arena put the order's tickets under review). Null otherwise.
 	NotRefundableReason *string `json:"not_refundable_reason"`
 
 	// Paid What the buyer paid for this ticket in minor units, null when the order item carries no price.
@@ -9972,9 +10054,14 @@ type PromoCodeItem struct {
 	// 409 `promo.exhausted`.
 	MaxUses *int32 `json:"max_uses"`
 
-	// MaxUsesPerCustomer Per-customer redemption cap. `null` means unlimited. Enforced
-	// in `promo-validate` only when a `user_id` is supplied;
-	// anonymous validations bypass the per-customer counter.
+	// MaxUsesPerCustomer Per-customer redemption cap. `null` means unlimited. One
+	// redemption is one paid order, whatever the number of tickets in
+	// it, and it is counted when the order is paid. The count runs
+	// over every session the code covers, not per session. The buyer
+	// is the customer record on the Bil24 gateway, the buyer e-mail
+	// (case-insensitive) on the widget and the tickets page, and the
+	// `user_id` on `promo-validate`, which skips the counter when no
+	// `user_id` is supplied.
 	MaxUsesPerCustomer *int32 `json:"max_uses_per_customer"`
 
 	// MinOrderAmount Minor-units minimum order subtotal required for the code to
@@ -14280,6 +14367,18 @@ type UpdateExternalAllocationJSONBody struct {
 	Quantity *int `json:"quantity,omitempty"`
 }
 
+// GrantOrganizationMembershipParams defines parameters for GrantOrganizationMembership.
+type GrantOrganizationMembershipParams struct {
+	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
+}
+
+// RevokeOrganizationMembershipParams defines parameters for RevokeOrganizationMembership.
+type RevokeOrganizationMembershipParams struct {
+	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdOrdersParams defines parameters for GetV1OrganizationsOrgIdOrders.
 type GetV1OrganizationsOrgIdOrdersParams struct {
 	// Q One search value, max 200 characters, read in this precedence:
@@ -14430,13 +14529,10 @@ type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody struct {
 	Note string `json:"note"`
 }
 
-// PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdScanRefundException.
-type PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody struct {
-	// Hours Hours the exception is valid, 1 to 24; 24 when left out.
-	Hours *int `json:"hours,omitempty"`
-
-	// Note A comment of up to 1000 characters, kept in the audit trail; its first 500 characters are shown to the organization's owners and its group.
-	Note *string `json:"note,omitempty"`
+// CreatePaymentIntentParams defines parameters for CreatePaymentIntent.
+type CreatePaymentIntentParams struct {
+	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
 }
 
 // ListPublicFeedEventsParams defines parameters for ListPublicFeedEvents.
@@ -14514,6 +14610,24 @@ type ReviewReconciliationReportJSONBody struct {
 // ReviewReconciliationReportJSONBodyDecision defines parameters for ReviewReconciliationReport.
 type ReviewReconciliationReportJSONBodyDecision string
 
+// CreateRefundParams defines parameters for CreateRefund.
+type CreateRefundParams struct {
+	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
+}
+
+// ApproveRefundParams defines parameters for ApproveRefund.
+type ApproveRefundParams struct {
+	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
+}
+
+// RejectRefundParams defines parameters for RejectRefund.
+type RejectRefundParams struct {
+	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
+}
+
 // GetScannerSnapshotParams defines parameters for GetScannerSnapshot.
 type GetScannerSnapshotParams struct {
 	// SessionId UUID of the event session whose barcodes to retrieve.
@@ -14540,6 +14654,12 @@ type StripeConnectCallbackParams struct {
 
 	// Error OAuth error code when the user denied the connection.
 	Error *string `form:"error,omitempty" json:"error,omitempty"`
+}
+
+// CancelTicketParams defines parameters for CancelTicket.
+type CancelTicketParams struct {
+	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
 }
 
 // GetTicketCredentialParams defines parameters for GetTicketCredential.
@@ -14896,9 +15016,6 @@ type PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody = ResolveOrde
 
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear for application/json ContentType.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody
-
-// PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdScanRefundException for application/json ContentType.
-type PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody
 
 // PostV1OrganizationsOrgIdVenuesJSONRequestBody defines body for PostV1OrganizationsOrgIdVenues for application/json ContentType.
 type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest
