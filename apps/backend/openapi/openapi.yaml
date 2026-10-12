@@ -3425,7 +3425,7 @@ components:
                   description: "`user`, `api_key` or `provider_dashboard` (a refund made in the payment provider's own dashboard)."
                 label:
                   type: [string, "null"]
-                  description: The member's name or e-mail, or the API key's name.
+                  description: The member's name, or their e-mail when they have none (null for a caller acting with an API key), or the API key's name.
             retryable:
               type: boolean
               description: True when the retry route would accept this refund - it provably moved no money and has not been retried yet. The route still decides.
@@ -3547,7 +3547,7 @@ components:
       properties:
         outcome:
           type: string
-          description: "refunded when the money went back at the provider, not_refunded when it did not."
+          description: "refunded when the money went back at the provider; refunded_beyond_payment when it went back although the payment was already covered; not_refunded when the provider shows it did not go through (the ticket can then be refunded again with a new refund)."
         note:
           type: string
           description: What was checked, up to 1000 characters. Kept in the audit trail.
@@ -38171,11 +38171,13 @@ paths:
       summary: Send a failed or never-sent refund again
       description: |
         Starts a NEW one-ticket refund operation from a refund the provider
-        refused, or one that was parked before any provider call, and sends it
+        refused outright (failed, with no provider refund id), or one that was
+        parked before any provider call, and sends it
         at once with a new idempotency key. A refund the provider refused stays
         as it is; one that was parked before any provider call is closed as
         failed with the code `replaced_by_retry`. A refund whose provider call
-        ended without an answer, or that the provider accepted, is refused with
+        ended without an answer, or that the provider accepted (even one it
+        later reported failed), is refused with
         refund.not_retryable: repeating it could return the money twice. A
         refund is retried once: repeating the call answers the replacement, and
         when the replacement failed too the call is refused with
@@ -38246,15 +38248,21 @@ paths:
       description: |
         A platform operator closes a refund parked in manual_review after
         checking the provider's dashboard. Outcome `refunded` means the money
-        went back: the refund becomes succeeded and its tickets are cancelled.
-        Outcome `not_refunded` means no money moved: the refund becomes failed
-        and its tickets can be refunded again. A refund that never reached the
-        provider cannot be closed as refunded (refund.never_sent), nor can one
-        that would put the payment's refunds above what was paid
-        (refund.over_budget). A note is required and is kept in the audit
-        trail only; the refund keeps the reason it was parked with, except that
-        one closed as refunded carries no failure. Platform superadmin only,
-        with X-Admin-Reason.
+        went back: the refund becomes succeeded and settles like any accepted
+        refund (its ticket is cancelled only when the refund was meant to
+        cancel it). Outcome `refunded_beyond_payment` records a refund whose
+        money really went back although the payment was already covered (the
+        buyer was refunded twice): it becomes succeeded and cancels nothing.
+        Outcome `not_refunded` is only for a refund the provider dashboard
+        shows did NOT go through (failed or canceled there): it becomes failed
+        and its ticket can be refunded again, which sends a NEW refund to the
+        provider, so choosing it for a refund that did go through returns the
+        money twice. A refund that never reached the provider cannot be closed
+        as refunded (refund.never_sent), nor as `refunded` when it would put
+        the payment's refunds above what was paid (refund.over_budget). A note
+        is required and is kept in the audit trail only; the refund keeps the
+        reason it was parked with, except that one closed as refunded carries
+        no failure. Platform superadmin only, with X-Admin-Reason.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -38283,7 +38291,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/OrderRefundItem"
         "400":
-          description: "Invalid outcome or missing note (refund.invalid_request)."
+          description: "Invalid outcome or missing note (refund.invalid_request), or X-Admin-Reason missing (superadmin.missing_reason)."
           content:
             application/json:
               schema:
@@ -38320,6 +38328,103 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: "Refunds are not available (database not wired)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/tickets/{ticket_id}/review-hold/clear:
+    post:
+      operationId: postV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear
+      summary: Lift a ticket's review hold
+      description: |
+        A platform operator lifts the review hold a refund that named no ticket
+        (a partial refund made in the provider dashboard, for example) put on
+        the ticket, once they have decided which tickets that refund covers.
+        While a ticket is on hold no refund of it can be created. A note is
+        required and is kept in the audit trail together with the reason the
+        hold carried. Platform superadmin only, with X-Admin-Reason.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: ticket_id
+          in: path
+          required: true
+          description: UUIDv7 of the ticket
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: What the operator decided.
+              required: [note]
+              properties:
+                note:
+                  type: string
+                  description: What was decided, up to 1000 characters. Kept in the audit trail.
+      responses:
+        "200":
+          description: The hold is lifted.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: The ticket after the hold was lifted.
+                required: [ticket_id, review_hold]
+                properties:
+                  ticket_id:
+                    type: string
+                    format: uuid
+                    description: UUIDv7 of the ticket.
+                  review_hold:
+                    type: boolean
+                    description: Always false.
+        "400":
+          description: "Missing note (refund.invalid_request) or X-Admin-Reason missing (superadmin.missing_reason)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Not a platform operator (ticket.review_hold_superadmin_only)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Ticket not found in this organization (ticket.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The ticket is not on review hold (ticket.not_on_review_hold)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Database not wired."
           content:
             application/json:
               schema:
