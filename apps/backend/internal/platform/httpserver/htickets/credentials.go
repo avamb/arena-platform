@@ -269,6 +269,11 @@ func (h *Handler) HandleGetCredential(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Credential not yet generated — create it now.
+		// Creating a credential is a write: a platform superadmin needs the
+		// X-Admin-Reason header for it, a read of an existing one does not.
+		if !h.ticketOrgAllowed(w, r, ticketID, true, "ticket.not_found", "ticket not found") {
+			return
+		}
 		payload, genErr := GenerateCredentialPayload(ticketID, credType)
 		if genErr != nil {
 			h.logger.Error("credential: generation failed",

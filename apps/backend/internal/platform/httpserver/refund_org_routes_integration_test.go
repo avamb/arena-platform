@@ -189,6 +189,10 @@ func TestRefundOrgRoutes_QueueAndDetailStayInsideTheOrganization(t *testing.T) {
 	if row["id"] != refundID || row["state"] != "succeeded" || row["order_number"] == nil || row["event_name"] == nil {
 		t.Fatalf("queue row = %v", row)
 	}
+	// ── who asked: the API key that created it, by name
+	if c, _ := row["creator"].(map[string]any); c == nil || c["kind"] != "api_key" || c["label"] == nil {
+		t.Fatalf("creator = %v; want the API key", row["creator"])
+	}
 	// ── filters
 	if st, out = pf.do(t, http.MethodGet, base+"/refunds?state=manual_review", key, ""); st != http.StatusOK || out["total"] != float64(0) {
 		t.Fatalf("state filter: %d %v; want an empty queue", st, out)
@@ -211,6 +215,23 @@ func TestRefundOrgRoutes_QueueAndDetailStayInsideTheOrganization(t *testing.T) {
 	if hist, _ := out["history"].([]any); len(hist) == 0 {
 		t.Fatalf("detail history is empty: %v", out)
 	}
+	// ── a long life: the detail keeps the LATEST hundred steps, oldest first
+	if _, err := srv.pgxPool.Exec(context.Background(), `INSERT INTO audit_events (occurred_at, actor_type, action, resource_type, resource_id, metadata)
+		SELECT now() + (g || ' seconds')::interval, 'system', 'v1.refund.test_step', 'refund', $1, jsonb_build_object('state', 'step' || g)
+		FROM generate_series(1, 150) g`, refundID); err != nil {
+		t.Fatal(err)
+	}
+	st, out = pf.do(t, http.MethodGet, base+"/refunds/"+refundID, key, "")
+	hist, _ := out["history"].([]any)
+	if st != http.StatusOK || len(hist) != 100 || out["history_total"].(float64) < 150 {
+		t.Fatalf("long history: %d, %d steps, total %v; want 100 of 150+", st, len(hist), out["history_total"])
+	}
+	if last := hist[len(hist)-1].(map[string]any); last["state"] != "step150" {
+		t.Fatalf("the last step is %v; want the newest (step150)", last)
+	}
+	t.Cleanup(func() {
+		_, _ = srv.pgxPool.Exec(context.Background(), `DELETE FROM audit_events WHERE resource_type = 'refund' AND resource_id = $1 AND action = 'v1.refund.test_step'`, refundID)
+	})
 
 	// ── another organization sees none of it
 	otherBase := "/v1/organizations/" + other.String()
