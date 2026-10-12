@@ -59,6 +59,7 @@ const (
 	refundRouteArena   = "arena_provider"
 	refundRouteSite    = "seller_site"
 	codeRefundProgress = "refund.in_progress"
+	codeRefundSite     = "refund.seller_site_order"
 	codeRefundNotFit   = "refund.ticket_not_refundable"
 	codeRefundUnsupp   = "refund.provider_not_supported"
 	codeRefundUnavail  = "refund.engine_unavailable"
@@ -544,7 +545,7 @@ func (b *Bot) refundErrorKey(ae *APIError) string {
 	switch {
 	case ae.Status == http.StatusConflict && ae.Code == codeRefundProgress:
 		return "bot.ref.err_progress"
-	case ae.Status == http.StatusConflict && ae.Code == codeSellerSiteOrder:
+	case ae.Status == http.StatusConflict && ae.Code == codeRefundSite:
 		return "bot.ref.site"
 	case ae.Status == http.StatusConflict && ae.Code == codeRefundNotFit:
 		return "bot.ref.err_ticket"
