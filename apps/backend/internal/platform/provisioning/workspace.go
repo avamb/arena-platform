@@ -61,8 +61,10 @@ type WorkspaceInput struct {
 	AddressCity        string
 	AddressCountry     string
 	Website            string
-	ContactEmail       string
-	ContactPhone       string
+	// ContactEmail is a deliberately public contact address of the
+	// organization. Never pass a person's login e-mail here.
+	ContactEmail string
+	ContactPhone string
 
 	OwnerEmail     string
 	OwnerFirstName string
