@@ -48,3 +48,35 @@ func TestRefundScanned_CancelledScannedTicketStillBlocksTheWholePayment(t *testi
 		t.Fatalf("whole-payment refund with a cancelled scanned ticket = %s with %d provider call(s); want failed and none", got.State, e.calls.Load())
 	}
 }
+
+// A refused refund whose ticket was scanned since is not offered for retry:
+// the retry route would refuse it.
+func TestRefundScanned_ScannedTicketIsNotRetryable(t *testing.T) {
+	e := newScanEnv(t)
+	var failed string
+	if err := e.srv.pgxPool.QueryRow(context.Background(), `INSERT INTO refunds (payment_intent_id, org_id, order_id, ticket_id, amount, currency, reason,
+		state, settlement, provider, provider_attempts, failure_code, failed_at, cancel_ticket)
+		VALUES ($1, $2, $3, $4, 2500, 'EUR', 'declined', 'failed', 'provider', 'stripe', 1, 'card_declined', now(), true)
+		RETURNING id::text`, e.f.pay, e.org, e.f.order, e.f.tickets[0]).Scan(&failed); err != nil {
+		t.Fatal(err)
+	}
+	retryable := func() any {
+		t.Helper()
+		st, out := e.pf.do(t, http.MethodGet, "/v1/organizations/"+e.org.String()+"/refunds/"+failed, e.key, "")
+		if st != http.StatusOK {
+			t.Fatalf("get: %d %v", st, out)
+		}
+		r, _ := out["refund"].(map[string]any)
+		if r == nil {
+			r = out
+		}
+		return r["retryable"]
+	}
+	if got := retryable(); got != true {
+		t.Fatalf("before the scan: retryable %v; want true", got)
+	}
+	e.exec(t, `UPDATE tickets SET used_at = now() WHERE id = $1`, e.f.tickets[0])
+	if got := retryable(); got != false {
+		t.Fatalf("after the scan: retryable %v; want false", got)
+	}
+}
