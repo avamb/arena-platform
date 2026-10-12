@@ -46,10 +46,18 @@ export function parseCodexJsonl(stdout) {
   return candidate ? validateCodexReview(candidate) : { verdict: 'BLOCKED', reason: 'no structured review object' };
 }
 
+// The installed CLI accepts a custom prompt and output schema on `codex exec`.
+// `codex exec review` may emit a human review message even when --output-schema
+// is supplied, so the supervisor must use the generic non-interactive interface
+// for a machine-checkable verdict.
+export function buildCodexArgs(schemaPath) {
+  return ['exec', '--json', '--ephemeral', '--sandbox', 'read-only', '--output-schema', schemaPath, '-'];
+}
+
 export function runCodexReview({ worktree, prompt, schemaPath, timeoutMs = 300000, command = 'codex.cmd' }) {
-  const child = spawnSync(command, [
-    'exec', 'review', '--json', '--ephemeral', '--uncommitted', '--output-schema', schemaPath, '-',
-  ], { cwd: worktree, input: prompt, encoding: 'utf8', windowsHide: true, timeout: timeoutMs });
+  const child = spawnSync(command, buildCodexArgs(schemaPath), {
+    cwd: worktree, input: prompt, encoding: 'utf8', windowsHide: true, timeout: timeoutMs,
+  });
   const timedOut = child.error?.code === 'ETIMEDOUT';
   const parsed = timedOut ? { verdict: 'BLOCKED', reason: 'codex review timed out' } : parseCodexJsonl(child.stdout);
   return {

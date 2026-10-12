@@ -3,7 +3,7 @@ import test from 'node:test';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseCodexJsonl, validateCodexReview } from './codex-review.mjs';
+import { buildCodexArgs, parseCodexJsonl, validateCodexReview } from './codex-review.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SUPERVISOR = path.join(ROOT, 'orchestration', 'supervisor.mjs');
@@ -35,6 +35,12 @@ test('Codex review contract accepts PASS and fail-closes REJECT/BLOCKED', () => 
   assert.equal(validateCodexReview({ verdict: 'PASS', findings: [], tests_passed: false, scope_ok: true }).verdict, 'REJECT');
   assert.equal(parseCodexJsonl('{"type":"item.completed","item":{"verdict":"REJECT","findings":["test failed"],"tests_passed":false,"scope_ok":true}}').verdict, 'REJECT');
   assert.equal(parseCodexJsonl('{"type":"message","text":"unstructured"}').verdict, 'BLOCKED');
+});
+
+test('Codex review uses supported structured exec interface in read-only mode', () => {
+  assert.deepEqual(buildCodexArgs('schema.json'), [
+    'exec', '--json', '--ephemeral', '--sandbox', 'read-only', '--output-schema', 'schema.json', '-',
+  ]);
 });
 
 test('prepared real queue validates scope and budget without credential/API access', () => {
