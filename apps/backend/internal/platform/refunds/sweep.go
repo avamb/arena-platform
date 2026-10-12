@@ -571,7 +571,7 @@ func alertText(r Refund, ticketStatus string) string {
 		case failureReversedAfterSuccess:
 			return head + fmt.Sprintf(" and was reversed by the provider afterwards: the money did not go back to the buyer. Check the provider dashboard and decide with the organizer what happens to the order's tickets. Order %s.", uuidString(r.OrderID))
 		case DashboardCapped:
-			return head + fmt.Sprintf(" for more than was left of the payment; it was recorded as what was left and the order's tickets were cancelled. Check the provider dashboard for the difference. Order %s.", uuidString(r.OrderID))
+			return head + fmt.Sprintf(" for more than was left of the payment; it was recorded as what was left (%d %s). The order's tickets were cancelled only if that completed the whole payment; otherwise they are on review hold. Check the provider dashboard for the difference. Order %s.", r.Amount, esc(r.Currency), uuidString(r.OrderID))
 		case DashboardOverPayment:
 			return head + fmt.Sprintf(" after the payment was already fully refunded; nothing was applied and it is parked for review. Check the provider dashboard: the buyer may have been refunded twice. Order %s.", uuidString(r.OrderID))
 		case DashboardLegacyParked:

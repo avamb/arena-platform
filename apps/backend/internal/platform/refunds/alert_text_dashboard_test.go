@@ -23,7 +23,9 @@ func TestAlertText_DashboardRefundSaysWhatHappened(t *testing.T) {
 	}{
 		{DashboardPartial, "review hold", "cancelled"},
 		{"", "review hold", "cancelled"},
-		{DashboardCapped, "tickets were cancelled", "review hold"},
+		// Round-3 review R3-5: the tickets were cancelled only when the
+		// recorded amount completed the payment; otherwise they are on hold.
+		{DashboardCapped, "only if", "tickets were cancelled."},
 		{DashboardOverPayment, "refunded twice", "review hold"},
 		{DashboardLegacyParked, "parked for review from before", "review hold"},
 	}
