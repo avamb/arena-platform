@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -28,12 +29,25 @@ func orgScopedFor(perm string, scoped bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := permissions.WithRequiredPermission(r.Context(), perm)
-			if raw := chi.URLParam(r, "org_id"); scoped && raw != "" {
-				if id, err := uuid.Parse(raw); err == nil {
-					ctx = permissions.WithOrgScope(ctx, id)
-				}
+			if id, ok := pathOrganization(r); scoped && ok {
+				ctx = permissions.WithOrgScope(ctx, id)
 			}
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// pathOrganization is the organization a path names: its `{org_id}`, or the
+// `{id}` of the organization routes themselves (`/organizations/{id}`), whose
+// parameter is named differently.
+func pathOrganization(r *http.Request) (uuid.UUID, bool) {
+	raw := chi.URLParam(r, "org_id")
+	if raw == "" && strings.HasSuffix(chi.RouteContext(r.Context()).RoutePattern(), "/organizations/{id}") {
+		raw = chi.URLParam(r, "id")
+	}
+	if raw == "" {
+		return uuid.Nil, false
+	}
+	id, err := uuid.Parse(raw)
+	return id, err == nil
 }
