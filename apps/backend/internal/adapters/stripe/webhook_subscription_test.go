@@ -23,6 +23,10 @@ func TestCheckWebhookSubscription(t *testing.T) {
 		{"the older update event", `{"data":[{"url":"` + cb + `","status":"enabled","enabled_events":["refund.created","charge.refund.updated","refund.failed"]}]}`, true, true},
 		{"all events", `{"data":[{"url":"` + cb + `","status":"enabled","enabled_events":["*"]}]}`, true, true},
 		{"disabled endpoint", `{"data":[{"url":"` + cb + `","status":"disabled","enabled_events":["*"]}]}`, false, false},
+		// Two endpoints with the same URL both deliver: refund events arrive
+		// when either receives them, whichever the list names last.
+		{"two endpoints, the first with refunds", `{"data":[{"url":"` + cb + `","status":"enabled","enabled_events":["*"]},{"url":"` + cb + `","status":"enabled","enabled_events":["checkout.session.completed"]}]}`, true, true},
+		{"two endpoints, the second with refunds", `{"data":[{"url":"` + cb + `","status":"enabled","enabled_events":["checkout.session.completed"]},{"url":"` + cb + `","status":"enabled","enabled_events":["*"]}]}`, true, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
