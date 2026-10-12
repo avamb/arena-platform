@@ -1,5 +1,3 @@
-en/long-sentence 9
 en/messages 903
-en/passive 81
-ru/long-sentence 1
+en/passive 80
 ru/messages 903
