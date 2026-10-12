@@ -219,8 +219,8 @@ const (
 	// with this config's callback URL.
 	WarningWebhookEndpointNotFound = "webhook_endpoint_not_found"
 	// WarningRefundEventsNotSubscribed: the endpoint exists but does not
-	// receive refund updates, so refunds made at the provider never reach
-	// arena.
+	// receive every refund event (created, updated, failed), so some refunds
+	// made or changed at the provider never reach arena.
 	WarningRefundEventsNotSubscribed = "refund_events_not_subscribed"
 )
 

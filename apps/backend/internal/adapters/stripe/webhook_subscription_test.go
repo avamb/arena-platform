@@ -17,7 +17,10 @@ func TestCheckWebhookSubscription(t *testing.T) {
 		{"no endpoints", `{"data":[]}`, false, false},
 		{"other url only", `{"data":[{"url":"https://other.test/x","status":"enabled","enabled_events":["*"]}]}`, false, false},
 		{"checkout events only", `{"data":[{"url":"` + cb + `","status":"enabled","enabled_events":["checkout.session.completed"]}]}`, true, false},
-		{"refund.updated", `{"data":[{"url":"` + cb + `","status":"enabled","enabled_events":["checkout.session.completed","refund.updated"]}]}`, true, true},
+		{"refund.updated only", `{"data":[{"url":"` + cb + `","status":"enabled","enabled_events":["checkout.session.completed","refund.updated"]}]}`, true, false},
+		{"created and updated without failed", `{"data":[{"url":"` + cb + `","status":"enabled","enabled_events":["refund.created","refund.updated"]}]}`, true, false},
+		{"every refund event", `{"data":[{"url":"` + cb + `","status":"enabled","enabled_events":["refund.created","refund.updated","refund.failed"]}]}`, true, true},
+		{"the older update event", `{"data":[{"url":"` + cb + `","status":"enabled","enabled_events":["refund.created","charge.refund.updated","refund.failed"]}]}`, true, true},
 		{"all events", `{"data":[{"url":"` + cb + `","status":"enabled","enabled_events":["*"]}]}`, true, true},
 		{"disabled endpoint", `{"data":[{"url":"` + cb + `","status":"disabled","enabled_events":["*"]}]}`, false, false},
 	}
