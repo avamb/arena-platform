@@ -94,10 +94,12 @@ func TestPGStore_SubscriptionsQueriesAndBookkeeping_LiveDB(t *testing.T) {
 	rows.Close()
 	for _, orderID := range orderIDs {
 		sale, err := st.SaleByOrder(ctx, orderID)
-		if errors.Is(err, ErrNotFound) {
+		if errors.Is(err, ErrNotFound) || (err == nil && sale.Tickets() == 0) {
+			// Gone, or being torn down by another package's fixture (its
+			// order_items are deleted before the order itself).
 			continue
 		}
-		if err != nil || sale.OrderNumber == 0 || sale.OrgName == "" || sale.EventName == "" || sale.Tickets() == 0 {
+		if err != nil || sale.OrderNumber == 0 || sale.OrgName == "" || sale.EventName == "" {
 			t.Fatalf("SaleByOrder(%s) = %+v, %v", orderID, sale, err)
 		}
 		break
