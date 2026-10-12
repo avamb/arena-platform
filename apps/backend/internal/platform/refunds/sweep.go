@@ -185,11 +185,20 @@ func (e *Engine) Sweep(ctx context.Context, now time.Time, notifier Notifier) (S
 		// is nearly spent.
 		actx, cancel := context.WithTimeout(context.WithoutCancel(ctx), alertSectionBudget)
 		n, err := e.alertReviews(actx, notifier)
-		cancel()
 		rep.Alerted = n
 		if err != nil {
 			errs = append(errs, fmt.Errorf("refunds: sweep alerts: %w", err))
 		}
+		// Lost buyer letters share the section's budget and its message cap,
+		// so the pass stays inside SweepWorstCase and Telegram's rate.
+		if left := alertsPerPass - n; left > 0 && err == nil && actx.Err() == nil {
+			ln, lerr := e.alertLostBuyerNotices(actx, notifier, left)
+			rep.Alerted += ln
+			if lerr != nil {
+				errs = append(errs, fmt.Errorf("refunds: sweep lost buyer letters: %w", lerr))
+			}
+		}
+		cancel()
 	}
 	return rep, errors.Join(errs...)
 }

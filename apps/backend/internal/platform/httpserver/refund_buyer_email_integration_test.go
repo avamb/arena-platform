@@ -217,3 +217,135 @@ func TestRefundBuyerEmail_OneLetterPerOperation(t *testing.T) {
 		t.Fatalf("a pending refund was mailed: err=%v messages=%d", err, len(sender.sent())-before)
 	}
 }
+
+// textNotifier records ops alerts.
+type textNotifier struct {
+	mu    sync.Mutex
+	texts []string
+}
+
+func (n *textNotifier) Send(_ context.Context, text string) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.texts = append(n.texts, text)
+	return nil
+}
+
+func (n *textNotifier) about(s string) int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	c := 0
+	for _, t := range n.texts {
+		if strings.Contains(t, s) {
+			c++
+		}
+	}
+	return c
+}
+
+// Round-2 review R2-4: only failed sends after the refund settled count
+// against the re-queue limit, and an exhausted letter alerts the operator
+// once instead of disappearing.
+func TestRefundBuyerEmail_RequeueCountsFailedSendsAndAlertsOnce(t *testing.T) {
+	stub := newStubStripe(t)
+	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) { c.StripeAPIBaseURL = stub.baseURL() })
+	ts := httptest.NewServer(srv.Router())
+	t.Cleanup(ts.Close)
+	pf := &prom0113Fixture{ts: ts, client: ts.Client(), q: gen.New(srv.pgxPool)}
+	user, err := pf.q.InsertUser(context.Background(), "pay07r-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf.userID = user.ID
+	org := pf.org(t, "PAY07R")
+	ctx := context.Background()
+	stub.refundHandler = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"id":"re_`+uuid.NewString()[:8]+`","status":"succeeded"}`)
+	}
+	stub.sessionPI = "pi_pay07r_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
+	engine := srv.refundEngine()
+	newBatch := func() string {
+		f := newPay03Order(t, srv.pgxPool, org, "stripe")
+		res, err := engine.CreateBatch(ctx, refunds.BatchInput{
+			OrgID: org, OrderID: f.order, Reason: "pay07r", CancelTickets: true, NotifyBuyer: true,
+			IdempotencyKey: "pay07r-" + uuid.NewString(), Approved: true,
+			Items: []refunds.Item{{TicketID: f.tickets[0]}},
+		})
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		b := res.BatchID.String()
+		t.Cleanup(func() {
+			_, _ = srv.pgxPool.Exec(ctx, `DELETE FROM worker_jobs WHERE job_type = $1 AND payload->>'batch_id' = $2`, refunds.JobTypeBuyerEmail, b)
+		})
+		// The letter jobs of this test are written by hand.
+		if _, err := srv.pgxPool.Exec(ctx, `DELETE FROM worker_jobs WHERE job_type = $1 AND payload->>'batch_id' = $2`, refunds.JobTypeBuyerEmail, b); err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	addJobs := func(batch, status string, n int, created time.Time) {
+		payload, _ := json.Marshal(refunds.BuyerEmailPayload{BatchID: batch})
+		for i := 0; i < n; i++ {
+			if _, err := srv.pgxPool.Exec(ctx, `INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at, created_at)
+				VALUES ($1, $2::jsonb, 5, $3, $4, $4)`, refunds.JobTypeBuyerEmail, payload, status, created); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	pending := func(batch string) int {
+		var n int
+		_ = srv.pgxPool.QueryRow(ctx, `SELECT count(*) FROM worker_jobs WHERE job_type = $1 AND payload->>'batch_id' = $2 AND status = 'pending'`,
+			refunds.JobTypeBuyerEmail, batch).Scan(&n)
+		return n
+	}
+	later := time.Now().Add(time.Hour)
+	old := time.Now().Add(-time.Hour)
+
+	// ── six jobs that sent nothing (done) or failed before the refund
+	//    settled do not use up the letter's tries
+	b1 := newBatch()
+	addJobs(b1, "done", buyerNoticeMax, old)
+	addJobs(b1, "failed", buyerNoticeMax, old.Add(-24*time.Hour))
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE refunds SET settled_at = $2 WHERE batch_id = $1`, b1, old.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.RequeueBuyerNotices(ctx, later); err != nil {
+		t.Fatalf("requeue: %v", err)
+	}
+	if n := pending(b1); n != 1 {
+		t.Fatalf("a letter with no failed send was queued %d times; want 1", n)
+	}
+
+	// ── six failed sends: no more jobs, one alert, then silence
+	b2 := newBatch()
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE refunds SET settled_at = $2 WHERE batch_id = $1`, b2, old); err != nil {
+		t.Fatal(err)
+	}
+	addJobs(b2, "failed", buyerNoticeMax, old.Add(time.Minute))
+	if _, err := engine.RequeueBuyerNotices(ctx, later); err != nil {
+		t.Fatalf("requeue: %v", err)
+	}
+	if n := pending(b2); n != 0 {
+		t.Fatalf("an exhausted letter was queued again (%d)", n)
+	}
+	n := &textNotifier{}
+	if _, err := engine.AlertLostBuyerNotices(ctx, n); err != nil {
+		t.Fatalf("alert: %v", err)
+	}
+	if n.about(b2) != 1 || n.about(b1) != 0 {
+		t.Fatalf("alerts = %v; want exactly one about %s", n.texts, b2)
+	}
+	if _, err := engine.AlertLostBuyerNotices(ctx, n); err != nil || n.about(b2) != 1 {
+		t.Fatalf("the lost letter was alerted again: err=%v alerts=%v", err, n.texts)
+	}
+	var givenUp int
+	_ = srv.pgxPool.QueryRow(ctx, `SELECT count(*) FROM refunds WHERE batch_id = $1 AND buyer_notice_given_up_at IS NOT NULL AND buyer_notified_at IS NULL`, b2).Scan(&givenUp)
+	if givenUp != 1 {
+		t.Fatalf("given-up refunds = %d; want 1, still unmailed", givenUp)
+	}
+}
+
+// buyerNoticeMax mirrors refunds.buyerNoticeMaxJobs.
+const buyerNoticeMax = 6
