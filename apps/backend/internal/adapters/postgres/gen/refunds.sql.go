@@ -333,8 +333,7 @@ SELECT COALESCE(SUM(amount), 0)::BIGINT
 FROM   refunds
 WHERE  payment_intent_id = $1
   AND  state NOT IN ('failed', 'rejected')
-  AND  NOT (state = 'manual_review' AND provider_attempts = 0 AND provider_refund_id IS NULL
-            AND COALESCE(failure_code, '') IN ('budget_taken_by_another_refund', 'stuck_provider_pending'))`
+  AND  NOT (state = 'manual_review' AND provider_attempts = 0 AND provider_refund_id IS NULL)`
 
 // SumNonFailedRefundsByIntent returns the total amount already committed to
 // non-failed refunds for the given payment intent. This is used to compute the
@@ -345,9 +344,9 @@ WHERE  payment_intent_id = $1
 // Non-failed states are: requested, approved, provider_pending, succeeded,
 // manual_review. Failed and rejected refunds are excluded because they do not
 // represent money that will be (or has been) returned to the customer, and so
-// is a refund the refund engine parked BEFORE any provider call (held back
-// for its budget, budget_taken_by_another_refund, or stuck unsent,
-// stuck_provider_pending; provider_attempts 0, still in manual_review) —
+// is a refund parked BEFORE any provider call (manual_review, no attempt, no
+// provider refund id: held back for its budget, stuck unsent, or refused for a
+// broken configuration) —
 // the SAME rule as the engine's
 // countsAgainstBudgetSQL (internal/platform/refunds/drive.go), so the flat
 // routes and the engine never disagree on what is left (PAY-03 fifth review,
