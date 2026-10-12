@@ -43,3 +43,21 @@ type CredentialVerifier interface {
 	// recorded as a failure of it.
 	VerifyCredentials(ctx context.Context) error
 }
+
+// WebhookSubscription is what a provider reports about the endpoint that
+// receives its events for one config.
+type WebhookSubscription struct {
+	// EndpointFound is false when no registered endpoint has the callback URL.
+	EndpointFound bool
+	// RefundEventsSubscribed is true when the endpoint receives refund
+	// updates; meaningful only when EndpointFound.
+	RefundEventsSubscribed bool
+}
+
+// WebhookSubscriptionChecker is implemented by providers whose registered
+// webhook endpoints can be read with the stored credential. It is advisory:
+// a key without the right to read endpoints returns an error, which callers
+// treat as "unknown", never as a problem with the configuration.
+type WebhookSubscriptionChecker interface {
+	CheckWebhookSubscription(ctx context.Context, callbackURL string) (WebhookSubscription, error)
+}

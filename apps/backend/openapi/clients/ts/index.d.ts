@@ -26915,6 +26915,21 @@ export interface operations {
                 content: {
                     "application/json": {
                         payment_config: components["schemas"]["PaymentProviderConfigItem"];
+                        /**
+                         * @description Advisory findings about the provider's webhook endpoint,
+                         *     empty when there is nothing to report or the provider
+                         *     could not be asked. `webhook_endpoint_not_found`: the
+                         *     provider account has no endpoint with this config's
+                         *     callback URL. `refund_events_not_subscribed`: the
+                         *     endpoint exists but does not receive refund updates, so
+                         *     refunds made at the provider never reach arena. Only
+                         *     computed when the credential was accepted and the
+                         *     provider lets the key list its endpoints.
+                         * @example [
+                         *       "refund_events_not_subscribed"
+                         *     ]
+                         */
+                        webhook_warnings: string[];
                     };
                 };
             };
