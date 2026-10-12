@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -48,6 +49,9 @@ type ListItem struct {
 	// API key. Both nil when the creator cannot be told.
 	CreatorKind  *string
 	CreatorLabel *string
+	// CreatorLabelIsEmail: the label is the member's e-mail (they have no
+	// name). The API hides it from callers that act with an API key.
+	CreatorLabelIsEmail bool
 }
 
 // creatorJoins and creatorColumns resolve who asked for a refund from
@@ -60,7 +64,8 @@ const (
 			     AND EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = cu.id AND m.org_id = r.org_id)`
 	creatorColumns = `CASE WHEN ak.id IS NOT NULL THEN 'api_key' WHEN cu.id IS NOT NULL THEN 'user'
 			            WHEN r.requested_by = 'provider_dashboard' THEN 'provider_dashboard' END,
-			       COALESCE(ak.name, NULLIF(btrim(concat_ws(' ', cu.first_name, cu.last_name)), ''), cu.email)`
+			       COALESCE(ak.name, NULLIF(btrim(concat_ws(' ', cu.first_name, cu.last_name)), ''), cu.email),
+			       (ak.id IS NULL AND cu.id IS NOT NULL AND NULLIF(btrim(concat_ws(' ', cu.first_name, cu.last_name)), '') IS NULL)`
 )
 
 // ListPage is one page of the queue.
@@ -108,7 +113,7 @@ func (e *Engine) List(ctx context.Context, orgID uuid.UUID, f ListFilter) (ListP
 		defer rows.Close()
 		for rows.Next() {
 			var it ListItem
-			r, err := scanRefundWith(rows, &it.OrderSystemID, &it.EventName, &it.TicketNumber, &it.CreatorKind, &it.CreatorLabel)
+			r, err := scanRefundWith(rows, &it.OrderSystemID, &it.EventName, &it.TicketNumber, &it.CreatorKind, &it.CreatorLabel, &it.CreatorLabelIsEmail)
 			if err != nil {
 				return err
 			}
@@ -124,20 +129,14 @@ func (e *Engine) List(ctx context.Context, orgID uuid.UUID, f ListFilter) (ListP
 	return page, nil
 }
 
-// prefixedColumns is refundColumns with every column qualified by alias.
+// prefixedColumns is refundColumns with every column qualified by alias,
+// derived from refundColumns itself so the two never drift apart.
 func prefixedColumns(alias string) string {
-	cols := []string{"id", "org_id", "payment_intent_id", "order_id", "ticket_id", "batch_id", "amount", "currency",
-		"reason", "requested_by", "state", "settlement", "provider", "provider_refund_id", "provider_status",
-		"failure_code", "failure_reason", "cancel_ticket", "provider_attempts", "provider_attempted_at",
-		"created_at", "updated_at", "cancelled_ticket_id"}
-	out := ""
+	cols := strings.Split(refundColumns, ",")
 	for i, c := range cols {
-		if i > 0 {
-			out += ", "
-		}
-		out += alias + "." + c
+		cols[i] = alias + "." + strings.TrimSpace(c)
 	}
-	return out
+	return strings.Join(cols, ", ")
 }
 
 // HistoryEntry is one step of a refund's life, read from the audit trail.
@@ -172,7 +171,7 @@ func (e *Engine) Get(ctx context.Context, orgID, refundID uuid.UUID) (Detail, er
 			LEFT JOIN events ev ON ev.id = o.event_id
 			LEFT JOIN tickets t ON t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)`+creatorJoins+`
 			WHERE r.id = $1 AND r.org_id = $2`, refundID, orgID)
-		r, err := scanRefundWith(row, &d.OrderSystemID, &d.EventName, &d.TicketNumber, &d.CreatorKind, &d.CreatorLabel)
+		r, err := scanRefundWith(row, &d.OrderSystemID, &d.EventName, &d.TicketNumber, &d.CreatorKind, &d.CreatorLabel, &d.CreatorLabelIsEmail)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return refusal(http.StatusNotFound, CodeRefundNotFound, "refund not found", nil)
 		}
