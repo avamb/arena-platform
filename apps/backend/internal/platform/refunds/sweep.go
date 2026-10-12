@@ -568,6 +568,8 @@ func alertText(r Refund, ticketStatus string) string {
 	if deref(r.RequestedBy) == "provider_dashboard" {
 		head := fmt.Sprintf("Refund %s (%d %s via %s) was made in the provider's own dashboard", r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)))
 		switch deref(r.FailureCode) {
+		case failureReversedAfterSuccess:
+			return head + fmt.Sprintf(" and was reversed by the provider afterwards: the money did not go back to the buyer. Check the provider dashboard and decide with the organizer what happens to the order's tickets. Order %s.", uuidString(r.OrderID))
 		case DashboardCapped:
 			return head + fmt.Sprintf(" for more than was left of the payment; it was recorded as what was left and the order's tickets were cancelled. Check the provider dashboard for the difference. Order %s.", uuidString(r.OrderID))
 		case DashboardOverPayment:

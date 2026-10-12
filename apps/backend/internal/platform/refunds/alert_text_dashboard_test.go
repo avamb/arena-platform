@@ -34,3 +34,15 @@ func TestAlertText_DashboardRefundSaysWhatHappened(t *testing.T) {
 		}
 	}
 }
+
+// Round-3 review R3-2: a dashboard refund the provider reversed says so, not
+// "partial, review hold".
+func TestAlertText_DashboardRefundReversed(t *testing.T) {
+	provider, origin, code, state := "stripe", "provider_dashboard", failureReversedAfterSuccess, "failed"
+	r := Refund{ID: uuid.New(), Amount: 2500, Currency: "EUR", Provider: &provider, RequestedBy: &origin,
+		FailureCode: &code, ProviderStatus: &state, State: StateManualReview}
+	got := alertText(r, "")
+	if !strings.Contains(got, "reversed") || strings.Contains(got, "review hold") {
+		t.Errorf("reversed dashboard refund: %q", got)
+	}
+}
