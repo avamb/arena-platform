@@ -47,7 +47,15 @@ type ScannedAlertPayload struct {
 	// (refund_scan_notice_sends): a retried job mails only the addresses
 	// that have not received it yet.
 	NoticeID string `json:"notice_id,omitempty"`
+	// Kind is empty for a blocked refund and ScannedAlertKindException for a
+	// superadmin's exception (with its Reason and its Until, RFC 3339).
+	Kind   string `json:"kind,omitempty"`
+	Reason string `json:"reason,omitempty"`
+	Until  string `json:"until,omitempty"`
 }
+
+// ScannedAlertKindException marks the owners' e-mail about an exception.
+const ScannedAlertKindException = "exception"
 
 // ticketScannedSQL is true for a ticket t that was used: it carries used_at,
 // or ANY barcode of it (whatever authority, the legacy_bil24 import's
@@ -61,6 +69,29 @@ const ticketScannedSQL = `(t.used_at IS NOT NULL OR EXISTS (
 	           JOIN sessions ss ON ss.id = t.session_id
 	           JOIN events se_ev ON se_ev.id = ss.event_id
 	           WHERE se.ticket_id = t.id AND se.result = 'admitted' AND se.org_id = se_ev.org_id))`
+
+// scanExemptLiveSQL is true for a ticket t with a platform superadmin's
+// exception that is still unspent and unexpired (refund_scan_exceptions,
+// one per ticket).
+const scanExemptLiveSQL = `EXISTS (SELECT 1 FROM refund_scan_exceptions sx
+	WHERE sx.ticket_id = t.id AND sx.used_at IS NULL AND sx.expires_at > now())`
+
+// scanExemptForRefundSQL also lets through the refund r that spent the
+// exception, at its approval and its claim.
+const scanExemptForRefundSQL = `EXISTS (SELECT 1 FROM refund_scan_exceptions sx
+	WHERE sx.ticket_id = t.id AND ((sx.used_at IS NULL AND sx.expires_at > now()) OR sx.used_by_refund = r.id))`
+
+// ticketBlockedSQL is a scanned ticket t without a live exception: no refund
+// may be created for it.
+const ticketBlockedSQL = `(` + ticketScannedSQL + ` AND NOT ` + scanExemptLiveSQL + `)`
+
+// ticketBlockedForRefundSQL is the same for the stored refund r.
+const ticketBlockedForRefundSQL = `(` + ticketScannedSQL + ` AND NOT ` + scanExemptForRefundSQL + `)`
+
+// spendScanExceptionSQL spends the live exception of ticket $2 for refund $1
+// (NULL for a cancellation without a refund row).
+const spendScanExceptionSQL = `UPDATE refund_scan_exceptions SET used_at = now(), used_by_refund = $1
+	WHERE ticket_id = $2 AND used_at IS NULL AND expires_at > now()`
 
 // scannedOrder makes "the first scanned ticket" the same one every time.
 const scannedOrder = ` ORDER BY t.system_ticket_id NULLS LAST, t.id`
@@ -192,7 +223,7 @@ func (e *Engine) ScannedTicketOfPayment(ctx context.Context, paymentIntentID uui
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
 		err := tx.QueryRow(ctx, `SELECT t.id FROM payment_intents pi
 			JOIN tickets t ON t.checkout_session_id = pi.checkout_session_id
-			WHERE pi.id = $1 AND t.status = 'active' AND `+ticketScannedSQL+scannedOrder+` LIMIT 1`, paymentIntentID).Scan(&id)
+			WHERE pi.id = $1 AND t.status = 'active' AND `+ticketBlockedSQL+scannedOrder+` LIMIT 1`, paymentIntentID).Scan(&id)
 		if err == nil {
 			found = true
 			return nil
@@ -219,9 +250,19 @@ func (e *Engine) blockScannedAtClaim(ctx context.Context, tx pgx.Tx, id uuid.UUI
 		                   OR (COALESCE(r.ticket_id, r.cancelled_ticket_id) IS NULL
 		                       AND t.checkout_session_id = pi.checkout_session_id AND t.status = 'active'))
 		WHERE r.id = $1 AND r.state = 'provider_pending' AND r.provider_refund_id IS NULL AND r.provider_attempts = 0
-		  AND `+ticketScannedSQL+scannedOrder+` LIMIT 1`, id).Scan(&ticket)
+		  AND `+ticketBlockedForRefundSQL+scannedOrder+` LIMIT 1`, id).Scan(&ticket)
 	if err == pgx.ErrNoRows {
-		return nil, uuid.Nil, nil
+		// Nothing blocks it. A scanned ticket of it that passes on a live
+		// exception spends that exception on this refund now.
+		_, serr := tx.Exec(ctx, `UPDATE refund_scan_exceptions sx SET used_at = now(), used_by_refund = $1
+			FROM refunds r
+			JOIN payment_intents pi ON pi.id = r.payment_intent_id
+			JOIN tickets t ON (t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)
+			                   OR (COALESCE(r.ticket_id, r.cancelled_ticket_id) IS NULL
+			                       AND t.checkout_session_id = pi.checkout_session_id AND t.status = 'active'))
+			WHERE r.id = $1 AND sx.ticket_id = t.id AND sx.used_at IS NULL AND sx.expires_at > now()
+			  AND r.state = 'provider_pending' AND r.provider_attempts = 0`, id)
+		return nil, uuid.Nil, serr
 	}
 	if err != nil {
 		return nil, uuid.Nil, err
@@ -250,7 +291,7 @@ func (e *Engine) ScannedTicketForRefund(ctx context.Context, refundID uuid.UUID)
 			JOIN payment_intents pi ON pi.id = r.payment_intent_id
 			JOIN tickets t ON (t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)
 			                   OR (COALESCE(r.ticket_id, r.cancelled_ticket_id) IS NULL AND t.checkout_session_id = pi.checkout_session_id AND t.status = 'active'))
-			WHERE r.id = $1 AND `+ticketScannedSQL+scannedOrder+` LIMIT 1`, refundID).Scan(&id)
+			WHERE r.id = $1 AND `+ticketBlockedForRefundSQL+scannedOrder+` LIMIT 1`, refundID).Scan(&id)
 		if err == nil {
 			found = true
 			return nil
@@ -263,12 +304,21 @@ func (e *Engine) ScannedTicketForRefund(ctx context.Context, refundID uuid.UUID)
 	return id, found, err
 }
 
-// TicketScanned reports whether the ticket was scanned at the gate (the same
-// rule every refund check uses).
-func (e *Engine) TicketScanned(ctx context.Context, ticketID uuid.UUID) (bool, error) {
+// TicketScanned reports whether money may not be returned for the ticket
+// because it was scanned at the gate (the same rule every refund check uses,
+// a live superadmin exception included). spend spends that exception at once,
+// for a path that writes no refund row of its own.
+func (e *Engine) TicketScanned(ctx context.Context, ticketID uuid.UUID, spend bool) (bool, error) {
 	var scanned bool
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, `SELECT `+ticketScannedSQL+` FROM tickets t WHERE t.id = $1`, ticketID).Scan(&scanned)
+		if err := tx.QueryRow(ctx, `SELECT `+ticketBlockedSQL+` FROM tickets t WHERE t.id = $1`, ticketID).Scan(&scanned); err != nil {
+			return err
+		}
+		if spend && !scanned {
+			_, err := tx.Exec(ctx, spendScanExceptionSQL, nil, ticketID)
+			return err
+		}
+		return nil
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil

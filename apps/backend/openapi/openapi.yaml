@@ -38344,6 +38344,122 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/tickets/{ticket_id}/scan-refund-exception:
+    post:
+      operationId: postV1OrganizationsOrgIdTicketsTicketIdScanRefundException
+      summary: Allow one refund of a ticket that was already scanned
+      description: |
+        A platform operator allows ONE refund of a ticket that was already
+        scanned at the gate (a show stopped half-way, a scan made by
+        mistake). Every check that refuses a scanned ticket with
+        refund.ticket_scanned honours it; the first refund that uses it spends
+        it, and the exception ends at `expires_at` (at most 24 hours) in any
+        case. A ticket gets at most one exception. The grant is audited with
+        the X-Admin-Reason, the organization's owners get an e-mail and the
+        sales bot tells the organization's group and the operator. Platform
+        superadmin only, with X-Admin-Reason.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: ticket_id
+          in: path
+          required: true
+          description: UUIDv7 of the ticket
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              description: How long the exception lives, and a comment.
+              properties:
+                hours:
+                  type: integer
+                  description: Hours the exception is valid, 1 to 24; 24 when left out.
+                note:
+                  type: string
+                  description: A comment of up to 1000 characters, kept in the audit trail.
+      responses:
+        "201":
+          description: The exception is recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: The granted exception.
+                required: [scan_exception]
+                properties:
+                  scan_exception:
+                    type: object
+                    description: The exception.
+                    required: [id, ticket_id, created_at, expires_at]
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                        description: UUIDv7 of the exception.
+                      ticket_id:
+                        type: string
+                        format: uuid
+                        description: UUIDv7 of the ticket.
+                      created_at:
+                        type: string
+                        format: date-time
+                        description: When it was granted (RFC 3339, UTC).
+                      expires_at:
+                        type: string
+                        format: date-time
+                        description: Until when it can be used (RFC 3339, UTC).
+        "400":
+          description: "Hours outside 1 to 24 or a note that is too long (refund.invalid_request), or X-Admin-Reason missing (superadmin.missing_reason)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Not a platform operator (refund.scan_exception_superadmin_only)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Ticket not found in this organization (ticket.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The ticket was not scanned (refund.ticket_not_scanned) or already had its exception (refund.scan_exception_exists)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Refunds are not available (refund.engine_unavailable)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/tickets/{ticket_id}/review-hold/clear:
     post:
       operationId: postV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear

@@ -355,3 +355,30 @@ func TestDispatcher_AnnouncesABlockedRefundToTheOrganizationAndTheOperator(t *te
 		t.Fatalf("a later block is not announced: %d messages", len(snd.sent))
 	}
 }
+
+func TestDispatcher_AnnouncesAScanExceptionToTheOrganizationAndTheOperator(t *testing.T) {
+	store := newFakeStore(
+		Subscription{ID: "op", Name: "operator", ChatID: "-100", OnTicketRefunded: true},
+		Subscription{ID: "vino", OrgID: orgVino, ChatID: "-200", OnTicketRefunded: true},
+	)
+	store.refunds["t-9"] = Refund{OrgID: orgVino, OrgName: "Vino&Co", EventName: "Quiz", OrderNumber: 2, TicketNumber: 9,
+		Buyer: Buyer{Name: "Inna", Email: "inna@example.com"}}
+	snd := &fakeSender{}
+	d := NewDispatcher(store, snd, nil)
+	ev := outbox.Event{ID: "row-x", EventType: EventScanExceptionGranted, AggregateID: "t-9",
+		Payload: map[string]any{"ticket_id": "t-9", "reason": "show <cancelled>", "expires_at": "2026-10-14T18:00:00Z"}}
+	d.Handle(context.Background(), ev)
+	d.Handle(context.Background(), ev)
+	if len(snd.sent) != 2 {
+		t.Fatalf("deliveries = %d; want the organization's group and the operator, once each", len(snd.sent))
+	}
+	for _, s := range snd.sent {
+		if !strings.Contains(s.text, "allowed by the platform operator") || !strings.Contains(s.text, "show &lt;cancelled&gt;") ||
+			!strings.Contains(s.text, "2026-10-14 18:00 UTC") {
+			t.Errorf("message lacks the exception, its reason or its expiry:\n%s", s.text)
+		}
+		if strings.Contains(s.text, "inna@example.com") {
+			t.Errorf("an operator notice must not carry buyer data:\n%s", s.text)
+		}
+	}
+}

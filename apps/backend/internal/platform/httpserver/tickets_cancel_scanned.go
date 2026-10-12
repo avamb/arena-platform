@@ -39,7 +39,10 @@ func (s *Server) cancelMoneyAllowedForScan(w http.ResponseWriter, r *http.Reques
 	if engine == nil {
 		return true
 	}
-	scanned, err := engine.TicketScanned(r.Context(), ticketID)
+	// A superadmin's exception lets it through. A manual refund writes no
+	// refund row, so it spends the exception here; an automatic one writes a
+	// refund that spends it when it is sent.
+	scanned, err := engine.TicketScanned(r.Context(), ticketID, body.RefundMode == "manual")
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			refunds.CodeEngineUnavailable, "whether the ticket was scanned could not be checked; try again", r))

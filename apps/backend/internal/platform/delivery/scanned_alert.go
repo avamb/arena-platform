@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -132,6 +133,16 @@ func NewScannedAlertHandler(opts ScannedAlertOptions) worker.HandlerFunc {
 		if orderNumber != nil {
 			data.Alert.OrderNumber = strconv.FormatInt(*orderNumber, 10)
 		}
+		kind := templates.TemplateKindRefundBlocked
+		if p.Kind == refunds.ScannedAlertKindException {
+			// A superadmin allowed one refund of the scanned ticket.
+			kind = templates.TemplateKindScanException
+			data.Alert.Actor = ""
+			data.Alert.Reason = p.Reason
+			if until, perr := time.Parse(time.RFC3339, p.Until); perr == nil {
+				data.Alert.Until = until.UTC().Format("2006-01-02 15:04") + " UTC" // allow:timeformat
+			}
+		}
 		noticeID, _ := uuid.Parse(p.NoticeID)
 		sent := func(addr string) bool {
 			if noticeID == uuid.Nil {
@@ -148,7 +159,7 @@ func NewScannedAlertHandler(opts ScannedAlertOptions) worker.HandlerFunc {
 				continue // a retry: this address already has the notice
 			}
 			data.RecipientEmail = o.email
-			out, rerr := renderer.Render(templates.TemplateKindRefundBlocked, o.locale, data)
+			out, rerr := renderer.Render(kind, o.locale, data)
 			if rerr != nil {
 				return rerr
 			}

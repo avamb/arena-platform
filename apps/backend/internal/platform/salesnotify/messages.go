@@ -188,6 +188,27 @@ func FormatRefund(r Refund) string {
 	return b.String()
 }
 
+// FormatScanException renders the notice that a platform superadmin allowed
+// one refund of a ticket that was already scanned. No buyer data.
+func FormatScanException(r Refund, reason, expiresAt string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "⚠️ <b>Refund of a used ticket allowed by the platform operator</b> - %s\n\n", esc(r.OrgName))
+	writeEvent(&b, r.EventName, r.StartAt, r.TimeZone, r.VenueName)
+	if r.OrderNumber != 0 {
+		fmt.Fprintf(&b, "\n🧾 Order #%d · ticket #%d\n", r.OrderNumber, r.TicketNumber)
+	} else {
+		fmt.Fprintf(&b, "\n🧾 Ticket #%d\n", r.TicketNumber)
+	}
+	if reason != "" {
+		fmt.Fprintf(&b, "📝 Reason: %s\n", esc(reason))
+	}
+	if t, err := time.Parse(time.RFC3339, expiresAt); err == nil {
+		fmt.Fprintf(&b, "⏳ Valid for one refund until %s UTC\n", t.UTC().Format("2006-01-02 15:04")) // allow:timeformat
+	}
+	b.WriteString("Nothing has been refunded yet.")
+	return b.String()
+}
+
 // FormatRefundBlocked renders the alert for a refund refused because the
 // ticket was already scanned at the gate. No buyer data: it is a security
 // notice about who tried, not a sale.

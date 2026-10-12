@@ -66,6 +66,11 @@ const TemplateKindCancel = "cancel"
 // of an already scanned ticket was refused (owner decision 2026-10-12).
 const TemplateKindRefundBlocked = "refund_blocked"
 
+// TemplateKindScanException is sent to an organization's owners when a
+// platform superadmin allowed one refund of a ticket that was already
+// scanned (owner decision 2026-10-13).
+const TemplateKindScanException = "refund_scan_exception"
+
 // Data is the value passed to every template. Fields are intentionally
 // strings (not domain structs) so the template author can ignore nil checks
 // and {{with}} blocks handle the "empty means omit" presentation rule.
@@ -148,6 +153,10 @@ type ScanAlertData struct {
 	// Actor names who tried (a member's name or e-mail, an API key's name);
 	// empty when it cannot be told.
 	Actor string
+	// Reason and Until belong to a superadmin's exception: why it was
+	// granted and until when it is valid, ready to print.
+	Reason string
+	Until  string
 }
 
 // TicketLine is one ticket of a multi-ticket e-mail. Every field is a

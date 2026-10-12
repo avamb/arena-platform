@@ -99,7 +99,7 @@ func (e *Engine) Options(ctx context.Context, orgID, orderID uuid.UUID) (OrderOp
 			                WHERE r.ticket_id = t.id AND r.cancel_ticket AND r.state NOT IN ('failed', 'rejected')),
 			       t.review_hold, t.system_ticket_id,
 			       NULLIF(concat_ws(' / ', NULLIF(btrim(t.seat_sector), ''), NULLIF(btrim(t.seat_row), ''), NULLIF(btrim(t.seat_number), '')), ''),
-			       `+ticketScannedSQL+`
+			       `+ticketBlockedSQL+`
 			FROM   order_items oi
 			JOIN   tickets t ON t.id = oi.ticket_id
 			WHERE  oi.order_id = $1

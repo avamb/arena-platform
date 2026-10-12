@@ -45,6 +45,7 @@ func (s *Server) mountRefundOrgRoutes(r chi.Router) {
 		pr.Post("/organizations/{org_id}/refunds/{refund_id}/retry", s.handleRetryOrgRefund)
 		pr.Post("/organizations/{org_id}/refunds/{refund_id}/resolve", s.handleResolveOrgRefund)
 		pr.Post("/organizations/{org_id}/tickets/{ticket_id}/review-hold/clear", s.handleClearTicketReviewHold)
+		pr.Post("/organizations/{org_id}/tickets/{ticket_id}/scan-refund-exception", s.handleGrantScanException)
 	})
 }
 

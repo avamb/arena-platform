@@ -39,6 +39,9 @@ const (
 	// actor per day). Routed like a refund: the organization's group and the
 	// operator's.
 	EventRefundBlockedScanned = "v1.refund.blocked_scanned"
+	// EventScanExceptionGranted: a platform superadmin allowed one refund of
+	// a ticket that was already scanned. Routed like a refund.
+	EventScanExceptionGranted = "v1.refund.scan_exception_granted"
 )
 
 // queueSize bounds the events waiting for Telegram. A burst beyond it is
@@ -159,7 +162,7 @@ func (d *Dispatcher) Dispatch(_ context.Context, ev outbox.Event) error {
 		return nil
 	}
 	switch ev.EventType {
-	case EventOrderPaid, EventTicketRefunded, EventTicketCancelled, EventRefundBlockedScanned:
+	case EventOrderPaid, EventTicketRefunded, EventTicketCancelled, EventRefundBlockedScanned, EventScanExceptionGranted:
 	default:
 		return nil
 	}
@@ -244,6 +247,14 @@ func (d *Dispatcher) compose(ctx context.Context, ev outbox.Event) (key string, 
 		// The event row id keeps two blocks of one ticket apart (one per day
 		// and actor), while an outbox retry of the same row stays a no-op.
 		return "scanblock:" + ev.ID, TriggerTicketRefunded, d.withFooter(FormatRefundBlocked(r, payloadString(ev.Payload, "actor", ""))), r.OrgID, nil
+	case EventScanExceptionGranted:
+		id := payloadString(ev.Payload, "ticket_id", ev.AggregateID)
+		r, err := d.store.RefundByTicket(ctx, id)
+		if err != nil {
+			return "", 0, "", "", err
+		}
+		text := FormatScanException(r, payloadString(ev.Payload, "reason", ""), payloadString(ev.Payload, "expires_at", ""))
+		return "scanexc:" + ev.ID, TriggerTicketRefunded, d.withFooter(text), r.OrgID, nil
 	default: // v1.ticket.refunded / v1.ticket.cancelled
 		id := payloadString(ev.Payload, "ticket_id", ev.AggregateID)
 		r, err := d.store.RefundByTicket(ctx, id)

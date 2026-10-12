@@ -304,3 +304,40 @@ func TestRefundScanned_RetryMailsOnlyTheAddressThatFailed(t *testing.T) {
 	}
 	e.exec(t, `DELETE FROM refund_scan_notice_sends WHERE email = ANY($1)`, []string{box.msgs[0].To, box.msgs[1].To})
 }
+
+// The superadmin's exception is honoured by the other check points too: the
+// ticket-cancel route with money spends it, and the flat create lets a
+// whole-payment refund through while it is live.
+func TestRefundScanned_ExceptionHonouredByCancelAndFlatCreate(t *testing.T) {
+	e := newScanEnv(t, "ticket.cancel", "refund.read", "refund.create")
+	ctx := context.Background()
+	e.exec(t, `UPDATE tickets SET used_at = now() WHERE id = ANY($1)`, []uuid.UUID{e.f.tickets[0], e.f.tickets[1]})
+	t.Cleanup(func() {
+		_, _ = e.srv.pgxPool.Exec(context.Background(), `DELETE FROM refund_scan_exceptions WHERE org_id = $1`, e.org)
+	})
+	grant := func(i int) {
+		t.Helper()
+		if _, err := e.srv.refundEngine().GrantScanException(ctx, refunds.ScanExceptionInput{OrgID: e.org, TicketID: e.f.tickets[i],
+			Actor: refunds.Actor{Type: "user", ID: uuid.NewString()}, Reason: "test"}); err != nil {
+			t.Fatalf("grant: %v", err)
+		}
+	}
+	// flat create: refused, then allowed by a live exception on the scanned ticket(s)
+	flat := fmt.Sprintf(`{"payment_intent_id":%q,"amount":1000,"currency":"EUR"}`, e.f.pay)
+	if st, out := e.pf.do(t, http.MethodPost, "/v1/refunds", e.key, flat); st != http.StatusConflict || prom0113Code(out) != refunds.CodeTicketScanned {
+		t.Fatalf("flat create without exceptions: %d %v", st, out)
+	}
+	grant(0)
+	grant(1)
+	if st, out := e.pf.do(t, http.MethodPost, "/v1/refunds", e.key, flat); st != http.StatusCreated && st != http.StatusOK {
+		t.Fatalf("flat create with live exceptions: %d %v; want it written", st, out)
+	}
+	// cancel with a manual refund spends ticket 0's exception
+	if st, out := e.pf.do(t, http.MethodPost, "/v1/tickets/"+e.f.tickets[0].String()+"/cancel", e.key,
+		`{"reason":"scan3","refund_mode":"manual"}`); st != http.StatusOK {
+		t.Fatalf("cancel with an exception: %d %v; want 200", st, out)
+	}
+	if n := e.count(t, `SELECT count(*) FROM refund_scan_exceptions WHERE ticket_id = $1 AND used_at IS NOT NULL`, e.f.tickets[0]); n != 1 {
+		t.Fatalf("the cancellation did not spend the exception (%d)", n)
+	}
+}

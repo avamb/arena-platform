@@ -6533,6 +6533,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/tickets/{ticket_id}/scan-refund-exception": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Allow one refund of a ticket that was already scanned
+         * @description A platform operator allows ONE refund of a ticket that was already
+         *     scanned at the gate (a show stopped half-way, a scan made by
+         *     mistake). Every check that refuses a scanned ticket with
+         *     refund.ticket_scanned honours it; the first refund that uses it spends
+         *     it, and the exception ends at `expires_at` (at most 24 hours) in any
+         *     case. A ticket gets at most one exception. The grant is audited with
+         *     the X-Admin-Reason, the organization's owners get an e-mail and the
+         *     sales bot tells the organization's group and the operator. Platform
+         *     superadmin only, with X-Admin-Reason.
+         */
+        post: operations["postV1OrganizationsOrgIdTicketsTicketIdScanRefundException"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/tickets/{ticket_id}/review-hold/clear": {
         parameters: {
             query?: never;
@@ -43536,6 +43564,127 @@ export interface operations {
                 };
             };
             /** @description Refunds are not available (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdTicketsTicketIdScanRefundException: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the ticket */
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description Hours the exception is valid, 1 to 24; 24 when left out. */
+                    hours?: number;
+                    /** @description A comment of up to 1000 characters, kept in the audit trail. */
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The exception is recorded. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description The exception. */
+                        scan_exception: {
+                            /**
+                             * Format: uuid
+                             * @description UUIDv7 of the exception.
+                             */
+                            id: string;
+                            /**
+                             * Format: uuid
+                             * @description UUIDv7 of the ticket.
+                             */
+                            ticket_id: string;
+                            /**
+                             * Format: date-time
+                             * @description When it was granted (RFC 3339, UTC).
+                             */
+                            created_at: string;
+                            /**
+                             * Format: date-time
+                             * @description Until when it can be used (RFC 3339, UTC).
+                             */
+                            expires_at: string;
+                        };
+                    };
+                };
+            };
+            /** @description Hours outside 1 to 24 or a note that is too long (refund.invalid_request), or X-Admin-Reason missing (superadmin.missing_reason). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a platform operator (refund.scan_exception_superadmin_only). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket not found in this organization (ticket.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The ticket was not scanned (refund.ticket_not_scanned) or already had its exception (refund.scan_exception_exists). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refunds are not available (refund.engine_unavailable). */
             503: {
                 headers: {
                     [name: string]: unknown;

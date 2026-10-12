@@ -373,7 +373,7 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 		                  AND `+countsAgainstBudgetSQL+`), 0)::bigint,
 		       EXISTS (SELECT 1 FROM refunds r
 		                WHERE r.ticket_id = t.id AND r.cancel_ticket AND r.state NOT IN ('failed', 'rejected')),
-		       t.review_hold, `+ticketScannedSQL+`
+		       t.review_hold, `+ticketBlockedSQL+`
 		FROM   tickets t
 		LEFT JOIN order_items oi ON oi.ticket_id = t.id AND oi.order_id = $2
 		WHERE  t.id = ANY($1) AND t.checkout_session_id = $3`, ids, ord.ID, ord.CheckoutSessionID)
@@ -488,6 +488,11 @@ func insertBatch(ctx context.Context, tx pgx.Tx, in BatchInput, pay Payment, pla
 				return res, refusal(http.StatusConflict, CodeInProgress, "a refund of this ticket is already in progress",
 					map[string]any{"ticket_id": p.TicketID.String()})
 			}
+			return res, err
+		}
+		// A scanned ticket got here on a superadmin's exception: this refund
+		// spends it.
+		if _, err := tx.Exec(ctx, spendScanExceptionSQL, r.ID, p.TicketID); err != nil {
 			return res, err
 		}
 		res.Refunds = append(res.Refunds, r)

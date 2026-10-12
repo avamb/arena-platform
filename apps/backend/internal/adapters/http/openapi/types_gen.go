@@ -14418,6 +14418,15 @@ type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody struct {
 	Note string `json:"note"`
 }
 
+// PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdScanRefundException.
+type PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody struct {
+	// Hours Hours the exception is valid, 1 to 24; 24 when left out.
+	Hours *int `json:"hours,omitempty"`
+
+	// Note A comment of up to 1000 characters, kept in the audit trail.
+	Note *string `json:"note,omitempty"`
+}
+
 // ListPublicFeedEventsParams defines parameters for ListPublicFeedEvents.
 type ListPublicFeedEventsParams struct {
 	// CityId Optional filter by publication city scope.
@@ -14875,6 +14884,9 @@ type PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody = ResolveOrde
 
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear for application/json ContentType.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody
+
+// PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdScanRefundException for application/json ContentType.
+type PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody
 
 // PostV1OrganizationsOrgIdVenuesJSONRequestBody defines body for PostV1OrganizationsOrgIdVenues for application/json ContentType.
 type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest
