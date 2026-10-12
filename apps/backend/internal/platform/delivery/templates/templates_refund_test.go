@@ -124,3 +124,34 @@ func TestRender_Refund_MarksOnlyTheVoidTickets(t *testing.T) {
 		}
 	}
 }
+
+// Round-3 review R3-4: the letter knows only its own tickets, so "your other
+// tickets stay valid" could cover tickets of the order it never listed. It
+// speaks of the other tickets in the list above.
+func TestRender_Refund_SomeVoidSpeaksOfTheListAbove(t *testing.T) {
+	r, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"en": "the other tickets in the list above stay valid",
+		"ru": "остальные билеты из списка выше действуют",
+		"cs": "ostatní vstupenky v seznamu výše zůstávají platné",
+		"de": "die anderen Tickets in der Liste oben bleiben gültig",
+		"es": "las demás entradas de la lista de arriba siguen siendo válidas",
+		"fr": "les autres billets de la liste ci-dessus restent valables",
+		"he": "שאר הכרטיסים ברשימה למעלה נשארים בתוקף",
+	}
+	for _, loc := range SupportedLocales {
+		d := refundData()
+		d.Tickets[0].Void = true
+		d.Refund.TicketsCancelled, d.Refund.SomeTicketsCancelled = false, true
+		out, err := r.Render(TemplateKindRefund, loc, d)
+		if err != nil {
+			t.Fatalf("%s: %v", loc, err)
+		}
+		if !strings.Contains(out.TextBody, want[loc]) || !strings.Contains(out.HTMLBody, want[loc]) {
+			t.Errorf("%s: the letter does not speak of the list above (%q)", loc, want[loc])
+		}
+	}
+}
