@@ -46,7 +46,8 @@ function eventSummary(): object {
   };
 }
 
-function eventDetail(): object {
+function eventDetail(promoAvailable = true): object {
+  const flag = promoAvailable;
   const summary = eventSummary() as Record<string, unknown>;
   return {
     event: {
@@ -61,6 +62,7 @@ function eventDetail(): object {
           admission_mode: 'general_admission',
           buyer_fields: [],
           service_fee_percent: '1.25',
+          promo_codes_available: promoAvailable,
           tiers: [
             {
               id: TIER_ID,
@@ -114,6 +116,8 @@ async function mockPlatform(
     startError?: { code: string; message: string };
     /** Called with the 1-based number of each quote request; the answer waits for the returned promise. */
     holdQuote?: (n: number) => Promise<void> | void;
+    /** Whether the organization has a usable promo code (default true). */
+    promoAvailable?: boolean;
   } = {},
 ): Promise<Seen> {
   const seen: Seen = { quotes: [], starts: [] };
@@ -121,7 +125,7 @@ async function mockPlatform(
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ events: [eventSummary()] }) }),
   );
   await page.route(`**/v1/public/feeds/${FEED_TOKEN}/events/${EVENT_ID}`, (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(eventDetail()) }),
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(eventDetail(opts.promoAvailable ?? true)) }),
   );
   await page.route(`**/v1/public/feeds/${FEED_TOKEN}/checkout/quote`, async (route) => {
     const body = route.request().postDataJSON() as {
@@ -187,6 +191,7 @@ async function openCartWithTwoTickets(page: Page): Promise<void> {
   await plus.click();
   await widget.locator('.mini-cart-btn').click();
   await expect(widget.locator('.sheet')).toBeVisible();
+  await widget.locator('.sheet').getByRole('button', { name: 'Have a promo code?' }).click();
 }
 
 /** Two Standard (50.00) and one VIP (40.00), then open the cart sheet. */
@@ -200,6 +205,7 @@ async function openCartWithTwoLines(page: Page): Promise<void> {
   await widget.getByRole('button', { name: 'Increase quantity for VIP' }).click();
   await widget.locator('.mini-cart-btn').click();
   await expect(widget.locator('.sheet')).toBeVisible();
+  await widget.locator('.sheet').getByRole('button', { name: 'Have a promo code?' }).click();
 }
 
 test.describe('promo code in the cart sheet', () => {
@@ -405,6 +411,52 @@ test.describe('promo code in the cart sheet', () => {
     await expect(sheet.locator('.total-value')).toHaveText(amount('€50.62'));
   });
 
+  test('the field stays behind a link until the buyer asks for it', async ({ page }) => {
+    const seen = await mockPlatform(page);
+    await page.goto('/demo/promo-code.html');
+    const widget = page.locator('#widget-promo');
+    const plus = widget.getByRole('button', { name: 'Increase quantity for Standard' });
+    await plus.waitFor({ timeout: 15_000 });
+    await plus.click();
+    await widget.locator('.mini-cart-btn').click();
+    const sheet = widget.locator('.sheet');
+
+    await expect(sheet.getByRole('button', { name: 'Have a promo code?' })).toBeVisible();
+    await expect(sheet.locator('#arena-promo-input')).toHaveCount(0);
+    expect(seen.quotes).toHaveLength(0);
+
+    await sheet.getByRole('button', { name: 'Have a promo code?' }).click();
+    await expect(sheet.getByLabel('Promo code')).toBeVisible();
+    await expect(sheet.getByLabel('Promo code')).toBeFocused();
+    await expect(sheet.getByRole('button', { name: 'Have a promo code?' })).toHaveCount(0);
+    expect(seen.quotes).toHaveLength(0);
+  });
+
+  test('an organization without a usable code shows no promo field and asks nothing', async ({ page }) => {
+    const seen = await mockPlatform(page, { promoAvailable: false });
+    await page.goto('/demo/promo-code.html');
+    const widget = page.locator('#widget-promo');
+    const plus = widget.getByRole('button', { name: 'Increase quantity for Standard' });
+    await plus.waitFor({ timeout: 15_000 });
+    await plus.click();
+    await plus.click();
+    await widget.locator('.mini-cart-btn').click();
+    const sheet = widget.locator('.sheet');
+
+    await expect(sheet.locator('.total-value')).toHaveText(amount('€50.62'));
+    await expect(sheet.getByRole('button', { name: 'Have a promo code?' })).toHaveCount(0);
+    await expect(sheet.locator('.promo')).toHaveCount(0);
+    await expect(sheet.locator('#arena-promo-input')).toHaveCount(0);
+
+    // The buyer still pays normally and nothing about a promo code is sent.
+    await sheet.locator('.cta-btn').click();
+    await sheet.locator('input[type="email"]').fill('buyer@example.com');
+    await sheet.locator('button[type="submit"]').click();
+    await expect.poll(() => seen.starts.length).toBe(1);
+    expect(seen.starts[0]).not.toHaveProperty('promo_code');
+    expect(seen.quotes).toHaveLength(0);
+  });
+
   test('the open sheet with an applied code has no accessibility violations', async ({ page }) => {
     await mockPlatform(page);
     await openCartWithTwoTickets(page);
@@ -430,16 +482,18 @@ test.describe('promo code in the cart sheet', () => {
     await plus.click();
     await widget.locator('.mini-cart-btn').click();
     const sheet = widget.locator('.sheet');
+    await expect(sheet.locator('.promo-link')).toHaveText('Есть промокод?');
+    await sheet.locator('.promo-link').click();
     await expect(sheet.getByLabel('Промокод')).toBeVisible();
     await expect(sheet.getByRole('button', { name: 'Применить' })).toBeVisible();
   });
 
   // The widget is embedded on Spanish, German and French sites too, where the
   // rest of the UI still reads English but money wording must not.
-  for (const [tag, label, apply] of [
-    ['es-ES', 'Código promocional', 'Aplicar'],
-    ['de', 'Gutscheincode', 'Einlösen'],
-    ['fr', 'Code promo', 'Appliquer'],
+  for (const [tag, link, label, apply] of [
+    ['es-ES', '¿Tienes un código promocional?', 'Código promocional', 'Aplicar'],
+    ['de', 'Haben Sie einen Gutscheincode?', 'Gutscheincode', 'Einlösen'],
+    ['fr', 'Vous avez un code promo ?', 'Code promo', 'Appliquer'],
   ] as const) {
     test(`the promo field speaks ${tag}`, async ({ page }) => {
       await mockPlatform(page);
@@ -451,6 +505,8 @@ test.describe('promo code in the cart sheet', () => {
       await plus.click();
       await widget.locator('.mini-cart-btn').click();
       const sheet = widget.locator('.sheet');
+      await expect(sheet.locator('.promo-link')).toHaveText(link);
+      await sheet.locator('.promo-link').click();
       await expect(sheet.getByLabel(label)).toBeVisible();
       await expect(sheet.getByRole('button', { name: apply })).toBeVisible();
     });
@@ -467,6 +523,8 @@ test.describe('promo code in the cart sheet', () => {
     await plus.click();
     await widget.locator('.mini-cart-btn').click();
     const sheet = widget.locator('.sheet');
+    await expect(sheet.locator('.promo-link')).toHaveText('יש לכם קוד קופון?');
+    await sheet.locator('.promo-link').click();
     await sheet.getByLabel('קוד קופון').fill('TEN');
     await sheet.getByRole('button', { name: 'החל' }).click();
     const row = sheet.locator('.discount-row .fee-value');

@@ -38,6 +38,14 @@
     promoQuote?: PromoQuote | null;
     /** Identity of the current cart (`cartQuoteKey`); matches `promoQuote.cartKey` when fresh. */
     cartKey?: string;
+    /**
+     * The organization has a usable promo code (`promo_codes_available`). The
+     * promo field exists only then; with it false the buyer sees no change.
+     * An already applied code stays visible whatever this says.
+     */
+    promoAvailable?: boolean;
+    /** Start with the field open instead of behind the link. */
+    promoExpanded?: boolean;
     /** A quote request is in flight: the buy button waits for it. */
     promoBusy?: boolean;
     /** Why the last Apply failed, already in the buyer's language. */
@@ -64,7 +72,7 @@
   }
   const {
     cart, buyerFields, locale = 'en', serviceFeePercent = null, showWithdrawalNotice = false, submitting = false, submitError = null,
-    promoCode = null, promoQuote = null, cartKey = '', promoBusy = false, promoError = null, promoNote = null,
+    promoCode = null, promoQuote = null, cartKey = '', promoAvailable = false, promoExpanded = false, promoBusy = false, promoError = null, promoNote = null,
     onApplyPromo, onRemovePromo,
     conflictKeys, onContinueWithoutConflicts,
     onClose, onRemoveLine, onCheckout,
@@ -88,6 +96,16 @@
     promoPayBlocked({ code: promoCode, quote: promoQuote, busy: promoBusy, error: null, note: null }, cartKey),
   );
   let promoInput = $state('');
+  // Behind a link until the buyer asks for it; a failed Apply or a code in
+  // flight keeps it open so the answer is never hidden.
+  let promoOpened = $state(promoExpanded);
+  const promoOpen = $derived(promoOpened || !!promoError || promoBusy);
+  let promoInputEl = $state<HTMLInputElement | null>(null);
+  function openPromo(): void {
+    promoOpened = true;
+    // Wait for the field to exist, then put the cursor in it.
+    queueMicrotask(() => promoInputEl?.focus());
+  }
   function submitPromo(e: Event): void {
     e.preventDefault();
     if (promoBusy) return;
@@ -164,13 +182,15 @@
           {/each}
         </ul>
 
-        {#if onApplyPromo && (total.amount > 0 || promoCode)}
+        {#if onApplyPromo && (promoAvailable || promoCode) && (total.amount > 0 || promoCode)}
           <div class="promo">
             {#if promoCode}
               <div class="promo-applied">
                 <span class="promo-applied-text" role="status">{interpolate(p.applied, { code: promoCode.toUpperCase() })}</span>
                 <button type="button" class="promo-remove" onclick={() => onRemovePromo?.()} disabled={promoBusy}>{p.remove}</button>
               </div>
+            {:else if !promoOpen}
+              <button type="button" class="promo-link" onclick={openPromo}>{p.have_code}</button>
             {:else}
               <form class="promo-form" onsubmit={submitPromo}>
                 <label for="arena-promo-input" class="promo-label">{p.label}</label>
@@ -181,6 +201,7 @@
                     class="promo-input"
                     placeholder={p.placeholder}
                     bind:value={promoInput}
+                    bind:this={promoInputEl}
                     autocomplete="off"
                     autocapitalize="characters"
                     spellcheck="false"
@@ -396,6 +417,23 @@
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
+  }
+  .promo-link {
+    align-self: flex-start;
+    padding: 0.25rem 0;
+    background: none;
+    border: none;
+    color: var(--_accent, #4f46e5);
+    font-size: 0.9375rem;
+    font-family: inherit;
+    font-weight: 500;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .promo-link:focus-visible {
+    outline: 3px solid var(--arena-focus-ring, var(--arena-accent, #4f46e5));
+    outline-offset: 2px;
+    border-radius: 4px;
   }
   .promo-label {
     font-size: 0.875rem;

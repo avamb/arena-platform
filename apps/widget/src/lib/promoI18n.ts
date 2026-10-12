@@ -12,6 +12,8 @@
  */
 
 export interface PromoStrings {
+  /** The link that opens the promo code field. */
+  have_code: string;
   /** Label of the promo code field. */
   label: string;
   /** Placeholder inside the field. */
@@ -50,6 +52,7 @@ export interface PromoStrings {
 
 export const PROMO_I18N: Record<string, PromoStrings> = {
   en: {
+    have_code: 'Have a promo code?',
     label: 'Promo code',
     placeholder: 'Enter code',
     apply: 'Apply',
@@ -69,6 +72,7 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     error_no_discount: 'This code gives no discount on this order.',
   },
   ru: {
+    have_code: 'Есть промокод?',
     label: 'Промокод',
     placeholder: 'Введите код',
     apply: 'Применить',
@@ -88,6 +92,7 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     error_no_discount: 'Этот код не даёт скидки на этот заказ.',
   },
   cs: {
+    have_code: 'Máte slevový kód?',
     label: 'Slevový kód',
     placeholder: 'Zadejte kód',
     apply: 'Použít',
@@ -107,6 +112,7 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     error_no_discount: 'Tento kód na tuto objednávku nedává žádnou slevu.',
   },
   he: {
+    have_code: 'יש לכם קוד קופון?',
     label: 'קוד קופון',
     placeholder: 'הזינו קוד',
     apply: 'החל',
@@ -126,6 +132,7 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     error_no_discount: 'הקוד הזה לא נותן הנחה על ההזמנה הזו.',
   },
   es: {
+    have_code: '¿Tienes un código promocional?',
     label: 'Código promocional',
     placeholder: 'Introduce el código',
     apply: 'Aplicar',
@@ -145,6 +152,7 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     error_no_discount: 'Este código no aplica ningún descuento a este pedido.',
   },
   de: {
+    have_code: 'Haben Sie einen Gutscheincode?',
     label: 'Gutscheincode',
     placeholder: 'Code eingeben',
     apply: 'Einlösen',
@@ -164,6 +172,7 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     error_no_discount: 'Dieser Code gewährt für diese Bestellung keinen Rabatt.',
   },
   fr: {
+    have_code: 'Vous avez un code promo ?',
     label: 'Code promo',
     placeholder: 'Saisissez le code',
     apply: 'Appliquer',

@@ -43,7 +43,17 @@ const CART = { checkoutToken: null, expiresAt: null, lines: [GA_LINE] };
 
 function sheetHtml(props: Record<string, unknown>): string {
   return render(CartSheet, {
-    props: { cart: CART, buyerFields: [], onClose: () => {}, onRemoveLine: () => {}, onCheckout: () => {}, ...props },
+    props: {
+      cart: CART,
+      buyerFields: [],
+      // The organization has a usable code and the buyer already opened the field.
+      promoAvailable: true,
+      promoExpanded: true,
+      onClose: () => {},
+      onRemoveLine: () => {},
+      onCheckout: () => {},
+      ...props,
+    },
   }).body;
 }
 
@@ -307,6 +317,55 @@ describe('cart sheet markup', () => {
     expect(html).toContain('>Promo code<');
     expect(html).toContain('>Apply<');
     expect(html).toContain('id="arena-promo-input"');
+  });
+
+  it('keeps the field behind a link until the buyer asks for it', () => {
+    const html = sheetHtml({ onApplyPromo: () => {}, promoExpanded: false });
+    expect(html).toContain('>Have a promo code?<');
+    expect(html).toContain('class="promo-link');
+    expect(html).not.toContain('arena-promo-input');
+    expect(html).not.toContain('>Apply<');
+  });
+
+  it('says the link in every locale', () => {
+    for (const loc of LOCALES) {
+      const html = sheetHtml({ onApplyPromo: () => {}, promoExpanded: false, locale: loc });
+      expect(html, loc).toContain(`>${PROMO_I18N[loc]!.have_code}<`);
+    }
+  });
+
+  it('shows nothing at all when the organization has no usable code', () => {
+    for (const expanded of [false, true]) {
+      const html = sheetHtml({ onApplyPromo: () => {}, promoAvailable: false, promoExpanded: expanded });
+      expect(html).not.toContain('Have a promo code?');
+      expect(html).not.toContain('arena-promo-input');
+      expect(html).not.toContain('class="promo');
+      expect(html).not.toContain('>Apply<');
+    }
+  });
+
+  it('treats a missing flag as no code (an older backend)', () => {
+    const html = sheetHtml({ onApplyPromo: () => {}, promoAvailable: undefined, promoExpanded: false });
+    expect(html).not.toContain('Have a promo code?');
+  });
+
+  it('keeps an applied code visible even if the flag turned false meanwhile', () => {
+    const html = sheetHtml({
+      onApplyPromo: () => {},
+      onRemovePromo: () => {},
+      promoAvailable: false,
+      promoCode: 'TEN',
+      promoQuote: QUOTE,
+      cartKey: 'K',
+    });
+    expect(html).toContain('Code TEN applied.');
+    expect(html).toContain('>Remove<');
+  });
+
+  it('keeps a failed Apply in view even when the field was never opened', () => {
+    const html = sheetHtml({ onApplyPromo: () => {}, promoExpanded: false, promoError: 'This code does not work for this order.' });
+    expect(html).toContain('arena-promo-input');
+    expect(html).toContain('This code does not work for this order.');
   });
 
   it('has no promo field for a host that does not wire it', () => {

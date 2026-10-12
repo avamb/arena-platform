@@ -47,6 +47,8 @@ async function openCart(page: Page, qty: number): Promise<void> {
   for (let i = 0; i < qty; i++) await plus.click();
   await widget.locator('.mini-cart-btn').click();
   await expect(widget.locator('.sheet')).toBeVisible();
+  // The organization has promo codes, so the field sits behind a link.
+  await widget.locator('.sheet').getByRole('button', { name: 'Have a promo code?' }).click();
 }
 
 /** "€21.64" -> 2164 */
@@ -60,6 +62,15 @@ function isQuote(r: Response): boolean {
 }
 
 test.describe('promo code — real backend', () => {
+  test('the feed tells the widget the organization has a usable code', async ({ page }) => {
+    const res = await page.request.get(`/v1/public/feeds/${FEED_TOKEN}/events/${EVENT_ID}`);
+    expect(res.status()).toBe(200);
+    const body = (await res.json()) as { event: { sessions: Array<{ id: string; promo_codes_available?: boolean }> } };
+    expect(body.event.sessions.find((x) => x.id === SESSION_ID)?.promo_codes_available).toBe(true);
+    // Only the existence is public: no code text anywhere in the answer.
+    expect(JSON.stringify(body)).not.toContain('E2E10');
+  });
+
   test('the quote holds nothing and the sheet total is the stored checkout total', async ({ page }) => {
     const before = await galerieAvailable(page);
     await openCart(page, 2);
