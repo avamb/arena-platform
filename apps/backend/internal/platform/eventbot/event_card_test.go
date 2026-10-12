@@ -150,7 +150,7 @@ func TestSummaryText_MoneyDownToTheNet(t *testing.T) {
 	text := b.summaryText("en", summaryView{Title: sum.Event.Name, Scope: "All dates (2)", Figures: figuresFromEvent(sum)})
 	for _, want := range []string{
 		"Summary: Swan &lt;Lake&gt;",
-		"Tickets: valid 8, cancelled or returned 2, entered 4, transferred 1",
+		"Tickets: valid 8, canceled or returned 2, entered 4, transferred 1",
 		"Orders: paid 4, awaiting payment 1",
 		"Places: sold 12, available 30, held 2, withheld 6, total 50",
 		"Paid 100 EUR in 4 orders (discounts 5 EUR, service charge 2 EUR)",

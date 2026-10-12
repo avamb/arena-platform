@@ -118,7 +118,7 @@ other = "pricing mode is not supported by this gateway"
 other = "order line does not belong to this session"
 
 ["bil24.order_cancelled"]
-other = "order has been cancelled"
+other = "order has been canceled"
 
 ["bil24.no_tickets_to_send"]
 other = "this order has no tickets to send"
@@ -355,7 +355,7 @@ other = "Could not make the sample ticket. Try again later."
 other = "<b>{{.When}}</b> {{.Venue}}\nSold {{.Sold}} of {{.Total}}, available {{.Available}}{{if .Held}}, held {{.Held}}{{end}}{{if .Tickets}}\n{{.Tickets}}{{end}}\n{{.Money}}"
 
 ["bot.session_tickets_line"]
-other = "Tickets: issued {{.Issued}}, returned or cancelled {{.Cancelled}}, valid {{.Active}}"
+other = "Tickets: issued {{.Issued}}, returned or canceled {{.Cancelled}}, valid {{.Active}}"
 
 ["bot.money_line"]
 other = "Paid {{.Paid}} in {{.Orders}} orders"
@@ -373,10 +373,10 @@ other = "On sale"
 other = "Archived"
 
 ["bot.status_cancelled"]
-other = "Cancelled"
+other = "Canceled"
 
 ["bot.session_cancelled"]
-other = "cancelled"
+other = "canceled"
 
 ["bot.org_choose"]
 other = "Which organization are you working in now?"
@@ -1168,10 +1168,10 @@ other = "The date and time are the same as now — nothing to move."
 other = "<b>Moving the session</b>\nWas: {{.Old}}\nWill be: <b>{{.New}}</b>"
 
 ["bot.ses.confirm_cancel"]
-other = "<b>Cancelling the session</b>\n{{.Old}}"
+other = "<b>Canceling the session</b>\n{{.Old}}"
 
 ["bot.ses.confirm_cancel_all"]
-other = "<b>Cancelling the whole event</b>\n\"{{.Name}}\": sessions to cancel — {{.N}}."
+other = "<b>Canceling the whole event</b>\n\"{{.Name}}\": sessions to cancel — {{.N}}."
 
 ["bot.ses.buyers_move"]
 other = "This session already has buyers: {{.Tickets}} tickets, {{.Orders}} orders. Each gets an email with the new date and a new ticket (PDF). Buyers will be able to write to you: {{.Contact}}."
@@ -1222,13 +1222,13 @@ other = "➡ Next: confirm the cancellation"
 other = "➡ Next: confirm the cancellation"
 
 ["bot.ses.go_cancel_all_btn"]
-other = "➡ Next: confirm cancelling everything"
+other = "➡ Next: confirm canceling everything"
 
 ["bot.ses.go_cancel_all_free_btn"]
-other = "➡ Next: confirm cancelling everything"
+other = "➡ Next: confirm canceling everything"
 
 ["bot.ses.site_blocked"]
-other = "Some orders ({{.N}}) were placed through your WordPress site. That site writes the letter to its buyers, and moving or cancelling a session with such orders is not supported yet — write to Arena support and we will do it by hand. Nothing was changed."
+other = "Some orders ({{.N}}) were placed through your WordPress site. That site writes the letter to its buyers, and moving or canceling a session with such orders is not supported yet — write to Arena support and we will do it by hand. Nothing was changed."
 
 ["bot.ses.contact_ask_email"]
 other = "To move the session the buyers need an address they can write to; it appears in the letter. Type the contact e-mail (organizer: {{.Name}})."
@@ -1261,13 +1261,13 @@ other = "Emails to buyers queued: {{.N}}."
 other = "✔ The session moved to <b>{{.New}}</b>.{{.Letters}}"
 
 ["bot.ses.done_cancel"]
-other = "✔ The session is cancelled.{{.Letters}}"
+other = "✔ The session is canceled.{{.Letters}}"
 
 ["bot.ses.done_cancel_all"]
-other = "✔ Sessions cancelled: {{.N}}.{{.Letters}}"
+other = "✔ Sessions canceled: {{.N}}.{{.Letters}}"
 
 ["bot.ses.partial"]
-other = "Sessions cancelled: {{.N}}; the rest failed. Open the list and check which sessions are left."
+other = "Sessions canceled: {{.N}}; the rest failed. Open the list and check which sessions are left."
 
 ["bot.ses.failed"]
 other = "That did not work. Nothing was changed. Please try again a little later."
@@ -1297,7 +1297,7 @@ other = "Session: <b>{{.Old}}</b>"
 other = "Event: <b>{{.Name}}</b> — all {{.N}} sessions"
 
 ["bot.ses.type_wrong"]
-other = "That is not the word, so nothing was cancelled. To cancel, type exactly: {{.Word}}"
+other = "That is not the word, so nothing was canceled. To cancel, type exactly: {{.Word}}"
 
 ["bot.ses.done_refund_note"]
 other = "💶 No money was refunded automatically and the tickets stay valid. Settle refunds with the buyers yourself."
@@ -1643,7 +1643,7 @@ other = "Hide dates"
 other = "<b>Summary: {{.Name}}</b>\n{{.Scope}}"
 
 ["bot.ec.sum_tickets"]
-other = "Tickets: valid {{.Active}}, cancelled or returned {{.Cancelled}}, entered {{.Used}}{{if .Transferred}}, transferred {{.Transferred}}{{end}}"
+other = "Tickets: valid {{.Active}}, canceled or returned {{.Cancelled}}, entered {{.Used}}{{if .Transferred}}, transferred {{.Transferred}}{{end}}"
 
 ["bot.ec.sum_orders"]
 other = "Orders: paid {{.Paid}}, awaiting payment {{.Pending}}"
@@ -1703,7 +1703,7 @@ other = "Orders"
 other = "<b>Orders: {{.Org}}</b>{{.Scope}}\n{{.Tab}} · {{.Total}} · page {{.Page}} of {{.Pages}}.{{.Search}}\n{{.Legend}}\nTap an order to open it. To search, type a barcode, an order number, an e-mail, a phone or a name."
 
 ["bot.ord.legend"]
-other = "✅ paid  ⏳ waiting for payment  ⌛ expired  ✖ cancelled  ↩ refunded"
+other = "✅ paid  ⏳ waiting for payment  ⌛ expired  ✖ canceled  ↩ refunded"
 
 ["bot.ord.tab_recent"]
 other = "Latest"
@@ -1742,7 +1742,7 @@ other = "Waiting for payment"
 other = "Expired"
 
 ["bot.ord.st_cancelled"]
-other = "Cancelled"
+other = "Canceled"
 
 ["bot.ord.st_partially_refunded"]
 other = "Partly refunded"
@@ -1796,7 +1796,7 @@ other = " · ✔ entered {{.When}}"
 other = "valid"
 
 ["bot.ord.tk_cancelled"]
-other = "cancelled"
+other = "canceled"
 
 ["bot.ord.tk_transferred"]
 other = "transferred"
@@ -1838,7 +1838,7 @@ other = "⚠️ The buyer opened the payment page and left without paying. The s
 other = "⌛ The buyer never started paying within the reserved time, so the seats were released."
 
 ["bot.ord.reason_cancelled"]
-other = "✖ The order was cancelled. Its seats are free again."
+other = "✖ The order was canceled. Its seats are free again."
 
 ["bot.ord.reason_awaiting_payment"]
 other = "⏳ The buyer has not paid yet. The seats stay reserved until the payment time runs out."
@@ -1856,22 +1856,22 @@ other = "Message from the payment provider: {{.Msg}}"
 other = "Cancel unpaid order"
 
 ["bot.ord.cancel_ask"]
-other = "⚠️ <b>Last step — nothing is cancelled yet.</b>\n\nOrder №{{.Num}} · {{.Amount}}\nThe order will be closed and the seats held for it released. This cannot be undone.\n\nTo cancel, <b>type the word {{.Word}}</b> and send it as a message. To keep the order, press «Back»."
+other = "⚠️ <b>Last step — nothing is canceled yet.</b>\n\nOrder №{{.Num}} · {{.Amount}}\nThe order will be closed and the seats held for it released. This cannot be undone.\n\nTo cancel, <b>type the word {{.Word}}</b> and send it as a message. To keep the order, press «Back»."
 
 ["bot.ord.cancel_wrong"]
-other = "That is not the word, so nothing was cancelled. To cancel, type exactly: {{.Word}}"
+other = "That is not the word, so nothing was canceled. To cancel, type exactly: {{.Word}}"
 
 ["bot.ord.cancel_done"]
-other = "✔ The order is cancelled and its seats are free again."
+other = "✔ The order is canceled and its seats are free again."
 
 ["bot.ord.cancel_not_possible"]
-other = "This order can no longer be cancelled: it is not waiting for payment any more."
+other = "This order can no longer be canceled: it is not waiting for payment any more."
 
 ["bot.resend.btn"]
 other = "✉️ Resend tickets"
 
 ["bot.resend.choose"]
-other = "✉️ <b>Resend tickets</b> · order №{{.Num}}\n\nTickets to send: {{.N}} (refunded or cancelled ones are not sent). They go out as one letter.\n\nThe order's address: {{.Email}}\n\nWhere should the letter go?"
+other = "✉️ <b>Resend tickets</b> · order №{{.Num}}\n\nTickets to send: {{.N}} (refunded or canceled ones are not sent). They go out as one letter.\n\nThe order's address: {{.Email}}\n\nWhere should the letter go?"
 
 ["bot.resend.choose_noaddr"]
 other = "✉️ <b>Resend tickets</b> · order №{{.Num}}\n\nTickets to send: {{.N}}. The order has no e-mail address, so type the address to send the letter to."
@@ -1910,7 +1910,7 @@ other = "This order was sold through the seller's own site, so the site sends th
 other = "Order №{{.Num}} is not paid, so there is nothing to send."
 
 ["bot.resend.no_tickets"]
-other = "Order №{{.Num}} has no active tickets: refunded or cancelled ones are not sent."
+other = "Order №{{.Num}} has no active tickets: refunded or canceled ones are not sent."
 
 ["bot.resend.private_only"]
 other = "Buyers' addresses are shown and typed only in a private chat with the bot. Open the order there."
@@ -1927,13 +1927,13 @@ other = "🗄 Archive"
 other = "🗑 Delete"
 
 ["bot.evs.off_ask"]
-other = "⏸ <b>Take «{{.Name}}» off sale?</b>\n\nThe event disappears from your ticket page and from the sites that sell it, and nobody can buy a ticket until you publish it again.\n\n<b>Tickets already sold stay valid</b>: buyers keep them, and nothing is refunded or cancelled."
+other = "⏸ <b>Take «{{.Name}}» off sale?</b>\n\nThe event disappears from your ticket page and from the sites that sell it, and nobody can buy a ticket until you publish it again.\n\n<b>Tickets already sold stay valid</b>: buyers keep them, and nothing is refunded or canceled."
 
 ["bot.evs.off_yes_btn"]
 other = "✔ Yes, take off sale"
 
 ["bot.evs.archive_ask"]
-other = "🗄 <b>Archive «{{.Name}}»?</b>\n\nSales stop and the event moves to the archive.\n\n<b>Tickets already sold stay valid</b>: buyers keep them, and nothing is refunded or cancelled. An archived event cannot be put on sale again."
+other = "🗄 <b>Archive «{{.Name}}»?</b>\n\nSales stop and the event moves to the archive.\n\n<b>Tickets already sold stay valid</b>: buyers keep them, and nothing is refunded or canceled. An archived event cannot be put on sale again."
 
 ["bot.evs.archive_yes_btn"]
 other = "✔ Yes, archive"
@@ -2059,7 +2059,7 @@ other = "No event has a date to come, so there is nobody to invite to."
 other = "🎟 <b>{{.Name}}</b>\n\nChoose the date ({{.Page}}/{{.Pages}}). The free places are shown beside each date:"
 
 ["bot.inv.se_empty"]
-other = "<b>{{.Name}}</b> has no date to come (past and cancelled dates are not offered)."
+other = "<b>{{.Name}}</b> has no date to come (past and canceled dates are not offered)."
 
 ["bot.inv.ti_title"]
 other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nChoose the category. The invitations take places from it:"
@@ -2608,7 +2608,7 @@ other = "✏ <b>Phone</b> with the country code, for example +420 123 456 789."
 other = "✏ <b>E-mail</b> of the promoter."
 
 ["bot.prom.email_note"]
-other = "Buyers are told to write to this address when a date of the promoter's events is moved or cancelled, so it has to work."
+other = "Buyers are told to write to this address when a date of the promoter's events is moved or canceled, so it has to work."
 
 ["bot.prom.q_website"]
 other = "✏ <b>Website</b>, for example partner.example. https:// is added if you leave it out."

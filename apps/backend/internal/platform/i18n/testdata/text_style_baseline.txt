@@ -1,11 +1,9 @@
 en/dash 33
-en/glossary 27
 en/long-sentence 9
 en/messages 903
 en/passive 81
 en/semicolon 15
 ru/dash 60
-ru/glossary 73
 ru/long-sentence 1
 ru/messages 903
 ru/semicolon 10
