@@ -48,8 +48,9 @@ type DashboardRefund struct {
 	LegacyParked []uuid.UUID
 	// Unconfirmed: the refund belongs to a payment of this organization but
 	// could not be read back from the provider after MaxDashboardConfirmAttempts
-	// deliveries. Nothing is written; the operator is alerted (log) and the
-	// delivery is acknowledged so the provider stops retrying.
+	// deliveries. No refund is written; a provider_event_unresolved record is,
+	// the sweep alerts the operator, and the delivery is acknowledged so the
+	// provider stops retrying.
 	Unconfirmed bool
 }
 
@@ -135,10 +136,13 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 				return out, errors.Join(err, cerr)
 			}
 			if attempts >= MaxDashboardConfirmAttempts {
+				// A visible record and an ops alert (sent by the sweep);
+				// only once it is written is the delivery acknowledged.
+				if rerr := e.recordUnresolved(ctx, UnresolvedEvent{OrgID: orgID, Provider: provider, ProviderRefundID: refundID,
+					Kind: UnresolvedUnconfirmed, ChargeRef: chargeRef, Attempts: attempts, Detail: err.Error()}); rerr != nil {
+					return out, errors.Join(err, rerr)
+				}
 				out.Unconfirmed = true
-				e.logger.Error("refunds: A REFUND MADE AT THE PROVIDER COULD NOT BE CONFIRMED; nothing recorded, check the provider dashboard",
-					"event", "dashboard_refund_unconfirmed", "provider", provider, "provider_refund_id", refundID,
-					"charge_ref", chargeRef, "attempts", attempts, "error", err.Error())
 				return out, nil
 			}
 		}

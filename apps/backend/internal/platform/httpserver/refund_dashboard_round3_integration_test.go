@@ -113,7 +113,7 @@ func TestRefundWebhook_DashboardRefundForeignAndUnconfirmed(t *testing.T) {
 	e := newDashEnv(t, "DASHN1")
 	t.Cleanup(func() {
 		_, _ = e.srv.pgxPool.Exec(context.Background(),
-			`DELETE FROM audit_events WHERE action = 'v1.refund.dashboard_unconfirmed' AND metadata->>'org_id' = $1::text`, e.org)
+			`DELETE FROM audit_events WHERE resource_type = 'provider_refund' AND metadata->>'org_id' = $1::text`, e.org)
 	})
 
 	// Another site's payment on the same Stripe account: the key cannot even

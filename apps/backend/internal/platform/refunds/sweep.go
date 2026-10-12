@@ -178,10 +178,17 @@ func (e *Engine) Sweep(ctx context.Context, now time.Time, notifier Notifier) (S
 		// is nearly spent.
 		actx, cancel := context.WithTimeout(context.WithoutCancel(ctx), alertSectionBudget)
 		n, err := e.alertReviews(actx, notifier)
-		cancel()
 		rep.Alerted = n
 		if err != nil {
 			errs = append(errs, fmt.Errorf("refunds: sweep alerts: %w", err))
+		}
+		// Provider refund events arena gave up on (no refunds row carries
+		// their alert), inside the SAME budget: SweepWorstCase is unchanged.
+		pn, perr := e.alertProviderEvents(actx, notifier)
+		cancel()
+		rep.Alerted += pn
+		if perr != nil {
+			errs = append(errs, fmt.Errorf("refunds: sweep provider-event alerts: %w", perr))
 		}
 	}
 	return rep, errors.Join(errs...)
