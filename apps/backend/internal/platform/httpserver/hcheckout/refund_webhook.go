@@ -6,6 +6,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
 
 // processRefundWebhook handles a VERIFIED refund event of the per-config route
@@ -32,6 +33,10 @@ func (h *Handler) processRefundWebhook(w http.ResponseWriter, r *http.Request, r
 	if route.ExpectedOrgID == nil || route.Provider == "" || h.refundEngine == nil || ev.RefundStatus == "" {
 		ack("refund event; nothing to record", false)
 		return
+	}
+	if route.ConfigID != nil {
+		// Read the refund back with the configuration that verified it.
+		r = r.WithContext(refunds.WithProviderConfig(r.Context(), *route.ConfigID))
 	}
 	res := payments.RefundResult{
 		ProviderRefundID: ev.ProviderRefundID,

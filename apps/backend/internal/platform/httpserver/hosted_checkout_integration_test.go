@@ -81,6 +81,15 @@ type stubStripe struct {
 	// an id not in the map is 404, a body that is empty answers 500.
 	refundMu      sync.Mutex
 	refundObjects map[string]string
+	// refundReadKeys records the bearer key each GET /v1/refunds/{id} used.
+	refundReadKeys map[string]string
+}
+
+// refundReadKey is the API key the last read of refund id was made with.
+func (s *stubStripe) refundReadKey(id string) string {
+	s.refundMu.Lock()
+	defer s.refundMu.Unlock()
+	return s.refundReadKeys[id]
 }
 
 // setRefund registers the refund object GET /v1/refunds/{id} reports.
@@ -106,6 +115,10 @@ func newStubStripe(t *testing.T) *stubStripe {
 			id := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
 			s.refundMu.Lock()
 			body, ok := s.refundObjects[id]
+			if s.refundReadKeys == nil {
+				s.refundReadKeys = map[string]string{}
+			}
+			s.refundReadKeys[id] = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			s.refundMu.Unlock()
 			switch {
 			case !ok:

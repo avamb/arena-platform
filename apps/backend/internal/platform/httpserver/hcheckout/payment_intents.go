@@ -970,6 +970,10 @@ type webhookRoute struct {
 	// callbacks are matched by OUR order id (a UUID), so a Flitt signature
 	// must never be able to move a Stripe intent of the same org.
 	ExpectedProvider string
+	// ConfigID is the payment configuration whose URL and secret verified
+	// the delivery (per-config route only). A refund event is read back with
+	// THIS configuration, not the organization's preferred one.
+	ConfigID *uuid.UUID
 	// Event, when set, is the module's own normalization of the VERIFIED
 	// body (per-config route, Capabilities.WebhookConfigRouteOnly). The
 	// state machine then runs on it instead of parsing the body.

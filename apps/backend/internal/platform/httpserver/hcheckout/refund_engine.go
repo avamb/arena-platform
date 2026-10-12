@@ -7,8 +7,12 @@ package hcheckout
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
@@ -42,6 +46,9 @@ func (s *RefundModuleSource) Descriptor(provider string) (payments.Descriptor, b
 
 // Build implements refunds.ModuleSource.
 func (s *RefundModuleSource) Build(ctx context.Context, orgID uuid.UUID, provider string) (payments.Module, error) {
+	if configID, ok := refunds.ProviderConfigFromContext(ctx); ok {
+		return s.buildFromConfig(ctx, orgID, provider, configID)
+	}
 	cfg, cfgErr := ResolveProviderConfig(ctx, s.queries, orgID, provider)
 	if cfgErr != nil {
 		if cfgErr.Transient {
@@ -50,6 +57,22 @@ func (s *RefundModuleSource) Build(ctx context.Context, orgID uuid.UUID, provide
 			return nil, cfgErr
 		}
 		return nil, &refunds.ConfigError{Code: cfgErr.Code, Message: cfgErr.Message}
+	}
+	return paymodules.Registry().Build(provider, payments.SecretsFromJSON(cfg.Secrets), s.opts)
+}
+
+// buildFromConfig builds the module from one named configuration of the
+// organization (the one that verified a webhook).
+func (s *RefundModuleSource) buildFromConfig(ctx context.Context, orgID uuid.UUID, provider string, configID uuid.UUID) (payments.Module, error) {
+	if s.queries == nil {
+		return nil, fmt.Errorf("refunds: payment configurations are not available")
+	}
+	cfg, err := s.queries.GetPaymentProviderConfigByID(ctx, configID, orgID)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && (cfg.DeletedAt != nil || !strings.EqualFold(cfg.Provider, provider))) {
+		return nil, &refunds.ConfigError{Code: ErrCodeProviderNotConfigured, Message: "the payment configuration that verified the event is gone"}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("refunds: load payment configuration: %w", err)
 	}
 	return paymodules.Registry().Build(provider, payments.SecretsFromJSON(cfg.Secrets), s.opts)
 }
