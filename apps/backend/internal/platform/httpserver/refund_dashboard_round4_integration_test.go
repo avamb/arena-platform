@@ -4,6 +4,7 @@ package httpserver
 
 import (
 	"net/http"
+	"sync"
 	"testing"
 )
 
@@ -86,5 +87,49 @@ func TestRefundWebhook_KnownRefundUnreadableIsAcknowledgedAfterTheLastAttempt(t 
 	var state string
 	if err := e.srv.pgxPool.QueryRow(t.Context(), `SELECT state FROM refunds WHERE provider_refund_id = 're_d4_known'`).Scan(&state); err != nil || state != "provider_pending" {
 		t.Fatalf("state = %q %v; want provider_pending", state, err)
+	}
+}
+
+// The provider redelivers the same refund event in parallel: one refund row,
+// one cancellation per ticket and one v1.ticket.refunded per ticket, however
+// the deliveries interleave.
+func TestRefundWebhook_ParallelRedeliveriesRecordTheRefundOnce(t *testing.T) {
+	e := newDashEnv(t, "DASHR4P")
+	e.stub.setRefund("re_d4_parallel", "succeeded", 5000, "eur", e.piRef)
+	const n = 6
+	codes := make(chan int, n)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			st, _ := e.post(t, "refund.created", "re_d4_parallel", e.piRef, 5000)
+			codes <- st
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(codes)
+	for st := range codes {
+		if st != http.StatusOK {
+			t.Fatalf("a parallel delivery answered %d; want 200", st)
+		}
+	}
+	if c := e.count(t, `payment_intent_id = $1`, e.f.pay); c != 1 {
+		t.Fatalf("%d refund rows; want 1", c)
+	}
+	if c := e.countTickets(t, `status = 'active'`); c != 0 {
+		t.Fatalf("%d ticket(s) still active", c)
+	}
+	var events int
+	if err := e.srv.pgxPool.QueryRow(t.Context(), `SELECT count(*) FROM outbox_events
+		WHERE event_type = 'v1.ticket.refunded' AND aggregate_id = ANY($1::text[])`,
+		[]string{e.f.tickets[0].String(), e.f.tickets[1].String()}).Scan(&events); err != nil {
+		t.Fatal(err)
+	}
+	if events != 2 {
+		t.Fatalf("%d v1.ticket.refunded events; want one per ticket", events)
 	}
 }

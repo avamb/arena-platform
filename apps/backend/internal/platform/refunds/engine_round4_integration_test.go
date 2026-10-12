@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -181,5 +182,51 @@ func TestEngine_DashboardRefundOfAPaymentWithoutChargeRef(t *testing.T) {
 	_ = f.pool.QueryRow(ctx, `SELECT COALESCE(provider_charge_ref, '') FROM payment_intents WHERE id = $1`, f.payment).Scan(&stored)
 	if stored != "pi_from_"+cs {
 		t.Fatalf("provider_charge_ref = %q; want the resolved reference stored", stored)
+	}
+}
+
+// Parallel redeliveries of the event that settles a pending refund settle it
+// once: one cancellation and one v1.ticket.refunded for its ticket.
+func TestEngine_ParallelRefundEventsSettleOnce(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	pub := &publishCounter{}
+	m := &fakeModule{partial: true, answers: []func(payments.RefundRequest) (payments.RefundResult, error){pending}}
+	e := f.engineWith(m, true, func(o *refunds.Options) { o.PublishRefunded = pub.fn })
+	ctx := context.Background()
+	created, err := e.CreateBatch(ctx, f.batch("k-r4-parallel", true, refunds.Item{TicketID: f.tickets[0]}))
+	if err != nil || created.Refunds[0].ProviderRefundID == nil {
+		t.Fatalf("CreateBatch: %v", err)
+	}
+	r := created.Refunds[0]
+	m.lookup = payments.RefundResult{Status: payments.RefundSucceeded}
+	const n = 6
+	errs := make(chan error, n)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := e.ApplyProviderRefund(ctx, f.org, "pay03fake", *r.ProviderRefundID, payments.RefundResult{Status: payments.RefundSucceeded})
+			errs <- err
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("a parallel delivery failed: %v", err)
+		}
+	}
+	if got, _ := e.GetRefund(ctx, r.ID); got.State != refunds.StateSucceeded {
+		t.Fatalf("state = %s; want succeeded", got.State)
+	}
+	if st, _ := f.ticketStatus(t, f.tickets[0]); st != "cancelled" {
+		t.Fatalf("ticket = %s; want cancelled", st)
+	}
+	if got := pub.get(f.tickets[0]); got != 1 || pub.total() != 1 {
+		t.Fatalf("v1.ticket.refunded published %d time(s) (total %d); want once", got, pub.total())
 	}
 }
