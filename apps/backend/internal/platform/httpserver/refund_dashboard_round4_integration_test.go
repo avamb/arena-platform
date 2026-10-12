@@ -57,3 +57,34 @@ func (e *dashEnv) countTickets(t *testing.T, where string) int {
 	}
 	return n
 }
+
+// R3-8 at the route: an event for an arena refund whose read-back keeps
+// failing is answered 500 (the provider retries) until the last attempt,
+// which is acknowledged with the refund untouched.
+func TestRefundWebhook_KnownRefundUnreadableIsAcknowledgedAfterTheLastAttempt(t *testing.T) {
+	e := newDashEnv(t, "DASHR4K")
+	t.Cleanup(func() {
+		_, _ = e.srv.pgxPool.Exec(t.Context(), `DELETE FROM audit_events WHERE resource_type = 'provider_refund' AND metadata->>'org_id' = $1::text`, e.org)
+	})
+	e.exec(t, `INSERT INTO refunds (payment_intent_id, org_id, amount, currency, reason, state, settlement, provider,
+	                                provider_refund_id, provider_status, provider_attempts, provider_attempted_at)
+	           VALUES ($1, $2, 2500, 'EUR', 'sent', 'provider_pending', 'provider', 'stripe', 're_d4_known', 'pending', 1, now())`, e.f.pay, e.org)
+	e.stub.refundMu.Lock()
+	if e.stub.refundObjects == nil {
+		e.stub.refundObjects = map[string]string{}
+	}
+	e.stub.refundObjects["re_d4_known"] = ""
+	e.stub.refundMu.Unlock()
+	for i := 1; i < refundsMaxDashboardConfirmAttempts; i++ {
+		if st, _ := e.post(t, "refund.updated", "re_d4_known", e.piRef, 2500); st != http.StatusInternalServerError {
+			t.Fatalf("delivery %d = %d; want 500", i, st)
+		}
+	}
+	if st, out := e.post(t, "refund.updated", "re_d4_known", e.piRef, 2500); st != http.StatusOK || out["processed"] != false {
+		t.Fatalf("last delivery = %d %v; want 200 acknowledged, not processed", st, out)
+	}
+	var state string
+	if err := e.srv.pgxPool.QueryRow(t.Context(), `SELECT state FROM refunds WHERE provider_refund_id = 're_d4_known'`).Scan(&state); err != nil || state != "provider_pending" {
+		t.Fatalf("state = %q %v; want provider_pending", state, err)
+	}
+}

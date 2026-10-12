@@ -1,6 +1,7 @@
 package hcheckout
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -45,6 +46,10 @@ func (h *Handler) processRefundWebhook(w http.ResponseWriter, r *http.Request, r
 		FailureMessage:   ev.FailureMessage,
 	}
 	found, err := h.refundEngine.ApplyProviderRefund(r.Context(), *route.ExpectedOrgID, route.Provider, ev.ProviderRefundID, res)
+	if errors.Is(err, refunds.ErrProviderEventGivenUp) {
+		ack("refund could not be confirmed with the provider; an operator is alerted", false)
+		return
+	}
 	if err != nil {
 		h.logger.Error("webhook: recording a refund event failed",
 			slog.String("provider", route.Provider),

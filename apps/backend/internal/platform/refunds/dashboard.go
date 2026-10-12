@@ -130,7 +130,9 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 	}
 	confirmed, ok, err := e.confirmProviderRefund(ctx, orgID, provider, refundID)
 	if err != nil {
-		if errors.Is(err, ErrCannotConfirm) && chargeRef != "" {
+		if errors.Is(err, ErrCannotConfirm) {
+			// Bounded whether or not the event names a payment: one that
+			// names none would otherwise be redelivered for days.
 			attempts, cerr := e.noteUnconfirmed(ctx, orgID, provider, refundID, err)
 			if cerr != nil {
 				return out, errors.Join(err, cerr)
@@ -138,8 +140,12 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 			if attempts >= MaxDashboardConfirmAttempts {
 				// A visible record and an ops alert (sent by the sweep);
 				// only once it is written is the delivery acknowledged.
+				kind := UnresolvedUnconfirmed
+				if chargeRef == "" {
+					kind = UnresolvedNoPayment
+				}
 				if rerr := e.recordUnresolved(ctx, UnresolvedEvent{OrgID: orgID, Provider: provider, ProviderRefundID: refundID,
-					Kind: UnresolvedUnconfirmed, ChargeRef: chargeRef, Attempts: attempts, Detail: err.Error()}); rerr != nil {
+					Kind: kind, ChargeRef: chargeRef, Attempts: attempts, Detail: err.Error()}); rerr != nil {
 					return out, errors.Join(err, rerr)
 				}
 				out.Unconfirmed = true
