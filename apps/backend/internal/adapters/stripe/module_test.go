@@ -40,6 +40,16 @@ type refundStub struct {
 	mu       sync.Mutex
 	requests int
 	byKey    map[string][]byte
+	amounts  map[string]int64
+}
+
+func (s *refundStub) amountFor(key string) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if v, ok := s.amounts[key]; ok {
+		return v
+	}
+	return -1
 }
 
 func (s *refundStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -66,6 +76,10 @@ func (s *refundStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"amount": r.PostForm.Get("amount"),
 	})
 	s.byKey[key] = body
+	if s.amounts == nil {
+		s.amounts = map[string]int64{}
+	}
+	s.amounts[key], _ = strconv.ParseInt(r.PostForm.Get("amount"), 10, 64)
 	_, _ = w.Write(body)
 }
 
@@ -107,6 +121,7 @@ func TestStripeModule_Contract(t *testing.T) {
 			Currency:           "EUR",
 			StubRequests:       func() int { n, _ := stub.counts(); return n },
 			StubCreated:        func() int { _, n := stub.counts(); return n },
+			StubAmountFor:      stub.amountFor,
 		},
 	})
 }
