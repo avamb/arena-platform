@@ -183,13 +183,51 @@ PATCH /v1/organizations/{org_id}/channels/{channel_id}
 - **Контакт публикуется только из `public_contact` канала.** Поля
   `organizations.contact_email` и `contact_phone` на страницу не попадают никогда
   и не подставляются вместо `public_contact`: там может оказаться личный адрес
-  человека. Нет `public_contact` — блока контакта нет.
+  человека. Нет `public_contact` — блока контакта нет. В `public_contact`
+  указывайте ролевой ящик (tickets@, info@), не личную почту.
 - `promoter` показывается, если событие связано с промоутером (`event_promoters`);
   на странице самого промоутера (его slug) это его название.
 - Страница организации без одного канала (слияние нескольких каналов) берёт
   настройку из самого нового активного токена среди hosted-каналов.
-- Перед включением проверьте у организации юр. данные: пустой блок для покупателя
-  хуже, чем его отсутствие.
+
+**Перед включением:**
+
+1. **Получите согласие организатора.** Для ИП и самозанятого блок может
+   опубликовать налоговый номер и домашний адрес. Без явного «да» от
+   организатора не включайте.
+2. **Проверьте юр. данные организации**: пустой блок для покупателя хуже, чем его
+   отсутствие.
+3. **Страна — только код ISO 3166-1 alpha-2.** `organizations.country` и
+   `legal_address_country` должны быть двухбуквенными кодами (`ES`, `CZ`, `GR`;
+   Греция — `GR`, не `EL`). Значение вроде «Spain» не ошибка, но тихо даёт
+   `show_withdrawal_notice = false` и письмо без фразы об отсутствии права отказа.
+   Код страны юридического адреса важнее кода организации.
+
+**Как включить на ОДНОМ канале, не затерев гейтвей-ключи.** `PATCH` с ключом
+`settings` заменяет объект целиком и гоняется с ротацией учётных данных шлюза
+(`settings.gateway`): запись, прочитанная раньше, затрёт свежий ключ. Поэтому
+только атомарный SQL в одной транзакции, ожидаем РОВНО одну строку:
+
+```sql
+BEGIN;
+UPDATE sales_channels
+SET settings = jsonb_set(
+        jsonb_set(settings, '{hosted_page,show_seller}', 'true'::jsonb, true),
+        '{hosted_page,public_contact}',
+        jsonb_build_object('email', '<ролевой ящик>'), true),
+    updated_at = now()
+WHERE id = '<channel_id>' AND org_id = '<org_id>' AND deleted_at IS NULL
+  AND settings #>> '{hosted_page,enabled}' = 'true'
+RETURNING settings ? 'gateway' AS gateway_kept, settings->'hosted_page' AS hosted_page;
+-- ровно одна строка, hosted_page содержит show_seller=true и public_contact;
+-- если строк 0 или больше одной — ROLLBACK; иначе:
+COMMIT;
+```
+
+Откат: тем же приёмом поставить `show_seller` в `false`
+(`jsonb_set(settings, '{hosted_page,show_seller}', 'false'::jsonb, true)`), блоки
+исчезают из ответа. Страница кэшируется (`max-age=30` плюс `stale-while-revalidate=15`),
+поэтому и включение, и откат видны покупателям примерно через 45 секунд.
 
 ### Шаг 3 — активный feed-токен у этого канала
 
