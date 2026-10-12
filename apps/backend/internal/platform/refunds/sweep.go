@@ -565,6 +565,10 @@ func (e *Engine) alertReviews(ctx context.Context, n Notifier) (int, error) {
 // and never tells a person to cancel unconditionally (seventh review).
 func alertText(r Refund, ticketStatus string) string {
 	esc := opsalert.EscapeHTML
+	if deref(r.RequestedBy) == "provider_dashboard" {
+		return fmt.Sprintf("Refund %s (%d %s via %s) was made in the provider's own dashboard and does not cover the whole payment, or was reduced to fit it. The order's tickets are on review hold: decide which tickets it covers. Order %s.",
+			r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), uuidString(r.OrderID))
+	}
 	if r.State == StateManualReview {
 		text := fmt.Sprintf("Refund %s (%d %s via %s) needs manual review: %s. Order %s.",
 			r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), esc(deref(r.FailureCode)), uuidString(r.OrderID))

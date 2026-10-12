@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
@@ -73,9 +72,10 @@ func (h *Handler) processRefundWebhook(w http.ResponseWriter, r *http.Request, r
 // untouched (the organizer's provider account also serves their other sites).
 func (h *Handler) recordDashboardRefund(w http.ResponseWriter, r *http.Request, route webhookRoute, ack func(string, bool)) {
 	ev := *route.Event
-	res, err := h.refundEngine.RecordDashboardRefund(r.Context(), *route.ExpectedOrgID, route.Provider, ev)
+	var outcome dashboardOutcome
+	res, err := h.refundEngine.RecordDashboardRefund(r.Context(), *route.ExpectedOrgID, route.Provider, ev, h.dashboardApply(&outcome))
 	if err != nil {
-		// Including refunds.ErrRefundInFlight: the provider redelivers.
+		// Including refunds.ErrCannotConfirm: the provider redelivers.
 		h.logger.Error("webhook: recording a dashboard refund failed",
 			slog.String("provider", route.Provider),
 			slog.String("provider_refund_id", ev.ProviderRefundID),
@@ -86,6 +86,10 @@ func (h *Handler) recordDashboardRefund(w http.ResponseWriter, r *http.Request, 
 			"webhook.refund_failed", "failed to record the refund event", r))
 		return
 	}
+	if res.MaybeOurs {
+		ack("arena refund not recorded yet; it will be read back", false)
+		return
+	}
 	if !res.Found {
 		ack("not an arena refund", false)
 		return
@@ -94,13 +98,8 @@ func (h *Handler) recordDashboardRefund(w http.ResponseWriter, r *http.Request, 
 		ack("refund already recorded", false)
 		return
 	}
-	if res.Payment.CheckoutSessionID != nil {
-		row := gen.RefundRow{ID: res.Refund.ID, Amount: res.Refund.Amount, Currency: res.Refund.Currency}
-		if res.Full {
-			h.applyFullInboundRefundCancellation(r.Context(), row, *res.Payment.CheckoutSessionID)
-		} else {
-			h.applyPartialInboundRefundHold(r.Context(), row, *res.Payment.CheckoutSessionID)
-		}
+	if res.Full {
+		h.publishDashboardRefund(r.Context(), res, outcome)
 	}
 	h.recordWebhookEvent(ev.Type, webhookOutcomeProcessed)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{

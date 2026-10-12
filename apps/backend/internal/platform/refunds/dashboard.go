@@ -19,11 +19,9 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 )
 
-// ErrRefundInFlight: an arena refund of the same payment is mid-call or
-// waiting for the answer of an unknown outcome, so the provider's refund may
-// be that very refund. The caller answers 500 and the provider redelivers
-// once the engine has recorded its own answer.
-var ErrRefundInFlight = errors.New("refunds: an arena refund of this payment has not been answered yet")
+// ErrCannotConfirm: the provider's refund could not be read back, so
+// nothing was written. The caller answers 500 and the provider redelivers.
+var ErrCannotConfirm = errors.New("refunds: the provider's refund could not be confirmed")
 
 // DashboardRefund is what RecordDashboardRefund decided.
 type DashboardRefund struct {
@@ -31,29 +29,84 @@ type DashboardRefund struct {
 	Found bool
 	// Created: a new row was written (false on a replayed delivery).
 	Created bool
-	Refund  Refund
-	Payment Payment
+	// MaybeOurs: the provider's refund carries an arena refund id (it was
+	// created by arena) that no row has recorded yet. Nothing is written:
+	// the sweep reads the refund back when its call's outcome is known.
+	MaybeOurs bool
+	Refund    Refund
+	Payment   Payment
 	// Full: the live refunds of the payment now cover all of it.
 	Full bool
+	// Capped: the provider's amount exceeded what was still refundable and
+	// the row was written with the remainder (an alert is owed).
+	Capped bool
 }
+
+// DashboardApply runs INSIDE the transaction that wrote the row, so the
+// row and its consequences (ticket cancellation, order status) commit
+// together or not at all. An error rolls everything back: the caller
+// answers 500 and the provider redelivers.
+type DashboardApply func(ctx context.Context, tx pgx.Tx, res DashboardRefund) error
 
 // RecordDashboardRefund writes the row for a SUCCEEDED refund event of the
 // provider that no arena refund carries. The payment is found by the charge
-// reference (or payment id) the event names, inside the organization whose
-// config verified the delivery. A pending or failed event writes nothing:
-// the provider sends another event when it settles.
-func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, provider string, ev payments.NormalizedEvent) (DashboardRefund, error) {
+// reference the event names, inside the organization whose config verified
+// the delivery. Before anything is written the refund is read back from the
+// provider (RefundLookup): the event only says where to look, the amount,
+// currency and payment come from the provider's own answer. A pending or
+// failed refund writes nothing; the provider sends another event when it
+// settles.
+func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, provider string, ev payments.NormalizedEvent, apply DashboardApply) (DashboardRefund, error) {
 	var out DashboardRefund
 	chargeRef := strings.TrimSpace(ev.ProviderChargeRef)
 	refundID := strings.TrimSpace(ev.ProviderRefundID)
-	if provider == "" || refundID == "" || chargeRef == "" || ev.RefundStatus != payments.RefundSucceeded || ev.AmountMinor <= 0 {
+	if provider == "" || refundID == "" || ev.RefundStatus != payments.RefundSucceeded {
 		return out, nil
 	}
-	err := e.inTx(ctx, func(tx pgx.Tx) error {
+	if arenaID := strings.TrimSpace(ev.ArenaRefundID); arenaID != "" {
+		// Created by arena. If this organization has that refund the engine
+		// owns the outcome; if not, it belongs to another arena environment
+		// sharing the provider account and is not ours.
+		var exists bool
+		if err := e.inTx(ctx, func(tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM refunds WHERE id::text = $1 AND org_id = $2)`,
+				arenaID, orgID).Scan(&exists)
+		}); err != nil {
+			return out, err
+		}
+		if exists {
+			out.MaybeOurs = true
+			e.logger.Error("refunds: REFUND EVENT FOR AN ARENA REFUND THAT HAS NO PROVIDER ID RECORDED YET; the sweep reads it back",
+				"event", "refund_event_before_record", "refund_id", arenaID, "provider_refund_id", refundID, "provider", provider)
+		}
+		return out, nil
+	}
+	confirmed, ok, err := e.confirmProviderRefund(ctx, orgID, provider, refundID)
+	if err != nil {
+		return out, err
+	}
+	if !ok {
+		return out, nil
+	}
+	if confirmed.ProviderChargeRef != "" {
+		chargeRef = confirmed.ProviderChargeRef
+	}
+	if chargeRef == "" || confirmed.AmountMinor <= 0 {
+		return out, nil
+	}
+	err = e.inTx(ctx, func(tx pgx.Tx) error {
 		pay, err := scanPayment(tx.QueryRow(ctx, `SELECT `+paymentColumns+` FROM payment_intents
 			WHERE org_id = $1 AND provider = $2 AND (provider_charge_ref = $3 OR provider_payment_id = $3)
 			ORDER BY created_at DESC LIMIT 1`, orgID, provider, chargeRef))
 		if errors.Is(err, pgx.ErrNoRows) {
+			var missing int
+			if qerr := tx.QueryRow(ctx, `SELECT count(*) FROM payment_intents
+				WHERE org_id = $1 AND provider = $2 AND state = 'succeeded' AND COALESCE(provider_charge_ref, '') = ''`,
+				orgID, provider).Scan(&missing); qerr == nil && missing > 0 {
+				e.logger.Error("refunds: A REFUND MADE AT THE PROVIDER MATCHES NO PAYMENT, and paid payments of this organization have no charge reference stored",
+					"event", "dashboard_refund_unmatched", "provider", provider, "provider_refund_id", refundID,
+					"charge_ref", chargeRef, "payments_without_charge_ref", missing)
+			}
 			return nil
 		}
 		if err != nil {
@@ -63,17 +116,31 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 			return err
 		}
 		out.Found, out.Payment = true, pay
-		if cur := strings.ToUpper(strings.TrimSpace(ev.Currency)); cur != "" && cur != strings.ToUpper(pay.Currency) {
+		if cur := strings.ToUpper(strings.TrimSpace(confirmed.Currency)); cur != "" && cur != strings.ToUpper(pay.Currency) {
 			out.Found = false // not this payment's money
 			return nil
 		}
-		var inflight bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM refunds WHERE payment_intent_id = $1
-			AND provider IS NOT NULL AND state = 'provider_pending' AND provider_refund_id IS NULL)`, pay.ID).Scan(&inflight); err != nil {
+		// What is still refundable: the payment minus every refund that
+		// counts against its budget (arena's own, earlier dashboard ones).
+		var taken int64
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
+			WHERE payment_intent_id = $1 AND state <> 'failed' AND `+countsAgainstBudgetSQL, pay.ID).Scan(&taken); err != nil {
 			return err
 		}
-		if inflight {
-			return ErrRefundInFlight
+		amount := confirmed.AmountMinor
+		if left := pay.Amount - taken; amount > left {
+			out.Capped = true
+			amount = left
+		}
+		if amount <= 0 {
+			// The payment is already fully refunded, yet the provider says
+			// more money went back. A row would break the budget; nothing
+			// is written and the log is the alert.
+			out.Capped = true
+			e.logger.Error("refunds: A REFUND MADE AT THE PROVIDER EXCEEDS WHAT WAS LEFT OF THE PAYMENT; nothing recorded, check the provider dashboard",
+				"event", "dashboard_refund_over_payment", "provider", provider, "provider_refund_id", refundID,
+				"payment_intent_id", pay.ID.String(), "provider_amount", confirmed.AmountMinor)
+			return nil
 		}
 		var orderID *uuid.UUID
 		if pay.CheckoutSessionID != nil {
@@ -82,6 +149,8 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 				return err
 			}
 		}
+		// An alert is owed when the row is capped, or when it is smaller
+		// than the payment (tickets go under review hold).
 		r, err := scanRefund(tx.QueryRow(ctx, `
 			INSERT INTO refunds (payment_intent_id, org_id, order_id, amount, currency, reason, requested_by,
 			                     state, settlement, provider, provider_refund_id, provider_status, origin,
@@ -89,7 +158,7 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 			VALUES ($1, $2, $3, $4, $5, 'refund made in the provider dashboard', 'provider_dashboard',
 			        'succeeded', 'provider', $6, $7, 'succeeded', 'provider_dashboard', false, now(), now())
 			ON CONFLICT (provider, provider_refund_id) WHERE provider IS NOT NULL AND provider_refund_id IS NOT NULL DO NOTHING
-			RETURNING `+refundColumns, pay.ID, orgID, orderID, ev.AmountMinor, pay.Currency, provider, refundID))
+			RETURNING `+refundColumns, pay.ID, orgID, orderID, amount, pay.Currency, provider, refundID))
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil // a replayed delivery: already recorded
 		}
@@ -98,15 +167,60 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 		}
 		out.Created, out.Refund = true, r
 		var total int64
-		if err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(amount), 0) FROM refunds
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
 			WHERE payment_intent_id = $1 AND state = 'succeeded'`, pay.ID).Scan(&total); err != nil {
 			return err
 		}
 		out.Full = total >= pay.Amount
-		return e.writeAudit(ctx, tx, audit.Event{ActorType: "system", Action: "v1.refund.dashboard",
+		if out.Capped || !out.Full {
+			if _, err := tx.Exec(ctx, `UPDATE refunds SET alert_due_at = now() WHERE id = $1`, r.ID); err != nil {
+				return err
+			}
+		}
+		if err := e.writeAudit(ctx, tx, audit.Event{ActorType: "system", Action: "v1.refund.dashboard",
 			ResourceType: "refund", ResourceID: r.ID.String(),
-			Metadata: map[string]any{"provider": provider, "amount": r.Amount, "currency": r.Currency,
-				"order_id": uuidString(r.OrderID), "full": out.Full}})
+			Metadata: map[string]any{"provider": provider, "amount": r.Amount, "provider_amount": confirmed.AmountMinor,
+				"currency": r.Currency, "order_id": uuidString(r.OrderID), "full": out.Full, "capped": out.Capped}}); err != nil {
+			return err
+		}
+		if apply != nil {
+			return apply(ctx, tx, out)
+		}
+		return nil
 	})
 	return out, err
+}
+
+// confirmProviderRefund reads the refund back from the provider. ok is false
+// when it is not a succeeded refund of a provider that can be asked (nothing
+// to record); a read that fails is ErrCannotConfirm so the delivery is
+// retried rather than trusted.
+func (e *Engine) confirmProviderRefund(ctx context.Context, orgID uuid.UUID, provider, refundID string) (payments.RefundResult, bool, error) {
+	desc, hasModule := e.modules.Descriptor(provider)
+	if !hasModule || !desc.Capabilities.RefundLookup {
+		return payments.RefundResult{}, false, nil
+	}
+	callCtx, cancel := context.WithTimeout(ctx, e.callTimeout)
+	defer cancel()
+	module, err := e.modules.Build(callCtx, orgID, provider)
+	if err != nil {
+		return payments.RefundResult{}, false, errors.Join(ErrCannotConfirm, err)
+	}
+	looker, ok := module.(payments.RefundLookup)
+	if !ok {
+		return payments.RefundResult{}, false, nil
+	}
+	res, err := looker.RefundStatus(callCtx, refundID)
+	if errors.Is(err, payments.ErrRefundNotFound) {
+		// The provider says there is no such refund: nothing to record, and
+		// redelivering cannot change that.
+		return payments.RefundResult{}, false, nil
+	}
+	if err != nil {
+		return payments.RefundResult{}, false, errors.Join(ErrCannotConfirm, err)
+	}
+	if res.Status != payments.RefundSucceeded {
+		return payments.RefundResult{}, false, nil
+	}
+	return res, true, nil
 }
