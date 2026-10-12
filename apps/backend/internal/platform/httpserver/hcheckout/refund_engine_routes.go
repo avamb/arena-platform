@@ -64,17 +64,20 @@ func (h *Handler) refundRouteAllowed(w http.ResponseWriter, r *http.Request, pay
 		writeRefundError(w, r, ref)
 		return false
 	}
-	if h.refundEngine != nil {
-		ticket, scanned, serr := h.refundEngine.ScannedTicketOfPayment(r.Context(), paymentIntentID)
-		if serr != nil {
-			// The check could not be made: never let a refund through on a guess.
-			scanCheckUnavailable(w, r)
-			return false
-		}
-		if scanned {
-			h.refusedScanned(w, r, pi.OrgID, ticket)
-			return false
-		}
+	if h.refundEngine == nil {
+		// The scan rule cannot be checked: never let a refund through on a guess.
+		scanCheckUnavailable(w, r)
+		return false
+	}
+	ticket, scanned, serr := h.refundEngine.ScannedTicketOfPayment(r.Context(), paymentIntentID)
+	if serr != nil {
+		// The check could not be made: never let a refund through on a guess.
+		scanCheckUnavailable(w, r)
+		return false
+	}
+	if scanned {
+		h.refusedScanned(w, r, pi.OrgID, ticket)
+		return false
 	}
 	return true
 }

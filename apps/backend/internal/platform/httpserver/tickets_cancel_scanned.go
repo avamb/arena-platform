@@ -37,7 +37,10 @@ func (s *Server) cancelMoneyAllowedForScan(w http.ResponseWriter, r *http.Reques
 	}
 	engine := s.refundEngine()
 	if engine == nil {
-		return true
+		// The scan rule cannot be checked: never let money through on a guess.
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			refunds.CodeEngineUnavailable, "whether the ticket was scanned could not be checked; try again", r))
+		return false
 	}
 	// A superadmin's exception lets it through. Nothing is spent here: the
 	// handler spends it inside the transaction that writes the decision
