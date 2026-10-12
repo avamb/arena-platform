@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/uuid"
@@ -28,10 +29,15 @@ func TestBotE2E_RefundQueue_FailedRefundIsRetried(t *testing.T) {
 	f := newBotInviteFixture(t, pool)
 	other := newBotInviteFixture(t, pool)
 	stripe := newStubStripe(t)
-	declined := true
+	var declined atomic.Bool
+	declined.Store(true)
+	var hold atomic.Pointer[chan struct{}]
 	stripe.refundHandler = func(w http.ResponseWriter, r *http.Request) {
+		if h := hold.Load(); h != nil {
+			<-*h
+		}
 		w.Header().Set("Content-Type", "application/json")
-		if declined {
+		if declined.Load() {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = fmt.Fprint(w, `{"error":{"type":"invalid_request_error","code":"refund_declined","message":"declined for the test"}}`)
 			return
@@ -59,7 +65,13 @@ func TestBotE2E_RefundQueue_FailedRefundIsRetried(t *testing.T) {
 	d.press("or:f:go", "Почему возвращаются деньги")
 	d.press("or:f:r:3", "ВЕРНУТЬ")
 	d.say("вернуть", "Последняя проверка")
-	d.press("or:f:ok", "не удалось")
+	var key string
+	if err := pool.QueryRow(ctx, `SELECT state->>'key' FROM bot_dialogs WHERE telegram_user_id = $1 AND kind = 'refund'`, ecOwnerTG).Scan(&key); err != nil {
+		t.Fatalf("dialog key: %v", err)
+	}
+	m0 := tg.mark()
+	d.press("or:f:ok:"+strings.TrimPrefix(key, "tg-")[:12], "Отправляю возврат")
+	tg.waitSince(t, m0, "не удалось")
 	var failedID uuid.UUID
 	if err := pool.QueryRow(ctx, `SELECT id FROM refunds WHERE order_id = $1 AND state = 'failed'`, seed.anna).Scan(&failedID); err != nil {
 		t.Fatalf("the declined refund is not in the database: %v", err)
@@ -76,16 +88,29 @@ func TestBotE2E_RefundQueue_FailedRefundIsRetried(t *testing.T) {
 	}
 
 	// Retry asks first and sends nothing until the second press.
-	declined = false
+	declined.Store(false)
 	ask := d.press("rq:rt:"+failedID.String(), "Отправить этот возврат")
 	if !strings.Contains(ask, "Заказ №") || !strings.Contains(ask, "25") {
 		t.Errorf("the question names neither the order nor the amount:\n%s", ask)
+	}
+	// R2-8: the question says the ticket stops being valid.
+	if !strings.Contains(ask, "перестанет действовать") {
+		t.Errorf("the retry question does not say the ticket becomes invalid:\n%s", ask)
 	}
 	var n int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM refunds WHERE order_id = $1`, seed.anna).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("refunds after the question = %d (%v); want 1", n, err)
 	}
-	done := d.press("rq:ry:"+failedID.String(), "Возврат отправлен повторно")
+	// R2-1: the retry runs off the bot's worker; the bot keeps answering and
+	// a second press of the same retry only says it is under way.
+	held := make(chan struct{})
+	hold.Store(&held)
+	m1 := tg.mark()
+	d.press("rq:ry:"+failedID.String(), "Отправляю возврат")
+	d.press("home", "")
+	d.press("rq:ry:"+failedID.String(), "уже отправляется повторно")
+	close(held)
+	done := tg.waitSince(t, m1, "Возврат отправлен повторно")
 	if !strings.Contains(done, "возвращено") {
 		t.Errorf("the retry result does not say the money is back:\n%s", done)
 	}

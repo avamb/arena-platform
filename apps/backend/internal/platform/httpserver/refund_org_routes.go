@@ -199,7 +199,7 @@ func (s *Server) handleCreateOrderRefunds(w http.ResponseWriter, r *http.Request
 	// sent at once; a key without refund.approve leaves it for an approver.
 	in.Approved = s.perms != nil && s.perms.Check(r.Context(), "refund.approve", "refunds") == nil
 
-	wctx, cancel := refundWorkCtx(r)
+	wctx, cancel := refundWorkCtx(w, r)
 	defer cancel()
 	res, err := engine.CreateBatch(wctx, in)
 	if err != nil {
@@ -228,7 +228,17 @@ func (s *Server) handleCreateOrderRefunds(w http.ResponseWriter, r *http.Request
 // client repeats the call with the same Idempotency-Key to read the result.
 const refundWorkBudget = 2 * time.Minute
 
-func refundWorkCtx(r *http.Request) (context.Context, context.CancelFunc) {
+// refundWriteSlack is the time after the work budget left to write the
+// answer.
+const refundWriteSlack = 15 * time.Second
+
+// refundWorkCtx is the detached context of the engine work, and it moves the
+// connection's write deadline past the work budget: the server's own
+// WriteTimeout (REQUEST_TIMEOUT + 5 s) is shorter than a slow provider, and
+// a refund that finished after it would otherwise reach the caller as a
+// dropped connection.
+func refundWorkCtx(w http.ResponseWriter, r *http.Request) (context.Context, context.CancelFunc) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(refundWorkBudget + refundWriteSlack))
 	return context.WithTimeout(context.WithoutCancel(r.Context()), refundWorkBudget)
 }
 

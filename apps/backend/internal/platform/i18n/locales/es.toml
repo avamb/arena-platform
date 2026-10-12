@@ -2846,7 +2846,7 @@ other = "🔁 Reintentar {{.Order}}"
 other = "📄 Pedido {{.Order}}"
 
 ["bot.rq.retry_ask"]
-other = "¿Enviar esta devolución otra vez? Pedido {{.Order}}, entrada {{.Tickets}}, importe <b>{{.Amount}}</b>. Se crea una devolución nueva para la misma entrada e importe; una que pudo haberse hecho ya se rechaza."
+other = "¿Enviar esta devolución otra vez? Pedido {{.Order}}, entrada {{.Tickets}}, importe <b>{{.Amount}}</b>. Se crea una devolución nueva para la misma entrada e importe; una que pudo haberse hecho ya se rechaza.\n\nLa entrada deja de ser válida para entrar, también cuando solo se devuelve una parte de su precio, y el comprador recibe un correo sobre la devolución si se pidió la primera vez."
 
 ["bot.rq.retry_yes"]
 other = "Sí, enviar {{.Amount}} otra vez"
@@ -2857,6 +2857,18 @@ other = "Cancelar"
 ["bot.rq.already_replaced"]
 other = "Esta devolución ya se reenvió, así que no se puede reintentar. Mira la devolución más reciente en la lista."
 
+["bot.rq.still_sending"]
+other = "Esta devolución ya se está reenviando. Espera la respuesta aquí."
+
+["bot.rq.err_progress"]
+other = "Ya hay otra devolución en curso para esta entrada. No se reenvió nada; abre el pedido para verla."
+
+["bot.rq.err_ticket"]
+other = "Esta entrada ya no se puede devolver (cambió, ya no es válida o está en revisión). No se reenvió nada."
+
+["bot.rq.err_refused"]
+other = "Arena no reenvió la devolución: la devolución o su pedido cambiaron mientras tanto. No se envió nada; abre el pedido para ver su estado."
+
 ["bot.rq.retry_done"]
 other = "<b>Devolución enviada de nuevo</b>"
 
@@ -2866,7 +2878,7 @@ other = "Esta devolución no se puede reenviar: el proveedor puede haber devuelt
 ["bot.rq.provider_word"]
 other = "el proveedor"
 ["bot.ref.final"]
-other = "<b>Comprobación final</b>\nPedido n.º {{.Num}} · {{.N}} entrada(s): {{.Tickets}}\nA devolver: <b>{{.Amount}}</b> a través de {{.Provider}}\nCorreo al comprador: {{.Letter}}\n\nEl proveedor de pago devuelve el dinero; esto no se puede deshacer."
+other = "<b>Comprobación final</b>\nPedido n.º {{.Num}} · {{.N}} entrada(s): {{.Tickets}}\nA devolver: <b>{{.Amount}}</b> a través de {{.Provider}}\nCorreo al comprador: {{.Letter}}\n\nEstas entradas dejan de ser válidas para entrar, también cuando solo se devuelve una parte de su precio. El proveedor de pago devuelve el dinero; esto no se puede deshacer."
 
 ["bot.ref.yes_btn"]
 other = "✅ Sí, devolver {{.Amount}}"
@@ -2884,7 +2896,7 @@ other = "no se enviará"
 other = "Cancelado. No se devolvió nada."
 
 ["bot.ref.sending"]
-other = "Enviando la devolución… puede tardar hasta un minuto."
+other = "Enviando la devolución… El proveedor de pago puede tardar unos minutos; mientras tanto el bot sigue funcionando y escribirá aquí cuando llegue la respuesta."
 
 ["bot.ref.err_unsupported"]
 other = "Este proveedor de pago no puede enviar esta devolución desde arena. No se devolvió nada; devuélvelo en el panel del proveedor."
@@ -2906,3 +2918,24 @@ other = "Pedido n.º {{.Num}}: las entradas ya se usaron en la puerta, no hay na
 
 ["bot.ref.scanned_note"]
 other = "No se ofrecen: {{.Tickets}} — ya usadas en la puerta.\n\n"
+
+["bot.ref.still_sending"]
+other = "La devolución del pedido n.º {{.Num}} todavía se está enviando. Espera la respuesta aquí; hasta entonces no se puede cambiar nada."
+
+["bot.ref.send_lost"]
+other = "El bot se reinició mientras se enviaba esta devolución y su respuesta se perdió. Confirma de nuevo: se repite la misma operación, el dinero nunca se devuelve dos veces."
+
+["bot.ref.stale_btn"]
+other = "Ese botón es de una pantalla anterior y no hizo nada. Usa los botones de abajo."
+
+["bot.ref.err_forbidden"]
+other = "Arena rechazó la devolución: ya no tienes permiso para hacer devoluciones en esta organización. No se envió nada."
+
+["bot.ref.st_queued"]
+other = "🕓 en cola, aún no enviada al proveedor; Arena la envía en unos minutos"
+
+["bot.ref.no_payment"]
+other = "Arena no cobró nada por el pedido n.º {{.Num}} (un pedido gratuito o una invitación), así que aquí no hay nada que devolver."
+
+["bot.ref.unknown_provider"]
+other = "Arena no conoce el proveedor de pago del pedido n.º {{.Num}}, así que no puede devolver el dinero. Devuélvelo en el panel del proveedor o escribe a soporte. No se envió nada."

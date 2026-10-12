@@ -2991,7 +2991,7 @@ other = "🔁 Retry {{.Order}}"
 other = "📄 Order {{.Order}}"
 
 ["bot.rq.retry_ask"]
-other = "Send this refund again? Order {{.Order}}, ticket {{.Tickets}}, amount <b>{{.Amount}}</b>. A new refund is created for the same ticket and amount; one that may already have gone through is refused."
+other = "Send this refund again? Order {{.Order}}, ticket {{.Tickets}}, amount <b>{{.Amount}}</b>. A new refund is created for the same ticket and amount; one that may already have gone through is refused.\n\nThe ticket stops being valid for entry, also when only part of its price is returned, and the buyer gets an e-mail about the refund if the first one asked for it."
 
 ["bot.rq.retry_yes"]
 other = "Yes, send {{.Amount}} again"
@@ -3002,6 +3002,18 @@ other = "Cancel"
 ["bot.rq.already_replaced"]
 other = "This refund was already sent again, so it cannot be retried. Look at the newer refund in the list."
 
+["bot.rq.still_sending"]
+other = "This refund is already being sent again. Wait for the answer here."
+
+["bot.rq.err_progress"]
+other = "Another refund of this ticket is in progress. Nothing was sent again; open the order to see it."
+
+["bot.rq.err_ticket"]
+other = "This ticket can no longer be refunded (it changed, is no longer valid or is under review). Nothing was sent again."
+
+["bot.rq.err_refused"]
+other = "Arena did not send the refund again: the refund or its order changed meanwhile. Nothing was sent; open the order to see its state."
+
 ["bot.rq.retry_done"]
 other = "<b>Refund sent again</b>"
 
@@ -3011,7 +3023,7 @@ other = "This refund cannot be sent again: the provider may already have returne
 ["bot.rq.provider_word"]
 other = "the provider"
 ["bot.ref.final"]
-other = "<b>Final check</b>\nOrder #{{.Num}} · {{.N}} ticket(s): {{.Tickets}}\nTo return: <b>{{.Amount}}</b> through {{.Provider}}\nLetter to the buyer: {{.Letter}}\n\nThe payment provider returns the money; this cannot be undone."
+other = "<b>Final check</b>\nOrder #{{.Num}} · {{.N}} ticket(s): {{.Tickets}}\nTo return: <b>{{.Amount}}</b> through {{.Provider}}\nLetter to the buyer: {{.Letter}}\n\nThese tickets stop being valid for entry, also when only part of their price is returned. The payment provider returns the money; this cannot be undone."
 
 ["bot.ref.yes_btn"]
 other = "✅ Yes, refund {{.Amount}}"
@@ -3029,7 +3041,7 @@ other = "will not be sent"
 other = "Cancelled. Nothing was refunded."
 
 ["bot.ref.sending"]
-other = "Sending the refund… this can take up to a minute."
+other = "Sending the refund… The payment provider may take a few minutes; the bot keeps working meanwhile and will write here when the answer is in."
 
 ["bot.ref.err_unsupported"]
 other = "This payment provider cannot send this refund from arena. Nothing was refunded; refund it in the provider's dashboard."
@@ -3051,3 +3063,24 @@ other = "Order #{{.Num}}: the ticket(s) were already used at the gate, so there 
 
 ["bot.ref.scanned_note"]
 other = "Not offered: {{.Tickets}} - already used at the gate.\n\n"
+
+["bot.ref.still_sending"]
+other = "The refund of order #{{.Num}} is still being sent. Wait for the answer here; nothing can be changed until then."
+
+["bot.ref.send_lost"]
+other = "The bot was restarted while this refund was being sent, so its answer was lost. Confirm again: the same operation is repeated, the money is never returned twice."
+
+["bot.ref.stale_btn"]
+other = "That button belongs to an older screen and did nothing. Use the buttons below."
+
+["bot.ref.err_forbidden"]
+other = "Arena refused the refund: you no longer have the right to refund in this organization. Nothing was sent."
+
+["bot.ref.st_queued"]
+other = "🕓 queued, not sent to the provider yet; Arena sends it within a few minutes"
+
+["bot.ref.no_payment"]
+other = "Arena took no payment for order #{{.Num}} (a free order or an invitation), so there is nothing to refund here."
+
+["bot.ref.unknown_provider"]
+other = "Arena does not know the payment provider of order #{{.Num}}, so it cannot refund it. Refund it in the provider's dashboard or write to support. Nothing was sent."

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	tgbot "github.com/go-telegram/bot"
@@ -102,6 +103,24 @@ type Bot struct {
 	siteButton     bool
 	onb            *onbDialogs
 	onbForms       *onbFormCache
+
+	// bg tracks the work started off the single update worker (a refund
+	// call that may wait minutes for the provider), so Run can let it end.
+	bg sync.WaitGroup
+	// retrying holds the refund ids whose queue retry is under way.
+	retrying sync.Map
+}
+
+// backgroundDrain bounds how long Run waits for that work on shutdown.
+const backgroundDrain = 15 * time.Second
+
+// goBackground runs fn off the update worker and tracks it.
+func (b *Bot) goBackground(fn func()) {
+	b.bg.Add(1)
+	go func() {
+		defer b.bg.Done()
+		fn()
+	}()
 }
 
 // New builds the bot; it does not talk to Telegram until Run.
@@ -186,6 +205,13 @@ func (b *Bot) Run(ctx context.Context) error {
 	go b.dialogSweepLoop(ctx)
 	go b.draftSweepLoop(ctx)
 	b.tg.Start(ctx)
+	done := make(chan struct{})
+	go func() { b.bg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(backgroundDrain):
+		b.logger.Warn("eventbot: background work still running at shutdown")
+	}
 	return nil
 }
 
@@ -294,8 +320,8 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
 		// and an event's delete question (its typed word)
 		b.leaveEvStatus(ctx, from.ID)
-		b.leavePromo(ctx, from.ID)  // and a promo-code question (EC-11)
-		b.leaveRefund(ctx, from.ID) // and a refund question: its word is never an answer after a command (EC-21)
+		b.leavePromo(ctx, from.ID)      // and a promo-code question (EC-11)
+		b.leaveIdleRefund(ctx, from.ID) // and a refund question: its word is never an answer after a command (EC-21)
 		switch cmd {
 		case "/start":
 			arg = strings.TrimSpace(arg)
@@ -403,7 +429,7 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
 	}
 	if !strings.HasPrefix(cq.Data, "or:f:") {
-		b.leaveRefund(ctx, from.ID) // any other press ends the "Refund" dialog (EC-21)
+		b.leaveIdleRefund(ctx, from.ID) // any other press ends the "Refund" dialog (EC-21)
 	}
 	if !strings.HasPrefix(cq.Data, "or:r:") {
 		b.leaveResend(ctx, from.ID) // any other press ends the "Resend tickets" dialog (EC-13)
