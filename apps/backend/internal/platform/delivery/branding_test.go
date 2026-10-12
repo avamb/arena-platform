@@ -37,9 +37,9 @@ func TestResolveBranding_NoLogoMediaID_UsesPlatformLogoURL(t *testing.T) {
 	if got.Branding.LegalName != templates.PlatformLegalName {
 		t.Errorf("LegalName fallback = %q, want %q", got.Branding.LegalName, templates.PlatformLegalName)
 	}
-	if got.Branding.ContactEmail != templates.PlatformContactEmail {
-		t.Errorf("ContactEmail fallback = %q, want %q",
-			got.Branding.ContactEmail, templates.PlatformContactEmail)
+	if got.Branding.ContactEmail != "" {
+		t.Errorf("ContactEmail = %q, want empty: no placeholder address for an organization without a contact",
+			got.Branding.ContactEmail)
 	}
 	if r.calls != 0 {
 		t.Errorf("MediaResolver.ResolveLogo should not be called when OrgLogoMediaID is empty (got %d calls)", r.calls)

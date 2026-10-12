@@ -863,8 +863,10 @@ type resolveBrandingResult struct {
 //   - On a non-not-found resolver error (e.g. media-store outage), the
 //     handler logs a warning and falls back to the platform logo URL
 //     too — never blocks delivery on a media failure.
-//   - Empty text fields fall back to platform defaults so the email
-//     footer always identifies a legal entity (EU rule).
+//   - An empty name or legal name falls back to the platform default so
+//     the email footer always identifies a legal entity (EU rule). An
+//     empty contact e-mail does NOT: no contact line is printed rather
+//     than a placeholder address nobody reads.
 //
 // Returns a resolveBrandingResult carrying the branding strings and
 // the optional org-logo bytes for PDF embedding.
@@ -878,7 +880,7 @@ func resolveBranding(ctx context.Context, m MediaResolver, p Payload, logger *sl
 		LegalAddressPostalCode: p.OrgLegalAddressPostal,
 		LegalAddressCity:       p.OrgLegalAddressCity,
 		LegalAddressCountry:    p.OrgLegalAddressCountry,
-		ContactEmail:           defaultStr(p.OrgContactEmail, templates.PlatformContactEmail),
+		ContactEmail:           strings.TrimSpace(p.OrgContactEmail),
 	}
 	b.LogoAlt = b.OrgName
 
