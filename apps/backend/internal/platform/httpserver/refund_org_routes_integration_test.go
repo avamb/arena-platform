@@ -583,3 +583,39 @@ func TestRefundOrgRoutes_ClientHangUpDoesNotAbortTheRefund(t *testing.T) {
 		t.Fatalf("replay after the hang-up: %d %v; want replayed", st, out)
 	}
 }
+
+// Round-2 review R2-3: a refund whose provider call outlasts the server's
+// WriteTimeout still reaches the caller. httptest's server has no write
+// timeout of its own, so the test sets one on the real http.Server.
+func TestRefundOrgRoutes_AnswerOutlivesWriteTimeout(t *testing.T) {
+	stub := newStubStripe(t)
+	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) { c.StripeAPIBaseURL = stub.baseURL() })
+	ts := httptest.NewUnstartedServer(srv.Router())
+	ts.Config.WriteTimeout = 500 * time.Millisecond
+	ts.Start()
+	t.Cleanup(ts.Close)
+	pf := &prom0113Fixture{ts: ts, client: ts.Client(), q: gen.New(srv.pgxPool)}
+	ctx := context.Background()
+	user, err := pf.q.InsertUser(ctx, "r23-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf.userID = user.ID
+	org := pf.org(t, "R23")
+	key := pf.key(t, org, "refund.read", "refund.create", "refund.approve")
+	stub.sessionPI = "pi_r23_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
+	stub.refundHandler = func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(1500 * time.Millisecond) // longer than the write timeout
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"id":"re_%s","status":"succeeded"}`, uuid.NewString()[:8])
+	}
+	f := newPay03Order(t, srv.pgxPool, org, "stripe")
+	body := fmt.Sprintf(`{"items":[{"ticket_id":%q}],"reason":"slow provider"}`, f.tickets[0])
+	st, out := refundOrgPost(t, pf, "/v1/organizations/"+org.String()+"/orders/"+f.order.String()+"/refunds", key, "r23-"+uuid.NewString(), body)
+	if st != http.StatusAccepted {
+		t.Fatalf("create through a slow provider: %d %v; want 202", st, out)
+	}
+	if got := out["refunds"].([]any)[0].(map[string]any)["state"]; got != "succeeded" {
+		t.Fatalf("refund state = %v; want succeeded", got)
+	}
+}

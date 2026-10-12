@@ -3011,7 +3011,7 @@ other = "This refund cannot be sent again: the provider may already have returne
 ["bot.rq.provider_word"]
 other = "the provider"
 ["bot.ref.final"]
-other = "<b>Final check</b>\nOrder #{{.Num}} · {{.N}} ticket(s): {{.Tickets}}\nTo return: <b>{{.Amount}}</b> through {{.Provider}}\nLetter to the buyer: {{.Letter}}\n\nThe payment provider returns the money; this cannot be undone."
+other = "<b>Final check</b>\nOrder #{{.Num}} · {{.N}} ticket(s): {{.Tickets}}\nTo return: <b>{{.Amount}}</b> through {{.Provider}}\nLetter to the buyer: {{.Letter}}\n\nThese tickets stop being valid for entry, also when only part of their price is returned. The payment provider returns the money; this cannot be undone."
 
 ["bot.ref.yes_btn"]
 other = "✅ Yes, refund {{.Amount}}"
@@ -3029,7 +3029,7 @@ other = "will not be sent"
 other = "Cancelled. Nothing was refunded."
 
 ["bot.ref.sending"]
-other = "Sending the refund… this can take up to a minute."
+other = "Sending the refund… The payment provider may take a few minutes; the bot keeps working meanwhile and will write here when the answer is in."
 
 ["bot.ref.err_unsupported"]
 other = "This payment provider cannot send this refund from arena. Nothing was refunded; refund it in the provider's dashboard."
@@ -3042,3 +3042,24 @@ other = "One of the tickets can no longer be refunded (it changed, is no longer 
 
 ["bot.ref.err_timeout"]
 other = "The answer is taking longer than expected. Nothing is lost: open the order in a minute to see the state of the refund. Do not start it again."
+
+["bot.ref.still_sending"]
+other = "The refund of order #{{.Num}} is still being sent. Wait for the answer here; nothing can be changed until then."
+
+["bot.ref.send_lost"]
+other = "The bot was restarted while this refund was being sent, so its answer was lost. Confirm again: the same operation is repeated, the money is never returned twice."
+
+["bot.ref.stale_btn"]
+other = "That button belongs to an older screen and did nothing. Use the buttons below."
+
+["bot.ref.err_forbidden"]
+other = "Arena refused the refund: you no longer have the right to refund in this organization. Nothing was sent."
+
+["bot.ref.st_queued"]
+other = "🕓 queued, not sent to the provider yet; Arena sends it within a few minutes"
+
+["bot.ref.no_payment"]
+other = "Arena took no payment for order #{{.Num}} (a free order or an invitation), so there is nothing to refund here."
+
+["bot.ref.unknown_provider"]
+other = "Arena does not know the payment provider of order #{{.Num}}, so it cannot refund it. Refund it in the provider's dashboard or write to support. Nothing was sent."

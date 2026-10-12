@@ -1,6 +1,7 @@
 package eventbot
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 
@@ -69,9 +70,10 @@ func TestRefundResultText_NamesEveryOutcome(t *testing.T) {
 	t.Parallel()
 	b := ecTestBot(t)
 	why := "card closed"
+	pid := "re_1"
 	res := openapi.CreateOrderRefundsResponse{Refunds: []openapi.OrderRefundItem{
 		{Amount: 2500, Currency: "EUR", State: "succeeded"},
-		{Amount: 2500, Currency: "EUR", State: "provider_pending"},
+		{Amount: 2500, Currency: "EUR", State: "provider_pending", ProviderRefundId: &pid},
 		{Amount: 2500, Currency: "EUR", State: "failed", FailureReason: &why},
 		{Amount: 2500, Currency: "EUR", State: "manual_review"},
 	}}
@@ -79,6 +81,22 @@ func TestRefundResultText_NamesEveryOutcome(t *testing.T) {
 	for _, want := range []string{"1000000500", "returned", "Stripe", "failed: card closed", "manual check"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("result text lacks %q:\n%s", want, got)
+		}
+	}
+}
+
+// Round-2 review R2-7: a refund the server only queued (provider_pending with
+// no provider id: it was not sent yet) is never shown as accepted.
+func TestRefundResultText_QueuedIsNotAccepted(t *testing.T) {
+	t.Parallel()
+	b := ecTestBot(t)
+	res := openapi.CreateOrderRefundsResponse{Refunds: []openapi.OrderRefundItem{
+		{Amount: 2500, Currency: "EUR", State: "provider_pending"},
+	}}
+	for _, loc := range SupportedLocales {
+		got := b.refundResultText(loc, refundDialog{Num: 7, Provider: "stripe"}, res)
+		if strings.Contains(got, "Stripe") || !strings.Contains(got, "🕓") {
+			t.Errorf("%s: a refund not sent yet reads as accepted:\n%s", loc, got)
 		}
 	}
 }
@@ -142,5 +160,26 @@ func TestRefundTicketLabel_NamesTheTicketNotItsPosition(t *testing.T) {
 	}
 	if got := (refundTicket{}).label(1); got != "№2" {
 		t.Errorf("a ticket without a number falls back to its position: %q", got)
+	}
+}
+
+// Round-2 review F6: a route without a provider refund is explained for what
+// it is, never as "everything was already refunded", and a refused call
+// says nothing was sent instead of "taking longer".
+func TestRefundRoutesAndRefusalsHaveTheirOwnTexts(t *testing.T) {
+	t.Parallel()
+	for route, want := range map[string]string{
+		"arena_provider": "", "seller_site": "bot.ref.site", "unsupported": "bot.ref.unsupported",
+		"none": "bot.ref.no_payment", "unknown_provider": "bot.ref.unknown_provider", "later": "bot.ref.unknown_provider",
+	} {
+		if got := refundRouteKey(route); got != want {
+			t.Errorf("route %q: %q; want %q", route, got, want)
+		}
+	}
+	b := ecTestBot(t)
+	for _, st := range []int{http.StatusForbidden, http.StatusUnauthorized} {
+		if got := b.refundErrorKey(&APIError{Status: st, Code: "permissions.denied"}); got != "bot.ref.err_forbidden" {
+			t.Errorf("status %d: %q; want bot.ref.err_forbidden", st, got)
+		}
 	}
 }
