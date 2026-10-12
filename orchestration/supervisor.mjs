@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from '
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { runCodexReview } from './codex-review.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RUN_ROOT = path.join(ROOT, 'orchestration', 'runs', 'supervisor');
@@ -174,6 +175,20 @@ function realTaskResult(task, entry, sessionDir, approved) {
   return safe;
 }
 
+function reviewPendingTask(task, entry, sessionDir, result) {
+  if (entry.codex_review !== 'run') return result;
+  const worktree = entry.worktree ?? ROOT;
+  const prompt = [
+    'Review the current uncommitted task implementation in this worktree.',
+    `Task objective: ${task.objective}`,
+    `Acceptance criteria: ${task.acceptance.join('; ')}`,
+    'Run only safe read-only checks. Return only the required JSON review schema.',
+  ].join('\n');
+  const review = runCodexReview({ worktree, prompt, schemaPath: path.join(ROOT, 'orchestration', 'codex-review.schema.json'), timeoutMs: task.timeout_ms });
+  writeJson(path.join(sessionDir, 'tasks', task.task_id, 'codex-review.json'), review);
+  return { ...result, status: review.verdict === 'PASS' ? 'PASS' : 'CODEX_REVIEW_REJECTED', codex_review: review };
+}
+
 function budgetAllows(actual, next, limit) {
   return Number.isFinite(actual) && Number.isFinite(next) && Number.isFinite(limit) && actual + next <= limit;
 }
@@ -193,7 +208,12 @@ function runQueue(queueFile, { mock = false, approved = false, resume = false, s
     state = { schema_version: 1, session_id: id, status: 'RUNNING', created_at: new Date().toISOString(), mode: mock ? 'mock' : 'approved-sdk', configured_budget_usd: checked.configured_budget_usd, actual_cost_usd: 0, tasks: checked.tasks.map(({ task }) => ({ task_id: task.task_id, status: 'PENDING', api_calls: 0 })) };
     checkpoint(sessionDir, state);
   }
-  const done = state.tasks.filter(task => task.status === 'PASS' || task.status === 'PENDING_CODEX_REVIEW').length;
+  if (state.tasks.some(task => task.status === 'PENDING_CODEX_REVIEW')) {
+    state.status = 'PENDING_CODEX_REVIEW';
+    checkpoint(sessionDir, state);
+    return { status: state.status, session_id: id, api_calls: state.tasks.reduce((sum, task) => sum + (Number.isFinite(task.api_calls) ? task.api_calls : 0), 0), actual_cost_usd: state.actual_cost_usd };
+  }
+  const done = state.tasks.filter(task => task.status === 'PASS').length;
   if (stopAfter !== null && done >= stopAfter && state.tasks.some(task => task.status === 'PENDING')) {
     state.status = 'INTERRUPTED';
     checkpoint(sessionDir, state);
@@ -213,7 +233,8 @@ function runQueue(queueFile, { mock = false, approved = false, resume = false, s
       checkpoint(sessionDir, state);
       return { status: state.status, session_id: id, api_calls: state.tasks.reduce((sum, item) => sum + item.api_calls, 0), actual_cost_usd: state.actual_cost_usd };
     }
-    const result = mock ? mockTaskResult(task, sessionDir, i) : realTaskResult(task, entry, sessionDir, approved);
+    let result = mock ? mockTaskResult(task, sessionDir, i) : realTaskResult(task, entry, sessionDir, approved);
+    if (!mock && result.status === 'PENDING_CODEX_REVIEW') result = reviewPendingTask(task, entry, sessionDir, result);
     current.status = result.status;
     current.api_calls = result.api_calls ?? 0;
     current.result = result.result ?? null;
@@ -227,10 +248,11 @@ function runQueue(queueFile, { mock = false, approved = false, resume = false, s
     }
     state.actual_cost_usd += taskCost ?? 0;
     checkpoint(sessionDir, state);
-    if (result.status === 'FAIL') { state.status = 'STOPPED_ON_ERROR'; checkpoint(sessionDir, state); return { status: state.status, session_id: id, api_calls: state.tasks.reduce((sum, item) => sum + item.api_calls, 0), actual_cost_usd: state.actual_cost_usd }; }
+    if (result.status === 'FAIL' || result.status === 'CODEX_REVIEW_REJECTED') { state.status = result.status === 'CODEX_REVIEW_REJECTED' ? 'STOPPED_ON_CODEX_REVIEW' : 'STOPPED_ON_ERROR'; checkpoint(sessionDir, state); return { status: state.status, session_id: id, api_calls: state.tasks.reduce((sum, item) => sum + (Number.isFinite(item.api_calls) ? item.api_calls : 0), 0), actual_cost_usd: state.actual_cost_usd }; }
     if (!mock && result.status === 'PENDING_CODEX_REVIEW' && !Number.isFinite(result.reported_api_cost_usd)) { current.status = 'UNKNOWN_BILLING'; state.status = 'STOPPED_UNKNOWN_BILLING'; checkpoint(sessionDir, state); return { status: state.status, session_id: id, api_calls: state.tasks.reduce((sum, item) => sum + item.api_calls, 0), actual_cost_usd: state.actual_cost_usd }; }
+    if (!mock && result.status === 'PENDING_CODEX_REVIEW') { state.status = 'PENDING_CODEX_REVIEW'; checkpoint(sessionDir, state); return { status: state.status, session_id: id, api_calls: state.tasks.reduce((sum, item) => sum + (Number.isFinite(item.api_calls) ? item.api_calls : 0), 0), actual_cost_usd: state.actual_cost_usd }; }
   }
-  state.status = state.tasks.every(task => task.status !== 'PENDING') ? 'COMPLETED' : 'INTERRUPTED';
+  state.status = state.tasks.every(task => task.status === 'PASS') ? 'COMPLETED' : 'INTERRUPTED';
   checkpoint(sessionDir, state);
   return { status: state.status, session_id: id, api_calls: state.tasks.reduce((sum, item) => sum + item.api_calls, 0), actual_cost_usd: state.actual_cost_usd };
 }
