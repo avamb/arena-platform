@@ -6369,7 +6369,9 @@ export interface paths {
          *     answer is advice: the create call checks every rule again. An order
          *     paid on a seller's own site answers `route` `seller_site` with a
          *     `refusal`, an order arena took no money for answers `none`. Requires
-         *     the `refund.read` permission.
+         *     the `refund.read` permission. Only tickets that are lines of this
+         *     order are listed: a ticket that a transfer moved to another holder or
+         *     order is not offered here and cannot be refunded through this API.
          */
         get: operations["getV1OrganizationsOrgIdOrdersOrderIdRefundOptions"];
         put?: never;
@@ -6400,7 +6402,9 @@ export interface paths {
          *     `refund.idempotency_key_reused`. Money goes first: a ticket is
          *     cancelled only after the provider accepted its refund. The answer is
          *     202 with one refund per ticket in the state it reached. Requires the
-         *     `refund.create` permission.
+         *     `refund.create` permission. There is no organization-scoped approve
+         *     route: a refund created without `refund.approve` stays `requested`
+         *     and is approved through `POST /v1/refunds/{id}/approve`.
          */
         post: operations["postV1OrganizationsOrgIdOrdersOrderIdRefunds"];
         delete?: never;
@@ -42863,7 +42867,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Internal server error. */
+            /** @description Internal server error (`refund.options_failed`). */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -42967,7 +42971,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Internal server error. */
+            /** @description Internal server error (`refund.create_failed`). */
             500: {
                 headers: {
                     [name: string]: unknown;
