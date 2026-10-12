@@ -1,10 +1,12 @@
 package eventbot
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-telegram/bot/models"
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
@@ -14,25 +16,100 @@ func contactOf(name, email, phone string, hidden bool) openapi.OrganizerContact 
 	return openapi.OrganizerContact{Name: name, Email: email, Phone: phone, PhoneHidden: hidden}
 }
 
-func TestSessionDialogs_LapseIsReportedOnce(t *testing.T) {
-	d := newSessionDialogs()
+func TestSessionDialogs_StateSurvivesARestart(t *testing.T) {
+	ctx := context.Background()
+	clock := &testClock{t: time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)}
+	store := newMemDialogStore(clock)
 	const id = int64(9)
-	d.put(id, &sessionDialog{EventID: uuid.New()})
-	if _, ok := d.get(id); !ok {
+	org, ev, ses := uuid.New(), uuid.New(), uuid.New()
+	start := time.Date(2026, 12, 19, 18, 0, 0, 0, time.UTC)
+
+	first := newSessionDialogs(store)
+	first.put(ctx, id, &sessionDialog{
+		OrgID: org, EventID: ev, EventName: "Gala", Step: sesStepConfirm, Mode: sesModeMove, Cur: 1,
+		Items:   []sesItem{{ID: uuid.New(), Start: start, Status: "scheduled", Tz: "Europe/Madrid", Active: 3}, {ID: ses, Start: start.Add(24 * time.Hour), Status: "scheduled", Tz: "Europe/Madrid", Active: -1}},
+		Date:    "2026-12-20",
+		Time:    "19:30",
+		Message: "New time", MessageSet: true,
+		Impact: &sesImpact{Kinds: []string{"date", "time"}, Orders: 4, Tickets: 6, Old: "19 Dec", New: "20 Dec"},
+		Cal:    &Draft{},
+		MsgID:  42, CanSales: true,
+	})
+
+	// A new process: nothing but the store is shared.
+	second := newSessionDialogs(store)
+	got, ok, expired := second.get(ctx, id)
+	if !ok || expired {
+		t.Fatalf("get after a restart: ok=%v expired=%v; want the dialog", ok, expired)
+	}
+	if got.OrgID != org || got.EventID != ev || got.Step != sesStepConfirm || got.Mode != sesModeMove || got.Cur != 1 ||
+		got.Date != "2026-12-20" || got.Time != "19:30" || got.Message != "New time" || !got.MessageSet ||
+		got.MsgID != 42 || !got.CanSales || got.Cal == nil {
+		t.Fatalf("state lost: %+v", got)
+	}
+	if len(got.Items) != 2 || got.Items[1].ID != ses || !got.Items[0].Start.Equal(start) || got.Items[1].Active != -1 {
+		t.Fatalf("items lost: %+v", got.Items)
+	}
+	if got.Impact == nil || got.Impact.Orders != 4 || got.Impact.New != "20 Dec" {
+		t.Fatalf("impact lost: %+v", got.Impact)
+	}
+
+	// Changes made by a handler are written back by save.
+	got.Step = sesStepType
+	second.save(ctx, id, got)
+	again, _, _ := newSessionDialogs(store).get(ctx, id)
+	if again.Step != sesStepType {
+		t.Fatalf("step after save = %q; want %q", again.Step, sesStepType)
+	}
+}
+
+func TestSessionDialogs_LapseIsReportedOnce(t *testing.T) {
+	ctx := context.Background()
+	clock := &testClock{t: time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)}
+	d := newSessionDialogs(newMemDialogStore(clock))
+	const id = int64(9)
+	// A dialog that was waiting for a typed time: the lapse is worth saying.
+	d.put(ctx, id, &sessionDialog{OrgID: uuid.New(), EventID: uuid.New(), Step: sesStepTime})
+	if _, ok, _ := d.get(ctx, id); !ok {
 		t.Fatal("a fresh dialog must be live")
 	}
-	d.mu.Lock()
-	d.byID[id].expires = time.Now().Add(-time.Minute)
-	d.mu.Unlock()
-	if _, ok := d.get(id); ok {
-		t.Fatal("an expired dialog must not be returned")
+	clock.advance(dialogTTL + time.Minute)
+	if _, ok, expired := d.get(ctx, id); ok || !expired {
+		t.Fatalf("an expired dialog: ok=%v expired=%v; want not live, expired once", ok, expired)
 	}
-	if !d.takeLapsed(id) || d.takeLapsed(id) {
-		t.Fatal("the lapse must be reported exactly once")
+	if _, ok, expired := d.get(ctx, id); ok || expired {
+		t.Fatalf("the lapse must be reported exactly once: ok=%v expired=%v", ok, expired)
 	}
-	d.put(id, &sessionDialog{})
-	if d.takeLapsed(id) {
-		t.Fatal("a new dialog clears the lapse")
+}
+
+// A card or a list that lapsed was not waiting for anything typed: a text
+// the person types afterwards is a stray text and goes on to whatever handles
+// it, not a "your answer was lost" message.
+func TestSessionDialogs_LapsedCardIsNotReported(t *testing.T) {
+	ctx := context.Background()
+	clock := &testClock{t: time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)}
+	d := newSessionDialogs(newMemDialogStore(clock))
+	const id = int64(9)
+	for _, step := range []string{sesStepCard, sesStepList, sesStepConfirm} {
+		d.put(ctx, id, &sessionDialog{OrgID: uuid.New(), EventID: uuid.New(), Step: step})
+		clock.advance(dialogTTL + time.Minute)
+		if _, ok, expired := d.get(ctx, id); ok || expired {
+			t.Fatalf("step %q lapsed: ok=%v expired=%v; want silence", step, ok, expired)
+		}
+	}
+}
+
+func TestSessionDialogs_DroppedDialogIsNotWrittenBack(t *testing.T) {
+	ctx := context.Background()
+	clock := &testClock{t: time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)}
+	d := newSessionDialogs(newMemDialogStore(clock))
+	const id = int64(9)
+	d.put(ctx, id, &sessionDialog{OrgID: uuid.New(), Step: sesStepCard})
+	dlg, _, _ := d.get(ctx, id)
+	d.drop(ctx, id, dlg)
+	d.save(ctx, id, dlg) // the deferred write-back of the entry point
+	if _, ok, expired := d.get(ctx, id); ok || expired {
+		t.Fatalf("a dropped dialog came back: ok=%v expired=%v", ok, expired)
 	}
 }
 
@@ -90,5 +167,23 @@ func TestContactLabel_HidesAHiddenPhone(t *testing.T) {
 	}
 	if got := contactLabel(contactOf("", "a@b.c", "+34 600", false)); !strings.Contains(got, "+34 600") {
 		t.Errorf("a shown phone must appear: %q", got)
+	}
+}
+
+// A stray text typed on a card must not slide the dialog's expiry forward:
+// the write-back is for answers the dialog took.
+func TestSessionsText_StrayTextOnACardKeepsTheExpiry(t *testing.T) {
+	ctx := context.Background()
+	clock := &testClock{t: time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)}
+	b := &Bot{sessions: newSessionDialogs(newMemDialogStore(clock))}
+	const id = int64(9)
+	b.sessions.put(ctx, id, &sessionDialog{OrgID: uuid.New(), EventID: uuid.New(), Step: sesStepCard})
+	clock.advance(dialogTTL - 10*time.Minute)
+	if b.sessionsText(ctx, 1, &models.User{ID: id}, "hello") {
+		t.Fatal("a text on a card was taken as an answer")
+	}
+	clock.advance(11 * time.Minute)
+	if _, ok, _ := b.sessions.get(ctx, id); ok {
+		t.Fatal("the stray text slid the dialog's expiry forward")
 	}
 }

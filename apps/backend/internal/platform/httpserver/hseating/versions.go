@@ -137,17 +137,11 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 	capacitySeated := int32(seatCount)    //nolint:gosec // bound-checked above
 	capacityStanding := int32(gaCapacity) //nolint:gosec // bound-checked above
 
-	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "failed to begin transaction", r,
-		))
-		return
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	qtx := h.queries.WithTx(tx)
-
-	plan, err := qtx.GetSeatingPlanByID(ctx, planID)
+	// Read the plan and decide the caller's right to it BEFORE the
+	// transaction: the per-organization check reads roles through the pool,
+	// and a pool connection taken while this request holds a transaction
+	// waits forever under a full pool.
+	plan, err := h.queries.GetSeatingPlanByID(ctx, planID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
@@ -165,7 +159,7 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 	// IDs resolve as 404 (same as the update handler) so plan existence is
 	// not leaked to non-members. Superadmins bypass membership with an
 	// audited X-Admin-Reason (requireOrgMembership in authz.go).
-	versionMember, err := requireOrgMembership(w, r, qtx, plan.OwnerOrgID)
+	versionMember, err := requireOrgMembership(w, r, h.queries, plan.OwnerOrgID)
 	if errors.Is(err, errResponseWritten) {
 		return
 	}
@@ -177,6 +171,40 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 		return
 	}
 	if !versionMember {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"seating_plan.not_found", "seating plan not found", r,
+		))
+		return
+	}
+
+	ownerChecked := plan.OwnerOrgID
+
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "failed to begin transaction", r,
+		))
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	qtx := h.queries.WithTx(tx)
+
+	plan, err = qtx.GetSeatingPlanByID(ctx, planID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"seating_plan.not_found", "seating plan not found", r,
+			))
+			return
+		}
+		h.logger.Error("seating_plan: pre-version get failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"seating_plan.version_create_failed", "failed to create seating plan version", r,
+		))
+		return
+	}
+	if plan.OwnerOrgID != ownerChecked {
+		// The plan changed hands between the check and the transaction.
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 			"seating_plan.not_found", "seating plan not found", r,
 		))

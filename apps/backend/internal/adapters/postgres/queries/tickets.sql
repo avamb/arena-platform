@@ -45,6 +45,20 @@ SELECT id, checkout_session_id, session_id, tier_id, holder_email,
 FROM   tickets
 WHERE  id = $1;
 
+-- name: GetTicketOrgID :one
+-- GetTicketOrgID returns the organization that owns a ticket WITHOUT the
+-- deleted_at filters of GetSessionOrgContext, so a ticket of a cancelled
+-- (soft-deleted) session stays reachable for the organization guard. A paid
+-- ticket takes the checkout session's org, a complimentary one the issuance's,
+-- and the session's event is the last resort.
+SELECT COALESCE(cs.org_id, ci.org_id, e.org_id) AS org_id
+FROM   tickets t
+LEFT JOIN checkout_sessions cs ON cs.id = t.checkout_session_id
+LEFT JOIN complimentary_issuances ci ON ci.id = t.complimentary_issuance_id
+LEFT JOIN sessions s ON s.id = t.session_id
+LEFT JOIN events e ON e.id = s.event_id
+WHERE  t.id = $1;
+
 -- name: CountTicketsByCheckoutSession :one
 SELECT COUNT(*)::bigint AS count
 FROM   tickets
