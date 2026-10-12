@@ -22055,10 +22055,26 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [payment_config]
+                required: [payment_config, webhook_warnings]
                 properties:
                   payment_config:
                     $ref: "#/components/schemas/PaymentProviderConfigItem"
+                  webhook_warnings:
+                    type: array
+                    items:
+                      type: string
+                    description: |
+                      Advisory findings about the provider's webhook endpoint,
+                      empty when there is nothing to report or the provider
+                      could not be asked. `webhook_endpoint_not_found`: the
+                      provider account has no endpoint with this config's
+                      callback URL. `refund_events_not_subscribed`: the
+                      endpoint exists but does not receive every refund event
+                      (created, updated and failed), so some refunds made or
+                      changed at the provider never reach arena. Only
+                      computed when the credential was accepted and the
+                      provider lets the key list its endpoints.
+                    example: ["refund_events_not_subscribed"]
         "400":
           description: Malformed org_id or id
           content:

@@ -974,6 +974,9 @@ type webhookRoute struct {
 	// body (per-config route, Capabilities.WebhookConfigRouteOnly). The
 	// state machine then runs on it instead of parsing the body.
 	Event *payments.NormalizedEvent
+	// Provider is the provider whose config verified the delivery (per-config
+	// route only); a refund event is matched inside it.
+	Provider string
 }
 
 // processPaymentWebhook is the shared body of both webhook entry points. The
@@ -1018,6 +1021,11 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 		req = parsed
+	}
+
+	if route.Event != nil && route.Event.Kind == payments.EventRefundUpdated {
+		h.processRefundWebhook(w, r, route)
+		return
 	}
 
 	// A module's event is decided by its KIND alone (spec 36, warning M1): a
