@@ -31,7 +31,8 @@ func TestWebhookWarnings(t *testing.T) {
 		body   string
 		want   []string
 	}{
-		{"subscribed", 200, `{"data":[{"url":"` + cb + `","status":"enabled","enabled_events":["refund.updated"]}]}`, nil},
+		{"subscribed", 200, `{"data":[{"url":"` + cb + `","status":"enabled","enabled_events":["refund.created","refund.updated","refund.failed"]}]}`, nil},
+		{"refund.updated only", 200, `{"data":[{"url":"` + cb + `","status":"enabled","enabled_events":["refund.updated"]}]}`, []string{WarningRefundEventsNotSubscribed}},
 		{"not subscribed", 200, `{"data":[{"url":"` + cb + `","status":"enabled","enabled_events":["checkout.session.completed"]}]}`, []string{WarningRefundEventsNotSubscribed}},
 		{"no endpoint", 200, `{"data":[]}`, []string{WarningWebhookEndpointNotFound}},
 		{"key cannot list", 403, `{"error":{"message":"no"}}`, nil},

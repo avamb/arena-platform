@@ -26921,8 +26921,9 @@ export interface operations {
                          *     could not be asked. `webhook_endpoint_not_found`: the
                          *     provider account has no endpoint with this config's
                          *     callback URL. `refund_events_not_subscribed`: the
-                         *     endpoint exists but does not receive refund updates, so
-                         *     refunds made at the provider never reach arena. Only
+                         *     endpoint exists but does not receive every refund event
+                         *     (created, updated and failed), so some refunds made or
+                         *     changed at the provider never reach arena. Only
                          *     computed when the credential was accepted and the
                          *     provider lets the key list its endpoints.
                          * @example [
