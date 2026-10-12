@@ -520,17 +520,36 @@ func RevokeTicketArtifactsTx(
 	tx pgx.Tx,
 	tickets []gen.TicketRow,
 ) {
+	// Every statement runs in its own SAVEPOINT: one that fails must not abort
+	// the transaction and leave the other tickets' barcodes scannable.
+	step := func(fn func(sp pgx.Tx) error) error {
+		sp, err := tx.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		if err := fn(sp); err != nil {
+			_ = sp.Rollback(ctx)
+			return err
+		}
+		return sp.Commit(ctx)
+	}
 	if barcodeQ != nil {
-		q := barcodeQ.WithTx(tx)
 		for _, t := range tickets {
-			barcodes, err := q.ListBarcodesByTicketID(ctx, t.ID)
-			if err != nil {
+			var barcodes []gen.BarcodeRow
+			if err := step(func(sp pgx.Tx) error {
+				var e error
+				barcodes, e = barcodeQ.WithTx(sp).ListBarcodesByTicketID(ctx, t.ID)
+				return e
+			}); err != nil {
 				logger.Warn("ticket.cancel: list barcodes failed",
 					slog.String("ticket_id", t.ID.String()), slog.String("error", err.Error()))
 				continue
 			}
 			for _, b := range barcodes {
-				if _, err := q.RevokeBarcode(ctx, b.ID); err != nil {
+				if err := step(func(sp pgx.Tx) error {
+					_, e := barcodeQ.WithTx(sp).RevokeBarcode(ctx, b.ID)
+					return e
+				}); err != nil {
 					logger.Warn("ticket.cancel: revoke barcode failed",
 						slog.String("barcode_id", b.ID.String()), slog.String("error", err.Error()))
 				}
@@ -538,10 +557,15 @@ func RevokeTicketArtifactsTx(
 		}
 	}
 	if credentialQ != nil {
-		q := credentialQ.WithTx(tx)
 		for _, t := range tickets {
 			for _, credType := range []string{"static_qr", "pdf", "ean13"} {
-				if _, err := q.RevokeCredential(ctx, t.ID, credType); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				if err := step(func(sp pgx.Tx) error {
+					_, e := credentialQ.WithTx(sp).RevokeCredential(ctx, t.ID, credType)
+					if errors.Is(e, pgx.ErrNoRows) {
+						return nil
+					}
+					return e
+				}); err != nil {
 					logger.Warn("ticket.cancel: revoke credential failed",
 						slog.String("ticket_id", t.ID.String()),
 						slog.String("type", credType),
