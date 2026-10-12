@@ -30,6 +30,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -226,6 +227,14 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 			))
 			return
 		}
+		// The same "may this category still be sold?" checks the hold runs,
+		// without its transaction: both only read. A price for a closed
+		// category, or one outside its sale window, would be a promise
+		// checkout/start refuses to keep.
+		if gateErr := hcheckout.CheckSeatCategoriesSellable(ctx, h.reservationQueries, sessionID, seats, time.Now().UTC()); gateErr != nil {
+			hcheckout.WriteCategoryGateError(w, r, gateErr)
+			return
+		}
 		seatLines, seatCurrency, errCode := h.seatPricingLines(ctx, h.tierQueries, sessionID, seats)
 		if errCode != "" {
 			h.writePricingError(w, r, errCode)
@@ -235,6 +244,13 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 		currency = cartCurrency(pricedGA, seatCurrency)
 		if currency == "" {
 			currency = "EUR" // defensive default, as in checkout/start: no tier bound anywhere
+		}
+	}
+
+	if len(req.GaItems) > 0 {
+		if gateErr := hcheckout.CheckGALinesSellable(ctx, h.reservationQueries, sessionID, gaGateLines(parsedGATierIDs, req.GaItems), time.Now().UTC()); gateErr != nil {
+			hcheckout.WriteCategoryGateError(w, r, gateErr)
+			return
 		}
 	}
 
