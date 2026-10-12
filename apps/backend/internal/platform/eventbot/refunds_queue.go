@@ -75,7 +75,9 @@ func queueChip(state string) string {
 // queueRetryable says whether the row gets a "Retry" button: the server's own
 // verdict (it provably moved no money and was not retried yet). The retry
 // route still decides when the button is pressed.
-func queueRetryable(it openapi.OrderRefundQueueItem) bool { return it.Retryable != nil && *it.Retryable }
+func queueRetryable(it openapi.OrderRefundQueueItem) bool {
+	return it.Retryable != nil && *it.Retryable
+}
 
 // queueMenuRow is the main menu's row for the queue.
 func (b *Bot) queueMenuRow(loc string, id *Identity) []models.InlineKeyboardButton {
