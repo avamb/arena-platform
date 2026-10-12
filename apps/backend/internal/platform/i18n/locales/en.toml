@@ -3042,3 +3042,12 @@ other = "One of the tickets can no longer be refunded (it changed, is no longer 
 
 ["bot.ref.err_timeout"]
 other = "The answer is taking longer than expected. Nothing is lost: open the order in a minute to see the state of the refund. Do not start it again."
+
+["bot.ref.err_scanned"]
+other = "This ticket was already used at the gate, so it cannot be refunded. Nothing was refunded. The organization's owners have been notified."
+
+["bot.ref.scanned_all"]
+other = "Order #{{.Num}}: the ticket(s) were already used at the gate, so there is nothing to refund here."
+
+["bot.ref.scanned_note"]
+other = "Not offered: {{.Tickets}} - already used at the gate.\n\n"

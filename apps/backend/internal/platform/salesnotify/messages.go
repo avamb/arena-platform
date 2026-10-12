@@ -187,3 +187,22 @@ func FormatRefund(r Refund) string {
 	writeBuyer(&b, r.Buyer)
 	return b.String()
 }
+
+// FormatRefundBlocked renders the alert for a refund refused because the
+// ticket was already scanned at the gate. No buyer data: it is a security
+// notice about who tried, not a sale.
+func FormatRefundBlocked(r Refund, actor string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "⛔ <b>Refund blocked - the ticket was already used</b> - %s\n\n", esc(r.OrgName))
+	writeEvent(&b, r.EventName, r.StartAt, r.TimeZone, r.VenueName)
+	if r.OrderNumber != 0 {
+		fmt.Fprintf(&b, "\n🧾 Order #%d · ticket #%d\n", r.OrderNumber, r.TicketNumber)
+	} else {
+		fmt.Fprintf(&b, "\n🧾 Ticket #%d\n", r.TicketNumber)
+	}
+	if actor != "" {
+		fmt.Fprintf(&b, "👤 Tried by: %s\n", esc(actor))
+	}
+	b.WriteString("Nothing was refunded and the ticket is unchanged.")
+	return b.String()
+}

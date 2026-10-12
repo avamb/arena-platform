@@ -3889,6 +3889,10 @@ export interface paths {
          *     refund); the approval handler routes partial refunds whose
          *     linked tickets are not all `active` to `manual_review`.
          *
+         *     A payment with a ticket that was already scanned at the gate is
+         *     refused with 409 `refund.ticket_scanned`; nothing is written and the
+         *     organization's owners are told once a day.
+         *
          *     Requires JWT + the `refund.create` permission.
          */
         post: operations["createRefund"];
@@ -10028,7 +10032,7 @@ export interface components {
             ticket_number?: number | null;
             /** @description The place as "sector / row / seat" with the parts that exist, null for a general-admission ticket. */
             seat_label?: string | null;
-            /** @description Why `refundable` is 0 although the ticket is active and has money left, such as `review_hold` (a refund made outside arena put the order's tickets under review). Null otherwise. */
+            /** @description Why `refundable` is 0 although the ticket is active and has money left: `ticket_scanned` (the ticket was already scanned at the gate; never refunded) or `review_hold` (a refund made outside arena put the order's tickets under review). Null otherwise. */
             not_refundable_reason?: string | null;
         };
         /**
@@ -43137,7 +43141,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Not refundable: `refund.seller_site_order`, `refund.nothing_to_refund`, `refund.ticket_not_refundable`, `refund.amount_exceeds_refundable`, `refund.in_progress` or `refund.idempotency_key_reused`. */
+            /** @description Not refundable: `refund.seller_site_order`, `refund.nothing_to_refund`, `refund.ticket_not_refundable` (including a ticket under review), `refund.ticket_scanned` (the ticket was already scanned at the gate: refused on every surface, the owners are notified once a day per ticket and actor), `refund.amount_exceeds_refundable`, `refund.in_progress` or `refund.idempotency_key_reused`. */
             409: {
                 headers: {
                     [name: string]: unknown;

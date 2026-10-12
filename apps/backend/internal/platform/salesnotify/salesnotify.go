@@ -34,6 +34,11 @@ const (
 	EventOrderPaid       = "v1.order.paid"
 	EventTicketRefunded  = "v1.ticket.refunded"
 	EventTicketCancelled = "v1.ticket.cancelled"
+	// EventRefundBlockedScanned: a refund of a ticket that was already
+	// scanned at the gate was refused (the refund engine, one per ticket and
+	// actor per day). Routed like a refund: the organization's group and the
+	// operator's.
+	EventRefundBlockedScanned = "v1.refund.blocked_scanned"
 )
 
 // queueSize bounds the events waiting for Telegram. A burst beyond it is
@@ -154,7 +159,7 @@ func (d *Dispatcher) Dispatch(_ context.Context, ev outbox.Event) error {
 		return nil
 	}
 	switch ev.EventType {
-	case EventOrderPaid, EventTicketRefunded, EventTicketCancelled:
+	case EventOrderPaid, EventTicketRefunded, EventTicketCancelled, EventRefundBlockedScanned:
 	default:
 		return nil
 	}
@@ -230,6 +235,15 @@ func (d *Dispatcher) compose(ctx context.Context, ev outbox.Event) (key string, 
 			return "", 0, "", "", err
 		}
 		return "paid:" + id, TriggerOrderPaid, d.withFooter(FormatSale(sale)), sale.OrgID, nil
+	case EventRefundBlockedScanned:
+		id := payloadString(ev.Payload, "ticket_id", ev.AggregateID)
+		r, err := d.store.RefundByTicket(ctx, id)
+		if err != nil {
+			return "", 0, "", "", err
+		}
+		// The event row id keeps two blocks of one ticket apart (one per day
+		// and actor), while an outbox retry of the same row stays a no-op.
+		return "scanblock:" + ev.ID, TriggerTicketRefunded, d.withFooter(FormatRefundBlocked(r, payloadString(ev.Payload, "actor", ""))), r.OrgID, nil
 	default: // v1.ticket.refunded / v1.ticket.cancelled
 		id := payloadString(ev.Payload, "ticket_id", ev.AggregateID)
 		r, err := d.store.RefundByTicket(ctx, id)

@@ -114,9 +114,10 @@ func (e *Engine) drive(ctx context.Context, id uuid.UUID) (Refund, bool, error) 
 // sent.
 func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, error) {
 	var (
-		r      Refund
-		pay    Payment
-		parked bool
+		r             Refund
+		pay           Payment
+		parked        bool
+		scannedTicket uuid.UUID
 	)
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
 		var piID *uuid.UUID
@@ -148,6 +149,12 @@ func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, erro
 		if pay, err = getPayment(ctx, tx, *piID); err != nil {
 			return err
 		}
+		if b, ticket, berr := e.blockScannedAtClaim(ctx, tx, id); berr != nil || b != nil {
+			if b != nil {
+				r, scannedTicket = *b, ticket
+			}
+			return berr // the failure commits
+		}
 		if p, err := e.parkOverBudget(ctx, tx, id, pay); err != nil || p != nil {
 			if p != nil {
 				r, parked = *p, true
@@ -172,6 +179,10 @@ func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, erro
 		r = claimed
 		return nil
 	})
+	if err == nil && scannedTicket != uuid.Nil {
+		e.RecordScannedBlock(ctx, r.OrgID, scannedTicket, Actor{}, "claim")
+		return r, pay, ErrNotClaimable
+	}
 	if err == nil && parked {
 		e.logReview(r)
 		return r, pay, ErrNotClaimable
