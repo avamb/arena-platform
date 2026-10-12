@@ -26,6 +26,14 @@ const (
 // CodeNotInReview: only a refund in manual_review can be resolved.
 const CodeNotInReview = "refund.not_in_review"
 
+// CodeNeverSent: the refund never reached the provider, so no money can have
+// gone back through it.
+const CodeNeverSent = "refund.never_sent"
+
+// CodeOverBudget: settling the refund would put the payment's refunds above
+// what was paid.
+const CodeOverBudget = "refund.over_budget"
+
 // ResolveInput is one manual closure.
 type ResolveInput struct {
 	OrgID    uuid.UUID
@@ -81,19 +89,52 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 		if pay, err = getPayment(ctx, tx, *piID); err != nil {
 			return err
 		}
-		state, code := StateFailed, "resolved_not_refunded"
 		if in.Outcome == ResolveRefunded {
-			state, code = StateSucceeded, "resolved_refunded"
+			// Nothing was sent: the money cannot have gone back through this
+			// row. (If the buyer was refunded by hand at the provider, that
+			// refund is its own row - the dashboard webhook records it.)
+			if cur.ProviderAttempts == 0 && cur.ProviderRefundID == nil {
+				return refusal(http.StatusConflict, CodeNeverSent,
+					"this refund never reached the provider, so it cannot be closed as refunded; retry it or close it as not refunded",
+					map[string]any{"state": cur.State})
+			}
+			// Settling puts the amount into the payment's live sum: under the
+			// lock, it must still fit what was paid.
+			var live int64
+			if err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
+				WHERE payment_intent_id = $1 AND state NOT IN ('failed', 'rejected') AND `+countsAgainstBudgetSQL, *piID).Scan(&live); err != nil {
+				return err
+			}
+			if live > pay.Amount {
+				return refusal(http.StatusConflict, CodeOverBudget,
+					"the refunds of this payment already add up to more than was paid; check the provider dashboard before closing this one",
+					map[string]any{"refunds_total": live, "paid": pay.Amount})
+			}
 		}
-		out, err = scanRefund(tx.QueryRow(ctx, `UPDATE refunds SET state = $2, failure_code = $3, failure_reason = $4,
+		// The operator's note goes to the audit trail only. The row keeps
+		// the reason it was parked with, except that a refund the operator
+		// found refunded carries no failure at all.
+		state := StateFailed
+		clearFailure := false
+		if in.Outcome == ResolveRefunded {
+			state, clearFailure = StateSucceeded, true
+		}
+		out, err = scanRefund(tx.QueryRow(ctx, `UPDATE refunds SET state = $2,
+			failure_code = CASE WHEN $3 THEN NULL ELSE failure_code END,
+			failure_reason = CASE WHEN $3 THEN NULL ELSE failure_reason END,
+			provider_status = CASE WHEN $3 THEN 'succeeded' ELSE provider_status END,
+			succeeded_at = CASE WHEN $3 THEN now() ELSE succeeded_at END,
+			failed_at = CASE WHEN $3 THEN NULL ELSE now() END,
+			settled_at = CASE WHEN $3 THEN NULL ELSE settled_at END,
 			alert_due_at = NULL, updated_at = now()
-			WHERE id = $1 AND state = 'manual_review' RETURNING `+refundColumns, in.RefundID, state, code, note))
+			WHERE id = $1 AND state = 'manual_review' RETURNING `+refundColumns, in.RefundID, state, clearFailure))
 		if err != nil {
 			return err
 		}
 		return e.writeAudit(ctx, tx, audit.Event{ActorType: in.Actor.Type, ActorID: in.Actor.ID,
 			Action: "v1.refund.resolve", ResourceType: "refund", ResourceID: out.ID.String(),
-			Metadata: map[string]any{"outcome": in.Outcome, "state": state, "via": in.Via}})
+			Metadata: map[string]any{"outcome": in.Outcome, "state": state, "via": in.Via, "note": note,
+				"previous_failure_code": deref(cur.FailureCode), "previous_failure_reason": deref(cur.FailureReason)}})
 	})
 	if err != nil {
 		return Refund{}, err

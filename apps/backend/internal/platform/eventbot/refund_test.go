@@ -110,3 +110,37 @@ func TestRefundButton_OnlyWhereItCanBeUsed(t *testing.T) {
 		t.Error("the button must not appear for an agent, in a group chat, or on an unpaid or fully refunded order")
 	}
 }
+
+func TestRefundErrorKey_MapsEveryAnswerOfTheCreateRoute(t *testing.T) {
+	b := &Bot{}
+	cases := []struct {
+		status int
+		code   string
+		want   string
+	}{
+		{409, "refund.in_progress", "bot.ref.err_progress"},
+		{409, "refund.seller_site_order", "bot.ref.site"},
+		{409, "refund.ticket_not_refundable", "bot.ref.err_ticket"},
+		{409, "refund.amount_exceeds_refundable", "bot.ref.err_changed"},
+		{422, "refund.provider_not_supported", "bot.ref.err_unsupported"},
+		{422, "refund.partial_not_supported", "bot.ref.err_unsupported"},
+		{400, "refund.invalid_request", "bot.ref.err_changed"},
+		{503, "refund.engine_unavailable", "bot.ref.err_unavailable"},
+		{404, "refund.order_not_found", "bot.ref.err_changed"},
+		{500, "refund.create_failed", ""}, // says nothing about the refund: never "nothing happened"
+	}
+	for _, c := range cases {
+		if got := b.refundErrorKey(&APIError{Status: c.status, Code: c.code}); got != c.want {
+			t.Errorf("%d %s -> %q; want %q", c.status, c.code, got, c.want)
+		}
+	}
+}
+
+func TestRefundTicketLabel_NamesTheTicketNotItsPosition(t *testing.T) {
+	if got := (refundTicket{Number: 5511, Seat: "A / 3 / 12"}).label(0); got != "№5511 (A / 3 / 12)" {
+		t.Errorf("label = %q", got)
+	}
+	if got := (refundTicket{}).label(1); got != "№2" {
+		t.Errorf("a ticket without a number falls back to its position: %q", got)
+	}
+}

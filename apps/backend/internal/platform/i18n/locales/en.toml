@@ -3004,3 +3004,35 @@ other = "This refund cannot be sent again: the provider may already have returne
 
 ["bot.rq.provider_word"]
 other = "the provider"
+["bot.ref.final"]
+other = "<b>Final check</b>\nOrder #{{.Num}} · {{.N}} ticket(s): {{.Tickets}}\nTo return: <b>{{.Amount}}</b> through {{.Provider}}\nLetter to the buyer: {{.Letter}}\n\nThe payment provider returns the money; this cannot be undone."
+
+["bot.ref.yes_btn"]
+other = "✅ Yes, refund {{.Amount}}"
+
+["bot.ref.no_btn"]
+other = "Cancel"
+
+["bot.ref.letter_yes"]
+other = "will be sent"
+
+["bot.ref.letter_no"]
+other = "will not be sent"
+
+["bot.ref.cancelled"]
+other = "Cancelled. Nothing was refunded."
+
+["bot.ref.sending"]
+other = "Sending the refund… this can take up to a minute."
+
+["bot.ref.err_unsupported"]
+other = "This payment provider cannot send this refund from arena. Nothing was refunded; refund it in the provider's dashboard."
+
+["bot.ref.err_unavailable"]
+other = "Refunds are not available right now. Nothing was refunded; try again in a few minutes."
+
+["bot.ref.err_ticket"]
+other = "One of the tickets can no longer be refunded (it changed, is no longer valid or is under review). Nothing was refunded. Open the order and check."
+
+["bot.ref.err_timeout"]
+other = "The answer is taking longer than expected. Nothing is lost: open the order in a minute to see the state of the refund. Do not start it again."

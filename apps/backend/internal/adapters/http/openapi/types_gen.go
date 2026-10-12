@@ -8633,8 +8633,11 @@ type OrderPaymentSummary struct {
 
 // OrderRefundDetail A refund with its history.
 type OrderRefundDetail struct {
-	// History The steps of the refund, oldest first.
+	// History The latest steps of the refund (at most 100), oldest first.
 	History []OrderRefundHistoryEntry `json:"history"`
+
+	// HistoryTotal How many steps the refund has in all; more than `history` holds when the refund has a long life.
+	HistoryTotal int `json:"history_total"`
 
 	// Refund The refund.
 	Refund OrderRefundQueueItem `json:"refund"`
@@ -8754,6 +8757,15 @@ type OrderRefundQueueItem struct {
 	// CreatedAt When the refund was recorded.
 	CreatedAt time.Time `json:"created_at"`
 
+	// Creator Who asked for the refund; null when that cannot be told (for example a person who is not a member of the organization).
+	Creator *struct {
+		// Kind `user`, `api_key` or `provider_dashboard` (a refund made in the payment provider's own dashboard).
+		Kind string `json:"kind"`
+
+		// Label The member's name or e-mail, or the API key's name.
+		Label *string `json:"label"`
+	} `json:"creator"`
+
 	// Currency ISO 4217 currency code.
 	Currency string `json:"currency"`
 
@@ -8796,6 +8808,9 @@ type OrderRefundTicketOption struct {
 	// InProgress True when a refund that cancels this ticket is already under way.
 	InProgress bool `json:"in_progress"`
 
+	// NotRefundableReason Why `refundable` is 0 although the ticket is active and has money left, such as `review_hold` (a refund made outside arena put the order's tickets under review). Null otherwise.
+	NotRefundableReason *string `json:"not_refundable_reason"`
+
 	// Paid What the buyer paid for this ticket in minor units, null when the order item carries no price.
 	Paid *int64 `json:"paid"`
 
@@ -8805,11 +8820,17 @@ type OrderRefundTicketOption struct {
 	// Refunded Minor units already refunded or on their way to the buyer.
 	Refunded int64 `json:"refunded"`
 
+	// SeatLabel The place as "sector / row / seat" with the parts that exist, null for a general-admission ticket.
+	SeatLabel *string `json:"seat_label"`
+
 	// Status Ticket status; only an active ticket can be refunded.
 	Status string `json:"status"`
 
 	// TicketId UUID of the ticket.
 	TicketId openapi_types.UUID `json:"ticket_id"`
+
+	// TicketNumber The number printed on the ticket, null for a ticket without one.
+	TicketNumber *int64 `json:"ticket_number"`
 }
 
 // OrderResendTicketsRequest Body of the resend-tickets route. Every field is optional; an empty body

@@ -2859,3 +2859,35 @@ other = "Esta devolución no se puede reenviar: el proveedor puede haber devuelt
 
 ["bot.rq.provider_word"]
 other = "el proveedor"
+["bot.ref.final"]
+other = "<b>Comprobación final</b>\nPedido n.º {{.Num}} · {{.N}} entrada(s): {{.Tickets}}\nA devolver: <b>{{.Amount}}</b> a través de {{.Provider}}\nCorreo al comprador: {{.Letter}}\n\nEl proveedor de pago devuelve el dinero; esto no se puede deshacer."
+
+["bot.ref.yes_btn"]
+other = "✅ Sí, devolver {{.Amount}}"
+
+["bot.ref.no_btn"]
+other = "Cancelar"
+
+["bot.ref.letter_yes"]
+other = "se enviará"
+
+["bot.ref.letter_no"]
+other = "no se enviará"
+
+["bot.ref.cancelled"]
+other = "Cancelado. No se devolvió nada."
+
+["bot.ref.sending"]
+other = "Enviando la devolución… puede tardar hasta un minuto."
+
+["bot.ref.err_unsupported"]
+other = "Este proveedor de pago no puede enviar esta devolución desde arena. No se devolvió nada; devuélvelo en el panel del proveedor."
+
+["bot.ref.err_unavailable"]
+other = "Las devoluciones no están disponibles ahora. No se devolvió nada; inténtalo de nuevo en unos minutos."
+
+["bot.ref.err_ticket"]
+other = "Una de las entradas ya no se puede devolver (cambió, ya no es válida o está en revisión). No se devolvió nada. Abre el pedido y compruébalo."
+
+["bot.ref.err_timeout"]
+other = "La respuesta tarda más de lo normal. No se ha perdido nada: abre el pedido en un minuto para ver el estado de la devolución. No la inicies de nuevo."

@@ -132,8 +132,26 @@ func TestBotE2E_Refund_OwnerReturnsOneTicket(t *testing.T) {
 	if n, _ := refundCount(t, srv, seed.anna); n != 0 {
 		t.Fatalf("a wrong word created %d refund(s)", n)
 	}
-	// ── the right word returns the money for that one ticket
-	done := d.say("вернуть", "Возврат запрошен")
+	// ── the right word only opens the final check: no money moves yet
+	final := d.say("вернуть", "Последняя проверка")
+	if !strings.Contains(final, "25 EUR") || !strings.Contains(final, "№") {
+		t.Errorf("the final screen does not state the amount:\n%s", final)
+	}
+	if n, _ := refundCount(t, srv, seed.anna); n != 0 {
+		t.Fatalf("the typed word alone created %d refund(s); only the button may", n)
+	}
+	// ── "Cancel" ends it without a refund
+	d.press("or:f:no", "Ничего не возвращено")
+	if n, _ := refundCount(t, srv, seed.anna); n != 0 {
+		t.Fatalf("cancel created %d refund(s)", n)
+	}
+	// ── again from the start, and this time the button sends it
+	d.press("or:f:s:"+seed.anna.String(), "Возврат · заказ №")
+	d.press("or:f:t:0", "Возврат · заказ №")
+	d.press("or:f:go", "Почему возвращаются деньги")
+	d.press("or:f:r:1", "ВЕРНУТЬ")
+	d.say("вернуть", "Последняя проверка")
+	done := d.press("or:f:ok", "Возврат запрошен")
 	if !strings.Contains(done, "возвращено") {
 		t.Errorf("the result does not say the money is back:\n%s", done)
 	}

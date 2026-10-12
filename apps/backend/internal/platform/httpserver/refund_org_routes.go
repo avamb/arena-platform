@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -108,16 +109,23 @@ func (s *Server) handleRefundOptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type ticketJSON struct {
-		TicketID   string `json:"ticket_id"`
-		Status     string `json:"status"`
-		Paid       *int64 `json:"paid"`
-		Refunded   int64  `json:"refunded"`
-		Refundable int64  `json:"refundable"`
-		InProgress bool   `json:"in_progress"`
+		TicketID   string  `json:"ticket_id"`
+		Status     string  `json:"status"`
+		Paid       *int64  `json:"paid"`
+		Refunded   int64   `json:"refunded"`
+		Refundable int64   `json:"refundable"`
+		InProgress bool    `json:"in_progress"`
+		Reason     *string `json:"not_refundable_reason"`
+		Number     *int64  `json:"ticket_number"`
+		Seat       *string `json:"seat_label"`
 	}
 	tickets := make([]ticketJSON, 0, len(opts.Tickets))
 	for _, t := range opts.Tickets {
-		tickets = append(tickets, ticketJSON{t.TicketID.String(), t.Status, t.Paid, t.Refunded, t.Refundable, t.InProgress})
+		var reason *string
+		if t.NotRefundableReason != "" {
+			reason = &t.NotRefundableReason
+		}
+		tickets = append(tickets, ticketJSON{t.TicketID.String(), t.Status, t.Paid, t.Refunded, t.Refundable, t.InProgress, reason, t.TicketNumber, t.SeatLabel})
 	}
 	active := make([]refundItemJSON, 0, len(opts.Active))
 	for _, a := range opts.Active {
@@ -177,7 +185,11 @@ func (s *Server) handleCreateOrderRefunds(w http.ResponseWriter, r *http.Request
 		in.Items = append(in.Items, refunds.Item{TicketID: id, Amount: it.Amount})
 	}
 	if actor, ok := auth.ActorFromContext(r.Context()); ok {
-		in.Actor = refunds.Actor{Type: "user", ID: actor.ID}
+		kind := "user"
+		if actor.IsService() {
+			kind = "api_key" // ID is the API key's id; the queue resolves its name
+		}
+		in.Actor = refunds.Actor{Type: kind, ID: actor.ID}
 	}
 	if via, ok := audit.ClientChannelFromContext(r.Context()); ok {
 		in.Via = via
@@ -186,7 +198,9 @@ func (s *Server) handleCreateOrderRefunds(w http.ResponseWriter, r *http.Request
 	// sent at once; a key without refund.approve leaves it for an approver.
 	in.Approved = s.perms != nil && s.perms.Check(r.Context(), "refund.approve", "refunds") == nil
 
-	res, err := engine.CreateBatch(r.Context(), in)
+	wctx, cancel := refundWorkCtx(r)
+	defer cancel()
+	res, err := engine.CreateBatch(wctx, in)
 	if err != nil {
 		var refErr *refunds.Error
 		if errors.As(err, &refErr) {
@@ -207,12 +221,28 @@ func (s *Server) handleCreateOrderRefunds(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// refundWorkBudget bounds the engine work one request starts. The work is
+// detached from the request: a client that hangs up (a bot whose HTTP timeout
+// is shorter than a slow provider) must not leave a refund half driven. The
+// client repeats the call with the same Idempotency-Key to read the result.
+const refundWorkBudget = 2 * time.Minute
+
+func refundWorkCtx(r *http.Request) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(r.Context()), refundWorkBudget)
+}
+
+type refundCreatorJSON struct {
+	Kind  string  `json:"kind"`
+	Label *string `json:"label"`
+}
+
 type refundQueueItemJSON struct {
 	refundItemJSON
-	OrderID      *string `json:"order_id"`
-	OrderNumber  *int64  `json:"order_number"`
-	EventName    *string `json:"event_name"`
-	TicketNumber *int64  `json:"ticket_number"`
+	OrderID      *string            `json:"order_id"`
+	OrderNumber  *int64             `json:"order_number"`
+	EventName    *string            `json:"event_name"`
+	TicketNumber *int64             `json:"ticket_number"`
+	Creator      *refundCreatorJSON `json:"creator"`
 }
 
 func queueItem(it refunds.ListItem) refundQueueItemJSON {
@@ -221,7 +251,11 @@ func queueItem(it refunds.ListItem) refundQueueItemJSON {
 		v := it.OrderID.String()
 		orderID = &v
 	}
-	return refundQueueItemJSON{refundItem(it.Refund), orderID, it.OrderSystemID, it.EventName, it.TicketNumber}
+	out := refundQueueItemJSON{refundItem(it.Refund), orderID, it.OrderSystemID, it.EventName, it.TicketNumber, nil}
+	if it.CreatorKind != nil {
+		out.Creator = &refundCreatorJSON{Kind: *it.CreatorKind, Label: it.CreatorLabel}
+	}
+	return out
 }
 
 func (s *Server) handleListOrgRefunds(w http.ResponseWriter, r *http.Request) {
@@ -314,5 +348,5 @@ func (s *Server) handleGetOrgRefund(w http.ResponseWriter, r *http.Request) {
 	for _, h := range d.History {
 		history = append(history, historyJSON{h.Action, h.At.UTC().Format(time.RFC3339), nonEmpty(h.Outcome), nonEmpty(h.State), nonEmpty(h.FailureCode)})
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"refund": queueItem(d.ListItem), "history": history})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"refund": queueItem(d.ListItem), "history": history, "history_total": d.HistoryTotal})
 }

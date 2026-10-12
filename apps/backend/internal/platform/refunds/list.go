@@ -43,7 +43,25 @@ type ListItem struct {
 	OrderSystemID *int64
 	EventName     *string
 	TicketNumber  *int64
+	// CreatorKind is "user", "api_key" or "provider_dashboard"; CreatorLabel
+	// names the person (shown only for a member of the organization) or the
+	// API key. Both nil when the creator cannot be told.
+	CreatorKind  *string
+	CreatorLabel *string
 }
+
+// creatorJoins and creatorColumns resolve who asked for a refund from
+// requested_by: an API key of THIS organization (its name), or a member of it
+// (their name, else e-mail). A user outside the organization is never named.
+const (
+	creatorJoins = `
+			LEFT JOIN api_keys ak ON ak.id::text = r.requested_by AND ak.org_id = r.org_id
+			LEFT JOIN users cu ON cu.id::text = r.requested_by
+			     AND EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = cu.id AND m.org_id = r.org_id)`
+	creatorColumns = `CASE WHEN ak.id IS NOT NULL THEN 'api_key' WHEN cu.id IS NOT NULL THEN 'user'
+			            WHEN r.requested_by = 'provider_dashboard' THEN 'provider_dashboard' END,
+			       COALESCE(ak.name, NULLIF(btrim(concat_ws(' ', cu.first_name, cu.last_name)), ''), cu.email)`
+)
 
 // ListPage is one page of the queue.
 type ListPage struct {
@@ -70,17 +88,18 @@ func (e *Engine) List(ctx context.Context, orgID uuid.UUID, f ListFilter) (ListP
 	}
 	var page ListPage
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
-		where := ` FROM refunds r
+		from := ` FROM refunds r
 			LEFT JOIN orders o ON o.id = r.order_id AND o.org_id = r.org_id
 			LEFT JOIN events ev ON ev.id = o.event_id
-			LEFT JOIN tickets t ON t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)
+			LEFT JOIN tickets t ON t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)`
+		where := `
 			WHERE r.org_id = $1
 			  AND ($2::text = '' OR r.state = $2)
 			  AND ($3::uuid IS NULL OR o.event_id = $3)`
-		if err := tx.QueryRow(ctx, `SELECT count(*)`+where, orgID, f.State, f.EventID).Scan(&page.Total); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT count(*)`+from+where, orgID, f.State, f.EventID).Scan(&page.Total); err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, `SELECT o.system_id, ev.name, t.system_ticket_id, `+prefixedColumns("r")+where+`
+		rows, err := tx.Query(ctx, `SELECT o.system_id, ev.name, t.system_ticket_id, `+creatorColumns+`, `+prefixedColumns("r")+from+creatorJoins+where+`
 			ORDER BY r.created_at DESC, r.id DESC LIMIT $4 OFFSET $5`,
 			orgID, f.State, f.EventID, f.Limit, f.Offset)
 		if err != nil {
@@ -89,7 +108,7 @@ func (e *Engine) List(ctx context.Context, orgID uuid.UUID, f ListFilter) (ListP
 		defer rows.Close()
 		for rows.Next() {
 			var it ListItem
-			r, err := scanRefundWith(rows, &it.OrderSystemID, &it.EventName, &it.TicketNumber)
+			r, err := scanRefundWith(rows, &it.OrderSystemID, &it.EventName, &it.TicketNumber, &it.CreatorKind, &it.CreatorLabel)
 			if err != nil {
 				return err
 			}
@@ -133,21 +152,27 @@ type HistoryEntry struct {
 // Detail is a refund with its history.
 type Detail struct {
 	ListItem
-	History []HistoryEntry
+	// History is the LATEST steps (at most historyLimit), oldest first;
+	// HistoryTotal counts all of them.
+	History      []HistoryEntry
+	HistoryTotal int
 }
+
+// historyLimit bounds the steps a detail answer carries.
+const historyLimit = 100
 
 // Get returns one refund of the organization with its audit history. A refund
 // of another organization is CodeRefundNotFound.
 func (e *Engine) Get(ctx context.Context, orgID, refundID uuid.UUID) (Detail, error) {
 	var d Detail
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
-		row := tx.QueryRow(ctx, `SELECT o.system_id, ev.name, t.system_ticket_id, `+prefixedColumns("r")+`
+		row := tx.QueryRow(ctx, `SELECT o.system_id, ev.name, t.system_ticket_id, `+creatorColumns+`, `+prefixedColumns("r")+`
 			FROM refunds r
 			LEFT JOIN orders o ON o.id = r.order_id AND o.org_id = r.org_id
 			LEFT JOIN events ev ON ev.id = o.event_id
-			LEFT JOIN tickets t ON t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)
+			LEFT JOIN tickets t ON t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)`+creatorJoins+`
 			WHERE r.id = $1 AND r.org_id = $2`, refundID, orgID)
-		r, err := scanRefundWith(row, &d.OrderSystemID, &d.EventName, &d.TicketNumber)
+		r, err := scanRefundWith(row, &d.OrderSystemID, &d.EventName, &d.TicketNumber, &d.CreatorKind, &d.CreatorLabel)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return refusal(http.StatusNotFound, CodeRefundNotFound, "refund not found", nil)
 		}
@@ -155,8 +180,16 @@ func (e *Engine) Get(ctx context.Context, orgID, refundID uuid.UUID) (Detail, er
 			return err
 		}
 		d.Refund = r
-		rows, err := tx.Query(ctx, `SELECT action, occurred_at, metadata FROM audit_events
-			WHERE resource_type = 'refund' AND resource_id = $1 ORDER BY occurred_at, id LIMIT 100`, refundID.String())
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM audit_events
+			WHERE resource_type = 'refund' AND resource_id = $1`, refundID.String()).Scan(&d.HistoryTotal); err != nil {
+			return err
+		}
+		// The LATEST steps: a long-lived refund keeps the end of its story,
+		// which is what an operator needs, not the first hundred.
+		rows, err := tx.Query(ctx, `SELECT action, occurred_at, metadata FROM (
+				SELECT action, occurred_at, metadata, id FROM audit_events
+				WHERE resource_type = 'refund' AND resource_id = $1 ORDER BY occurred_at DESC, id DESC LIMIT $2) x
+			ORDER BY occurred_at, id`, refundID.String(), historyLimit)
 		if err != nil {
 			return err
 		}

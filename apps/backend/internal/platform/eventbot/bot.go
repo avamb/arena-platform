@@ -117,13 +117,12 @@ func New(opts Options) (*Bot, error) {
 		logger = slog.Default()
 	}
 	b := &Bot{
-		queries:  opts.Queries,
-		arena:    opts.Arena,
-		minter:   opts.Minter,
-		texts:    opts.Texts,
-		logger:   logger,
-		pending:  newPendingInvites(pendingInviteTTL),
-		sessions: newSessionDialogs(),
+		queries: opts.Queries,
+		arena:   opts.Arena,
+		minter:  opts.Minter,
+		texts:   opts.Texts,
+		logger:  logger,
+		pending: newPendingInvites(pendingInviteTTL),
 
 		dialogs:          newPGDialogStore(opts.Queries),
 		dialogSweepEvery: opts.DialogSweepEvery,
@@ -141,6 +140,7 @@ func New(opts Options) (*Bot, error) {
 		onb:            newOnbDialogs(),
 		onbForms:       &onbFormCache{m: map[string]onbFormEntry{}},
 	}
+	b.sessions = newSessionDialogs(b.dialogs)
 	if b.texts == nil {
 		b.texts = NewTexts(nil)
 	}
