@@ -746,7 +746,9 @@ func (b *Bot) refundText(ctx context.Context, chatID int64, from *models.User, t
 		b.resendGone(ctx, chatID, nil, loc, true)
 		return true
 	}
-	if !found || (step != refStepAmount && step != refStepReasonTxt && step != refStepWord && step != refStepFinal && step != refStepSending) {
+	// A refund with the server waits for buttons only: a typed text then
+	// belongs to whatever other dialog asked for it.
+	if !found || (step != refStepAmount && step != refStepReasonTxt && step != refStepWord && step != refStepFinal) {
 		return false
 	}
 	id, _, err := b.resolveIdentity(ctx, from.ID)
@@ -785,8 +787,6 @@ func (b *Bot) refundText(ctx context.Context, chatID int64, from *models.User, t
 		b.showRefundFinal(ctx, chatID, edit, id, st, "")
 	case refStepFinal:
 		b.showRefundFinal(ctx, chatID, edit, id, st, "") // only the buttons send money
-	case refStepSending:
-		b.reply(ctx, chatID, nil, b.texts.T(loc, "bot.ref.still_sending", map[string]any{"Num": st.Num}), nil)
 	}
 	return true
 }
