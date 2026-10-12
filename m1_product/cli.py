@@ -94,7 +94,17 @@ def pack_venue(name: str, xlsx: Path | None, out_dir: Path, *, target: int | Non
         return rec
     rec["input_path"] = str(xlsx)
     rec["input_sha256"] = sha256_file(xlsx)
-    model = extract_workbook(xlsx, PROFILES[name])
+    try:
+        model = extract_workbook(xlsx, PROFILES[name])
+    except Exception as exc:
+        # Keep the product contract intact for corrupt/non-XLSX workbooks.
+        # The run manifest is still written by pack(); no partial JSON/SVG is
+        # published as a successful venue output.
+        rec.update(
+            status="FAIL",
+            issues=[f"adapter_failed:{type(exc).__name__}:{exc}"],
+        )
+        return rec
     write_json(model, json_path)
     model_status = model["validation"]["status"]
     rec["adapter_status"] = model_status
@@ -153,15 +163,24 @@ def overall(records: list[dict[str, Any]]) -> str:
 def fixture_acceptance(records: list[dict[str, Any]]) -> dict[str, Any]:
     """Independent product gate; frozen evidence is mandatory for PRODUCT PASS."""
     reasons: list[str] = []
+    required_venues = set(VENUES)
+    actual_venues = {r.get("venue") for r in records}
+    if len(actual_venues) != len(records):
+        reasons.append("duplicate_venue_record")
+    for missing in sorted(required_venues - actual_venues):
+        reasons.append(f"{missing}_record_missing")
+    if actual_venues - required_venues:
+        reasons.append("unexpected_venue_record")
     if any(r.get("status") == "MISSING_INPUT" for r in records):
         reasons.append("required_fixture_missing")
     if any(r.get("status") != "PASS" for r in records):
         reasons.append("venue_record_not_pass")
     for rec in records:
         frozen = rec.get("frozen_regression", {})
-        if frozen.get("status") == "NOT_AVAILABLE":
+        frozen_status = frozen.get("status")
+        if frozen_status in {None, "NOT_AVAILABLE"}:
             reasons.append(f"{rec.get('venue')}_frozen_regression_not_available")
-        elif frozen.get("status") == "MISMATCH":
+        elif frozen_status != "MATCH":
             reasons.append(f"{rec.get('venue')}_frozen_regression_mismatch")
     if reasons:
         hard_fail = any(r.get("status") in {"FAIL", "QUARANTINE"} for r in records) or any("mismatch" in reason for reason in reasons)
@@ -191,7 +210,9 @@ def pack(hunter: Path | None, aribau: Path | None, out_dir: Path, *, baselines: 
     ]
     gate = fixture_acceptance(records)
     record_status = overall(records)
-    if any(r.get("status") == "MISSING_INPUT" for r in records):
+    if any(r.get("status") == "FAIL" for r in records):
+        product_status = "FAIL"
+    elif any(r.get("status") == "MISSING_INPUT" for r in records):
         product_status = "INCOMPLETE"
     elif record_status != "PASS":
         product_status = record_status
