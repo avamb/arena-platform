@@ -1,6 +1,6 @@
 <script lang="ts">
   import { removeCartLine, cartTotal, cartServiceFee, cartItemCount, countdownSeconds, isTwoMinWarning, formatCountdown } from '../lib/cart.js';
-  import { formatPrice, getCheckoutI18n } from '../lib/checkout.js';
+  import { formatPrice, getCheckoutI18n, payButtonLabel } from '../lib/checkout.js';
   import type { CartState } from '../lib/cart.js';
   import BuyerForm from './BuyerForm.svelte';
   import type { BuyerFieldConfig, BuyerFormValues } from '../lib/checkout.js';
@@ -15,6 +15,11 @@
      * buyer sees on the sheet what the payment page will ask for.
      */
     serviceFeePercent?: string | null;
+    /**
+     * The session's `show_withdrawal_notice`: print the "no right of
+     * withdrawal" notice above the pay button.
+     */
+    showWithdrawalNotice?: boolean;
     submitting?: boolean;
     submitError?: string | null;
     /**
@@ -34,7 +39,7 @@
     onCheckout: (values: BuyerFormValues) => void;
   }
   const {
-    cart, buyerFields, locale = 'en', serviceFeePercent = null, submitting = false, submitError = null,
+    cart, buyerFields, locale = 'en', serviceFeePercent = null, showWithdrawalNotice = false, submitting = false, submitError = null,
     conflictKeys, onContinueWithoutConflicts,
     onClose, onRemoveLine, onCheckout,
   }: Props = $props();
@@ -43,6 +48,11 @@
   const count = $derived(cartItemCount(cart.lines));
   const total = $derived(cartTotal(cart.lines));
   const fee = $derived(cartServiceFee(total.amount, serviceFeePercent));
+  // The button that takes the buyer to the payment page creates the
+  // obligation to pay, so it names the amount and says "pay" ("Pay €50")
+  // instead of the neutral "Continue to payment". A free order has nothing to
+  // pay, so it keeps the generic label (undefined -> BuyerForm default).
+  const payLabel = $derived(payButtonLabel(total.amount + fee, total.currency, locale));
 
   let showBuyerForm = $state(false);
   let secondsLeft = $state(0);
@@ -144,6 +154,8 @@
         {buyerFields}
         {locale}
         {submitting}
+        submitText={payLabel}
+        withdrawalNotice={showWithdrawalNotice}
         onSubmit={onCheckout}
       />
     </div>

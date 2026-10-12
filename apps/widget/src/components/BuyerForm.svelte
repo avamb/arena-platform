@@ -18,6 +18,7 @@
     suggestEmailFix,
     interpolate,
     getCheckoutI18n,
+    getPaymentCommitStrings,
     type BuyerFieldConfig,
     type BuyerFormValues,
     type BuyerFormErrors,
@@ -27,6 +28,17 @@
     buyerFields: BuyerFieldConfig[];
     locale?: string;
     submitting?: boolean;
+    /**
+     * Label of the submit button. The cart sheet passes "Pay 50.00 EUR" so
+     * the press that creates the obligation to pay says so; absent, the
+     * generic `submit_label` is used.
+     */
+    submitText?: string;
+    /**
+     * Show the "no right of withdrawal" notice directly above the submit
+     * button (the session's `show_withdrawal_notice`).
+     */
+    withdrawalNotice?: boolean;
     onSubmit: (values: BuyerFormValues) => void;
   }
 
@@ -34,10 +46,13 @@
     buyerFields,
     locale = 'en',
     submitting = false,
+    submitText,
+    withdrawalNotice = false,
     onSubmit,
   }: Props = $props();
 
   const t = $derived(getCheckoutI18n(locale));
+  const commit = $derived(getPaymentCommitStrings(locale));
 
   // Form values
   let email = $state('');
@@ -159,11 +174,17 @@
     </div>
   {/if}
 
+  {#if withdrawalNotice}
+    <!-- Date-bound tickets carry no right of withdrawal; say so right where the
+         buyer takes on the obligation to pay. -->
+    <p class="withdrawal-notice" data-testid="withdrawal-notice">{commit.withdrawal_notice}</p>
+  {/if}
+
   <button type="submit" class="submit-btn" disabled={submitting} aria-busy={submitting}>
     {#if submitting}
       <span class="spinner" aria-hidden="true"></span>
     {/if}
-    {t.submit_label}
+    {submitText ?? t.submit_label}
   </button>
 </form>
 
@@ -241,6 +262,17 @@
     text-decoration: underline;
     padding: 0;
     margin-left: 0.25rem;
+  }
+
+  /* "No right of withdrawal" notice, directly above the pay button. Plain
+     muted text in the reading direction of the widget (he is rtl); logical
+     properties only. */
+  .withdrawal-notice {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    color: var(--arena-color-secondary, #6b7280);
+    text-align: start;
   }
 
   /* The pay button — the primary CTA of the whole widget. Yellow fill, dark

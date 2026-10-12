@@ -861,6 +861,96 @@ export function getCheckoutI18n(locale: string): CheckoutI18nStrings {
   return CHECKOUT_I18N[key];
 }
 
+// ─── Payment commitment copy ─────────────────────────────────────────────────
+
+/**
+ * The words around the one press that creates an obligation to pay: the
+ * button label (says WHAT is owed and that pressing it pays) and, for
+ * date-bound events, the notice that the right of withdrawal does not apply.
+ *
+ * Kept apart from CHECKOUT_I18N on purpose. That table is the widget's
+ * complete-or-nothing UI language set (en/ru/cs/he, every key in every
+ * language); legal wording has to read in the buyer's own language even
+ * where the rest of the widget still falls back to English, so this table
+ * also carries es, de and fr and is looked up by language subtag.
+ */
+export interface PaymentCommitStrings {
+  /** Shown above the pay button when the session sets `show_withdrawal_notice`. */
+  withdrawal_notice: string;
+  /** Pay button, with the amount: "Pay {amount}". */
+  pay_label: string;
+  /** Pay button when no amount is known: "Pay now". */
+  pay_label_plain: string;
+}
+
+export const PAYMENT_COMMIT_I18N: Record<string, PaymentCommitStrings> = {
+  en: {
+    withdrawal_notice:
+      'Tickets for an event on a specific date are not covered by the right of withdrawal. Your order becomes binding when you pay.',
+    pay_label: 'Pay {amount}',
+    pay_label_plain: 'Pay now',
+  },
+  ru: {
+    withdrawal_notice:
+      'На билеты на мероприятие в определённую дату право на отказ от договора не распространяется. Ваш заказ становится обязательным после оплаты.',
+    pay_label: 'Оплатить {amount}',
+    pay_label_plain: 'Оплатить',
+  },
+  cs: {
+    withdrawal_notice:
+      'Na vstupenky na akci v konkrétní termín se nevztahuje právo na odstoupení od smlouvy. Vaše objednávka se stává závaznou zaplacením.',
+    pay_label: 'Zaplatit {amount}',
+    pay_label_plain: 'Zaplatit',
+  },
+  he: {
+    withdrawal_notice:
+      'על כרטיסים לאירוע בתאריך מסוים לא חלה זכות הביטול. ההזמנה נעשית מחייבת עם ביצוע התשלום.',
+    pay_label: 'לתשלום {amount}',
+    pay_label_plain: 'לתשלום',
+  },
+  es: {
+    withdrawal_notice:
+      'Las entradas para un evento en una fecha concreta no están sujetas al derecho de desistimiento. Su pedido pasa a ser vinculante al realizar el pago.',
+    pay_label: 'Pagar {amount}',
+    pay_label_plain: 'Pagar ahora',
+  },
+  de: {
+    withdrawal_notice:
+      'Für Eintrittskarten zu einer Veranstaltung an einem bestimmten Termin besteht kein Widerrufsrecht. Ihre Bestellung wird mit der Zahlung verbindlich.',
+    pay_label: 'Zahlungspflichtig bestellen: {amount}',
+    pay_label_plain: 'Zahlungspflichtig bestellen',
+  },
+  fr: {
+    withdrawal_notice:
+      'Les billets pour un événement à une date déterminée ne sont pas soumis au droit de rétractation. Votre commande devient définitive dès le paiement.',
+    pay_label: 'Payer {amount}',
+    pay_label_plain: 'Payer maintenant',
+  },
+};
+
+/** Payment-commitment copy for a locale ("es-ES" -> es), English when the
+ * language has none. */
+export function getPaymentCommitStrings(locale: string): PaymentCommitStrings {
+  const lang = locale.trim().toLowerCase().split(/[-_]/)[0] ?? '';
+  return PAYMENT_COMMIT_I18N[lang] ?? PAYMENT_COMMIT_I18N.en!;
+}
+
+/**
+ * Label of the button that sends the buyer to the payment page: "Pay €50"
+ * names the amount and the act, so pressing it plainly creates the
+ * obligation to pay. Returns undefined for a free order (nothing to pay —
+ * the caller keeps its generic label) and the amount-less "Pay now" when
+ * the cart carries no currency to format with.
+ *
+ * @param totalMinor Cart total including the service fee, minor units.
+ */
+export function payButtonLabel(totalMinor: number, currency: string, locale: string): string | undefined {
+  const commit = getPaymentCommitStrings(locale);
+  if (!currency) return commit.pay_label_plain;
+  if (totalMinor <= 0) return undefined;
+  return interpolate(commit.pay_label, { amount: formatPrice(totalMinor, currency) });
+}
+
 /**
  * Pluralize a ticket count using locale-aware Intl.PluralRules.
  *

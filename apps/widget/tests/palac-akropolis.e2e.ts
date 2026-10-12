@@ -107,6 +107,8 @@ function buildPalacEventDetail(): object {
           schema_url: `/v1/event-sessions/${SESSION_ID}/schema`,
           seat_status_url: `/v1/event-sessions/${SESSION_ID}/seat-status`,
           buyer_fields: [],
+          // HP-Q: date-bound event, the cart sheet prints the no-withdrawal notice.
+          show_withdrawal_notice: true,
           tiers: [],
           // AB-47c: session-level cover wins over event fallback.
           poster_media_id: SESSION_POSTER_MEDIA_ID,
