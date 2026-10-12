@@ -14026,6 +14026,18 @@ type UpdateExternalAllocationJSONBody struct {
 	Quantity *int `json:"quantity,omitempty"`
 }
 
+// GrantOrganizationMembershipParams defines parameters for GrantOrganizationMembership.
+type GrantOrganizationMembershipParams struct {
+	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
+}
+
+// RevokeOrganizationMembershipParams defines parameters for RevokeOrganizationMembership.
+type RevokeOrganizationMembershipParams struct {
+	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdOrdersParams defines parameters for GetV1OrganizationsOrgIdOrders.
 type GetV1OrganizationsOrgIdOrdersParams struct {
 	// Q One search value, max 200 characters, read in this precedence:
@@ -14146,6 +14158,12 @@ type GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsvParams struct {
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
+// CreatePaymentIntentParams defines parameters for CreatePaymentIntent.
+type CreatePaymentIntentParams struct {
+	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
+}
+
 // ListPublicFeedEventsParams defines parameters for ListPublicFeedEvents.
 type ListPublicFeedEventsParams struct {
 	// CityId Optional filter by publication city scope.
@@ -14221,6 +14239,24 @@ type ReviewReconciliationReportJSONBody struct {
 // ReviewReconciliationReportJSONBodyDecision defines parameters for ReviewReconciliationReport.
 type ReviewReconciliationReportJSONBodyDecision string
 
+// CreateRefundParams defines parameters for CreateRefund.
+type CreateRefundParams struct {
+	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
+}
+
+// ApproveRefundParams defines parameters for ApproveRefund.
+type ApproveRefundParams struct {
+	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
+}
+
+// RejectRefundParams defines parameters for RejectRefund.
+type RejectRefundParams struct {
+	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
+}
+
 // GetScannerSnapshotParams defines parameters for GetScannerSnapshot.
 type GetScannerSnapshotParams struct {
 	// SessionId UUID of the event session whose barcodes to retrieve.
@@ -14247,6 +14283,12 @@ type StripeConnectCallbackParams struct {
 
 	// Error OAuth error code when the user denied the connection.
 	Error *string `form:"error,omitempty" json:"error,omitempty"`
+}
+
+// CancelTicketParams defines parameters for CancelTicket.
+type CancelTicketParams struct {
+	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
 }
 
 // GetTicketCredentialParams defines parameters for GetTicketCredential.
