@@ -7,7 +7,9 @@
  * show and WHICH words to print.
  */
 
-import type { CheckoutI18nStrings, CheckoutQuoteResponse, PublicGAItem } from './checkout.js';
+import { formatPrice } from './checkout.js';
+import type { CheckoutQuoteResponse, PublicGAItem } from './checkout.js';
+import type { PromoStrings } from './promoI18n.js';
 
 /** A quote the platform gave for one exact cart and one exact code. */
 export interface PromoQuote {
@@ -95,6 +97,33 @@ export function sheetAmounts(
   };
 }
 
+// ─── Reading direction of the amounts ────────────────────────────────────────
+
+const LRI = '⁦'; // left-to-right isolate
+const PDI = '⁩'; // pop directional isolate
+const MINUS = '−';
+
+/**
+ * An amount that keeps its own left-to-right order inside a right-to-left
+ * sheet. Without the isolate the bidi algorithm moves a leading "−" or
+ * currency sign to the far end of the number in Hebrew ("€5.00−").
+ */
+export function isolateLtr(text: string): string {
+  return `${LRI}${text}${PDI}`;
+}
+
+/** "−€5.00", isolated so the minus stays in front of the amount in any direction. */
+export function formatDiscount(amountMinor: number, currency: string): string {
+  return isolateLtr(`${MINUS}${formatPrice(amountMinor, currency)}`);
+}
+
+/** A plain amount, isolated the same way. */
+export function formatAmount(amountMinor: number, currency: string): string {
+  return isolateLtr(formatPrice(amountMinor, currency));
+}
+
+// ─── Words ───────────────────────────────────────────────────────────────────
+
 /**
  * The words for a promo problem. `code` is the error code of the platform
  * (`promo.*`); anything else is a failure of the check itself.
@@ -103,14 +132,18 @@ export function sheetAmounts(
  * purpose, so there is no "expired" or "wrong event" here and none must be
  * added: the buyer is told only what they can act on.
  */
-export function promoErrorMessage(code: string | undefined, t: CheckoutI18nStrings): string {
+export function promoErrorMessage(code: string | undefined, p: PromoStrings): string {
   switch (code) {
     case 'promo.minimum_not_reached':
-      return t.promo_error_minimum;
+      return p.error_minimum;
     case 'promo.exhausted':
-      return t.promo_error_exhausted;
+      return p.error_exhausted;
     case 'promo.per_customer_limit':
-      return t.promo_error_per_customer;
+      return p.error_per_customer;
+    case 'promo.rate_limited':
+    // The shared public-feed limiter answers a burst with its own code.
+    case 'feed.rate_limited':
+      return p.error_rate_limited;
     case 'promo.not_applicable':
     // checkout/start still answers with the platform's finer codes; to a buyer
     // they all mean "this code does not work for this order".
@@ -121,11 +154,11 @@ export function promoErrorMessage(code: string | undefined, t: CheckoutI18nStrin
     case 'promo.session_not_applicable':
     case 'promo.tier_not_applicable':
     case 'promo.currency_mismatch':
-      return t.promo_error_not_applicable;
+      return p.error_not_applicable;
     case 'promo.invalid_order_amount':
-      return t.promo_error_minimum;
+      return p.error_minimum;
     default:
-      return t.promo_error_generic;
+      return p.error_generic;
   }
 }
 

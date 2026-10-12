@@ -1,8 +1,10 @@
 <script lang="ts">
   import { removeCartLine, cartTotal, cartServiceFee, cartItemCount, countdownSeconds, isTwoMinWarning, formatCountdown } from '../lib/cart.js';
-  import { formatPrice, getCheckoutI18n, interpolate, payButtonLabel, shouldShowWithdrawalNotice } from '../lib/checkout.js';
-  import { sheetAmounts } from '../lib/promo.js';
+  import { getCheckoutI18n, interpolate, payButtonLabel, shouldShowWithdrawalNotice } from '../lib/checkout.js';
+  import { sheetAmounts, formatAmount, formatDiscount } from '../lib/promo.js';
   import type { PromoQuote } from '../lib/promo.js';
+  import { promoPayBlocked } from '../lib/promoController.js';
+  import { getPromoStrings } from '../lib/promoI18n.js';
   import type { CartState } from '../lib/cart.js';
   import BuyerForm from './BuyerForm.svelte';
   import type { BuyerFieldConfig, BuyerFormValues } from '../lib/checkout.js';
@@ -69,6 +71,7 @@
   }: Props = $props();
 
   const t = $derived(getCheckoutI18n(locale));
+  const p = $derived(getPromoStrings(locale));
   const count = $derived(cartItemCount(cart.lines));
   const total = $derived(cartTotal(cart.lines));
   const localFee = $derived(cartServiceFee(total.amount, serviceFeePercent));
@@ -79,6 +82,11 @@
   const amounts = $derived(sheetAmounts({ subtotal: total.amount, fee: localFee, currency: total.currency }, promoQuote, cartKey));
   const fee = $derived(amounts.fee);
   const payTotal = $derived(amounts.total);
+  // The pay button waits for the quote of THIS cart; with no code applied it
+  // never waits, so a failed or slow quote cannot hold the purchase.
+  const payBlocked = $derived(
+    promoPayBlocked({ code: promoCode, quote: promoQuote, busy: promoBusy, error: null, note: null }, cartKey),
+  );
   let promoInput = $state('');
   function submitPromo(e: Event): void {
     e.preventDefault();
@@ -148,9 +156,9 @@
               </div>
               <div class="line-right">
                 {#if line.currency}
-                  <span class="line-price">{formatPrice(line.priceAmount * line.quantity, line.currency)}</span>
+                  <span class="line-price">{formatAmount(line.priceAmount * line.quantity, line.currency)}</span>
                 {/if}
-                <button class="remove-btn" onclick={() => onRemoveLine(idx)} aria-label="Remove {line.tierName}">✕</button>
+                <button class="remove-btn" onclick={() => onRemoveLine(idx)} aria-label="Remove {line.tierName}" disabled={promoBusy}>✕</button>
               </div>
             </li>
           {/each}
@@ -160,18 +168,18 @@
           <div class="promo">
             {#if promoCode}
               <div class="promo-applied">
-                <span class="promo-applied-text" role="status">{interpolate(t.promo_applied, { code: promoCode.toUpperCase() })}</span>
-                <button type="button" class="promo-remove" onclick={() => onRemovePromo?.()} disabled={promoBusy}>{t.promo_remove}</button>
+                <span class="promo-applied-text" role="status">{interpolate(p.applied, { code: promoCode.toUpperCase() })}</span>
+                <button type="button" class="promo-remove" onclick={() => onRemovePromo?.()} disabled={promoBusy}>{p.remove}</button>
               </div>
             {:else}
               <form class="promo-form" onsubmit={submitPromo}>
-                <label for="arena-promo-input" class="promo-label">{t.promo_label}</label>
+                <label for="arena-promo-input" class="promo-label">{p.label}</label>
                 <div class="promo-row">
                   <input
                     id="arena-promo-input"
                     type="text"
                     class="promo-input"
-                    placeholder={t.promo_placeholder}
+                    placeholder={p.placeholder}
                     bind:value={promoInput}
                     autocomplete="off"
                     autocapitalize="characters"
@@ -180,14 +188,14 @@
                     aria-describedby={promoError ? 'arena-promo-err' : undefined}
                     disabled={promoBusy}
                   />
-                  <button type="submit" class="promo-apply" disabled={promoBusy}>{t.promo_apply}</button>
+                  <button type="submit" class="promo-apply" disabled={promoBusy}>{p.apply}</button>
                 </div>
               </form>
             {/if}
             {#if promoError}
               <p id="arena-promo-err" class="promo-error" role="alert">{promoError}</p>
             {:else if promoBusy}
-              <p class="promo-note" role="status">{t.promo_checking}</p>
+              <p class="promo-note" role="status">{p.checking}</p>
             {:else if promoNote && !promoCode}
               <p class="promo-note" role="status">{promoNote}</p>
             {/if}
@@ -197,27 +205,27 @@
         {#if amounts.currency}
           {#if amounts.discounted && amounts.discount > 0}
             <div class="fee-row">
-              <span class="fee-label">{t.cart_subtotal_label}</span>
-              <span class="fee-value">{formatPrice(amounts.subtotal, amounts.currency)}</span>
+              <span class="fee-label">{p.subtotal_label}</span>
+              <span class="fee-value">{formatAmount(amounts.subtotal, amounts.currency)}</span>
             </div>
             <div class="fee-row discount-row">
-              <span class="fee-label">{t.promo_discount_label}</span>
-              <span class="fee-value">−{formatPrice(amounts.discount, amounts.currency)}</span>
+              <span class="fee-label">{p.discount_label}</span>
+              <span class="fee-value">{formatDiscount(amounts.discount, amounts.currency)}</span>
             </div>
           {/if}
           {#if fee > 0}
             <div class="fee-row">
               <span class="fee-label">{t.cart_fee_label}</span>
-              <span class="fee-value">{formatPrice(fee, amounts.currency)}</span>
+              <span class="fee-value">{formatAmount(fee, amounts.currency)}</span>
             </div>
           {/if}
           <div class="total-row">
             <span class="total-label">{t.cart_total_label}</span>
-            <span class="total-value">{formatPrice(payTotal, amounts.currency)}</span>
+            <span class="total-value">{formatAmount(payTotal, amounts.currency)}</span>
           </div>
         {/if}
 
-        <button class="cta-btn" onclick={handleContinue} disabled={count === 0 || promoBusy}>
+        <button class="cta-btn" onclick={handleContinue} disabled={count === 0 || payBlocked}>
           {t.submit_label}
         </button>
       {/if}
@@ -366,7 +374,8 @@
     border-radius: 4px;
     line-height: 1;
   }
-  .remove-btn:hover { color: #b91c1c; }
+  .remove-btn:hover:not(:disabled) { color: #b91c1c; }
+  .remove-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .fee-row {
     display: flex;
     justify-content: space-between;

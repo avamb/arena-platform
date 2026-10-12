@@ -10,44 +10,24 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'svelte/server';
 import CartSheet from './components/CartSheet.svelte';
-import widgetSource from './ArenaTickets.svelte?raw';
-import {
-  CHECKOUT_I18N,
-  SUPPORTED_LOCALES,
-  buildCheckoutPayload,
-  buildQuotePayload,
-  formatPrice,
-  getCheckoutI18n,
-} from './lib/checkout.js';
-import type { CheckoutI18nStrings } from './lib/checkout.js';
+import { buildCheckoutPayload, buildQuotePayload, formatPrice } from './lib/checkout.js';
 import {
   cartQuoteKey,
+  formatAmount,
+  formatDiscount,
   isPromoErrorCode,
   promoErrorMessage,
   sheetAmounts,
   toPromoQuote,
 } from './lib/promo.js';
+import { PROMO_I18N, getPromoStrings } from './lib/promoI18n.js';
+import type { PromoStrings } from './lib/promoI18n.js';
 import type { PromoQuote } from './lib/promo.js';
 import { cartServiceFee } from './lib/cart.js';
 import { ApiError, postCheckoutQuote } from './api.js';
 
-const PROMO_KEYS: ReadonlyArray<keyof CheckoutI18nStrings> = [
-  'promo_label',
-  'promo_placeholder',
-  'promo_apply',
-  'promo_remove',
-  'promo_applied',
-  'promo_removed',
-  'promo_checking',
-  'promo_discount_label',
-  'cart_subtotal_label',
-  'promo_error_not_applicable',
-  'promo_error_minimum',
-  'promo_error_exhausted',
-  'promo_error_per_customer',
-  'promo_error_generic',
-  'promo_error_empty',
-];
+const LOCALES = ['en', 'ru', 'cs', 'he', 'es', 'de', 'fr'] as const;
+const PROMO_KEYS = Object.keys(PROMO_I18N.en!) as Array<keyof PromoStrings>;
 
 const GA_LINE = {
   type: 'ga' as const,
@@ -81,48 +61,66 @@ const QUOTE: PromoQuote = {
 // ─── Words ───────────────────────────────────────────────────────────────────
 
 describe('promo texts', () => {
-  it('has every promo string in every supported locale', () => {
-    for (const loc of SUPPORTED_LOCALES) {
-      const strings = CHECKOUT_I18N[loc];
+  it('has every promo string in every locale the widget is embedded in', () => {
+    expect(Object.keys(PROMO_I18N).sort()).toEqual([...LOCALES].sort());
+    for (const loc of LOCALES) {
+      const strings = PROMO_I18N[loc]!;
+      expect(Object.keys(strings).sort(), loc).toEqual([...PROMO_KEYS].sort());
       for (const key of PROMO_KEYS) {
-        expect(strings[key], `${loc}.${String(key)}`).toBeTruthy();
+        expect(strings[key], `${loc}.${key}`).toBeTruthy();
       }
     }
   });
 
   it('keeps the {code} placeholder of the applied line in every locale', () => {
-    for (const loc of SUPPORTED_LOCALES) {
-      expect(CHECKOUT_I18N[loc].promo_applied, loc).toContain('{code}');
+    for (const loc of LOCALES) {
+      expect(PROMO_I18N[loc]!.applied, loc).toContain('{code}');
+    }
+  });
+
+  it('adds no placeholder the code does not fill', () => {
+    for (const loc of LOCALES) {
+      for (const key of PROMO_KEYS) {
+        const found = String(PROMO_I18N[loc]![key]).match(/\{\w+\}/g) ?? [];
+        expect(found.filter((f) => f !== '{code}'), `${loc}.${key}`).toEqual([]);
+      }
     }
   });
 
   it('follows the text style: no semicolons, no dashes as a pause', () => {
-    for (const loc of SUPPORTED_LOCALES) {
+    for (const loc of LOCALES) {
       for (const key of PROMO_KEYS) {
-        const text = String(CHECKOUT_I18N[loc][key]);
-        expect(text, `${loc}.${String(key)}`).not.toMatch(/[;—–]/);
+        expect(String(PROMO_I18N[loc]![key]), `${loc}.${key}`).not.toMatch(/[;—–]/);
       }
     }
   });
 
   it('keeps each error short: at most 12 words', () => {
-    for (const loc of SUPPORTED_LOCALES) {
-      for (const key of PROMO_KEYS.filter((k) => String(k).startsWith('promo_error'))) {
-        const words = String(CHECKOUT_I18N[loc][key]).trim().split(/\s+/).length;
-        expect(words, `${loc}.${String(key)}`).toBeLessThanOrEqual(12);
+    for (const loc of LOCALES) {
+      for (const key of PROMO_KEYS.filter((k) => k.startsWith('error_'))) {
+        const words = String(PROMO_I18N[loc]![key]).trim().split(/\s+/).length;
+        expect(words, `${loc}.${key}`).toBeLessThanOrEqual(12);
       }
     }
+  });
+
+  it('looks a language up by its subtag and falls back to English', () => {
+    expect(getPromoStrings('es-ES')).toBe(PROMO_I18N.es);
+    expect(getPromoStrings('de_AT')).toBe(PROMO_I18N.de);
+    expect(getPromoStrings('FR')).toBe(PROMO_I18N.fr);
+    expect(getPromoStrings('xx')).toBe(PROMO_I18N.en);
+    expect(getPromoStrings('')).toBe(PROMO_I18N.en);
   });
 });
 
 describe('promoErrorMessage', () => {
-  const t = getCheckoutI18n('en');
+  const p = getPromoStrings('en');
 
   it('names the cause only where the platform names it', () => {
-    expect(promoErrorMessage('promo.not_applicable', t)).toBe(t.promo_error_not_applicable);
-    expect(promoErrorMessage('promo.minimum_not_reached', t)).toBe(t.promo_error_minimum);
-    expect(promoErrorMessage('promo.exhausted', t)).toBe(t.promo_error_exhausted);
-    expect(promoErrorMessage('promo.per_customer_limit', t)).toBe(t.promo_error_per_customer);
+    expect(promoErrorMessage('promo.not_applicable', p)).toBe(p.error_not_applicable);
+    expect(promoErrorMessage('promo.minimum_not_reached', p)).toBe(p.error_minimum);
+    expect(promoErrorMessage('promo.exhausted', p)).toBe(p.error_exhausted);
+    expect(promoErrorMessage('promo.per_customer_limit', p)).toBe(p.error_per_customer);
   });
 
   it('gives a buyer ONE answer for every finer code checkout/start can still send', () => {
@@ -135,20 +133,25 @@ describe('promoErrorMessage', () => {
       'promo.tier_not_applicable',
       'promo.currency_mismatch',
     ]) {
-      expect(promoErrorMessage(code, t), code).toBe(t.promo_error_not_applicable);
+      expect(promoErrorMessage(code, p), code).toBe(p.error_not_applicable);
     }
-    expect(promoErrorMessage('promo.invalid_order_amount', t)).toBe(t.promo_error_minimum);
+    expect(promoErrorMessage('promo.invalid_order_amount', p)).toBe(p.error_minimum);
+  });
+
+  it('tells a buyer who tried too often to wait', () => {
+    expect(promoErrorMessage('promo.rate_limited', p)).toBe(p.error_rate_limited);
+    expect(promoErrorMessage('feed.rate_limited', p)).toBe(p.error_rate_limited);
   });
 
   it('says the check failed for anything else', () => {
-    expect(promoErrorMessage(undefined, t)).toBe(t.promo_error_generic);
-    expect(promoErrorMessage('http_500', t)).toBe(t.promo_error_generic);
-    expect(promoErrorMessage('feed.rate_limited', t)).toBe(t.promo_error_generic);
+    expect(promoErrorMessage(undefined, p)).toBe(p.error_generic);
+    expect(promoErrorMessage('http_500', p)).toBe(p.error_generic);
   });
 
   it('speaks the buyer language', () => {
-    expect(promoErrorMessage('promo.exhausted', getCheckoutI18n('ru'))).toBe(CHECKOUT_I18N.ru.promo_error_exhausted);
-    expect(promoErrorMessage('promo.exhausted', getCheckoutI18n('xx'))).toBe(CHECKOUT_I18N.en.promo_error_exhausted);
+    expect(promoErrorMessage('promo.exhausted', getPromoStrings('ru'))).toBe(PROMO_I18N.ru!.error_exhausted);
+    expect(promoErrorMessage('promo.exhausted', getPromoStrings('es-ES'))).toBe(PROMO_I18N.es!.error_exhausted);
+    expect(promoErrorMessage('promo.exhausted', getPromoStrings('xx'))).toBe(PROMO_I18N.en!.error_exhausted);
   });
 
   it('tells a promo verdict from other API errors', () => {
@@ -206,6 +209,29 @@ describe('sheetAmounts', () => {
   it('keeps the sheet fee on the same floor as the platform', () => {
     // 5 % of 1890 is 94.5: the platform floors to 94.
     expect(cartServiceFee(1890, '5.00')).toBe(94);
+  });
+});
+
+describe('amounts in a right-to-left sheet', () => {
+  it('isolates an amount so its currency stays beside it', () => {
+    const text = formatAmount(4500, 'EUR');
+    expect(text.startsWith('\u2066')).toBe(true);
+    expect(text.endsWith('\u2069')).toBe(true);
+    expect(text).toContain(formatPrice(4500, 'EUR'));
+  });
+
+  it('keeps the minus of a discount in front of the amount', () => {
+    const text = formatDiscount(500, 'EUR');
+    expect(text).toBe(`\u2066\u2212${formatPrice(500, 'EUR')}\u2069`);
+    // The sign is INSIDE the isolate, so a Hebrew sheet cannot move it to the far end.
+    expect(text.indexOf('\u2212')).toBeGreaterThan(text.indexOf('\u2066'));
+    expect(text.indexOf('\u2212')).toBeLessThan(text.indexOf(formatPrice(500, 'EUR')));
+  });
+
+  it('prints the discount row isolated in the Hebrew sheet', () => {
+    const html = sheetHtml({ onApplyPromo: () => {}, promoCode: 'TEN', promoQuote: QUOTE, cartKey: 'K', locale: 'he' });
+    expect(html).toContain(formatDiscount(500, 'EUR'));
+    expect(html).toContain(formatAmount(4556, 'EUR'));
   });
 });
 
@@ -305,22 +331,22 @@ describe('cart sheet markup', () => {
     expect(html).toContain('>Remove<');
     expect(html).not.toContain('arena-promo-input');
     expect(html).toContain('>Discount<');
-    expect(html).toContain(`−${formatPrice(500, 'EUR')}`);
+    expect(html).toContain(formatDiscount(500, 'EUR'));
     expect(html).toContain('>Tickets<');
-    expect(html).toContain(formatPrice(5000, 'EUR'));
+    expect(html).toContain(formatAmount(5000, 'EUR'));
     // The fee is the platform's (56, charged on 4500), not the sheet's own 62.
-    expect(html).toContain(formatPrice(56, 'EUR'));
+    expect(html).toContain(formatAmount(56, 'EUR'));
     expect(html).not.toContain(formatPrice(62, 'EUR'));
-    expect(html).toContain(formatPrice(4556, 'EUR'));
-    // The pay button names the discounted amount.
+    expect(html).toContain(formatAmount(4556, 'EUR'));
+    // The list total (5062) is gone.
     expect(html).not.toContain(formatPrice(5062, 'EUR'));
   });
 
   it('shows the list total, fee included, when no code is applied', () => {
     const html = sheetHtml({ onApplyPromo: () => {}, serviceFeePercent: '1.25' });
     expect(html).not.toContain('>Discount<');
-    expect(html).toContain(formatPrice(62, 'EUR'));
-    expect(html).toContain(formatPrice(5062, 'EUR'));
+    expect(html).toContain(formatAmount(62, 'EUR'));
+    expect(html).toContain(formatAmount(5062, 'EUR'));
   });
 
   it('ignores a quote made for another cart', () => {
@@ -333,7 +359,7 @@ describe('cart sheet markup', () => {
       serviceFeePercent: '1.25',
     });
     expect(html).not.toContain('>Discount<');
-    expect(html).toContain(formatPrice(5062, 'EUR'));
+    expect(html).toContain(formatAmount(5062, 'EUR'));
   });
 
   it('prints a failed Apply as an alert tied to the field', () => {
@@ -350,41 +376,40 @@ describe('cart sheet markup', () => {
     expect(html).toMatch(/id="arena-promo-input"[^>]*disabled/);
   });
 
+  it('holds the buy button while an applied code has no quote of this cart', () => {
+    const stale = sheetHtml({ onApplyPromo: () => {}, onRemovePromo: () => {}, promoCode: 'TEN', promoQuote: QUOTE, cartKey: 'OTHER' });
+    expect(stale).toMatch(/class="cta-btn[^"]*"[^>]*disabled/);
+    const none = sheetHtml({ onApplyPromo: () => {}, onRemovePromo: () => {}, promoCode: 'TEN', promoQuote: null, cartKey: 'K' });
+    expect(none).toMatch(/class="cta-btn[^"]*"[^>]*disabled/);
+  });
+
+  it('never holds the buy button when no code is applied, whatever happened to a quote', () => {
+    const html = sheetHtml({ onApplyPromo: () => {}, promoError: 'Cannot check the code now. Try again.' });
+    expect(html).not.toMatch(/class="cta-btn[^"]*"[^>]*disabled/);
+  });
+
+  it('lets the buyer pay once the quote is for this cart', () => {
+    const html = sheetHtml({ onApplyPromo: () => {}, onRemovePromo: () => {}, promoCode: 'TEN', promoQuote: QUOTE, cartKey: 'K' });
+    expect(html).not.toMatch(/class="cta-btn[^"]*"[^>]*disabled/);
+  });
+
+  it('locks the line buttons while a quote is in flight', () => {
+    const html = sheetHtml({ onApplyPromo: () => {}, promoBusy: true });
+    expect(html).toMatch(/class="remove-btn[^"]*"[^>]*disabled/);
+    expect(sheetHtml({ onApplyPromo: () => {} })).not.toMatch(/class="remove-btn[^"]*"[^>]*disabled/);
+  });
+
   it('says the code was removed', () => {
     expect(sheetHtml({ onApplyPromo: () => {}, promoNote: 'Code removed.' })).toContain('Code removed.');
   });
 
   it('speaks the buyer language', () => {
-    expect(sheetHtml({ onApplyPromo: () => {}, locale: 'ru' })).toContain(`>${CHECKOUT_I18N.ru.promo_label}<`);
-    expect(sheetHtml({ onApplyPromo: () => {}, locale: 'cs' })).toContain(`>${CHECKOUT_I18N.cs.promo_apply}<`);
-    expect(sheetHtml({ onApplyPromo: () => {}, locale: 'he' })).toContain(`>${CHECKOUT_I18N.he.promo_label}<`);
-  });
-});
-
-// ─── Wiring ──────────────────────────────────────────────────────────────────
-
-describe('wiring in the widget', () => {
-  it('asks the platform for the quote with the cart the buyer sees', () => {
-    expect(widgetSource).toContain('postCheckoutQuote(');
-    expect(widgetSource).toContain('buildQuotePayload(selectedSession.id');
-  });
-
-  it('sends the applied code with checkout/start', () => {
-    expect(widgetSource).toMatch(/buildCheckoutPayload\([\s\S]*?promoCode,\s*\)/);
-  });
-
-  it('takes the code off when checkout/start refuses it', () => {
-    expect(widgetSource).toContain('isPromoErrorCode(err.code)');
-    expect(widgetSource).toContain('dropPromo();');
-  });
-
-  it('asks again when a line is removed under an applied code', () => {
-    expect(widgetSource).toContain('refreshPromoQuote(promoCode, key)');
-  });
-
-  it('hands the sheet the quote, the cart key and both handlers', () => {
-    for (const prop of ['{promoCode}', '{promoQuote}', '{cartKey}', '{promoBusy}', 'onApplyPromo={handleApplyPromo}', 'onRemovePromo={handleRemovePromo}']) {
-      expect(widgetSource, prop).toContain(prop);
+    for (const loc of LOCALES) {
+      const html = sheetHtml({ onApplyPromo: () => {}, locale: loc });
+      expect(html, loc).toContain(`>${PROMO_I18N[loc]!.label}<`);
+      expect(html, loc).toContain(`>${PROMO_I18N[loc]!.apply}<`);
     }
+    // A regional tag finds its language.
+    expect(sheetHtml({ onApplyPromo: () => {}, locale: 'es-ES' })).toContain(`>${PROMO_I18N.es!.label}<`);
   });
 });

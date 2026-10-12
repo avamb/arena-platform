@@ -205,7 +205,6 @@ export interface CheckoutQuoteResponse {
     total: number;
     currency: string;
   };
-  promo_applied: boolean;
 }
 
 /** Response from POST /v1/public/feeds/{token}/checkout/start. */
@@ -641,37 +640,6 @@ export interface CheckoutI18nStrings {
   cart_fee_label: string;
   /** Back button label inside the cart sheet (goes back to item list). */
   cart_back: string;
-  // Promo code in the cart sheet
-  /** Label of the promo code field. */
-  promo_label: string;
-  /** Placeholder inside the promo code field. */
-  promo_placeholder: string;
-  /** Button that checks the typed code. */
-  promo_apply: string;
-  /** Button that takes an applied code off. */
-  promo_remove: string;
-  /** Status line after a code is applied. {code} is the code as typed. */
-  promo_applied: string;
-  /** Status line after the buyer removes a code. */
-  promo_removed: string;
-  /** Status line while the code is being checked. */
-  promo_checking: string;
-  /** Row label for the discount. */
-  promo_discount_label: string;
-  /** Row label for the price of the tickets before the discount. */
-  cart_subtotal_label: string;
-  /** The code does not fit this order (unknown, expired, other event, other currency). */
-  promo_error_not_applicable: string;
-  /** The order is below the minimum amount of the code. */
-  promo_error_minimum: string;
-  /** The code has no uses left. */
-  promo_error_exhausted: string;
-  /** This buyer used the code the maximum number of times. */
-  promo_error_per_customer: string;
-  /** The check itself failed (network, server). */
-  promo_error_generic: string;
-  /** Shown when Apply is pressed with an empty field. */
-  promo_error_empty: string;
   /** Warning suffix shown on the countdown when hold is under 2 min. */
   expires_warn: string;
   /** Singular ticket label in MiniCart bar (e.g. "1 ticket"). */
@@ -750,21 +718,6 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     cart_total_label: 'Total',
     cart_fee_label: 'Service fee',
     cart_back: 'Back',
-    promo_label: 'Promo code',
-    promo_placeholder: 'Enter code',
-    promo_apply: 'Apply',
-    promo_remove: 'Remove',
-    promo_applied: 'Code {code} applied.',
-    promo_removed: 'Code removed.',
-    promo_checking: 'Checking the code…',
-    promo_discount_label: 'Discount',
-    cart_subtotal_label: 'Tickets',
-    promo_error_not_applicable: 'This code does not work for this order.',
-    promo_error_minimum: 'The order is too small for this code.',
-    promo_error_exhausted: 'This code has no uses left.',
-    promo_error_per_customer: 'You already used this code.',
-    promo_error_generic: 'Cannot check the code now. Try again.',
-    promo_error_empty: 'Type a code first.',
     expires_warn: 'your seats expire soon!',
     ticket_singular: 'ticket',
     ticket_plural: 'tickets',
@@ -820,21 +773,6 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     cart_total_label: 'Итого',
     cart_fee_label: 'Сервисный сбор',
     cart_back: 'Назад',
-    promo_label: 'Промокод',
-    promo_placeholder: 'Введите код',
-    promo_apply: 'Применить',
-    promo_remove: 'Убрать',
-    promo_applied: 'Код {code} применён.',
-    promo_removed: 'Код убран.',
-    promo_checking: 'Проверяем код…',
-    promo_discount_label: 'Скидка',
-    cart_subtotal_label: 'Билеты',
-    promo_error_not_applicable: 'Этот код не подходит для заказа.',
-    promo_error_minimum: 'Сумма заказа мала для этого кода.',
-    promo_error_exhausted: 'Этот код больше нельзя использовать.',
-    promo_error_per_customer: 'Вы уже использовали этот код.',
-    promo_error_generic: 'Сейчас нельзя проверить код. Попробуйте ещё раз.',
-    promo_error_empty: 'Сначала введите код.',
     expires_warn: 'ваши места скоро истекут!',
     ticket_singular: 'билет',
     ticket_few: 'билета',
@@ -891,21 +829,6 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     cart_total_label: 'Celkem',
     cart_fee_label: 'Servisní poplatek',
     cart_back: 'Zpět',
-    promo_label: 'Slevový kód',
-    promo_placeholder: 'Zadejte kód',
-    promo_apply: 'Použít',
-    promo_remove: 'Odebrat',
-    promo_applied: 'Kód {code} byl použit.',
-    promo_removed: 'Kód byl odebrán.',
-    promo_checking: 'Kontrolujeme kód…',
-    promo_discount_label: 'Sleva',
-    cart_subtotal_label: 'Vstupenky',
-    promo_error_not_applicable: 'Tento kód pro objednávku neplatí.',
-    promo_error_minimum: 'Objednávka je pro tento kód příliš malá.',
-    promo_error_exhausted: 'Tento kód už nelze použít.',
-    promo_error_per_customer: 'Tento kód jste už použili.',
-    promo_error_generic: 'Kód teď nelze zkontrolovat. Zkuste to znovu.',
-    promo_error_empty: 'Nejdřív zadejte kód.',
     expires_warn: 'vaše místa brzy vyprší!',
     ticket_singular: 'vstupenka',
     ticket_few: 'vstupenky',
@@ -962,21 +885,6 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     cart_total_label: 'סה״כ',
     cart_fee_label: 'דמי שירות',
     cart_back: 'חזרה',
-    promo_label: 'קוד קופון',
-    promo_placeholder: 'הזינו קוד',
-    promo_apply: 'החל',
-    promo_remove: 'הסר',
-    promo_applied: 'הקוד {code} הוחל.',
-    promo_removed: 'הקוד הוסר.',
-    promo_checking: 'בודקים את הקוד…',
-    promo_discount_label: 'הנחה',
-    cart_subtotal_label: 'כרטיסים',
-    promo_error_not_applicable: 'הקוד הזה לא מתאים להזמנה.',
-    promo_error_minimum: 'ההזמנה קטנה מדי לקוד הזה.',
-    promo_error_exhausted: 'לקוד הזה לא נותרו שימושים.',
-    promo_error_per_customer: 'כבר השתמשתם בקוד הזה.',
-    promo_error_generic: 'אי אפשר לבדוק את הקוד כרגע. נסו שוב.',
-    promo_error_empty: 'הזינו קוד קודם.',
     expires_warn: 'המקומות שלך עומדים לפוג בקרוב!',
     ticket_singular: 'כרטיס',
     ticket_plural: 'כרטיסים',

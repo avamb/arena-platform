@@ -275,6 +275,8 @@ export async function postCheckoutStart(
  * no seat, no capacity, no order. The amounts are the ones checkout/start will
  * store and send to the payment page.
  *
+ * @param signal  Aborts the request; the promo controller uses it to bound the
+ *                wait, so a hung quote can never hold the buyer's cart.
  * @throws ApiError when the response is non-2xx. A code that does not fit the
  *         order is a 422 whose `code` starts with `promo.`.
  */
@@ -282,12 +284,14 @@ export async function postCheckoutQuote(
   feedToken: string,
   payload: CheckoutQuotePayload,
   apiBase = '',
+  signal?: AbortSignal,
 ): Promise<CheckoutQuoteResponse> {
   const url = `${apiBase}/v1/public/feeds/${encodeURIComponent(feedToken)}/checkout/quote`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    signal,
   });
   if (!res.ok) throw await apiErrorFromResponse(res, 'postCheckoutQuote');
   return res.json() as Promise<CheckoutQuoteResponse>;
