@@ -91,7 +91,18 @@ func (s *Server) mountV1Routes() {
 // s.authMiddleware() accepts BOTH a user JWT and an organization API key
 // (`Authorization: Bearer ak_…`, spec §13.1) — see server_apikey_auth.go.
 func (s *Server) applyAuth(pr chi.Router, perm, scope string) {
+	s.applyAuthScoped(pr, perm, scope, true)
+}
+
+// applyAuthAcrossOrgs is applyAuth for the routes that act across two
+// organizations through one path (see orgScopedFor).
+func (s *Server) applyAuthAcrossOrgs(pr chi.Router, perm, scope string) {
+	s.applyAuthScoped(pr, perm, scope, false)
+}
+
+func (s *Server) applyAuthScoped(pr chi.Router, perm, scope string, orgScope bool) {
 	pr.Use(s.authMiddleware())
+	pr.Use(orgScopedFor(perm, orgScope))
 	pr.Use(permissions.RequirePermission(s.perms, perm, scope))
 	pr.Use(s.markSuperadminOrgAccess)
 }

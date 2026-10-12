@@ -10,6 +10,7 @@ package httpserver
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -17,6 +18,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 )
 
 // actorIsMemberOfOrgServer reports whether the authenticated actor holds an
@@ -148,6 +150,24 @@ func (s *Server) rowOrgAccess(w http.ResponseWriter, r *http.Request, orgID uuid
 	}
 	if !member {
 		return notFound()
+	}
+	// The gate decided the permission from the request's own organization (or,
+	// for a flat route, from the union of memberships). The row's organization
+	// is known now: the caller must hold the same permission THERE (PERM-ORG).
+	if oc, ok := s.perms.(permissions.OrgChecker); ok {
+		if perm, has := permissions.RequiredPermissionFromContext(ctx); has {
+			if err := oc.CheckInOrg(ctx, perm, orgID); err != nil {
+				if errors.Is(err, permissions.ErrPermissionDenied) {
+					httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+						"permissions.denied", "You do not have permission to perform this action.", r))
+					return false
+				}
+				s.logger.Error("server: org permission check failed", "error", err.Error())
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+					"permissions.internal_error", "An internal error occurred while evaluating permissions.", r))
+				return false
+			}
+		}
 	}
 	return true
 }
