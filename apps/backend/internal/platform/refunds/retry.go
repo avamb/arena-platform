@@ -135,6 +135,7 @@ func (e *Engine) Retry(ctx context.Context, in RetryInput) (BatchResult, error) 
 		IdempotencyKey: key,
 		Actor:          in.Actor, Via: in.Via, Approved: true,
 		paymentID: &payID,
+		retryOf:   &cur.ID,
 	}
 	if cur.State == StateManualReview && prior == nil {
 		in2.beforePlan = func(ctx context.Context, tx pgx.Tx) error {

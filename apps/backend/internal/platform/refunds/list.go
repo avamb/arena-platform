@@ -89,7 +89,8 @@ const retryBlockedColumn = `NOT COALESCE((
 	   AND (SELECT pi.amount FROM payment_intents pi WHERE pi.id = r.payment_intent_id)
 	       - COALESCE((SELECT SUM(o.amount) FROM refunds o WHERE o.payment_intent_id = r.payment_intent_id AND o.id <> r.id
 	                   AND ` + liveAgainstBudget + `), 0) >= r.amount
-	   AND NOT EXISTS (SELECT 1 FROM tickets t WHERE t.id = tk.id AND ` + ticketBlockedSQL + `)
+	   AND NOT EXISTS (SELECT 1 FROM tickets t WHERE t.id = tk.id AND ` + ticketBlockedSQL + `
+	                   AND NOT EXISTS (SELECT 1 FROM refund_scan_exceptions sx WHERE sx.ticket_id = t.id AND sx.used_by_refund = r.id))
 	FROM tickets tk JOIN order_items oi ON oi.ticket_id = tk.id AND oi.order_id = r.order_id
 	WHERE tk.id = r.ticket_id), false)`
 

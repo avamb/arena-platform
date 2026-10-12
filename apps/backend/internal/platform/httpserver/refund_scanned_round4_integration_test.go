@@ -80,3 +80,50 @@ func TestRefundScanned_ScannedTicketIsNotRetryable(t *testing.T) {
 		t.Fatalf("after the scan: retryable %v; want false", got)
 	}
 }
+
+// N2: an exception spent by a refund the provider refused moved no money; the
+// retry of that refund inherits it instead of being refused as scanned (and
+// telling the owners that someone tried).
+func TestRefundScanned_RetryInheritsTheExceptionOfARefusedRefund(t *testing.T) {
+	e := newScanEnv(t)
+	ctx := context.Background()
+	e.exec(t, `UPDATE tickets SET used_at = now() WHERE id = $1`, e.f.tickets[0])
+	if _, err := e.srv.refundEngine().GrantScanException(ctx, refunds.ScanExceptionInput{OrgID: e.org, TicketID: e.f.tickets[0],
+		Actor: refunds.Actor{Type: "user", ID: uuid.NewString()}, Reason: "show cancelled"}); err != nil {
+		t.Fatal(err)
+	}
+	declined := true
+	e.stub.refundHandler = func(w http.ResponseWriter, _ *http.Request) {
+		e.calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		if declined {
+			w.WriteHeader(http.StatusPaymentRequired)
+			_, _ = w.Write([]byte(`{"error":{"type":"invalid_request_error","code":"insufficient_funds","message":"balance too low"}}`))
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"id":"re_%s","status":"succeeded"}`, uuid.NewString()[:8])
+	}
+	st, out := e.createRefund(t, 0)
+	if st != http.StatusAccepted {
+		t.Fatalf("create on the exception: %d %v", st, out)
+	}
+	first := out["refunds"].([]any)[0].(map[string]any)
+	if first["state"] != "failed" {
+		t.Fatalf("first refund = %v; want failed by the provider", first["state"])
+	}
+	if st, q := e.pf.do(t, http.MethodGet, "/v1/organizations/"+e.org.String()+"/refunds/"+first["id"].(string), e.key, ""); st != http.StatusOK ||
+		q["refund"].(map[string]any)["retryable"] != true {
+		t.Fatalf("the refused refund on an exception is not offered for retry: %d %v", st, q)
+	}
+	declined = false
+	st, out = refundOrgPost(t, e.pf, "/v1/organizations/"+e.org.String()+"/refunds/"+first["id"].(string)+"/retry", e.key, "", `{}`)
+	if st != http.StatusAccepted {
+		t.Fatalf("retry of the refused refund: %d %v; want 202", st, out)
+	}
+	if got := out["refunds"].([]any)[0].(map[string]any)["state"]; got != "succeeded" {
+		t.Fatalf("retried refund = %v; want succeeded", got)
+	}
+	if n := e.count(t, `SELECT count(*) FROM refund_scan_blocks WHERE ticket_id = $1`, e.f.tickets[0]); n != 0 {
+		t.Fatalf("the retry was journaled as a blocked attempt (%d rows)", n)
+	}
+}

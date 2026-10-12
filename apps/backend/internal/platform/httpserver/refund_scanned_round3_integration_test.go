@@ -33,6 +33,7 @@ type scanEnv struct {
 	key   string
 	f     *pay03Fixture
 	calls *atomic.Int32
+	stub  *stubStripe
 }
 
 func newScanEnv(t *testing.T, scopes ...string) *scanEnv {
@@ -73,7 +74,7 @@ func newScanEnv(t *testing.T, scopes ...string) *scanEnv {
 		_, _ = srv.pgxPool.Exec(c, `DELETE FROM outbox_events WHERE payload->>'org_id' = $1`, org.String())
 		_, _ = srv.pgxPool.Exec(c, `DELETE FROM memberships WHERE org_id = $1`, org)
 	})
-	return &scanEnv{srv: srv, pf: pf, org: org, key: key, f: f, calls: calls}
+	return &scanEnv{srv: srv, pf: pf, org: org, key: key, f: f, calls: calls, stub: stub}
 }
 
 func (e *scanEnv) exec(t *testing.T, sql string, args ...any) {
