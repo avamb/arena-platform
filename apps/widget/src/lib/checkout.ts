@@ -946,9 +946,18 @@ export function getPaymentCommitStrings(locale: string): PaymentCommitStrings {
  */
 export function payButtonLabel(totalMinor: number, currency: string, locale: string): string | undefined {
   const commit = getPaymentCommitStrings(locale);
-  if (!currency) return commit.pay_label_plain;
   if (totalMinor <= 0) return undefined;
+  if (!currency) return commit.pay_label_plain;
   return interpolate(commit.pay_label, { amount: formatPrice(totalMinor, currency) });
+}
+
+/**
+ * Whether the "no right of withdrawal" notice is shown: the session asks for
+ * it AND there is something to pay. A free cart creates no payment
+ * obligation, so the notice would only confuse.
+ */
+export function shouldShowWithdrawalNotice(flag: boolean, totalMinor: number): boolean {
+  return flag && totalMinor > 0;
 }
 
 /**

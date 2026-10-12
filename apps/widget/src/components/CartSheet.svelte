@@ -1,6 +1,6 @@
 <script lang="ts">
   import { removeCartLine, cartTotal, cartServiceFee, cartItemCount, countdownSeconds, isTwoMinWarning, formatCountdown } from '../lib/cart.js';
-  import { formatPrice, getCheckoutI18n, payButtonLabel } from '../lib/checkout.js';
+  import { formatPrice, getCheckoutI18n, payButtonLabel, shouldShowWithdrawalNotice } from '../lib/checkout.js';
   import type { CartState } from '../lib/cart.js';
   import BuyerForm from './BuyerForm.svelte';
   import type { BuyerFieldConfig, BuyerFormValues } from '../lib/checkout.js';
@@ -155,7 +155,7 @@
         {locale}
         {submitting}
         submitText={payLabel}
-        withdrawalNotice={showWithdrawalNotice}
+        withdrawalNotice={shouldShowWithdrawalNotice(showWithdrawalNotice, total.amount + fee)}
         onSubmit={onCheckout}
       />
     </div>

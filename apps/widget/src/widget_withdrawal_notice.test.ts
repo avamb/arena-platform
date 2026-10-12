@@ -19,6 +19,7 @@ import {
   PAYMENT_COMMIT_I18N,
   getPaymentCommitStrings,
   payButtonLabel,
+  shouldShowWithdrawalNotice,
 } from './lib/checkout.js';
 
 const EN_NOTICE =
@@ -89,6 +90,17 @@ describe('pay button label', () => {
     expect(payButtonLabel(5000, '', 'en')).toBe('Pay now');
     expect(payButtonLabel(0, 'EUR', 'en')).toBeUndefined();
   });
+
+  it('keeps the generic label for a free cart even when the currency is empty', () => {
+    expect(payButtonLabel(0, '', 'en')).toBeUndefined();
+    expect(payButtonLabel(0, '', 'es')).toBeUndefined();
+  });
+
+  it('shows the withdrawal notice only when the flag is on and there is something to pay', () => {
+    expect(shouldShowWithdrawalNotice(true, 5000)).toBe(true);
+    expect(shouldShowWithdrawalNotice(true, 0)).toBe(false);
+    expect(shouldShowWithdrawalNotice(false, 5000)).toBe(false);
+  });
 });
 
 describe('payment commitment strings', () => {
@@ -121,7 +133,7 @@ describe('wiring from the feed session to the pay button', () => {
   });
 
   it('passes the flag and the pay label to the buyer form, not to the cart step', () => {
-    expect(cartSheetSource).toContain('withdrawalNotice={showWithdrawalNotice}');
+    expect(cartSheetSource).toContain('withdrawalNotice={shouldShowWithdrawalNotice(showWithdrawalNotice, total.amount + fee)}');
     expect(cartSheetSource).toContain('submitText={payLabel}');
     expect(cartSheetSource).toContain('showWithdrawalNotice = false');
   });
