@@ -534,13 +534,13 @@ func recordOutcome(ctx context.Context, tx pgx.Tx, cur Refund, out callOutcome, 
 	switch out.kind {
 	case outcomeSucceeded:
 		sql = `UPDATE refunds SET state = 'succeeded', succeeded_at = now(), failed_at = NULL, provider_refund_id = $2,
-		       provider_status = $3, failure_code = NULL, failure_reason = NULL, settled_at = NULL, ` + acceptAlertSQL + `, ` + reviveCancelSQL + `,
+		       provider_status = $3, failure_code = NULL, failure_reason = NULL, settled_at = NULL, repair_attempts = 0, ` + acceptAlertSQL + `, ` + reviveCancelSQL + `,
 		       updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
 		args = []any{cur.ID, out.result.ProviderRefundID, string(out.result.Status), revivedFromFailed}
 	case outcomePending:
 		// state is set too: a late acceptance brings a parked row back.
 		sql = `UPDATE refunds SET state = 'provider_pending', failed_at = NULL, provider_refund_id = $2, provider_status = $3,
-		       failure_code = NULL, failure_reason = NULL, settled_at = NULL, ` + acceptAlertSQL + `, ` + reviveCancelSQL + `,
+		       failure_code = NULL, failure_reason = NULL, settled_at = NULL, repair_attempts = 0, ` + acceptAlertSQL + `, ` + reviveCancelSQL + `,
 		       updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
 		args = []any{cur.ID, out.result.ProviderRefundID, string(out.result.Status), revivedFromFailed}
 	case outcomeDeclined:
