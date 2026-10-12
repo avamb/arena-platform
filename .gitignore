@@ -54,6 +54,7 @@ ChatExport_*/
 **/screenshots/
 orchestration/runs/
 orchestration/checkpoints/
+orchestration/runtime/
 
 # Phase/UI/import proof artifacts kept local; source code and reports are allowlisted explicitly
 arena_importsvg_proof/

@@ -32,3 +32,13 @@
 ## SDK boundary
 
 Использовать существующие `sdk_experiments/runner.mjs`, `run-approved-test.ps1`, Credential Manager и `-Approved`. Новый workflow-validator не вызывает `query()` и не читает API-ключ.
+
+## M1 write profile
+
+Для первого development task подготовлены `orchestration/m1-write-task-runner.mjs` и
+`orchestration/run-m1-approved.ps1`. Профиль разрешает Claude только `Read`, `Write`,
+`Edit`; запись ограничена новым `m1_product/` внутри отдельного worktree. `Bash`, web,
+MCP, subagents, `arena_new`, private archive и confirmation-файлы запрещены. Runner
+сохраняет latch, diff/audit, usage, reported cost, result, review и checkpoint и не
+повторяет запрос автоматически. Платный запуск требует отдельного `-Approved`; до
+этого используется только `m1-write-mock.mjs`.

@@ -3,6 +3,15 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  appendSafeDiagnostic,
+  billingRecord,
+  captureAssistantDiagnostics,
+  captureTerminalDiagnostic,
+  classifyTerminal,
+  safeDiagnosticText,
+} from './sdk-telemetry.mjs';
+import { validateEvidenceList } from './evidence-validator.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ORCH = path.join(ROOT, 'orchestration');
@@ -130,8 +139,8 @@ function mockClaude(task) {
       'ROADMAP includes multi-provider AI, but provider-neutral routing has not yet been implemented.'
     ],
     gaps: [
-      'No real Codex-to-Claude smoke-test result or usage ledger entry exists yet.',
-      'The Venue repository has no first commit or remote; local Git was only initialized.'
+      'The first paid smoke-test produced no valid model result because the previous runner discarded terminal diagnostics.',
+      'The v2 task is prepared but still requires separate owner approval; no second paid call is authorized automatically.'
     ],
     next_steps: [
       'Run one approved read-only smoke-test with the new task runner and review packet.',
@@ -153,16 +162,18 @@ function validateClaudeShape(value) {
   return value;
 }
 
-function reviewResult(task, result, audit, errors) {
+function reviewResult(task, result, audit, errors, classification) {
   const checks = {
     structured_shape: false,
     only_approved_reads: audit.every(event => event.allowed === true && event.tool === 'Read'),
     no_errors: errors.length === 0,
     evidence_inside_inputs: false,
     no_production_scope: true,
+    terminal_success: classification?.kind === 'success' && classification.success === true,
   };
   try { validateClaudeShape(result); checks.structured_shape = true; } catch {}
-  checks.evidence_inside_inputs = checks.structured_shape && result.evidence.every(file => task.inputs.includes(file) || task.inputs.includes(file.replaceAll('/', path.sep)));
+  checks.evidence_inside_inputs = checks.structured_shape
+    && validateEvidenceList(result.evidence, task.inputs, { root: ROOT }).valid;
   const passed = Object.values(checks).every(Boolean);
   return { review_version: 1, status: passed ? 'PASS' : 'FAIL', checks, notes: passed ? 'Codex local review passed.' : 'Review failed; no automatic retry is permitted.' };
 }
@@ -171,7 +182,7 @@ function writeArtifacts(task, payload, review, mode) {
   const runDir = path.join(RUN_ROOT, task.task_id);
   mkdirSync(runDir, { recursive: true });
   writeFileSync(path.join(runDir, 'result.json'), JSON.stringify(payload, null, 2) + '\n', { flag: 'wx' });
-  writeFileSync(path.join(runDir, 'result.md'), `# ${task.task_id}\n\n- Mode: ${mode}\n- Status: ${payload.status}\n- Model: ${payload.model}\n- API calls: ${payload.api_calls}\n\n## Structured result\n\n${JSON.stringify(payload.structured_result, null, 2)}\n`, { flag: 'wx' });
+  writeFileSync(path.join(runDir, 'result.md'), `# ${task.task_id}\n\n- Mode: ${mode}\n- Status: ${payload.status}\n- Model: ${payload.model}\n- API calls: ${payload.api_calls}\n- Error classification: ${payload.error_classification?.kind ?? 'unknown'}\n\n## SDK telemetry\n\n${JSON.stringify({ terminal: payload.terminal, assistant_errors: payload.assistant_errors, diagnostic_stderr: payload.diagnostic_stderr, billing: payload.billing }, null, 2)}\n\n## Structured result\n\n${JSON.stringify(payload.structured_result, null, 2)}\n`, { flag: 'wx' });
   writeFileSync(path.join(runDir, 'review.json'), JSON.stringify(review, null, 2) + '\n', { flag: 'wx' });
   writeFileSync(path.join(runDir, 'review.md'), `# Codex review — ${task.task_id}\n\nStatus: **${review.status}**\n\n${JSON.stringify(review.checks, null, 2)}\n\n${review.notes}\n`, { flag: 'wx' });
   mkdirSync(CHECKPOINT_ROOT, { recursive: true });
@@ -199,27 +210,41 @@ async function execute({ taskFile, approved, mock }) {
   writeFileSync(path.join(runDir, 'attempt.json'), JSON.stringify({ task_id: task.task_id, started_at: new Date().toISOString(), model: MODEL, max_budget_usd: task.budget_usd, api_calls: 0 }, null, 2) + '\n', { flag: 'wx' });
   const audit = [];
   const errors = [];
+  const diagnosticStderr = [];
+  let keyForRedaction = null;
   let structured;
   let rawResult = null;
   let usage = null;
-  let reportedCost = 0;
+  let reportedCost = null;
   let modelObserved = MODEL;
+  let terminal = null;
+  const assistantErrors = [];
+  let timedOut = false;
+  let structuredFromMock = false;
   if (mock) {
     structured = mockClaude(task);
+    structuredFromMock = true;
+    terminal = captureTerminalDiagnostic({
+      type: 'result', subtype: 'success', is_error: false, result: JSON.stringify(structured),
+      total_cost_usd: 0, num_turns: 0,
+    });
   } else {
     assert.ok(process.argv.includes('--key-stdin'), 'Real execution requires --key-stdin');
     const key = readFileSync(0, 'utf8').trim();
+    keyForRedaction = key;
     assert.ok(/^sk-ant-[A-Za-z0-9_-]{20,}$/.test(key), 'Invalid key received on stdin');
     const requireSdk = (await import('node:module')).createRequire(path.join(ROOT, 'sdk_experiments', 'package.json'));
     const { query } = requireSdk('@anthropic-ai/claude-agent-sdk');
     const cli = requireSdk.resolve('@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe');
     const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP,
-      USERPROFILE: process.env.USERPROFILE, ANTHROPIC_API_KEY: key, ANTHROPIC_WORKSPACE_ID: pf.workspace_id, ANTHROPIC_BASE_URL: 'https://api.anthropic.com',
+      USERPROFILE: process.env.USERPROFILE, ANTHROPIC_API_KEY: key, ANTHROPIC_WORKSPACE_ID: pf.workspace_id,
+      ANTHROPIC_CUSTOM_HEADERS: `anthropic-workspace-id: ${pf.workspace_id}`, ANTHROPIC_BASE_URL: 'https://api.anthropic.com',
       CLAUDE_CONFIG_DIR: path.join(ORCH, 'runtime'), CLAUDE_CODE_MAX_RETRIES: '0',
+      CLAUDE_CODE_STARTUP_FAILURE_RESULTS: '1',
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', DISABLE_TELEMETRY: '1', DISABLE_ERROR_REPORTING: '1',
       DISABLE_AUTOUPDATER: '1', CLAUDE_AGENT_SDK_CLIENT_APP: 'venue-svg-orchestrator' };
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), task.timeout_ms);
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, task.timeout_ms);
     let stream;
     try {
       stream = query({
@@ -230,7 +255,7 @@ async function execute({ taskFile, approved, mock }) {
           disallowedTools: DENIED, permissionMode: 'dontAsk', permissionPrompts: 'none', settingSources: [],
           skills: [], plugins: [], agents: {}, mcpServers: {}, strictMcpConfig: true,
           persistSession: false, enableFileCheckpointing: false, abortController: controller,
-          stderr: () => {}, hooks: {
+          stderr: data => { appendSafeDiagnostic(diagnosticStderr, data, key); }, hooks: {
             PreToolUse: [{ hooks: [async input => {
               const allowed = auditRead(task, input.tool_name, input.tool_input, input.agent_id, audit);
               audit.push({ tool: input.tool_name, path: input.tool_input?.file_path ? String(input.tool_input.file_path) : null, allowed });
@@ -241,32 +266,49 @@ async function execute({ taskFile, approved, mock }) {
         }
       });
       for await (const message of stream) {
-        if (message.type === 'assistant' && message.message?.model) modelObserved = message.message.model;
+        if (message.type === 'assistant') {
+          if (message.message?.model) modelObserved = message.message.model;
+          assistantErrors.push(...captureAssistantDiagnostics(message, key));
+        }
         if (message.type === 'result') {
-          rawResult = message.result ?? null; usage = message.usage ?? message.modelUsage ?? null; reportedCost = message.total_cost_usd ?? null;
-          if (message.errors?.length) errors.push(...message.errors.map(String));
+          terminal = captureTerminalDiagnostic(message, key);
+          rawResult = message.result ?? null;
+          usage = message.usage ?? message.modelUsage ?? null;
+          reportedCost = message.total_cost_usd ?? null;
+          if (terminal?.errors?.length) errors.push(...terminal.errors);
           break;
         }
       }
-      structured = parseJsonResult(rawResult);
-      if (!structured) errors.push('Claude result was not valid JSON');
-    } catch (error) { errors.push(String(error?.message ?? error)); }
+    } catch (error) { appendSafeDiagnostic(errors, error?.message ?? error, key); }
     finally { clearTimeout(timer); stream?.close?.(); }
     // The key is intentionally not included in any artifact; clear the local reference.
     // eslint-disable-next-line no-unused-vars
     key;
   }
+  let classification = classifyTerminal({ terminal, assistantErrors, timedOut });
+  if (structuredFromMock) {
+    classification = classifyTerminal({ terminal, assistantErrors, timedOut, structuredValid: true });
+  } else if (classification.kind === 'terminal_success_unparsed') {
+    structured = parseJsonResult(rawResult);
+    classification = classifyTerminal({ terminal, assistantErrors, timedOut, structuredValid: Boolean(structured) });
+    if (!structured && !errors.includes(classification.message)) errors.push(classification.message);
+  } else if (!errors.includes(classification.message)) {
+    errors.push(classification.message);
+  }
   if (!structured) structured = { contradictions: [], gaps: [], next_steps: [], evidence: [], unknowns: ['No structured result was available'] };
   try { validateClaudeShape(structured); } catch (error) { errors.push(String(error.message)); }
-  const review = reviewResult(task, structured, audit, errors);
+  const review = reviewResult(task, structured, audit, errors, classification);
   const status = review.status === 'PASS' ? 'PASS' : 'FAIL';
+  const billing = billingRecord({ mode: mock ? 'mock' : 'sdk', reportedCost, usage });
   const payload = { task_id: task.task_id, status, mode: mock ? 'mock' : 'sdk', api_calls: mock ? 0 : 1,
     model: modelObserved, max_turns: task.max_turns, max_budget_usd: task.budget_usd,
-    reported_api_cost_usd: mock ? 0 : reportedCost, usage, errors, preflight: pf,
+    reported_api_cost_usd: mock ? 0 : reportedCost, billing, usage, errors, preflight: pf,
+    terminal, assistant_errors: assistantErrors, diagnostic_stderr: diagnosticStderr, error_classification: classification,
     structured_result: structured, audit, input_hashes: Object.fromEntries(task.inputs.map(input => [relativeProjectPath(input), sha256(projectPath(input))])) };
-  const safe = JSON.parse(redact(payload));
+  const safe = JSON.parse(redact(payload, keyForRedaction));
+  keyForRedaction = null;
   writeArtifacts(task, safe, review, mock ? 'mock' : 'sdk');
-  appendLedger({ task_id: task.task_id, completed_at: new Date().toISOString(), mode: mock ? 'mock' : 'sdk', status, api_calls: mock ? 0 : 1, model: modelObserved, reported_api_cost_usd: mock ? 0 : reportedCost, usage, errors });
+  appendLedger({ task_id: task.task_id, completed_at: new Date().toISOString(), mode: mock ? 'mock' : 'sdk', status, api_calls: mock ? 0 : 1, model: modelObserved, reported_api_cost_usd: mock ? 0 : reportedCost, billing, usage, terminal, assistant_errors: assistantErrors, diagnostic_stderr: diagnosticStderr, error_classification: classification, errors });
   console.log(JSON.stringify({ status, task_id: task.task_id, mode: mock ? 'mock' : 'sdk', api_calls: mock ? 0 : 1, result: `orchestration/runs/${task.task_id}/result.json`, review: `orchestration/runs/${task.task_id}/review.json`, checkpoint: `orchestration/checkpoints/${task.task_id}.json` }));
   process.exitCode = status === 'PASS' ? 0 : 1;
 }

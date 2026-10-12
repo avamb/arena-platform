@@ -1,0 +1,83 @@
+{
+  "reevaluation_version": 1,
+  "validator_version": "evidence-validator-v1.0.0",
+  "task_id": "orchestration-smoke-paid-v4",
+  "source": {
+    "result": "orchestration\\runs\\orchestration-smoke-paid-v4\\result.json",
+    "result_sha256": "e6e6c24756fd470342436899215e9c5c6d37a70c38443f84f2c0714f39f6dfbf",
+    "previous_review": "orchestration\\runs\\orchestration-smoke-paid-v4\\review.json",
+    "previous_review_sha256": "3d8f816992ab2103338e08cf04b72fe4481acd9648bc6caaea2fb750d1b5ca20",
+    "previous_review_status": "FAIL"
+  },
+  "statuses": {
+    "anthropic_execution": "PASS",
+    "structural_validation": "PASS",
+    "evidence_validation": "PASS",
+    "substantive_codex_review": "PASS",
+    "overall_orchestration": "PASS"
+  },
+  "structural_checks": {
+    "terminal_success": true,
+    "structured_shape": true,
+    "approved_reads_only": true,
+    "no_sdk_errors": true
+  },
+  "evidence_validation": {
+    "valid": true,
+    "references": [
+      {
+        "reference": "PRODUCT_SPEC.md:5 — цель: XLSX, PDF, JPG, PNG → один SVG.",
+        "valid_reference": true,
+        "content_anchor_found": true
+      },
+      {
+        "reference": "PRODUCT_SPEC.md:19-28 — acceptance criteria 1–10, включая Bil24 (5), -Approved (8) и PASS/PARTIAL PASS/FAIL (10).",
+        "valid_reference": true,
+        "content_anchor_found": true
+      },
+      {
+        "reference": "PRODUCT_SPEC.md:32-35 — ограничения: Ládví PARTIAL PASS, Aribau 1166 и +12 мест в старом SVG, decor_svg не выводится в Admin Preview, Console нужно перепроверить.",
+        "valid_reference": true,
+        "content_anchor_found": true
+      },
+      {
+        "reference": "ROADMAP.md:14 — regression 907 и 1166.",
+        "valid_reference": true,
+        "content_anchor_found": true
+      },
+      {
+        "reference": "ROADMAP.md:17-21 — M2: PDF и raster отложены.",
+        "valid_reference": true,
+        "content_anchor_found": true
+      },
+      {
+        "reference": "ROADMAP.md:23-27 — M3: Bil24 отдельно, без заявлений о UI-совместимости.",
+        "valid_reference": true,
+        "content_anchor_found": true
+      },
+      {
+        "reference": "ROADMAP.md:36-38 — Definition of Done без критериев количества и качества.",
+        "valid_reference": true,
+        "content_anchor_found": true
+      }
+    ]
+  },
+  "substantive_review": {
+    "checks": {
+      "citations_match_source": true,
+      "contradictions_are_grounded": true,
+      "gaps_are_actionable": true,
+      "next_steps_are_prioritized": true,
+      "content_review": true
+    },
+    "conclusion": "Все замечания опираются на PRODUCT_SPEC.md и ROADMAP.md; часть формулировок является расхождением объёма и порядка milestone, а не строгим логическим противоречием. Три следующих шага приоритизированы корректно."
+  },
+  "execution_observed": {
+    "model": "claude-sonnet-5-5",
+    "api_calls": 1,
+    "read_operations": 2,
+    "reported_api_cost_usd": 0.027713,
+    "billing_status": "UNKNOWN"
+  },
+  "generated_at": "2026-10-12T16:05:24.708Z"
+}
