@@ -132,6 +132,8 @@ func deliver(ctx context.Context, n Notifier, text string) error {
 // SweepReport counts what one pass did.
 type SweepReport struct {
 	Stuck, Retried, LookedUp, Repaired, Alerted int
+	// Notices: buyer letters queued again (PAY-07).
+	Notices int
 	// Calls is the number of provider calls the pass made; Unknown how many
 	// of the retries ended without an answer.
 	Calls, Unknown int
@@ -171,6 +173,11 @@ func (e *Engine) Sweep(ctx context.Context, now time.Time, notifier Notifier) (S
 	section(t/6, "repair", func(ctx context.Context) error {
 		n, err := e.repair(ctx, now)
 		rep.Repaired = n
+		return err
+	})
+	section(t/6, "buyer letters", func(ctx context.Context) error {
+		n, err := e.requeueBuyerNotices(ctx, now)
+		rep.Notices = n
 		return err
 	})
 	if notifier != nil {

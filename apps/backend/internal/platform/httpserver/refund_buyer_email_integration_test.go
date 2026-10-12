@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -138,6 +139,9 @@ func TestRefundBuyerEmail_OneLetterPerOperation(t *testing.T) {
 	// ── notify_buyer=false: queued maybe, but never mailed
 	f2 := newOrder("two")
 	b2 := create(f2, false)
+	if n := queued(b2); n != 0 {
+		t.Fatalf("notify_buyer=false queued %d jobs; want 0", n)
+	}
 	if err := run(b2); err != nil || len(sender.sent()) != 1 {
 		t.Fatalf("notify_buyer=false mailed: err=%v messages=%d", err, len(sender.sent()))
 	}
@@ -164,5 +168,52 @@ func TestRefundBuyerEmail_OneLetterPerOperation(t *testing.T) {
 	}
 	if got := sender.sent(); len(got) != 2 || got[1].To != "three@pay07.test" {
 		t.Fatalf("after the retry messages = %+v; want the second letter to three@", got)
+	}
+
+	// ── a money-only refund (tickets stay valid) must not say they are void
+	f4 := newOrder("four")
+	res4, err := engine.CreateBatch(ctx, refunds.BatchInput{
+		OrgID: org, OrderID: f4.order, Reason: "pay07", CancelTickets: false, NotifyBuyer: true,
+		IdempotencyKey: "pay07-" + uuid.NewString(), Approved: true,
+		Items: []refunds.Item{{TicketID: f4.tickets[0]}},
+	})
+	if err != nil {
+		t.Fatalf("create money-only: %v", err)
+	}
+	b4 := res4.BatchID.String()
+	t.Cleanup(func() {
+		_, _ = srv.pgxPool.Exec(ctx, `DELETE FROM worker_jobs WHERE job_type = $1 AND payload->>'batch_id' = $2`, refunds.JobTypeBuyerEmail, b4)
+	})
+	before := len(sender.sent())
+	if err := run(b4); err != nil {
+		t.Fatalf("handler money-only: %v", err)
+	}
+	if got := sender.sent(); len(got) != before+1 || strings.Contains(got[before].TextBody, "no longer valid") {
+		t.Fatalf("money-only letter wrong: %+v", got[before:])
+	}
+
+	// ── a lost job is queued again by the sweep section
+	f5 := newOrder("five")
+	b5 := create(f5, true)
+	if _, err := srv.pgxPool.Exec(ctx, `DELETE FROM worker_jobs WHERE job_type = $1 AND payload->>'batch_id' = $2`, refunds.JobTypeBuyerEmail, b5); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.RequeueBuyerNotices(ctx, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("requeue: %v", err)
+	}
+	if n := queued(b5); n != 1 {
+		t.Fatalf("after the sweep the operation has %d jobs; want 1", n)
+	}
+
+	// ── a refund the provider only accepted as pending sends no letter yet
+	stub.refundHandler = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"id":"re_`+uuid.NewString()[:8]+`","status":"pending"}`)
+	}
+	f6 := newOrder("six")
+	b6 := create(f6, true)
+	before = len(sender.sent())
+	if err := run(b6); err != nil || len(sender.sent()) != before {
+		t.Fatalf("a pending refund was mailed: err=%v messages=%d", err, len(sender.sent())-before)
 	}
 }

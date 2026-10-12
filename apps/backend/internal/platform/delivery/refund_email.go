@@ -3,8 +3,12 @@
 //
 // The refund engine queues one job per refund operation (refund_batches) a
 // minute after a refund settles. The handler claims the operation's refunds
-// that the provider ACCEPTED and that no letter covers yet, mails them in ONE
-// letter and marks them. Rules it keeps:
+// that SUCCEEDED (the provider confirmed the money, not merely accepted a
+// pending refund that may still fail), were settled (their tickets are
+// cancelled when due) and that no letter covers yet, mails them in ONE letter
+// and marks them. If a letter is lost anyway (mail outage past the job's
+// retries, a worker that died after claiming), refund.sweep queues it again.
+// Rules it keeps:
 //
 //   - nothing is mailed unless the operation asked for it (notify_buyer);
 //   - the letter states the amount and the usual bank delay and promises
@@ -90,7 +94,7 @@ const claimBuyerNoticeSQL = `
 UPDATE refunds SET buyer_notice_claimed_at = now()
 WHERE  batch_id = $1
   AND  buyer_notified_at IS NULL
-  AND  (state = 'succeeded' OR (state = 'provider_pending' AND provider_refund_id IS NOT NULL))
+  AND  state = 'succeeded' AND settled_at IS NOT NULL
   AND  (buyer_notice_claimed_at IS NULL OR buyer_notice_claimed_at < now() - interval '10 minutes')
 RETURNING id, ticket_id, amount, currency, cancel_ticket`
 
@@ -218,7 +222,6 @@ func (h *refundEmail) buildMessage(ctx context.Context, orderID, orgID uuid.UUID
 		if currency == "" {
 			currency = c.Currency
 		}
-		anyCancel = anyCancel || c.CancelTicket
 		line := templates.TicketLine{Price: formatMoney(c.Amount, c.Currency)}
 		if c.TicketID != nil {
 			tp := h.payloads.ticketPayload(ctx, *c.TicketID, recipient.LocaleHint)
@@ -233,6 +236,21 @@ func (h *refundEmail) buildMessage(ctx context.Context, orderID, orgID uuid.UUID
 	}
 	if !haveFirst {
 		first = Payload{Locale: recipient.LocaleHint}
+	}
+	// "The tickets are no longer valid" is said from the tickets' real state,
+	// never from the cancel_ticket intent of the refund: a refund can be
+	// money-only, or its cancellation can still be pending.
+	var ticketIDs []uuid.UUID
+	for _, c := range claimed {
+		if c.TicketID != nil {
+			ticketIDs = append(ticketIDs, *c.TicketID)
+		}
+	}
+	if len(ticketIDs) > 0 {
+		if err := h.opts.DB.QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM tickets WHERE id = ANY($1) AND status = 'cancelled')`, ticketIDs).Scan(&anyCancel); err != nil {
+			return email.Message{}, fmt.Errorf("delivery: read ticket states for the refund e-mail: %w", err)
+		}
 	}
 	branding := resolveBranding(ctx, h.opts.Media, first, h.logger).Branding
 
