@@ -66,7 +66,7 @@ other = "Se acabó el tiempo: una invitación espera la dirección y el rol 30 m
 other = "Este diálogo ha caducado: pasaron 30 minutos sin respuesta. Empieza de nuevo desde el menú."
 
 ["bot.too_many_messages"]
-other = "Demasiados mensajes — espera un minuto, por favor."
+other = "Has enviado demasiados mensajes. Espera un minuto."
 
 ["bot.team_ask_role"]
 other = "¿Qué podrá hacer {{.Email}}?"
@@ -426,7 +426,7 @@ other = "Este promotor ya existe: elígelo de la lista."
 other = "El identificador fiscal o de empresa del promotor, si lo hay. Puedes omitirlo."
 
 ["bot.wz.ask_poster"]
-other = "Envía el cartel. Lo mejor es <b>como archivo</b>, para no perder calidad:\n• en el móvil: clip 📎 → “Archivo” → elige la imagen;\n• en el ordenador: clip 📎 → elige la imagen → marca “Enviar como documento” en la ventana de envío.\nUna foto normal también sirve, pero Telegram la comprime.\n\nPNG o JPG de hasta 5 MB, en formato 4:5 (1080×1350) o cuadrado, de al menos 1000 px de ancho. Deja todo lo importante en el centro: la web recorta la parte de arriba y la de abajo en las tarjetas. Sin cartel, la tarjeta del evento en la web no se abrirá, pero puedes añadirlo más tarde."
+other = "Envía el cartel como archivo, para no perder calidad. Una foto normal también sirve, pero Telegram la comprime.\n\n<b>En el móvil:</b>\n1. Pulsa el clip 📎.\n2. Pulsa “Archivo”.\n3. Elige la imagen.\n\n<b>En el ordenador:</b>\n1. Pulsa el clip 📎.\n2. Elige la imagen.\n3. En la ventana de envío, marca “Enviar como documento”.\n\n<b>Requisitos:</b>\n• PNG o JPG, máximo 5 MB.\n• Formato 4:5 (1080×1350) o cuadrado.\n• Ancho mínimo: 1000 px.\n\nLa web recorta la parte de arriba y la de abajo del cartel en las tarjetas. Deja lo importante en el centro.\n\nSin cartel, la tarjeta del evento no se abre en la web. Puedes añadir el cartel más tarde."
 
 ["bot.wz.poster_bad_type"]
 other = "El cartel debe ser una imagen PNG o JPG."
@@ -519,7 +519,7 @@ other = "¿Cuántas plazas hay a la venta para esta fecha? Un número, por ejemp
 other = "El recinto “{{.Venue}}” tiene un aforo de {{.Capacity}}. ¿Cuántas plazas hay a la venta para esta fecha? Mantén {{.Capacity}} o escribe un número, por ejemplo 80."
 
 ["bot.wz.err_capacity"]
-other = "Hace falta un número entero de al menos 1, por ejemplo 80."
+other = "Escribe un número entero, 1 o más. Ejemplo: 80."
 
 ["bot.wz.session_added"]
 other = "Fecha {{.N}}: {{.When}}, {{.Venue}}, {{.City}}, {{.Capacity}} plazas."
@@ -1143,7 +1143,7 @@ other = "Eventos y ventas de Arena Sold Out en Telegram"
 other = "CANCELAR"
 
 ["bot.ses.type_ask"]
-other = "⚠️ <b>Último paso: todavía no se ha cancelado nada.</b>\n\n{{.Subject}}\nCorreos a compradores (pedidos): {{.Orders}}. No se puede deshacer.{{if .Orders}}\n\n💶 La plataforma NO devuelve el dinero: los pedidos siguen pagados y las entradas siguen siendo válidas. Gestiona los reembolsos tú directamente con los compradores.{{end}}\n\nPara cancelar, <b>escribe la palabra {{.Word}}</b> y envíala como mensaje. Para conservar la sesión, pulsa «Atrás»."
+other = "⚠️ <b>Atención: esta acción no se puede deshacer.</b>\nTodavía no se ha cancelado nada.\n\n{{.Subject}}\nCorreos a compradores: {{.Orders}}.{{if .Orders}}\n\n💶 La plataforma NO devuelve el dinero. Los pedidos siguen pagados. Las entradas siguen siendo válidas. Gestiona los reembolsos tú directamente con los compradores.{{end}}\n\nPara cancelar, <b>escribe {{.Word}}</b> y envíalo. Para conservar la sesión, pulsa «Atrás»."
 
 ["bot.ses.type_subject_one"]
 other = "Sesión: <b>{{.Old}}</b>"
@@ -1158,7 +1158,7 @@ other = "Esa no es la palabra, así que no se ha cancelado nada. Para cancelar, 
 other = "💶 No se ha devuelto dinero automáticamente y las entradas siguen siendo válidas. Gestiona los reembolsos tú directamente con los compradores."
 
 ["bot.wz.tz_suggest_note"]
-other = "Para la ciudad «{{.City}}» encontré la zona {{.Zone}}. Pulsa el botón para confirmarla."
+other = "La zona horaria de {{.City}} es {{.Zone}}. Pulsa el botón para confirmar."
 
 # ── solicitud de organizador (bot.onb.*) ──
 
