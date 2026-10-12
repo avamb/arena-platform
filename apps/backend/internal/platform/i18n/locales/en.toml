@@ -2446,10 +2446,13 @@ other = "✔ Done ({{.N}})"
 other = "Another event"
 
 ["bot.promo.q_total"]
-other = "How many times can the code be used in total? Type a number, or skip for no limit."
+other = "For how many purchases is this promo code valid in total, all buyers together? Type a number, or tap \"Skip\" for no limit."
 
 ["bot.promo.q_per"]
-other = "How many times can one buyer use it? Type a number, or skip for no limit."
+other = "How many times can one buyer use this code? A buyer is identified by e-mail. One purchase counts as one use, even with several tickets. All sessions the code applies to are counted together. Usually 1. Type a number, or tap \"Skip\" for no limit."
+
+["bot.promo.one_btn"]
+other = "1: once per buyer"
 
 ["bot.promo.skip_btn"]
 other = "Skip (no limit)"

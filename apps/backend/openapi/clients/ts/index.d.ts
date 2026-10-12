@@ -14836,9 +14836,14 @@ export interface components {
             max_uses: number | null;
             /**
              * Format: int32
-             * @description Per-customer redemption cap. `null` means unlimited. Enforced
-             *     in `promo-validate` only when a `user_id` is supplied;
-             *     anonymous validations bypass the per-customer counter.
+             * @description Per-customer redemption cap. `null` means unlimited. One
+             *     redemption is one paid order, whatever the number of tickets in
+             *     it, and it is counted when the order is paid. The count runs
+             *     over every session the code covers, not per session. The buyer
+             *     is the customer record on the Bil24 gateway, the buyer e-mail
+             *     (case-insensitive) on the widget and the tickets page, and the
+             *     `user_id` on `promo-validate`, which skips the counter when no
+             *     `user_id` is supplied.
              */
             max_uses_per_customer: number | null;
             /**
