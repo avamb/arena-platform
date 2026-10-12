@@ -32,7 +32,37 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/withdrawal"
 )
+
+// withdrawalNoticeFor decides whether the ticket e-mail prints the sentence
+// that tickets for an event on a specific date carry no right of withdrawal:
+// only for a purchase letter (never an invitation or a complimentary order)
+// of a seller in the EU/EEA. A failed lookup leaves the sentence out and is
+// logged, the e-mail still goes out.
+func withdrawalNoticeFor(
+	ctx context.Context,
+	opts HandlerOptions,
+	logger *slog.Logger,
+	ticketID uuid.UUID,
+	kind string,
+	complimentaryOrder bool,
+) bool {
+	if kind != templates.TemplateKindTicket || complimentaryOrder || opts.DeliveryJobQueries == nil {
+		return false
+	}
+	c, err := opts.DeliveryJobQueries.GetTicketSellerCountries(ctx, ticketID)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			logger.Warn("delivery: seller country lookup failed; sending without the withdrawal notice",
+				slog.String("ticket_id", ticketID.String()),
+				slog.String("error", err.Error()),
+			)
+		}
+		return false
+	}
+	return withdrawal.ForSeller(c.LegalAddressCountry, c.Country)
+}
 
 // letterMember is one ticket of the e-mail being built.
 type letterMember struct {

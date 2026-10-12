@@ -129,6 +129,12 @@ type Data struct {
 	// ticket e-mail. nil omits the block: an invitation, a free ticket or an
 	// order whose money is not known pays nothing to show.
 	Payment *PaymentData
+
+	// WithdrawalNotice prints the sentence that tickets for an event on a
+	// specific date carry no right of withdrawal (EU/EEA sellers, ticket
+	// e-mail only). The delivery worker sets it from the seller's country;
+	// it stays false for invitations and for any other seller.
+	WithdrawalNotice bool
 }
 
 // TicketLine is one ticket of a multi-ticket e-mail. Every field is a
@@ -225,8 +231,8 @@ type Branding struct {
 	LegalAddressCity       string
 	// LegalAddressCountry is ISO-3166-1 alpha-2 (e.g. "DE", "IL").
 	LegalAddressCountry string
-	// ContactEmail is the public contact address printed in the footer.
-	// Empty falls back to PlatformContactEmail.
+	// ContactEmail is the contact address printed in the footer. Empty
+	// prints no contact line.
 	ContactEmail string
 }
 
@@ -241,8 +247,10 @@ const (
 	// made Gmail show a broken picture on every e-mail of an organization
 	// without a logo. Empty makes the {{with .Branding.LogoURL}} guards drop
 	// the <img>, and the header shows the coloured band instead.
-	PlatformLogoURL      = ""
-	PlatformLegalName    = "Arena Platform"
+	PlatformLogoURL   = ""
+	PlatformLegalName = "Arena Platform"
+	// PlatformContactEmail is a placeholder address for test fixtures only.
+	// No code path substitutes it for an organization without a contact.
 	PlatformContactEmail = "support@arena.example.com"
 )
 

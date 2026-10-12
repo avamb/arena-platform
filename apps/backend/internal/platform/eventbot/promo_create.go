@@ -311,7 +311,9 @@ func (b *Bot) promoDraftScreen(loc string, d *promoDraft) (string, [][]models.In
 	case pmStepTotal:
 		return head + t("bot.promo.q_total", nil), [][]models.InlineKeyboardButton{skip(), nav}
 	case pmStepPer:
-		return head + t("bot.promo.q_per", nil), [][]models.InlineKeyboardButton{skip(), nav}
+		return head + t("bot.promo.q_per", nil), [][]models.InlineKeyboardButton{
+			{pmBtn(t("bot.promo.one_btn", nil), "one")}, skip(), nav,
+		}
 	case pmStepExpiry:
 		if d.Cal == nil {
 			d.Cal = &Draft{Version: draftSchemaVersion, Step: stSDate}
