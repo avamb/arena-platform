@@ -9,12 +9,12 @@ import (
 // out here on purpose: the test must fail when a locale loses or rewords it.
 var withdrawalSentences = map[string]string{
 	"en": "Tickets for an event on a specific date are not covered by the right of withdrawal. Your order became binding when you paid.",
-	"cs": "Na vstupenky na akci v konkrétní den se nevztahuje právo na odstoupení od smlouvy. Vaše objednávka se stala závaznou okamžikem zaplacení.",
+	"cs": "Na vstupenky na akci konanou v určitém termínu se nevztahuje právo na odstoupení od smlouvy. Objednávka se stává závaznou okamžikem zaplacení.",
 	"de": "Für Eintrittskarten zu einer Veranstaltung an einem bestimmten Termin besteht kein Widerrufsrecht. Ihre Bestellung wurde mit der Zahlung verbindlich.",
-	"es": "Las entradas para un evento en una fecha concreta no están sujetas al derecho de desistimiento. Su pedido pasó a ser vinculante en el momento del pago.",
+	"es": "Las entradas para un evento en una fecha concreta no están sujetas al derecho de desistimiento. Tu pedido pasa a ser vinculante al realizar el pago.",
 	"fr": "Les billets pour un événement à une date déterminée ne sont pas soumis au droit de rétractation. Votre commande est devenue ferme au moment du paiement.",
 	"he": "על כרטיסים לאירוע במועד קבוע לא חלה זכות הביטול. ההזמנה שלכם הפכה למחייבת עם התשלום.",
-	"ru": "На билеты на мероприятие в конкретную дату право на отказ от договора не распространяется. Ваш заказ стал обязательным в момент оплаты.",
+	"ru": "На билеты на мероприятие в определённую дату право на отказ от договора не распространяется. Ваш заказ становится окончательным после оплаты.",
 }
 
 func TestWithdrawalSentences_CoverEverySupportedLocale(t *testing.T) {
