@@ -626,6 +626,42 @@ func TestPublicQuote_CodesDifferingInCaseResolveDeterministically(t *testing.T) 
 	}
 }
 
+// A code that fits but takes nothing off is not "applied": the buyer must not
+// be told it worked when the price did not move.
+func TestPublicQuote_FreeTicketsAreNotAPromoApplied(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	f := newHostedOrgFixture(t, ctx, pool, "q8")
+	defer f.cleanup()
+	defer f.cleanupPromos()
+
+	stripe := newStubStripe(t)
+	srv := buildHostedCheckoutServer(t, pool, stripe.baseURL())
+
+	freeTier := uuid.New()
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO ticket_tiers (id, session_id, name, pricing_mode, price_amount, currency, sort_order)
+		 VALUES ($1, $2, 'Free', 'free', 0, 'EUR', 1)`, freeTier, f.sessionID); err != nil {
+		t.Fatalf("insert free tier: %v", err)
+	}
+	f.insertPromo(t, ctx, "TEN", "percent", 10, "", "")
+
+	cart := map[string]any{
+		"session_id": f.sessionID.String(),
+		"ga_items":   []map[string]any{{"tier_id": freeTier.String(), "quantity": 2}},
+		"promo_code": "TEN",
+	}
+	got := f.mustQuote(t, srv, cart)
+	if got.PromoApplied || got.Pricing.Discount != 0 || got.Pricing.Total != 0 {
+		t.Errorf("free cart with a code = %+v, want promo_applied false, no discount, total 0", got)
+	}
+	// A paid cart with the same code is applied.
+	if paid := f.mustQuote(t, srv, f.gaCart(1, "TEN", "")); !paid.PromoApplied {
+		t.Errorf("paid cart with the code = %+v, want promo_applied true", paid)
+	}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Request validation
 // ─────────────────────────────────────────────────────────────────────────────

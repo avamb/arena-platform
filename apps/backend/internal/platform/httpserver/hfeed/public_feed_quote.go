@@ -258,7 +258,10 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 			writePublicPromoError(w, r, errCode)
 			return
 		}
-		promoApplied = true
+		// A code that fits but takes nothing off (free tickets, an eligible
+		// subtotal of zero) is not "applied": a buyer must not be told a code
+		// worked when the price did not move.
+		promoApplied = discount > 0
 	}
 
 	bd := hcheckout.ComputePricingLines(lines, discount, currency, pricingRules)

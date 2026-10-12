@@ -9949,8 +9949,9 @@ type PublicFeedCheckoutQuoteResponse struct {
 	// Widgets render these numbers verbatim.
 	Pricing PricingBreakdownItem `json:"pricing"`
 
-	// PromoApplied True when a `promo_code` was sent and its discount is part of
-	// `pricing`.
+	// PromoApplied True when a `promo_code` was sent and it took something off: the
+	// discount in `pricing` is above zero. A code that fits the cart but
+	// changes nothing (free tickets) answers false.
 	PromoApplied bool `json:"promo_applied"`
 }
 

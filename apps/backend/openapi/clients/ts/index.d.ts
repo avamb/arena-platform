@@ -15777,8 +15777,9 @@ export interface components {
              */
             pricing: components["schemas"]["PricingBreakdownItem"];
             /**
-             * @description True when a `promo_code` was sent and its discount is part of
-             *     `pricing`.
+             * @description True when a `promo_code` was sent and it took something off: the
+             *     discount in `pricing` is above zero. A code that fits the cart but
+             *     changes nothing (free tickets) answers false.
              */
             promo_applied: boolean;
         };
