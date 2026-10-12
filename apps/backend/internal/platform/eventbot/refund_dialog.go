@@ -222,11 +222,13 @@ func newRefundDialog(orgID uuid.UUID, num int64, opts openapi.OrderRefundOptions
 
 // ─── state in bot_dialogs ─────────────────────────────────────────────────────
 
-func (b *Bot) saveRefund(ctx context.Context, tg int64, st refundDialog, step string) {
+func (b *Bot) saveRefund(ctx context.Context, tg int64, st refundDialog, step string) bool {
 	orgID := st.OrgID
 	if err := b.dialogs.Save(ctx, tg, &orgID, refundDialogKind, step, st, dialogTTL); err != nil {
 		b.logger.Error("eventbot: refund dialog save failed", slog.Int64("telegram_user_id", tg), slog.String("error", err.Error()))
+		return false
 	}
+	return true
 }
 
 // leaveIdleRefund ends the dialog when the person goes elsewhere, but never
@@ -551,7 +553,12 @@ func (b *Bot) startSendRefund(ctx context.Context, chatID int64, msgID int, from
 	st.SendingAt = time.Now().UTC()
 	st.RunID = b.runID
 	st.MsgID = msgID
-	b.saveRefund(ctx, from.ID, st, refStepSending)
+	if !b.saveRefund(ctx, from.ID, st, refStepSending) {
+		// Without the record of the send, a second press could start
+		// another one: nothing is sent, the person is told to try again.
+		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.err_unavailable", nil), b.resendResultKeyboard(loc, st.OrderID))
+		return
+	}
 	// The buttons go away while the server works: a second press cannot start
 	// anything, and the person knows it is under way.
 	b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.sending", nil), nil)
