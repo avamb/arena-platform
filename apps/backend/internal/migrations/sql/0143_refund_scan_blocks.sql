@@ -4,6 +4,10 @@
 -- it ONCE per day and not on every press of a button.
 
 -- +goose Up
+-- The foreign keys below lock busy tables: fail fast rather than queue behind
+-- a long transaction during a deploy.
+SET LOCAL lock_timeout = '5s';
+
 CREATE TABLE refund_scan_blocks (
     id            uuid PRIMARY KEY DEFAULT uuidv7(),
     org_id        uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
