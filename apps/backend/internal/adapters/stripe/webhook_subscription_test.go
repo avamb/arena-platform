@@ -45,7 +45,7 @@ func TestCheckWebhookSubscription(t *testing.T) {
 }
 
 func TestCheckWebhookSubscription_KeyWithoutPermissionIsAnError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		_, _ = w.Write([]byte(`{"error":{"type":"invalid_request_error","message":"permission"}}`))
 	}))
