@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -157,7 +156,7 @@ func (e *Engine) blockScannedAtClaim(ctx context.Context, tx pgx.Tx, id uuid.UUI
 	r, err := scanRefund(tx.QueryRow(ctx, `UPDATE refunds SET state = 'failed', failed_at = now(),
 		failure_code = 'ticket_scanned', failure_reason = $2, updated_at = now()
 		WHERE id = $1 AND state = 'provider_pending' RETURNING `+refundColumns, id,
-		fmt.Sprint("the ticket was scanned at the gate before the refund was sent; nothing was sent to the provider")))
+		"the ticket was scanned at the gate before the refund was sent; nothing was sent to the provider"))
 	if err != nil {
 		return nil, uuid.Nil, err
 	}
