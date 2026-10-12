@@ -202,3 +202,25 @@ func TestEngine_ReversedRefundLeavesThePaymentsBudget(t *testing.T) {
 		t.Fatalf("refund of the other ticket after a reversal: %v (the reversed refund still counts)", err)
 	}
 }
+
+// Round-3 review R3-9: what to do with a confirmed failure is decided on the
+// row as it stands under the lock, not as it stood before the read-back: a
+// refund another delivery settled meanwhile is reversed, not left as is.
+func TestEngine_RefundWebhookDecidesOnTheLockedRow(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	e, r, m := pendingRefundWith(t, f, "k-hook-locked-row")
+	ctx := context.Background()
+	m.lookup = payments.RefundResult{Status: payments.RefundFailed, FailureCode: "canceled"}
+	m.onLookup = func() {
+		// Another delivery recorded the refund as succeeded while this one
+		// was reading it back.
+		f.exec(t, `UPDATE refunds SET state = 'succeeded', provider_status = 'succeeded', succeeded_at = now(), settled_at = now() WHERE id = $1`, r.ID)
+	}
+	if _, err := e.ApplyProviderRefund(ctx, f.org, "pay03fake", *r.ProviderRefundID, payments.RefundResult{Status: payments.RefundFailed}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := e.GetRefund(ctx, r.ID)
+	if got.State != refunds.StateManualReview || got.FailureCode == nil || *got.FailureCode != "reversed_after_success" {
+		t.Fatalf("refund = %s %v; want the confirmed failure applied to the settled row as a reversal", got.State, got.FailureCode)
+	}
+}

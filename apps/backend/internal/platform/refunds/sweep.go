@@ -712,14 +712,17 @@ func (e *Engine) lookup(ctx context.Context, id uuid.UUID) error {
 		e.observe(outcomeUnknown)
 		return e.touch(ctx, id)
 	}
-	return e.applyStatus(ctx, id, pay, res)
+	return e.applyStatus(ctx, id, pay, res, false)
 }
 
 // applyStatus records a provider's reading of an ACCEPTED refund (the sweep's
 // RefundLookup or a refund webhook) on the locked row. It only ever moves a
 // provider_pending row: an answer for a row that already left that state is
 // kept out, so a replayed or reordered delivery changes nothing.
-func (e *Engine) applyStatus(ctx context.Context, id uuid.UUID, pay Payment, res payments.RefundResult) error {
+// With reversible set (a provider's webhook), a confirmed failure of a refund
+// that is SUCCEEDED when the lock is held reverses it (reverseTx); the choice
+// is made on the locked row, never on one read before the provider call.
+func (e *Engine) applyStatus(ctx context.Context, id uuid.UUID, pay Payment, res payments.RefundResult, reversible bool) error {
 	var updated Refund
 	changed := false
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
@@ -729,6 +732,13 @@ func (e *Engine) applyStatus(ctx context.Context, id uuid.UUID, pay Payment, res
 		cur, err := getRefund(ctx, tx, id, true)
 		if err != nil {
 			return err
+		}
+		if reversible && cur.State == StateSucceeded && res.Status == payments.RefundFailed {
+			if updated, err = e.reverseTx(ctx, tx, id, res); err != nil {
+				return err
+			}
+			changed = true
+			return nil
 		}
 		if cur.State != StateProviderPending {
 			updated = cur

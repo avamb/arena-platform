@@ -48,7 +48,10 @@ type fakeModule struct {
 	lookup  payments.RefundResult
 	// lookupErr is what RefundStatus answers when set.
 	lookupErr error
-	resolved  int
+	// onLookup runs inside RefundStatus before it answers (another delivery
+	// changing the row meanwhile, say).
+	onLookup func()
+	resolved int
 	// beforeRefund runs inside Refund, before the answer.
 	beforeRefund func(req payments.RefundRequest) bool
 	// block: Refund waits until its context is done (a provider that never
@@ -108,6 +111,9 @@ func (m *fakeModule) Refund(ctx context.Context, req payments.RefundRequest) (pa
 }
 
 func (m *fakeModule) RefundStatus(_ context.Context, id string) (payments.RefundResult, error) {
+	if m.onLookup != nil {
+		m.onLookup()
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.lookupErr != nil {
