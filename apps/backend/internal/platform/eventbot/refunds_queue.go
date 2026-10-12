@@ -121,7 +121,7 @@ func (b *Bot) queueCallback(ctx context.Context, chatID int64, msgID int, from *
 			b.askQueueRetry(ctx, chatID, &msgID, id, jwt, refundID)
 			return
 		}
-		b.doQueueRetry(ctx, chatID, &msgID, id, jwt, refundID)
+		b.startQueueRetry(ctx, chatID, msgID, id, refundID)
 	}
 }
 
@@ -256,20 +256,67 @@ func (b *Bot) askQueueRetry(ctx context.Context, chatID int64, editMsgID *int, i
 	}})
 }
 
-func (b *Bot) doQueueRetry(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt string, refundID uuid.UUID) {
+// startQueueRetry sends the retry OFF the bot's single update worker: the
+// server drives the new refund before it answers, which may take minutes,
+// and the bot must keep answering everyone meanwhile. A second press while
+// the same retry is under way only says so (the server would answer the same
+// operation anyway: its key is derived from the refund).
+func (b *Bot) startQueueRetry(ctx context.Context, chatID int64, msgID int, id *Identity, refundID uuid.UUID) {
 	loc := id.Locale()
+	if _, busy := b.retrying.LoadOrStore(refundID, struct{}{}); busy {
+		b.reply(ctx, chatID, nil, b.texts.T(loc, "bot.rq.still_sending", nil), nil)
+		return
+	}
+	b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.sending", nil), nil)
+	b.goBackground(func() {
+		defer b.retrying.Delete(refundID)
+		wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), refundSendWindow)
+		defer cancel()
+		b.doQueueRetry(wctx, chatID, msgID, id, refundID)
+	})
+}
+
+// queueRetryErrorKey picks the text for a refused retry.
+func (b *Bot) queueRetryErrorKey(ae *APIError) string {
+	switch {
+	case ae.Status == http.StatusConflict && ae.Code == codeNotRetryable:
+		return "bot.rq.not_retryable"
+	case ae.Status == http.StatusConflict && ae.Code == codeAlreadyReplaced:
+		return "bot.rq.already_replaced"
+	case ae.Status == http.StatusConflict && ae.Code == codeRefundProgress:
+		return "bot.rq.err_progress"
+	case ae.Status == http.StatusConflict && ae.Code == codeRefundNotFit:
+		return "bot.rq.err_ticket"
+	case ae.Status == http.StatusConflict:
+		// Any other refusal: the refund or its order changed. Never "order
+		// № changed" without a number.
+		return "bot.rq.err_refused"
+	case ae.Status == http.StatusNotFound:
+		return "bot.rq.err_refused"
+	}
+	return b.refundErrorKey(ae)
+}
+
+func (b *Bot) doQueueRetry(ctx context.Context, chatID int64, msgID int, id *Identity, refundID uuid.UUID) {
+	loc := id.Locale()
+	edit := &msgID
 	back := &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 		{{Text: "« " + b.texts.T(loc, "bot.btn_back", nil), CallbackData: "rq:l:" + queueDefaultFilter + ":1"}},
 		{{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}},
 	}}
-	b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.ref.sending", nil), nil)
 	var (
 		res openapi.CreateOrderRefundsResponse
 		err error
 	)
 	// An answer that never came is asked for again: the retry operation has a
 	// key derived from the refund, so this reads the one already started.
+	// Every attempt carries a freshly minted token.
 	for attempt := 0; attempt <= refundReplayAttempts; attempt++ {
+		jwt, merr := b.minter.Mint(id.Link.UserID)
+		if merr != nil {
+			err = merr
+			break
+		}
 		res, err = b.arena.RetryRefund(ctx, jwt, id.Current.OrgID, refundID)
 		var ae *APIError
 		if err == nil || errors.As(err, &ae) || ctx.Err() != nil {
@@ -280,24 +327,22 @@ func (b *Bot) doQueueRetry(ctx context.Context, chatID int64, editMsgID *int, id
 		case <-time.After(refundReplayPause):
 		}
 	}
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
 	var ae *APIError
 	switch {
 	case err == nil:
 		text := b.texts.T(loc, "bot.rq.retry_done", nil) + b.refundLines(loc, Esc(b.texts.T(loc, "bot.rq.provider_word", nil)), res.Refunds)
-		b.reply(ctx, chatID, editMsgID, text, back)
-	case errors.As(err, &ae) && ae.Status == http.StatusConflict && ae.Code == codeNotRetryable:
-		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.rq.not_retryable", nil), back)
-	case errors.As(err, &ae) && ae.Status == http.StatusConflict && ae.Code == codeAlreadyReplaced:
-		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.rq.already_replaced", nil), back)
+		b.reply(rctx, chatID, edit, text, back)
 	case errors.As(err, &ae):
-		key := b.refundErrorKey(ae)
+		key := b.queueRetryErrorKey(ae)
 		if key == "" {
 			key = "bot.ref.err_timeout"
 		}
-		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, key, map[string]any{"Num": "—", "Provider": Esc(b.texts.T(loc, "bot.rq.provider_word", nil))}), back)
+		b.reply(rctx, chatID, edit, b.texts.T(loc, key, map[string]any{"Num": "—", "Provider": Esc(b.texts.T(loc, "bot.rq.provider_word", nil))}), back)
 	default:
 		// No answer at all: the retry may be under way. Never "failed".
 		b.logger.Warn("eventbot: refund retry got no answer", slog.String("error", err.Error()))
-		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.ref.err_timeout", nil), back)
+		b.reply(rctx, chatID, edit, b.texts.T(loc, "bot.ref.err_timeout", nil), back)
 	}
 }

@@ -2991,7 +2991,7 @@ other = "🔁 Retry {{.Order}}"
 other = "📄 Order {{.Order}}"
 
 ["bot.rq.retry_ask"]
-other = "Send this refund again? Order {{.Order}}, ticket {{.Tickets}}, amount <b>{{.Amount}}</b>. A new refund is created for the same ticket and amount; one that may already have gone through is refused."
+other = "Send this refund again? Order {{.Order}}, ticket {{.Tickets}}, amount <b>{{.Amount}}</b>. A new refund is created for the same ticket and amount; one that may already have gone through is refused.\n\nThe ticket stops being valid for entry, also when only part of its price is returned, and the buyer gets an e-mail about the refund if the first one asked for it."
 
 ["bot.rq.retry_yes"]
 other = "Yes, send {{.Amount}} again"
@@ -3001,6 +3001,18 @@ other = "Cancel"
 
 ["bot.rq.already_replaced"]
 other = "This refund was already sent again, so it cannot be retried. Look at the newer refund in the list."
+
+["bot.rq.still_sending"]
+other = "This refund is already being sent again. Wait for the answer here."
+
+["bot.rq.err_progress"]
+other = "Another refund of this ticket is in progress. Nothing was sent again; open the order to see it."
+
+["bot.rq.err_ticket"]
+other = "This ticket can no longer be refunded (it changed, is no longer valid or is under review). Nothing was sent again."
+
+["bot.rq.err_refused"]
+other = "Arena did not send the refund again: the refund or its order changed meanwhile. Nothing was sent; open the order to see its state."
 
 ["bot.rq.retry_done"]
 other = "<b>Refund sent again</b>"

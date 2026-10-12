@@ -2846,7 +2846,7 @@ other = "🔁 Reintentar {{.Order}}"
 other = "📄 Pedido {{.Order}}"
 
 ["bot.rq.retry_ask"]
-other = "¿Enviar esta devolución otra vez? Pedido {{.Order}}, entrada {{.Tickets}}, importe <b>{{.Amount}}</b>. Se crea una devolución nueva para la misma entrada e importe; una que pudo haberse hecho ya se rechaza."
+other = "¿Enviar esta devolución otra vez? Pedido {{.Order}}, entrada {{.Tickets}}, importe <b>{{.Amount}}</b>. Se crea una devolución nueva para la misma entrada e importe; una que pudo haberse hecho ya se rechaza.\n\nLa entrada deja de ser válida para entrar, también cuando solo se devuelve una parte de su precio, y el comprador recibe un correo sobre la devolución si se pidió la primera vez."
 
 ["bot.rq.retry_yes"]
 other = "Sí, enviar {{.Amount}} otra vez"
@@ -2856,6 +2856,18 @@ other = "Cancelar"
 
 ["bot.rq.already_replaced"]
 other = "Esta devolución ya se reenvió, así que no se puede reintentar. Mira la devolución más reciente en la lista."
+
+["bot.rq.still_sending"]
+other = "Esta devolución ya se está reenviando. Espera la respuesta aquí."
+
+["bot.rq.err_progress"]
+other = "Ya hay otra devolución en curso para esta entrada. No se reenvió nada; abre el pedido para verla."
+
+["bot.rq.err_ticket"]
+other = "Esta entrada ya no se puede devolver (cambió, ya no es válida o está en revisión). No se reenvió nada."
+
+["bot.rq.err_refused"]
+other = "Arena no reenvió la devolución: la devolución o su pedido cambiaron mientras tanto. No se envió nada; abre el pedido para ver su estado."
 
 ["bot.rq.retry_done"]
 other = "<b>Devolución enviada de nuevo</b>"

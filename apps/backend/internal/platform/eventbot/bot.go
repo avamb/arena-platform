@@ -107,6 +107,8 @@ type Bot struct {
 	// bg tracks the work started off the single update worker (a refund
 	// call that may wait minutes for the provider), so Run can let it end.
 	bg sync.WaitGroup
+	// retrying holds the refund ids whose queue retry is under way.
+	retrying sync.Map
 }
 
 // backgroundDrain bounds how long Run waits for that work on shutdown.
@@ -318,7 +320,7 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
 		// and an event's delete question (its typed word)
 		b.leaveEvStatus(ctx, from.ID)
-		b.leavePromo(ctx, from.ID)  // and a promo-code question (EC-11)
+		b.leavePromo(ctx, from.ID)      // and a promo-code question (EC-11)
 		b.leaveIdleRefund(ctx, from.ID) // and a refund question: its word is never an answer after a command (EC-21)
 		switch cmd {
 		case "/start":
