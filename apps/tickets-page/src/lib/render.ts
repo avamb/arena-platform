@@ -2,6 +2,7 @@ import type { PageLocale } from './locale.ts';
 import { isRtlLocale, toWidgetLocale } from './locale.ts';
 import { t } from './i18n.ts';
 import { plainText, renderRichText } from './richtext.ts';
+import { renderSellerBlock } from './seller.ts';
 import type { HostedPageEvent, HostedPageResponse, HostedPromoterPageResponse } from './api.ts';
 
 /** Clears a container's children (avoids innerHTML = '' churn semantics
@@ -266,6 +267,13 @@ export function renderEvent(
   }
   widgetSection.appendChild(widget);
   container.appendChild(widgetSection);
+
+  // Who the buyer's contract is with — under the purchase card, only when
+  // the backend sends it (the channel's legal-details switch is on).
+  const sellerBlock = renderSellerBlock(data.seller, data.promoter, locale);
+  if (sellerBlock) {
+    container.appendChild(sellerBlock);
+  }
 
   if (options.resumingCheckout) {
     // Deferred to a microtask/frame so the element has been laid out.

@@ -33,6 +33,15 @@ export interface PageStrings {
   backToPromoter: string;
   /** Prefix of the doors-open time ("Doors open 19:30"). */
   doorsOpen: string;
+  /** Legal block (who sells, who organizes). "Seller" and "Organizer" are two
+   * different roles and their wording must never read as the same one. */
+  sellerLabel: string;
+  organizerLabel: string;
+  registrationNo: string;
+  /** Tax number labels: the generic one and the per-scheme ones. */
+  taxId: string;
+  vatId: string;
+  einId: string;
 }
 
 const STRINGS: Record<PageLocale, PageStrings> = {
@@ -53,6 +62,12 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     eventPast: 'Took place',
     backToPromoter: 'All dates',
     doorsOpen: 'Doors open',
+    sellerLabel: 'Seller',
+    organizerLabel: 'Organizer',
+    registrationNo: 'Registration no.',
+    taxId: 'Tax ID',
+    vatId: 'VAT ID',
+    einId: 'EIN',
   },
   ru: {
     loading: 'Загрузка события…',
@@ -71,6 +86,12 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     eventPast: 'Уже прошло',
     backToPromoter: 'Все даты',
     doorsOpen: 'Вход с',
+    sellerLabel: 'Продавец',
+    organizerLabel: 'Организатор',
+    registrationNo: 'Регистрационный номер',
+    taxId: 'Налоговый номер',
+    vatId: 'Номер плательщика НДС',
+    einId: 'EIN',
   },
   cs: {
     loading: 'Načítání akce…',
@@ -89,6 +110,12 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     eventPast: 'Již proběhlo',
     backToPromoter: 'Všechny termíny',
     doorsOpen: 'Vstup od',
+    sellerLabel: 'Prodávající',
+    organizerLabel: 'Pořadatel',
+    registrationNo: 'Registrační číslo',
+    taxId: 'Daňové ID',
+    vatId: 'DIČ',
+    einId: 'EIN',
   },
   he: {
     loading: 'טוען את האירוע…',
@@ -107,6 +134,12 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     eventPast: 'כבר התקיים',
     backToPromoter: 'כל התאריכים',
     doorsOpen: 'פתיחת דלתות',
+    sellerLabel: 'מוכר',
+    organizerLabel: 'מארגן',
+    registrationNo: 'מספר רישום',
+    taxId: 'מזהה מס',
+    vatId: 'מספר עוסק במע״מ',
+    einId: 'EIN',
   },
   es: {
     loading: 'Cargando evento…',
@@ -125,6 +158,12 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     eventPast: 'Ya se celebró',
     backToPromoter: 'Todas las fechas',
     doorsOpen: 'Apertura de puertas',
+    sellerLabel: 'Vendedor',
+    organizerLabel: 'Organizador',
+    registrationNo: 'N.º de registro',
+    taxId: 'ID fiscal',
+    vatId: 'ID de IVA',
+    einId: 'EIN',
   },
 };
 
