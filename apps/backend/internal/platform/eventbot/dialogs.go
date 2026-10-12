@@ -120,7 +120,9 @@ func (s *pgDialogStore) Load(ctx context.Context, tg int64, kind string, into an
 		if err := s.q.DeleteBotDialog(ctx, tg, kind); err != nil {
 			return "", false, false, fmt.Errorf("eventbot: drop expired %s dialog: %w", kind, err)
 		}
-		return "", false, true, nil
+		// The step it lapsed on stays visible: a caller says "expired" only
+		// for a dialog that was waiting for typed text.
+		return row.Step, false, true, nil
 	}
 	if into != nil && len(row.State) > 0 {
 		if err := json.Unmarshal(row.State, into); err != nil {

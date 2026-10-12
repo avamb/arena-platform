@@ -111,7 +111,7 @@ func TestBotE2E_DraftReminderThenExpiry(t *testing.T) {
 
 	// A day without an answer: one reminder, in the owner's language, naming
 	// the event, and the draft is marked so it is not repeated.
-	reminder := tg.waitSince(t, m, "Вы не закончили ивент")
+	reminder := tg.waitSince(t, m, "Вы не закончили мероприятие")
 	if !strings.Contains(reminder, "Jazz night") || !strings.Contains(reminder, "7 дней") {
 		t.Fatalf("the reminder must name the event and the 7 days:\n%s", reminder)
 	}
@@ -128,7 +128,7 @@ func TestBotE2E_DraftReminderThenExpiry(t *testing.T) {
 		t.Fatal("reminded_at must be set once the reminder was sent")
 	}
 	time.Sleep(800 * time.Millisecond) // four more sweeps
-	if n := tg.countSince(m, "Вы не закончили ивент"); n != 1 {
+	if n := tg.countSince(m, "Вы не закончили мероприятие"); n != 1 {
 		t.Fatalf("the reminder must be sent once, was sent %d times", n)
 	}
 
@@ -147,7 +147,7 @@ func TestBotE2E_DraftReminderThenExpiry(t *testing.T) {
 		t.Fatalf("age the draft further: %v", err)
 	}
 	m = tg.mark()
-	tg.waitSince(t, m, "Черновик ивента удалён")
+	tg.waitSince(t, m, "Черновик мероприятия удалён")
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM bot_drafts WHERE telegram_user_id = $1`, ownerTG).Scan(&left); err != nil || left != 0 {
 		t.Fatalf("an expired draft must be gone: %d rows (%v)", left, err)
 	}

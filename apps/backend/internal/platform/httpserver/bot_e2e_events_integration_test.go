@@ -444,7 +444,7 @@ func TestBotE2E_EventCenterScreens_OwnerAndManager(t *testing.T) {
 	// Somebody from another organization: an empty list, and every id of the
 	// first organization is "not found" — no figures, no document.
 	out := ecDriver{t, tg, ecOutsiderTG}
-	out.press("el:new", "Ивентов пока нет")
+	out.press("el:new", "Мероприятий пока нет")
 	docs := tg.callCount("sendDocument")
 	for _, c := range []struct{ data, needle string }{
 		{"ec:es:" + seed.richEvent.String(), "Не найдено"},
@@ -459,7 +459,7 @@ func TestBotE2E_EventCenterScreens_OwnerAndManager(t *testing.T) {
 		}
 	}
 	// A forged card of a foreign event falls back to the (empty) list.
-	out.press("ec:o:"+seed.richEvent.String(), "Ивентов пока нет")
+	out.press("ec:o:"+seed.richEvent.String(), "Мероприятий пока нет")
 	if got := tg.callCount("sendDocument"); got != docs {
 		t.Errorf("the outsider received %d document(s)", got-docs)
 	}

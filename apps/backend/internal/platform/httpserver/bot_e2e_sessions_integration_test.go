@@ -250,7 +250,7 @@ func TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers(t *testing.T) {
 
 	// A cancellation is never one button: the press only asks for the word,
 	// and a wrong word cancels nothing.
-	press("ses:go", "Последний шаг")
+	press("ses:go", "это действие нельзя отменить")
 	var status string
 	_ = pool.QueryRow(ctx, `SELECT status FROM sessions WHERE id = $1`, sessionID).Scan(&status)
 	if status == "cancelled" {
@@ -263,7 +263,7 @@ func TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers(t *testing.T) {
 	}
 	// Back returns to the confirmation, which still needs the word afterwards.
 	press("ses:confirm", "Отмена сеанса")
-	askWord := press("ses:go", "Последний шаг")
+	askWord := press("ses:go", "это действие нельзя отменить")
 	if !strings.Contains(askWord, "Платформа деньги НЕ возвращает") {
 		t.Fatalf("the last step does not say that no money is refunded:\n%s", askWord)
 	}
