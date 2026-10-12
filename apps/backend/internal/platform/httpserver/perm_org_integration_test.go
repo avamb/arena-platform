@@ -16,6 +16,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 )
 
@@ -78,9 +80,7 @@ func TestPermOrg_ARoleInAnotherOrganizationGivesNothingHere(t *testing.T) {
 	// An API key is unchanged: its scopes, in its own organization only.
 	keyA := e.key(t, orgA, "promo.read")
 	e.expect(t, http.StatusOK, http.MethodGet, a+"/promo-codes", keyA, "", "")
-	if st, out := e.do(t, http.MethodGet, b+"/promo-codes", keyA, "", ""); st != http.StatusForbidden && st != http.StatusNotFound {
-		t.Errorf("A's key reads B's promo codes: %d %s", st, out)
-	}
+	e.expect(t, http.StatusForbidden, http.MethodGet, b+"/promo-codes", keyA, "", "")
 
 	// The reverse split: manager of A, agent of B.
 	rev := e.user(t, "reverse")
@@ -107,3 +107,57 @@ func TestPermOrg_ProductionCheckerDecidesPerOrganization(t *testing.T) {
 	}
 }
 
+// On a flat money route the superadmin and an organization API key keep their
+// reach, the key only inside its own organization, and a manager of the
+// payment's organization approves.
+func TestPermOrg_FlatRefundRouteSuperadminKeyAndManager(t *testing.T) {
+	e := newSec1Env(t)
+	stub := newStubStripe(t)
+	e.srv.stripeAPIBaseURL = stub.baseURL()
+	stub.sessionPI = "pi_permorg_" + uuid.NewString()[:8]
+	stub.refundHandler = func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"re_permorg_` + uuid.NewString()[:8] + `","object":"refund","status":"succeeded","amount":100,"currency":"eur"}`))
+	}
+	orgA, orgB := e.org(t, "A"), e.org(t, "B")
+	manager := e.user(t, "manager-a")
+	e.member(t, manager, orgA, "organizer")
+	mgrTok := e.token(t, manager)
+	f := newPay03Order(t, e.srv.pgxPool, orgA, "stripe")
+	body := fmt.Sprintf(`{"payment_intent_id":%q,"amount":100,"currency":"EUR","reason":"perm-org"}`, f.pay)
+	refundID := func(out string) string {
+		t.Helper()
+		var created struct {
+			Refund struct {
+				ID    string `json:"id"`
+				State string `json:"state"`
+			} `json:"refund"`
+		}
+		if err := json.Unmarshal([]byte(out), &created); err != nil || created.Refund.ID == "" {
+			t.Fatalf("refund answer %s: %v", out, err)
+		}
+		return created.Refund.ID
+	}
+
+	_, superTok := e.superadmin(t)
+	e.expect(t, http.StatusBadRequest, http.MethodPost, "/v1/refunds", superTok, "", body)
+	refundID(e.expect(t, http.StatusCreated, http.MethodPost, "/v1/refunds", superTok, "perm-org check", body))
+
+	keyA := e.key(t, orgA, "refund.create")
+	refundID(e.expect(t, http.StatusCreated, http.MethodPost, "/v1/refunds", keyA, "", body))
+	keyB := e.key(t, orgB, "refund.create")
+	if out := e.expect(t, http.StatusNotFound, http.MethodPost, "/v1/refunds", keyB, "", body); sec1Code(out) != "refund.payment_intent_not_found" {
+		t.Errorf("B's key on A's payment: code %q", sec1Code(out))
+	}
+
+	id := refundID(e.expect(t, http.StatusCreated, http.MethodPost, "/v1/refunds", mgrTok, "", body))
+	out := e.expect(t, http.StatusOK, http.MethodPost, "/v1/refunds/"+id+"/approve", mgrTok, "", "")
+	var approved struct {
+		Refund struct {
+			State string `json:"state"`
+		} `json:"refund"`
+	}
+	if err := json.Unmarshal([]byte(out), &approved); err != nil || approved.Refund.State != "succeeded" {
+		t.Errorf("manager of A approves: %s (%v)", out, err)
+	}
+}
