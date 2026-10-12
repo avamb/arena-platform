@@ -16,6 +16,7 @@ package hfeed
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -27,6 +28,39 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
+
+// Caps on one public cart, shared by checkout/start and checkout/quote. A
+// request is priced with one database read per line and per distinct seat
+// category, so an unbounded list is an unbounded amount of work for one
+// anonymous request; the caps sit far above any real purchase.
+const (
+	// maxCartGALines is the most general-admission lines (categories) in one cart.
+	maxCartGALines = 20
+	// maxLineQuantity is the most tickets on one general-admission line. It is
+	// the cap checkout/start has always enforced on its legacy qty field.
+	maxLineQuantity = 50
+	// maxCartSeats is the most assigned seats in one cart.
+	maxCartSeats = 100
+)
+
+// checkCartCaps answers "" for a cart within the caps, otherwise the stable
+// error code to refuse it with (always a 400, before any database work):
+// checkout.cart_too_large for too many lines or seats, checkout.invalid_qty
+// for a line over maxLineQuantity.
+func checkCartCaps(seats []string, items []PublicGAItem) (code, message string) {
+	if len(items) > maxCartGALines {
+		return "checkout.cart_too_large", fmt.Sprintf("a cart holds at most %d ticket lines", maxCartGALines)
+	}
+	if len(seats) > maxCartSeats {
+		return "checkout.cart_too_large", fmt.Sprintf("a cart holds at most %d seats", maxCartSeats)
+	}
+	for i, it := range items {
+		if it.Quantity > maxLineQuantity {
+			return "checkout.invalid_qty", fmt.Sprintf("ga_items[%d].quantity must be at most %d", i, maxLineQuantity)
+		}
+	}
+	return "", ""
+}
 
 // gaItemPriced is one general-admission line with its platform-resolved unit
 // price (the tier's price window at "now").

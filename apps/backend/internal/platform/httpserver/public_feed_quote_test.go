@@ -5,6 +5,7 @@
 package httpserver
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -98,5 +99,43 @@ func TestPublicQuote_PerIPLimitApplies(t *testing.T) {
 	_ = postQuote(s, "tok-a", "")
 	if w := postQuote(s, "tok-b", ""); w.Code != http.StatusTooManyRequests {
 		t.Fatalf("second request from the same IP on another token = %d, want 429", w.Code)
+	}
+}
+
+func capBody(lines, qty int, seats int) string {
+	items := make([]string, 0, lines)
+	for i := 0; i < lines; i++ {
+		items = append(items, fmt.Sprintf(`{"tier_id":"22222222-2222-4222-8222-%012d","quantity":%d}`, i, qty))
+	}
+	seatKeys := make([]string, 0, seats)
+	for i := 0; i < seats; i++ {
+		seatKeys = append(seatKeys, fmt.Sprintf(`"S%d"`, i))
+	}
+	return fmt.Sprintf(`{"session_id":"11111111-1111-4111-8111-111111111111","holder_email":"a@b.co","ga_items":[%s],"seats":[%s]}`,
+		strings.Join(items, ","), strings.Join(seatKeys, ","))
+}
+
+// One anonymous request must not be able to ask for unbounded pricing work: a
+// cart above the caps is refused with a stable 400 before any database read.
+// Both public cart routes share the caps (checkCartCaps).
+func TestPublicCart_CapsAreRefusedBeforeTheDatabase(t *testing.T) {
+	s := buildQuoteServer(t, 100000, 100000)
+	cases := []struct {
+		name, body, code string
+	}{
+		{"too many lines", capBody(21, 1, 0), "checkout.cart_too_large"},
+		{"too many seats", capBody(0, 1, 101), "checkout.cart_too_large"},
+		{"line quantity", capBody(1, 51, 0), "checkout.invalid_qty"},
+	}
+	for _, route := range []string{"/checkout/quote"} {
+		for _, c := range cases {
+			req := httptest.NewRequest(http.MethodPost, "/v1/public/feeds/cap-token"+route, strings.NewReader(c.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			s.router.ServeHTTP(w, req)
+			if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), c.code) {
+				t.Errorf("%s %s: got %d %s, want 400 %s", route, c.name, w.Code, w.Body.String(), c.code)
+			}
+		}
 	}
 }
