@@ -147,3 +147,39 @@ func TestEngine_EventWithoutPaymentReadBackFailuresAreBounded(t *testing.T) {
 		t.Fatalf("%d records; want 1", n)
 	}
 }
+
+// Round-3 review R3-7: a payment that only knows its checkout id (no charge
+// reference stored) is resolved before a refund event that names the charge
+// is judged foreign; when it cannot be resolved the event leaves a record
+// and alerts the operator instead of being dropped as not ours.
+func TestEngine_DashboardRefundOfAPaymentWithoutChargeRef(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	f.cleanProviderEvents(t)
+	ctx := context.Background()
+	cs := f.paymentRef(t)
+
+	// Unresolvable: recorded, alerted, nothing applied.
+	bad := &fakeModule{resolveErr: &payments.RefundDeclinedError{Code: "resource_missing"}}
+	ev := payments.NormalizedEvent{ProviderRefundID: "re_r4_nocref_" + uuid.NewString()[:8],
+		ProviderChargeRef: "pi_from_" + cs, RefundStatus: payments.RefundSucceeded}
+	res, err := f.engine(bad, true).RecordDashboardRefund(ctx, f.org, "pay03fake", ev, nil)
+	if err != nil || !res.Unconfirmed || res.Created {
+		t.Fatalf("unresolvable = %+v %v; want acknowledged, unconfirmed, nothing written", res, err)
+	}
+	if n := f.unresolved(t, refunds.UnresolvedNoChargeRef); n != 1 {
+		t.Fatalf("%d records; want 1", n)
+	}
+
+	// Resolvable: the reference is stored and the refund is recorded.
+	good := &fakeModule{lookup: payments.RefundResult{Status: payments.RefundSucceeded, AmountMinor: 5000, Currency: "eur"}}
+	ev.ProviderRefundID = "re_r4_cref_" + uuid.NewString()[:8]
+	res, err = f.engine(good, true).RecordDashboardRefund(ctx, f.org, "pay03fake", ev, nil)
+	if err != nil || !res.Created {
+		t.Fatalf("resolvable = %+v %v; want the refund recorded", res, err)
+	}
+	var stored string
+	_ = f.pool.QueryRow(ctx, `SELECT COALESCE(provider_charge_ref, '') FROM payment_intents WHERE id = $1`, f.payment).Scan(&stored)
+	if stored != "pi_from_"+cs {
+		t.Fatalf("provider_charge_ref = %q; want the resolved reference stored", stored)
+	}
+}

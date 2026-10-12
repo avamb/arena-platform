@@ -10,6 +10,7 @@ package refunds
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -125,7 +126,41 @@ func (e *Engine) RecordDashboardRefund(ctx context.Context, orgID uuid.UUID, pro
 			return out, err
 		}
 		if !known {
-			return out, nil
+			// A payment that only knows its checkout id (no charge
+			// reference stored) cannot be matched by the reference the
+			// event names: resolve those first, then look again.
+			remaining, terr, err := e.resolveMissingChargeRefs(ctx, orgID, provider)
+			if err != nil {
+				return out, err
+			}
+			if known, err = e.knownPayment(ctx, orgID, provider, chargeRef); err != nil {
+				return out, err
+			}
+			if !known {
+				if remaining == 0 {
+					return out, nil // not a payment of this organization
+				}
+				if terr != nil {
+					// A transient failure: the provider redelivers, bounded.
+					attempts, cerr := e.noteUnconfirmed(ctx, orgID, provider, refundID, terr)
+					if cerr != nil {
+						return out, errors.Join(terr, cerr)
+					}
+					if attempts < MaxDashboardConfirmAttempts {
+						return out, errors.Join(ErrCannotConfirm, terr)
+					}
+				}
+				detail := "payments without a stored charge reference: " + strconv.Itoa(remaining)
+				if terr != nil {
+					detail += "; " + terr.Error()
+				}
+				if rerr := e.recordUnresolved(ctx, UnresolvedEvent{OrgID: orgID, Provider: provider, ProviderRefundID: refundID,
+					Kind: UnresolvedNoChargeRef, ChargeRef: chargeRef, Detail: detail}); rerr != nil {
+					return out, rerr
+				}
+				out.Unconfirmed = true
+				return out, nil
+			}
 		}
 	}
 	confirmed, ok, err := e.confirmProviderRefund(ctx, orgID, provider, refundID)
@@ -319,6 +354,90 @@ func (e *Engine) knownPayment(ctx context.Context, orgID uuid.UUID, provider, ch
 			orgID, provider, chargeRef).Scan(&known)
 	})
 	return known, err
+}
+
+// missingChargeRefWindow and missingChargeRefPerEvent bound which payments
+// without a stored charge reference one refund event tries to resolve.
+const (
+	missingChargeRefWindow   = "180 days"
+	missingChargeRefPerEvent = 5
+)
+
+// resolveMissingChargeRefs reads the charge reference of the organization's
+// recent succeeded payments that only know their provider payment id, and
+// stores each one it gets (as the refund call does). remaining is how many
+// such payments are still unresolved afterwards; transient is the last
+// failure that a later attempt may not repeat; err is a database failure.
+func (e *Engine) resolveMissingChargeRefs(ctx context.Context, orgID uuid.UUID, provider string) (remaining int, transient, err error) {
+	type candidate struct {
+		id  uuid.UUID
+		ref string
+	}
+	var (
+		cands []candidate
+		total int
+	)
+	if err := e.inTx(ctx, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM payment_intents
+			WHERE org_id = $1 AND provider = $2 AND state = 'succeeded' AND provider_charge_ref IS NULL
+			  AND COALESCE(provider_payment_id, '') <> '' AND created_at > now() - $3::interval`,
+			orgID, provider, missingChargeRefWindow).Scan(&total); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, `SELECT id, provider_payment_id FROM payment_intents
+			WHERE org_id = $1 AND provider = $2 AND state = 'succeeded' AND provider_charge_ref IS NULL
+			  AND COALESCE(provider_payment_id, '') <> '' AND created_at > now() - $3::interval
+			ORDER BY created_at DESC LIMIT `+strconv.Itoa(missingChargeRefPerEvent), orgID, provider, missingChargeRefWindow)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var c candidate
+			if err := rows.Scan(&c.id, &c.ref); err != nil {
+				return err
+			}
+			cands = append(cands, c)
+		}
+		return rows.Err()
+	}); err != nil {
+		return 0, nil, err
+	}
+	if total == 0 {
+		return 0, nil, nil
+	}
+	callCtx, cancel := context.WithTimeout(ctx, e.callTimeout)
+	defer cancel()
+	module, berr := e.modules.Build(callCtx, orgID, provider)
+	if berr != nil {
+		return total, berr, nil
+	}
+	resolver, ok := module.(payments.ChargeRefResolver)
+	if !ok {
+		return total, nil, nil
+	}
+	remaining = total
+	for _, c := range cands {
+		ref, rerr := resolver.ResolveChargeRef(callCtx, c.ref)
+		if rerr != nil {
+			if _, _, declined := payments.RefundDeclined(rerr); !declined {
+				transient = rerr
+			}
+			continue
+		}
+		if ref == "" {
+			continue
+		}
+		if err := e.inTx(ctx, func(tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, `UPDATE payment_intents SET provider_charge_ref = $2, updated_at = now()
+				WHERE id = $1 AND provider_charge_ref IS NULL`, c.id, ref)
+			return err
+		}); err != nil {
+			return remaining, transient, err
+		}
+		remaining--
+	}
+	return remaining, transient, nil
 }
 
 // noteUnconfirmed records one delivery whose refund could not be read back
