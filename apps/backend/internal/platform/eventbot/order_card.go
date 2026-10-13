@@ -28,7 +28,6 @@ import (
 	"strings"
 	"time"
 
-	tgbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/google/uuid"
 
@@ -316,19 +315,24 @@ func (b *Bot) cancelWordTyped(ctx context.Context, chatID int64, editMsgID *int,
 // ─── plumbing ─────────────────────────────────────────────────────────────────
 
 // replyChecked is reply that reports whether the text reached the chat, so a
-// caller with a plainer version of it can retry.
+// caller with a plainer version of it can retry. The feed rules (feed.go)
+// decide whether the answer redraws a message or is a new one.
 func (b *Bot) replyChecked(ctx context.Context, chatID int64, editMsgID *int, text string, kb *models.InlineKeyboardMarkup) error {
+	replaced := 0
 	if editMsgID != nil {
-		params := &tgbot.EditMessageTextParams{ChatID: chatID, MessageID: *editMsgID, Text: text, ParseMode: models.ParseModeHTML}
-		if kb != nil {
-			params.ReplyMarkup = kb
-		}
-		_, err := b.tg.EditMessageText(ctx, params)
-		if err == nil || strings.Contains(err.Error(), "message is not modified") {
-			return nil
+		replaced = *editMsgID
+		if target, ok := editTarget(actionIn(ctx, chatID), replaced); ok {
+			if err := b.edit(ctx, chatID, target, text, kb); err == nil {
+				return nil
+			}
 		}
 	}
-	return b.sendChecked(ctx, chatID, text, kb)
+	var markup models.ReplyMarkup
+	if kb != nil {
+		markup = kb
+	}
+	_, err := b.post(ctx, chatID, replaced, text, markup)
+	return chatSendError(err)
 }
 
 // routeOnly is an error's text for a log line. API errors carry a status and a

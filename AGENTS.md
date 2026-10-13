@@ -1738,6 +1738,38 @@ entries short and factual.
   `httpserver/bot_e2e_integration_test.go` (real router + real bot + stub
   Telegram); run the bot for real with `docker compose --profile bot up -d
   bot` and `EVENTS_TELEGRAM_BOT_TOKEN` in the environment.
+- **The bot's chat is a chronological feed: a new message per action, old
+  keyboards stripped (`eventbot/feed.go`, owner decision 2026-10-13).** A press
+  or a typed answer that edited an older message far up the chat made the
+  owner miss the refund's final check and type the word twice. Now
+  `reply`/`replyChecked`/`sendChecked`/`sendMarkup` all go through `Bot.post`:
+  inside an action (`handleCallback` and `handleMessage` put a `feedAction` on
+  the ctx) the answer is a NEW message, the pressed message loses its keyboard
+  and gains a `✔ <pressed label>` line (its text re-sent with its own
+  entities), a message the reply was asked to edit (a dialog's stored
+  `MsgID`) loses its keyboard, and a new keyboard takes the buttons from every
+  other live message. A second reply of the same action edits the message the
+  first one sent (`alias`), so "Saving…" then the result is one message. Only
+  `inPlacePress` may redraw the pressed message: the ticks of a list on
+  screen (`inPlaceToggles`: refund tickets and buyer letter, wizard channels,
+  promo sessions, application consents and multiple choice), a pager row's
+  arrows (any row holding a `2/5` button) and a calendar month (`…cal:`). Add
+  a new in-list tick to `inPlaceToggles`, never edit by hand.
+  `feedMemory` keeps the live message ids per private chat IN MEMORY; a press
+  on any other message is refused before any handler runs
+  (`refuseStalePress`: an alert "this message is out of date, continue below",
+  `bot.stale_message`, and the keyboard is stripped). After a restart a chat
+  is unknown until the bot writes to it again and presses there are accepted
+  as before. Background work (`detached` drops the action) always posts a new
+  message and never strips anything, so a reminder or a refund answer cannot
+  take the buttons from the screen the person is on. A keyboard of URL
+  buttons only is never live and never stripped. The e2e stub
+  (`bot_e2e_integration_test.go`) remembers every message's keyboard and
+  `push` delivers an `e2eCallback` (placeholder message 5) on the newest
+  message that carries that callback data (else the newest live one), with
+  its text and keyboard; a retiring edit (empty `inline_keyboard`) is counted
+  as `retire`, not as `editMessageReplyMarkup`/`editMessageText`, and adds no
+  text to `sent`.
 - **The bot's "+ Event" wizard (`eventbot/wizard*.go`) is a pure state
   machine over `Draft`; the bot side (`wizard_bot.go`) only stores the
   draft and renders.** `Wizard.Apply(ws, d, in)` is a function of the

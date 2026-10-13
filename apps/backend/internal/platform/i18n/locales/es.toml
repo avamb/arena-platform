@@ -260,6 +260,9 @@ other = "Se ha retirado tu acceso a esta organización. Si es un error, pide una
 ["bot.unknown_input"]
 other = "No he entendido eso. Usa los botones de abajo."
 
+["bot.stale_message"]
+other = "Este mensaje está desactualizado. Continúa más abajo."
+
 ["bot.wz.new_event_btn"]
 other = "+ Evento"
 
