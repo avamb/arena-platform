@@ -91,6 +91,9 @@ type Profile struct {
 	LegalAddressCountry    *string   `json:"legal_address_country"`
 	Missing                []string  `json:"missing"`
 	Channels               []Channel `json:"channels"`
+	// ContactFormToTelegram: buyers' messages from the sales page's contact
+	// form also go to the organization's sales Telegram chat (migration 0148).
+	ContactFormToTelegram bool `json:"contact_form_to_telegram"`
 }
 
 // personOnly refuses an organization API key: the seller's legal identity
@@ -193,15 +196,20 @@ func (h *Handler) loadProfile(ctx context.Context, orgID uuid.UUID) (Profile, ge
 	if err != nil {
 		return Profile{}, o, err
 	}
+	toTelegram, err := h.queries.GetContactFormToTelegram(ctx, orgID)
+	if err != nil {
+		return Profile{}, o, err
+	}
 	p := Profile{
 		OrgID: o.ID.String(), OrgName: o.Name, Country: o.Country,
 		LegalName: o.LegalName, LegalForm: form, RegistrationNumber: o.RegistrationNumber,
 		TaxIDScheme: o.TaxIDScheme, TaxID: o.TaxID,
 		LegalAddressLine1: o.LegalAddressLine1, LegalAddressLine2: o.LegalAddressLine2,
 		LegalAddressPostalCode: o.LegalAddressPostalCode, LegalAddressCity: o.LegalAddressCity,
-		LegalAddressCountry: o.LegalAddressCountry,
-		Missing:             nonNil(sellerinfo.Missing(withEmailPlaceholder(orgFacts(o)))),
-		Channels:            []Channel{},
+		LegalAddressCountry:   o.LegalAddressCountry,
+		Missing:               nonNil(sellerinfo.Missing(withEmailPlaceholder(orgFacts(o)))),
+		Channels:              []Channel{},
+		ContactFormToTelegram: toTelegram,
 	}
 	for _, row := range rows {
 		c := parseContact(row.PublicContact)
@@ -447,4 +455,75 @@ func (h *Handler) HandlePatchDisplay(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) writeFailed(w http.ResponseWriter, r *http.Request, orgID uuid.UUID, err error) {
 	h.logger.Error("seller: display update failed", slog.String("org_id", orgID.String()), slog.String("error", err.Error()))
 	httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("seller.update_failed", "could not save the change, please try again", r))
+}
+
+// HandlePatchProfile serves PATCH /v1/organizations/{org_id}/seller-profile:
+// the organization-wide switch of the contact form's Telegram leg,
+// {"contact_form_to_telegram": bool}.
+func (h *Handler) HandlePatchProfile(w http.ResponseWriter, r *http.Request) {
+	if !personOnly(w, r) || !h.ready(w, r) || h.pool == nil {
+		return
+	}
+	ctx := r.Context()
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
+	if !ok {
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 4<<10))
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("seller.invalid_body", "the request body is not valid JSON for this route", r))
+		return
+	}
+	var req struct {
+		ContactFormToTelegram *bool `json:"contact_form_to_telegram"`
+	}
+	dec := json.NewDecoder(strings.NewReader(string(body)))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil || dec.More() || req.ContactFormToTelegram == nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("seller.invalid_body", "send contact_form_to_telegram as true or false", r))
+		return
+	}
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		h.writeFailed(w, r, orgID, err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	updated, err := h.queries.WithTx(tx).SetContactFormToTelegram(ctx, orgID, *req.ContactFormToTelegram)
+	if err != nil {
+		h.writeFailed(w, r, orgID, err)
+		return
+	}
+	if !updated {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("org.not_found", "organization not found", r))
+		return
+	}
+	if h.audit != nil {
+		actor, _ := auth.ActorFromContext(ctx)
+		if err := h.audit.WriteTx(ctx, tx, audit.Event{
+			OccurredAt:   time.Now().UTC(),
+			ActorType:    "user", // rewritten to api_key by audit.WithServiceActor
+			ActorID:      actor.ID,
+			Action:       "v1.organization.contact_form_update",
+			ResourceType: "organization",
+			ResourceID:   orgID.String(),
+			RequestID:    logging.RequestID(ctx),
+			TraceID:      logging.TraceID(ctx),
+			IP:           httputil.ExtractClientIP(r),
+			Metadata:     map[string]any{"org_id": orgID.String(), "contact_form_to_telegram": *req.ContactFormToTelegram},
+		}); err != nil {
+			h.writeFailed(w, r, orgID, err)
+			return
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		h.writeFailed(w, r, orgID, err)
+		return
+	}
+	after, _, err := h.loadProfile(ctx, orgID)
+	if err != nil {
+		h.writeFailed(w, r, orgID, err)
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"seller_profile": after})
 }

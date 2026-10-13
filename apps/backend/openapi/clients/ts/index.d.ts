@@ -2642,7 +2642,14 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Switch the Telegram leg of the sales page's contact form
+         * @description `contact_form_to_telegram` decides whether buyers' messages from the
+         *     sales page's contact form also go to the organization's own sales
+         *     Telegram chat (the e-mail always goes). Requires `org.update`.
+         *     Audited as `v1.organization.contact_form_update`.
+         */
+        patch: operations["updateSellerProfile"];
         trace?: never;
     };
     "/v1/organizations/{org_id}/channels/{channel_id}/seller-display": {
@@ -5108,6 +5115,37 @@ export interface paths {
         get: operations["getPublicCheckoutStatus"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/organizer-contact/{org_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a buyer's message to the organizer of a hosted page
+         * @description The "Write to the organizer" form of the hosted sales page. The page
+         *     never publishes the organizer's e-mail: the message is stored and a
+         *     worker mails it to the channel's public e-mail (else to the
+         *     organization's own contact e-mail, never shown) with Reply-To set to
+         *     the buyer, and posts it to the organization's sales Telegram chat when
+         *     its switch is on. Protected by Cloudflare Turnstile (production
+         *     without a secret answers 503), a per-IP limit (5 an hour) and a
+         *     per-page limit (30 an hour) counted in the database, and a 16 KiB body
+         *     cap. No JWT. An unknown slug, a page whose messages would reach
+         *     nobody and a feed token of another organization answer the same 404.
+         *     The token must carry the Turnstile action "contact". The answer
+         *     never carries the organizer's address.
+         */
+        post: operations["sendOrganizerContact"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13175,7 +13213,9 @@ export interface components {
          */
         HostedPageSellerContact: {
             /**
-             * @description Public contact e-mail.
+             * @description Never answered since the contact form (2026-10-13): buyers write
+             *     through `contact_form`, the address only receives the messages.
+             *     Kept in the schema for older clients.
              * @example tickets@example.com
              */
             email?: string;
@@ -13184,6 +13224,58 @@ export interface components {
              * @example +34 600 000 000
              */
             phone?: string;
+        };
+        /** @description The "Write to the organizer" form of a hosted page. */
+        HostedPageContactForm: {
+            /** @description Always true when the block is present. */
+            available: boolean;
+            /**
+             * @description Cloudflare Turnstile site key for the form; omitted when the deployment runs without a captcha (never in production).
+             * @example 0x4AAAAAAAxxxxxxxxxxxxxx
+             */
+            turnstile_site_key?: string;
+            /**
+             * @description The privacy policy the form's consent links to (ONBOARDING_PRIVACY_URL, else the site's /legal/privacy); omitted when none is configured.
+             * @example https://arenasoldout.com/legal/privacy
+             */
+            privacy_url?: string;
+        };
+        /** @description A buyer's message to the organizer of a hosted page. */
+        OrganizerContactRequest: {
+            /**
+             * @description Sender's name, 1-100 characters.
+             * @example Anna
+             */
+            name: string;
+            /**
+             * @description Sender's e-mail; the organizer's reply goes there (Reply-To).
+             * @example anna@example.com
+             */
+            email: string;
+            /**
+             * @description The message, 10-2000 characters.
+             * @example Is the venue accessible by wheelchair?
+             */
+            message: string;
+            /** @description Must be true; the buyer agrees that the message is passed to the organizer. */
+            consent: boolean;
+            /** @description Cloudflare Turnstile response token. */
+            turnstile_token?: string;
+            /** @description The event page's feed token; empty on the promoter landing page. */
+            feed_token?: string;
+            /**
+             * @description Page language of the sender.
+             * @example es
+             */
+            locale?: string;
+        };
+        /** @description The message is stored and queued for delivery. */
+        OrganizerContactAccepted: {
+            /**
+             * @description Always "queued".
+             * @example queued
+             */
+            status: string;
         };
         /**
          * @description Legal identity of the seller of record, i.e. the organization that owns
@@ -13314,11 +13406,18 @@ export interface components {
             missing: string[];
             /** @description The organization's hosted-page channels, oldest first. */
             channels: components["schemas"]["SellerProfileChannel"][];
+            /** @description Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true). */
+            contact_form_to_telegram?: boolean;
         };
         /** @description Envelope of the seller-profile routes. */
         SellerProfileEnvelope: {
             /** @description The profile as stored after the call. */
             seller_profile: components["schemas"]["SellerProfile"];
+        };
+        /** @description The organization-wide switch of the contact form's Telegram leg. */
+        UpdateSellerProfileRequest: {
+            /** @description Post buyers' messages to the organization's sales Telegram chat too. */
+            contact_form_to_telegram: boolean;
         };
         /** @description Tri-state contact change; an absent key keeps, null or "" clears. */
         SellerDisplayContactPatch: {
@@ -13389,6 +13488,14 @@ export interface components {
              *     present and the event has a promoter.
              */
             promoter?: components["schemas"]["HostedPagePromoter"];
+            /**
+             * @description Present when the page offers the "Write to the organizer" form: the
+             *     channel has a public e-mail or the organization has its own
+             *     contact e-mail (a private recipient), and the deployment can check
+             *     the captcha. No address is ever answered. Ticket letters of a page
+             *     without a public e-mail link this form as <page>#contact.
+             */
+            contact_form?: components["schemas"]["HostedPageContactForm"];
         };
         /**
          * @description Response envelope for GET /v1/public/pages/{org_slug} — the promoter
@@ -13430,6 +13537,14 @@ export interface components {
              *     present and the slug names a promoter rather than the organization.
              */
             promoter?: components["schemas"]["HostedPagePromoter"];
+            /**
+             * @description Present when the page offers the "Write to the organizer" form: the
+             *     channel has a public e-mail or the organization has its own
+             *     contact e-mail (a private recipient), and the deployment can check
+             *     the captcha. No address is ever answered. Ticket letters of a page
+             *     without a public e-mail link this form as <page>#contact.
+             */
+            contact_form?: components["schemas"]["HostedPageContactForm"];
         };
         /**
          * @description Create-time payload for POST /v1/organizations/{org_id}/events.
@@ -31035,6 +31150,78 @@ export interface operations {
             };
         };
     };
+    updateSellerProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSellerProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; the profile as stored now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SellerProfileEnvelope"];
+                };
+            };
+            /** @description Invalid body (`seller.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such organization (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     updateSellerDisplay: {
         parameters: {
             query?: never;
@@ -39408,6 +39595,96 @@ export interface operations {
                 };
             };
             /** @description Database unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    sendOrganizerContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's first path segment (organization or promoter slug). */
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizerContactRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored and queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizerContactAccepted"];
+                };
+            };
+            /** @description Invalid name, e-mail, message, missing consent or a malformed body (`contact.invalid_*`, `contact.consent_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The captcha was not passed (`contact.captcha_failed`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The page has no contact form (`contact.not_available`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is larger than 16 KiB (`contact.too_large`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many messages from this IP or to this page (`contact.rate_limited`, Retry-After). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The message could not be stored (`contact.send_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable, or the captcha is not configured or cannot be checked. */
             503: {
                 headers: {
                     [name: string]: unknown;

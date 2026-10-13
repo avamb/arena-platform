@@ -57,7 +57,9 @@ describe('renderSellerBlock', () => {
     expect(text).toContain('Budova B');
     expect(text).toContain('110 00 Praha');
     expect(text).toContain('Czechia');
-    expect(el!.querySelector('a[href="mailto:info@lampyris.example"]')?.textContent).toBe('info@lampyris.example');
+    // An older backend may still send the e-mail: the page never prints it.
+    expect(el!.querySelector('a[href^="mailto:"]')).toBeNull();
+    expect(text).not.toContain('info@lampyris.example');
     expect(el!.querySelector('a[href="tel:+420777123456"]')?.textContent).toBe('+420 777 123 456');
     expect(text).not.toContain('Organizer');
   });
@@ -202,7 +204,7 @@ describe('renderSellerFooter', () => {
     expect(text).toContain('VAT ID CZ12345678');
     expect(text).toContain('Hlavní 1, Budova B, 110 00 Praha, Czechia');
     expect(host.querySelector('br')).toBeNull();
-    expect(host.querySelector('a[href="mailto:info@lampyris.example"]')).not.toBeNull();
+    expect(host.querySelector('a[href^="mailto:"]')).toBeNull();
     expect(host.querySelector('a[href^="tel:"]')).not.toBeNull();
   });
 
@@ -223,7 +225,7 @@ describe('renderSellerFooter', () => {
 
   it('escapes markup and localizes for he', () => {
     footerDom();
-    renderSellerFooter({ legal_name: '<b>x</b>', public_contact: { email: 'a@b.cz' } }, 'he');
+    renderSellerFooter({ legal_name: '<b>x</b>', public_contact: { email: 'a@b.cz', phone: '+972 50 000 0000' } }, 'he');
     const host = document.getElementById('asa-footer-seller')!;
     expect(host.querySelector('b')).toBeNull();
     expect(host.textContent).toContain('מוכר: <b>x</b>');

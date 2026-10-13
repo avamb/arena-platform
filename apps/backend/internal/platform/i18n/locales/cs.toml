@@ -134,3 +134,21 @@ other = "Na naší straně se něco pokazilo. Zkuste to znovu za minutu."
 
 ["bil24.sample_ticket"]
 other = "Toto je vzorová vstupenka. Neopravňuje ke vstupu."
+
+["contact.email.subject"]
+other = "Zpráva od kupujícího: {{.Name}}"
+
+["contact.email.intro"]
+other = "Kupující vám napsal přes kontaktní formulář vaší prodejní stránky Arena."
+
+["contact.email.from"]
+other = "Od"
+
+["contact.email.page"]
+other = "Prodejní stránka"
+
+["contact.email.reply"]
+other = "Kupujícímu odpovíte odpovědí na tento e-mail. Arena vaši odpověď nevidí."
+
+["contact.email.footer"]
+other = "Arena Sold Out poslala tuto zprávu, protože kontaktní formulář vaší prodejní stránky je zapnutý."
