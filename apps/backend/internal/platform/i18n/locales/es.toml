@@ -3124,10 +3124,10 @@ other = "🔁 Otro tipo de número"
 other = "🌐 <b>Página de venta: {{.Name}}</b>"
 
 ["bot.og.page_where"]
-other = "Los compradores ven este correo y este teléfono en esta página de venta cuando los datos del vendedor están visibles. Usa una dirección para entradas, no tu buzón personal."
+other = "Los compradores ven el teléfono en esta página de venta cuando los datos del vendedor están visibles. La página no muestra el correo: los compradores te escriben con el formulario de la página y los mensajes llegan a esta dirección. Usa una dirección para entradas, no tu buzón personal."
 
 ["bot.og.line_email"]
-other = "✉ Correo público: {{.Value}}"
+other = "✉ Correo para mensajes de compradores: {{.Value}}"
 
 ["bot.og.line_phone"]
 other = "📞 Teléfono público: {{.Value}}"
@@ -3221,3 +3221,24 @@ other = "No parece una dirección de correo. Revísala, por ejemplo tickets@tu-w
 
 ["bot.og.err_phone"]
 other = "No parece un número de teléfono. Usa cifras con el prefijo del país, por ejemplo +34 600 000 000."
+
+["bot.og.line_form_tg"]
+other = "💬 Mensajes de compradores en el chat de ventas: {{.Value}}"
+
+["bot.og.form_tg_on"]
+other = "activados"
+
+["bot.og.form_tg_off"]
+other = "desactivados"
+
+["bot.og.btn_form_tg_on"]
+other = "💬 Enviar mensajes de compradores al chat de ventas"
+
+["bot.og.btn_form_tg_off"]
+other = "💬 No enviar mensajes de compradores al chat de ventas"
+
+["bot.og.form_tg_saved_on"]
+other = "✅ Los mensajes de compradores ahora también llegan a tu chat de ventas."
+
+["bot.og.form_tg_saved_off"]
+other = "✅ Los mensajes de compradores ahora solo llegan al correo de la página de venta."

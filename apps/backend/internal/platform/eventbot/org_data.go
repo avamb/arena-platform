@@ -267,6 +267,11 @@ func (b *Bot) orgDataCallback(ctx context.Context, chatID int64, msgID int, from
 		b.orgRenderAskTax(ctx, chatID, &msgID, id, st, "")
 	case "tx":
 		b.orgApplyLegal(ctx, chatID, &msgID, id, jwt, st, map[string]any{"tax_id": nil, "tax_id_scheme": nil}, "bot.og.cleared")
+	case "tg":
+		if arg != "1" && arg != "0" {
+			return
+		}
+		b.orgApplyFormTelegram(ctx, chatID, &msgID, id, jwt, st, arg == "1")
 	case "cv", "ce", "cp", "cxe", "cxp", "on", "off":
 		chID, err := uuid.Parse(arg)
 		if err != nil {
@@ -349,6 +354,29 @@ func (b *Bot) orgApplyLegal(ctx context.Context, chatID int64, msgID *int, id *I
 	}
 	st.Field, st.Scheme, st.ChannelID = "", "", nil
 	b.orgRenderCard(ctx, chatID, msgID, id, st, p, b.texts.T(loc, doneKey, nil)+"\n\n")
+}
+
+// orgApplyFormTelegram switches whether buyers' messages from the sales page's
+// contact form also go to the organization's sales chat.
+func (b *Bot) orgApplyFormTelegram(ctx context.Context, chatID int64, msgID *int, id *Identity, jwt string, st orgDataDialog, on bool) {
+	loc := id.Locale()
+	p, err := b.arena.PatchSellerProfile(ctx, jwt, id.Current.OrgID, on)
+	if err != nil {
+		b.ecError(ctx, chatID, msgID, id, err, "og:h")
+		return
+	}
+	done := "bot.og.form_tg_saved_off"
+	if on {
+		done = "bot.og.form_tg_saved_on"
+	}
+	st.Field, st.Scheme, st.ChannelID = "", "", nil
+	b.orgRenderCard(ctx, chatID, msgID, id, st, p, b.texts.T(loc, done, nil)+"\n\n")
+}
+
+// orgFormToTelegram reads the profile's switch; an older server that does not
+// answer it means the default, on.
+func orgFormToTelegram(p openapi.SellerProfile) bool {
+	return p.ContactFormToTelegram == nil || *p.ContactFormToTelegram
 }
 
 // orgApplyDisplay sends a channel change to PATCH .../seller-display and
@@ -459,6 +487,13 @@ func (b *Bot) orgCardText(loc string, p openapi.SellerProfile) string {
 		}
 		sb.WriteString("\n• " + Esc(c.Name) + ": " + state)
 	}
+	if len(p.Channels) > 0 {
+		tg := b.texts.T(loc, "bot.og.form_tg_off", nil)
+		if orgFormToTelegram(p) {
+			tg = b.texts.T(loc, "bot.og.form_tg_on", nil)
+		}
+		sb.WriteString("\n" + b.texts.T(loc, "bot.og.line_form_tg", map[string]any{"Value": tg}))
+	}
 	if len(p.Missing) > 0 {
 		sb.WriteString("\n\n" + b.orgMissingText(loc, p.Missing))
 	}
@@ -481,6 +516,13 @@ func (b *Bot) orgCardRows(loc string, p openapi.SellerProfile) [][]models.Inline
 			Text:         b.texts.T(loc, "bot.og.btn_page", map[string]any{"Name": truncate(c.Name, 40)}),
 			CallbackData: "og:cv:" + c.Id.String(),
 		}})
+	}
+	if len(p.Channels) > 0 {
+		if orgFormToTelegram(p) {
+			rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.og.btn_form_tg_off", nil), CallbackData: "og:tg:0"}})
+		} else {
+			rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.og.btn_form_tg_on", nil), CallbackData: "og:tg:1"}})
+		}
 	}
 	return append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}})
 }
