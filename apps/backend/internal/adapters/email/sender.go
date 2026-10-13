@@ -26,6 +26,7 @@ import (
 	"net/mail"
 	"net/smtp"
 	"net/textproto"
+	"regexp"
 	"strings"
 )
 
@@ -49,6 +50,36 @@ type Message struct {
 	TextBody string
 	// Attachments are optional files to attach to the email.
 	Attachments []Attachment
+	// TrackingID optionally names the letter for the delivery-status
+	// webhook. The SMTP sender writes it as the X-Mailin-custom header,
+	// which Brevo echoes back on every transactional event of the message
+	// (emailstatus matches events by it when the message id is missing).
+	// Only [A-Za-z0-9:._-] is accepted; anything else is dropped.
+	TrackingID string
+}
+
+// Receipt is what the provider told us when it accepted a message.
+type Receipt struct {
+	// MessageID is the provider's id of the accepted message, as its
+	// webhook events name it (Brevo SMTP: the "queued as <…>" token of the
+	// final 250 reply). Empty when the provider did not say.
+	MessageID string
+}
+
+// ReceiptSender is implemented by senders that can report the provider's
+// message id of an accepted message.
+type ReceiptSender interface {
+	Sender
+	SendReceipt(ctx context.Context, msg Message) (Receipt, error)
+}
+
+// SendWithReceipt sends msg and returns the provider receipt when the sender
+// can give one; a plain Sender yields an empty receipt.
+func SendWithReceipt(ctx context.Context, s Sender, msg Message) (Receipt, error) {
+	if rs, ok := s.(ReceiptSender); ok {
+		return rs.SendReceipt(ctx, msg)
+	}
+	return Receipt{}, s.Send(ctx, msg)
 }
 
 // Attachment represents a file attached to an outgoing email.
@@ -189,18 +220,25 @@ func NewSMTPSender(cfg SMTPConfig) *SMTPSender {
 // Without attachments:
 //
 //	text/html (quoted-printable, simple single-part message)
-func (s *SMTPSender) Send(_ context.Context, msg Message) error {
+func (s *SMTPSender) Send(ctx context.Context, msg Message) error {
+	_, err := s.SendReceipt(ctx, msg)
+	return err
+}
+
+// SendReceipt is Send that also returns the message id the server reported
+// in its final reply to DATA (Brevo: "250 2.0.0 OK: queued as <id>").
+func (s *SMTPSender) SendReceipt(_ context.Context, msg Message) (Receipt, error) {
 	from := s.cfg.From
 	if msg.From != "" {
 		parsed, err := mail.ParseAddress(msg.From)
 		if err != nil || parsed.Address != msg.From {
-			return fmt.Errorf("smtp: invalid From address")
+			return Receipt{}, fmt.Errorf("smtp: invalid From address")
 		}
 		from = msg.From
 	}
 	raw, err := buildMIMEMessage(from, msg)
 	if err != nil {
-		return fmt.Errorf("smtp: build MIME message: %w", err)
+		return Receipt{}, fmt.Errorf("smtp: build MIME message: %w", err)
 	}
 
 	addr := net.JoinHostPort(s.cfg.Host, s.cfg.Port)
@@ -216,27 +254,27 @@ func (s *SMTPSender) Send(_ context.Context, msg Message) error {
 	return s.sendSTARTTLS(addr, auth, from, msg.To, raw)
 }
 
-func (s *SMTPSender) sendImplicitTLS(addr string, auth smtp.Auth, from, to string, raw []byte) error {
+func (s *SMTPSender) sendImplicitTLS(addr string, auth smtp.Auth, from, to string, raw []byte) (Receipt, error) {
 	tlsCfg := &tls.Config{
 		ServerName: s.cfg.Host,
 		MinVersion: tls.VersionTLS12,
 	}
 	conn, err := tls.Dial("tcp", addr, tlsCfg)
 	if err != nil {
-		return fmt.Errorf("smtp: dial TLS %s: %w", addr, err)
+		return Receipt{}, fmt.Errorf("smtp: dial TLS %s: %w", addr, err)
 	}
 	client, err := smtp.NewClient(conn, s.cfg.Host)
 	if err != nil {
-		return fmt.Errorf("smtp: new client (TLS): %w", err)
+		return Receipt{}, fmt.Errorf("smtp: new client (TLS): %w", err)
 	}
 	defer client.Close()
 	return deliverMessage(client, auth, from, to, raw)
 }
 
-func (s *SMTPSender) sendSTARTTLS(addr string, auth smtp.Auth, from, to string, raw []byte) error {
+func (s *SMTPSender) sendSTARTTLS(addr string, auth smtp.Auth, from, to string, raw []byte) (Receipt, error) {
 	client, err := smtp.Dial(addr)
 	if err != nil {
-		return fmt.Errorf("smtp: dial %s: %w", addr, err)
+		return Receipt{}, fmt.Errorf("smtp: dial %s: %w", addr, err)
 	}
 	defer client.Close()
 
@@ -246,41 +284,76 @@ func (s *SMTPSender) sendSTARTTLS(addr string, auth smtp.Auth, from, to string, 
 			MinVersion: tls.VersionTLS12,
 		}
 		if err := client.StartTLS(tlsCfg); err != nil {
-			return fmt.Errorf("smtp: STARTTLS: %w", err)
+			return Receipt{}, fmt.Errorf("smtp: STARTTLS: %w", err)
 		}
 	}
 
 	return deliverMessage(client, auth, from, to, raw)
 }
 
-// deliverMessage performs the SMTP envelope commands and data transfer.
-func deliverMessage(c *smtp.Client, auth smtp.Auth, from, to string, raw []byte) error {
+// deliverMessage performs the SMTP envelope commands and data transfer and
+// returns the message id the server named in its final reply to DATA.
+//
+// net/smtp's Data() writer reads that reply and throws its text away, so the
+// DATA exchange runs on the client's textproto connection directly: the same
+// commands Data() sends, plus keeping the reply.
+func deliverMessage(c *smtp.Client, auth smtp.Auth, from, to string, raw []byte) (Receipt, error) {
 	if auth != nil {
 		if err := c.Auth(auth); err != nil {
-			return fmt.Errorf("smtp: AUTH: %w", err)
+			return Receipt{}, fmt.Errorf("smtp: AUTH: %w", err)
 		}
 	}
 	if err := c.Mail(from); err != nil {
-		return fmt.Errorf("smtp: MAIL FROM: %w", err)
+		return Receipt{}, fmt.Errorf("smtp: MAIL FROM: %w", err)
 	}
 	if err := c.Rcpt(to); err != nil {
-		return fmt.Errorf("smtp: RCPT TO: %w", err)
+		return Receipt{}, fmt.Errorf("smtp: RCPT TO: %w", err)
 	}
-	wc, err := c.Data()
+	id, err := c.Text.Cmd("DATA")
 	if err != nil {
-		return fmt.Errorf("smtp: DATA: %w", err)
+		return Receipt{}, fmt.Errorf("smtp: DATA: %w", err)
 	}
+	c.Text.StartResponse(id)
+	_, _, err = c.Text.ReadResponse(354)
+	c.Text.EndResponse(id)
+	if err != nil {
+		return Receipt{}, fmt.Errorf("smtp: DATA: %w", err)
+	}
+	wc := c.Text.DotWriter()
 	if _, err := wc.Write(raw); err != nil {
-		return fmt.Errorf("smtp: write message body: %w", err)
+		return Receipt{}, fmt.Errorf("smtp: write message body: %w", err)
 	}
 	if err := wc.Close(); err != nil {
-		return fmt.Errorf("smtp: close DATA writer: %w", err)
+		return Receipt{}, fmt.Errorf("smtp: close DATA writer: %w", err)
 	}
-	return c.Quit()
+	_, reply, err := c.Text.ReadResponse(250)
+	if err != nil {
+		return Receipt{}, fmt.Errorf("smtp: close DATA writer: %w", err)
+	}
+	// The server accepted the message. A failed QUIT changes nothing about
+	// that; reporting it as an error would make the worker send the letter
+	// a second time.
+	_ = c.Quit()
+	return Receipt{MessageID: QueuedMessageID(reply)}, nil
+}
+
+// queuedAsRe finds the id in a final DATA reply such as Brevo's
+// "2.0.0 OK: queued as <202610131055.12345678901@smtp-relay.mailin.fr>" or
+// Postfix's "2.0.0 Ok: queued as 4ABCD12345".
+var queuedAsRe = regexp.MustCompile(`(?i)queued as\s+(<[^<>\s]{1,250}>|[^<>\s]{1,250})`)
+
+// QueuedMessageID extracts the message id of a final DATA reply, without
+// angle brackets. Empty when the reply names none.
+func QueuedMessageID(reply string) string {
+	m := queuedAsRe.FindStringSubmatch(reply)
+	if m == nil {
+		return ""
+	}
+	return strings.Trim(m[1], "<>")
 }
 
 // compile-time assertion
-var _ Sender = (*SMTPSender)(nil)
+var _ ReceiptSender = (*SMTPSender)(nil)
 
 // ──────────────────────────────────────────────────────────────────────────────
 // MIME builder
@@ -301,7 +374,7 @@ func buildMIMEMessage(from string, msg Message) ([]byte, error) {
 
 	if len(msg.Attachments) == 0 {
 		// Simple single-part HTML email (most common for ticket delivery without PDF).
-		writeRFC5322HeaderWithReplyTo(&buf, from, msg.To, msg.Subject, "text/html; charset=utf-8", msg.ReplyTo)
+		writeRFC5322HeaderWithReplyTo(&buf, from, msg.To, msg.Subject, "text/html; charset=utf-8", msg.ReplyTo, msg.TrackingID)
 		buf.WriteString("Content-Transfer-Encoding: quoted-printable\r\n\r\n")
 		qpw := quotedprintable.NewWriter(&buf)
 		if _, err := qpw.Write([]byte(msg.HTMLBody)); err != nil {
@@ -314,7 +387,7 @@ func buildMIMEMessage(from string, msg Message) ([]byte, error) {
 	// Multipart/mixed for emails with attachments.
 	mw := multipart.NewWriter(&buf)
 	writeRFC5322HeaderWithReplyTo(&buf, from, msg.To, msg.Subject,
-		"multipart/mixed; boundary=\""+mw.Boundary()+"\"", msg.ReplyTo)
+		"multipart/mixed; boundary=\""+mw.Boundary()+"\"", msg.ReplyTo, msg.TrackingID)
 	// The blank line that ends the header block. multipart.Writer does NOT
 	// write it: its first boundary is emitted as "--boundary\r\n" with no
 	// leading CRLF, so without this line the boundary sat directly under
@@ -388,7 +461,7 @@ func buildMIMEMessage(from string, msg Message) ([]byte, error) {
 // optional Reply-To (empty string omits the header). It does NOT write the
 // blank line separator — that is the caller's responsibility (or handled by
 // the multipart writer for mixed messages).
-func writeRFC5322HeaderWithReplyTo(buf *bytes.Buffer, from, to, subject, contentType, replyTo string) {
+func writeRFC5322HeaderWithReplyTo(buf *bytes.Buffer, from, to, subject, contentType, replyTo, trackingID string) {
 	buf.WriteString("From: ")
 	buf.WriteString(from)
 	buf.WriteString("\r\nTo: ")
@@ -399,9 +472,31 @@ func writeRFC5322HeaderWithReplyTo(buf *bytes.Buffer, from, to, subject, content
 		buf.WriteString("\r\nReply-To: ")
 		buf.WriteString(replyTo)
 	}
+	if validTrackingID(trackingID) {
+		buf.WriteString("\r\nX-Mailin-custom: ")
+		buf.WriteString(trackingID)
+	}
 	buf.WriteString("\r\nMIME-Version: 1.0\r\nContent-Type: ")
 	buf.WriteString(contentType)
 	buf.WriteString("\r\n")
+}
+
+// validTrackingID accepts a short token of [A-Za-z0-9:._-]. It goes into a
+// header verbatim, so nothing that could fold a line or inject a header
+// passes; an invalid id is simply not written.
+func validTrackingID(v string) bool {
+	if v == "" || len(v) > 120 {
+		return false
+	}
+	for _, r := range v {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == ':' || r == '.' || r == '_' || r == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // truncateStr clips s to at most n runes, appending "…" when truncated.

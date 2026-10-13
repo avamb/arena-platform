@@ -66,19 +66,12 @@ function telTarget(phone: string): string {
   return digits.replace(/(?!^)\+/g, '');
 }
 
-/** The e-mail and phone as links (mailto: / tel:), each only when present.
- * The values are left-to-right text even on a right-to-left page. */
+/** The phone as a tel: link, when present. The e-mail is never printed:
+ * since the contact form (2026-10-13) buyers write through it, and the API
+ * no longer sends the address. The value is left-to-right text even on a
+ * right-to-left page. */
 function contactLinks(seller: HostedPageSeller): HTMLElement[] {
   const out: HTMLElement[] = [];
-  const email = clean(seller.public_contact?.email);
-  if (email && !/[\s<>"]/.test(email)) {
-    const a = document.createElement('a');
-    a.className = 'asa-seller__link';
-    a.href = `mailto:${email}`;
-    a.setAttribute('dir', 'ltr');
-    a.textContent = email;
-    out.push(a);
-  }
   const phone = clean(seller.public_contact?.phone);
   if (phone) {
     const target = telTarget(phone);

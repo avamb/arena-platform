@@ -469,6 +469,7 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		b.leavePromo(ctx, from.ID)      // and a promo-code question (EC-11)
 		b.leaveIdleRefund(ctx, from.ID) // and a refund question: its word is never an answer after a command (EC-21)
 		b.leaveScanExc(ctx, from.ID)    // and the operator's scan exception reason
+		b.leaveOrgData(ctx, from.ID)    // and an organization data question (HP-4a)
 		switch cmd {
 		case "/start":
 			arg = strings.TrimSpace(arg)
@@ -541,6 +542,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	if text != "" && b.categoryText(ctx, chatID, from, text) {
 		return
 	}
+	if text != "" && b.orgDataText(ctx, chatID, from, text) {
+		return
+	}
 	if text != "" && b.ordersText(ctx, chatID, from, text) {
 		return
 	}
@@ -610,6 +614,9 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	if parts[0] != "ct" { // and the category dialog (EC-15)
 		b.leaveCategories(ctx, from.ID)
 	}
+	if parts[0] != "og" { // and the organization data question (HP-4a)
+		b.leaveOrgData(ctx, from.ID)
+	}
 	switch parts[0] {
 	case "el":
 		b.eventsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "el:"))
@@ -627,6 +634,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.promoterCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pr:"))
 	case "ct":
 		b.categoryCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ct:"))
+	case "og":
+		b.orgDataCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "og:"))
 	case "home":
 		b.clearTeamDialog(ctx, from.ID)
 		b.showHome(ctx, chatID, &msgID, from, "")
@@ -825,6 +834,9 @@ func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *model
 		rows = append(rows, row)
 	}
 	if row := b.promoterMenuRow(loc, id); row != nil { // promoters (EC-14)
+		rows = append(rows, row)
+	}
+	if row := b.orgDataMenuRow(loc, id); row != nil { // organization data (HP-4a)
 		rows = append(rows, row)
 	}
 	if isOwner(id) {

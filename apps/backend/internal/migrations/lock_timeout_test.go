@@ -10,7 +10,7 @@ import (
 // deploy that meets a long transaction fails fast instead of queueing every
 // sale behind it.
 func TestMigrations_ForeignKeysOnBusyTablesSetALockTimeout(t *testing.T) {
-	for _, name := range []string{"sql/0143_refund_scan_blocks.sql", "sql/0145_refund_scan_exceptions.sql"} {
+	for _, name := range []string{"sql/0143_refund_scan_blocks.sql", "sql/0145_refund_scan_exceptions.sql", "sql/0147_email_letters.sql"} {
 		raw, err := FS.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)

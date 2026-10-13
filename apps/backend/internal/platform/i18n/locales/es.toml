@@ -3086,3 +3086,297 @@ other = "Arena no cobró nada por el pedido n.º {{.Num}} (un pedido gratuito o 
 
 ["bot.ref.unknown_provider"]
 other = "Arena no conoce el proveedor de pago del pedido n.º {{.Num}}, así que no puede devolver el dinero. Devuélvelo en el panel del proveedor o escribe a soporte. No se envió nada."
+
+["bot.og.btn"]
+other = "🏢 Datos de la organización"
+
+["bot.og.owner_only"]
+other = "Solo el propietario de la organización puede cambiar sus datos. Pídeselo al propietario o vuelve al menú."
+
+["bot.og.card"]
+other = "🏢 <b>Datos de la organización</b> · {{.Org}}"
+
+["bot.og.card_where"]
+other = "Los compradores ven estos datos en la página de venta cuando muestras los datos del vendedor, y también en los correos con entradas y en las entradas PDF."
+
+["bot.og.line_legal_name"]
+other = "Razón social: {{.Value}}"
+
+["bot.og.line_legal_form"]
+other = "Forma jurídica: {{.Value}}"
+
+["bot.og.line_reg"]
+other = "Número de registro: {{.Value}}"
+
+["bot.og.line_tax"]
+other = "Número fiscal: {{.Value}}"
+
+["bot.og.line_address"]
+other = "Dirección legal: {{.Value}}"
+
+["bot.og.pages_title"]
+other = "<b>Páginas de venta</b>"
+
+["bot.og.pages_none"]
+other = "Tu organización aún no tiene página de venta. Aparece cuando publicas el primer evento."
+
+["bot.og.state_shown"]
+other = "✅ datos del vendedor visibles"
+
+["bot.og.state_hidden"]
+other = "⬜ datos del vendedor ocultos"
+
+["bot.og.none"]
+other = "sin indicar"
+
+["bot.og.now"]
+other = "Ahora: {{.Value}}"
+
+["bot.og.missing_title"]
+other = "Para mostrar los datos del vendedor en la página, completa:"
+
+["bot.og.m_legal_name"]
+other = "razón social"
+
+["bot.og.m_tax_id"]
+other = "número fiscal"
+
+["bot.og.m_address_line1"]
+other = "calle y número de la dirección legal"
+
+["bot.og.m_address_city"]
+other = "ciudad de la dirección legal"
+
+["bot.og.m_address_postal_code"]
+other = "código postal de la dirección legal"
+
+["bot.og.m_public_email"]
+other = "correo público de esta página de venta"
+
+["bot.og.btn_legal_name"]
+other = "✏ Razón social"
+
+["bot.og.btn_legal_form"]
+other = "✏ Forma jurídica"
+
+["bot.og.btn_reg"]
+other = "✏ N.º de registro"
+
+["bot.og.btn_tax"]
+other = "✏ Número fiscal"
+
+["bot.og.btn_address"]
+other = "✏ Calle"
+
+["bot.og.btn_city"]
+other = "✏ Ciudad"
+
+["bot.og.btn_postcode"]
+other = "✏ Código postal"
+
+["bot.og.btn_country"]
+other = "✏ País"
+
+["bot.og.btn_page"]
+other = "🌐 Página de venta: {{.Name}}"
+
+["bot.og.q_legal_name"]
+other = "✏ <b>Razón social</b> como en los documentos de registro. Por ejemplo, «Teatro Ejemplo S.L.» o tu nombre completo."
+
+["bot.og.q_legal_form"]
+other = "✏ <b>Forma jurídica</b>. Por ejemplo, S.L., s.r.o., GmbH o «autónomo». Hasta 80 caracteres."
+
+["bot.og.q_reg"]
+other = "✏ <b>Número de registro</b> en el registro mercantil, si lo tienes. Hasta 60 caracteres."
+
+["bot.og.q_address"]
+other = "✏ <b>Calle y número</b> de la dirección legal. La ciudad y el código postal tienen sus propios botones."
+
+["bot.og.q_city"]
+other = "✏ <b>Ciudad</b> de la dirección legal."
+
+["bot.og.q_postcode"]
+other = "✏ <b>Código postal</b> de la dirección legal."
+
+["bot.og.q_country"]
+other = "✏ <b>País</b> de la dirección legal: dos letras, por ejemplo ES, CZ o IL. O pulsa el botón de abajo."
+
+["bot.og.q_scheme"]
+other = "🧾 <b>Número fiscal.</b> Elige su tipo."
+
+["bot.og.scheme_eu_vat"]
+other = "NIF-IVA de la UE"
+
+["bot.og.scheme_gb_vat"]
+other = "IVA del Reino Unido"
+
+["bot.og.scheme_il_vat"]
+other = "Israel: número de empresa o de identidad"
+
+["bot.og.scheme_us_ein"]
+other = "EE. UU.: EIN"
+
+["bot.og.scheme_other"]
+other = "Otro número (NIF, IČO y otros)"
+
+["bot.og.q_tax_eu_vat"]
+other = "✏ Envía el <b>NIF-IVA</b> con el código del país. Por ejemplo, ESB12345678 o CZ12345678."
+
+["bot.og.q_tax_gb_vat"]
+other = "✏ Envía el <b>número de IVA del Reino Unido</b>. Por ejemplo, GB123456789."
+
+["bot.og.q_tax_il_vat"]
+other = "✏ Envía el <b>número israelí</b>: 9 cifras. Por ejemplo, 512345678."
+
+["bot.og.q_tax_us_ein"]
+other = "✏ Envía el <b>EIN</b>. Por ejemplo, 12-3456789."
+
+["bot.og.q_tax_other"]
+other = "✏ Envía el <b>número fiscal</b> como aparece en tus documentos. Por ejemplo, un NIF español o un IČO checo."
+
+["bot.og.other_scheme_btn"]
+other = "🔁 Otro tipo de número"
+
+["bot.og.page_card"]
+other = "🌐 <b>Página de venta: {{.Name}}</b>"
+
+["bot.og.page_where"]
+other = "Los compradores ven el teléfono en esta página de venta cuando los datos del vendedor están visibles. La página no muestra el correo: los compradores te escriben con el formulario de la página y los mensajes llegan a esta dirección. Los correos con entradas y las entradas en PDF de esta página muestran esta dirección, y las respuestas de los compradores a esos correos llegan a ella. Usa una dirección para entradas, no tu buzón personal."
+
+["bot.og.line_email"]
+other = "✉ Correo para mensajes de compradores: {{.Value}}"
+
+["bot.og.line_phone"]
+other = "📞 Teléfono público: {{.Value}}"
+
+["bot.og.line_state"]
+other = "Datos del vendedor en la página: {{.Value}}"
+
+["bot.og.btn_email"]
+other = "✏ Correo"
+
+["bot.og.btn_phone"]
+other = "✏ Teléfono"
+
+["bot.og.btn_show"]
+other = "✅ Mostrar los datos del vendedor en la página"
+
+["bot.og.btn_hide"]
+other = "⬜ Ocultar los datos del vendedor de la página"
+
+["bot.og.q_email"]
+other = "✏ <b>Correo público</b> de esta página de venta. Por ejemplo, tickets@tu-web.com."
+
+["bot.og.q_phone"]
+other = "✏ <b>Teléfono público</b> con el prefijo del país. Por ejemplo, +34 600 000 000. Puedes dejarlo vacío."
+
+["bot.og.personal_email"]
+other = "💡 Parece un buzón personal. Te sugerimos una dirección aparte para entradas, por ejemplo tickets@tu-web.com. Si lo prefieres, puedes dejar esta."
+
+["bot.og.clear_btn"]
+other = "🗑 Borrar"
+
+["bot.og.cancel_btn"]
+other = "« Cancelar"
+
+["bot.og.saved"]
+other = "✅ Guardado."
+
+["bot.og.cleared"]
+other = "✅ Borrado."
+
+["bot.og.shown_done"]
+other = "✅ Hecho. Ahora los compradores ven los datos del vendedor en esta página de venta."
+
+["bot.og.hidden_done"]
+other = "✅ Hecho. Los datos del vendedor ya no se muestran en esta página de venta."
+
+["bot.og.channel_gone"]
+other = "Esta página de venta ya no está en la lista. Aquí tienes los datos actuales."
+
+["bot.og.err_legal_name"]
+other = "Escribe la razón social, hasta 200 caracteres."
+
+["bot.og.err_legal_form"]
+other = "Escribe la forma jurídica, hasta 80 caracteres."
+
+["bot.og.err_reg"]
+other = "Escribe el número de registro, hasta 60 caracteres."
+
+["bot.og.err_address"]
+other = "Escribe la calle y el número, hasta 200 caracteres."
+
+["bot.og.err_city"]
+other = "Escribe la ciudad, hasta 100 caracteres."
+
+["bot.og.err_postcode"]
+other = "Escribe el código postal, hasta 20 caracteres."
+
+["bot.og.err_country"]
+other = "Escribe dos letras latinas del país, por ejemplo ES."
+
+["bot.og.err_tax_eu_vat"]
+other = "No parece un NIF-IVA de la UE. Empieza con el código del país, por ejemplo ESB12345678. Si tienes un NIF o IČO sin código, pulsa «Otro tipo de número»."
+
+["bot.og.err_tax_gb_vat"]
+other = "No parece un número de IVA del Reino Unido. Ejemplo: GB123456789."
+
+["bot.og.err_tax_il_vat"]
+other = "El número israelí tiene 9 cifras. Ejemplo: 512345678."
+
+["bot.og.err_tax_us_ein"]
+other = "El EIN tiene esta forma: 12-3456789."
+
+["bot.og.err_tax_other"]
+other = "Escribe el número en una línea, de 2 a 64 caracteres."
+
+["bot.og.err_tax_api"]
+other = "Arena no aceptó el número fiscal. Revisa el número y su tipo. Si estás cambiando otro campo, corrige primero el número fiscal."
+
+["bot.og.err_email"]
+other = "No parece una dirección de correo. Revísala, por ejemplo tickets@tu-web.com."
+
+["bot.og.err_phone"]
+other = "No parece un número de teléfono. Usa cifras con el prefijo del país, por ejemplo +34 600 000 000."
+
+["bot.og.line_form_tg"]
+other = "💬 Mensajes de compradores en el chat de ventas: {{.Value}}"
+
+["bot.og.form_tg_on"]
+other = "activados"
+
+["bot.og.form_tg_off"]
+other = "desactivados"
+
+["bot.og.btn_form_tg_on"]
+other = "💬 Enviar mensajes de compradores al chat de ventas"
+
+["bot.og.btn_form_tg_off"]
+other = "💬 No enviar mensajes de compradores al chat de ventas"
+
+["bot.og.form_tg_saved_on"]
+other = "✅ Los mensajes de compradores ahora también llegan a tu chat de ventas."
+
+["bot.og.form_tg_saved_off"]
+other = "✅ Los mensajes de compradores ahora solo llegan al correo de la página de venta."
+
+["bot.og.block_hidden"]
+other = "⚠️ Un campo obligatorio está vacío, así que los datos del vendedor se ocultaron en las páginas de venta: {{.N}}. Rellena el campo y vuelve a activar los datos del vendedor en la ficha de la página."
+
+["contact.email.subject"]
+other = "Mensaje de un comprador: {{.Name}}"
+
+["contact.email.intro"]
+other = "Un comprador te escribió con el formulario de contacto de tu página de venta de Arena."
+
+["contact.email.from"]
+other = "De"
+
+["contact.email.page"]
+other = "Página de venta"
+
+["contact.email.reply"]
+other = "Para contestar al comprador, responde a este correo. Arena no ve tu respuesta."
+
+["contact.email.footer"]
+other = "Arena Sold Out envió este mensaje porque el formulario de contacto de tu página de venta está activo."

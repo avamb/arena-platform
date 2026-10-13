@@ -256,6 +256,9 @@ var orgIsolationAuditedSafe = map[string]string{
 	"PATCH /v1/organizations/{org_id}/channels/{id}":                     "channels",
 	"PUT /v1/organizations/{org_id}/channels/{id}/gateway-credential":    "channels",
 	"PUT /v1/organizations/{org_id}/channels/{id}/wp-webhook":            "channels",
+	// hseller: the channel is looked up among the PATH organization's hosted-page
+	// channels only (covered by TestSellerProfile_StaysInsideTheOrganization).
+	"PATCH /v1/organizations/{org_id}/channels/{channel_id}/seller-display": "hseller",
 
 	// hcatalog venues: update/delete scoped by (id, org_id).
 	"DELETE /v1/organizations/{org_id}/venues/{id}": "venues",

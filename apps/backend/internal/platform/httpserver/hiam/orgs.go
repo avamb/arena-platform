@@ -24,6 +24,7 @@
 package hiam
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -34,6 +35,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -45,6 +47,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgread"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
 )
 
 // OrgResponse is the exported JSON representation of a single organization,
@@ -59,6 +62,7 @@ type OrgResponse struct {
 	DefaultLocale          string  `json:"default_locale"`
 	ReservationTTLSeconds  int32   `json:"reservation_ttl_seconds"`
 	LegalName              *string `json:"legal_name"`
+	LegalForm              *string `json:"legal_form"`
 	TaxID                  *string `json:"tax_id"`
 	TaxIDScheme            *string `json:"tax_id_scheme"`
 	RegistrationNumber     *string `json:"registration_number"`
@@ -99,6 +103,7 @@ type updateOrgRequest struct {
 	DefaultLocale          string         `json:"default_locale"`
 	ReservationTTLSeconds  int32          `json:"reservation_ttl_seconds"`
 	LegalName              optionalString `json:"legal_name"`
+	LegalForm              optionalString `json:"legal_form"`
 	TaxID                  optionalString `json:"tax_id"`
 	TaxIDScheme            optionalString `json:"tax_id_scheme"`
 	RegistrationNumber     optionalString `json:"registration_number"`
@@ -167,13 +172,7 @@ func optionalValue(value optionalString, existing *string) *string {
 	return &trimmed
 }
 
-var (
-	alpha2Country = regexp.MustCompile(`^[A-Z]{2}$`)
-	euVAT         = regexp.MustCompile(`^[A-Z]{2}[A-Z0-9]{2,12}$`)
-	gbVAT         = regexp.MustCompile(`^GB(?:[0-9]{9}|[0-9]{12}|GD[0-9]{3}|HA[0-9]{3})$`)
-	ilVAT         = regexp.MustCompile(`^[0-9]{9}$`)
-	usEIN         = regexp.MustCompile(`^[0-9]{2}-?[0-9]{7}$`)
-)
+var alpha2Country = regexp.MustCompile(`^[A-Z]{2}$`)
 
 // kybChangeAllowedForOwner reports whether an organization's own members may
 // move kyb_status from current to requested: no change, or a request for review.
@@ -221,22 +220,11 @@ func validateLegalUpdate(req updateOrgRequest, current gen.OrganizationRow) (leg
 		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "invalid_tax_id_scheme"
 	}
 	if taxID != nil {
-		valid := false
-		switch *taxScheme {
-		case "eu_vat":
-			valid = euVAT.MatchString(strings.ToUpper(*taxID))
-		case "gb_vat":
-			valid = gbVAT.MatchString(strings.ToUpper(*taxID))
-		case "il_vat":
-			valid = ilVAT.MatchString(*taxID)
-		case "us_ein":
-			valid = usEIN.MatchString(*taxID)
-		case "other":
-			valid = len(*taxID) >= 2 && len(*taxID) <= 64
-		default:
+		// One copy of the formats for every surface (sellerinfo).
+		if !sellerinfo.KnownScheme(*taxScheme) {
 			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "invalid_tax_id_scheme"
 		}
-		if !valid {
+		if !sellerinfo.ValidTaxID(*taxScheme, *taxID) {
 			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "invalid_tax_id"
 		}
 	}
@@ -422,9 +410,40 @@ func (h *Handler) HandleGetOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resp := responseFromOrganization(o)
+	resp.LegalForm = h.orgLegalForm(ctx, orgID)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"organization": responseFromOrganization(o),
+		"organization": resp,
 	})
+}
+
+// orgLegalForm reads organizations.legal_form (migration 0146), which the
+// shared OrganizationRow does not carry. Only GET /v1/organizations/{id} and
+// PATCH answer it; a failed read answers nil and is logged.
+func (h *Handler) orgLegalForm(ctx context.Context, orgID uuid.UUID) *string {
+	v, err := h.orgQueries.GetOrganizationLegalForm(ctx, orgID)
+	if err != nil {
+		h.logger.Warn("org: legal form read failed", slog.String("org_id", orgID.String()), slog.String("error", err.Error()))
+		return nil
+	}
+	return v
+}
+
+// legalFormValue checks a PATCH legal_form: absent keeps, null or "" clears,
+// otherwise 1-80 characters on one line. ok is false for a value the column
+// would refuse.
+func legalFormValue(v optionalString) (value *string, ok bool) {
+	if !v.Present || v.Value == nil {
+		return nil, true
+	}
+	s := strings.Join(strings.Fields(*v.Value), " ")
+	if s == "" {
+		return nil, true
+	}
+	if utf8.RuneCountInString(s) > sellerinfo.MaxLegalFormRunes {
+		return nil, false
+	}
+	return &s, true
 }
 
 // HandleUpdateOrg serves PATCH /v1/organizations/{id}.
@@ -463,6 +482,18 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if fields := identityFieldsSent(req); len(fields) > 0 {
+		if actor, ok := auth.ActorFromContext(ctx); ok && actor.IsService() {
+			httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelopeWithDetails(
+				"org.identity_fields_api_key_forbidden",
+				"an API key cannot change the organization's legal identity or contact; the organization owner sets them in the Telegram bot",
+				r,
+				map[string]any{"fields": fields},
+			))
+			return
+		}
+	}
+
 	req.Name = strings.TrimSpace(req.Name)
 	req.Slug = strings.TrimSpace(strings.ToLower(req.Slug))
 	req.Country = strings.TrimSpace(req.Country)
@@ -477,6 +508,10 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website, kybStatus, validationCode := validateLegalUpdate(req, current)
+	legalForm, legalFormOK := legalFormValue(req.LegalForm)
+	if validationCode == "" && !legalFormOK {
+		validationCode = "invalid_legal_form"
+	}
 	if validationCode != "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails("org."+validationCode, strings.ReplaceAll(validationCode, "_", " "), r, map[string]any{"field": strings.TrimPrefix(validationCode, "invalid_")}))
 		return
@@ -496,11 +531,8 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.orgQueries.UpdateOrganization(ctx,
-		orgID, req.Name, req.Slug, req.Country, req.DefaultLocale, req.ReservationTTLSeconds,
-		legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website, kybStatus,
-		nil,
-	)
+	updated, hidden, err := h.updateOrgTx(ctx, orgID, req, legalForm,
+		legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website, kybStatus)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("org.not_found", "organization not found", r))
@@ -568,9 +600,95 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"organization": responseFromOrganization(updated),
+	resp := responseFromOrganization(updated)
+	resp.LegalForm = h.orgLegalForm(ctx, orgID)
+	out := map[string]any{"organization": resp}
+	if len(hidden) > 0 {
+		ids := make([]string, len(hidden))
+		for i, id := range hidden {
+			ids[i] = id.String()
+		}
+		out["seller_display_hidden"] = ids
+	}
+	httputil.WriteJSON(w, http.StatusOK, out)
+}
+
+// identityFieldsSent lists the members of a PATCH that change the
+// organization's legal identity or its contact (what buyers see on the sales
+// page, in letters and on tickets). An organization API key may not send them.
+func identityFieldsSent(req updateOrgRequest) []string {
+	var out []string
+	for _, f := range []struct {
+		name string
+		v    optionalString
+	}{
+		{"legal_name", req.LegalName}, {"legal_form", req.LegalForm}, {"tax_id", req.TaxID},
+		{"tax_id_scheme", req.TaxIDScheme}, {"registration_number", req.RegistrationNumber},
+		{"legal_address_line1", req.LegalAddressLine1}, {"legal_address_line2", req.LegalAddressLine2},
+		{"legal_address_postal_code", req.LegalAddressPostalCode}, {"legal_address_city", req.LegalAddressCity},
+		{"legal_address_country", req.LegalAddressCountry}, {"contact_email", req.ContactEmail},
+		{"contact_phone", req.ContactPhone},
+	} {
+		if f.v.Present {
+			out = append(out, f.name)
+		}
+	}
+	return out
+}
+
+// updateOrgTx writes the organization row, its legal form and — when a field
+// the seller block needs is now empty — turns the block off on every channel
+// that shows it, all in one transaction, so a sales page never shows an
+// incomplete seller block (HP-4a). It answers the ids of the channels whose
+// block was turned off.
+func (h *Handler) updateOrgTx(ctx context.Context, orgID uuid.UUID, req updateOrgRequest, legalForm *string,
+	legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website *string, kybStatus string,
+) (gen.OrganizationRow, []uuid.UUID, error) {
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return gen.OrganizationRow{}, nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := h.orgQueries.WithTx(tx)
+	updated, err := q.UpdateOrganization(ctx,
+		orgID, req.Name, req.Slug, req.Country, req.DefaultLocale, req.ReservationTTLSeconds,
+		legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website, kybStatus,
+		nil,
+	)
+	if err != nil {
+		return gen.OrganizationRow{}, nil, err
+	}
+	if req.LegalForm.Present {
+		if _, err := q.SetOrganizationLegalForm(ctx, orgID, legalForm); err != nil {
+			return gen.OrganizationRow{}, nil, err
+		}
+	}
+	var hidden []uuid.UUID
+	if orgSellerFieldMissing(updated) {
+		if hidden, err = q.HideSellerDisplayForOrg(ctx, orgID); err != nil {
+			return gen.OrganizationRow{}, nil, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return gen.OrganizationRow{}, nil, err
+	}
+	return updated, hidden, nil
+}
+
+// orgSellerFieldMissing reports whether an organization-level field the seller
+// block requires is empty (the channel's public e-mail is checked by hseller).
+func orgSellerFieldMissing(o gen.OrganizationRow) bool {
+	s := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	missing := sellerinfo.Missing(sellerinfo.Profile{
+		LegalName: s(o.LegalName), TaxID: s(o.TaxID), AddressLine: s(o.LegalAddressLine1),
+		City: s(o.LegalAddressCity), PostalCode: s(o.LegalAddressPostalCode), PublicEmail: "-",
 	})
+	return len(missing) > 0
 }
 
 // HandleDeleteOrg serves DELETE /v1/organizations/{id}.

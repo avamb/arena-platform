@@ -6270,6 +6270,18 @@ type HealthzResponse struct {
 // HealthzResponseStatus Always "ok" when the process is alive
 type HealthzResponseStatus string
 
+// HostedPageContactForm The "Write to the organizer" form of a hosted page.
+type HostedPageContactForm struct {
+	// Available Always true when the block is present.
+	Available bool `json:"available"`
+
+	// PrivacyUrl The privacy policy the form's consent links to (ONBOARDING_PRIVACY_URL, else the site's /legal/privacy); omitted when none is configured.
+	PrivacyUrl *string `json:"privacy_url,omitempty"`
+
+	// TurnstileSiteKey Cloudflare Turnstile site key for the form; omitted when the deployment runs without a captcha (never in production).
+	TurnstileSiteKey *string `json:"turnstile_site_key,omitempty"`
+}
+
 // HostedPageEvent Event slice of the hosted sales page resolve response. Reuses the
 // same locale-resolved name/description projection as `EventItem`
 // where applicable.
@@ -6372,6 +6384,13 @@ type HostedPagePromoter struct {
 // is published to with `settings.hosted_page.enabled = true`; pass it
 // straight to the `<arena-tickets feed-token=…>` widget.
 type HostedPageResponse struct {
+	// ContactForm Present when the page offers the "Write to the organizer" form: the
+	// channel has a public e-mail or the organization has its own
+	// contact e-mail (a private recipient), and the deployment can check
+	// the captcha. No address is ever answered. Ticket letters of a page
+	// without a public e-mail link this form as <page>#contact.
+	ContactForm *HostedPageContactForm `json:"contact_form,omitempty"`
+
 	// DefaultLocale Organization default locale, used when no `?lang=` is present.
 	DefaultLocale string `json:"default_locale"`
 
@@ -6403,6 +6422,9 @@ type HostedPageSeller struct {
 
 	// Country ISO 3166-1 alpha-2 country of the seller (legal address country, else the organization country).
 	Country *string `json:"country,omitempty"`
+
+	// LegalForm Legal form as the owner wrote it; omitted when none is stored.
+	LegalForm *string `json:"legal_form,omitempty"`
 
 	// LegalName Registered legal name; the organization name when none is stored.
 	LegalName string `json:"legal_name"`
@@ -6444,7 +6466,9 @@ type HostedPageSellerAddress struct {
 // published contact; the organization's own contact e-mail and phone
 // are never used. Unset keys are omitted.
 type HostedPageSellerContact struct {
-	// Email Public contact e-mail.
+	// Email Never answered since the contact form (2026-10-13): buyers write
+	// through `contact_form`, the address only receives the messages.
+	// Kept in the schema for older clients.
 	Email *string `json:"email,omitempty"`
 
 	// Phone Public contact phone number.
@@ -6463,6 +6487,13 @@ type HostedPageSellerContact struct {
 // under every date, so a six-date season resolves in ONE request
 // instead of one per date.
 type HostedPromoterPageResponse struct {
+	// ContactForm Present when the page offers the "Write to the organizer" form: the
+	// channel has a public e-mail or the organization has its own
+	// contact e-mail (a private recipient), and the deployment can check
+	// the captcha. No address is ever answered. Ticket letters of a page
+	// without a public e-mail link this form as <page>#contact.
+	ContactForm *HostedPageContactForm `json:"contact_form,omitempty"`
+
 	// DefaultLocale Organization default locale, used when no `?lang=` is present.
 	DefaultLocale string `json:"default_locale"`
 
@@ -8474,6 +8505,12 @@ type OrderDetail struct {
 	// Items Line items of the order.
 	Items []OrderItemSummary `json:"items"`
 
+	// LetterFailed True when one of the letters failed (status failed).
+	LetterFailed bool `json:"letter_failed"`
+
+	// Letters The buyer letters of the order with their delivery status (see OrderLetter).
+	Letters []OrderLetter `json:"letters"`
+
 	// OrgId Owning organization.
 	OrgId openapi_types.UUID `json:"org_id"`
 
@@ -8585,6 +8622,77 @@ type OrderItemSummary struct {
 	UnitPrice int `json:"unit_price"`
 }
 
+// OrderLetter One buyer letter of an order and its delivery status, from Brevo's
+// transactional webhook. Ticket letters come first, grouped the way
+// they went out (one entry per sent letter, one for the tickets still
+// queued, one for those the mail relay refused, one for tickets sent
+// before letters were recorded), then the change, cancellation and
+// refund letters, oldest first. Times are UTC; a step that has not
+// happened is null. About "opened": Brevo learns of an open when the
+// letter's images are fetched. Apple Mail Privacy Protection fetches
+// them on delivery through Apple's proxy whether anybody reads the
+// letter or not; Brevo reports that as a proxy open, which arena
+// records as proxy_opened_at (proof of delivery, NOT of reading). An
+// opened_at can still be a mail client that loads images by itself.
+type OrderLetter struct {
+	// ClickedAt First click on a link of the letter (for example the ticket download). Proves delivery; not counted as reading, mail security scanners follow links too.
+	ClickedAt *time.Time `json:"clicked_at"`
+
+	// DeferredAt When Brevo first reported the letter deferred (the recipient's server asked it to retry later). Stays set after a later delivery.
+	DeferredAt *time.Time `json:"deferred_at"`
+
+	// DeliveredAt When Brevo reported the letter delivered.
+	DeliveredAt *time.Time `json:"delivered_at"`
+
+	// FailedAt When the failure that decided the status was reported.
+	FailedAt *time.Time `json:"failed_at"`
+
+	// FailureEvent hard_bounce, soft_bounce, invalid_email, blocked, error, or send_failed (the relay refused the letter).
+	FailureEvent *string `json:"failure_event"`
+
+	// FailureReason The provider's reason, with e-mail addresses, IP addresses and host names removed.
+	FailureReason *string `json:"failure_reason"`
+
+	// Id Letter id; null for a letter the relay has not accepted (queued, send_failed) or one sent before letters were recorded.
+	Id *openapi_types.UUID `json:"id"`
+
+	// Kind ticket, change, cancel or refund. Invitation letters have no order and are not listed on an order.
+	Kind string `json:"kind"`
+
+	// OpenedAt When Brevo first reported an open.
+	OpenedAt *time.Time `json:"opened_at"`
+
+	// ProxyOpenedAt When a mail proxy (Apple Mail Privacy Protection, image proxies) first fetched the letter. Proof of delivery, not of reading.
+	ProxyOpenedAt *time.Time `json:"proxy_opened_at"`
+
+	// QueuedAt When the delivery job was queued (queued and send_failed entries only).
+	QueuedAt *time.Time `json:"queued_at"`
+
+	// Recipient Address the letter was sent to.
+	Recipient string `json:"recipient"`
+
+	// SentAt When the mail relay accepted the letter.
+	SentAt *time.Time `json:"sent_at"`
+
+	// Status queued (the delivery job waits), sent (the mail relay accepted
+	// the letter), delayed (the recipient's server asked Brevo to try
+	// again later; Brevo keeps retrying), delivered (the recipient's
+	// server accepted it, or a mail proxy fetched it, or a link was
+	// clicked), opened, failed (bounced, blocked, invalid address,
+	// provider error, or the relay refused it). A failure is final
+	// unless a later delivery is reported.
+	Status string `json:"status"`
+
+	// Stuck True when the letter has been sent or delayed for more than six
+	// hours with no delivery while the webhook kept reporting on other
+	// letters: the buyer most likely has no letter. letter_failed is
+	// also true then.
+	Stuck bool `json:"stuck"`
+
+	// TicketIds Tickets the letter carries (empty for change, cancellation and refund letters).
+	TicketIds []openapi_types.UUID `json:"ticket_ids"`
+}
+
 // OrderListItem defines model for OrderListItem.
 type OrderListItem struct {
 	// BuyerEmail Buyer's email, if captured.
@@ -8643,6 +8751,13 @@ type OrderListItem struct {
 
 	// Id UUIDv7 primary key of the order row.
 	Id openapi_types.UUID `json:"id"`
+
+	// LetterFailed True when the buyer did not get a letter: a ticket whose
+	// letter failed (bounced, blocked, refused by the relay), or a
+	// change, cancellation or refund letter that failed and was not
+	// followed by a newer one of the same kind. Details on the
+	// order card (letters).
+	LetterFailed bool `json:"letter_failed"`
 
 	// OrgId Owning organization.
 	OrgId openapi_types.UUID `json:"org_id"`
@@ -9243,6 +9358,12 @@ type OrganizationItem struct {
 	// LegalAddressPostalCode Postal / ZIP code of the registered office.
 	LegalAddressPostalCode *string `json:"legal_address_postal_code"`
 
+	// LegalForm Legal form of the entity as the owner wrote it ("S.L.", "s.r.o.",
+	// "autónomo"), at most 80 characters (migration 0146). Answered by
+	// GET /v1/organizations/{id} and PATCH /v1/organizations/{id} only;
+	// the list and create routes answer null.
+	LegalForm *string `json:"legal_form"`
+
 	// LegalName Registered juridical name of the tenant entity (distinct from
 	// the public display name). Used on invoices, contracts, and
 	// tax forms. NULL until the organization completes its legal
@@ -9323,6 +9444,36 @@ type OrganizerContact struct {
 
 	// TargetName Name of that promoter or organization.
 	TargetName string `json:"target_name"`
+}
+
+// OrganizerContactAccepted The message is stored and queued for delivery.
+type OrganizerContactAccepted struct {
+	// Status Always "queued".
+	Status string `json:"status"`
+}
+
+// OrganizerContactRequest A buyer's message to the organizer of a hosted page.
+type OrganizerContactRequest struct {
+	// Consent Must be true; the buyer agrees that the message is passed to the organizer.
+	Consent bool `json:"consent"`
+
+	// Email Sender's e-mail; the organizer's reply goes there (Reply-To).
+	Email string `json:"email"`
+
+	// FeedToken The event page's feed token; empty on the promoter landing page.
+	FeedToken *string `json:"feed_token,omitempty"`
+
+	// Locale Page language of the sender.
+	Locale *string `json:"locale,omitempty"`
+
+	// Message The message, 10-2000 characters.
+	Message string `json:"message"`
+
+	// Name Sender's name, 1-100 characters.
+	Name string `json:"name"`
+
+	// TurnstileToken Cloudflare Turnstile response token.
+	TurnstileToken *string `json:"turnstile_token,omitempty"`
 }
 
 // PaginationMeta Standard pagination metadata returned by list endpoints.
@@ -11496,6 +11647,109 @@ type SeatingSeatStatusResponse struct {
 	StatusVersion int64 `json:"status_version"`
 }
 
+// SellerDisplayContactPatch Tri-state contact change; an absent key keeps, null or "" clears.
+type SellerDisplayContactPatch struct {
+	// Email Public role e-mail (400 `seller.invalid_email` when malformed).
+	Email *string `json:"email"`
+
+	// Phone Public phone, 6-15 digits (400 `seller.invalid_phone` when malformed).
+	Phone *string `json:"phone"`
+}
+
+// SellerProfile The owner's "Organization data": the legal data the sales page prints in
+// its seller block, and every hosted-page channel with its block settings.
+// Legal fields are changed through PATCH /v1/organizations/{id}.
+type SellerProfile struct {
+	// Channels The organization's hosted-page channels, oldest first.
+	Channels []SellerProfileChannel `json:"channels"`
+
+	// ContactFormToTelegram Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true).
+	ContactFormToTelegram *bool `json:"contact_form_to_telegram,omitempty"`
+
+	// Country Country of the organization (stands in for the address country on the page).
+	Country string `json:"country"`
+
+	// LegalAddressCity Registered address, city.
+	LegalAddressCity *string `json:"legal_address_city"`
+
+	// LegalAddressCountry Registered address, ISO 3166-1 alpha-2 country.
+	LegalAddressCountry *string `json:"legal_address_country"`
+
+	// LegalAddressLine1 Registered address, street line.
+	LegalAddressLine1 *string `json:"legal_address_line1"`
+
+	// LegalAddressLine2 Registered address, second line.
+	LegalAddressLine2 *string `json:"legal_address_line2"`
+
+	// LegalAddressPostalCode Registered address, postal code.
+	LegalAddressPostalCode *string `json:"legal_address_postal_code"`
+
+	// LegalForm Legal form as the owner wrote it.
+	LegalForm *string `json:"legal_form"`
+
+	// LegalName Registered legal name.
+	LegalName *string `json:"legal_name"`
+
+	// Missing Required organization fields still empty (the channel list adds public_email per channel).
+	Missing []string `json:"missing"`
+
+	// OrgId Organization id.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Display name of the organization.
+	OrgName string `json:"org_name"`
+
+	// RegistrationNumber Company registration number.
+	RegistrationNumber *string `json:"registration_number"`
+
+	// TaxId Tax or VAT identifier.
+	TaxId *string `json:"tax_id"`
+
+	// TaxIdScheme Scheme of tax_id (eu_vat, gb_vat, il_vat, us_ein or other).
+	TaxIdScheme *string `json:"tax_id_scheme"`
+}
+
+// SellerProfileChannel One channel of the organization that runs a hosted sales page.
+type SellerProfileChannel struct {
+	// EmailLooksPersonal True when the public e-mail is at a free mailbox provider (gmail.com,
+	// inbox.ru, outlook.com, ...). A hint for the owner to use a role
+	// address; it never blocks a save.
+	EmailLooksPersonal bool `json:"email_looks_personal"`
+
+	// Id Sales channel id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Missing Required data still empty before `show_seller` may be turned on, in a
+	// stable order: legal_name, tax_id, address_line1, address_city,
+	// address_postal_code, public_email. Empty when the block may be shown.
+	Missing []string `json:"missing"`
+
+	// Name Sales channel name.
+	Name string `json:"name"`
+
+	// PublicContact The channel's published contact, null when it has none.
+	PublicContact *SellerProfileContact `json:"public_contact"`
+
+	// ShowSeller Whether the sales page of this channel shows the seller block (`settings.hosted_page.show_seller`).
+	ShowSeller bool `json:"show_seller"`
+}
+
+// SellerProfileContact The contact a hosted-page channel publishes
+// (`settings.hosted_page.public_contact`). Unset keys are omitted.
+type SellerProfileContact struct {
+	// Email Public role e-mail of the channel.
+	Email *string `json:"email,omitempty"`
+
+	// Phone Public phone number of the channel.
+	Phone *string `json:"phone,omitempty"`
+}
+
+// SellerProfileEnvelope Envelope of the seller-profile routes.
+type SellerProfileEnvelope struct {
+	// SellerProfile The profile as stored after the call.
+	SellerProfile SellerProfile `json:"seller_profile"`
+}
+
 // ServerInfoResponse defines model for ServerInfoResponse.
 type ServerInfoResponse struct {
 	// BuildSha Git commit SHA embedded at build time via runtime/debug.ReadBuildInfo
@@ -12982,6 +13236,11 @@ type UpdateOrganizationRequest struct {
 	// LegalAddressPostalCode New registered-office postal code (empty string clears).
 	LegalAddressPostalCode *string `json:"legal_address_postal_code,omitempty"`
 
+	// LegalForm New legal form, 1-80 characters on one line (400
+	// `org.invalid_legal_form` otherwise). Absent keeps the stored
+	// value, `null` or an empty string clears it.
+	LegalForm *string `json:"legal_form"`
+
 	// LegalName New registered juridical name. Empty string leaves existing
 	// value. Required (non-empty) when this same body sets
 	// `kyb_status` to `pending` or `verified`.
@@ -13159,6 +13418,24 @@ type UpdateSeatingPlanRequestStatus string
 
 // UpdateSeatingPlanRequestVisibility New share scope.
 type UpdateSeatingPlanRequestVisibility string
+
+// UpdateSellerDisplayRequest Change of one hosted-page channel's seller block. Absent members keep
+// the stored value. `show_seller: true` is refused with 422
+// `seller.incomplete` (details.missing) while required data is empty, and
+// so is clearing the e-mail of a channel that keeps the block on.
+type UpdateSellerDisplayRequest struct {
+	// PublicContact The published contact; null removes it.
+	PublicContact *SellerDisplayContactPatch `json:"public_contact"`
+
+	// ShowSeller Show the seller block on this channel's sales page.
+	ShowSeller *bool `json:"show_seller,omitempty"`
+}
+
+// UpdateSellerProfileRequest The organization-wide switch of the contact form's Telegram leg.
+type UpdateSellerProfileRequest struct {
+	// ContactFormToTelegram Post buyers' messages to the organization's sales Telegram chat too.
+	ContactFormToTelegram bool `json:"contact_form_to_telegram"`
+}
 
 // UpdateSessionRequest Partial update for PATCH
 // /v1/organizations/{org_id}/events/{event_id}/sessions/{id}. All
@@ -14792,6 +15069,28 @@ type GetTicketCredentialParams struct {
 	Type *string `form:"type,omitempty" json:"type,omitempty"`
 }
 
+// BrevoDeliveryStatusWebhookBearerJSONBody defines parameters for BrevoDeliveryStatusWebhookBearer.
+type BrevoDeliveryStatusWebhookBearerJSONBody struct {
+	union json.RawMessage
+}
+
+// BrevoDeliveryStatusWebhookBearerJSONBody0 defines parameters for BrevoDeliveryStatusWebhookBearer.
+type BrevoDeliveryStatusWebhookBearerJSONBody0 map[string]interface{}
+
+// BrevoDeliveryStatusWebhookBearerJSONBody1 defines parameters for BrevoDeliveryStatusWebhookBearer.
+type BrevoDeliveryStatusWebhookBearerJSONBody1 = []map[string]interface{}
+
+// BrevoDeliveryStatusWebhookJSONBody defines parameters for BrevoDeliveryStatusWebhook.
+type BrevoDeliveryStatusWebhookJSONBody struct {
+	union json.RawMessage
+}
+
+// BrevoDeliveryStatusWebhookJSONBody0 defines parameters for BrevoDeliveryStatusWebhook.
+type BrevoDeliveryStatusWebhookJSONBody0 map[string]interface{}
+
+// BrevoDeliveryStatusWebhookJSONBody1 defines parameters for BrevoDeliveryStatusWebhook.
+type BrevoDeliveryStatusWebhookJSONBody1 = []map[string]interface{}
+
 // UpdateWebhookSubscriberJSONBody defines parameters for UpdateWebhookSubscriber.
 type UpdateWebhookSubscriberJSONBody struct {
 	// Active Pause (`false`) or resume (`true`) delivery to this
@@ -15013,6 +15312,9 @@ type CreateChannelJSONRequestBody = CreateChannelRequest
 // CreateFeedTokenJSONRequestBody defines body for CreateFeedToken for application/json ContentType.
 type CreateFeedTokenJSONRequestBody CreateFeedTokenJSONBody
 
+// UpdateSellerDisplayJSONRequestBody defines body for UpdateSellerDisplay for application/json ContentType.
+type UpdateSellerDisplayJSONRequestBody = UpdateSellerDisplayRequest
+
 // UpdateChannelJSONRequestBody defines body for UpdateChannel for application/json ContentType.
 type UpdateChannelJSONRequestBody = UpdateChannelRequest
 
@@ -15136,6 +15438,9 @@ type UpdatePromoterJSONRequestBody = UpdatePromoterRequest
 // PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody defines body for PostV1OrganizationsOrgIdRefundsRefundIdResolve for application/json ContentType.
 type PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody = ResolveOrderRefundRequest
 
+// UpdateSellerProfileJSONRequestBody defines body for UpdateSellerProfile for application/json ContentType.
+type UpdateSellerProfileJSONRequestBody = UpdateSellerProfileRequest
+
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear for application/json ContentType.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody
 
@@ -15168,6 +15473,9 @@ type StartPublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutStartRequest
 
 // PostPublicFeedFunnelEventsJSONRequestBody defines body for PostPublicFeedFunnelEvents for application/json ContentType.
 type PostPublicFeedFunnelEventsJSONRequestBody = WidgetFunnelEventsBatch
+
+// SendOrganizerContactJSONRequestBody defines body for SendOrganizerContact for application/json ContentType.
+type SendOrganizerContactJSONRequestBody = OrganizerContactRequest
 
 // SubmitReconciliationReportJSONRequestBody defines body for SubmitReconciliationReport for application/json ContentType.
 type SubmitReconciliationReportJSONRequestBody SubmitReconciliationReportJSONBody
@@ -15219,6 +15527,12 @@ type CancelTicketJSONRequestBody = CancelTicketRequest
 
 // CreateSeatingPlanJSONRequestBody defines body for CreateSeatingPlan for application/json ContentType.
 type CreateSeatingPlanJSONRequestBody = CreateSeatingPlanRequest
+
+// BrevoDeliveryStatusWebhookBearerJSONRequestBody defines body for BrevoDeliveryStatusWebhookBearer for application/json ContentType.
+type BrevoDeliveryStatusWebhookBearerJSONRequestBody BrevoDeliveryStatusWebhookBearerJSONBody
+
+// BrevoDeliveryStatusWebhookJSONRequestBody defines body for BrevoDeliveryStatusWebhook for application/json ContentType.
+type BrevoDeliveryStatusWebhookJSONRequestBody BrevoDeliveryStatusWebhookJSONBody
 
 // RegisterWebhookSubscriberJSONRequestBody defines body for RegisterWebhookSubscriber for application/json ContentType.
 type RegisterWebhookSubscriberJSONRequestBody = RegisterWebhookSubscriberRequest

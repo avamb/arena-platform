@@ -897,6 +897,18 @@ export interface paths {
          * @description Applies a partial update to an active organization. Empty or omitted fields
          *     leave the existing value unchanged. Requires JWT authentication and "org.update"
          *     permission. Returns 409 if the new name or slug conflicts with another active org.
+         *
+         *     An organization API key may not send the fields of the legal identity
+         *     and the contact (`legal_name`, `legal_form`, `tax_id`, `tax_id_scheme`,
+         *     `registration_number`, `legal_address_*`, `contact_email`,
+         *     `contact_phone`): 403 `org.identity_fields_api_key_forbidden`, with the
+         *     refused fields in `error.details.fields`.
+         *
+         *     The row, its legal form and the seller block are written in one
+         *     transaction: when the update leaves a field the sales page's seller
+         *     block requires empty (legal name, tax number, street, city, postal
+         *     code), the block is turned off on every channel that showed it and the
+         *     answer lists those channels in `seller_display_hidden`.
          */
         patch: operations["patchV1OrganizationsId"];
         trace?: never;
@@ -2607,6 +2619,66 @@ export interface paths {
          *     organization. Another organization's promoter id answers 404.
          */
         patch: operations["updatePromoter"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/seller-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the organization's seller data and its sales-page channels
+         * @description The owner's "Organization data" (HP-4a): the legal data the hosted sales
+         *     page prints in its seller block, every hosted-page channel with
+         *     `show_seller` and its public contact, and what is still missing before
+         *     the block may be shown. Requires `org.update` in the organization (the
+         *     owner; the manager does not hold it).
+         */
+        get: operations["getSellerProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Switch the Telegram leg of the sales page's contact form
+         * @description `contact_form_to_telegram` decides whether buyers' messages from the
+         *     sales page's contact form also go to the organization's own sales
+         *     Telegram chat (the e-mail always goes). Requires `org.update`.
+         *     Audited as `v1.organization.contact_form_update`.
+         */
+        patch: operations["updateSellerProfile"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/channels/{channel_id}/seller-display": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Switch the seller block and set the public contact of a sales-page channel
+         * @description Writes `settings.hosted_page.show_seller` and
+         *     `settings.hosted_page.public_contact` of one hosted-page channel of the
+         *     organization; every other setting is kept. Requires `org.update` in the
+         *     organization. A channel of another organization, or one without a hosted
+         *     page, answers 404 `seller.channel_not_found`. Audited as
+         *     `v1.channel.seller_display_update` without the addresses.
+         *
+         *     This is the only route that writes these two keys: the generic channel
+         *     create and PATCH keep the stored values whatever `settings` they are
+         *     sent, and an organization API key is refused here.
+         */
+        patch: operations["updateSellerDisplay"];
         trace?: never;
     };
     "/v1/organizations/{org_id}/events/{id}/promoter": {
@@ -5049,6 +5121,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/organizer-contact/{org_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a buyer's message to the organizer of a hosted page
+         * @description The "Write to the organizer" form of the hosted sales page. The page
+         *     never publishes the organizer's e-mail: the message is stored and a
+         *     worker mails it to the channel's public e-mail (else to the
+         *     organization's own contact e-mail, never shown) with Reply-To set to
+         *     the buyer, and posts it to the organization's sales Telegram chat when
+         *     its switch is on. Protected by Cloudflare Turnstile (production
+         *     without a secret answers 503), a per-IP limit (5 an hour) and a
+         *     per-page limit (30 an hour) counted in the database, and a 16 KiB body
+         *     cap. No JWT. An unknown slug, a page whose messages would reach
+         *     nobody and a feed token of another organization answer the same 404.
+         *     The token must carry the Turnstile action "contact". The answer
+         *     never carries the organizer's address.
+         */
+        post: operations["sendOrganizerContact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/checkout/{checkout_token}/recover": {
         parameters: {
             query?: never;
@@ -5952,6 +6055,70 @@ export interface paths {
          * @description Unauthenticated endpoint. Stripe-signature verified inside the handler.
          */
         post: operations["stripeBillingWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/webhooks/brevo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive Brevo transactional delivery events
+         * @description Brevo's transactional webhook: what happened to the buyer letters
+         *     arena sent (ticket letter, invitation, session change or
+         *     cancellation, refund). Mounted only when BREVO_WEBHOOK_TOKEN is set.
+         *     This route takes the token from "Authorization: Bearer <token>"
+         *     (a webhook created through Brevo's API with an auth object), so
+         *     the token never appears in a URL. BREVO_WEBHOOK_TOKEN_PREVIOUS is
+         *     accepted too during a rotation; tokens are compared in
+         *     constant time. The body is one Brevo event object or an array of
+         *     them, capped at 1 MiB (never by the number of events). Events of
+         *     messages arena did not send (the Brevo account may be shared with
+         *     other sites) and event types arena does not model (unsubscribed,
+         *     spam, list addition) are acknowledged with 200 and ignored. Setup:
+         *     docs/ops/brevo_delivery_status_webhook_ru.md.
+         */
+        post: operations["brevoDeliveryStatusWebhookBearer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/webhooks/brevo/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive Brevo transactional delivery events
+         * @description Brevo's transactional webhook: what happened to the buyer letters
+         *     arena sent (ticket letter, invitation, session change or
+         *     cancellation, refund). Mounted only when BREVO_WEBHOOK_TOKEN is set.
+         *     The token in the path is the credential, for a webhook created in
+         *     Brevo's web form, which takes only a URL; prefer POST
+         *     /v1/webhooks/brevo with a bearer header. BREVO_WEBHOOK_TOKEN_PREVIOUS
+         *     is accepted too during a rotation; tokens are compared in
+         *     constant time. The body is one Brevo event object or an array of
+         *     them, capped at 1 MiB (never by the number of events). Events of
+         *     messages arena did not send (the Brevo account may be shared with
+         *     other sites) and event types arena does not model (unsubscribed,
+         *     spam, list addition) are acknowledged with 200 and ignored. Setup:
+         *     docs/ops/brevo_delivery_status_webhook_ru.md.
+         */
+        post: operations["brevoDeliveryStatusWebhook"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8978,6 +9145,14 @@ export interface components {
              */
             legal_name?: string | null;
             /**
+             * @description Legal form of the entity as the owner wrote it ("S.L.", "s.r.o.",
+             *     "autónomo"), at most 80 characters (migration 0146). Answered by
+             *     GET /v1/organizations/{id} and PATCH /v1/organizations/{id} only;
+             *     the list and create routes answer null.
+             * @example GmbH
+             */
+            legal_form?: string | null;
+            /**
              * @description Tax registration identifier (VAT, EIN, etc.). Format is
              *     validated application-side based on `tax_id_scheme`.
              * @example DE123456789
@@ -9210,6 +9385,13 @@ export interface components {
              * @example ACME Tickets GmbH
              */
             legal_name?: string;
+            /**
+             * @description New legal form, 1-80 characters on one line (400
+             *     `org.invalid_legal_form` otherwise). Absent keeps the stored
+             *     value, `null` or an empty string clears it.
+             * @example GmbH
+             */
+            legal_form?: string | null;
             /**
              * @description New tax registration identifier (empty string clears).
              * @example DE123456789
@@ -10561,6 +10743,14 @@ export interface components {
          *     second call.
          */
         OrderListItem: components["schemas"]["OrderSummary"] & {
+            /**
+             * @description True when the buyer did not get a letter: a ticket whose
+             *     letter failed (bounced, blocked, refused by the relay), or a
+             *     change, cancellation or refund letter that failed and was not
+             *     followed by a newer one of the same kind. Details on the
+             *     order card (letters).
+             */
+            letter_failed: boolean;
             /** @description Name of the event the order's session belongs to. */
             event_name: string;
             /**
@@ -10804,6 +10994,94 @@ export interface components {
             kind: string;
         };
         /**
+         * @description One buyer letter of an order and its delivery status, from Brevo's
+         *     transactional webhook. Ticket letters come first, grouped the way
+         *     they went out (one entry per sent letter, one for the tickets still
+         *     queued, one for those the mail relay refused, one for tickets sent
+         *     before letters were recorded), then the change, cancellation and
+         *     refund letters, oldest first. Times are UTC; a step that has not
+         *     happened is null. About "opened": Brevo learns of an open when the
+         *     letter's images are fetched. Apple Mail Privacy Protection fetches
+         *     them on delivery through Apple's proxy whether anybody reads the
+         *     letter or not; Brevo reports that as a proxy open, which arena
+         *     records as proxy_opened_at (proof of delivery, NOT of reading). An
+         *     opened_at can still be a mail client that loads images by itself.
+         */
+        OrderLetter: {
+            /**
+             * Format: uuid
+             * @description Letter id; null for a letter the relay has not accepted (queued, send_failed) or one sent before letters were recorded.
+             */
+            id: string | null;
+            /** @description ticket, change, cancel or refund. Invitation letters have no order and are not listed on an order. */
+            kind: string;
+            /**
+             * @description queued (the delivery job waits), sent (the mail relay accepted
+             *     the letter), delayed (the recipient's server asked Brevo to try
+             *     again later; Brevo keeps retrying), delivered (the recipient's
+             *     server accepted it, or a mail proxy fetched it, or a link was
+             *     clicked), opened, failed (bounced, blocked, invalid address,
+             *     provider error, or the relay refused it). A failure is final
+             *     unless a later delivery is reported.
+             */
+            status: string;
+            /** @description Address the letter was sent to. */
+            recipient: string;
+            /** @description Tickets the letter carries (empty for change, cancellation and refund letters). */
+            ticket_ids: string[];
+            /**
+             * Format: date-time
+             * @description When the delivery job was queued (queued and send_failed entries only).
+             */
+            queued_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the mail relay accepted the letter.
+             */
+            sent_at: string | null;
+            /**
+             * Format: date-time
+             * @description When Brevo reported the letter delivered.
+             */
+            delivered_at: string | null;
+            /**
+             * Format: date-time
+             * @description When a mail proxy (Apple Mail Privacy Protection, image proxies) first fetched the letter. Proof of delivery, not of reading.
+             */
+            proxy_opened_at: string | null;
+            /**
+             * Format: date-time
+             * @description When Brevo first reported an open.
+             */
+            opened_at: string | null;
+            /**
+             * Format: date-time
+             * @description First click on a link of the letter (for example the ticket download). Proves delivery; not counted as reading, mail security scanners follow links too.
+             */
+            clicked_at: string | null;
+            /**
+             * Format: date-time
+             * @description When Brevo first reported the letter deferred (the recipient's server asked it to retry later). Stays set after a later delivery.
+             */
+            deferred_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the failure that decided the status was reported.
+             */
+            failed_at: string | null;
+            /** @description hard_bounce, soft_bounce, invalid_email, blocked, error, or send_failed (the relay refused the letter). */
+            failure_event: string | null;
+            /** @description The provider's reason, with e-mail addresses, IP addresses and host names removed. */
+            failure_reason: string | null;
+            /**
+             * @description True when the letter has been sent or delayed for more than six
+             *     hours with no delivery while the webhook kept reporting on other
+             *     letters: the buyer most likely has no letter. letter_failed is
+             *     also true then.
+             */
+            stuck: boolean;
+        };
+        /**
          * @description Order detail returned by GET
          *     /v1/organizations/{org_id}/orders/{id} (feature #489, W1-A6d, spec
          *     §14.2; EC-05, spec 35 §5.6): the order fields plus its line items,
@@ -10848,6 +11126,10 @@ export interface components {
             unpaid_reason: string;
             /** @description The sales channel of the order and how the buyer reached the checkout. */
             channel: components["schemas"]["OrderChannelSummary"];
+            /** @description The buyer letters of the order with their delivery status (see OrderLetter). */
+            letters: components["schemas"]["OrderLetter"][];
+            /** @description True when one of the letters failed (status failed). */
+            letter_failed: boolean;
         };
         /** @description Places of a session, or of one category, by status. */
         SessionPlaceCounts: {
@@ -12931,7 +13213,9 @@ export interface components {
          */
         HostedPageSellerContact: {
             /**
-             * @description Public contact e-mail.
+             * @description Never answered since the contact form (2026-10-13): buyers write
+             *     through `contact_form`, the address only receives the messages.
+             *     Kept in the schema for older clients.
              * @example tickets@example.com
              */
             email?: string;
@@ -12940,6 +13224,58 @@ export interface components {
              * @example +34 600 000 000
              */
             phone?: string;
+        };
+        /** @description The "Write to the organizer" form of a hosted page. */
+        HostedPageContactForm: {
+            /** @description Always true when the block is present. */
+            available: boolean;
+            /**
+             * @description Cloudflare Turnstile site key for the form; omitted when the deployment runs without a captcha (never in production).
+             * @example 0x4AAAAAAAxxxxxxxxxxxxxx
+             */
+            turnstile_site_key?: string;
+            /**
+             * @description The privacy policy the form's consent links to (ONBOARDING_PRIVACY_URL, else the site's /legal/privacy); omitted when none is configured.
+             * @example https://arenasoldout.com/legal/privacy
+             */
+            privacy_url?: string;
+        };
+        /** @description A buyer's message to the organizer of a hosted page. */
+        OrganizerContactRequest: {
+            /**
+             * @description Sender's name, 1-100 characters.
+             * @example Anna
+             */
+            name: string;
+            /**
+             * @description Sender's e-mail; the organizer's reply goes there (Reply-To).
+             * @example anna@example.com
+             */
+            email: string;
+            /**
+             * @description The message, 10-2000 characters.
+             * @example Is the venue accessible by wheelchair?
+             */
+            message: string;
+            /** @description Must be true; the buyer agrees that the message is passed to the organizer. */
+            consent: boolean;
+            /** @description Cloudflare Turnstile response token. */
+            turnstile_token?: string;
+            /** @description The event page's feed token; empty on the promoter landing page. */
+            feed_token?: string;
+            /**
+             * @description Page language of the sender.
+             * @example es
+             */
+            locale?: string;
+        };
+        /** @description The message is stored and queued for delivery. */
+        OrganizerContactAccepted: {
+            /**
+             * @description Always "queued".
+             * @example queued
+             */
+            status: string;
         };
         /**
          * @description Legal identity of the seller of record, i.e. the organization that owns
@@ -12953,6 +13289,11 @@ export interface components {
              * @example Teatro Ejemplo S.L.
              */
             legal_name: string;
+            /**
+             * @description Legal form as the owner wrote it; omitted when none is stored.
+             * @example S.L.
+             */
+            legal_form?: string;
             /**
              * @description Tax or VAT identifier.
              * @example ESB12345678
@@ -12977,6 +13318,131 @@ export interface components {
             country?: string;
             /** @description The channel's published contact; omitted when the channel sets none. */
             public_contact?: components["schemas"]["HostedPageSellerContact"];
+        };
+        /**
+         * @description The contact a hosted-page channel publishes
+         *     (`settings.hosted_page.public_contact`). Unset keys are omitted.
+         */
+        SellerProfileContact: {
+            /**
+             * @description Public role e-mail of the channel.
+             * @example tickets@example.com
+             */
+            email?: string;
+            /**
+             * @description Public phone number of the channel.
+             * @example +34 600 000 000
+             */
+            phone?: string;
+        };
+        /** @description One channel of the organization that runs a hosted sales page. */
+        SellerProfileChannel: {
+            /**
+             * Format: uuid
+             * @description Sales channel id.
+             */
+            id: string;
+            /**
+             * @description Sales channel name.
+             * @example Hosted page
+             */
+            name: string;
+            /** @description Whether the sales page of this channel shows the seller block (`settings.hosted_page.show_seller`). */
+            show_seller: boolean;
+            /** @description The channel's published contact, null when it has none. */
+            public_contact: components["schemas"]["SellerProfileContact"] | null;
+            /**
+             * @description True when the public e-mail is at a free mailbox provider (gmail.com,
+             *     inbox.ru, outlook.com, ...). A hint for the owner to use a role
+             *     address; it never blocks a save.
+             */
+            email_looks_personal: boolean;
+            /**
+             * @description Required data still empty before `show_seller` may be turned on, in a
+             *     stable order: legal_name, tax_id, address_line1, address_city,
+             *     address_postal_code, public_email. Empty when the block may be shown.
+             */
+            missing: string[];
+        };
+        /**
+         * @description The owner's "Organization data": the legal data the sales page prints in
+         *     its seller block, and every hosted-page channel with its block settings.
+         *     Legal fields are changed through PATCH /v1/organizations/{id}.
+         */
+        SellerProfile: {
+            /**
+             * Format: uuid
+             * @description Organization id.
+             */
+            org_id: string;
+            /** @description Display name of the organization. */
+            org_name: string;
+            /**
+             * @description Country of the organization (stands in for the address country on the page).
+             * @example ES
+             */
+            country: string;
+            /** @description Registered legal name. */
+            legal_name?: string | null;
+            /** @description Legal form as the owner wrote it. */
+            legal_form?: string | null;
+            /** @description Company registration number. */
+            registration_number?: string | null;
+            /** @description Scheme of tax_id (eu_vat, gb_vat, il_vat, us_ein or other). */
+            tax_id_scheme?: string | null;
+            /** @description Tax or VAT identifier. */
+            tax_id?: string | null;
+            /** @description Registered address, street line. */
+            legal_address_line1?: string | null;
+            /** @description Registered address, second line. */
+            legal_address_line2?: string | null;
+            /** @description Registered address, postal code. */
+            legal_address_postal_code?: string | null;
+            /** @description Registered address, city. */
+            legal_address_city?: string | null;
+            /** @description Registered address, ISO 3166-1 alpha-2 country. */
+            legal_address_country?: string | null;
+            /** @description Required organization fields still empty (the channel list adds public_email per channel). */
+            missing: string[];
+            /** @description The organization's hosted-page channels, oldest first. */
+            channels: components["schemas"]["SellerProfileChannel"][];
+            /** @description Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true). */
+            contact_form_to_telegram?: boolean;
+        };
+        /** @description Envelope of the seller-profile routes. */
+        SellerProfileEnvelope: {
+            /** @description The profile as stored after the call. */
+            seller_profile: components["schemas"]["SellerProfile"];
+        };
+        /** @description The organization-wide switch of the contact form's Telegram leg. */
+        UpdateSellerProfileRequest: {
+            /** @description Post buyers' messages to the organization's sales Telegram chat too. */
+            contact_form_to_telegram: boolean;
+        };
+        /** @description Tri-state contact change; an absent key keeps, null or "" clears. */
+        SellerDisplayContactPatch: {
+            /**
+             * @description Public role e-mail (400 `seller.invalid_email` when malformed).
+             * @example tickets@example.com
+             */
+            email?: string | null;
+            /**
+             * @description Public phone, 6-15 digits (400 `seller.invalid_phone` when malformed).
+             * @example +34 600 000 000
+             */
+            phone?: string | null;
+        };
+        /**
+         * @description Change of one hosted-page channel's seller block. Absent members keep
+         *     the stored value. `show_seller: true` is refused with 422
+         *     `seller.incomplete` (details.missing) while required data is empty, and
+         *     so is clearing the e-mail of a channel that keeps the block on.
+         */
+        UpdateSellerDisplayRequest: {
+            /** @description Show the seller block on this channel's sales page. */
+            show_seller?: boolean;
+            /** @description The published contact; null removes it. */
+            public_contact?: components["schemas"]["SellerDisplayContactPatch"] | null;
         };
         /**
          * @description The promoter an event is shown under (a partner or brand named as the
@@ -13022,6 +13488,14 @@ export interface components {
              *     present and the event has a promoter.
              */
             promoter?: components["schemas"]["HostedPagePromoter"];
+            /**
+             * @description Present when the page offers the "Write to the organizer" form: the
+             *     channel has a public e-mail or the organization has its own
+             *     contact e-mail (a private recipient), and the deployment can check
+             *     the captcha. No address is ever answered. Ticket letters of a page
+             *     without a public e-mail link this form as <page>#contact.
+             */
+            contact_form?: components["schemas"]["HostedPageContactForm"];
         };
         /**
          * @description Response envelope for GET /v1/public/pages/{org_slug} — the promoter
@@ -13063,6 +13537,14 @@ export interface components {
              *     present and the slug names a promoter rather than the organization.
              */
             promoter?: components["schemas"]["HostedPagePromoter"];
+            /**
+             * @description Present when the page offers the "Write to the organizer" form: the
+             *     channel has a public e-mail or the organization has its own
+             *     contact e-mail (a private recipient), and the deployment can check
+             *     the captcha. No address is ever answered. Ticket letters of a page
+             *     without a public e-mail link this form as <page>#contact.
+             */
+            contact_form?: components["schemas"]["HostedPageContactForm"];
         };
         /**
          * @description Create-time payload for POST /v1/organizations/{org_id}/events.
@@ -23616,6 +24098,8 @@ export interface operations {
                 content: {
                     "application/json": {
                         organization: components["schemas"]["OrganizationItem"];
+                        /** @description Channels whose seller block was turned off because a required legal field is now empty. Omitted when none. */
+                        seller_display_hidden?: string[];
                     };
                 };
             };
@@ -23637,7 +24121,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold the required permission (org.update) */
+            /** @description Actor does not hold the required permission (org.update), or an API key sent a legal identity or contact field (`org.identity_fields_api_key_forbidden`) */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -30589,6 +31073,220 @@ export interface operations {
             };
             /** @description The new name (or restoring) collides with an active promoter (`promoter.duplicate_name`). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getSellerProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SellerProfileEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such organization (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateSellerProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSellerProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; the profile as stored now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SellerProfileEnvelope"];
+                };
+            };
+            /** @description Invalid body (`seller.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such organization (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateSellerDisplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the sales channel. */
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSellerDisplayRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; the profile as stored now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SellerProfileEnvelope"];
+                };
+            };
+            /** @description Invalid body (`seller.invalid_body`), e-mail (`seller.invalid_email`) or phone (`seller.invalid_phone`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such sales-page channel in this organization (`seller.channel_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The block cannot be shown yet (`seller.incomplete`, details.missing lists the empty fields). */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -38907,6 +39605,96 @@ export interface operations {
             };
         };
     };
+    sendOrganizerContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's first path segment (organization or promoter slug). */
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizerContactRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored and queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizerContactAccepted"];
+                };
+            };
+            /** @description Invalid name, e-mail, message, missing consent or a malformed body (`contact.invalid_*`, `contact.consent_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The captcha was not passed (`contact.captcha_failed`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The page has no contact form (`contact.not_available`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is larger than 16 KiB (`contact.too_large`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many messages from this IP or to this page (`contact.rate_limited`, Retry-After). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The message could not be stored (`contact.send_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable, or the captcha is not configured or cannot be checked. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     recoverPublicCheckout: {
         parameters: {
             query?: never;
@@ -41948,6 +42736,169 @@ export interface operations {
             };
             /** @description Database unavailable. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    brevoDeliveryStatusWebhookBearer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                } | {
+                    [key: string]: unknown;
+                }[];
+            };
+        };
+        responses: {
+            /** @description Events acknowledged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Always true. */
+                        acknowledged: boolean;
+                        /** @description Events in the body. */
+                        received: number;
+                        /** @description Events that belonged to a letter arena sent and were recorded. */
+                        applied: number;
+                    };
+                };
+            };
+            /** @description Malformed body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or unknown bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Body larger than 1 MiB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An event could not be stored; Brevo delivers it again. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    brevoDeliveryStatusWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The webhook token (BREVO_WEBHOOK_TOKEN). Never logged. */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                } | {
+                    [key: string]: unknown;
+                }[];
+            };
+        };
+        responses: {
+            /** @description Events acknowledged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Always true. */
+                        acknowledged: boolean;
+                        /** @description Events in the body. */
+                        received: number;
+                        /** @description Events that belonged to a letter arena sent and were recorded. */
+                        applied: number;
+                    };
+                };
+            };
+            /** @description Malformed body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown webhook token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Body larger than 1 MiB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An event could not be stored; Brevo delivers it again. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
