@@ -148,19 +148,21 @@ func (e *scanEnv) exceptionUsedBy(t *testing.T, i int) string {
 	return by
 }
 
-// N3: a flat refund of the payment spends the exception in the transaction
+// A refund of the per-ticket route spends the exception in the transaction
 // that writes it, so an approval after the exception's expiry still goes
 // through (it was the refund's, not a pending promise).
-func TestRefundScanned_FlatRefundSpendsTheExceptionWhenWritten(t *testing.T) {
-	e := newScanEnv(t)
+func TestRefundScanned_TicketRefundSpendsTheExceptionWhenWritten(t *testing.T) {
+	e := newScanEnv(t, "refund.read", "refund.create", "refund.approve")
+	creator := e.pf.key(t, e.org, "refund.read", "refund.create")
+	e.dropExceptionsOnCleanup(t)
 	e.exec(t, `UPDATE tickets SET used_at = now() - interval '1 hour' WHERE id = $1`, e.f.tickets[0])
 	e.grantException(t, 0)
-	body := fmt.Sprintf(`{"payment_intent_id":%q,"amount":5000,"currency":"EUR","reason":"show cancelled"}`, e.f.pay)
-	st, out := e.pf.do(t, http.MethodPost, "/v1/refunds", e.key, body)
-	if st != http.StatusCreated {
-		t.Fatalf("flat refund on the exception: %d %v", st, out)
+	body := fmt.Sprintf(`{"items":[{"ticket_id":%q}],"reason":"show cancelled"}`, e.f.tickets[0])
+	st, out := refundOrgPost(t, e.pf, "/v1/organizations/"+e.org.String()+"/orders/"+e.f.order.String()+"/refunds", creator, "scan5-"+uuid.NewString(), body)
+	if st != http.StatusAccepted {
+		t.Fatalf("ticket refund on the exception: %d %v", st, out)
 	}
-	id := out["refund"].(map[string]any)["id"].(string)
+	id := out["refunds"].([]any)[0].(map[string]any)["id"].(string)
 	if by := e.exceptionUsedBy(t, 0); by != id {
 		t.Fatalf("exception used by %q; want the new refund %s", by, id)
 	}
@@ -171,23 +173,27 @@ func TestRefundScanned_FlatRefundSpendsTheExceptionWhenWritten(t *testing.T) {
 	}
 }
 
-// N3: an automatic refund of the ticket-cancel route spends the exception in
-// the transaction that writes the refund.
-func TestRefundScanned_AutomaticCancelSpendsTheExceptionWithItsRefund(t *testing.T) {
+// The ticket-cancel route's automatic refund never takes an exception: the
+// cancellation is refused before anything is cancelled, the exception stays
+// unspent for the per-ticket route, and no refund row is written.
+func TestRefundScanned_AutomaticCancelRefusesAScannedTicketWithAnException(t *testing.T) {
 	e := newScanEnv(t, "ticket.cancel", "refund.read")
+	e.dropExceptionsOnCleanup(t)
 	e.exec(t, `UPDATE tickets SET used_at = now() WHERE id = $1`, e.f.tickets[0])
 	e.grantException(t, 0)
 	st, out := e.pf.do(t, http.MethodPost, "/v1/tickets/"+e.f.tickets[0].String()+"/cancel", e.key,
 		`{"reason":"show cancelled","refund_mode":"automatic","refund_amount":2500}`)
-	if st != http.StatusOK {
-		t.Fatalf("automatic cancel on the exception: %d %v", st, out)
+	if st != http.StatusConflict || prom0113Code(out) != refunds.CodeTicketScanned {
+		t.Fatalf("automatic cancel on the exception: %d %v; want 409 %s", st, out, refunds.CodeTicketScanned)
 	}
-	var refundID string
-	if err := e.srv.pgxPool.QueryRow(context.Background(), `SELECT id::text FROM refunds WHERE cancelled_ticket_id = $1`, e.f.tickets[0]).Scan(&refundID); err != nil {
-		t.Fatalf("no refund written: %v", err)
+	if by := e.exceptionUsedBy(t, 0); by != "" {
+		t.Fatalf("the refused cancellation spent the exception (%q)", by)
 	}
-	if by := e.exceptionUsedBy(t, 0); by != refundID {
-		t.Fatalf("exception used by %q; want the cancel route's refund %s", by, refundID)
+	if n := e.count(t, `SELECT count(*) FROM refunds WHERE cancelled_ticket_id = $1`, e.f.tickets[0]); n != 0 {
+		t.Fatalf("a refund was written for the refused cancellation (%d rows)", n)
+	}
+	if n := e.count(t, `SELECT count(*) FROM tickets WHERE id = $1 AND status = 'active'`, e.f.tickets[0]); n != 1 {
+		t.Fatal("the refused cancellation cancelled the ticket")
 	}
 }
 

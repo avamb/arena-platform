@@ -392,19 +392,12 @@ func (h *Handler) HandleCreateRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The scan rule again, inside the writing transaction: a scanned ticket
-	// sold with the payment blocks it unless a superadmin's exception is
-	// live, and the refund owns every exception it relies on from now on.
-	// A refund that relies on an exception must return all that is left of
-	// the payment, so it cannot spend a scanned ticket's exception on money
-	// that belongs to other tickets.
+	// The scan rule again, inside the writing transaction: any scanned ticket
+	// sold with the payment blocks it. A superadmin's exception does not count
+	// here: it is honoured only by the organization's per-ticket route, where
+	// the refund names the ticket.
 	if h.refundEngine != nil {
-		blockedTicket, blocked, gerr := refunds.GuardPaymentMoneyTx(ctx, tx, paymentIntentID, refund.ID, req.Amount, remaining)
-		var refErr *refunds.Error
-		if errors.As(gerr, &refErr) {
-			writeRefundError(w, r, refErr)
-			return
-		}
+		blockedTicket, blocked, gerr := refunds.PaymentScannedTx(ctx, tx, paymentIntentID)
 		if gerr != nil {
 			scanCheckUnavailable(w, r)
 			return

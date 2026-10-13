@@ -385,28 +385,7 @@ func (h *Handler) insertAutomaticRefund(ctx context.Context, intent *gen.Payment
 	if h.pool == nil {
 		return h.reservationQueries.InsertRefund(ctx, intent.ID, intent.OrgID, amount, intent.Currency, &reason, &requestedBy)
 	}
-	row, err := h.insertAutomaticRefundTx(ctx, intent, ticketID, amount, reason, requestedBy)
-	if err != nil {
-		// No refund was written: a scan exception the cancellation spent for
-		// it comes back, so the money still owed can be refunded on it.
-		if rerr := h.releaseCancelException(context.WithoutCancel(ctx), ticketID); rerr != nil {
-			h.logger.Error("ticket.cancel: giving back the scan exception failed",
-				slog.String("ticket_id", ticketID.String()), slog.String("error", rerr.Error()))
-		}
-	}
-	return row, err
-}
-
-func (h *Handler) releaseCancelException(ctx context.Context, ticketID uuid.UUID) error {
-	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if err := refunds.ReleaseCancelExceptionTx(ctx, tx, ticketID); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	return h.insertAutomaticRefundTx(ctx, intent, ticketID, amount, reason, requestedBy)
 }
 
 func (h *Handler) insertAutomaticRefundTx(ctx context.Context, intent *gen.PaymentIntentRow, ticketID uuid.UUID, amount int64, reason, requestedBy string) (gen.RefundRow, error) {
@@ -433,11 +412,9 @@ func (h *Handler) insertAutomaticRefundTx(ctx context.Context, intent *gen.Payme
 	if _, err := tx.Exec(ctx, `UPDATE refunds SET cancelled_ticket_id = $2 WHERE id = $1`, row.ID, ticketID); err != nil {
 		return gen.RefundRow{}, err
 	}
-	// A scanned ticket got here on a superadmin's exception, which the
-	// cancellation already spent: the refund takes it over from the moment
-	// it is written, so its later approval does not depend on the exception
-	// still being unexpired.
-	blocked, err := refunds.BindCancelExceptionTx(ctx, tx, ticketID, row.ID)
+	// The scan rule once more, in the transaction that writes the refund: an
+	// automatic refund never takes a superadmin's exception.
+	blocked, err := refunds.TicketScannedTx(ctx, tx, ticketID)
 	if err != nil {
 		return gen.RefundRow{}, err
 	}

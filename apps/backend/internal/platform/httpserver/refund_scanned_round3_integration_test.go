@@ -306,49 +306,37 @@ func TestRefundScanned_RetryMailsOnlyTheAddressThatFailed(t *testing.T) {
 	e.exec(t, `DELETE FROM refund_scan_notice_sends WHERE email = ANY($1)`, []string{box.msgs[0].To, box.msgs[1].To})
 }
 
-// The superadmin's exception is honoured by the other check points too: the
-// ticket-cancel route with money spends it, and the flat create lets a
-// whole-payment refund through while it is live.
+// The superadmin's exception is honoured by the per-ticket routes only: the
+// flat create refuses a payment with a scanned ticket whatever exceptions
+// exist and spends none, the ticket-cancel route refuses an automatic refund
+// too, and a manual cancellation (money returned outside arena) spends it.
 func TestRefundScanned_ExceptionHonouredByCancelAndFlatCreate(t *testing.T) {
 	e := newScanEnv(t, "ticket.cancel", "refund.read", "refund.create")
-	ctx := context.Background()
 	e.exec(t, `UPDATE tickets SET used_at = now() WHERE id = ANY($1)`, []uuid.UUID{e.f.tickets[0], e.f.tickets[1]})
-	t.Cleanup(func() {
-		_, _ = e.srv.pgxPool.Exec(context.Background(), `DELETE FROM refund_scan_exceptions WHERE org_id = $1`, e.org)
-	})
-	grant := func(i int) {
-		t.Helper()
-		if _, err := e.srv.refundEngine().GrantScanException(ctx, refunds.ScanExceptionInput{OrgID: e.org, TicketID: e.f.tickets[i],
-			Actor: refunds.Actor{Type: "user", ID: uuid.NewString()}, Reason: "test"}); err != nil {
-			t.Fatalf("grant: %v", err)
+	e.dropExceptionsOnCleanup(t)
+	e.grantException(t, 0)
+	e.grantException(t, 1)
+	for _, amount := range []int64{1000, 5000} {
+		flat := fmt.Sprintf(`{"payment_intent_id":%q,"amount":%d,"currency":"EUR"}`, e.f.pay, amount)
+		if st, out := e.pf.do(t, http.MethodPost, "/v1/refunds", e.key, flat); st != http.StatusConflict || prom0113Code(out) != refunds.CodeTicketScanned {
+			t.Fatalf("flat create of %d with live exceptions: %d %v; want 409 %s", amount, st, out, refunds.CodeTicketScanned)
 		}
 	}
-	// flat create: refused, then allowed by a live exception on the scanned ticket(s)
-	flat := fmt.Sprintf(`{"payment_intent_id":%q,"amount":1000,"currency":"EUR"}`, e.f.pay)
-	if st, out := e.pf.do(t, http.MethodPost, "/v1/refunds", e.key, flat); st != http.StatusConflict || prom0113Code(out) != refunds.CodeTicketScanned {
-		t.Fatalf("flat create without exceptions: %d %v", st, out)
-	}
-	grant(0)
-	grant(1)
-	// A refund that relies on the exceptions must return all that is left
-	// of the payment (round 5, M2): a part of it is refused, nothing spent.
-	if st, out := e.pf.do(t, http.MethodPost, "/v1/refunds", e.key, flat); st != http.StatusConflict ||
-		prom0113Code(out) != refunds.CodeScanExceptionWholePayment {
-		t.Fatalf("partial flat create on exceptions: %d %v; want 409 %s", st, out, refunds.CodeScanExceptionWholePayment)
-	}
-	flat = fmt.Sprintf(`{"payment_intent_id":%q,"amount":5000,"currency":"EUR"}`, e.f.pay)
-	st, out := e.pf.do(t, http.MethodPost, "/v1/refunds", e.key, flat)
-	if st != http.StatusCreated && st != http.StatusOK {
-		t.Fatalf("flat create with live exceptions: %d %v; want it written", st, out)
-	}
-	// The flat refund owns both exceptions from the moment it is written
-	// (round 4, N3), so they let nothing else through.
-	id := out["refund"].(map[string]any)["id"].(string)
-	if n := e.count(t, `SELECT count(*) FROM refund_scan_exceptions WHERE org_id = $1 AND used_by_refund::text = $2`, e.org, id); n != 2 {
-		t.Fatalf("exceptions owned by the flat refund = %d; want 2", n)
+	if a, b := e.exceptionUsedBy(t, 0), e.exceptionUsedBy(t, 1); a != "" || b != "" {
+		t.Fatalf("the flat create spent exceptions (%q, %q)", a, b)
 	}
 	if st, out := e.pf.do(t, http.MethodPost, "/v1/tickets/"+e.f.tickets[0].String()+"/cancel", e.key,
-		`{"reason":"scan3","refund_mode":"manual"}`); st != http.StatusConflict || prom0113Code(out) != refunds.CodeTicketScanned {
-		t.Fatalf("cancel with money after the exception was spent: %d %v; want 409", st, out)
+		`{"reason":"scan3","refund_mode":"automatic","refund_amount":2500}`); st != http.StatusConflict || prom0113Code(out) != refunds.CodeTicketScanned {
+		t.Fatalf("automatic cancel with a live exception: %d %v; want 409", st, out)
+	}
+	if by := e.exceptionUsedBy(t, 0); by != "" {
+		t.Fatalf("the refused automatic cancel spent the exception (%q)", by)
+	}
+	if st, out := e.pf.do(t, http.MethodPost, "/v1/tickets/"+e.f.tickets[0].String()+"/cancel", e.key,
+		`{"reason":"scan3","refund_mode":"manual"}`); st != http.StatusOK || e.exceptionUsedBy(t, 0) != "spent" {
+		t.Fatalf("manual cancel with a live exception: %d %v, exception %q; want 200 and spent", st, out, e.exceptionUsedBy(t, 0))
+	}
+	if e.calls.Load() != 0 {
+		t.Fatalf("the provider was called %d time(s)", e.calls.Load())
 	}
 }

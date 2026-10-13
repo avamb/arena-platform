@@ -42,11 +42,17 @@ func (s *Server) cancelMoneyAllowedForScan(w http.ResponseWriter, r *http.Reques
 			refunds.CodeEngineUnavailable, "whether the ticket was scanned could not be checked; try again", r))
 		return false
 	}
-	// A superadmin's exception lets it through. Nothing is spent here: the
-	// handler spends it inside the transaction that writes the decision
-	// (CancelTicketParams.ScanGuard, and the automatic refund's own insert),
-	// so a request it refuses later never burns the exception.
-	scanned, err := engine.TicketScanned(r.Context(), ticketID, false)
+	// A superadmin's exception lets a manual cancellation through. Nothing is
+	// spent here: the handler spends it inside the cancellation transaction
+	// (CancelTicketParams.ScanGuard), so a request it refuses later never
+	// burns the exception. An automatic refund never takes an exception: it
+	// is honoured only by the organization's per-ticket route.
+	var scanned bool
+	if body.RefundMode == "automatic" {
+		scanned, err = engine.TicketScannedIgnoringExceptions(r.Context(), ticketID)
+	} else {
+		scanned, err = engine.TicketScanned(r.Context(), ticketID, false)
+	}
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			refunds.CodeEngineUnavailable, "whether the ticket was scanned could not be checked; try again", r))

@@ -27,12 +27,6 @@ const failureTicketScanned = "ticket_scanned"
 // CodeTicketScanned is the 409 of a refund for a ticket that was scanned.
 const CodeTicketScanned = "refund.ticket_scanned"
 
-// CodeScanExceptionWholePayment: a refund of the whole payment that relies on
-// a scanned ticket's exception must return everything that is left of the
-// payment. A smaller amount cannot be tied to the scanned tickets, so it
-// would spend their one-time exceptions on money that may belong to others.
-const CodeScanExceptionWholePayment = "refund.scan_exception_whole_payment"
-
 // JobTypeScannedAlertEmail is the worker job that mails the organization's
 // owners about a blocked refund (handler: delivery.NewScannedAlertHandler).
 const JobTypeScannedAlertEmail = "refund.scanned_alert_email"
@@ -90,16 +84,15 @@ const noScanSinceGrantSQL = `NOT (t.used_at > sx.created_at
 const scanExemptLiveSQL = `EXISTS (SELECT 1 FROM refund_scan_exceptions sx
 	WHERE sx.ticket_id = t.id AND sx.used_at IS NULL AND sx.expires_at > now() AND ` + noScanSinceGrantSQL + `)`
 
-// scanExemptForRefundSQL also lets through the refund r that spent the
-// exception, at its approval and its claim (a scan since the grant still
-// stops it before any money is sent). A refund of the whole payment (no
-// ticket of its own) passes only on the exceptions it spent when it was
-// written: a live exception granted later is not its to take, because the
-// amount it returns cannot be tied to that ticket.
+// scanExemptForRefundSQL lets the stored refund r through on an exception of
+// its OWN ticket, live or spent by r, at its approval and its claim (a scan
+// since the grant still stops it before any money is sent). Only a refund of
+// the organization's per-ticket route has a ticket of its own (ticket_id): a
+// refund of the whole payment (the flat create route) or of the ticket-cancel
+// route never passes on an exception, because those routes never take one.
 const scanExemptForRefundSQL = `EXISTS (SELECT 1 FROM refund_scan_exceptions sx
-	WHERE sx.ticket_id = t.id
-	  AND ((sx.used_at IS NULL AND sx.expires_at > now() AND COALESCE(r.ticket_id, r.cancelled_ticket_id) IS NOT NULL)
-	       OR sx.used_by_refund = r.id)
+	WHERE sx.ticket_id = t.id AND sx.ticket_id = r.ticket_id
+	  AND ((sx.used_at IS NULL AND sx.expires_at > now()) OR sx.used_by_refund = r.id)
 	  AND ` + noScanSinceGrantSQL + `)`
 
 // ticketBlockedSQL is a scanned ticket t without a live exception: no refund
@@ -114,18 +107,19 @@ const ticketBlockedForRefundSQL = `(` + ticketScannedSQL + ` AND NOT ` + scanExe
 const spendScanExceptionSQL = `UPDATE refund_scan_exceptions SET used_at = now(), used_by_refund = $1
 	WHERE ticket_id = $2 AND used_at IS NULL AND expires_at > now()`
 
-// releaseScanExceptionsSQL gives back the exceptions refund $1 spent when it
+// releaseScanExceptionsSQL gives back the exception refund $1 spent when it
 // ended without returning money and cannot be sent again: it was rejected, or
-// it failed (no provider refund id, or $2: an operator found it not refunded)
-// and has no ticket of its own (a refund of the whole payment or of the
-// ticket-cancel route, which has no retry). A refund of one ticket keeps its
-// exception: its retry takes it over. The exception keeps its expiry; one
-// that expired meanwhile is granted again.
+// ($2) an operator found at the provider that it did not go through after the
+// provider had taken it (a provider refund id, so no retry is offered). A
+// failed refund the provider refused outright keeps its exception: its retry
+// takes it over. The exception keeps its expiry; one that expired meanwhile is
+// granted again. Only the organization's per-ticket route spends exceptions,
+// so only its refunds (ticket_id set) ever own one.
 const releaseScanExceptionsSQL = `UPDATE refund_scan_exceptions sx SET used_at = NULL, used_by_refund = NULL
 	FROM refunds r
 	WHERE r.id = $1 AND sx.used_by_refund = r.id
 	  AND (r.state = 'rejected'
-	       OR (r.state = 'failed' AND r.ticket_id IS NULL AND (r.provider_refund_id IS NULL OR $2::boolean)))`
+	       OR (r.state = 'failed' AND $2::boolean AND r.provider_refund_id IS NOT NULL))`
 
 // ReleaseScanExceptionsTx gives back the scan exceptions refund id spent, in
 // the caller's transaction, when the refund ended without returning money
@@ -260,25 +254,54 @@ func ScannedRefusalWithNotice(ticket uuid.UUID, notice string) *Error {
 
 // ScannedTicketOfPayment reports a scanned ticket among those sold with the
 // payment (a refund of the whole payment would take its money back). A
-// cancelled ticket counts too: cancelling a scanned ticket without money is
-// allowed, and must not open the way to returning its money with the rest.
+// cancelled ticket counts too, and so does one with a superadmin's exception:
+// an exception is honoured only by the organization's per-ticket route,
+// never by a refund of the whole payment.
 func (e *Engine) ScannedTicketOfPayment(ctx context.Context, paymentIntentID uuid.UUID) (uuid.UUID, bool, error) {
 	var id uuid.UUID
 	found := false
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
-		err := tx.QueryRow(ctx, `SELECT t.id FROM payment_intents pi
-			JOIN tickets t ON t.checkout_session_id = pi.checkout_session_id
-			WHERE pi.id = $1 AND `+ticketBlockedSQL+scannedOrder+` LIMIT 1`, paymentIntentID).Scan(&id)
-		if err == nil {
-			found = true
-			return nil
-		}
-		if err == pgx.ErrNoRows {
-			return nil
-		}
+		var err error
+		id, found, err = PaymentScannedTx(ctx, tx, paymentIntentID)
 		return err
 	})
 	return id, found, err
+}
+
+// PaymentScannedTx is ScannedTicketOfPayment in the caller's transaction: the
+// first scanned ticket sold with the payment, exceptions not counted.
+func PaymentScannedTx(ctx context.Context, tx pgx.Tx, paymentIntentID uuid.UUID) (uuid.UUID, bool, error) {
+	var id uuid.UUID
+	err := tx.QueryRow(ctx, `SELECT t.id FROM payment_intents pi
+		JOIN tickets t ON t.checkout_session_id = pi.checkout_session_id
+		WHERE pi.id = $1 AND `+ticketScannedSQL+scannedOrder+` LIMIT 1`, paymentIntentID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, false, nil
+	}
+	return id, err == nil, err
+}
+
+// TicketScannedTx reports whether the ticket was scanned at the gate,
+// exceptions not counted: the rule of the ticket-cancel route's automatic
+// refund, which never takes an exception.
+func TicketScannedTx(ctx context.Context, tx pgx.Tx, ticketID uuid.UUID) (bool, error) {
+	var scanned bool
+	err := tx.QueryRow(ctx, `SELECT `+ticketScannedSQL+` FROM tickets t WHERE t.id = $1`, ticketID).Scan(&scanned)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return scanned, err
+}
+
+// TicketScannedIgnoringExceptions is TicketScannedTx on its own transaction.
+func (e *Engine) TicketScannedIgnoringExceptions(ctx context.Context, ticketID uuid.UUID) (bool, error) {
+	var scanned bool
+	err := e.inTx(ctx, func(tx pgx.Tx) error {
+		var err error
+		scanned, err = TicketScannedTx(ctx, tx, ticketID)
+		return err
+	})
+	return scanned, err
 }
 
 // blockScannedAtClaim is the claim's last line of defence: a refund that was
@@ -298,11 +321,11 @@ func (e *Engine) blockScannedAtClaim(ctx context.Context, tx pgx.Tx, id uuid.UUI
 		  AND `+ticketBlockedForRefundSQL+scannedOrder+` LIMIT 1`, id).Scan(&ticket)
 	if err == pgx.ErrNoRows {
 		// Nothing blocks it. Its own ticket, scanned and passing on a live
-		// exception, spends that exception on this refund now. A refund of
-		// the whole payment passes only on the exceptions it already owns.
+		// exception, spends that exception on this refund now. Only a refund
+		// of the per-ticket route has a ticket of its own (ticket_id).
 		_, serr := tx.Exec(ctx, `UPDATE refund_scan_exceptions sx SET used_at = now(), used_by_refund = $1
 			FROM refunds r
-			WHERE r.id = $1 AND sx.ticket_id = COALESCE(r.ticket_id, r.cancelled_ticket_id)
+			WHERE r.id = $1 AND sx.ticket_id = r.ticket_id
 			  AND sx.used_at IS NULL AND sx.expires_at > now()
 			  AND r.state = 'provider_pending' AND r.provider_attempts = 0`, id)
 		return nil, uuid.Nil, serr
@@ -401,85 +424,4 @@ func GuardTicketMoneyTx(ctx context.Context, tx pgx.Tx, ticketID uuid.UUID, refu
 		return false, err
 	}
 	return tag.RowsAffected() == 0, nil
-}
-
-// BindCancelExceptionTx hands the exception the ticket-cancel route spent in
-// its cancellation transaction (GuardTicketMoneyTx with no refund row) to the
-// automatic refund written right after it, and reports whether money may NOT
-// be returned for the ticket: it was scanned and this refund owns no
-// exception for it.
-func BindCancelExceptionTx(ctx context.Context, tx pgx.Tx, ticketID, refundID uuid.UUID) (bool, error) {
-	if _, err := tx.Exec(ctx, `UPDATE refund_scan_exceptions SET used_by_refund = $1
-		WHERE ticket_id = $2 AND used_at IS NOT NULL AND used_by_refund IS NULL`, refundID, ticketID); err != nil {
-		return false, err
-	}
-	var blocked bool
-	err := tx.QueryRow(ctx, `SELECT `+ticketScannedSQL+` AND NOT EXISTS (SELECT 1 FROM refund_scan_exceptions sx
-		WHERE sx.ticket_id = t.id AND sx.used_by_refund = $2 AND `+noScanSinceGrantSQL+`)
-		FROM tickets t WHERE t.id = $1`, ticketID, refundID).Scan(&blocked)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
-	return blocked, err
-}
-
-// ReleaseCancelException gives back the exception the ticket-cancel route
-// spent for an automatic refund that could not be written after all (the
-// ticket stays cancelled and its money is still owed): the next refund of the
-// payment may use it.
-func ReleaseCancelExceptionTx(ctx context.Context, tx pgx.Tx, ticketID uuid.UUID) error {
-	_, err := tx.Exec(ctx, `UPDATE refund_scan_exceptions SET used_at = NULL
-		WHERE ticket_id = $1 AND used_at IS NOT NULL AND used_by_refund IS NULL`, ticketID)
-	return err
-}
-
-// GuardPaymentMoneyTx is the same for a refund of the whole payment (the flat
-// create route): blocked when any ticket sold with the payment is scanned
-// without a live exception (that ticket is returned). When some scanned
-// ticket passes on a live exception, the refund must return all that is left
-// of the payment (amount == remaining, else a 409 *Error
-// CodeScanExceptionWholePayment), and then every such exception is spent on
-// refundID. An exception a concurrent writer spent first blocks its ticket.
-func GuardPaymentMoneyTx(ctx context.Context, tx pgx.Tx, paymentIntentID, refundID uuid.UUID, amount, remaining int64) (uuid.UUID, bool, error) {
-	blockedTicket := func() (uuid.UUID, bool, error) {
-		var ticket uuid.UUID
-		err := tx.QueryRow(ctx, `SELECT t.id FROM payment_intents pi
-			JOIN tickets t ON t.checkout_session_id = pi.checkout_session_id
-			WHERE pi.id = $1 AND `+ticketBlockedSQL+scannedOrder+` LIMIT 1`, paymentIntentID).Scan(&ticket)
-		if err == nil {
-			return ticket, true, nil
-		}
-		if errors.Is(err, pgx.ErrNoRows) {
-			return uuid.Nil, false, nil
-		}
-		return uuid.Nil, false, err
-	}
-	if ticket, blocked, err := blockedTicket(); err != nil || blocked {
-		return ticket, blocked, err
-	}
-	var exempt int64
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM payment_intents pi
-		JOIN tickets t ON t.checkout_session_id = pi.checkout_session_id
-		WHERE pi.id = $1 AND `+ticketScannedSQL+` AND `+scanExemptLiveSQL, paymentIntentID).Scan(&exempt); err != nil {
-		return uuid.Nil, false, err
-	}
-	if exempt == 0 {
-		return uuid.Nil, false, nil
-	}
-	if amount != remaining {
-		return uuid.Nil, false, refusal(http.StatusConflict, CodeScanExceptionWholePayment,
-			"a scanned ticket of this payment is refunded on a one-time exception: refund all that is left of the payment, or refund the tickets one by one",
-			map[string]any{"requested": amount, "remaining": remaining})
-	}
-	tag, err := tx.Exec(ctx, `UPDATE refund_scan_exceptions sx SET used_at = now(), used_by_refund = $1
-		FROM payment_intents pi JOIN tickets t ON t.checkout_session_id = pi.checkout_session_id
-		WHERE pi.id = $2 AND sx.ticket_id = t.id AND sx.used_at IS NULL AND sx.expires_at > now()
-		  AND `+ticketScannedSQL+` AND `+noScanSinceGrantSQL, refundID, paymentIntentID)
-	if err != nil {
-		return uuid.Nil, false, err
-	}
-	if tag.RowsAffected() != exempt {
-		return blockedTicket()
-	}
-	return uuid.Nil, false, nil
 }

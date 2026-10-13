@@ -68,9 +68,10 @@ type CancelTicketParams struct {
 	RefundID *uuid.UUID
 	// ScanGuard applies the scanned-ticket rule inside the cancellation
 	// transaction (the operator route): refund_mode manual or automatic is
-	// refused for a ticket scanned at the gate unless a superadmin's
-	// exception is live, and both spend that exception here (automatic's
-	// refund row takes it over when it is written).
+	// refused for a ticket scanned at the gate. manual (money returned
+	// outside arena) passes on a live superadmin exception and spends it
+	// here; automatic (a refund through the provider) never takes one, an
+	// exception is honoured only by the organization's per-ticket route.
 	ScanGuard bool
 }
 
@@ -154,11 +155,13 @@ func (h *Handler) CancelTicketTx(ctx context.Context, p CancelTicketParams) (Can
 	txq := h.ticketQueries.WithTx(tx)
 
 	if p.ScanGuard && (p.RefundMode == "manual" || p.RefundMode == "automatic") {
-		// The exception is spent here, with the cancellation, in both modes:
-		// automatic's refund row is written right after the commit and takes
-		// it over (refunds.BindCancelExceptionTx), so nothing can take the
-		// exception in between.
-		blocked, gerr := refunds.GuardTicketMoneyTx(ctx, tx, p.TicketID, nil, true)
+		var blocked bool
+		var gerr error
+		if p.RefundMode == "automatic" {
+			blocked, gerr = refunds.TicketScannedTx(ctx, tx, p.TicketID)
+		} else {
+			blocked, gerr = refunds.GuardTicketMoneyTx(ctx, tx, p.TicketID, nil, true)
+		}
 		if gerr != nil {
 			return out, &CancelTicketError{Status: http.StatusServiceUnavailable, Code: refunds.CodeEngineUnavailable,
 				Message: "whether the ticket was scanned could not be checked; try again", Err: gerr}
