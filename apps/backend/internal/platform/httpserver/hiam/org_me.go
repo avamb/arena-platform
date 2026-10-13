@@ -27,10 +27,28 @@ import (
 )
 
 // OrgMeQuerier is the read surface of HandleOrgMe. *gen.Queries satisfies it.
+// ListMembershipsByUser only LISTS the caller's roles for display; the
+// membership decision goes through MemberCheck (the PERM-ORG helper).
 type OrgMeQuerier interface {
 	ListMembershipsByUser(ctx context.Context, userID uuid.UUID) ([]gen.MembershipRow, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (gen.OrganizationRow, error)
 }
+
+// MemberCheck decides whether the caller is an active member of orgID. The
+// production value is MembershipCheck, the shared PERM-ORG guard of this
+// package (actorIsMemberOfOrg), never a hand-written loop (AGENTS.md).
+type MemberCheck func(ctx context.Context, orgID uuid.UUID) (bool, error)
+
+// MembershipCheck returns the shared membership guard bound to q.
+func MembershipCheck(q *gen.Queries) MemberCheck {
+	return func(ctx context.Context, orgID uuid.UUID) (bool, error) {
+		return actorIsMemberOfOrg(ctx, q, orgID)
+	}
+}
+
+// platformRoles never count from a membership row: the checker resolves
+// them only from the global, org-less user_roles (GetActiveRolesForUserInOrg).
+var platformRoles = map[string]bool{"platform_superadmin": true, "platform_operator": true}
 
 // orgMeResponse is the body of GET /v1/organizations/{org_id}/me.
 type orgMeResponse struct {
@@ -84,7 +102,7 @@ func MainMembershipRole(roles []string) string {
 // 403 org.access_denied, the answer every membership guard gives. A
 // superadmin needs no X-Admin-Reason here: the call reads the caller's own
 // access and no tenant data beyond the organization's name.
-func HandleOrgMe(q OrgMeQuerier, resolver permissions.OrgEffectiveResolver, logger *slog.Logger) http.HandlerFunc {
+func HandleOrgMe(q OrgMeQuerier, isMember MemberCheck, resolver permissions.OrgEffectiveResolver, logger *slog.Logger) http.HandlerFunc {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -101,7 +119,7 @@ func HandleOrgMe(q OrgMeQuerier, resolver permissions.OrgEffectiveResolver, logg
 			))
 			return
 		}
-		if q == nil || resolver == nil {
+		if q == nil || isMember == nil || resolver == nil {
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 				"dependency.org_access_unavailable", "The server cannot check access right now. Try again in a minute.", r,
 			))
@@ -124,6 +142,17 @@ func HandleOrgMe(q OrgMeQuerier, resolver permissions.OrgEffectiveResolver, logg
 				denyOrgMe(w, r)
 				return
 			}
+			resp.PlatformSuperadmin = auth.HasSuperadminOrgAccess(ctx)
+			member, err := isMember(ctx, orgID)
+			if err != nil {
+				logger.ErrorContext(ctx, "org me: membership check failed", "error", err.Error())
+				writeOrgMeFailure(w, r)
+				return
+			}
+			if !member && !resp.PlatformSuperadmin {
+				denyOrgMe(w, r)
+				return
+			}
 			memberships, err := q.ListMembershipsByUser(ctx, userID)
 			if err != nil {
 				logger.ErrorContext(ctx, "org me: membership lookup failed", "error", err.Error())
@@ -131,14 +160,9 @@ func HandleOrgMe(q OrgMeQuerier, resolver permissions.OrgEffectiveResolver, logg
 				return
 			}
 			for _, m := range memberships {
-				if m.OrgID == orgID && m.Status == "active" {
+				if m.OrgID == orgID && m.Status == "active" && !platformRoles[m.Role] {
 					resp.MembershipRoles = append(resp.MembershipRoles, m.Role)
 				}
-			}
-			resp.PlatformSuperadmin = auth.HasSuperadminOrgAccess(ctx)
-			if len(resp.MembershipRoles) == 0 && !resp.PlatformSuperadmin {
-				denyOrgMe(w, r)
-				return
 			}
 			sort.Strings(resp.MembershipRoles)
 			resp.Role = MainMembershipRole(resp.MembershipRoles)
