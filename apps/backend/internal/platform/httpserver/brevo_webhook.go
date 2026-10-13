@@ -1,14 +1,24 @@
-// brevo_webhook.go — POST /v1/webhooks/brevo/{token}: Brevo's transactional
-// webhook, the delivery status of the buyer letters arena sends
-// (internal/platform/emailstatus, runbook docs/ops/brevo_delivery_status_webhook_ru.md).
+// brevo_webhook.go — Brevo's transactional webhook, the delivery status of
+// the buyer letters arena sends (internal/platform/emailstatus, runbook
+// docs/ops/brevo_delivery_status_webhook_ru.md). Two routes, one handler:
 //
-// Rules of the route:
-//   - it is mounted only when BREVO_WEBHOOK_TOKEN is set — never open;
-//   - the token in the path is compared in constant time (both sides hashed
-//     first, so not even the length leaks); the router redacts it from logs
-//     and traces (adapters/http.redactPath);
-//   - the body is capped, one object or an array of at most
-//     emailstatus.MaxBatch events;
+//   - POST /v1/webhooks/brevo with "Authorization: Bearer <token>": the
+//     preferred one. Brevo sends the header when the webhook is created
+//     through its API with an "auth" object; the token never appears in a
+//     URL, so no proxy access log holds it;
+//   - POST /v1/webhooks/brevo/{token}: for a webhook created in Brevo's web
+//     form, which takes only a URL. The router redacts the segment from its
+//     own logs and traces (adapters/http.redactPath); proxies in front
+//     (Traefik, Cloudflare) may still log it.
+//
+// Rules of the routes:
+//   - mounted only when BREVO_WEBHOOK_TOKEN is set — never open;
+//   - BREVO_WEBHOOK_TOKEN_PREVIOUS is accepted too, so a token can be
+//     rotated without refusing Brevo's deliveries in between;
+//   - every token is compared in constant time (both sides hashed first, so
+//     not even the length leaks);
+//   - the body is capped by size only (1 MiB), one object or an array of
+//     any number of events: a batch is never refused for its length;
 //   - an event for a message arena did not send, and an event type arena
 //     does not model, is acknowledged with 200: the Brevo account may be
 //     shared with the WordPress sites, and Brevo disables an endpoint that
@@ -26,6 +36,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -36,9 +47,9 @@ import (
 )
 
 const (
-	// brevoWebhookMaxBody caps one delivery: a full batch of
-	// emailstatus.MaxBatch events is far below it.
-	brevoWebhookMaxBody = 256 << 10
+	// brevoWebhookMaxBody caps one delivery. A Brevo event is a few hundred
+	// bytes, so this holds a batch of a couple of thousand events.
+	brevoWebhookMaxBody = 1 << 20
 	// brevoWebhookIPRateLimit is requests per minute per client address.
 	// Brevo sends from a handful of addresses, one request per event unless
 	// batching is on; a busy sale day stays well below this.
@@ -54,7 +65,39 @@ func (s *Server) mountBrevoWebhookRoutes(r chi.Router) {
 	if s.brevoWebhookRL == nil {
 		s.brevoWebhookRL = newPublicFeedRateLimiter(0, 0, brevoWebhookIPRateLimit)
 	}
+	r.Post("/webhooks/brevo", s.handleBrevoWebhook)
 	r.Post("/webhooks/brevo/{token}", s.handleBrevoWebhook)
+}
+
+// brevoWebhookToken is the token a request presents: the path segment, or
+// the bearer token of the Authorization header.
+func brevoWebhookToken(r *http.Request) string {
+	if t := chi.URLParam(r, "token"); t != "" {
+		return t
+	}
+	const prefix = "Bearer "
+	if h := r.Header.Get("Authorization"); len(h) > len(prefix) && strings.EqualFold(h[:len(prefix)], prefix) {
+		return strings.TrimSpace(h[len(prefix):])
+	}
+	return ""
+}
+
+// brevoTokenAccepted compares the presented token with the current and the
+// previous configured token in constant time. An empty token never matches.
+func (s *Server) brevoTokenAccepted(presented string) bool {
+	if presented == "" {
+		return false
+	}
+	got := sha256.Sum256([]byte(presented))
+	ok := 0
+	for _, t := range []string{s.cfg.BrevoWebhookToken, s.cfg.BrevoWebhookTokenPrevious} {
+		if t == "" {
+			continue
+		}
+		want := sha256.Sum256([]byte(t))
+		ok |= subtle.ConstantTimeCompare(got[:], want[:])
+	}
+	return ok == 1
 }
 
 func (s *Server) handleBrevoWebhook(w http.ResponseWriter, r *http.Request) {
@@ -65,9 +108,7 @@ func (s *Server) handleBrevoWebhook(w http.ResponseWriter, r *http.Request) {
 			httputil.ErrorEnvelope("webhook.rate_limited", "too many requests", r))
 		return
 	}
-	got := sha256.Sum256([]byte(chi.URLParam(r, "token")))
-	want := sha256.Sum256([]byte(s.cfg.BrevoWebhookToken))
-	if subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
+	if !s.brevoTokenAccepted(brevoWebhookToken(r)) {
 		s.brevoWebhookRejected("bad_token")
 		httputil.WriteJSON(w, http.StatusUnauthorized,
 			httputil.ErrorEnvelope("webhook.unauthorized", "unknown webhook token", r))

@@ -35,7 +35,12 @@ type brevoHook struct {
 
 func newBrevoHook(t *testing.T) *brevoHook {
 	t.Helper()
-	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) { c.BrevoWebhookToken = brevoTestToken })
+	return newBrevoHookCfg(t, func(c *config.Config) { c.BrevoWebhookToken = brevoTestToken })
+}
+
+func newBrevoHookCfg(t *testing.T, mutate func(*config.Config)) *brevoHook {
+	t.Helper()
+	srv, _ := productionIntegrationServerCfg(t, mutate)
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)
 	return &brevoHook{t: t, ts: ts}
@@ -152,10 +157,10 @@ func TestBrevoWebhook_StatusesAndOrderRead(t *testing.T) {
 		t.Fatalf("unknown message id must not be applied: %v", body)
 	}
 	// An event type arena does not model: 200, ignored, no row.
-	hook.send("deferred", ticketMID, t0, nil)
-	var deferred int
-	_ = f.pool.QueryRow(ctx, `SELECT count(*) FROM email_letter_events WHERE letter_id = $1 AND event = 'deferred'`, ticketLetter).Scan(&deferred)
-	if deferred != 0 {
+	hook.send("unsubscribed", ticketMID, t0, nil)
+	var ignored int
+	_ = f.pool.QueryRow(ctx, `SELECT count(*) FROM email_letter_events WHERE letter_id = $1`, ticketLetter).Scan(&ignored)
+	if ignored != 0 {
 		t.Fatal("an ignored event type must not be stored")
 	}
 
@@ -283,7 +288,7 @@ func TestBrevoWebhook_RefusesMalformedAndOversizedBodies(t *testing.T) {
 	if code, _ := hook.post(brevoTestToken, `not json`); code != http.StatusBadRequest {
 		t.Fatalf("malformed: %d, want 400", code)
 	}
-	big := `{"event":"delivered","pad":"` + strings.Repeat("x", 300<<10) + `"}`
+	big := `{"event":"delivered","pad":"` + strings.Repeat("x", 1100<<10) + `"}`
 	if code, _ := hook.post(brevoTestToken, big); code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversized: %d, want 413", code)
 	}
@@ -297,5 +302,152 @@ func TestBrevoWebhook_NotMountedWithoutToken(t *testing.T) {
 	_ = integReadBody(t, resp)
 	if resp.StatusCode == http.StatusOK {
 		t.Fatal("without BREVO_WEBHOOK_TOKEN the route must not exist")
+	}
+}
+
+// postBearer sends body to the header-authenticated route.
+func (h *brevoHook) postBearer(authorization, body string) int {
+	h.t.Helper()
+	req, err := http.NewRequest(http.MethodPost, h.ts.URL+"/v1/webhooks/brevo", strings.NewReader(body))
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if authorization != "" {
+		req.Header.Set("Authorization", authorization)
+	}
+	resp, err := h.ts.Client().Do(req)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	_ = integReadBody(h.t, resp)
+	return resp.StatusCode
+}
+
+// TestBrevoWebhook_BearerRouteAndTokenRotation (review L1): the header route
+// takes the token from "Authorization: Bearer", and during a rotation the
+// previous token is accepted on both routes.
+func TestBrevoWebhook_BearerRouteAndTokenRotation(t *testing.T) {
+	const previous = "brevo-webhook-previous-token-0123456789abcdef"
+	hook := newBrevoHookCfg(t, func(c *config.Config) {
+		c.BrevoWebhookToken = brevoTestToken
+		c.BrevoWebhookTokenPrevious = previous
+	})
+	body := brevoEventJSON("delivered", "not-ours@smtp-relay.mailin.fr", time.Now().Add(-time.Minute), nil)
+	cases := []struct {
+		name, auth string
+		want       int
+	}{
+		{"current token", "Bearer " + brevoTestToken, http.StatusOK},
+		{"previous token", "Bearer " + previous, http.StatusOK},
+		{"lower-case scheme", "bearer " + brevoTestToken, http.StatusOK},
+		{"wrong token", "Bearer nope-nope-nope-nope-nope-nope-nope", http.StatusUnauthorized},
+		{"no header", "", http.StatusUnauthorized},
+		{"basic scheme", "Basic " + brevoTestToken, http.StatusUnauthorized},
+	}
+	for _, c := range cases {
+		if got := hook.postBearer(c.auth, body); got != c.want {
+			t.Errorf("%s: status %d, want %d", c.name, got, c.want)
+		}
+	}
+	if code, _ := hook.post(previous, body); code != http.StatusOK {
+		t.Fatalf("previous token on the path route: %d, want 200", code)
+	}
+}
+
+// TestBrevoWebhook_LargeBatchIsAccepted (review L2): the body is capped by
+// size, not by the number of events — a batch of 250 is not refused.
+func TestBrevoWebhook_LargeBatchIsAccepted(t *testing.T) {
+	hook := newBrevoHook(t)
+	at := time.Now().Add(-time.Minute)
+	parts := make([]string, 250)
+	for i := range parts {
+		parts[i] = brevoEventJSON("delivered", fmt.Sprintf("batch-%d@smtp-relay.mailin.fr", i), at, nil)
+	}
+	code, body := hook.post(brevoTestToken, "["+strings.Join(parts, ",")+"]")
+	if code != http.StatusOK || body["received"] != float64(250) {
+		t.Fatalf("batch of 250: status %d body %v", code, body)
+	}
+}
+
+// TestBrevoWebhook_DeferredAndStuckLetters (review M3): a deferred letter
+// shows as delayed with the time Brevo deferred it, and a letter left "sent"
+// or "delayed" for hours with no delivery is flagged stuck on the card and
+// the list.
+func TestBrevoWebhook_DeferredAndStuckLetters(t *testing.T) {
+	f := newECOrdersFixture(t)
+	hook := newBrevoHook(t)
+	ctx := context.Background()
+	t.Cleanup(func() {
+		_, _ = f.pool.Exec(ctx, `DELETE FROM email_letters WHERE org_id = $1`, f.orgA)
+	})
+	letter, mid := sentLetter(t, f, emailstatus.KindTicket, "anna@example.com", []uuid.UUID{f.ticket1, f.ticket2})
+	t0 := time.Now().UTC().Add(-time.Minute).Truncate(time.Millisecond)
+	hook.send("deferred", mid, t0, nil)
+
+	cardPath := "/v1/organizations/" + f.orgA.String() + "/orders/" + f.paidOrder.String()
+	_, card := f.get(cardPath, f.managerTok)
+	letters, _ := card["letters"].([]any)
+	if len(letters) != 1 {
+		t.Fatalf("card letters = %v", letters)
+	}
+	l := letters[0].(map[string]any)
+	if l["status"] != emailstatus.StatusDelayed || l["deferred_at"] == nil || l["stuck"] != false || card["letter_failed"] != false {
+		t.Fatalf("deferred letter on the card = %v, letter_failed %v", l, card["letter_failed"])
+	}
+
+	// Seven hours on, still no delivery: stuck.
+	if _, err := f.pool.Exec(ctx, `UPDATE email_letters SET sent_at = now() - interval '7 hours' WHERE id = $1`, letter); err != nil {
+		t.Fatal(err)
+	}
+	_, card = f.get(cardPath, f.managerTok)
+	l = card["letters"].([]any)[0].(map[string]any)
+	if l["stuck"] != true || card["letter_failed"] != true {
+		t.Fatalf("stuck letter on the card = %v, letter_failed %v", l, card["letter_failed"])
+	}
+	_, list := f.get("/v1/organizations/"+f.orgA.String()+"/orders?tab=recent", f.managerTok)
+	flagged := false
+	for _, r := range list["orders"].([]any) {
+		m := r.(map[string]any)
+		if m["id"] == f.paidOrder.String() {
+			flagged = m["letter_failed"] == true
+		}
+	}
+	if !flagged {
+		t.Fatal("the orders list must flag an order whose letter is stuck")
+	}
+
+	// A delivery ends it.
+	hook.send("delivered", mid, t0.Add(30*time.Second), nil)
+	_, card = f.get(cardPath, f.managerTok)
+	l = card["letters"].([]any)[0].(map[string]any)
+	if l["status"] != emailstatus.StatusDelivered || l["stuck"] != false || card["letter_failed"] != false {
+		t.Fatalf("delivered letter on the card = %v, letter_failed %v", l, card["letter_failed"])
+	}
+}
+
+// TestBrevoWebhook_LettersStayInsideTheOrganization (review L5): another
+// organization's path never shows an order's letters, even to a person who
+// is a member of both organizations.
+func TestBrevoWebhook_LettersStayInsideTheOrganization(t *testing.T) {
+	f := newECOrdersFixture(t)
+	ctx := context.Background()
+	t.Cleanup(func() {
+		_, _ = f.pool.Exec(ctx, `DELETE FROM email_letters WHERE org_id = $1`, f.orgA)
+	})
+	sentLetter(t, f, emailstatus.KindTicket, "anna@example.com", []uuid.UUID{f.ticket1, f.ticket2})
+
+	code, card := f.get("/v1/organizations/"+f.orgB.String()+"/orders/"+f.paidOrder.String(), f.managerTok)
+	if code != http.StatusNotFound {
+		t.Fatalf("org B card of org A's order: %d %v, want 404", code, card)
+	}
+	if _, ok := card["letters"]; ok {
+		t.Fatalf("a refused card must carry no letters: %v", card)
+	}
+	_, list := f.get("/v1/organizations/"+f.orgB.String()+"/orders?tab=recent", f.managerTok)
+	for _, r := range list["orders"].([]any) {
+		if r.(map[string]any)["id"] == f.paidOrder.String() {
+			t.Fatal("org B's orders list must not carry org A's order")
+		}
 	}
 }

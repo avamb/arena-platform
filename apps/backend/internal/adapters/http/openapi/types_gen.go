@@ -8607,6 +8607,9 @@ type OrderLetter struct {
 	// ClickedAt First click on a link of the letter (for example the ticket download). Proves delivery; not counted as reading, mail security scanners follow links too.
 	ClickedAt *time.Time `json:"clicked_at"`
 
+	// DeferredAt When Brevo first reported the letter deferred (the recipient's server asked it to retry later). Stays set after a later delivery.
+	DeferredAt *time.Time `json:"deferred_at"`
+
 	// DeliveredAt When Brevo reported the letter delivered.
 	DeliveredAt *time.Time `json:"delivered_at"`
 
@@ -8616,13 +8619,13 @@ type OrderLetter struct {
 	// FailureEvent hard_bounce, soft_bounce, invalid_email, blocked, error, or send_failed (the relay refused the letter).
 	FailureEvent *string `json:"failure_event"`
 
-	// FailureReason The provider's reason, addresses removed.
+	// FailureReason The provider's reason, with e-mail addresses, IP addresses and host names removed.
 	FailureReason *string `json:"failure_reason"`
 
 	// Id Letter id; null for a letter the relay has not accepted (queued, send_failed) or one sent before letters were recorded.
 	Id *openapi_types.UUID `json:"id"`
 
-	// Kind ticket, invitation, change, cancel or refund.
+	// Kind ticket, change, cancel or refund. Invitation letters have no order and are not listed on an order.
 	Kind string `json:"kind"`
 
 	// OpenedAt When Brevo first reported an open.
@@ -8641,11 +8644,19 @@ type OrderLetter struct {
 	SentAt *time.Time `json:"sent_at"`
 
 	// Status queued (the delivery job waits), sent (the mail relay accepted
-	// the letter), delivered (the recipient's server accepted it, or a
-	// mail proxy fetched it, or a link was clicked), opened, failed (bounced, blocked,
-	// invalid address, provider error, or the relay refused it). A
-	// failure is final unless a later delivery is reported.
+	// the letter), delayed (the recipient's server asked Brevo to try
+	// again later; Brevo keeps retrying), delivered (the recipient's
+	// server accepted it, or a mail proxy fetched it, or a link was
+	// clicked), opened, failed (bounced, blocked, invalid address,
+	// provider error, or the relay refused it). A failure is final
+	// unless a later delivery is reported.
 	Status string `json:"status"`
+
+	// Stuck True when the letter has been sent or delayed for more than six
+	// hours with no delivery while the webhook kept reporting on other
+	// letters: the buyer most likely has no letter. letter_failed is
+	// also true then.
+	Stuck bool `json:"stuck"`
 
 	// TicketIds Tickets the letter carries (empty for change, cancellation and refund letters).
 	TicketIds []openapi_types.UUID `json:"ticket_ids"`
@@ -14823,6 +14834,17 @@ type GetTicketCredentialParams struct {
 	Type *string `form:"type,omitempty" json:"type,omitempty"`
 }
 
+// BrevoDeliveryStatusWebhookBearerJSONBody defines parameters for BrevoDeliveryStatusWebhookBearer.
+type BrevoDeliveryStatusWebhookBearerJSONBody struct {
+	union json.RawMessage
+}
+
+// BrevoDeliveryStatusWebhookBearerJSONBody0 defines parameters for BrevoDeliveryStatusWebhookBearer.
+type BrevoDeliveryStatusWebhookBearerJSONBody0 map[string]interface{}
+
+// BrevoDeliveryStatusWebhookBearerJSONBody1 defines parameters for BrevoDeliveryStatusWebhookBearer.
+type BrevoDeliveryStatusWebhookBearerJSONBody1 = []map[string]interface{}
+
 // BrevoDeliveryStatusWebhookJSONBody defines parameters for BrevoDeliveryStatusWebhook.
 type BrevoDeliveryStatusWebhookJSONBody struct {
 	union json.RawMessage
@@ -15261,6 +15283,9 @@ type CancelTicketJSONRequestBody = CancelTicketRequest
 
 // CreateSeatingPlanJSONRequestBody defines body for CreateSeatingPlan for application/json ContentType.
 type CreateSeatingPlanJSONRequestBody = CreateSeatingPlanRequest
+
+// BrevoDeliveryStatusWebhookBearerJSONRequestBody defines body for BrevoDeliveryStatusWebhookBearer for application/json ContentType.
+type BrevoDeliveryStatusWebhookBearerJSONRequestBody BrevoDeliveryStatusWebhookBearerJSONBody
 
 // BrevoDeliveryStatusWebhookJSONRequestBody defines body for BrevoDeliveryStatusWebhook for application/json ContentType.
 type BrevoDeliveryStatusWebhookJSONRequestBody BrevoDeliveryStatusWebhookJSONBody

@@ -3997,7 +3997,8 @@ components:
     OrderLetter:
       type: object
       required: [id, kind, status, recipient, ticket_ids, queued_at, sent_at, delivered_at,
-                 proxy_opened_at, opened_at, clicked_at, failed_at, failure_event, failure_reason]
+                 proxy_opened_at, opened_at, clicked_at, deferred_at, failed_at, failure_event,
+                 failure_reason, stuck]
       description: |
         One buyer letter of an order and its delivery status, from Brevo's
         transactional webhook. Ticket letters come first, grouped the way
@@ -4018,15 +4019,17 @@ components:
           description: Letter id; null for a letter the relay has not accepted (queued, send_failed) or one sent before letters were recorded.
         kind:
           type: string
-          description: ticket, invitation, change, cancel or refund.
+          description: ticket, change, cancel or refund. Invitation letters have no order and are not listed on an order.
         status:
           type: string
           description: |
             queued (the delivery job waits), sent (the mail relay accepted
-            the letter), delivered (the recipient's server accepted it, or a
-            mail proxy fetched it, or a link was clicked), opened, failed (bounced, blocked,
-            invalid address, provider error, or the relay refused it). A
-            failure is final unless a later delivery is reported.
+            the letter), delayed (the recipient's server asked Brevo to try
+            again later; Brevo keeps retrying), delivered (the recipient's
+            server accepted it, or a mail proxy fetched it, or a link was
+            clicked), opened, failed (bounced, blocked, invalid address,
+            provider error, or the relay refused it). A failure is final
+            unless a later delivery is reported.
         recipient:
           type: string
           description: Address the letter was sent to.
@@ -4061,6 +4064,10 @@ components:
           type: [string, "null"]
           format: date-time
           description: First click on a link of the letter (for example the ticket download). Proves delivery; not counted as reading, mail security scanners follow links too.
+        deferred_at:
+          type: [string, "null"]
+          format: date-time
+          description: When Brevo first reported the letter deferred (the recipient's server asked it to retry later). Stays set after a later delivery.
         failed_at:
           type: [string, "null"]
           format: date-time
@@ -4070,7 +4077,14 @@ components:
           description: hard_bounce, soft_bounce, invalid_email, blocked, error, or send_failed (the relay refused the letter).
         failure_reason:
           type: [string, "null"]
-          description: The provider's reason, addresses removed.
+          description: The provider's reason, with e-mail addresses, IP addresses and host names removed.
+        stuck:
+          type: boolean
+          description: |
+            True when the letter has been sent or delayed for more than six
+            hours with no delivery while the webhook kept reporting on other
+            letters: the buyer most likely has no letter. letter_failed is
+            also true then.
 
     OrderDetail:
       description: |
@@ -36756,6 +36770,90 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/webhooks/brevo:
+    post:
+      operationId: brevoDeliveryStatusWebhookBearer
+      summary: Receive Brevo transactional delivery events
+      description: |
+        Brevo's transactional webhook: what happened to the buyer letters
+        arena sent (ticket letter, invitation, session change or
+        cancellation, refund). Mounted only when BREVO_WEBHOOK_TOKEN is set.
+        This route takes the token from "Authorization: Bearer <token>"
+        (a webhook created through Brevo's API with an auth object), so
+        the token never appears in a URL. BREVO_WEBHOOK_TOKEN_PREVIOUS is
+        accepted too during a rotation; tokens are compared in
+        constant time. The body is one Brevo event object or an array of
+        them, capped at 1 MiB (never by the number of events). Events of
+        messages arena did not send (the Brevo account may be shared with
+        other sites) and event types arena does not model (unsubscribed,
+        spam, list addition) are acknowledged with 200 and ignored. Setup:
+        docs/ops/brevo_delivery_status_webhook_ru.md.
+      tags: [v1]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: One Brevo transactional event object, or an array of them.
+              oneOf:
+                - type: object
+                  description: One Brevo event (event, message-id, ts_epoch, reason, X-Mailin-custom and more).
+                  additionalProperties: true
+                - type: array
+                  description: A batch of Brevo events.
+                  items:
+                    type: object
+                    description: One Brevo event.
+                    additionalProperties: true
+      responses:
+        "200":
+          description: Events acknowledged.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [acknowledged, received, applied]
+                properties:
+                  acknowledged:
+                    type: boolean
+                    description: Always true.
+                  received:
+                    type: integer
+                    description: Events in the body.
+                  applied:
+                    type: integer
+                    description: Events that belonged to a letter arena sent and were recorded.
+        "400":
+          description: Malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or unknown bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: Body larger than 1 MiB.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many requests from this address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: An event could not be stored; Brevo delivers it again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/webhooks/brevo/{token}:
     post:
       operationId: brevoDeliveryStatusWebhook
@@ -36763,13 +36861,16 @@ paths:
       description: |
         Brevo's transactional webhook: what happened to the buyer letters
         arena sent (ticket letter, invitation, session change or
-        cancellation, refund). Mounted only when BREVO_WEBHOOK_TOKEN is set;
-        the token in the path is the only credential and is compared in
-        constant time. The body is one Brevo event object or an array of at
-        most 100. Events of messages arena did not send (the Brevo account
-        may be shared with other sites) and event types arena does not
-        model (click, deferred, unsubscribed, spam, list addition) are
-        acknowledged with 200 and ignored. Setup:
+        cancellation, refund). Mounted only when BREVO_WEBHOOK_TOKEN is set.
+        The token in the path is the credential, for a webhook created in
+        Brevo's web form, which takes only a URL; prefer POST
+        /v1/webhooks/brevo with a bearer header. BREVO_WEBHOOK_TOKEN_PREVIOUS
+        is accepted too during a rotation; tokens are compared in
+        constant time. The body is one Brevo event object or an array of
+        them, capped at 1 MiB (never by the number of events). Events of
+        messages arena did not send (the Brevo account may be shared with
+        other sites) and event types arena does not model (unsubscribed,
+        spam, list addition) are acknowledged with 200 and ignored. Setup:
         docs/ops/brevo_delivery_status_webhook_ru.md.
       tags: [v1]
       parameters:
@@ -36790,7 +36891,6 @@ paths:
                   additionalProperties: true
                 - type: array
                   description: A batch of Brevo events.
-                  maxItems: 100
                   items:
                     type: object
                     description: One Brevo event.
@@ -36826,7 +36926,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "413":
-          description: Body larger than 256 KiB.
+          description: Body larger than 1 MiB.
           content:
             application/json:
               schema:

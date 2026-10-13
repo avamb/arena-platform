@@ -311,7 +311,10 @@ type Config struct {
 	// (POST /v1/webhooks/brevo/{token}, the delivery status of buyer
 	// letters). Empty = the route is not mounted at all. In production it
 	// must be a random value of at least 32 characters.
-	BrevoWebhookToken              string        `env:"BREVO_WEBHOOK_TOKEN" required:"false" default:""`
+	BrevoWebhookToken string `env:"BREVO_WEBHOOK_TOKEN" required:"false" default:""`
+	// BrevoWebhookTokenPrevious is accepted alongside BrevoWebhookToken
+	// while a token is being rotated; leave it empty otherwise.
+	BrevoWebhookTokenPrevious      string        `env:"BREVO_WEBHOOK_TOKEN_PREVIOUS" required:"false" default:""`
 	SenderVerificationPollInterval time.Duration `env:"SENDER_VERIFICATION_POLL_INTERVAL" required:"false" default:"15m"`
 
 	// -------------------------------------------------------------------------
@@ -628,7 +631,8 @@ func Load() (*Config, error) {
 		BrevoAPIKey:     getenv("BREVO_API_KEY", ""),
 		BrevoAPIBaseURL: getenv("BREVO_API_BASE_URL", "https://api.brevo.com"),
 
-		BrevoWebhookToken: strings.TrimSpace(getenv("BREVO_WEBHOOK_TOKEN", "")),
+		BrevoWebhookToken:         strings.TrimSpace(getenv("BREVO_WEBHOOK_TOKEN", "")),
+		BrevoWebhookTokenPrevious: strings.TrimSpace(getenv("BREVO_WEBHOOK_TOKEN_PREVIOUS", "")),
 
 		StripeWebhookSecret: getenv("STRIPE_WEBHOOK_SECRET", ""),
 		AllPayWebhookSecret: getenv("ALLPAY_WEBHOOK_SECRET", ""),
@@ -1419,10 +1423,15 @@ func (c *Config) validateProduction() []error {
 	// 17. BREVO_WEBHOOK_TOKEN is the only thing that authenticates the
 	// delivery-status webhook: a short or well-known value would let anyone
 	// mark buyers' letters delivered or bounced.
-	if t := c.BrevoWebhookToken; t != "" && (len(t) < MinBrevoWebhookTokenLen || isKnownDevSecret(t)) {
-		errs = append(errs, fmt.Errorf(
-			"BREVO_WEBHOOK_TOKEN must be a random value of at least %d characters in production",
-			MinBrevoWebhookTokenLen))
+	for _, tok := range []struct{ name, value string }{
+		{"BREVO_WEBHOOK_TOKEN", c.BrevoWebhookToken},
+		{"BREVO_WEBHOOK_TOKEN_PREVIOUS", c.BrevoWebhookTokenPrevious},
+	} {
+		if tok.value != "" && (len(tok.value) < MinBrevoWebhookTokenLen || isKnownDevSecret(tok.value)) {
+			errs = append(errs, fmt.Errorf(
+				"%s must be a random value of at least %d characters in production",
+				tok.name, MinBrevoWebhookTokenLen))
+		}
 	}
 
 	return errs
