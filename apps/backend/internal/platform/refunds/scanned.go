@@ -3,9 +3,8 @@
 // surface that creates or sends a refund: the organizer API, the bot, the
 // flat /v1/refunds routes, the ticket-cancel route and the engine's own
 // claim. It judges by the scans recorded in arena (used_at, barcodes, the
-// scanner's admitted scan events); an entry scanned only in MACS never
-// reaches arena, so such a ticket is not blocked. Money and statuses stay as
-// they are; the attempt is journaled and the owners are told once a day.
+// scanner's admitted scan events). Money and statuses stay as they are; the
+// attempt is journaled and the owners are told once a day.
 package refunds
 
 import (
