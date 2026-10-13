@@ -1,4 +1,4 @@
--- 0147_organizer_contact_messages.sql — the "Write to the organizer" form of
+-- 0148_organizer_contact_messages.sql — the "Write to the organizer" form of
 -- the hosted sales page (HP contact form, owner decision 2026-10-13).
 --
 -- The page no longer publishes the organizer's e-mail: a buyer writes through

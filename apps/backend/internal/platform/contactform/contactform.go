@@ -1,7 +1,7 @@
 // Package contactform delivers the messages buyers send through the "Write
 // to the organizer" form of the hosted sales page (HP contact form). The
 // public route (httpserver/hcontact) stores each message in
-// organizer_contact_messages (migration 0147) and queues one worker job; this
+// organizer_contact_messages (migration 0148) and queues one worker job; this
 // package is that job.
 //
 // One job, two legs, each sent at most once (email_sent_at /

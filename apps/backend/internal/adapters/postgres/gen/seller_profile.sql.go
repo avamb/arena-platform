@@ -136,7 +136,7 @@ const getContactFormToTelegram = `-- name: GetContactFormToTelegram :one
 SELECT contact_form_to_telegram FROM organizations WHERE id = $1 AND deleted_at IS NULL`
 
 // GetContactFormToTelegram reports whether buyers' messages also go to the
-// organization's sales chat (migration 0147).
+// organization's sales chat (migration 0148).
 func (q *Queries) GetContactFormToTelegram(ctx context.Context, orgID uuid.UUID) (bool, error) {
 	var v bool
 	err := q.db.QueryRow(ctx, getContactFormToTelegram, orgID).Scan(&v)

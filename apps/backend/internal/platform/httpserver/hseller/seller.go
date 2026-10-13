@@ -92,7 +92,7 @@ type Profile struct {
 	Missing                []string  `json:"missing"`
 	Channels               []Channel `json:"channels"`
 	// ContactFormToTelegram: buyers' messages from the sales page's contact
-	// form also go to the organization's sales Telegram chat (migration 0147).
+	// form also go to the organization's sales Telegram chat (migration 0148).
 	ContactFormToTelegram bool `json:"contact_form_to_telegram"`
 }
 
