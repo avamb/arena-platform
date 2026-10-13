@@ -159,7 +159,7 @@ func RequireMetricsBearerToken(token string, next http.Handler) http.Handler {
 		got := []byte(r.Header.Get("Authorization"))
 		if len(got) != len(want) || subtle.ConstantTimeCompare(got, want) != 1 {
 			msg := i18n.Localize(r.Context(), "error.unauthorized",
-				"authentication required", nil)
+				"Sign in first. Send a valid Bearer token with the request.", nil)
 			writeJSON(w, http.StatusUnauthorized, errorEnvelope("auth_required", msg, r))
 			return
 		}
@@ -181,7 +181,7 @@ func RequireMetricsBearerToken(token string, next http.Handler) http.Handler {
 // Localizer (when LocaleMiddleware is wired) are already present in ctx.
 func handleNotFound(w http.ResponseWriter, r *http.Request) {
 	msg := i18n.Localize(r.Context(), "error.not_found",
-		"the requested resource does not exist", nil)
+		"We cannot find this page. Check the address.", nil)
 	writeJSON(w, http.StatusNotFound, errorEnvelope("http.not_found", msg, r))
 }
 

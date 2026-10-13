@@ -14,19 +14,19 @@
 other = "Welcome to Arena Platform!"
 
 ["error.unauthorized"]
-other = "Authentication required: provide a valid Bearer token."
+other = "Sign in first. Send a valid Bearer token with the request."
 
 ["error.forbidden"]
-other = "You do not have permission to access this resource."
+other = "You do not have access to this action. Ask the owner of the organization for access."
 
 ["error.not_found"]
-other = "The requested resource does not exist."
+other = "We cannot find this page. Check the address."
 
 ["error.validation"]
-other = "The request contains invalid data."
+other = "Some data in the request is wrong. Check the fields and send the request again."
 
 ["error.internal"]
-other = "An unexpected error occurred. Please try again later."
+other = "Something went wrong on our side. Try again in a minute. If it happens again, write to support."
 
 # ── Pricing breakdown labels (feature #163) ──────────────────────────────────
 # Used by GET /v1/checkout/{id}/price-breakdown to label each line item.
@@ -52,97 +52,97 @@ other = "VAT"
 other = "OK"
 
 ["bil24.seat_taken"]
-other = "Seat {{.sector}}-{{.row}}-{{.number}} is already taken"
+other = "Seat {{.sector}}-{{.row}}-{{.number}} is already taken. Choose another seat."
 
 ["bil24.category_sold_out"]
-other = "Category {{.name}} is sold out ({{.available}} left)"
+other = "Not enough tickets in category {{.name}}: {{.available}} left. Choose fewer tickets or another category."
 
 ["bil24.session_expired"]
-other = "session expired"
+other = "Your time ran out. Start the purchase again."
 
 ["bil24.sales_closed"]
-other = "sales are closed for this session"
+other = "Ticket sales for this session have ended."
 
 ["bil24.promo_invalid"]
-other = "promo code is not valid"
+other = "This promo code does not work. Check the code or buy without it."
 
 ["bil24.promo_not_found"]
-other = "promo code was not found"
+other = "We cannot find this promo code. Check the spelling."
 
 ["bil24.promo_expired"]
-other = "promo code has expired"
+other = "This promo code has expired."
 
 ["bil24.promo_not_yet_valid"]
-other = "promo code is not valid yet"
+other = "This promo code does not work yet."
 
 ["bil24.promo_not_applicable"]
-other = "promo code does not apply to the tickets in your cart"
+other = "This promo code does not apply to the tickets in your cart."
 
 ["bil24.promo_min_order"]
-other = "the order total is below the minimum for this promo code"
+other = "The order total is below the minimum for this promo code. Add tickets to use it."
 
 ["bil24.promo_wrong_session"]
-other = "promo code is not valid for this event"
+other = "This promo code does not work for this event."
 
 ["bil24.promo_currency_mismatch"]
-other = "promo code is in a different currency"
+other = "This promo code is for another currency."
 
 ["bil24.promo_exhausted"]
-other = "promo code has already been used up"
+other = "This promo code has no uses left."
 
 ["bil24.promo_per_customer_limit"]
-other = "you have already used this promo code"
+other = "You have already used this promo code."
 
 ["bil24.hold_expired"]
-other = "your hold has expired, please reserve again"
+other = "Your hold has expired. Choose the tickets again."
 
 ["bil24.order_expired"]
-other = "payment time for this order has expired"
+other = "The time to pay for this order has ended. Place a new order."
 
 ["bil24.open_order_exists"]
-other = "you already have an unpaid order for this event, complete or cancel it first"
+other = "You already have an unpaid order for this event. Pay for it or cancel it first."
 
 ["bil24.order_kind_changed"]
-other = "an order cannot switch between a paid order and an invitation, reserve again"
+other = "An order cannot change from paid to invitation or back. Choose the tickets again."
 
 ["bil24.order_not_found"]
-other = "order not found"
+other = "We cannot find this order."
 
 ["bil24.currency_mismatch"]
-other = "cart currency does not match this session"
+other = "The cart currency does not match this session. Empty the cart and choose the tickets again."
 
 ["bil24.pricing_mode_unsupported"]
-other = "pricing mode is not supported by this gateway"
+other = "The gateway does not support the price mode of this category."
 
 ["bil24.line_wrong_session"]
-other = "order line does not belong to this session"
+other = "An order line belongs to another session."
 
 ["bil24.order_cancelled"]
-other = "order has been canceled"
+other = "This order is canceled."
 
 ["bil24.no_tickets_to_send"]
-other = "this order has no tickets to send"
+other = "This order has no tickets to send."
 
 ["bil24.use_refund_ticket"]
-other = "please issue a refund for the ticket instead"
+other = "Refund the ticket instead."
 
 ["bil24.unknown_command"]
-other = "unknown command"
+other = "The gateway does not know this command."
 
 ["bil24.invalid_request"]
-other = "invalid request"
+other = "Some data in the request is missing or wrong. Check the request and send it again."
 
 ["bil24.not_found"]
-other = "resource not found in this channel"
+other = "This sales channel has no such item."
 
 ["bil24.unauthorized"]
-other = "unauthorized"
+other = "Access denied. Check the gateway token."
 
 ["bil24.internal"]
-other = "internal error"
+other = "Something went wrong on our side. Try again in a minute."
 
 ["bil24.sample_ticket"]
-other = "sample ticket, not valid for entry"
+other = "This is a sample ticket. It does not give entry."
 
 # ---------------------------------------------------------------------------
 # Telegram event-center bot (internal/platform/eventbot, spec 28). Every key

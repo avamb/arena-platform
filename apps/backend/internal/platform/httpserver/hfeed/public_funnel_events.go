@@ -77,7 +77,7 @@ type PostWidgetFunnelEventsRequest struct {
 func (h *Handler) HandlePostFunnelEvents(w http.ResponseWriter, r *http.Request) {
 	if h.funnelQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -95,14 +95,14 @@ func (h *Handler) HandlePostFunnelEvents(w http.ResponseWriter, r *http.Request)
 	var req PostWidgetFunnelEventsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			"feed.invalid_body", "request body must be valid JSON", r,
+			"feed.invalid_body", "The request body is not valid JSON. Fix it and send it again.", r,
 		))
 		return
 	}
 
 	if len(req.Events) == 0 {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			"feed.empty_batch", "events array must not be empty", r,
+			"feed.empty_batch", "Send at least one event in events.", r,
 		))
 		return
 	}
@@ -110,7 +110,7 @@ func (h *Handler) HandlePostFunnelEvents(w http.ResponseWriter, r *http.Request)
 	if len(req.Events) > maxFunnelBatchSize {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"feed.batch_too_large",
-			fmt.Sprintf("events batch exceeds maximum of %d", maxFunnelBatchSize),
+			fmt.Sprintf("Send at most %d events in one batch.", maxFunnelBatchSize),
 			r,
 		))
 		return

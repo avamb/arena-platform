@@ -264,17 +264,17 @@ func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("venue.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("venue.invalid_body", "We could not read the request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("venue.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("venue.empty_body", "The request has no body. Send the venue as JSON.", r))
 		return
 	}
 
 	var req createVenueRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("venue.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("venue.invalid_json", "The request body is not valid JSON. Fix it and send it again.", r))
 		return
 	}
 
@@ -293,7 +293,7 @@ func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
 
 	if req.Name == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"venue.invalid_name", "name is required", r,
+			"venue.invalid_name", "Enter the venue name.", r,
 			map[string]any{"field": "name"},
 		))
 		return
@@ -304,7 +304,7 @@ func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
 		parsed, parseErr := uuid.Parse(req.CityID)
 		if parseErr != nil {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-				"venue.invalid_city_id", "city_id must be a valid UUID", r,
+				"venue.invalid_city_id", "Send city_id as a UUID.", r,
 				map[string]any{"field": "city_id"},
 			))
 			return
@@ -346,22 +346,22 @@ func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
 	if req.Country != "" {
 		normalized, ok := validateVenueCountry(req.Country)
 		if !ok {
-			venueFieldError(w, r, "venue.invalid_country", "country", "country must be a 2-letter ISO-3166-1 code")
+			venueFieldError(w, r, "venue.invalid_country", "country", "Send country as a 2-letter ISO 3166-1 code, for example ES.")
 			return
 		}
 		country = &normalized
 	}
 
 	if (req.GeoLat != nil) != (req.GeoLng != nil) {
-		venueFieldError(w, r, "venue.invalid_geo", "geo_lat", "geo_lat and geo_lng must be provided together")
+		venueFieldError(w, r, "venue.invalid_geo", "geo_lat", "Send geo_lat and geo_lng together, or neither.")
 		return
 	}
 	if req.GeoLat != nil && !validateVenueGeoLat(*req.GeoLat) {
-		venueFieldError(w, r, "venue.invalid_geo_lat", "geo_lat", "geo_lat must be between -90 and 90")
+		venueFieldError(w, r, "venue.invalid_geo_lat", "geo_lat", "Send geo_lat as a number from -90 to 90.")
 		return
 	}
 	if req.GeoLng != nil && !validateVenueGeoLng(*req.GeoLng) {
-		venueFieldError(w, r, "venue.invalid_geo_lng", "geo_lng", "geo_lng must be between -180 and 180")
+		venueFieldError(w, r, "venue.invalid_geo_lng", "geo_lng", "Send geo_lng as a number from -180 to 180.")
 		return
 	}
 
@@ -372,11 +372,11 @@ func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
 	// a timezone to default from (see package doc comment), so this is a
 	// hard requirement rather than a city-derived default.
 	if req.Timezone == "" {
-		venueFieldError(w, r, "venue.timezone_required", "timezone", "timezone is required (IANA zone name, e.g. Europe/Berlin)")
+		venueFieldError(w, r, "venue.timezone_required", "timezone", "Enter the venue time zone as an IANA name, for example Europe/Berlin.")
 		return
 	}
 	if _, err := time.LoadLocation(req.Timezone); err != nil {
-		venueFieldError(w, r, "venue.invalid_timezone", "timezone", "timezone must be a known IANA zone name")
+		venueFieldError(w, r, "venue.invalid_timezone", "timezone", "We do not know this time zone. Enter an IANA name, for example Europe/Berlin.")
 		return
 	}
 	timezone := &req.Timezone
@@ -384,7 +384,7 @@ func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
 	var contactPhone, contactEmail, websiteURL *string
 	if req.ContactPhone != "" {
 		if !validateVenueContactPhone(req.ContactPhone) {
-			venueFieldError(w, r, "venue.invalid_contact_phone", "contact_phone", "contact_phone may contain digits, spaces, +, -, and parentheses only, up to 40 characters")
+			venueFieldError(w, r, "venue.invalid_contact_phone", "contact_phone", "Enter the phone number with digits, spaces, +, - and parentheses only, up to 40 characters.")
 			return
 		}
 		v := req.ContactPhone
@@ -392,7 +392,7 @@ func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.ContactEmail != "" {
 		if !validateVenueContactEmail(req.ContactEmail) {
-			venueFieldError(w, r, "venue.invalid_contact_email", "contact_email", "contact_email must be a valid email address")
+			venueFieldError(w, r, "venue.invalid_contact_email", "contact_email", "Enter the contact e-mail as an address like name@example.com.")
 			return
 		}
 		v := req.ContactEmail
@@ -400,7 +400,7 @@ func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.WebsiteUrl != "" {
 		if !validateVenueWebsiteURL(req.WebsiteUrl) {
-			venueFieldError(w, r, "venue.invalid_website_url", "website_url", "website_url must be a valid http(s) URL")
+			venueFieldError(w, r, "venue.invalid_website_url", "website_url", "Enter the website as an http or https address, for example https://example.com.")
 			return
 		}
 		v := req.WebsiteUrl
@@ -410,7 +410,7 @@ func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
 	status := venueStatusActive
 	if req.Status != "" {
 		if !isValidVenueStatus(req.Status) {
-			venueFieldError(w, r, "venue.invalid_status", "status", "status must be one of active, draft, archived")
+			venueFieldError(w, r, "venue.invalid_status", "status", "Send status as active, draft or archived.")
 			return
 		}
 		status = req.Status
@@ -633,17 +633,17 @@ func (h *Handler) HandleUpdateVenue(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("venue.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("venue.invalid_body", "We could not read the request body: "+err.Error(), r))
 		return
 	}
 	if len(body) == 0 {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("venue.empty_body", "request body is required", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("venue.empty_body", "The request has no body. Send the venue as JSON.", r))
 		return
 	}
 
 	var req updateVenueRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("venue.invalid_json", "request body is not valid JSON", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("venue.invalid_json", "The request body is not valid JSON. Fix it and send it again.", r))
 		return
 	}
 
@@ -664,7 +664,7 @@ func (h *Handler) HandleUpdateVenue(w http.ResponseWriter, r *http.Request) {
 			parsed, parseErr := uuid.Parse(trimmed)
 			if parseErr != nil {
 				httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-					"venue.invalid_city_id", "city_id must be a valid UUID", r,
+					"venue.invalid_city_id", "Send city_id as a UUID.", r,
 					map[string]any{"field": "city_id"},
 				))
 				return
@@ -702,17 +702,17 @@ func (h *Handler) HandleUpdateVenue(w http.ResponseWriter, r *http.Request) {
 	if req.Country.Present && req.Country.Value != nil && *req.Country.Value != "" {
 		normalized, ok := validateVenueCountry(*req.Country.Value)
 		if !ok {
-			venueFieldError(w, r, "venue.invalid_country", "country", "country must be a 2-letter ISO-3166-1 code")
+			venueFieldError(w, r, "venue.invalid_country", "country", "Send country as a 2-letter ISO 3166-1 code, for example ES.")
 			return
 		}
 		req.Country.Value = &normalized
 	}
 	if req.GeoLat.Present && req.GeoLat.Value != nil && !validateVenueGeoLat(*req.GeoLat.Value) {
-		venueFieldError(w, r, "venue.invalid_geo_lat", "geo_lat", "geo_lat must be between -90 and 90")
+		venueFieldError(w, r, "venue.invalid_geo_lat", "geo_lat", "Send geo_lat as a number from -90 to 90.")
 		return
 	}
 	if req.GeoLng.Present && req.GeoLng.Value != nil && !validateVenueGeoLng(*req.GeoLng.Value) {
-		venueFieldError(w, r, "venue.invalid_geo_lng", "geo_lng", "geo_lng must be between -180 and 180")
+		venueFieldError(w, r, "venue.invalid_geo_lng", "geo_lng", "Send geo_lng as a number from -180 to 180.")
 		return
 	}
 	// Bug B-3: forbid clearing timezone (explicit null, or an explicit empty
@@ -724,32 +724,32 @@ func (h *Handler) HandleUpdateVenue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if _, err := time.LoadLocation(*req.Timezone.Value); err != nil {
-			venueFieldError(w, r, "venue.invalid_timezone", "timezone", "timezone must be a known IANA zone name")
+			venueFieldError(w, r, "venue.invalid_timezone", "timezone", "We do not know this time zone. Enter an IANA name, for example Europe/Berlin.")
 			return
 		}
 	}
 	if req.ContactPhone.Present && req.ContactPhone.Value != nil && *req.ContactPhone.Value != "" {
 		if !validateVenueContactPhone(*req.ContactPhone.Value) {
-			venueFieldError(w, r, "venue.invalid_contact_phone", "contact_phone", "contact_phone may contain digits, spaces, +, -, and parentheses only, up to 40 characters")
+			venueFieldError(w, r, "venue.invalid_contact_phone", "contact_phone", "Enter the phone number with digits, spaces, +, - and parentheses only, up to 40 characters.")
 			return
 		}
 	}
 	if req.ContactEmail.Present && req.ContactEmail.Value != nil && *req.ContactEmail.Value != "" {
 		if !validateVenueContactEmail(*req.ContactEmail.Value) {
-			venueFieldError(w, r, "venue.invalid_contact_email", "contact_email", "contact_email must be a valid email address")
+			venueFieldError(w, r, "venue.invalid_contact_email", "contact_email", "Enter the contact e-mail as an address like name@example.com.")
 			return
 		}
 	}
 	if req.WebsiteUrl.Present && req.WebsiteUrl.Value != nil && *req.WebsiteUrl.Value != "" {
 		if !validateVenueWebsiteURL(*req.WebsiteUrl.Value) {
-			venueFieldError(w, r, "venue.invalid_website_url", "website_url", "website_url must be a valid http(s) URL")
+			venueFieldError(w, r, "venue.invalid_website_url", "website_url", "Enter the website as an http or https address, for example https://example.com.")
 			return
 		}
 	}
 	if req.Status != nil {
 		trimmed := strings.TrimSpace(*req.Status)
 		if trimmed != "" && !isValidVenueStatus(trimmed) {
-			venueFieldError(w, r, "venue.invalid_status", "status", "status must be one of active, draft, archived")
+			venueFieldError(w, r, "venue.invalid_status", "status", "Send status as active, draft or archived.")
 			return
 		}
 		req.Status = &trimmed
@@ -817,7 +817,7 @@ func (h *Handler) HandleUpdateVenue(w http.ResponseWriter, r *http.Request) {
 	// range-checked individually above and by the venues_geo_*_range_check
 	// constraints).
 	if (finalGeoLat == nil) != (finalGeoLng == nil) {
-		venueFieldError(w, r, "venue.invalid_geo", "geo_lat", "geo_lat and geo_lng must be provided together")
+		venueFieldError(w, r, "venue.invalid_geo", "geo_lat", "Send geo_lat and geo_lng together, or neither.")
 		return
 	}
 
