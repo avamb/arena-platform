@@ -22,6 +22,19 @@ async function noHorizontalScroll(page: Page) {
   expect(scrollWidth).toBeLessThanOrEqual(width);
 }
 
+// Against the built container (EVENT_CENTER_BASE_URL) the real CSP is on:
+// a refused script, style or request fails the test instead of a blank page.
+let cspViolations: string[] = [];
+test.beforeEach(async ({ page }) => {
+  cspViolations = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error" && /Content Security Policy|Refused to/i.test(msg.text())) cspViolations.push(msg.text());
+  });
+});
+test.afterEach(() => {
+  expect(cspViolations, "Content-Security-Policy violations").toEqual([]);
+});
+
 test.describe("R1 read-only event center", () => {
   test("wrong password is explained, right one opens the organization chooser", async ({ page }) => {
     await mockApi(page);

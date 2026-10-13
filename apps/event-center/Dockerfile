@@ -68,8 +68,18 @@ FROM nginx:1.27-alpine AS runtime
 # Remove the default nginx configuration.
 RUN rm /etc/nginx/conf.d/default.conf
 
-# Copy custom nginx configuration (port 8080, SPA fallback, cache headers).
-COPY apps/event-center/nginx.conf /etc/nginx/conf.d/arena-event-center.conf
+# nginx configuration and the security headers it includes in every
+# location. The CSP's connect-src names the API, so the build argument is
+# baked in here as well (same approach as apps/tickets-page).
+ARG VITE_API_BASE_URL
+ENV API_ORIGIN=${VITE_API_BASE_URL}
+RUN mkdir -p /etc/nginx/snippets
+COPY apps/event-center/nginx.conf.template /tmp/nginx.conf.template
+COPY apps/event-center/security-headers.conf.template /tmp/security-headers.conf.template
+RUN test -n "${API_ORIGIN}" \
+    && sed "s|__API_ORIGIN__|${API_ORIGIN}|g" /tmp/nginx.conf.template > /etc/nginx/conf.d/arena-event-center.conf \
+    && sed "s|__API_ORIGIN__|${API_ORIGIN}|g" /tmp/security-headers.conf.template > /etc/nginx/snippets/security-headers.conf \
+    && rm /tmp/nginx.conf.template /tmp/security-headers.conf.template
 
 # Copy the built static assets from the build stage.
 COPY --from=build /app/dist /usr/share/nginx/html

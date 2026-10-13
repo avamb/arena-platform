@@ -37,3 +37,8 @@ npm --prefix apps/event-center run dev
 Dokploy application, like `tickets-page`: Dockerfile `apps/event-center/Dockerfile`,
 build context the repository root, build argument `VITE_API_BASE_URL`, port 8080,
 health check `GET /health`. Add the app's origin to `CORS_ALLOWED_ORIGINS` of arena-api.
+
+nginx sends a strict Content-Security-Policy and the other security headers from
+`security-headers.conf.template`, included in EVERY location (a location with its own
+`add_header` drops the server-level ones). `scripts/check-headers.sh` asserts them on a
+running container; CI also runs the smoke against the built image, so the CSP is tested.

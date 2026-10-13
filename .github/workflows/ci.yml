@@ -459,10 +459,12 @@ jobs:
             apps/event-center/playwright-report/
           retention-days: 7
 
-      - name: Container smoke test
+      - name: Container smoke test (health, security headers, app under CSP)
         run: |
+          # The image is built for the mocked API host, so the smoke below
+          # runs the real nginx and CSP against the page.route() mock.
           docker build \
-            --build-arg VITE_API_BASE_URL=http://localhost:8080 \
+            --build-arg VITE_API_BASE_URL=http://api.mock.test \
             -t arena-event-center:ci \
             -f apps/event-center/Dockerfile \
             .
@@ -472,10 +474,7 @@ jobs:
             STATUS=$(docker inspect --format='{{.State.Health.Status}}' arena-event-center-smoke 2>/dev/null || echo "starting")
             if [ "$STATUS" = "healthy" ]; then
               echo "Container is healthy after ${i}s"
-              curl -fsS http://127.0.0.1:8091/ | grep -q '<div id="root"></div>'
-              curl -fsS http://127.0.0.1:8091/o/any/events | grep -q '<div id="root"></div>'
-              docker rm -f arena-event-center-smoke
-              exit 0
+              break
             fi
             if [ "$i" = "60" ]; then
               echo "ERROR: Container did not become healthy within 60s"
@@ -485,6 +484,10 @@ jobs:
             fi
             sleep 1
           done
+          curl -fsS http://127.0.0.1:8091/o/any/events | grep -q '<div id="root"></div>'
+          sh apps/event-center/scripts/check-headers.sh http://127.0.0.1:8091
+          EVENT_CENTER_BASE_URL=http://127.0.0.1:8091 npm --prefix apps/event-center run test:smoke
+          docker rm -f arena-event-center-smoke
 
   # ─────────────────────────────────────────────────────────────────
   # Job 6: Widget — Svelte 5 custom element (arena-tickets)
