@@ -1696,10 +1696,31 @@ entries short and factual.
   failed three times in a row on CI (2026-09-29) while passing in earlier,
   slower runs.
 - **`cmd/arena-bot` (package `internal/platform/eventbot`) is the fourth
-  binary of the image and polls Telegram with `github.com/go-telegram/bot`
-  at ONE worker** (`WithWorkers(1)`), so one person's messages are handled
-  in order; exactly one replica may run (Telegram answers a second poller
-  409). It talks to arena-api over REST only (`ArenaClient`, base
+  binary of the image and polls Telegram with `github.com/go-telegram/bot`;
+  handlers of DIFFERENT accounts run concurrently, one account's updates run
+  one at a time and in delivery order** — exactly one replica may run
+  (Telegram answers a second poller 409). `WithWorkers(1)` alone never gave
+  that order: it limits the readers of the update queue, and the library
+  then starts a goroutine per update, so two quick presses of one person ran
+  side by side and the second read the dialog step the first had not saved
+  yet (found 2026-10-13: e2e tests failing under CPU load, a double press
+  sending twice). Now the library calls `handleUpdate` synchronously
+  (`WithNotAsyncHandlers`), which only applies the rate limit and queues the
+  update in its sender's lane (`eventbot/serial.go`, `userSerial`); each busy
+  lane has one goroutine, an idle lane is deleted, a panic is recovered and
+  the lane carries on, at most 64 updates wait per account. Work that runs
+  OUTSIDE a handler and changes a person's dialog state (a send finishing in
+  the background, a sweep that edits one person's row) must do it through
+  `b.serial.do(ctx, telegramUserID, fn)`, which runs fn in that person's turn
+  (inline when already in it) — never write the state straight from a
+  detached goroutine. **Any dialog stores its next step BEFORE it replies:**
+  a handler that writes its dialog back at the end registers the write with
+  `withSaveBeforeReply` (`eventbot/reply_hook.go`, used by the Sessions
+  dialog through `sessionDialogs.saveBeforeReply`), and the bot's Telegram
+  HTTP client runs it before every request. A dialog moved from memory to
+  `bot_dialogs` must follow the same rule; a defer-only save after the reply
+  is not enough. Tests: `serial_test.go`, `serial_bot_test.go` (stub Bot API,
+  two updates of one account, two accounts, a panic). It talks to arena-api over REST only (`ArenaClient`, base
   `BOT_ARENA_API_URL`) with a 5-minute JWT it mints for the linked user via
   `auth.IssueJWT` and the API's own `JWT_SIGNING_SECRET`/issuer/audience —
   the api and bot services MUST share those three values (the dev compose
@@ -1821,8 +1842,8 @@ entries short and factual.
   (`hintButtonData`) to every question `hintValue` answers, and `apply`
   turns the press into the typed text or the choice payload. A poster may
   arrive at the FIRST question (`stEvName` accepts `WizInput.Poster` and
-  stays), and the poster step then offers `keep`. The model call blocks the
-  bot's single worker for up to 45 s ("Reading the poster…" is sent first).
+  stays), and the poster step then offers `keep`. The model call blocks that
+  person's lane (not other accounts) for up to 45 s ("Reading the poster…" is sent first).
 - **A JWT caller of the event-bundle import binds the event to NO sales
   channel unless it names `channelIds`.** `ensureChannelPublication` only
   ever knew `api_keys.channel_id`; a human operator (the bot) got a

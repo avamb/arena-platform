@@ -2,9 +2,10 @@ package eventbot
 
 // ratelimit.go — at most 30 messages a minute from one Telegram account
 // (spec 35 §4.4, carried over from spec 28). Every update costs the bot a
-// database read, a JWT and usually an arena-api call, and the bot runs ONE
-// worker, so one person holding a key down (or a script) would make every
-// other organizer wait. Updates over the limit are dropped; the person hears
+// database read, a JWT and usually an arena-api call, so one person holding a
+// key down (or a script) would keep the bot and arena-api busy for everyone,
+// and pile up work in their own lane (serial.go). Updates over the limit are
+// dropped; the person hears
 // "too many messages" once per burst, not once per dropped update, because an
 // answer to every one of them would itself be the flood.
 //
@@ -40,8 +41,8 @@ const (
 	ratePruneMinCalls = 256
 )
 
-// userRateLimiter is a sliding-window limit per Telegram account. The bot
-// runs one worker, but the mutex keeps it correct should that ever change.
+// userRateLimiter is a sliding-window limit per Telegram account. Updates are
+// counted on the library's single reader goroutine; the mutex keeps it safe anyway.
 type userRateLimiter struct {
 	mu         sync.Mutex
 	limit      int
@@ -115,20 +116,23 @@ func (l *userRateLimiter) maybePrune(now time.Time) {
 	}
 }
 
-// admit applies the per-account limit to one update — the button window for a
-// callback query, the message window for everything else. It answers false
-// when the update must be dropped; on the first refusal of a burst it has
-// already told the person to wait, and a refused button press always has its
-// spinner stopped so Telegram does not show it loading forever.
-func (b *Bot) admit(ctx context.Context, u *models.Update, from *models.User) bool {
+// allow applies the per-account limit to one update — the button window for a
+// callback query, the message window for everything else. It only counts:
+// handleUpdate calls it on the library's reader goroutine, which must not wait
+// on the network, and a refusal is answered later by refuse, in the person's
+// own turn.
+func (b *Bot) allow(u *models.Update, from *models.User) (allowed, firstRefusal bool) {
 	limiter := b.limiter
 	if u.CallbackQuery != nil {
 		limiter = b.cbLimiter
 	}
-	allowed, first := limiter.Allow(from.ID, time.Now())
-	if allowed {
-		return true
-	}
+	return limiter.Allow(from.ID, time.Now())
+}
+
+// refuse answers an update allow dropped: on the first refusal of a burst it
+// tells the person to wait, and a refused button press always has its spinner
+// stopped so Telegram does not show it loading forever.
+func (b *Bot) refuse(ctx context.Context, u *models.Update, from *models.User, first bool) {
 	chatID := from.ID // a private chat's id is the user's id
 	if cq := u.CallbackQuery; cq != nil {
 		_, _ = b.tg.AnswerCallbackQuery(ctx, &tgbot.AnswerCallbackQueryParams{CallbackQueryID: cq.ID})
@@ -141,7 +145,6 @@ func (b *Bot) admit(ctx context.Context, u *models.Update, from *models.User) bo
 	if first {
 		b.send(ctx, chatID, b.texts.T(b.limitLocale(ctx, from), "bot.too_many_messages", nil), nil)
 	}
-	return false
 }
 
 // limitLocale is the language of the "too many messages" answer: the linked
