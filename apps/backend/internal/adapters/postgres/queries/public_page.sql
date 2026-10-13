@@ -337,8 +337,7 @@ SELECT
     o.legal_address_line1, o.legal_address_line2, o.legal_address_postal_code,
     o.legal_address_city, o.legal_address_country, o.country, o.legal_form,
     COALESCE(sc.settings #>> '{hosted_page,show_seller}', '') = 'true' AS show_seller,
-    sc.settings #> '{hosted_page,public_contact}' AS public_contact,
-    COALESCE(btrim(o.contact_email), '') <> '' AS org_reachable
+    sc.settings #> '{hosted_page,public_contact}' AS public_contact
 FROM organizations o
 JOIN sales_channels sc ON sc.org_id = o.id
 JOIN agent_feed_tokens ft ON ft.sales_channel_id = sc.id

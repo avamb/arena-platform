@@ -34,10 +34,6 @@ type HostedPageSellerRow struct {
 	// PublicContact is settings.hosted_page.public_contact as raw JSON, nil
 	// when the channel has none.
 	PublicContact []byte
-	// OrgReachable: the organization has its own contact_email, which the
-	// contact form may deliver to when the page has no public e-mail. The
-	// address itself is never read here and never answered.
-	OrgReachable bool
 }
 
 const getHostedPageSeller = `-- name: GetHostedPageSeller :one
@@ -46,8 +42,7 @@ SELECT
     o.legal_address_line1, o.legal_address_line2, o.legal_address_postal_code,
     o.legal_address_city, o.legal_address_country, o.country, o.legal_form,
     COALESCE(sc.settings #>> '{hosted_page,show_seller}', '') = 'true' AS show_seller,
-    sc.settings #> '{hosted_page,public_contact}' AS public_contact,
-    COALESCE(btrim(o.contact_email), '') <> '' AS org_reachable
+    sc.settings #> '{hosted_page,public_contact}' AS public_contact
 FROM organizations o
 JOIN sales_channels sc ON sc.org_id = o.id
 JOIN agent_feed_tokens ft ON ft.sales_channel_id = sc.id
@@ -71,7 +66,7 @@ func (q *Queries) GetHostedPageSeller(ctx context.Context, orgID uuid.UUID, feed
 		&r.OrgName, &r.LegalName, &r.TaxID, &r.TaxIDScheme, &r.RegistrationNumber,
 		&r.AddressLine1, &r.AddressLine2, &r.AddressPostalCode,
 		&r.AddressCity, &r.AddressCountry, &r.OrgCountry, &r.LegalForm,
-		&r.ShowSeller, &r.PublicContact, &r.OrgReachable,
+		&r.ShowSeller, &r.PublicContact,
 	)
 	return r, err
 }

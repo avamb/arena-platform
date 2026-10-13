@@ -22,3 +22,13 @@ func TestGetHostedPageSellerQuery_NeverReadsOrganizationContact(t *testing.T) {
 		t.Fatal("seller query must join the channel of the SAME organization")
 	}
 }
+
+// The contact form's fallback recipient is asked for as a boolean only, so
+// the page never learns the organization's address.
+func TestOrgHasContactEmailQuery_AnswersABooleanOnly(t *testing.T) {
+	t.Parallel()
+	q := strings.Join(strings.Fields(orgHasContactEmail), " ")
+	if !strings.Contains(q, "SELECT COALESCE(btrim(contact_email), '') <> '' FROM organizations") {
+		t.Fatalf("the query must select a comparison, never the column: %s", q)
+	}
+}

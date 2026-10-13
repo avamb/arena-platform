@@ -69,6 +69,10 @@ LIMIT 1;
 -- name: GetContactFormToTelegram :one
 SELECT contact_form_to_telegram FROM organizations WHERE id = $1 AND deleted_at IS NULL;
 
+-- name: OrgHasContactEmail :one
+-- A boolean only: the hosted page never reads the organization's address.
+SELECT COALESCE(btrim(contact_email), '') <> '' FROM organizations WHERE id = $1 AND deleted_at IS NULL;
+
 -- name: SetContactFormToTelegram :execrows
 UPDATE organizations SET contact_form_to_telegram = $2, updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL;

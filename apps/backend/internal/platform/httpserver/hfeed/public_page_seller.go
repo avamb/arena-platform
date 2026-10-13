@@ -127,11 +127,15 @@ type hostedPageContactForm struct {
 // has somewhere to go - the channel's public e-mail, else the organization's
 // own address, which is never answered (owner rule 2026-10-13: letters of a
 // hosted page without a public e-mail link this form) - and this deployment
-// can check the captcha.
-func (h *Handler) contactForm(row gen.HostedPageSellerRow) *hostedPageContactForm {
+// can check the captcha. orgReachable is asked only when the channel has no
+// public e-mail; it answers a boolean from its own query, so the page's
+// seller query never touches the organization's address.
+func (h *Handler) contactForm(row gen.HostedPageSellerRow, orgReachable func() bool) *hostedPageContactForm {
+	if !h.contactFormReady {
+		return nil
+	}
 	c := parsePublicContact(row.PublicContact)
-	hasPublic := c != nil && c.Email != ""
-	if (!hasPublic && !row.OrgReachable) || !h.contactFormReady {
+	if (c == nil || c.Email == "") && (orgReachable == nil || !orgReachable()) {
 		return nil
 	}
 	return &hostedPageContactForm{Available: true, TurnstileSiteKey: h.contactFormSiteKey, PrivacyURL: h.contactFormPrivacyURL}
@@ -178,7 +182,17 @@ func (h *Handler) sellerBlocks(ctx context.Context, orgID uuid.UUID, feedToken s
 		}
 		return nil, nil, nil
 	}
-	form := h.contactForm(row)
+	form := h.contactForm(row, func() bool {
+		ok, err := h.publicFeedQueries.OrgHasContactEmail(ctx, orgID)
+		if err != nil {
+			h.logger.Warn("public_page: contact form recipient lookup failed",
+				slog.String("org_id", orgID.String()),
+				slog.String("error", err.Error()),
+			)
+			return false
+		}
+		return ok
+	})
 	seller := buildSeller(row)
 	if seller == nil {
 		return nil, nil, form

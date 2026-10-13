@@ -148,6 +148,19 @@ func (q *Queries) GetContactFormToTelegram(ctx context.Context, orgID uuid.UUID)
 	return v, err
 }
 
+const orgHasContactEmail = `-- name: OrgHasContactEmail :one
+SELECT COALESCE(btrim(contact_email), '') <> '' FROM organizations WHERE id = $1 AND deleted_at IS NULL`
+
+// OrgHasContactEmail reports whether the organization has its own contact
+// address, the private recipient of the contact form when the page has no
+// public e-mail. It answers a boolean only: the hosted page's queries never
+// read the address itself (TestGetHostedPageSellerQuery_NeverReadsOrganizationContact).
+func (q *Queries) OrgHasContactEmail(ctx context.Context, orgID uuid.UUID) (bool, error) {
+	var v bool
+	err := q.db.QueryRow(ctx, orgHasContactEmail, orgID).Scan(&v)
+	return v, err
+}
+
 const setContactFormToTelegram = `-- name: SetContactFormToTelegram :execrows
 UPDATE organizations SET contact_form_to_telegram = $2, updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL`
