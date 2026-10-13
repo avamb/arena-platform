@@ -213,6 +213,12 @@ export interface FeedSession {
    */
   service_fee_percent?: string;
   /**
+   * True when the organization has at least one promo code a buyer could still
+   * use (active, inside its date window, not used up). The cart sheet shows its
+   * promo field only then. Absent on older backends (treated as false).
+   */
+  promo_codes_available?: boolean;
+  /**
    * True when the event is bound to a specific date, so the statutory right
    * of withdrawal does not apply: the cart sheet then prints a notice above
    * the pay button. Absent on older backends (treated as false).

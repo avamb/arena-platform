@@ -21,13 +21,18 @@
    * WID-R1: wires the full purchase loop:
    *   selecting → (mini-cart) → cart sheet / buyer form → redirecting → order-status
    */
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { parseLocale, parseFeedToken, parseSessionId, isRtlLocale } from './utils.js';
-  import { fetchFeedEvent, fetchFeedEvents, postCheckoutStart, getCheckoutStatus, postCheckoutRecover, ApiError } from './api.js';
+  import { fetchFeedEvent, fetchFeedEvents, postCheckoutStart, postCheckoutQuote, getCheckoutStatus, postCheckoutRecover, ApiError } from './api.js';
   import type { FeedSession, FeedEvent, Geometry, CategoryPrice, SeatStatusValue } from './types.js';
   import type { BuyerFormValues } from './lib/checkout.js';
-  import { buildCheckoutPayload, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet, filterCartWithoutConflicts } from './lib/checkout.js';
-  import { toggleSeatSelection } from './lib/selection.js';
+  import { buildCheckoutPayload, buildQuotePayload, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet, filterCartWithoutConflicts } from './lib/checkout.js';
+  import { cartQuoteKey, promoErrorMessage, isPromoErrorCode } from './lib/promo.js';
+  import { createPromoController, initialPromoState, promoPayBlocked } from './lib/promoController.js';
+  import type { PromoState } from './lib/promoController.js';
+  import { getPromoStrings } from './lib/promoI18n.js';
+  import { MAX_CART_SEATS, cartLimitMessage, seatCapMessage } from './lib/cartLimits.js';
+  import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
   import {
     saveCheckoutToken,
@@ -210,6 +215,8 @@
   let holdExpiresAt = $state<string | null>(null);
   let checkoutSubmitting = $state(false);
   let checkoutError = $state<string | null>(null);
+  /** Why the last tap on a seat was refused (the order is at the seat cap), or null. */
+  let cartLimitNotice = $state<string | null>(null);
   /**
    * Set of seat keys that are in conflict after a 409 `reservation.seats_conflict`
    * response from checkout/start or recover (WID-S2).  Passed into SeatMapView
@@ -244,6 +251,45 @@
   const effectiveCart = $derived({ ...cart, expiresAt: holdExpiresAt });
 
   const cartCount = $derived(totalSelectionCount(selectedSeatKeys, gaQuantities));
+
+  // ── Promo code ─────────────────────────────────────────────────────────────
+  //
+  // The cart sheet never computes a discount: the code is checked by the
+  // platform (`checkout/quote`, which holds nothing) and the sheet shows the
+  // amounts that come back. All the timing rules (one current request, a quote
+  // only for the cart it was asked about, a bounded wait) live in the promo
+  // controller; this component only feeds it the cart and renders its state.
+
+  let promo = $state<PromoState>(initialPromoState());
+  const promoStrings = $derived(getPromoStrings(normLocale));
+
+  const cartKey = $derived(
+    selectedSession ? cartQuoteKey(selectedSession.id, [...selectedSeatKeys], buildGaItems(gaQuantities)) : '',
+  );
+
+  const promoCtl = createPromoController({
+    getCartKey: () => cartKey,
+    buildPayload: (code) =>
+      selectedSession ? buildQuotePayload(selectedSession.id, [...selectedSeatKeys], buildGaItems(gaQuantities), code) : null,
+    quote: (payload, signal) => {
+      if (!normFeedToken) return Promise.reject(new Error('no feed token'));
+      return postCheckoutQuote(normFeedToken, payload, resolvedApiBase, signal);
+    },
+    strings: () => promoStrings,
+    conflictText: (err) => (parseConflictsFromApiError(err).length > 0 ? t.conflict_notice : null),
+    errorCode: (err) => (err instanceof ApiError ? err.code : undefined),
+    onChange: (next) => {
+      promo = next;
+    },
+  });
+
+  $effect(() => {
+    // Re-run whenever the cart's identity or size changes; the controller
+    // decides whether the applied code needs a fresh quote.
+    void cartKey;
+    const lines = cart.lines.length;
+    untrack(() => promoCtl.cartChanged(lines));
+  });
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -456,7 +502,14 @@
 
   function onSeatTap(seatKey: string, status: SeatStatusValue): void {
     const prev = selectedSeatKeys;
-    const next = toggleSeatSelection(prev, seatKey, status);
+    // One order holds at most MAX_CART_SEATS seats (the platform refuses more):
+    // say so instead of letting the buyer find out at the payment step.
+    if (seatCapBlocks(prev, seatKey, status, MAX_CART_SEATS)) {
+      cartLimitNotice = seatCapMessage(normLocale);
+      return;
+    }
+    cartLimitNotice = null;
+    const next = toggleSeatSelection(prev, seatKey, status, MAX_CART_SEATS);
     selectedSeatKeys = next;
 
     // WID-S5: emit seat lifecycle events so host pages can track selection.
@@ -537,6 +590,15 @@
 
   async function handleCheckout(values: BuyerFormValues): Promise<void> {
     if (!selectedSession || !normFeedToken) return;
+    // An applied code whose quote is not for this very cart must not ride
+    // along: the sheet would show one total and the payment page another.
+    // An Apply still waiting when the buyer pays is dropped: the order goes
+    // ahead without a code, and its answer can no longer change the total.
+    promoCtl.cancelPending();
+    if (promoPayBlocked(promo, cartKey)) {
+      checkoutError = promoStrings.error_generic;
+      return;
+    }
     checkoutSubmitting = true;
     checkoutError = null;
     try {
@@ -548,6 +610,7 @@
         seats,
         gaItems,
         selectedSession.buyer_fields as import('./lib/checkout.js').BuyerFieldConfig[],
+        promo.code,
       );
       // Where the hosted payment page returns the buyer. Origin + pathname
       // only — the backend appends `?checkout_token=…` itself, which is what
@@ -592,6 +655,18 @@
       if (conflicts.length > 0) {
         conflictKeys = conflictKeySet(conflicts);
         checkoutError = t.conflict_notice;
+      } else if (err instanceof ApiError && isPromoErrorCode(err.code)) {
+        // The quote said yes but start says no (a cap was used up in between,
+        // or the buyer's e-mail is over the per-customer limit, which a quote
+        // cannot know before the e-mail is typed). The code comes off so the
+        // total on the sheet is the total the buyer will pay.
+        conflictKeys = new Set();
+        checkoutError = `${promoErrorMessage(err.code, promoStrings)} ${promoStrings.removed}`;
+        promoCtl.drop();
+      } else if (err instanceof ApiError && cartLimitMessage(err.code, normLocale) !== null) {
+        // The platform refused the size of the cart: say so in the buyer's language.
+        conflictKeys = new Set();
+        checkoutError = cartLimitMessage(err.code, normLocale);
       } else {
         conflictKeys = new Set();
         checkoutError = err instanceof Error ? err.message : t.error_checkout;
@@ -852,6 +927,7 @@
               holdExpiresAt = null;
               conflictKeys = new Set();
               checkoutError = null;
+              cartLimitNotice = null;
               cartSheetOpen = false;
               openGaAreaTierId = null;
               gaAreas = [];
@@ -859,6 +935,9 @@
             selectedSession = s;
           }}
         />
+        {/if}
+        {#if cartLimitNotice}
+          <p class="arena-tickets-limit" role="status">{cartLimitNotice}</p>
         {/if}
         <!-- Seat map (only for sessions with schema_url) -->
         {#if selectedSession && selectedSession.schema_url}
@@ -919,10 +998,20 @@
         cart={effectiveCart}
         buyerFields={selectedSession.buyer_fields as import('./lib/checkout.js').BuyerFieldConfig[]}
         serviceFeePercent={selectedSession.service_fee_percent}
+        promoAvailable={selectedSession.promo_codes_available === true}
         showWithdrawalNotice={selectedSession.show_withdrawal_notice === true}
         locale={normLocale}
         submitting={checkoutSubmitting}
         submitError={checkoutError}
+        promoCode={promo.code}
+        promoQuote={promo.quote}
+        {cartKey}
+        promoBusy={promo.busy}
+        promoError={promo.error}
+        promoNote={promo.note}
+        onApplyPromo={(code) => void promoCtl.apply(code)}
+        onRemovePromo={() => promoCtl.remove()}
+        onContinue={() => promoCtl.cancelPending()}
         {conflictKeys}
         onContinueWithoutConflicts={handleContinueWithoutConflicts}
         onClose={closeCartSheet}
@@ -1065,6 +1154,14 @@
   .arena-tickets-map-wrap :global(.ga-popover) {
     top: 3rem;
     right: 0.75rem;
+  }
+
+  .arena-tickets-limit {
+    margin: 0;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    color: #92400e;
+    background: #fef3c7;
   }
 
   .arena-tickets-placeholder {

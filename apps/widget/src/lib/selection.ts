@@ -37,19 +37,34 @@ export function toggleSeatSelection(
   selected: SelectedKeys,
   seatKey: string,
   status: SeatStatusValue | undefined,
+  maxSeats: number = Number.POSITIVE_INFINITY,
 ): Set<string> {
   const next = new Set(selected);
   if (next.has(seatKey)) {
     // Deselect regardless of live status (user can always un-pick).
     next.delete(seatKey);
   } else {
-    // Only select if the seat is currently available.
+    // Only select if the seat is currently available, and the order is not
+    // already at the seat cap.
     const s = status ?? 'available';
-    if (s === 'available') {
+    if (s === 'available' && next.size < maxSeats) {
       next.add(seatKey);
     }
   }
   return next;
+}
+
+/**
+ * True when tapping `seatKey` would be refused only because the order already
+ * holds `maxSeats` seats (an available seat that is not yet selected).
+ */
+export function seatCapBlocks(
+  selected: SelectedKeys,
+  seatKey: string,
+  status: SeatStatusValue | undefined,
+  maxSeats: number,
+): boolean {
+  return !selected.has(seatKey) && (status ?? 'available') === 'available' && selected.size >= maxSeats;
 }
 
 /**

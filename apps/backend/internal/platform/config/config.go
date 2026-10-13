@@ -154,6 +154,20 @@ type Config struct {
 	PublicCheckoutTokenRateLimit int `env:"PUBLIC_CHECKOUT_TOKEN_RATE_LIMIT" required:"false" default:"120"`
 	PublicAPIIPRateLimit         int `env:"PUBLIC_API_IP_RATE_LIMIT" required:"false" default:"600"`
 
+	// Promo-code attempts that FAIL are limited on their own, in addition to
+	// the limits above, so that the difference between an accepted and a
+	// refused code cannot be used to try codes at the speed of the general
+	// limits. Only a refused code (any promo.* refusal of checkout/quote or
+	// checkout/start) is counted; a request without a code, and a code that
+	// works, never is. Once either bucket is full, every request that names a
+	// code is answered 429 promo.rate_limited until the minute is over.
+	// PublicPromoFailTokenLimit is per feed token, i.e. site-wide like
+	// PublicFeedTokenRateLimit (every buyer of one site shares it), so it is
+	// generous; PublicPromoFailIPLimit is per client IP (TrustedClientIP) and
+	// is what stops one visitor. A value of 0 disables that particular check.
+	PublicPromoFailTokenLimit int `env:"PUBLIC_PROMO_FAIL_TOKEN_RATE_LIMIT" required:"false" default:"300"`
+	PublicPromoFailIPLimit    int `env:"PUBLIC_PROMO_FAIL_IP_RATE_LIMIT" required:"false" default:"10"`
+
 	// -------------------------------------------------------------------------
 	// Widget hosted payment (Stripe Checkout Session redirect flow)
 	// -------------------------------------------------------------------------
@@ -703,6 +717,20 @@ func Load() (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.PublicAPIIPRateLimit = iAPIIPRL
+
+	// PUBLIC_PROMO_FAIL_TOKEN_RATE_LIMIT / PUBLIC_PROMO_FAIL_IP_RATE_LIMIT —
+	// refused promo-code attempts per minute. See the field docs above.
+	iPromoFailTok, err := getenvInt("PUBLIC_PROMO_FAIL_TOKEN_RATE_LIMIT", 300)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.PublicPromoFailTokenLimit = iPromoFailTok
+
+	iPromoFailIP, err := getenvInt("PUBLIC_PROMO_FAIL_IP_RATE_LIMIT", 10)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.PublicPromoFailIPLimit = iPromoFailIP
 
 	// PUBLIC_TICKETS_BASE_URL / WIDGET_PAYMENT_WINDOW_SECONDS /
 	// WIDGET_PAYMENT_GRACE_SECONDS — widget hosted-payment redirect flow.

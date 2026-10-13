@@ -400,3 +400,23 @@ VALUES (
     true
 )
 ON CONFLICT DO NOTHING;
+
+-- ── 13. Promo codes for the cart-sheet promo e2e (palac-promo-real.e2e.ts) ────
+--
+-- E2E10      10 % off, usable
+-- E2EOLD     expired yesterday: answered like a code that does not exist
+-- E2EBIG     needs a 10 000.00 order: the "minimum not reached" answer
+--
+-- Fixed ids (fe000007-*-0000000000e*), idempotent on (org_id, code).
+
+INSERT INTO promo_codes (id, org_id, code, discount_type, discount_value, valid_from, valid_until, min_order_amount)
+SELECT v.id, 'fe000001-0000-7000-8000-000000000001', v.code, 'percent', v.value, v.valid_from, v.valid_until, v.min_order
+FROM (VALUES
+    ('fe000007-0000-7000-8000-0000000000e1'::uuid, 'E2E10',  10, NULL::timestamptz,           NULL::timestamptz,          0::bigint),
+    ('fe000007-0000-7000-8000-0000000000e2'::uuid, 'E2EOLD', 10, now() - interval '10 days',  now() - interval '1 day',   0::bigint),
+    ('fe000007-0000-7000-8000-0000000000e3'::uuid, 'E2EBIG', 10, NULL::timestamptz,           NULL::timestamptz,          1000000::bigint)
+) AS v(id, code, value, valid_from, valid_until, min_order)
+WHERE NOT EXISTS (
+    SELECT 1 FROM promo_codes p
+    WHERE p.org_id = 'fe000001-0000-7000-8000-000000000001' AND p.code = v.code
+);

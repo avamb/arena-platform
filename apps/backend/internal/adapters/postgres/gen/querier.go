@@ -546,6 +546,7 @@ type Querier interface {
 	ListSessionSeatsByStatus(ctx context.Context, sessionID uuid.UUID, status string) ([]SessionSeatRow, error)
 	ListSessionSeatsChangedSince(ctx context.Context, sessionID uuid.UUID, sinceVersion int64) ([]SessionSeatRow, error)
 	LockSessionSeatsForHold(ctx context.Context, sessionID uuid.UUID, seatKeys []string) ([]SessionSeatRow, error)
+	ListSessionSeatsByKeys(ctx context.Context, sessionID uuid.UUID, seatKeys []string) ([]SessionSeatRow, error)
 	HoldSessionSeat(ctx context.Context, id, reservationID uuid.UUID, statusVersion int64) (SessionSeatRow, error)
 	ReleaseSessionSeat(ctx context.Context, id, reservationID uuid.UUID, statusVersion int64) (SessionSeatRow, error)
 	ReleaseSoldSessionSeat(ctx context.Context, sessionID uuid.UUID, seatKey string, statusVersion int64) (SessionSeatRow, error)
