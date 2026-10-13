@@ -452,6 +452,7 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		b.leaveEvStatus(ctx, from.ID)
 		b.leavePromo(ctx, from.ID)      // and a promo-code question (EC-11)
 		b.leaveIdleRefund(ctx, from.ID) // and a refund question: its word is never an answer after a command (EC-21)
+		b.leaveScanExc(ctx, from.ID)    // and the operator's scan exception reason
 		switch cmd {
 		case "/start":
 			arg = strings.TrimSpace(arg)
@@ -489,6 +490,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	}
 	if code, ok := b.pending.take(from.ID); ok {
 		b.acceptInvitation(ctx, chatID, from, code, text)
+		return
+	}
+	if text != "" && b.scanExcText(ctx, chatID, from, text) {
 		return
 	}
 	if text != "" && b.teamText(ctx, chatID, from, text) {
@@ -568,6 +572,9 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	}
 	if !strings.HasPrefix(cq.Data, "or:f:") {
 		b.leaveIdleRefund(ctx, from.ID) // any other press ends the "Refund" dialog (EC-21)
+	}
+	if !strings.HasPrefix(cq.Data, "or:f:x") {
+		b.leaveScanExc(ctx, from.ID) // and the operator's scan exception question
 	}
 	if !strings.HasPrefix(cq.Data, "or:r:") {
 		b.leaveResend(ctx, from.ID) // any other press ends the "Resend tickets" dialog (EC-13)

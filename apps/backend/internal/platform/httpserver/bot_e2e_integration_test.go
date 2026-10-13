@@ -349,6 +349,24 @@ func (s *stubTelegram) retiredCount() int {
 	return s.retired
 }
 
+// lastOf is the newest message the bot sent to a chat: its id, text and the
+// callback data of its buttons now.
+func (s *stubTelegram) lastOf(chat int64) (int, string, []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	best := 0
+	for id, m := range s.msgs {
+		if m.chat == chat && id > best {
+			best = id
+		}
+	}
+	if best == 0 {
+		return 0, "", nil
+	}
+	m := s.msgs[best]
+	return best, m.text, append([]string(nil), m.data...)
+}
+
 // keyboardOf is the callback data of a message's buttons now.
 func (s *stubTelegram) keyboardOf(id int) []string {
 	s.mu.Lock()

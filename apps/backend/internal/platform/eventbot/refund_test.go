@@ -28,14 +28,27 @@ func TestRefundDialog_OffersOnlyRefundableTickets(t *testing.T) {
 	opts := refundOptions("stripe", true, 2500, 0, 1800)
 	opts.Tickets[2].InProgress = true
 	d := newRefundDialog(uuid.New(), 1000000500, opts)
-	if len(d.Tickets) != 1 || d.Tickets[0].Refundable != 2500 || !d.Tickets[0].Sel {
-		t.Fatalf("tickets = %+v; want only the 2500 one, selected", d.Tickets)
+	if len(d.Tickets) != 1 || d.Tickets[0].Refundable != 2500 {
+		t.Fatalf("tickets = %+v; want only the 2500 one", d.Tickets)
+	}
+}
+
+// No ticket is ticked when the dialog opens (owner decision 2026-10-13): the
+// person picks what goes back, and "Select all" is one press away.
+func TestRefundDialog_StartsWithNothingTicked(t *testing.T) {
+	t.Parallel()
+	d := newRefundDialog(uuid.New(), 1, refundOptions("stripe", false, 2500, 1800))
+	if sel := d.selected(); len(sel) != 0 || d.total() != 0 {
+		t.Fatalf("selected = %v, total = %d; want nothing ticked", sel, d.total())
 	}
 }
 
 func TestRefundDialog_TotalFollowsTheSelectionAndAPartialAmount(t *testing.T) {
 	t.Parallel()
 	d := newRefundDialog(uuid.New(), 1, refundOptions("stripe", true, 2500, 2500, 1000))
+	for i := range d.Tickets {
+		d.Tickets[i].Sel = true
+	}
 	if got := d.total(); got != 6000 {
 		t.Fatalf("total = %d; want 6000", got)
 	}
