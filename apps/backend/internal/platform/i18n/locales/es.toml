@@ -183,7 +183,7 @@ other = "Siguiente"
 other = "<b>Qué puede hacer este bot</b>\n\n- <b>+ Evento</b>: crea un evento paso a paso y lo publica. Escribe el nombre o envía el cartel: leeré los datos y tú confirmas cada valor. Al final te envío el enlace para los compradores y una entrada de muestra.\n- <b>Mis eventos</b>: todos los eventos de tu organización, los próximos primero, con las plazas vendidas y libres y el dinero por fecha. En la ficha de un evento puedes editarlo, repetirlo como nuevo, ver una entrada de muestra y mover o cancelar una sesión: los compradores reciben un correo.\n- <b>Notificaciones</b>: de dónde llegan los avisos de ventas y devoluciones y cómo conectar tu chat.\n- <b>Equipo</b>: el propietario invita a sus compañeros y los quita.\n- <b>Organización</b>: si trabajas para varias organizaciones, cambia entre ellas aquí.\n- <b>Escáner de entradas</b>: la aplicación para comprobar las entradas en la puerta, con enlaces a Google Play y App Store.\n- <b>Idioma</b>: inglés, ruso o español."
 
 ["bot.events_empty"]
-other = "Aún no hay eventos. El primero aparecerá aquí en cuanto se cree."
+other = "Aún no hay eventos. El primero aparecerá aquí en cuanto lo crees."
 
 ["bot.events_title"]
 other = "<b>Eventos de {{.Org}}</b>\nPágina {{.Page}} de {{.Pages}}. Toca un evento para ver sus fechas y ventas."
@@ -255,7 +255,7 @@ other = "Ahora el bot habla español."
 other = "Algo ha fallado por nuestra parte. Inténtalo de nuevo en un minuto; si se repite, díselo a tu contacto de Arena."
 
 ["bot.access_lost"]
-other = "Se ha retirado tu acceso a esta organización. Si es un error, pide una nueva invitación a su propietario."
+other = "Ya no tienes acceso a esta organización. Si es un error, pide una nueva invitación a su propietario."
 
 ["bot.unknown_input"]
 other = "No he entendido eso. Usa los botones de abajo."
@@ -615,7 +615,7 @@ other = "¿Precio de “{{.Name}}”?"
 other = "¿Cuántas plazas hay en “{{.Name}}”?"
 
 ["bot.wz.err_places"]
-other = "Hace falta un número entero de al menos 1."
+other = "Escribe un número entero, 1 o más."
 
 ["bot.wz.ask_t_cat_until"]
 other = "¿Cuándo termina el precio de “{{.Name}}”? Elige el último día en el calendario. O escribe un número de entradas, por ejemplo 50. Puedes enviar ambos separados por un espacio, por ejemplo “31.12.2026 50”: el precio termina con lo que ocurra primero."
@@ -1914,7 +1914,7 @@ other = "Ningún evento tiene una fecha por venir, así que no hay a dónde invi
 other = "🎟 <b>{{.Name}}</b>\n\nElige la fecha ({{.Page}}/{{.Pages}}). Las plazas libres se muestran junto a cada fecha:"
 
 ["bot.inv.se_empty"]
-other = "<b>{{.Name}}</b> no tiene fechas por venir (no se ofrecen las pasadas ni las canceladas)."
+other = "<b>{{.Name}}</b> no tiene fechas próximas. Aquí no se muestran las pasadas ni las canceladas."
 
 ["bot.inv.ti_title"]
 other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nElige la categoría. Las invitaciones ocuparán plazas de ella:"
@@ -2621,7 +2621,7 @@ other = "sin límite"
 other = "💶 Una categoría gratuita: no tiene precio que cambiar."
 
 ["bot.cat.note_pwyw"]
-other = "💶 Una categoría de importe a elegir: su rango de importes se cambia en la consola de administración."
+other = "💶 Una categoría de importe a elegir. Cambia su rango de importes en la consola de administración."
 
 ["bot.cat.note_chain"]
 other = "↪ Esta categoría pasa sola sus plazas libres a «{{.Name}}», por fecha o cuando se agota su tramo. Para que siga funcionando, aquí solo se puede cambiar su precio; las fechas y los tramos se cambian en Editar → Entradas del evento."

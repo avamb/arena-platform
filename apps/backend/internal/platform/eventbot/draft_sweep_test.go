@@ -243,7 +243,7 @@ func TestDraftSweep_UnknownLocaleFallsBack(t *testing.T) {
 	for _, loc := range []string{"", "xx", "he"} {
 		row := draftRow(51, loc, "", sweepNow.Add(-8*24*time.Hour))
 		n := draftDeletedNotice(newTestSweeper(t, newMemDrafts(), &fakeSender{}).texts, row)
-		if !strings.Contains(n.Text, "Your event draft was deleted") {
+		if !strings.Contains(n.Text, "I deleted your event draft") {
 			t.Errorf("locale %q: notice = %q, want English", loc, n.Text)
 		}
 		r := draftReminderNotice(newTestSweeper(t, newMemDrafts(), &fakeSender{}).texts, row)
