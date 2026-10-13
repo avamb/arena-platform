@@ -287,9 +287,17 @@ describe('a pending Apply never holds the purchase', () => {
     const done = h.ctl.apply('TEN');
     h.ctl.cancelPending();
     expect(h.ctl.state).toMatchObject({ busy: false, code: null });
+    // The buyer is told the code was not applied, not left to guess.
+    expect(h.ctl.state.note).toBe(P.not_applied);
     h.pending[0]!.resolve(quoteFor(2));
     await done;
     expect(h.ctl.state).toMatchObject({ code: null, quote: null, busy: false });
+  });
+
+  it('says nothing when no Apply was pending', () => {
+    const h = harness();
+    h.ctl.cancelPending();
+    expect(h.ctl.state.note).toBeNull();
   });
 
   it('does not touch an applied code', async () => {

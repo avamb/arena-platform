@@ -260,6 +260,9 @@
   {:else}
     <!-- Buyer form -->
     <div class="sheet-body">
+      {#if promoNote}
+        <p class="promo-note" role="status">{promoNote}</p>
+      {/if}
       {#if submitError}
         <p class="submit-error" role="alert">{submitError}</p>
         {#if conflictKeys && conflictKeys.size > 0 && onContinueWithoutConflicts}

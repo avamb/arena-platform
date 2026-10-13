@@ -190,7 +190,8 @@ export function createPromoController(deps: PromoControllerDeps): PromoControlle
     cancelPending(): void {
       if (state.code || !state.busy) return;
       current += 1;
-      set({ busy: false, error: null });
+      // Said to the buyer: the form they are on does not carry the code.
+      set({ busy: false, error: null, note: deps.strings().not_applied });
     },
     cartChanged(lineCount: number): void {
       if (!state.code) return;

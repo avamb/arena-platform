@@ -413,6 +413,8 @@ test.describe('promo code in the cart sheet', () => {
     // Pay now, without waiting for the answer.
     await sheet.locator('.cta-btn').click();
     await sheet.locator('input[type="email"]').fill('buyer@example.com');
+    // The buyer is told the code was not applied.
+    await expect(sheet.getByText('Code not applied. Go back to the cart to try again.')).toBeVisible();
     // The late answer must not change what the form shows.
     release();
     await expect(sheet.locator('button[type="submit"]')).toContainText('50.62');

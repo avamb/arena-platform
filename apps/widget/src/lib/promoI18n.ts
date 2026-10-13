@@ -26,6 +26,8 @@ export interface PromoStrings {
   applied: string;
   /** Status line after a code is taken off. */
   removed: string;
+  /** The buyer went on to pay while the code was still being checked, so it was not applied. */
+  not_applied: string;
   /** Status line while the code is being checked. */
   checking: string;
   /** Row label for the discount. */
@@ -59,6 +61,7 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     remove: 'Remove',
     applied: 'Code {code} applied.',
     removed: 'Code removed.',
+    not_applied: 'Code not applied. Go back to the cart to try again.',
     checking: 'Checking the code…',
     discount_label: 'Discount',
     subtotal_label: 'Tickets',
@@ -79,6 +82,7 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     remove: 'Убрать',
     applied: 'Код {code} применён.',
     removed: 'Код убран.',
+    not_applied: 'Код не применён. Вернитесь в корзину и попробуйте ещё раз.',
     checking: 'Проверяем код…',
     discount_label: 'Скидка',
     subtotal_label: 'Билеты',
@@ -99,6 +103,7 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     remove: 'Odebrat',
     applied: 'Kód {code} byl použit.',
     removed: 'Kód byl odebrán.',
+    not_applied: 'Kód nebyl použit. Vraťte se do košíku a zkuste to znovu.',
     checking: 'Kontrolujeme kód…',
     discount_label: 'Sleva',
     subtotal_label: 'Vstupenky',
@@ -119,6 +124,7 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     remove: 'הסר',
     applied: 'הקוד {code} הוחל.',
     removed: 'הקוד הוסר.',
+    not_applied: 'הקוד לא הוחל. חזרו לעגלה ונסו שוב.',
     checking: 'בודקים את הקוד…',
     discount_label: 'הנחה',
     subtotal_label: 'כרטיסים',
@@ -139,6 +145,7 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     remove: 'Quitar',
     applied: 'Código {code} aplicado.',
     removed: 'Código quitado.',
+    not_applied: 'El código no se aplicó. Vuelve al carrito para intentarlo de nuevo.',
     checking: 'Comprobando el código…',
     discount_label: 'Descuento',
     subtotal_label: 'Entradas',
@@ -159,6 +166,7 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     remove: 'Entfernen',
     applied: 'Code {code} eingelöst.',
     removed: 'Code entfernt.',
+    not_applied: 'Der Code wurde nicht eingelöst. Gehen Sie zurück zum Warenkorb und versuchen Sie es erneut.',
     checking: 'Code wird geprüft…',
     discount_label: 'Rabatt',
     subtotal_label: 'Tickets',
@@ -179,6 +187,7 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     remove: 'Retirer',
     applied: 'Code {code} appliqué.',
     removed: 'Code retiré.',
+    not_applied: "Le code n'a pas été appliqué. Retournez au panier pour réessayer.",
     checking: 'Vérification du code…',
     discount_label: 'Réduction',
     subtotal_label: 'Billets',
