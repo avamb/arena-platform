@@ -67,7 +67,7 @@ func sellerChannelFixture(t *testing.T, f *botInviteFixture, name string) (hoste
 	}
 	t.Cleanup(func() {
 		c := context.Background()
-		_, _ = f.pool.Exec(c, `DELETE FROM audit_events WHERE action = 'v1.channel.seller_display_update' AND metadata->>'org_id' = $1`, f.orgID.String())
+		_, _ = f.pool.Exec(c, `DELETE FROM audit_events WHERE action IN ('v1.channel.seller_display_update', 'v1.organization.contact_form_update') AND metadata->>'org_id' = $1`, f.orgID.String())
 		_, _ = f.pool.Exec(c, `DELETE FROM sales_channels WHERE org_id = $1`, f.orgID)
 	})
 	return hosted, plain

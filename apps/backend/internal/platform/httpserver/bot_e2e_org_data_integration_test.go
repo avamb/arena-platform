@@ -137,7 +137,7 @@ func TestBotE2E_OrganizationData(t *testing.T) {
 
 	// ── the sales page: too early, then a personal mailbox, then on and off ───
 	text = owner.press("og:cv:"+hosted.String(), "Страница продаж")
-	if !strings.Contains(text, "Покупатели видят этот e-mail") {
+	if !strings.Contains(text, "Страница не показывает e-mail") {
 		t.Errorf("the page card must say where buyers see it:\n%s", text)
 	}
 	text = owner.press("og:on:"+hosted.String(), "Чтобы показать данные продавца")
@@ -178,6 +178,20 @@ func TestBotE2E_OrganizationData(t *testing.T) {
 	owner.press("og:off:"+hosted.String(), "больше не показаны")
 	if got := setting("hosted_page,show_seller"); got != "false" {
 		t.Errorf("show_seller after off = %s", got)
+	}
+
+	// ── buyer messages of the contact form: the sales-chat switch ─────────────
+	manager.press("og:tg:0", "только владелец")
+	if got := org("contact_form_to_telegram::text"); got != "true" {
+		t.Errorf("a manager press changed the switch: %s", got)
+	}
+	owner.press("og:tg:0", "только на e-mail")
+	if got := org("contact_form_to_telegram::text"); got != "false" {
+		t.Errorf("contact_form_to_telegram after off = %s", got)
+	}
+	owner.press("og:tg:1", "и в ваш чат продаж")
+	if got := org("contact_form_to_telegram::text"); got != "true" {
+		t.Errorf("contact_form_to_telegram after on = %s", got)
 	}
 
 	// ── an answer after the dialog ran out is reported once ───────────────────

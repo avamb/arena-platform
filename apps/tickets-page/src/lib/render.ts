@@ -3,6 +3,7 @@ import { isRtlLocale, toWidgetLocale } from './locale.ts';
 import { t } from './i18n.ts';
 import { plainText, renderRichText } from './richtext.ts';
 import { renderSellerBlock } from './seller.ts';
+import { renderContactButton } from './contact.ts';
 import type { HostedPageEvent, HostedPageResponse, HostedPromoterPageResponse } from './api.ts';
 
 /** Clears a container's children (avoids innerHTML = '' churn semantics
@@ -272,6 +273,21 @@ export function renderEvent(
   // the backend sends it (the channel's legal-details switch is on).
   const sellerBlock = renderSellerBlock(data.seller, data.promoter, locale);
   if (sellerBlock) {
+    // The page never shows the organizer's e-mail: a buyer writes through
+    // the contact form, offered right under the seller's details.
+    const contact = renderContactButton({
+      apiBase: options.apiBase,
+      slug: data.org.slug,
+      feedToken: data.feed_token,
+      locale,
+      form: data.contact_form,
+    });
+    if (contact) {
+      const p = document.createElement('p');
+      p.className = 'asa-seller__write';
+      p.appendChild(contact);
+      sellerBlock.appendChild(p);
+    }
     container.appendChild(sellerBlock);
   }
 

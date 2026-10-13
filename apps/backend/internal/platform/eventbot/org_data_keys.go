@@ -19,6 +19,8 @@ var orgDataKeys = []string{
 	"bot.og.q_tax_other", "bot.og.other_scheme_btn", "bot.og.page_card", "bot.og.page_where",
 	"bot.og.line_email", "bot.og.line_phone", "bot.og.line_state", "bot.og.btn_email",
 	"bot.og.btn_phone", "bot.og.btn_show", "bot.og.btn_hide", "bot.og.q_email",
+	"bot.og.line_form_tg", "bot.og.form_tg_on", "bot.og.form_tg_off", "bot.og.btn_form_tg_on",
+	"bot.og.btn_form_tg_off", "bot.og.form_tg_saved_on", "bot.og.form_tg_saved_off",
 	"bot.og.block_hidden",
 	"bot.og.q_phone", "bot.og.personal_email", "bot.og.clear_btn", "bot.og.cancel_btn",
 	"bot.og.saved", "bot.og.cleared", "bot.og.shown_done", "bot.og.hidden_done",

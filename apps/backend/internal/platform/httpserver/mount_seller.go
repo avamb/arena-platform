@@ -25,6 +25,7 @@ func (s *Server) mountSellerRoutes(r chi.Router) {
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "org.update", "organizations")
 		pr.Get("/organizations/{org_id}/seller-profile", s.handleGetSellerProfile)
+		pr.Patch("/organizations/{org_id}/seller-profile", s.handlePatchSellerProfile)
 		pr.Patch("/organizations/{org_id}/channels/{channel_id}/seller-display", s.handlePatchSellerDisplay)
 	})
 }
@@ -43,4 +44,11 @@ func (s *Server) handlePatchSellerDisplay(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.sellerHandler().HandlePatchDisplay(w, r)
+}
+
+func (s *Server) handlePatchSellerProfile(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.sellerHandler().HandlePatchProfile(w, r)
 }

@@ -3356,10 +3356,10 @@ other = "🔁 Another type of number"
 other = "🌐 <b>Sales page: {{.Name}}</b>"
 
 ["bot.og.page_where"]
-other = "Buyers see this e-mail and phone on this sales page when the seller data is shown. Use an address for tickets, not your personal mailbox."
+other = "Buyers see the phone on this sales page when the seller data is shown. The page does not show the e-mail: buyers write to you through the form on the page, and the messages arrive at this address. Ticket e-mails and PDF tickets of this page print this address, and buyers' replies to those e-mails go to it. Use an address for tickets, not your personal mailbox."
 
 ["bot.og.line_email"]
-other = "✉ Public e-mail: {{.Value}}"
+other = "✉ E-mail for buyer messages: {{.Value}}"
 
 ["bot.og.line_phone"]
 other = "📞 Public phone: {{.Value}}"
@@ -3454,5 +3454,44 @@ other = "This does not look like an e-mail address. Check it, for example ticket
 ["bot.og.err_phone"]
 other = "This does not look like a phone number. Use digits with the country code, for example +34 600 000 000."
 
+["bot.og.line_form_tg"]
+other = "💬 Buyer messages in the sales chat: {{.Value}}"
+
+["bot.og.form_tg_on"]
+other = "on"
+
+["bot.og.form_tg_off"]
+other = "off"
+
+["bot.og.btn_form_tg_on"]
+other = "💬 Send buyer messages to the sales chat"
+
+["bot.og.btn_form_tg_off"]
+other = "💬 Stop buyer messages in the sales chat"
+
+["bot.og.form_tg_saved_on"]
+other = "✅ Buyer messages now also go to your sales chat."
+
+["bot.og.form_tg_saved_off"]
+other = "✅ Buyer messages now go only to the e-mail of the sales page."
+
 ["bot.og.block_hidden"]
 other = "⚠️ A required field is now empty, so the seller data is hidden on sales pages: {{.N}}. Fill in the field, then turn the seller data on again on the page card."
+
+["contact.email.subject"]
+other = "Message from a buyer: {{.Name}}"
+
+["contact.email.intro"]
+other = "A buyer wrote to you through the contact form of your Arena sales page."
+
+["contact.email.from"]
+other = "From"
+
+["contact.email.page"]
+other = "Sales page"
+
+["contact.email.reply"]
+other = "To answer the buyer, reply to this e-mail. Arena does not see your answer."
+
+["contact.email.footer"]
+other = "Arena Sold Out sent this message because the contact form of your sales page is on."
