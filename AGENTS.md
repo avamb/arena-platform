@@ -60,6 +60,11 @@ entries short and factual.
   untagged tests touch the DB (see Tests above).
 - Integration job: migrates and seeds the database; `integration`-tagged tests
   run here.
+- The Integration job sets `TESTCONTAINERS_RYUK_DISABLED=true`: the hosted runner
+  intermittently failed to start Testcontainers' cleanup container ("reaper ... no
+  port to wait for"), which failed every pgtest-backed test of the run (seen as
+  random `httpserver`/`permissions` failures, 2026-10-12). `pgtest` terminates its
+  own containers and the runner is discarded, so nothing leaks.
 - A test green locally but red in CI is a defect: replicate the CI env
   assumptions before marking a feature passing.
 
