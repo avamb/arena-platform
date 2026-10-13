@@ -27,7 +27,7 @@ func TestAlertText_DashboardRefundSaysWhatHappened(t *testing.T) {
 		// recorded amount completed the payment; otherwise they are on hold.
 		{DashboardCapped, "only if", "tickets were cancelled."},
 		{DashboardOverPayment, "refunded twice", "review hold"},
-		{DashboardLegacyParked, "parked for review from before", "review hold"},
+		{DashboardLegacyParked, "parked for review without a provider", "review hold"},
 	}
 	for _, c := range cases {
 		got := alertText(row(c.code), "")
