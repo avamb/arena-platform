@@ -697,7 +697,8 @@
       if (status === 'paid') {
         dispatchWidgetEvent(host, ARENA_EVENTS.ORDER_PAID, {
           checkoutToken: token,
-          orderRef: null,           // arena API v1 does not surface order_ref yet
+          // The order number of the ticket e-mail and the PDF.
+          orderRef: orderStatus.order_number != null ? String(orderStatus.order_number) : null,
           totalMinorUnits: orderStatus.total ?? null,
           currency: orderStatus.currency ?? null,
         });

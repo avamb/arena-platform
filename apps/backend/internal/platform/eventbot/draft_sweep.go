@@ -232,24 +232,21 @@ func (b *Bot) sweepDrafts(ctx context.Context, now time.Time) {
 
 // sendChecked is send() that reports the outcome: the sweep must know
 // whether a reminder arrived before it records it as sent.
+// It is a new message at the bottom of the chat (feed.go).
 func (b *Bot) sendChecked(ctx context.Context, chatID int64, text string, kb *models.InlineKeyboardMarkup) error {
-	params := &tgbot.SendMessageParams{
-		ChatID:    chatID,
-		Text:      text,
-		ParseMode: models.ParseModeHTML,
-		LinkPreviewOptions: &models.LinkPreviewOptions{
-			IsDisabled: tgbot.True(),
-		},
-	}
+	var markup models.ReplyMarkup
 	if kb != nil {
-		params.ReplyMarkup = kb
+		markup = kb
 	}
-	if _, err := b.tg.SendMessage(ctx, params); err != nil {
-		// 403 is "bot was blocked by the user" and its relatives.
-		if errors.Is(err, tgbot.ErrorForbidden) {
-			return fmt.Errorf("%w: %v", errChatUnreachable, err)
-		}
-		return err
+	_, err := b.post(ctx, chatID, 0, text, markup)
+	return chatSendError(err)
+}
+
+// chatSendError marks a send that can never succeed: 403 is "bot was blocked
+// by the user" and its relatives.
+func chatSendError(err error) error {
+	if err != nil && errors.Is(err, tgbot.ErrorForbidden) {
+		return fmt.Errorf("%w: %v", errChatUnreachable, err)
 	}
-	return nil
+	return err
 }

@@ -61,7 +61,7 @@ func TestBotE2E_RefundQueue_FailedRefundIsRetried(t *testing.T) {
 	// A refund of the first ticket, refused by the provider.
 	d.press("or:v:"+seed.anna.String(), "Заказ №")
 	d.press("or:f:s:"+seed.anna.String(), "Возврат · заказ №")
-	d.press("or:f:t:1", "Возврат · заказ №")
+	d.press("or:f:t:0", "Возврат · заказ №")
 	d.press("or:f:go", "Почему возвращаются деньги")
 	d.press("or:f:r:3", "ВЕРНУТЬ")
 	d.say("вернуть", "Последняя проверка")
@@ -107,7 +107,7 @@ func TestBotE2E_RefundQueue_FailedRefundIsRetried(t *testing.T) {
 	hold.Store(&held)
 	m1 := tg.mark()
 	d.press("rq:ry:"+failedID.String(), "Отправляю возврат")
-	d.press("home", "")
+	d.say("/start", "Что будем делать?") // the "yes" lost its button: the person types a command
 	d.press("rq:ry:"+failedID.String(), "уже отправляется повторно")
 	close(held)
 	done := tg.waitSince(t, m1, "Возврат отправлен повторно")

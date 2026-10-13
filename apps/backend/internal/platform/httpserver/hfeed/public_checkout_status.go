@@ -89,17 +89,20 @@ type checkoutStatusTicketResponse struct {
 // checkoutStatusResponse is the full JSON envelope returned by the anonymous
 // order-status endpoint.
 type checkoutStatusResponse struct {
-	Status            string  `json:"status"`
-	CheckoutToken     string  `json:"checkout_token"`
-	CheckoutSessionID string  `json:"checkout_session_id"`
-	ExpiresAt         *string `json:"expires_at,omitempty"`
-	Subtotal          *int64  `json:"subtotal,omitempty"`
-	Discount          *int64  `json:"discount,omitempty"`
-	PlatformFee       *int64  `json:"platform_fee,omitempty"`
-	ProviderFee       *int64  `json:"provider_fee,omitempty"`
-	Tax               *int64  `json:"tax,omitempty"`
-	Total             *int64  `json:"total,omitempty"`
-	Currency          *string `json:"currency,omitempty"`
+	Status            string `json:"status"`
+	CheckoutToken     string `json:"checkout_token"`
+	CheckoutSessionID string `json:"checkout_session_id"`
+	// OrderNumber is orders.system_id: the number the ticket e-mail and the
+	// PDF print, so the widget's success screen names the same order.
+	OrderNumber *int64  `json:"order_number,omitempty"`
+	ExpiresAt   *string `json:"expires_at,omitempty"`
+	Subtotal    *int64  `json:"subtotal,omitempty"`
+	Discount    *int64  `json:"discount,omitempty"`
+	PlatformFee *int64  `json:"platform_fee,omitempty"`
+	ProviderFee *int64  `json:"provider_fee,omitempty"`
+	Tax         *int64  `json:"tax,omitempty"`
+	Total       *int64  `json:"total,omitempty"`
+	Currency    *string `json:"currency,omitempty"`
 	// PaymentURL is the provider-hosted payment page for a still-pending
 	// order whose window has not closed. A buyer who bounced off the Stripe
 	// page — closed the tab, lost signal, hit "back" — used to have no way
@@ -190,15 +193,21 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 	// without also completing its checkout session (e.g. a future bug, or a
 	// session that predates that fix) — checkoutQueries carries every
 	// gen.Queries method, GetOrderByCheckoutSession included, so no extra
-	// wiring is needed to check the order directly.
-	if publicStatus != "paid" && h.checkoutQueries != nil {
-		if ord, ordErr := h.checkoutQueries.GetOrderByCheckoutSession(ctx, cs.ID); ordErr == nil && ord.Status == "paid" {
-			h.logger.Warn("public_checkout_status: order is paid but checkout session disagrees; reporting paid",
-				slog.String("checkout_session_id", cs.ID.String()),
-				slog.String("checkout_session_state", cs.State),
-				slog.String("order_id", ord.ID.String()),
-			)
-			publicStatus = "paid"
+	// wiring is needed to check the order directly. The same row gives the
+	// order number the buyer's e-mail and PDF print (order_number).
+	var orderNumber *int64
+	if h.checkoutQueries != nil {
+		if ord, ordErr := h.checkoutQueries.GetOrderByCheckoutSession(ctx, cs.ID); ordErr == nil {
+			num := ord.SystemID
+			orderNumber = &num
+			if publicStatus != "paid" && ord.Status == "paid" {
+				h.logger.Warn("public_checkout_status: order is paid but checkout session disagrees; reporting paid",
+					slog.String("checkout_session_id", cs.ID.String()),
+					slog.String("checkout_session_state", cs.State),
+					slog.String("order_id", ord.ID.String()),
+				)
+				publicStatus = "paid"
+			}
 		}
 	}
 
@@ -208,6 +217,7 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 		Status:            publicStatus,
 		CheckoutToken:     checkoutToken,
 		CheckoutSessionID: cs.ID.String(),
+		OrderNumber:       orderNumber,
 		ExpiresAt:         &expiresAtStr,
 		Subtotal:          cs.Subtotal,
 		Discount:          cs.Discount,

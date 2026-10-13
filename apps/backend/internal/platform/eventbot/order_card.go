@@ -28,7 +28,6 @@ import (
 	"strings"
 	"time"
 
-	tgbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/google/uuid"
 
@@ -72,6 +71,10 @@ func (b *Bot) showOrderCard(ctx context.Context, chatID int64, editMsgID *int, f
 	plain := note + b.orderCardText(loc, detail, meta, private, true)
 	kb := b.withResendButton(b.orderCardKeyboard(loc, detail), id, detail, private) // EC-13, resend.go
 	kb = b.withRefundButton(kb, id, detail, private)                                // EC-21, refund_dialog.go
+	if ticketLetterStatus(detail).failed() {
+		// A lost ticket letter: the resend button says what it does now.
+		kb = relabelButton(kb, "or:r:s:"+detail.Id.String(), b.texts.T(loc, "bot.ord.letter_retry_btn", nil))
+	}
 	if err := b.replyChecked(ctx, chatID, editMsgID, clipMessage(html, maxMessageRunes), kb); err != nil && html != plain {
 		// A client that refuses the call/WhatsApp links still gets the card.
 		b.reply(ctx, chatID, editMsgID, clipMessage(plain, maxMessageRunes), kb)
@@ -147,10 +150,14 @@ func (b *Bot) orderCardText(loc string, d openapi.OrderDetail, meta *orderMeta, 
 	if d.Payment != nil && d.Payment.Provider != "" {
 		sb.WriteString(b.texts.T(loc, "bot.ord.payment_line", map[string]any{"Provider": Esc(d.Payment.Provider)}))
 	}
+	// The letters the buyer got, each on its own line (order_letters.go).
 	if len(d.Tickets) > 0 {
-		if key := deliveryKey(d.DeliveryState); key != "" {
-			sb.WriteString("\n" + b.texts.T(loc, key, nil))
+		if line := b.letterLine(loc, "tickets", ticketLetterStatus(d), tz, private); line != "" {
+			sb.WriteString("\n" + line)
 		}
+	}
+	if line := b.letterLine(loc, "refund", refundLetterStatus(d), tz, private); line != "" {
+		sb.WriteString("\n" + line)
 	}
 
 	if key := UnpaidReasonKey(d.Status, d.UnpaidReason); key != "" {
@@ -316,19 +323,28 @@ func (b *Bot) cancelWordTyped(ctx context.Context, chatID int64, editMsgID *int,
 // ─── plumbing ─────────────────────────────────────────────────────────────────
 
 // replyChecked is reply that reports whether the text reached the chat, so a
-// caller with a plainer version of it can retry.
+// caller with a plainer version of it can retry. The feed rules (feed.go)
+// decide whether the answer redraws a message or is a new one.
 func (b *Bot) replyChecked(ctx context.Context, chatID int64, editMsgID *int, text string, kb *models.InlineKeyboardMarkup) error {
+	replaced := 0
 	if editMsgID != nil {
-		params := &tgbot.EditMessageTextParams{ChatID: chatID, MessageID: *editMsgID, Text: text, ParseMode: models.ParseModeHTML}
-		if kb != nil {
-			params.ReplyMarkup = kb
-		}
-		_, err := b.tg.EditMessageText(ctx, params)
-		if err == nil || strings.Contains(err.Error(), "message is not modified") {
-			return nil
+		replaced = *editMsgID
+		a := actionIn(ctx, chatID)
+		if target, ok := editTarget(a, replaced); ok {
+			if err := b.edit(ctx, chatID, target, text, kb); err == nil {
+				if target != a.pressed && hasCallbacks(kb) {
+					b.takeOver(ctx, chatID, a, replaced)
+				}
+				return nil
+			}
 		}
 	}
-	return b.sendChecked(ctx, chatID, text, kb)
+	var markup models.ReplyMarkup
+	if kb != nil {
+		markup = kb
+	}
+	_, err := b.post(ctx, chatID, replaced, text, markup)
+	return chatSendError(err)
 }
 
 // routeOnly is an error's text for a log line. API errors carry a status and a
