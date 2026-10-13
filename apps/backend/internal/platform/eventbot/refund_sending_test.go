@@ -104,3 +104,56 @@ func TestStartSendRefund_DoesNotSendWhenTheStateCannotBeStored(t *testing.T) {
 		t.Fatalf("the refund was sent %d time(s) although its state could not be stored", n)
 	}
 }
+
+// newPanickingSendBot is a bot whose token minter is missing, so the first
+// thing a send does panics inside the real send code.
+func newPanickingSendBot(t *testing.T) *Bot {
+	t.Helper()
+	tgSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":1,"date":0,"chat":{"id":42,"type":"private"}}}`))
+	}))
+	t.Cleanup(tgSrv.Close)
+	tg, err := tgbot.New("123:test", tgbot.WithServerURL(tgSrv.URL), tgbot.WithSkipGetMe())
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := newRefundSendingBot(t)
+	b.tg = tg
+	b.texts = NewTexts(nil)
+	b.arena = NewArenaClient("http://127.0.0.1:1", "", nil)
+	b.minter = nil
+	return b
+}
+
+// A panic inside sendRefund itself (not a stand-in function) is recovered:
+// the bot stays up and the dialog goes back to the final screen with the
+// same key, so confirming again replays rather than repeats.
+func TestSendRefund_APanicPutsTheDialogBackAtTheFinalScreen(t *testing.T) {
+	b := newPanickingSendBot(t)
+	id := &Identity{Link: gen.BotTelegramLinkRow{UserID: uuid.New()}}
+	st := refundDialog{OrgID: uuid.New(), OrderID: uuid.New(), Key: "tg-panic", Reason: "r",
+		Tickets: []refundTicket{{ID: uuid.New(), Refundable: 100, Sel: true}}}
+	b.startSendRefund(context.Background(), 42, 7, &models.User{ID: 42}, id, st)
+	b.bg.close()
+	b.bg.wait()
+	var got refundDialog
+	step, found, _, err := b.dialogs.Load(context.Background(), 42, refundDialogKind, &got)
+	if err != nil || !found || step != refStepFinal || got.Key != st.Key {
+		t.Fatalf("after a panic in sendRefund: step=%q found=%v key=%q err=%v; want the final step with key %q", step, found, got.Key, err, st.Key)
+	}
+}
+
+// A panic inside doQueueRetry itself is recovered and releases the retry, so
+// a second press is accepted instead of "still sending" forever.
+func TestQueueRetry_APanicReleasesTheRetry(t *testing.T) {
+	b := newPanickingSendBot(t)
+	id := &Identity{Link: gen.BotTelegramLinkRow{UserID: uuid.New()}}
+	refundID := uuid.New()
+	b.startQueueRetry(context.Background(), 42, 7, id, refundID)
+	b.bg.close()
+	b.bg.wait()
+	if _, busy := b.retrying.Load(refundID); busy {
+		t.Fatal("a panic in doQueueRetry left the retry marked as running")
+	}
+}
