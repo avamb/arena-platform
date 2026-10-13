@@ -9149,6 +9149,48 @@ type OrgCityResponse struct {
 	Created bool `json:"created"`
 }
 
+// OrgMeResponse The caller's access inside one organization, returned by
+// GET /v1/organizations/{org_id}/me. Every list is sorted and never null.
+type OrgMeResponse struct {
+	// CallerType `user` for a person signed in with a JWT, `api_key` for an
+	// organization API key.
+	CallerType string `json:"caller_type"`
+
+	// MembershipRoles Every active membership role the caller holds in this organization.
+	MembershipRoles []string `json:"membership_roles"`
+
+	// OrgDisplayNumber Short organization number shown to people. The UUID stays the API key.
+	OrgDisplayNumber int64 `json:"org_display_number"`
+
+	// OrgId UUID of the organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Display name of the organization.
+	OrgName string `json:"org_name"`
+
+	// Permissions Every permission the caller holds inside this organization. For
+	// an API key these are its scopes.
+	Permissions []string `json:"permissions"`
+
+	// PlatformSuperadmin True when the caller is a platform superadmin. Other
+	// organization routes then require the X-Admin-Reason header.
+	PlatformSuperadmin bool `json:"platform_superadmin"`
+
+	// Role The main membership role of the caller in this organization, for
+	// display: `org_admin` (owner), then `organizer` (manager), then
+	// `agent`, then the first other role in alphabetical order. Empty
+	// for an API key and for a platform superadmin who holds no
+	// membership here. Decide actions by `permissions`, never by this
+	// field.
+	Role string `json:"role"`
+
+	// Roles The roles the permission checker counts for this organization:
+	// the membership roles here, the caller's global roles (for example
+	// `platform_superadmin`) and any roles of the token. Empty for an
+	// API key.
+	Roles []string `json:"roles"`
+}
+
 // OrganizationItem A single active organization (primary tenant boundary).
 // Includes legal & contact attributes added in migration
 // 0049_organizations_legal_fields (Wave O / feature #253). All

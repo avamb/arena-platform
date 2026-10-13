@@ -602,6 +602,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the caller's role and permissions inside one organization
+         * @description Returns the caller's role and effective permissions INSIDE the path
+         *     organization (web event center, task A1 of
+         *     08_architecture/37_web_event_center_ru.md). Since the per-organization
+         *     permission check (PERM-ORG) a route grants only what the caller holds
+         *     in the organization it acts in, plus global roles. GET /v1/me still
+         *     answers the union across every organization, so a client must read
+         *     this endpoint before it shows or hides an action of one organization.
+         *
+         *     The permissions are computed by the same checker the route gates use,
+         *     so "allowed" here means the gate lets the request through. A route
+         *     can still refuse for its own reasons (a row of another organization,
+         *     a state that does not allow the action).
+         *
+         *     Who may call it: a user with an active membership in the
+         *     organization, an organization API key of that organization (no role,
+         *     its permissions are its scopes), and a platform superadmin (no
+         *     X-Admin-Reason is needed, the call reads the caller's own access).
+         *     Anyone else gets 403 `org.access_denied`.
+         */
+        get: operations["getV1OrganizationsOrgIdMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/password-reset/request": {
         parameters: {
             query?: never;
@@ -7870,6 +7907,71 @@ export interface components {
              *     ]
              */
             available_scopes: string[];
+        };
+        /**
+         * @description The caller's access inside one organization, returned by
+         *     GET /v1/organizations/{org_id}/me. Every list is sorted and never null.
+         */
+        OrgMeResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the organization.
+             */
+            org_id: string;
+            /** @description Display name of the organization. */
+            org_name: string;
+            /**
+             * Format: int64
+             * @description Short organization number shown to people. The UUID stays the API key.
+             */
+            org_display_number: number;
+            /**
+             * @description `user` for a person signed in with a JWT, `api_key` for an
+             *     organization API key.
+             * @example user
+             */
+            caller_type: string;
+            /**
+             * @description The main membership role of the caller in this organization, for
+             *     display: `org_admin` (owner), then `organizer` (manager), then
+             *     `agent`, then the first other role in alphabetical order. Empty
+             *     for an API key and for a platform superadmin who holds no
+             *     membership here. Decide actions by `permissions`, never by this
+             *     field.
+             * @example organizer
+             */
+            role: string;
+            /**
+             * @description Every active membership role the caller holds in this organization.
+             * @example [
+             *       "organizer"
+             *     ]
+             */
+            membership_roles: string[];
+            /**
+             * @description The roles the permission checker counts for this organization:
+             *     the membership roles here, the caller's global roles (for example
+             *     `platform_superadmin`) and any roles of the token. Empty for an
+             *     API key.
+             * @example [
+             *       "organizer"
+             *     ]
+             */
+            roles: string[];
+            /**
+             * @description Every permission the caller holds inside this organization. For
+             *     an API key these are its scopes.
+             * @example [
+             *       "event.read",
+             *       "order.read"
+             *     ]
+             */
+            permissions: string[];
+            /**
+             * @description True when the caller is a platform superadmin. Other
+             *     organization routes then require the X-Admin-Reason header.
+             */
+            platform_superadmin: boolean;
         };
         MeUser: {
             /** @description Actor ID from the JWT (typically a UUID) */
@@ -22620,6 +22722,86 @@ export interface operations {
                 };
             };
             /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization the caller asks about. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's access inside the organization. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgMeResponse"];
+                };
+            };
+            /** @description org_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The caller is not a member of this organization, or the API key
+             *     belongs to another organization (`org.access_denied`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization does not exist or was deleted (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The membership or permission lookup failed (`org.membership_check_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The permission checker is not wired (`dependency.org_access_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;
