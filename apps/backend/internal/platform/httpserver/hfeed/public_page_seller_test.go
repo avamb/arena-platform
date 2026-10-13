@@ -160,6 +160,17 @@ func TestContactForm_OfferedOnlyWithAPublicEmailAndACaptcha(t *testing.T) {
 	}
 	row.PublicContact = []byte(`{"phone":"+34 600 000 000"}`)
 	if f := h.contactForm(row); f != nil {
-		t.Fatalf("a channel without a public e-mail offers no form, got %+v", f)
+		t.Fatalf("a page whose messages would reach nobody offers no form, got %+v", f)
+	}
+	// Without a public e-mail the messages go to the organization's own
+	// address, which the block never carries: the letters of such a page link
+	// this form instead of printing an address.
+	row.OrgReachable = true
+	f = h.contactForm(row)
+	if f == nil || !f.Available {
+		t.Fatalf("a page whose organization has an address offers the form, got %+v", f)
+	}
+	if b, _ := json.Marshal(f); strings.Contains(string(b), "@") {
+		t.Fatalf("the form block must never carry an address: %s", b)
 	}
 }

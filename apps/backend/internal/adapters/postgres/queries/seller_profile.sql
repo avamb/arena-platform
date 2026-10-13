@@ -53,8 +53,10 @@ WHERE id = $1
 -- GetHostedPageSeller. has_email reports whether the channel has a public
 -- e-mail; the address itself is never selected here.
 SELECT sc.id,
-       COALESCE(sc.settings #>> '{hosted_page,public_contact,email}', '') <> '' AS has_email
+       COALESCE(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') <> ''
+         OR COALESCE(btrim(o.contact_email), '') <> '' AS has_email
 FROM sales_channels sc
+JOIN organizations o ON o.id = sc.org_id
 JOIN agent_feed_tokens ft ON ft.sales_channel_id = sc.id
 WHERE sc.org_id = $1
   AND sc.deleted_at IS NULL

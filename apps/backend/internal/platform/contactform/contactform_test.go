@@ -73,7 +73,7 @@ func TestFormatTelegram_EscapesAndClipsWithinTheTelegramLimit(t *testing.T) {
 
 func TestFormatTelegram_SaysWhenTheEmailDidNotGoOut(t *testing.T) {
 	msg := FormatTelegram("Org", "org", "Ann", "a@b.example", "Hello there!", false)
-	if strings.Contains(msg, "went to your public e-mail") || !strings.Contains(msg, "was not e-mailed") {
+	if strings.Contains(msg, "went to your e-mail") || !strings.Contains(msg, "was not e-mailed") {
 		t.Errorf("the post must not claim an e-mail that was not sent: %q", msg)
 	}
 }
@@ -90,14 +90,22 @@ func TestContactEmail(t *testing.T) {
 }
 
 // A value written around the API (a direct SQL edit, an old row) is checked
-// again before anything is mailed to it.
+// again before anything is mailed to it. Without a public e-mail the message
+// goes to the organization's own address, which the page never shows.
 func TestRecipient_RevalidatesTheAddress(t *testing.T) {
-	if got := recipient([]byte(`{"email":" Tickets@Teatro.Example "}`)); got != "tickets@teatro.example" {
+	if got := recipient([]byte(`{"email":" Tickets@Teatro.Example "}`), "owner@org.example"); got != "tickets@teatro.example" {
 		t.Errorf("got %q", got)
 	}
-	for _, raw := range []string{`{"email":"not an address"}`, `{"email":"a@b"}`, `{"email":"x@y.example\nBcc: z@evil.example"}`} {
-		if got := recipient([]byte(raw)); got != "" {
+	for _, raw := range []string{`{"email":"not an address"}`, `{"email":"a@b"}`, `{"email":"x@y.example
+Bcc: z@evil.example"}`} {
+		if got := recipient([]byte(raw), ""); got != "" {
 			t.Errorf("%s -> %q, want nothing to mail", raw, got)
 		}
+		if got := recipient([]byte(raw), " Owner@Org.Example "); got != "owner@org.example" {
+			t.Errorf("%s with an organization address -> %q", raw, got)
+		}
+	}
+	if got := recipient(nil, "not an address"); got != "" {
+		t.Errorf("a broken organization address -> %q", got)
 	}
 }

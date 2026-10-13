@@ -6385,8 +6385,10 @@ type HostedPagePromoter struct {
 // straight to the `<arena-tickets feed-token=…>` widget.
 type HostedPageResponse struct {
 	// ContactForm Present when the page offers the "Write to the organizer" form: the
-	// channel has a public e-mail and the deployment can check the
-	// captcha. The address itself is never answered.
+	// channel has a public e-mail or the organization has its own
+	// contact e-mail (a private recipient), and the deployment can check
+	// the captcha. No address is ever answered. Ticket letters of a page
+	// without a public e-mail link this form as <page>#contact.
 	ContactForm *HostedPageContactForm `json:"contact_form,omitempty"`
 
 	// DefaultLocale Organization default locale, used when no `?lang=` is present.
@@ -6486,8 +6488,10 @@ type HostedPageSellerContact struct {
 // instead of one per date.
 type HostedPromoterPageResponse struct {
 	// ContactForm Present when the page offers the "Write to the organizer" form: the
-	// channel has a public e-mail and the deployment can check the
-	// captcha. The address itself is never answered.
+	// channel has a public e-mail or the organization has its own
+	// contact e-mail (a private recipient), and the deployment can check
+	// the captcha. No address is ever answered. Ticket letters of a page
+	// without a public e-mail link this form as <page>#contact.
 	ContactForm *HostedPageContactForm `json:"contact_form,omitempty"`
 
 	// DefaultLocale Organization default locale, used when no `?lang=` is present.

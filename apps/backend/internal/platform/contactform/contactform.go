@@ -8,7 +8,8 @@
 // telegram_sent_at):
 //
 //   - e-mail to the channel's public contact e-mail
-//     (settings.hosted_page.public_contact.email), read when the job runs so
+//     (settings.hosted_page.public_contact.email), else to the organization's
+//     own contact_email, which the page never shows; read when the job runs so
 //     an address the owner changed in the meantime wins, and checked again
 //     with sellerinfo.NormalizeEmail (a value written around the API is never
 //     mailed). Reply-To is the buyer, so the organizer answers with one click
@@ -109,6 +110,7 @@ type message struct {
 	OrgLocale      string
 	ToTelegram     bool
 	PublicContact  []byte
+	OrgEmail       string
 	ChannelDeleted bool
 }
 
@@ -116,7 +118,7 @@ const loadMessageSQL = `
 SELECT m.id, m.org_id, m.page_slug, m.sender_name, m.sender_email, m.message,
        m.email_sent_at IS NOT NULL, m.email_mailed, m.telegram_sent_at IS NOT NULL,
        o.name, o.default_locale, o.contact_form_to_telegram,
-       sc.settings #> '{hosted_page,public_contact}', sc.deleted_at IS NOT NULL
+       sc.settings #> '{hosted_page,public_contact}', COALESCE(o.contact_email, ''), sc.deleted_at IS NOT NULL
 FROM organizer_contact_messages m
 JOIN organizations o ON o.id = m.org_id
 JOIN sales_channels sc ON sc.id = m.channel_id
@@ -137,7 +139,7 @@ func (h *Handler) Handle(ctx context.Context, payload []byte) error {
 	err = h.pool.QueryRow(ctx, loadMessageSQL, id).Scan(
 		&m.ID, &m.OrgID, &m.PageSlug, &m.SenderName, &m.SenderEmail, &m.Body,
 		&m.EmailSent, &m.EmailMailed, &m.TelegramSent, &m.OrgName, &m.OrgLocale, &m.ToTelegram,
-		&m.PublicContact, &m.ChannelDeleted,
+		&m.PublicContact, &m.OrgEmail, &m.ChannelDeleted,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Purged or never committed: nothing to deliver.
@@ -151,7 +153,7 @@ func (h *Handler) Handle(ctx context.Context, payload []byte) error {
 	if !m.EmailSent {
 		to := ""
 		if !m.ChannelDeleted {
-			to = recipient(m.PublicContact)
+			to = recipient(m.PublicContact, m.OrgEmail)
 		}
 		mailed := false
 		if to == "" {
@@ -248,13 +250,18 @@ VALUES ($1, '{}', 3, 'pending', now())`, PurgeJobType); err != nil {
 	return nil
 }
 
-// recipient is the channel's public e-mail when it is a valid address, else "".
-func recipient(raw []byte) string {
-	to, ok := sellerinfo.NormalizeEmail(contactEmail(raw))
-	if !ok {
-		return ""
+// recipient is the channel's public e-mail when it is a valid address, else
+// the organization's own contact_email when that is one, else "". The
+// organization's address is a private recipient: the buyer never sees it
+// unless the organizer answers from it.
+func recipient(raw []byte, orgEmail string) string {
+	if to, ok := sellerinfo.NormalizeEmail(contactEmail(raw)); ok {
+		return to
 	}
-	return to
+	if to, ok := sellerinfo.NormalizeEmail(orgEmail); ok {
+		return to
+	}
+	return ""
 }
 
 // contactEmail reads public_contact.email from the channel settings.
@@ -355,9 +362,9 @@ func FormatTelegram(orgName, pageSlug, senderName, senderEmail, body string, mai
 	head := "✉️ <b>Message from a buyer</b>\n" +
 		"Sales page: " + esc(orgName) + " (/" + esc(pageSlug) + ")\n" +
 		"From: " + esc(strings.Join(strings.Fields(senderName), " ")) + " &lt;" + esc(senderEmail) + "&gt;\n\n"
-	tail := "\n\nThe same message went to your public e-mail. Reply to the buyer from there."
+	tail := "\n\nThe same message went to your e-mail. Reply to the buyer from there."
 	if !mailed {
-		tail = "\n\nThis message was not e-mailed: the sales page has no public e-mail. To answer the buyer, write to the address above."
+		tail = "\n\nThis message was not e-mailed: the sales page and the organization have no e-mail address. To answer the buyer, write to the address above."
 	}
 	budget := telegramMaxUTF16 - utf16Len(head) - utf16Len(tail)
 	if budget < 0 {

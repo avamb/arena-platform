@@ -123,11 +123,15 @@ type hostedPageContactForm struct {
 	PrivacyURL       string `json:"privacy_url,omitempty"`
 }
 
-// contactForm decides the form from the channel row: offered when the channel
-// has a public e-mail and this deployment can check the captcha.
+// contactForm decides the form from the channel row: offered when a message
+// has somewhere to go - the channel's public e-mail, else the organization's
+// own address, which is never answered (owner rule 2026-10-13: letters of a
+// hosted page without a public e-mail link this form) - and this deployment
+// can check the captcha.
 func (h *Handler) contactForm(row gen.HostedPageSellerRow) *hostedPageContactForm {
 	c := parsePublicContact(row.PublicContact)
-	if c == nil || c.Email == "" || !h.contactFormReady {
+	hasPublic := c != nil && c.Email != ""
+	if (!hasPublic && !row.OrgReachable) || !h.contactFormReady {
 		return nil
 	}
 	return &hostedPageContactForm{Available: true, TurnstileSiteKey: h.contactFormSiteKey, PrivacyURL: h.contactFormPrivacyURL}

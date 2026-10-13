@@ -92,7 +92,17 @@ func TestOrganizerContact_RouteStoresQueuesAndRefuses(t *testing.T) {
 	cf := newContactFixture(t, srv, true)
 	other := newContactFixture(t, srv, true)
 	noMail := newContactFixture(t, srv, false)
+	orgOnly := newContactFixture(t, srv, false)
 	ctx := context.Background()
+	// noMail's messages would reach nobody; orgOnly's organization has its
+	// own address, which the page must never show.
+	const orgPrivate = "box-private@organizer.example"
+	if _, err := pool.Exec(ctx, `UPDATE organizations SET contact_email = NULL WHERE id = $1`, noMail.f.orgID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE organizations SET contact_email = $2 WHERE id = $1`, orgOnly.f.orgID, orgPrivate); err != nil {
+		t.Fatal(err)
+	}
 
 	// ── the promoter page offers the form and never answers the address ──────
 	req := httptest.NewRequest(http.MethodGet, "/v1/public/pages/"+cf.slug, nil)
@@ -108,7 +118,19 @@ func TestOrganizerContact_RouteStoresQueuesAndRefuses(t *testing.T) {
 	rec = httptest.NewRecorder()
 	srv.router.ServeHTTP(rec, req)
 	if strings.Contains(rec.Body.String(), "contact_form") {
-		t.Errorf("a channel without a public e-mail must not offer the form: %s", rec.Body.String())
+		t.Errorf("a page whose messages would reach nobody must not offer the form: %s", rec.Body.String())
+	}
+	// Without a public e-mail the organization's own address takes the
+	// messages: the form is offered (ticket letters link it), the address is
+	// never answered.
+	req = httptest.NewRequest(http.MethodGet, "/v1/public/pages/"+orgOnly.slug, nil)
+	rec = httptest.NewRecorder()
+	srv.router.ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), `"contact_form":{"available":true`) || strings.Contains(rec.Body.String(), orgPrivate) {
+		t.Errorf("organization address only: %d %s", rec.Code, rec.Body.String())
+	}
+	if code, body := contactPost(t, srv.router, orgOnly.slug, contactBody("ben@example.com", orgOnly.token), "198.51.100.17"); code != http.StatusAccepted || strings.Contains(body, orgPrivate) {
+		t.Errorf("send to a page without a public e-mail: %d %s", code, body)
 	}
 
 	// ── a good message: 202, no address, stored and queued ────────────────────
@@ -315,12 +337,27 @@ func TestOrganizerContact_WorkerMailsAndPostsOnce(t *testing.T) {
 	if err := h.Handle(ctx, payload(id)); err != nil {
 		t.Fatal(err)
 	}
-	if len(mail.sent) != 3 || len(chat.texts) != 2 || !strings.Contains(chat.texts[1], "went to your public e-mail") {
+	if len(mail.sent) != 3 || len(chat.texts) != 2 || !strings.Contains(chat.texts[1], "went to your e-mail") {
 		t.Fatalf("after the retry: mails=%d posts=%v", len(mail.sent), chat.texts)
 	}
 
-	// ── a stored value that is not an address: nothing mailed, and said so ────
+	// ── no usable public e-mail: the organization's own address takes it ─────
 	if _, err := pool.Exec(ctx, `UPDATE sales_channels SET settings = jsonb_set(settings, '{hosted_page,public_contact}', '{"email":"not an address"}') WHERE id = $1`, cf.channel); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE organizations SET contact_email = 'box-private@organizer.example' WHERE id = $1`, cf.f.orgID); err != nil {
+		t.Fatal(err)
+	}
+	id = send("198.51.100.34")
+	if err := h.Handle(ctx, payload(id)); err != nil {
+		t.Fatal(err)
+	}
+	if len(mail.sent) != 4 || mail.sent[3].To != "box-private@organizer.example" || mail.sent[3].ReplyTo != "anna@example.com" {
+		t.Fatalf("fallback to the organization's address: %+v", mail.sent[len(mail.sent)-1])
+	}
+
+	// ── neither address: nothing mailed, and said so ──────────────────────────
+	if _, err := pool.Exec(ctx, `UPDATE organizations SET contact_email = NULL WHERE id = $1`, cf.f.orgID); err != nil {
 		t.Fatal(err)
 	}
 	id = send("198.51.100.33")
@@ -331,10 +368,10 @@ func TestOrganizerContact_WorkerMailsAndPostsOnce(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT email_mailed FROM organizer_contact_messages WHERE id = $1`, id).Scan(&mailed); err != nil || mailed {
 		t.Errorf("email_mailed = %v %v, want false", mailed, err)
 	}
-	if len(mail.sent) != 3 {
+	if len(mail.sent) != 4 {
 		t.Errorf("a broken address was mailed: %+v", mail.sent[len(mail.sent)-1])
 	}
-	if last := chat.texts[len(chat.texts)-1]; strings.Contains(last, "went to your public e-mail") || !strings.Contains(last, "was not e-mailed") {
+	if last := chat.texts[len(chat.texts)-1]; strings.Contains(last, "went to your e-mail") || !strings.Contains(last, "was not e-mailed") {
 		t.Errorf("the post claims an e-mail that did not go out: %s", last)
 	}
 }

@@ -3,7 +3,7 @@ import { resolveLocale } from './lib/locale.ts';
 import { applyDocumentChrome, consumeCheckoutTokenFromURL, eventIDWithOpenCheckout, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from './lib/render.ts';
 import { ApiError, fetchHostedPage, fetchPromoterPage } from './lib/api.ts';
 import { renderSellerFooter } from './lib/seller.ts';
-import { renderContactFooter } from './lib/contact.ts';
+import { openContactFromHash, renderContactFooter } from './lib/contact.ts';
 
 /** Resolved at build time by Vite from the VITE_API_BASE_URL build arg
  * (see Dockerfile / .env). Empty string falls back to same-origin relative
@@ -60,7 +60,8 @@ async function main(): Promise<void> {
         const data = await fetchPromoterPage(API_BASE, route.orgSlug);
         applyDocumentChrome(locale, { title: data.org.name });
         renderSellerFooter(data.seller, locale);
-        renderContactFooter({ apiBase: API_BASE, slug: route.orgSlug, locale, form: data.contact_form });
+        const contactCtx = { apiBase: API_BASE, slug: route.orgSlug, locale, form: data.contact_form };
+        renderContactFooter(contactCtx);
         renderPromoterPage(mainEl, data, locale, {
           apiBase: API_BASE,
           // Stripe returns the buyer to this list, not to the card they
@@ -68,6 +69,7 @@ async function main(): Promise<void> {
           // card is found by the checkout the widget left behind.
           openEventID: eventIDWithOpenCheckout(data.events, safeSessionStorage()),
         });
+        openContactFromHash(contactCtx);
       } catch (err) {
         if (err instanceof ApiError && err.status === 404) {
           renderNotFound(mainEl, locale);
@@ -93,13 +95,15 @@ async function main(): Promise<void> {
       applyDocumentChrome(locale, { title: data.event.title, description: data.event.short_description ?? data.event.description });
       renderEvent(mainEl, data, locale, { apiBase: API_BASE, resumingCheckout });
       renderSellerFooter(data.seller, locale);
-      renderContactFooter({
+      const contactCtx = {
         apiBase: API_BASE,
         slug: route.orgSlug,
         feedToken: data.feed_token,
         locale,
         form: data.contact_form,
-      });
+      };
+      renderContactFooter(contactCtx);
+      openContactFromHash(contactCtx);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         renderNotFound(mainEl, locale);

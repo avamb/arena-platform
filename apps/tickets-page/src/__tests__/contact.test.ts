@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   contactAvailable,
   openContactForm,
+  openContactFromHash,
   renderContactButton,
   renderContactFooter,
   sendContact,
@@ -158,6 +159,19 @@ describe('openContactForm', () => {
       expect(overlay.querySelector('.asa-contact__note')?.textContent).toContain('Telegram');
       overlay.remove();
     }
+  });
+
+  it('opens from the #contact link of a ticket letter, once', () => {
+    const replaced: string[] = [];
+    const hist = { replaceState: (_d: unknown, _t: string, url?: string | URL | null) => { replaced.push(String(url)); } };
+    const loc = { hash: '#contact', pathname: '/teatro/hamlet', search: '?lang=ru' };
+    expect(openContactFromHash(CTX, loc, hist)).toBe(true);
+    expect(document.querySelector('.asa-contact')).not.toBeNull();
+    expect(replaced).toEqual(['/teatro/hamlet?lang=ru']);
+    document.querySelectorAll('.asa-contact').forEach((el) => el.remove());
+    expect(openContactFromHash(CTX, { ...loc, hash: '' }, hist)).toBe(false);
+    expect(openContactFromHash({ ...CTX, form: null }, loc, hist)).toBe(false);
+    expect(document.querySelector('.asa-contact')).toBeNull();
   });
 
   it('closes on Escape and on Cancel', () => {

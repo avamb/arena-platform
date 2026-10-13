@@ -352,3 +352,27 @@ export function renderContactFooter(ctx: ContactContext): void {
   const text = document.getElementById('asa-footer-text');
   inner.insertBefore(p, text ?? null);
 }
+
+/** The fragment ticket letters link: `<page>#contact` opens the form. */
+export const CONTACT_HASH = '#contact';
+
+/**
+ * Opens the form when the page was reached through `#contact` (the link the
+ * ticket letters print when the sales page shows no organizer e-mail). The
+ * fragment is removed afterwards, so a reload or a later re-render does not
+ * open it again. Returns whether the form was opened.
+ */
+export function openContactFromHash(
+  ctx: ContactContext,
+  loc: Pick<Location, 'hash' | 'pathname' | 'search'> = window.location,
+  hist: Pick<History, 'replaceState'> | null = window.history,
+): boolean {
+  if (loc.hash !== CONTACT_HASH || !ctx.form?.available) return false;
+  try {
+    hist?.replaceState(null, '', loc.pathname + loc.search);
+  } catch {
+    // A sandboxed frame may refuse; the form still opens.
+  }
+  openContactForm(ctx);
+  return true;
+}

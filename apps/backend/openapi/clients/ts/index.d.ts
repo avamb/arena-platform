@@ -5097,13 +5097,15 @@ export interface paths {
          * Send a buyer's message to the organizer of a hosted page
          * @description The "Write to the organizer" form of the hosted sales page. The page
          *     never publishes the organizer's e-mail: the message is stored and a
-         *     worker mails it to the channel's public e-mail with Reply-To set to
+         *     worker mails it to the channel's public e-mail (else to the
+         *     organization's own contact e-mail, never shown) with Reply-To set to
          *     the buyer, and posts it to the organization's sales Telegram chat when
          *     its switch is on. Protected by Cloudflare Turnstile (production
          *     without a secret answers 503), a per-IP limit (5 an hour) and a
          *     per-page limit (30 an hour) counted in the database, and a 16 KiB body
-         *     cap. No JWT. An unknown slug, a page without a public e-mail and a
-         *     feed token of another organization answer the same 404. The answer
+         *     cap. No JWT. An unknown slug, a page whose messages would reach
+         *     nobody and a feed token of another organization answer the same 404.
+         *     The token must carry the Turnstile action "contact". The answer
          *     never carries the organizer's address.
          */
         post: operations["sendOrganizerContact"];
@@ -13222,8 +13224,10 @@ export interface components {
             promoter?: components["schemas"]["HostedPagePromoter"];
             /**
              * @description Present when the page offers the "Write to the organizer" form: the
-             *     channel has a public e-mail and the deployment can check the
-             *     captcha. The address itself is never answered.
+             *     channel has a public e-mail or the organization has its own
+             *     contact e-mail (a private recipient), and the deployment can check
+             *     the captcha. No address is ever answered. Ticket letters of a page
+             *     without a public e-mail link this form as <page>#contact.
              */
             contact_form?: components["schemas"]["HostedPageContactForm"];
         };
@@ -13269,8 +13273,10 @@ export interface components {
             promoter?: components["schemas"]["HostedPagePromoter"];
             /**
              * @description Present when the page offers the "Write to the organizer" form: the
-             *     channel has a public e-mail and the deployment can check the
-             *     captcha. The address itself is never answered.
+             *     channel has a public e-mail or the organization has its own
+             *     contact e-mail (a private recipient), and the deployment can check
+             *     the captcha. No address is ever answered. Ticket letters of a page
+             *     without a public e-mail link this form as <page>#contact.
              */
             contact_form?: components["schemas"]["HostedPageContactForm"];
         };
