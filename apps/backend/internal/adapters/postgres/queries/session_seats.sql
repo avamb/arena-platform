@@ -168,6 +168,17 @@ WHERE  session_id = $1
 ORDER  BY seat_key ASC
 FOR UPDATE;
 
+-- name: ListSessionSeatsByKeys :many
+-- Read-only twin of LockSessionSeatsForHold: the same rows in the same
+-- order, no row locks. Prices a cart (the public checkout quote) without
+-- touching the seats it prices.
+SELECT id, session_id, seat_key, sector_name, row_name, seat_number,
+       tier_id, status, reservation_id, status_version, updated_at, system_seat_id, kind
+FROM   session_seats
+WHERE  session_id = $1
+  AND  seat_key   = ANY($2::text[])
+ORDER  BY seat_key ASC;
+
 -- name: HoldSessionSeat :one
 -- Conditional 'available' -> 'held' transition. Stamps the row with
 -- the new sessions.seat_status_version passed by the caller (already

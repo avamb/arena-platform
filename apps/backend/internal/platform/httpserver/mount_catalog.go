@@ -235,6 +235,7 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	r.Post("/public/feeds/{feed_token}/events", s.handlePublicFeedFunnelEvents)
 	if s.publicFeedQueries != nil && s.checkoutQueries != nil && s.reservationQueries != nil {
 		r.Post("/public/feeds/{feed_token}/checkout/start", s.handlePublicFeedCheckoutStart)
+		r.Post("/public/feeds/{feed_token}/checkout/quote", s.handlePublicFeedCheckoutQuote)
 	}
 	// Anonymous order-status endpoint — WID-0b (feature #319).
 	// Gated on checkoutQueries + reservationQueries; ticket/credential queries

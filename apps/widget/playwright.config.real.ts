@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: ['**/palac-akropolis-real.e2e.ts'],
+  testMatch: ['**/palac-akropolis-real.e2e.ts', '**/palac-promo-real.e2e.ts'],
   timeout: 60_000,
   retries: 0,
   reporter: process.env['CI'] ? 'github' : 'list',

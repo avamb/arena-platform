@@ -122,26 +122,30 @@ func (s *stubStripe) lastForm(t *testing.T) url.Values {
 // buildHostedCheckoutServer wires a real Server with the stub Stripe endpoint
 // and a configured tickets base URL, so checkout/start can complete without
 // reaching the internet.
-func buildHostedCheckoutServer(t *testing.T, pool *pgxpool.Pool, stripeBase string) *Server {
+func buildHostedCheckoutServer(t *testing.T, pool *pgxpool.Pool, stripeBase string, tweak ...func(*config.Config)) *Server {
 	t.Helper()
+	cfg := &config.Config{
+		AppEnv:               config.EnvDevelopment,
+		AppName:              "test",
+		AppVersion:           "0.0.0-dev",
+		RequestTimeout:       10 * time.Second,
+		BodyLimitBytes:       1 << 20,
+		JWTSecretStub:        "integration-test-secret",
+		DefaultLocale:        "en",
+		ActiveLocales:        []string{"en"},
+		CORSAllowedOrigins:   []string{hostedTicketsBaseURL},
+		PublicTicketsBaseURL: hostedTicketsBaseURL,
+		// Deliberately shorter than production so the assertions on the
+		// hold expiry are unambiguous, but still above Stripe's own
+		// 30-minute floor for a Checkout Session expiry.
+		WidgetPaymentWindowSeconds: 1860,
+		WidgetPaymentGraceSeconds:  120,
+	}
+	for _, fn := range tweak {
+		fn(cfg)
+	}
 	return New(Options{
-		Config: &config.Config{
-			AppEnv:               config.EnvDevelopment,
-			AppName:              "test",
-			AppVersion:           "0.0.0-dev",
-			RequestTimeout:       10 * time.Second,
-			BodyLimitBytes:       1 << 20,
-			JWTSecretStub:        "integration-test-secret",
-			DefaultLocale:        "en",
-			ActiveLocales:        []string{"en"},
-			CORSAllowedOrigins:   []string{hostedTicketsBaseURL},
-			PublicTicketsBaseURL: hostedTicketsBaseURL,
-			// Deliberately shorter than production so the assertions on the
-			// hold expiry are unambiguous, but still above Stripe's own
-			// 30-minute floor for a Checkout Session expiry.
-			WidgetPaymentWindowSeconds: 1860,
-			WidgetPaymentGraceSeconds:  120,
-		},
+		Config:  cfg,
 		Pool:    pool,
 		PgxPool: pool,
 		// Without this the ticket-delivery enqueue silently no-ops

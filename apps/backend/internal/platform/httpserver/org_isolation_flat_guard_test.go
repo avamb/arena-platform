@@ -111,6 +111,7 @@ var flatRouteFamilies = []flatFamily{
 	{"GET", "/v1/public/payment-return", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/checkout/{checkout_token}/recover", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/feeds/{feed_token}/checkout/start", flatPublic, "feed token or checkout token in the URL"},
+	{"POST", "/v1/public/feeds/{feed_token}/checkout/quote", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/feeds/{feed_token}/events", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/payment-return", flatPublic, "feed token or checkout token in the URL"},
 	{"GET", "/v1/feeds/{token}", flatPublic, "feed token in the URL"},

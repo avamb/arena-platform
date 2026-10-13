@@ -28,7 +28,7 @@ export default defineConfig({
   // in the widget-acceptance CI job. This mock suite stays as a fast offline
   // smoke check (run manually with --config playwright.config.ts if needed)
   // but is excluded from the CI gate.
-  testIgnore: ['**/palac-akropolis.e2e.ts', '**/palac-akropolis-real.e2e.ts'],
+  testIgnore: ['**/palac-akropolis.e2e.ts', '**/palac-akropolis-real.e2e.ts', '**/palac-promo-real.e2e.ts'],
   timeout: 30_000,
   retries: process.env['CI'] ? 2 : 0,
   reporter: process.env['CI'] ? 'github' : 'list',

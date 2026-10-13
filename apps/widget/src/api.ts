@@ -6,6 +6,7 @@
  *   GET /v1/event-sessions/{id}/schema   (ETag-cached, immutable per checksum)
  *   GET /v1/event-sessions/{id}/seat-status[?since_version=N]
  *   POST /v1/public/feeds/{token}/checkout/start   (WID-D)
+ *   POST /v1/public/feeds/{token}/checkout/quote   (price + promo code, no hold)
  *   GET  /v1/public/checkout/{token}               (WID-D)
  *   POST /v1/public/checkout/{token}/recover       (WID-D, wraps WID-0c)
  *
@@ -22,6 +23,8 @@ import type {
   SeatStatusResponse,
 } from './types.js';
 import type {
+  CheckoutQuotePayload,
+  CheckoutQuoteResponse,
   CheckoutStartPayload,
   CheckoutStartResponse,
   CheckoutStatusResponse,
@@ -200,6 +203,43 @@ export async function fetchSeatStatusDelta(
 // ─── Checkout (WID-D) ────────────────────────────────────────────────────────
 
 /**
+ * Build the {@link ApiError} for a non-2xx response, reading the arena error
+ * envelope when the body has one. `label` names the call in the message.
+ */
+async function apiErrorFromResponse(res: Response, label: string): Promise<ApiError> {
+  let detail = '';
+  let code: string | undefined;
+  let details: Record<string, unknown> | undefined;
+  try {
+    // Arena backend sends the nested envelope: {"error": {"code": "...", "message": "...", "details": {...}}}
+    const body = (await res.json()) as { error?: unknown; message?: string };
+    const errBody = body.error;
+    if (errBody !== null && typeof errBody === 'object') {
+      // Standard arena-backend nested envelope.
+      const nested = errBody as { code?: string; message?: string; details?: Record<string, unknown> };
+      detail = nested.message ?? '';
+      code = nested.code;
+      details = nested.details;
+    } else if (typeof errBody === 'string') {
+      // Legacy flat-string fallback: {"error": "code_string", ...}
+      detail = errBody;
+      code = errBody || undefined;
+      const d = (body as Record<string, unknown>)['details'];
+      if (d !== null && d !== undefined && typeof d === 'object') {
+        details = d as Record<string, unknown>;
+      }
+    } else if (typeof body.message === 'string') {
+      // Last-resort fallback: {"message": "..."}
+      detail = body.message;
+    }
+  } catch { /* ignore non-JSON error bodies */ }
+  return new ApiError(
+    `${label} HTTP ${res.status}${detail ? `: ${detail}` : ''}`,
+    { status: res.status, code, details },
+  );
+}
+
+/**
  * POST /v1/public/feeds/{feedToken}/checkout/start
  *
  * Creates a new anonymous checkout session, reserves seats / GA capacity,
@@ -224,39 +264,37 @@ export async function postCheckoutStart(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) {
-    let detail = '';
-    let code: string | undefined;
-    let details: Record<string, unknown> | undefined;
-    try {
-      // Arena backend sends the nested envelope: {"error": {"code": "...", "message": "...", "details": {...}}}
-      const body = (await res.json()) as { error?: unknown; message?: string };
-      const errBody = body.error;
-      if (errBody !== null && typeof errBody === 'object') {
-        // Standard arena-backend nested envelope.
-        const nested = errBody as { code?: string; message?: string; details?: Record<string, unknown> };
-        detail = nested.message ?? '';
-        code = nested.code;
-        details = nested.details;
-      } else if (typeof errBody === 'string') {
-        // Legacy flat-string fallback: {"error": "code_string", ...}
-        detail = errBody;
-        code = errBody || undefined;
-        const d = (body as Record<string, unknown>)['details'];
-        if (d !== null && d !== undefined && typeof d === 'object') {
-          details = d as Record<string, unknown>;
-        }
-      } else if (typeof body.message === 'string') {
-        // Last-resort fallback: {"message": "..."}
-        detail = body.message;
-      }
-    } catch { /* ignore non-JSON error bodies */ }
-    throw new ApiError(
-      `postCheckoutStart HTTP ${res.status}${detail ? `: ${detail}` : ''}`,
-      { status: res.status, code, details },
-    );
-  }
+  if (!res.ok) throw await apiErrorFromResponse(res, 'postCheckoutStart');
   return res.json() as Promise<CheckoutStartResponse>;
+}
+
+/**
+ * POST /v1/public/feeds/{feedToken}/checkout/quote
+ *
+ * Prices the cart (with an optional promo code) WITHOUT holding anything:
+ * no seat, no capacity, no order. The amounts are the ones checkout/start will
+ * store and send to the payment page.
+ *
+ * @param signal  Aborts the request; the promo controller uses it to bound the
+ *                wait, so a hung quote can never hold the buyer's cart.
+ * @throws ApiError when the response is non-2xx. A code that does not fit the
+ *         order is a 422 whose `code` starts with `promo.`.
+ */
+export async function postCheckoutQuote(
+  feedToken: string,
+  payload: CheckoutQuotePayload,
+  apiBase = '',
+  signal?: AbortSignal,
+): Promise<CheckoutQuoteResponse> {
+  const url = `${apiBase}/v1/public/feeds/${encodeURIComponent(feedToken)}/checkout/quote`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal,
+  });
+  if (!res.ok) throw await apiErrorFromResponse(res, 'postCheckoutQuote');
+  return res.json() as Promise<CheckoutQuoteResponse>;
 }
 
 /**

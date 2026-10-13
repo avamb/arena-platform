@@ -154,6 +154,11 @@ export interface CheckoutStartPayload {
     phone?: string | null;
   };
   /**
+   * The promo code the buyer applied in the cart sheet. Sent as typed (trimmed):
+   * the backend matches it without regard to case. Omitted when none is applied.
+   */
+  promo_code?: string;
+  /**
    * Page the hosted payment provider returns the buyer to.
    *
    * The widget sends `origin + pathname` (no query string, no hash) — the
@@ -173,6 +178,33 @@ export interface CheckoutStartPayload {
    * so any locale tag is safe to send.
    */
   locale?: string;
+}
+
+/**
+ * Payload sent to POST /v1/public/feeds/{token}/checkout/quote: the same lines
+ * as checkout/start, the optional promo code, and no buyer details.
+ */
+export interface CheckoutQuotePayload {
+  session_id: string;
+  seats?: string[];
+  ga_items?: PublicGAItem[];
+  promo_code?: string;
+}
+
+/**
+ * Response from POST /v1/public/feeds/{token}/checkout/quote.
+ *
+ * The amounts are in minor units and come from the platform: the sheet shows
+ * them as they are and does no price arithmetic on them.
+ */
+export interface CheckoutQuoteResponse {
+  pricing: {
+    subtotal: number;
+    discount: number;
+    platform_fee: number;
+    total: number;
+    currency: string;
+  };
 }
 
 /** Response from POST /v1/public/feeds/{token}/checkout/start. */
@@ -453,6 +485,7 @@ export function buildCheckoutPayload(
   seats: string[],
   gaItems: PublicGAItem[],
   buyerFields: BuyerFieldConfig[],
+  promoCode?: string | null,
 ): CheckoutStartPayload {
   const fieldMap = new Map(buyerFields.map((f) => [f.key, f]));
 
@@ -473,7 +506,24 @@ export function buildCheckoutPayload(
 
   if (seats.length > 0) payload.seats = seats;
   if (gaItems.length > 0) payload.ga_items = gaItems;
+  const promo = (promoCode ?? '').trim();
+  if (promo) payload.promo_code = promo;
 
+  return payload;
+}
+
+/** Build the `POST checkout/quote` payload for the cart the buyer sees. */
+export function buildQuotePayload(
+  sessionId: string,
+  seats: string[],
+  gaItems: PublicGAItem[],
+  promoCode?: string | null,
+): CheckoutQuotePayload {
+  const payload: CheckoutQuotePayload = { session_id: sessionId };
+  if (seats.length > 0) payload.seats = seats;
+  if (gaItems.length > 0) payload.ga_items = gaItems;
+  const promo = (promoCode ?? '').trim();
+  if (promo) payload.promo_code = promo;
   return payload;
 }
 
