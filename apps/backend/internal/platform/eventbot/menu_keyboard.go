@@ -222,6 +222,7 @@ func (b *Bot) leaveAllDialogs(ctx context.Context, tg int64, id *Identity, jwt s
 		b.leaveIdleRefund(ctx, tg)
 	}
 	b.leaveScanExc(ctx, tg)
+	b.leaveOrgData(ctx, tg) // an organization data question (HP-4a)
 	b.leaveResend(ctx, tg)
 	b.leaveInvite(ctx, tg)
 	b.leavePromoter(ctx, tg)
