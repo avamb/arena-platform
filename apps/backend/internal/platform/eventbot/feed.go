@@ -464,14 +464,18 @@ func (b *Bot) stripKeyboard(ctx context.Context, chatID int64, msgID int) {
 // loses the keyboard it should not have any more.
 func (b *Bot) refuseStalePress(ctx context.Context, cq *models.CallbackQuery) {
 	loc := NormalizeLocale(cq.From.LanguageCode)
+	// A linked person has the "☰ Menu" button (menu_keyboard.go); a
+	// stranger has not, and is told to continue below.
+	key := "bot.stale_message_stranger"
 	if b.queries != nil {
 		if link, err := b.queries.GetBotTelegramLink(ctx, cq.From.ID); err == nil && link.RevokedAt == nil {
 			loc = NormalizeLocale(link.Locale)
+			key = "bot.stale_message"
 		}
 	}
 	_, _ = b.tg.AnswerCallbackQuery(ctx, &tgbot.AnswerCallbackQueryParams{
 		CallbackQueryID: cq.ID,
-		Text:            b.texts.T(loc, "bot.stale_message", nil),
+		Text:            b.texts.T(loc, key, nil),
 		ShowAlert:       true,
 	})
 	m := cq.Message.Message

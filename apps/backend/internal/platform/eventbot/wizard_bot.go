@@ -204,6 +204,14 @@ func (b *Bot) wizardCallback(ctx context.Context, chatID int64, msgID int, from 
 		b.showHome(ctx, chatID, &msgID, from, "")
 		return
 	}
+	if d.Paused {
+		// A wizard button continues a draft the menu paused.
+		d.Paused = false
+		if _, err := b.storeDraft(ctx, from.ID, ws, d); err != nil {
+			b.wizardFail(ctx, chatID, &msgID, ws.Locale, err)
+			return
+		}
+	}
 	if data == "e:sessions" && d.Mode == ModeEdit && d.Event.EventID != "" {
 		// Moving or cancelling a date is not part of the draft: it leaves
 		// the draft as it is and opens the sessions of the event itself.
@@ -233,7 +241,7 @@ func (b *Bot) wizardText(ctx context.Context, chatID int64, from *models.User, t
 	}
 	ws := b.wizardSession(id, jwt)
 	d, _, err := b.loadDraft(ctx, from.ID, ws)
-	if err != nil || d == nil || d.Step == stDone || d.Step == stSummary || d.Step == stEditMenu || d.Step == stCancel {
+	if err != nil || d == nil || d.Paused || d.Step == stDone || d.Step == stSummary || d.Step == stEditMenu || d.Step == stCancel {
 		return false
 	}
 	b.wizardApply(ctx, chatID, nil, from, ws, d, WizInput{Text: text})
@@ -249,7 +257,7 @@ func (b *Bot) wizardPoster(ctx context.Context, chatID int64, from *models.User,
 	}
 	ws := b.wizardSession(id, jwt)
 	d, _, err := b.loadDraft(ctx, from.ID, ws)
-	if err != nil || d == nil || !waitsForPoster(d) {
+	if err != nil || d == nil || d.Paused || !waitsForPoster(d) {
 		return false
 	}
 	loc := ws.Locale
