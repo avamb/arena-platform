@@ -103,12 +103,12 @@ func (h *Handler) requireChannelInOrg(w http.ResponseWriter, r *http.Request, or
 		return true
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
-		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("channel.not_found", "channel not found", r))
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("channel.not_found", "We cannot find this sales channel.", r))
 		return false
 	}
 	h.logger.Error("feed_token: channel lookup failed", slog.String("error", err.Error()))
 	httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-		"feed_token.channel_lookup_failed", "failed to look up the channel", r,
+		"feed_token.channel_lookup_failed", "We could not load the sales channel. Try again in a minute.", r,
 	))
 	return false
 }
@@ -137,7 +137,7 @@ type createFeedTokenRequest struct {
 func (h *Handler) HandleCreateFeedToken(w http.ResponseWriter, r *http.Request) {
 	if h.feedTokenQueries == nil || h.pool == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -153,14 +153,14 @@ func (h *Handler) HandleCreateFeedToken(w http.ResponseWriter, r *http.Request) 
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("feed_token.invalid_body", "cannot read request body: "+err.Error(), r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("feed_token.invalid_body", "We could not read the request body: "+err.Error(), r))
 		return
 	}
 
 	var req createFeedTokenRequest
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &req); err != nil {
-			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("feed_token.invalid_json", "request body is not valid JSON", r))
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("feed_token.invalid_json", "The request body is not valid JSON. Fix it and send it again.", r))
 			return
 		}
 	}
@@ -176,7 +176,7 @@ func (h *Handler) HandleCreateFeedToken(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		h.logger.Error("feed_token: generate token failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"feed_token.generate_failed", "failed to generate token", r,
+			"feed_token.generate_failed", "We could not create the token. Try again in a minute.", r,
 		))
 		return
 	}
@@ -186,13 +186,13 @@ func (h *Handler) HandleCreateFeedToken(w http.ResponseWriter, r *http.Request) 
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
 			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
-				"feed_token.duplicate", "a feed token with that value already exists", r,
+				"feed_token.duplicate", "This token is already in use. Choose another value.", r,
 			))
 			return
 		}
 		h.logger.Error("feed_token: insert failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"feed_token.insert_failed", "failed to create feed token", r,
+			"feed_token.insert_failed", "We could not create the token. Try again in a minute.", r,
 		))
 		return
 	}
@@ -211,7 +211,7 @@ func (h *Handler) HandleCreateFeedToken(w http.ResponseWriter, r *http.Request) 
 func (h *Handler) HandleListFeedTokens(w http.ResponseWriter, r *http.Request) {
 	if h.feedTokenQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -233,7 +233,7 @@ func (h *Handler) HandleListFeedTokens(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.logger.Error("feed_token: list failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"feed_token.list_failed", "failed to list feed tokens", r,
+			"feed_token.list_failed", "We could not load the tokens. Try again in a minute.", r,
 		))
 		return
 	}
@@ -254,7 +254,7 @@ func (h *Handler) HandleListFeedTokens(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleGetFeedToken(w http.ResponseWriter, r *http.Request) {
 	if h.feedTokenQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -279,12 +279,12 @@ func (h *Handler) HandleGetFeedToken(w http.ResponseWriter, r *http.Request) {
 	ft, err := h.feedTokenQueries.GetFeedTokenByID(ctx, tokenID, channelID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("feed_token.not_found", "feed token not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("feed_token.not_found", "We cannot find this token.", r))
 			return
 		}
 		h.logger.Error("feed_token: get failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"feed_token.get_failed", "failed to get feed token", r,
+			"feed_token.get_failed", "We could not load the token. Try again in a minute.", r,
 		))
 		return
 	}
@@ -304,7 +304,7 @@ func (h *Handler) HandleGetFeedToken(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandleRevokeFeedToken(w http.ResponseWriter, r *http.Request) {
 	if h.feedTokenQueries == nil || h.pool == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -330,7 +330,7 @@ func (h *Handler) HandleRevokeFeedToken(w http.ResponseWriter, r *http.Request) 
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "failed to begin transaction", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -341,12 +341,12 @@ func (h *Handler) HandleRevokeFeedToken(w http.ResponseWriter, r *http.Request) 
 	revoked, err := qtx.RevokeFeedToken(ctx, tokenID, channelID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("feed_token.not_found", "feed token not found", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("feed_token.not_found", "We cannot find this token.", r))
 			return
 		}
 		h.logger.Error("feed_token: revoke failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"feed_token.revoke_failed", "failed to revoke feed token", r,
+			"feed_token.revoke_failed", "We could not revoke the token. Try again in a minute.", r,
 		))
 		return
 	}
@@ -373,7 +373,7 @@ func (h *Handler) HandleRevokeFeedToken(w http.ResponseWriter, r *http.Request) 
 		if err := h.audit.WriteTx(ctx, tx, auditEv); err != nil {
 			h.logger.Error("feed_token: audit write failed", slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"feed_token.audit_failed", "failed to write audit event", r,
+				"feed_token.audit_failed", "We could not save the change. Try again in a minute.", r,
 			))
 			return
 		}
@@ -381,7 +381,7 @@ func (h *Handler) HandleRevokeFeedToken(w http.ResponseWriter, r *http.Request) 
 
 	if err := tx.Commit(ctx); err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"feed_token.commit_failed", "failed to commit transaction", r,
+			"feed_token.commit_failed", "We could not save the change. Try again in a minute.", r,
 		))
 		return
 	}
@@ -405,7 +405,7 @@ func (h *Handler) HandleRevokeFeedToken(w http.ResponseWriter, r *http.Request) 
 func (h *Handler) HandlePublicFeed(w http.ResponseWriter, r *http.Request) {
 	if h.feedTokenQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -413,26 +413,26 @@ func (h *Handler) HandlePublicFeed(w http.ResponseWriter, r *http.Request) {
 
 	tokenValue := chi.URLParam(r, "token")
 	if tokenValue == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("feed_token.missing_token", "token is required in path", r))
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("feed_token.missing_token", "Add the token to the request path.", r))
 		return
 	}
 
 	ft, err := h.feedTokenQueries.GetFeedTokenByToken(ctx, tokenValue)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("feed_token.not_found", "feed token not found or revoked", r))
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("feed_token.not_found", "We cannot find this token, or someone revoked it.", r))
 			return
 		}
 		h.logger.Error("feed_token: public feed lookup failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"feed_token.lookup_failed", "failed to look up feed token", r,
+			"feed_token.lookup_failed", "We could not load the token. Try again in a minute.", r,
 		))
 		return
 	}
 
 	// Reject revoked tokens.
 	if !ft.IsActive {
-		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("feed_token.not_found", "feed token not found or revoked", r))
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("feed_token.not_found", "We cannot find this token, or someone revoked it.", r))
 		return
 	}
 

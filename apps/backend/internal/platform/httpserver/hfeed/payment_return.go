@@ -64,14 +64,14 @@ func (h *Handler) HandlePaymentReturn(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimSpace(q.Get(checkoutTokenQueryParam))
 	if !returnTokenPattern.MatchString(token) {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			"checkout.invalid_return", "checkout_token is missing or malformed", r))
+			"checkout.invalid_return", "The checkout link is incomplete. Open the ticket page again.", r))
 		return
 	}
 
 	base, err := h.returnURLPolicy.Resolve(q.Get("r"))
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			ErrCodeInvalidReturnURL, "return target is not an allowed origin and no fallback is configured", r))
+			ErrCodeInvalidReturnURL, "We cannot send you back to that page. Open the ticket page again.", r))
 		return
 	}
 

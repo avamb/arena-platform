@@ -32,9 +32,11 @@ const (
 	styleBaselineFile = "testdata/text_style_baseline.txt"
 )
 
-// styleScopePrefixes lists the message-ID prefixes under check. Widen it as
-// the rollout plan moves on (e-mail templates and API errors come later).
-var styleScopePrefixes = []string{"bot."}
+// styleScopePrefixes lists the message-ID prefixes under check: the bot,
+// the API error texts (error.*), the Bil24 gateway descriptions a selling
+// site may show to buyers (bil24.*), the price-breakdown labels and the
+// welcome text. E-mail templates and openapi.yaml come later.
+var styleScopePrefixes = []string{"bot.", "error.", "bil24.", "pricing.", "server."}
 
 // styleLocales are the catalogs under check.
 var styleLocales = []string{"en", "ru"}

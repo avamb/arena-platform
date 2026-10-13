@@ -482,7 +482,7 @@ type publicFeedPagination struct {
 func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request) {
 	if h.publicFeedQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -500,7 +500,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-					"feed.token_not_found", "feed token not found or has been revoked", r,
+					"feed.token_not_found", "This ticket link does not work any more. Ask the organizer for a new link.", r,
 				))
 				return
 			}
@@ -509,13 +509,13 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 				slog.String("error", err.Error()),
 			)
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"feed.token_lookup_failed", "failed to validate feed token", r,
+				"feed.token_lookup_failed", "We could not check this ticket link. Try again in a minute.", r,
 			))
 			return
 		}
 		if !ft.IsActive {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-				"feed.token_not_found", "feed token not found or has been revoked", r,
+				"feed.token_not_found", "This ticket link does not work any more. Ask the organizer for a new link.", r,
 			))
 			return
 		}
@@ -529,7 +529,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 		id, err := uuid.Parse(raw)
 		if err != nil {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-				"feed.invalid_city_id", "city_id must be a valid UUID", r,
+				"feed.invalid_city_id", "Send city_id as a UUID.", r,
 			))
 			return
 		}
@@ -542,7 +542,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 		t, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-				"feed.invalid_date_from", "date_from must be RFC3339", r,
+				"feed.invalid_date_from", "Send date_from as an RFC 3339 date and time, for example 2026-10-13T19:00:00Z.", r,
 			))
 			return
 		}
@@ -555,7 +555,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 		t, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-				"feed.invalid_date_to", "date_to must be RFC3339", r,
+				"feed.invalid_date_to", "Send date_to as an RFC 3339 date and time, for example 2026-10-13T19:00:00Z.", r,
 			))
 			return
 		}
@@ -568,7 +568,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-				"feed.invalid_page", "page must be a positive integer", r,
+				"feed.invalid_page", "Send page as a whole number, 1 or more.", r,
 			))
 			return
 		}
@@ -580,7 +580,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 || n > 100 {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-				"feed.invalid_per_page", "per_page must be between 1 and 100", r,
+				"feed.invalid_per_page", "Send per_page as a whole number from 1 to 100.", r,
 			))
 			return
 		}
@@ -599,7 +599,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"feed.count_failed", "failed to count events", r,
+			"feed.count_failed", "We could not load the events. Try again in a minute.", r,
 		))
 		return
 	}
@@ -612,7 +612,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"feed.list_failed", "failed to list events", r,
+			"feed.list_failed", "We could not load the events. Try again in a minute.", r,
 		))
 		return
 	}
@@ -661,7 +661,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) {
 	if h.publicFeedQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -677,7 +677,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	eventID, err := uuid.Parse(chi.URLParam(r, "event_id"))
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			"feed.invalid_event_id", "event_id must be a valid UUID", r,
+			"feed.invalid_event_id", "Send event_id as a UUID.", r,
 		))
 		return
 	}
@@ -689,7 +689,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-				"feed.event_not_found", "event not found or not published to this feed", r,
+				"feed.event_not_found", "This event is not on sale here. Check the link.", r,
 			))
 			return
 		}
@@ -699,7 +699,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"feed.fetch_failed", "failed to fetch event", r,
+			"feed.fetch_failed", "We could not load the event. Try again in a minute.", r,
 		))
 		return
 	}
