@@ -24,6 +24,7 @@
 package hiam
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -34,6 +35,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -45,6 +47,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgread"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
 )
 
 // OrgResponse is the exported JSON representation of a single organization,
@@ -59,6 +62,7 @@ type OrgResponse struct {
 	DefaultLocale          string  `json:"default_locale"`
 	ReservationTTLSeconds  int32   `json:"reservation_ttl_seconds"`
 	LegalName              *string `json:"legal_name"`
+	LegalForm              *string `json:"legal_form"`
 	TaxID                  *string `json:"tax_id"`
 	TaxIDScheme            *string `json:"tax_id_scheme"`
 	RegistrationNumber     *string `json:"registration_number"`
@@ -99,6 +103,7 @@ type updateOrgRequest struct {
 	DefaultLocale          string         `json:"default_locale"`
 	ReservationTTLSeconds  int32          `json:"reservation_ttl_seconds"`
 	LegalName              optionalString `json:"legal_name"`
+	LegalForm              optionalString `json:"legal_form"`
 	TaxID                  optionalString `json:"tax_id"`
 	TaxIDScheme            optionalString `json:"tax_id_scheme"`
 	RegistrationNumber     optionalString `json:"registration_number"`
@@ -167,13 +172,7 @@ func optionalValue(value optionalString, existing *string) *string {
 	return &trimmed
 }
 
-var (
-	alpha2Country = regexp.MustCompile(`^[A-Z]{2}$`)
-	euVAT         = regexp.MustCompile(`^[A-Z]{2}[A-Z0-9]{2,12}$`)
-	gbVAT         = regexp.MustCompile(`^GB(?:[0-9]{9}|[0-9]{12}|GD[0-9]{3}|HA[0-9]{3})$`)
-	ilVAT         = regexp.MustCompile(`^[0-9]{9}$`)
-	usEIN         = regexp.MustCompile(`^[0-9]{2}-?[0-9]{7}$`)
-)
+var alpha2Country = regexp.MustCompile(`^[A-Z]{2}$`)
 
 // kybChangeAllowedForOwner reports whether an organization's own members may
 // move kyb_status from current to requested: no change, or a request for review.
@@ -221,22 +220,11 @@ func validateLegalUpdate(req updateOrgRequest, current gen.OrganizationRow) (leg
 		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "invalid_tax_id_scheme"
 	}
 	if taxID != nil {
-		valid := false
-		switch *taxScheme {
-		case "eu_vat":
-			valid = euVAT.MatchString(strings.ToUpper(*taxID))
-		case "gb_vat":
-			valid = gbVAT.MatchString(strings.ToUpper(*taxID))
-		case "il_vat":
-			valid = ilVAT.MatchString(*taxID)
-		case "us_ein":
-			valid = usEIN.MatchString(*taxID)
-		case "other":
-			valid = len(*taxID) >= 2 && len(*taxID) <= 64
-		default:
+		// One copy of the formats for every surface (sellerinfo).
+		if !sellerinfo.KnownScheme(*taxScheme) {
 			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "invalid_tax_id_scheme"
 		}
-		if !valid {
+		if !sellerinfo.ValidTaxID(*taxScheme, *taxID) {
 			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "invalid_tax_id"
 		}
 	}
@@ -422,9 +410,40 @@ func (h *Handler) HandleGetOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resp := responseFromOrganization(o)
+	resp.LegalForm = h.orgLegalForm(ctx, orgID)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"organization": responseFromOrganization(o),
+		"organization": resp,
 	})
+}
+
+// orgLegalForm reads organizations.legal_form (migration 0146), which the
+// shared OrganizationRow does not carry. Only GET /v1/organizations/{id} and
+// PATCH answer it; a failed read answers nil and is logged.
+func (h *Handler) orgLegalForm(ctx context.Context, orgID uuid.UUID) *string {
+	v, err := h.orgQueries.GetOrganizationLegalForm(ctx, orgID)
+	if err != nil {
+		h.logger.Warn("org: legal form read failed", slog.String("org_id", orgID.String()), slog.String("error", err.Error()))
+		return nil
+	}
+	return v
+}
+
+// legalFormValue checks a PATCH legal_form: absent keeps, null or "" clears,
+// otherwise 1-80 characters on one line. ok is false for a value the column
+// would refuse.
+func legalFormValue(v optionalString) (value *string, ok bool) {
+	if !v.Present || v.Value == nil {
+		return nil, true
+	}
+	s := strings.Join(strings.Fields(*v.Value), " ")
+	if s == "" {
+		return nil, true
+	}
+	if utf8.RuneCountInString(s) > sellerinfo.MaxLegalFormRunes {
+		return nil, false
+	}
+	return &s, true
 }
 
 // HandleUpdateOrg serves PATCH /v1/organizations/{id}.
@@ -477,6 +496,10 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website, kybStatus, validationCode := validateLegalUpdate(req, current)
+	legalForm, legalFormOK := legalFormValue(req.LegalForm)
+	if validationCode == "" && !legalFormOK {
+		validationCode = "invalid_legal_form"
+	}
 	if validationCode != "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails("org."+validationCode, strings.ReplaceAll(validationCode, "_", " "), r, map[string]any{"field": strings.TrimPrefix(validationCode, "invalid_")}))
 		return
@@ -568,8 +591,20 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if req.LegalForm.Present {
+		if _, err := h.orgQueries.SetOrganizationLegalForm(ctx, orgID, legalForm); err != nil {
+			h.logger.Error("org: legal form update failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"org.update_failed", "failed to update organization", r,
+			))
+			return
+		}
+	}
+
+	resp := responseFromOrganization(updated)
+	resp.LegalForm = h.orgLegalForm(ctx, orgID)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"organization": responseFromOrganization(updated),
+		"organization": resp,
 	})
 }
 

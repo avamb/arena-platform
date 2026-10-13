@@ -252,6 +252,7 @@ func (s *Service) Approve(ctx context.Context, id uuid.UUID, actor Actor, review
 	ws, err := provisioning.CreateWorkspace(ctx, tx, provisioning.WorkspaceInput{
 		OrgName:            a.String("org_name"),
 		LegalName:          a.String("legal_name"),
+		LegalForm:          a.String("legal_form"),
 		Country:            a.String("country"),
 		Locale:             app.Locale,
 		TaxID:              a.String("tax_id"),
