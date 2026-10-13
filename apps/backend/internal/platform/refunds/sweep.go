@@ -615,7 +615,16 @@ func alertText(r Refund, ticketStatus string) string {
 			if r.TicketID != nil {
 				text += fmt.Sprintf(" Ticket %s is %s.", r.TicketID, esc(ticketStatusWord(ticketStatus)))
 			}
-			text += " Check the provider dashboard and decide with the organizer whether to refund again or restore the ticket."
+			text += arenaNextStep(r)
+			return text
+		}
+		if code == failureFailedAfterAcceptance {
+			text = fmt.Sprintf("Refund %s (%d %s via %s) was accepted by the provider and then failed: the money did not go back to the buyer. Order %s.",
+				r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), uuidString(r.OrderID))
+			if r.TicketID != nil {
+				text += fmt.Sprintf(" Ticket %s is %s.", r.TicketID, esc(ticketStatusWord(ticketStatus)))
+			}
+			text += arenaNextStep(r)
 			return text
 		}
 		if code == failureLateOverBudget && deref(r.ProviderStatus) != string(payments.RefundSucceeded) {
@@ -647,6 +656,20 @@ func alertText(r Refund, ticketStatus string) string {
 	}
 	return fmt.Sprintf("Refund %s (%d %s via %s) was accepted by the provider late, after it had been parked or marked failed: accepted_late. %s Check for a manual duplicate refund. Order %s.",
 		r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), ticket, uuidString(r.OrderID))
+}
+
+// arenaNextStep is the next step of an alert about an arena refund the
+// provider took back or failed after accepting it. A refund of one ticket
+// still holds that ticket's cancellation, so arena refuses a second refund of
+// it; the money, if still owed, goes back through the provider's dashboard,
+// which arena records.
+func arenaNextStep(r Refund) string {
+	if r.TicketID == nil {
+		return " Check the provider dashboard: if the buyer is still owed the money, refund it there (arena records that refund)."
+	}
+	return " Arena will not send this ticket's money again (this refund still holds the ticket's cancellation)." +
+		" Check the provider dashboard: if the buyer is still owed the money, refund it there (arena records that refund);" +
+		" otherwise decide with the organizer what happens to the ticket."
 }
 
 // ticketStatusWord names a ticket status for an alert; a missing ticket
@@ -799,11 +822,14 @@ func (e *Engine) applyStatus(ctx context.Context, id uuid.UUID, pay Payment, res
 			// (alertReviews), review M1.
 			sql = `UPDATE refunds SET state = 'manual_review', provider_status = $2, failure_code = $3,
 			       failure_reason = $4, ` + reviewAlertSQL + `, updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
-			code := res.FailureCode
-			if code == "" {
-				code = "failed_after_acceptance"
+			reason := "the provider reported the refund failed after accepting it (the ticket is already cancelled, the money did not go back)"
+			if res.FailureCode != "" {
+				reason += " (" + res.FailureCode + ")"
 			}
-			args = append(args, truncate(code, 100), truncate("the provider reported the refund failed after accepting it (the ticket is already cancelled, the money did not go back): "+res.FailureMessage, 500))
+			if res.FailureMessage != "" {
+				reason += ": " + res.FailureMessage
+			}
+			args = append(args, failureFailedAfterAcceptance, truncate(reason, 500))
 		default:
 			sql = `UPDATE refunds SET provider_status = $2, updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
 		}

@@ -266,12 +266,21 @@ func (e *Engine) parkOverBudget(ctx context.Context, tx pgx.Tx, id uuid.UUID, pa
 // the same rule. A row without a provider was never the engine's (migration
 // 0138 moved the pre-engine rows to manual_review): it may stand for money
 // returned by hand, so it keeps counting until an operator closes it.
-// A refund the provider reversed after it had succeeded (and confirmed on
-// read-back) moved no money either and leaves the budget while it is parked.
-// Unqualified: use it where the refunds row is the innermost table.
+// A refund the provider reversed after it had succeeded, or reported failed
+// after it had accepted it as pending (both confirmed by the provider), moved
+// no money either and leaves the budget while it is parked.
+// Unqualified: use it where the refunds row is the innermost table. The
+// aliased copies (list.go, unattributed.go) and the gen copy must say the
+// same; budget_predicate_test.go compares them.
 const countsAgainstBudgetSQL = `NOT (state = 'manual_review' AND provider_attempts = 0 AND provider_refund_id IS NULL
 	AND provider IS NOT NULL)
-	AND NOT (state = 'manual_review' AND COALESCE(failure_code, '') = '` + failureReversedAfterSuccess + `')`
+	AND NOT (state = 'manual_review' AND COALESCE(failure_code, '') IN ('` + failureReversedAfterSuccess + `', '` + failureFailedAfterAcceptance + `'))`
+
+// failureFailedAfterAcceptance is the failure_code of a refund the provider
+// accepted as pending and later reported failed: the money did not go back.
+// One stable code whatever the provider called the failure (its own code
+// goes into the reason), so the budget rule and the alert can key on it.
+const failureFailedAfterAcceptance = "failed_after_acceptance"
 
 // deterministicModuleError reports an error that repeating the call can
 // never change and that proves the provider was NOT reached: the module is

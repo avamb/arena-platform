@@ -151,6 +151,11 @@ func (e *Engine) alertProviderEvents(ctx context.Context, n Notifier) (int, erro
 	return sent, nil
 }
 
+// recoverReadBack is how an event that could not be read back is replayed:
+// the usual cause is a payment key that may not read refunds.
+const recoverReadBack = " To replay it: fix the organization's payment key (it must be allowed to read refunds)," +
+	" then resend the event from the provider dashboard (in Stripe: Developers, Events, the event, Resend)."
+
 // providerEventAlertText is the ops message of one unresolved record: ids
 // only, never the buyer, every value HTML-escaped.
 func providerEventAlertText(kind, provider, refundID, org, chargeRef, ourRefund string, attempts int) string {
@@ -162,11 +167,11 @@ func providerEventAlertText(kind, provider, refundID, org, chargeRef, ourRefund 
 	head += ")"
 	switch kind {
 	case UnresolvedKnownUnconfirmed:
-		return head + fmt.Sprintf(" is arena refund %s; an update the provider sent for it could not be read back after %d deliveries, so the refund was left as it was. Check the refund in the provider dashboard and in arena.", esc(ourRefund), attempts)
+		return head + fmt.Sprintf(" is arena refund %s; an update the provider sent for it could not be read back after %d deliveries, so the refund was left as it was. Check the refund in the provider dashboard and in arena."+recoverReadBack, esc(ourRefund), attempts)
 	case UnresolvedNoPayment:
-		return head + fmt.Sprintf(" names no payment and could not be read back after %d deliveries; it may not be an arena payment. Nothing was recorded. Check the provider dashboard.", attempts)
+		return head + fmt.Sprintf(" names no payment and could not be read back after %d deliveries; it may not be an arena payment. Nothing was recorded. Check the provider dashboard."+recoverReadBack, attempts)
 	case UnresolvedNoChargeRef:
 		return head + " matched no payment of the organization, but some of its payments have no stored provider charge reference, so it may be one of them. Nothing was recorded and its tickets are unchanged: check in the provider dashboard which payment it refunds."
 	}
-	return head + fmt.Sprintf(" was made at the provider for a payment of the organization but could not be read back after %d deliveries. Nothing was recorded in arena and the order's tickets are still valid: check the provider dashboard.", attempts)
+	return head + fmt.Sprintf(" was made at the provider for a payment of the organization but could not be read back after %d deliveries. Nothing was recorded in arena and the order's tickets are still valid: check the provider dashboard."+recoverReadBack, attempts)
 }

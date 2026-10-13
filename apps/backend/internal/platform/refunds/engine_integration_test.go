@@ -65,6 +65,9 @@ type fakeModule struct {
 	// onBuild runs inside fakeSource.Build after buildErrs; a non-nil error
 	// is returned as the build error.
 	onBuild func() error
+	// lookupByID answers RefundStatus for one provider refund id instead of
+	// lookup.
+	lookupByID map[string]payments.RefundResult
 }
 
 func (m *fakeModule) nextBuildErr() error {
@@ -120,6 +123,9 @@ func (m *fakeModule) RefundStatus(_ context.Context, id string) (payments.Refund
 		return payments.RefundResult{}, m.lookupErr
 	}
 	r := m.lookup
+	if byID, ok := m.lookupByID[id]; ok {
+		r = byID
+	}
 	r.ProviderRefundID = id
 	return r, nil
 }
