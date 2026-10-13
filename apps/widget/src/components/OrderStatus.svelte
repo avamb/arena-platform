@@ -147,10 +147,11 @@
       <div class="status-icon success" aria-hidden="true">✓</div>
       <h2 class="status-title">{t.status_paid}</h2>
 
-      {#if status.checkout_session_id}
+      {#if status.order_number != null}
+        <!-- The same number as the ticket e-mail and the PDF (orders.system_id). -->
         <p class="order-ref">
           <span class="label">{t.order_ref_label}:</span>
-          <span class="value" data-testid="order-ref">{status.checkout_session_id.slice(0, 8).toUpperCase()}</span>
+          <span class="value" data-testid="order-ref">{status.order_number}</span>
         </p>
       {/if}
 

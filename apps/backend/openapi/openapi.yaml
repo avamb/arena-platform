@@ -3731,6 +3731,13 @@ components:
             session_timezone:
               type: string
               description: IANA zone of the session's venue — render session_start_at in it.
+            delivery_state:
+              type: string
+              description: |
+                The ticket letters of the order folded into one word, as on
+                OrderDetail: `sent`, `pending`, `failed` or `none`. A client
+                marks a `failed` row so the organizer sees a lost letter
+                without opening every order.
 
     OrderItemSummary:
       type: object
@@ -3883,6 +3890,35 @@ components:
         last_error:
           type: [string, "null"]
           description: Error of the last failed attempt, if any.
+        recipient_email:
+          type: [string, "null"]
+          description: The address this ticket's letter goes to (a resend to another address changes it); null when unknown.
+
+    OrderRefundLetter:
+      type: object
+      required: [state, refunds, sent, at]
+      description: |
+        The buyer letter of the order's refund operations (PAY-07): one
+        letter covers the refunds of one operation that asked for it.
+      properties:
+        state:
+          type: string
+          description: |
+            `off` — the operation asked for no letter; `queued` — a refund
+            has not succeeded yet or its letter is on its way; `partial` —
+            some refunds are covered by a letter, others still wait; `sent`
+            — every refund that asked for a letter is covered; `failed` —
+            the worker gave up on a letter.
+        refunds:
+          type: integer
+          description: Refunds that asked for a letter (for `off`, the refunds of the order).
+        sent:
+          type: integer
+          description: Of those, the refunds a letter already covers.
+        at:
+          type: [string, "null"]
+          format: date-time
+          description: When the latest step happened (the last letter sent, or the give-up), UTC.
 
     OrderPaymentSummary:
       type: object
@@ -4076,6 +4112,11 @@ components:
                 pending or processing; `failed` when a job failed and none
                 is pending; `none` otherwise (no tickets, no jobs, or only
                 skipped/disabled ones).
+            refund_letter:
+              description: The buyer letter of the order's refund operations; null when the order has none.
+              oneOf:
+                - $ref: "#/components/schemas/OrderRefundLetter"
+                - type: "null"
             payment:
               description: The payment intent behind the order (see OrderPaymentSummary for which one); null when the order has none — a gateway order paid on the selling site, an invitation, a free order.
               oneOf:
@@ -10666,6 +10707,13 @@ components:
           type: string
           format: uuid
           description: Internal UUIDv7 of the checkout_sessions row.
+        order_number:
+          type: [integer, "null"]
+          format: int64
+          description: |
+            The order number the buyer sees in the ticket e-mail and on the PDF
+            (`orders.system_id`). Present once the order exists for this
+            checkout (always for a paid one); omitted before that.
         expires_at:
           type: [string, "null"]
           format: date-time

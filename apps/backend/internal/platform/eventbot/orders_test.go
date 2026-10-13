@@ -244,13 +244,14 @@ func TestOrderCard_PaidShowsBuyerTicketsChannelAndDelivery(t *testing.T) {
 	t.Parallel()
 	b := ecTestBot(t)
 	d := orderDetail(t, "paid", "", 2, `,"payment":{"provider":"stripe","amount":4700,"currency":"EUR","id":"`+uuid.NewString()+`","created_at":"2099-01-15T19:30:00Z"}`)
+	d.Delivery = sentLetters(d, "anna.tickets@example.test")
 	got := b.orderCardText("en", d, testMeta, true, false)
 	for _, want := range []string{
 		"Order №1000000500", "✅ Paid · 47 EUR · 15.01.2099 20:30",
 		"Swan &lt;Lake&gt;", "01.02.2099 20:00",
 		"<b>Anna &lt;Buyer&gt;</b>", "✉ anna@example.test", `href="tel:+34600111222"`, `href="https://wa.me/34600111222"`,
 		"Tickets: 2", "Standing &lt;b&gt; · 23.50 EUR · <code>460012345670", "· valid · ✔ entered 01.02.2099 20:20",
-		"the event page on Arena (Main page)", "Payment: stripe", "The tickets were e-mailed",
+		"the event page on Arena (Main page)", "Payment: stripe", "Ticket e-mail: sent 15.01.2099 20:32 to anna.tickets@example.test.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("card lacks %q:\n%s", want, got)
@@ -407,11 +408,17 @@ func TestOrdersScreens_RenderOnEveryLanguage(t *testing.T) {
 			d.Channel.Kind = kind
 			screens["channel/"+kind] = b.orderCardText(loc, d, testMeta, true, false)
 		}
-		for _, state := range []string{"sent", "pending", "failed", "none"} {
-			d := orderDetail(t, "paid", "", 1, "")
-			d.DeliveryState = state
-			screens["delivery/"+state] = b.orderCardText(loc, d, testMeta, true, false)
+		for _, kind := range []string{"tickets", "refund"} {
+			for _, state := range []string{letterNone, letterOff, letterQueued, letterPartialQueued, letterSent, letterDelivered, letterOpened, letterPartial, letterFailed} {
+				if (kind == "tickets" && state == letterOff) || (kind == "refund" && (state == letterNone || state == letterPartial)) {
+					continue
+				}
+				at := time.Date(2099, 1, 15, 19, 32, 0, 0, time.UTC)
+				s := letterStatus{State: state, At: &at, To: "a@example.test", Done: 1, Total: 2, Why: "mailbox full"}
+				screens["letter/"+kind+"/"+state] = b.letterLine(loc, kind, s, "Europe/Madrid", true)
+			}
 		}
+		screens["letter_retry_btn"] = b.texts.T(loc, "bot.ord.letter_retry_btn", nil)
 		screens["group"] = b.orderCardText(loc, orderDetail(t, "paid", "", 1, ""), testMeta, false, false)
 		screens["notickets"] = b.orderCardText(loc, orderDetail(t, "paid", "", 0, ""), testMeta, true, false)
 		screens["cancel_ask"] = b.texts.T(loc, "bot.ord.cancel_ask", map[string]any{"Num": 1, "Amount": "1 EUR", "Word": b.sesCancelWord(loc)})

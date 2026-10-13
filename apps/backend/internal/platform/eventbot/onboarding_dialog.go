@@ -221,12 +221,7 @@ func btn(text, data string) models.InlineKeyboardButton {
 }
 
 func (b *Bot) sendMarkup(ctx context.Context, chatID int64, text string, markup models.ReplyMarkup) {
-	params := &tgbot.SendMessageParams{
-		ChatID: chatID, Text: text, ParseMode: models.ParseModeHTML,
-		LinkPreviewOptions: &models.LinkPreviewOptions{IsDisabled: tgbot.True()},
-		ReplyMarkup:        markup,
-	}
-	if _, err := b.tg.SendMessage(ctx, params); err != nil {
+	if _, err := b.post(ctx, chatID, 0, text, markup); err != nil {
 		b.logger.Warn("eventbot: sendMessage failed", slog.Int64("chat_id", chatID), slog.String("error", err.Error()))
 	}
 }
