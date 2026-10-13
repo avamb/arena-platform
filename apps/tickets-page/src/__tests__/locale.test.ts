@@ -66,8 +66,8 @@ describe('toWidgetLocale', () => {
     expect(toWidgetLocale('he')).toBe('he');
   });
 
-  it('maps the page-only es locale onto en for the widget', () => {
-    expect(toWidgetLocale('es')).toBe('en');
+  it('passes es through, so the widget can show its Spanish payment wording', () => {
+    expect(toWidgetLocale('es')).toBe('es');
   });
 });
 

@@ -1,12 +1,13 @@
 /**
  * locale.ts — resolves the page's active locale.
  *
- * The PAGE's own supported set is wider than the embedded widget's: `es`
- * was added for a Spain-based organizer's promoter page even though the
- * <arena-tickets> widget (apps/widget/src/utils.ts `parseLocale`) only
- * understands en/ru/cs/he. `toWidgetLocale` is the one place that maps a
- * page locale onto the widget's smaller set — never hand-roll that mapping
- * elsewhere.
+ * `toWidgetLocale` is the one place that maps a page locale onto the set the
+ * <arena-tickets> widget is told about — never hand-roll that mapping
+ * elsewhere. `es` is passed through even though the widget has no complete
+ * Spanish UI table yet: it falls back to English for the strings it lacks,
+ * exactly as a customer embed with locale="es" does, but the legal wording
+ * around the pay button (apps/widget/src/lib/checkout.ts PAYMENT_COMMIT_I18N)
+ * is picked by language subtag and must reach a Spanish buyer in Spanish.
  *
  * Precedence: `?lang=` query parameter -> the remembered explicit choice
  * (see main.ts) -> `navigator.language` (mapped onto
@@ -17,9 +18,10 @@
 export const PAGE_LOCALES = ['en', 'ru', 'cs', 'he', 'es'] as const;
 export type PageLocale = (typeof PAGE_LOCALES)[number];
 
-/** The <arena-tickets> widget's own supported set — do not widen this
- * without widening the widget itself first. */
-export const WIDGET_LOCALES = ['en', 'ru', 'cs', 'he'] as const;
+/** The locales handed to the <arena-tickets> widget. `es` has no full UI
+ * table in the widget (English fallback) but does have its own payment and
+ * withdrawal wording. */
+export const WIDGET_LOCALES = ['en', 'ru', 'cs', 'he', 'es'] as const;
 export type WidgetLocale = (typeof WIDGET_LOCALES)[number];
 
 const DEFAULT_LOCALE: PageLocale = 'en';
@@ -34,9 +36,8 @@ export function isRtlLocale(locale: PageLocale): boolean {
   return RTL_LOCALES.has(locale);
 }
 
-/** Maps a page locale onto the widget's supported set. `es` (and any other
- * future page-only locale) falls back to `en`; every widget-supported
- * locale passes through unchanged. Single source of truth for this mapping
+/** Maps a page locale onto the set handed to the widget. Every page locale
+ * is passed through today; a future page-only locale falls back to `en`. Single source of truth for this mapping
  * — the widget's own locale attribute must always be set through this. */
 export function toWidgetLocale(locale: PageLocale): WidgetLocale {
   return (WIDGET_LOCALES as readonly string[]).includes(locale) ? (locale as WidgetLocale) : 'en';

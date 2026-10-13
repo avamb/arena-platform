@@ -348,6 +348,56 @@ a {
   margin: 0;
 }
 
+.asa-footer__in .asa-footer__seller {
+  margin-block-end: 8px;
+  overflow-wrap: anywhere;
+}
+
+/* Legal block: who sells (the buyer's contract partner) and who organizes.
+   Logical properties throughout — the same rules serve the right-to-left
+   (he) page. */
+.asa-seller {
+  margin-block-start: 24px;
+  padding-block-start: 16px;
+  padding-inline: 4px;
+  border-block-start: 1px solid var(--asa-border);
+  color: var(--asa-text-secondary);
+  font-size: 0.9rem;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+.asa-seller p,
+.asa-seller address,
+.asa-seller__id {
+  margin: 0;
+}
+
+.asa-seller__line + .asa-seller__line,
+.asa-seller__ids,
+.asa-seller address,
+.asa-seller__contact {
+  margin-block-start: 6px;
+}
+
+.asa-seller__label {
+  font-weight: 600;
+}
+
+.asa-seller__line--seller .asa-seller__value {
+  color: var(--asa-text-primary);
+  font-weight: 600;
+}
+
+.asa-seller address {
+  font-style: normal;
+}
+
+.asa-seller__link {
+  color: var(--asa-accent);
+  unicode-bidi: isolate;
+}
+
 @media (min-width: 901px) {
   .asa-widget-wrap {
     padding: 24px;

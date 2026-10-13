@@ -2,6 +2,7 @@ import { parsePath } from './lib/route.ts';
 import { resolveLocale } from './lib/locale.ts';
 import { applyDocumentChrome, consumeCheckoutTokenFromURL, eventIDWithOpenCheckout, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from './lib/render.ts';
 import { ApiError, fetchHostedPage, fetchPromoterPage } from './lib/api.ts';
+import { renderSellerFooter } from './lib/seller.ts';
 
 /** Resolved at build time by Vite from the VITE_API_BASE_URL build arg
  * (see Dockerfile / .env). Empty string falls back to same-origin relative
@@ -57,6 +58,7 @@ async function main(): Promise<void> {
       try {
         const data = await fetchPromoterPage(API_BASE, route.orgSlug);
         applyDocumentChrome(locale, { title: data.org.name });
+        renderSellerFooter(data.seller, locale);
         renderPromoterPage(mainEl, data, locale, {
           apiBase: API_BASE,
           // Stripe returns the buyer to this list, not to the card they
@@ -88,6 +90,7 @@ async function main(): Promise<void> {
       const data = await fetchHostedPage(API_BASE, route.orgSlug, route.eventSlug);
       applyDocumentChrome(locale, { title: data.event.title, description: data.event.short_description ?? data.event.description });
       renderEvent(mainEl, data, locale, { apiBase: API_BASE, resumingCheckout });
+      renderSellerFooter(data.seller, locale);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         renderNotFound(mainEl, locale);
