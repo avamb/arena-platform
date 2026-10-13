@@ -12,6 +12,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchMe, fetchOrgMe } from "@/lib/api/endpoints";
 import { ApiError, login as apiLogin, logout as apiLogout, session } from "@/lib/api/http";
+import { forgetOrderSearches } from "@/lib/orderSearchMemory";
 import type { MeOrganizationMembership, OrgMeResponse } from "@/lib/api/types";
 
 export type AuthStatus = "loading" | "signedOut" | "signedIn";
@@ -49,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!session.hasSession()) {
         setStatus("signedOut");
         queryClient.clear();
+        forgetOrderSearches();
       }
     });
     return () => {
@@ -66,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     await apiLogout();
     queryClient.clear();
+    forgetOrderSearches();
     setStatus("signedOut");
   }, [queryClient]);
 

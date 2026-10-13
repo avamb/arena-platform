@@ -7,6 +7,7 @@ import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import { ORDER_STATUSES, orderNumber, orderTone } from "@/lib/orders";
 import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
+import { rememberOrderSearch, rememberedOrderSearch } from "@/lib/orderSearchMemory";
 import { useOrg } from "@/screens/OrgLayout";
 import { useEventsList } from "@/screens/EventsScreen";
 
@@ -44,21 +45,13 @@ function OrderRow({ orgId, order }: { orgId: string; order: OrderListItem }) {
 
 const TABS: readonly OrderTab[] = ["recent", "paid", "unpaid"];
 
-/**
- * The search text (an e-mail, a phone, a name) stays in this tab's memory,
- * never in the page address: an address lands in the browser history and in
- * proxy logs (review finding L5). It survives a visit to an order card and
- * is lost on reload.
- */
-const searchMemory = new Map<string, string>();
-
 export function OrdersScreen() {
   const { t, locale } = useI18n();
   const { orgId } = useOrg();
   const search = useSearch({ from: "/o/$orgId/orders" });
   const navigate = useNavigate({ from: "/o/$orgId/orders" });
   const tab: OrderTab = search.tab ?? "recent";
-  const [query, setQuery] = useState(() => searchMemory.get(orgId) ?? "");
+  const [query, setQuery] = useState(() => rememberedOrderSearch(orgId));
   const [draft, setDraft] = useState(query);
   const events = useEventsList(orgId);
   const scopeEvent = search.event !== undefined ? events.data?.events.find((e) => e.id === search.event) : undefined;
@@ -84,7 +77,7 @@ export function OrdersScreen() {
   const onSearch = (e: FormEvent) => {
     e.preventDefault();
     const q = draft.trim();
-    searchMemory.set(orgId, q);
+    rememberOrderSearch(orgId, q);
     setQuery(q);
   };
 

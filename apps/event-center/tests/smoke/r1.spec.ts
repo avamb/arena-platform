@@ -140,6 +140,34 @@ test.describe("R1 read-only event center", () => {
     await noHorizontalScroll(page);
   });
 
+  test("the orders search survives a visit elsewhere and is forgotten at sign-out", async ({ page }) => {
+    const state = await mockApi(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/orders`);
+    await page.getByLabel("Search for an order").fill("anna@example.test");
+    await page.getByRole("button", { name: "Search" }).click();
+    await expect(page.getByTestId("order-row")).toBeVisible();
+
+    // In-app navigation keeps the text.
+    await page.getByRole("navigation").getByRole("link", { name: "Events" }).click();
+    await page.getByRole("navigation").getByRole("link", { name: "Orders" }).click();
+    await expect(page.getByLabel("Search for an order")).toHaveValue("anna@example.test");
+
+    // Sign-out wipes it, without a page reload in between.
+    await page.getByTestId("logout").click();
+    await expect(page).toHaveURL(/\/login/);
+    await page.getByLabel("E-mail").fill("manager@example.test");
+    await page.getByLabel("Password").fill("right-password");
+    const before = state.requests.length;
+    await page.getByTestId("login-submit").click();
+    await expect(page).toHaveURL(new RegExp(`/o/${ORG_A}/orders`));
+    await expect(page.getByLabel("Search for an order")).toHaveValue("");
+    await expect(page.getByTestId("order-row").first()).toBeVisible();
+    const after = state.requests.slice(before).filter((r) => r.includes("/orders?"));
+    expect(after.length).toBeGreaterThan(0);
+    expect(after.some((r) => r.includes("q="))).toBe(false);
+  });
+
   test("an agent sees no orders and no sales figures", async ({ page }) => {
     const state = await mockApi(page);
     await signIn(page);
