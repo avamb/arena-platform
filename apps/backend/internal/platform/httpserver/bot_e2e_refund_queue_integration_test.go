@@ -107,7 +107,7 @@ func TestBotE2E_RefundQueue_FailedRefundIsRetried(t *testing.T) {
 	hold.Store(&held)
 	m1 := tg.mark()
 	d.press("rq:ry:"+failedID.String(), "Отправляю возврат")
-	d.press("home", "")
+	d.say("/start", "Что будем делать?") // the "yes" lost its button: the person types a command
 	d.press("rq:ry:"+failedID.String(), "уже отправляется повторно")
 	close(held)
 	done := tg.waitSince(t, m1, "Возврат отправлен повторно")

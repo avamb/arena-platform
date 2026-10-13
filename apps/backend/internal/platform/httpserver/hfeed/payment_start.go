@@ -144,7 +144,7 @@ func (p ReturnURLPolicy) Resolve(candidate string) (string, error) {
 	}
 	return "", &PaymentStartError{
 		Code:    ErrCodeInvalidReturnURL,
-		Message: "return_url is missing or not an allowed origin and no PUBLIC_TICKETS_BASE_URL fallback is configured",
+		Message: "The page to return to after payment is missing or not allowed. Open the ticket page again. Details: return_url is not an allowed origin and PUBLIC_TICKETS_BASE_URL is not set.",
 		Status:  400,
 	}
 }
@@ -324,7 +324,7 @@ func (s *StripePaymentStarter) resolveConfig(ctx context.Context, orgID, channel
 	if s == nil || s.orgQueries == nil || s.channelQueries == nil {
 		return hostedPaymentConfig{}, &PaymentStartError{
 			Code:    ErrCodePaymentNotConfigured,
-			Message: "payment provider configuration is not available",
+			Message: "Online payment is temporarily unavailable. Try again in a minute.",
 			Status:  503,
 		}
 	}
@@ -333,7 +333,7 @@ func (s *StripePaymentStarter) resolveConfig(ctx context.Context, orgID, channel
 	if err != nil {
 		return hostedPaymentConfig{}, &PaymentStartError{
 			Code:    ErrCodePaymentNotConfigured,
-			Message: "failed to resolve the sales channel's payment provider",
+			Message: "Online payment is temporarily unavailable. Try again in a minute.",
 			Status:  503,
 		}
 	}
@@ -342,7 +342,7 @@ func (s *StripePaymentStarter) resolveConfig(ctx context.Context, orgID, channel
 		return hostedPaymentConfig{}, &PaymentStartError{
 			Code: ErrCodePaymentProviderUnsupported,
 			Message: fmt.Sprintf(
-				"sales channel payment provider %q cannot host a checkout page; supported: %s",
+				"Online payment for this event is not set up yet. Contact the organizer. Details: the sales channel's payment provider %q cannot host a checkout page. Supported: %s.",
 				ch.Provider, hostedProviderNames()),
 			Status: 422,
 		}
@@ -361,7 +361,7 @@ func (s *StripePaymentStarter) resolveConfig(ctx context.Context, orgID, channel
 		if hcheckout.SecretFieldFromConfig(cfg, field) == "" {
 			return hostedPaymentConfig{}, &PaymentStartError{
 				Code:    ErrCodePaymentNotConfigured,
-				Message: fmt.Sprintf("the organization's %s config has no %s", provider, field),
+				Message: fmt.Sprintf("Online payment for this event is not set up yet. Contact the organizer. Details: the organization's %s config has no %s.", provider, field),
 				Status:  422,
 			}
 		}
@@ -561,7 +561,7 @@ func (h *Handler) applyPaymentPreflight(
 			slog.String("session_id", checkCtx.SessionID.String()),
 		)
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			ErrCodePaymentNotConfigured, "payments are not configured for this deployment", r,
+			ErrCodePaymentNotConfigured, "Online payment is not set up here yet. Contact the organizer.", r,
 		))
 		return false
 	}
@@ -589,7 +589,7 @@ func (h *Handler) writePaymentStartError(
 	if !isTyped || pse == nil {
 		pse = &PaymentStartError{
 			Code:    ErrCodePaymentNotConfigured,
-			Message: "the payment configuration for this sales channel could not be resolved",
+			Message: "Online payment is temporarily unavailable. Try again in a minute.",
 			Status:  http.StatusServiceUnavailable,
 		}
 	}
@@ -637,7 +637,7 @@ func (h *Handler) startHostedPayment(
 			slog.String("org_id", in.CheckCtx.OrgID.String()),
 		)
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			ErrCodePaymentNotConfigured, "payments are not configured for this deployment", r,
+			ErrCodePaymentNotConfigured, "Online payment is not set up here yet. Contact the organizer.", r,
 		))
 		return "", false
 	}
@@ -681,7 +681,7 @@ func (h *Handler) startHostedPayment(
 		// stub on the public URL. A 503 is passed through untouched. Do not
 		// "fix" this back to 502.
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			ErrCodePaymentStartFailed, "the payment provider could not start this payment", r,
+			ErrCodePaymentStartFailed, "The payment service could not start this payment. Try again in a minute.", r,
 		))
 		return "", false
 	}
@@ -704,7 +704,7 @@ func (h *Handler) startHostedPayment(
 				slog.String("error", err.Error()),
 			)
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				ErrCodePaymentStartFailed, "failed to record the payment", r,
+				ErrCodePaymentStartFailed, "We could not start the payment. Try again in a minute.", r,
 			))
 			return "", false
 		}

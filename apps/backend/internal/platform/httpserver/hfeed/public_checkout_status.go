@@ -134,7 +134,7 @@ type checkoutStatusResponse struct {
 func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.Request) {
 	if h.checkoutQueries == nil || h.reservationQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -154,7 +154,7 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-				"checkout.not_found", "checkout not found", r,
+				"checkout.not_found", "We cannot find this checkout. Open the ticket page again.", r,
 			))
 			return
 		}
@@ -162,7 +162,7 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.lookup_failed", "failed to retrieve checkout session", r,
+			"checkout.lookup_failed", "We could not load this checkout. Try again in a minute.", r,
 		))
 		return
 	}
@@ -175,7 +175,7 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.reservation_failed", "failed to retrieve reservation", r,
+			"checkout.reservation_failed", "We could not load your hold. Try again in a minute.", r,
 		))
 		return
 	}
@@ -419,7 +419,7 @@ func (h *Handler) pendingPaymentURL(ctx context.Context, checkoutSessionID uuid.
 func (h *Handler) HandleGetPublicTicketPDF(w http.ResponseWriter, r *http.Request) {
 	if h.checkoutQueries == nil || h.ticketQueries == nil || h.credentialQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -434,7 +434,7 @@ func (h *Handler) HandleGetPublicTicketPDF(w http.ResponseWriter, r *http.Reques
 	ticketID, err := uuid.Parse(ticketIDStr)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			"checkout.invalid_ticket_id", "ticket_id must be a valid UUID", r,
+			"checkout.invalid_ticket_id", "Send ticket_id as a UUID.", r,
 		))
 		return
 	}
@@ -446,7 +446,7 @@ func (h *Handler) HandleGetPublicTicketPDF(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-				"checkout.not_found", "checkout not found", r,
+				"checkout.not_found", "We cannot find this checkout. Open the ticket page again.", r,
 			))
 			return
 		}
@@ -454,7 +454,7 @@ func (h *Handler) HandleGetPublicTicketPDF(w http.ResponseWriter, r *http.Reques
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.lookup_failed", "failed to retrieve checkout session", r,
+			"checkout.lookup_failed", "We could not load this checkout. Try again in a minute.", r,
 		))
 		return
 	}
@@ -467,7 +467,7 @@ func (h *Handler) HandleGetPublicTicketPDF(w http.ResponseWriter, r *http.Reques
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.tickets_failed", "failed to retrieve tickets", r,
+			"checkout.tickets_failed", "We could not load the tickets. Try again in a minute.", r,
 		))
 		return
 	}
@@ -481,7 +481,7 @@ func (h *Handler) HandleGetPublicTicketPDF(w http.ResponseWriter, r *http.Reques
 	}
 	if !found {
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-			"checkout.ticket_not_found", "ticket not found in this checkout", r,
+			"checkout.ticket_not_found", "This checkout has no such ticket.", r,
 		))
 		return
 	}
@@ -491,7 +491,7 @@ func (h *Handler) HandleGetPublicTicketPDF(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-				"checkout.pdf_not_found", "PDF not yet generated for this ticket", r,
+				"checkout.pdf_not_found", "The ticket PDF is not ready yet. Try again in a minute.", r,
 			))
 			return
 		}
@@ -500,7 +500,7 @@ func (h *Handler) HandleGetPublicTicketPDF(w http.ResponseWriter, r *http.Reques
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.credential_failed", "failed to retrieve ticket credential", r,
+			"checkout.credential_failed", "We could not load the ticket code. Try again in a minute.", r,
 		))
 		return
 	}
@@ -513,7 +513,7 @@ func (h *Handler) HandleGetPublicTicketPDF(w http.ResponseWriter, r *http.Reques
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.credential_malformed", "ticket credential payload is malformed", r,
+			"checkout.credential_malformed", "The stored ticket code is damaged. Write to support.", r,
 		))
 		return
 	}

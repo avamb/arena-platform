@@ -15,17 +15,6 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
 
-// hasPrefixData reports whether a keyboard carries a button whose callback
-// data starts with prefix.
-func hasPrefixData(data []string, prefix string) bool {
-	for _, d := range data {
-		if strings.HasPrefix(d, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
 // Owner decisions 2026-10-13: a refund refused because the ticket was
 // already scanned says so plainly and what to do next; only the platform
 // superadmin is offered "Allow a refund of this ticket (24 h)", which asks

@@ -129,7 +129,7 @@ type hostedPromoterPageResponse struct {
 func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 	if h.publicFeedQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -146,7 +146,7 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 	eventSlug := chi.URLParam(r, "event_slug")
 	if orgSlug == "" || eventSlug == "" {
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-			"page.not_found", "page not found", r,
+			"page.not_found", "We cannot find this page. Check the address.", r,
 		))
 		return
 	}
@@ -162,7 +162,7 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-				"page.not_found", "page not found", r,
+				"page.not_found", "We cannot find this page. Check the address.", r,
 			))
 			return
 		}
@@ -172,7 +172,7 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"page.resolve_failed", "failed to resolve page", r,
+			"page.resolve_failed", "We could not load this page. Try again in a minute.", r,
 		))
 		return
 	}
@@ -254,7 +254,7 @@ func (h *Handler) HandlePublicPage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Request) {
 	if h.publicFeedQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -269,7 +269,7 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 	orgSlug := chi.URLParam(r, "org_slug")
 	if orgSlug == "" {
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-			"page.not_found", "page not found", r,
+			"page.not_found", "We cannot find this page. Check the address.", r,
 		))
 		return
 	}
@@ -297,7 +297,7 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-				"page.not_found", "page not found", r,
+				"page.not_found", "We cannot find this page. Check the address.", r,
 			))
 			return
 		}
@@ -306,7 +306,7 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"page.resolve_failed", "failed to resolve page", r,
+			"page.resolve_failed", "We could not load this page. Try again in a minute.", r,
 		))
 		return
 	}
@@ -314,7 +314,7 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 	// like an unknown org — never reveal that the slug exists.
 	if !org.HasHostedChannel {
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-			"page.not_found", "page not found", r,
+			"page.not_found", "We cannot find this page. Check the address.", r,
 		))
 		return
 	}
@@ -348,7 +348,7 @@ func (h *Handler) HandlePublicPromoterPage(w http.ResponseWriter, r *http.Reques
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"page.resolve_failed", "failed to resolve page", r,
+			"page.resolve_failed", "We could not load this page. Try again in a minute.", r,
 		))
 		return
 	}

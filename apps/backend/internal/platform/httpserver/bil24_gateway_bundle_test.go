@@ -59,7 +59,7 @@ func TestBil24Gateway_GatewayBundleAnswersInRequestLocale(t *testing.T) {
 	body := `{"command":"NO_SUCH_COMMAND","locale":"ru"}`
 
 	got := bil24Description(t, buildBil24ServerWithGatewayBundle(t, bundle), body)
-	if !strings.Contains(got, "неизвестная команда") {
+	if !strings.Contains(got, "не знает эту команду") {
 		t.Fatalf("with GatewayBundle a ru request must get Russian, got %q", got)
 	}
 

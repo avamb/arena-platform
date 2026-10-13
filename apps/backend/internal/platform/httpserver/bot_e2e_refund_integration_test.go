@@ -185,7 +185,7 @@ func TestBotE2E_Refund_OwnerReturnsOneTicket(t *testing.T) {
 	hold.Store(&held)
 	sentMark := tg.mark()
 	d.press("or:f:ok:"+tag, "Отправляю возврат")
-	d.press("home", "")
+	d.say("/start", "Что будем делать?") // the "yes" lost its button: the person types a command
 	if n, _ := refundCount(t, srv, seed.anna); n != 1 {
 		t.Fatalf("refunds while the provider waits = %d; want the one being sent", n)
 	}

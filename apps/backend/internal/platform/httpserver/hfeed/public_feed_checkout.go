@@ -183,7 +183,7 @@ func mintCheckoutToken() (string, error) {
 func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.Request) {
 	if h.publicFeedQueries == nil || h.checkoutQueries == nil || h.reservationQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -200,13 +200,13 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			"checkout.invalid_body", "cannot read request body: "+err.Error(), r,
+			"checkout.invalid_body", "We could not read the request body: "+err.Error(), r,
 		))
 		return
 	}
 	if len(body) == 0 {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			"checkout.empty_body", "request body is required", r,
+			"checkout.empty_body", "The request has no body. Send the checkout data as JSON.", r,
 		))
 		return
 	}
@@ -214,7 +214,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	var req PublicFeedCheckoutStartRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			"checkout.invalid_json", "request body is not valid JSON", r,
+			"checkout.invalid_json", "The request body is not valid JSON. Fix it and send it again.", r,
 		))
 		return
 	}
@@ -223,7 +223,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	sessionID, err := uuid.Parse(req.SessionID)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"checkout.invalid_session_id", "session_id must be a valid UUID", r,
+			"checkout.invalid_session_id", "Send session_id as a UUID.", r,
 			map[string]any{"field": "session_id"},
 		))
 		return
@@ -246,7 +246,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// ── 4b. Validate holder_email ─────────────────────────────────────────────
 	if req.HolderEmail == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"checkout.missing_holder_email", "holder_email is required", r,
+			"checkout.missing_holder_email", "Enter the e-mail address for the tickets (holder_email).", r,
 			map[string]any{"field": "holder_email"},
 		))
 		return
@@ -271,7 +271,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		if req.TierID != "" {
 			if req.Qty <= 0 || req.Qty > 50 {
 				httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-					"checkout.invalid_qty", "qty must be between 1 and 50", r,
+					"checkout.invalid_qty", "Choose from 1 to 50 tickets.", r,
 					map[string]any{"field": "qty"},
 				))
 				return
@@ -279,7 +279,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			// tier_id was present but invalid UUID (would have been added to GaItems but Qty was 0).
 		}
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"checkout.missing_items", "provide seats[], ga_items[], or legacy tier_id+qty", r,
+			"checkout.missing_items", "The cart is empty. Send seats[], ga_items[] or tier_id with qty.", r,
 			map[string]any{"field": "seats"},
 		))
 		return
@@ -290,7 +290,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	if req.TierID != "" && len(req.GaItems) > 0 && req.GaItems[0].TierID == req.TierID {
 		if _, err := uuid.Parse(req.TierID); err != nil {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-				"checkout.invalid_tier_id", "tier_id must be a valid UUID", r,
+				"checkout.invalid_tier_id", "Send tier_id as a UUID.", r,
 				map[string]any{"field": "tier_id"},
 			))
 			return
@@ -303,14 +303,14 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		tid, err := uuid.Parse(item.TierID)
 		if err != nil {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-				"checkout.invalid_tier_id", fmt.Sprintf("ga_items[%d].tier_id must be a valid UUID", i), r,
+				"checkout.invalid_tier_id", fmt.Sprintf("Send ga_items[%d].tier_id as a UUID.", i), r,
 				map[string]any{"field": "ga_items", "index": i},
 			))
 			return
 		}
 		if item.Quantity <= 0 {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-				"checkout.invalid_qty", fmt.Sprintf("ga_items[%d].quantity must be >= 1", i), r,
+				"checkout.invalid_qty", fmt.Sprintf("Send ga_items[%d].quantity as a whole number, 1 or more.", i), r,
 				map[string]any{"field": "ga_items", "index": i},
 			))
 			return
@@ -340,7 +340,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
 				"feed.session_not_on_feed",
-				"session is not published to this feed token",
+				"This session is not on sale here. Check the link.",
 				r,
 			))
 			return
@@ -351,7 +351,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.context_failed", "failed to validate checkout context", r,
+			"checkout.context_failed", "We could not check this checkout. Try again in a minute.", r,
 		))
 		return
 	}
@@ -397,7 +397,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		if name == "" {
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 				"checkout.buyer_name_required",
-				"buyer.name is required by this sales channel",
+				"This sales channel needs the buyer's name (buyer.name). Fill it in and try again.",
 				r,
 				map[string]any{"field": "buyer.name"},
 			))
@@ -413,7 +413,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		if phone == "" {
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 				"checkout.buyer_phone_required",
-				"buyer.phone is required by this sales channel",
+				"This sales channel needs the buyer's phone number (buyer.phone). Fill it in and try again.",
 				r,
 				map[string]any{"field": "buyer.phone"},
 			))
@@ -452,7 +452,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	checkoutToken, err := mintCheckoutToken()
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.token_failed", "failed to mint checkout token", r,
+			"checkout.token_failed", "We could not start the checkout. Try again in a minute.", r,
 		))
 		return
 	}
@@ -497,7 +497,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// ── 10. Begin transaction ─────────────────────────────────────────────────
 	if h.inventoryQueries == nil || h.pool == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -505,7 +505,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "failed to begin transaction", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -530,14 +530,14 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		normalizedSeats, dupKey, normErr := hcheckout.NormalizeSeatKeys(req.Seats)
 		if normErr != nil {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-				"reservation.duplicate_seat", "seats[] must not contain duplicate keys", r,
+				"reservation.duplicate_seat", "Each seat can appear only once in seats[].", r,
 				map[string]any{"seat_key": dupKey},
 			))
 			return
 		}
 		if len(normalizedSeats) == 0 {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-				"reservation.invalid_seats", "seats[] must contain at least one non-empty seat_key", r,
+				"reservation.invalid_seats", "Choose at least one seat: send a seat_key in seats[].", r,
 				map[string]any{"field": "seats"},
 			))
 			return
@@ -548,20 +548,20 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-					"reservation.session_not_found", "session not found", r,
+					"reservation.session_not_found", "We cannot find this session.", r,
 				))
 				return
 			}
 			h.logger.Error("public_feed_checkout: admission mode lookup failed", slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.admission_lookup_failed", "failed to resolve session admission_mode", r,
+				"reservation.admission_lookup_failed", "We could not load the session. Try again in a minute.", r,
 			))
 			return
 		}
 		if mode.AdmissionMode == hcheckout.AdmissionGeneralAdmission {
 			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 				"reservation.seats_not_supported",
-				"session is general_admission — pass ga_items[] instead of seats[]",
+				"This session has no seat plan. Send ga_items[] instead of seats[].",
 				r,
 				map[string]any{"admission_mode": mode.AdmissionMode},
 			))
@@ -573,7 +573,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		if err != nil {
 			h.logger.Error("public_feed_checkout: increment seat_status_version failed", slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.status_version_failed", "failed to bump seat_status_version", r,
+				"reservation.status_version_failed", "We could not hold the tickets. Try again in a minute.", r,
 			))
 			return
 		}
@@ -583,7 +583,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		if err != nil {
 			h.logger.Error("public_feed_checkout: lock seats failed", slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.lock_seats_failed", "failed to lock target seats", r,
+				"reservation.lock_seats_failed", "We could not check the seats. Try again in a minute.", r,
 			))
 			return
 		}
@@ -593,7 +593,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		if len(conflicts) > 0 {
 			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 				"reservation.seats_conflict",
-				"one or more requested seats are not available",
+				"Some of the chosen seats are not free. Choose other seats.",
 				r,
 				map[string]any{"conflicts": conflicts},
 			))
@@ -626,13 +626,13 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		if _, err := invQ.ReserveCapacity(ctx, sessionID, nil, totalQty); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
-					"reservation.over_capacity", "insufficient capacity for this reservation", r,
+					"reservation.over_capacity", "There are not enough free places. Choose fewer tickets or another category.", r,
 				))
 				return
 			}
 			h.logger.Error("public_feed_checkout: reserve seat capacity failed", slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.capacity_failed", "failed to reserve capacity", r,
+				"reservation.capacity_failed", "We could not hold the tickets. Try again in a minute.", r,
 			))
 			return
 		}
@@ -643,7 +643,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		if err != nil {
 			h.logger.Error("public_feed_checkout: insert reservation failed", slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.insert_failed", "failed to create reservation", r,
+				"reservation.insert_failed", "We could not hold the tickets. Try again in a minute.", r,
 			))
 			return
 		}
@@ -655,7 +655,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 				if errors.Is(err, pgx.ErrNoRows) {
 					httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 						"reservation.seats_conflict",
-						"seat "+s.SeatKey+" is no longer available",
+						"Seat "+s.SeatKey+" is no longer free. Choose another seat.",
 						r,
 						map[string]any{"conflicts": []map[string]string{{"seat_key": s.SeatKey, "status": "unavailable"}}},
 					))
@@ -664,7 +664,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 				h.logger.Error("public_feed_checkout: hold seat failed",
 					slog.String("seat_key", s.SeatKey), slog.String("error", err.Error()))
 				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-					"reservation.hold_failed", "failed to hold seat", r,
+					"reservation.hold_failed", "We could not hold the seat. Try again in a minute.", r,
 				))
 				return
 			}
@@ -675,7 +675,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 				if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
 					httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 						"reservation.seats_conflict",
-						"seat "+s.SeatKey+" is already linked to another reservation",
+						"Seat "+s.SeatKey+" is held for another buyer. Choose another seat.",
 						r,
 						map[string]any{"conflicts": []map[string]string{{"seat_key": s.SeatKey, "status": "unavailable"}}},
 					))
@@ -684,7 +684,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 				h.logger.Error("public_feed_checkout: reservation_seats insert failed",
 					slog.String("seat_key", s.SeatKey), slog.String("error", err.Error()))
 				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-					"reservation.seats_link_failed", "failed to link seat to reservation", r,
+					"reservation.seats_link_failed", "We could not hold the seat. Try again in a minute.", r,
 				))
 				return
 			}
@@ -705,7 +705,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 				var capErr *hcheckout.CapacityError
 				if errors.As(err, &capErr) {
 					httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
-						"reservation.over_capacity", "insufficient capacity for this reservation", r,
+						"reservation.over_capacity", "There are not enough free places. Choose fewer tickets or another category.", r,
 						map[string]any{"tier_id": tierID.String(), "requested": item.Quantity},
 					))
 					return
@@ -713,7 +713,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 				h.logger.Error("public_feed_checkout: GA unit allocation failed",
 					slog.String("tier_id", tierID.String()), slog.String("error", err.Error()))
 				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-					"reservation.capacity_failed", "failed to reserve GA capacity", r,
+					"reservation.capacity_failed", "We could not hold the tickets. Try again in a minute.", r,
 				))
 				return
 			}
@@ -721,7 +721,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 				h.logger.Error("public_feed_checkout: insert GA line failed",
 					slog.String("tier_id", tierID.String()), slog.String("error", err.Error()))
 				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-					"reservation.insert_failed", "failed to record GA line", r,
+					"reservation.insert_failed", "We could not hold the tickets. Try again in a minute.", r,
 				))
 				return
 			}
@@ -778,7 +778,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		// a checkout-session-insert failure does not roll back the seat holds).
 		if err := tx.Commit(ctx); err != nil {
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.commit_failed", "failed to commit transaction", r,
+				"reservation.commit_failed", "We could not hold the tickets. Try again in a minute.", r,
 			))
 			return
 		}
@@ -829,7 +829,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	if err != nil {
 		h.logger.Error("public_feed_checkout: bump seat_status_version failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"reservation.insert_failed", "failed to create reservation", r,
+			"reservation.insert_failed", "We could not hold the tickets. Try again in a minute.", r,
 		))
 		return
 	}
@@ -846,7 +846,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	if _, err := invQ.ReserveCapacity(ctx, sessionID, nil, totalQty); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
-				"reservation.over_capacity", "insufficient capacity for this reservation", r,
+				"reservation.over_capacity", "There are not enough free places. Choose fewer tickets or another category.", r,
 			))
 			return
 		}
@@ -855,7 +855,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"reservation.capacity_failed", "failed to reserve capacity", r,
+			"reservation.capacity_failed", "We could not hold the tickets. Try again in a minute.", r,
 		))
 		return
 	}
@@ -881,7 +881,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"reservation.insert_failed", "failed to create reservation", r,
+			"reservation.insert_failed", "We could not hold the tickets. Try again in a minute.", r,
 		))
 		return
 	}
@@ -898,7 +898,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			var capErr *hcheckout.CapacityError
 			if errors.As(err, &capErr) {
 				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
-					"reservation.over_capacity", "insufficient capacity for this reservation", r,
+					"reservation.over_capacity", "There are not enough free places. Choose fewer tickets or another category.", r,
 					map[string]any{"tier_id": tierID.String(), "requested": item.Quantity},
 				))
 				return
@@ -906,7 +906,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			h.logger.Error("public_feed_checkout: GA unit allocation failed",
 				slog.String("tier_id", tierID.String()), slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.capacity_failed", "failed to reserve capacity", r,
+				"reservation.capacity_failed", "We could not hold the tickets. Try again in a minute.", r,
 			))
 			return
 		}
@@ -916,7 +916,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 				slog.String("error", err.Error()),
 			)
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.insert_failed", "failed to record GA line", r,
+				"reservation.insert_failed", "We could not hold the tickets. Try again in a minute.", r,
 			))
 			return
 		}
@@ -942,7 +942,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// (matches the original #153 pattern: reservation tx committed first).
 	if err := tx.Commit(ctx); err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"reservation.commit_failed", "failed to commit transaction", r,
+			"reservation.commit_failed", "We could not hold the tickets. Try again in a minute.", r,
 		))
 		return
 	}
@@ -1066,23 +1066,23 @@ func (h *Handler) writePricingError(w http.ResponseWriter, r *http.Request, code
 	switch code {
 	case "dependency.tier_unavailable":
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			code, "tier service is not available", r,
+			code, "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 	case "checkout.tier_lookup_failed":
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			code, "failed to retrieve ticket tier", r,
+			code, "We could not load the ticket category. Try again in a minute.", r,
 		))
 	case "checkout.tier_not_found":
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-			code, "ticket tier not found in this session", r,
+			code, "This session has no such ticket category.", r,
 		))
 	case "checkout.pwyw_not_supported":
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
-			code, "pay-what-you-want tiers require the authenticated checkout flow", r,
+			code, "This page cannot sell a pay-what-you-want category.", r,
 		))
 	default:
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			code, "failed to price the reservation", r,
+			code, "We could not calculate the price. Try again in a minute.", r,
 		))
 	}
 }
@@ -1229,7 +1229,7 @@ func (h *Handler) confirmPublicCheckout(
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.start_failed", "failed to create checkout session", r,
+			"checkout.start_failed", "We could not start the checkout. Try again in a minute.", r,
 		))
 		return
 	}
@@ -1246,7 +1246,7 @@ func (h *Handler) confirmPublicCheckout(
 				slog.String("error", err.Error()),
 			)
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"checkout.start_failed", "failed to create checkout session", r,
+				"checkout.start_failed", "We could not start the checkout. Try again in a minute.", r,
 			))
 			return
 		}
@@ -1263,7 +1263,7 @@ func (h *Handler) confirmPublicCheckout(
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.start_failed", "failed to create checkout session", r,
+			"checkout.start_failed", "We could not start the checkout. Try again in a minute.", r,
 		))
 		return
 	}
@@ -1279,7 +1279,7 @@ func (h *Handler) confirmPublicCheckout(
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.confirm_failed", "failed to confirm checkout session", r,
+			"checkout.confirm_failed", "We could not confirm the checkout. Try again in a minute.", r,
 		))
 		return
 	}
@@ -1291,7 +1291,7 @@ func (h *Handler) confirmPublicCheckout(
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.confirm_failed", "failed to confirm checkout session", r,
+			"checkout.confirm_failed", "We could not confirm the checkout. Try again in a minute.", r,
 		))
 		return
 	}
@@ -1308,7 +1308,7 @@ func (h *Handler) confirmPublicCheckout(
 				slog.String("error", err.Error()),
 			)
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"checkout.confirm_failed", "failed to complete the free order", r,
+				"checkout.confirm_failed", "We could not complete the free order. Try again in a minute.", r,
 			))
 			return
 		}
@@ -1319,7 +1319,7 @@ func (h *Handler) confirmPublicCheckout(
 				slog.String("error", err.Error()),
 			)
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"checkout.confirm_failed", "failed to complete the free order", r,
+				"checkout.confirm_failed", "We could not complete the free order. Try again in a minute.", r,
 			))
 			return
 		}
@@ -1331,7 +1331,7 @@ func (h *Handler) confirmPublicCheckout(
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.confirm_failed", "failed to confirm checkout session", r,
+			"checkout.confirm_failed", "We could not confirm the checkout. Try again in a minute.", r,
 		))
 		return
 	}

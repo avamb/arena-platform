@@ -665,6 +665,7 @@ func (b *Bot) startSendRefund(ctx context.Context, chatID int64, msgID int, from
 	}
 	// The buttons go away while the server works: a second press cannot start
 	// anything, and the person knows it is under way.
+	b.consumePress(ctx, chatID) // the "yes" can never be pressed twice (feed.go)
 	b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.sending", nil), nil)
 	tg := from.ID
 	started := b.goBackground("refund send", func() {
