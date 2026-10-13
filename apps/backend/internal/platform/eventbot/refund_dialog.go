@@ -617,12 +617,28 @@ func (b *Bot) startSendRefund(ctx context.Context, chatID int64, msgID int, from
 		// final screen with the same key, which replays rather than repeats.
 		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
-		if b.ownsSending(cctx, tg, st.Key) {
-			st.SendingAt = time.Time{}
-			b.saveRefund(cctx, tg, st, refStepFinal)
-		}
-		b.reply(cctx, chatID, &msgID, b.texts.T(id.Locale(), "bot.ref.err_timeout", nil), b.resendResultKeyboard(id.Locale(), st.OrderID))
+		b.inPersonsTurn(cctx, tg, func(cctx context.Context) {
+			if b.ownsSending(cctx, tg, st.Key) {
+				st.SendingAt = time.Time{}
+				b.saveRefund(cctx, tg, st, refStepFinal)
+			}
+			b.reply(cctx, chatID, &msgID, b.texts.T(id.Locale(), "bot.ref.err_timeout", nil), b.resendResultKeyboard(id.Locale(), st.OrderID))
+		})
 	})
+}
+
+// inPersonsTurn runs fn in the person's turn (serial.go), so a dialog write
+// made by work that runs outside a handler cannot interleave with that
+// person's next update. A bot built without the lanes (unit tests) runs fn
+// at once.
+func (b *Bot) inPersonsTurn(ctx context.Context, tg int64, fn func(context.Context)) {
+	if b.serial == nil {
+		fn(ctx)
+		return
+	}
+	if err := b.serial.do(ctx, tg, fn); err != nil {
+		b.logger.Warn("eventbot: background dialog write skipped", slog.Int64("telegram_user_id", tg), slog.String("error", err.Error()))
+	}
 }
 
 // ownsSending reports whether the stored dialog is still the operation this
@@ -634,9 +650,6 @@ func (b *Bot) ownsSending(ctx context.Context, tg int64, key string) bool {
 }
 
 func (b *Bot) sendRefund(ctx context.Context, chatID int64, msgID int, tg int64, id *Identity, st refundDialog) {
-	loc := id.Locale()
-	back := b.resendResultKeyboard(loc, st.OrderID)
-	edit := &msgID
 	req := openapi.CreateOrderRefundsRequest{Reason: st.Reason}
 	notify := !st.NoLetter
 	req.NotifyBuyer = &notify
@@ -680,9 +693,22 @@ func (b *Bot) sendRefund(ctx context.Context, chatID int64, msgID int, tg int64,
 		}
 	}
 	// The answer is recorded on a context of its own: the send's window may
-	// be spent.
+	// be spent. It is written in the person's turn, never beside a press of
+	// theirs that reads the same dialog.
 	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()
+	b.inPersonsTurn(rctx, tg, func(rctx context.Context) {
+		b.recordRefundAnswer(rctx, chatID, msgID, tg, id, st, res, err)
+	})
+}
+
+// recordRefundAnswer writes what the create call answered into the dialog
+// and tells the person.
+func (b *Bot) recordRefundAnswer(rctx context.Context, chatID int64, msgID int, tg int64, id *Identity, st refundDialog,
+	res openapi.CreateOrderRefundsResponse, err error) {
+	loc := id.Locale()
+	back := b.resendResultKeyboard(loc, st.OrderID)
+	edit := &msgID
 	ours := b.ownsSending(rctx, tg, st.Key)
 	var ae *APIError
 	switch {
