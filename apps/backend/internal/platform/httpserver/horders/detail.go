@@ -370,11 +370,11 @@ func (h *Handler) orderLetters(ctx context.Context, orderID uuid.UUID) []emailst
 	return letters
 }
 
-// anyLetterFailed reports whether a letter of the card failed: the same
-// test the list's letter_failed applies.
+// anyLetterFailed reports whether a letter of the card failed or is stuck:
+// the same test the list's letter_failed applies.
 func anyLetterFailed(letters []emailstatus.LetterView) bool {
 	for _, l := range letters {
-		if l.Status == emailstatus.StatusFailed {
+		if l.NeedsAttention() {
 			return true
 		}
 	}

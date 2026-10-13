@@ -2,6 +2,7 @@ package emailstatus
 
 import (
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,7 +29,7 @@ func TestNormalize(t *testing.T) {
 		{"blocked", EventBlocked, ClassFailure},
 		{"error", EventError, ClassFailure},
 		{"click", EventClick, ClassStep},
-		{"deferred", "deferred", ClassIgnored},
+		{"deferred", EventDeferred, ClassStep},
 		{"unsubscribed", "unsubscribed", ClassIgnored},
 		{"spam", "spam", ClassIgnored},
 		{"listAddition", "list_addition", ClassIgnored},
@@ -147,7 +148,7 @@ func TestParseBrevo_SingleEvent(t *testing.T) {
 }
 
 func TestParseBrevo_BatchAndLimits(t *testing.T) {
-	evs, err := ParseBrevo([]byte(`[{"event":"delivered","message-id":"<a@b>"},{"event":"deferred","message-id":"<a@b>"}]`), t0)
+	evs, err := ParseBrevo([]byte(`[{"event":"delivered","message-id":"<a@b>"},{"event":"unsubscribed","message-id":"<a@b>"}]`), t0)
 	if err != nil || len(evs) != 2 || evs[0].Event != EventDelivered || evs[1].Class != ClassIgnored {
 		t.Fatalf("batch: %+v %v", evs, err)
 	}
@@ -159,15 +160,17 @@ func TestParseBrevo_BatchAndLimits(t *testing.T) {
 			t.Errorf("ParseBrevo(%q) must fail", bad)
 		}
 	}
+	// A batch is never refused for its length (the route caps the body
+	// size): a refused batch would be retried for ever.
 	big := "["
-	for i := 0; i <= MaxBatch; i++ {
+	for i := 0; i < 250; i++ {
 		if i > 0 {
 			big += ","
 		}
 		big += `{"event":"delivered"}`
 	}
-	if _, err := ParseBrevo([]byte(big+"]"), t0); err == nil {
-		t.Fatal("a batch above MaxBatch must fail")
+	if evs, err := ParseBrevo([]byte(big+"]"), t0); err != nil || len(evs) != 250 {
+		t.Fatalf("a batch of 250 events: %d events, err %v", len(evs), err)
 	}
 }
 
@@ -240,5 +243,41 @@ func TestBodyDigest_SeparatesHTMLFromText(t *testing.T) {
 	}
 	if len(BodyDigest("x", "y")) != 64 || len(FileDigest([]byte("pdf"))) != 64 {
 		t.Fatal("digests are hex SHA-256")
+	}
+}
+
+func TestDerive_DeferredIsDelayedUntilAnythingElse(t *testing.T) {
+	if got := Derive([]EventTimes{ev(EventSent, 0, 0), ev(EventDeferred, 1, 30)}); got.Status != StatusDelayed ||
+		got.DeferredAt == nil || !got.DeferredAt.Equal(at(1)) {
+		t.Fatalf("deferred only = %+v", got)
+	}
+	if got := Derive([]EventTimes{ev(EventDeferred, 1, 30), ev(EventDelivered, 40, 40)}).Status; got != StatusDelivered {
+		t.Fatalf("deferred then delivered = %q", got)
+	}
+	if got := Derive([]EventTimes{ev(EventDeferred, 1, 30), ev(EventHardBounce, 50, 50)}).Status; got != StatusFailed {
+		t.Fatalf("deferred then hard bounce = %q", got)
+	}
+}
+
+func TestScrubReason_RemovesAddressesIPsAndHosts(t *testing.T) {
+	in := "550 5.1.1 <anna@example.com>: Recipient rejected by mx1.mail.example.org [203.0.113.7] (2001:db8::1:2) host gmail-smtp-in.l.google.com"
+	got := ScrubReason(in)
+	for _, leak := range []string{"anna@example.com", "203.0.113.7", "2001:db8::1:2", "mx1.mail.example.org", "google.com"} {
+		if strings.Contains(got, leak) {
+			t.Fatalf("ScrubReason kept %q: %q", leak, got)
+		}
+	}
+	if !strings.HasPrefix(got, "550 5.1.1 ") || !strings.Contains(got, "Recipient rejected") {
+		t.Fatalf("ScrubReason dropped the SMTP code or the wording: %q", got)
+	}
+}
+
+func TestCleanLink_MasksDottedTokens(t *testing.T) {
+	jwt := "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+	if got := CleanLink("https://example.com/t/" + jwt + "/pdf"); got != "https://example.com/t/{token}/pdf" {
+		t.Fatalf("JWT segment not masked: %q", got)
+	}
+	if got := CleanLink("https://example.com/files/programme-2026.pdf"); got != "https://example.com/files/programme-2026.pdf" {
+		t.Fatalf("an ordinary file name must stay: %q", got)
 	}
 }

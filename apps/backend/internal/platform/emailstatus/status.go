@@ -50,9 +50,13 @@ const (
 // table (the worker is handing the letter to the relay right now) and is
 // never shown.
 const (
-	StatusQueued    = "queued"
-	StatusSending   = "sending"
-	StatusSent      = "sent"
+	StatusQueued  = "queued"
+	StatusSending = "sending"
+	StatusSent    = "sent"
+	// StatusDelayed: Brevo reported the message deferred (the recipient's
+	// server asked it to retry later) and nothing has happened since. Not
+	// final: Brevo keeps retrying.
+	StatusDelayed   = "delayed"
 	StatusDelivered = "delivered"
 	StatusOpened    = "opened"
 	StatusFailed    = "failed"
@@ -65,6 +69,7 @@ const (
 	EventProxyOpen    = "proxy_open"
 	EventOpened       = "opened"
 	EventClick        = "click"
+	EventDeferred     = "deferred"
 	EventSoftBounce   = "soft_bounce"
 	EventHardBounce   = "hard_bounce"
 	EventInvalidEmail = "invalid_email"
@@ -79,11 +84,11 @@ const (
 	// ClassUnknown is an event name arena does not know. It is acknowledged
 	// and dropped (and counted), so the provider keeps the endpoint enabled.
 	ClassUnknown Class = iota
-	// ClassIgnored is a known event arena does not model (deferred,
-	// unsubscribed, spam, list addition).
+	// ClassIgnored is a known event arena does not model (unsubscribed,
+	// spam, list addition).
 	ClassIgnored
 	// ClassStep moves the letter forward: sent, delivered, proxy_open,
-	// opened, click.
+	// opened, click, deferred (a non-final delay).
 	ClassStep
 	// ClassFailure means the provider gave up on the message.
 	ClassFailure
@@ -115,7 +120,7 @@ var eventAliases = map[string]string{
 	"click":             EventClick,
 	"clicks":            EventClick,
 	"clicked":           EventClick,
-	"deferred":          "deferred",
+	"deferred":          EventDeferred,
 	"unsubscribed":      "unsubscribed",
 	"unsubscribe":       "unsubscribed",
 	"spam":              "spam",
@@ -129,12 +134,12 @@ var eventClass = map[string]Class{
 	EventProxyOpen:    ClassStep,
 	EventOpened:       ClassStep,
 	EventClick:        ClassStep,
+	EventDeferred:     ClassStep,
 	EventSoftBounce:   ClassFailure,
 	EventHardBounce:   ClassFailure,
 	EventInvalidEmail: ClassFailure,
 	EventBlocked:      ClassFailure,
 	EventError:        ClassFailure,
-	"deferred":        ClassIgnored,
 	"unsubscribed":    ClassIgnored,
 	"spam":            ClassIgnored,
 	"list_addition":   ClassIgnored,
@@ -196,6 +201,7 @@ type Derived struct {
 	ProxyOpenedAt *time.Time
 	OpenedAt      *time.Time
 	ClickedAt     *time.Time
+	DeferredAt    *time.Time
 	FailedAt      *time.Time
 	FailureEvent  string
 	FailureReason string
@@ -211,6 +217,8 @@ type Derived struct {
 //     that Brevo retried successfully);
 //   - delivered, proxy_open or a click means delivered (a click alone is not
 //     counted as reading: mail security scanners follow links too);
+//   - a deferral (the recipient's server asked Brevo to retry) means
+//     delayed, until anything above happens;
 //   - otherwise the letter is sent (the relay accepted it).
 func Derive(events []EventTimes) Derived {
 	var d Derived
@@ -231,6 +239,8 @@ func Derive(events []EventTimes) Derived {
 		case EventClick:
 			d.ClickedAt = earliest(d.ClickedAt, e.First)
 			reachLast = latest(reachLast, e.Last)
+		case EventDeferred:
+			d.DeferredAt = earliest(d.DeferredAt, e.First)
 		default:
 			if eventClass[e.Event] != ClassFailure {
 				continue
@@ -252,6 +262,8 @@ func Derive(events []EventTimes) Derived {
 		d.FailureReason = fail.Reason
 	case d.DeliveredAt != nil || d.ProxyOpenedAt != nil || d.ClickedAt != nil:
 		d.Status = StatusDelivered
+	case d.DeferredAt != nil:
+		d.Status = StatusDelayed
 	default:
 		d.Status = StatusSent
 	}

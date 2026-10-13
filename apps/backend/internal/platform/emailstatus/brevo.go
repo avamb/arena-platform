@@ -22,10 +22,6 @@ const TrackingPrefix = "arena-letter:"
 // TrackingID is the X-Mailin-custom value of a letter.
 func TrackingID(letterID uuid.UUID) string { return TrackingPrefix + letterID.String() }
 
-// MaxBatch caps the events one webhook delivery may carry (Brevo can batch
-// events into a JSON array when batching is switched on).
-const MaxBatch = 100
-
 // maxReasonRunes bounds the provider's free-form failure reason.
 const maxReasonRunes = 300
 
@@ -58,7 +54,9 @@ type ProviderEvent struct {
 }
 
 // ParseBrevo decodes a Brevo transactional webhook body: one event object or
-// an array of at most MaxBatch of them. now stands in for an event without a
+// an array of them (Brevo batches events when batching is on). The number of
+// events is not limited here: the route caps the body size, so a large batch
+// is never refused and retried for ever. now stands in for an event without a
 // usable timestamp.
 func ParseBrevo(body []byte, now time.Time) ([]ProviderEvent, error) {
 	body = bytes.TrimSpace(body)
@@ -66,9 +64,6 @@ func ParseBrevo(body []byte, now time.Time) ([]ProviderEvent, error) {
 	switch {
 	case len(body) > 0 && body[0] == '[':
 		if err := decodeNumbers(body, &objs); err != nil {
-			return nil, ErrMalformed
-		}
-		if len(objs) > MaxBatch {
 			return nil, ErrMalformed
 		}
 	case len(body) > 0 && body[0] == '{':
@@ -126,7 +121,7 @@ func brevoEvent(o map[string]any, now time.Time) ProviderEvent {
 		ev.Link = CleanLink(str(o["link"]))
 	}
 	if class == ClassFailure {
-		ev.Reason = truncate(opsalert.ScrubEmails(strings.TrimSpace(str(o["reason"]))), maxReasonRunes)
+		ev.Reason = ScrubReason(str(o["reason"]))
 	}
 	return ev
 }
@@ -159,6 +154,11 @@ func brevoTime(o map[string]any, now time.Time) time.Time {
 // letters, digits, dashes and underscores (a checkout token, a signed id).
 var tokenSegment = regexp.MustCompile(`^[A-Za-z0-9_-]{20,}$`)
 
+// dottedTokenSegment is a token made of dot-separated parts (a JWT, a
+// signed value): two or three long base64url parts. A file name such as
+// "programme-2026.pdf" does not match: its extension is short.
+var dottedTokenSegment = regexp.MustCompile(`^[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}(\.[A-Za-z0-9_-]{8,})?$`)
+
 // CleanLink reduces a clicked URL to what dispute evidence needs: scheme,
 // host and path. The query and fragment are dropped (they may carry
 // tracking ids or tokens), long token-like path segments become "{token}",
@@ -171,11 +171,30 @@ func CleanLink(raw string) string {
 	}
 	segs := strings.Split(u.EscapedPath(), "/")
 	for i, seg := range segs {
-		if tokenSegment.MatchString(seg) {
+		if tokenSegment.MatchString(seg) || dottedTokenSegment.MatchString(seg) {
 			segs[i] = "{token}"
 		}
 	}
 	return truncate(u.Scheme+"://"+strings.ToLower(u.Host)+strings.Join(segs, "/"), 300)
+}
+
+var (
+	ipv4Re = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
+	ipv6Re = regexp.MustCompile(`(?i)\b[0-9a-f]{1,4}(?::[0-9a-f]{0,4}){2,7}\b`)
+	hostRe = regexp.MustCompile(`(?i)\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}\b`)
+)
+
+// ScrubReason cleans a provider's free-form failure reason before it is
+// stored and shown to an organizer: e-mail addresses, IP addresses and host
+// names of the receiving servers are removed, whitespace folded, the length
+// bounded. What stays is the SMTP code and the wording ("550 5.1.1 user
+// unknown").
+func ScrubReason(s string) string {
+	s = opsalert.ScrubEmails(strings.Join(strings.Fields(s), " "))
+	s = ipv4Re.ReplaceAllString(s, "[ip]")
+	s = ipv6Re.ReplaceAllString(s, "[ip]")
+	s = hostRe.ReplaceAllString(s, "[host]")
+	return truncate(s, maxReasonRunes)
 }
 
 // NormalizeMessageID strips whitespace and angle brackets: Brevo writes the
