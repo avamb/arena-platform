@@ -104,3 +104,70 @@ func TestRefundScanned_CancelGuardAnswers503WhenTheCheckFails(t *testing.T) {
 		t.Fatalf("ticket is %q after a refused cancellation; want active", st)
 	}
 }
+
+// T1: the flat create answers 503 when the scan check INSIDE its writing
+// transaction fails (the pre-check passed), and nothing is written. The
+// in-transaction check is held on a lock of scan_events and then cancelled.
+func TestRefundScanned_FlatCreateAnswers503WhenTheInTransactionCheckFails(t *testing.T) {
+	e := newScanEnv(t)
+	ctx := context.Background()
+	payLock, err := e.srv.pgxPool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = payLock.Rollback(ctx) }()
+	if err := refunds.LockPayment(ctx, payLock, e.f.pay); err != nil {
+		t.Fatal(err)
+	}
+	type answer struct {
+		status int
+		body   map[string]any
+	}
+	done := make(chan answer, 1)
+	go func() {
+		st, out := e.flatCreate(t, 1000)
+		done <- answer{st, out}
+	}()
+	waitFor := func(what, query string) int {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			var pid int
+			err := e.srv.pgxPool.QueryRow(ctx, query).Scan(&pid)
+			if err == nil {
+				return pid
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s: %v", what, err)
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	// The pre-check is done once the create waits for the payment's lock.
+	waitFor("the create never waited for the payment lock",
+		`SELECT pid FROM pg_locks WHERE locktype = 'advisory' AND NOT granted LIMIT 1`)
+	tableLock, err := e.srv.pgxPool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tableLock.Rollback(ctx) }()
+	if _, err := tableLock.Exec(ctx, `LOCK TABLE scan_events IN ACCESS EXCLUSIVE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	if err := payLock.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	pid := waitFor("the in-transaction check never reached scan_events",
+		`SELECT pid FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE '%scan_events%' AND pid <> pg_backend_pid() LIMIT 1`)
+	if _, err := e.srv.pgxPool.Exec(ctx, `SELECT pg_cancel_backend($1)`, pid); err != nil {
+		t.Fatal(err)
+	}
+	got := <-done
+	_ = tableLock.Rollback(ctx)
+	if got.status != http.StatusServiceUnavailable {
+		t.Fatalf("flat create whose in-transaction scan check failed: %d %v; want 503", got.status, got.body)
+	}
+	if n := e.count(t, `SELECT count(*) FROM refunds WHERE payment_intent_id = $1`, e.f.pay); n != 0 {
+		t.Fatalf("the flat create wrote %d refund(s)", n)
+	}
+}
