@@ -384,6 +384,17 @@ func (b *Bot) refundCallback(ctx context.Context, chatID int64, msgID int, from 
 		b.showRefundPick(ctx, chatID, &msgID, id, st, "")
 	case "b":
 		b.showRefundPick(ctx, chatID, &msgID, id, st, "")
+	case "cur":
+		// "Back to the refund" of the menu's leave question
+		// (menu_keyboard.go): the screen the dialog stopped at, same key.
+		switch step {
+		case refStepWord:
+			b.showRefundWord(ctx, chatID, &msgID, id, st, "")
+		case refStepFinal:
+			b.showRefundFinal(ctx, chatID, &msgID, id, st, "")
+		default:
+			b.showRefundPick(ctx, chatID, &msgID, id, st, "")
+		}
 	case "p":
 		if sel := st.selected(); st.Partial && len(sel) == 1 {
 			st.MsgID = msgID

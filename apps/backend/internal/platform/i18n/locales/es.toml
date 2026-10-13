@@ -261,7 +261,28 @@ other = "Ya no tienes acceso a esta organización. Si es un error, pide una nuev
 other = "No he entendido eso. Usa los botones de abajo."
 
 ["bot.stale_message"]
+other = "Este mensaje está desactualizado. Pulsa ☰ Menú abajo."
+
+["bot.stale_message_stranger"]
 other = "Este mensaje está desactualizado. Continúa más abajo."
+
+["bot.menu_button"]
+other = "☰ Menú"
+
+["bot.menu_keyboard_note"]
+other = "El botón ☰ Menú bajo el campo de mensaje siempre abre el menú principal."
+
+["bot.cmd_menu"]
+other = "Abrir el menú principal"
+
+["bot.menu_leave_refund"]
+other = "El reembolso del pedido №{{.Num}} aún no se ha enviado. Si abres el menú ahora, el comprador no recibe el dinero.\n\nPuedes volver al reembolso o abrir el menú."
+
+["bot.menu_back_refund_btn"]
+other = "↩ Volver al reembolso"
+
+["bot.menu_leave_btn"]
+other = "☰ Abrir el menú"
 
 ["bot.wz.new_event_btn"]
 other = "+ Evento"
