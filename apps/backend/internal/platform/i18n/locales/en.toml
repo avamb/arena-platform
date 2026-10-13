@@ -1856,7 +1856,7 @@ other = "Message from the payment provider: {{.Msg}}"
 other = "Cancel unpaid order"
 
 ["bot.ord.cancel_ask"]
-other = "⚠️ <b>Last step: nothing is canceled yet.</b>\n\nOrder №{{.Num}} · {{.Amount}}\nThe order will be closed and the seats held for it released. This cannot be undone.\n\nTo cancel, <b>type the word {{.Word}}</b> and send it as a message. To keep the order, press «Back»."
+other = "⚠️ <b>Last step: nothing is canceled yet.</b>\n\nOrder №{{.Num}} · {{.Amount}}\nThe order closes and the hold on its seats ends. The seats go back on sale. This cannot be undone.\n\nTo cancel, <b>type the word {{.Word}}</b> and send it as a message. To keep the order, press «Back»."
 
 ["bot.ord.cancel_wrong"]
 other = "That is not the word, so nothing was canceled. To cancel, type exactly: {{.Word}}"
@@ -2826,7 +2826,7 @@ other = "🔢 <b>New number of places</b> of «{{.Name}}». Now: {{.Value}}.\n\n
 other = "⚠ Type a whole number of places, from 1 to 1000000."
 
 ["bot.cat.err_qty_below"]
-other = "⚠ Not saved: that is fewer places than this category has sold or held. It cannot go below {{.Limit}}."
+other = "⚠ Not saved. This category already has {{.Limit}} places sold or held. Type a number of {{.Limit}} or more."
 
 ["bot.cat.err_qty_seated"]
 other = "⚠ Not saved: the places of this category come from the seating plan, so their number is not changed here."
