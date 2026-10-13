@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -46,6 +48,10 @@ type ProviderEvent struct {
 	At time.Time
 	// Reason is the scrubbed, truncated failure reason (bounces, blocks).
 	Reason string
+	// Link is the clicked link of a click event: host and path only, no
+	// query or fragment, long token-like path segments replaced by
+	// "{token}" (CleanLink).
+	Link string
 	// Payload is the minimal raw record kept with the event: the provider's
 	// own event name and timestamp. Never the recipient address.
 	Payload map[string]any
@@ -116,6 +122,9 @@ func brevoEvent(o map[string]any, now time.Time) ProviderEvent {
 			break
 		}
 	}
+	if name == EventClick {
+		ev.Link = CleanLink(str(o["link"]))
+	}
 	if class == ClassFailure {
 		ev.Reason = truncate(opsalert.ScrubEmails(strings.TrimSpace(str(o["reason"]))), maxReasonRunes)
 	}
@@ -144,6 +153,29 @@ func brevoTime(o map[string]any, now time.Time) time.Time {
 		return now.UTC()
 	}
 	return t.UTC()
+}
+
+// tokenSegment is a path segment that looks like a secret: a long run of
+// letters, digits, dashes and underscores (a checkout token, a signed id).
+var tokenSegment = regexp.MustCompile(`^[A-Za-z0-9_-]{20,}$`)
+
+// CleanLink reduces a clicked URL to what dispute evidence needs: scheme,
+// host and path. The query and fragment are dropped (they may carry
+// tracking ids or tokens), long token-like path segments become "{token}",
+// and the result is at most 300 characters. Empty for anything that is not
+// an absolute http(s) URL.
+func CleanLink(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return ""
+	}
+	segs := strings.Split(u.EscapedPath(), "/")
+	for i, seg := range segs {
+		if tokenSegment.MatchString(seg) {
+			segs[i] = "{token}"
+		}
+	}
+	return truncate(u.Scheme+"://"+strings.ToLower(u.Host)+strings.Join(segs, "/"), 300)
 }
 
 // NormalizeMessageID strips whitespace and angle brackets: Brevo writes the

@@ -609,9 +609,13 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		// The letter is recorded around the send (letter_status.go) so its
 		// delivery status can follow from the provider's webhook.
 		var letterDB emailstatus.DB
-		letter := emailstatus.NewLetter{Kind: emailstatus.KindTicket, Recipient: recipientEmail}
+		letter := emailstatus.NewLetter{Kind: emailstatus.KindTicket, Recipient: recipientEmail,
+			TemplateVersion: templateVersion(renderer, kind, p.Locale)}
 		if kind == templates.TemplateKindInvitation {
 			letter.Kind = emailstatus.KindInvitation
+		}
+		for _, m := range members {
+			letter.TicketNumbers = append(letter.TicketNumbers, m.number)
 		}
 		var letterJobs []uuid.UUID
 		if opts.DeliveryJobQueries != nil {

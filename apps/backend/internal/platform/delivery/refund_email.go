@@ -200,7 +200,15 @@ func (h *refundEmail) handle(ctx context.Context, payload []byte) error {
 		h.release(ctx, ids)
 		return err
 	}
-	letter := emailstatus.NewLetter{OrgID: orgID, OrderID: &orderID, Kind: emailstatus.KindRefund, Recipient: recipient.Email}
+	letter := emailstatus.NewLetter{OrgID: orgID, OrderID: &orderID, Kind: emailstatus.KindRefund, Recipient: recipient.Email,
+		TemplateVersion: templateVersion(h.renderer, templates.TemplateKindRefund, recipient.LocaleHint)}
+	var refundTickets []uuid.UUID
+	for _, c := range claimed {
+		if c.TicketID != nil {
+			refundTickets = append(refundTickets, *c.TicketID)
+		}
+	}
+	letter.TicketNumbers = letterTicketNumbers(ctx, h.opts.DB, refundTickets)
 	if sendErr := sendRecorded(ctx, h.opts.Sender, h.opts.DB, h.logger, letter, msg, nil); sendErr != nil {
 		h.release(ctx, ids)
 		h.logger.Warn("delivery: refund e-mail send failed; worker will retry", slog.String("batch_id", batchID.String()))

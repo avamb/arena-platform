@@ -10731,7 +10731,7 @@ export interface components {
             /**
              * @description queued (the delivery job waits), sent (the mail relay accepted
              *     the letter), delivered (the recipient's server accepted it, or a
-             *     mail proxy fetched it), opened, failed (bounced, blocked,
+             *     mail proxy fetched it, or a link was clicked), opened, failed (bounced, blocked,
              *     invalid address, provider error, or the relay refused it). A
              *     failure is final unless a later delivery is reported.
              */
@@ -10765,6 +10765,11 @@ export interface components {
              * @description When Brevo first reported an open.
              */
             opened_at: string | null;
+            /**
+             * Format: date-time
+             * @description First click on a link of the letter (for example the ticket download). Proves delivery; not counted as reading, mail security scanners follow links too.
+             */
+            clicked_at: string | null;
             /**
              * Format: date-time
              * @description When the failure that decided the status was reported.

@@ -17,12 +17,24 @@
 // or not; Brevo flags such fetches as proxy_open. A proxy open is therefore
 // recorded as proof of DELIVERY (proxy_opened_at), never as reading. And an
 // "opened" can still be a mail client that loads images automatically.
+//
+// The letters are also EVIDENCE for card disputes ("I never received the
+// tickets"): see MinRetention.
 package emailstatus
 
 import (
 	"strings"
 	"time"
 )
+
+// MinRetention is how long letters, their events and their interactions are
+// kept at the very least: 24 months. Card networks let a buyer dispute a
+// payment for up to 120-540 days after the purchase or the event, and the
+// delivery chain of the ticket letter is part of arena's answer. Nothing may
+// delete these rows earlier (tests/staticanalysis/email_letters_retention_test.go
+// guards the code); the only deletions are letters the relay never accepted
+// (status "sending").
+const MinRetention = 2 * 365 * 24 * time.Hour
 
 // Letter kinds (email_letters.kind).
 const (
@@ -52,6 +64,7 @@ const (
 	EventDelivered    = "delivered"
 	EventProxyOpen    = "proxy_open"
 	EventOpened       = "opened"
+	EventClick        = "click"
 	EventSoftBounce   = "soft_bounce"
 	EventHardBounce   = "hard_bounce"
 	EventInvalidEmail = "invalid_email"
@@ -66,10 +79,11 @@ const (
 	// ClassUnknown is an event name arena does not know. It is acknowledged
 	// and dropped (and counted), so the provider keeps the endpoint enabled.
 	ClassUnknown Class = iota
-	// ClassIgnored is a known event arena does not model (click, deferred,
+	// ClassIgnored is a known event arena does not model (deferred,
 	// unsubscribed, spam, list addition).
 	ClassIgnored
-	// ClassStep moves the letter forward: sent, delivered, proxy_open, opened.
+	// ClassStep moves the letter forward: sent, delivered, proxy_open,
+	// opened, click.
 	ClassStep
 	// ClassFailure means the provider gave up on the message.
 	ClassFailure
@@ -98,9 +112,9 @@ var eventAliases = map[string]string{
 	"invalid":           EventInvalidEmail,
 	"blocked":           EventBlocked,
 	"error":             EventError,
-	"click":             "click",
-	"clicks":            "click",
-	"clicked":           "click",
+	"click":             EventClick,
+	"clicks":            EventClick,
+	"clicked":           EventClick,
 	"deferred":          "deferred",
 	"unsubscribed":      "unsubscribed",
 	"unsubscribe":       "unsubscribed",
@@ -114,12 +128,12 @@ var eventClass = map[string]Class{
 	EventDelivered:    ClassStep,
 	EventProxyOpen:    ClassStep,
 	EventOpened:       ClassStep,
+	EventClick:        ClassStep,
 	EventSoftBounce:   ClassFailure,
 	EventHardBounce:   ClassFailure,
 	EventInvalidEmail: ClassFailure,
 	EventBlocked:      ClassFailure,
 	EventError:        ClassFailure,
-	"click":           ClassIgnored,
 	"deferred":        ClassIgnored,
 	"unsubscribed":    ClassIgnored,
 	"spam":            ClassIgnored,
@@ -181,6 +195,7 @@ type Derived struct {
 	DeliveredAt   *time.Time
 	ProxyOpenedAt *time.Time
 	OpenedAt      *time.Time
+	ClickedAt     *time.Time
 	FailedAt      *time.Time
 	FailureEvent  string
 	FailureReason string
@@ -194,7 +209,8 @@ type Derived struct {
 //     (delivered, proxy_open) — or with no such sign at all — means failed:
 //     a failure is final unless a later delivery overrides it (a soft bounce
 //     that Brevo retried successfully);
-//   - delivered or proxy_open means delivered;
+//   - delivered, proxy_open or a click means delivered (a click alone is not
+//     counted as reading: mail security scanners follow links too);
 //   - otherwise the letter is sent (the relay accepted it).
 func Derive(events []EventTimes) Derived {
 	var d Derived
@@ -211,6 +227,9 @@ func Derive(events []EventTimes) Derived {
 			reachLast = latest(reachLast, e.Last)
 		case EventProxyOpen:
 			d.ProxyOpenedAt = earliest(d.ProxyOpenedAt, e.First)
+			reachLast = latest(reachLast, e.Last)
+		case EventClick:
+			d.ClickedAt = earliest(d.ClickedAt, e.First)
 			reachLast = latest(reachLast, e.Last)
 		default:
 			if eventClass[e.Event] != ClassFailure {
@@ -231,7 +250,7 @@ func Derive(events []EventTimes) Derived {
 		d.FailedAt = &at
 		d.FailureEvent = fail.Event
 		d.FailureReason = fail.Reason
-	case d.DeliveredAt != nil || d.ProxyOpenedAt != nil:
+	case d.DeliveredAt != nil || d.ProxyOpenedAt != nil || d.ClickedAt != nil:
 		d.Status = StatusDelivered
 	default:
 		d.Status = StatusSent

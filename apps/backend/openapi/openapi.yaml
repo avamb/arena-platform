@@ -3961,7 +3961,7 @@ components:
     OrderLetter:
       type: object
       required: [id, kind, status, recipient, ticket_ids, queued_at, sent_at, delivered_at,
-                 proxy_opened_at, opened_at, failed_at, failure_event, failure_reason]
+                 proxy_opened_at, opened_at, clicked_at, failed_at, failure_event, failure_reason]
       description: |
         One buyer letter of an order and its delivery status, from Brevo's
         transactional webhook. Ticket letters come first, grouped the way
@@ -3988,7 +3988,7 @@ components:
           description: |
             queued (the delivery job waits), sent (the mail relay accepted
             the letter), delivered (the recipient's server accepted it, or a
-            mail proxy fetched it), opened, failed (bounced, blocked,
+            mail proxy fetched it, or a link was clicked), opened, failed (bounced, blocked,
             invalid address, provider error, or the relay refused it). A
             failure is final unless a later delivery is reported.
         recipient:
@@ -4021,6 +4021,10 @@ components:
           type: [string, "null"]
           format: date-time
           description: When Brevo first reported an open.
+        clicked_at:
+          type: [string, "null"]
+          format: date-time
+          description: First click on a link of the letter (for example the ticket download). Proves delivery; not counted as reading, mail security scanners follow links too.
         failed_at:
           type: [string, "null"]
           format: date-time

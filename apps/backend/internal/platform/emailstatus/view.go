@@ -31,6 +31,9 @@ type LetterView struct {
 	DeliveredAt   *string `json:"delivered_at"`
 	ProxyOpenedAt *string `json:"proxy_opened_at"`
 	OpenedAt      *string `json:"opened_at"`
+	// ClickedAt is the first click on a link of the letter (the ticket
+	// download, for instance); a sign of delivery, not proof of reading.
+	ClickedAt     *string `json:"clicked_at"`
 	FailedAt      *string `json:"failed_at"`
 	FailureEvent  *string `json:"failure_event"`
 	FailureReason *string `json:"failure_reason"`
@@ -41,7 +44,7 @@ type LetterView struct {
 const orderTicketLettersSQL = `
 SELECT t.id, dj.status, COALESCE(dj.recipient_email, t.holder_email, ''), dj.queued_at, dj.sent_at, dj.last_error,
        l.id, l.kind, l.recipient, l.status, l.sent_at, l.delivered_at, l.proxy_opened_at, l.opened_at,
-       l.failed_at, l.failure_event, l.failure_reason
+       l.failed_at, l.failure_event, l.failure_reason, l.clicked_at
 FROM   order_items oi
 JOIN   tickets t        ON t.id = oi.ticket_id
 JOIN   delivery_jobs dj ON dj.ticket_id = t.id
@@ -53,7 +56,7 @@ ORDER  BY oi.ordinal`
 // letters, oldest first.
 const orderOtherLettersSQL = `
 SELECT id, kind, recipient, status, sent_at, delivered_at, proxy_opened_at, opened_at,
-       failed_at, failure_event, failure_reason
+       failed_at, failure_event, failure_reason, clicked_at
 FROM   email_letters
 WHERE  order_id = $1 AND kind IN ('change', 'cancel', 'refund') AND status <> 'sending'
 ORDER  BY sent_at`
@@ -63,7 +66,7 @@ type letterRow struct {
 	Kind, Recipient, Status              string
 	SentAt                               time.Time
 	DeliveredAt, ProxyOpenedAt, OpenedAt *time.Time
-	FailedAt                             *time.Time
+	FailedAt, ClickedAt                  *time.Time
 	FailureEvent, FailureReason          *string
 }
 
@@ -72,7 +75,7 @@ func (r letterRow) view() LetterView {
 	v := LetterView{
 		ID: &id, Kind: r.Kind, Status: r.Status, Recipient: r.Recipient, TicketIDs: []string{},
 		SentAt: ts(&r.SentAt), DeliveredAt: ts(r.DeliveredAt), ProxyOpenedAt: ts(r.ProxyOpenedAt),
-		OpenedAt: ts(r.OpenedAt), FailedAt: ts(r.FailedAt),
+		OpenedAt: ts(r.OpenedAt), ClickedAt: ts(r.ClickedAt), FailedAt: ts(r.FailedAt),
 		FailureEvent: r.FailureEvent, FailureReason: r.FailureReason,
 	}
 	if v.Status == StatusSending {
@@ -118,7 +121,7 @@ func OrderLetters(ctx context.Context, db DB, orderID uuid.UUID) ([]LetterView, 
 		)
 		if err := rows.Scan(&ticketID, &jobStatus, &rcp, &queuedAt, &jobSentAt, &lastError,
 			&lid, &lKind, &lRcp, &lStatus, &lSent, &lr.DeliveredAt, &lr.ProxyOpenedAt, &lr.OpenedAt,
-			&lr.FailedAt, &lr.FailureEvent, &lr.FailureReason); err != nil {
+			&lr.FailedAt, &lr.FailureEvent, &lr.FailureReason, &lr.ClickedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -165,7 +168,7 @@ func OrderLetters(ctx context.Context, db DB, orderID uuid.UUID) ([]LetterView, 
 	for rows.Next() {
 		var r letterRow
 		if err := rows.Scan(&r.ID, &r.Kind, &r.Recipient, &r.Status, &r.SentAt, &r.DeliveredAt,
-			&r.ProxyOpenedAt, &r.OpenedAt, &r.FailedAt, &r.FailureEvent, &r.FailureReason); err != nil {
+			&r.ProxyOpenedAt, &r.OpenedAt, &r.FailedAt, &r.FailureEvent, &r.FailureReason, &r.ClickedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, r.view())

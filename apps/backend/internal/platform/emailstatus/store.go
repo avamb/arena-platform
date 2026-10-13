@@ -2,6 +2,8 @@ package emailstatus
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,13 +35,49 @@ const ProviderBrevo = "brevo"
 // removes it, so the recipient address does not linger.
 const sendingKeepSQL = "1 day"
 
-// NewLetter describes a letter about to be handed to the relay.
+// NewLetter describes a letter about to be handed to the relay. Besides the
+// routing fields it carries what proves later which letter was sent: the
+// subject, the ticket numbers, a hash of the rendered body, the attached
+// files' hashes and the template version (dispute evidence; MinRetention).
 type NewLetter struct {
 	OrgID     uuid.UUID
 	OrderID   *uuid.UUID
 	Kind      string
 	Recipient string
+
+	Subject         string
+	TicketNumbers   []string
+	BodySHA256      string
+	Attachments     []AttachmentDigest
+	TemplateVersion string
 }
+
+// AttachmentDigest is one attached file as sent.
+type AttachmentDigest struct {
+	Filename string `json:"filename"`
+	Bytes    int    `json:"bytes"`
+	SHA256   string `json:"sha256"`
+}
+
+// BodyDigest is the SHA-256 (hex) of a rendered letter: the HTML body, a NUL
+// byte, the text body.
+func BodyDigest(html, text string) string {
+	h := sha256.New()
+	h.Write([]byte(html))
+	h.Write([]byte{0})
+	h.Write([]byte(text))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// FileDigest is the SHA-256 (hex) of one attachment.
+func FileDigest(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// maxInteractionsPerLetter bounds the open/click log of one letter: a letter
+// forwarded to a mailing list must not grow the table without limit.
+const maxInteractionsPerLetter = 500
 
 // Begin stores a letter in state "sending" and returns its id, which goes
 // into the X-Mailin-custom header (TrackingID). It exists BEFORE the relay
@@ -53,9 +91,23 @@ func Begin(ctx context.Context, db DB, l NewLetter) (uuid.UUID, error) {
 		sendingKeepSQL); err != nil {
 		return uuid.Nil, fmt.Errorf("emailstatus: sweep stale letters: %w", err)
 	}
-	if _, err := db.Exec(ctx, `INSERT INTO email_letters (id, org_id, order_id, kind, recipient, provider, status)
-		VALUES ($1, $2, $3, $4, $5, $6, 'sending')`,
-		id, l.OrgID, l.OrderID, l.Kind, l.Recipient, ProviderBrevo); err != nil {
+	numbers := l.TicketNumbers
+	if numbers == nil {
+		numbers = []string{}
+	}
+	atts := l.Attachments
+	if atts == nil {
+		atts = []AttachmentDigest{}
+	}
+	attJSON, err := json.Marshal(atts)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO email_letters (id, org_id, order_id, kind, recipient, provider, status,
+		    subject, ticket_numbers, body_sha256, attachments, template_version)
+		VALUES ($1, $2, $3, $4, $5, $6, 'sending', $7, $8, $9, $10, $11)`,
+		id, l.OrgID, l.OrderID, l.Kind, l.Recipient, ProviderBrevo,
+		nonEmpty(l.Subject), numbers, nonEmpty(l.BodySHA256), attJSON, nonEmpty(l.TemplateVersion)); err != nil {
 		return uuid.Nil, fmt.Errorf("emailstatus: begin letter: %w", err)
 	}
 	return id, nil
@@ -157,6 +209,10 @@ func Apply(ctx context.Context, txb TxBeginner, ev ProviderEvent) (Outcome, erro
 		return "", fmt.Errorf("emailstatus: store event: %w", err)
 	}
 
+	if err := logInteraction(ctx, tx, letterID, ev); err != nil {
+		return "", err
+	}
+
 	if ev.MessageID != "" {
 		// A letter found by its tracking id learns its message id here when
 		// the relay's reply did not name one.
@@ -178,6 +234,33 @@ func Apply(ctx context.Context, txb TxBeginner, ev ProviderEvent) (Outcome, erro
 		return OutcomeDuplicate, nil
 	}
 	return OutcomeApplied, nil
+}
+
+// logInteraction keeps every open, proxy open and click with its own time
+// (email_letter_events keeps only the first and last of each type). A
+// redelivered event is the same row (unique on letter, event, time, link).
+func logInteraction(ctx context.Context, tx pgx.Tx, letterID uuid.UUID, ev ProviderEvent) error {
+	switch ev.Event {
+	case EventOpened, EventProxyOpen, EventClick:
+	default:
+		return nil
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO email_letter_interactions (letter_id, event, occurred_at, link)
+		SELECT $1, $2, $3, $4
+		WHERE (SELECT count(*) FROM email_letter_interactions WHERE letter_id = $1) < $5
+		ON CONFLICT DO NOTHING`,
+		letterID, ev.Event, ev.At, nonEmpty(ev.Link), maxInteractionsPerLetter)
+	if err != nil {
+		return fmt.Errorf("emailstatus: log interaction: %w", err)
+	}
+	return nil
+}
+
+func nonEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // findLetter locks the letter an event belongs to: by arena's tracking id
@@ -242,8 +325,9 @@ func recompute(ctx context.Context, tx pgx.Tx, letterID uuid.UUID) error {
 		    failed_at       = $6,
 		    failure_event   = $7,
 		    failure_reason  = $8,
+		    clicked_at      = $9,
 		    updated_at      = now()
 		WHERE id = $1`,
-		letterID, d.Status, d.DeliveredAt, d.ProxyOpenedAt, d.OpenedAt, d.FailedAt, failEvent, failReason)
+		letterID, d.Status, d.DeliveredAt, d.ProxyOpenedAt, d.OpenedAt, d.FailedAt, failEvent, failReason, d.ClickedAt)
 	return err
 }

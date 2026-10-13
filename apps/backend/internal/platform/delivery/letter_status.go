@@ -13,12 +13,15 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
 )
 
@@ -27,9 +30,19 @@ const letterRecordTimeout = 5 * time.Second
 
 // sendRecorded sends msg through sender and records it as letter l. db may
 // be nil (no recording). jobIDs are the delivery_jobs rows the letter
-// carries; they are linked to it once the relay accepted it.
+// carries; they are linked to it once the relay accepted it. The subject,
+// the body hash and the attachment hashes are taken from msg itself, so the
+// stored record is exactly what went out (dispute evidence).
 func sendRecorded(ctx context.Context, sender email.Sender, db emailstatus.DB, logger *slog.Logger,
 	l emailstatus.NewLetter, msg email.Message, jobIDs []uuid.UUID) error {
+	l.Subject = msg.Subject
+	l.BodySHA256 = emailstatus.BodyDigest(msg.HTMLBody, msg.TextBody)
+	l.Attachments = nil
+	for _, a := range msg.Attachments {
+		l.Attachments = append(l.Attachments, emailstatus.AttachmentDigest{
+			Filename: a.Filename, Bytes: len(a.Data), SHA256: emailstatus.FileDigest(a.Data),
+		})
+	}
 	var letterID uuid.UUID
 	if db != nil && l.OrgID != uuid.Nil && l.Recipient != "" {
 		bctx, cancel := context.WithTimeout(ctx, letterRecordTimeout)
@@ -84,4 +97,47 @@ func ticketLetterContext(ctx context.Context, db emailstatus.DB, ticketID uuid.U
 		return uuid.Nil, nil, err
 	}
 	return *orgID, orderID, nil
+}
+
+// letterTicketNumbers returns the buyer-facing numbers of tickets (the same
+// value the PDF and the letter print) for the letter record. A failed
+// lookup returns nil: the letter goes out regardless.
+func letterTicketNumbers(ctx context.Context, db emailstatus.DB, ids []uuid.UUID) []string {
+	if db == nil || len(ids) == 0 {
+		return nil
+	}
+	rows, err := db.Query(ctx, `SELECT id, COALESCE(system_ticket_id, 0) FROM tickets WHERE id = ANY($1)`, ids)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	byID := make(map[uuid.UUID]string, len(ids))
+	for rows.Next() {
+		var id uuid.UUID
+		var n int64
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil
+		}
+		num := ""
+		if n > 0 {
+			num = strconv.FormatInt(n, 10)
+		}
+		byID[id] = pdf.DisplayNumber(num, id.String())
+	}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if n, ok := byID[id]; ok {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// templateVersion is the renderer's version of (kind, locale); empty
+// without a renderer.
+func templateVersion(r *templates.Renderer, kind, locale string) string {
+	if r == nil {
+		return ""
+	}
+	return r.Version(kind, locale)
 }

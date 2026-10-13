@@ -8593,6 +8593,9 @@ type OrderItemSummary struct {
 // records as proxy_opened_at (proof of delivery, NOT of reading). An
 // opened_at can still be a mail client that loads images by itself.
 type OrderLetter struct {
+	// ClickedAt First click on a link of the letter (for example the ticket download). Proves delivery; not counted as reading, mail security scanners follow links too.
+	ClickedAt *time.Time `json:"clicked_at"`
+
 	// DeliveredAt When Brevo reported the letter delivered.
 	DeliveredAt *time.Time `json:"delivered_at"`
 
@@ -8628,7 +8631,7 @@ type OrderLetter struct {
 
 	// Status queued (the delivery job waits), sent (the mail relay accepted
 	// the letter), delivered (the recipient's server accepted it, or a
-	// mail proxy fetched it), opened, failed (bounced, blocked,
+	// mail proxy fetched it, or a link was clicked), opened, failed (bounced, blocked,
 	// invalid address, provider error, or the relay refused it). A
 	// failure is final unless a later delivery is reported.
 	Status string `json:"status"`

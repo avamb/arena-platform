@@ -12,6 +12,7 @@ package delivery
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -85,6 +86,38 @@ func TestLetterStatus_TicketLetterIsRecordedAndLinked(t *testing.T) {
 	if sender.got[0].TrackingID != emailstatus.TrackingID(letterID) {
 		t.Fatalf("tracking id = %q, want %q", sender.got[0].TrackingID, emailstatus.TrackingID(letterID))
 	}
+	// The letter's passport: what proves later which letter went out.
+	var (
+		subject, bodyHash, tplVersion *string
+		numbers                       []string
+		attachments                   []map[string]any
+	)
+	if err := pool.QueryRow(ctx, `SELECT subject, body_sha256, template_version, ticket_numbers, attachments
+		FROM email_letters WHERE id = $1`, letterID).
+		Scan(&subject, &bodyHash, &tplVersion, &numbers, &attachments); err != nil {
+		t.Fatal(err)
+	}
+	if subject == nil || *subject != sender.got[0].Subject {
+		t.Fatalf("subject = %v, want %q", subject, sender.got[0].Subject)
+	}
+	if bodyHash == nil || *bodyHash != emailstatus.BodyDigest(sender.got[0].HTMLBody, sender.got[0].TextBody) {
+		t.Fatalf("body_sha256 = %v", bodyHash)
+	}
+	if tplVersion == nil || !strings.HasPrefix(*tplVersion, "ticket.en@") {
+		t.Fatalf("template_version = %v", tplVersion)
+	}
+	if len(numbers) != 3 {
+		t.Fatalf("ticket_numbers = %v, want the three tickets", numbers)
+	}
+	if len(attachments) != len(sender.got[0].Attachments) || len(attachments) != 3 {
+		t.Fatalf("attachments = %v", attachments)
+	}
+	for i, a := range sender.got[0].Attachments {
+		if attachments[i]["sha256"] != emailstatus.FileDigest(a.Data) || attachments[i]["filename"] != a.Filename {
+			t.Fatalf("attachment %d = %v", i, attachments[i])
+		}
+	}
+
 	var linked int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM delivery_jobs
 		WHERE id = ANY($1) AND email_letter_id = $2 AND provider_message_id = $3`,

@@ -152,10 +152,10 @@ func TestBrevoWebhook_StatusesAndOrderRead(t *testing.T) {
 		t.Fatalf("unknown message id must not be applied: %v", body)
 	}
 	// An event type arena does not model: 200, ignored, no row.
-	hook.send("click", ticketMID, t0, map[string]any{"link": "https://example.com"})
-	var clicks int
-	_ = f.pool.QueryRow(ctx, `SELECT count(*) FROM email_letter_events WHERE letter_id = $1 AND event = 'click'`, ticketLetter).Scan(&clicks)
-	if clicks != 0 {
+	hook.send("deferred", ticketMID, t0, nil)
+	var deferred int
+	_ = f.pool.QueryRow(ctx, `SELECT count(*) FROM email_letter_events WHERE letter_id = $1 AND event = 'deferred'`, ticketLetter).Scan(&deferred)
+	if deferred != 0 {
 		t.Fatal("an ignored event type must not be stored")
 	}
 
@@ -175,6 +175,13 @@ func TestBrevoWebhook_StatusesAndOrderRead(t *testing.T) {
 
 	// Change letter, out of order: the open arrives before the delivery,
 	// and a proxy open arrives too — opened, with each step's own time.
+	// Every open is logged with its own time; a redelivery is not a second
+	// row; a proxy open is logged apart from a human open; a click keeps
+	// the link host and path only.
+	hook.send("opened", changeMID, t0.Add(40*time.Minute), nil)
+	hook.send("opened", changeMID, t0.Add(40*time.Minute), nil)
+	hook.send("click", changeMID, t0.Add(41*time.Minute),
+		map[string]any{"link": "https://tickets.example.com/o/abcdefghijklmnopqrstuvwxyz0123/pdf?sig=secret"})
 	hook.send("unique_opened", changeMID, t0.Add(10*time.Minute), nil)
 	hook.send("proxy_open", changeMID, t0.Add(6*time.Minute), nil)
 	hook.send("delivered", changeMID, t0.Add(5*time.Minute), nil)
@@ -182,6 +189,27 @@ func TestBrevoWebhook_StatusesAndOrderRead(t *testing.T) {
 	if s.Status != emailstatus.StatusOpened || !s.OpenedAt.Equal(t0.Add(10*time.Minute)) ||
 		!s.DeliveredAt.Equal(t0.Add(5*time.Minute)) || !s.ProxyOpenedAt.Equal(t0.Add(6*time.Minute)) {
 		t.Fatalf("change letter = %+v", s)
+	}
+	type interaction struct {
+		event string
+		link  *string
+	}
+	rows, err := f.pool.Query(ctx, `SELECT event, link FROM email_letter_interactions
+		WHERE letter_id = $1 ORDER BY occurred_at`, changeLetter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var log []interaction
+	for rows.Next() {
+		var i interaction
+		_ = rows.Scan(&i.event, &i.link)
+		log = append(log, i)
+	}
+	rows.Close()
+	if len(log) != 4 || log[0].event != "proxy_open" || log[1].event != "opened" || log[2].event != "opened" ||
+		log[3].event != "click" || log[3].link == nil ||
+		*log[3].link != "https://tickets.example.com/o/{token}/pdf" {
+		t.Fatalf("interaction log = %+v", log)
 	}
 
 	// Refund letter, matched by arena's tracking header only (no message
@@ -213,7 +241,7 @@ func TestBrevoWebhook_StatusesAndOrderRead(t *testing.T) {
 		t.Fatalf("ticket letter on the card = %v", first)
 	}
 	if second := letters[1].(map[string]any); second["kind"] != "change" || second["status"] != "opened" ||
-		second["proxy_opened_at"] == nil || second["opened_at"] == nil {
+		second["proxy_opened_at"] == nil || second["opened_at"] == nil || second["clicked_at"] == nil {
 		t.Fatalf("change letter on the card = %v", second)
 	}
 

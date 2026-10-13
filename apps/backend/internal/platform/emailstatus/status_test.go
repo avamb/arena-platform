@@ -27,7 +27,7 @@ func TestNormalize(t *testing.T) {
 		{"invalid_email", EventInvalidEmail, ClassFailure},
 		{"blocked", EventBlocked, ClassFailure},
 		{"error", EventError, ClassFailure},
-		{"click", "click", ClassIgnored},
+		{"click", EventClick, ClassStep},
 		{"deferred", "deferred", ClassIgnored},
 		{"unsubscribed", "unsubscribed", ClassIgnored},
 		{"spam", "spam", ClassIgnored},
@@ -147,7 +147,7 @@ func TestParseBrevo_SingleEvent(t *testing.T) {
 }
 
 func TestParseBrevo_BatchAndLimits(t *testing.T) {
-	evs, err := ParseBrevo([]byte(`[{"event":"delivered","message-id":"<a@b>"},{"event":"click","message-id":"<a@b>"}]`), t0)
+	evs, err := ParseBrevo([]byte(`[{"event":"delivered","message-id":"<a@b>"},{"event":"deferred","message-id":"<a@b>"}]`), t0)
 	if err != nil || len(evs) != 2 || evs[0].Event != EventDelivered || evs[1].Class != ClassIgnored {
 		t.Fatalf("batch: %+v %v", evs, err)
 	}
@@ -185,5 +185,60 @@ func TestTrackingRoundTrip(t *testing.T) {
 	}
 	if parseTracking("other-site:123") != uuid.Nil || parseTracking("arena-letter:nope") != uuid.Nil {
 		t.Fatal("foreign custom headers must not match a letter")
+	}
+}
+
+func TestDerive_ClickIsDeliveryNotReading(t *testing.T) {
+	d := Derive([]EventTimes{ev(EventSent, 0, 0), ev(EventClick, 3, 8)})
+	if d.Status != StatusDelivered || d.ClickedAt == nil || !d.ClickedAt.Equal(at(3)) || d.OpenedAt != nil {
+		t.Fatalf("click only = %+v", d)
+	}
+	// A click after a soft bounce proves the letter arrived.
+	if got := Derive([]EventTimes{ev(EventSoftBounce, 1, 1), ev(EventClick, 4, 4)}).Status; got != StatusDelivered {
+		t.Fatalf("soft bounce then click = %q", got)
+	}
+}
+
+func TestCleanLink(t *testing.T) {
+	cases := map[string]string{
+		"https://Tickets.ArenaSoldOut.com/o/abcdefghijklmnopqrstuvwxyz012345/pdf?utm=x#top": "https://tickets.arenasoldout.com/o/{token}/pdf",
+		"https://example.com/events/summer-gala":                                            "https://example.com/events/summer-gala",
+		"mailto:someone@example.com":                                                        "",
+		"javascript:alert(1)":                                                               "",
+		"not a url":                                                                         "",
+	}
+	for in, want := range cases {
+		if got := CleanLink(in); got != want {
+			t.Errorf("CleanLink(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestParseBrevo_ClickKeepsTheCleanLinkOnly(t *testing.T) {
+	evs, err := ParseBrevo([]byte(`{"event":"click","message-id":"<a@b>","ts_epoch":1791878400123,
+		"link":"https://api.example.com/v1/public/checkout/0123456789abcdefghijKLMNOP/pdf?sig=secret"}`), t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := evs[0]
+	if e.Event != EventClick || e.Class != ClassStep {
+		t.Fatalf("click = %q / %d", e.Event, e.Class)
+	}
+	if e.Link != "https://api.example.com/v1/public/checkout/{token}/pdf" {
+		t.Fatalf("link = %q", e.Link)
+	}
+	for k := range e.Payload {
+		if k != "event" && k != "ts_epoch" {
+			t.Fatalf("payload keeps %q", k)
+		}
+	}
+}
+
+func TestBodyDigest_SeparatesHTMLFromText(t *testing.T) {
+	if BodyDigest("ab", "c") == BodyDigest("a", "bc") {
+		t.Fatal("moving bytes between the HTML and the text body must change the digest")
+	}
+	if len(BodyDigest("x", "y")) != 64 || len(FileDigest([]byte("pdf"))) != 64 {
+		t.Fatal("digests are hex SHA-256")
 	}
 }
