@@ -152,6 +152,11 @@ jobs:
       # exit at boot and the gate never runs a single test (feature #388).
       # CI-only value; never used outside this ephemeral job database.
       JWT_SIGNING_SECRET: integration-gate-ci-only-signing-secret-0123456789
+      # Testcontainers' cleanup container (Ryuk) intermittently fails to start
+      # on the hosted runner ("reaper ... no port to wait for") and takes the
+      # pgtest-backed tests down with it. The runner is discarded after the
+      # job, so nothing is left behind without it.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
 
     steps:
       - name: Checkout
