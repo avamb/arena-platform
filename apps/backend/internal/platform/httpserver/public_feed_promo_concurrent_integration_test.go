@@ -61,6 +61,17 @@ func TestPublicPromoBudget_ConcurrentWrongCodesCannotOvershoot(t *testing.T) {
 	if got[http.StatusUnprocessableEntity] != 3 || got[http.StatusTooManyRequests] != n-3 {
 		t.Errorf("%d concurrent wrong-code quotes at a limit of 3: %v; want 3x422 and %dx429", n, got, n-3)
 	}
+
+	// The documented order: body and cart size are validated before the budget
+	// answers, so an oversized cart is a 400 even with the budget spent.
+	seats := make([]string, 101)
+	for i := range seats {
+		seats[i] = "A|1|" + string(rune('0'+i%10))
+	}
+	big := map[string]any{"session_id": f.sessionID.String(), "seats": seats, "promo_code": "WRONG"}
+	if status, body := f.quote(t, srv, big); status != http.StatusBadRequest {
+		t.Errorf("101 seats with a code, budget spent = %d %s, want 400 (cart size is validated first)", status, body)
+	}
 }
 
 func TestPublicPromoBudget_ConcurrentWrongCodesOnStartCannotOvershoot(t *testing.T) {

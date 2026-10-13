@@ -4924,10 +4924,14 @@ export interface paths {
          *
          *     **Refused-code budget.** Refused codes are counted per feed token and
          *     per client address (an IPv6 address by its /64 prefix) in a separate,
-         *     tighter budget than the general limits. Once it is spent, every request
-         *     that names a code is answered 429 `promo.rate_limited` with a
-         *     `Retry-After`, before the cart is looked at, a valid code included.
-         *     A request that names no code, and an accepted code, never spend it.
+         *     tighter budget than the general limits. A request that names a code
+         *     takes a slot of it when it arrives; only a refused code keeps the slot,
+         *     so an accepted code and a request that names no code never spend it.
+         *     Once it is spent, every request that names a code is answered 429
+         *     `promo.rate_limited` with a `Retry-After`, a valid code included. The
+         *     answer comes after the body and the cart size have been validated
+         *     (400 `checkout.cart_too_large` or `checkout.invalid_qty` come first)
+         *     and before the feed token, the session or the code are looked up.
          */
         post: operations["quotePublicFeedCheckout"];
         delete?: never;

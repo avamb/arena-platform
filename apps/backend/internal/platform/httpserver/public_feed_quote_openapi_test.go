@@ -49,6 +49,12 @@ func TestOpenAPI_PublicCartRoutesDocumentWhatTheyAnswer(t *testing.T) {
 			t.Errorf("checkout/quote documentation still carries the stale text %q", stale)
 		}
 	}
+	if strings.Contains(quote, "before the cart is looked at") {
+		t.Error("checkout/quote documentation claims the budget is checked before the cart; the cart size and body are validated first")
+	}
+	if !strings.Contains(quote, "after the body and the cart size have been validated") {
+		t.Error("checkout/quote documentation must say the budget answer comes after body and cart-size validation")
+	}
 	if !strings.Contains(quote, "does not check the per-customer limit") {
 		t.Error("checkout/quote documentation must say the quote does not check the per-customer limit")
 	}
