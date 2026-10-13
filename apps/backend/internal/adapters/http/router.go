@@ -517,12 +517,12 @@ func tracerMiddleware(propagator propagation.TextMapPropagator, tracer trace.Tra
 			// 2. Open a server span. Name follows the OTel HTTP convention
 			//    "<METHOD> <route>" — but the route is unknown until chi
 			//    matches, so we fall back to the raw URL path.
-			spanName := r.Method + " " + r.URL.Path
+			spanName := r.Method + " " + redactPath(r.URL.Path)
 			ctx, span := tracer.Start(ctx, spanName,
 				trace.WithSpanKind(trace.SpanKindServer),
 				trace.WithAttributes(
 					attribute.String("http.method", r.Method),
-					attribute.String("http.target", r.URL.Path),
+					attribute.String("http.target", redactPath(r.URL.Path)),
 					attribute.String("http.scheme", schemeOf(r)),
 				),
 			)
@@ -689,7 +689,7 @@ func panicRecoverer(base *slog.Logger, m *observability.Metrics, appEnv string) 
 					"panic", fmt.Sprintf("%v", rvr),
 					"stack", stack,
 					"method", r.Method,
-					"path", r.URL.Path,
+					"path", redactPath(r.URL.Path),
 					"request_id", requestID,
 					"trace_id", traceID,
 				)
@@ -815,7 +815,7 @@ func requestLogMiddleware(base *slog.Logger) func(http.Handler) http.Handler {
 			// they are present in the request.
 			args := []any{
 				"method", r.Method,
-				"path", r.URL.Path,
+				"path", redactPath(r.URL.Path),
 				"remote_addr", r.RemoteAddr,
 			}
 			if auth := r.Header.Get("Authorization"); auth != "" {
@@ -1072,4 +1072,20 @@ func trustedRealIP(trustedProxies int) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// secretPathPrefixes are routes whose next path segment is a secret (the
+// Brevo delivery-status webhook carries its token in the URL, because
+// Brevo's webhook form has no header field). Logs and traces must never
+// carry it.
+var secretPathPrefixes = []string{"/v1/webhooks/brevo/"}
+
+// redactPath replaces the secret segment of such a path with a placeholder.
+func redactPath(p string) string {
+	for _, prefix := range secretPathPrefixes {
+		if strings.HasPrefix(p, prefix) {
+			return prefix + "{token}"
+		}
+	}
+	return p
 }
