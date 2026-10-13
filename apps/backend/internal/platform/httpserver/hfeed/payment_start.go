@@ -245,9 +245,9 @@ type StripePaymentStarter struct {
 	orgQueries *gen.Queries
 	// channelQueries reads sales_channels.provider.
 	channelQueries *gen.Queries
-	// opts carries the provider endpoint overrides (Stripe, Flitt). Empty
-	// values mean the real providers; integration tests point them at stub
-	// servers.
+	// opts carries the provider endpoint overrides (Stripe, Flitt, AllPay).
+	// Empty values mean the real providers; integration tests point them at
+	// stub servers.
 	opts payments.Options
 	// callbackBase is the public origin of arena-api ("https://api…"); the
 	// per-config webhook path is appended to it for providers that take a
@@ -271,6 +271,13 @@ func NewStripePaymentStarter(orgQ, channelQ *gen.Queries, baseURL string) *Strip
 func (s *StripePaymentStarter) WithFlitt(baseURL, callbackBase string) *StripePaymentStarter {
 	s.opts.FlittAPIBaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	s.callbackBase = strings.TrimRight(strings.TrimSpace(callbackBase), "/")
+	return s
+}
+
+// WithAllPay sets the AllPay test seam (the callback base is the one WithFlitt
+// set: both take their webhook URL per order).
+func (s *StripePaymentStarter) WithAllPay(baseURL string) *StripePaymentStarter {
+	s.opts.AllPayAPIBaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	return s
 }
 
@@ -391,7 +398,12 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 
 	provider := cfg.entry.Descriptor.Name
 	caps := cfg.entry.Descriptor.Capabilities
-	module, err := cfg.entry.Build(cfg.secrets, s.opts)
+	// The module learns which mode its config is filed under: a provider
+	// that takes it per request (AllPay's test_mode) then never charges a
+	// real card on a config filed as test.
+	opts := s.opts
+	opts.Mode = cfg.mode
+	module, err := cfg.entry.Build(cfg.secrets, opts)
 	if err != nil {
 		return nil, fmt.Errorf("%s hosted checkout (config %s, mode %s): %w", provider, cfg.configID, cfg.mode, err)
 	}
@@ -403,7 +415,7 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 	callbackURL := ""
 	if caps.WebhookConfigRouteOnly && s.callbackBase != "" {
 		// A provider whose callbacks only the per-config route can verify
-		// (Flitt) takes the callback URL per order. The config id in the
+		// (Flitt, AllPay) takes the callback URL per order. The config id in the
 		// path names the key the callback is verified with.
 		callbackURL = s.callbackBase + "/v1/payment-intents/webhook/" + cfg.configID
 	}

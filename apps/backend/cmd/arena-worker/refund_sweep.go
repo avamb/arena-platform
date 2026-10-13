@@ -58,6 +58,7 @@ func buildRefundEngine(pool *pgxpool.Pool, cfg *config.Config, metrics *observab
 		Modules: hcheckout.NewRefundModuleSource(q, payments.Options{
 			StripeAPIBaseURL: cfg.StripeAPIBaseURL,
 			FlittAPIBaseURL:  cfg.FlittAPIBaseURL,
+			AllPayAPIBaseURL: cfg.AllPayAPIBaseURL,
 		}),
 		CancelTicket:    tickets.RefundCanceller(),
 		PublishRefunded: scanner.PublishTicketRefundedV1Events,

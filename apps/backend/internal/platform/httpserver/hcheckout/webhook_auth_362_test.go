@@ -3,7 +3,10 @@
 //
 // Test coverage (4 steps):
 //
-//	Step 1: Verify provider signature (Stripe/AllPay HMAC) before processing body.
+//	Step 1: Verify provider signature (Stripe HMAC) before processing body.
+//	        The X-AllPay-Signature header these tests once accepted was never sent
+//	        by AllPay: a real AllPay webhook is signed in its body and only the
+//	        per-config route verifies it (adapters/allpay, spec 37).
 //	Step 2: Reject unsigned/invalid-signature requests with 401 and no state change.
 //	Step 3: Keep non-production mock path gated by empty secrets (both empty = dev mode).
 //	Step 4: Test forged body rejection and valid signed event happy path.
@@ -54,9 +57,10 @@ func stripeSignatureHeader(secret string, body []byte) string {
 	return fmt.Sprintf("t=%d,v1=%s", ts, sig)
 }
 
-// allPaySignatureHeader computes a valid X-AllPay-Signature header value for
-// body and secret (lowercase hex HMAC-SHA256 of the raw body).
-func allPaySignatureHeader(secret string, body []byte) string {
+// allPayHeaderHMAC computes what the retired X-AllPay-Signature scheme used to
+// expect (hex HMAC-SHA256 of the raw body). AllPay never sent it; the tests
+// below prove such a header verifies nothing any more.
+func allPayHeaderHMAC(secret string, body []byte) string {
 	return payments.ComputeHMACSHA256(secret, body)
 }
 
@@ -134,37 +138,21 @@ func TestWH362_Step1_StripeWrongSecretRejected(t *testing.T) {
 	}
 }
 
-// TestWH362_Step1_AllPayValidSignatureAccepted verifies that a correctly
-// signed X-AllPay-Signature header passes verification.
-func TestWH362_Step1_AllPayValidSignatureAccepted(t *testing.T) {
+// TestWH362_Step1_AllPayHeaderIsNoSignature: a request that carries only an
+// X-AllPay-Signature header — even one computed with the deprecated
+// ALLPAY_WEBHOOK_SECRET — is not signed as far as the legacy route knows.
+func TestWH362_Step1_AllPayHeaderIsNoSignature(t *testing.T) {
 	t.Parallel()
-	secret := "allpay-shared-secret-362"
+	allPaySecret := "allpay-shared-secret-362"
 	body := []byte(`{"event_type":"refund.succeeded"}`)
-	h := buildHandlerWithSecrets("", secret)
+	h := buildHandlerWithSecrets("whsec_configured", allPaySecret)
 
 	req := postWebhookRequest("/v1/refunds/webhook", body,
-		map[string]string{"X-AllPay-Signature": allPaySignatureHeader(secret, body)},
-	)
-
-	if err := h.verifyWebhookSignature(req, body); err != nil {
-		t.Errorf("valid AllPay signature rejected: %v", err)
-	}
-}
-
-// TestWH362_Step1_AllPayWrongSecretRejected verifies that an AllPay signature
-// signed with the wrong secret is rejected.
-func TestWH362_Step1_AllPayWrongSecretRejected(t *testing.T) {
-	t.Parallel()
-	realSecret := "allpay-real-secret"
-	body := []byte(`{"event_type":"refund.failed"}`)
-	h := buildHandlerWithSecrets("", realSecret)
-
-	req := postWebhookRequest("/v1/refunds/webhook", body,
-		map[string]string{"X-AllPay-Signature": allPaySignatureHeader("wrong-secret", body)},
+		map[string]string{"X-AllPay-Signature": allPayHeaderHMAC(allPaySecret, body)},
 	)
 
 	if err := h.verifyWebhookSignature(req, body); err == nil {
-		t.Error("wanted rejection of wrong-secret AllPay signature, got nil error")
+		t.Error("an X-AllPay-Signature header was accepted as a signature")
 	}
 }
 
@@ -195,7 +183,7 @@ func TestWH362_Step2_NoSignatureHeaderReturns401OnPaymentWebhook(t *testing.T) {
 // is configured.
 func TestWH362_Step2_NoSignatureHeaderReturns401OnRefundWebhook(t *testing.T) {
 	t.Parallel()
-	h := buildHandlerWithSecrets("", "allpay-configured-secret")
+	h := buildHandlerWithSecrets("whsec_configured_refund_secret", "")
 	body := webhookRefundBody("re_test", "00000000-0000-0000-0000-000000000001", "refund.succeeded")
 	req := postWebhookRequest("/v1/refunds/webhook", body, nil)
 
@@ -229,24 +217,24 @@ func TestWH362_Step2_ForgedBodyRejectedWithStripeSignature(t *testing.T) {
 	}
 }
 
-// TestWH362_Step2_ForgedBodyRejectedWithAllPaySignature verifies that a forged
-// body is rejected by the AllPay HMAC path.
-func TestWH362_Step2_ForgedBodyRejectedWithAllPaySignature(t *testing.T) {
+// TestWH362_Step2_AllPayHeaderOnRefundWebhookRejected: a refund webhook that
+// carries only the retired AllPay header is rejected with 401 before anything
+// is read from the database.
+func TestWH362_Step2_AllPayHeaderOnRefundWebhookRejected(t *testing.T) {
 	t.Parallel()
-	secret := "allpay-real-secret-362"
-	originalBody := []byte(`{"provider_refund_id":"re_real","event_type":"refund.succeeded"}`)
-	forgedBody := []byte(`{"provider_refund_id":"re_FORGED","event_type":"refund.succeeded"}`)
+	allPaySecret := "allpay-real-secret-362"
+	body := []byte(`{"provider_refund_id":"re_FORGED","event_type":"refund.succeeded"}`)
 
-	h := buildHandlerWithSecrets("", secret)
-	req := postWebhookRequest("/v1/refunds/webhook", forgedBody,
-		map[string]string{"X-AllPay-Signature": allPaySignatureHeader(secret, originalBody)},
+	h := buildHandlerWithSecrets("whsec_configured", allPaySecret)
+	req := postWebhookRequest("/v1/refunds/webhook", body,
+		map[string]string{"X-AllPay-Signature": allPayHeaderHMAC(allPaySecret, body)},
 	)
 
 	w := httptest.NewRecorder()
 	h.HandleRefundWebhook(w, req)
 
 	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401 for forged AllPay body, got %d; body: %s", w.Code, w.Body.String())
+		t.Errorf("expected 401 for an AllPay-header-only refund webhook, got %d; body: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -330,21 +318,19 @@ func TestWH362_Step3_OnlyStripeSecretSetRequiresStripeHeader(t *testing.T) {
 	}
 }
 
-// TestWH362_Step3_OnlyAllPaySecretSetRequiresAllPayHeader verifies the
-// symmetric case: AllPay-only config rejects Stripe-Signature headers.
-func TestWH362_Step3_OnlyAllPaySecretSetRequiresAllPayHeader(t *testing.T) {
+// TestWH362_Step3_DeprecatedAllPaySecretVerifiesNothing: with only the
+// deprecated ALLPAY_WEBHOOK_SECRET set, the legacy route holds no secret it
+// can use and is in dev/mock mode. That is why config.Validate now demands
+// STRIPE_WEBHOOK_SECRET in production and no longer counts the AllPay one
+// (TestPR206_AllPaySecretAloneIsNotEnoughInProduction).
+func TestWH362_Step3_DeprecatedAllPaySecretVerifiesNothing(t *testing.T) {
 	t.Parallel()
-	allPaySecret := "allpay-only-configured"
-	h := buildHandlerWithSecrets("", allPaySecret)
+	h := buildHandlerWithSecrets("", "allpay-only-configured")
 	body := webhookRefundBody("re_test", "00000000-0000-0000-0000-000000000002", "refund.succeeded")
+	req := postWebhookRequest("/v1/refunds/webhook", body, nil)
 
-	// Provide a Stripe-Signature but no X-AllPay-Signature → should reject.
-	req := postWebhookRequest("/v1/refunds/webhook", body,
-		map[string]string{"Stripe-Signature": "t=1,v1=deadbeef"},
-	)
-
-	if err := h.verifyWebhookSignature(req, body); err == nil {
-		t.Error("wanted rejection when Stripe header present but only AllPay secret configured")
+	if err := h.verifyWebhookSignature(req, body); err != nil {
+		t.Errorf("the deprecated AllPay secret alone must not act as a signing secret; got %v", err)
 	}
 }
 
@@ -401,31 +387,6 @@ func TestWH362_Step4_ValidStripeWebhookReachesDBLayer(t *testing.T) {
 	}
 }
 
-// TestWH362_Step4_ValidAllPayRefundWebhookReachesDBLayer verifies that a
-// correctly signed AllPay refund webhook passes the auth gate.
-func TestWH362_Step4_ValidAllPayRefundWebhookReachesDBLayer(t *testing.T) {
-	t.Parallel()
-	secret := "allpay-step4-secret"
-	body := webhookRefundBody("re_step4", "00000000-0000-0000-0000-000000000004", "refund.succeeded")
-	h := buildHandlerWithSecrets("", secret)
-
-	req := postWebhookRequest("/v1/refunds/webhook", body,
-		map[string]string{"X-AllPay-Signature": allPaySignatureHeader(secret, body)},
-	)
-
-	w := httptest.NewRecorder()
-	h.HandleRefundWebhook(w, req)
-
-	// Must NOT be 401 (auth rejected).
-	if w.Code == http.StatusUnauthorized {
-		t.Fatalf("valid AllPay signature incorrectly rejected (401): %s", w.Body.String())
-	}
-	// With nil DB the handler returns 503 — meaning the request passed the gate.
-	if w.Code != http.StatusServiceUnavailable {
-		t.Logf("note: got %d (not 503) — DB gate may have changed; body: %s", w.Code, w.Body.String())
-	}
-}
-
 // TestWH362_Step4_ForgedProviderIDRejected demonstrates end-to-end that an
 // attacker who knows a provider_payment_id cannot mint tickets by sending an
 // unsigned payment.succeeded webhook. The request is rejected at the HMAC gate
@@ -465,9 +426,10 @@ func TestWH362_Step4_BothSecretsConfiguredStripePathWorks(t *testing.T) {
 	}
 }
 
-// TestWH362_Step4_BothSecretsConfiguredAllPayPathWorks verifies that when both
-// secrets are configured, a valid AllPay signature still works.
-func TestWH362_Step4_BothSecretsConfiguredAllPayPathWorks(t *testing.T) {
+// TestWH362_Step4_BothSecretsConfiguredAllPayHeaderRejected: with both
+// secrets set, an X-AllPay-Signature header computed with the AllPay secret
+// does not pass the legacy gate.
+func TestWH362_Step4_BothSecretsConfiguredAllPayHeaderRejected(t *testing.T) {
 	t.Parallel()
 	stripeSecret := "whsec_both_stripe_allpay"
 	allPaySecret := "allpay-both-secret-allpay"
@@ -475,11 +437,11 @@ func TestWH362_Step4_BothSecretsConfiguredAllPayPathWorks(t *testing.T) {
 	h := buildHandlerWithSecrets(stripeSecret, allPaySecret)
 
 	req := postWebhookRequest("/v1/refunds/webhook", body,
-		map[string]string{"X-AllPay-Signature": allPaySignatureHeader(allPaySecret, body)},
+		map[string]string{"X-AllPay-Signature": allPayHeaderHMAC(allPaySecret, body)},
 	)
 
-	if err := h.verifyWebhookSignature(req, body); err != nil {
-		t.Errorf("valid AllPay sig rejected when both secrets configured: %v", err)
+	if err := h.verifyWebhookSignature(req, body); err == nil {
+		t.Error("an AllPay header was accepted when both secrets are configured")
 	}
 }
 

@@ -12,9 +12,9 @@
 //	Refunder               — drives a refund through the provider
 //	RefundLookup           — reads a refund's status back
 //
-// Why optional interfaces rather than one wide one: AllPay has no hosted
-// page, Flitt cannot refund yet, a declared-but-unbuilt provider has nothing
-// at all. A module advertises what it can do in Capabilities AND implements
+// Why optional interfaces rather than one wide one: Flitt and AllPay cannot
+// refund through arena yet, a declared-but-unbuilt provider has nothing at
+// all. A module advertises what it can do in Capabilities AND implements
 // the matching interface; the core checks both, so a capability flag can
 // never promise what the type cannot deliver.
 //

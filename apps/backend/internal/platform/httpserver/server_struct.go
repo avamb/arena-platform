@@ -160,6 +160,9 @@ type Server struct {
 	// flittAPIBaseURL overrides pay.flitt.com/api. Tests set it directly after New;
 	// in a deployed process FLITT_API_BASE_URL (cfg.FlittAPIBaseURL) is the seam.
 	flittAPIBaseURL string
+	// allpayAPIBaseURL overrides allpay.to/app the same way; in a deployed
+	// process ALLPAY_API_BASE_URL (cfg.AllPayAPIBaseURL) is the seam.
+	allpayAPIBaseURL string
 	// exportMaxRows lowers the CSV exports' row cap (hexport.DefaultMaxRows)
 	// when positive. Tests set it directly after New to reach the 413 path.
 	exportMaxRows int64

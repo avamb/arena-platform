@@ -96,7 +96,7 @@ func verifyLegacyWebhook(ctx context.Context, r *http.Request, body []byte, orgS
 		return nil
 	}
 	return fmt.Errorf(
-		"%w: no provider signature header present (expected Stripe-Signature or X-AllPay-Signature)",
+		"%w: no provider signature header present (expected Stripe-Signature)",
 		payments.ErrInvalidWebhookSignature,
 	)
 }

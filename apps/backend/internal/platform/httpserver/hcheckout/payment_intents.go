@@ -685,9 +685,9 @@ func providerChargeRef(req webhookPaymentIntentRequest) *string {
 //
 // This is what Stripe (and this repo's own internal/adapters/stripebilling/adapter.go,
 // see HandleBillingWebhook) actually send — as opposed to the flat, normalised
-// webhookPaymentIntentRequest shape used by the mock provider and AllPay.
-// AllPay is left as-is: it POSTs the flat shape natively and has no envelope
-// of its own to parse.
+// webhookPaymentIntentRequest shape used by the mock provider. (Flitt and
+// AllPay never reach this parser: their modules normalize their own bodies on
+// the per-config route.)
 type stripeEventEnvelope struct {
 	ID   string `json:"id"`
 	Type string `json:"type"`
@@ -711,7 +711,7 @@ type stripeEventEnvelope struct {
 // POST /v1/payment-intents/webhook supports:
 //
 //   - The flat, normalised shape (webhookPaymentIntentRequest) used by the
-//     mock provider, AllPay, and every pre-existing test/integration fixture.
+//     mock provider and every pre-existing test/integration fixture.
 //   - A genuine Stripe event envelope (stripeEventEnvelope). Before this fix
 //     a real Stripe payment_intent.succeeded webhook — which Stripe always
 //     sends as an envelope, never as the flat shape — failed parsing with
@@ -891,8 +891,9 @@ var WebhookEventTypeToState = webhookEventTypeToState
 //
 // This endpoint is intentionally unauthenticated via JWT — payment providers
 // deliver webhooks from their own infrastructure. Authentication is performed
-// via HMAC signature verification (Stripe-Signature or X-AllPay-Signature
-// headers) before the body is parsed or any database state is mutated.
+// via the Stripe-Signature HMAC (or, on the per-config route, the module of
+// the config in the URL) before the body is parsed or any database state is
+// mutated.
 //
 // # Atomicity (feature #363, PR2-07)
 //

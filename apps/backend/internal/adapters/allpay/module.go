@@ -1,16 +1,23 @@
-// module.go — AllPay as a payment MODULE (spec 36 §5, PAY-01): descriptor,
-// registry factory and the WebhookParser behind the legacy
-// X-AllPay-Signature verification. AllPay is NOT wired to the hosted checkout
-// and cannot refund through arena yet — PAY-14 picks the canonical copy of
-// the adapter (this one or domain/payments/allpay.go) and builds the rest.
-// Until then its capabilities say so: nothing is promised the code does not
-// deliver.
+// module.go — AllPay as a payment MODULE (spec 36 §5; PAY-14, spec
+// 08_architecture/37_allpay_payment_provider_ru.md): descriptor, registry
+// factory and the WebhookParser that verifies a webhook.
+//
+// Capabilities: a hosted payment page, and a webhook only the per-config
+// route can verify (signed in the body with the integration's own key, no
+// merchant field, no header). The buyer comes back through arena's
+// payment-return hop because AllPay does not document the method of its
+// redirect. Refunds are NOT a capability yet: AllPay's refund method has no
+// idempotency key and returns no refund id, so a retried call after a lost
+// answer could return the money twice (spec 37 §8). Until that is designed,
+// a refund is made in the AllPay dashboard and the core answers
+// refund.provider_not_supported.
 package allpay
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
@@ -19,17 +26,34 @@ import (
 // Name is the canonical provider key.
 const Name = "allpay"
 
-// Secret keys of an AllPay payment_provider_configs row.
+// Secret keys of an AllPay payment_provider_configs row. The first two keep
+// the names the config used before AllPay had a module, so a stored config
+// and the admin console's form stay valid.
 const (
-	// SecretMerchantID is the merchant identifier assigned at registration.
+	// SecretMerchantID holds the integration's API LOGIN (AllPay dashboard →
+	// Settings → API Integrations).
 	SecretMerchantID = "merchant_id"
-	// SecretKey is the shared secret: it authenticates API calls AND signs
-	// inbound webhooks (X-AllPay-Signature), so one key serves both roles.
+	// SecretKey holds the same integration's API KEY: it signs every request
+	// AND verifies every webhook, so one key serves both roles.
 	SecretKey = "secret_key"
+	// SecretVAT is optional: the VAT code of the receipt line (0, 1 or 3).
+	SecretVAT = "vat"
+	// SecretMaxInstallments is optional: the most installments a buyer may
+	// choose, 2..12 (ILS only).
+	SecretMaxInstallments = "max_installments"
 )
 
-// signatureHeader is the header AllPay signs every delivery with.
-const signatureHeader = "X-AllPay-Signature"
+// Event types arena records. They are half of the (provider_payment_id,
+// event_type) idempotency key of payment_intent_events, so they must not
+// change.
+const (
+	EventTypePaid             = "allpay.payment.paid"
+	EventTypeDeclined         = "allpay.payment.declined"
+	EventTypeNotCharged       = "allpay.payment.not_charged"
+	EventTypeChargeback       = "allpay.chargeback"
+	EventTypeChargebackRevert = "allpay.chargeback_revert"
+	eventTypeOtherPrefix      = "allpay."
+)
 
 // compile-time guards for the module contract
 var (
@@ -45,38 +69,61 @@ func ProviderDescriptor() payments.Descriptor {
 		Secrets: []payments.SecretField{
 			{
 				Key:        SecretMerchantID,
-				Label:      "AllPay merchant id",
+				Label:      "AllPay API login (dashboard → Settings → API Integrations)",
 				Required:   true,
 				Credential: true,
 			},
 			{
 				Key:           SecretKey,
-				Label:         "AllPay secret key (API and webhook signing)",
+				Label:         "AllPay API key of the same integration (signs requests and webhooks)",
 				Required:      true,
 				Credential:    true,
 				WebhookSecret: true,
 				Hidden:        true,
 			},
+			{
+				Key:     SecretVAT,
+				Label:   "VAT code for AllPay receipts: 0 no VAT (default), 1 VAT included, 3 VAT 0%",
+				Pattern: `^[013]$`,
+			},
+			{
+				Key:     SecretMaxInstallments,
+				Label:   "most installments a buyer may choose, 2 to 12 (ILS only); empty for one payment",
+				Pattern: `^([2-9]|1[0-2])$`,
+			},
 		},
-		// No hosted checkout, no refunds: PAY-14.
-		Capabilities: payments.Capabilities{},
+		Capabilities: payments.Capabilities{
+			HostedCheckout: true,
+			// AllPay does not document how its page sends the buyer to
+			// success_url; the return goes through arena's GET|POST hop.
+			BuyerReturnsByPOST: true,
+			// The webhook is signed in the body with the integration's own
+			// key and names no merchant: only the config in the URL can vouch
+			// for it.
+			WebhookConfigRouteOnly: true,
+			// PAY-14b: Refund, PartialRefund (spec 37 §8).
+		},
 	}
 }
 
 // Descriptor implements payments.Module.
 func (a *Adapter) Descriptor() payments.Descriptor { return ProviderDescriptor() }
 
-// Entry is AllPay's registry entry. There is no endpoint override in
-// payments.Options for AllPay yet (nothing in arena calls its API).
+// Entry is AllPay's registry entry. BaseURL comes from
+// Options.AllPayAPIBaseURL (the test seam); empty means allpay.to.
 func Entry() payments.Entry {
 	return payments.Entry{Descriptor: ProviderDescriptor(), New: newModule}
 }
 
-func newModule(secrets map[string]string, _ payments.Options) (payments.Module, error) {
+func newModule(secrets map[string]string, opts payments.Options) (payments.Module, error) {
+	inst, _ := strconv.Atoi(strings.TrimSpace(secrets[SecretMaxInstallments]))
 	return New(Config{
-		APIKey:        secrets[SecretKey],
-		WebhookSecret: secrets[SecretKey],
-		MerchantID:    secrets[SecretMerchantID],
+		Login:           secrets[SecretMerchantID],
+		APIKey:          secrets[SecretKey],
+		VAT:             secrets[SecretVAT],
+		MaxInstallments: inst,
+		TestMode:        strings.EqualFold(strings.TrimSpace(opts.Mode), "test"),
+		BaseURL:         opts.AllPayAPIBaseURL,
 	}), nil
 }
 
@@ -84,51 +131,65 @@ func newModule(secrets map[string]string, _ payments.Options) (payments.Module, 
 // WebhookParser
 // ─────────────────────────────────────────────────────────────────────────────
 
-// RecognizesWebhook: an AllPay delivery carries X-AllPay-Signature.
+// RecognizesWebhook: an AllPay webhook has no header of its own; it is
+// recognised by its body shape (order_id, status, sign).
 func (a *Adapter) RecognizesWebhook(in payments.WebhookInput) bool {
-	return strings.TrimSpace(in.Header.Get(signatureHeader)) != ""
+	return LooksLikeCallback(in.Body)
 }
 
-// VerifyAndParse checks the X-AllPay-Signature HMAC-SHA256 of the raw body
-// against the configured secret and normalizes the documented event shape.
-// An EMPTY secret never verifies.
+// VerifyAndParse verifies the body signature under the API key and
+// normalizes the webhook. An empty key never verifies.
 func (a *Adapter) VerifyAndParse(_ context.Context, in payments.WebhookInput) (payments.NormalizedEvent, error) {
-	header := in.Header.Get(signatureHeader)
-	if strings.TrimSpace(header) == "" {
-		return payments.NormalizedEvent{}, fmt.Errorf("%w: no %s header", payments.ErrWebhookNotRecognized, signatureHeader)
+	if !LooksLikeCallback(in.Body) {
+		return payments.NormalizedEvent{}, fmt.Errorf("%w: not an AllPay webhook", payments.ErrWebhookNotRecognized)
 	}
-	if a.cfg.WebhookSecret == "" {
-		return payments.NormalizedEvent{}, fmt.Errorf("%w: no webhook secret configured", payments.ErrInvalidWebhookSignature)
-	}
-	if err := payments.VerifyAllPaySignature(header, in.Body, a.cfg.WebhookSecret); err != nil {
+	cb, err := VerifyCallback(in.Body, a.cfg.APIKey)
+	if err != nil {
 		return payments.NormalizedEvent{}, err
 	}
-	return normalizeEvent(in.Body), nil
+	return NormalizeCallback(cb, in.Body), nil
 }
 
-// normalizeEvent maps AllPay's documented event body (event_type, payment_id,
-// status) onto arena's vocabulary. A body of another shape yields
-// EventUnknown with no payment id.
-func normalizeEvent(body []byte) payments.NormalizedEvent {
-	ev := payments.NormalizedEvent{Kind: payments.EventUnknown, Raw: json.RawMessage(body)}
-	var event allpayWebhookEvent
-	if err := json.Unmarshal(body, &event); err != nil || event.EventType == "" || event.PaymentID == "" {
-		return ev
+// NormalizeCallback maps a verified webhook onto arena's event vocabulary.
+//
+//   - ProviderPaymentID is order_id: arena's checkout session id, the value
+//     stored as payment_intents.provider_payment_id. ProviderChargeRef is the
+//     same order_id, because AllPay refunds and reads statuses by it.
+//   - Only status 1 of a payment webhook moves an intent (paid). Status 0 is
+//     ONE failed attempt: AllPay keeps the page open for another card, and a
+//     failed intent would swallow the later payment — a paid purchase lost.
+//     It is EventPaymentDeclined, acknowledged without a transition.
+//   - A webhook that reports no money taken (a saved card, an authorised
+//     reservation) moves nothing; arena asks for neither.
+//   - A chargeback is a dispute (PAY-16); its revert moves nothing.
+func NormalizeCallback(cb *Callback, body []byte) payments.NormalizedEvent {
+	ev := payments.NormalizedEvent{
+		Kind:              payments.EventUnknown,
+		ProviderPaymentID: cb.OrderID,
+		ProviderChargeRef: cb.OrderID,
+		Status:            strconv.Itoa(cb.Status),
+		AmountMinor:       cb.AmountMinor,
+		Currency:          cb.Currency,
+		Raw:               json.RawMessage(body),
 	}
-	ev.Type = event.EventType
-	ev.ProviderPaymentID = event.PaymentID
-	ev.Status = event.Status
-	switch event.EventType {
-	case "payment.authorized":
-		ev.Kind = payments.EventPaymentAuthorized
-	case "payment.captured":
+	switch {
+	case cb.Type == TypeChargeback:
+		ev.Kind = payments.EventDisputeOpened
+		ev.Type = EventTypeChargeback
+	case cb.Type == TypeChargebackRevert:
+		ev.Type = EventTypeChargebackRevert
+	case cb.Type != "":
+		ev.Type = eventTypeOtherPrefix + cb.Type
+	case cb.NotCharged:
+		ev.Type = EventTypeNotCharged
+	case cb.Status == StatusPaid:
 		ev.Kind = payments.EventPaymentSucceeded
-	case "payment.failed":
-		ev.Kind = payments.EventPaymentFailed
-	case "payment.expired":
-		ev.Kind = payments.EventPaymentExpired
-	case "payment.refunded":
-		ev.Kind = payments.EventRefundUpdated
+		ev.Type = EventTypePaid
+	default:
+		ev.Kind = payments.EventPaymentDeclined
+		ev.Type = EventTypeDeclined
+		ev.FailureCode = cb.DeclineCode
+		ev.FailureMessage = cb.Error
 	}
 	return ev
 }

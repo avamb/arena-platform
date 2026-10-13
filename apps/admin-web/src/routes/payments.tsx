@@ -283,6 +283,9 @@ export const PROVIDER_REQUIRED_SECRETS: Readonly<
   Record<PaymentProvider, readonly string[]>
 > = {
   stripe: ["api_key", "webhook_secret"],
+  // AllPay: merchant_id holds the integration's API LOGIN, secret_key its API
+  // KEY (it signs requests and verifies webhooks). Optional, API only: vat
+  // (0/1/3) and max_installments (2-12).
   allpay: ["merchant_id", "secret_key"],
   // Flitt: the payment key signs requests AND verifies callbacks, so there is
   // no separate webhook secret (the portal's "credit key" is for payouts).

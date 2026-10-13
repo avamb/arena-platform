@@ -5,7 +5,7 @@
 // Checkout Sessions are the first (and currently only) implementation.
 //
 // This is deliberately a SEPARATE, narrow interface rather than three more
-// methods on PaymentProvider: AllPay has no equivalent surface, and widening
+// methods on PaymentProvider: not every provider has such a surface, and widening
 // PaymentProvider would force every adapter to grow dead methods. Callers
 // type-assert:
 //

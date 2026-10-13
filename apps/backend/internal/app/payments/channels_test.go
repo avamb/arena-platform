@@ -39,9 +39,8 @@ func TestChannelProviderForChoice_HostedCheckoutModulesOnly(t *testing.T) {
 		{"stripe", "stripe", true},
 		{"flitt", "flitt", true},
 		{" flitt ", "flitt", true},
-		// AllPay has a module but no hosted page: a new workspace cannot
-		// sell through it, so it starts on the default.
-		{"allpay", "stripe", false},
+		// AllPay has a hosted payment page since PAY-14.
+		{"allpay", "allpay", true},
 		{"other", "stripe", false},
 		{"undecided", "stripe", false},
 		{"", "stripe", false},
