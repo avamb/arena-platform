@@ -105,8 +105,8 @@ func (q *Queries) SetChannelSellerDisplay(ctx context.Context, channelID, orgID 
 
 // ContactFormTarget is the channel a buyer's message goes through. HasEmail
 // is true when the message has somewhere to go: the channel's public e-mail,
-// else the organization's own contact_email (a private recipient, never
-// shown to the buyer - owner rule 2026-10-13).
+// else the organization's own contact_email, else its owner's account e-mail
+// (private recipients, never shown to the buyer - owner rule 2026-10-13).
 type ContactFormTarget struct {
 	ChannelID uuid.UUID
 	HasEmail  bool
@@ -115,7 +115,10 @@ type ContactFormTarget struct {
 const getContactFormTarget = `-- name: GetContactFormTarget :one
 SELECT sc.id,
        COALESCE(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') <> ''
-         OR COALESCE(btrim(o.contact_email), '') <> '' AS has_email
+         OR COALESCE(btrim(o.contact_email), '') <> ''
+         OR EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
+                    WHERE m.org_id = o.id AND m.role = 'org_admin' AND m.status = 'active'
+                      AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> '') AS has_email
 FROM sales_channels sc
 JOIN organizations o ON o.id = sc.org_id
 JOIN agent_feed_tokens ft ON ft.sales_channel_id = sc.id
@@ -148,16 +151,30 @@ func (q *Queries) GetContactFormToTelegram(ctx context.Context, orgID uuid.UUID)
 	return v, err
 }
 
-const orgHasContactEmail = `-- name: OrgHasContactEmail :one
-SELECT COALESCE(btrim(contact_email), '') <> '' FROM organizations WHERE id = $1 AND deleted_at IS NULL`
+// OwnerRecipientSQL selects the account e-mail of the organization's owner
+// (alias o): the oldest active org_admin membership whose account is neither
+// deactivated nor anonymized. It is the last private recipient of the contact
+// form (owner decision 2026-10-13) and is never published.
+const OwnerRecipientSQL = `(SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id
+  WHERE m.org_id = o.id AND m.role = 'org_admin' AND m.status = 'active'
+    AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> ''
+  ORDER BY m.joined_at, u.id LIMIT 1)`
 
-// OrgHasContactEmail reports whether the organization has its own contact
-// address, the private recipient of the contact form when the page has no
-// public e-mail. It answers a boolean only: the hosted page's queries never
-// read the address itself (TestGetHostedPageSellerQuery_NeverReadsOrganizationContact).
-func (q *Queries) OrgHasContactEmail(ctx context.Context, orgID uuid.UUID) (bool, error) {
+const orgHasPrivateRecipient = `-- name: OrgHasPrivateRecipient :one
+SELECT COALESCE(btrim(o.contact_email), '') <> ''
+    OR EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
+               WHERE m.org_id = o.id AND m.role = 'org_admin' AND m.status = 'active'
+                 AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> '')
+FROM organizations o WHERE o.id = $1 AND o.deleted_at IS NULL`
+
+// OrgHasPrivateRecipient reports whether the contact form of a page without a
+// public e-mail has somewhere to go: the organization's own contact_email,
+// else its owner's account e-mail (OwnerRecipientSQL). It answers a boolean
+// only: the hosted page's queries never read an address
+// (TestGetHostedPageSellerQuery_NeverReadsOrganizationContact).
+func (q *Queries) OrgHasPrivateRecipient(ctx context.Context, orgID uuid.UUID) (bool, error) {
 	var v bool
-	err := q.db.QueryRow(ctx, orgHasContactEmail, orgID).Scan(&v)
+	err := q.db.QueryRow(ctx, orgHasPrivateRecipient, orgID).Scan(&v)
 	return v, err
 }
 

@@ -25,6 +25,12 @@ func TestContactRouteFor(t *testing.T) {
 		// The page offers no form when its messages would reach nobody.
 		{"hosted page and no address at all: no dead link", gen.TicketContactRoute{HostedPage: true, PageSlug: strPtr("teatro"), EventSlug: strPtr("hamlet")},
 			ContactRoute{}},
+		// Owner decision 2026-10-13: an organization with only its owner's
+		// account e-mail still gets the form, and the address is never printed.
+		{"only the owner's account e-mail: the form", gen.TicketContactRoute{HostedPage: true, OwnerReachable: true, PageSlug: strPtr("teatro"), EventSlug: strPtr("hamlet")},
+			ContactRoute{FormURL: "https://tickets.example/teatro/hamlet#contact"}},
+		{"no hosted page: the owner's account e-mail is never printed", gen.TicketContactRoute{OwnerReachable: true, PageSlug: strPtr("teatro")},
+			ContactRoute{}},
 		{"no page slug: nothing, never the address", gen.TicketContactRoute{HostedPage: true, OrgEmail: strPtr("owner@gmail.example")},
 			ContactRoute{}},
 		{"no hosted page keeps the organization's address", gen.TicketContactRoute{OrgEmail: strPtr("box@teatro.example"), PageSlug: strPtr("teatro")},

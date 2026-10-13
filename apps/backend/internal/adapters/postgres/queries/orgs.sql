@@ -130,7 +130,10 @@ SELECT NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') A
                          AND h.settings #> '{hosted_page,enabled}' = 'true'::jsonb) END AS hosted_page,
        NULLIF(btrim(o.contact_email), '') AS org_email,
        COALESCE(op.slug, o.slug) AS page_slug,
-       e.slug AS event_slug
+       e.slug AS event_slug,
+       EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
+               WHERE m.org_id = o.id AND m.role = 'org_admin' AND m.status = 'active'
+                 AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> '') AS owner_reachable
 FROM   tickets t
 JOIN   sessions s ON s.id = t.session_id
 JOIN   events   e ON e.id = s.event_id

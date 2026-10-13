@@ -23,12 +23,18 @@ func TestGetHostedPageSellerQuery_NeverReadsOrganizationContact(t *testing.T) {
 	}
 }
 
-// The contact form's fallback recipient is asked for as a boolean only, so
-// the page never learns the organization's address.
-func TestOrgHasContactEmailQuery_AnswersABooleanOnly(t *testing.T) {
+// The contact form's private recipients (the organization's contact_email,
+// its owner's account e-mail) are asked for as a boolean only, so the page
+// never learns an address.
+func TestOrgHasPrivateRecipientQuery_AnswersABooleanOnly(t *testing.T) {
 	t.Parallel()
-	q := strings.Join(strings.Fields(orgHasContactEmail), " ")
-	if !strings.Contains(q, "SELECT COALESCE(btrim(contact_email), '') <> '' FROM organizations") {
-		t.Fatalf("the query must select a comparison, never the column: %s", q)
+	q := strings.Join(strings.Fields(orgHasPrivateRecipient), " ")
+	if !strings.Contains(q, "SELECT COALESCE(btrim(o.contact_email), '') <> '' OR EXISTS (SELECT 1 FROM memberships") {
+		t.Fatalf("the query must select a comparison, never an address: %s", q)
+	}
+	for _, banned := range []string{"SELECT u.email", "SELECT o.contact_email", "SELECT contact_email"} {
+		if strings.Contains(q, banned) {
+			t.Fatalf("the query selects an address (%s): %s", banned, q)
+		}
 	}
 }

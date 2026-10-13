@@ -23,8 +23,9 @@ const ContactFormAnchor = "contact"
 //     WITHOUT a hosted page - the organization's contact_email, as before.
 //     It is printed and is the letter's Reply-To.
 //   - Email empty and FormURL set: the ticket was sold through a hosted page
-//     that has no public e-mail, and the organization has a contact_email the
-//     form's messages go to (never printed). The letter prints the link to the
+//     that has no public e-mail, and the form's messages can go to the
+//     organization's contact_email or its owner's account e-mail (neither is
+//     printed). The letter prints the link to the
 //     page's contact form, has no Reply-To and goes from the platform address.
 //   - Both empty: nothing is printed and there is no Reply-To.
 type ContactRoute struct {
@@ -43,9 +44,10 @@ func ContactRouteFor(r gen.TicketContactRoute, ticketsBaseURL string) ContactRou
 		return ContactRoute{Email: trimPtr(r.OrgEmail)}
 	}
 	// The page offers its form only when a message has somewhere to go: the
-	// public e-mail, else the organization's own address (hfeed contactForm).
-	// Without either the link would open a page with no form.
-	if trimPtr(r.OrgEmail) == "" {
+	// public e-mail, else the organization's own address, else its owner's
+	// account e-mail (hfeed contactForm). Without any the link would open a
+	// page with no form.
+	if trimPtr(r.OrgEmail) == "" && !r.OwnerReachable {
 		return ContactRoute{}
 	}
 	base := strings.TrimRight(strings.TrimSpace(ticketsBaseURL), "/")

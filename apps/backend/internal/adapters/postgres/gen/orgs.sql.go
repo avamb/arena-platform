@@ -344,7 +344,10 @@ SELECT NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') A
                          AND h.settings #> '{hosted_page,enabled}' = 'true'::jsonb) END AS hosted_page,
        NULLIF(btrim(o.contact_email), '') AS org_email,
        COALESCE(op.slug, o.slug) AS page_slug,
-       e.slug AS event_slug
+       e.slug AS event_slug,
+       EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
+               WHERE m.org_id = o.id AND m.role = 'org_admin' AND m.status = 'active'
+                 AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL AND btrim(u.email) <> '') AS owner_reachable
 FROM   tickets t
 JOIN   sessions s ON s.id = t.session_id
 JOIN   events   e ON e.id = s.event_id
@@ -363,6 +366,9 @@ type TicketContactRoute struct {
 	OrgEmail    *string `json:"org_email"`
 	PageSlug    *string `json:"page_slug"`
 	EventSlug   *string `json:"event_slug"`
+	// OwnerReachable: the organization has an owner with an account e-mail,
+	// the contact form's last private recipient. The address is never read.
+	OwnerReachable bool `json:"owner_reachable"`
 }
 
 // GetTicketContactRoute returns where a letter about the ticket sends the
@@ -373,7 +379,7 @@ type TicketContactRoute struct {
 func (q *Queries) GetTicketContactRoute(ctx context.Context, ticketID uuid.UUID) (TicketContactRoute, error) {
 	var r TicketContactRoute
 	err := q.db.QueryRow(ctx, getTicketContactRoute, ticketID).Scan(
-		&r.PublicEmail, &r.HostedPage, &r.OrgEmail, &r.PageSlug, &r.EventSlug,
+		&r.PublicEmail, &r.HostedPage, &r.OrgEmail, &r.PageSlug, &r.EventSlug, &r.OwnerReachable,
 	)
 	return r, err
 }

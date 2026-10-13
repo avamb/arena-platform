@@ -93,11 +93,18 @@ func TestOrganizerContact_RouteStoresQueuesAndRefuses(t *testing.T) {
 	other := newContactFixture(t, srv, true)
 	noMail := newContactFixture(t, srv, false)
 	orgOnly := newContactFixture(t, srv, false)
+	ownerOnly := newContactFixture(t, srv, false)
 	ctx := context.Background()
-	// noMail's messages would reach nobody; orgOnly's organization has its
-	// own address, which the page must never show.
+	// noMail's messages would reach nobody (no address, no active owner);
+	// orgOnly's organization has its own address and ownerOnly only its
+	// owner's account e-mail, which the page must never show.
 	const orgPrivate = "box-private@organizer.example"
-	if _, err := pool.Exec(ctx, `UPDATE organizations SET contact_email = NULL WHERE id = $1`, noMail.f.orgID); err != nil {
+	for _, org := range []uuid.UUID{noMail.f.orgID, ownerOnly.f.orgID} {
+		if _, err := pool.Exec(ctx, `UPDATE organizations SET contact_email = NULL WHERE id = $1`, org); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `UPDATE memberships SET status = 'suspended' WHERE org_id = $1 AND role = 'org_admin'`, noMail.f.orgID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `UPDATE organizations SET contact_email = $2 WHERE id = $1`, orgOnly.f.orgID, orgPrivate); err != nil {
@@ -128,6 +135,14 @@ func TestOrganizerContact_RouteStoresQueuesAndRefuses(t *testing.T) {
 	srv.router.ServeHTTP(rec, req)
 	if !strings.Contains(rec.Body.String(), `"contact_form":{"available":true`) || strings.Contains(rec.Body.String(), orgPrivate) {
 		t.Errorf("organization address only: %d %s", rec.Code, rec.Body.String())
+	}
+	// Owner decision 2026-10-13: with no address at all the owner's account
+	// e-mail takes the messages; the page offers the form and never shows it.
+	req = httptest.NewRequest(http.MethodGet, "/v1/public/pages/"+ownerOnly.slug, nil)
+	rec = httptest.NewRecorder()
+	srv.router.ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), `"contact_form":{"available":true`) || strings.Contains(rec.Body.String(), ownerOnly.f.emails[0]) {
+		t.Errorf("owner's account e-mail only: %d %s", rec.Code, rec.Body.String())
 	}
 	if code, body := contactPost(t, srv.router, orgOnly.slug, contactBody("ben@example.com", orgOnly.token), "198.51.100.17"); code != http.StatusAccepted || strings.Contains(body, orgPrivate) {
 		t.Errorf("send to a page without a public e-mail: %d %s", code, body)
@@ -356,8 +371,20 @@ func TestOrganizerContact_WorkerMailsAndPostsOnce(t *testing.T) {
 		t.Fatalf("fallback to the organization's address: %+v", mail.sent[len(mail.sent)-1])
 	}
 
-	// ── neither address: nothing mailed, and said so ──────────────────────────
+	// ── no organization address: the owner's account e-mail takes it ─────────
 	if _, err := pool.Exec(ctx, `UPDATE organizations SET contact_email = NULL WHERE id = $1`, cf.f.orgID); err != nil {
+		t.Fatal(err)
+	}
+	id = send("198.51.100.35")
+	if err := h.Handle(ctx, payload(id)); err != nil {
+		t.Fatal(err)
+	}
+	if len(mail.sent) != 5 || !strings.EqualFold(mail.sent[4].To, cf.f.emails[0]) || mail.sent[4].ReplyTo != "anna@example.com" {
+		t.Fatalf("fallback to the owner's account e-mail: %+v", mail.sent[len(mail.sent)-1])
+	}
+
+	// ── no address and no active owner: nothing mailed, and said so ──────────
+	if _, err := pool.Exec(ctx, `UPDATE memberships SET status = 'suspended' WHERE org_id = $1 AND role = 'org_admin'`, cf.f.orgID); err != nil {
 		t.Fatal(err)
 	}
 	id = send("198.51.100.33")
@@ -368,7 +395,7 @@ func TestOrganizerContact_WorkerMailsAndPostsOnce(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT email_mailed FROM organizer_contact_messages WHERE id = $1`, id).Scan(&mailed); err != nil || mailed {
 		t.Errorf("email_mailed = %v %v, want false", mailed, err)
 	}
-	if len(mail.sent) != 4 {
+	if len(mail.sent) != 5 {
 		t.Errorf("a broken address was mailed: %+v", mail.sent[len(mail.sent)-1])
 	}
 	if last := chat.texts[len(chat.texts)-1]; strings.Contains(last, "went to your e-mail") || !strings.Contains(last, "was not e-mailed") {

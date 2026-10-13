@@ -108,4 +108,15 @@ Bcc: z@evil.example"}`} {
 	if got := recipient(nil, "not an address"); got != "" {
 		t.Errorf("a broken organization address -> %q", got)
 	}
+	// Owner decision 2026-10-13: with no public e-mail and no organization
+	// address the owner's account e-mail receives the message.
+	if got := recipient(nil, "", " Boss@Org.Example "); got != "boss@org.example" {
+		t.Errorf("owner's account e-mail -> %q", got)
+	}
+	if got := recipient(nil, "box@org.example", "boss@org.example"); got != "box@org.example" {
+		t.Errorf("the organization's address comes before the owner's -> %q", got)
+	}
+	if got := recipient(nil, "not an address", "boss@org.example"); got != "boss@org.example" {
+		t.Errorf("a broken organization address falls through to the owner -> %q", got)
+	}
 }
