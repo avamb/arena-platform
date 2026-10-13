@@ -178,10 +178,30 @@ func TestFeed_TheSecondTapOfADoubleTapIsRefused(t *testing.T) {
 	cq := press(10, "Final check", "x:yes", kbOf("x:yes"))
 	ctx := withFeedAction(context.Background(), pressAction(cq))
 	msg := 10
+	b.consumePress(ctx, 42)
 	b.reply(ctx, 42, &msg, "Sending…", nil)
 	stub.reset()
 	if b.feed.admit(42, 10) {
 		t.Fatal("the second tap on the same message would act again")
+	}
+}
+
+// An answer without buttons (a note, an error) leaves the pressed screen
+// usable: taking its keyboard would leave the person with no button at all.
+func TestFeed_AnAnswerWithoutButtonsKeepsTheScreen(t *testing.T) {
+	b, stub := newFeedBot(t)
+	b.feed.add(42, 10)
+	cq := press(10, "Event card", "ec:ce:x", kbOf("ec:ce:x", "home"))
+	ctx := withFeedAction(context.Background(), pressAction(cq))
+	msg := 10
+	b.reply(ctx, 42, &msg, "Too many rows: export one date at a time.", nil)
+	for _, c := range stub.all() {
+		if c.method != "sendMessage" {
+			t.Fatalf("the screen above was touched: %+v", c)
+		}
+	}
+	if !b.feed.admit(42, 10) {
+		t.Fatal("the screen above lost its buttons to a note")
 	}
 }
 

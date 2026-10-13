@@ -1744,12 +1744,16 @@ entries short and factual.
   owner miss the refund's final check and type the word twice. Now
   `reply`/`replyChecked`/`sendChecked`/`sendMarkup` all go through `Bot.post`:
   inside an action (`handleCallback` and `handleMessage` put a `feedAction` on
-  the ctx) the answer is a NEW message, the pressed message loses its keyboard
-  and gains a `✔ <pressed label>` line (its text re-sent with its own
-  entities), a message the reply was asked to edit (a dialog's stored
-  `MsgID`) loses its keyboard, and a new keyboard takes the buttons from every
-  other live message. A second reply of the same action edits the message the
-  first one sent (`alias`), so "Saving…" then the result is one message. Only
+  the ctx) the answer is a NEW message. When that answer brings buttons
+  (`takeOver`), the pressed message loses its keyboard and gains a
+  `✔ <pressed label>` line (its text re-sent with its own entities), a
+  message the reply was asked to edit (a dialog's stored `MsgID`) loses its
+  keyboard, and so does every other live message. An answer WITHOUT buttons
+  (a note, an error, a document) takes nothing away, or the person would be
+  left with no button at all; a press that must never run twice and is
+  answered without buttons (the refund's and the queue retry's "yes") calls
+  `consumePress` itself. A second reply of the same action edits the message
+  the first one sent (`alias`), so "Saving…" then the result is one message. Only
   `inPlacePress` may redraw the pressed message: the ticks of a list on
   screen (`inPlaceToggles`: refund tickets and buyer letter, wizard channels,
   promo sessions, application consents and multiple choice), a pager row's
@@ -1769,7 +1773,11 @@ entries short and factual.
   message that carries that callback data (else the newest live one), with
   its text and keyboard; a retiring edit (empty `inline_keyboard`) is counted
   as `retire`, not as `editMessageReplyMarkup`/`editMessageText`, and adds no
-  text to `sent`.
+  text to `sent`. `push` first waits until the bot has made no Bot API call
+  for 120 ms, so a press lands on the finished screen; a test that presses
+  while every keyboard is gone (a refund being sent) must type a command
+  (`/start`) first, as a person would. `lastOf(chat)` / `keyboardOf(id)` /
+  `answers` let a test assert buttons and the stale-press note.
 - **The bot's "+ Event" wizard (`eventbot/wizard*.go`) is a pure state
   machine over `Draft`; the bot side (`wizard_bot.go`) only stores the
   draft and renders.** `Wizard.Apply(ws, d, in)` is a function of the

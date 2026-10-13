@@ -321,8 +321,12 @@ func (b *Bot) replyChecked(ctx context.Context, chatID int64, editMsgID *int, te
 	replaced := 0
 	if editMsgID != nil {
 		replaced = *editMsgID
-		if target, ok := editTarget(actionIn(ctx, chatID), replaced); ok {
+		a := actionIn(ctx, chatID)
+		if target, ok := editTarget(a, replaced); ok {
 			if err := b.edit(ctx, chatID, target, text, kb); err == nil {
+				if target != a.pressed && hasCallbacks(kb) {
+					b.takeOver(ctx, chatID, a, replaced)
+				}
 				return nil
 			}
 		}

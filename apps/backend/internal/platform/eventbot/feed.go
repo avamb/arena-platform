@@ -340,26 +340,50 @@ func (b *Bot) post(ctx context.Context, chatID int64, replaced int, text string,
 		b.feed.add(chatID, id)
 	}
 	a := actionIn(ctx, chatID)
+	if a != nil {
+		a.own[id] = true
+		if replaced != 0 {
+			a.alias[replaced] = id
+		}
+	}
+	if live && replaced != id {
+		b.takeOver(ctx, chatID, a, replaced)
+	}
+	return id, nil
+}
+
+// takeOver runs when a new keyboard reaches the chat: the screens it
+// replaces lose theirs. Within an action that is the pressed message (with
+// its echo), the message the reply was asked to edit and every other live
+// message; background work only retires the message it was asked to edit.
+//
+// An answer WITHOUT buttons (a note, an error, a document) takes nothing
+// away: the screen above stays usable, or the person would be left with no
+// button at all. A press that must not be repeated (money) retires its
+// message itself through consumePress.
+func (b *Bot) takeOver(ctx context.Context, chatID int64, a *feedAction, replaced int) {
 	if a == nil {
-		if replaced != 0 && replaced != id {
+		if replaced != 0 {
 			b.retire(ctx, chatID, replaced)
 		}
-		return id, nil
-	}
-	a.own[id] = true
-	if replaced != 0 {
-		a.alias[replaced] = id
+		return
 	}
 	b.retirePressed(ctx, a)
 	if replaced != 0 && replaced != a.pressed && !a.own[replaced] {
 		b.retire(ctx, chatID, replaced)
 	}
-	if live {
-		for _, other := range b.feed.others(chatID, a.own) {
-			b.retire(ctx, chatID, other)
-		}
+	for _, other := range b.feed.others(chatID, a.own) {
+		b.retire(ctx, chatID, other)
 	}
-	return id, nil
+}
+
+// consumePress takes the keyboard from the pressed message now, whatever the
+// answer: for a press that starts something which must not start twice (a
+// refund being sent), even when its answer has no buttons of its own.
+func (b *Bot) consumePress(ctx context.Context, chatID int64) {
+	if a := actionIn(ctx, chatID); a != nil {
+		b.retirePressed(ctx, a)
+	}
 }
 
 // edit redraws a message in place.

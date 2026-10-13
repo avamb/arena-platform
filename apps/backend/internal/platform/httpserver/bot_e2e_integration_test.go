@@ -58,6 +58,11 @@ type stubTelegram struct {
 	msgs map[int]*stubMessage
 	// retired counts the old messages that lost their keyboard.
 	retired int
+	// lastCall is when the bot last called a method other than getUpdates.
+	lastCall time.Time
+	// answers are the texts of the bot's answerCallbackQuery calls ("" when
+	// it only stopped the spinner).
+	answers []string
 }
 
 // stubMessage is one message the bot sent and its current keyboard.
@@ -113,6 +118,7 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 			s.calls = map[string]int{}
 		}
 		s.calls[counted]++
+		s.lastCall = time.Now()
 		s.mu.Unlock()
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -140,18 +146,36 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 			seq = s.msgSeq
 			s.remember(seq, p)
 			s.sent = append(s.sent, p.Text)
-		case method == "editMessageReplyMarkup" || p.retires():
+		case p.retires():
 			// An old message losing its keyboard (feed.go): no new text.
 			if m := s.msgs[seq]; m != nil {
 				m.markup, m.data = nil, nil
 			}
 			s.retired++
+		case method == "editMessageReplyMarkup":
+			// A tick redrawn in place: same text, new buttons.
+			if m := s.msgs[seq]; m != nil {
+				p.Text = m.text
+				s.remember(seq, p)
+			}
 		default:
 			s.remember(seq, p)
 			s.sent = append(s.sent, p.Text)
 		}
 		s.mu.Unlock()
 		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":1700000000,"chat":{"id":%d,"type":"private"},"text":%q}}`, seq, p.chat(), p.Text)
+	case "answerCallbackQuery":
+		var p struct {
+			Text string `json:"text"`
+		}
+		_ = json.Unmarshal(body, &p)
+		if p.Text == "" {
+			p.Text = field("text")
+		}
+		s.mu.Lock()
+		s.answers = append(s.answers, p.Text)
+		s.mu.Unlock()
+		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
 	case "getFile":
 		// Any file id resolves to the poster the test staged; the library
 		// then downloads it from /file/bot<token>/<file_path> below.
@@ -295,7 +319,22 @@ func (s *stubTelegram) liveMessage(chat int64, data string) int {
 // placeholder message 5; it is delivered on the message a person would have
 // pressed: the live one that carries the button (or the newest live one, for
 // a press the test makes up), with that message's text and keyboard.
+//
+// The bot may still be finishing the previous answer (a second message, the
+// old keyboard's removal) when a test pushes the next press, so push waits
+// for the bot to fall quiet first: the press then lands where a person, who
+// sees the finished screen, would press.
 func (s *stubTelegram) push(update string) {
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		quiet := time.Since(s.lastCall) > 120*time.Millisecond
+		s.mu.Unlock()
+		if quiet {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	s.updates <- json.RawMessage(s.aim(update))
 }
 
@@ -347,6 +386,35 @@ func (s *stubTelegram) retiredCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.retired
+}
+
+// lastOf is the newest message the bot sent to a chat: its id, text and the
+// callback data of its buttons now.
+func (s *stubTelegram) lastOf(chat int64) (int, string, []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	best := 0
+	for id, m := range s.msgs {
+		if m.chat == chat && id > best {
+			best = id
+		}
+	}
+	if best == 0 {
+		return 0, "", nil
+	}
+	m := s.msgs[best]
+	return best, m.text, append([]string(nil), m.data...)
+}
+
+// hasPrefixData reports whether a keyboard carries a button whose callback
+// data starts with prefix.
+func hasPrefixData(data []string, prefix string) bool {
+	for _, d := range data {
+		if strings.HasPrefix(d, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // keyboardOf is the callback data of a message's buttons now.
