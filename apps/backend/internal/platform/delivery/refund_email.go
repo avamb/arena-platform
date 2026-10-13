@@ -270,6 +270,11 @@ func (h *refundEmail) buildMessage(ctx context.Context, orderID, orgID uuid.UUID
 	if !haveFirst {
 		first = Payload{Locale: recipient.LocaleHint}
 	}
+	// An operation whose refunds name no ticket still belongs to the order's
+	// event: the letter names it rather than a placeholder.
+	if first.EventName == "" && orderEvents != uuid.Nil {
+		_ = h.opts.DB.QueryRow(ctx, `SELECT name FROM events WHERE id = $1`, orderEvents).Scan(&first.EventName)
+	}
 	// "No longer valid" is said per ticket from the ticket's real state,
 	// never from the cancel_ticket intent of the refund: a refund can be
 	// money-only, or its cancellation can still be pending, and one letter

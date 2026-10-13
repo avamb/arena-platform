@@ -446,3 +446,67 @@ func TestRefundBuyerEmail_WaitsForTheOperationsUnsentRefunds(t *testing.T) {
 		t.Fatalf("letters = %d; want one covering both refunds (50.00 EUR)", len(msgs))
 	}
 }
+
+// An operation whose refunds name no ticket still belongs to the order's
+// event: the letter names that event, never the "Arena Event" placeholder.
+func TestRefundBuyerEmail_LetterWithoutTicketsNamesTheEvent(t *testing.T) {
+	stub := newStubStripe(t)
+	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) { c.StripeAPIBaseURL = stub.baseURL() })
+	ts := httptest.NewServer(srv.Router())
+	t.Cleanup(ts.Close)
+	pf := &prom0113Fixture{ts: ts, client: ts.Client(), q: gen.New(srv.pgxPool)}
+	user, err := pf.q.InsertUser(context.Background(), "pay07e-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf.userID = user.ID
+	org := pf.org(t, "PAY07E")
+	ctx := context.Background()
+	stub.refundHandler = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"id":"re_`+uuid.NewString()[:8]+`","status":"succeeded"}`)
+	}
+	stub.sessionPI = "pi_pay07e_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
+	sender := &recordingSender{}
+	handler := delivery.NewRefundEmailHandler(delivery.RefundEmailOptions{
+		HandlerOptions: delivery.HandlerOptions{
+			TicketQueries: pf.q, CredentialQueries: pf.q, DeliveryJobQueries: pf.q, Sender: sender,
+		},
+		DB: srv.pgxPool,
+	})
+	f := newPay03Order(t, srv.pgxPool, org, "stripe")
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE orders SET buyer_email = 'noticket@pay07.test', buyer_name = 'Ana' WHERE id = $1`, f.order); err != nil {
+		t.Fatal(err)
+	}
+	res, err := srv.refundEngine().CreateBatch(ctx, refunds.BatchInput{
+		OrgID: org, OrderID: f.order, Reason: "pay07e", CancelTickets: false, NotifyBuyer: true,
+		IdempotencyKey: "pay07e-" + uuid.NewString(), Approved: true,
+		Items: []refunds.Item{{TicketID: f.tickets[0]}},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	batch := res.BatchID.String()
+	t.Cleanup(func() {
+		_, _ = srv.pgxPool.Exec(ctx, `DELETE FROM worker_jobs WHERE job_type = $1 AND payload->>'batch_id' = $2`, refunds.JobTypeBuyerEmail, batch)
+	})
+	// The refunds of this operation no longer name a ticket.
+	if _, err := srv.pgxPool.Exec(ctx, `UPDATE refunds SET ticket_id = NULL WHERE batch_id = $1`, res.BatchID); err != nil {
+		t.Fatal(err)
+	}
+	var event string
+	if err := srv.pgxPool.QueryRow(ctx, `SELECT e.name FROM orders o JOIN events e ON e.id = o.event_id WHERE o.id = $1`, f.order).Scan(&event); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(refunds.BuyerEmailPayload{BatchID: batch})
+	if err := handler(ctx, raw); err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	msgs := sender.sent()
+	if len(msgs) != 1 {
+		t.Fatalf("messages = %d; want one letter", len(msgs))
+	}
+	if strings.Contains(msgs[0].TextBody, "Arena Event") || !strings.Contains(msgs[0].TextBody, event) {
+		t.Fatalf("letter does not name the event %q:\n%s", event, msgs[0].TextBody)
+	}
+}
