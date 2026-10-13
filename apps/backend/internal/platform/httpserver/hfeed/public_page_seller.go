@@ -115,11 +115,12 @@ func publishedContact(raw []byte) *hostedPageSellerContact {
 }
 
 // hostedPageContactForm tells the page whether to offer the "Write to the
-// organizer" form and with which Turnstile site key. It never carries the
-// address the messages go to.
+// organizer" form, with which Turnstile site key and which privacy policy the
+// consent links to. It never carries the address the messages go to.
 type hostedPageContactForm struct {
 	Available        bool   `json:"available"`
 	TurnstileSiteKey string `json:"turnstile_site_key,omitempty"`
+	PrivacyURL       string `json:"privacy_url,omitempty"`
 }
 
 // contactForm decides the form from the channel row: offered when the channel
@@ -129,7 +130,7 @@ func (h *Handler) contactForm(row gen.HostedPageSellerRow) *hostedPageContactFor
 	if c == nil || c.Email == "" || !h.contactFormReady {
 		return nil
 	}
-	return &hostedPageContactForm{Available: true, TurnstileSiteKey: h.contactFormSiteKey}
+	return &hostedPageContactForm{Available: true, TurnstileSiteKey: h.contactFormSiteKey, PrivacyURL: h.contactFormPrivacyURL}
 }
 
 // parsePublicContact reads settings.hosted_page.public_contact. Anything that

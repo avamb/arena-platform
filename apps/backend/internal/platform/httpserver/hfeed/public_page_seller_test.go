@@ -147,15 +147,15 @@ func TestContactForm_OfferedOnlyWithAPublicEmailAndACaptcha(t *testing.T) {
 	t.Parallel()
 	row := fullSellerRow()
 	row.ShowSeller = false // the form does not depend on the seller block
-	h := (&Handler{}).WithContactForm(true, "site-key")
+	h := (&Handler{}).WithContactForm(true, "site-key", "https://arenasoldout.com/legal/privacy")
 	f := h.contactForm(row)
-	if f == nil || !f.Available || f.TurnstileSiteKey != "site-key" {
+	if f == nil || !f.Available || f.TurnstileSiteKey != "site-key" || f.PrivacyURL != "https://arenasoldout.com/legal/privacy" {
 		t.Fatalf("form = %+v", f)
 	}
 	if b, _ := json.Marshal(f); strings.Contains(string(b), "@") {
 		t.Fatalf("the form block must never carry the address: %s", b)
 	}
-	if f := (&Handler{}).WithContactForm(false, "site-key").contactForm(row); f != nil {
+	if f := (&Handler{}).WithContactForm(false, "site-key", "").contactForm(row); f != nil {
 		t.Fatalf("a deployment that cannot check the captcha offers no form, got %+v", f)
 	}
 	row.PublicContact = []byte(`{"phone":"+34 600 000 000"}`)

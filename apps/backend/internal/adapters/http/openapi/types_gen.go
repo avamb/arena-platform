@@ -6275,6 +6275,9 @@ type HostedPageContactForm struct {
 	// Available Always true when the block is present.
 	Available bool `json:"available"`
 
+	// PrivacyUrl The privacy policy the form's consent links to (ONBOARDING_PRIVACY_URL, else the site's /legal/privacy); omitted when none is configured.
+	PrivacyUrl *string `json:"privacy_url,omitempty"`
+
 	// TurnstileSiteKey Cloudflare Turnstile site key for the form; omitted when the deployment runs without a captcha (never in production).
 	TurnstileSiteKey *string `json:"turnstile_site_key,omitempty"`
 }

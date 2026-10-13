@@ -50,6 +50,10 @@ export interface PageStrings {
   contactEmail: string;
   contactMessage: string;
   contactConsent: string;
+  /** Under the consent: the Telegram copy and how long Arena keeps the message. */
+  contactConsentNote: string;
+  /** Label of the privacy policy link under the consent. */
+  contactPrivacy: string;
   contactSend: string;
   contactCancel: string;
   contactSending: string;
@@ -95,6 +99,8 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactEmail: "Your e-mail",
     contactMessage: "Message",
     contactConsent: "I agree that Arena Sold Out passes my name, e-mail and message to the organizer so that they can answer me.",
+    contactConsentNote: "A copy may also reach the organizer's Telegram chat. Arena deletes its copy after 90 days. The copy in the chat stays with the organizer.",
+    contactPrivacy: "Privacy policy",
     contactSend: "Send",
     contactCancel: "Cancel",
     contactSending: "Sending…",
@@ -138,6 +144,8 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactEmail: "Ваш e-mail",
     contactMessage: "Сообщение",
     contactConsent: "Разрешаю Arena Sold Out передать моё имя, e-mail и сообщение организатору, чтобы он мог мне ответить.",
+    contactConsentNote: "Копия может прийти и в чат организатора в Telegram. Arena удаляет свою копию через 90 дней. Копия в чате остаётся у организатора.",
+    contactPrivacy: "Политика конфиденциальности",
     contactSend: "Отправить",
     contactCancel: "Отмена",
     contactSending: "Отправляем…",
@@ -181,6 +189,8 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactEmail: "Váš e-mail",
     contactMessage: "Zpráva",
     contactConsent: "Souhlasím, že Arena Sold Out předá mé jméno, e-mail a zprávu pořadateli, aby mi mohl odpovědět.",
+    contactConsentNote: "Kopie může přijít i do Telegram chatu pořadatele. Arena svou kopii smaže po 90 dnech. Kopie v chatu zůstává pořadateli.",
+    contactPrivacy: "Zásady ochrany osobních údajů",
     contactSend: "Odeslat",
     contactCancel: "Zrušit",
     contactSending: "Odesíláme…",
@@ -224,6 +234,8 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactEmail: "המייל שלכם",
     contactMessage: "הודעה",
     contactConsent: "אני מסכים/ה ש-Arena Sold Out תעביר את שמי, המייל וההודעה שלי למארגן כדי שיוכל לענות לי.",
+    contactConsentNote: "ייתכן שעותק יגיע גם לצ'אט הטלגרם של המארגן. Arena מוחקת את העותק שלה אחרי 90 יום. העותק בצ'אט נשאר אצל המארגן.",
+    contactPrivacy: "מדיניות פרטיות",
     contactSend: "שליחה",
     contactCancel: "ביטול",
     contactSending: "שולחים…",
@@ -267,6 +279,8 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactEmail: "Tu correo",
     contactMessage: "Mensaje",
     contactConsent: "Acepto que Arena Sold Out pase mi nombre, correo y mensaje al organizador para que pueda responderme.",
+    contactConsentNote: "También puede llegar una copia al chat de Telegram del organizador. Arena borra su copia a los 90 días. La copia del chat queda en manos del organizador.",
+    contactPrivacy: "Política de privacidad",
     contactSend: "Enviar",
     contactCancel: "Cancelar",
     contactSending: "Enviando…",

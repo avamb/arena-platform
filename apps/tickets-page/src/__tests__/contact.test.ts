@@ -140,6 +140,26 @@ describe('openContactForm', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('tells about the Telegram copy and links the privacy policy', () => {
+    const overlay = openContactForm({ ...CTX, form: { available: true, privacy_url: 'https://arenasoldout.com/legal/privacy' } });
+    const note = overlay.querySelector('.asa-contact__note') as HTMLElement;
+    expect(note.textContent).toContain('Telegram');
+    expect(note.textContent).toContain('90');
+    const link = note.querySelector('a') as HTMLAnchorElement;
+    expect(link.href).toBe('https://arenasoldout.com/legal/privacy');
+    expect(link.rel).toContain('noopener');
+    overlay.remove();
+  });
+
+  it('links no privacy policy that is not an https address', () => {
+    for (const privacy_url of [undefined, '', 'javascript:alert(1)', 'http://arenasoldout.com/legal/privacy']) {
+      const overlay = openContactForm({ ...CTX, form: { available: true, privacy_url } });
+      expect(overlay.querySelector('.asa-contact__note a')).toBeNull();
+      expect(overlay.querySelector('.asa-contact__note')?.textContent).toContain('Telegram');
+      overlay.remove();
+    }
+  });
+
   it('closes on Escape and on Cancel', () => {
     openContactForm(CTX);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
@@ -175,7 +195,7 @@ describe('renderContactButton / renderContactFooter', () => {
   it('has its words in every page language', () => {
     for (const loc of PAGE_LOCALES) {
       const s = t(loc);
-      for (const key of ['contactButton', 'contactConsent', 'contactSent', 'contactErrGeneric'] as const) {
+      for (const key of ['contactButton', 'contactConsent', 'contactConsentNote', 'contactPrivacy', 'contactSent', 'contactErrGeneric'] as const) {
         expect(s[key].trim(), `${loc}.${key}`).not.toBe('');
       }
     }

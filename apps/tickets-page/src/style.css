@@ -486,6 +486,12 @@ a {
   resize: vertical;
 }
 
+.asa-contact__note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--asa-text-secondary);
+}
+
 .asa-contact__consent {
   display: flex;
   gap: 8px;

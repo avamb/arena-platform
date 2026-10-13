@@ -25,3 +25,16 @@ func TestContactFormHostnames_FollowTheTicketsBaseURL(t *testing.T) {
 		}
 	}
 }
+
+func TestContactFormPrivacyURL(t *testing.T) {
+	for _, c := range []struct{ site, privacy, want string }{
+		{"https://arenasoldout.com/", "", "https://arenasoldout.com/legal/privacy"},
+		{"https://arenasoldout.com", " https://new.arenasoldout.com/legal/privacy ", "https://new.arenasoldout.com/legal/privacy"},
+		{"", "", ""},
+	} {
+		s := &Server{cfg: &config.Config{OnboardingSiteURL: c.site, OnboardingPrivacyURL: c.privacy}}
+		if got := s.contactFormPrivacyURL(); got != c.want {
+			t.Errorf("site %q privacy %q: got %q, want %q", c.site, c.privacy, got, c.want)
+		}
+	}
+}

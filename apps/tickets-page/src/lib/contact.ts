@@ -206,6 +206,21 @@ export function openContactForm(ctx: ContactContext): HTMLElement {
   consentWrap.appendChild(document.createTextNode(' ' + s.contactConsent));
   form.appendChild(consentWrap);
 
+  const note = document.createElement('p');
+  note.className = 'asa-contact__note';
+  note.appendChild(document.createTextNode(s.contactConsentNote));
+  const privacyUrl = (ctx.form?.privacy_url ?? '').trim();
+  if (/^https:\/\//i.test(privacyUrl)) {
+    const link = document.createElement('a');
+    link.href = privacyUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = s.contactPrivacy;
+    note.appendChild(document.createTextNode(' '));
+    note.appendChild(link);
+  }
+  form.appendChild(note);
+
   const captcha = document.createElement('div');
   captcha.className = 'asa-contact__captcha';
   form.appendChild(captcha);

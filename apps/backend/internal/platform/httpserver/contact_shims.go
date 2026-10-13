@@ -55,6 +55,22 @@ func (s *Server) handleOrganizerContact(w http.ResponseWriter, r *http.Request) 
 	s.contactHandler().HandleSend(w, r)
 }
 
+// contactFormPrivacyURL is the privacy policy the form's consent links to:
+// ONBOARDING_PRIVACY_URL, else <ONBOARDING_SITE_URL>/legal/privacy (the same
+// page the organizer application links to).
+func (s *Server) contactFormPrivacyURL() string {
+	if s.cfg == nil {
+		return ""
+	}
+	if u := strings.TrimSpace(s.cfg.OnboardingPrivacyURL); u != "" {
+		return u
+	}
+	if site := strings.TrimRight(strings.TrimSpace(s.cfg.OnboardingSiteURL), "/"); site != "" {
+		return site + "/legal/privacy"
+	}
+	return ""
+}
+
 // contactFormHostnames is the host the hosted pages are served from
 // (PUBLIC_TICKETS_BASE_URL): a token solved anywhere else is refused. Empty
 // when the base URL is not set (local development), which skips the check.

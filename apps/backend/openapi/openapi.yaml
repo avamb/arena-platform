@@ -6357,6 +6357,10 @@ components:
           type: string
           description: Cloudflare Turnstile site key for the form; omitted when the deployment runs without a captcha (never in production).
           example: "0x4AAAAAAAxxxxxxxxxxxxxx"
+        privacy_url:
+          type: string
+          description: The privacy policy the form's consent links to (ONBOARDING_PRIVACY_URL, else the site's /legal/privacy); omitted when none is configured.
+          example: "https://arenasoldout.com/legal/privacy"
 
     OrganizerContactRequest:
       type: object

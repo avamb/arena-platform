@@ -12966,6 +12966,11 @@ export interface components {
              * @example 0x4AAAAAAAxxxxxxxxxxxxxx
              */
             turnstile_site_key?: string;
+            /**
+             * @description The privacy policy the form's consent links to (ONBOARDING_PRIVACY_URL, else the site's /legal/privacy); omitted when none is configured.
+             * @example https://arenasoldout.com/legal/privacy
+             */
+            privacy_url?: string;
         };
         /** @description A buyer's message to the organizer of a hosted page. */
         OrganizerContactRequest: {

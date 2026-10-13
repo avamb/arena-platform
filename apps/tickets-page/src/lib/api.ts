@@ -88,6 +88,8 @@ export interface HostedPageContactForm {
   /** Cloudflare Turnstile site key; absent when the deployment runs without
    * a captcha (never in production). */
   turnstile_site_key?: string;
+  /** The privacy policy the consent links to; absent when none is configured. */
+  privacy_url?: string;
 }
 
 /** The event's promoter, shown next to the seller (event page only). */
