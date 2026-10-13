@@ -2907,7 +2907,7 @@ other = "Why is the money returned? Pick a reason or type your own."
 other = "Buyer asked for a refund"
 
 ["bot.ref.reason2"]
-other = "Event cancelled or moved"
+other = "Event canceled or moved"
 
 ["bot.ref.reason3"]
 other = "Duplicate order"
@@ -3056,7 +3056,7 @@ other = "will be sent"
 other = "will not be sent"
 
 ["bot.ref.cancelled"]
-other = "Cancelled. Nothing was refunded."
+other = "Canceled. Nothing was refunded."
 
 ["bot.ref.sending"]
 other = "Sending the refund… The payment provider may take a few minutes; the bot keeps working meanwhile and will write here when the answer is in."
