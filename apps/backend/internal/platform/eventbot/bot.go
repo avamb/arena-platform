@@ -105,6 +105,11 @@ type Bot struct {
 	onb            *onbDialogs
 	onbForms       *onbFormCache
 
+	// serial runs one account's updates one at a time, in order (serial.go).
+	serial *userSerial
+	// route handles one admitted update inside its sender's turn; tests
+	// replace it to drive the dispatch without a database.
+	route func(ctx context.Context, u *models.Update)
 	// runID names this process (a refund dialog marks the send it started
 	// with it, so a restart is told from a send still under way).
 	runID string
@@ -224,6 +229,8 @@ func New(opts Options) (*Bot, error) {
 	}
 	b.sessions = newSessionDialogs(b.dialogs)
 	b.onb = newOnbDialogs(b.dialogs)
+	b.serial = newUserSerial(logger)
+	b.route = b.routeUpdate
 	if b.texts == nil {
 		b.texts = NewTexts(nil)
 	}
@@ -235,10 +242,15 @@ func New(opts Options) (*Bot, error) {
 	tgOpts := []tgbot.Option{
 		tgbot.WithDefaultHandler(b.handleUpdate),
 		tgbot.WithSkipGetMe(),
-		// One worker: an organizer's messages are handled in the order they
-		// were sent, so "e-mail after /start" and "next page after page 1"
-		// cannot overtake each other. The load is a few operators, not a crowd.
+		// One reader that calls handleUpdate synchronously, in the order
+		// Telegram delivered the updates. handleUpdate only queues the update
+		// in its sender's lane (serial.go), so handlers of different accounts
+		// still run concurrently while one account's updates — "e-mail after
+		// /start", "next page after page 1" — never overtake each other.
+		// Without WithNotAsyncHandlers the library starts a goroutine per
+		// update and that order is lost before handleUpdate runs.
 		tgbot.WithWorkers(1),
+		tgbot.WithNotAsyncHandlers(),
 	}
 	if opts.TelegramServerURL != "" {
 		tgOpts = append(tgOpts, tgbot.WithServerURL(opts.TelegramServerURL))
@@ -345,30 +357,50 @@ func (b *Bot) publishAbout(ctx context.Context, locale string) {
 
 // ─── update dispatch ──────────────────────────────────────────────────────────
 
-// handleUpdate is the single entry point for every Telegram update.
+// handleUpdate is the single entry point for every Telegram update. The
+// library calls it on its one reader goroutine, in delivery order, so it must
+// not block: it applies the rate limit (a map lookup) and queues the rest of
+// the work in the sender's lane, where it runs after that account's earlier
+// updates and never at the same time as them.
 func (b *Bot) handleUpdate(ctx context.Context, _ *tgbot.Bot, u *models.Update) {
-	defer func() {
-		if r := recover(); r != nil {
-			b.logger.Error("eventbot: panic in update handler", slog.Any("panic", r))
+	from := updateSender(u)
+	if from == nil {
+		return
+	}
+	// The limit is checked here, before anything is queued, so a flood costs
+	// one map lookup per update rather than a database read and an API call.
+	allowed, first := b.allow(u, from)
+	err := b.serial.submit(from.ID, func() {
+		tctx := withTurn(ctx, from.ID)
+		if !allowed {
+			b.refuse(tctx, u, from, first)
+			return
 		}
-	}()
-	var from *models.User
+		b.route(tctx, u)
+	})
+	if err != nil {
+		b.logger.Warn("eventbot: update dropped", slog.Int64("telegram_user_id", from.ID), slog.String("error", err.Error()))
+	}
+}
+
+// updateSender is the account an update comes from, or nil for an update the
+// bot ignores (a bot's own message, a group chat, an update kind it does not
+// handle).
+func updateSender(u *models.Update) *models.User {
 	switch {
 	case u.CallbackQuery != nil:
-		from = &u.CallbackQuery.From
+		return &u.CallbackQuery.From
 	case u.Message != nil && u.Message.From != nil && !u.Message.From.IsBot:
 		if string(u.Message.Chat.Type) != "private" {
-			return // the bot works in private chats only
+			return nil // the bot works in private chats only
 		}
-		from = u.Message.From
-	default:
-		return
+		return u.Message.From
 	}
-	// The limit is checked before any handler runs, so a flood costs one map
-	// lookup per update rather than a database read and an API call.
-	if !b.admit(ctx, u, from) {
-		return
-	}
+	return nil
+}
+
+// routeUpdate handles one admitted update; it runs inside the sender's turn.
+func (b *Bot) routeUpdate(ctx context.Context, u *models.Update) {
 	if u.CallbackQuery != nil {
 		b.handleCallback(ctx, u.CallbackQuery)
 		return
