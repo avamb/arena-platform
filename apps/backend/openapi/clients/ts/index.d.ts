@@ -860,6 +860,18 @@ export interface paths {
          * @description Applies a partial update to an active organization. Empty or omitted fields
          *     leave the existing value unchanged. Requires JWT authentication and "org.update"
          *     permission. Returns 409 if the new name or slug conflicts with another active org.
+         *
+         *     An organization API key may not send the fields of the legal identity
+         *     and the contact (`legal_name`, `legal_form`, `tax_id`, `tax_id_scheme`,
+         *     `registration_number`, `legal_address_*`, `contact_email`,
+         *     `contact_phone`): 403 `org.identity_fields_api_key_forbidden`, with the
+         *     refused fields in `error.details.fields`.
+         *
+         *     The row, its legal form and the seller block are written in one
+         *     transaction: when the update leaves a field the sales page's seller
+         *     block requires empty (legal name, tax number, street, city, postal
+         *     code), the block is turned off on every channel that showed it and the
+         *     answer lists those channels in `seller_display_hidden`.
          */
         patch: operations["patchV1OrganizationsId"];
         trace?: never;
@@ -2624,6 +2636,10 @@ export interface paths {
          *     organization. A channel of another organization, or one without a hosted
          *     page, answers 404 `seller.channel_not_found`. Audited as
          *     `v1.channel.seller_display_update` without the addresses.
+         *
+         *     This is the only route that writes these two keys: the generic channel
+         *     create and PATCH keep the stored values whatever `settings` they are
+         *     sent, and an organization API key is refused here.
          */
         patch: operations["updateSellerDisplay"];
         trace?: never;
@@ -23725,6 +23741,8 @@ export interface operations {
                 content: {
                     "application/json": {
                         organization: components["schemas"]["OrganizationItem"];
+                        /** @description Channels whose seller block was turned off because a required legal field is now empty. Omitted when none. */
+                        seller_display_hidden?: string[];
                     };
                 };
             };
@@ -23746,7 +23764,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold the required permission (org.update) */
+            /** @description Actor does not hold the required permission (org.update), or an API key sent a legal identity or contact field (`org.identity_fields_api_key_forbidden`) */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -30746,7 +30764,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks `org.update` in the organization. */
+            /** @description Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -30892,7 +30910,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks `org.update` in the organization. */
+            /** @description Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`). */
             403: {
                 headers: {
                     [name: string]: unknown;

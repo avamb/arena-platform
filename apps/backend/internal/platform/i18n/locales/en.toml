@@ -3474,3 +3474,6 @@ other = "✅ Buyer messages now also go to your sales chat."
 
 ["bot.og.form_tg_saved_off"]
 other = "✅ Buyer messages now go only to the e-mail of the sales page."
+
+["bot.og.block_hidden"]
+other = "⚠️ A required field is now empty, so the seller data is hidden on sales pages: {{.N}}. Fill in the field, then turn the seller data on again on the page card."

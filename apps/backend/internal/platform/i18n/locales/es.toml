@@ -3329,3 +3329,6 @@ other = "✅ Los mensajes de compradores ahora también llegan a tu chat de vent
 
 ["bot.og.form_tg_saved_off"]
 other = "✅ Los mensajes de compradores ahora solo llegan al correo de la página de venta."
+
+["bot.og.block_hidden"]
+other = "⚠️ Un campo obligatorio está vacío, así que los datos del vendedor se ocultaron en las páginas de venta: {{.N}}. Rellena el campo y vuelve a activar los datos del vendedor en la ficha de la página."

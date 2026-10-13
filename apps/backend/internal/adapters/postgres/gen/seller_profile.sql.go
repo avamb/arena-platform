@@ -155,3 +155,31 @@ func (q *Queries) SetContactFormToTelegram(ctx context.Context, orgID uuid.UUID,
 	}
 	return tag.RowsAffected() > 0, nil
 }
+
+const hideSellerDisplayForOrg = `-- name: HideSellerDisplayForOrg :many
+UPDATE sales_channels
+SET settings = jsonb_set(settings, '{hosted_page,show_seller}', 'false'::jsonb, true),
+    updated_at = now()
+WHERE org_id = $1
+  AND deleted_at IS NULL
+  AND settings #>> '{hosted_page,show_seller}' = 'true'
+RETURNING id`
+
+// HideSellerDisplayForOrg turns show_seller off on every channel of the
+// organization that has it on and returns their ids.
+func (q *Queries) HideSellerDisplayForOrg(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, hideSellerDisplayForOrg, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}

@@ -330,7 +330,8 @@ func (b *Bot) orgChannelPress(ctx context.Context, chatID int64, msgID *int, id 
 func (b *Bot) orgApplyLegal(ctx context.Context, chatID int64, msgID *int, id *Identity, jwt string, st orgDataDialog, body map[string]any, doneKey string) {
 	loc := id.Locale()
 	orgID := id.Current.OrgID
-	if err := b.arena.PatchOrganization(ctx, jwt, orgID, body); err != nil {
+	hidden, err := b.arena.PatchOrganization(ctx, jwt, orgID, body)
+	if err != nil {
 		if key := orgAPIErrKey(err); key != "" && st.Field != "" {
 			p, perr := b.arena.SellerProfile(ctx, jwt, orgID)
 			if perr == nil {
@@ -353,7 +354,11 @@ func (b *Bot) orgApplyLegal(ctx context.Context, chatID int64, msgID *int, id *I
 		return
 	}
 	st.Field, st.Scheme, st.ChannelID = "", "", nil
-	b.orgRenderCard(ctx, chatID, msgID, id, st, p, b.texts.T(loc, doneKey, nil)+"\n\n")
+	note := b.texts.T(loc, doneKey, nil) + "\n\n"
+	if hidden > 0 {
+		note += b.texts.T(loc, "bot.og.block_hidden", map[string]any{"N": hidden}) + "\n\n"
+	}
+	b.orgRenderCard(ctx, chatID, msgID, id, st, p, note)
 }
 
 // orgApplyFormTelegram switches whether buyers' messages from the sales page's

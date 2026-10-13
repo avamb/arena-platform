@@ -21,6 +21,7 @@ var orgDataKeys = []string{
 	"bot.og.btn_phone", "bot.og.btn_show", "bot.og.btn_hide", "bot.og.q_email",
 	"bot.og.line_form_tg", "bot.og.form_tg_on", "bot.og.form_tg_off", "bot.og.btn_form_tg_on",
 	"bot.og.btn_form_tg_off", "bot.og.form_tg_saved_on", "bot.og.form_tg_saved_off",
+	"bot.og.block_hidden",
 	"bot.og.q_phone", "bot.og.personal_email", "bot.og.clear_btn", "bot.og.cancel_btn",
 	"bot.og.saved", "bot.og.cleared", "bot.og.shown_done", "bot.og.hidden_done",
 	"bot.og.channel_gone", "bot.og.err_legal_name", "bot.og.err_legal_form", "bot.og.err_reg",

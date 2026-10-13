@@ -170,6 +170,11 @@ func TestBotE2E_OrganizationData(t *testing.T) {
 		t.Errorf("a foreign press changed the channel: %s", got)
 	}
 
+	// ── clearing a required field hides the block and the bot says so ─────────
+	owner.press("og:tx", "скрыты на страницах продаж")
+	if got := setting("hosted_page,show_seller"); got != "false" {
+		t.Errorf("show_seller after clearing the tax number = %s", got)
+	}
 	owner.press("og:off:"+hosted.String(), "больше не показаны")
 	if got := setting("hosted_page,show_seller"); got != "false" {
 		t.Errorf("show_seller after off = %s", got)
