@@ -103,6 +103,28 @@ const ticketBlockedForRefundSQL = `(` + ticketScannedSQL + ` AND NOT ` + scanExe
 const spendScanExceptionSQL = `UPDATE refund_scan_exceptions SET used_at = now(), used_by_refund = $1
 	WHERE ticket_id = $2 AND used_at IS NULL AND expires_at > now()`
 
+// releaseScanExceptionsSQL gives back the exceptions refund $1 spent when it
+// ended without returning money and cannot be sent again: it was rejected, or
+// it failed (no provider refund id, or $2: an operator found it not refunded)
+// and has no ticket of its own (a refund of the whole payment or of the
+// ticket-cancel route, which has no retry). A refund of one ticket keeps its
+// exception: its retry takes it over. The exception keeps its expiry; one
+// that expired meanwhile is granted again.
+const releaseScanExceptionsSQL = `UPDATE refund_scan_exceptions sx SET used_at = NULL, used_by_refund = NULL
+	FROM refunds r
+	WHERE r.id = $1 AND sx.used_by_refund = r.id
+	  AND (r.state = 'rejected'
+	       OR (r.state = 'failed' AND r.ticket_id IS NULL AND (r.provider_refund_id IS NULL OR $2::boolean)))`
+
+// ReleaseScanExceptionsTx gives back the scan exceptions refund id spent, in
+// the caller's transaction, when the refund ended without returning money
+// (releaseScanExceptionsSQL). notRefunded: an operator checked the provider
+// and found this refund did not go through.
+func ReleaseScanExceptionsTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, notRefunded bool) error {
+	_, err := tx.Exec(ctx, releaseScanExceptionsSQL, id, notRefunded)
+	return err
+}
+
 // scannedOrder makes "the first scanned ticket" the same one every time.
 const scannedOrder = ` ORDER BY t.system_ticket_id NULLS LAST, t.id`
 
@@ -284,6 +306,9 @@ func (e *Engine) blockScannedAtClaim(ctx context.Context, tx pgx.Tx, id uuid.UUI
 		WHERE id = $1 AND state = 'provider_pending' RETURNING `+refundColumns, id,
 		"the ticket was scanned at the gate before the refund was sent; nothing was sent to the provider", failureTicketScanned))
 	if err != nil {
+		return nil, uuid.Nil, err
+	}
+	if err := ReleaseScanExceptionsTx(ctx, tx, r.ID, false); err != nil {
 		return nil, uuid.Nil, err
 	}
 	return &r, ticket, nil

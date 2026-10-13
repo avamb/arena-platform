@@ -606,6 +606,12 @@ func recordOutcome(ctx context.Context, tx pgx.Tx, cur Refund, out callOutcome, 
 	if err != nil {
 		return Refund{}, err
 	}
+	if updated.State == StateFailed {
+		// The provider refused it: a scan exception it spent comes back.
+		if err := ReleaseScanExceptionsTx(ctx, tx, updated.ID, false); err != nil {
+			return Refund{}, err
+		}
+	}
 	// A ticket-less (order-level) refund the provider took for LESS than
 	// the payment cannot be attributed to tickets by arena: flag every
 	// active ticket of the order for review (AB-49 policy, the same as an

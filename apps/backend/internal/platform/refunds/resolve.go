@@ -159,6 +159,12 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 		if err != nil {
 			return err
 		}
+		if in.Outcome == ResolveNotRefunded {
+			// No money went back: a scan exception it spent comes back.
+			if err := ReleaseScanExceptionsTx(ctx, tx, out.ID, true); err != nil {
+				return err
+			}
+		}
 		return e.writeAudit(ctx, tx, audit.Event{ActorType: in.Actor.Type, ActorID: in.Actor.ID,
 			Action: "v1.refund.resolve", ResourceType: "refund", ResourceID: out.ID.String(),
 			Metadata: map[string]any{"outcome": in.Outcome, "state": state, "via": in.Via, "note": note,

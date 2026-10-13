@@ -855,7 +855,9 @@ func (h *Handler) HandleRejectRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.refundQueries.UpdateRefundState(ctx, id, "rejected", nil, nil)
+	// The rejection and the return of any scan exception the refund spent
+	// are one transaction: a rejected refund moved no money.
+	updated, err := h.rejectRefundTx(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("refund.not_found", "refund not found", r))
@@ -876,6 +878,24 @@ func (h *Handler) HandleRejectRefund(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"refund": refundFromRow(updated),
 	})
+}
+
+// rejectRefundTx moves the refund to rejected and gives back, in the same
+// transaction, any scan exception it spent when it was written.
+func (h *Handler) rejectRefundTx(ctx context.Context, id uuid.UUID) (gen.RefundRow, error) {
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return gen.RefundRow{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	updated, err := h.refundQueries.WithTx(tx).UpdateRefundState(ctx, id, "rejected", nil, nil)
+	if err != nil {
+		return gen.RefundRow{}, err
+	}
+	if err := refunds.ReleaseScanExceptionsTx(ctx, tx, id, false); err != nil {
+		return gen.RefundRow{}, err
+	}
+	return updated, tx.Commit(ctx)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
