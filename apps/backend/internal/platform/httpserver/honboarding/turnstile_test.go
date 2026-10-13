@@ -10,7 +10,7 @@ import (
 // turnstileStub answers every verification with the given action and host.
 func turnstileStub(t *testing.T, success bool, action, host string) string {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		ok := "false"
 		if success {
