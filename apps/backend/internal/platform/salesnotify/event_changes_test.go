@@ -2,6 +2,7 @@ package salesnotify
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -56,18 +57,25 @@ func TestAnnounceToOrg_PostsOnlyToThatOrganizationsChats(t *testing.T) {
 	)
 	sender := &fakeSender{}
 	d := NewDispatcher(store, sender, nil)
+	ctx := context.Background()
 
-	if n := d.AnnounceToOrg(context.Background(), orgVino, "✉️ Message"); n != 1 {
-		t.Fatalf("delivered to %d chats, want 1", n)
+	if chats, delivered, err := d.AnnounceToOrg(ctx, orgVino, "✉️ Message"); err != nil || chats != 1 || delivered != 1 {
+		t.Fatalf("chats=%d delivered=%d err=%v, want 1 1 nil", chats, delivered, err)
 	}
 	if len(sender.sent) != 1 || sender.sent[0].chat != "-200" {
 		t.Fatalf("want one message to -200, got %+v", sender.sent)
 	}
-	if n := d.AnnounceToOrg(context.Background(), "", "x"); n != 0 {
-		t.Errorf("an empty organization reaches nobody, got %d", n)
+	if chats, _, _ := d.AnnounceToOrg(ctx, "", "x"); chats != 0 {
+		t.Errorf("an empty organization reaches nobody, got %d", chats)
 	}
 	var nilD *Dispatcher
-	if n := nilD.AnnounceToOrg(context.Background(), orgVino, "x"); n != 0 {
-		t.Errorf("nil dispatcher: got %d", n)
+	if chats, _, err := nilD.AnnounceToOrg(ctx, orgVino, "x"); chats != 0 || err != nil {
+		t.Errorf("nil dispatcher: got %d %v", chats, err)
+	}
+
+	// A chat that refuses the post is counted, not delivered: the caller retries.
+	sender.failFor = map[string]error{"-200": errors.New("bot was kicked")}
+	if chats, delivered, err := d.AnnounceToOrg(ctx, orgVino, "x"); err != nil || chats != 1 || delivered != 0 {
+		t.Errorf("failed chat: chats=%d delivered=%d err=%v, want 1 0 nil", chats, delivered, err)
 	}
 }

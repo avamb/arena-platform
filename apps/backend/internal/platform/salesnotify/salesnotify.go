@@ -224,7 +224,7 @@ func (d *Dispatcher) Handle(ctx context.Context, ev outbox.Event) {
 		return // an outbox retry, or the sibling event of the same refund
 	}
 	for _, sub := range targets {
-		d.deliver(ctx, sub, text)
+		_ = d.deliver(ctx, sub, text)
 	}
 }
 
@@ -287,7 +287,7 @@ func (d *Dispatcher) AnnounceEventChange(ctx context.Context, text string) {
 		return
 	}
 	for _, sub := range RouteEventChanges(subs) {
-		d.deliver(ctx, sub, text)
+		_ = d.deliver(ctx, sub, text)
 	}
 }
 
@@ -295,29 +295,32 @@ func (d *Dispatcher) AnnounceEventChange(ctx context.Context, text string) {
 // sales_notification_subscriptions with that org_id, whatever their sale and
 // refund switches) and never to the operator's: it carries a buyer's message
 // to that organizer (the hosted page's contact form, contactform). It answers
-// how many chats it tried. Best effort, like every other delivery here.
-func (d *Dispatcher) AnnounceToOrg(ctx context.Context, orgID, text string) int {
+// how many chats the organization has and how many took the text, so the
+// caller can retry when none did; err means the chats could not be listed.
+// A dispatcher without a Telegram sender has no chats.
+func (d *Dispatcher) AnnounceToOrg(ctx context.Context, orgID, text string) (chats, delivered int, err error) {
 	if d == nil || d.sender == nil || orgID == "" {
-		return 0
+		return 0, 0, nil
 	}
 	subs, err := d.store.Subscriptions(ctx)
 	if err != nil {
 		d.logger.Warn("sales.notify: load subscriptions for an organization message", "error", err.Error())
-		return 0
+		return 0, 0, err
 	}
-	n := 0
 	for _, sub := range subs {
 		if sub.OrgID == orgID {
-			d.deliver(ctx, sub, text)
-			n++
+			chats++
+			if d.deliver(ctx, sub, text) == nil {
+				delivered++
+			}
 		}
 	}
-	return n
+	return chats, delivered, nil
 }
 
 // deliver sends text to one chat, following a supergroup migration once and
-// recording the outcome on the subscription.
-func (d *Dispatcher) deliver(ctx context.Context, sub Subscription, text string) {
+// recording the outcome on the subscription. It returns the send error.
+func (d *Dispatcher) deliver(ctx context.Context, sub Subscription, text string) error {
 	err := d.sender.Send(ctx, sub.ChatID, text)
 	var mig *MigratedError
 	if errors.As(err, &mig) {
@@ -336,6 +339,7 @@ func (d *Dispatcher) deliver(ctx context.Context, sub Subscription, text string)
 	if rerr := d.store.RecordDelivery(ctx, sub.ID, lastErr); rerr != nil {
 		d.logger.Warn("sales.notify: could not record delivery", "subscription", sub.Name, "error", rerr.Error())
 	}
+	return err
 }
 
 func payloadString(p map[string]any, key, fallback string) string {

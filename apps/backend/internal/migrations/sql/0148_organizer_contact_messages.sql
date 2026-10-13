@@ -7,7 +7,8 @@
 -- contact e-mail (Reply-To = the buyer) and, when the organization keeps
 -- contact_form_to_telegram on, posts it to the organization's own sales
 -- Telegram chat. email_sent_at / telegram_sent_at make a retried job send
--- each leg once. Rows older than 90 days are deleted by the same job.
+-- each leg once. Rows older than 90 days are deleted by the job
+-- contact.purge, which reschedules itself every hour.
 --
 -- ip_hash is a salted SHA-256 of the sender's IP, used only for the per-IP
 -- rate limit; the IP itself is never stored.
@@ -35,6 +36,9 @@ CREATE TABLE organizer_contact_messages (
     ip_hash          text        NOT NULL DEFAULT '',
     created_at       timestamptz NOT NULL DEFAULT now(),
     email_sent_at    timestamptz,
+    -- false when the e-mail leg ran but found no public e-mail to send to;
+    -- the Telegram post then says the message was NOT mailed.
+    email_mailed     boolean     NOT NULL DEFAULT false,
     telegram_sent_at timestamptz
 );
 

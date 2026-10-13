@@ -3477,3 +3477,21 @@ other = "✅ Buyer messages now go only to the e-mail of the sales page."
 
 ["bot.og.block_hidden"]
 other = "⚠️ A required field is now empty, so the seller data is hidden on sales pages: {{.N}}. Fill in the field, then turn the seller data on again on the page card."
+
+["contact.email.subject"]
+other = "Message from a buyer: {{.Name}}"
+
+["contact.email.intro"]
+other = "A buyer wrote to you through the contact form of your Arena sales page."
+
+["contact.email.from"]
+other = "From"
+
+["contact.email.page"]
+other = "Sales page"
+
+["contact.email.reply"]
+other = "To answer the buyer, reply to this e-mail. Arena does not see your answer."
+
+["contact.email.footer"]
+other = "Arena Sold Out sent this message because the contact form of your sales page is on."

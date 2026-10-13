@@ -134,3 +134,21 @@ other = "משהו השתבש אצלנו. נסו שוב בעוד דקה."
 
 ["bil24.sample_ticket"]
 other = "זה כרטיס לדוגמה. הוא לא מקנה כניסה."
+
+["contact.email.subject"]
+other = "הודעה מקונה: {{.Name}}"
+
+["contact.email.intro"]
+other = "קונה כתב לך דרך טופס יצירת הקשר בדף המכירה שלך ב-Arena."
+
+["contact.email.from"]
+other = "מאת"
+
+["contact.email.page"]
+other = "דף המכירה"
+
+["contact.email.reply"]
+other = "כדי לענות לקונה, השב למייל הזה. Arena לא רואה את התשובה שלך."
+
+["contact.email.footer"]
+other = "Arena Sold Out שלחה הודעה זו כי טופס יצירת הקשר בדף המכירה שלך פעיל."

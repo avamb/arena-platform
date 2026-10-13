@@ -3,7 +3,6 @@ package contactform
 import (
 	"strings"
 	"testing"
-	"unicode/utf8"
 )
 
 func TestRenderEmail_EscapesTheBuyersWords(t *testing.T) {
@@ -33,16 +32,49 @@ func TestRenderEmail_FallsBackToEnglishAndRTLForHebrew(t *testing.T) {
 	}
 }
 
-func TestFormatTelegram_EscapesAndClips(t *testing.T) {
-	msg := FormatTelegram("Org & Co", "org", "<Ann>", "a@b.example", strings.Repeat("<", 2000))
-	if strings.Contains(msg, "<Ann>") || strings.Contains(msg, "Org & Co") {
-		t.Errorf("unescaped values in %q", msg[:120])
+// Every language of the letter comes from the catalog: no text falls back to
+// a bare message id.
+func TestRenderEmail_EveryLanguageHasEveryText(t *testing.T) {
+	for _, l := range []string{"en", "ru", "es", "cs", "he"} {
+		s, h, txt := RenderEmail(l, "Org", "org", "Ann", "a@b.example", "0123456789")
+		for _, part := range []string{s, h, txt} {
+			if strings.Contains(part, "contact.email.") {
+				t.Errorf("%s: a text is missing from the catalog: %s", l, part)
+			}
+		}
 	}
-	if utf8.RuneCountInString(msg) > 4096 {
-		t.Errorf("a Telegram message must stay under 4096 characters, got %d", utf8.RuneCountInString(msg))
+}
+
+func TestFormatTelegram_EscapesAndClipsWithinTheTelegramLimit(t *testing.T) {
+	for _, body := range []string{
+		strings.Repeat("<", 2000), // escaping makes it five times longer
+		strings.Repeat("😀", 2000), // two UTF-16 units each
+		strings.Repeat("&😀", 1000),
+	} {
+		msg := FormatTelegram("Org & Co", "org", "<Ann>", "a@b.example", body, true)
+		if strings.Contains(msg, "<Ann>") || strings.Contains(msg, "Org & Co") {
+			t.Errorf("unescaped values in %q", msg[:120])
+		}
+		if n := utf16Len(msg); n > telegramMaxUTF16 {
+			t.Errorf("a Telegram message must stay within %d UTF-16 units, got %d", telegramMaxUTF16, n)
+		}
+		if !strings.Contains(msg, "…") {
+			t.Error("a clipped message ends with an ellipsis")
+		}
+		if !strings.HasSuffix(msg, "Reply to the buyer from there.") {
+			t.Error("the closing line is never cut")
+		}
 	}
-	if !strings.Contains(msg, "…") {
-		t.Error("a clipped message ends with an ellipsis")
+	short := FormatTelegram("Org", "org", "Ann", "a@b.example", "Hello there!", true)
+	if strings.Contains(short, "…") || !strings.Contains(short, "Hello there!") {
+		t.Errorf("a short message is kept whole: %q", short)
+	}
+}
+
+func TestFormatTelegram_SaysWhenTheEmailDidNotGoOut(t *testing.T) {
+	msg := FormatTelegram("Org", "org", "Ann", "a@b.example", "Hello there!", false)
+	if strings.Contains(msg, "went to your public e-mail") || !strings.Contains(msg, "was not e-mailed") {
+		t.Errorf("the post must not claim an e-mail that was not sent: %q", msg)
 	}
 }
 
@@ -53,6 +85,19 @@ func TestContactEmail(t *testing.T) {
 	for _, raw := range []string{"", "null", `{"email":5}`, "[]"} {
 		if got := contactEmail([]byte(raw)); got != "" {
 			t.Errorf("%s -> %q", raw, got)
+		}
+	}
+}
+
+// A value written around the API (a direct SQL edit, an old row) is checked
+// again before anything is mailed to it.
+func TestRecipient_RevalidatesTheAddress(t *testing.T) {
+	if got := recipient([]byte(`{"email":" Tickets@Teatro.Example "}`)); got != "tickets@teatro.example" {
+		t.Errorf("got %q", got)
+	}
+	for _, raw := range []string{`{"email":"not an address"}`, `{"email":"a@b"}`, `{"email":"x@y.example\nBcc: z@evil.example"}`} {
+		if got := recipient([]byte(raw)); got != "" {
+			t.Errorf("%s -> %q, want nothing to mail", raw, got)
 		}
 	}
 }

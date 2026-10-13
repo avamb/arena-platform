@@ -223,12 +223,20 @@ func (c *captureMail) Send(_ context.Context, m emailadapter.Message) error {
 	return nil
 }
 
-type captureAnnounce struct{ orgs, texts []string }
+// captureAnnounce records each post; with fail set, the organization's one
+// chat refuses it (chats 1, delivered 0).
+type captureAnnounce struct {
+	orgs, texts []string
+	fail        bool
+}
 
-func (c *captureAnnounce) AnnounceToOrg(_ context.Context, orgID, text string) int {
+func (c *captureAnnounce) AnnounceToOrg(_ context.Context, orgID, text string) (int, int, error) {
+	if c.fail {
+		return 1, 0, nil
+	}
 	c.orgs = append(c.orgs, orgID)
 	c.texts = append(c.texts, text)
-	return 1
+	return 1, 1, nil
 }
 
 func TestOrganizerContact_WorkerMailsAndPostsOnce(t *testing.T) {
@@ -289,5 +297,85 @@ func TestOrganizerContact_WorkerMailsAndPostsOnce(t *testing.T) {
 	// The switch is the owner's: a manager cannot change it.
 	if code, _ := call(uuid.New(), http.MethodPatch, "/v1/organizations/"+cf.f.orgID.String()+"/seller-profile", `{"contact_form_to_telegram": true}`); code != http.StatusForbidden {
 		t.Errorf("a stranger switched it: %d", code)
+	}
+
+	// ── a chat that refuses the post: not marked, the retry posts it once ─────
+	if code, raw := call(cf.f.ownerID, http.MethodPatch, "/v1/organizations/"+cf.f.orgID.String()+"/seller-profile", `{"contact_form_to_telegram": true}`); code != http.StatusOK {
+		t.Fatalf("switch on: %d %s", code, raw)
+	}
+	chat.fail = true
+	id = send("198.51.100.32")
+	if err := h.Handle(ctx, payload(id)); err == nil {
+		t.Fatal("a post no chat took must fail the job so the worker retries")
+	}
+	if err := pool.QueryRow(ctx, `SELECT telegram_sent_at IS NOT NULL FROM organizer_contact_messages WHERE id = $1`, id).Scan(&tgDone); err != nil || tgDone {
+		t.Errorf("an undelivered post must not be marked sent: %v %v", tgDone, err)
+	}
+	chat.fail = false
+	if err := h.Handle(ctx, payload(id)); err != nil {
+		t.Fatal(err)
+	}
+	if len(mail.sent) != 3 || len(chat.texts) != 2 || !strings.Contains(chat.texts[1], "went to your public e-mail") {
+		t.Fatalf("after the retry: mails=%d posts=%v", len(mail.sent), chat.texts)
+	}
+
+	// ── a stored value that is not an address: nothing mailed, and said so ────
+	if _, err := pool.Exec(ctx, `UPDATE sales_channels SET settings = jsonb_set(settings, '{hosted_page,public_contact}', '{"email":"not an address"}') WHERE id = $1`, cf.channel); err != nil {
+		t.Fatal(err)
+	}
+	id = send("198.51.100.33")
+	if err := h.Handle(ctx, payload(id)); err != nil {
+		t.Fatal(err)
+	}
+	var mailed bool
+	if err := pool.QueryRow(ctx, `SELECT email_mailed FROM organizer_contact_messages WHERE id = $1`, id).Scan(&mailed); err != nil || mailed {
+		t.Errorf("email_mailed = %v %v, want false", mailed, err)
+	}
+	if len(mail.sent) != 3 {
+		t.Errorf("a broken address was mailed: %+v", mail.sent[len(mail.sent)-1])
+	}
+	if last := chat.texts[len(chat.texts)-1]; strings.Contains(last, "went to your public e-mail") || !strings.Contains(last, "was not e-mailed") {
+		t.Errorf("the post claims an e-mail that did not go out: %s", last)
+	}
+}
+
+// The 90-day purge runs on its own schedule, not only when a new message
+// arrives, and always books its next run.
+func TestOrganizerContact_PurgeRunsOnASchedule(t *testing.T) {
+	pool := onboardingIntegrationPool(t)
+	srv := buildBotIntegrationServer(t, pool)
+	cf := newContactFixture(t, srv, true)
+	ctx := context.Background()
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM worker_jobs WHERE job_type = $1`, contactform.PurgeJobType)
+	})
+	var oldID, newID uuid.UUID
+	if err := pool.QueryRow(ctx, `INSERT INTO organizer_contact_messages (org_id, channel_id, page_slug, sender_name, sender_email, message, created_at)
+VALUES ($1, $2, 'p', 'Old', 'old@b.example', 'an old message here', now() - interval '91 days') RETURNING id`, cf.f.orgID, cf.channel).Scan(&oldID); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO organizer_contact_messages (org_id, channel_id, page_slug, sender_name, sender_email, message, created_at)
+VALUES ($1, $2, 'p', 'New', 'new@b.example', 'a recent message', now() - interval '89 days') RETURNING id`, cf.f.orgID, cf.channel).Scan(&newID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM worker_jobs WHERE job_type = $1`, contactform.PurgeJobType); err != nil {
+		t.Fatal(err)
+	}
+	if err := contactform.ScheduleInitialPurge(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	if err := contactform.ScheduleInitialPurge(ctx, pool); err != nil { // never a second chain
+		t.Fatal(err)
+	}
+	if err := contactform.NewPurgeHandler(pool, nil)(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	var left int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM organizer_contact_messages WHERE id = ANY($1)`, []uuid.UUID{oldID, newID}).Scan(&left); err != nil || left != 1 {
+		t.Errorf("after the purge %d of the two messages are left (%v), want only the recent one", left, err)
+	}
+	var pending int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM worker_jobs WHERE job_type = $1 AND status = 'pending' AND scheduled_at > now()`, contactform.PurgeJobType).Scan(&pending); err != nil || pending != 1 {
+		t.Errorf("next purge runs booked: %d (%v), want 1", pending, err)
 	}
 }

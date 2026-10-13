@@ -306,6 +306,10 @@ func run() error {
 		// Non-fatal: reminders and expiry of onboarding drafts run a little later.
 		logger.Warn("could not schedule initial onboarding sweep job", "error", err.Error())
 	}
+	if err := contactform.ScheduleInitialPurge(rootCtx, pool.Pool); err != nil {
+		// Non-fatal: old contact-form messages are deleted a little later.
+		logger.Warn("could not schedule initial contact form purge job", "error", err.Error())
+	}
 	if err := eventwatch.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: the operator hears about an event a little later.
 		logger.Warn("could not schedule initial event change watch job", "error", err.Error())
@@ -692,7 +696,8 @@ func registerEventWatchHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *co
 		"interval", eventwatch.DefaultInterval.String(), "stable_for", eventwatch.DefaultStableFor.String())
 }
 
-// registerContactFormHandler registers contact.organizer_message: a buyer's
+// registerContactFormHandler registers contact.organizer_message and
+// contact.purge. contact.organizer_message is a buyer's
 // message from the hosted page's "Write to the organizer" form, mailed to the
 // channel's public e-mail (Reply-To = the buyer) and, when the organization
 // keeps the switch on, posted to its own sales chat.
@@ -707,6 +712,9 @@ func registerContactFormHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *c
 		Announcer: announcer,
 		Logger:    logger,
 	}).Handle)
+	// contact.purge deletes messages older than 90 days every hour, so a page
+	// that stops receiving messages does not keep old ones forever.
+	reg.Register(contactform.PurgeJobType, contactform.NewPurgeHandler(pool, logger))
 }
 
 // buildSalesNotifier builds the outbox leg that posts sales and refunds to

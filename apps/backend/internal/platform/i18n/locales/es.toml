@@ -3332,3 +3332,21 @@ other = "✅ Los mensajes de compradores ahora solo llegan al correo de la pági
 
 ["bot.og.block_hidden"]
 other = "⚠️ Un campo obligatorio está vacío, así que los datos del vendedor se ocultaron en las páginas de venta: {{.N}}. Rellena el campo y vuelve a activar los datos del vendedor en la ficha de la página."
+
+["contact.email.subject"]
+other = "Mensaje de un comprador: {{.Name}}"
+
+["contact.email.intro"]
+other = "Un comprador te escribió con el formulario de contacto de tu página de venta de Arena."
+
+["contact.email.from"]
+other = "De"
+
+["contact.email.page"]
+other = "Página de venta"
+
+["contact.email.reply"]
+other = "Para contestar al comprador, responde a este correo. Arena no ve tu respuesta."
+
+["contact.email.footer"]
+other = "Arena Sold Out envió este mensaje porque el formulario de contacto de tu página de venta está activo."
