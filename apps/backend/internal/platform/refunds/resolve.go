@@ -153,6 +153,7 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 			settled_at = CASE WHEN $4 THEN now() WHEN $3 THEN NULL ELSE settled_at END,
 			refunded_published_at = CASE WHEN $4 THEN COALESCE(refunded_published_at, now()) ELSE refunded_published_at END,
 			cancel_ticket = CASE WHEN $4 THEN false ELSE cancel_ticket END,
+			buyer_notified_at = CASE WHEN $4 THEN COALESCE(buyer_notified_at, now()) ELSE buyer_notified_at END,
 			alert_due_at = NULL, updated_at = now()
 			WHERE id = $1 AND state = 'manual_review' RETURNING `+refundColumns, in.RefundID, state, clearFailure,
 			in.Outcome == ResolveRefundedBeyondPayment))
@@ -174,8 +175,9 @@ func (e *Engine) Resolve(ctx context.Context, in ResolveInput) (Refund, error) {
 		return Refund{}, err
 	}
 	// A refund beyond the payment changes no ticket and owes no announcement:
-	// it is stamped settled and published above, so neither this call nor the
-	// sweep's repair cancels, announces or mails anything for it.
+	// it is stamped settled, published and buyer-notified above, so neither
+	// this call nor the sweep's repair or letter pass cancels, announces or
+	// mails anything for it.
 	if out.State == StateSucceeded && in.Outcome != ResolveRefundedBeyondPayment {
 		e.settle(ctx, out, pay)
 	}
