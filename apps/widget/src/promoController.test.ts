@@ -237,7 +237,8 @@ describe('a quote that hangs never holds the purchase', () => {
     const h = harness();
     const done = h.ctl.apply('TEN');
     expect(h.ctl.state.busy).toBe(true);
-    expect(promoPayBlocked(h.ctl.state, h.cartKey())).toBe(true);
+    // A pending Apply has no code yet, so it never holds the purchase.
+    expect(promoPayBlocked(h.ctl.state, h.cartKey())).toBe(false);
 
     await vi.advanceTimersByTimeAsync(QUOTE_TIMEOUT_MS);
     await done;
@@ -273,12 +274,53 @@ describe('a quote that hangs never holds the purchase', () => {
   });
 });
 
+describe('a pending Apply never holds the purchase', () => {
+  it('leaves the buyer free to pay while the check waits', async () => {
+    const h = harness();
+    void h.ctl.apply('TEN');
+    expect(h.ctl.state.busy).toBe(true);
+    expect(promoPayBlocked(h.ctl.state, h.cartKey())).toBe(false);
+  });
+
+  it('forgets the Apply when the buyer goes on, so its answer cannot change the total', async () => {
+    const h = harness();
+    const done = h.ctl.apply('TEN');
+    h.ctl.cancelPending();
+    expect(h.ctl.state).toMatchObject({ busy: false, code: null });
+    h.pending[0]!.resolve(quoteFor(2));
+    await done;
+    expect(h.ctl.state).toMatchObject({ code: null, quote: null, busy: false });
+  });
+
+  it('does not touch an applied code', async () => {
+    const h = harness();
+    const done = h.ctl.apply('TEN');
+    h.pending[0]!.resolve(quoteFor(2));
+    await done;
+    h.ctl.cancelPending();
+    expect(h.ctl.state.code).toBe('TEN');
+    expect(h.ctl.state.quote).not.toBeNull();
+  });
+
+  it('does not block paying at the end of the wait either', async () => {
+    const h = harness();
+    const done = h.ctl.apply('TEN');
+    await vi.advanceTimersByTimeAsync(QUOTE_TIMEOUT_MS);
+    await done;
+    expect(promoPayBlocked(h.ctl.state, h.cartKey())).toBe(false);
+  });
+});
+
 describe('promoPayBlocked', () => {
   const base: PromoState = { code: null, quote: null, busy: false, error: null, note: null };
   const quote = { code: 'T', cartKey: 'K', subtotal: 1, discount: 0, fee: 0, total: 1, currency: 'EUR' };
 
-  it('waits for a request in flight', () => {
-    expect(promoPayBlocked({ ...base, busy: true }, 'K')).toBe(true);
+  it('waits for the refresh of an applied code', () => {
+    expect(promoPayBlocked({ ...base, code: 'T', quote, busy: true }, 'K')).toBe(true);
+  });
+
+  it('does not wait for an Apply that has not produced a code yet', () => {
+    expect(promoPayBlocked({ ...base, busy: true }, 'K')).toBe(false);
   });
 
   it('waits for an applied code whose quote is missing or for another cart', () => {

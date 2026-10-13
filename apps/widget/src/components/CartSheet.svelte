@@ -53,6 +53,8 @@
     /** A neutral status, e.g. "Code removed.". */
     promoNote?: string | null;
     onApplyPromo?: (code: string) => void;
+    /** The buyer leaves the cart for the buyer form (a pending Apply is dropped). */
+    onContinue?: () => void;
     onRemovePromo?: () => void;
     /**
      * Seat keys currently in conflict (from a 409 response).
@@ -73,7 +75,7 @@
   const {
     cart, buyerFields, locale = 'en', serviceFeePercent = null, showWithdrawalNotice = false, submitting = false, submitError = null,
     promoCode = null, promoQuote = null, cartKey = '', promoAvailable = false, promoExpanded = false, promoBusy = false, promoError = null, promoNote = null,
-    onApplyPromo, onRemovePromo,
+    onApplyPromo, onRemovePromo, onContinue,
     conflictKeys, onContinueWithoutConflicts,
     onClose, onRemoveLine, onCheckout,
   }: Props = $props();
@@ -137,7 +139,10 @@
   const isWarning = $derived(isTwoMinWarning(secondsLeft));
   const countdownStr = $derived(cart.expiresAt ? formatCountdown(secondsLeft) : null);
 
-  function handleContinue(): void { showBuyerForm = true; }
+  function handleContinue(): void {
+    onContinue?.();
+    showBuyerForm = true;
+  }
   function handleBackToCart(): void { showBuyerForm = false; }
 </script>
 

@@ -71,6 +71,11 @@ export interface PromoController {
   drop(): void;
   /** The cart changed (or the sheet was just rendered): bring the quote up to date. */
   cartChanged(lineCount: number): void;
+  /**
+   * The buyer goes on to pay while an Apply is still waiting and no code is
+   * applied: forget that Apply, its answer must not change the total mid-form.
+   */
+  cancelPending(): void;
 }
 
 class QuoteTimeout extends Error {
@@ -182,6 +187,11 @@ export function createPromoController(deps: PromoControllerDeps): PromoControlle
       current += 1;
       set({ code: null, quote: null, busy: false });
     },
+    cancelPending(): void {
+      if (state.code || !state.busy) return;
+      current += 1;
+      set({ busy: false, error: null });
+    },
     cartChanged(lineCount: number): void {
       if (!state.code) return;
       if (lineCount === 0) {
@@ -199,11 +209,13 @@ export function createPromoController(deps: PromoControllerDeps): PromoControlle
 
 /**
  * True while the sheet must not let the buyer go on to pay: a code is applied
- * but its quote is missing, for another cart, or still being asked for. With no
- * code applied nothing blocks — a failed or hung quote never holds the cart.
+ * but its quote is missing, for another cart, or still being asked for (paying
+ * then would charge a total the sheet did not show). With NO code applied
+ * nothing blocks, a pending Apply included — a slow, failed or hung check never
+ * holds the purchase; paying simply goes ahead without the code.
  */
 export function promoPayBlocked(state: PromoState, cartKey: string): boolean {
-  if (state.busy) return true;
   if (!state.code) return false;
+  if (state.busy) return true;
   return !state.quote || state.quote.cartKey !== cartKey;
 }

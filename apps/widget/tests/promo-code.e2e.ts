@@ -341,7 +341,8 @@ test.describe('promo code in the cart sheet', () => {
     await expect(sheet.getByText('Checking the code')).toBeVisible();
     await expect(sheet.getByRole('button', { name: 'Remove VIP' })).toBeDisabled();
     await expect(sheet.getByRole('button', { name: 'Remove Standard' })).toBeDisabled();
-    await expect(sheet.locator('.cta-btn')).toBeDisabled();
+    // The purchase does not wait for the check.
+    await expect(sheet.locator('.cta-btn')).toBeEnabled();
 
     release();
     await expect(sheet.locator('.promo-applied-text')).toHaveText('Code TEN applied.');
@@ -386,7 +387,7 @@ test.describe('promo code in the cart sheet', () => {
 
     await sheet.getByLabel('Promo code').fill('TEN');
     await sheet.getByRole('button', { name: 'Apply' }).click();
-    await expect(sheet.locator('.cta-btn')).toBeDisabled();
+    await expect(sheet.locator('.cta-btn')).toBeEnabled();
 
     // The wait is bounded: the sheet frees itself, says the check failed, and
     // the buyer can still pay the list price.
@@ -394,6 +395,31 @@ test.describe('promo code in the cart sheet', () => {
     await expect(sheet.locator('.promo-applied')).toHaveCount(0);
     await expect(sheet.locator('.cta-btn')).toBeEnabled();
     await expect(sheet.locator('.total-value')).toHaveText(amount('€50.62'));
+  });
+
+  test('the buyer can pay without the code while Apply is still waiting', async ({ page }) => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const seen = await mockPlatform(page, { holdQuote: () => gate });
+    await openCartWithTwoTickets(page);
+    const sheet = page.locator('#widget-promo .sheet');
+
+    await sheet.getByLabel('Promo code').fill('TEN');
+    await sheet.getByRole('button', { name: 'Apply' }).click();
+    await expect(sheet.getByText('Checking the code')).toBeVisible();
+
+    // Pay now, without waiting for the answer.
+    await sheet.locator('.cta-btn').click();
+    await sheet.locator('input[type="email"]').fill('buyer@example.com');
+    // The late answer must not change what the form shows.
+    release();
+    await expect(sheet.locator('button[type="submit"]')).toContainText('50.62');
+    await sheet.locator('button[type="submit"]').click();
+
+    await expect.poll(() => seen.starts.length).toBe(1);
+    expect(seen.starts[0]).not.toHaveProperty('promo_code');
   });
 
   test('a code that takes nothing off is not applied', async ({ page }) => {

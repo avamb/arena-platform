@@ -442,6 +442,16 @@ describe('cart sheet markup', () => {
     expect(none).toMatch(/class="cta-btn[^"]*"[^>]*disabled/);
   });
 
+  it('keeps the buy button usable while an Apply is still waiting', () => {
+    const html = sheetHtml({ onApplyPromo: () => {}, promoBusy: true });
+    expect(html).not.toMatch(/class="cta-btn[^"]*"[^>]*disabled/);
+  });
+
+  it('holds the buy button while an applied code is being re-quoted', () => {
+    const html = sheetHtml({ onApplyPromo: () => {}, onRemovePromo: () => {}, promoCode: 'TEN', promoQuote: QUOTE, cartKey: 'K', promoBusy: true });
+    expect(html).toMatch(/class="cta-btn[^"]*"[^>]*disabled/);
+  });
+
   it('never holds the buy button when no code is applied, whatever happened to a quote', () => {
     const html = sheetHtml({ onApplyPromo: () => {}, promoError: 'Cannot check the code now. Try again.' });
     expect(html).not.toMatch(/class="cta-btn[^"]*"[^>]*disabled/);

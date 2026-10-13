@@ -592,6 +592,9 @@
     if (!selectedSession || !normFeedToken) return;
     // An applied code whose quote is not for this very cart must not ride
     // along: the sheet would show one total and the payment page another.
+    // An Apply still waiting when the buyer pays is dropped: the order goes
+    // ahead without a code, and its answer can no longer change the total.
+    promoCtl.cancelPending();
     if (promoPayBlocked(promo, cartKey)) {
       checkoutError = promoStrings.error_generic;
       return;
@@ -1008,6 +1011,7 @@
         promoNote={promo.note}
         onApplyPromo={(code) => void promoCtl.apply(code)}
         onRemovePromo={() => promoCtl.remove()}
+        onContinue={() => promoCtl.cancelPending()}
         {conflictKeys}
         onContinueWithoutConflicts={handleContinueWithoutConflicts}
         onClose={closeCartSheet}
