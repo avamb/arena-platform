@@ -93,7 +93,11 @@ const (
 	maxUnknownPerPass  = 5
 	alertSectionBudget = 30 * time.Second
 	// alertsPerPass keeps one pass well inside Telegram's group limit of
-	// about 20 messages a minute.
+	// about 20 messages a minute. It caps the review alerts; the provider
+	// events arena gave up on have their own cap (providerEventAlertsPerPass),
+	// and lost buyer letters only get what both left of this one
+	// (alertsPerPass - reviews - provider events), so adding them never
+	// raises the pass's message count.
 	alertsPerPass = 15
 	// alertLease: how long a claimed alert is reserved for the pass that
 	// sends it; a pass that died mid-send releases it this way.
