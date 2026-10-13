@@ -1,16 +1,19 @@
 /**
  * Small fetch wrapper for arena-api.
  *
- * - Adds `Authorization: Bearer` and `X-Client-Channel: event_center_web`.
- *   The API ignores an unknown channel value today (allow-list
- *   telegram_bot, admin_web, site_plugin); the spec asks to add this one.
+ * - Adds `Authorization: Bearer` and `X-Client-Channel: event_center_web`
+ *   (an allow-listed channel since A1: audit rows of the web carry
+ *   metadata.via = event_center_web).
  * - Parses the platform error envelope into ApiError.
  * - On a 401 it refreshes the session ONCE and repeats the request.
  * - Aborts a request after 30 s.
+ *
+ * The session itself is `session` (tabSession.ts): one tab of a session
+ * rotates the refresh token, the others ask it (review finding M3).
  */
 import { config } from "@/lib/config";
-import { clearSession, getAccessToken, getRefreshToken, setSession } from "@/lib/api/session";
 import { API, buildPath, type ApiRoute } from "@/lib/api/routes";
+import { TabSession, browserBus, browserLocks, browserStore, type Deps, type Tokens } from "@/lib/api/tabSession";
 import type { AuthLoginResponse, AuthRefreshResponse } from "@/lib/api/types";
 
 const TIMEOUT_MS = 30_000;
@@ -78,7 +81,7 @@ async function send(opts: SendOptions): Promise<Response> {
   };
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
   if (opts.authenticated) {
-    const token = getAccessToken();
+    const token = session.getAccessToken();
     if (token !== null) headers.Authorization = `Bearer ${token}`;
   }
   const controller = new AbortController();
@@ -122,40 +125,48 @@ async function readJson<T>(res: Response): Promise<T> {
   return parsed as T;
 }
 
-let refreshing: Promise<void> | null = null;
+/** POST /v1/auth/refresh. The server issues a NEW refresh token every time. */
+async function rotateRefreshToken(refreshToken: string): Promise<Tokens> {
+  const res = await readJson<AuthRefreshResponse>(
+    await send({ route: API.refresh, body: { refresh_token: refreshToken }, authenticated: false }),
+  );
+  return { accessToken: res.access_token, refreshToken: res.refresh_token, expiresAt: res.expires_at, userId: res.user_id };
+}
 
-/** Rotates the session. The server issues a NEW refresh token every time. */
+/** Builds the session of this tab. Tests pass their own store, bus and locks. */
+export function createSession(over: Partial<Deps> = {}): TabSession {
+  return new TabSession({
+    store: over.store ?? browserStore(),
+    bus: over.bus !== undefined ? over.bus : browserBus(),
+    locks: over.locks !== undefined ? over.locks : browserLocks(),
+    refresh: over.refresh ?? rotateRefreshToken,
+    makeError: over.makeError ?? ((status, code, message) => new ApiError(status, code, message)),
+    now: over.now,
+    newId: over.newId,
+    askTimeoutMs: over.askTimeoutMs,
+  });
+}
+
+export let session: TabSession = createSession();
+
+/** Test helper: replaces the session of the module. */
+export function useSessionForTests(next: TabSession): void {
+  session = next;
+}
+
+/**
+ * Gets a fresh access token. Only a refusal by the server (400/401) signs
+ * the person out. A network error keeps the session (review finding L7).
+ */
 export function refreshSession(): Promise<void> {
-  if (refreshing !== null) return refreshing;
-  const token = getRefreshToken();
-  if (token === null) {
-    return Promise.reject(new ApiError(401, "auth.no_refresh_token", "You are signed out."));
-  }
-  refreshing = send({ route: API.refresh, body: { refresh_token: token }, authenticated: false })
-    .then((res) => readJson<AuthRefreshResponse>(res))
-    .then((res) => {
-      setSession({
-        accessToken: res.access_token,
-        refreshToken: res.refresh_token,
-        expiresAt: res.expires_at,
-        userId: res.user_id,
-      });
-    })
-    .catch((err: unknown) => {
-      clearSession();
-      throw err;
-    })
-    .finally(() => {
-      refreshing = null;
-    });
-  return refreshing;
+  return session.refresh();
 }
 
 export async function login(email: string, password: string): Promise<void> {
   const res = await readJson<AuthLoginResponse>(
     await send({ route: API.login, body: { email, password }, authenticated: false }),
   );
-  setSession({
+  await session.signedIn({
     accessToken: res.access_token,
     refreshToken: res.refresh_token,
     expiresAt: res.expires_at,
@@ -163,17 +174,32 @@ export async function login(email: string, password: string): Promise<void> {
   });
 }
 
+/**
+ * Signs out and revokes the refresh token on the server (review finding
+ * M1). POST /v1/auth/logout needs a VALID access token, so an expired one
+ * is refreshed first, and the token sent is the latest one: a rotated-away
+ * token is already revoked and logging it out would leave the session alive.
+ * Every tab of the session is signed out, whatever the server answers.
+ */
 export async function logout(): Promise<void> {
-  const token = getRefreshToken();
   try {
-    if (token !== null) {
-      await send({ route: API.logout, body: { refresh_token: token }, authenticated: true });
+    await session.ensureFresh();
+    let res = await sendLogout();
+    if (res?.status === 401) {
+      await session.refresh();
+      res = await sendLogout();
     }
   } catch {
-    // The local session is cleared anyway.
+    // The person asked to leave: the local session is cleared anyway.
   } finally {
-    clearSession();
+    session.signOut(true);
   }
+}
+
+function sendLogout(): Promise<Response> | null {
+  const token = session.getRefreshToken();
+  if (token === null) return null;
+  return send({ route: API.logout, body: { refresh_token: token }, authenticated: true });
 }
 
 export async function requestPasswordReset(email: string): Promise<void> {
@@ -185,10 +211,10 @@ export async function requestPasswordReset(email: string): Promise<void> {
 type CallOptions = Omit<SendOptions, "authenticated">;
 
 async function sendAuthed(opts: CallOptions): Promise<Response> {
-  if (getAccessToken() === null && getRefreshToken() !== null) await refreshSession();
+  if (session.getAccessToken() === null && session.hasSession()) await session.refresh();
   let res = await send({ ...opts, authenticated: true });
-  if (res.status === 401 && getRefreshToken() !== null) {
-    await refreshSession();
+  if (res.status === 401 && session.hasSession()) {
+    await session.refresh();
     res = await send({ ...opts, authenticated: true });
   }
   return res;

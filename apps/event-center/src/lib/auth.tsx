@@ -11,8 +11,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchMe, fetchOrgMe } from "@/lib/api/endpoints";
-import { login as apiLogin, logout as apiLogout, refreshSession } from "@/lib/api/http";
-import { getAccessToken, hasSession, subscribe } from "@/lib/api/session";
+import { ApiError, login as apiLogin, logout as apiLogout, session } from "@/lib/api/http";
 import type { MeOrganizationMembership, OrgMeResponse } from "@/lib/api/types";
 
 export type AuthStatus = "loading" | "signedOut" | "signedIn";
@@ -27,18 +26,27 @@ const Ctx = createContext<AuthValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [status, setStatus] = useState<AuthStatus>(() => (hasSession() ? "loading" : "signedOut"));
+  const [status, setStatus] = useState<AuthStatus>(() => (session.hasSession() ? "loading" : "signedOut"));
 
   useEffect(() => {
     let alive = true;
     if (status === "loading") {
-      const restore = getAccessToken() !== null ? Promise.resolve() : refreshSession();
-      restore
+      // Leadership first: a duplicated tab must ask the leading tab of its
+      // session instead of rotating the shared refresh token itself.
+      session
+        .start()
+        .then(() => session.ensureFresh())
         .then(() => alive && setStatus("signedIn"))
-        .catch(() => alive && setStatus("signedOut"));
+        .catch((err: unknown) => {
+          if (!alive) return;
+          // A network error keeps the session: the screens show the error
+          // and retry. Only a refusal (the session is gone) signs out.
+          const offline = err instanceof ApiError && err.status === 0 && session.hasSession();
+          setStatus(offline ? "signedIn" : "signedOut");
+        });
     }
-    const unsubscribe = subscribe(() => {
-      if (!hasSession()) {
+    const unsubscribe = session.subscribe(() => {
+      if (!session.hasSession()) {
         setStatus("signedOut");
         queryClient.clear();
       }

@@ -4,7 +4,7 @@
  * (A1), the downloads and the basic accessibility rules of the spec.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { EVENT, ORG_A, ORG_B, ORG_C, ORDER, SESSION, mockApi } from "./mockApi";
+import { EVENT, ORG_A, ORG_B, ORG_C, ORDER, SESSION, mockApi, newAuthState } from "./mockApi";
 
 const MIN_TAP = 44;
 
@@ -160,5 +160,50 @@ test.describe("R1 read-only event center", () => {
     await page.getByLabel("Password").fill("right-password");
     await page.getByTestId("login-submit").click();
     await expect(page).toHaveURL(new RegExp(`/o/${ORG_A}/orders`));
+  });
+
+  // Review finding M3: "Duplicate tab" copies sessionStorage. The mock API
+  // rotates the refresh token and revokes everything when an old one comes
+  // back, like arena-api. Short access tokens force a rotation per use.
+  test("a duplicated tab never reuses the rotated refresh token", async ({ page, context }) => {
+    const auth = newAuthState(20_000);
+    await mockApi(page, auth);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/events`);
+    await expect(page.getByTestId("event-row").first()).toBeVisible();
+
+    const copied = await page.evaluate(() => JSON.stringify(Object.entries(sessionStorage)));
+    const dup = await context.newPage();
+    await dup.addInitScript((entries) => {
+      if (sessionStorage.length === 0) for (const [k, v] of JSON.parse(entries) as [string, string][]) sessionStorage.setItem(k, v);
+    }, copied);
+    await mockApi(dup, auth);
+    await dup.goto(`/o/${ORG_A}/events`);
+    await expect(dup.getByTestId("event-row").first()).toBeVisible();
+
+    // The first tab reloads (it loses its lead), then the duplicate reloads.
+    await page.reload();
+    await expect(page.getByTestId("event-row").first()).toBeVisible();
+    await dup.reload();
+    await expect(dup.getByTestId("event-row").first()).toBeVisible();
+
+    expect(auth.refreshes).toBeGreaterThanOrEqual(2);
+    expect(auth.compromised, "an old refresh token was sent again").toBe(false);
+    await dup.close();
+  });
+
+  // Review finding M1: sign-out revokes the server session even after the
+  // access token expired.
+  test("sign-out sends the latest refresh token with a valid access token", async ({ page }) => {
+    const auth = newAuthState(20_000);
+    const state = await mockApi(page, auth);
+    await signIn(page);
+    const logout = page.waitForRequest((r) => r.url().endsWith("/v1/auth/logout"));
+    await page.getByRole("button", { name: "Sign out" }).click();
+    const req = await logout;
+    expect(req.postDataJSON()).toEqual({ refresh_token: auth.current });
+    expect(req.headers()["authorization"]).toBe(`Bearer at-${auth.refreshes + 1}`);
+    expect(state.requests.filter((r) => r.startsWith("POST /v1/auth/refresh")).length).toBeGreaterThanOrEqual(1);
+    await expect(page).toHaveURL(/\/login/);
   });
 });

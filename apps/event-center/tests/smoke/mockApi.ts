@@ -97,6 +97,35 @@ export interface MockState {
   requests: string[];
 }
 
+/**
+ * The refresh-token rules of arena-api: every refresh rotates the token, and
+ * a second use of an old one revokes every session of the person
+ * (auth.session_compromised). Pages of one browser context share one state.
+ */
+export interface AuthState {
+  current: string;
+  used: Set<string>;
+  compromised: boolean;
+  refreshes: number;
+  /** Lifetime of an access token. Short ones force a rotation per use. */
+  ttlMs: number;
+}
+
+export function newAuthState(ttlMs = 3_600_000): AuthState {
+  return { current: "", used: new Set(), compromised: false, refreshes: 0, ttlMs };
+}
+
+function tokens(auth: AuthState, n: number) {
+  auth.current = `rt-${n}`;
+  return {
+    access_token: `at-${n}`,
+    refresh_token: auth.current,
+    token_type: "Bearer",
+    expires_at: new Date(Date.now() + auth.ttlMs).toISOString(),
+    user_id: "u1",
+  };
+}
+
 /** The CORS headers arena-api sends to an allowed origin (router.go corsMiddleware). */
 export const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -111,7 +140,7 @@ function forbidden(route: Route) {
   return json(route, 403, { error: { code: "org.access_denied", message: "denied", request_id: "rq" } });
 }
 
-export async function mockApi(page: Page): Promise<MockState> {
+export async function mockApi(page: Page, auth: AuthState = newAuthState()): Promise<MockState> {
   const state: MockState = { requests: [] };
   await page.route(`${API}/**`, async (route) => {
     const req = route.request();
@@ -131,27 +160,24 @@ export async function mockApi(page: Page): Promise<MockState> {
       if (body.password !== "right-password") {
         return json(route, 401, { error: { code: "auth.invalid_credentials", message: "bad" } });
       }
-      return json(route, 200, {
-        access_token: "at-1",
-        refresh_token: "rt-1",
-        token_type: "Bearer",
-        expires_at: "2099-01-01T00:00:00Z",
-        user_id: "u1",
-      });
+      auth.compromised = false;
+      return json(route, 200, tokens(auth, 1));
     }
     if (m === "POST" && path === "/v1/auth/refresh") {
-      return json(route, 200, {
-        access_token: "at-2",
-        refresh_token: "rt-2",
-        token_type: "Bearer",
-        expires_at: "2099-01-01T00:00:00Z",
-        user_id: "u1",
-      });
+      const token = (req.postDataJSON() as { refresh_token: string }).refresh_token;
+      if (auth.compromised || token !== auth.current) {
+        if (auth.used.has(token)) auth.compromised = true;
+        const code = auth.compromised ? "auth.session_compromised" : "auth.invalid_refresh_token";
+        return json(route, 401, { error: { code, message: "refused" } });
+      }
+      auth.used.add(token);
+      auth.refreshes++;
+      return json(route, 200, tokens(auth, auth.refreshes + 1));
     }
     if (m === "POST" && path === "/v1/auth/logout") return route.fulfill({ status: 204, headers: CORS });
     if (m === "POST" && path === "/v1/auth/password-reset/request") return json(route, 202, { status: "accepted" });
 
-    if (req.headers()["authorization"] === undefined) {
+    if (req.headers()["authorization"] === undefined || auth.compromised) {
       return json(route, 401, { error: { code: "auth.unauthorized", message: "no token" } });
     }
 
