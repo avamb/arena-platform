@@ -290,6 +290,7 @@ func (b *Bot) startQueueRetry(ctx context.Context, chatID int64, msgID int, id *
 		b.reply(ctx, chatID, nil, b.texts.T(loc, "bot.rq.still_sending", nil), nil)
 		return
 	}
+	b.consumePress(ctx, chatID) // the "yes" can never be pressed twice (feed.go)
 	b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.sending", nil), nil)
 	started := b.goBackground("queue retry", func() {
 		defer b.retrying.Delete(refundID)

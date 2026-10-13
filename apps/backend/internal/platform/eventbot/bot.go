@@ -118,6 +118,9 @@ type Bot struct {
 	bg bgGroup
 	// retrying holds the refund ids whose queue retry is under way.
 	retrying sync.Map
+	// feed remembers which of the bot's messages still carry buttons, per
+	// private chat (feed.go): a press on any other message is refused.
+	feed *feedMemory
 }
 
 // bgGroup is the WaitGroup of the background work. Once Run starts waiting
@@ -194,6 +197,9 @@ func (b *Bot) goBackground(name string, fn, cleanup func()) bool {
 // dialog state through Bot.inPersonsTurn on a context made from this one.
 func detached(ctx context.Context) context.Context {
 	ctx = context.WithValue(context.WithoutCancel(ctx), turnKey{}, nil)
+	// Nor the person's action (feed.go): an answer that arrives later is a
+	// new message, never an edit of whatever the action had sent.
+	ctx = context.WithValue(ctx, feedActionKey{}, (*feedAction)(nil))
 	return context.WithValue(ctx, beforeReplyKey{}, nil)
 }
 
@@ -242,6 +248,7 @@ func New(opts Options) (*Bot, error) {
 		noticeEvery:    opts.NoticeEvery,
 		siteButton:     opts.SiteButton,
 		onbForms:       &onbFormCache{m: map[string]onbFormEntry{}},
+		feed:           newFeedMemory(),
 	}
 	b.sessions = newSessionDialogs(b.dialogs)
 	b.onb = newOnbDialogs(b.dialogs)
@@ -428,6 +435,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	text := strings.TrimSpace(m.Text)
 	from := m.From
 	chatID := m.Chat.ID
+	// Whatever the bot answers is a new message; a new keyboard then takes
+	// the buttons from the older screens (feed.go).
+	ctx = withFeedAction(ctx, textAction(chatID))
 	if strings.HasPrefix(text, "/") {
 		cmd, arg, _ := strings.Cut(text, " ")
 		cmd = strings.ToLower(strings.TrimSpace(cmd))
@@ -442,6 +452,7 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		b.leaveEvStatus(ctx, from.ID)
 		b.leavePromo(ctx, from.ID)      // and a promo-code question (EC-11)
 		b.leaveIdleRefund(ctx, from.ID) // and a refund question: its word is never an answer after a command (EC-21)
+		b.leaveScanExc(ctx, from.ID)    // and the operator's scan exception reason
 		b.leaveOrgData(ctx, from.ID)    // and an organization data question (HP-4a)
 		switch cmd {
 		case "/start":
@@ -480,6 +491,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	}
 	if code, ok := b.pending.take(from.ID); ok {
 		b.acceptInvitation(ctx, chatID, from, code, text)
+		return
+	}
+	if text != "" && b.scanExcText(ctx, chatID, from, text) {
 		return
 	}
 	if text != "" && b.teamText(ctx, chatID, from, text) {
@@ -538,12 +552,20 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 }
 
 func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
-	_, _ = b.tg.AnswerCallbackQuery(ctx, &tgbot.AnswerCallbackQueryParams{CallbackQueryID: cq.ID})
 	if cq.Message.Message == nil {
+		_, _ = b.tg.AnswerCallbackQuery(ctx, &tgbot.AnswerCallbackQueryParams{CallbackQueryID: cq.ID})
 		return
 	}
 	chatID := cq.Message.Message.Chat.ID
 	msgID := cq.Message.Message.ID
+	// A button of a message that is no longer the live one does nothing
+	// (feed.go): the person is told to carry on below.
+	if !b.feed.admit(chatID, msgID) {
+		b.refuseStalePress(ctx, cq)
+		return
+	}
+	_, _ = b.tg.AnswerCallbackQuery(ctx, &tgbot.AnswerCallbackQueryParams{CallbackQueryID: cq.ID})
+	ctx = withFeedAction(ctx, pressAction(cq))
 	from := &cq.From
 	parts := strings.Split(cq.Data, ":")
 	if !isEventsCallback(parts[0]) {
@@ -554,6 +576,9 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	}
 	if !strings.HasPrefix(cq.Data, "or:f:") {
 		b.leaveIdleRefund(ctx, from.ID) // any other press ends the "Refund" dialog (EC-21)
+	}
+	if !strings.HasPrefix(cq.Data, "or:f:x") {
+		b.leaveScanExc(ctx, from.ID) // and the operator's scan exception question
 	}
 	if !strings.HasPrefix(cq.Data, "or:r:") {
 		b.leaveResend(ctx, from.ID) // any other press ends the "Resend tickets" dialog (EC-13)
@@ -921,27 +946,19 @@ func (b *Bot) replyIdentityError(ctx context.Context, chatID int64, from *models
 	b.send(ctx, chatID, b.texts.T(locale, "bot.error_generic", nil), nil)
 }
 
-// reply edits the message the button came from, or sends a new one.
+// reply answers in the chat. editMsgID names the message the answer
+// belongs to (the pressed one, or a screen a dialog remembers): the answer is
+// a NEW message at the bottom and that message loses its keyboard, except
+// where feed.go allows a redraw in place (a tick in a list, a page, a
+// message this same action already sent).
 func (b *Bot) reply(ctx context.Context, chatID int64, editMsgID *int, text string, kb *models.InlineKeyboardMarkup) {
-	if editMsgID != nil {
-		params := &tgbot.EditMessageTextParams{
-			ChatID:    chatID,
-			MessageID: *editMsgID,
-			Text:      text,
-			ParseMode: models.ParseModeHTML,
-		}
-		if kb != nil {
-			params.ReplyMarkup = kb
-		}
-		if _, err := b.tg.EditMessageText(ctx, params); err == nil || strings.Contains(err.Error(), "message is not modified") {
-			return
-		}
+	if err := b.replyChecked(ctx, chatID, editMsgID, text, kb); err != nil {
+		b.logger.Warn("eventbot: sendMessage failed", slog.Int64("chat_id", chatID), slog.String("error", err.Error()))
 	}
-	b.send(ctx, chatID, text, kb)
 }
 
-// send is sendChecked (draft_sweep.go) for the callers that cannot do anything
-// with a failure but log it.
+// send is sendChecked for the callers that cannot do anything with a failure
+// but log it.
 func (b *Bot) send(ctx context.Context, chatID int64, text string, kb *models.InlineKeyboardMarkup) {
 	if err := b.sendChecked(ctx, chatID, text, kb); err != nil {
 		b.logger.Warn("eventbot: sendMessage failed", slog.Int64("chat_id", chatID), slog.String("error", err.Error()))

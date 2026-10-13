@@ -258,6 +258,7 @@ const PAID_STATUS: object = {
   status: 'paid',
   checkout_token: CHECKOUT_TOKEN,
   checkout_session_id: CHECKOUT_SESSION_ID,
+  order_number: 1002561129,
   expires_at: null,
   subtotal: 6800,
   discount: 0,
@@ -946,20 +947,19 @@ test.describe('4 — Full Stripe test-mode purchase', () => {
     }
   });
 
-  test('order ref is derived from checkout_session_id (truncated, uppercase)', async ({ page }) => {
+  test('order ref is the order number of the ticket e-mail (order_number)', async ({ page }) => {
     await page.goto('/demo/palac-akropolis.html');
     await page.waitForLoadState('networkidle');
 
-    const csid = await page.evaluate(async ({ token }) => {
+    const orderNumber = await page.evaluate(async ({ token }) => {
       const res = await fetch(`/v1/public/checkout/${token}`);
-      const body = (await res.json()) as { checkout_session_id: string };
-      return body.checkout_session_id;
+      const body = (await res.json()) as { order_number?: number | null };
+      return body.order_number ?? null;
     }, { token: CHECKOUT_TOKEN });
 
-    // The OrderStatus component shows csid.slice(0, 8).toUpperCase() as order ref.
-    const expectedRef = csid.slice(0, 8).toUpperCase();
-    expect(expectedRef).toBeTruthy();
-    expect(expectedRef).toBe(CHECKOUT_SESSION_ID.slice(0, 8).toUpperCase());
+    // The OrderStatus component shows order_number as it is, the same number
+    // the ticket e-mail and the PDF print, never a prefix of a UUID.
+    expect(orderNumber).toBe(1002561129);
   });
 });
 
