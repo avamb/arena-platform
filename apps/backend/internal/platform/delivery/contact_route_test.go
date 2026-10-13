@@ -20,8 +20,11 @@ func TestContactRouteFor(t *testing.T) {
 			ContactRoute{Email: "tickets@teatro.example"}},
 		{"hosted page without a public e-mail links the form", gen.TicketContactRoute{HostedPage: true, OrgEmail: strPtr("owner@gmail.example"), PageSlug: strPtr("teatro"), EventSlug: strPtr("hamlet")},
 			ContactRoute{FormURL: "https://tickets.example/teatro/hamlet#contact"}},
-		{"event without a slug links the page itself", gen.TicketContactRoute{HostedPage: true, PageSlug: strPtr("teatro")},
+		{"event without a slug links the page itself", gen.TicketContactRoute{HostedPage: true, OrgEmail: strPtr("owner@gmail.example"), PageSlug: strPtr("teatro")},
 			ContactRoute{FormURL: "https://tickets.example/teatro#contact"}},
+		// The page offers no form when its messages would reach nobody.
+		{"hosted page and no address at all: no dead link", gen.TicketContactRoute{HostedPage: true, PageSlug: strPtr("teatro"), EventSlug: strPtr("hamlet")},
+			ContactRoute{}},
 		{"no page slug: nothing, never the address", gen.TicketContactRoute{HostedPage: true, OrgEmail: strPtr("owner@gmail.example")},
 			ContactRoute{}},
 		{"no hosted page keeps the organization's address", gen.TicketContactRoute{OrgEmail: strPtr("box@teatro.example"), PageSlug: strPtr("teatro")},
