@@ -928,6 +928,9 @@ func (b *Bot) switchLang(ctx context.Context, chatID int64, editMsgID *int, from
 	locale := NormalizeLocale(raw)
 	if err := b.queries.UpdateBotTelegramLinkLocale(ctx, from.ID, locale); err != nil {
 		b.logger.Error("eventbot: set locale failed", slog.String("error", err.Error()))
+	} else {
+		// The menu button carries its label: send it in the new language.
+		b.ensureMenuKeyboard(ctx, chatID, locale, true)
 	}
 	b.showHome(ctx, chatID, editMsgID, from, b.texts.T(locale, "bot.lang_set", nil)+"\n\n")
 }

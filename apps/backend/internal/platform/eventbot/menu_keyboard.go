@@ -126,9 +126,12 @@ func (b *Bot) openMenu(ctx context.Context, chatID int64, from *models.User, for
 		return
 	}
 	if b.askLeaveRefund(ctx, chatID, from, id) {
+		// Everything else still ends now: only the refund waits for the
+		// answer, so no other dialog takes a text typed meanwhile.
+		b.leaveAllDialogs(ctx, from.ID, id, jwt, true)
 		return
 	}
-	b.leaveAllDialogs(ctx, from.ID, id, jwt)
+	b.leaveAllDialogs(ctx, from.ID, id, jwt, false)
 	if force {
 		b.ensureMenuKeyboard(ctx, chatID, id.Locale(), true)
 	}
@@ -154,24 +157,42 @@ func (b *Bot) menuCommand(ctx context.Context, cmd, arg string, from *models.Use
 	return false
 }
 
-// askLeaveRefund stops the menu when a refund waits for its typed word or
-// its final press: leaving would silently drop it, so the person chooses.
+// askLeaveRefund stops the menu when leaving would decide a refund's fate,
+// so the person chooses:
+//   - a refund waiting for its typed word or its final press (nothing sent):
+//     leaving drops it;
+//   - a refund the server got but did not answer (a timeout, a server error,
+//     a restart): it may have started, the order should be checked, and
+//     leaving keeps its key (leaveIdleRefund parks it), so going back sends
+//     the same operation again and never refunds twice.
+//
+// A refund with the server right now, or one already left, is no question.
 func (b *Bot) askLeaveRefund(ctx context.Context, chatID int64, from *models.User, id *Identity) bool {
 	var st refundDialog
 	step, found, _, err := b.dialogs.Load(ctx, from.ID, refundDialogKind, &st)
-	if err != nil || !found || (step != refStepWord && step != refStepFinal) {
+	if err != nil || !found || st.Parked || b.sendingNow(step, st) {
 		return false
 	}
 	loc := id.Locale()
-	b.reply(ctx, chatID, nil, b.texts.T(loc, "bot.menu_leave_refund", map[string]any{"Num": st.Num}),
-		&models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-			{{Text: b.texts.T(loc, "bot.menu_back_refund_btn", nil), CallbackData: "or:f:cur"}},
-			{{Text: b.texts.T(loc, "bot.menu_leave_btn", nil), CallbackData: menuCallback + ":leave"}},
-		}})
+	back := []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.menu_back_refund_btn", nil), CallbackData: "or:f:cur"}}
+	leave := []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.menu_leave_btn", nil), CallbackData: menuCallback + ":leave"}}
+	vars := map[string]any{"Num": st.Num}
+	switch {
+	case st.mayHaveStarted(step):
+		order := []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.menu_open_order_btn", nil), CallbackData: "or:v:" + st.OrderID.String()}}
+		b.reply(ctx, chatID, nil, b.texts.T(loc, "bot.menu_leave_refund_maybe", vars),
+			&models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{back, order, leave}})
+	case step == refStepWord || step == refStepFinal:
+		b.reply(ctx, chatID, nil, b.texts.T(loc, "bot.menu_leave_refund", vars),
+			&models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{back, leave}})
+	default:
+		return false
+	}
 	return true
 }
 
-// menuPress handles "menu:<data>": the person chose to leave the refund.
+// menuPress handles "menu:<data>": the person chose to leave the refund. A
+// refund that may have started keeps its key (leaveIdleRefund parks it).
 func (b *Bot) menuPress(ctx context.Context, chatID int64, from *models.User, data string) {
 	if data != "leave" {
 		return
@@ -181,21 +202,25 @@ func (b *Bot) menuPress(ctx context.Context, chatID int64, from *models.User, da
 		b.replyIdentityError(ctx, chatID, from, err)
 		return
 	}
-	b.leaveRefund(ctx, from.ID)
-	b.leaveAllDialogs(ctx, from.ID, id, jwt)
+	b.leaveAllDialogs(ctx, from.ID, id, jwt, false)
 	b.showHome(ctx, chatID, nil, from, "")
 }
 
 // leaveAllDialogs ends every dialog that waits for a typed answer, so a text
 // typed after the menu is never taken as one. A refund already with the
-// server keeps its dialog (its answer still needs it), and an event draft is
-// paused, not deleted: "+ Event" offers to continue it.
-func (b *Bot) leaveAllDialogs(ctx context.Context, tg int64, id *Identity, jwt string) {
+// server keeps its dialog (its answer still needs it), one that may have
+// started is parked with its key, and keepRefund leaves the refund alone (the
+// menu's question about it is on screen). An event draft is paused, not
+// deleted: "+ Event" offers to continue it. A NEW dialog kind must be ended
+// here (TestLeaveAllDialogs_EndsEveryDialogKind).
+func (b *Bot) leaveAllDialogs(ctx context.Context, tg int64, id *Identity, jwt string, keepRefund bool) {
 	b.leaveEvents(ctx, tg)
 	b.leaveOrders(ctx, tg)
 	b.leaveEvStatus(ctx, tg)
 	b.leavePromo(ctx, tg)
-	b.leaveIdleRefund(ctx, tg)
+	if !keepRefund {
+		b.leaveIdleRefund(ctx, tg)
+	}
 	b.leaveScanExc(ctx, tg)
 	b.leaveResend(ctx, tg)
 	b.leaveInvite(ctx, tg)
@@ -229,6 +254,7 @@ func (b *Bot) pauseDraft(ctx context.Context, tg int64, id *Identity, jwt string
 var menuKeys = []string{
 	menuButtonKey, "bot.menu_keyboard_note", "bot.cmd_menu", "bot.menu_leave_refund",
 	"bot.menu_back_refund_btn", "bot.menu_leave_btn", "bot.stale_message_stranger",
+	"bot.menu_leave_refund_maybe", "bot.menu_open_order_btn", "bot.ref.maybe_started",
 }
 
 func init() {

@@ -276,10 +276,19 @@ other = "El botón ☰ Menú bajo el campo de mensaje siempre abre el menú prin
 other = "Abrir el menú principal"
 
 ["bot.menu_leave_refund"]
-other = "El reembolso del pedido №{{.Num}} aún no se ha enviado. Si abres el menú ahora, el comprador no recibe el dinero.\n\nPuedes volver al reembolso o abrir el menú."
+other = "La devolución del pedido n.º {{.Num}} aún no se ha enviado. Si abres el menú ahora, el comprador no recibe el dinero.\n\nPuedes volver a la devolución o abrir el menú."
 
 ["bot.menu_back_refund_btn"]
-other = "↩ Volver al reembolso"
+other = "↩ Volver a la devolución"
+
+["bot.menu_leave_refund_maybe"]
+other = "Es posible que la devolución del pedido n.º {{.Num}} ya haya empezado: el bot no recibió respuesta del servidor. Revisa el pedido antes de enviar la devolución otra vez.\n\nSi vuelves a la devolución y la envías de nuevo, el dinero no se devuelve dos veces. Si abres el menú, la devolución se queda aquí."
+
+["bot.menu_open_order_btn"]
+other = "📄 Abrir el pedido"
+
+["bot.ref.maybe_started"]
+other = "Es posible que esta devolución ya haya empezado: el bot no recibió respuesta del servidor. Revisa primero el pedido. Enviarla de nuevo no devuelve el dinero dos veces."
 
 ["bot.menu_leave_btn"]
 other = "☰ Abrir el menú"

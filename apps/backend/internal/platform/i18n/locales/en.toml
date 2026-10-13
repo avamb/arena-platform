@@ -418,7 +418,16 @@ other = "The ☰ Menu button below the message field always opens the main menu.
 other = "Open the main menu"
 
 ["bot.menu_leave_refund"]
-other = "The refund for order №{{.Num}} is not sent yet. If you open the menu now, the buyer does not get the money back.\n\nYou can go back to the refund or open the menu."
+other = "The refund for order #{{.Num}} is not sent yet. If you open the menu now, the buyer does not get the money back.\n\nYou can go back to the refund or open the menu."
+
+["bot.menu_leave_refund_maybe"]
+other = "The refund for order #{{.Num}} may have started already: the bot did not get an answer from the server. Check the order before you send the refund again.\n\nIf you go back to the refund and send it again, the money does not go back twice. The refund stays here when you open the menu."
+
+["bot.menu_open_order_btn"]
+other = "📄 Open the order"
+
+["bot.ref.maybe_started"]
+other = "This refund may have started already: the bot did not get an answer from the server. Check the order first. Sending it again does not return the money twice."
 
 ["bot.menu_back_refund_btn"]
 other = "↩ Back to the refund"

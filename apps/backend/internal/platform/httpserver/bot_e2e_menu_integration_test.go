@@ -16,6 +16,17 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
 
+// refundDialogKey is the idempotency key the refund dialog holds.
+func refundDialogKey(t *testing.T, pool *pgxpool.Pool, tg int64) string {
+	t.Helper()
+	var key string
+	if err := pool.QueryRow(context.Background(),
+		`SELECT coalesce(state->>'key', '') FROM bot_dialogs WHERE telegram_user_id = $1 AND kind = 'refund'`, tg).Scan(&key); err != nil {
+		t.Fatal(err)
+	}
+	return key
+}
+
 // botDialogCount counts the live dialogs of one kind of a Telegram account.
 func botDialogCount(t *testing.T, pool *pgxpool.Pool, tg int64, kind string) int {
 	t.Helper()
@@ -95,6 +106,49 @@ func TestBotE2E_MenuButtonAlwaysOpensTheMenu(t *testing.T) {
 		t.Errorf("an e-mail typed after the menu created %d invitation(s)", got-before)
 	}
 
+	// ── an event draft is paused, not taken over by later texts
+	d.press("wz:new", "Как называется мероприятие?")
+	d.say("☰ Меню", "Что будем делать?")
+	d.say("Концерт после меню "+seed.suffix, "Я не понял")
+	draft := func() (paused bool, name string) {
+		t.Helper()
+		if err := pool.QueryRow(context.Background(),
+			`SELECT coalesce((state->>'paused')::boolean, false), coalesce(state->'event'->>'name', '') FROM bot_drafts WHERE telegram_user_id = $1`,
+			ecOwnerTG).Scan(&paused, &name); err != nil {
+			t.Fatal(err)
+		}
+		return paused, name
+	}
+	if paused, name := draft(); !paused || name != "" {
+		t.Errorf("a paused draft took the typed text or is not paused: paused=%v name=%q", paused, name)
+	}
+	d.press("wz:new", "незаконченное мероприятие")
+	d.press("wz:resume", "Как называется мероприятие?")
+	if paused, _ := draft(); paused {
+		t.Error("continuing the draft must lift the pause")
+	}
+	d.say("☰ Меню", "Что будем делать?")
+
+	// ── a session waiting for its cancel word: after the menu the word is
+	// nobody's answer and the session stays
+	sesState := fmt.Sprintf(`{"OrgID":%q,"EventID":%q,"EventName":"x","Items":[{"ID":%q,"Status":"scheduled","Tz":"Europe/Madrid","Active":0}],"Cur":0,"Mode":"cancel","Step":"type"}`,
+		f.orgID, seed.event1, seed.session1)
+	if _, err := pool.Exec(context.Background(), `INSERT INTO bot_dialogs (telegram_user_id, org_id, kind, step, state, expires_at)
+	      VALUES ($1, $2, 'sessions', 'type', $3::jsonb, now() + interval '30 minutes')
+	      ON CONFLICT (telegram_user_id, kind) DO UPDATE SET step = EXCLUDED.step, state = EXCLUDED.state, expires_at = EXCLUDED.expires_at`,
+		ecOwnerTG, f.orgID, sesState); err != nil {
+		t.Fatal(err)
+	}
+	d.say("☰ Меню", "Что будем делать?")
+	d.say("ОТМЕНИТЬ", "Я не понял")
+	var sesStatus string
+	if err := pool.QueryRow(context.Background(), `SELECT status FROM sessions WHERE id = $1`, seed.session1).Scan(&sesStatus); err != nil {
+		t.Fatal(err)
+	}
+	if sesStatus != "scheduled" || botDialogCount(t, pool, ecOwnerTG, "sessions") != 0 {
+		t.Errorf("the cancel word typed after the menu acted: session %s, dialog left %d", sesStatus, botDialogCount(t, pool, ecOwnerTG, "sessions"))
+	}
+
 	// ── a refund waiting for its word: the menu asks first
 	d.press("or:v:"+seed.anna.String(), "Заказ №")
 	d.press("or:f:s:"+seed.anna.String(), "Возврат · заказ №")
@@ -105,8 +159,12 @@ func TestBotE2E_MenuButtonAlwaysOpensTheMenu(t *testing.T) {
 	if botDialogCount(t, pool, ecOwnerTG, "refund") != 1 {
 		t.Fatal("the question must keep the refund")
 	}
-	// "back to the refund" shows the word question again
+	// "back to the refund" shows the word question again, same operation
+	keyBefore := refundDialogKey(t, pool, ecOwnerTG)
 	d.press("or:f:cur", "ВЕРНУТЬ")
+	if keyAfter := refundDialogKey(t, pool, ecOwnerTG); keyAfter == "" || keyAfter != keyBefore {
+		t.Errorf("going back must keep the operation's key: %q -> %q", keyBefore, keyAfter)
+	}
 	d.say("вернуть", "Последняя проверка")
 	// on the final screen the menu asks again; leaving drops the refund
 	d.say("/menu", "ещё не отправлен")
