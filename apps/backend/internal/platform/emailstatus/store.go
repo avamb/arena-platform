@@ -45,6 +45,11 @@ type NewLetter struct {
 	Kind      string
 	Recipient string
 
+	// DeliveryJobIDs are the delivery_jobs rows the letter carries. They are
+	// linked to the letter at Begin, so a ticket job marked sent proves the
+	// letter went out even if Accepted is lost (the stale-letter sweep).
+	DeliveryJobIDs []uuid.UUID
+
 	Subject         string
 	TicketNumbers   []string
 	BodySHA256      string
@@ -79,6 +84,39 @@ func FileDigest(b []byte) string {
 // forwarded to a mailing list must not grow the table without limit.
 const maxInteractionsPerLetter = 500
 
+// confirmStaleSentSQL settles a letter left "sending" for a day whose send
+// DID succeed although Accepted never ran (the worker died or the database
+// failed right after the relay's 250): its ticket delivery job, its change
+// notice or its refund notice says the letter went out. It becomes "sent"
+// without a message id (receipt_missing) — evidence is never deleted.
+const confirmStaleSentSQL = `
+UPDATE email_letters l
+SET    status = 'sent', receipt_missing = true, updated_at = now()
+WHERE  l.status = 'sending' AND l.sent_at < now() - $1::interval
+  AND  (EXISTS (SELECT 1 FROM delivery_jobs dj WHERE dj.email_letter_id = l.id AND dj.status = 'sent')
+        OR (l.kind IN ('change', 'cancel') AND EXISTS (
+              SELECT 1 FROM session_change_notices n
+              WHERE  n.order_id = l.order_id AND n.state = 'sent' AND n.updated_at >= l.sent_at))
+        OR (l.kind = 'refund' AND EXISTS (
+              SELECT 1 FROM refunds r JOIN refund_batches b ON b.id = r.batch_id
+              WHERE  b.order_id = l.order_id AND r.buyer_notified_at >= l.sent_at)))`
+
+// SweepStale settles letters left "sending" for more than a day: one that
+// provably went out becomes "sent" (confirmStaleSentSQL); the rest were
+// never sent (the worker died before or during the hand-over, a refusal it
+// could not record) and are deleted, so their recipient address does not
+// linger. Begin runs it before every letter.
+func SweepStale(ctx context.Context, db DB) error {
+	if _, err := db.Exec(ctx, confirmStaleSentSQL, sendingKeepSQL); err != nil {
+		return fmt.Errorf("emailstatus: confirm stale letters: %w", err)
+	}
+	if _, err := db.Exec(ctx, `DELETE FROM email_letters WHERE status = 'sending' AND sent_at < now() - $1::interval`,
+		sendingKeepSQL); err != nil {
+		return fmt.Errorf("emailstatus: sweep stale letters: %w", err)
+	}
+	return nil
+}
+
 // Begin stores a letter in state "sending" and returns its id, which goes
 // into the X-Mailin-custom header (TrackingID). It exists BEFORE the relay
 // sees the message so a webhook event that outruns Accepted still finds it.
@@ -87,9 +125,8 @@ func Begin(ctx context.Context, db DB, l NewLetter) (uuid.UUID, error) {
 	if err != nil {
 		return uuid.Nil, err
 	}
-	if _, err := db.Exec(ctx, `DELETE FROM email_letters WHERE status = 'sending' AND sent_at < now() - $1::interval`,
-		sendingKeepSQL); err != nil {
-		return uuid.Nil, fmt.Errorf("emailstatus: sweep stale letters: %w", err)
+	if err := SweepStale(ctx, db); err != nil {
+		return uuid.Nil, err
 	}
 	numbers := l.TicketNumbers
 	if numbers == nil {
@@ -110,33 +147,49 @@ func Begin(ctx context.Context, db DB, l NewLetter) (uuid.UUID, error) {
 		nonEmpty(l.Subject), numbers, nonEmpty(l.BodySHA256), attJSON, nonEmpty(l.TemplateVersion)); err != nil {
 		return uuid.Nil, fmt.Errorf("emailstatus: begin letter: %w", err)
 	}
+	if len(l.DeliveryJobIDs) > 0 {
+		if _, err := db.Exec(ctx, `UPDATE delivery_jobs SET email_letter_id = $1 WHERE id = ANY($2)`,
+			id, l.DeliveryJobIDs); err != nil {
+			return uuid.Nil, fmt.Errorf("emailstatus: link delivery jobs: %w", err)
+		}
+	}
 	return id, nil
 }
 
-// Accepted marks the letter sent after the relay accepted it: stores the
-// provider's message id and links every delivery_jobs row of the letter.
-// Events that already arrived keep the status they produced.
+// Accepted marks the letter sent after the relay accepted it, then stores
+// the provider's message id and links every delivery_jobs row of the
+// letter. The three writes are separate on purpose: marking the letter sent
+// must never fail because of the message id. A message id another letter
+// already holds (a relay that repeats ids, a dev relay) is not stored on
+// this one — the tracking header still finds it — and never rolls the
+// status back. Events that already arrived keep the status they produced.
 func Accepted(ctx context.Context, db DB, letterID uuid.UUID, messageID string, deliveryJobIDs []uuid.UUID) error {
-	var mid *string
-	if m := NormalizeMessageID(messageID); m != "" {
-		mid = &m
-	}
 	if _, err := db.Exec(ctx, `UPDATE email_letters
-		SET provider_message_id = COALESCE($2, provider_message_id),
-		    status     = CASE WHEN status = 'sending' THEN 'sent' ELSE status END,
+		SET status     = CASE WHEN status = 'sending' THEN 'sent' ELSE status END,
 		    sent_at    = now(),
 		    updated_at = now()
-		WHERE id = $1`, letterID, mid); err != nil {
+		WHERE id = $1`, letterID); err != nil {
 		return fmt.Errorf("emailstatus: mark letter sent: %w", err)
 	}
-	if len(deliveryJobIDs) == 0 {
-		return nil
+	var errs []error
+	if mid := NormalizeMessageID(messageID); mid != "" {
+		if _, err := db.Exec(ctx, `UPDATE email_letters SET provider_message_id = $2
+			WHERE id = $1 AND provider_message_id IS NULL
+			  AND NOT EXISTS (SELECT 1 FROM email_letters o
+			                  WHERE o.provider = $3 AND o.provider_message_id = $2 AND o.id <> $1)`,
+			letterID, mid, ProviderBrevo); err != nil {
+			errs = append(errs, fmt.Errorf("emailstatus: store message id: %w", err))
+		}
 	}
-	if _, err := db.Exec(ctx, `UPDATE delivery_jobs SET email_letter_id = $1, provider_message_id = $2
-		WHERE id = ANY($3)`, letterID, mid, deliveryJobIDs); err != nil {
-		return fmt.Errorf("emailstatus: link delivery jobs: %w", err)
+	if len(deliveryJobIDs) > 0 {
+		if _, err := db.Exec(ctx, `UPDATE delivery_jobs dj
+			SET email_letter_id = l.id, provider_message_id = l.provider_message_id
+			FROM email_letters l
+			WHERE l.id = $1 AND dj.id = ANY($2)`, letterID, deliveryJobIDs); err != nil {
+			errs = append(errs, fmt.Errorf("emailstatus: link delivery jobs: %w", err))
+		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // Abandon removes a letter the relay refused: nothing was sent.
@@ -326,8 +379,10 @@ func recompute(ctx context.Context, tx pgx.Tx, letterID uuid.UUID) error {
 		    failure_event   = $7,
 		    failure_reason  = $8,
 		    clicked_at      = $9,
+		    deferred_at     = $10,
 		    updated_at      = now()
 		WHERE id = $1`,
-		letterID, d.Status, d.DeliveredAt, d.ProxyOpenedAt, d.OpenedAt, d.FailedAt, failEvent, failReason, d.ClickedAt)
+		letterID, d.Status, d.DeliveredAt, d.ProxyOpenedAt, d.OpenedAt, d.FailedAt, failEvent, failReason, d.ClickedAt,
+		d.DeferredAt)
 	return err
 }

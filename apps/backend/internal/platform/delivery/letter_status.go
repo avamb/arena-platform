@@ -28,6 +28,9 @@ import (
 // letterRecordTimeout bounds each bookkeeping statement around a send.
 const letterRecordTimeout = 5 * time.Second
 
+// acceptedRetryDelay separates the two attempts to record an accepted letter.
+const acceptedRetryDelay = 500 * time.Millisecond
+
 // sendRecorded sends msg through sender and records it as letter l. db may
 // be nil (no recording). jobIDs are the delivery_jobs rows the letter
 // carries; they are linked to it once the relay accepted it. The subject,
@@ -45,6 +48,7 @@ func sendRecorded(ctx context.Context, sender email.Sender, db emailstatus.DB, l
 	}
 	var letterID uuid.UUID
 	if db != nil && l.OrgID != uuid.Nil && l.Recipient != "" {
+		l.DeliveryJobIDs = jobIDs
 		bctx, cancel := context.WithTimeout(ctx, letterRecordTimeout)
 		id, err := emailstatus.Begin(bctx, db, l)
 		cancel()
@@ -69,8 +73,15 @@ func sendRecorded(ctx context.Context, sender email.Sender, db emailstatus.DB, l
 		return err
 	}
 	if letterID != uuid.Nil {
-		if aerr := emailstatus.Accepted(rctx, db, letterID, receipt.MessageID, jobIDs); aerr != nil {
-			// The letter is out; only its status bookkeeping is lost.
+		aerr := emailstatus.Accepted(rctx, db, letterID, receipt.MessageID, jobIDs)
+		if aerr != nil {
+			// One more try: the letter is out, and the record is evidence.
+			// If this fails too, the stale-letter sweep still settles the
+			// letter as sent from its delivery job or notice.
+			time.Sleep(acceptedRetryDelay)
+			aerr = emailstatus.Accepted(rctx, db, letterID, receipt.MessageID, jobIDs)
+		}
+		if aerr != nil {
 			logger.Warn("delivery: could not mark the letter sent",
 				slog.String("letter_id", letterID.String()), slog.String("error", aerr.Error()))
 		}

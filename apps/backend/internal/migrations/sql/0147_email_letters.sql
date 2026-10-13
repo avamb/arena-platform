@@ -50,6 +50,8 @@ CREATE TABLE email_letters (
     failure_event       text,
     failure_reason      text,
     clicked_at          timestamptz,
+    deferred_at         timestamptz,
+    receipt_missing     boolean     NOT NULL DEFAULT false,
     subject             text,
     ticket_numbers      text[]      NOT NULL DEFAULT '{}',
     body_sha256         text,
@@ -59,7 +61,7 @@ CREATE TABLE email_letters (
     CONSTRAINT email_letters_kind_check
         CHECK (kind IN ('ticket', 'invitation', 'change', 'cancel', 'refund')),
     CONSTRAINT email_letters_status_check
-        CHECK (status IN ('sending', 'sent', 'delivered', 'opened', 'failed'))
+        CHECK (status IN ('sending', 'sent', 'delayed', 'delivered', 'opened', 'failed'))
 );
 
 CREATE UNIQUE INDEX email_letters_provider_message_id_uq
@@ -76,6 +78,8 @@ CREATE INDEX email_letters_sending_idx
 
 COMMENT ON TABLE email_letters IS
     'One row per buyer e-mail the mail provider accepted, with the provider message id and the delivery status derived from email_letter_events.';
+COMMENT ON COLUMN email_letters.receipt_missing IS
+    'The letter went out (its delivery job or notice says so) but the worker could not record the relay receipt: the stale-letter sweep marked it sent without a message id instead of deleting it.';
 COMMENT ON COLUMN email_letters.body_sha256 IS
     'SHA-256 of the rendered HTML body, a NUL byte and the text body: proves which text was sent without storing it.';
 COMMENT ON COLUMN email_letters.attachments IS
@@ -96,6 +100,10 @@ CREATE TABLE email_letter_events (
     payload     jsonb       NOT NULL DEFAULT '{}'::jsonb,
     PRIMARY KEY (letter_id, event)
 );
+
+-- The order read asks whether the webhook delivered anything after a letter
+-- was sent (a letter stuck in 'sent' only counts when the webhook works).
+CREATE INDEX email_letter_events_received_idx ON email_letter_events (received_at);
 
 COMMENT ON TABLE email_letter_events IS
     'Provider webhook events of a letter, one row per event type: first and last time the provider reported it. No recipient address is stored here.';
