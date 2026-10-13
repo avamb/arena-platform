@@ -51,7 +51,7 @@ func TestRefundScanned_OneExceptionCoversOneDecision(t *testing.T) {
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		var waiting bool
-		if err := e.srv.pgxPool.QueryRow(ctx, `SELECT wait_event_type = 'Lock' FROM pg_stat_activity WHERE pid = $1`, pid).Scan(&waiting); err != nil {
+		if err := e.srv.pgxPool.QueryRow(ctx, `SELECT COALESCE(wait_event_type, '') = 'Lock' FROM pg_stat_activity WHERE pid = $1`, pid).Scan(&waiting); err != nil {
 			t.Fatal(err)
 		}
 		if waiting {
