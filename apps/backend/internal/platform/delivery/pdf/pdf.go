@@ -263,6 +263,10 @@ type Ticket struct {
 	LegalAddressCity       string
 	LegalAddressCountry    string
 	ContactEmail           string
+	// ContactFormURL is printed after the contact label instead of
+	// ContactEmail when that is empty: the hosted page's "Write to the
+	// organizer" form (delivery.ContactRoute).
+	ContactFormURL string
 	// RegistrationNumber, TaxID and TaxIDScheme print one line after the
 	// country ("Registration no. 123 · VAT ID CZ123", in Locale); empty
 	// drops it (HP-4b).
@@ -377,6 +381,8 @@ func buildLegalLines(t Ticket, contactLabel string) []string {
 		out = append(out, v)
 	}
 	if v := strings.TrimSpace(t.ContactEmail); v != "" {
+		out = append(out, contactLabel+": "+v)
+	} else if v := strings.TrimSpace(t.ContactFormURL); v != "" {
 		out = append(out, contactLabel+": "+v)
 	}
 	return out

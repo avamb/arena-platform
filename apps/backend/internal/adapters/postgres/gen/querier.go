@@ -58,6 +58,7 @@ type Querier interface {
 	SoftDeleteOrganization(ctx context.Context, id uuid.UUID) (OrganizationRow, error)
 	GetTicketPDFFormatByTicketID(ctx context.Context, ticketID uuid.UUID) (string, error)
 	GetOrgBrandingByTicketID(ctx context.Context, ticketID uuid.UUID) (OrgBrandingRow, error)
+	GetTicketContactRoute(ctx context.Context, ticketID uuid.UUID) (TicketContactRoute, error)
 
 	// Payment provider configs — per-org provider credentials + public config (feature #237)
 	InsertPaymentProviderConfig(ctx context.Context, orgID uuid.UUID, provider, mode string, providerAccountID *string, publicConfig, secrets json.RawMessage, status string, isActive bool) (PaymentProviderConfigRow, error)

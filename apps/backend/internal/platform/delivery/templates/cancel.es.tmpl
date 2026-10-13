@@ -25,7 +25,7 @@
     <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Mensaje del organizador:</strong></p>
     <p style="margin:0;white-space:pre-line">{{.}}</p>
   </div>{{end}}
-  <p style="margin:0 0 12px 0;">Escribe al organizador{{with .Change.ContactName}} ({{.}}){{end}} a <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{with .Change.ContactPhone}}, teléfono {{.}}{{end}} para conocer los próximos pasos.</p>
+  <p style="margin:0 0 12px 0;">Escribe al organizador{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}a <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{else}}con el <a href="{{.Change.ContactFormURL}}" style="color:#1a73e8">formulario de la página de venta</a>{{end}}{{with .Change.ContactPhone}}, teléfono {{.}}{{end}} para conocer los próximos pasos.</p>
   <p style="font-size:12px;color:#666">ID de entrada: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">Enviado a: {{.RecipientEmail}}</p>
   </td></tr>
@@ -38,7 +38,7 @@
     {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
     {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
     {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
-    {{with .Branding.ContactEmail}}<br>Contacto: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+    {{with .Branding.ContactEmail}}<br>Contacto: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Contacto: <a href="{{.}}" style="color:#666">Escribir al organizador</a>{{end}}{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — entrega automática</p>
   </td></tr>
@@ -66,7 +66,7 @@ Evento: {{.EventName}}
 Mensaje del organizador:
 {{.}}
 {{end}}
-Escribe al organizador{{with .Change.ContactName}} ({{.}}){{end}} a {{.Change.ContactEmail}}{{with .Change.ContactPhone}}, teléfono {{.}}{{end}} para conocer los próximos pasos.
+Escribe al organizador{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}a {{.Change.ContactEmail}}{{else}}con el formulario de la página de venta: {{.Change.ContactFormURL}}{{end}}{{with .Change.ContactPhone}}, teléfono {{.}}{{end}} para conocer los próximos pasos.
 
 ID de entrada: {{.TicketID}}
 Enviado a: {{.RecipientEmail}}
@@ -80,6 +80,7 @@ Enviado a: {{.RecipientEmail}}
 {{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
 {{end}}{{with .Branding.SellerIDs}}{{.}}
 {{end}}{{with .Branding.ContactEmail}}Contacto: {{.}}
-{{end}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Contacto: {{.}}
+{{end}}{{end}}
 Arena Platform — entrega automática
 {{end}}

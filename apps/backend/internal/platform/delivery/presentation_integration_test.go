@@ -314,6 +314,9 @@ func presentationPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
+// testTicketsBaseURL is the hosted pages' origin the test handler links.
+const testTicketsBaseURL = "https://tickets.example"
+
 // runDeliveryWithPayload invokes the real worker handler against a real
 // SMTP capture server, with the given payload, and returns the captured
 // message.
@@ -336,6 +339,7 @@ func runDeliveryWithMedia(ctx context.Context, t *testing.T, pool *pgxpool.Pool,
 		CredentialQueries:  queries,
 		Sender:             buildSMTPSender(smtp.Addr),
 		Media:              media,
+		TicketsBaseURL:     testTicketsBaseURL,
 		Logger:             testLogger(),
 	})
 	body := mustJSON(t, p)

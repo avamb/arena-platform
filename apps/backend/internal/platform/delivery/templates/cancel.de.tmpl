@@ -25,7 +25,7 @@
     <p style="margin:0 0 6px;font-size:13px;color:#555"><strong>Nachricht des Veranstalters:</strong></p>
     <p style="margin:0;white-space:pre-line">{{.}}</p>
   </div>{{end}}
-  <p style="margin:0 0 12px 0;">Bitte schreiben Sie dem Veranstalter{{with .Change.ContactName}} ({{.}}){{end}} an <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{with .Change.ContactPhone}}, Telefon {{.}}{{end}}, um die weiteren Schritte zu erfahren.</p>
+  <p style="margin:0 0 12px 0;">Bitte schreiben Sie dem Veranstalter{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}an <a href="mailto:{{.Change.ContactEmail}}" style="color:#1a73e8">{{.Change.ContactEmail}}</a>{{else}}über das <a href="{{.Change.ContactFormURL}}" style="color:#1a73e8">Formular auf der Verkaufsseite</a>{{end}}{{with .Change.ContactPhone}}, Telefon {{.}}{{end}}, um die weiteren Schritte zu erfahren.</p>
   <p style="font-size:12px;color:#666">Ticket-ID: {{.TicketID}}</p>
   <p style="font-size:12px;color:#666">Zugestellt an: {{.RecipientEmail}}</p>
   </td></tr>
@@ -38,7 +38,7 @@
     {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
     {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
     {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
-    {{with .Branding.ContactEmail}}<br>Kontakt: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+    {{with .Branding.ContactEmail}}<br>Kontakt: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Kontakt: <a href="{{.}}" style="color:#666">Dem Veranstalter schreiben</a>{{end}}{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — automatischer Versand</p>
   </td></tr>
@@ -66,7 +66,7 @@ Veranstaltung: {{.EventName}}
 Nachricht des Veranstalters:
 {{.}}
 {{end}}
-Bitte schreiben Sie dem Veranstalter{{with .Change.ContactName}} ({{.}}){{end}} an {{.Change.ContactEmail}}{{with .Change.ContactPhone}}, Telefon {{.}}{{end}}, um die weiteren Schritte zu erfahren.
+Bitte schreiben Sie dem Veranstalter{{with .Change.ContactName}} ({{.}}){{end}} {{if .Change.ContactEmail}}an {{.Change.ContactEmail}}{{else}}über das Formular auf der Verkaufsseite: {{.Change.ContactFormURL}}{{end}}{{with .Change.ContactPhone}}, Telefon {{.}}{{end}}, um die weiteren Schritte zu erfahren.
 
 Ticket-ID: {{.TicketID}}
 Zugestellt an: {{.RecipientEmail}}
@@ -80,6 +80,7 @@ Zugestellt an: {{.RecipientEmail}}
 {{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
 {{end}}{{with .Branding.SellerIDs}}{{.}}
 {{end}}{{with .Branding.ContactEmail}}Kontakt: {{.}}
-{{end}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Kontakt: {{.}}
+{{end}}{{end}}
 Arena Platform — automatischer Versand
 {{end}}

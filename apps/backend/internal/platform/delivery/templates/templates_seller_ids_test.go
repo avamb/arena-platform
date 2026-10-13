@@ -58,3 +58,65 @@ func TestRender_SellerIDsInEveryBuyerLetter(t *testing.T) {
 		}
 	}
 }
+
+// Owner rule 2026-10-13: a hosted page without a public e-mail never prints
+// an organizer address. Every buyer letter then links the page's contact
+// form in the footer, and the change and cancel letters also in their body.
+func TestRender_ContactFormLinkInsteadOfAnAddress(t *testing.T) {
+	r, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const form = "https://tickets.example/teatro/hamlet#contact"
+	viaForm := func(d Data) Data {
+		d.Branding.ContactEmail = ""
+		d.Branding.ContactFormURL = form
+		if d.Change.ContactEmail != "" || d.Change.ContactName != "" {
+			d.Change.ContactEmail = ""
+			d.Change.ContactFormURL = form
+		}
+		return d
+	}
+	base := Data{TicketID: "id", EventName: "E", RecipientEmail: "x@y.z"}
+	kinds := map[string]Data{
+		TemplateKindTicket:     base,
+		TemplateKindInvitation: base,
+		TemplateKindChange:     changeTestData(),
+		TemplateKindCancel:     changeTestData(),
+		TemplateKindRefund:     refundData(),
+	}
+	for kind, d := range kinds {
+		for _, loc := range SupportedLocales {
+			out, err := r.Render(kind, loc, viaForm(d))
+			if err != nil {
+				t.Fatalf("%s/%s: %v", kind, loc, err)
+			}
+			for part, body := range map[string]string{"text": out.TextBody, "html": out.HTMLBody} {
+				if !strings.Contains(body, form) {
+					t.Errorf("%s/%s %s: the contact form link is missing", kind, loc, part)
+				}
+				if strings.Contains(body, "mailto:") {
+					t.Errorf("%s/%s %s: an address is printed although there is none", kind, loc, part)
+				}
+			}
+			if kind == TemplateKindChange || kind == TemplateKindCancel {
+				if n := strings.Count(out.TextBody, form); n < 2 {
+					t.Errorf("%s/%s: the body must point to the form too, the link appears %d times", kind, loc, n)
+				}
+			}
+			// With an address the form is never printed.
+			withEmail := viaForm(d)
+			withEmail.Branding.ContactEmail = "tickets@teatro.example"
+			if withEmail.Change.ContactFormURL != "" {
+				withEmail.Change.ContactEmail = "tickets@teatro.example"
+			}
+			out, err = r.Render(kind, loc, withEmail)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(out.TextBody, form) || strings.Contains(out.HTMLBody, form) {
+				t.Errorf("%s/%s: the form is printed next to an address", kind, loc)
+			}
+		}
+	}
+}

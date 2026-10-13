@@ -491,3 +491,18 @@ func TestDisplayNumber_NeverTheUUID(t *testing.T) {
 		t.Error("the fallback must not look like a UUID")
 	}
 }
+
+// A ticket sold through a hosted page without a public e-mail prints the
+// page's contact form after the contact label, never an address; an address
+// wins when there is one.
+func TestBuildLegalLines_ContactFormWhenNoAddress(t *testing.T) {
+	const form = "https://tickets.example/teatro#contact"
+	got := buildLegalLines(Ticket{LegalName: "Teatro S.L.", ContactFormURL: form}, "Contact")
+	if len(got) != 2 || got[1] != "Contact: "+form {
+		t.Errorf("form line = %q", got)
+	}
+	got = buildLegalLines(Ticket{LegalName: "Teatro S.L.", ContactEmail: "box@teatro.example", ContactFormURL: form}, "Contact")
+	if len(got) != 2 || got[1] != "Contact: box@teatro.example" {
+		t.Errorf("address line = %q", got)
+	}
+}
