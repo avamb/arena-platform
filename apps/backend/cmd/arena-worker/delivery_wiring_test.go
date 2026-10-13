@@ -90,3 +90,13 @@ func TestDeliveryRegistration_GoesThroughTheOptionsBuilder(t *testing.T) {
 			"which is what guarantees the handler gets a MediaResolver")
 	}
 }
+
+// A letter about a ticket sold through a hosted page without a public e-mail
+// links that page's contact form; without the tickets origin it can link
+// nothing, so the worker must pass it on.
+func TestBuildDeliveryHandlerOptions_CarriesTheTicketsOrigin(t *testing.T) {
+	cfg := &config.Config{PublicTicketsBaseURL: "https://tickets.example"}
+	if got := buildDeliveryHandlerOptions(cfg, nil, nil, testLogger()).TicketsBaseURL; got != "https://tickets.example" {
+		t.Errorf("TicketsBaseURL = %q", got)
+	}
+}

@@ -30,7 +30,8 @@
     {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
     {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
     {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
-    {{with .Branding.ContactEmail}}<br>יצירת קשר: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>יצירת קשר: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>יצירת קשר: <a href="{{.}}" style="color:#666">כתיבה למארגן</a>{{end}}{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — הודעה אוטומטית</p>
   </td></tr>
@@ -66,7 +67,9 @@
 {{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
 {{else}}{{with .Branding.LegalAddressCity}}{{.}}
 {{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
 {{end}}{{with .Branding.ContactEmail}}יצירת קשר: {{.}}
-{{end}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}יצירת קשר: {{.}}
+{{end}}{{end}}
 Arena Platform — הודעה אוטומטית
 {{end}}

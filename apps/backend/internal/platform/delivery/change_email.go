@@ -256,6 +256,9 @@ func (h *changeEmail) ticketPayload(ctx context.Context, ticketID uuid.UUID, loc
 		setIf(&p.OrgLegalAddressCity, b.LegalAddressCity)
 		setIf(&p.OrgLegalAddressCountry, b.LegalAddressCountry)
 		setIf(&p.OrgContactEmail, b.ContactEmail)
+		setIf(&p.OrgRegistrationNumber, b.RegistrationNumber)
+		setIf(&p.OrgTaxID, b.TaxID)
+		setIf(&p.OrgTaxIDScheme, b.TaxIDScheme)
 		if b.LogoMediaID != nil {
 			p.OrgLogoMediaID = b.LogoMediaID.String()
 		}
@@ -270,6 +273,7 @@ func (h *changeEmail) ticketPayload(ctx context.Context, ticketID uuid.UUID, loc
 			p.EAN13 = cred.Payload
 		}
 	}
+	applyContactRoute(ctx, q, h.opts.TicketsBaseURL, ticketID, &p, h.logger)
 	resolvePresentation(ctx, q, ticketID, &p, h.logger)
 	return p
 }
@@ -330,6 +334,15 @@ func (h *changeEmail) buildMessage(
 	// platform logo is the fallback.
 	branding := resolveBranding(ctx, h.opts.Media, first, h.logger).Branding
 
+	// The body names the event's promoter e-mail when it has one. Otherwise it
+	// follows the ticket letter's rule (ContactRoute, already on the payload):
+	// the sales page's public e-mail, the hosted page's contact form, or -
+	// without a hosted page - the organization's address.
+	contactEmail, contactForm := strings.TrimSpace(contact.Email), ""
+	if contact.Source != "promoter" {
+		contactEmail, contactForm = first.OrgContactEmail, first.ContactFormURL
+	}
+
 	newStart := formatSessionForEmail(rec.New.StartAt, rec.New.Timezone)
 	oldStart := formatSessionForEmail(rec.Old.StartAt, rec.Old.Timezone)
 	data := templates.Data{
@@ -342,16 +355,17 @@ func (h *changeEmail) buildMessage(
 		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),
 		Branding:       branding,
 		Change: templates.ChangeData{
-			Date:         sessionchange.Has(rec.Kinds, sessionchange.KindDate) || sessionchange.Has(rec.Kinds, sessionchange.KindTime),
-			Venue:        sessionchange.Has(rec.Kinds, sessionchange.KindVenue),
-			OldStart:     oldStart,
-			NewStart:     newStart,
-			OldVenue:     rec.Old.VenueName,
-			NewVenue:     rec.New.VenueName,
-			Message:      rec.Message,
-			ContactName:  contact.Name,
-			ContactEmail: contact.Email,
-			ContactPhone: contact.PublicPhone(),
+			Date:           sessionchange.Has(rec.Kinds, sessionchange.KindDate) || sessionchange.Has(rec.Kinds, sessionchange.KindTime),
+			Venue:          sessionchange.Has(rec.Kinds, sessionchange.KindVenue),
+			OldStart:       oldStart,
+			NewStart:       newStart,
+			OldVenue:       rec.Old.VenueName,
+			NewVenue:       rec.New.VenueName,
+			Message:        rec.Message,
+			ContactName:    contact.Name,
+			ContactEmail:   contactEmail,
+			ContactFormURL: contactForm,
+			ContactPhone:   contact.PublicPhone(),
 		},
 	}
 	if !moves {
@@ -371,7 +385,7 @@ func (h *changeEmail) buildMessage(
 	}
 	// Replies go to the organizer (the letter says so); the platform sender,
 	// or the organization's verified one, still originates it.
-	first.OrgContactEmail = contact.Email
+	first.OrgContactEmail, first.ContactFormURL = contactEmail, contactForm
 	msg := ticketEmailMessage(first, recipient.Email, out.Subject, out.HTMLBody, out.TextBody)
 	if moves {
 		for i, t := range tickets {

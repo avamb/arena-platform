@@ -204,6 +204,19 @@ func TestBuildLegalLines_AssemblesAddressBlock(t *testing.T) {
 			want: []string{"X Ltd", "SE1 9DT London"},
 		},
 		{name: "postal only", in: Ticket{LegalAddressPostalCode: "10115"}, want: []string{"10115"}},
+		{
+			name: "seller numbers after the country",
+			in: Ticket{
+				Locale:              "en",
+				LegalName:           "X Ltd",
+				LegalAddressCountry: "CZ",
+				RegistrationNumber:  "12345678",
+				TaxID:               "CZ12345678",
+				TaxIDScheme:         "eu_vat",
+				ContactEmail:        "tickets@x.example",
+			},
+			want: []string{"X Ltd", "CZ", "Registration no. 12345678 · VAT ID CZ12345678", "Contact: tickets@x.example"},
+		},
 		{name: "city only", in: Ticket{LegalAddressCity: "Berlin"}, want: []string{"Berlin"}},
 		{
 			name: "all fields",
@@ -476,5 +489,20 @@ func TestDisplayNumber_NeverTheUUID(t *testing.T) {
 	}
 	if strings.Contains(got, "-") {
 		t.Error("the fallback must not look like a UUID")
+	}
+}
+
+// A ticket sold through a hosted page without a public e-mail prints the
+// page's contact form after the contact label, never an address; an address
+// wins when there is one.
+func TestBuildLegalLines_ContactFormWhenNoAddress(t *testing.T) {
+	const form = "https://tickets.example/teatro#contact"
+	got := buildLegalLines(Ticket{LegalName: "Teatro S.L.", ContactFormURL: form}, "Contact")
+	if len(got) != 2 || got[1] != "Contact: "+form {
+		t.Errorf("form line = %q", got)
+	}
+	got = buildLegalLines(Ticket{LegalName: "Teatro S.L.", ContactEmail: "box@teatro.example", ContactFormURL: form}, "Contact")
+	if len(got) != 2 || got[1] != "Contact: box@teatro.example" {
+		t.Errorf("address line = %q", got)
 	}
 }

@@ -170,6 +170,15 @@ func (h *Handler) EnqueueDeliveryJobs(ctx context.Context, tickets []gen.TicketR
 				if branding.ContactEmail != nil {
 					p.OrgContactEmail = *branding.ContactEmail
 				}
+				if branding.RegistrationNumber != nil {
+					p.OrgRegistrationNumber = *branding.RegistrationNumber
+				}
+				if branding.TaxID != nil {
+					p.OrgTaxID = *branding.TaxID
+				}
+				if branding.TaxIDScheme != nil {
+					p.OrgTaxIDScheme = *branding.TaxIDScheme
+				}
 				if branding.LogoMediaID != nil {
 					p.OrgLogoMediaID = branding.LogoMediaID.String()
 				}

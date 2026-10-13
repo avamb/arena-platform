@@ -805,6 +805,7 @@ func buildDeliveryHandlerOptions(cfg *config.Config, queries *gen.Queries, media
 		Sender:             buildEmailSender(cfg, logger),
 		FromAddress:        coalesce(getEmailFrom(cfg), "tickets@arena.example.com"),
 		Media:              media,
+		TicketsBaseURL:     cfg.PublicTicketsBaseURL,
 		Logger:             logger,
 	}
 }

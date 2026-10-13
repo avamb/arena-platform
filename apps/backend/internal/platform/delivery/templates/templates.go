@@ -36,6 +36,8 @@ import (
 	"sort"
 	"strings"
 	texttemplate "text/template"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
 )
 
 //go:embed *.tmpl
@@ -240,10 +242,16 @@ type ChangeData struct {
 	NewVenue string
 	// Message is the organizer's own free text; may be empty. Plain text, the html engine escapes it.
 	Message string
-	// ContactName is the promoter / organization the buyer should write to; ContactEmail is always set; ContactPhone is empty when the organizer chose to hide it.
-	ContactName  string
-	ContactEmail string
-	ContactPhone string
+	// ContactName is the promoter / organization the buyer should write to;
+	// ContactPhone is empty when the organizer chose to hide it. ContactEmail
+	// is the address the letter prints; when it is empty the letter links
+	// ContactFormURL, the hosted page's "Write to the organizer" form
+	// (delivery.ContactRoute: a hosted page never publishes the organization's
+	// own address).
+	ContactName    string
+	ContactEmail   string
+	ContactFormURL string
+	ContactPhone   string
 }
 
 // Branding carries the organisation branding fields rendered into the
@@ -288,8 +296,23 @@ type Branding struct {
 	// LegalAddressCountry is ISO-3166-1 alpha-2 (e.g. "DE", "IL").
 	LegalAddressCountry string
 	// ContactEmail is the contact address printed in the footer. Empty
-	// prints no contact line.
+	// prints no contact line. It is the public e-mail of the sales page the
+	// ticket was sold through when it has one; for a page WITHOUT a hosted
+	// page, the organization's contact_email (HP-4b). A hosted page without
+	// a public e-mail never prints the organization's address: ContactFormURL
+	// is printed instead (delivery.ContactRoute).
 	ContactEmail string
+	// ContactFormURL is the hosted page's "Write to the organizer" link,
+	// printed in the footer only when ContactEmail is empty.
+	ContactFormURL string
+	// RegistrationNumber, TaxID and TaxIDScheme identify the seller (HP-4b).
+	RegistrationNumber string
+	TaxID              string
+	TaxIDScheme        string
+	// SellerIDs is the footer line built from the three fields above in the
+	// letter's language ("Registration no. 123 · VAT ID CZ123"). Render
+	// fills it; empty prints no line.
+	SellerIDs string
 }
 
 // Platform defaults used by the worker handler when the organisation
@@ -437,6 +460,9 @@ func (r *Renderer) Render(kind, locale string, data Data) (Rendered, error) {
 	}
 	resolved := r.ResolveLocale(kind, locale)
 	key := kind + "." + resolved
+	if data.Branding.SellerIDs == "" {
+		data.Branding.SellerIDs = sellerinfo.IDsLine(resolved, data.Branding.RegistrationNumber, data.Branding.TaxID, data.Branding.TaxIDScheme)
+	}
 
 	if _, ok := r.known[key]; !ok {
 		return Rendered{}, fmt.Errorf(

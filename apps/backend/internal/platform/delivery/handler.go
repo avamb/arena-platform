@@ -223,6 +223,16 @@ type Payload struct {
 	OrgLegalAddressCity    string `json:"org_legal_address_city,omitempty"`
 	OrgLegalAddressCountry string `json:"org_legal_address_country,omitempty"`
 	OrgContactEmail        string `json:"org_contact_email,omitempty"`
+	// ContactFormURL is the hosted page's "Write to the organizer" link,
+	// printed instead of an address when the ticket was sold through a hosted
+	// page without a public e-mail (ContactRoute). Set when the letter is
+	// rendered; an enqueuer never needs to.
+	ContactFormURL string `json:"contact_form_url,omitempty"`
+	// OrgRegistrationNumber, OrgTaxID and OrgTaxIDScheme identify the seller
+	// in the letter footer and on the PDF (HP-4b); empty prints nothing.
+	OrgRegistrationNumber string `json:"org_registration_number,omitempty"`
+	OrgTaxID              string `json:"org_tax_id,omitempty"`
+	OrgTaxIDScheme        string `json:"org_tax_id_scheme,omitempty"`
 	// SenderEmail is used only while SenderVerificationStatus is "verified".
 	// It is populated from the organization record by the enqueueing path.
 	SenderEmail              string `json:"sender_email,omitempty"`
@@ -256,6 +266,11 @@ type HandlerOptions struct {
 	// for both PDF embedding and the email <img src> (feature #290, T-3).
 	// When nil, every email/PDF falls back to the platform logo.
 	Media MediaResolver
+	// TicketsBaseURL is PUBLIC_TICKETS_BASE_URL, the origin of the hosted
+	// pages. A letter about a ticket sold through a hosted page without a
+	// public e-mail links that page's contact form (ContactRoute); empty
+	// prints no link.
+	TicketsBaseURL string
 	// Logger receives structured log entries. Defaults to slog.Default() when nil.
 	Logger *slog.Logger
 }
@@ -333,6 +348,9 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			)
 			return nil // permanent failure — bad UUID
 		}
+		// The organizer contact follows the owner rule at render time
+		// (ContactRoute): before the letter's other tickets copy the payload.
+		applyContactRoute(ctx, queriesOrNil(opts.TicketQueries), opts.TicketsBaseURL, ticketID, &p, logger)
 
 		// ── 2. Guard: honest sender required (PR-03) ──────────────────────────
 		// If Sender is nil or is a dev-only sender (e.g. LogSender), we cannot
@@ -704,10 +722,14 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 // ticketEmailMessage constructs the ticket-delivery message after the handler
 // has resolved its recipient and rendered its localized content. Replies go to
 // the organiser contact when one was supplied in the durable job payload;
-// delivery still originates from the platform's configured SMTP sender.
+// delivery still originates from the platform's configured SMTP sender. A
+// letter that points to the hosted page's contact form (ContactRoute) has no
+// Reply-To and goes from the platform address, never the organization's own
+// sender: the owner rule is that no organizer address is published there.
 func ticketEmailMessage(p Payload, recipientEmail, subject, htmlBody, textBody string) email.Message {
 	from := ""
-	if p.SenderVerificationStatus == "verified" {
+	viaForm := strings.TrimSpace(p.OrgContactEmail) == "" && strings.TrimSpace(p.ContactFormURL) != ""
+	if p.SenderVerificationStatus == "verified" && !viaForm {
 		from = strings.TrimSpace(p.SenderEmail)
 	}
 	return email.Message{
@@ -854,6 +876,10 @@ func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, brandin
 		LegalAddressCity:       branding.LegalAddressCity,
 		LegalAddressCountry:    branding.LegalAddressCountry,
 		ContactEmail:           branding.ContactEmail,
+		ContactFormURL:         branding.ContactFormURL,
+		RegistrationNumber:     branding.RegistrationNumber,
+		TaxID:                  branding.TaxID,
+		TaxIDScheme:            branding.TaxIDScheme,
 	}
 	bytesOut, err := pdf.Render(ctx, t)
 	if err == nil {
@@ -908,6 +934,10 @@ func resolveBranding(ctx context.Context, m MediaResolver, p Payload, logger *sl
 		LegalAddressCity:       p.OrgLegalAddressCity,
 		LegalAddressCountry:    p.OrgLegalAddressCountry,
 		ContactEmail:           strings.TrimSpace(p.OrgContactEmail),
+		ContactFormURL:         strings.TrimSpace(p.ContactFormURL),
+		RegistrationNumber:     strings.TrimSpace(p.OrgRegistrationNumber),
+		TaxID:                  strings.TrimSpace(p.OrgTaxID),
+		TaxIDScheme:            strings.TrimSpace(p.OrgTaxIDScheme),
 	}
 	b.LogoAlt = b.OrgName
 
