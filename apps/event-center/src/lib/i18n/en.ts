@@ -105,6 +105,7 @@ export const en = {
   "event.cancelled": "Canceled",
   "event.promoter": "Promoter: {name}",
   "event.noSales": "You can see the sessions. Sales figures need the manager role.",
+  "event.noSessions": "This screen shows the event only. Dates, sales figures and orders need the manager role. Ask the owner of {org} for it.",
 
   "col.category": "Category",
   "col.price": "Price",

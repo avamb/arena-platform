@@ -105,6 +105,7 @@ export const es: Record<MessageKey, string> = {
   "event.cancelled": "Cancelada",
   "event.promoter": "Promotor: {name}",
   "event.noSales": "Puedes ver las sesiones. Las cifras de ventas necesitan el rol de gestor.",
+  "event.noSessions": "Esta pantalla muestra solo el evento. Las fechas, las cifras de ventas y los pedidos necesitan el rol de gestor. Pídelo a la persona propietaria de {org}.",
 
   "col.category": "Categoría",
   "col.price": "Precio",

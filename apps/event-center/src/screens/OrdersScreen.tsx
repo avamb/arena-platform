@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { listOrders, type OrderTab } from "@/lib/api/endpoints";
@@ -44,24 +44,32 @@ function OrderRow({ orgId, order }: { orgId: string; order: OrderListItem }) {
 
 const TABS: readonly OrderTab[] = ["recent", "paid", "unpaid"];
 
+/**
+ * The search text (an e-mail, a phone, a name) stays in this tab's memory,
+ * never in the page address: an address lands in the browser history and in
+ * proxy logs (review finding L5). It survives a visit to an order card and
+ * is lost on reload.
+ */
+const searchMemory = new Map<string, string>();
+
 export function OrdersScreen() {
   const { t, locale } = useI18n();
   const { orgId } = useOrg();
   const search = useSearch({ from: "/o/$orgId/orders" });
   const navigate = useNavigate({ from: "/o/$orgId/orders" });
   const tab: OrderTab = search.tab ?? "recent";
-  const [draft, setDraft] = useState(search.q ?? "");
-  useEffect(() => setDraft(search.q ?? ""), [search.q]);
+  const [query, setQuery] = useState(() => searchMemory.get(orgId) ?? "");
+  const [draft, setDraft] = useState(query);
   const events = useEventsList(orgId);
   const scopeEvent = search.event !== undefined ? events.data?.events.find((e) => e.id === search.event) : undefined;
 
   const orders = useInfiniteQuery({
-    queryKey: ["orders", orgId, tab, search.q ?? "", search.event ?? "", search.session ?? ""],
+    queryKey: ["orders", orgId, tab, query, search.event ?? "", search.session ?? ""],
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
       listOrders(orgId, {
         tab,
-        q: search.q,
+        q: query.length > 0 ? query : undefined,
         eventId: search.event,
         sessionId: search.session,
         limit: ORDERS_PAGE_SIZE,
@@ -76,7 +84,8 @@ export function OrdersScreen() {
   const onSearch = (e: FormEvent) => {
     e.preventDefault();
     const q = draft.trim();
-    void navigate({ search: (prev) => ({ ...prev, q: q.length > 0 ? q : undefined }) });
+    searchMemory.set(orgId, q);
+    setQuery(q);
   };
 
   return (
@@ -120,7 +129,7 @@ export function OrdersScreen() {
                 date: formatDateTime(firstRow.session_start_at, firstRow.session_timezone, locale),
               })
             : t("orders.scopeEvent", { name: scopeEvent?.name ?? firstRow?.event_name ?? "…" })}{" "}
-          <Link to="/o/$orgId/orders" params={{ orgId }} search={{ tab: search.tab, q: search.q }}>
+          <Link to="/o/$orgId/orders" params={{ orgId }} search={{ tab: search.tab }}>
             {t("orders.clearScope")}
           </Link>
         </p>
@@ -128,7 +137,7 @@ export function OrdersScreen() {
       {orders.isLoading && <Loading />}
       {orders.error !== null && <ErrorBox error={orders.error} onRetry={() => void orders.refetch()} />}
       {orders.data !== undefined && rows.length === 0 && (
-        <Empty>{search.q !== undefined ? t("orders.emptySearch", { query: search.q }) : t("orders.empty")}</Empty>
+        <Empty>{query.length > 0 ? t("orders.emptySearch", { query }) : t("orders.empty")}</Empty>
       )}
       <ul className="cards" data-testid="order-list">
         {rows.map((o) => (

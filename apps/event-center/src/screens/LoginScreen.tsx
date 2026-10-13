@@ -47,7 +47,7 @@ export function LoginScreen() {
           </p>
         )}
         <p className="muted">{t("login.intro")}</p>
-        <form onSubmit={onSubmit} noValidate aria-describedby={error !== null ? "login-error" : undefined}>
+        <form onSubmit={onSubmit} noValidate>
           <label htmlFor="login-email">{t("login.email")}</label>
           <input
             id="login-email"
@@ -58,6 +58,7 @@ export function LoginScreen() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             aria-invalid={error !== null}
+            aria-describedby={error !== null ? "login-error" : undefined}
             required
           />
           <label htmlFor="login-password">{t("login.password")}</label>
@@ -69,6 +70,7 @@ export function LoginScreen() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             aria-invalid={error !== null}
+            aria-describedby={error !== null ? "login-error" : undefined}
             required
           />
           {error !== null && (

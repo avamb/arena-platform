@@ -3,6 +3,7 @@
  * viewport (375x812). Checks the flow, the per-organization permissions
  * (A1), the downloads and the basic accessibility rules of the spec.
  */
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { EVENT, ORG_A, ORG_B, ORG_C, ORDER, SESSION, mockApi, newAuthState } from "./mockApi";
 
@@ -14,6 +15,13 @@ async function signIn(page: Page) {
   await page.getByLabel("Password").fill("right-password");
   await page.getByTestId("login-submit").click();
   await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+}
+
+/** WCAG 2.1 A and AA rules of axe on the screen as it is now (review finding L6). */
+async function noA11yViolations(page: Page) {
+  const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  const found = result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`);
+  expect(found, "axe accessibility violations").toEqual([]);
 }
 
 async function noHorizontalScroll(page: Page) {
@@ -43,6 +51,10 @@ test.describe("R1 read-only event center", () => {
     await page.getByLabel("Password").fill("wrong");
     await page.getByTestId("login-submit").click();
     await expect(page.getByRole("alert")).toContainText("does not match");
+    // Review finding L6: the error is tied to the fields, not to the form.
+    await expect(page.getByLabel("E-mail")).toHaveAttribute("aria-describedby", "login-error");
+    await expect(page.getByLabel("Password")).toHaveAttribute("aria-describedby", "login-error");
+    await noA11yViolations(page);
     await page.getByLabel("Password").fill("right-password");
     await page.getByTestId("login-submit").click();
     await expect(page.getByTestId("org-list")).toContainText("Teatr Kolybel");
@@ -73,6 +85,7 @@ test.describe("R1 read-only event center", () => {
     await expect(row.getByTestId("sales-figures")).toContainText("Sold 12 of 80");
     await expect(page.getByTestId("events-tab-arc")).toContainText("Archive (1)");
     await noHorizontalScroll(page);
+    await noA11yViolations(page);
 
     // Search filters by name.
     await page.getByPlaceholder("Search by name").fill("nothing like this");
@@ -85,6 +98,7 @@ test.describe("R1 read-only event center", () => {
     await expect(page.getByTestId("sales-figures").first()).toContainText("Paid: €540.00");
     await expect(page.getByTestId("session-row")).toContainText("(Prague)");
     await noHorizontalScroll(page);
+    await noA11yViolations(page);
 
     const csv = page.waitForEvent("download");
     await page.getByTestId("csv-event-sales").click();
@@ -112,12 +126,17 @@ test.describe("R1 read-only event center", () => {
     await page.getByRole("button", { name: "Search" }).click();
     await expect(page.getByText("No order matches «nobody».")).toBeVisible();
     expect(state.requests.some((r) => r.includes("/orders?") && r.includes("q=nobody"))).toBe(true);
+    // Review finding L5: the buyer search never goes into the page address.
+    expect(page.url()).not.toContain("nobody");
+    await noA11yViolations(page);
 
     await page.goto(`/o/${ORG_A}/orders/${ORDER}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Order №1000000512");
     await expect(page.getByTestId("delivery-state")).toContainText("All ticket letters are sent.");
     await expect(page.getByTestId("ticket-delivery")).toContainText("Sent");
     await expect(page.getByTestId("buyer")).toContainText("anna@example.test");
+    await expect(page.getByTestId("buyer").locator("a[href^=mailto]")).toHaveAttribute("href", "mailto:anna%40example.test");
+    await noA11yViolations(page);
     await noHorizontalScroll(page);
   });
 
@@ -130,6 +149,12 @@ test.describe("R1 read-only event center", () => {
     await expect(page.getByTestId("event-row").first()).toBeVisible();
     await expect(page.getByTestId("sales-figures")).toHaveCount(0);
     expect(state.requests.some((r) => r.includes(`/organizations/${ORG_B}/events/`) && r.includes("/summary"))).toBe(false);
+    // Review finding L2: the agent's event card says what the role can see.
+    await page.getByTestId("event-row").first().getByRole("link").first().click();
+    await expect(page.getByTestId("no-sales-note")).toContainText("This screen shows the event only.");
+    await expect(page.getByTestId("session-list")).toHaveCount(0);
+    await expect(page.getByTestId("csv-event-sales")).toHaveCount(0);
+    await noA11yViolations(page);
     // Review finding M2: a 403 names the organization and leads back.
     await page.goto(`/o/${ORG_B}/orders`);
     const error = page.getByTestId("error");
@@ -137,6 +162,15 @@ test.describe("R1 read-only event center", () => {
     await expect(error).not.toContainText("{org}");
     await error.getByTestId("back-to-list").click();
     await expect(page).toHaveURL(new RegExp(`/o/${ORG_B}/events$`));
+  });
+
+  // Review finding L1: a superadmin works in admin-web, member or not.
+  test("a superadmin who is also a member gets the admin console hint", async ({ page }) => {
+    const state = await mockApi(page, newAuthState(), { superadmin: true });
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/events`);
+    await expect(page.getByTestId("superadmin-note")).toBeVisible();
+    expect(state.requests.some((r) => r.startsWith(`GET /v1/organizations/${ORG_A}/events`))).toBe(false);
   });
 
   test("a foreign organization says how to get access", async ({ page }) => {

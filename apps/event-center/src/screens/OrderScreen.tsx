@@ -148,7 +148,7 @@ export function OrderScreen() {
             {o.buyer_name !== null && <li>{o.buyer_name}</li>}
             {o.buyer_email !== null && (
               <li>
-                <a href={`mailto:${o.buyer_email}`}>{o.buyer_email}</a>
+                <a href={`mailto:${encodeURIComponent(o.buyer_email)}`}>{o.buyer_email}</a>
               </li>
             )}
             {o.buyer_phone !== null && (

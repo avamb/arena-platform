@@ -105,6 +105,7 @@ export const ru: Record<MessageKey, string> = {
   "event.cancelled": "Отменён",
   "event.promoter": "Промоутер: {name}",
   "event.noSales": "Вам видны сеансы. Цифры продаж видит роль менеджера.",
+  "event.noSessions": "На этом экране видно только мероприятие. Даты, цифры продаж и заказы видит роль менеджера. Попросите её у владельца организации {org}.",
 
   "col.category": "Категория",
   "col.price": "Цена",

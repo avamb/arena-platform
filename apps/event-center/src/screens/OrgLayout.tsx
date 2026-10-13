@@ -61,7 +61,10 @@ function OrgShell() {
       </main>
     );
   }
-  if (access.data.platform_superadmin && access.data.membership_roles.length === 0) {
+  // A superadmin works in admin-web, even where they are also a member:
+  // the web never sends X-Admin-Reason, so every route would answer 400
+  // (spec 1.4, review finding L1).
+  if (access.data.platform_superadmin) {
     return (
       <main id="main" className="page">
         <p className="notice" role="status" data-testid="superadmin-note">

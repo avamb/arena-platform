@@ -15,6 +15,6 @@ describe("search parsers", () => {
     expect(parseOrdersSearch({ tab: "all", event: "not-a-uuid" })).toEqual({});
     expect(
       parseOrdersSearch({ tab: "paid", q: " #1000000500 ", session: "0193f01a-1234-7000-8000-000000000001" }),
-    ).toEqual({ tab: "paid", q: "#1000000500", session: "0193f01a-1234-7000-8000-000000000001" });
+    ).toEqual({ tab: "paid", session: "0193f01a-1234-7000-8000-000000000001" });
   });
 });

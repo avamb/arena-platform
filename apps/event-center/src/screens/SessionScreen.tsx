@@ -123,7 +123,7 @@ export function SessionScreen() {
       </ul>
 
       <div className="actions">
-        {canSales && (
+        {canSales && canSessions && (
           <>
             <DownloadButton
               label="session.csvSales"
@@ -135,6 +135,10 @@ export function SessionScreen() {
               testId="csv-session-summary"
               fetchFile={() => downloadCsv(orgId, "sessionSummary", sessionId, locale)}
             />
+          </>
+        )}
+        {canSales && (
+          <>
             <Link to="/o/$orgId/orders" params={{ orgId }} search={{ session: sessionId }} className="btn">
               {t("session.orders")}
             </Link>

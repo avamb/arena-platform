@@ -42,7 +42,6 @@ export function parseEventsSearch(raw: Record<string, unknown>): EventsSearch {
 
 export interface OrdersSearch {
   tab?: OrderTab;
-  q?: string;
   event?: string;
   session?: string;
 }
@@ -52,7 +51,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function parseOrdersSearch(raw: Record<string, unknown>): OrdersSearch {
   const out: OrdersSearch = {};
   if (raw.tab === "paid" || raw.tab === "unpaid") out.tab = raw.tab;
-  if (typeof raw.q === "string" && raw.q.trim().length > 0) out.q = raw.q.trim().slice(0, 200);
+  // No `q`: the orders search never goes into the address (review finding L5).
   if (typeof raw.event === "string" && UUID.test(raw.event)) out.event = raw.event;
   if (typeof raw.session === "string" && UUID.test(raw.session)) out.session = raw.session;
   return out;

@@ -62,10 +62,12 @@ function TiersTable({ summary }: { summary: EventSummary }) {
 
 export function EventScreen() {
   const { t, locale } = useI18n();
-  const { orgId, access } = useOrg();
+  const { orgId, orgName, access } = useOrg();
   const { eventId } = useParams({ from: "/o/$orgId/events/$eventId" });
   const canSales = access.can("order.read");
   const canSessions = access.can("session.read");
+  // The export routes need both permissions (mount_export.go).
+  const canCsv = canSales && canSessions;
   const events = useEventsList(orgId);
   const summary = useQuery({
     queryKey: ["eventSummary", orgId, eventId],
@@ -118,7 +120,7 @@ export function EventScreen() {
       </p>
 
       <div className="actions">
-        {canSales && (
+        {canCsv && (
           <DownloadButton
             label="event.csvSales"
             testId="csv-event-sales"
@@ -157,34 +159,40 @@ export function EventScreen() {
           )}
         </section>
       )}
-      {!canSales && <p className="notice">{t("event.noSales")}</p>}
+      {!canSales && (
+        <p className="notice" data-testid="no-sales-note">
+          {t(canSessions ? "event.noSales" : "event.noSessions", { org: orgName })}
+        </p>
+      )}
 
-      <section aria-labelledby="event-sessions">
-        <h2 id="event-sessions">{t("event.sessions")}</h2>
-        {sessions.isLoading && <Loading />}
-        {refs.length === 0 && !summary.isLoading && !sessions.isLoading && <Empty>{t("events.noDate")}</Empty>}
-        <ul className="cards" data-testid="session-list">
-          {refs.map((s) => {
-            const fig = summary.data?.sessions.find((x) => x.id === s.id);
-            return (
-              <li key={s.id} className="card" data-testid="session-row">
-                <Link
-                  to="/o/$orgId/events/$eventId/sessions/$sessionId"
-                  params={{ orgId, eventId, sessionId: s.id }}
-                  className="card-link"
-                >
-                  <span className="card-title">{formatDateTime(s.startAt, s.tz, locale)}</span>
-                  <span className="card-meta">
-                    {s.venue !== null && <span>{s.venue}</span>}
-                    {s.cancelled && <Badge tone="bad">{t("event.cancelled")}</Badge>}
-                  </span>
-                </Link>
-                {fig !== undefined && <SalesFigures places={fig.places} money={fig.money} compact />}
-              </li>
-            );
-          })}
-        </ul>
-      </section>
+      {(canSales || canSessions) && (
+        <section aria-labelledby="event-sessions">
+          <h2 id="event-sessions">{t("event.sessions")}</h2>
+          {sessions.isLoading && <Loading />}
+          {refs.length === 0 && !summary.isLoading && !sessions.isLoading && <Empty>{t("events.noDate")}</Empty>}
+          <ul className="cards" data-testid="session-list">
+            {refs.map((s) => {
+              const fig = summary.data?.sessions.find((x) => x.id === s.id);
+              return (
+                <li key={s.id} className="card" data-testid="session-row">
+                  <Link
+                    to="/o/$orgId/events/$eventId/sessions/$sessionId"
+                    params={{ orgId, eventId, sessionId: s.id }}
+                    className="card-link"
+                  >
+                    <span className="card-title">{formatDateTime(s.startAt, s.tz, locale)}</span>
+                    <span className="card-meta">
+                      {s.venue !== null && <span>{s.venue}</span>}
+                      {s.cancelled && <Badge tone="bad">{t("event.cancelled")}</Badge>}
+                    </span>
+                  </Link>
+                  {fig !== undefined && <SalesFigures places={fig.places} money={fig.money} compact />}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
     </article>
   );
 }

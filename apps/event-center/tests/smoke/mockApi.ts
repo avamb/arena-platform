@@ -140,7 +140,11 @@ function forbidden(route: Route) {
   return json(route, 403, { error: { code: "org.access_denied", message: "denied", request_id: "rq" } });
 }
 
-export async function mockApi(page: Page, auth: AuthState = newAuthState()): Promise<MockState> {
+export async function mockApi(
+  page: Page,
+  auth: AuthState = newAuthState(),
+  opts: { superadmin?: boolean } = {},
+): Promise<MockState> {
   const state: MockState = { requests: [] };
   await page.route(`${API}/**`, async (route) => {
     const req = route.request();
@@ -213,7 +217,7 @@ export async function mockApi(page: Page, auth: AuthState = newAuthState()): Pro
         permissions: manager
           ? ["event.read", "order.read", "session.read", "tier.read"]
           : ["event.read", "ticket.read"],
-        platform_superadmin: false,
+        platform_superadmin: opts.superadmin === true,
       });
     }
     if (rest === "/events") {

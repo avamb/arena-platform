@@ -2,7 +2,7 @@
  * Every arena-api route the event center calls, in ONE table.
  *
  * The client builds URLs only from this table (`buildPath`), and
- * `routes.test.ts` checks that every entry exists in openapi.yaml with the
+ * `src/parity/parity.test.ts` checks that every entry exists in openapi.yaml with the
  * same method. A new web call therefore needs a line here first, and a
  * route that the API does not document fails the test.
  *
