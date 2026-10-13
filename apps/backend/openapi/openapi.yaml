@@ -11,7 +11,7 @@ info:
 
     Every route accepts the optional request header `X-Client-Channel`, which
     names the client the call comes from. Allowed values are `telegram_bot`,
-    `admin_web` and `site_plugin`; the value is trimmed and lowercased, and an
+    `admin_web`, `site_plugin` and `event_center_web`; the value is trimmed and lowercased, and an
     unknown value is ignored (never an error). The channel is recorded as
     `metadata.via` on every audit event the request writes, so a change made
     through the Telegram bot can be told from one made in admin-web. It is a
@@ -654,6 +654,79 @@ components:
           items:
             type: string
           example: ["network:0193f01a-1234-7000-8000-000000000001"]
+
+    OrgMeResponse:
+      type: object
+      description: |
+        The caller's access inside one organization, returned by
+        GET /v1/organizations/{org_id}/me. Every list is sorted and never null.
+      required:
+        - org_id
+        - org_name
+        - org_display_number
+        - caller_type
+        - role
+        - membership_roles
+        - roles
+        - permissions
+        - platform_superadmin
+      properties:
+        org_id:
+          type: string
+          format: uuid
+          description: UUID of the organization.
+        org_name:
+          type: string
+          description: Display name of the organization.
+        org_display_number:
+          type: integer
+          format: int64
+          description: Short organization number shown to people. The UUID stays the API key.
+        caller_type:
+          type: string
+          description: |
+            `user` for a person signed in with a JWT, `api_key` for an
+            organization API key.
+          example: user
+        role:
+          type: string
+          description: |
+            The main membership role of the caller in this organization, for
+            display: `org_admin` (owner), then `organizer` (manager), then
+            `agent`, then the first other role in alphabetical order. Empty
+            for an API key and for a platform superadmin who holds no
+            membership here. Decide actions by `permissions`, never by this
+            field.
+          example: organizer
+        membership_roles:
+          type: array
+          description: Every active membership role the caller holds in this organization.
+          items:
+            type: string
+          example: ["organizer"]
+        roles:
+          type: array
+          description: |
+            The roles the permission checker counts for this organization:
+            the membership roles here, the caller's global roles (for example
+            `platform_superadmin`) and any roles of the token. Empty for an
+            API key.
+          items:
+            type: string
+          example: ["organizer"]
+        permissions:
+          type: array
+          description: |
+            Every permission the caller holds inside this organization. For
+            an API key these are its scopes.
+          items:
+            type: string
+          example: ["event.read", "order.read"]
+        platform_superadmin:
+          type: boolean
+          description: |
+            True when the caller is a platform superadmin. Other
+            organization routes then require the X-Admin-Reason header.
 
     MeUser:
       type: object
@@ -17646,6 +17719,86 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/me:
+    get:
+      operationId: getV1OrganizationsOrgIdMe
+      summary: Return the caller's role and permissions inside one organization
+      description: |
+        Returns the caller's role and effective permissions INSIDE the path
+        organization (web event center, task A1 of
+        08_architecture/37_web_event_center_ru.md). Since the per-organization
+        permission check (PERM-ORG) a route grants only what the caller holds
+        in the organization it acts in, plus global roles. GET /v1/me still
+        answers the union across every organization, so a client must read
+        this endpoint before it shows or hides an action of one organization.
+
+        The permissions are computed by the same checker the route gates use,
+        so "allowed" here means the gate lets the request through. A route
+        can still refuse for its own reasons (a row of another organization,
+        a state that does not allow the action).
+
+        Who may call it: a user with an active membership in the
+        organization, an organization API key of that organization (no role,
+        its permissions are its scopes), and a platform superadmin (no
+        X-Admin-Reason is needed, the call reads the caller's own access).
+        Anyone else gets 403 `org.access_denied`.
+      tags: [v1, iam]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization the caller asks about.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The caller's access inside the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgMeResponse"
+        "400":
+          description: org_id is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: |
+            The caller is not a member of this organization, or the API key
+            belongs to another organization (`org.access_denied`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The organization does not exist or was deleted (`org.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The membership or permission lookup failed (`org.membership_check_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The permission checker is not wired (`dependency.org_access_unavailable`).
           content:
             application/json:
               schema:

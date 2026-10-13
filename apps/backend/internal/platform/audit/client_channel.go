@@ -36,6 +36,9 @@ const (
 	ChannelTelegramBot = "telegram_bot"
 	ChannelAdminWeb    = "admin_web"
 	ChannelSitePlugin  = "site_plugin"
+	// ChannelEventCenterWeb is the organizers' web event center
+	// (apps/event-center, 08_architecture/37_web_event_center_ru.md).
+	ChannelEventCenterWeb = "event_center_web"
 )
 
 // NormalizeClientChannel trims and lowercases raw and reports whether it is an
@@ -43,7 +46,7 @@ const (
 // cosmetic header must never cost a request.
 func NormalizeClientChannel(raw string) (string, bool) {
 	switch v := strings.ToLower(strings.TrimSpace(raw)); v {
-	case ChannelTelegramBot, ChannelAdminWeb, ChannelSitePlugin:
+	case ChannelTelegramBot, ChannelAdminWeb, ChannelSitePlugin, ChannelEventCenterWeb:
 		return v, true
 	}
 	return "", false

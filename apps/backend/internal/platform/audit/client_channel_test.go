@@ -17,6 +17,7 @@ func TestNormalizeClientChannel(t *testing.T) {
 		{"  Telegram_Bot ", ChannelTelegramBot, true},
 		{"ADMIN_WEB", ChannelAdminWeb, true},
 		{"site_plugin", ChannelSitePlugin, true},
+		{"event_center_web", ChannelEventCenterWeb, true},
 		{"", "", false},
 		{"   ", "", false},
 		{"curl", "", false},
