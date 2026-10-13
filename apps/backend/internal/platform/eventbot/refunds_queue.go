@@ -291,7 +291,7 @@ func (b *Bot) startQueueRetry(ctx context.Context, chatID int64, msgID int, id *
 		return
 	}
 	b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.sending", nil), nil)
-	b.goBackground("queue retry", func() {
+	started := b.goBackground("queue retry", func() {
 		defer b.retrying.Delete(refundID)
 		wctx, cancel := context.WithTimeout(detached(ctx), refundSendWindow)
 		defer cancel()
@@ -305,6 +305,11 @@ func (b *Bot) startQueueRetry(ctx context.Context, chatID int64, msgID int, id *
 			InlineKeyboard: [][]models.InlineKeyboardButton{{{Text: "« " + b.texts.T(loc, "bot.btn_back", nil),
 				CallbackData: "rq:l:" + queueDefaultFilter + ":1"}}}})
 	})
+	if !started {
+		// The bot is shutting down: nothing was sent.
+		b.retrying.Delete(refundID)
+		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.err_unavailable", nil), nil)
+	}
 }
 
 // codePartialNotSupported: the provider returns only the whole payment at

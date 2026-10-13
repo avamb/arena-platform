@@ -608,37 +608,80 @@ func (b *Bot) startSendRefund(ctx context.Context, chatID int64, msgID int, from
 	// anything, and the person knows it is under way.
 	b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.sending", nil), nil)
 	tg := from.ID
-	b.goBackground("refund send", func() {
+	started := b.goBackground("refund send", func() {
 		wctx, cancel := context.WithTimeout(detached(ctx), refundSendWindow)
 		defer cancel()
 		b.sendRefund(wctx, chatID, msgID, tg, id, st)
 	}, func() {
 		// Whether the call went out is unknown: the dialog goes back to the
 		// final screen with the same key, which replays rather than repeats.
-		cctx, cancel := context.WithTimeout(detached(ctx), 30*time.Second)
-		defer cancel()
-		b.inPersonsTurn(cctx, tg, func(cctx context.Context) {
-			if b.ownsSending(cctx, tg, st.Key) {
-				st.SendingAt = time.Time{}
-				b.saveRefund(cctx, tg, st, refStepFinal)
-			}
-			b.reply(cctx, chatID, &msgID, b.texts.T(id.Locale(), "bot.ref.err_timeout", nil), b.resendResultKeyboard(id.Locale(), st.OrderID))
-		})
+		b.finishRefundSend(detached(ctx), chatID, msgID, tg, st, true,
+			b.texts.T(id.Locale(), "bot.ref.err_timeout", nil), b.resendResultKeyboard(id.Locale(), st.OrderID))
 	})
+	if !started {
+		// The bot is shutting down: nothing was sent. The dialog goes back to
+		// the final screen with the same key (this handler holds the turn).
+		st.SendingAt = time.Time{}
+		b.saveRefund(ctx, from.ID, st, refStepFinal)
+		b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.err_unavailable", nil), b.resendResultKeyboard(loc, st.OrderID))
+	}
 }
 
-// inPersonsTurn runs fn in the person's turn (serial.go), so a dialog write
-// made by work that runs outside a handler cannot interleave with that
-// person's next update. A bot built without the lanes (unit tests) runs fn
-// at once.
-func (b *Bot) inPersonsTurn(ctx context.Context, tg int64, fn func(context.Context)) {
+// refundTurnWait bounds how long a background send waits for the person's
+// turn before it tells them the answer anyway (a variable for tests).
+var refundTurnWait = 30 * time.Second
+
+// finishRefundSend writes the end of a background send into the dialog and
+// tells the person. The write runs in the person's turn (serial.go), so it
+// cannot interleave with their next update, and only while the stored dialog
+// is still this send (ownsSending): toFinal puts it back on the final screen
+// with the same key, otherwise the dialog ends. When the turn does not come
+// within refundTurnWait (their lane is busy: a poster being read, a long
+// save), the person is told at once, outside the turn, and the write is tried
+// again until refundSendWindow is spent, so the dialog is not left in
+// sending.
+func (b *Bot) finishRefundSend(ctx context.Context, chatID int64, msgID int, tg int64, st refundDialog, toFinal bool,
+	text string, kb *models.InlineKeyboardMarkup) {
+	write := func(c context.Context) {
+		if !b.ownsSending(c, tg, st.Key) {
+			return
+		}
+		if toFinal {
+			st.SendingAt = time.Time{}
+			b.saveRefund(c, tg, st, refStepFinal)
+			return
+		}
+		b.leaveRefund(c, tg)
+	}
+	edit := msgID
 	if b.serial == nil {
-		fn(ctx)
+		write(ctx)
+		b.reply(ctx, chatID, &edit, text, kb)
 		return
 	}
-	if err := b.serial.do(ctx, tg, fn); err != nil {
-		b.logger.Warn("eventbot: background dialog write skipped", slog.Int64("telegram_user_id", tg), slog.String("error", err.Error()))
+	wctx, cancel := context.WithTimeout(ctx, refundTurnWait)
+	err := b.serial.do(wctx, tg, func(c context.Context) {
+		write(c)
+		b.reply(c, chatID, &edit, text, kb)
+	})
+	cancel()
+	if err == nil {
+		return
 	}
+	b.logger.Warn("eventbot: refund answer waited too long for the person's turn",
+		slog.Int64("telegram_user_id", tg), slog.String("error", err.Error()))
+	rctx, rcancel := context.WithTimeout(ctx, 30*time.Second)
+	b.reply(rctx, chatID, &edit, text, kb)
+	rcancel()
+	for deadline := time.Now().Add(refundSendWindow); time.Now().Before(deadline); {
+		wctx, cancel := context.WithTimeout(ctx, refundTurnWait)
+		err = b.serial.do(wctx, tg, write)
+		cancel()
+		if err == nil {
+			return
+		}
+	}
+	b.logger.Error("eventbot: refund dialog left in sending", slog.Int64("telegram_user_id", tg))
 }
 
 // ownsSending reports whether the stored dialog is still the operation this
@@ -695,54 +738,28 @@ func (b *Bot) sendRefund(ctx context.Context, chatID int64, msgID int, tg int64,
 	// The answer is recorded on a context of its own: the send's window may
 	// be spent. It is written in the person's turn, never beside a press of
 	// theirs that reads the same dialog.
-	rctx, cancel := context.WithTimeout(detached(ctx), 30*time.Second)
-	defer cancel()
-	b.inPersonsTurn(rctx, tg, func(rctx context.Context) {
-		b.recordRefundAnswer(rctx, chatID, msgID, tg, id, st, res, err)
-	})
-}
-
-// recordRefundAnswer writes what the create call answered into the dialog
-// and tells the person.
-func (b *Bot) recordRefundAnswer(rctx context.Context, chatID int64, msgID int, tg int64, id *Identity, st refundDialog,
-	res openapi.CreateOrderRefundsResponse, err error) {
 	loc := id.Locale()
 	back := b.resendResultKeyboard(loc, st.OrderID)
-	edit := &msgID
-	ours := b.ownsSending(rctx, tg, st.Key)
 	var ae *APIError
 	switch {
 	case err == nil:
-		if ours {
-			b.leaveRefund(rctx, tg)
-		}
-		b.reply(rctx, chatID, edit, b.refundResultText(loc, st, res), back)
+		b.finishRefundSend(detached(ctx), chatID, msgID, tg, st, false, b.refundResultText(loc, st, res), back)
 	case errors.As(err, &ae):
 		// The server ANSWERED: nothing was refunded by this call. 5xx other
 		// than the documented 503 is an unknown state, so the dialog goes
 		// back to the final screen and the same key may be pressed again.
 		key := b.refundErrorKey(ae)
 		if key == "" {
-			if ours {
-				st.SendingAt = time.Time{}
-				b.saveRefund(rctx, tg, st, refStepFinal)
-			}
-			b.reply(rctx, chatID, edit, b.texts.T(loc, "bot.ref.err_timeout", nil), back)
+			b.finishRefundSend(detached(ctx), chatID, msgID, tg, st, true, b.texts.T(loc, "bot.ref.err_timeout", nil), back)
 			return
 		}
-		if ours {
-			b.leaveRefund(rctx, tg)
-		}
-		b.reply(rctx, chatID, edit, b.texts.T(loc, key, map[string]any{"Num": st.Num, "Provider": Esc(providerName(st.Provider))}), back)
+		b.finishRefundSend(detached(ctx), chatID, msgID, tg, st, false,
+			b.texts.T(loc, key, map[string]any{"Num": st.Num, "Provider": Esc(providerName(st.Provider))}), back)
 	default:
 		// No answer at all after the repeats: the refund may well be under
 		// way. Keep the dialog (and its key) and say so; never "failed".
 		b.logger.Warn("eventbot: refund call got no answer", slog.Int64("telegram_user_id", tg), slog.String("error", err.Error()))
-		if ours {
-			st.SendingAt = time.Time{}
-			b.saveRefund(rctx, tg, st, refStepFinal)
-		}
-		b.reply(rctx, chatID, edit, b.texts.T(loc, "bot.ref.err_timeout", nil), back)
+		b.finishRefundSend(detached(ctx), chatID, msgID, tg, st, true, b.texts.T(loc, "bot.ref.err_timeout", nil), back)
 	}
 }
 

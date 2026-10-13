@@ -157,7 +157,12 @@ const backgroundDrain = 15 * time.Second
 // goBackground runs fn off the update worker and tracks it. A panic in fn
 // is recovered and logged (it must not take the bot down for everyone), and
 // cleanup, when given, then puts the person's dialog back in a usable state.
-func (b *Bot) goBackground(name string, fn, cleanup func()) {
+//
+// It reports false, and runs nothing, once Run has begun its shutdown wait:
+// the caller is a handler holding the person's lane, and work that writes the
+// dialog through that lane would wait for itself. The caller then tells the
+// person nothing was started.
+func (b *Bot) goBackground(name string, fn, cleanup func()) bool {
 	run := func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -171,14 +176,13 @@ func (b *Bot) goBackground(name string, fn, cleanup func()) {
 		fn()
 	}
 	if !b.bg.add() {
-		// The bot is shutting down: do the work here rather than lose it.
-		run()
-		return
+		return false
 	}
 	go func() {
 		defer b.bg.done()
 		run()
 	}()
+	return true
 }
 
 // detached is the context of work that outlives its handler: no deadline and
