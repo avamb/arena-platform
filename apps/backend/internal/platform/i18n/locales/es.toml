@@ -1711,7 +1711,7 @@ other = "Mensaje del proveedor de pago: {{.Msg}}"
 other = "Cancelar pedido sin pagar"
 
 ["bot.ord.cancel_ask"]
-other = "⚠️ <b>Último paso: todavía no se ha cancelado nada.</b>\n\nPedido №{{.Num}} · {{.Amount}}\nEl pedido se cerrará y se liberarán las plazas reservadas para él. Esto no se puede deshacer.\n\nPara cancelar, <b>escribe la palabra {{.Word}}</b> y envíala como mensaje. Para conservar el pedido, pulsa «Atrás»."
+other = "⚠️ <b>Último paso: todavía no se ha cancelado nada.</b>\n\nPedido №{{.Num}} · {{.Amount}}\nEl pedido se cierra y la reserva de sus plazas termina. Las plazas vuelven a la venta. Esto no se puede deshacer.\n\nPara cancelar, <b>escribe la palabra {{.Word}}</b> y envíala como mensaje. Para conservar el pedido, pulsa «Atrás»."
 
 ["bot.ord.cancel_wrong"]
 other = "Esa no es la palabra, así que no se ha cancelado nada. Para cancelar, escribe exactamente: {{.Word}}"
@@ -2564,7 +2564,7 @@ other = "Toca una categoría para cerrarla o abrirla, cambiar su precio, su vent
 other = "{{.Chip}} <b>{{.Name}}</b> · {{.Price}}\n      {{.Value}}"
 
 ["bot.cat.places"]
-other = "{{.Sold}} vendidas · {{.Held}} retenidas · {{.Available}} libres de {{.Total}}"
+other = "{{.Sold}} vendidas · {{.Held}} reservadas · {{.Available}} libres de {{.Total}}"
 
 ["bot.cat.places_none"]
 other = "sin plazas propias"
@@ -2675,13 +2675,13 @@ other = "✔ Precio guardado: {{.Price}} para las compras nuevas."
 other = "✔ Precio guardado: {{.Price}} para las compras nuevas (se cambió el precio programado que está en vigor ahora)."
 
 ["bot.cat.q_qty"]
-other = "🔢 <b>Nuevo número de plazas</b> de «{{.Name}}». Ahora: {{.Value}}.\n\nEscribe el número. No puede ser menor que las plazas ya vendidas o retenidas ({{.Limit}})."
+other = "🔢 <b>Nuevo número de plazas</b> de «{{.Name}}». Ahora: {{.Value}}.\n\nEscribe el número. No puede ser menor que las plazas ya vendidas o reservadas ({{.Limit}})."
 
 ["bot.cat.err_qty"]
 other = "⚠ Escribe un número entero de plazas, de 1 a 1000000."
 
 ["bot.cat.err_qty_below"]
-other = "⚠ No guardado: son menos plazas de las que la categoría ya ha vendido o retenido. No puede bajar de {{.Limit}}."
+other = "⚠ No guardado. Esta categoría ya tiene {{.Limit}} plazas vendidas o reservadas. Escribe un número de {{.Limit}} o más."
 
 ["bot.cat.err_qty_seated"]
 other = "⚠ No guardado: las plazas de esta categoría salen del plano de la sala, así que su número no se cambia aquí."
