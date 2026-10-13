@@ -402,6 +402,9 @@ other = "You no longer have access to this organization. If this is a mistake, a
 ["bot.unknown_input"]
 other = "I did not understand that. Use the buttons below."
 
+["bot.stale_message"]
+other = "This message is out of date. Please continue below."
+
 # --- the "+ Event" wizard (eventbot/wizard.go) ------------------------------
 
 ["bot.wz.new_event_btn"]
