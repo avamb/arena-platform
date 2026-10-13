@@ -134,6 +134,9 @@ type refundDialog struct {
 	// RunID names the bot process that sent it: after a restart nothing is
 	// with the server for this dialog any more, whatever the clock says.
 	RunID string `json:"run_id,omitempty"`
+	// RestartNoticed: the person was already told that a restart cut this
+	// send off (recoverLostRefundSends), so a later start does not repeat it.
+	RestartNoticed bool `json:"restart_noticed,omitempty"`
 }
 
 // sendingNow reports a dialog whose operation is with the server right now:
@@ -162,7 +165,33 @@ func (b *Bot) recoverLostRefundSends(ctx context.Context) {
 	}
 	for _, row := range rows {
 		var st refundDialog
-		if json.Unmarshal(row.State, &st) != nil || st.RunID == b.runID {
+		if json.Unmarshal(row.State, &st) != nil || st.RunID == b.runID || st.RestartNoticed {
+			continue
+		}
+		// Marked before the message, in the person's turn: told at most once,
+		// even when the bot restarts again before they answer.
+		tg := row.TelegramUserID
+		marked := false
+		mark := func(c context.Context) {
+			var cur refundDialog
+			step, found, _, err := b.dialogs.Load(c, tg, refundDialogKind, &cur)
+			if err != nil || !found || step != refStepSending || cur.Key != st.Key || cur.RunID == b.runID || cur.RestartNoticed {
+				return
+			}
+			cur.RestartNoticed = true
+			marked = b.saveRefund(c, tg, cur, refStepSending)
+		}
+		if b.serial == nil {
+			mark(ctx)
+		} else {
+			mctx, cancel := context.WithTimeout(ctx, refundTurnWait)
+			err := b.serial.do(mctx, tg, mark)
+			cancel()
+			if err != nil {
+				continue
+			}
+		}
+		if !marked {
 			continue
 		}
 		loc := "en"
@@ -597,6 +626,7 @@ func (b *Bot) startSendRefund(ctx context.Context, chatID int64, msgID int, from
 	loc := id.Locale()
 	st.SendingAt = time.Now().UTC()
 	st.RunID = b.runID
+	st.RestartNoticed = false
 	st.MsgID = msgID
 	if !b.saveRefund(ctx, from.ID, st, refStepSending) {
 		// Without the record of the send, a second press could start

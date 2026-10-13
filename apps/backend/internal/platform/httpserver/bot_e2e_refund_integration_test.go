@@ -292,6 +292,23 @@ func TestBotE2E_Refund_SendLostToARestartIsOfferedAgain(t *testing.T) {
 	if !strings.Contains(notice, "дважды деньги не вернутся") {
 		t.Errorf("the restart notice does not say the money is safe:\n%s", notice)
 	}
+	// Another restart before the person answers does not repeat the notice.
+	stop()
+	time.Sleep(400 * time.Millisecond)
+	again := tg.mark()
+	stop = startDialogTestBot(t, pool, api, tg)
+	time.Sleep(1500 * time.Millisecond)
+	tg.mu.Lock()
+	repeated := ""
+	for _, m := range tg.sent[again:] {
+		if strings.Contains(m, "Бот перезапустился") {
+			repeated = m
+		}
+	}
+	tg.mu.Unlock()
+	if repeated != "" {
+		t.Fatalf("the restart notice was sent again on the next start:\n%s", repeated)
+	}
 	final := d.press("or:f:b", "ответ потерялся")
 	if !strings.Contains(final, "Последняя проверка") {
 		t.Errorf("the recovery button does not open the final check:\n%s", final)
