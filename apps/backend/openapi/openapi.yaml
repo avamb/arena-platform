@@ -1897,6 +1897,14 @@ components:
             tax forms. NULL until the organization completes its legal
             self-service profile.
           example: "ACME Tickets GmbH"
+        legal_form:
+          type: [string, "null"]
+          description: |
+            Legal form of the entity as the owner wrote it ("S.L.", "s.r.o.",
+            "autónomo"), at most 80 characters (migration 0146). Answered by
+            GET /v1/organizations/{id} and PATCH /v1/organizations/{id} only;
+            the list and create routes answer null.
+          example: "GmbH"
         tax_id:
           type: [string, "null"]
           description: |
@@ -2120,6 +2128,13 @@ components:
             value. Required (non-empty) when this same body sets
             `kyb_status` to `pending` or `verified`.
           example: "ACME Tickets GmbH"
+        legal_form:
+          type: [string, "null"]
+          description: |
+            New legal form, 1-80 characters on one line (400
+            `org.invalid_legal_form` otherwise). Absent keeps the stored
+            value, `null` or an empty string clears it.
+          example: "GmbH"
         tax_id:
           type: string
           description: New tax registration identifier (empty string clears).
@@ -6413,6 +6428,10 @@ components:
           type: string
           description: Registered legal name; the organization name when none is stored.
           example: "Teatro Ejemplo S.L."
+        legal_form:
+          type: string
+          description: Legal form as the owner wrote it; omitted when none is stored.
+          example: "S.L."
         tax_id:
           type: string
           description: Tax or VAT identifier.
@@ -6437,6 +6456,161 @@ components:
           description: The channel's published contact; omitted when the channel sets none.
           allOf:
             - $ref: "#/components/schemas/HostedPageSellerContact"
+
+    SellerProfileContact:
+      type: object
+      description: |
+        The contact a hosted-page channel publishes
+        (`settings.hosted_page.public_contact`). Unset keys are omitted.
+      properties:
+        email:
+          type: string
+          description: Public role e-mail of the channel.
+          example: "tickets@example.com"
+        phone:
+          type: string
+          description: Public phone number of the channel.
+          example: "+34 600 000 000"
+
+    SellerProfileChannel:
+      type: object
+      required: [id, name, show_seller, public_contact, email_looks_personal, missing]
+      description: One channel of the organization that runs a hosted sales page.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Sales channel id.
+        name:
+          type: string
+          description: Sales channel name.
+          example: "Hosted page"
+        show_seller:
+          type: boolean
+          description: Whether the sales page of this channel shows the seller block (`settings.hosted_page.show_seller`).
+        public_contact:
+          description: The channel's published contact, null when it has none.
+          oneOf:
+            - $ref: "#/components/schemas/SellerProfileContact"
+            - type: "null"
+        email_looks_personal:
+          type: boolean
+          description: |
+            True when the public e-mail is at a free mailbox provider (gmail.com,
+            inbox.ru, outlook.com, ...). A hint for the owner to use a role
+            address; it never blocks a save.
+        missing:
+          type: array
+          description: |
+            Required data still empty before `show_seller` may be turned on, in a
+            stable order: legal_name, tax_id, address_line1, address_city,
+            address_postal_code, public_email. Empty when the block may be shown.
+          items:
+            type: string
+            description: Name of a missing field.
+
+    SellerProfile:
+      type: object
+      required: [org_id, org_name, country, missing, channels]
+      description: |
+        The owner's "Organization data": the legal data the sales page prints in
+        its seller block, and every hosted-page channel with its block settings.
+        Legal fields are changed through PATCH /v1/organizations/{id}.
+      properties:
+        org_id:
+          type: string
+          format: uuid
+          description: Organization id.
+        org_name:
+          type: string
+          description: Display name of the organization.
+        country:
+          type: string
+          description: Country of the organization (stands in for the address country on the page).
+          example: "ES"
+        legal_name:
+          type: [string, "null"]
+          description: Registered legal name.
+        legal_form:
+          type: [string, "null"]
+          description: Legal form as the owner wrote it.
+        registration_number:
+          type: [string, "null"]
+          description: Company registration number.
+        tax_id_scheme:
+          type: [string, "null"]
+          description: Scheme of tax_id (eu_vat, gb_vat, il_vat, us_ein or other).
+        tax_id:
+          type: [string, "null"]
+          description: Tax or VAT identifier.
+        legal_address_line1:
+          type: [string, "null"]
+          description: Registered address, street line.
+        legal_address_line2:
+          type: [string, "null"]
+          description: Registered address, second line.
+        legal_address_postal_code:
+          type: [string, "null"]
+          description: Registered address, postal code.
+        legal_address_city:
+          type: [string, "null"]
+          description: Registered address, city.
+        legal_address_country:
+          type: [string, "null"]
+          description: Registered address, ISO 3166-1 alpha-2 country.
+        missing:
+          type: array
+          description: Required organization fields still empty (the channel list adds public_email per channel).
+          items:
+            type: string
+            description: Name of a missing field.
+        channels:
+          type: array
+          description: The organization's hosted-page channels, oldest first.
+          items:
+            $ref: "#/components/schemas/SellerProfileChannel"
+
+    SellerProfileEnvelope:
+      type: object
+      required: [seller_profile]
+      description: Envelope of the seller-profile routes.
+      properties:
+        seller_profile:
+          description: The profile as stored after the call.
+          allOf:
+            - $ref: "#/components/schemas/SellerProfile"
+
+    SellerDisplayContactPatch:
+      type: object
+      additionalProperties: false
+      description: Tri-state contact change; an absent key keeps, null or "" clears.
+      properties:
+        email:
+          type: [string, "null"]
+          description: Public role e-mail (400 `seller.invalid_email` when malformed).
+          example: "tickets@example.com"
+        phone:
+          type: [string, "null"]
+          description: Public phone, 6-15 digits (400 `seller.invalid_phone` when malformed).
+          example: "+34 600 000 000"
+
+    UpdateSellerDisplayRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Change of one hosted-page channel's seller block. Absent members keep
+        the stored value. `show_seller: true` is refused with 422
+        `seller.incomplete` (details.missing) while required data is empty, and
+        so is clearing the e-mail of a channel that keeps the block on.
+      properties:
+        show_seller:
+          type: boolean
+          description: Show the seller block on this channel's sales page.
+        public_contact:
+          description: The published contact; null removes it.
+          oneOf:
+            - $ref: "#/components/schemas/SellerDisplayContactPatch"
+            - type: "null"
 
     HostedPagePromoter:
       type: object
@@ -18454,6 +18628,18 @@ paths:
         Applies a partial update to an active organization. Empty or omitted fields
         leave the existing value unchanged. Requires JWT authentication and "org.update"
         permission. Returns 409 if the new name or slug conflicts with another active org.
+
+        An organization API key may not send the fields of the legal identity
+        and the contact (`legal_name`, `legal_form`, `tax_id`, `tax_id_scheme`,
+        `registration_number`, `legal_address_*`, `contact_email`,
+        `contact_phone`): 403 `org.identity_fields_api_key_forbidden`, with the
+        refused fields in `error.details.fields`.
+
+        The row, its legal form and the seller block are written in one
+        transaction: when the update leaves a field the sales page's seller
+        block requires empty (legal name, tax number, street, city, postal
+        code), the block is turned off on every channel that showed it and the
+        answer lists those channels in `seller_display_hidden`.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -18482,6 +18668,12 @@ paths:
                 properties:
                   organization:
                     $ref: "#/components/schemas/OrganizationItem"
+                  seller_display_hidden:
+                    type: array
+                    description: Channels whose seller block was turned off because a required legal field is now empty. Omitted when none.
+                    items:
+                      type: string
+                      format: uuid
         "400":
           description: Request body missing, not valid JSON, or id path parameter invalid
           content:
@@ -18495,7 +18687,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Actor does not hold the required permission (org.update)
+          description: Actor does not hold the required permission (org.update), or an API key sent a legal identity or contact field (`org.identity_fields_api_key_forbidden`)
           content:
             application/json:
               schema:
@@ -25173,6 +25365,142 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
           description: The new name (or restoring) collides with an active promoter (`promoter.duplicate_name`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/seller-profile:
+    get:
+      operationId: getSellerProfile
+      summary: Read the organization's seller data and its sales-page channels
+      description: |
+        The owner's "Organization data" (HP-4a): the legal data the hosted sales
+        page prints in its seller block, every hosted-page channel with
+        `show_seller` and its public contact, and what is still missing before
+        the block may be shown. Requires `org.update` in the organization (the
+        owner; the manager does not hold it).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SellerProfileEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such organization (`org.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/channels/{channel_id}/seller-display:
+    patch:
+      operationId: updateSellerDisplay
+      summary: Switch the seller block and set the public contact of a sales-page channel
+      description: |
+        Writes `settings.hosted_page.show_seller` and
+        `settings.hosted_page.public_contact` of one hosted-page channel of the
+        organization; every other setting is kept. Requires `org.update` in the
+        organization. A channel of another organization, or one without a hosted
+        page, answers 404 `seller.channel_not_found`. Audited as
+        `v1.channel.seller_display_update` without the addresses.
+
+        This is the only route that writes these two keys: the generic channel
+        create and PATCH keep the stored values whatever `settings` they are
+        sent, and an organization API key is refused here.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: channel_id
+          in: path
+          required: true
+          description: UUID of the sales channel.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSellerDisplayRequest"
+      responses:
+        "200":
+          description: Saved; the profile as stored now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SellerProfileEnvelope"
+        "400":
+          description: Invalid body (`seller.invalid_body`), e-mail (`seller.invalid_email`) or phone (`seller.invalid_phone`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such sales-page channel in this organization (`seller.channel_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The block cannot be shown yet (`seller.incomplete`, details.missing lists the empty fields).
           content:
             application/json:
               schema:
