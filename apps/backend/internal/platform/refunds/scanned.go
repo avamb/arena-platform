@@ -379,19 +379,58 @@ func (e *Engine) TicketScanned(ctx context.Context, ticketID uuid.UUID, spend bo
 // that writes no refund row). Deciding and spending in the writer's own
 // transaction means a request that is refused later never burns the
 // exception, and a refund written on it owns it from the start.
+//
+// A scanned ticket that passes on its exception must really get it: when a
+// concurrent writer spent the exception first (the UPDATE then finds it used
+// and changes nothing), the ticket is blocked, so one exception never covers
+// two money decisions.
 func GuardTicketMoneyTx(ctx context.Context, tx pgx.Tx, ticketID uuid.UUID, refundID *uuid.UUID, spend bool) (bool, error) {
-	var blocked bool
-	if err := tx.QueryRow(ctx, `SELECT `+ticketBlockedSQL+` FROM tickets t WHERE t.id = $1`, ticketID).Scan(&blocked); err != nil {
+	var scanned, blocked bool
+	if err := tx.QueryRow(ctx, `SELECT `+ticketScannedSQL+`, `+ticketBlockedSQL+` FROM tickets t WHERE t.id = $1`, ticketID).
+		Scan(&scanned, &blocked); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, nil
 		}
 		return false, err
 	}
-	if blocked || !spend {
+	if blocked || !spend || !scanned {
 		return blocked, nil
 	}
-	_, err := tx.Exec(ctx, spendScanExceptionSQL, refundID, ticketID)
-	return false, err
+	tag, err := tx.Exec(ctx, spendScanExceptionSQL, refundID, ticketID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 0, nil
+}
+
+// BindCancelExceptionTx hands the exception the ticket-cancel route spent in
+// its cancellation transaction (GuardTicketMoneyTx with no refund row) to the
+// automatic refund written right after it, and reports whether money may NOT
+// be returned for the ticket: it was scanned and this refund owns no
+// exception for it.
+func BindCancelExceptionTx(ctx context.Context, tx pgx.Tx, ticketID, refundID uuid.UUID) (bool, error) {
+	if _, err := tx.Exec(ctx, `UPDATE refund_scan_exceptions SET used_by_refund = $1
+		WHERE ticket_id = $2 AND used_at IS NOT NULL AND used_by_refund IS NULL`, refundID, ticketID); err != nil {
+		return false, err
+	}
+	var blocked bool
+	err := tx.QueryRow(ctx, `SELECT `+ticketScannedSQL+` AND NOT EXISTS (SELECT 1 FROM refund_scan_exceptions sx
+		WHERE sx.ticket_id = t.id AND sx.used_by_refund = $2 AND `+noScanSinceGrantSQL+`)
+		FROM tickets t WHERE t.id = $1`, ticketID, refundID).Scan(&blocked)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return blocked, err
+}
+
+// ReleaseCancelException gives back the exception the ticket-cancel route
+// spent for an automatic refund that could not be written after all (the
+// ticket stays cancelled and its money is still owed): the next refund of the
+// payment may use it.
+func ReleaseCancelExceptionTx(ctx context.Context, tx pgx.Tx, ticketID uuid.UUID) error {
+	_, err := tx.Exec(ctx, `UPDATE refund_scan_exceptions SET used_at = NULL
+		WHERE ticket_id = $1 AND used_at IS NOT NULL AND used_by_refund IS NULL`, ticketID)
+	return err
 }
 
 // GuardPaymentMoneyTx is the same for a refund of the whole payment (the flat

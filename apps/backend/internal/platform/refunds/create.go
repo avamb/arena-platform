@@ -515,6 +515,18 @@ func insertBatch(ctx context.Context, tx pgx.Tx, in BatchInput, pay Payment, pla
 				return res, err
 			}
 		}
+		// A scanned ticket must now own its exception. When a concurrent
+		// writer (a manual cancellation, say) spent it first, the UPDATE above
+		// changed nothing and this refund is refused: one exception never
+		// covers two money decisions.
+		var unowned bool
+		if err := tx.QueryRow(ctx, `SELECT `+ticketScannedSQL+` AND NOT EXISTS (SELECT 1 FROM refund_scan_exceptions sx
+			WHERE sx.ticket_id = t.id AND sx.used_by_refund = $2) FROM tickets t WHERE t.id = $1`, p.TicketID, r.ID).Scan(&unowned); err != nil {
+			return res, err
+		}
+		if unowned {
+			return res, scannedRefusal(p.TicketID)
+		}
 		res.Refunds = append(res.Refunds, r)
 	}
 	return res, nil
