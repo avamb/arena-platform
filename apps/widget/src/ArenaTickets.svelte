@@ -31,7 +31,8 @@
   import { createPromoController, initialPromoState, promoPayBlocked } from './lib/promoController.js';
   import type { PromoState } from './lib/promoController.js';
   import { getPromoStrings } from './lib/promoI18n.js';
-  import { toggleSeatSelection } from './lib/selection.js';
+  import { MAX_CART_SEATS, cartLimitMessage, seatCapMessage } from './lib/cartLimits.js';
+  import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
   import {
     saveCheckoutToken,
@@ -214,6 +215,8 @@
   let holdExpiresAt = $state<string | null>(null);
   let checkoutSubmitting = $state(false);
   let checkoutError = $state<string | null>(null);
+  /** Why the last tap on a seat was refused (the order is at the seat cap), or null. */
+  let cartLimitNotice = $state<string | null>(null);
   /**
    * Set of seat keys that are in conflict after a 409 `reservation.seats_conflict`
    * response from checkout/start or recover (WID-S2).  Passed into SeatMapView
@@ -499,7 +502,14 @@
 
   function onSeatTap(seatKey: string, status: SeatStatusValue): void {
     const prev = selectedSeatKeys;
-    const next = toggleSeatSelection(prev, seatKey, status);
+    // One order holds at most MAX_CART_SEATS seats (the platform refuses more):
+    // say so instead of letting the buyer find out at the payment step.
+    if (seatCapBlocks(prev, seatKey, status, MAX_CART_SEATS)) {
+      cartLimitNotice = seatCapMessage(normLocale);
+      return;
+    }
+    cartLimitNotice = null;
+    const next = toggleSeatSelection(prev, seatKey, status, MAX_CART_SEATS);
     selectedSeatKeys = next;
 
     // WID-S5: emit seat lifecycle events so host pages can track selection.
@@ -650,6 +660,10 @@
         conflictKeys = new Set();
         checkoutError = `${promoErrorMessage(err.code, promoStrings)} ${promoStrings.removed}`;
         promoCtl.drop();
+      } else if (err instanceof ApiError && cartLimitMessage(err.code, normLocale) !== null) {
+        // The platform refused the size of the cart: say so in the buyer's language.
+        conflictKeys = new Set();
+        checkoutError = cartLimitMessage(err.code, normLocale);
       } else {
         conflictKeys = new Set();
         checkoutError = err instanceof Error ? err.message : t.error_checkout;
@@ -910,6 +924,7 @@
               holdExpiresAt = null;
               conflictKeys = new Set();
               checkoutError = null;
+              cartLimitNotice = null;
               cartSheetOpen = false;
               openGaAreaTierId = null;
               gaAreas = [];
@@ -917,6 +932,9 @@
             selectedSession = s;
           }}
         />
+        {/if}
+        {#if cartLimitNotice}
+          <p class="arena-tickets-limit" role="status">{cartLimitNotice}</p>
         {/if}
         <!-- Seat map (only for sessions with schema_url) -->
         {#if selectedSession && selectedSession.schema_url}
@@ -1132,6 +1150,14 @@
   .arena-tickets-map-wrap :global(.ga-popover) {
     top: 3rem;
     right: 0.75rem;
+  }
+
+  .arena-tickets-limit {
+    margin: 0;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    color: #92400e;
+    background: #fef3c7;
   }
 
   .arena-tickets-placeholder {

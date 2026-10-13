@@ -457,6 +457,40 @@ test.describe('promo code in the cart sheet', () => {
     expect(seen.quotes).toHaveLength(0);
   });
 
+  test('an oversized order is refused in the buyer language, not with a raw error', async ({ page }) => {
+    await mockPlatform(page, {
+      startStatus: 400,
+      startError: { code: 'checkout.cart_too_large', message: 'a cart holds at most 100 seats' },
+    });
+    await openCartWithTwoTickets(page);
+    const sheet = page.locator('#widget-promo .sheet');
+    await sheet.locator('.cta-btn').click();
+    await sheet.locator('input[type="email"]').fill('buyer@example.com');
+    await sheet.locator('button[type="submit"]').click();
+    await expect(sheet.locator('.submit-error')).toHaveText('This order is too large. Split it into smaller orders.');
+  });
+
+  test('a line over the per-category cap says how many are allowed, in Spanish', async ({ page }) => {
+    await mockPlatform(page, {
+      startStatus: 400,
+      startError: { code: 'checkout.invalid_qty', message: 'ga_items[0].quantity must be at most 50' },
+    });
+    await page.goto('/demo/promo-code.html');
+    await page.locator('#widget-promo').evaluate((el) => el.setAttribute('locale', 'es-ES'));
+    const widget = page.locator('#widget-promo');
+    const plus = widget.getByRole('button', { name: 'Increase quantity for Standard' });
+    await plus.waitFor({ timeout: 15_000 });
+    await plus.click();
+    await widget.locator('.mini-cart-btn').click();
+    const sheet = widget.locator('.sheet');
+    await sheet.locator('.cta-btn').click();
+    await sheet.locator('input[type="email"]').fill('buyer@example.com');
+    await sheet.locator('button[type="submit"]').click();
+    await expect(sheet.locator('.submit-error')).toHaveText(
+      'Puedes comprar como máximo 50 entradas de una categoría en un pedido.',
+    );
+  });
+
   test('the open sheet with an applied code has no accessibility violations', async ({ page }) => {
     await mockPlatform(page);
     await openCartWithTwoTickets(page);
