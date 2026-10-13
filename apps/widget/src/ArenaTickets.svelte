@@ -26,7 +26,7 @@
   import { fetchFeedEvent, fetchFeedEvents, postCheckoutStart, postCheckoutQuote, getCheckoutStatus, postCheckoutRecover, ApiError } from './api.js';
   import type { FeedSession, FeedEvent, Geometry, CategoryPrice, SeatStatusValue } from './types.js';
   import type { BuyerFormValues } from './lib/checkout.js';
-  import { buildCheckoutPayload, buildQuotePayload, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet, filterCartWithoutConflicts } from './lib/checkout.js';
+  import { buildCheckoutPayload, buildQuotePayload, buyerErrorText, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet, filterCartWithoutConflicts } from './lib/checkout.js';
   import { cartQuoteKey, promoErrorMessage, isPromoErrorCode } from './lib/promo.js';
   import { createPromoController, initialPromoState, promoPayBlocked } from './lib/promoController.js';
   import type { PromoState } from './lib/promoController.js';
@@ -410,7 +410,7 @@
 
       applyFeedEvent(await fetchFeedEvent(token, candidates[0]!.id, resolvedApiBase));
     } catch (err) {
-      loadError = err instanceof Error ? err.message : t.error_load_event;
+      loadError = buyerErrorText(err, t.error_load_event);
     } finally {
       loading = false;
     }
@@ -669,7 +669,7 @@
         checkoutError = cartLimitMessage(err.code, normLocale);
       } else {
         conflictKeys = new Set();
-        checkoutError = err instanceof Error ? err.message : t.error_checkout;
+        checkoutError = buyerErrorText(err, t.error_checkout);
       }
     } finally {
       checkoutSubmitting = false;
@@ -729,8 +729,7 @@
           // to normal init so the user can start a fresh checkout.
           forgetCheckoutToken();
           checkoutToken = null;
-          loadError =
-            recoveryErr instanceof Error ? recoveryErr.message : t.error_recovery;
+          loadError = buyerErrorText(recoveryErr, t.error_recovery);
           stage = 'selecting';
           // Re-load event data so the widget is not left blank.
           if (normFeedToken && normEventId) {
@@ -743,7 +742,7 @@
       if (apiErr?.status === 404) {
         forgetCheckoutToken();
         checkoutToken = null;
-        loadError = err instanceof Error ? err.message : t.error_order_status;
+        loadError = buyerErrorText(err, t.error_order_status);
         stage = 'selecting';
         // Re-load event data so the widget is not left blank.
         if (normFeedToken && normEventId) {
@@ -751,7 +750,7 @@
         }
         return;
       }
-      loadError = err instanceof Error ? err.message : t.error_order_status;
+      loadError = buyerErrorText(err, t.error_order_status);
       stage = 'selecting';
     }
   }
@@ -780,7 +779,7 @@
         orderActionError = t.conflict_notice;
       } else {
         conflictKeys = new Set();
-        orderActionError = err instanceof Error ? err.message : t.error_recovery;
+        orderActionError = buyerErrorText(err, t.error_recovery);
       }
     } finally {
       orderActionLoading = false;

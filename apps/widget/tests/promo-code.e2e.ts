@@ -391,7 +391,7 @@ test.describe('promo code in the cart sheet', () => {
 
     // The wait is bounded: the sheet frees itself, says the check failed, and
     // the buyer can still pay the list price.
-    await expect(sheet.getByRole('alert')).toHaveText('Cannot check the code now. Try again.', { timeout: 15_000 });
+    await expect(sheet.getByRole('alert')).toHaveText('We could not check the code. Try again in a minute.', { timeout: 15_000 });
     await expect(sheet.locator('.promo-applied')).toHaveCount(0);
     await expect(sheet.locator('.cta-btn')).toBeEnabled();
     await expect(sheet.locator('.total-value')).toHaveText(amount('€50.62'));

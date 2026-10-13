@@ -168,6 +168,6 @@ test.describe('promo code — real backend', () => {
     const quote = await quoteResponse;
     expect(quote.status()).toBe(422);
     expect(((await quote.json()) as { error: { code: string } }).error.code).toBe('promo.minimum_not_reached');
-    await expect(sheet.getByRole('alert')).toHaveText('The order is too small for this code.');
+    await expect(sheet.getByRole('alert')).toHaveText('The order total is below the minimum for this code. Add tickets.');
   });
 });

@@ -26,7 +26,7 @@ describe('renderNotFound', () => {
   it('localizes the not-found copy for ru', () => {
     const container = freshContainer();
     renderNotFound(container, 'ru');
-    expect(container.querySelector('h1')?.textContent).toBe('Событие не найдено');
+    expect(container.querySelector('h1')?.textContent).toBe('Мероприятие не найдено');
   });
 
   it('localizes the not-found copy for es', () => {
@@ -441,7 +441,7 @@ describe('renderPromoterPage', () => {
     it('headings the list with the localized choose-an-event prompt', () => {
       const container = freshContainer();
       renderPromoterPage(container, catalog, 'ru', pageOptions());
-      expect(container.querySelector('.asa-dates__head')?.textContent).toBe('Выберите событие');
+      expect(container.querySelector('.asa-dates__head')?.textContent).toBe('Выберите мероприятие');
     });
   });
 

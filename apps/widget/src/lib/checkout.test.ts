@@ -14,7 +14,7 @@
  *  • All four locale i18n tables present and non-empty
  */
 
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 import {
   editDistance,
   suggestEmailFix,
@@ -32,6 +32,7 @@ import {
   conflictKeySet,
   filterCartWithoutConflicts,
   pluralizeTickets,
+  buyerErrorText,
   type BuyerFieldConfig,
   type BuyerFormValues,
   type ConflictDetail,
@@ -747,4 +748,22 @@ describe('CHECKOUT_I18N conflict strings', () => {
       });
     }
   }
+});
+
+// ─── buyerErrorText ───────────────────────────────────────────────────────────
+
+describe('buyerErrorText', () => {
+  test('shows the localized fallback, never the API message', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const err = new Error('postCheckoutStart HTTP 500: We could not start the checkout.');
+    expect(buyerErrorText(err, CHECKOUT_I18N.ru.error_checkout)).toBe(CHECKOUT_I18N.ru.error_checkout);
+    expect(warn).toHaveBeenCalledWith('arena-tickets:', err.message);
+    warn.mockRestore();
+  });
+
+  test('a non-Error value also gets the fallback', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(buyerErrorText('boom', 'Try again.')).toBe('Try again.');
+    warn.mockRestore();
+  });
 });
