@@ -744,9 +744,10 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		promoLines := hcheckout.TierLinesForSession(lines, sessionID.String(), currency)
 		discount, promoCodeID, promoErrCode := h.applyPromoDiscount(ctx, promoQ, promoRow, promoLines, req.HolderEmail)
 		if promoErrCode != "" {
-			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
-				promoErrCode, "promo code is not applicable", r,
-			))
+			// Same neutral verdicts as the quote and the general-admission
+			// branch, and the refusal is counted against the refused-code
+			// budget. The deferred rollback releases the holds.
+			h.refusePromo(w, r, feedToken, promoErrCode)
 			return
 		}
 
