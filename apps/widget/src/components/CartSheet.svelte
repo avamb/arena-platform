@@ -98,8 +98,8 @@
   let promoInput = $state('');
   // Behind a link until the buyer asks for it; a failed Apply or a code in
   // flight keeps it open so the answer is never hidden.
-  let promoOpened = $state(promoExpanded);
-  const promoOpen = $derived(promoOpened || !!promoError || promoBusy);
+  let promoOpened = $state(false);
+  const promoOpen = $derived(promoExpanded || promoOpened || !!promoError || promoBusy);
   let promoInputEl = $state<HTMLInputElement | null>(null);
   function openPromo(): void {
     promoOpened = true;
