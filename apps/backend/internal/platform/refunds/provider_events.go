@@ -39,9 +39,6 @@ const (
 	UnresolvedNoChargeRef = "no_charge_ref"
 )
 
-// providerEventAlertsPerPass caps the alerts one sweep pass sends.
-const providerEventAlertsPerPass = 15
-
 // providerEventAlertWindow: records older than this are no longer alerted.
 const providerEventAlertWindow = 30 * 24 * time.Hour
 
@@ -93,7 +90,10 @@ func (e *Engine) recordUnresolved(ctx context.Context, u UnresolvedEvent) error 
 // alertProviderEvents sends one ops alert per unresolved record not alerted
 // yet, oldest first. Only a confirmed delivery marks the record; the first
 // failure ends the section (the next pass retries).
-func (e *Engine) alertProviderEvents(ctx context.Context, n Notifier) (int, error) {
+func (e *Engine) alertProviderEvents(ctx context.Context, n Notifier, limit int) (int, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
 	type rec struct {
 		id                                         uuid.UUID
 		refundID, org, provider, kind, charge, our string
@@ -110,7 +110,7 @@ func (e *Engine) alertProviderEvents(ctx context.Context, n Notifier) (int, erro
 			  AND NOT EXISTS (SELECT 1 FROM audit_events a
 			                  WHERE a.resource_type = 'provider_refund' AND a.resource_id = u.resource_id
 			                    AND a.action = $2 AND a.metadata->>'unresolved_id' = u.id::text)
-			ORDER BY u.occurred_at LIMIT `+strconv.Itoa(providerEventAlertsPerPass),
+			ORDER BY u.occurred_at LIMIT `+strconv.Itoa(limit),
 			actionProviderEventUnresolved, actionProviderEventAlerted, time.Now().Add(-providerEventAlertWindow), e.scopeOrgs())
 		if err != nil {
 			return err

@@ -93,11 +93,11 @@ const (
 	maxUnknownPerPass  = 5
 	alertSectionBudget = 30 * time.Second
 	// alertsPerPass keeps one pass well inside Telegram's group limit of
-	// about 20 messages a minute. It caps the review alerts; the provider
-	// events arena gave up on have their own cap (providerEventAlertsPerPass),
-	// and lost buyer letters only get what both left of this one
-	// (alertsPerPass - reviews - provider events), so adding them never
-	// raises the pass's message count.
+	// about 20 messages a minute. It is ONE budget for the whole pass: the
+	// review alerts take what they need first, the provider events arena gave
+	// up on get what is left (alertsPerPass - reviews), and lost buyer letters
+	// what is left after both (alertsPerPass - reviews - provider events), so
+	// no kind of alert can raise the pass's message count.
 	alertsPerPass = 15
 	// alertLease: how long a claimed alert is reserved for the pass that
 	// sends it; a pass that died mid-send releases it this way.
@@ -198,7 +198,7 @@ func (e *Engine) Sweep(ctx context.Context, now time.Time, notifier Notifier) (S
 		}
 		// Provider refund events arena gave up on (no refunds row carries
 		// their alert), inside the SAME budget: SweepWorstCase is unchanged.
-		pn, perr := e.alertProviderEvents(actx, notifier)
+		pn, perr := e.alertProviderEvents(actx, notifier, alertsPerPass-n)
 		rep.Alerted += pn
 		if perr != nil {
 			errs = append(errs, fmt.Errorf("refunds: sweep provider-event alerts: %w", perr))
