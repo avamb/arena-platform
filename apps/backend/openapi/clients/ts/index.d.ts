@@ -4889,19 +4889,37 @@ export interface paths {
          *     show the discounted total before the buyer pays.
          *
          *     It takes no lock, holds no seat, reserves no capacity and creates no
-         *     reservation, checkout session, order or payment. It does not check
-         *     that a category is on sale; `checkout/start` does, and a seat that is
-         *     gone or taken is refused with the same 409 as there.
+         *     reservation, checkout session, order or payment. It applies the same
+         *     read-only sale gates as a hold: a category that is closed, outside its
+         *     sale window or past the session's sales end is refused with 409
+         *     `tier.closed` or `tier.not_on_sale`, and a seat that is gone or taken
+         *     with 409 `reservation.seats_conflict`, exactly as `checkout/start`
+         *     refuses them. The answer is never cached (`Cache-Control: no-store`).
          *
          *     No JWT required: the feed token in the path is the credential.
          *     Rate-limited per token and per IP, like every public feed route.
          *
-         *     A code that does not fit the cart is answered with a small, stable
-         *     set of 422 codes. `promo.not_applicable` covers an unknown, paused,
-         *     not-yet-valid or expired code and one that belongs to another event,
-         *     category or currency, so the answer never tells a buyer which codes
-         *     exist. `promo.minimum_not_reached`, `promo.exhausted` and
-         *     `promo.per_customer_limit` are only answered for a code that does fit.
+         *     **Cart caps.** One cart holds at most 20 `ga_items` lines, 50 tickets
+         *     on a line and 100 `seats`. A larger cart is refused with 400
+         *     `checkout.cart_too_large` (too many lines or seats) or 400
+         *     `checkout.invalid_qty` (a line over 50), before any database work.
+         *     `checkout/start` applies the same caps.
+         *
+         *     **Promo verdicts.** A code that does not fit the cart is answered with
+         *     a small, stable set of 422 codes. `promo.not_applicable` covers an
+         *     unknown, paused, not-yet-valid or expired code and one that belongs to
+         *     another event, category or currency, so the answer never tells a buyer
+         *     which codes exist. `promo.minimum_not_reached` and `promo.exhausted`
+         *     are only answered for a code that does fit. The quote takes no buyer
+         *     details, so it does not check the per-customer limit: that verdict,
+         *     `promo.per_customer_limit`, comes only from `checkout/start`.
+         *
+         *     **Refused-code budget.** Refused codes are counted per feed token and
+         *     per client address (an IPv6 address by its /64 prefix) in a separate,
+         *     tighter budget than the general limits. Once it is spent, every request
+         *     that names a code is answered 429 `promo.rate_limited` with a
+         *     `Retry-After`, before the cart is looked at, a valid code included.
+         *     A request that names no code, and an accepted code, never spend it.
          */
         post: operations["quotePublicFeedCheckout"];
         delete?: never;
@@ -37670,8 +37688,10 @@ export interface operations {
                 };
             };
             /**
-             * @description Invalid body or field, or `checkout.invalid_return_url` when the
-             *     supplied `return_url` is not on the allowed-origin list and no
+             * @description Invalid body or field, `checkout.cart_too_large` (more than 20
+             *     ticket lines or 100 seats), `checkout.invalid_qty` (a line over 50
+             *     tickets), or `checkout.invalid_return_url` when the supplied
+             *     `return_url` is not on the allowed-origin list and no
              *     `PUBLIC_TICKETS_BASE_URL` fallback is configured.
              */
             400: {
@@ -37692,8 +37712,10 @@ export interface operations {
                 };
             };
             /**
-             * @description Seat conflict (reservation.seats_conflict with conflicts[])
-             *     or capacity exceeded (reservation.over_capacity).
+             * @description Seat conflict (reservation.seats_conflict with conflicts[]),
+             *     capacity exceeded (reservation.over_capacity), or a category that
+             *     is closed (`tier.closed`) or outside its sale window or past the
+             *     session's sales end (`tier.not_on_sale`).
              */
             409: {
                 headers: {
@@ -37728,7 +37750,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Rate limited (feed.rate_limited). */
+            /**
+             * @description Rate limited: `feed.rate_limited` for the general limits, or
+             *     `promo.rate_limited` when the budget for refused promo codes is
+             *     spent (see `checkout/quote`). Both carry `Retry-After`.
+             */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -37783,7 +37809,11 @@ export interface operations {
                     "application/json": components["schemas"]["PublicFeedCheckoutQuoteResponse"];
                 };
             };
-            /** @description Invalid body or field. */
+            /**
+             * @description Invalid body or field, `checkout.cart_too_large` (more than 20
+             *     ticket lines or 100 seats) or `checkout.invalid_qty` (a line over
+             *     50 tickets).
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -37810,7 +37840,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A requested seat is gone or taken (`reservation.seats_conflict`). */
+            /**
+             * @description A requested seat is gone or taken (`reservation.seats_conflict`),
+             *     or a category is closed (`tier.closed`) or outside its sale window
+             *     or past the session's sales end (`tier.not_on_sale`).
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -37832,7 +37866,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Rate limited (feed.rate_limited). */
+            /**
+             * @description Rate limited: `feed.rate_limited` for the general limits, or
+             *     `promo.rate_limited` when the budget for refused promo codes is
+             *     spent. Both carry `Retry-After`.
+             */
             429: {
                 headers: {
                     [name: string]: unknown;
