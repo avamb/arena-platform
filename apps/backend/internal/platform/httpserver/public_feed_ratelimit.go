@@ -9,6 +9,8 @@
 package httpserver
 
 import (
+	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,6 +41,8 @@ type rateLimiterWindow struct {
 //     httputil.TrustedClientIP, never raw ExtractClientIP/X-Forwarded-For,
 //     which is client-controlled and trivially spoofed.
 //
+// The counters live in this process's memory: with several replicas each
+// keeps its own, so the effective ceiling is the limit times the replica count.
 // A limit <= 0 disables that particular check (always allowed). All three
 // maps are opportunistically pruned of expired windows inside check(), at
 // most once per minute, so a spoofed/rotating key set cannot grow them
@@ -173,7 +177,28 @@ func (rl *publicFeedRateLimiter) checkCheckoutToken(token string) (bool, int) {
 func (rl *publicFeedRateLimiter) checkIP(ip string) (bool, int) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
-	return rl.check(rl.ips, ip, rl.ipLimit)
+	return rl.check(rl.ips, ipRateKey(ip), rl.ipLimit)
+}
+
+// ipRateKey is the key a client address is counted under. An IPv4 address is
+// its own key. An IPv6 address is keyed by its /64 prefix: one subscriber is
+// normally given a whole /64, so counting single addresses would let one client
+// step through 2^64 addresses and never meet a per-IP limit. An address that
+// does not parse is returned unchanged.
+func ipRateKey(ip string) string {
+	addr, err := netip.ParseAddr(strings.TrimSpace(ip))
+	if err != nil {
+		return ip
+	}
+	addr = addr.Unmap()
+	if addr.Is4() {
+		return addr.String()
+	}
+	prefix, err := addr.Prefix(64)
+	if err != nil {
+		return ip
+	}
+	return prefix.String()
 }
 
 // windowFull reports whether key's window is already at limit, without
@@ -214,7 +239,7 @@ func (rl *publicFeedRateLimiter) PromoFailuresBlocked(token, ip string) (bool, i
 	now := time.Now()
 	rl.sweepExpiredLocked(now)
 	fullTok, retryTok := rl.windowFull(rl.promoFailTokens, token, rl.promoFailTokenLimit, now)
-	fullIP, retryIP := rl.windowFull(rl.promoFailIPs, ip, rl.promoFailIPLimit, now)
+	fullIP, retryIP := rl.windowFull(rl.promoFailIPs, ipRateKey(ip), rl.promoFailIPLimit, now)
 	retry := retryTok
 	if retryIP > retry {
 		retry = retryIP
@@ -229,7 +254,7 @@ func (rl *publicFeedRateLimiter) RecordPromoFailure(token, ip string) {
 	defer rl.mu.Unlock()
 	now := time.Now()
 	rl.recordFailure(rl.promoFailTokens, token, rl.promoFailTokenLimit, now)
-	rl.recordFailure(rl.promoFailIPs, ip, rl.promoFailIPLimit, now)
+	rl.recordFailure(rl.promoFailIPs, ipRateKey(ip), rl.promoFailIPLimit, now)
 }
 
 // CheckFeedToken / CheckCheckoutToken / CheckIP are exported adapter methods

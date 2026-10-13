@@ -139,6 +139,12 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// A spent refused-code budget turns the request away before it costs any
+	// database work.
+	if strings.TrimSpace(derefOr(req.PromoCode)) != "" && h.promoAttemptsBlocked(w, r, feedToken) {
+		return
+	}
+
 	ctx := r.Context()
 
 	checkCtx, err := h.publicFeedQueries.GetPublicCheckoutContext(ctx, feedToken, sessionID)
@@ -257,9 +263,6 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 	// ── Promo: the same lookup and the same two checks as checkout/start ───────
 	var discount int64
 	promoApplied := false
-	if strings.TrimSpace(derefOr(req.PromoCode)) != "" && h.promoAttemptsBlocked(w, r, feedToken) {
-		return
-	}
 	promoRow, lookupErr := h.findPromoCode(ctx, checkCtx.OrgID, derefOr(req.PromoCode))
 	if lookupErr != nil {
 		if errors.Is(lookupErr, pgx.ErrNoRows) {

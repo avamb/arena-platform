@@ -323,6 +323,12 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// A spent refused-code budget turns the request away before it costs any
+	// database work.
+	if strings.TrimSpace(derefOr(req.PromoCode)) != "" && h.promoAttemptsBlocked(w, r, feedToken) {
+		return
+	}
+
 	ctx := r.Context()
 
 	// ── 6. Validate session belongs to this feed token ────────────────────────
@@ -426,9 +432,6 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// Only the row fetch happens here; validation (min-order-amount etc.) runs
 	// once the FULL platform-computed subtotal is known — for seated carts that
 	// includes the seat prices resolved inside the hold transaction.
-	if strings.TrimSpace(derefOr(req.PromoCode)) != "" && h.promoAttemptsBlocked(w, r, feedToken) {
-		return
-	}
 	promoRow, promoLookupErr := h.findPromoCode(ctx, checkCtx.OrgID, derefOr(req.PromoCode))
 	if promoLookupErr != nil {
 		if errors.Is(promoLookupErr, pgx.ErrNoRows) {

@@ -19,6 +19,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
 
@@ -131,5 +133,20 @@ func TestPublicSeatedPromo_ThreeSeatedStartRefusalsLockTheAddressOut(t *testing.
 	}
 	if status, body := start("TEN"); status != http.StatusTooManyRequests {
 		t.Errorf("after three seated refusals a valid code = %d %s, want 429", status, body)
+	}
+
+	// The spent budget turns a request away BEFORE any database read: a session
+	// that is not on this feed would otherwise be answered 403 by the lookup.
+	foreign := map[string]any{
+		"session_id": uuid.New().String(),
+		"ga_items":   []map[string]any{{"tier_id": uuid.New().String(), "quantity": 1}},
+		"promo_code": "TEN",
+	}
+	if status, body := f.quote(t, srv, foreign); status != http.StatusTooManyRequests {
+		t.Errorf("quote naming a code, budget spent, foreign session = %d %s, want 429 before any lookup", status, body)
+	}
+	foreign["buyer"] = map[string]any{"email": f.buyerMail}
+	if status, body := f.postJSON(t, srv, f.feedToken, "/checkout/start", foreign); status != http.StatusTooManyRequests {
+		t.Errorf("start naming a code, budget spent, foreign session = %d %s, want 429 before any lookup", status, body)
 	}
 }
