@@ -3211,7 +3211,7 @@ other = "🔁 Otro tipo de número"
 other = "🌐 <b>Página de venta: {{.Name}}</b>"
 
 ["bot.og.page_where"]
-other = "Los compradores ven el teléfono en esta página de venta cuando los datos del vendedor están visibles. La página no muestra el correo: los compradores te escriben con el formulario de la página y los mensajes llegan a esta dirección. Usa una dirección para entradas, no tu buzón personal."
+other = "Los compradores ven el teléfono en esta página de venta cuando los datos del vendedor están visibles. La página no muestra el correo: los compradores te escriben con el formulario de la página y los mensajes llegan a esta dirección. Los correos con entradas y las entradas en PDF de esta página muestran esta dirección, y las respuestas de los compradores a esos correos llegan a ella. Usa una dirección para entradas, no tu buzón personal."
 
 ["bot.og.line_email"]
 other = "✉ Correo para mensajes de compradores: {{.Value}}"

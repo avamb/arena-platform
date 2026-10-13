@@ -3356,7 +3356,7 @@ other = "🔁 Another type of number"
 other = "🌐 <b>Sales page: {{.Name}}</b>"
 
 ["bot.og.page_where"]
-other = "Buyers see the phone on this sales page when the seller data is shown. The page does not show the e-mail: buyers write to you through the form on the page, and the messages arrive at this address. Use an address for tickets, not your personal mailbox."
+other = "Buyers see the phone on this sales page when the seller data is shown. The page does not show the e-mail: buyers write to you through the form on the page, and the messages arrive at this address. Ticket e-mails and PDF tickets of this page print this address, and buyers' replies to those e-mails go to it. Use an address for tickets, not your personal mailbox."
 
 ["bot.og.line_email"]
 other = "✉ E-mail for buyer messages: {{.Value}}"
