@@ -251,6 +251,25 @@ func (q *Queries) ListRefundsByPaymentIntent(ctx context.Context, paymentIntentI
 // UpdateRefundState
 // ─────────────────────────────────────────────────────────────────────────────
 
+const rejectRequestedRefund = `-- name: RejectRequestedRefund :one
+UPDATE refunds
+SET    state      = 'rejected',
+       updated_at = now(),
+       failed_at  = now()
+WHERE  id = $1 AND state = 'requested'
+RETURNING id, payment_intent_id, org_id, amount, currency, reason, requested_by,
+          state, provider_refund_id, failure_reason,
+          requested_at, approved_at, succeeded_at, failed_at,
+          created_at, updated_at,
+          settlement, order_id, ticket_id`
+
+// RejectRequestedRefund rejects a refund only while it is still 'requested'.
+// Returns pgx.ErrNoRows when the refund does not exist OR has moved on
+// (approved, sent, ...): the caller must not treat it as rejected.
+func (q *Queries) RejectRequestedRefund(ctx context.Context, id uuid.UUID) (RefundRow, error) {
+	return scanRefundRow(q.db.QueryRow(ctx, rejectRequestedRefund, id))
+}
+
 const updateRefundState = `-- name: UpdateRefundState :one
 UPDATE refunds
 SET    state              = $2,

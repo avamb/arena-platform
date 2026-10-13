@@ -33,6 +33,20 @@ FROM   refunds
 WHERE  payment_intent_id = $1
 ORDER BY created_at DESC, id DESC;
 
+-- name: RejectRequestedRefund :one
+-- Rejects a refund only while it is still requested: a refund the engine or
+-- an approval moved on meanwhile is left alone (no row comes back).
+UPDATE refunds
+SET    state      = 'rejected',
+       updated_at = now(),
+       failed_at  = now()
+WHERE  id = $1 AND state = 'requested'
+RETURNING id, payment_intent_id, org_id, amount, currency, reason, requested_by,
+          state, provider_refund_id, failure_reason,
+          requested_at, approved_at, succeeded_at, failed_at,
+          created_at, updated_at,
+          settlement, order_id, ticket_id;
+
 -- name: UpdateRefundState :one
 UPDATE refunds
 SET    state              = $2,
