@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -272,7 +273,10 @@ func TestBotE2E_Refund_SendLostToARestartIsOfferedAgain(t *testing.T) {
 		t.Fatalf("dialog key: %v", err)
 	}
 	tag := strings.TrimPrefix(key, "tg-")[:12]
+	// The restart. Once Run has returned, wait out the stub's 200 ms long
+	// poll so an update pushed next cannot be handed to the dead poller.
 	stop()
+	time.Sleep(400 * time.Millisecond)
 	// The earlier process had pressed "Yes" and was cut off mid-send.
 	if _, err := pool.Exec(ctx, `UPDATE bot_dialogs SET step = 'sending',
 		state = state || jsonb_build_object('run_id', 'an-earlier-process', 'sending_at', now())
