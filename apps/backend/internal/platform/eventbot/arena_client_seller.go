@@ -23,9 +23,15 @@ func (c *ArenaClient) SellerProfile(ctx context.Context, jwt string, orgID uuid.
 }
 
 // PatchOrganization sends the given keys to PATCH /v1/organizations/{id}: a
-// missing key keeps the stored value, nil or "" clears it.
-func (c *ArenaClient) PatchOrganization(ctx context.Context, jwt string, orgID uuid.UUID, body map[string]any) error {
-	return c.do(ctx, http.MethodPatch, "/v1/organizations/"+orgID.String(), jwt, body, nil)
+// missing key keeps the stored value, nil or "" clears it. It answers how many
+// sales pages had their seller block turned off because a required field is
+// now empty (seller_display_hidden).
+func (c *ArenaClient) PatchOrganization(ctx context.Context, jwt string, orgID uuid.UUID, body map[string]any) (int, error) {
+	var out struct {
+		Hidden []string `json:"seller_display_hidden"`
+	}
+	err := c.do(ctx, http.MethodPatch, "/v1/organizations/"+orgID.String(), jwt, body, &out)
+	return len(out.Hidden), err
 }
 
 // PatchSellerDisplay sends the given keys to PATCH

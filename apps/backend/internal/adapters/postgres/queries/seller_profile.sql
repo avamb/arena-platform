@@ -45,3 +45,16 @@ WHERE id = $1
   AND org_id = $2
   AND deleted_at IS NULL
   AND settings #>> '{hosted_page,enabled}' = 'true';
+
+-- name: HideSellerDisplayForOrg :many
+-- HideSellerDisplayForOrg turns settings.hosted_page.show_seller off on every
+-- channel of the organization that shows the seller block, and returns their
+-- ids. Called in the transaction that empties a required legal field, so a
+-- page never shows an incomplete seller block.
+UPDATE sales_channels
+SET settings = jsonb_set(settings, '{hosted_page,show_seller}', 'false'::jsonb, true),
+    updated_at = now()
+WHERE org_id = $1
+  AND deleted_at IS NULL
+  AND settings #>> '{hosted_page,show_seller}' = 'true'
+RETURNING id;

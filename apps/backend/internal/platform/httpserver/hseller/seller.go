@@ -93,6 +93,22 @@ type Profile struct {
 	Channels               []Channel `json:"channels"`
 }
 
+// personOnly refuses an organization API key: the seller's legal identity
+// and the address buyers' messages go to are set by a person (the owner, or
+// a platform operator), never by an integration. A key holding org.update
+// could otherwise point the public contact at any mailbox.
+func personOnly(w http.ResponseWriter, r *http.Request) bool {
+	if actor, ok := auth.ActorFromContext(r.Context()); ok && actor.IsService() {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+			"seller.api_key_forbidden",
+			"an API key cannot read or change the seller data; the organization owner sets it in the Telegram bot",
+			r,
+		))
+		return false
+	}
+	return true
+}
+
 func (h *Handler) ready(w http.ResponseWriter, r *http.Request) bool {
 	if h.queries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
@@ -210,7 +226,7 @@ func withEmailPlaceholder(p sellerinfo.Profile) sellerinfo.Profile {
 
 // HandleGetProfile serves GET /v1/organizations/{org_id}/seller-profile.
 func (h *Handler) HandleGetProfile(w http.ResponseWriter, r *http.Request) {
-	if !h.ready(w, r) {
+	if !personOnly(w, r) || !h.ready(w, r) {
 		return
 	}
 	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
@@ -265,7 +281,7 @@ type displayPatch struct {
 // (details.missing) while a required field is empty, and so is clearing the
 // e-mail of a channel that keeps the block on.
 func (h *Handler) HandlePatchDisplay(w http.ResponseWriter, r *http.Request) {
-	if !h.ready(w, r) || h.pool == nil {
+	if !personOnly(w, r) || !h.ready(w, r) || h.pool == nil {
 		return
 	}
 	ctx := r.Context()

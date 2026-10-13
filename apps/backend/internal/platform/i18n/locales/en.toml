@@ -3453,3 +3453,6 @@ other = "This does not look like an e-mail address. Check it, for example ticket
 
 ["bot.og.err_phone"]
 other = "This does not look like a phone number. Use digits with the country code, for example +34 600 000 000."
+
+["bot.og.block_hidden"]
+other = "⚠️ A required field is now empty, so the seller data is hidden on sales pages: {{.N}}. Fill in the field, then turn the seller data on again on the page card."
