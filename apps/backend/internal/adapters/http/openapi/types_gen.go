@@ -6404,6 +6404,9 @@ type HostedPageSeller struct {
 	// Country ISO 3166-1 alpha-2 country of the seller (legal address country, else the organization country).
 	Country *string `json:"country,omitempty"`
 
+	// LegalForm Legal form as the owner wrote it; omitted when none is stored.
+	LegalForm *string `json:"legal_form,omitempty"`
+
 	// LegalName Registered legal name; the organization name when none is stored.
 	LegalName string `json:"legal_name"`
 
@@ -9233,6 +9236,48 @@ type OrgCityResponse struct {
 	Created bool `json:"created"`
 }
 
+// OrgMeResponse The caller's access inside one organization, returned by
+// GET /v1/organizations/{org_id}/me. Every list is sorted and never null.
+type OrgMeResponse struct {
+	// CallerType `user` for a person signed in with a JWT, `api_key` for an
+	// organization API key.
+	CallerType string `json:"caller_type"`
+
+	// MembershipRoles Every active membership role the caller holds in this organization.
+	MembershipRoles []string `json:"membership_roles"`
+
+	// OrgDisplayNumber Short organization number shown to people. The UUID stays the API key.
+	OrgDisplayNumber int64 `json:"org_display_number"`
+
+	// OrgId UUID of the organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Display name of the organization.
+	OrgName string `json:"org_name"`
+
+	// Permissions Every permission the caller holds inside this organization. For
+	// an API key these are its scopes.
+	Permissions []string `json:"permissions"`
+
+	// PlatformSuperadmin True when the caller is a platform superadmin. Other
+	// organization routes then require the X-Admin-Reason header.
+	PlatformSuperadmin bool `json:"platform_superadmin"`
+
+	// Role The main membership role of the caller in this organization, for
+	// display: `org_admin` (owner), then `organizer` (manager), then
+	// `agent`, then the first other role in alphabetical order. Empty
+	// for an API key and for a platform superadmin who holds no
+	// membership here. Decide actions by `permissions`, never by this
+	// field.
+	Role string `json:"role"`
+
+	// Roles The roles the permission checker counts for this organization:
+	// the membership roles here, the caller's global roles (for example
+	// `platform_superadmin`) and any roles of the token. Empty for an
+	// API key.
+	Roles []string `json:"roles"`
+}
+
 // OrganizationItem A single active organization (primary tenant boundary).
 // Includes legal & contact attributes added in migration
 // 0049_organizations_legal_fields (Wave O / feature #253). All
@@ -9284,6 +9329,12 @@ type OrganizationItem struct {
 
 	// LegalAddressPostalCode Postal / ZIP code of the registered office.
 	LegalAddressPostalCode *string `json:"legal_address_postal_code"`
+
+	// LegalForm Legal form of the entity as the owner wrote it ("S.L.", "s.r.o.",
+	// "autónomo"), at most 80 characters (migration 0146). Answered by
+	// GET /v1/organizations/{id} and PATCH /v1/organizations/{id} only;
+	// the list and create routes answer null.
+	LegalForm *string `json:"legal_form"`
 
 	// LegalName Registered juridical name of the tenant entity (distinct from
 	// the public display name). Used on invoices, contracts, and
@@ -11538,6 +11589,106 @@ type SeatingSeatStatusResponse struct {
 	StatusVersion int64 `json:"status_version"`
 }
 
+// SellerDisplayContactPatch Tri-state contact change; an absent key keeps, null or "" clears.
+type SellerDisplayContactPatch struct {
+	// Email Public role e-mail (400 `seller.invalid_email` when malformed).
+	Email *string `json:"email"`
+
+	// Phone Public phone, 6-15 digits (400 `seller.invalid_phone` when malformed).
+	Phone *string `json:"phone"`
+}
+
+// SellerProfile The owner's "Organization data": the legal data the sales page prints in
+// its seller block, and every hosted-page channel with its block settings.
+// Legal fields are changed through PATCH /v1/organizations/{id}.
+type SellerProfile struct {
+	// Channels The organization's hosted-page channels, oldest first.
+	Channels []SellerProfileChannel `json:"channels"`
+
+	// Country Country of the organization (stands in for the address country on the page).
+	Country string `json:"country"`
+
+	// LegalAddressCity Registered address, city.
+	LegalAddressCity *string `json:"legal_address_city"`
+
+	// LegalAddressCountry Registered address, ISO 3166-1 alpha-2 country.
+	LegalAddressCountry *string `json:"legal_address_country"`
+
+	// LegalAddressLine1 Registered address, street line.
+	LegalAddressLine1 *string `json:"legal_address_line1"`
+
+	// LegalAddressLine2 Registered address, second line.
+	LegalAddressLine2 *string `json:"legal_address_line2"`
+
+	// LegalAddressPostalCode Registered address, postal code.
+	LegalAddressPostalCode *string `json:"legal_address_postal_code"`
+
+	// LegalForm Legal form as the owner wrote it.
+	LegalForm *string `json:"legal_form"`
+
+	// LegalName Registered legal name.
+	LegalName *string `json:"legal_name"`
+
+	// Missing Required organization fields still empty (the channel list adds public_email per channel).
+	Missing []string `json:"missing"`
+
+	// OrgId Organization id.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Display name of the organization.
+	OrgName string `json:"org_name"`
+
+	// RegistrationNumber Company registration number.
+	RegistrationNumber *string `json:"registration_number"`
+
+	// TaxId Tax or VAT identifier.
+	TaxId *string `json:"tax_id"`
+
+	// TaxIdScheme Scheme of tax_id (eu_vat, gb_vat, il_vat, us_ein or other).
+	TaxIdScheme *string `json:"tax_id_scheme"`
+}
+
+// SellerProfileChannel One channel of the organization that runs a hosted sales page.
+type SellerProfileChannel struct {
+	// EmailLooksPersonal True when the public e-mail is at a free mailbox provider (gmail.com,
+	// inbox.ru, outlook.com, ...). A hint for the owner to use a role
+	// address; it never blocks a save.
+	EmailLooksPersonal bool `json:"email_looks_personal"`
+
+	// Id Sales channel id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Missing Required data still empty before `show_seller` may be turned on, in a
+	// stable order: legal_name, tax_id, address_line1, address_city,
+	// address_postal_code, public_email. Empty when the block may be shown.
+	Missing []string `json:"missing"`
+
+	// Name Sales channel name.
+	Name string `json:"name"`
+
+	// PublicContact The channel's published contact, null when it has none.
+	PublicContact *SellerProfileContact `json:"public_contact"`
+
+	// ShowSeller Whether the sales page of this channel shows the seller block (`settings.hosted_page.show_seller`).
+	ShowSeller bool `json:"show_seller"`
+}
+
+// SellerProfileContact The contact a hosted-page channel publishes
+// (`settings.hosted_page.public_contact`). Unset keys are omitted.
+type SellerProfileContact struct {
+	// Email Public role e-mail of the channel.
+	Email *string `json:"email,omitempty"`
+
+	// Phone Public phone number of the channel.
+	Phone *string `json:"phone,omitempty"`
+}
+
+// SellerProfileEnvelope Envelope of the seller-profile routes.
+type SellerProfileEnvelope struct {
+	// SellerProfile The profile as stored after the call.
+	SellerProfile SellerProfile `json:"seller_profile"`
+}
+
 // ServerInfoResponse defines model for ServerInfoResponse.
 type ServerInfoResponse struct {
 	// BuildSha Git commit SHA embedded at build time via runtime/debug.ReadBuildInfo
@@ -13024,6 +13175,11 @@ type UpdateOrganizationRequest struct {
 	// LegalAddressPostalCode New registered-office postal code (empty string clears).
 	LegalAddressPostalCode *string `json:"legal_address_postal_code,omitempty"`
 
+	// LegalForm New legal form, 1-80 characters on one line (400
+	// `org.invalid_legal_form` otherwise). Absent keeps the stored
+	// value, `null` or an empty string clears it.
+	LegalForm *string `json:"legal_form"`
+
 	// LegalName New registered juridical name. Empty string leaves existing
 	// value. Required (non-empty) when this same body sets
 	// `kyb_status` to `pending` or `verified`.
@@ -13201,6 +13357,18 @@ type UpdateSeatingPlanRequestStatus string
 
 // UpdateSeatingPlanRequestVisibility New share scope.
 type UpdateSeatingPlanRequestVisibility string
+
+// UpdateSellerDisplayRequest Change of one hosted-page channel's seller block. Absent members keep
+// the stored value. `show_seller: true` is refused with 422
+// `seller.incomplete` (details.missing) while required data is empty, and
+// so is clearing the e-mail of a channel that keeps the block on.
+type UpdateSellerDisplayRequest struct {
+	// PublicContact The published contact; null removes it.
+	PublicContact *SellerDisplayContactPatch `json:"public_contact"`
+
+	// ShowSeller Show the seller block on this channel's sales page.
+	ShowSeller *bool `json:"show_seller,omitempty"`
+}
 
 // UpdateSessionRequest Partial update for PATCH
 // /v1/organizations/{org_id}/events/{event_id}/sessions/{id}. All
@@ -15076,6 +15244,9 @@ type CreateChannelJSONRequestBody = CreateChannelRequest
 
 // CreateFeedTokenJSONRequestBody defines body for CreateFeedToken for application/json ContentType.
 type CreateFeedTokenJSONRequestBody CreateFeedTokenJSONBody
+
+// UpdateSellerDisplayJSONRequestBody defines body for UpdateSellerDisplay for application/json ContentType.
+type UpdateSellerDisplayJSONRequestBody = UpdateSellerDisplayRequest
 
 // UpdateChannelJSONRequestBody defines body for UpdateChannel for application/json ContentType.
 type UpdateChannelJSONRequestBody = UpdateChannelRequest

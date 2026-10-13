@@ -44,6 +44,7 @@ type hostedPageSellerContact struct {
 // hostedPageSellerResponse is the legal identity of the seller of record.
 type hostedPageSellerResponse struct {
 	LegalName          string                   `json:"legal_name"`
+	LegalForm          string                   `json:"legal_form,omitempty"`
 	TaxID              string                   `json:"tax_id,omitempty"`
 	TaxScheme          string                   `json:"tax_scheme,omitempty"`
 	RegistrationNumber string                   `json:"registration_number,omitempty"`
@@ -72,6 +73,7 @@ func buildSeller(row gen.HostedPageSellerRow) *hostedPageSellerResponse {
 	}
 	s := &hostedPageSellerResponse{
 		LegalName:          deref(row.LegalName),
+		LegalForm:          deref(row.LegalForm),
 		TaxID:              deref(row.TaxID),
 		TaxScheme:          deref(row.TaxIDScheme),
 		RegistrationNumber: deref(row.RegistrationNumber),

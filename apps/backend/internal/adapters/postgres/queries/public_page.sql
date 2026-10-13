@@ -335,7 +335,7 @@ LIMIT 200;
 SELECT
     o.name, o.legal_name, o.tax_id, o.tax_id_scheme, o.registration_number,
     o.legal_address_line1, o.legal_address_line2, o.legal_address_postal_code,
-    o.legal_address_city, o.legal_address_country, o.country,
+    o.legal_address_city, o.legal_address_country, o.country, o.legal_form,
     COALESCE(sc.settings #>> '{hosted_page,show_seller}', '') = 'true' AS show_seller,
     sc.settings #> '{hosted_page,public_contact}' AS public_contact
 FROM organizations o

@@ -602,6 +602,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the caller's role and permissions inside one organization
+         * @description Returns the caller's role and effective permissions INSIDE the path
+         *     organization (web event center, task A1 of
+         *     08_architecture/37_web_event_center_ru.md). Since the per-organization
+         *     permission check (PERM-ORG) a route grants only what the caller holds
+         *     in the organization it acts in, plus global roles. GET /v1/me still
+         *     answers the union across every organization, so a client must read
+         *     this endpoint before it shows or hides an action of one organization.
+         *
+         *     The permissions are computed by the same checker the route gates use,
+         *     so "allowed" here means the gate lets the request through. A route
+         *     can still refuse for its own reasons (a row of another organization,
+         *     a state that does not allow the action).
+         *
+         *     Who may call it: a user with an active membership in the
+         *     organization, an organization API key of that organization (no role,
+         *     its permissions are its scopes), and a platform superadmin (no
+         *     X-Admin-Reason is needed, the call reads the caller's own access).
+         *     Anyone else gets 403 `org.access_denied`.
+         */
+        get: operations["getV1OrganizationsOrgIdMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/password-reset/request": {
         parameters: {
             query?: never;
@@ -860,6 +897,18 @@ export interface paths {
          * @description Applies a partial update to an active organization. Empty or omitted fields
          *     leave the existing value unchanged. Requires JWT authentication and "org.update"
          *     permission. Returns 409 if the new name or slug conflicts with another active org.
+         *
+         *     An organization API key may not send the fields of the legal identity
+         *     and the contact (`legal_name`, `legal_form`, `tax_id`, `tax_id_scheme`,
+         *     `registration_number`, `legal_address_*`, `contact_email`,
+         *     `contact_phone`): 403 `org.identity_fields_api_key_forbidden`, with the
+         *     refused fields in `error.details.fields`.
+         *
+         *     The row, its legal form and the seller block are written in one
+         *     transaction: when the update leaves a field the sales page's seller
+         *     block requires empty (legal name, tax number, street, city, postal
+         *     code), the block is turned off on every channel that showed it and the
+         *     answer lists those channels in `seller_display_hidden`.
          */
         patch: operations["patchV1OrganizationsId"];
         trace?: never;
@@ -2570,6 +2619,59 @@ export interface paths {
          *     organization. Another organization's promoter id answers 404.
          */
         patch: operations["updatePromoter"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/seller-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the organization's seller data and its sales-page channels
+         * @description The owner's "Organization data" (HP-4a): the legal data the hosted sales
+         *     page prints in its seller block, every hosted-page channel with
+         *     `show_seller` and its public contact, and what is still missing before
+         *     the block may be shown. Requires `org.update` in the organization (the
+         *     owner; the manager does not hold it).
+         */
+        get: operations["getSellerProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/channels/{channel_id}/seller-display": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Switch the seller block and set the public contact of a sales-page channel
+         * @description Writes `settings.hosted_page.show_seller` and
+         *     `settings.hosted_page.public_contact` of one hosted-page channel of the
+         *     organization; every other setting is kept. Requires `org.update` in the
+         *     organization. A channel of another organization, or one without a hosted
+         *     page, answers 404 `seller.channel_not_found`. Audited as
+         *     `v1.channel.seller_display_update` without the addresses.
+         *
+         *     This is the only route that writes these two keys: the generic channel
+         *     create and PATCH keep the stored values whatever `settings` they are
+         *     sent, and an organization API key is refused here.
+         */
+        patch: operations["updateSellerDisplay"];
         trace?: never;
     };
     "/v1/organizations/{org_id}/events/{id}/promoter": {
@@ -7935,6 +8037,71 @@ export interface components {
              */
             available_scopes: string[];
         };
+        /**
+         * @description The caller's access inside one organization, returned by
+         *     GET /v1/organizations/{org_id}/me. Every list is sorted and never null.
+         */
+        OrgMeResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the organization.
+             */
+            org_id: string;
+            /** @description Display name of the organization. */
+            org_name: string;
+            /**
+             * Format: int64
+             * @description Short organization number shown to people. The UUID stays the API key.
+             */
+            org_display_number: number;
+            /**
+             * @description `user` for a person signed in with a JWT, `api_key` for an
+             *     organization API key.
+             * @example user
+             */
+            caller_type: string;
+            /**
+             * @description The main membership role of the caller in this organization, for
+             *     display: `org_admin` (owner), then `organizer` (manager), then
+             *     `agent`, then the first other role in alphabetical order. Empty
+             *     for an API key and for a platform superadmin who holds no
+             *     membership here. Decide actions by `permissions`, never by this
+             *     field.
+             * @example organizer
+             */
+            role: string;
+            /**
+             * @description Every active membership role the caller holds in this organization.
+             * @example [
+             *       "organizer"
+             *     ]
+             */
+            membership_roles: string[];
+            /**
+             * @description The roles the permission checker counts for this organization:
+             *     the membership roles here, the caller's global roles (for example
+             *     `platform_superadmin`) and any roles of the token. Empty for an
+             *     API key.
+             * @example [
+             *       "organizer"
+             *     ]
+             */
+            roles: string[];
+            /**
+             * @description Every permission the caller holds inside this organization. For
+             *     an API key these are its scopes.
+             * @example [
+             *       "event.read",
+             *       "order.read"
+             *     ]
+             */
+            permissions: string[];
+            /**
+             * @description True when the caller is a platform superadmin. Other
+             *     organization routes then require the X-Admin-Reason header.
+             */
+            platform_superadmin: boolean;
+        };
         MeUser: {
             /** @description Actor ID from the JWT (typically a UUID) */
             id: string;
@@ -8940,6 +9107,14 @@ export interface components {
              */
             legal_name?: string | null;
             /**
+             * @description Legal form of the entity as the owner wrote it ("S.L.", "s.r.o.",
+             *     "autónomo"), at most 80 characters (migration 0146). Answered by
+             *     GET /v1/organizations/{id} and PATCH /v1/organizations/{id} only;
+             *     the list and create routes answer null.
+             * @example GmbH
+             */
+            legal_form?: string | null;
+            /**
              * @description Tax registration identifier (VAT, EIN, etc.). Format is
              *     validated application-side based on `tax_id_scheme`.
              * @example DE123456789
@@ -9172,6 +9347,13 @@ export interface components {
              * @example ACME Tickets GmbH
              */
             legal_name?: string;
+            /**
+             * @description New legal form, 1-80 characters on one line (400
+             *     `org.invalid_legal_form` otherwise). Absent keeps the stored
+             *     value, `null` or an empty string clears it.
+             * @example GmbH
+             */
+            legal_form?: string | null;
             /**
              * @description New tax registration identifier (empty string clears).
              * @example DE123456789
@@ -13016,6 +13198,11 @@ export interface components {
              */
             legal_name: string;
             /**
+             * @description Legal form as the owner wrote it; omitted when none is stored.
+             * @example S.L.
+             */
+            legal_form?: string;
+            /**
              * @description Tax or VAT identifier.
              * @example ESB12345678
              */
@@ -13039,6 +13226,124 @@ export interface components {
             country?: string;
             /** @description The channel's published contact; omitted when the channel sets none. */
             public_contact?: components["schemas"]["HostedPageSellerContact"];
+        };
+        /**
+         * @description The contact a hosted-page channel publishes
+         *     (`settings.hosted_page.public_contact`). Unset keys are omitted.
+         */
+        SellerProfileContact: {
+            /**
+             * @description Public role e-mail of the channel.
+             * @example tickets@example.com
+             */
+            email?: string;
+            /**
+             * @description Public phone number of the channel.
+             * @example +34 600 000 000
+             */
+            phone?: string;
+        };
+        /** @description One channel of the organization that runs a hosted sales page. */
+        SellerProfileChannel: {
+            /**
+             * Format: uuid
+             * @description Sales channel id.
+             */
+            id: string;
+            /**
+             * @description Sales channel name.
+             * @example Hosted page
+             */
+            name: string;
+            /** @description Whether the sales page of this channel shows the seller block (`settings.hosted_page.show_seller`). */
+            show_seller: boolean;
+            /** @description The channel's published contact, null when it has none. */
+            public_contact: components["schemas"]["SellerProfileContact"] | null;
+            /**
+             * @description True when the public e-mail is at a free mailbox provider (gmail.com,
+             *     inbox.ru, outlook.com, ...). A hint for the owner to use a role
+             *     address; it never blocks a save.
+             */
+            email_looks_personal: boolean;
+            /**
+             * @description Required data still empty before `show_seller` may be turned on, in a
+             *     stable order: legal_name, tax_id, address_line1, address_city,
+             *     address_postal_code, public_email. Empty when the block may be shown.
+             */
+            missing: string[];
+        };
+        /**
+         * @description The owner's "Organization data": the legal data the sales page prints in
+         *     its seller block, and every hosted-page channel with its block settings.
+         *     Legal fields are changed through PATCH /v1/organizations/{id}.
+         */
+        SellerProfile: {
+            /**
+             * Format: uuid
+             * @description Organization id.
+             */
+            org_id: string;
+            /** @description Display name of the organization. */
+            org_name: string;
+            /**
+             * @description Country of the organization (stands in for the address country on the page).
+             * @example ES
+             */
+            country: string;
+            /** @description Registered legal name. */
+            legal_name?: string | null;
+            /** @description Legal form as the owner wrote it. */
+            legal_form?: string | null;
+            /** @description Company registration number. */
+            registration_number?: string | null;
+            /** @description Scheme of tax_id (eu_vat, gb_vat, il_vat, us_ein or other). */
+            tax_id_scheme?: string | null;
+            /** @description Tax or VAT identifier. */
+            tax_id?: string | null;
+            /** @description Registered address, street line. */
+            legal_address_line1?: string | null;
+            /** @description Registered address, second line. */
+            legal_address_line2?: string | null;
+            /** @description Registered address, postal code. */
+            legal_address_postal_code?: string | null;
+            /** @description Registered address, city. */
+            legal_address_city?: string | null;
+            /** @description Registered address, ISO 3166-1 alpha-2 country. */
+            legal_address_country?: string | null;
+            /** @description Required organization fields still empty (the channel list adds public_email per channel). */
+            missing: string[];
+            /** @description The organization's hosted-page channels, oldest first. */
+            channels: components["schemas"]["SellerProfileChannel"][];
+        };
+        /** @description Envelope of the seller-profile routes. */
+        SellerProfileEnvelope: {
+            /** @description The profile as stored after the call. */
+            seller_profile: components["schemas"]["SellerProfile"];
+        };
+        /** @description Tri-state contact change; an absent key keeps, null or "" clears. */
+        SellerDisplayContactPatch: {
+            /**
+             * @description Public role e-mail (400 `seller.invalid_email` when malformed).
+             * @example tickets@example.com
+             */
+            email?: string | null;
+            /**
+             * @description Public phone, 6-15 digits (400 `seller.invalid_phone` when malformed).
+             * @example +34 600 000 000
+             */
+            phone?: string | null;
+        };
+        /**
+         * @description Change of one hosted-page channel's seller block. Absent members keep
+         *     the stored value. `show_seller: true` is refused with 422
+         *     `seller.incomplete` (details.missing) while required data is empty, and
+         *     so is clearing the e-mail of a channel that keeps the block on.
+         */
+        UpdateSellerDisplayRequest: {
+            /** @description Show the seller block on this channel's sales page. */
+            show_seller?: boolean;
+            /** @description The published contact; null removes it. */
+            public_contact?: components["schemas"]["SellerDisplayContactPatch"] | null;
         };
         /**
          * @description The promoter an event is shown under (a partner or brand named as the
@@ -22794,6 +23099,86 @@ export interface operations {
             };
         };
     };
+    getV1OrganizationsOrgIdMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization the caller asks about. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's access inside the organization. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgMeResponse"];
+                };
+            };
+            /** @description org_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The caller is not a member of this organization, or the API key
+             *     belongs to another organization (`org.access_denied`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization does not exist or was deleted (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The membership or permission lookup failed (`org.membership_check_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The permission checker is not wired (`dependency.org_access_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     postV1AuthPasswordResetRequest: {
         parameters: {
             query?: never;
@@ -23598,6 +23983,8 @@ export interface operations {
                 content: {
                     "application/json": {
                         organization: components["schemas"]["OrganizationItem"];
+                        /** @description Channels whose seller block was turned off because a required legal field is now empty. Omitted when none. */
+                        seller_display_hidden?: string[];
                     };
                 };
             };
@@ -23619,7 +24006,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold the required permission (org.update) */
+            /** @description Actor does not hold the required permission (org.update), or an API key sent a legal identity or contact field (`org.identity_fields_api_key_forbidden`) */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -30571,6 +30958,148 @@ export interface operations {
             };
             /** @description The new name (or restoring) collides with an active promoter (`promoter.duplicate_name`). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getSellerProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SellerProfileEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such organization (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateSellerDisplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the sales channel. */
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSellerDisplayRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; the profile as stored now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SellerProfileEnvelope"];
+                };
+            };
+            /** @description Invalid body (`seller.invalid_body`), e-mail (`seller.invalid_email`) or phone (`seller.invalid_phone`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an organization API key (`seller.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such sales-page channel in this organization (`seller.channel_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The block cannot be shown yet (`seller.incomplete`, details.missing lists the empty fields). */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -310,6 +310,7 @@ func (h *Handler) HandleCreateChannel(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	settings = keepSellerDisplayKeys(settings, nil) // set only through seller-display
 
 	ch, err := h.channelQueries.InsertSalesChannel(ctx,
 		orgID, req.Name, req.PaymentMode, req.Provider,
@@ -542,6 +543,24 @@ func (h *Handler) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 			map[string]any{"field": "settings"},
 		))
 		return
+	}
+
+	if settings != nil {
+		// show_seller and public_contact belong to the seller-display route,
+		// which checks the owner and the data; the stored values are kept.
+		current, err := h.channelQueries.GetSalesChannelByID(ctx, chID, orgID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("channel.not_found", "sales channel not found", r))
+				return
+			}
+			h.logger.Error("channel: load for settings merge failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"channel.update_failed", "failed to update sales channel", r,
+			))
+			return
+		}
+		settings = keepSellerDisplayKeys(settings, current.Settings)
 	}
 
 	if req.ReservationTTLOverride.Present {
