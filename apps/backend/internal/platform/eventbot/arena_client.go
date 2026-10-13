@@ -51,6 +51,9 @@ type APIError struct {
 	// OwnersNotice is error.details.owners_notice of a refund refused for a
 	// scanned ticket: queued, throttled, no_recipient, or empty.
 	OwnersNotice string
+	// TicketID is error.details.ticket_id: the ticket a refusal is about
+	// (refund.ticket_scanned names the scanned one).
+	TicketID string
 }
 
 func (e *APIError) Error() string {
@@ -123,6 +126,7 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 				Details struct {
 					Fields       map[string]string `json:"fields"`
 					OwnersNotice string            `json:"owners_notice"`
+					TicketID     string            `json:"ticket_id"`
 				} `json:"details"`
 			} `json:"error"`
 		}
@@ -131,6 +135,7 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 			ae.Message = env.Error.Message
 			ae.Fields = env.Error.Details.Fields
 			ae.OwnersNotice = env.Error.Details.OwnersNotice
+			ae.TicketID = env.Error.Details.TicketID
 		}
 		if ae.Code == "" {
 			ae.Code = "http." + http.StatusText(res.StatusCode)

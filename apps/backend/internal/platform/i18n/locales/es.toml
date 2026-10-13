@@ -260,6 +260,9 @@ other = "Ya no tienes acceso a esta organización. Si es un error, pide una nuev
 ["bot.unknown_input"]
 other = "No he entendido eso. Usa los botones de abajo."
 
+["bot.stale_message"]
+other = "Este mensaje está desactualizado. Continúa más abajo."
+
 ["bot.wz.new_event_btn"]
 other = "+ Evento"
 
@@ -1558,7 +1561,55 @@ other = "Pedidos"
 other = "<b>Pedidos: {{.Org}}</b>{{.Scope}}\n{{.Tab}} · {{.Total}} · página {{.Page}} de {{.Pages}}.{{.Search}}\n{{.Legend}}\nPulsa un pedido para abrirlo. Para buscar, escribe un código de barras, un número de pedido, un e-mail, un teléfono o un nombre."
 
 ["bot.ord.legend"]
-other = "✅ pagado  ⏳ pendiente de pago  ⌛ caducado  ✖ cancelado  ↩ reembolsado"
+other = "✅ pagado  ⏳ pendiente de pago  ⌛ caducado  ✖ cancelado  ↩ reembolsado  ⚠️📧 e-mail de entradas no enviado"
+
+["bot.ord.letter_tickets_none"]
+other = "📧 E-mail de entradas: Arena no lo envió."
+
+["bot.ord.letter_tickets_queued"]
+other = "📧 E-mail de entradas: en cola{{if .To}}, a {{.To}}{{end}}."
+
+["bot.ord.letter_tickets_partial_queued"]
+other = "📧 E-mail de entradas: enviado para {{.Done}} de {{.Total}} entradas. Las demás están en cola."
+
+["bot.ord.letter_tickets_sent"]
+other = "📧 E-mail de entradas: enviado{{if .When}} el {{.When}}{{end}}{{if .To}} a {{.To}}{{end}}."
+
+["bot.ord.letter_tickets_delivered"]
+other = "📧 E-mail de entradas: entregado{{if .When}} el {{.When}}{{end}}{{if .To}} a {{.To}}{{end}}."
+
+["bot.ord.letter_tickets_opened"]
+other = "📧 E-mail de entradas: el comprador lo abrió{{if .When}} el {{.When}}{{end}}{{if .To}} ({{.To}}){{end}}."
+
+["bot.ord.letter_tickets_partial"]
+other = "⚠️📧 E-mail de entradas: enviado para {{.Done}} de {{.Total}} entradas. Arena no pudo enviar las demás.{{if .Why}} Motivo: {{.Why}}{{end}}"
+
+["bot.ord.letter_tickets_failed"]
+other = "⚠️📧 E-mail de entradas: Arena no pudo enviarlo{{if .To}} a {{.To}}{{end}}.{{if .Why}} Motivo: {{.Why}}{{end}}"
+
+["bot.ord.letter_refund_off"]
+other = "📧 E-mail de reembolso: elegiste no enviarlo."
+
+["bot.ord.letter_refund_queued"]
+other = "📧 E-mail de reembolso: en cola. Arena lo envía cuando el reembolso se completa."
+
+["bot.ord.letter_refund_partial_queued"]
+other = "📧 E-mail de reembolso: enviado para {{.Done}} de {{.Total}} reembolsos{{if .When}}, el último el {{.When}}{{end}}. Los demás están en cola."
+
+["bot.ord.letter_refund_sent"]
+other = "📧 E-mail de reembolso: enviado{{if .When}} el {{.When}}{{end}}{{if .To}} a {{.To}}{{end}}."
+
+["bot.ord.letter_refund_delivered"]
+other = "📧 E-mail de reembolso: entregado{{if .When}} el {{.When}}{{end}}{{if .To}} a {{.To}}{{end}}."
+
+["bot.ord.letter_refund_opened"]
+other = "📧 E-mail de reembolso: el comprador lo abrió{{if .When}} el {{.When}}{{end}}{{if .To}} ({{.To}}){{end}}."
+
+["bot.ord.letter_refund_failed"]
+other = "⚠️📧 E-mail de reembolso: Arena no pudo enviarlo{{if .When}} (último intento el {{.When}}){{end}}. El operador lo sabe."
+
+["bot.ord.letter_retry_btn"]
+other = "📧 Enviar de nuevo el e-mail de entradas"
 
 ["bot.ord.tab_recent"]
 other = "Últimos"
@@ -1673,15 +1724,6 @@ other = "otro canal"
 
 ["bot.ord.payment_line"]
 other = "\n💳 Pago: {{.Provider}}"
-
-["bot.ord.delivery_sent"]
-other = "📧 Las entradas se enviaron al comprador por e-mail."
-
-["bot.ord.delivery_pending"]
-other = "📧 El e-mail con las entradas está en cola y aún no se ha enviado."
-
-["bot.ord.delivery_failed"]
-other = "📧 No se pudo entregar el e-mail con las entradas."
 
 ["bot.ord.reason_payment_failed"]
 other = "⚠️ El pago no se completó: la tarjeta o el banco lo rechazaron. El comprador puede intentarlo de nuevo."
@@ -2780,10 +2822,10 @@ other = "El motivo debe tener entre 1 y 300 caracteres."
 other = "¿<b>Devolver {{.Amount}}</b> por {{.N}} entrada(s) del pedido n.º {{.Num}} con {{.Provider}}?\nMotivo: {{.Reason}}\n\nLas entradas dejan de ser válidas al instante. No se puede deshacer.\n\nEscribe <b>{{.Word}}</b> para confirmar."
 
 ["bot.ref.letter_on_btn"]
-other = "✉️ Carta al comprador: sí"
+other = "☑ Enviar un correo al comprador"
 
 ["bot.ref.letter_off_btn"]
-other = "✉️ Carta al comprador: no"
+other = "☐ No enviar un correo al comprador"
 
 ["bot.ref.word"]
 other = "DEVOLVER"
@@ -2896,7 +2938,7 @@ other = "Esta devolución no se puede reenviar: el proveedor puede haber devuelt
 ["bot.rq.provider_word"]
 other = "el proveedor"
 ["bot.ref.final"]
-other = "<b>Comprobación final</b>\nPedido n.º {{.Num}} · {{.N}} entrada(s): {{.Tickets}}\nA devolver: <b>{{.Amount}}</b> a través de {{.Provider}}\nCorreo al comprador: {{.Letter}}\n\nEstas entradas dejan de ser válidas para entrar, también cuando solo se devuelve una parte de su precio. El proveedor de pago devuelve el dinero; esto no se puede deshacer."
+other = "<b>Comprobación final</b>\nPedido n.º {{.Num}} · {{.N}} entrada(s): {{.Tickets}}\nA devolver: <b>{{.Amount}}</b> a través de {{.Provider}}\n{{.Letter}}\n\nEstas entradas dejan de ser válidas para entrar, también cuando solo devuelves una parte de su precio. El proveedor de pago devuelve el dinero. Esto no se puede deshacer."
 
 ["bot.ref.yes_btn"]
 other = "✅ Sí, devolver {{.Amount}}"
@@ -2905,10 +2947,10 @@ other = "✅ Sí, devolver {{.Amount}}"
 other = "Cancelar"
 
 ["bot.ref.letter_yes"]
-other = "se enviará"
+other = "El comprador recibirá un correo."
 
 ["bot.ref.letter_no"]
-other = "no se enviará"
+other = "No se envía ningún correo al comprador."
 
 ["bot.ref.cancelled"]
 other = "Cancelado. No se devolvió nada."
@@ -2929,19 +2971,64 @@ other = "Una de las entradas ya no se puede devolver (cambió, ya no es válida 
 other = "La respuesta tarda más de lo normal. No se ha perdido nada: abre el pedido en un minuto para ver el estado de la devolución. No la inicies de nuevo."
 
 ["bot.ref.err_scanned"]
-other = "Esta entrada ya se usó en la puerta (un escaneo registrado en Arena), así que no se puede devolver. No se devolvió nada."
+other = "{{if .Ticket}}La entrada {{.Ticket}}{{else}}Esta entrada{{end}} ya se escaneó en el acceso. No se puede devolver su dinero. No se devolvió nada.{{if .Next}} {{.Next}}{{end}}"
 
 ["bot.ref.scanned_all"]
-other = "Pedido n.º {{.Num}}: las entradas ya se usaron en la puerta (escaneos registrados en Arena), no hay nada que devolver aquí."
+other = "Pedido n.º {{.Num}}: todas las entradas ya se escanearon en el acceso. No se puede devolver su dinero."
 
 ["bot.ref.scanned_note"]
-other = "No se ofrecen: {{.Tickets}} — ya usadas en la puerta (según los escaneos registrados en Arena; una entrada escaneada solo en MACS no se ve aquí).\n\n"
+other = "Ya escaneadas en el acceso: {{.Tickets}}. No se puede devolver el dinero de estas entradas, así que no están en la lista."
+
+["bot.ref.letter_hint"]
+other = "Pulsa el botón del correo para cambiarlo."
+
+["bot.ref.scanned_next"]
+other = "Si la entrada se escaneó por error, escribe al soporte de Arena. El operador puede permitir una devolución."
+
+["bot.ref.scanned_next_operator"]
+other = "Eres operador de la plataforma: puedes permitir una devolución de la entrada con el botón de abajo."
+
+["bot.ref.exc_btn"]
+other = "🔓 Permitir la devolución de la entrada {{.Ticket}} ({{.Hours}} h)"
+
+["bot.ref.exc_ask"]
+other = "La entrada {{.Ticket}} ya se escaneó en el acceso. Permites una devolución de esta entrada durante {{.Hours}} horas.\n\nEscribe el motivo en un solo mensaje (hasta {{.Chars}} caracteres). Los propietarios de la organización lo recibirán por correo y en el chat de ventas."
+
+["bot.ref.exc_bad"]
+other = "El motivo debe tener entre 1 y {{.Chars}} caracteres. Escríbelo de nuevo."
+
+["bot.ref.exc_done"]
+other = "✔ Se permite la devolución de la entrada {{.Ticket}} durante {{.Hours}} horas. El permiso sirve para una devolución.\nPulsa «Continuar la devolución»."
+
+["bot.ref.exc_replayed"]
+other = "La devolución de la entrada {{.Ticket}} ya está permitida y el permiso sigue vigente. Pulsa «Continuar la devolución»."
+
+["bot.ref.exc_continue_btn"]
+other = "Continuar la devolución"
+
+["bot.ref.exc_cancelled"]
+other = "Cancelado. No se ha dado ningún permiso."
+
+["bot.ref.exc_not_scanned"]
+other = "La entrada {{.Ticket}} no está escaneada, así que no hace falta un permiso. Pulsa «Continuar la devolución»."
+
+["bot.ref.exc_exists"]
+other = "La entrada {{.Ticket}} ya tiene un permiso: lo dio otro operador o ya se usó. No se ha dado un permiso nuevo. Abre el pedido para revisar sus devoluciones."
+
+["bot.ref.exc_not_found"]
+other = "No se ha encontrado la entrada {{.Ticket}} en esta organización. No se ha cambiado nada."
+
+["bot.ref.exc_forbidden"]
+other = "Solo un operador de la plataforma puede permitir esta devolución. No se ha cambiado nada."
+
+["bot.ref.exc_failed"]
+other = "No se ha podido dar el permiso. No se ha cambiado nada. Dentro de unos minutos, vuelve a escribir el motivo."
 
 ["bot.ref.err_scanned_notified"]
-other = "Esta entrada ya se usó en la puerta (un escaneo registrado en Arena), así que no se puede devolver. No se devolvió nada. Los propietarios de la organización han sido avisados."
+other = "{{if .Ticket}}La entrada {{.Ticket}}{{else}}Esta entrada{{end}} ya se escaneó en el acceso. No se puede devolver su dinero. No se devolvió nada. Los propietarios de la organización han recibido un aviso.{{if .Next}} {{.Next}}{{end}}"
 
 ["bot.ref.err_scanned_nobody"]
-other = "Esta entrada ya se usó en la puerta (un escaneo registrado en Arena), así que no se puede devolver. No se devolvió nada. Arena no tiene la dirección de los propietarios de la organización, así que se avisó al operador de la plataforma."
+other = "{{if .Ticket}}La entrada {{.Ticket}}{{else}}Esta entrada{{end}} ya se escaneó en el acceso. No se puede devolver su dinero. No se devolvió nada. Arena no tiene la dirección de los propietarios de la organización, así que avisamos al operador de la plataforma.{{if .Next}} {{.Next}}{{end}}"
 
 ["bot.ref.still_sending"]
 other = "La devolución del pedido n.º {{.Num}} todavía se está enviando. Espera la respuesta aquí; hasta entonces no se puede cambiar nada."

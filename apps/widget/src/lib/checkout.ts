@@ -252,6 +252,11 @@ export interface CheckoutStatusResponse {
   status: CheckoutPublicStatus;
   checkout_token: string;
   checkout_session_id: string;
+  /**
+   * The order number the ticket e-mail and the PDF print (orders.system_id).
+   * Present once the order exists; the success screen shows it.
+   */
+  order_number?: number | null;
   expires_at?: string | null;
   subtotal?: number | null;
   discount?: number | null;

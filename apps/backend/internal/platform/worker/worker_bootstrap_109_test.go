@@ -361,13 +361,15 @@ func TestWorkerBoot109_WorkerClaimsAndCompletesJob(t *testing.T) {
 		t.Fatal("step 3: job was not consumed within 30s")
 	}
 
-	// Verify the job reached status='done' in the in-memory queue.
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	for _, row := range q.rows {
-		if row.id == jobID && row.status != "done" {
-			t.Errorf("step 3: expected job %s status='done', got %q", jobID, row.status)
-		}
+	// The handler signals `done` from INSIDE the job, i.e. before the worker
+	// calls Queue.MarkDone. Reading the row right here would race with that
+	// write, so wait for the status instead. (Reading it under q.mu and then
+	// calling Stop while still holding the lock was worse: MarkDone blocked
+	// on the lock, Stop waited out the 20s shutdown timeout, and CI failed
+	// with "got claimed" after 20.02s.)
+	if !waitForStatus(q, jobID, "done", 1, 30*time.Second) {
+		row := q.get(jobID)
+		t.Errorf("step 3: expected job %s status='done', got %+v", jobID, row)
 	}
 
 	_ = w.Stop()

@@ -51,6 +51,26 @@ type stubTelegram struct {
 	// docs holds the bytes of every document the bot sent, by file name (the
 	// last one of a name wins).
 	docs map[string][]byte
+	// msgs is every message the bot sent, by id: its chat, its text and the
+	// callback data of the buttons it still carries. A pressed callback is
+	// delivered on the live message that carries its data (feed.go refuses a
+	// press on any other one), as a real client would.
+	msgs map[int]*stubMessage
+	// retired counts the old messages that lost their keyboard.
+	retired int
+	// lastCall is when the bot last called a method other than getUpdates.
+	lastCall time.Time
+	// answers are the texts of the bot's answerCallbackQuery calls ("" when
+	// it only stopped the spinner).
+	answers []string
+}
+
+// stubMessage is one message the bot sent and its current keyboard.
+type stubMessage struct {
+	chat   int64
+	text   string
+	markup json.RawMessage // the reply_markup as sent; nil when it has none
+	data   []string        // callback data of its buttons
 }
 
 // document returns the bytes of a document the bot sent, by file name.
@@ -87,11 +107,18 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	if method != "getUpdates" {
 		s.t.Logf("telegram stub: %s", method)
+		counted := method
+		if (method == "editMessageReplyMarkup" || method == "editMessageText") && stubParams(body, field).retires() {
+			// An old message losing its keyboard (feed.go) is not the
+			// redraw a test waits for after a toggle.
+			counted = "retire"
+		}
 		s.mu.Lock()
 		if s.calls == nil {
 			s.calls = map[string]int{}
 		}
-		s.calls[method]++
+		s.calls[counted]++
+		s.lastCall = time.Now()
 		s.mu.Unlock()
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -109,21 +136,46 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 		case <-time.After(200 * time.Millisecond):
 			_, _ = w.Write([]byte(`{"ok":true,"result":[]}`))
 		}
-	case "sendMessage", "editMessageText":
+	case "sendMessage", "editMessageText", "editMessageReplyMarkup":
+		p := stubParams(body, field)
+		s.mu.Lock()
+		seq := p.MessageID
+		switch {
+		case method == "sendMessage":
+			s.msgSeq++
+			seq = s.msgSeq
+			s.remember(seq, p)
+			s.sent = append(s.sent, p.Text)
+		case p.retires():
+			// An old message losing its keyboard (feed.go): no new text.
+			if m := s.msgs[seq]; m != nil {
+				m.markup, m.data = nil, nil
+			}
+			s.retired++
+		case method == "editMessageReplyMarkup":
+			// A tick redrawn in place: same text, new buttons.
+			if m := s.msgs[seq]; m != nil {
+				p.Text = m.text
+				s.remember(seq, p)
+			}
+		default:
+			s.remember(seq, p)
+			s.sent = append(s.sent, p.Text)
+		}
+		s.mu.Unlock()
+		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":1700000000,"chat":{"id":%d,"type":"private"},"text":%q}}`, seq, p.chat(), p.Text)
+	case "answerCallbackQuery":
 		var p struct {
 			Text string `json:"text"`
 		}
-		if text := field("text"); text != "" {
-			p.Text = text
-		} else {
-			_ = json.Unmarshal(body, &p)
+		_ = json.Unmarshal(body, &p)
+		if p.Text == "" {
+			p.Text = field("text")
 		}
 		s.mu.Lock()
-		s.sent = append(s.sent, p.Text)
-		s.msgSeq++
-		seq := s.msgSeq
+		s.answers = append(s.answers, p.Text)
 		s.mu.Unlock()
-		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":1700000000,"chat":{"id":777,"type":"private"},"text":%q}}`, seq, p.Text)
+		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
 	case "getFile":
 		// Any file id resolves to the poster the test staged; the library
 		// then downloads it from /file/bot<token>/<file_path> below.
@@ -173,7 +225,230 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *stubTelegram) push(update string) { s.updates <- json.RawMessage(update) }
+// stubSent is what the bot passed to sendMessage / editMessageText /
+// editMessageReplyMarkup.
+type stubSent struct {
+	ChatID      json.Number     `json:"chat_id"`
+	MessageID   int             `json:"message_id"`
+	Text        string          `json:"text"`
+	ReplyMarkup json.RawMessage `json:"reply_markup"`
+}
+
+func (p stubSent) chat() int64 {
+	n, err := p.ChatID.Int64()
+	if err != nil || n == 0 {
+		return 777
+	}
+	return n
+}
+
+// retires reports an editMessageText that only takes the keyboard away from
+// an old message (feed.go echoes the pressed button under its text).
+func (p stubSent) retires() bool {
+	return strings.ReplaceAll(string(p.ReplyMarkup), " ", "") == `{"inline_keyboard":[]}`
+}
+
+func stubParams(body []byte, field func(string) string) stubSent {
+	var p stubSent
+	if len(body) > 0 {
+		dec := json.NewDecoder(strings.NewReader(string(body)))
+		dec.UseNumber()
+		_ = dec.Decode(&p)
+		return p
+	}
+	p.ChatID = json.Number(field("chat_id"))
+	p.Text = field("text")
+	_, _ = fmt.Sscanf(field("message_id"), "%d", &p.MessageID)
+	if m := field("reply_markup"); m != "" {
+		p.ReplyMarkup = json.RawMessage(m)
+	}
+	return p
+}
+
+// remember records a message's text and keyboard; s.mu must be held.
+func (s *stubTelegram) remember(id int, p stubSent) {
+	if s.msgs == nil {
+		s.msgs = map[int]*stubMessage{}
+	}
+	m := &stubMessage{chat: p.chat(), text: p.Text}
+	var kb struct {
+		InlineKeyboard [][]struct {
+			CallbackData string `json:"callback_data"`
+		} `json:"inline_keyboard"`
+	}
+	if len(p.ReplyMarkup) > 0 && json.Unmarshal(p.ReplyMarkup, &kb) == nil {
+		for _, row := range kb.InlineKeyboard {
+			for _, b := range row {
+				if b.CallbackData != "" {
+					m.data = append(m.data, b.CallbackData)
+				}
+			}
+		}
+		if len(m.data) > 0 {
+			m.markup = p.ReplyMarkup
+		}
+	}
+	s.msgs[id] = m
+}
+
+// liveMessage is the newest message of the chat that still carries a button
+// with this callback data, or failing that the newest one with any button;
+// 0 when the chat has none. s.mu must be held.
+func (s *stubTelegram) liveMessage(chat int64, data string) int {
+	best, any := 0, 0
+	for id, m := range s.msgs {
+		if m.chat != chat || len(m.data) == 0 {
+			continue
+		}
+		if id > any {
+			any = id
+		}
+		for _, d := range m.data {
+			if d == data && id > best {
+				best = id
+			}
+		}
+	}
+	if best == 0 {
+		return any
+	}
+	return best
+}
+
+// push queues an update. A callback built by e2eCallback names the
+// placeholder message 5; it is delivered on the message a person would have
+// pressed: the live one that carries the button (or the newest live one, for
+// a press the test makes up), with that message's text and keyboard.
+//
+// The bot may still be finishing the previous answer (a second message, the
+// old keyboard's removal) when a test pushes the next press, so push waits
+// for the bot to fall quiet first: the press then lands where a person, who
+// sees the finished screen, would press.
+func (s *stubTelegram) push(update string) {
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		quiet := time.Since(s.lastCall) > 120*time.Millisecond
+		s.mu.Unlock()
+		if quiet {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	s.updates <- json.RawMessage(s.aim(update))
+}
+
+func (s *stubTelegram) aim(update string) string {
+	var u map[string]json.RawMessage
+	if json.Unmarshal([]byte("{"+update+"}"), &u) != nil || u["callback_query"] == nil {
+		return update
+	}
+	var cq map[string]json.RawMessage
+	if json.Unmarshal(u["callback_query"], &cq) != nil {
+		return update
+	}
+	var data string
+	_ = json.Unmarshal(cq["data"], &data)
+	var msg struct {
+		MessageID int `json:"message_id"`
+		Chat      struct {
+			ID int64 `json:"id"`
+		} `json:"chat"`
+	}
+	if json.Unmarshal(cq["message"], &msg) != nil || msg.MessageID != 5 {
+		return update // a test that names its message keeps it
+	}
+	s.mu.Lock()
+	id := s.liveMessage(msg.Chat.ID, data)
+	var target *stubMessage
+	if id != 0 {
+		target = s.msgs[id]
+	}
+	s.mu.Unlock()
+	if target == nil {
+		return update
+	}
+	m := map[string]any{
+		"message_id": id, "date": 1700000000, "text": target.text,
+		"chat": map[string]any{"id": msg.Chat.ID, "type": "private"},
+	}
+	if target.markup != nil {
+		m["reply_markup"] = target.markup
+	}
+	raw, _ := json.Marshal(m)
+	cq["message"] = raw
+	cqRaw, _ := json.Marshal(cq)
+	return `"callback_query":` + string(cqRaw)
+}
+
+// retiredCount is how many old messages lost their keyboard so far.
+func (s *stubTelegram) retiredCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.retired
+}
+
+// lastOf is the newest message the bot sent to a chat: its id, text and the
+// callback data of its buttons now.
+func (s *stubTelegram) lastOf(chat int64) (int, string, []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	best := 0
+	for id, m := range s.msgs {
+		if m.chat == chat && id > best {
+			best = id
+		}
+	}
+	if best == 0 {
+		return 0, "", nil
+	}
+	m := s.msgs[best]
+	return best, m.text, append([]string(nil), m.data...)
+}
+
+// hasPrefixData reports whether a keyboard carries a button whose callback
+// data starts with prefix.
+func hasPrefixData(data []string, prefix string) bool {
+	for _, d := range data {
+		if strings.HasPrefix(d, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// keyboardOf is the callback data of a message's buttons now.
+func (s *stubTelegram) keyboardOf(id int) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if m := s.msgs[id]; m != nil {
+		return append([]string(nil), m.data...)
+	}
+	return nil
+}
+
+// labelsOf is the text of a message's buttons now.
+func (s *stubTelegram) labelsOf(id int) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m := s.msgs[id]
+	if m == nil || m.markup == nil {
+		return nil
+	}
+	var kb struct {
+		Rows [][]struct {
+			Text string `json:"text"`
+		} `json:"inline_keyboard"`
+	}
+	_ = json.Unmarshal(m.markup, &kb)
+	var out []string
+	for _, row := range kb.Rows {
+		for _, b := range row {
+			out = append(out, b.Text)
+		}
+	}
+	return out
+}
 
 // callCount is how many times the bot has called a Bot API method so far.
 func (s *stubTelegram) callCount(method string) int {

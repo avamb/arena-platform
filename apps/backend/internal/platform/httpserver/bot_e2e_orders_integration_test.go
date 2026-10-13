@@ -322,7 +322,7 @@ func ordScreens(t *testing.T, pool *pgxpool.Pool, s *ordBotSeed, d ecDriver, pen
 		s.eventName1, "<b>Anna Orderova</b>", "✉ " + s.annaEmail,
 		`href="tel:+34611222333"`, `href="https://wa.me/34611222333"`, "+34 611 222 333",
 		"Билетов: 2", "Parterre · 25 EUR · <code>" + s.annaCode + "</code> · место A / 3 / 12 · действует",
-		"✔ вошёл", "страницу мероприятия в Arena (Orders Channel", "Билеты отправлены покупателю",
+		"✔ вошёл", "страницу мероприятия в Arena (Orders Channel", "📧 Письмо с билетами: отправлено ", " на " + s.annaEmail + ".",
 	} {
 		if !strings.Contains(card, w) {
 			t.Errorf("Anna's card lacks %q:\n%s", w, card)
@@ -358,7 +358,7 @@ func ordScreens(t *testing.T, pool *pgxpool.Pool, s *ordBotSeed, d ecDriver, pen
 			t.Errorf("Boris's card lacks %q:\n%s", w, card)
 		}
 	}
-	if strings.Contains(card, "Билетов:") || strings.Contains(card, "Билеты отправлены") || strings.Contains(card, "tel:") {
+	if strings.Contains(card, "Билетов:") || strings.Contains(card, "Письмо с билетами") || strings.Contains(card, "tel:") {
 		t.Errorf("an unpaid card shows tickets or a phone link:\n%s", card)
 	}
 	t.Logf("expired order card:\n%s", card)

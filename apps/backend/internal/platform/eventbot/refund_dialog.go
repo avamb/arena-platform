@@ -5,7 +5,7 @@ package eventbot
 // shows what the server says is refundable. The dialog, kind "refund" in
 // bot_dialogs, has these steps:
 //
-//	pick     toggle the tickets to return money for (all selected to start)
+//	pick     tick the tickets to return money for (none ticked to start)
 //	amount   a typed part of ONE ticket's amount, only when the provider can
 //	reason   a quick reason or a typed one — required
 //	word     the summary and the typed word; nothing is sent before it
@@ -137,6 +137,10 @@ type refundDialog struct {
 	// RestartNoticed: the person was already told that a restart cut this
 	// send off (recoverLostRefundSends), so a later start does not repeat it.
 	RestartNoticed bool `json:"restart_noticed,omitempty"`
+	// Scanned are the tickets not offered because they were already scanned
+	// at the gate; a platform superadmin sees a button to allow one refund
+	// of each (refund_scan_exception.go).
+	Scanned []scanExcTicket `json:"scanned,omitempty"`
 }
 
 // sendingNow reports a dialog whose operation is with the server right now:
@@ -267,7 +271,9 @@ func providerName(p string) string {
 }
 
 // newRefundDialog builds the state from the server's options: every
-// refundable ticket, all selected.
+// refundable ticket, none ticked. The person ticks what goes back (owner
+// decision 2026-10-13: a ticked list invites one press too many); "Select
+// all" is one press away.
 func newRefundDialog(orgID uuid.UUID, num int64, opts openapi.OrderRefundOptions) refundDialog {
 	d := refundDialog{
 		OrgID: orgID, OrderID: opts.OrderId, Num: num, Provider: opts.Provider,
@@ -275,7 +281,7 @@ func newRefundDialog(orgID uuid.UUID, num int64, opts openapi.OrderRefundOptions
 	}
 	for _, t := range opts.Tickets {
 		if t.Refundable > 0 && !t.InProgress {
-			rt := refundTicket{ID: t.TicketId, Refundable: t.Refundable, Sel: true, Seat: deref(t.SeatLabel)}
+			rt := refundTicket{ID: t.TicketId, Refundable: t.Refundable, Seat: deref(t.SeatLabel)}
 			if t.TicketNumber != nil {
 				rt.Number = *t.TicketNumber
 			}
@@ -327,6 +333,12 @@ func (b *Bot) refundCallback(ctx context.Context, chatID int64, msgID int, from 
 		return
 	}
 	kind, arg, _ := strings.Cut(data, ":")
+	if kind == "x" || kind == "xn" {
+		// The operator's "allow a refund of this scanned ticket": its own
+		// dialog, whatever the refund dialog is doing.
+		b.scanExcCallback(ctx, chatID, msgID, from, id, kind, arg)
+		return
+	}
 	var st refundDialog
 	step, found, expired, err := b.dialogs.Load(ctx, from.ID, refundDialogKind, &st)
 	if err != nil {
@@ -463,18 +475,25 @@ func (b *Bot) startRefund(ctx context.Context, chatID int64, editMsgID *int, fro
 		return
 	}
 	st := newRefundDialog(id.Current.OrgID, detail.SystemId, opts)
+	st.Scanned = scannedTickets(opts)
 	scanned := scannedTicketsLine(opts)
 	if len(st.Tickets) == 0 {
 		key := "bot.ref.nothing"
 		if scanned != "" {
 			key = "bot.ref.scanned_all"
 		}
-		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, key, num), back)
+		text := b.texts.T(loc, key, num)
+		if scanned != "" {
+			text += "\n\n" + b.texts.T(loc, b.scannedNextKey(id), nil)
+		}
+		b.reply(ctx, chatID, editMsgID, text,
+			b.withScanExcRows(ctx, back, id, id.Current.OrgID, orderID, detail.SystemId, st.Scanned))
 		return
 	}
 	note := ""
 	if scanned != "" {
-		note = b.texts.T(loc, "bot.ref.scanned_note", map[string]any{"Tickets": Esc(scanned)})
+		note = b.texts.T(loc, "bot.ref.scanned_note", map[string]any{"Tickets": Esc(scanned)}) + " " +
+			b.texts.T(loc, b.scannedNextKey(id), nil) + "\n\n"
 	}
 	b.showRefundPick(ctx, chatID, editMsgID, id, st, note)
 }
@@ -523,7 +542,8 @@ func (b *Bot) showRefundPick(ctx context.Context, chatID int64, editMsgID *int, 
 			{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"},
 		})
 	text := note + b.texts.T(loc, "bot.ref.pick", map[string]any{"Num": st.Num, "Provider": Esc(providerName(st.Provider))})
-	b.reply(ctx, chatID, editMsgID, text, &models.InlineKeyboardMarkup{InlineKeyboard: rows})
+	kb := b.withScanExcRows(ctx, &models.InlineKeyboardMarkup{InlineKeyboard: rows}, id, st.OrgID, st.OrderID, st.Num, st.Scanned)
+	b.reply(ctx, chatID, editMsgID, text, kb)
 }
 
 func (b *Bot) showRefundReason(ctx context.Context, chatID int64, editMsgID *int, id *Identity, st refundDialog) {
@@ -563,6 +583,9 @@ func (b *Bot) showRefundWord(ctx context.Context, chatID int64, editMsgID *int, 
 		st.Key = "tg-" + uuid.NewString()
 	}
 	b.saveRefund(ctx, id.Link.TelegramUserID, st, refStepWord)
+	// The letter button is a checkbox that says what WILL happen ("☑ Send
+	// the buyer a letter" / "☐ Do not send..."), never a state the press
+	// flips; the text repeats the outcome and says how to change it.
 	letterKey := "bot.ref.letter_on_btn"
 	if st.NoLetter {
 		letterKey = "bot.ref.letter_off_btn"
@@ -570,11 +593,20 @@ func (b *Bot) showRefundWord(ctx context.Context, chatID int64, editMsgID *int, 
 	text := note + b.texts.T(loc, "bot.ref.confirm", map[string]any{
 		"Num": st.Num, "N": len(st.selected()), "Amount": FormatMoney(st.total(), st.Currency, loc),
 		"Provider": Esc(providerName(st.Provider)), "Reason": Esc(st.Reason), "Word": b.refundWord(loc),
-	})
+	}) + "\n\n" + b.texts.T(loc, refundLetterOutcome(st), nil) + "\n" + b.texts.T(loc, "bot.ref.letter_hint", nil)
 	b.reply(ctx, chatID, editMsgID, text, &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
 		{{Text: b.texts.T(loc, letterKey, nil), CallbackData: "or:f:nt"}},
 		{{Text: "« " + b.texts.T(loc, "bot.btn_back", nil), CallbackData: "or:f:b"}, {Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}},
 	}})
+}
+
+// refundLetterOutcome is the sentence that says whether the buyer gets a
+// letter about the refund.
+func refundLetterOutcome(st refundDialog) string {
+	if st.NoLetter {
+		return "bot.ref.letter_no"
+	}
+	return "bot.ref.letter_yes"
 }
 
 // ticketsLine names the selected tickets for the final screen (at most 10).
@@ -601,10 +633,7 @@ func (b *Bot) showRefundFinal(ctx context.Context, chatID int64, editMsgID *int,
 		st.Key = "tg-" + uuid.NewString()
 	}
 	b.saveRefund(ctx, id.Link.TelegramUserID, st, refStepFinal)
-	letter := "bot.ref.letter_yes"
-	if st.NoLetter {
-		letter = "bot.ref.letter_no"
-	}
+	letter := refundLetterOutcome(st)
 	amount := FormatMoney(st.total(), st.Currency, loc)
 	text := note + b.texts.T(loc, "bot.ref.final", map[string]any{
 		"Num": st.Num, "N": len(st.selected()), "Tickets": Esc(st.ticketsLine()), "Amount": amount,
@@ -636,6 +665,7 @@ func (b *Bot) startSendRefund(ctx context.Context, chatID int64, msgID int, from
 	}
 	// The buttons go away while the server works: a second press cannot start
 	// anything, and the person knows it is under way.
+	b.consumePress(ctx, chatID) // the "yes" can never be pressed twice (feed.go)
 	b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.sending", nil), nil)
 	tg := from.ID
 	started := b.goBackground("refund send", func() {
@@ -670,8 +700,20 @@ var refundTurnWait = 30 * time.Second
 // save), the person is told at once, outside the turn, and the write is tried
 // again until refundSendWindow is spent, so the dialog is not left in
 // sending.
+//
+// keyboard, when given, builds the answer's keyboard in the person's turn (it
+// may store a dialog of its own, like the operator's scan exception offer);
+// kb is used when it is nil or when the turn never comes.
 func (b *Bot) finishRefundSend(ctx context.Context, chatID int64, msgID int, tg int64, st refundDialog, toFinal bool,
-	text string, kb *models.InlineKeyboardMarkup) {
+	text string, kb *models.InlineKeyboardMarkup, keyboard ...func(context.Context) *models.InlineKeyboardMarkup) {
+	inTurn := func(c context.Context) *models.InlineKeyboardMarkup {
+		for _, f := range keyboard {
+			if f != nil {
+				return f(c)
+			}
+		}
+		return kb
+	}
 	write := func(c context.Context) {
 		if !b.ownsSending(c, tg, st.Key) {
 			return
@@ -686,13 +728,13 @@ func (b *Bot) finishRefundSend(ctx context.Context, chatID int64, msgID int, tg 
 	edit := msgID
 	if b.serial == nil {
 		write(ctx)
-		b.reply(ctx, chatID, &edit, text, kb)
+		b.reply(ctx, chatID, &edit, text, inTurn(ctx))
 		return
 	}
 	wctx, cancel := context.WithTimeout(ctx, refundTurnWait)
 	err := b.serial.do(wctx, tg, func(c context.Context) {
 		write(c)
-		b.reply(c, chatID, &edit, text, kb)
+		b.reply(c, chatID, &edit, text, inTurn(c))
 	})
 	cancel()
 	if err == nil {
@@ -783,8 +825,23 @@ func (b *Bot) sendRefund(ctx context.Context, chatID int64, msgID int, tg int64,
 			b.finishRefundSend(detached(ctx), chatID, msgID, tg, st, true, b.texts.T(loc, "bot.ref.err_timeout", nil), back)
 			return
 		}
+		vars := map[string]any{"Num": st.Num, "Provider": Esc(providerName(st.Provider)), "Ticket": ""}
+		var offer func(context.Context) *models.InlineKeyboardMarkup
+		if ae.Code == codeRefundScanned {
+			// The refusal names the scanned ticket and says what to do next;
+			// a platform superadmin also gets the button that allows one
+			// refund of it, offered in the person's turn.
+			sc := st.scannedTicket(ae.TicketID)
+			vars["Ticket"] = Esc(sc.Label)
+			vars["Next"] = b.texts.T(loc, b.scannedNextKey(id), nil)
+			if id.Superadmin && sc.ID != uuid.Nil {
+				offer = func(c context.Context) *models.InlineKeyboardMarkup {
+					return b.withScanExcRows(c, back, id, st.OrgID, st.OrderID, st.Num, []scanExcTicket{sc})
+				}
+			}
+		}
 		b.finishRefundSend(detached(ctx), chatID, msgID, tg, st, false,
-			b.texts.T(loc, key, map[string]any{"Num": st.Num, "Provider": Esc(providerName(st.Provider))}), back)
+			b.texts.T(loc, key, vars), back, offer)
 	default:
 		// No answer at all after the repeats: the refund may well be under
 		// way. Keep the dialog (and its key) and say so; never "failed".
@@ -940,19 +997,22 @@ func (b *Bot) refundText(ctx context.Context, chatID int64, from *models.User, t
 	return true
 }
 
-// scannedTicketsLine names the tickets the server will not refund because
-// they were already used at the gate ("" when there are none).
-func scannedTicketsLine(opts openapi.OrderRefundOptions) string {
-	var parts []string
-	for _, t := range opts.Tickets {
-		if t.NotRefundableReason == nil || *t.NotRefundableReason != "ticket_scanned" {
-			continue
+// scannedTicket names the ticket of a refusal: the dialog's own label of it,
+// or no ID and an empty label when the dialog does not hold it.
+func (d refundDialog) scannedTicket(ticketID string) scanExcTicket {
+	for i, t := range d.Tickets {
+		if t.ID.String() == ticketID {
+			return scanExcTicket{ID: t.ID, Label: t.label(i)}
 		}
-		label := "№"
-		if t.TicketNumber != nil {
-			label += strconv.FormatInt(*t.TicketNumber, 10)
-		}
-		parts = append(parts, label)
 	}
-	return strings.Join(parts, ", ")
+	return scanExcTicket{}
+}
+
+// scannedNextKey is what to do about a scanned ticket: a platform operator
+// may allow one refund (the button below), everybody else asks support.
+func (b *Bot) scannedNextKey(id *Identity) string {
+	if id != nil && id.Superadmin {
+		return "bot.ref.scanned_next_operator"
+	}
+	return "bot.ref.scanned_next"
 }

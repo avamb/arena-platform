@@ -88,8 +88,12 @@ func OrderRowLabel(o openapi.OrderListItem, loc string) string {
 	parts := []string{
 		"№" + strconv.FormatInt(o.SystemId, 10),
 		OrderChip(o.Status),
-		FormatMoney(int64(o.Total), o.Currency, loc),
 	}
+	if o.DeliveryState != nil && *o.DeliveryState == letterFailed {
+		// The ticket letter did not go out: seen without opening the order.
+		parts = append(parts, letterFailedMark)
+	}
+	parts = append(parts, FormatMoney(int64(o.Total), o.Currency, loc))
 	if o.BuyerName != nil {
 		if name := truncate(*o.BuyerName, 18); name != "" {
 			parts = append(parts, name)
@@ -203,16 +207,6 @@ func channelKindKey(kind string) string {
 		return "bot.ord.channel_" + kind
 	}
 	return "bot.ord.channel_other"
-}
-
-// deliveryKey is the message key of the e-mail delivery state; "" when
-// there is nothing to say (no letter was ever queued).
-func deliveryKey(state string) string {
-	switch state {
-	case "sent", "pending", "failed":
-		return "bot.ord.delivery_" + state
-	}
-	return ""
 }
 
 // ticketStatusKey is the message key of a ticket's status word.
