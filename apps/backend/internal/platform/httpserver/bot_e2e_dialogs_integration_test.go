@@ -199,3 +199,65 @@ func TestBotE2E_DialogExpiresOnce(t *testing.T) {
 		t.Fatalf("an expired dialog must not invite anyone: %d (%v)", invitations, err)
 	}
 }
+
+// Round-2 review F9: an applicant's dialog (a name and a phone, no live
+// Telegram link) is deleted as soon as it expires, while a linked person's
+// expired dialog keeps its day of grace.
+func TestBotE2E_StrangerDialogSweptAtExpiry(t *testing.T) {
+	pool := onboardingIntegrationPool(t)
+	f := newBotInviteFixture(t, pool)
+	srv := buildBotIntegrationServer(t, pool)
+	api := httptest.NewServer(srv.router)
+	defer api.Close()
+	ctx := context.Background()
+	const ownerTG = int64(783)
+	linkDialogTestOwner(t, f, srv, ownerTG)
+	strangerTG := int64(900_000_000) + time.Now().UnixNano()%1_000_000
+	for _, tg := range []int64{ownerTG, strangerTG} {
+		if _, err := pool.Exec(ctx, `INSERT INTO bot_dialogs (telegram_user_id, kind, step, state, expires_at)
+			VALUES ($1, 'f9', 'x', '{"first":"Ana","phone":"+34600111222"}', now() - interval '1 minute')
+			ON CONFLICT (telegram_user_id, kind) DO UPDATE SET expires_at = EXCLUDED.expires_at`, tg); err != nil {
+			t.Fatalf("seed dialog: %v", err)
+		}
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM bot_dialogs WHERE kind = 'f9' AND telegram_user_id = ANY($1)`, []int64{ownerTG, strangerTG})
+	})
+
+	bundle, err := i18n.NewBundle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tg := newStubTelegram(t)
+	bot, err := eventbot.New(eventbot.Options{
+		Token: "123:test-token", Queries: gen.New(pool),
+		Arena:             eventbot.NewArenaClient(api.URL, botTestServiceToken, api.Client()),
+		Minter:            eventbot.NewTokenMinter(botTestJWTSecret, botTestJWTIssuer, botTestJWTAudience),
+		Texts:             eventbot.NewTexts(bundle),
+		TelegramServerURL: tg.srv.URL, HTTPClient: tg.srv.Client(),
+		DialogSweepEvery: 50 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bctx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- bot.Run(bctx) }()
+	defer func() { cancel(); <-done }()
+
+	count := func(tgID int64) int {
+		var n int
+		_ = pool.QueryRow(ctx, `SELECT count(*) FROM bot_dialogs WHERE kind = 'f9' AND telegram_user_id = $1`, tgID).Scan(&n)
+		return n
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for count(strangerTG) != 0 && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if count(strangerTG) != 0 {
+		t.Fatal("an applicant's expired dialog is still stored")
+	}
+	if count(ownerTG) != 1 {
+		t.Fatal("a linked person's dialog lost its day of grace")
+	}
+}

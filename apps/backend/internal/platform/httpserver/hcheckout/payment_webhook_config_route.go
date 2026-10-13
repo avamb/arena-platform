@@ -132,14 +132,20 @@ func (h *Handler) HandlePaymentIntentWebhookForConfig(w http.ResponseWriter, r *
 	route := webhookRoute{
 		Kind:          observability.RouteKindConfig,
 		ExpectedOrgID: &orgID,
+		Provider:      entryDesc.Name,
+		ConfigID:      &configID,
 		// The whole reason this route exists.
 		ForeignEventIsOK: true,
 	}
 	if entryDesc.Capabilities.WebhookConfigRouteOnly {
 		// A callback signed with a config-route-only provider's key (Flitt)
-		// may only move a payment of THAT provider of this org, and the
-		// module's own normalization is what the state machine runs on.
+		// may only move a payment of THAT provider of this org.
 		route.ExpectedProvider = entryDesc.Name
+	}
+	if entryDesc.Capabilities.WebhookConfigRouteOnly || event.Type != "" {
+		// The module's own normalization is what the state machine runs on.
+		// A body the module did not recognise as its event (no type) still
+		// takes the legacy parser.
 		route.Event = &event
 	}
 	h.processPaymentWebhook(w, r, body, route)

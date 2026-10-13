@@ -24,7 +24,8 @@ func (s *Server) paymentsHandler() *hpayments.Handler {
 		// checkout at a stub verifies credentials against that same stub
 		// rather than reaching out to the real Stripe.
 		WithStripeBaseURL(s.stripeBaseURL()).
-		WithFlittBaseURL(s.flittBaseURL())
+		WithFlittBaseURL(s.flittBaseURL()).
+		WithCallbackBase(s.cfg.APIPublicBaseURL())
 }
 
 // ─── type aliases ─────────────────────────────────────────────────────────────

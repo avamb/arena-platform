@@ -70,6 +70,9 @@ func (e *Engine) finish(ctx, stop context.Context, r Refund, pay Payment) bool {
 	if ok {
 		ok = e.markSettled(wctx, r)
 	}
+	if ok {
+		e.queueBuyerNotice(wctx, r)
+	}
 	return ok
 }
 
@@ -106,7 +109,9 @@ type scopeTicket struct {
 //     speaks for the ticket);
 //   - a refund written by the ticket-cancel route (fromTicketCancel, its
 //     cancelled_ticket_id marker) covers that ticket when the ticket links
-//     back to it through tickets.refund_id, and cancels nothing (fifth
+//     back to it through tickets.refund_id OR carries no link at all (the
+//     route writes the link best-effort, a failed write must not silence
+//     the refund; a ticket linked to ANOTHER refund is that refund's), and cancels nothing (fifth
 //     review, M-4): the operator cancelled its ticket before the refund existed,
 //     and its amount — even the whole payment — is that ticket's money;
 //   - an order-level refund (no ticket, the flat POST /v1/refunds) of the
@@ -134,7 +139,7 @@ func (e *Engine) refundScope(ctx context.Context, r Refund, pay Payment) ([]scop
 		case r.fromTicketCancel():
 			rows, err = tx.Query(ctx, `SELECT t.id, COALESCE(oi.total, 0)::bigint, t.status = 'active', false
 				FROM tickets t LEFT JOIN order_items oi ON oi.ticket_id = t.id
-				WHERE t.refund_id = $1 AND t.id = $2`, r.ID, *r.CancelledTicketID)
+				WHERE t.id = $2 AND (t.refund_id = $1 OR t.refund_id IS NULL)`, r.ID, *r.CancelledTicketID)
 		case pay.CheckoutSessionID != nil && r.Amount >= pay.Amount:
 			rows, err = tx.Query(ctx, `SELECT t.id, COALESCE(oi.total, 0)::bigint, t.status = 'active', true
 				FROM tickets t LEFT JOIN order_items oi ON oi.ticket_id = t.id
@@ -223,65 +228,81 @@ func (e *Engine) projectOrder(ctx context.Context, r Refund, pay Payment) bool {
 	if r.OrderID == nil && pay.CheckoutSessionID == nil {
 		return true
 	}
-	err := e.inTx(ctx, func(tx pgx.Tx) error {
-		orderID := r.OrderID
-		if orderID == nil {
-			var id uuid.UUID
-			err := tx.QueryRow(ctx, `SELECT id FROM orders WHERE checkout_session_id = $1`, *pay.CheckoutSessionID).Scan(&id)
-			if errors.Is(err, pgx.ErrNoRows) {
-				return nil
-			}
-			if err != nil {
-				return err
-			}
-			orderID = &id
-		}
-		// The status is recomputed on EVERY settle, even when this refund's
-		// event is already written: a settle cut short by its deadline
-		// projects while a ticket of its scope is still active, and only a
-		// later repair cancels it (fifth review, M-3). Only the event is
-		// written once; the order row lock serializes two settles of the
-		// same refund (a request and a repair) between check and insert.
-		if _, err := tx.Exec(ctx, `SELECT 1 FROM orders WHERE id = $1 FOR UPDATE`, *orderID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `UPDATE orders o
-			SET status = CASE WHEN EXISTS (SELECT 1 FROM tickets t
-			                                WHERE t.checkout_session_id = o.checkout_session_id AND t.status = 'active')
-			                  THEN 'partially_refunded' ELSE 'refunded' END,
-			    updated_at = now()
-			WHERE o.id = $1 AND o.status IN ('paid', 'partially_refunded')`, *orderID); err != nil {
-			return err
-		}
-		var already bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM order_events
-			WHERE order_id = $1 AND type IN ('ticket_refunded', 'refunded') AND payload->>'refund_id' = $2)`,
-			*orderID, r.ID.String()).Scan(&already); err != nil {
-			return err
-		}
-		if already {
-			return nil
-		}
-		kind := "refunded"
-		payload := map[string]any{"refund_id": r.ID.String(), "amount": r.Amount, "currency": r.Currency,
-			"provider_refund_id": deref(r.ProviderRefundID), "refund_mode": "automatic"}
-		if r.TicketID != nil {
-			kind = "ticket_refunded"
-			payload["ticket_id"] = r.TicketID.String()
-		}
-		raw, err := json.Marshal(payload)
-		if err != nil {
-			return err
-		}
-		_, err = tx.Exec(ctx, `INSERT INTO order_events (order_id, type, actor, payload) VALUES ($1, $2, 'system', $3)`,
-			*orderID, kind, raw)
-		return err
-	})
+	err := e.inTx(ctx, func(tx pgx.Tx) error { return e.ProjectOrderTx(ctx, tx, r, pay) })
 	if err != nil {
 		e.logger.Error("refunds: order projection failed; the sweep repair retries it", "refund_id", r.ID.String(), "error", err.Error())
 		return false
 	}
 	return true
+}
+
+// ProjectOrderTx is projectOrder's body on the caller's transaction, so a
+// caller that records a refund and cancels tickets in one transaction can
+// project the order status in the same one.
+func (e *Engine) ProjectOrderTx(ctx context.Context, tx pgx.Tx, r Refund, pay Payment) error {
+	if r.OrderID == nil && pay.CheckoutSessionID == nil {
+		return nil
+	}
+	orderID := r.OrderID
+	if orderID == nil {
+		var id uuid.UUID
+		err := tx.QueryRow(ctx, `SELECT id FROM orders WHERE checkout_session_id = $1`, *pay.CheckoutSessionID).Scan(&id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		orderID = &id
+	}
+	// The status is recomputed on EVERY settle, even when this refund's
+	// event is already written: a settle cut short by its deadline
+	// projects while a ticket of its scope is still active, and only a
+	// later repair cancels it (fifth review, M-3). Only the event is
+	// written once; the order row lock serializes two settles of the
+	// same refund (a request and a repair) between check and insert.
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM orders WHERE id = $1 FOR UPDATE`, *orderID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE orders o
+		SET status = CASE WHEN EXISTS (SELECT 1 FROM tickets t
+		                                WHERE t.checkout_session_id = o.checkout_session_id AND t.status = 'active')
+		                  THEN 'partially_refunded' ELSE 'refunded' END,
+		    updated_at = now()
+		WHERE o.id = $1 AND o.status IN ('paid', 'partially_refunded')`, *orderID); err != nil {
+		return err
+	}
+	var already bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM order_events
+		WHERE order_id = $1 AND type IN ('ticket_refunded', 'refunded') AND payload->>'refund_id' = $2)`,
+		*orderID, r.ID.String()).Scan(&already); err != nil {
+		return err
+	}
+	if already {
+		return nil
+	}
+	kind := "refunded"
+	payload := map[string]any{"refund_id": r.ID.String(), "amount": r.Amount, "currency": r.Currency,
+		"provider_refund_id": deref(r.ProviderRefundID), "refund_mode": "automatic"}
+	if deref(r.RequestedBy) == "provider_dashboard" {
+		payload["refund_mode"] = "provider_dashboard"
+	}
+	switch {
+	case r.TicketID != nil:
+		kind = "ticket_refunded"
+		payload["ticket_id"] = r.TicketID.String()
+	case r.fromTicketCancel():
+		// The ticket-cancel route's refund speaks for one ticket too.
+		kind = "ticket_refunded"
+		payload["ticket_id"] = r.CancelledTicketID.String()
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO order_events (order_id, type, actor, payload) VALUES ($1, $2, 'system', $3)`,
+		*orderID, kind, raw)
+	return err
 }
 
 // publish emits v1.ticket.refunded for the refund AT MOST ONCE: it first

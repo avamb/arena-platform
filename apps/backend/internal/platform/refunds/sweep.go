@@ -93,7 +93,11 @@ const (
 	maxUnknownPerPass  = 5
 	alertSectionBudget = 30 * time.Second
 	// alertsPerPass keeps one pass well inside Telegram's group limit of
-	// about 20 messages a minute.
+	// about 20 messages a minute. It is ONE budget for the whole pass: the
+	// review alerts take what they need first, the provider events arena gave
+	// up on get what is left (alertsPerPass - reviews), and lost buyer letters
+	// what is left after both (alertsPerPass - reviews - provider events), so
+	// no kind of alert can raise the pass's message count.
 	alertsPerPass = 15
 	// alertLease: how long a claimed alert is reserved for the pass that
 	// sends it; a pass that died mid-send releases it this way.
@@ -132,6 +136,8 @@ func deliver(ctx context.Context, n Notifier, text string) error {
 // SweepReport counts what one pass did.
 type SweepReport struct {
 	Stuck, Retried, LookedUp, Repaired, Alerted int
+	// Notices: buyer letters queued again (PAY-07).
+	Notices int
 	// Calls is the number of provider calls the pass made; Unknown how many
 	// of the retries ended without an answer.
 	Calls, Unknown int
@@ -160,6 +166,9 @@ func (e *Engine) Sweep(ctx context.Context, now time.Time, notifier Notifier) (S
 	section(t/6, "park", func(ctx context.Context) error {
 		n, err := e.parkStuck(ctx, now)
 		rep.Stuck = n
+		if perr := e.purgeScanTraces(ctx, now); perr != nil && err == nil {
+			err = perr
+		}
 		return err
 	})
 	section(t/2, "retry", func(ctx context.Context) error {
@@ -173,16 +182,37 @@ func (e *Engine) Sweep(ctx context.Context, now time.Time, notifier Notifier) (S
 		rep.Repaired = n
 		return err
 	})
+	section(t/6, "buyer letters", func(ctx context.Context) error {
+		n, err := e.requeueBuyerNotices(ctx, now)
+		rep.Notices = n
+		return err
+	})
 	if notifier != nil {
 		// A fresh context: alerts are sent even when the job's own context
 		// is nearly spent.
 		actx, cancel := context.WithTimeout(context.WithoutCancel(ctx), alertSectionBudget)
 		n, err := e.alertReviews(actx, notifier)
-		cancel()
 		rep.Alerted = n
 		if err != nil {
 			errs = append(errs, fmt.Errorf("refunds: sweep alerts: %w", err))
 		}
+		// Provider refund events arena gave up on (no refunds row carries
+		// their alert), inside the SAME budget: SweepWorstCase is unchanged.
+		pn, perr := e.alertProviderEvents(actx, notifier, alertsPerPass-n)
+		rep.Alerted += pn
+		if perr != nil {
+			errs = append(errs, fmt.Errorf("refunds: sweep provider-event alerts: %w", perr))
+		}
+		// Lost buyer letters share the section's budget and its message cap,
+		// so the pass stays inside SweepWorstCase and Telegram's rate.
+		if left := alertsPerPass - n - pn; left > 0 && err == nil && actx.Err() == nil {
+			ln, lerr := e.alertLostBuyerNotices(actx, notifier, left)
+			rep.Alerted += ln
+			if lerr != nil {
+				errs = append(errs, fmt.Errorf("refunds: sweep lost buyer letters: %w", lerr))
+			}
+		}
+		cancel()
 	}
 	return rep, errors.Join(errs...)
 }
@@ -544,7 +574,7 @@ func (e *Engine) alertReviews(ctx context.Context, n Notifier) (int, error) {
 			e.logger.Warn("refunds: ops alert not delivered; the next pass retries it", "refund_id", r.ID.String(), "error", derr.Error())
 			if ctx.Err() == nil {
 				// The section's own deadline is not the message's fault.
-				e.alertFailed(ctx, r, due[i])
+				e.alertFailed(ctx, r, due[i], sent > 0)
 			}
 			rest := make([]Refund, 0, len(order)-k)
 			for _, j := range order[k:] {
@@ -565,10 +595,46 @@ func (e *Engine) alertReviews(ctx context.Context, n Notifier) (int, error) {
 // and never tells a person to cancel unconditionally (seventh review).
 func alertText(r Refund, ticketStatus string) string {
 	esc := opsalert.EscapeHTML
+	if deref(r.RequestedBy) == "provider_dashboard" {
+		head := fmt.Sprintf("Refund %s (%d %s via %s) was made in the provider's own dashboard", r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)))
+		switch deref(r.FailureCode) {
+		case failureReversedAfterSuccess:
+			return head + fmt.Sprintf(" and was reversed by the provider afterwards: the money did not go back to the buyer. Check the provider dashboard and decide with the organizer what happens to the order's tickets. Order %s.", uuidString(r.OrderID))
+		case DashboardCapped:
+			return head + fmt.Sprintf(" for more than was left of the payment; it was recorded as what was left (%d %s). The order's tickets were cancelled only if that completed the whole payment; otherwise they are on review hold. Check the provider dashboard for the difference. Order %s.", r.Amount, esc(r.Currency), uuidString(r.OrderID))
+		case DashboardOverPayment:
+			return head + fmt.Sprintf(" after the payment was already fully refunded; nothing was applied and it is parked for review. Check the provider dashboard: the buyer may have been refunded twice. Order %s.", uuidString(r.OrderID))
+		case DashboardLegacyParked:
+			return head + fmt.Sprintf(" while the same payment has a refund parked for review without a provider. They may be the same money: check the provider dashboard and resolve the parked refund accordingly. Order %s.", uuidString(r.OrderID))
+		}
+		return head + fmt.Sprintf(" and does not cover the whole payment. The order's tickets are on review hold: decide which tickets it covers. Order %s.", uuidString(r.OrderID))
+	}
 	if r.State == StateManualReview {
 		text := fmt.Sprintf("Refund %s (%d %s via %s) needs manual review: %s. Order %s.",
 			r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), esc(deref(r.FailureCode)), uuidString(r.OrderID))
 		code := deref(r.FailureCode)
+		if code == failureReversedAfterSuccess {
+			text = fmt.Sprintf("Refund %s (%d %s via %s) was reversed by the provider after it had succeeded: the money did not go back to the buyer. Order %s.",
+				r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), uuidString(r.OrderID))
+			if r.TicketID != nil {
+				text += fmt.Sprintf(" Ticket %s is %s.", r.TicketID, esc(ticketStatusWord(ticketStatus)))
+			}
+			text += arenaNextStep(r)
+			return text
+		}
+		if code == failureFailedAfterAcceptance {
+			text = fmt.Sprintf("Refund %s (%d %s via %s) was accepted by the provider and then failed: the money did not go back to the buyer. Order %s.",
+				r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), uuidString(r.OrderID))
+			// The provider's own code and message, so the operator knows why.
+			if why := deref(r.FailureReason); why != "" {
+				text += " Details: " + esc(why) + "."
+			}
+			if r.TicketID != nil {
+				text += fmt.Sprintf(" Ticket %s is %s.", r.TicketID, esc(ticketStatusWord(ticketStatus)))
+			}
+			text += arenaNextStep(r)
+			return text
+		}
 		if code == failureLateOverBudget && deref(r.ProviderStatus) != string(payments.RefundSucceeded) {
 			text += " The provider accepted it as pending and has not confirmed it yet; arena does not read it back: check in the provider dashboard whether it completed."
 		}
@@ -598,6 +664,20 @@ func alertText(r Refund, ticketStatus string) string {
 	}
 	return fmt.Sprintf("Refund %s (%d %s via %s) was accepted by the provider late, after it had been parked or marked failed: accepted_late. %s Check for a manual duplicate refund. Order %s.",
 		r.ID, r.Amount, esc(r.Currency), esc(deref(r.Provider)), ticket, uuidString(r.OrderID))
+}
+
+// arenaNextStep is the next step of an alert about an arena refund the
+// provider took back or failed after accepting it. A refund of one ticket
+// still holds that ticket's cancellation, so arena refuses a second refund of
+// it; the money, if still owed, goes back through the provider's dashboard,
+// which arena records.
+func arenaNextStep(r Refund) string {
+	if r.TicketID == nil {
+		return " Check the provider dashboard: if the buyer is still owed the money, refund it there (arena records that refund)."
+	}
+	return " Arena will not send this ticket's money again (this refund still holds the ticket's cancellation)." +
+		" Check the provider dashboard: if the buyer is still owed the money, refund it there (arena records that refund);" +
+		" otherwise decide with the organizer what happens to the ticket."
 }
 
 // ticketStatusWord names a ticket status for an alert; a missing ticket
@@ -630,10 +710,13 @@ func (e *Engine) alertDelivered(ctx context.Context, r Refund, due time.Time) {
 
 // alertFailed counts a refused delivery against its row and releases it.
 // An alert refused MaxAlertAttempts times and owed for longer than
-// alertGiveUpAfter is given up: Telegram is evidently up (the failures are
-// spread over a day of passes that delivered other alerts first) and will
-// never take this message.
-func (e *Engine) alertFailed(ctx context.Context, r Refund, due time.Time) {
+// alertGiveUpAfter is given up ONLY when telegramUp: another alert was
+// delivered earlier in the same pass, so Telegram demonstrably works and
+// will never take this message. While nothing at all can be delivered
+// (an outage, a revoked bot token) the refusal says nothing about the
+// message, and giving up would lose an alert that was never really tried —
+// it stays owed and goes out when Telegram answers again.
+func (e *Engine) alertFailed(ctx context.Context, r Refund, due time.Time, telegramUp bool) {
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), alertWriteTimeout)
 	defer cancel()
 	var (
@@ -642,10 +725,10 @@ func (e *Engine) alertFailed(ctx context.Context, r Refund, due time.Time) {
 	)
 	if err := e.inTx(wctx, func(tx pgx.Tx) error {
 		return tx.QueryRow(wctx, `UPDATE refunds SET alert_lease_until = NULL, alert_attempts = alert_attempts + 1,
-			alert_due_at = CASE WHEN alert_attempts + 1 >= $3 AND alert_due_at = $2 AND alert_due_at < now() - $4::interval
+			alert_due_at = CASE WHEN $5::boolean AND alert_attempts + 1 >= $3 AND alert_due_at = $2 AND alert_due_at < now() - $4::interval
 			                    THEN NULL ELSE alert_due_at END
 			WHERE id = $1 RETURNING alert_attempts, alert_due_at IS NULL`,
-			r.ID, due, MaxAlertAttempts, intervalText(alertGiveUpAfter)).Scan(&attempts, &gaveUp)
+			r.ID, due, MaxAlertAttempts, intervalText(alertGiveUpAfter), telegramUp).Scan(&attempts, &gaveUp)
 	}); err != nil {
 		e.logger.Warn("refunds: counting an undelivered alert failed; its lease expires", "refund_id", r.ID.String(), "error", err.Error())
 		return
@@ -703,15 +786,33 @@ func (e *Engine) lookup(ctx context.Context, id uuid.UUID) error {
 		e.observe(outcomeUnknown)
 		return e.touch(ctx, id)
 	}
+	return e.applyStatus(ctx, id, pay, res, false)
+}
+
+// applyStatus records a provider's reading of an ACCEPTED refund (the sweep's
+// RefundLookup or a refund webhook) on the locked row. It only ever moves a
+// provider_pending row: an answer for a row that already left that state is
+// kept out, so a replayed or reordered delivery changes nothing.
+// With reversible set (a provider's webhook), a confirmed failure of a refund
+// that is SUCCEEDED when the lock is held reverses it (reverseTx); the choice
+// is made on the locked row, never on one read before the provider call.
+func (e *Engine) applyStatus(ctx context.Context, id uuid.UUID, pay Payment, res payments.RefundResult, reversible bool) error {
 	var updated Refund
 	changed := false
-	err = e.inTx(ctx, func(tx pgx.Tx) error {
+	err := e.inTx(ctx, func(tx pgx.Tx) error {
 		if err := LockPayment(ctx, tx, pay.ID); err != nil {
 			return err
 		}
 		cur, err := getRefund(ctx, tx, id, true)
 		if err != nil {
 			return err
+		}
+		if reversible && cur.State == StateSucceeded && res.Status == payments.RefundFailed {
+			if updated, err = e.reverseTx(ctx, tx, id, res); err != nil {
+				return err
+			}
+			changed = true
+			return nil
 		}
 		if cur.State != StateProviderPending {
 			updated = cur
@@ -729,11 +830,14 @@ func (e *Engine) lookup(ctx context.Context, id uuid.UUID) error {
 			// (alertReviews), review M1.
 			sql = `UPDATE refunds SET state = 'manual_review', provider_status = $2, failure_code = $3,
 			       failure_reason = $4, ` + reviewAlertSQL + `, updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
-			code := res.FailureCode
-			if code == "" {
-				code = "failed_after_acceptance"
+			reason := "the provider reported the refund failed after accepting it"
+			if res.FailureCode != "" {
+				reason += " (" + res.FailureCode + ")"
 			}
-			args = append(args, truncate(code, 100), truncate("the provider reported the refund failed after accepting it (the ticket is already cancelled, the money did not go back): "+res.FailureMessage, 500))
+			if res.FailureMessage != "" {
+				reason += ": " + res.FailureMessage
+			}
+			args = append(args, failureFailedAfterAcceptance, truncate(reason, 500))
 		default:
 			sql = `UPDATE refunds SET provider_status = $2, updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
 		}
@@ -870,4 +974,26 @@ func ScheduleInitialJob(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("refunds: enqueue initial sweep job: %w", err)
 	}
 	return nil
+}
+
+// Retention of the scan-blocked refund journal (it holds personal data): the
+// per-address delivery marks only stop a retried notice job from mailing an
+// address twice, and the attempt journal keeps its counts but forgets the
+// person's name.
+const (
+	scanNoticeMarksKeep = "30 days"
+	scanBlockLabelKeep  = "180 days"
+)
+
+func (e *Engine) purgeScanTraces(ctx context.Context, now time.Time) error {
+	return e.inTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `DELETE FROM refund_scan_notice_sends WHERE sent_at < $1::timestamptz - $2::interval`,
+			now, scanNoticeMarksKeep); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `UPDATE refund_scan_blocks SET actor_label = NULL
+			WHERE actor_label IS NOT NULL AND last_at < $1::timestamptz - $2::interval
+			  AND (cardinality($3::uuid[]) = 0 OR org_id = ANY($3::uuid[]))`, now, scanBlockLabelKeep, e.scopeOrgs())
+		return err
+	})
 }

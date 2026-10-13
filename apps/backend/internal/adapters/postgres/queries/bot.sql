@@ -226,6 +226,15 @@ WHERE  telegram_user_id = $1
 DELETE FROM bot_dialogs
 WHERE  expires_at < $1;
 
+-- name: DeleteExpiredStrangerBotDialogs :execrows
+-- A person with no live Telegram link (an organizer applicant) gets no day of
+-- grace: their dialog holds a name and a phone, so it goes as soon as it
+-- expires.
+DELETE FROM bot_dialogs d
+WHERE  d.expires_at < $1
+  AND  NOT EXISTS (SELECT 1 FROM bot_telegram_links l
+                   WHERE l.telegram_user_id = d.telegram_user_id AND l.revoked_at IS NULL);
+
 -- name: ListBotTeam :many
 -- The organization's team as the bot shows it: owners first, then managers,
 -- each with whether a Telegram account is linked and whether an invitation

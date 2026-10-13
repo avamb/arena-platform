@@ -251,6 +251,25 @@ func (q *Queries) ListRefundsByPaymentIntent(ctx context.Context, paymentIntentI
 // UpdateRefundState
 // ─────────────────────────────────────────────────────────────────────────────
 
+const rejectRequestedRefund = `-- name: RejectRequestedRefund :one
+UPDATE refunds
+SET    state      = 'rejected',
+       updated_at = now(),
+       failed_at  = now()
+WHERE  id = $1 AND state = 'requested'
+RETURNING id, payment_intent_id, org_id, amount, currency, reason, requested_by,
+          state, provider_refund_id, failure_reason,
+          requested_at, approved_at, succeeded_at, failed_at,
+          created_at, updated_at,
+          settlement, order_id, ticket_id`
+
+// RejectRequestedRefund rejects a refund only while it is still 'requested'.
+// Returns pgx.ErrNoRows when the refund does not exist OR has moved on
+// (approved, sent, ...): the caller must not treat it as rejected.
+func (q *Queries) RejectRequestedRefund(ctx context.Context, id uuid.UUID) (RefundRow, error) {
+	return scanRefundRow(q.db.QueryRow(ctx, rejectRequestedRefund, id))
+}
+
 const updateRefundState = `-- name: UpdateRefundState :one
 UPDATE refunds
 SET    state              = $2,
@@ -334,7 +353,8 @@ FROM   refunds
 WHERE  payment_intent_id = $1
   AND  state NOT IN ('failed', 'rejected')
   AND  NOT (state = 'manual_review' AND provider_attempts = 0 AND provider_refund_id IS NULL
-            AND COALESCE(failure_code, '') IN ('budget_taken_by_another_refund', 'stuck_provider_pending'))`
+            AND provider IS NOT NULL)
+  AND  NOT (state = 'manual_review' AND COALESCE(failure_code, '') IN ('reversed_after_success', 'failed_after_acceptance'))`
 
 // SumNonFailedRefundsByIntent returns the total amount already committed to
 // non-failed refunds for the given payment intent. This is used to compute the
@@ -345,9 +365,10 @@ WHERE  payment_intent_id = $1
 // Non-failed states are: requested, approved, provider_pending, succeeded,
 // manual_review. Failed and rejected refunds are excluded because they do not
 // represent money that will be (or has been) returned to the customer, and so
-// is a refund the refund engine parked BEFORE any provider call (held back
-// for its budget, budget_taken_by_another_refund, or stuck unsent,
-// stuck_provider_pending; provider_attempts 0, still in manual_review) —
+// is a refund parked BEFORE any provider call (manual_review, no attempt, no
+// provider refund id: held back for its budget, stuck unsent, or refused for a
+// broken configuration), and a parked refund the provider confirmed moved no
+// money (reversed after success, or failed after it accepted it) —
 // the SAME rule as the engine's
 // countsAgainstBudgetSQL (internal/platform/refunds/drive.go), so the flat
 // routes and the engine never disagree on what is left (PAY-03 fifth review,

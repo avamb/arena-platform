@@ -631,3 +631,50 @@ func (a *Adapter) VerifyCredentials(ctx context.Context) error {
 		return fmt.Errorf("%w: %s", payments.ErrProviderUnreachable, err.Error())
 	}
 }
+
+// receivesRefundEvents reports whether an endpoint's event list covers every
+// way a refund reaches arena: its creation (a refund made in the dashboard is
+// usually born succeeded and only sends refund.created), its updates
+// (refund.updated, or the older charge.refund.updated) and its failure.
+func receivesRefundEvents(events []string) bool {
+	has := map[string]bool{}
+	for _, ev := range events {
+		has[ev] = true
+	}
+	if has["*"] {
+		return true
+	}
+	return has["refund.created"] && (has["refund.updated"] || has["charge.refund.updated"]) && has["refund.failed"]
+}
+
+// CheckWebhookSubscription reads the account's webhook endpoints
+// (GET /v1/webhook_endpoints) and reports whether the one with callbackURL
+// receives refund updates. A restricted key without the right to read
+// endpoints answers an error: the caller treats it as "unknown".
+//
+// Implements payments.WebhookSubscriptionChecker.
+func (a *Adapter) CheckWebhookSubscription(ctx context.Context, callbackURL string) (payments.WebhookSubscription, error) {
+	body, _, err := a.doRequest(ctx, http.MethodGet, a.cfg.BaseURL+"/webhook_endpoints?limit=100", nil, "")
+	if err != nil {
+		return payments.WebhookSubscription{}, err
+	}
+	var list struct {
+		Data []struct {
+			URL           string   `json:"url"`
+			Status        string   `json:"status"`
+			EnabledEvents []string `json:"enabled_events"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &list); err != nil {
+		return payments.WebhookSubscription{}, fmt.Errorf("stripe: decode webhook endpoints: %w", err)
+	}
+	var out payments.WebhookSubscription
+	for _, ep := range list.Data {
+		if ep.URL != callbackURL || ep.Status == "disabled" {
+			continue
+		}
+		out.EndpointFound = true
+		out.RefundEventsSubscribed = out.RefundEventsSubscribed || receivesRefundEvents(ep.EnabledEvents)
+	}
+	return out, nil
+}

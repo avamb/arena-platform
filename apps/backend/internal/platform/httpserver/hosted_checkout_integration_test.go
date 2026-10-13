@@ -42,6 +42,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,6 +50,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
 
@@ -74,6 +76,31 @@ type stubStripe struct {
 	// sessionPI is the payment_intent GET /v1/checkout/sessions/{id}
 	// reports; empty answers 404.
 	sessionPI string
+
+	// refundObjects answers GET /v1/refunds/{id}: refund id -> JSON body;
+	// an id not in the map is 404, a body that is empty answers 500.
+	refundMu      sync.Mutex
+	refundObjects map[string]string
+	// refundReadKeys records the bearer key each GET /v1/refunds/{id} used.
+	refundReadKeys map[string]string
+}
+
+// refundReadKey is the API key the last read of refund id was made with.
+func (s *stubStripe) refundReadKey(id string) string {
+	s.refundMu.Lock()
+	defer s.refundMu.Unlock()
+	return s.refundReadKeys[id]
+}
+
+// setRefund registers the refund object GET /v1/refunds/{id} reports.
+func (s *stubStripe) setRefund(id, status string, amount int, currency, paymentIntent string) {
+	s.refundMu.Lock()
+	defer s.refundMu.Unlock()
+	if s.refundObjects == nil {
+		s.refundObjects = map[string]string{}
+	}
+	s.refundObjects[id] = fmt.Sprintf(`{"id":%q,"object":"refund","status":%q,"amount":%d,"currency":%q,"payment_intent":%q}`,
+		id, status, amount, currency, paymentIntent)
 }
 
 func newStubStripe(t *testing.T) *stubStripe {
@@ -83,6 +110,25 @@ func newStubStripe(t *testing.T) *stubStripe {
 		switch {
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/refunds") && s.refundHandler != nil:
 			s.refundHandler(w, r)
+			return
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/refunds/"):
+			id := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
+			s.refundMu.Lock()
+			body, ok := s.refundObjects[id]
+			if s.refundReadKeys == nil {
+				s.refundReadKeys = map[string]string{}
+			}
+			s.refundReadKeys[id] = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+			s.refundMu.Unlock()
+			switch {
+			case !ok:
+				w.WriteHeader(http.StatusNotFound)
+			case body == "":
+				w.WriteHeader(http.StatusInternalServerError)
+			default:
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = fmt.Fprint(w, body)
+			}
 			return
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/checkout/sessions/") && s.sessionPI != "":
 			id := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
@@ -1178,6 +1224,121 @@ func TestHostedCheckout_ConfigRoute_ForeignPaymentIsAcknowledged(t *testing.T) {
 	legacyCode, _ := postSignedWebhook(t, srv, event, f.webhookSecret)
 	if legacyCode != http.StatusNotFound && legacyCode != http.StatusUnauthorized {
 		t.Errorf("legacy route for a foreign id = %d; want it unchanged at 404/401", legacyCode)
+	}
+}
+
+// TestHostedCheckout_ConfigRoute_UnmappedKindsAreAcknowledged pins the M1 rule
+// of spec 36: on the per-config route a Stripe event is decided by its
+// normalized KIND alone. A refund or dispute names no payment, an unpaid
+// completed session is not a payment, and an event type the module does not
+// know moves nothing - every one of them is a 200 acknowledgement that writes
+// no idempotency row (a 400 would make Stripe retry for days).
+func TestHostedCheckout_ConfigRoute_UnmappedKindsAreAcknowledged(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	f := newHostedOrgFixture(t, ctx, pool, "cfgkinds")
+	defer f.cleanup()
+
+	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
+
+	id := "cs_test_kinds_" + uuid.New().String()[:8]
+	refundID := "re_test_" + uuid.New().String()[:8]
+	cases := map[string][]byte{
+		"unpaid completed session": sessionCompletedEvent(id, "pi_x", "unpaid"),
+		"refund created":           []byte(`{"id":"evt_r","type":"refund.created","data":{"object":{"id":"` + refundID + `","object":"refund","status":"succeeded","payment_intent":"pi_x","amount":500}}}`),
+		"dispute opened":           []byte(`{"id":"evt_d","type":"charge.dispute.created","data":{"object":{"id":"dp_x","object":"dispute"}}}`),
+		"unknown type":             []byte(`{"id":"evt_u","type":"customer.created","data":{"object":{"id":"cus_x"}}}`),
+	}
+	for name, event := range cases {
+		code, body := postSignedWebhookTo(t, srv, f.configWebhookPath(), event, f.webhookSecret)
+		if code != http.StatusOK {
+			t.Errorf("%s = %d, want 200; body: %s", name, code, body)
+			continue
+		}
+		var resp map[string]any
+		if err := json.Unmarshal(body, &resp); err != nil {
+			t.Errorf("%s: decode: %v (body: %s)", name, err, body)
+			continue
+		}
+		if processed, _ := resp["processed"].(bool); processed {
+			t.Errorf("%s was PROCESSED; body: %s", name, body)
+		}
+	}
+	for _, key := range []string{id, refundID, "dp_x", "cus_x"} {
+		if n := countPaymentIntentEvents(t, ctx, pool, key); n != 0 {
+			t.Errorf("payment_intent_events rows for %s = %d, want 0", key, n)
+		}
+	}
+}
+
+// TestHostedCheckout_ConfigRoute_AllPayEventsDecidedByKind drives a SIGNED
+// AllPay delivery through the per-config route: the module's normalized kind
+// decides. A refund update names a payment but moves nothing, a failure
+// event fails the intent only when its signature verifies, and a capture
+// succeeds it.
+func TestHostedCheckout_ConfigRoute_AllPayEventsDecidedByKind(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+
+	f := newHostedOrgFixture(t, ctx, pool, "cfgallpay")
+	defer f.cleanup()
+
+	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
+	q := gen.New(pool)
+
+	code, body := f.startCheckout(t, srv, hostedTicketsBaseURL+"/shows")
+	if code != http.StatusCreated {
+		t.Fatalf("checkout/start = %d, want 201; body: %s", code, body)
+	}
+	var start hostedStartResponse
+	if err := json.Unmarshal(body, &start); err != nil {
+		t.Fatalf("decode checkout/start: %v", err)
+	}
+	intents, err := q.ListPaymentIntentsByCheckout(ctx, uuid.MustParse(start.CheckoutSession.ID))
+	if err != nil || len(intents) != 1 || intents[0].ProviderPaymentID == nil {
+		t.Fatalf("expected one payment intent with a provider id; got %v (err %v)", intents, err)
+	}
+	payID := *intents[0].ProviderPaymentID
+
+	// The organizer's config becomes an AllPay one (module signature check,
+	// flat body); the intent keeps the id the events will name.
+	const allpayKey = "allpay_secret_cfgtest"
+	if _, err := pool.Exec(ctx, `UPDATE payment_provider_configs
+	    SET provider = 'allpay', secrets = $2::jsonb WHERE id = $1`,
+		f.configID, `{"merchant_id":"m_test","secret_key":"`+allpayKey+`"}`); err != nil {
+		t.Fatal(err)
+	}
+
+	post := func(event, key string) (int, map[string]any) {
+		raw := []byte(`{"event_type":"` + event + `","payment_id":"` + payID + `","status":"x"}`)
+		req := httptest.NewRequest(http.MethodPost, f.configWebhookPath(), bytes.NewReader(raw))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-AllPay-Signature", payments.ComputeHMACSHA256(key, raw))
+		rec := httptest.NewRecorder()
+		srv.router.ServeHTTP(rec, req)
+		var resp map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+		return rec.Code, resp
+	}
+	state := func() string {
+		pi, err := q.GetPaymentIntentByProviderID(ctx, payID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pi.State
+	}
+
+	if c, _ := post("payment.captured", "someone-elses-key"); c != http.StatusUnauthorized || state() != "created" {
+		t.Fatalf("a wrong AllPay signature = %d, state %q; want 401 and no change", c, state())
+	}
+	c, resp := post("payment.refunded", allpayKey)
+	if c != http.StatusOK || resp["processed"] == true || state() != "created" {
+		t.Fatalf("refund update = %d %v, state %q; want 200, not processed, no change", c, resp, state())
+	}
+	c, resp = post("payment.captured", allpayKey)
+	if c != http.StatusOK || resp["processed"] != true || state() != "succeeded" {
+		t.Fatalf("capture = %d %v, state %q; want 200, processed, succeeded", c, resp, state())
 	}
 }
 

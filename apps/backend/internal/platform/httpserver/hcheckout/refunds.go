@@ -392,6 +392,23 @@ func (h *Handler) HandleCreateRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The scan rule again, inside the writing transaction: any scanned ticket
+	// sold with the payment blocks it. A superadmin's exception does not count
+	// here: it is honoured only by the organization's per-ticket route, where
+	// the refund names the ticket.
+	if h.refundEngine != nil {
+		blockedTicket, blocked, gerr := refunds.PaymentScannedTx(ctx, tx, paymentIntentID)
+		if gerr != nil {
+			scanCheckUnavailable(w, r)
+			return
+		}
+		if blocked {
+			_ = tx.Rollback(ctx)
+			h.refusedScanned(w, r, pi.OrgID, blockedTicket)
+			return
+		}
+	}
+
 	if commitErr := tx.Commit(ctx); commitErr != nil {
 		h.logger.Error("refund: tx commit failed",
 			slog.String("payment_intent_id", paymentIntentID.String()),
@@ -839,8 +856,21 @@ func (h *Handler) HandleRejectRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.refundQueries.UpdateRefundState(ctx, id, "rejected", nil, nil)
+	// The rejection and the return of any scan exception the refund spent
+	// are one transaction under the payment's refund lock: a rejected refund
+	// moved no money, and one that moved on meanwhile is not rejected.
+	updated, err := h.rejectRefundTx(ctx, id, refund.PaymentIntentID)
 	if err != nil {
+		var moved *refundMovedOn
+		if errors.As(err, &moved) {
+			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+				"refund.invalid_state",
+				"only refunds in 'requested' state can be rejected",
+				r,
+				map[string]any{"current_state": moved.state},
+			))
+			return
+		}
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("refund.not_found", "refund not found", r))
 			return
@@ -860,6 +890,46 @@ func (h *Handler) HandleRejectRefund(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"refund": refundFromRow(updated),
 	})
+}
+
+// refundMovedOn: the refund left 'requested' between the handler's read and
+// the rejection (an approval, the engine), so it was not rejected.
+type refundMovedOn struct{ state string }
+
+func (e *refundMovedOn) Error() string { return "refund is no longer requested: " + e.state }
+
+// rejectRefundTx moves the refund to rejected and gives back, in the same
+// transaction, any scan exception it spent when it was written. It takes the
+// payment's refund lock (refunds.LockPayment) like every other writer, and
+// rejects only a refund still 'requested': one that moved on is answered
+// with *refundMovedOn and its exception stays spent.
+func (h *Handler) rejectRefundTx(ctx context.Context, id uuid.UUID, paymentIntentID *uuid.UUID) (gen.RefundRow, error) {
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return gen.RefundRow{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if paymentIntentID != nil {
+		if err := refunds.LockPayment(ctx, tx, *paymentIntentID); err != nil {
+			return gen.RefundRow{}, err
+		}
+	}
+	txq := h.refundQueries.WithTx(tx)
+	updated, err := txq.RejectRequestedRefund(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		cur, gerr := txq.GetRefundByID(ctx, id)
+		if gerr != nil {
+			return gen.RefundRow{}, gerr
+		}
+		return gen.RefundRow{}, &refundMovedOn{state: cur.State}
+	}
+	if err != nil {
+		return gen.RefundRow{}, err
+	}
+	if err := refunds.ReleaseScanExceptionsTx(ctx, tx, id, false); err != nil {
+		return gen.RefundRow{}, err
+	}
+	return updated, tx.Commit(ctx)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

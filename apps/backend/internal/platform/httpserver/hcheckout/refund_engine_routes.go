@@ -11,9 +11,33 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
+
+// refusedScanned answers 409 refund.ticket_scanned and journals the attempt:
+// a ticket scanned at the gate is never refunded, on any surface.
+func (h *Handler) refusedScanned(w http.ResponseWriter, r *http.Request, orgID, ticket uuid.UUID) {
+	var actor refunds.Actor
+	if a, ok := auth.ActorFromContext(r.Context()); ok {
+		actor = refunds.Actor{Type: "user", ID: a.ID}
+		if a.IsService() {
+			actor.Type = "api_key"
+		}
+	}
+	via, _ := audit.ClientChannelFromContext(r.Context())
+	notice := h.refundEngine.RecordScannedBlock(r.Context(), orgID, ticket, actor, via)
+	writeRefundError(w, r, refunds.ScannedRefusalWithNotice(ticket, notice))
+}
+
+// scanCheckUnavailable answers when whether a ticket was scanned could not be
+// read: 503, the caller retries; nothing is written.
+func scanCheckUnavailable(w http.ResponseWriter, r *http.Request) {
+	httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+		refunds.CodeEngineUnavailable, "whether the ticket was scanned could not be checked; try again", r))
+}
 
 // writeRefundError answers a refunds.Error.
 func writeRefundError(w http.ResponseWriter, r *http.Request, e *refunds.Error) {
@@ -38,6 +62,21 @@ func (h *Handler) refundRouteAllowed(w http.ResponseWriter, r *http.Request, pay
 	}
 	if ref := refunds.RouteRefusal(refundRoute(r.Context(), h.refundQueries, pi), pi.Provider); ref != nil {
 		writeRefundError(w, r, ref)
+		return false
+	}
+	if h.refundEngine == nil {
+		// The scan rule cannot be checked: never let a refund through on a guess.
+		scanCheckUnavailable(w, r)
+		return false
+	}
+	ticket, scanned, serr := h.refundEngine.ScannedTicketOfPayment(r.Context(), paymentIntentID)
+	if serr != nil {
+		// The check could not be made: never let a refund through on a guess.
+		scanCheckUnavailable(w, r)
+		return false
+	}
+	if scanned {
+		h.refusedScanned(w, r, pi.OrgID, ticket)
 		return false
 	}
 	return true
@@ -73,6 +112,17 @@ func (h *Handler) approvePrecheck(w http.ResponseWriter, r *http.Request, id uui
 	if rf.State != "requested" {
 		// The transactional path answers refund.invalid_state.
 		return res, true
+	}
+	if h.refundEngine != nil {
+		ticket, scanned, serr := h.refundEngine.ScannedTicketForRefund(ctx, id)
+		if serr != nil {
+			scanCheckUnavailable(w, r)
+			return res, false
+		}
+		if scanned {
+			h.refusedScanned(w, r, rf.OrgID, ticket)
+			return res, false
+		}
 	}
 	if ref := refunds.RouteRefusal(res.route, pi.Provider); ref != nil {
 		writeRefundError(w, r, ref)

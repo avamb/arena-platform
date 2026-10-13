@@ -41,11 +41,16 @@ type fakeCall struct {
 }
 
 type fakeModule struct {
-	mu       sync.Mutex
-	partial  bool
-	calls    []fakeCall
-	answers  []func(req payments.RefundRequest) (payments.RefundResult, error)
-	lookup   payments.RefundResult
+	mu      sync.Mutex
+	partial bool
+	calls   []fakeCall
+	answers []func(req payments.RefundRequest) (payments.RefundResult, error)
+	lookup  payments.RefundResult
+	// lookupErr is what RefundStatus answers when set.
+	lookupErr error
+	// onLookup runs inside RefundStatus before it answers (another delivery
+	// changing the row meanwhile, say).
+	onLookup func()
 	resolved int
 	// beforeRefund runs inside Refund, before the answer.
 	beforeRefund func(req payments.RefundRequest) bool
@@ -60,6 +65,9 @@ type fakeModule struct {
 	// onBuild runs inside fakeSource.Build after buildErrs; a non-nil error
 	// is returned as the build error.
 	onBuild func() error
+	// lookupByID answers RefundStatus for one provider refund id instead of
+	// lookup.
+	lookupByID map[string]payments.RefundResult
 }
 
 func (m *fakeModule) nextBuildErr() error {
@@ -106,9 +114,18 @@ func (m *fakeModule) Refund(ctx context.Context, req payments.RefundRequest) (pa
 }
 
 func (m *fakeModule) RefundStatus(_ context.Context, id string) (payments.RefundResult, error) {
+	if m.onLookup != nil {
+		m.onLookup()
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.lookupErr != nil {
+		return payments.RefundResult{}, m.lookupErr
+	}
 	r := m.lookup
+	if byID, ok := m.lookupByID[id]; ok {
+		r = byID
+	}
 	r.ProviderRefundID = id
 	return r, nil
 }
@@ -260,6 +277,9 @@ func (f *fixture) cleanup(t *testing.T) {
 		arg any
 	}{
 		{`UPDATE tickets SET refund_id = NULL WHERE order_id = $1`, f.order},
+		// The buyer-letter jobs the settles queued (a stray refund.buyer_email row
+		// makes the generic worker_jobs drains of other tests fail).
+		{`DELETE FROM worker_jobs WHERE job_type = 'refund.buyer_email' AND payload->>'batch_id' IN (SELECT id::text FROM refund_batches WHERE org_id = $1)`, f.org},
 		{`DELETE FROM refunds WHERE org_id = $1`, f.org},
 		{`DELETE FROM refund_batches WHERE org_id = $1`, f.org},
 		{`DELETE FROM order_events WHERE order_id = $1`, f.order},
@@ -476,8 +496,12 @@ func TestEngine_PendingThatFailsLaterGoesToManualReview(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := e.GetRefund(context.Background(), res.Refunds[0].ID)
-	if got.State != refunds.StateManualReview || deref(got.FailureCode) != "insufficient_funds" {
-		t.Fatalf("refund = %s %s; want manual_review (the ticket is already cancelled)", got.State, deref(got.FailureCode))
+	// The stable code keeps it out of the budget; the provider's own code
+	// stays in the reason.
+	if got.State != refunds.StateManualReview || deref(got.FailureCode) != "failed_after_acceptance" ||
+		!strings.Contains(deref(got.FailureReason), "insufficient_funds") {
+		t.Fatalf("refund = %s %s %q; want manual_review failed_after_acceptance with the provider's code (the ticket is already cancelled)",
+			got.State, deref(got.FailureCode), deref(got.FailureReason))
 	}
 	// PAY-03 review M1: accepted, then failed — the money did not go back
 	// and the ticket is gone. An operator is told once, ids and amount only.

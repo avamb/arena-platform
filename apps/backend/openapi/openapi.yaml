@@ -3265,6 +3265,307 @@ components:
           format: date-time
           description: When the one-time address stops being valid (24 hours after the request). Null for the order's own address.
 
+    OrderRefundItem:
+      type: object
+      description: One refund row of an order, as the organizer's refund API reports it.
+      required: [id, ticket_id, amount, currency, state, cancel_ticket, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the refund.
+        ticket_id:
+          type: [string, "null"]
+          format: uuid
+          description: The ticket the refund is for; null for a refund of the whole payment.
+        amount:
+          type: integer
+          format: int64
+          description: Amount in minor units of the currency.
+        currency:
+          type: string
+          description: ISO 4217 currency code.
+        state:
+          type: string
+          description: One of requested, approved, provider_pending, succeeded, failed, manual_review.
+        provider_status:
+          type: [string, "null"]
+          description: The provider's own status of the refund, when it has answered.
+        provider_refund_id:
+          type: [string, "null"]
+          description: The provider's id of the refund, once it accepted it.
+        failure_code:
+          type: [string, "null"]
+          description: Machine-readable reason when the provider refused or the refund needs review.
+        failure_reason:
+          type: [string, "null"]
+          description: Human-readable reason that goes with failure_code.
+        cancel_ticket:
+          type: boolean
+          description: True when the ticket is cancelled once the provider accepts the refund.
+        created_at:
+          type: string
+          format: date-time
+          description: When the refund was recorded.
+
+    OrderRefundTicketOption:
+      type: object
+      description: What can still be returned for one ticket of an order.
+      required: [ticket_id, status, paid, refunded, refundable, in_progress]
+      properties:
+        ticket_id:
+          type: string
+          format: uuid
+          description: UUID of the ticket.
+        status:
+          type: string
+          description: Ticket status; only an active ticket can be refunded.
+        paid:
+          type: [integer, "null"]
+          format: int64
+          description: What the buyer paid for this ticket in minor units, null when the order item carries no price.
+        refunded:
+          type: integer
+          format: int64
+          description: Minor units already refunded or on their way to the buyer.
+        refundable:
+          type: integer
+          format: int64
+          description: Minor units that can still be returned for this ticket.
+        in_progress:
+          type: boolean
+          description: True when a refund that cancels this ticket is already under way.
+        ticket_number:
+          type: [integer, "null"]
+          format: int64
+          description: The number printed on the ticket, null for a ticket without one.
+        seat_label:
+          type: [string, "null"]
+          description: The place as "sector / row / seat" with the parts that exist, null for a general-admission ticket.
+        not_refundable_reason:
+          type: [string, "null"]
+          description: "Why `refundable` is 0 although the ticket is active and has money left: `ticket_scanned` (the ticket was already scanned at the gate; never refunded) or `review_hold` (a refund made outside arena put the order's tickets under review). Null otherwise."
+
+    OrderRefundOptions:
+      type: object
+      description: |
+        What an organizer may do about the money of an order (PAY-06). `route`
+        says who returns it: `arena_provider` (arena sends the refund to the
+        payment provider), `seller_site` (the seller's own site refunds),
+        `unsupported` or `unknown_provider` (arena cannot send money back
+        through this provider) or `none` (arena took no money for the order).
+      required: [order_id, route, provider, currency, partial_refund, payment_left, tickets, active_refunds]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+          description: UUID of the order.
+        payment_left:
+          type: integer
+          format: int64
+          description: |
+            What is left of the whole payment, in minor units (0 when arena
+            took no payment). Each ticket's `refundable` is capped by it on its
+            own, so the tickets together may offer more than this amount; no
+            refund operation returns more.
+        route:
+          type: string
+          description: How the money goes back, see the schema description.
+        provider:
+          type: string
+          description: Payment provider of the order; empty when arena took no payment.
+        currency:
+          type: string
+          description: ISO 4217 currency of the payment; empty when arena took no payment.
+        partial_refund:
+          type: boolean
+          description: True when the provider can return less than the whole payment.
+        tickets:
+          type: array
+          description: Every ticket of the order with what can still be returned.
+          items:
+            $ref: "#/components/schemas/OrderRefundTicketOption"
+        active_refunds:
+          type: array
+          description: Refunds of the order that are not finished or need an operator.
+          items:
+            $ref: "#/components/schemas/OrderRefundItem"
+        refusal:
+          type: object
+          description: Present when arena cannot send a refund for this order, with the error code and message the create call would answer.
+          properties:
+            code:
+              type: string
+              description: Error code, such as refund.seller_site_order.
+            message:
+              type: string
+              description: Human-readable explanation.
+
+    OrderRefundQueueItem:
+      description: A refund in the organization's queue, with what is needed to place it.
+      allOf:
+        - $ref: "#/components/schemas/OrderRefundItem"
+        - type: object
+          description: Order, event and ticket the refund belongs to.
+          properties:
+            order_id:
+              type: [string, "null"]
+              format: uuid
+              description: UUID of the order, null for a refund without an order.
+            order_number:
+              type: [integer, "null"]
+              format: int64
+              description: The order's number (`orders.system_id`), null for a refund without an order.
+            event_name:
+              type: [string, "null"]
+              description: Name of the event of the order.
+            ticket_number:
+              type: [integer, "null"]
+              format: int64
+              description: Number of the ticket the refund is for, null for a refund of the whole payment.
+            creator:
+              type: [object, "null"]
+              description: Who asked for the refund; null when that cannot be told (for example a person who is not a member of the organization).
+              required: [kind]
+              properties:
+                kind:
+                  type: string
+                  description: "`user`, `api_key` or `provider_dashboard` (a refund made in the payment provider's own dashboard)."
+                label:
+                  type: [string, "null"]
+                  description: The member's name, or their e-mail when they have none (null for a caller acting with an API key), or the API key's name.
+            retryable:
+              type: boolean
+              description: True when the retry route would accept this refund - it provably moved no money and has not been retried yet. The route still decides.
+            notify_buyer:
+              type: boolean
+              description: True when the refund asked for the buyer letter, the choice a retry of it inherits (true for a refund made outside an operation).
+            retry_cancels_ticket:
+              type: boolean
+              description: True when a retry of this refund would cancel its ticket once the provider accepts it - the operation's choice, which a retry inherits (the refund's own `cancel_ticket` for a refund made outside an operation). It can differ from `cancel_ticket`, which a refund parked before any provider call gives up.
+
+    OrderRefundQueue:
+      type: object
+      description: One page of the organization's refunds, newest first.
+      required: [refunds, total, has_more]
+      properties:
+        refunds:
+          type: array
+          description: The refunds of this page.
+          items:
+            $ref: "#/components/schemas/OrderRefundQueueItem"
+        total:
+          type: integer
+          description: How many refunds match the filter.
+        has_more:
+          type: boolean
+          description: True when another page follows.
+
+    OrderRefundHistoryEntry:
+      type: object
+      description: One step of a refund's life, read from the audit trail.
+      required: [action, at]
+      properties:
+        action:
+          type: string
+          description: Audit action, such as `v1.refund.batch_create` or `v1.refund.provider_result`.
+        at:
+          type: string
+          format: date-time
+          description: When the step happened.
+        outcome:
+          type: [string, "null"]
+          description: The provider's answer for a provider step, when the step has one.
+        state:
+          type: [string, "null"]
+          description: The refund state after the step, when the step has one.
+        failure_code:
+          type: [string, "null"]
+          description: Machine-readable reason of a refusal, when the step has one.
+
+    OrderRefundDetail:
+      type: object
+      description: A refund with its history.
+      required: [refund, history, history_total]
+      properties:
+        refund:
+          allOf:
+            - $ref: "#/components/schemas/OrderRefundQueueItem"
+          description: The refund.
+        history:
+          type: array
+          description: The latest steps of the refund (at most 100), oldest first.
+          items:
+            $ref: "#/components/schemas/OrderRefundHistoryEntry"
+        history_total:
+          type: integer
+          description: How many steps the refund has in all; more than `history` holds when the refund has a long life.
+
+    CreateOrderRefundsRequest:
+      type: object
+      description: One refund operation on an order.
+      required: [items, reason]
+      properties:
+        items:
+          type: array
+          description: The tickets to return money for, each named once (at most 200).
+          items:
+            type: object
+            description: One ticket of the operation.
+            required: [ticket_id]
+            properties:
+              ticket_id:
+                type: string
+                format: uuid
+                description: UUID of the ticket.
+              amount:
+                type: [integer, "null"]
+                format: int64
+                description: Minor units to return. Omitted means everything that is left on the ticket. A part is allowed only when the provider supports partial refunds.
+        reason:
+          type: string
+          description: Why the money is returned. Required, it reaches the provider and the audit trail.
+        cancel_tickets:
+          type: boolean
+          description: Cancel each ticket once the provider accepts its refund. Defaults to true; false is a money-only partial refund.
+        notify_buyer:
+          type: boolean
+          description: Send the buyer a letter about the refund. Defaults to true.
+
+    CreateOrderRefundsResponse:
+      type: object
+      description: The refund operation as recorded, one refund per ticket.
+      required: [batch_id, order_id, replayed, refunds]
+      properties:
+        batch_id:
+          type: string
+          format: uuid
+          description: UUID of the operation.
+        order_id:
+          type: string
+          format: uuid
+          description: UUID of the order.
+        replayed:
+          type: boolean
+          description: True when the Idempotency-Key was already used and this is the first call's answer.
+        refunds:
+          type: array
+          description: One refund per ticket, in the state they reached by the time of the answer.
+          items:
+            $ref: "#/components/schemas/OrderRefundItem"
+
+    ResolveOrderRefundRequest:
+      type: object
+      description: What a platform operator found at the provider for a refund in manual review.
+      required: [outcome, note]
+      properties:
+        outcome:
+          type: string
+          description: "refunded when the money went back at the provider; refunded_beyond_payment when it went back although the payment was already covered; not_refunded when the provider shows it did not go through (the ticket can then be refunded again with a new refund)."
+        note:
+          type: string
+          description: What was checked, up to 1000 characters. Kept in the audit trail.
+
     OrderSummary:
       type: object
       required:
@@ -22102,10 +22403,26 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [payment_config]
+                required: [payment_config, webhook_warnings]
                 properties:
                   payment_config:
                     $ref: "#/components/schemas/PaymentProviderConfigItem"
+                  webhook_warnings:
+                    type: array
+                    items:
+                      type: string
+                    description: |
+                      Advisory findings about the provider's webhook endpoint,
+                      empty when there is nothing to report or the provider
+                      could not be asked. `webhook_endpoint_not_found`: the
+                      provider account has no endpoint with this config's
+                      callback URL. `refund_events_not_subscribed`: the
+                      endpoint exists but does not receive every refund event
+                      (created, updated and failed), so some refunds made or
+                      changed at the provider never reach arena. Only
+                      computed when the credential was accepted and the
+                      provider lets the key list its endpoints.
+                    example: ["refund_events_not_subscribed"]
         "400":
           description: Malformed org_id or id
           content:
@@ -29067,7 +29384,9 @@ paths:
           description: |
             Ticket is not active (`ticket.not_active`) — already
             cancelled, transferred or revoked. `details.current_status`
-            carries the state.
+            carries the state. A cancellation with `refund_mode` manual or
+            automatic of a ticket already scanned at the gate is refused
+            with `refund.ticket_scanned` before anything is cancelled.
           content:
             application/json:
               schema:
@@ -29942,6 +30261,16 @@ paths:
         refund); the approval handler routes partial refunds whose
         linked tickets are not all `active` to `manual_review`.
 
+        A payment with a ticket that was already scanned at the gate (a scan
+        recorded in arena) is refused with 409 `refund.ticket_scanned`: no
+        refund is written, the attempt is journaled and the organization's
+        owners are told at most once a day (`error.details.owners_notice`
+        says whether a notice was queued, one went out today, or there is no
+        address to send it to). A failure of that check answers 503.
+        A one-time exception granted for a scanned ticket does not count
+        here: such a ticket is refunded only through the organization's
+        per-ticket refund route.
+
         Requires JWT + the `refund.create` permission.
       tags: [v1]
       security:
@@ -30197,7 +30526,9 @@ paths:
         "409":
           description: |
             Refund is not in the `requested` state
-            (`refund.invalid_state`).
+            (`refund.invalid_state`), or a ticket it would return money for
+            was already scanned at the gate (`refund.ticket_scanned`, see
+            `error.details.owners_notice`).
           content:
             application/json:
               schema:
@@ -37947,6 +38278,759 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Delivery store unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/orders/{order_id}/refund-options:
+    get:
+      operationId: getV1OrganizationsOrgIdOrdersOrderIdRefundOptions
+      summary: What can be refunded on an order
+      description: |
+        Reads, without changing anything, how the money of an order goes back
+        and what is left to return per ticket (PAY-06, spec 36 section 8). The
+        answer is advice: the create call checks every rule again. An order
+        paid on a seller's own site answers `route` `seller_site` with a
+        `refusal`, an order arena took no money for answers `none`. Requires
+        the `refund.read` permission. Only tickets that are lines of this
+        order are listed: a ticket that a transfer moved to another holder or
+        order is not offered here and cannot be refunded through this API.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: order_id
+          in: path
+          required: true
+          description: UUIDv7 of the order
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The refund options of the order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderRefundOptions"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`refund.read`) or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Order not found, or not linked to this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`refund.options_failed`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Refunds are not available (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/orders/{order_id}/refunds:
+    post:
+      operationId: postV1OrganizationsOrgIdOrdersOrderIdRefunds
+      summary: Refund tickets of an order
+      description: |
+        Records one refund operation and, when the caller also holds
+        `refund.approve`, sends it to the payment provider at once (PAY-06,
+        spec 36 section 8). The `Idempotency-Key` header is required and
+        unique per organization: repeating the call with the same key and the
+        same request answers the first operation (`replayed` true) and writes
+        nothing, the same key with a different request is 409
+        `refund.idempotency_key_reused`. Money goes first: a ticket is
+        cancelled only after the provider accepted its refund. The answer is
+        202 with one refund per ticket in the state it reached. Requires the
+        `refund.create` permission. There is no organization-scoped approve
+        route: a refund created without `refund.approve` stays `requested`
+        and is approved through `POST /v1/refunds/{id}/approve`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: order_id
+          in: path
+          required: true
+          description: UUIDv7 of the order
+          schema: { type: string, format: uuid }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Client-chosen key of 1 to 255 characters that identifies this operation.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderRefundsRequest"
+      responses:
+        "202":
+          description: The operation was recorded (or is the replay of an earlier one).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateOrderRefundsResponse"
+        "400":
+          description: "Invalid request (`refund.invalid_request`): missing Idempotency-Key or reason, no tickets, a non-positive amount, a repeated ticket."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`refund.create`) or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Order not found, or not linked to this organization (`refund.order_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "Not refundable: `refund.seller_site_order`, `refund.nothing_to_refund`, `refund.ticket_not_refundable` (including a ticket under review), `refund.ticket_scanned` (the ticket was already scanned at the gate, by the scans recorded in arena: refused on every arena surface; the attempt is journaled and `error.details.owners_notice` says whether the owners are told), `refund.amount_exceeds_refundable`, `refund.in_progress` or `refund.idempotency_key_reused`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The provider cannot send this refund (`refund.provider_not_supported`, `refund.partial_not_supported`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`refund.create_failed`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Refunds are not available right now (`refund.engine_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/refunds:
+    get:
+      operationId: getV1OrganizationsOrgIdRefunds
+      summary: The organization's refund queue
+      description: |
+        Pages the refunds of the organization, newest first (PAY-06, spec 36
+        section 8). `state` keeps one state, such as `manual_review` for the
+        refunds that need an operator, `event_id` keeps the refunds of one
+        event's orders. Requires the `refund.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: state
+          in: query
+          required: false
+          description: One refund state (requested, approved, provider_pending, succeeded, failed, manual_review, rejected).
+          schema: { type: string }
+        - name: event_id
+          in: query
+          required: false
+          description: Keep only refunds of orders of this event.
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1 to 100, default 50.
+          schema: { type: integer }
+        - name: offset
+          in: query
+          required: false
+          description: How many refunds to skip.
+          schema: { type: integer }
+      responses:
+        "200":
+          description: One page of the queue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderRefundQueue"
+        "400":
+          description: "Invalid filter (refund.invalid_request or a path parameter that is not a UUID)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold the required permission (refund.read) or is not a member of the organization."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Refunds are not available (database not wired)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/refunds/{refund_id}:
+    get:
+      operationId: getV1OrganizationsOrgIdRefundsRefundId
+      summary: One refund with its history
+      description: |
+        Reads one refund of the organization with the steps of its life from
+        the audit trail. A refund of another organization is the route's own
+        404. Requires the `refund.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: refund_id
+          in: path
+          required: true
+          description: UUIDv7 of the refund
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The refund and its history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderRefundDetail"
+        "400":
+          description: "A path parameter is not a UUID."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold the required permission (refund.read) or is not a member of the organization."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Refund not found in this organization (refund.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Refunds are not available (database not wired)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/refunds/{refund_id}/retry:
+    post:
+      operationId: postV1OrganizationsOrgIdRefundsRefundIdRetry
+      summary: Send a failed or never-sent refund again
+      description: |
+        Starts a NEW one-ticket refund operation from a refund the provider
+        refused outright (failed, with no provider refund id), or one that was
+        parked before any provider call, and sends it
+        at once with a new idempotency key. A refund the provider refused stays
+        as it is; one that was parked before any provider call is closed as
+        failed with the code `replaced_by_retry`. A refund whose provider call
+        ended without an answer, or that the provider accepted (even one it
+        later reported failed), is refused with
+        refund.not_retryable: repeating it could return the money twice. A
+        refund is retried once: repeating the call answers the replacement, and
+        when the replacement failed too the call is refused with
+        refund.already_replaced and names it. Requires the `refund.approve`
+        permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: refund_id
+          in: path
+          required: true
+          description: UUIDv7 of the refund
+          schema: { type: string, format: uuid }
+      responses:
+        "202":
+          description: The new operation and its refund in the state it reached.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateOrderRefundsResponse"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold refund.approve or is not a member of the organization."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Refund not found in this organization (refund.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The refund cannot be sent again (refund.not_retryable), it was already retried and the retry failed (refund.already_replaced), or another refund of the payment blocks it."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Refunds are not available (database not wired)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/refunds/{refund_id}/resolve:
+    post:
+      operationId: postV1OrganizationsOrgIdRefundsRefundIdResolve
+      summary: Close a refund waiting for manual review
+      description: |
+        A platform operator closes a refund parked in manual_review after
+        checking the provider's dashboard. Outcome `refunded` means the money
+        went back: the refund becomes succeeded and settles like any accepted
+        refund (its ticket is cancelled only when the refund was meant to
+        cancel it). Outcome `refunded_beyond_payment` records a refund whose
+        money really went back although the payment was already covered (the
+        buyer was refunded twice): it becomes succeeded and cancels,
+        announces and mails nothing. Outcome `not_refunded` is only for a refund the provider dashboard
+        shows did NOT go through (failed or canceled there): it becomes failed
+        and its ticket can be refunded again, which sends a NEW refund to the
+        provider, so choosing it for a refund that did go through returns the
+        money twice. A refund that never reached the provider cannot be closed
+        as refunded (refund.never_sent), nor as `refunded` when it would put
+        the payment's refunds above what was paid (refund.over_budget). A note
+        is required and is kept in the audit trail only; the refund keeps the
+        reason it was parked with, except that one closed as refunded carries
+        no failure. A parked refund without a provider is closed as
+        `refunded` or `not_refunded` exactly as stated and settles nothing. Platform superadmin only, with X-Admin-Reason.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: refund_id
+          in: path
+          required: true
+          description: UUIDv7 of the refund
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveOrderRefundRequest"
+      responses:
+        "200":
+          description: The refund after closing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderRefundItem"
+        "400":
+          description: "Invalid outcome or missing note (refund.invalid_request), or X-Admin-Reason missing (superadmin.missing_reason)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Not a platform operator (refund.resolve_superadmin_only)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Refund not found in this organization (refund.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The refund is not waiting for manual review (refund.not_in_review), never reached the provider (refund.never_sent) or would exceed the payment (refund.over_budget)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Refunds are not available (database not wired)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/tickets/{ticket_id}/scan-refund-exception:
+    post:
+      operationId: postV1OrganizationsOrgIdTicketsTicketIdScanRefundException
+      summary: Allow one refund of a ticket that was already scanned
+      description: |
+        A platform operator allows ONE refund of a ticket that was already
+        scanned at the gate (a show stopped half-way, a scan made by
+        mistake). Every check that refuses a scanned ticket with
+        refund.ticket_scanned honours it; the first refund that uses it spends
+        it, and the exception ends at `expires_at` (at most 24 hours) in any
+        case. A ticket has at most one exception at a time: one that expired
+        unused may be granted again, a spent one is final, and a scan of the
+        ticket after the grant voids it (that scan is a real entry). Only the
+        organization's per-ticket refund route and a cancellation with
+        `refund_mode=manual` honour it; the flat `POST /v1/refunds` and a
+        cancellation with an automatic refund never do. A refund that spent
+        it and returned no money gives it back when it is rejected or closed
+        as not refunded; a refund the provider refused outright keeps it for
+        its retry. The grant is audited with
+        the X-Admin-Reason, the organization's owners get an e-mail and the
+        sales bot tells the organization's group and the operator; those two
+        notices carry the `note` (cut to 500 characters), never the
+        X-Admin-Reason. Platform superadmin only, with X-Admin-Reason.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: ticket_id
+          in: path
+          required: true
+          description: UUIDv7 of the ticket
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              description: How long the exception lives, and a comment.
+              properties:
+                hours:
+                  type: integer
+                  description: Hours the exception is valid, 1 to 24; 24 when left out.
+                note:
+                  type: string
+                  description: A comment of up to 1000 characters, kept in the audit trail; its first 500 characters are shown to the organization's owners and its group.
+      responses:
+        "200":
+          description: The same operator asked again for an exception that is still live and unused (the first answer was lost); the same exception, nothing announced again.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: The granted exception.
+                required: [scan_exception]
+                properties:
+                  scan_exception:
+                    type: object
+                    description: The exception.
+                    required: [id, ticket_id, created_at, expires_at]
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                        description: UUIDv7 of the exception.
+                      ticket_id:
+                        type: string
+                        format: uuid
+                        description: UUIDv7 of the ticket.
+                      created_at:
+                        type: string
+                        format: date-time
+                        description: When it was granted (RFC 3339, UTC).
+                      expires_at:
+                        type: string
+                        format: date-time
+                        description: Until when it can be used (RFC 3339, UTC).
+                      replayed:
+                        type: boolean
+                        description: True when the same operator asked again for an exception that is still live and unused; nothing new was written or announced.
+        "201":
+          description: The exception is recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: The granted exception.
+                required: [scan_exception]
+                properties:
+                  scan_exception:
+                    type: object
+                    description: The exception.
+                    required: [id, ticket_id, created_at, expires_at]
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                        description: UUIDv7 of the exception.
+                      ticket_id:
+                        type: string
+                        format: uuid
+                        description: UUIDv7 of the ticket.
+                      created_at:
+                        type: string
+                        format: date-time
+                        description: When it was granted (RFC 3339, UTC).
+                      expires_at:
+                        type: string
+                        format: date-time
+                        description: Until when it can be used (RFC 3339, UTC).
+                      replayed:
+                        type: boolean
+                        description: True when the same operator asked again for an exception that is still live and unused; nothing new was written or announced.
+        "400":
+          description: "Hours outside 1 to 24 or a note that is too long (refund.invalid_request), or X-Admin-Reason missing (superadmin.missing_reason)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Not a platform operator (refund.scan_exception_superadmin_only)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Ticket not found in this organization (ticket.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The ticket was not scanned (refund.ticket_not_scanned) or its exception was already used, or another operator granted one that is still live (refund.scan_exception_exists)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Refunds are not available (refund.engine_unavailable)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/tickets/{ticket_id}/review-hold/clear:
+    post:
+      operationId: postV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear
+      summary: Lift a ticket's review hold
+      description: |
+        A platform operator lifts the review hold a refund that named no ticket
+        (a partial refund made in the provider dashboard, for example) put on
+        the ticket, once they have decided which tickets that refund covers.
+        While a ticket is on hold no refund of it can be created. A note is
+        required and is kept in the audit trail together with the reason the
+        hold carried. When money returned on the ticket's payment names no
+        ticket, lifting the hold lets this ticket be refunded in full on top
+        of it: the call is refused with that amount
+        (ticket.review_hold_unattributed) until `confirm_unattributed`
+        repeats it. Platform superadmin only, with X-Admin-Reason.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: ticket_id
+          in: path
+          required: true
+          description: UUIDv7 of the ticket
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: What the operator decided.
+              required: [note]
+              properties:
+                note:
+                  type: string
+                  description: What was decided, up to 1000 characters. Kept in the audit trail.
+                confirm_unattributed:
+                  type: integer
+                  format: int64
+                  description: The unattributed amount (minor units) the operator was shown. Required when that amount is above zero.
+      responses:
+        "200":
+          description: The hold is lifted.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: The ticket after the hold was lifted.
+                required: [ticket_id, review_hold, unattributed_amount, currency]
+                properties:
+                  ticket_id:
+                    type: string
+                    format: uuid
+                    description: UUIDv7 of the ticket.
+                  review_hold:
+                    type: boolean
+                    description: Always false.
+                  unattributed_amount:
+                    type: integer
+                    format: int64
+                    description: Money returned on the payment by refunds that name no ticket, in minor units; kept in the audit trail.
+                  currency:
+                    type: string
+                    description: ISO 4217 currency of the payment.
+        "400":
+          description: "Missing note (refund.invalid_request) or X-Admin-Reason missing (superadmin.missing_reason)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Not a platform operator (ticket.review_hold_superadmin_only)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Ticket not found in this organization (ticket.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The ticket is not on review hold (ticket.not_on_review_hold), or money returned on its payment names no ticket and confirm_unattributed does not repeat that amount (ticket.review_hold_unattributed, with unattributed_amount and currency in the details)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Database not wired."
           content:
             application/json:
               schema:

@@ -4434,6 +4434,42 @@ type CreateOperatorNetworkRequest struct {
 	Slug string `json:"slug"`
 }
 
+// CreateOrderRefundsRequest One refund operation on an order.
+type CreateOrderRefundsRequest struct {
+	// CancelTickets Cancel each ticket once the provider accepts its refund. Defaults to true; false is a money-only partial refund.
+	CancelTickets *bool `json:"cancel_tickets,omitempty"`
+
+	// Items The tickets to return money for, each named once (at most 200).
+	Items []struct {
+		// Amount Minor units to return. Omitted means everything that is left on the ticket. A part is allowed only when the provider supports partial refunds.
+		Amount *int64 `json:"amount"`
+
+		// TicketId UUID of the ticket.
+		TicketId openapi_types.UUID `json:"ticket_id"`
+	} `json:"items"`
+
+	// NotifyBuyer Send the buyer a letter about the refund. Defaults to true.
+	NotifyBuyer *bool `json:"notify_buyer,omitempty"`
+
+	// Reason Why the money is returned. Required, it reaches the provider and the audit trail.
+	Reason string `json:"reason"`
+}
+
+// CreateOrderRefundsResponse The refund operation as recorded, one refund per ticket.
+type CreateOrderRefundsResponse struct {
+	// BatchId UUID of the operation.
+	BatchId openapi_types.UUID `json:"batch_id"`
+
+	// OrderId UUID of the order.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// Refunds One refund per ticket, in the state they reached by the time of the answer.
+	Refunds []OrderRefundItem `json:"refunds"`
+
+	// Replayed True when the Idempotency-Key was already used and this is the first call's answer.
+	Replayed bool `json:"replayed"`
+}
+
 // CreateOrgCityRequest Body of POST /v1/organizations/{org_id}/cities.
 type CreateOrgCityRequest struct {
 	// CountryId The existing country the city belongs to.
@@ -8677,6 +8713,223 @@ type OrderPaymentSummary struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// OrderRefundDetail A refund with its history.
+type OrderRefundDetail struct {
+	// History The latest steps of the refund (at most 100), oldest first.
+	History []OrderRefundHistoryEntry `json:"history"`
+
+	// HistoryTotal How many steps the refund has in all; more than `history` holds when the refund has a long life.
+	HistoryTotal int `json:"history_total"`
+
+	// Refund The refund.
+	Refund OrderRefundQueueItem `json:"refund"`
+}
+
+// OrderRefundHistoryEntry One step of a refund's life, read from the audit trail.
+type OrderRefundHistoryEntry struct {
+	// Action Audit action, such as `v1.refund.batch_create` or `v1.refund.provider_result`.
+	Action string `json:"action"`
+
+	// At When the step happened.
+	At time.Time `json:"at"`
+
+	// FailureCode Machine-readable reason of a refusal, when the step has one.
+	FailureCode *string `json:"failure_code"`
+
+	// Outcome The provider's answer for a provider step, when the step has one.
+	Outcome *string `json:"outcome"`
+
+	// State The refund state after the step, when the step has one.
+	State *string `json:"state"`
+}
+
+// OrderRefundItem One refund row of an order, as the organizer's refund API reports it.
+type OrderRefundItem struct {
+	// Amount Amount in minor units of the currency.
+	Amount int64 `json:"amount"`
+
+	// CancelTicket True when the ticket is cancelled once the provider accepts the refund.
+	CancelTicket bool `json:"cancel_ticket"`
+
+	// CreatedAt When the refund was recorded.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency code.
+	Currency string `json:"currency"`
+
+	// FailureCode Machine-readable reason when the provider refused or the refund needs review.
+	FailureCode *string `json:"failure_code"`
+
+	// FailureReason Human-readable reason that goes with failure_code.
+	FailureReason *string `json:"failure_reason"`
+
+	// Id UUID of the refund.
+	Id openapi_types.UUID `json:"id"`
+
+	// ProviderRefundId The provider's id of the refund, once it accepted it.
+	ProviderRefundId *string `json:"provider_refund_id"`
+
+	// ProviderStatus The provider's own status of the refund, when it has answered.
+	ProviderStatus *string `json:"provider_status"`
+
+	// State One of requested, approved, provider_pending, succeeded, failed, manual_review.
+	State string `json:"state"`
+
+	// TicketId The ticket the refund is for; null for a refund of the whole payment.
+	TicketId *openapi_types.UUID `json:"ticket_id"`
+}
+
+// OrderRefundOptions What an organizer may do about the money of an order (PAY-06). `route`
+// says who returns it: `arena_provider` (arena sends the refund to the
+// payment provider), `seller_site` (the seller's own site refunds),
+// `unsupported` or `unknown_provider` (arena cannot send money back
+// through this provider) or `none` (arena took no money for the order).
+type OrderRefundOptions struct {
+	// ActiveRefunds Refunds of the order that are not finished or need an operator.
+	ActiveRefunds []OrderRefundItem `json:"active_refunds"`
+
+	// Currency ISO 4217 currency of the payment; empty when arena took no payment.
+	Currency string `json:"currency"`
+
+	// OrderId UUID of the order.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// PartialRefund True when the provider can return less than the whole payment.
+	PartialRefund bool `json:"partial_refund"`
+
+	// PaymentLeft What is left of the whole payment, in minor units (0 when arena
+	// took no payment). Each ticket's `refundable` is capped by it on its
+	// own, so the tickets together may offer more than this amount; no
+	// refund operation returns more.
+	PaymentLeft int64 `json:"payment_left"`
+
+	// Provider Payment provider of the order; empty when arena took no payment.
+	Provider string `json:"provider"`
+
+	// Refusal Present when arena cannot send a refund for this order, with the error code and message the create call would answer.
+	Refusal *struct {
+		// Code Error code, such as refund.seller_site_order.
+		Code *string `json:"code,omitempty"`
+
+		// Message Human-readable explanation.
+		Message *string `json:"message,omitempty"`
+	} `json:"refusal,omitempty"`
+
+	// Route How the money goes back, see the schema description.
+	Route string `json:"route"`
+
+	// Tickets Every ticket of the order with what can still be returned.
+	Tickets []OrderRefundTicketOption `json:"tickets"`
+}
+
+// OrderRefundQueue One page of the organization's refunds, newest first.
+type OrderRefundQueue struct {
+	// HasMore True when another page follows.
+	HasMore bool `json:"has_more"`
+
+	// Refunds The refunds of this page.
+	Refunds []OrderRefundQueueItem `json:"refunds"`
+
+	// Total How many refunds match the filter.
+	Total int `json:"total"`
+}
+
+// OrderRefundQueueItem defines model for OrderRefundQueueItem.
+type OrderRefundQueueItem struct {
+	// Amount Amount in minor units of the currency.
+	Amount int64 `json:"amount"`
+
+	// CancelTicket True when the ticket is cancelled once the provider accepts the refund.
+	CancelTicket bool `json:"cancel_ticket"`
+
+	// CreatedAt When the refund was recorded.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Creator Who asked for the refund; null when that cannot be told (for example a person who is not a member of the organization).
+	Creator *struct {
+		// Kind `user`, `api_key` or `provider_dashboard` (a refund made in the payment provider's own dashboard).
+		Kind string `json:"kind"`
+
+		// Label The member's name, or their e-mail when they have none (null for a caller acting with an API key), or the API key's name.
+		Label *string `json:"label"`
+	} `json:"creator"`
+
+	// Currency ISO 4217 currency code.
+	Currency string `json:"currency"`
+
+	// EventName Name of the event of the order.
+	EventName *string `json:"event_name"`
+
+	// FailureCode Machine-readable reason when the provider refused or the refund needs review.
+	FailureCode *string `json:"failure_code"`
+
+	// FailureReason Human-readable reason that goes with failure_code.
+	FailureReason *string `json:"failure_reason"`
+
+	// Id UUID of the refund.
+	Id openapi_types.UUID `json:"id"`
+
+	// NotifyBuyer True when the refund asked for the buyer letter, the choice a retry of it inherits (true for a refund made outside an operation).
+	NotifyBuyer *bool `json:"notify_buyer,omitempty"`
+
+	// OrderId UUID of the order, null for a refund without an order.
+	OrderId *openapi_types.UUID `json:"order_id"`
+
+	// OrderNumber The order's number (`orders.system_id`), null for a refund without an order.
+	OrderNumber *int64 `json:"order_number"`
+
+	// ProviderRefundId The provider's id of the refund, once it accepted it.
+	ProviderRefundId *string `json:"provider_refund_id"`
+
+	// ProviderStatus The provider's own status of the refund, when it has answered.
+	ProviderStatus *string `json:"provider_status"`
+
+	// RetryCancelsTicket True when a retry of this refund would cancel its ticket once the provider accepts it - the operation's choice, which a retry inherits (the refund's own `cancel_ticket` for a refund made outside an operation). It can differ from `cancel_ticket`, which a refund parked before any provider call gives up.
+	RetryCancelsTicket *bool `json:"retry_cancels_ticket,omitempty"`
+
+	// Retryable True when the retry route would accept this refund - it provably moved no money and has not been retried yet. The route still decides.
+	Retryable *bool `json:"retryable,omitempty"`
+
+	// State One of requested, approved, provider_pending, succeeded, failed, manual_review.
+	State string `json:"state"`
+
+	// TicketId The ticket the refund is for; null for a refund of the whole payment.
+	TicketId *openapi_types.UUID `json:"ticket_id"`
+
+	// TicketNumber Number of the ticket the refund is for, null for a refund of the whole payment.
+	TicketNumber *int64 `json:"ticket_number"`
+}
+
+// OrderRefundTicketOption What can still be returned for one ticket of an order.
+type OrderRefundTicketOption struct {
+	// InProgress True when a refund that cancels this ticket is already under way.
+	InProgress bool `json:"in_progress"`
+
+	// NotRefundableReason Why `refundable` is 0 although the ticket is active and has money left: `ticket_scanned` (the ticket was already scanned at the gate; never refunded) or `review_hold` (a refund made outside arena put the order's tickets under review). Null otherwise.
+	NotRefundableReason *string `json:"not_refundable_reason"`
+
+	// Paid What the buyer paid for this ticket in minor units, null when the order item carries no price.
+	Paid *int64 `json:"paid"`
+
+	// Refundable Minor units that can still be returned for this ticket.
+	Refundable int64 `json:"refundable"`
+
+	// Refunded Minor units already refunded or on their way to the buyer.
+	Refunded int64 `json:"refunded"`
+
+	// SeatLabel The place as "sector / row / seat" with the parts that exist, null for a general-admission ticket.
+	SeatLabel *string `json:"seat_label"`
+
+	// Status Ticket status; only an active ticket can be refunded.
+	Status string `json:"status"`
+
+	// TicketId UUID of the ticket.
+	TicketId openapi_types.UUID `json:"ticket_id"`
+
+	// TicketNumber The number printed on the ticket, null for a ticket without one.
+	TicketNumber *int64 `json:"ticket_number"`
+}
+
 // OrderResendTicketsRequest Body of the resend-tickets route. Every field is optional; an empty body
 // sends the tickets to the order's own address.
 type OrderResendTicketsRequest struct {
@@ -10645,6 +10898,15 @@ type ReservationEnvelope struct {
 	// `sales_channels.reservation_ttl_override ->
 	// organizations.reservation_ttl_seconds -> 1200 s system default`.
 	Reservation Reservation `json:"reservation"`
+}
+
+// ResolveOrderRefundRequest What a platform operator found at the provider for a refund in manual review.
+type ResolveOrderRefundRequest struct {
+	// Note What was checked, up to 1000 characters. Kept in the audit trail.
+	Note string `json:"note"`
+
+	// Outcome refunded when the money went back at the provider; refunded_beyond_payment when it went back although the payment was already covered; not_refunded when the provider shows it did not go through (the ticket can then be refunded again with a new refund).
+	Outcome string `json:"outcome"`
 }
 
 // RevokeMembershipRequest Request body for
@@ -14214,6 +14476,12 @@ type PostV1OrganizationsOrgIdOrdersIdCancelJSONBody struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
+// PostV1OrganizationsOrgIdOrdersOrderIdRefundsParams defines parameters for PostV1OrganizationsOrgIdOrdersOrderIdRefunds.
+type PostV1OrganizationsOrgIdOrdersOrderIdRefundsParams struct {
+	// IdempotencyKey Client-chosen key of 1 to 255 characters that identifies this operation.
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
 // ListPromoCodeRedemptionsParams defines parameters for ListPromoCodeRedemptions.
 type ListPromoCodeRedemptionsParams struct {
 	// PromoCodeId Narrow the report to one promo code (UUID).
@@ -14233,6 +14501,21 @@ type GetV1OrganizationsOrgIdPromoCodesPromoCodeIdRedemptionsCsvParams struct {
 type ListPromotersParams struct {
 	// IncludeArchived Include archived promoters (true/false, default false).
 	IncludeArchived *bool `form:"include_archived,omitempty" json:"include_archived,omitempty"`
+}
+
+// GetV1OrganizationsOrgIdRefundsParams defines parameters for GetV1OrganizationsOrgIdRefunds.
+type GetV1OrganizationsOrgIdRefundsParams struct {
+	// State One refund state (requested, approved, provider_pending, succeeded, failed, manual_review, rejected).
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// EventId Keep only refunds of orders of this event.
+	EventId *openapi_types.UUID `form:"event_id,omitempty" json:"event_id,omitempty"`
+
+	// Limit Page size, 1 to 100, default 50.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset How many refunds to skip.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // GetV1OrganizationsOrgIdSessionsSessionIdChangeImpactParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdChangeImpact.
@@ -14269,6 +14552,24 @@ type GetV1OrganizationsOrgIdSessionsSessionIdSampleTicketParams struct {
 type GetV1OrganizationsOrgIdSessionsSessionIdSummaryCsvParams struct {
 	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear.
+type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody struct {
+	// ConfirmUnattributed The unattributed amount (minor units) the operator was shown. Required when that amount is above zero.
+	ConfirmUnattributed *int64 `json:"confirm_unattributed,omitempty"`
+
+	// Note What was decided, up to 1000 characters. Kept in the audit trail.
+	Note string `json:"note"`
+}
+
+// PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdScanRefundException.
+type PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody struct {
+	// Hours Hours the exception is valid, 1 to 24; 24 when left out.
+	Hours *int `json:"hours,omitempty"`
+
+	// Note A comment of up to 1000 characters, kept in the audit trail; its first 500 characters are shown to the organization's owners and its group.
+	Note *string `json:"note,omitempty"`
 }
 
 // CreatePaymentIntentParams defines parameters for CreatePaymentIntent.
@@ -14729,6 +15030,9 @@ type RevokeOrganizationMembershipJSONRequestBody = RevokeMembershipRequest
 // PostV1OrganizationsOrgIdOrdersIdCancelJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersIdCancel for application/json ContentType.
 type PostV1OrganizationsOrgIdOrdersIdCancelJSONRequestBody PostV1OrganizationsOrgIdOrdersIdCancelJSONBody
 
+// PostV1OrganizationsOrgIdOrdersOrderIdRefundsJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersOrderIdRefunds for application/json ContentType.
+type PostV1OrganizationsOrgIdOrdersOrderIdRefundsJSONRequestBody = CreateOrderRefundsRequest
+
 // PostV1OrganizationsOrgIdOrdersOrderIdResendTicketsJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersOrderIdResendTickets for application/json ContentType.
 type PostV1OrganizationsOrgIdOrdersOrderIdResendTicketsJSONRequestBody = OrderResendTicketsRequest
 
@@ -14749,6 +15053,15 @@ type CreatePromoterJSONRequestBody = CreatePromoterRequest
 
 // UpdatePromoterJSONRequestBody defines body for UpdatePromoter for application/json ContentType.
 type UpdatePromoterJSONRequestBody = UpdatePromoterRequest
+
+// PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody defines body for PostV1OrganizationsOrgIdRefundsRefundIdResolve for application/json ContentType.
+type PostV1OrganizationsOrgIdRefundsRefundIdResolveJSONRequestBody = ResolveOrderRefundRequest
+
+// PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear for application/json ContentType.
+type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody
+
+// PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONRequestBody defines body for PostV1OrganizationsOrgIdTicketsTicketIdScanRefundException for application/json ContentType.
+type PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONRequestBody PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody
 
 // PostV1OrganizationsOrgIdVenuesJSONRequestBody defines body for PostV1OrganizationsOrgIdVenues for application/json ContentType.
 type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest

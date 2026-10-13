@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	tgbot "github.com/go-telegram/bot"
@@ -108,6 +110,101 @@ type Bot struct {
 	// route handles one admitted update inside its sender's turn; tests
 	// replace it to drive the dispatch without a database.
 	route func(ctx context.Context, u *models.Update)
+	// runID names this process (a refund dialog marks the send it started
+	// with it, so a restart is told from a send still under way).
+	runID string
+	// bg tracks the work started off the single update worker (a refund
+	// call that may wait minutes for the provider), so Run can let it end.
+	bg bgGroup
+	// retrying holds the refund ids whose queue retry is under way.
+	retrying sync.Map
+}
+
+// bgGroup is the WaitGroup of the background work. Once Run starts waiting
+// for it (close), no new work joins: a WaitGroup must not be added to while
+// it is being waited on, so later work runs on the caller's goroutine.
+type bgGroup struct {
+	mu     sync.Mutex
+	closed bool
+	wg     sync.WaitGroup
+}
+
+// add joins the group and reports false once it is closed.
+func (g *bgGroup) add() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.closed {
+		return false
+	}
+	g.wg.Add(1)
+	return true
+}
+
+func (g *bgGroup) done() { g.wg.Done() }
+
+// close stops new work from joining; wait then waits for what joined.
+func (g *bgGroup) close() {
+	g.mu.Lock()
+	g.closed = true
+	g.mu.Unlock()
+}
+
+func (g *bgGroup) wait() { g.wg.Wait() }
+
+// backgroundDrain bounds how long Run waits for that work on shutdown.
+const backgroundDrain = 15 * time.Second
+
+// goBackground runs fn off the update worker and tracks it. A panic in fn
+// is recovered and logged (it must not take the bot down for everyone), and
+// cleanup, when given, then puts the person's dialog back in a usable state.
+//
+// It reports false, and runs nothing, once Run has begun its shutdown wait:
+// the caller is a handler holding the person's lane, and work that writes the
+// dialog through that lane would wait for itself. The caller then tells the
+// person nothing was started.
+func (b *Bot) goBackground(name string, fn, cleanup func()) bool {
+	run := func() {
+		defer func() {
+			if r := recover(); r != nil {
+				b.logger.Error("eventbot: background work panicked", slog.String("work", name),
+					slog.Any("panic", r), slog.String("stack", string(debug.Stack())))
+				if cleanup != nil {
+					b.runCleanup(name, cleanup)
+				}
+			}
+		}()
+		fn()
+	}
+	if !b.bg.add() {
+		return false
+	}
+	go func() {
+		defer b.bg.done()
+		run()
+	}()
+	return true
+}
+
+// detached is the context of work that outlives its handler: no deadline and
+// no cancel, and WITHOUT the handler's per-account values. context.WithoutCancel
+// alone keeps them, among them the account's turn marker (serial.go), and
+// serial.do would then run that work inline, outside the account's lane,
+// racing the person's next update; and the save-before-reply hook
+// (reply_hook.go) of a dialog the work does not own. Background work writes
+// dialog state through Bot.inPersonsTurn on a context made from this one.
+func detached(ctx context.Context) context.Context {
+	ctx = context.WithValue(context.WithoutCancel(ctx), turnKey{}, nil)
+	return context.WithValue(ctx, beforeReplyKey{}, nil)
+}
+
+// runCleanup runs a panicked work's clean-up, itself guarded.
+func (b *Bot) runCleanup(name string, cleanup func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			b.logger.Error("eventbot: background clean-up panicked", slog.String("work", name), slog.Any("panic", r))
+		}
+	}()
+	cleanup()
 }
 
 // New builds the bot; it does not talk to Telegram until Run.
@@ -123,6 +220,7 @@ func New(opts Options) (*Bot, error) {
 		logger = slog.Default()
 	}
 	b := &Bot{
+		runID:   uuid.NewString(),
 		queries: opts.Queries,
 		arena:   opts.Arena,
 		minter:  opts.Minter,
@@ -143,10 +241,10 @@ func New(opts Options) (*Bot, error) {
 		selfOnboarding: opts.SelfOnboarding,
 		noticeEvery:    opts.NoticeEvery,
 		siteButton:     opts.SiteButton,
-		onb:            newOnbDialogs(),
 		onbForms:       &onbFormCache{m: map[string]onbFormEntry{}},
 	}
 	b.sessions = newSessionDialogs(b.dialogs)
+	b.onb = newOnbDialogs(b.dialogs)
 	b.serial = newUserSerial(logger)
 	b.route = b.routeUpdate
 	if b.texts == nil {
@@ -204,7 +302,16 @@ func (b *Bot) Run(ctx context.Context) error {
 	}
 	go b.dialogSweepLoop(ctx)
 	go b.draftSweepLoop(ctx)
+	go b.recoverLostRefundSends(ctx)
 	b.tg.Start(ctx)
+	done := make(chan struct{})
+	b.bg.close()
+	go func() { b.bg.wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(backgroundDrain):
+		b.logger.Warn("eventbot: background work still running at shutdown")
+	}
 	return nil
 }
 
@@ -333,7 +440,8 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
 		// and an event's delete question (its typed word)
 		b.leaveEvStatus(ctx, from.ID)
-		b.leavePromo(ctx, from.ID) // and a promo-code question (EC-11)
+		b.leavePromo(ctx, from.ID)      // and a promo-code question (EC-11)
+		b.leaveIdleRefund(ctx, from.ID) // and a refund question: its word is never an answer after a command (EC-21)
 		switch cmd {
 		case "/start":
 			arg = strings.TrimSpace(arg)
@@ -388,6 +496,9 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 	if text != "" && b.resendText(ctx, chatID, from, text) {
 		return
 	}
+	if text != "" && b.refundText(ctx, chatID, from, text) {
+		return
+	}
 	if text != "" && b.inviteText(ctx, chatID, from, text) {
 		return
 	}
@@ -437,6 +548,9 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 	if !isOrdersCallback(parts[0]) {
 		b.leaveOrders(ctx, from.ID) // and the orders screens' search or cancel word
 	}
+	if !strings.HasPrefix(cq.Data, "or:f:") {
+		b.leaveIdleRefund(ctx, from.ID) // any other press ends the "Refund" dialog (EC-21)
+	}
 	if !strings.HasPrefix(cq.Data, "or:r:") {
 		b.leaveResend(ctx, from.ID) // any other press ends the "Resend tickets" dialog (EC-13)
 	}
@@ -464,6 +578,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.ordersCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "or:"))
 	case "iv":
 		b.inviteCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "iv:"))
+	case "rq":
+		b.queueCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "rq:"))
 	case "pm":
 		b.promoCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pm:"))
 	case "pr":
@@ -653,6 +769,9 @@ func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *model
 	}
 	if canViewSales(id) {
 		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.ord.btn", nil), CallbackData: "or:new"}})
+	}
+	if row := b.queueMenuRow(loc, id); row != nil { // refunds (EC-23)
+		rows = append(rows, row)
 	}
 	if canInvite(id) {
 		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.inv.btn", nil), CallbackData: "iv:new"}})

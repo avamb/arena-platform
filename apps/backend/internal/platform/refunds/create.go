@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -48,6 +49,21 @@ type BatchInput struct {
 	// Approved: the caller holds refund.approve, so the rows skip
 	// 'requested' and are driven at once (spec §7 step 2).
 	Approved bool
+
+	// paymentID, when set, is the payment the refund must go through (a
+	// retry goes through the payment of the refund it replaces, not the
+	// order's newest one).
+	paymentID *uuid.UUID
+	// beforePlan runs inside the writing transaction, under the payment lock,
+	// before a fresh batch is planned; an error rolls everything back.
+	beforePlan func(ctx context.Context, tx pgx.Tx) error
+	// retryOf is the refund a retry replaces: a superadmin's scan exception
+	// that refund spent moved no money (only a refund that provably moved no
+	// money is retried), so the replacement inherits it.
+	retryOf *uuid.UUID
+	// afterInsert runs inside the same transaction once a fresh batch is
+	// written; an error rolls everything back.
+	afterInsert func(ctx context.Context, tx pgx.Tx, created BatchResult) error
 }
 
 // BatchResult is the outcome of CreateBatch.
@@ -114,6 +130,14 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 	if err := e.inTx(ctx, func(tx pgx.Tx) error {
 		var err error
 		ord, pay, err = loadOrderPayment(ctx, tx, in.OrgID, in.OrderID)
+		if err == nil && in.paymentID != nil && *in.paymentID != pay.ID {
+			pay, err = scanPayment(tx.QueryRow(ctx, `SELECT `+paymentColumns+` FROM payment_intents
+				WHERE id = $1 AND org_id = $2 AND checkout_session_id = $3 AND state = 'succeeded'`,
+				*in.paymentID, in.OrgID, ord.CheckoutSessionID))
+			if errors.Is(err, pgx.ErrNoRows) {
+				err = refusal(http.StatusConflict, CodeNothingToRefund, "the refund's payment is no longer refundable", nil)
+			}
+		}
 		return err
 	}); err != nil {
 		return BatchResult{}, err
@@ -143,6 +167,11 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 			res = replay.BatchResult
 			return nil
 		}
+		if in.beforePlan != nil {
+			if err := in.beforePlan(ctx, tx); err != nil {
+				return err
+			}
+		}
 		plan, perr := planBatch(ctx, tx, in, ord, pay, desc.Capabilities.PartialRefund)
 		if perr != nil {
 			return perr
@@ -152,6 +181,11 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 			return err
 		}
 		res = created
+		if in.afterInsert != nil {
+			if err := in.afterInsert(ctx, tx, created); err != nil {
+				return err
+			}
+		}
 		ids := make([]string, 0, len(created.Refunds))
 		tickets := make([]string, 0, len(created.Refunds))
 		var total int64
@@ -194,6 +228,11 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 	if err != nil {
 		var refErr *Error
 		if errors.As(err, &refErr) {
+			if refErr.Code == CodeTicketScanned {
+				if id, perr := uuid.Parse(fmt.Sprint(refErr.Details["ticket_id"])); perr == nil {
+					refErr = ScannedRefusalWithNotice(id, e.RecordScannedBlock(ctx, in.OrgID, id, in.Actor, in.Via))
+				}
+			}
 			return BatchResult{}, refErr
 		}
 		return BatchResult{}, err
@@ -202,6 +241,14 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 		return res, nil
 	}
 	for i, r := range res.Refunds {
+		if !e.timeForCall(ctx) {
+			// Too little of the caller's budget is left for a whole provider
+			// call: a call cut short would be an unknown outcome and a manual
+			// check. The rest stay provider_pending, never attempted, and
+			// refund.sweep sends them within minutes.
+			e.logger.Info("refunds: drive left to the sweep, the work budget is spent", "refund_id", r.ID.String())
+			continue
+		}
 		driven, derr := e.Drive(ctx, r.ID)
 		if derr != nil {
 			// The row is committed provider_pending; refund.sweep picks it
@@ -327,6 +374,8 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 		paid       *int64
 		refunded   int64
 		liveCancel bool
+		onHold     bool
+		scanned    bool
 	}
 	info := make(map[uuid.UUID]*ticketInfo, len(ids))
 	rows, err := tx.Query(ctx, `
@@ -335,17 +384,20 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 		                  WHERE r.ticket_id = t.id AND r.state NOT IN ('failed', 'rejected')
 		                  AND `+countsAgainstBudgetSQL+`), 0)::bigint,
 		       EXISTS (SELECT 1 FROM refunds r
-		                WHERE r.ticket_id = t.id AND r.cancel_ticket AND r.state NOT IN ('failed', 'rejected'))
+		                WHERE r.ticket_id = t.id AND r.cancel_ticket AND r.state NOT IN ('failed', 'rejected')),
+		       t.review_hold, `+ticketBlockedSQL+`
+		         AND NOT EXISTS (SELECT 1 FROM refund_scan_exceptions sx
+		                         WHERE sx.ticket_id = t.id AND $4::uuid IS NOT NULL AND sx.used_by_refund = $4::uuid)
 		FROM   tickets t
 		LEFT JOIN order_items oi ON oi.ticket_id = t.id AND oi.order_id = $2
-		WHERE  t.id = ANY($1) AND t.checkout_session_id = $3`, ids, ord.ID, ord.CheckoutSessionID)
+		WHERE  t.id = ANY($1) AND t.checkout_session_id = $3`, ids, ord.ID, ord.CheckoutSessionID, in.retryOf)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var id uuid.UUID
 		ti := &ticketInfo{}
-		if err := rows.Scan(&id, &ti.status, &ti.paid, &ti.refunded, &ti.liveCancel); err != nil {
+		if err := rows.Scan(&id, &ti.status, &ti.paid, &ti.refunded, &ti.liveCancel, &ti.onHold, &ti.scanned); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -371,6 +423,13 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 			return nil, notRefundable(it.TicketID, "not_active")
 		case ti.paid == nil:
 			return nil, notRefundable(it.TicketID, "no_price")
+		case ti.scanned:
+			return nil, scannedRefusal(it.TicketID)
+		case ti.onHold:
+			// A refund made outside arena left this order's tickets under
+			// review: how much of that money belongs to this ticket is a
+			// person's call, so no refund is sent for it until they decide.
+			return nil, notRefundable(it.TicketID, "review_hold")
 		case ti.liveCancel:
 			return nil, refusal(http.StatusConflict, CodeInProgress, "a refund of this ticket is already in progress",
 				map[string]any{"ticket_id": it.TicketID.String()})
@@ -445,7 +504,40 @@ func insertBatch(ctx context.Context, tx pgx.Tx, in BatchInput, pay Payment, pla
 			}
 			return res, err
 		}
+		// A scanned ticket got here on a superadmin's exception: this refund
+		// spends it, or takes over the one the refund it retries spent.
+		if _, err := tx.Exec(ctx, spendScanExceptionSQL, r.ID, p.TicketID); err != nil {
+			return res, err
+		}
+		if in.retryOf != nil {
+			if _, err := tx.Exec(ctx, `UPDATE refund_scan_exceptions SET used_by_refund = $1
+				WHERE ticket_id = $2 AND used_by_refund = $3`, r.ID, p.TicketID, *in.retryOf); err != nil {
+				return res, err
+			}
+		}
+		// A scanned ticket must now own its exception. When a concurrent
+		// writer (a manual cancellation, say) spent it first, the UPDATE above
+		// changed nothing and this refund is refused: one exception never
+		// covers two money decisions.
+		var unowned bool
+		if err := tx.QueryRow(ctx, `SELECT `+ticketScannedSQL+` AND NOT EXISTS (SELECT 1 FROM refund_scan_exceptions sx
+			WHERE sx.ticket_id = t.id AND sx.used_by_refund = $2) FROM tickets t WHERE t.id = $1`, p.TicketID, r.ID).Scan(&unowned); err != nil {
+			return res, err
+		}
+		if unowned {
+			return res, scannedRefusal(p.TicketID)
+		}
 		res.Refunds = append(res.Refunds, r)
 	}
 	return res, nil
+}
+
+// driveSlack is what a drive needs besides the provider call itself (the
+// claim before it).
+const driveSlack = 2 * time.Second
+
+// timeForCall reports whether ctx leaves room for one whole provider call.
+func (e *Engine) timeForCall(ctx context.Context) bool {
+	dl, ok := ctx.Deadline()
+	return !ok || time.Until(dl) >= e.callTimeout+driveSlack
 }

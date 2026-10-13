@@ -36,6 +36,12 @@ type callOutcome struct {
 	// (payments.RefundDeclinedError.NeedsReview) — manual_review, never
 	// failed.
 	review bool
+	// neverReached: the refusal happened before anything could reach the
+	// provider's refund endpoint (no usable configuration, a module that
+	// refuses the request, a charge reference that does not exist). The
+	// claim's attempt does not count, so the row is a "never sent" one and
+	// an operator may retry it.
+	neverReached bool
 }
 
 // hadUnknownOutcome reports whether an EARLIER call of this refund ended
@@ -108,9 +114,10 @@ func (e *Engine) drive(ctx context.Context, id uuid.UUID) (Refund, bool, error) 
 // sent.
 func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, error) {
 	var (
-		r      Refund
-		pay    Payment
-		parked bool
+		r             Refund
+		pay           Payment
+		parked        bool
+		scannedTicket uuid.UUID
 	)
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
 		var piID *uuid.UUID
@@ -142,6 +149,12 @@ func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, erro
 		if pay, err = getPayment(ctx, tx, *piID); err != nil {
 			return err
 		}
+		if b, ticket, berr := e.blockScannedAtClaim(ctx, tx, id); berr != nil || b != nil {
+			if b != nil {
+				r, scannedTicket = *b, ticket
+			}
+			return berr // the failure commits
+		}
 		if p, err := e.parkOverBudget(ctx, tx, id, pay); err != nil || p != nil {
 			if p != nil {
 				r, parked = *p, true
@@ -166,6 +179,10 @@ func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, erro
 		r = claimed
 		return nil
 	})
+	if err == nil && scannedTicket != uuid.Nil {
+		e.RecordScannedBlock(ctx, r.OrgID, scannedTicket, Actor{}, "claim")
+		return r, pay, ErrNotClaimable
+	}
 	if err == nil && parked {
 		e.logReview(r)
 		return r, pay, ErrNotClaimable
@@ -239,17 +256,32 @@ func (e *Engine) parkOverBudget(ctx context.Context, tx pgx.Tx, id uuid.UUID, pa
 }
 
 // countsAgainstBudgetSQL is true for a live refund row that counts against
-// its payment's and ticket's budget: every row except one the engine parked
-// BEFORE any provider call — held back for its budget (fifth review, M-1)
-// or stuck unsent for 23 hours (sixth review, LOW-3) — because it moved no
-// money; an attempted row may have moved money and keeps counting. The
-// exclusion holds only while the row is still parked: once an operator
-// resolves it (to succeeded, say) it counts again.
-// gen.SumNonFailedRefundsByIntent, the flat routes' sum, carries the same
-// rule (fifth review, LOW d). Unqualified: use it where the refunds row is
-// the innermost table.
+// its payment's and ticket's budget: every row except one parked in
+// manual_review BEFORE any provider call (no attempt, no provider refund id),
+// whatever parked it — held back for its budget, stuck unsent, a missing or
+// broken payment configuration — because it moved no money; an attempted row
+// may have moved money and keeps counting. The exclusion holds only while the
+// row is still parked: once an operator resolves it (to succeeded, say) it
+// counts again. gen.SumNonFailedRefundsByIntent, the flat routes' sum, carries
+// the same rule. A row without a provider was never the engine's (the rows
+// migration 0138 moved to manual_review, or a partial refund the flat approve
+// route parked): it may stand for money returned by hand, so it keeps
+// counting until an operator closes it through Resolve.
+// A refund the provider reversed after it had succeeded, or reported failed
+// after it had accepted it as pending (both confirmed by the provider), moved
+// no money either and leaves the budget while it is parked.
+// Unqualified: use it where the refunds row is the innermost table. The
+// aliased copies (list.go, unattributed.go) and the gen copy must say the
+// same; budget_predicate_test.go compares them.
 const countsAgainstBudgetSQL = `NOT (state = 'manual_review' AND provider_attempts = 0 AND provider_refund_id IS NULL
-	AND COALESCE(failure_code, '') IN ('` + failureBudgetTaken + `', 'stuck_provider_pending'))`
+	AND provider IS NOT NULL)
+	AND NOT (state = 'manual_review' AND COALESCE(failure_code, '') IN ('` + failureReversedAfterSuccess + `', '` + failureFailedAfterAcceptance + `'))`
+
+// failureFailedAfterAcceptance is the failure_code of a refund the provider
+// accepted as pending and later reported failed: the money did not go back.
+// One stable code whatever the provider called the failure (its own code
+// goes into the reason), so the budget rule and the alert can key on it.
+const failureFailedAfterAcceptance = "failed_after_acceptance"
 
 // deterministicModuleError reports an error that repeating the call can
 // never change and that proves the provider was NOT reached: the module is
@@ -282,15 +314,15 @@ func (e *Engine) call(ctx context.Context, r Refund, pay Payment) callOutcome {
 		case errors.As(err, &cfg):
 			// No usable configuration is not a provider verdict: a human
 			// fixes the organization's setup (third review, L3).
-			return callOutcome{kind: outcomeDeclined, review: true, code: cfg.Code, message: cfg.Message}
+			return callOutcome{kind: outcomeDeclined, review: true, neverReached: true, code: cfg.Code, message: cfg.Message}
 		case deterministicModuleError(err):
-			return callOutcome{kind: outcomeDeclined, review: true, code: "payment_module_unavailable", message: err.Error()}
+			return callOutcome{kind: outcomeDeclined, review: true, neverReached: true, code: "payment_module_unavailable", message: err.Error()}
 		}
 		return callOutcome{kind: outcomeUnknown, code: "module_unavailable", message: err.Error()}
 	}
 	refunder, ok := module.(payments.Refunder)
 	if !ok {
-		return callOutcome{kind: outcomeDeclined, review: true, code: failureCodeUnknownProvider, message: "the payment module cannot refund"}
+		return callOutcome{kind: outcomeDeclined, review: true, neverReached: true, code: failureCodeUnknownProvider, message: "the payment module cannot refund"}
 	}
 
 	var out callOutcome
@@ -305,7 +337,7 @@ func (e *Engine) call(ctx context.Context, r Refund, pay Payment) callOutcome {
 				if code, msg, declined := payments.RefundDeclined(rerr); declined {
 					// The charge reference could not be found: the refund
 					// never reached the refund endpoint (third review, L3).
-					return callOutcome{kind: outcomeDeclined, code: code, message: msg, review: true}
+					return callOutcome{kind: outcomeDeclined, code: code, message: msg, review: true, neverReached: true}
 				}
 				return callOutcome{kind: outcomeUnknown, code: "charge_ref_lookup_failed", message: rerr.Error()}
 			}
@@ -331,6 +363,7 @@ func (e *Engine) call(ctx context.Context, r Refund, pay Payment) callOutcome {
 			// charge reference) is a configuration or data problem a human
 			// must look at, not a provider verdict (second review, item 6).
 			out.review = payments.RefundDeclineNeedsReview(err) || deterministicModuleError(err)
+			out.neverReached = deterministicModuleError(err)
 		} else {
 			out.kind, out.code, out.message = outcomeUnknown, "provider_unavailable", err.Error()
 		}
@@ -534,13 +567,13 @@ func recordOutcome(ctx context.Context, tx pgx.Tx, cur Refund, out callOutcome, 
 	switch out.kind {
 	case outcomeSucceeded:
 		sql = `UPDATE refunds SET state = 'succeeded', succeeded_at = now(), failed_at = NULL, provider_refund_id = $2,
-		       provider_status = $3, failure_code = NULL, failure_reason = NULL, settled_at = NULL, ` + acceptAlertSQL + `, ` + reviveCancelSQL + `,
+		       provider_status = $3, failure_code = NULL, failure_reason = NULL, settled_at = NULL, repair_attempts = 0, ` + acceptAlertSQL + `, ` + reviveCancelSQL + `,
 		       updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
 		args = []any{cur.ID, out.result.ProviderRefundID, string(out.result.Status), revivedFromFailed}
 	case outcomePending:
 		// state is set too: a late acceptance brings a parked row back.
 		sql = `UPDATE refunds SET state = 'provider_pending', failed_at = NULL, provider_refund_id = $2, provider_status = $3,
-		       failure_code = NULL, failure_reason = NULL, settled_at = NULL, ` + acceptAlertSQL + `, ` + reviveCancelSQL + `,
+		       failure_code = NULL, failure_reason = NULL, settled_at = NULL, repair_attempts = 0, ` + acceptAlertSQL + `, ` + reviveCancelSQL + `,
 		       updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
 		args = []any{cur.ID, out.result.ProviderRefundID, string(out.result.Status), revivedFromFailed}
 	case outcomeDeclined:
@@ -552,7 +585,16 @@ func recordOutcome(ctx context.Context, tx pgx.Tx, cur Refund, out callOutcome, 
 			if out.review {
 				reason = "the refund needs a human; check the provider dashboard: " + out.message
 			}
-			sql = `UPDATE refunds SET state = 'manual_review', provider_refund_id = $2, provider_status = 'declined',
+			// A refusal that never reached the provider does not use up an
+			// attempt: the row stays a "never sent" one (retryable by an
+			// operator), instead of looking like a call that may have moved
+			// money.
+			releaseAttempt := ``
+			if out.neverReached {
+				releaseAttempt = `provider_attempts = GREATEST(provider_attempts - 1, 0),
+			       first_attempted_at = CASE WHEN provider_attempts <= 1 THEN NULL ELSE first_attempted_at END, `
+			}
+			sql = `UPDATE refunds SET state = 'manual_review', provider_refund_id = $2, provider_status = 'declined', ` + releaseAttempt + `
 			       failure_code = $3, failure_reason = $4, ` + reviewAlertSQL + `, updated_at = now()
 			       WHERE id = $1 RETURNING ` + refundColumns
 			args = []any{cur.ID, strPtr(out.result.ProviderRefundID), truncate(out.code, 100), truncate(reason, 500)}
@@ -573,6 +615,12 @@ func recordOutcome(ctx context.Context, tx pgx.Tx, cur Refund, out callOutcome, 
 	updated, err := scanRefund(tx.QueryRow(ctx, sql, args...))
 	if err != nil {
 		return Refund{}, err
+	}
+	if updated.State == StateFailed {
+		// The provider refused it: a scan exception it spent comes back.
+		if err := ReleaseScanExceptionsTx(ctx, tx, updated.ID, false); err != nil {
+			return Refund{}, err
+		}
 	}
 	// A ticket-less (order-level) refund the provider took for LESS than
 	// the payment cannot be attributed to tickets by arena: flag every

@@ -970,10 +970,17 @@ type webhookRoute struct {
 	// callbacks are matched by OUR order id (a UUID), so a Flitt signature
 	// must never be able to move a Stripe intent of the same org.
 	ExpectedProvider string
+	// ConfigID is the payment configuration whose URL and secret verified
+	// the delivery (per-config route only). A refund event is read back with
+	// THIS configuration, not the organization's preferred one.
+	ConfigID *uuid.UUID
 	// Event, when set, is the module's own normalization of the VERIFIED
 	// body (per-config route, Capabilities.WebhookConfigRouteOnly). The
 	// state machine then runs on it instead of parsing the body.
 	Event *payments.NormalizedEvent
+	// Provider is the provider whose config verified the delivery (per-config
+	// route only); a refund event is matched inside it.
+	Provider string
 }
 
 // processPaymentWebhook is the shared body of both webhook entry points. The
@@ -1020,6 +1027,27 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 		req = parsed
 	}
 
+	if route.Event != nil && route.Event.Kind == payments.EventRefundUpdated {
+		h.processRefundWebhook(w, r, route)
+		return
+	}
+
+	// A module's event is decided by its KIND alone (spec 36, warning M1): a
+	// kind the core does not map — a refund, a dispute, an unpaid completed
+	// session, an event type the module does not know — is acknowledged
+	// without a transition, with no fallback to the event-type table and
+	// before any payment id is demanded (a refund event names no payment).
+	if route.Event != nil && req.TargetState == "" {
+		h.recordWebhookEvent(req.EventType, webhookOutcomeIgnored)
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
+			"acknowledged": true,
+			"event_type":   req.EventType,
+			"processed":    false,
+			"reason":       "unknown event type; no state transition performed",
+		})
+		return
+	}
+
 	if req.ProviderPaymentID == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("webhook.missing_provider_payment_id", "provider_payment_id is required", r))
 		return
@@ -1059,7 +1087,7 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 	// acknowledged-but-unprocessed event must NOT consume the
 	// (provider_payment_id, event_type) key, or the later real event for the
 	// same pair would be swallowed as a duplicate.
-	if req.EventType == eventCheckoutSessionCompleted && req.PaymentStatus != checkoutSessionPaid {
+	if route.Event == nil && req.EventType == eventCheckoutSessionCompleted && req.PaymentStatus != checkoutSessionPaid {
 		h.recordWebhookEvent(req.EventType, webhookOutcomeIgnored)
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"acknowledged": true,

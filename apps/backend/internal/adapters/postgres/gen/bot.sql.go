@@ -539,6 +539,34 @@ func (q *Queries) GetBotDialog(ctx context.Context, telegramUserID int64, kind s
 	return scanBotDialogRow(q.db.QueryRow(ctx, getBotDialog, telegramUserID, kind))
 }
 
+const listLiveBotDialogsByStep = `-- name: ListLiveBotDialogsByStep :many
+SELECT ` + botDialogColumns + `
+FROM   bot_dialogs
+WHERE  kind = $1
+  AND  step = $2
+  AND  expires_at > now()
+ORDER  BY updated_at
+LIMIT  $3`
+
+// ListLiveBotDialogsByStep returns the unexpired dialogs of one kind that
+// stand at one step, oldest first, at most limit of them.
+func (q *Queries) ListLiveBotDialogsByStep(ctx context.Context, kind, step string, limit int32) ([]BotDialogRow, error) {
+	rows, err := q.db.Query(ctx, listLiveBotDialogsByStep, kind, step, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BotDialogRow
+	for rows.Next() {
+		r, err := scanBotDialogRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 const deleteBotDialog = `-- name: DeleteBotDialog :exec
 DELETE FROM bot_dialogs
 WHERE  telegram_user_id = $1
@@ -559,6 +587,23 @@ WHERE  expires_at < $1`
 // the given instant and reports how many went.
 func (q *Queries) DeleteExpiredBotDialogs(ctx context.Context, before time.Time) (int64, error) {
 	tag, err := q.db.Exec(ctx, deleteExpiredBotDialogs, before)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+const deleteExpiredStrangerBotDialogs = `-- name: DeleteExpiredStrangerBotDialogs :execrows
+DELETE FROM bot_dialogs d
+WHERE  d.expires_at < $1
+  AND  NOT EXISTS (SELECT 1 FROM bot_telegram_links l
+                   WHERE l.telegram_user_id = d.telegram_user_id AND l.revoked_at IS NULL)`
+
+// DeleteExpiredStrangerBotDialogs removes the expired dialogs of accounts
+// with no live Telegram link (organizer applicants) at once: they hold a
+// name and a phone and get no day of grace.
+func (q *Queries) DeleteExpiredStrangerBotDialogs(ctx context.Context, now time.Time) (int64, error) {
+	tag, err := q.db.Exec(ctx, deleteExpiredStrangerBotDialogs, now)
 	if err != nil {
 		return 0, err
 	}

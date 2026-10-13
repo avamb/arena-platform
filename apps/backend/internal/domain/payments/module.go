@@ -296,6 +296,13 @@ type NormalizedEvent struct {
 	// as the provider sent them; zero when absent).
 	AmountMinor int64
 	Currency    string
+	// RefundStatus is the refund's outcome on a refund event (Kind
+	// EventRefundUpdated), in arena's vocabulary; empty otherwise.
+	RefundStatus RefundStatus
+	// ArenaRefundID is the arena refund id the provider echoes back from the
+	// refund request's metadata. Set means the refund was created BY ARENA,
+	// whether or not its provider id has been recorded yet.
+	ArenaRefundID string
 	// FailureCode / FailureMessage, when the delivery explains a failure.
 	FailureCode    string
 	FailureMessage string
@@ -372,7 +379,17 @@ type RefundResult struct {
 	Status           RefundStatus
 	FailureCode      string
 	FailureMessage   string
+	// AmountMinor, Currency and ProviderChargeRef describe the refund as the
+	// provider holds it. Filled by RefundLookup (a read-back), not by Refund;
+	// zero/empty when the provider did not say.
+	AmountMinor       int64
+	Currency          string
+	ProviderChargeRef string
 }
+
+// ErrRefundNotFound: the provider answered that it has no such refund
+// (RefundLookup). A definitive answer, unlike a failed read.
+var ErrRefundNotFound = errors.New("payments: the provider has no such refund")
 
 // Refund refusals a module raises BEFORE any network call.
 var (

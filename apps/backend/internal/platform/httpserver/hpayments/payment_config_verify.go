@@ -208,6 +208,54 @@ func (h *Handler) HandleVerifyPaymentConfig(w http.ResponseWriter, r *http.Reque
 	})
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"payment_config": PaymentConfigFromRow(verified),
+		"payment_config":   PaymentConfigFromRow(verified),
+		"webhook_warnings": h.webhookWarnings(ctx, verified),
 	})
+}
+
+// The warning codes of webhook_warnings.
+const (
+	// WarningWebhookEndpointNotFound: the provider account has no endpoint
+	// with this config's callback URL.
+	WarningWebhookEndpointNotFound = "webhook_endpoint_not_found"
+	// WarningRefundEventsNotSubscribed: the endpoint exists but does not
+	// receive every refund event (created, updated, failed), so some refunds
+	// made or changed at the provider never reach arena.
+	WarningRefundEventsNotSubscribed = "refund_events_not_subscribed"
+)
+
+// webhookWarnings asks the provider whether its webhook endpoint for this
+// config receives refund events. Advisory only: any failure to find out
+// (unsupported provider, key without the right to list endpoints, network)
+// yields no warning, never an error.
+func (h *Handler) webhookWarnings(ctx context.Context, row gen.PaymentProviderConfigRow) []string {
+	out := []string{}
+	if h.callbackBase == "" || row.VerificationStatus != VerificationOK {
+		return out
+	}
+	d, known := descriptorFor(row.Provider)
+	if !known {
+		return out
+	}
+	module, err := paymodules.Registry().Build(d.Name, payments.SecretsFromJSON(row.Secrets), h.providerOptions)
+	if err != nil {
+		return out
+	}
+	checker, ok := module.(payments.WebhookSubscriptionChecker)
+	if !ok {
+		return out
+	}
+	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), verifyTimeout)
+	defer cancel()
+	sub, err := checker.CheckWebhookSubscription(callCtx, h.callbackBase+"/v1/payment-intents/webhook/"+row.ID.String())
+	if err != nil {
+		return out
+	}
+	switch {
+	case !sub.EndpointFound:
+		out = append(out, WarningWebhookEndpointNotFound)
+	case !sub.RefundEventsSubscribed:
+		out = append(out, WarningRefundEventsNotSubscribed)
+	}
+	return out
 }

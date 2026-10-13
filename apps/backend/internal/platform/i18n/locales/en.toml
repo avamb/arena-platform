@@ -2863,3 +2863,254 @@ other = "✔ Sale window saved."
 
 ["bot.cat.window_removed"]
 other = "✔ Limit removed."
+
+["bot.ref.btn"]
+other = "💸 Refund"
+
+["bot.ref.private_only"]
+other = "Refunds are made in a private chat with the bot."
+
+["bot.ref.site"]
+other = "Order #{{.Num}} was sold through the seller's own site, so the money is returned there. Arena cannot return it from here."
+
+["bot.ref.unsupported"]
+other = "Arena cannot return money through {{.Provider}} yet. Return it in the provider's dashboard for order #{{.Num}}."
+
+["bot.ref.nothing"]
+other = "There is nothing to refund on order #{{.Num}}: every ticket is already refunded or a refund is in progress."
+
+["bot.ref.pick"]
+other = "<b>Refund · order #{{.Num}}</b>\nChoose the tickets to return money for. The money goes back through {{.Provider}} to the card it was paid with."
+
+["bot.ref.select_all"]
+other = "Select all"
+
+["bot.ref.continue"]
+other = "Continue · {{.Amount}}"
+
+["bot.ref.none_selected"]
+other = "Select at least one ticket."
+
+["bot.ref.partial_btn"]
+other = "Part of the amount"
+
+["bot.ref.partial_ask"]
+other = "Type the amount to return for this ticket, up to {{.Amount}}."
+
+["bot.ref.partial_bad"]
+other = "That is not a valid amount. Type a number greater than 0 and not more than the ticket's refundable amount."
+
+["bot.ref.reason_ask"]
+other = "Why is the money returned? Pick a reason or type your own."
+
+["bot.ref.reason1"]
+other = "Buyer asked for a refund"
+
+["bot.ref.reason2"]
+other = "Event cancelled or moved"
+
+["bot.ref.reason3"]
+other = "Duplicate order"
+
+["bot.ref.reason_other_btn"]
+other = "Another reason"
+
+["bot.ref.reason_text_ask"]
+other = "Type the reason (up to 300 characters). It is kept in the audit trail."
+
+["bot.ref.reason_bad"]
+other = "The reason must be between 1 and 300 characters."
+
+["bot.ref.confirm"]
+other = "<b>Return {{.Amount}}</b> for {{.N}} ticket(s) of order #{{.Num}} through {{.Provider}}?\nReason: {{.Reason}}\n\nThe tickets stop being valid at once. This cannot be undone.\n\nType <b>{{.Word}}</b> to confirm."
+
+["bot.ref.letter_on_btn"]
+other = "✉️ Letter to the buyer: on"
+
+["bot.ref.letter_off_btn"]
+other = "✉️ Letter to the buyer: off"
+
+["bot.ref.word"]
+other = "REFUND"
+
+["bot.ref.word_wrong"]
+other = "That is not the confirmation word. Nothing was refunded. Type {{.Word}} to confirm or go back."
+
+["bot.ref.done_head"]
+other = "<b>Refund requested · order #{{.Num}}</b>"
+
+["bot.ref.line"]
+other = "{{.N}}. {{.Amount}} — {{.Status}}"
+
+["bot.ref.st_succeeded"]
+other = "✅ returned"
+
+["bot.ref.st_pending"]
+other = "⏳ accepted by {{.Provider}}, waiting for confirmation"
+
+["bot.ref.st_failed"]
+other = "❌ failed: {{.Why}}"
+
+["bot.ref.st_review"]
+other = "⚠️ needs a manual check by support"
+
+["bot.ref.st_other"]
+other = "{{.State}}"
+
+["bot.ref.err_progress"]
+other = "A refund of one of these tickets is already in progress for order #{{.Num}}. Open the order to see it."
+
+["bot.ref.err_changed"]
+other = "Order #{{.Num}} changed while you were choosing. Open it again and start the refund again."
+
+["bot.rq.btn"]
+other = "💸 Refunds"
+
+["bot.rq.title"]
+other = "<b>Refunds · {{.Filter}}</b> ({{.Count}})"
+
+["bot.rq.f_review"]
+other = "Need a check"
+
+["bot.rq.f_failed"]
+other = "Failed"
+
+["bot.rq.f_pending"]
+other = "In progress"
+
+["bot.rq.f_done"]
+other = "Returned"
+
+["bot.rq.empty"]
+other = "Nothing here."
+
+["bot.rq.row"]
+other = "{{.Chip}} <b>{{.Order}}</b> · {{.Amount}}{{.Event}}"
+
+["bot.rq.retry_btn"]
+other = "🔁 Retry {{.Order}}"
+
+["bot.rq.order_btn"]
+other = "📄 Order {{.Order}}"
+
+["bot.rq.retry_ask"]
+other = "Send this refund again? Order {{.Order}}, ticket {{.Tickets}}, amount <b>{{.Amount}}</b>. A new refund is created for the same ticket and amount; one that may already have gone through is refused.\n\n{{.TicketRule}} {{.Letter}}"
+
+["bot.rq.retry_cancels_ticket"]
+other = "The ticket stops being valid for entry, also when only part of its price is returned."
+
+["bot.rq.retry_keeps_ticket"]
+other = "The ticket stays valid: only money is returned, as in the first refund."
+
+["bot.rq.retry_letter"]
+other = "The buyer gets an e-mail about the refund."
+
+["bot.rq.retry_no_letter"]
+other = "No e-mail is sent to the buyer, as in the first refund."
+
+["bot.rq.retry_yes"]
+other = "Yes, send {{.Amount}} again"
+
+["bot.rq.retry_no"]
+other = "Cancel"
+
+["bot.rq.already_replaced"]
+other = "This refund was already sent again, so it cannot be retried. Look at the newer refund in the list."
+
+["bot.rq.still_sending"]
+other = "This refund is already being sent again. Wait for the answer here."
+
+["bot.rq.err_progress"]
+other = "Another refund of this ticket is in progress. Nothing was sent again; open the order to see it."
+
+["bot.rq.err_ticket"]
+other = "This ticket can no longer be refunded (it changed, is no longer valid or is under review). Nothing was sent again."
+
+["bot.rq.err_refused"]
+other = "Arena did not send the refund again: the refund or its order changed meanwhile. Nothing was sent; open the order to see its state."
+
+["bot.rq.err_partial"]
+other = "This payment provider returns only the whole payment at once, and part of it is already back. Nothing was sent; return the rest in the provider's dashboard."
+
+["bot.rq.retry_done"]
+other = "<b>Refund sent again</b>"
+
+["bot.rq.not_retryable"]
+other = "This refund cannot be sent again: the provider may already have returned the money. Support will check it."
+
+["bot.rq.provider_word"]
+other = "the provider"
+["bot.ref.final"]
+other = "<b>Final check</b>\nOrder #{{.Num}} · {{.N}} ticket(s): {{.Tickets}}\nTo return: <b>{{.Amount}}</b> through {{.Provider}}\nLetter to the buyer: {{.Letter}}\n\nThese tickets stop being valid for entry, also when only part of their price is returned. The payment provider returns the money; this cannot be undone."
+
+["bot.ref.yes_btn"]
+other = "✅ Yes, refund {{.Amount}}"
+
+["bot.ref.no_btn"]
+other = "Cancel"
+
+["bot.ref.letter_yes"]
+other = "will be sent"
+
+["bot.ref.letter_no"]
+other = "will not be sent"
+
+["bot.ref.cancelled"]
+other = "Cancelled. Nothing was refunded."
+
+["bot.ref.sending"]
+other = "Sending the refund… The payment provider may take a few minutes; the bot keeps working meanwhile and will write here when the answer is in."
+
+["bot.ref.err_unsupported"]
+other = "This payment provider cannot send this refund from arena. Nothing was refunded; refund it in the provider's dashboard."
+
+["bot.ref.err_unavailable"]
+other = "Refunds are not available right now. Nothing was refunded; try again in a few minutes."
+
+["bot.ref.err_ticket"]
+other = "One of the tickets can no longer be refunded (it changed, is no longer valid or is under review). Nothing was refunded. Open the order and check."
+
+["bot.ref.err_timeout"]
+other = "The answer is taking longer than expected. Nothing is lost: open the order in a minute to see the state of the refund. Do not start it again."
+
+["bot.ref.err_scanned"]
+other = "This ticket was already used at the gate (a scan recorded in Arena), so it cannot be refunded. Nothing was refunded."
+
+["bot.ref.scanned_all"]
+other = "Order #{{.Num}}: the ticket(s) were already used at the gate (scans recorded in Arena), so there is nothing to refund here."
+
+["bot.ref.scanned_note"]
+other = "Not offered: {{.Tickets}} - already used at the gate (scans recorded in Arena; an entry scanned only in MACS is not seen here).\n\n"
+
+["bot.ref.err_scanned_notified"]
+other = "This ticket was already used at the gate (a scan recorded in Arena), so it cannot be refunded. Nothing was refunded. The organization's owners have been notified."
+
+["bot.ref.err_scanned_nobody"]
+other = "This ticket was already used at the gate (a scan recorded in Arena), so it cannot be refunded. Nothing was refunded. Arena has no e-mail address of the organization's owners, so the platform operator was told instead."
+
+["bot.ref.still_sending"]
+other = "The refund of order #{{.Num}} is still being sent. Wait for the answer here; nothing can be changed until then."
+
+["bot.ref.send_lost"]
+other = "The bot was restarted while this refund was being sent, so its answer was lost. Confirm again: the same operation is repeated, the money is never returned twice."
+
+["bot.ref.restart_notice"]
+other = "The bot restarted while the refund for order №{{.Num}} was being sent, so its answer was lost. Check it and confirm again: the same operation is repeated, the money is never returned twice."
+
+["bot.ref.check_btn"]
+other = "Check the refund"
+
+["bot.ref.stale_btn"]
+other = "That button belongs to an older screen and did nothing. Use the buttons below."
+
+["bot.ref.err_forbidden"]
+other = "Arena refused the refund: you no longer have the right to refund in this organization. Nothing was sent."
+
+["bot.ref.st_queued"]
+other = "🕓 queued, not sent to the provider yet; Arena sends it within a few minutes"
+
+["bot.ref.no_payment"]
+other = "Arena took no payment for order #{{.Num}} (a free order or an invitation), so there is nothing to refund here."
+
+["bot.ref.unknown_provider"]
+other = "Arena does not know the payment provider of order #{{.Num}}, so it cannot refund it. Refund it in the provider's dashboard or write to support. Nothing was sent."

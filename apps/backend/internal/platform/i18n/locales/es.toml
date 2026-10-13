@@ -2718,3 +2718,254 @@ other = "✔ Ventana de venta guardada."
 
 ["bot.cat.window_removed"]
 other = "✔ Límite quitado."
+
+["bot.ref.btn"]
+other = "💸 Devolver dinero"
+
+["bot.ref.private_only"]
+other = "Las devoluciones se hacen en un chat privado con el bot."
+
+["bot.ref.site"]
+other = "El pedido n.º {{.Num}} se vendió en la web del vendedor, así que el dinero se devuelve allí. Desde Arena no se puede devolver."
+
+["bot.ref.unsupported"]
+other = "Arena todavía no puede devolver dinero con {{.Provider}}. Devuélvelo desde el panel del proveedor para el pedido n.º {{.Num}}."
+
+["bot.ref.nothing"]
+other = "No hay nada que devolver en el pedido n.º {{.Num}}: todas las entradas ya están devueltas o hay una devolución en curso."
+
+["bot.ref.pick"]
+other = "<b>Devolución · pedido n.º {{.Num}}</b>\nElige las entradas cuyo dinero devolver. El dinero vuelve con {{.Provider}} a la tarjeta con la que se pagó."
+
+["bot.ref.select_all"]
+other = "Seleccionar todas"
+
+["bot.ref.continue"]
+other = "Continuar · {{.Amount}}"
+
+["bot.ref.none_selected"]
+other = "Selecciona al menos una entrada."
+
+["bot.ref.partial_btn"]
+other = "Parte del importe"
+
+["bot.ref.partial_ask"]
+other = "Escribe el importe a devolver por esta entrada, como máximo {{.Amount}}."
+
+["bot.ref.partial_bad"]
+other = "Ese importe no es válido. Escribe un número mayor que 0 y que no supere lo que se puede devolver por la entrada."
+
+["bot.ref.reason_ask"]
+other = "¿Por qué se devuelve el dinero? Elige un motivo o escribe el tuyo."
+
+["bot.ref.reason1"]
+other = "El comprador pidió la devolución"
+
+["bot.ref.reason2"]
+other = "Evento cancelado o aplazado"
+
+["bot.ref.reason3"]
+other = "Pedido duplicado"
+
+["bot.ref.reason_other_btn"]
+other = "Otro motivo"
+
+["bot.ref.reason_text_ask"]
+other = "Escribe el motivo (hasta 300 caracteres). Queda guardado en el registro."
+
+["bot.ref.reason_bad"]
+other = "El motivo debe tener entre 1 y 300 caracteres."
+
+["bot.ref.confirm"]
+other = "¿<b>Devolver {{.Amount}}</b> por {{.N}} entrada(s) del pedido n.º {{.Num}} con {{.Provider}}?\nMotivo: {{.Reason}}\n\nLas entradas dejan de ser válidas al instante. No se puede deshacer.\n\nEscribe <b>{{.Word}}</b> para confirmar."
+
+["bot.ref.letter_on_btn"]
+other = "✉️ Carta al comprador: sí"
+
+["bot.ref.letter_off_btn"]
+other = "✉️ Carta al comprador: no"
+
+["bot.ref.word"]
+other = "DEVOLVER"
+
+["bot.ref.word_wrong"]
+other = "Esa no es la palabra de confirmación. No se devolvió nada. Escribe {{.Word}} para confirmar o vuelve atrás."
+
+["bot.ref.done_head"]
+other = "<b>Devolución solicitada · pedido n.º {{.Num}}</b>"
+
+["bot.ref.line"]
+other = "{{.N}}. {{.Amount}} — {{.Status}}"
+
+["bot.ref.st_succeeded"]
+other = "✅ devuelto"
+
+["bot.ref.st_pending"]
+other = "⏳ aceptado por {{.Provider}}, esperando confirmación"
+
+["bot.ref.st_failed"]
+other = "❌ no se pudo: {{.Why}}"
+
+["bot.ref.st_review"]
+other = "⚠️ requiere revisión manual del soporte"
+
+["bot.ref.st_other"]
+other = "{{.State}}"
+
+["bot.ref.err_progress"]
+other = "Ya hay una devolución en curso para alguna de estas entradas del pedido n.º {{.Num}}. Abre el pedido para verla."
+
+["bot.ref.err_changed"]
+other = "El pedido n.º {{.Num}} cambió mientras elegías. Ábrelo de nuevo y empieza la devolución otra vez."
+
+["bot.rq.btn"]
+other = "💸 Devoluciones"
+
+["bot.rq.title"]
+other = "<b>Devoluciones · {{.Filter}}</b> ({{.Count}})"
+
+["bot.rq.f_review"]
+other = "Requieren revisión"
+
+["bot.rq.f_failed"]
+other = "Fallidas"
+
+["bot.rq.f_pending"]
+other = "En curso"
+
+["bot.rq.f_done"]
+other = "Devueltas"
+
+["bot.rq.empty"]
+other = "No hay nada aquí."
+
+["bot.rq.row"]
+other = "{{.Chip}} <b>{{.Order}}</b> · {{.Amount}}{{.Event}}"
+
+["bot.rq.retry_btn"]
+other = "🔁 Reintentar {{.Order}}"
+
+["bot.rq.order_btn"]
+other = "📄 Pedido {{.Order}}"
+
+["bot.rq.retry_ask"]
+other = "¿Enviar esta devolución otra vez? Pedido {{.Order}}, entrada {{.Tickets}}, importe <b>{{.Amount}}</b>. Se crea una devolución nueva para la misma entrada e importe; una que pudo haberse hecho ya se rechaza.\n\n{{.TicketRule}} {{.Letter}}"
+
+["bot.rq.retry_cancels_ticket"]
+other = "La entrada deja de ser válida para entrar, también cuando solo se devuelve una parte de su precio."
+
+["bot.rq.retry_keeps_ticket"]
+other = "La entrada sigue siendo válida: solo se devuelve dinero, como en la primera devolución."
+
+["bot.rq.retry_letter"]
+other = "El comprador recibe un correo sobre la devolución."
+
+["bot.rq.retry_no_letter"]
+other = "No se envía ningún correo al comprador, como en la primera devolución."
+
+["bot.rq.retry_yes"]
+other = "Sí, enviar {{.Amount}} otra vez"
+
+["bot.rq.retry_no"]
+other = "Cancelar"
+
+["bot.rq.already_replaced"]
+other = "Esta devolución ya se reenvió, así que no se puede reintentar. Mira la devolución más reciente en la lista."
+
+["bot.rq.still_sending"]
+other = "Esta devolución ya se está reenviando. Espera la respuesta aquí."
+
+["bot.rq.err_progress"]
+other = "Ya hay otra devolución en curso para esta entrada. No se reenvió nada; abre el pedido para verla."
+
+["bot.rq.err_ticket"]
+other = "Esta entrada ya no se puede devolver (cambió, ya no es válida o está en revisión). No se reenvió nada."
+
+["bot.rq.err_refused"]
+other = "Arena no reenvió la devolución: la devolución o su pedido cambiaron mientras tanto. No se envió nada; abre el pedido para ver su estado."
+
+["bot.rq.err_partial"]
+other = "Este proveedor de pagos solo devuelve el pago completo de una vez, y una parte ya se devolvió. No se envió nada; devuelve el resto en el panel del proveedor."
+
+["bot.rq.retry_done"]
+other = "<b>Devolución enviada de nuevo</b>"
+
+["bot.rq.not_retryable"]
+other = "Esta devolución no se puede reenviar: el proveedor puede haber devuelto ya el dinero. Soporte la revisará."
+
+["bot.rq.provider_word"]
+other = "el proveedor"
+["bot.ref.final"]
+other = "<b>Comprobación final</b>\nPedido n.º {{.Num}} · {{.N}} entrada(s): {{.Tickets}}\nA devolver: <b>{{.Amount}}</b> a través de {{.Provider}}\nCorreo al comprador: {{.Letter}}\n\nEstas entradas dejan de ser válidas para entrar, también cuando solo se devuelve una parte de su precio. El proveedor de pago devuelve el dinero; esto no se puede deshacer."
+
+["bot.ref.yes_btn"]
+other = "✅ Sí, devolver {{.Amount}}"
+
+["bot.ref.no_btn"]
+other = "Cancelar"
+
+["bot.ref.letter_yes"]
+other = "se enviará"
+
+["bot.ref.letter_no"]
+other = "no se enviará"
+
+["bot.ref.cancelled"]
+other = "Cancelado. No se devolvió nada."
+
+["bot.ref.sending"]
+other = "Enviando la devolución… El proveedor de pago puede tardar unos minutos; mientras tanto el bot sigue funcionando y escribirá aquí cuando llegue la respuesta."
+
+["bot.ref.err_unsupported"]
+other = "Este proveedor de pago no puede enviar esta devolución desde arena. No se devolvió nada; devuélvelo en el panel del proveedor."
+
+["bot.ref.err_unavailable"]
+other = "Las devoluciones no están disponibles ahora. No se devolvió nada; inténtalo de nuevo en unos minutos."
+
+["bot.ref.err_ticket"]
+other = "Una de las entradas ya no se puede devolver (cambió, ya no es válida o está en revisión). No se devolvió nada. Abre el pedido y compruébalo."
+
+["bot.ref.err_timeout"]
+other = "La respuesta tarda más de lo normal. No se ha perdido nada: abre el pedido en un minuto para ver el estado de la devolución. No la inicies de nuevo."
+
+["bot.ref.err_scanned"]
+other = "Esta entrada ya se usó en la puerta (un escaneo registrado en Arena), así que no se puede devolver. No se devolvió nada."
+
+["bot.ref.scanned_all"]
+other = "Pedido n.º {{.Num}}: las entradas ya se usaron en la puerta (escaneos registrados en Arena), no hay nada que devolver aquí."
+
+["bot.ref.scanned_note"]
+other = "No se ofrecen: {{.Tickets}} — ya usadas en la puerta (según los escaneos registrados en Arena; una entrada escaneada solo en MACS no se ve aquí).\n\n"
+
+["bot.ref.err_scanned_notified"]
+other = "Esta entrada ya se usó en la puerta (un escaneo registrado en Arena), así que no se puede devolver. No se devolvió nada. Los propietarios de la organización han sido avisados."
+
+["bot.ref.err_scanned_nobody"]
+other = "Esta entrada ya se usó en la puerta (un escaneo registrado en Arena), así que no se puede devolver. No se devolvió nada. Arena no tiene la dirección de los propietarios de la organización, así que se avisó al operador de la plataforma."
+
+["bot.ref.still_sending"]
+other = "La devolución del pedido n.º {{.Num}} todavía se está enviando. Espera la respuesta aquí; hasta entonces no se puede cambiar nada."
+
+["bot.ref.send_lost"]
+other = "El bot se reinició mientras se enviaba esta devolución y su respuesta se perdió. Confirma de nuevo: se repite la misma operación, el dinero nunca se devuelve dos veces."
+
+["bot.ref.restart_notice"]
+other = "El bot se reinició mientras se enviaba la devolución del pedido n.º {{.Num}} y su respuesta se perdió. Revísala y confirma de nuevo: se repite la misma operación, el dinero nunca se devuelve dos veces."
+
+["bot.ref.check_btn"]
+other = "Revisar la devolución"
+
+["bot.ref.stale_btn"]
+other = "Ese botón es de una pantalla anterior y no hizo nada. Usa los botones de abajo."
+
+["bot.ref.err_forbidden"]
+other = "Arena rechazó la devolución: ya no tienes permiso para hacer devoluciones en esta organización. No se envió nada."
+
+["bot.ref.st_queued"]
+other = "🕓 en cola, aún no enviada al proveedor; Arena la envía en unos minutos"
+
+["bot.ref.no_payment"]
+other = "Arena no cobró nada por el pedido n.º {{.Num}} (un pedido gratuito o una invitación), así que aquí no hay nada que devolver."
+
+["bot.ref.unknown_provider"]
+other = "Arena no conoce el proveedor de pago del pedido n.º {{.Num}}, así que no puede devolver el dinero. Devuélvelo en el panel del proveedor o escribe a soporte. No se envió nada."

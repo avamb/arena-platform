@@ -9,6 +9,7 @@ package refunds_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -330,12 +331,60 @@ func TestEngine_PoisonedAlertDoesNotBlockTheOthers(t *testing.T) {
 		t.Fatalf("young poisoned alert: due %v attempts %d; want still owed with %d attempts", due, attempts, refunds.MaxAlertAttempts)
 	}
 	f.exec(t, `UPDATE refunds SET alert_due_at = now() - interval '25 hours', alert_lease_until = NULL WHERE id = $1`, again)
+	// Telegram demonstrably works: a healthy alert owed in the same pass is
+	// delivered before the poisoned one is refused, so only then is it
+	// given up (a Telegram that refuses everything proves nothing about
+	// this message, see TestEngine_AlertSurvivesALongTelegramOutage).
+	healthy2 := f.rawRefund(t, pay, 100, "manual_review", `failure_code = 'stuck_provider_pending', alert_due_at = now() - interval '2 minutes'`)
 	if _, err := e.Sweep(ctx, time.Now(), n2); err != nil {
 		t.Fatal(err)
 	}
 	_ = f.pool.QueryRow(ctx, `SELECT alert_due_at, alert_attempts FROM refunds WHERE id = $1`, again).Scan(&due, &attempts)
-	if due != nil || len(n2.texts) != 0 {
-		t.Fatalf("old poisoned alert: due %v delivered %v; want given up", due, n2.texts)
+	if due != nil || len(n2.texts) != 1 || !strings.Contains(n2.texts[0], healthy2.String()) {
+		t.Fatalf("old poisoned alert: due %v delivered %v; want given up after the healthy one went out", due, n2.texts)
+	}
+}
+
+// downNotifier refuses every message, as a Telegram outage does.
+type downNotifier struct{ tries int }
+
+func (d *downNotifier) Send(ctx context.Context, text string) error {
+	return d.SendConfirmed(ctx, text)
+}
+func (d *downNotifier) SendConfirmed(context.Context, string) error {
+	d.tries++
+	return fmt.Errorf("telegram is down")
+}
+
+// TestEngine_AlertSurvivesALongTelegramOutage: an alert owed for more than a
+// day with 20 refused attempts is NOT given up while nothing at all could be
+// delivered in the pass — Telegram being down says nothing about the
+// message. It is still owed, and goes out once Telegram answers.
+func TestEngine_AlertSurvivesALongTelegramOutage(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	ctx := context.Background()
+	e := f.engine(&fakeModule{partial: true}, false)
+	pay := f.extraPayment(t)
+	owed := f.rawRefund(t, pay, 100, "manual_review", `failure_code = 'stuck_provider_pending', alert_due_at = now() - interval '30 hours'`)
+	f.exec(t, `UPDATE refunds SET alert_attempts = $2 WHERE id = $1`, owed, refunds.MaxAlertAttempts+5)
+	down := &downNotifier{}
+	if _, err := e.Sweep(ctx, time.Now(), down); err != nil {
+		t.Fatal(err)
+	}
+	var due *time.Time
+	if err := f.pool.QueryRow(ctx, `SELECT alert_due_at FROM refunds WHERE id = $1`, owed).Scan(&due); err != nil {
+		t.Fatal(err)
+	}
+	if down.tries == 0 || due == nil {
+		t.Fatalf("tries %d, alert_due_at %v: the alert must stay owed through an outage", down.tries, due)
+	}
+	f.exec(t, `UPDATE refunds SET alert_lease_until = NULL WHERE id = $1`, owed)
+	ok := &recordingNotifier{}
+	if _, err := e.Sweep(ctx, time.Now(), ok); err != nil {
+		t.Fatal(err)
+	}
+	if len(ok.texts) != 1 || !strings.Contains(ok.texts[0], owed.String()) {
+		t.Fatalf("after the outage delivered %v; want the owed alert", ok.texts)
 	}
 }
 

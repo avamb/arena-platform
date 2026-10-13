@@ -80,6 +80,9 @@ func (s *Server) handleCancelTicket(w http.ResponseWriter, r *http.Request) {
 	if !s.rowOrgAccess(w, r, orgID, true, "ticket.not_found", "ticket not found") {
 		return
 	}
+	if !s.cancelMoneyAllowedForScan(w, r, orgID, id) {
+		return
+	}
 	s.ticketsHandler().HandleCancelTicket(w, r)
 }
 

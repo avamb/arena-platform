@@ -97,6 +97,13 @@ func (f *pay03Fixture) cleanup(t *testing.T, venue, event, channel uuid.UUID) {
 		arg any
 	}{
 		{`UPDATE tickets SET refund_id = NULL WHERE order_id = $1`, f.order},
+		// Jobs the refunds of this order queued (the buyer letter, a ticket
+		// letter, the owners' scan notice): a generic worker_jobs drain of
+		// another test has no handler for them and fails (AGENTS.md).
+		{`DELETE FROM worker_jobs WHERE job_type = 'refund.buyer_email'
+		  AND payload->>'batch_id' IN (SELECT id::text FROM refund_batches WHERE order_id = $1)`, f.order},
+		{`DELETE FROM worker_jobs WHERE job_type IN ('ticket.deliver', 'refund.scanned_alert_email')
+		  AND payload->>'ticket_id' = ANY($1::text[])`, []string{f.tickets[0].String(), f.tickets[1].String()}},
 		{`DELETE FROM refunds WHERE payment_intent_id = $1`, f.pay},
 		{`DELETE FROM refund_batches WHERE order_id = $1`, f.order},
 		{`DELETE FROM order_events WHERE order_id = $1`, f.order},

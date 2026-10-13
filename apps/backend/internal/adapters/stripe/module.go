@@ -13,6 +13,7 @@ package stripe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -166,7 +167,8 @@ type eventEnvelope struct {
 			PaymentStatus string `json:"payment_status"`
 			PaymentIntent string `json:"payment_intent"`
 			// refund.* only.
-			FailureReason string `json:"failure_reason"`
+			FailureReason string            `json:"failure_reason"`
+			Metadata      map[string]string `json:"metadata"`
 		} `json:"object"`
 	} `json:"data"`
 }
@@ -239,7 +241,9 @@ func normalizeEvent(body []byte) payments.NormalizedEvent {
 		ev.Kind = payments.EventRefundUpdated
 		ev.ProviderRefundID = ev.ProviderPaymentID
 		ev.ProviderPaymentID = ""
+		ev.ArenaRefundID = strings.TrimSpace(obj.Metadata["arena_refund_id"])
 		ev.FailureCode = obj.FailureReason
+		ev.RefundStatus = refundResult(refundObject{ID: ev.ProviderRefundID, Status: obj.Status, FailureReason: obj.FailureReason}).Status
 	case "charge.dispute.created":
 		ev.Kind = payments.EventDisputeOpened
 		ev.ProviderPaymentID = ""
@@ -291,13 +295,19 @@ func providerAmount(currency string, minor int64) (int64, error) {
 
 // refundObject is the subset of Stripe's Refund object arena reads.
 type refundObject struct {
-	ID            string `json:"id"`
-	Status        string `json:"status"`
-	FailureReason string `json:"failure_reason"`
+	ID            string      `json:"id"`
+	Status        string      `json:"status"`
+	FailureReason string      `json:"failure_reason"`
+	Amount        json.Number `json:"amount"`
+	Currency      string      `json:"currency"`
+	// PaymentIntent is the pi_… id (not expanded).
+	PaymentIntent string `json:"payment_intent"`
 }
 
 func refundResult(r refundObject) payments.RefundResult {
-	out := payments.RefundResult{ProviderRefundID: r.ID, FailureCode: r.FailureReason}
+	amount, _ := r.Amount.Int64()
+	out := payments.RefundResult{ProviderRefundID: r.ID, FailureCode: r.FailureReason,
+		AmountMinor: amount, Currency: strings.ToUpper(r.Currency), ProviderChargeRef: strings.TrimSpace(r.PaymentIntent)}
 	switch r.Status {
 	case "succeeded":
 		out.Status = payments.RefundSucceeded
@@ -381,6 +391,10 @@ func (a *Adapter) RefundStatus(ctx context.Context, providerRefundID string) (pa
 	}
 	rawBody, _, err := a.doRequest(ctx, http.MethodGet, a.cfg.BaseURL+"/refunds/"+url.PathEscape(id), nil, "")
 	if err != nil {
+		var apiErr *apiError
+		if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
+			return payments.RefundResult{}, fmt.Errorf("stripe: RefundStatus: %w: %w", payments.ErrRefundNotFound, err)
+		}
 		return payments.RefundResult{}, fmt.Errorf("stripe: RefundStatus: %w", err)
 	}
 	var refund refundObject

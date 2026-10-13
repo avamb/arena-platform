@@ -40,6 +40,8 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
@@ -256,6 +258,15 @@ func drainWorkerJobsUntilEmail(
 	wantTo string,
 ) smtpMessage {
 	t.Helper()
+	// Jobs other tests of the shared database queue and may leave behind
+	// (the refund letter, a ticket letter, the owners' scan notice) are not
+	// this drain's to run: they are closed without running, instead of
+	// failing the test with "no handler for job type" (AGENTS.md).
+	for _, jt := range []string{refunds.JobTypeBuyerEmail, refunds.JobTypeScannedAlertEmail, delivery.JobType} {
+		if _, ok := reg.Lookup(jt); !ok {
+			reg.Register(jt, func(context.Context, []byte) error { return nil })
+		}
+	}
 	deadline := time.Now().Add(15 * time.Second)
 	processed := 0
 	for time.Now().Before(deadline) && processed <= 50 {

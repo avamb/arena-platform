@@ -71,6 +71,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/opswatchdog"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/reservationexpiry"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesnotify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
@@ -531,6 +532,23 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	reg.Register(sessionchange.JobTypeChangeEmail, delivery.NewChangeEmailHandler(delivery.ChangeEmailOptions{
 		HandlerOptions: deliveryOpts,
 		DB:             pool,
+	}))
+	// refund.buyer_email is the letter about money that went back (PAY-07);
+	// the refund engine queues it once a refund of an operation settles.
+	reg.Register(refunds.JobTypeBuyerEmail, delivery.NewRefundEmailHandler(delivery.RefundEmailOptions{
+		HandlerOptions: deliveryOpts,
+		DB:             pool,
+	}))
+
+	// refund.scanned_alert_email tells an organization's owners that a refund
+	// of an already scanned ticket was refused (refunds.RecordScannedBlock
+	// queues it, at most once a day per ticket and actor).
+	reg.Register(refunds.JobTypeScannedAlertEmail, delivery.NewScannedAlertHandler(delivery.ScannedAlertOptions{
+		Sender:      deliveryOpts.Sender,
+		FromAddress: deliveryOpts.FromAddress,
+		Templates:   deliveryOpts.Templates,
+		DB:          pool,
+		Logger:      logger,
 	}))
 
 	// auth.email_verification and auth.password_reset_email deliver

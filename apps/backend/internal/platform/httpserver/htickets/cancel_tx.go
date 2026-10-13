@@ -32,6 +32,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
 
 // CancelTicketParams is the input of CancelTicketTx. ActorType/ActorID name
@@ -65,6 +66,13 @@ type CancelTicketParams struct {
 	// (RefundAmount) in the same transaction. Mutually exclusive with Refund,
 	// which books money a seller returned outside arena.
 	RefundID *uuid.UUID
+	// ScanGuard applies the scanned-ticket rule inside the cancellation
+	// transaction (the operator route): refund_mode manual or automatic is
+	// refused for a ticket scanned at the gate. manual (money returned
+	// outside arena) passes on a live superadmin exception and spends it
+	// here; automatic (a refund through the provider) never takes one, an
+	// exception is honoured only by the organization's per-ticket route.
+	ScanGuard bool
 }
 
 // CancelRefundRecord is the refund decision CancelTicketTx records with the
@@ -145,6 +153,24 @@ func (h *Handler) CancelTicketTx(ctx context.Context, p CancelTicketParams) (Can
 	}
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 	txq := h.ticketQueries.WithTx(tx)
+
+	if p.ScanGuard && (p.RefundMode == "manual" || p.RefundMode == "automatic") {
+		var blocked bool
+		var gerr error
+		if p.RefundMode == "automatic" {
+			blocked, gerr = refunds.TicketScannedTx(ctx, tx, p.TicketID)
+		} else {
+			blocked, gerr = refunds.GuardTicketMoneyTx(ctx, tx, p.TicketID, nil, true)
+		}
+		if gerr != nil {
+			return out, &CancelTicketError{Status: http.StatusServiceUnavailable, Code: refunds.CodeEngineUnavailable,
+				Message: "whether the ticket was scanned could not be checked; try again", Err: gerr}
+		}
+		if blocked {
+			e := refunds.ScannedRefusal(p.TicketID)
+			return out, &CancelTicketError{Status: e.Status, Code: e.Code, Message: e.Message}
+		}
+	}
 
 	cancelled, err := txq.CancelTicket(ctx, p.TicketID, p.Reason, p.RefundMode)
 	if err != nil {

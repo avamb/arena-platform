@@ -59,6 +59,11 @@ type RefundCase struct {
 	// StubCreated reports how many distinct refunds the stub CREATED (one
 	// per idempotency key).
 	StubCreated func() int
+	// StubAmountFor, when set, reports the amount (arena minor units) the
+	// stub RECEIVED for the refund created under an idempotency key, or -1
+	// when it saw none. The partial-refund sub-test then proves the amount
+	// the module sent is the one asked for, not just that a call worked.
+	StubAmountFor func(idempotencyKey string) int64
 }
 
 // Run executes the contract against c.
@@ -229,6 +234,11 @@ func Run(t *testing.T, c Case) {
 				req.IdempotencyKey = "contract-partial"
 				if _, err := refunder.Refund(t.Context(), req); err != nil {
 					t.Errorf("partial Refund: %v", err)
+				}
+				if rc.StubAmountFor != nil {
+					if got := rc.StubAmountFor(req.IdempotencyKey); got != req.AmountMinor {
+						t.Errorf("the stub received a refund of %d; asked for %d", got, req.AmountMinor)
+					}
 				}
 			})
 		}
