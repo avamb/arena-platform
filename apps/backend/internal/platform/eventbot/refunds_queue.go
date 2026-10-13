@@ -293,13 +293,13 @@ func (b *Bot) startQueueRetry(ctx context.Context, chatID int64, msgID int, id *
 	b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.sending", nil), nil)
 	b.goBackground("queue retry", func() {
 		defer b.retrying.Delete(refundID)
-		wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), refundSendWindow)
+		wctx, cancel := context.WithTimeout(detachedCtx(), refundSendWindow)
 		defer cancel()
 		b.doQueueRetry(wctx, chatID, msgID, id, refundID)
 	}, func() {
 		// Whether the retry went out is unknown: say so, and let the queue
 		// show its state (a second press replays the same operation).
-		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		cctx, cancel := context.WithTimeout(detachedCtx(), 30*time.Second)
 		defer cancel()
 		b.reply(cctx, chatID, &msgID, b.texts.T(loc, "bot.ref.err_timeout", nil), &models.InlineKeyboardMarkup{
 			InlineKeyboard: [][]models.InlineKeyboardButton{{{Text: "« " + b.texts.T(loc, "bot.btn_back", nil),
@@ -366,7 +366,7 @@ func (b *Bot) doQueueRetry(ctx context.Context, chatID int64, msgID int, id *Ide
 		case <-time.After(refundReplayPause):
 		}
 	}
-	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	rctx, cancel := context.WithTimeout(detachedCtx(), 30*time.Second)
 	defer cancel()
 	var ae *APIError
 	switch {

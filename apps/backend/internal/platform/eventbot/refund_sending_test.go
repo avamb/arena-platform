@@ -157,3 +157,58 @@ func TestQueueRetry_APanicReleasesTheRetry(t *testing.T) {
 		t.Fatal("a panic in doQueueRetry left the retry marked as running")
 	}
 }
+
+// A send finishing in the background while the same person presses another
+// button waits for that press (it is written in the person's turn) and does
+// not overwrite the newer step the press stored.
+func TestSendRefund_AnswerWaitsForThePersonsTurnAndKeepsTheNewerStep(t *testing.T) {
+	arrived, release := make(chan struct{}), make(chan struct{})
+	arenaSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(arrived)
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"refunds":[]}`))
+	}))
+	t.Cleanup(arenaSrv.Close)
+	b := newPanickingSendBot(t)
+	b.minter = NewTokenMinter("test-secret", "arena", "arena-api")
+	b.arena = NewArenaClient(arenaSrv.URL, "", nil)
+	b.serial = newUserSerial(b.logger)
+	ctx := context.Background()
+	id := &Identity{Link: gen.BotTelegramLinkRow{UserID: uuid.New()}}
+	st := refundDialog{OrgID: uuid.New(), OrderID: uuid.New(), Key: "tg-older", Reason: "r",
+		Tickets: []refundTicket{{ID: uuid.New(), Refundable: 100, Sel: true}}}
+
+	// The press that starts the send runs in the person's turn, as a handler does.
+	b.startSendRefund(withTurn(ctx, 42), 42, 7, &models.User{ID: 42}, id, st)
+	<-arrived
+
+	// The person's next press holds their lane while the server answers.
+	hold, pressed := make(chan struct{}), make(chan struct{})
+	if err := b.serial.submit(42, func() {
+		<-hold
+		newer := st
+		newer.Key = "tg-newer"
+		if err := b.dialogs.Save(ctx, 42, &newer.OrgID, refundDialogKind, refStepFinal, newer, dialogTTL); err != nil {
+			t.Error(err)
+		}
+		close(pressed)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	time.Sleep(300 * time.Millisecond)
+	var mid refundDialog
+	if step, found, _, err := b.dialogs.Load(ctx, 42, refundDialogKind, &mid); err != nil || !found || step != refStepSending || mid.Key != "tg-older" {
+		t.Fatalf("while the person's press holds the lane: step=%q found=%v key=%q err=%v; the answer must wait for the turn", step, found, mid.Key, err)
+	}
+	close(hold)
+	<-pressed
+	b.bg.close()
+	b.bg.wait()
+	var got refundDialog
+	if step, found, _, err := b.dialogs.Load(ctx, 42, refundDialogKind, &got); err != nil || !found || step != refStepFinal || got.Key != "tg-newer" {
+		t.Fatalf("after the answer: step=%q found=%v key=%q err=%v; want the newer final step kept", step, found, got.Key, err)
+	}
+}

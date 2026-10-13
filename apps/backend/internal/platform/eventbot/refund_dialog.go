@@ -609,13 +609,13 @@ func (b *Bot) startSendRefund(ctx context.Context, chatID int64, msgID int, from
 	b.reply(ctx, chatID, &msgID, b.texts.T(loc, "bot.ref.sending", nil), nil)
 	tg := from.ID
 	b.goBackground("refund send", func() {
-		wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), refundSendWindow)
+		wctx, cancel := context.WithTimeout(detachedCtx(), refundSendWindow)
 		defer cancel()
 		b.sendRefund(wctx, chatID, msgID, tg, id, st)
 	}, func() {
 		// Whether the call went out is unknown: the dialog goes back to the
 		// final screen with the same key, which replays rather than repeats.
-		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		cctx, cancel := context.WithTimeout(detachedCtx(), 30*time.Second)
 		defer cancel()
 		b.inPersonsTurn(cctx, tg, func(cctx context.Context) {
 			if b.ownsSending(cctx, tg, st.Key) {
@@ -695,7 +695,7 @@ func (b *Bot) sendRefund(ctx context.Context, chatID int64, msgID int, tg int64,
 	// The answer is recorded on a context of its own: the send's window may
 	// be spent. It is written in the person's turn, never beside a press of
 	// theirs that reads the same dialog.
-	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	rctx, cancel := context.WithTimeout(detachedCtx(), 30*time.Second)
 	defer cancel()
 	b.inPersonsTurn(rctx, tg, func(rctx context.Context) {
 		b.recordRefundAnswer(rctx, chatID, msgID, tg, id, st, res, err)
