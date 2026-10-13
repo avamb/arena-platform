@@ -238,6 +238,8 @@ export function openContactForm(ctx: ContactContext): HTMLElement {
       if (!ts || !overlay.isConnected) return;
       widgetId = ts.render(captcha, {
         sitekey: siteKey,
+        // The server refuses a token of any other action (hcontact.TurnstileAction).
+        action: 'contact',
         language: ctx.locale,
         callback: (v: string) => {
           token = v;

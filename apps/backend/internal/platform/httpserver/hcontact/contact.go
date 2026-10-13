@@ -55,6 +55,12 @@ const (
 	PerChannelPerHour = 30
 )
 
+// TurnstileAction is the widget action the contact form renders with
+// (tickets-page lib/contact.ts). The verifier refuses a token of any other
+// action, so a token solved on the onboarding form, which may share the
+// secret, cannot send a message.
+const TurnstileAction = "contact"
+
 // Handler serves the route.
 type Handler struct {
 	pool           *pgxpool.Pool

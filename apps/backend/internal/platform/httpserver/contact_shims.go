@@ -6,6 +6,7 @@ package httpserver
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcontact"
@@ -41,10 +42,29 @@ func (s *Server) contactHandler() *hcontact.Handler {
 		trusted = s.cfg.TrustedProxyCount
 		production = s.cfg.IsProduction()
 	}
-	verifier := &honboarding.TurnstileVerifier{Secret: secret, Required: production}
+	verifier := &honboarding.TurnstileVerifier{
+		Secret:    secret,
+		Required:  production,
+		Action:    hcontact.TurnstileAction,
+		Hostnames: s.contactFormHostnames(),
+	}
 	return hcontact.New(s.pgxPool, verifier, salt, trusted, s.logger)
 }
 
 func (s *Server) handleOrganizerContact(w http.ResponseWriter, r *http.Request) {
 	s.contactHandler().HandleSend(w, r)
+}
+
+// contactFormHostnames is the host the hosted pages are served from
+// (PUBLIC_TICKETS_BASE_URL): a token solved anywhere else is refused. Empty
+// when the base URL is not set (local development), which skips the check.
+func (s *Server) contactFormHostnames() []string {
+	if s.cfg == nil || s.cfg.PublicTicketsBaseURL == "" {
+		return nil
+	}
+	u, err := url.Parse(s.cfg.PublicTicketsBaseURL)
+	if err != nil || u.Hostname() == "" {
+		return nil
+	}
+	return []string{u.Hostname()}
 }
