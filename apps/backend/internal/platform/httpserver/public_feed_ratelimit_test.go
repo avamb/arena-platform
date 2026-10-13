@@ -53,12 +53,14 @@ func TestRateLimiter_RefusedCodeBudgetCountsAnIPv6PrefixOnce(t *testing.T) {
 	rl := newPublicFeedRateLimiter(0, 0, 0)
 	rl.promoFailIPLimit = 3
 	for _, ip := range []string{"2001:db8:1:2::1", "2001:db8:1:2::2", "2001:db8:1:2::3"} {
-		rl.RecordPromoFailure("tok", ip)
+		if blocked, _ := refuse(rl, "tok", ip); blocked {
+			t.Fatalf("refusal from %s turned away below the limit", ip)
+		}
 	}
-	if blocked, _ := rl.PromoFailuresBlocked("tok", "2001:db8:1:2::99"); !blocked {
+	if blocked, _ := refuse(rl, "tok", "2001:db8:1:2::99"); !blocked {
 		t.Error("three refusals from one /64 did not lock out a fourth address of it")
 	}
-	if blocked, _ := rl.PromoFailuresBlocked("tok", "2001:db8:1:9::1"); blocked {
+	if blocked, _ := refuse(rl, "tok", "2001:db8:1:9::1"); blocked {
 		t.Error("another /64 was locked out")
 	}
 }

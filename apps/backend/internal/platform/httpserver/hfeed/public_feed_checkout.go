@@ -324,10 +324,13 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	}
 
 	// A spent refused-code budget turns the request away before it costs any
-	// database work.
-	if strings.TrimSpace(derefOr(req.PromoCode)) != "" && h.promoAttemptsBlocked(w, r, feedToken) {
+	// database work; otherwise the request holds a slot of it, which only a
+	// refused code keeps (see PromoFailureLimiter).
+	promoAttempt, promoBlocked := h.reservePromoAttempt(w, r, feedToken, strings.TrimSpace(derefOr(req.PromoCode)) != "")
+	if promoBlocked {
 		return
 	}
+	defer promoAttempt.Release()
 
 	ctx := r.Context()
 
@@ -435,13 +438,13 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	promoRow, promoLookupErr := h.findPromoCode(ctx, checkCtx.OrgID, derefOr(req.PromoCode))
 	if promoLookupErr != nil {
 		if errors.Is(promoLookupErr, pgx.ErrNoRows) {
-			h.refusePromo(w, r, feedToken, "promo.not_found")
+			h.refusePromo(w, r, promoAttempt, "promo.not_found")
 			return
 		}
 		h.logger.Error("public_feed_checkout: promo lookup failed",
 			slog.String("error", promoLookupErr.Error()),
 		)
-		h.refusePromo(w, r, feedToken, "checkout.promo_lookup_failed")
+		h.refusePromo(w, r, promoAttempt, "checkout.promo_lookup_failed")
 		return
 	}
 
@@ -483,7 +486,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		var promoErrCode string
 		gaDiscount, gaPromoCodeID, promoErrCode = h.applyPromoDiscount(ctx, h.promoQueries, promoRow, gaPromoLines, req.HolderEmail)
 		if promoErrCode != "" {
-			h.refusePromo(w, r, feedToken, promoErrCode)
+			h.refusePromo(w, r, promoAttempt, promoErrCode)
 			return
 		}
 	}
@@ -750,7 +753,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			// Same neutral verdicts as the quote and the general-admission
 			// branch, and the refusal is counted against the refused-code
 			// budget. The deferred rollback releases the holds.
-			h.refusePromo(w, r, feedToken, promoErrCode)
+			h.refusePromo(w, r, promoAttempt, promoErrCode)
 			return
 		}
 

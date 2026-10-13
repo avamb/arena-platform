@@ -192,24 +192,55 @@ func publicPromoError(internal string) (code, message string) {
 // allow. A limiter that does not implement it leaves the route on the general
 // limits only.
 type PromoFailureLimiter interface {
-	// PromoFailuresBlocked reports whether the refused-code budget of the feed
-	// token or of the client IP is spent, and the seconds until it renews.
-	PromoFailuresBlocked(token, ip string) (blocked bool, retryAfterSeconds int)
-	// RecordPromoFailure counts one refused code against both.
-	RecordPromoFailure(token, ip string)
+	// ReservePromoAttempt takes one slot of the refused-code budget of the feed
+	// token and of the client IP at the moment a request names a code, in one
+	// atomic step, so a burst of concurrent requests cannot all pass a check
+	// made before any of them is counted. When either budget is spent nothing
+	// is taken and blocked is true, with the seconds until it renews. The caller
+	// calls release when the code turned out acceptable (or the request failed
+	// for another reason): only a refused code keeps its slot.
+	ReservePromoAttempt(token, ip string) (release func(), blocked bool, retryAfterSeconds int)
 }
 
-// promoAttemptsBlocked answers 429 promo.rate_limited when the refused-code
-// budget is spent. Call it before evaluating a request that names a code; the
-// caller returns at once on true.
-func (h *Handler) promoAttemptsBlocked(w http.ResponseWriter, r *http.Request, feedToken string) bool {
+// promoAttempt is one reserved slot of the refused-code budget. The zero
+// value, and nil, hold nothing.
+type promoAttempt struct {
+	release func()
+	kept    bool
+}
+
+// Release gives the slot back unless the code was refused. Safe to call more
+// than once and on nil, so handlers defer it.
+func (a *promoAttempt) Release() {
+	if a == nil || a.kept || a.release == nil {
+		return
+	}
+	a.release()
+	a.release = nil
+}
+
+// keep marks the code as refused: the slot stays spent.
+func (a *promoAttempt) keep() {
+	if a != nil {
+		a.kept = true
+	}
+}
+
+// reservePromoAttempt answers 429 promo.rate_limited when the refused-code
+// budget is spent; otherwise it reserves a slot for a request that names a
+// code. A request that names none holds nothing (nil). The caller returns at
+// once when blocked is true, and defers the returned attempt's Release.
+func (h *Handler) reservePromoAttempt(w http.ResponseWriter, r *http.Request, feedToken string, namesCode bool) (attempt *promoAttempt, blocked bool) {
+	if !namesCode {
+		return nil, false
+	}
 	lim, ok := h.rl.(PromoFailureLimiter)
 	if !ok {
-		return false
+		return nil, false
 	}
-	blocked, retry := lim.PromoFailuresBlocked(feedToken, h.clientIP(r))
-	if !blocked {
-		return false
+	release, isBlocked, retry := lim.ReservePromoAttempt(feedToken, h.clientIP(r))
+	if !isBlocked {
+		return &promoAttempt{release: release}, false
 	}
 	if retry < 1 {
 		retry = 1
@@ -218,15 +249,14 @@ func (h *Handler) promoAttemptsBlocked(w http.ResponseWriter, r *http.Request, f
 	httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
 		"promo.rate_limited", "too many code attempts; wait a minute and try again", r,
 	))
-	return true
+	return nil, true
 }
 
-// refusePromo records a refused code against the budget and answers it.
-func (h *Handler) refusePromo(w http.ResponseWriter, r *http.Request, feedToken, internal string) {
+// refusePromo answers a refused code. The slot reserved for the request stays
+// spent, except when the check itself failed (a platform fault, not a guess).
+func (h *Handler) refusePromo(w http.ResponseWriter, r *http.Request, attempt *promoAttempt, internal string) {
 	if internal != "checkout.promo_lookup_failed" {
-		if lim, ok := h.rl.(PromoFailureLimiter); ok {
-			lim.RecordPromoFailure(feedToken, h.clientIP(r))
-		}
+		attempt.keep()
 	}
 	writePublicPromoError(w, r, internal)
 }

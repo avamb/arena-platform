@@ -219,42 +219,52 @@ func (rl *publicFeedRateLimiter) windowFull(m map[string]*rateLimiterWindow, key
 	return true, remaining
 }
 
-// recordFailure counts one refused attempt in key's window.
-func (rl *publicFeedRateLimiter) recordFailure(m map[string]*rateLimiterWindow, key string, limit int, now time.Time) {
+// takeSlot counts one more attempt in key's window and returns that window, or
+// nil when the check is disabled (limit <= 0). The caller has already found
+// the budget not full.
+func (rl *publicFeedRateLimiter) takeSlot(m map[string]*rateLimiterWindow, key string, limit int, now time.Time) *rateLimiterWindow {
 	if limit <= 0 {
-		return
+		return nil
 	}
 	if w, ok := m[key]; ok && !now.After(w.resetAt) {
 		w.count++
-		return
+		return w
 	}
-	m[key] = &rateLimiterWindow{count: 1, resetAt: now.Add(time.Minute)}
+	w := &rateLimiterWindow{count: 1, resetAt: now.Add(time.Minute)}
+	m[key] = w
+	return w
 }
 
-// PromoFailuresBlocked reports whether the refused-promo budget of this feed
-// token or of this client IP is spent, and when it renews. It counts nothing.
-func (rl *publicFeedRateLimiter) PromoFailuresBlocked(token, ip string) (bool, int) {
+// ReservePromoAttempt takes one slot of the refused-promo budget of this feed
+// token and of this client IP, atomically with the check that they are not
+// full. Nothing is taken when either is full. release gives the slot back (an
+// accepted code is not a refusal); a refused code simply keeps it.
+func (rl *publicFeedRateLimiter) ReservePromoAttempt(token, ip string) (func(), bool, int) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 	now := time.Now()
 	rl.sweepExpiredLocked(now)
+	key := ipRateKey(ip)
 	fullTok, retryTok := rl.windowFull(rl.promoFailTokens, token, rl.promoFailTokenLimit, now)
-	fullIP, retryIP := rl.windowFull(rl.promoFailIPs, ipRateKey(ip), rl.promoFailIPLimit, now)
-	retry := retryTok
-	if retryIP > retry {
-		retry = retryIP
+	fullIP, retryIP := rl.windowFull(rl.promoFailIPs, key, rl.promoFailIPLimit, now)
+	if fullTok || fullIP {
+		retry := retryTok
+		if retryIP > retry {
+			retry = retryIP
+		}
+		return nil, true, retry
 	}
-	return fullTok || fullIP, retry
-}
-
-// RecordPromoFailure counts one refused promo attempt against the feed token
-// and the client IP.
-func (rl *publicFeedRateLimiter) RecordPromoFailure(token, ip string) {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-	now := time.Now()
-	rl.recordFailure(rl.promoFailTokens, token, rl.promoFailTokenLimit, now)
-	rl.recordFailure(rl.promoFailIPs, ipRateKey(ip), rl.promoFailIPLimit, now)
+	tokWin := rl.takeSlot(rl.promoFailTokens, token, rl.promoFailTokenLimit, now)
+	ipWin := rl.takeSlot(rl.promoFailIPs, key, rl.promoFailIPLimit, now)
+	return func() {
+		rl.mu.Lock()
+		defer rl.mu.Unlock()
+		for _, w := range []*rateLimiterWindow{tokWin, ipWin} {
+			if w != nil && w.count > 0 {
+				w.count--
+			}
+		}
+	}, false, 0
 }
 
 // CheckFeedToken / CheckCheckoutToken / CheckIP are exported adapter methods
