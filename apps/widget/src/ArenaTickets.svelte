@@ -919,6 +919,7 @@
         cart={effectiveCart}
         buyerFields={selectedSession.buyer_fields as import('./lib/checkout.js').BuyerFieldConfig[]}
         serviceFeePercent={selectedSession.service_fee_percent}
+        showWithdrawalNotice={selectedSession.show_withdrawal_notice === true}
         locale={normLocale}
         submitting={checkoutSubmitting}
         submitError={checkoutError}

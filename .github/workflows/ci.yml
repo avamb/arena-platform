@@ -179,6 +179,13 @@ jobs:
         run: /tmp/arena-seed
 
       - name: Run integration tests (tagged)
+        # The Testcontainers reaper (Ryuk) sometimes fails to start on the
+        # hosted runner ("reaper ... no port to wait for"), which fails any
+        # test that needs its own container for a reason unrelated to the
+        # code. The runner is thrown away after the job, so nothing needs
+        # the reaper to clean up.
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: "true"
         run: go test -tags=integration -timeout=25m ./...
 
       - name: Upload integration test failure logs

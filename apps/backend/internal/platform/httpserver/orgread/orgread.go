@@ -22,6 +22,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 )
 
 // Reader decides per organization; build one per request.
@@ -31,6 +32,7 @@ type Reader struct {
 	superadmin bool
 	loaded     bool
 	members    map[uuid.UUID]bool
+	allowed    map[uuid.UUID]bool
 }
 
 // New returns a Reader for the request context. q may be nil: a user is then
@@ -56,7 +58,23 @@ func (r *Reader) Can(orgID uuid.UUID) (bool, error) {
 		}
 		r.members, r.loaded = members, true
 	}
-	return r.members[orgID], nil
+	if !r.members[orgID] {
+		return false, nil
+	}
+	// A membership is not enough: the route's permission must be held in THIS
+	// organization (PERM-ORG), not through a role of another one.
+	if allowed, ok := r.allowed[orgID]; ok {
+		return allowed, nil
+	}
+	allowed, err := permissions.AllowedInOrg(r.ctx, orgID)
+	if err != nil {
+		return false, err
+	}
+	if r.allowed == nil {
+		r.allowed = map[uuid.UUID]bool{}
+	}
+	r.allowed[orgID] = allowed
+	return allowed, nil
 }
 
 func (r *Reader) load() (map[uuid.UUID]bool, error) {

@@ -12,6 +12,7 @@ package hreconciliation
 import (
 	"context"
 	"log/slog"
+	"net/http"
 
 	"github.com/jackc/pgx/v5"
 
@@ -40,6 +41,16 @@ type Handler struct {
 	queries *gen.Queries
 	pool    TxStarter
 	logger  *slog.Logger
+	// allocationAccess decides whether the caller may report on an
+	// allocation; it writes the refusal itself. Without it a report is
+	// refused (fail closed).
+	allocationAccess func(w http.ResponseWriter, r *http.Request, alloc gen.ExternalAllocationRow) bool
+}
+
+// WithAllocationAccess installs the organization check of a report.
+func (h *Handler) WithAllocationAccess(f func(w http.ResponseWriter, r *http.Request, alloc gen.ExternalAllocationRow) bool) *Handler {
+	h.allocationAccess = f
+	return h
 }
 
 // New constructs a Handler from the caller's dependencies. Nil queries are

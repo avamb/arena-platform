@@ -213,6 +213,12 @@ export interface FeedSession {
    */
   service_fee_percent?: string;
   /**
+   * True when the event is bound to a specific date, so the statutory right
+   * of withdrawal does not apply: the cart sheet then prints a notice above
+   * the pay button. Absent on older backends (treated as false).
+   */
+  show_withdrawal_notice?: boolean;
+  /**
    * IANA zone of the session's venue ("Europe/Madrid"); "" or absent when
    * unknown. Session chips are formatted in it — the time on the door —
    * never in the buyer's own zone.

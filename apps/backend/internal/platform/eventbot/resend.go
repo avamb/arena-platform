@@ -381,6 +381,12 @@ func (b *Bot) sendResend(ctx context.Context, chatID int64, editMsgID *int, from
 // resendText takes the address typed while the dialog waits for one. It
 // reports whether the text was taken. An expired dialog is reported once.
 func (b *Bot) resendText(ctx context.Context, chatID int64, from *models.User, text string) bool {
+	if chatID != from.ID {
+		// The dialog lives in the private chat only: a text written anywhere
+		// else is not its answer, and must neither consume it (an expired
+		// dialog is reported once) nor answer into that chat.
+		return false
+	}
 	var st resendDialog
 	step, found, expired, err := b.dialogs.Load(ctx, from.ID, resendDialogKind, &st)
 	if err != nil {
@@ -407,10 +413,6 @@ func (b *Bot) resendText(ctx context.Context, chatID int64, from *models.User, t
 	var edit *int
 	if st.MsgID != 0 {
 		edit = &st.MsgID
-	}
-	if chatID != from.ID {
-		b.reply(ctx, chatID, edit, b.texts.T(loc, "bot.resend.private_only", nil), b.resendBackKeyboard(loc))
-		return true
 	}
 	addr := strings.TrimSpace(text)
 	if !validResendEmail(addr) {

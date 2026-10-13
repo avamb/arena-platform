@@ -109,11 +109,11 @@ describe('renderEvent', () => {
     expect(noPoster.querySelector('arena-tickets')?.hasAttribute('cover')).toBe(false);
   });
 
-  it('maps the page-only es locale onto en for the widget locale attribute', () => {
+  it('passes the es locale through to the widget locale attribute', () => {
     const container = freshContainer();
     renderEvent(container, sampleData, 'es', { apiBase: '', resumingCheckout: false });
     const widget = container.querySelector('arena-tickets');
-    expect(widget?.getAttribute('locale')).toBe('en');
+    expect(widget?.getAttribute('locale')).toBe('es');
   });
 
   it('renders the hero title, description and poster image', () => {
