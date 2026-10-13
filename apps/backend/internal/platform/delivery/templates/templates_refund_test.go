@@ -155,3 +155,31 @@ func TestRender_Refund_SomeVoidSpeaksOfTheListAbove(t *testing.T) {
 		}
 	}
 }
+
+// The greeting and the event line read naturally: "Здравствуйте, Ana," in
+// Russian, and in Hebrew the event name is not glued to the prefix ל (a
+// Latin name read "לGala").
+func TestRender_Refund_GreetingAndEventLineReadNaturally(t *testing.T) {
+	r, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ru, err := r.Render(TemplateKindRefund, "ru", refundData())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"html": ru.HTMLBody, "text": ru.TextBody} {
+		if !strings.Contains(body, "Здравствуйте, Ana,") {
+			t.Errorf("ru %s: greeting is not \"Здравствуйте, Ana,\"", name)
+		}
+	}
+	he, err := r.Render(TemplateKindRefund, "he", refundData())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"html": he.HTMLBody, "text": he.TextBody} {
+		if strings.Contains(body, "ל<strong>Gala") || strings.Contains(body, "לGala") {
+			t.Errorf("he %s: the event name is glued to the prefix ל", name)
+		}
+	}
+}

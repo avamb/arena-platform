@@ -10,7 +10,7 @@
   <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
   <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
   <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">Возврат денег оформлен</h1>
-  <p style="margin:0 0 12px 0;">Здравствуйте{{with .HolderName}} {{.}}{{end}},</p>
+  <p style="margin:0 0 12px 0;">Здравствуйте{{with .HolderName}}, {{.}}{{end}},</p>
   <p style="margin:0 0 12px 0;">Мы оформили возврат <strong>{{.Refund.Total}}</strong> за ваши билеты на <strong>{{.EventName}}</strong>{{with .SessionStart}} ({{.}}){{end}}.</p>
   <p style="margin:0 0 6px 0;font-weight:bold;color:#22333D;">Возвращённые билеты</p>
   <table cellpadding="4" style="border-collapse:collapse;font-size:14px;">
@@ -43,7 +43,7 @@
 
 Возврат денег оформлен
 
-Здравствуйте{{with .HolderName}} {{.}}{{end}},
+Здравствуйте{{with .HolderName}}, {{.}}{{end}},
 
 Мы оформили возврат {{.Refund.Total}} за ваши билеты на {{.EventName}}{{with .SessionStart}} ({{.}}){{end}}.
 

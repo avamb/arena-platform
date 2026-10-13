@@ -11,7 +11,7 @@
   <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;text-align:right;">
   <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">ההחזר הכספי שלך בדרך</h1>
   <p style="margin:0 0 12px 0;">שלום{{with .HolderName}} {{.}}{{end}},</p>
-  <p style="margin:0 0 12px 0;">שלחנו החזר של <strong>{{.Refund.Total}}</strong> עבור הכרטיסים שלך ל<strong>{{.EventName}}</strong>{{with .SessionStart}} ({{.}}){{end}}.</p>
+  <p style="margin:0 0 12px 0;">שלחנו החזר של <strong>{{.Refund.Total}}</strong> עבור הכרטיסים שלך לאירוע <strong>{{.EventName}}</strong>{{with .SessionStart}} ({{.}}){{end}}.</p>
   <p style="margin:0 0 6px 0;font-weight:bold;color:#22333D;">כרטיסים שהוחזר עבורם כסף</p>
   <table cellpadding="4" style="border-collapse:collapse;font-size:14px;direction:rtl">
     {{range .Tickets}}<tr><td>כרטיס {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{if .Void}} · <strong>אינו תקף עוד</strong>{{end}}</td><td style="text-align:left;">{{.Price}}</td></tr>{{end}}
@@ -45,7 +45,7 @@
 
 שלום{{with .HolderName}} {{.}}{{end}},
 
-שלחנו החזר של {{.Refund.Total}} עבור הכרטיסים שלך ל{{.EventName}}{{with .SessionStart}} ({{.}}){{end}}.
+שלחנו החזר של {{.Refund.Total}} עבור הכרטיסים שלך לאירוע {{.EventName}}{{with .SessionStart}} ({{.}}){{end}}.
 
 כרטיסים שהוחזר עבורם כסף:
 {{range .Tickets}}- כרטיס {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{if .Void}} · אינו תקף עוד{{end}}: {{.Price}}
