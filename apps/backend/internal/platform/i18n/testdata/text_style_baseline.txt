@@ -1,3 +1,3 @@
 en/messages 903
-en/passive 80
+en/passive 32
 ru/messages 903
