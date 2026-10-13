@@ -73,9 +73,10 @@ const replacedColumn = `EXISTS (SELECT 1 FROM refund_batches rb WHERE rb.org_id 
 const notifyBuyerColumn = `COALESCE((SELECT rb.notify_buyer FROM refund_batches rb WHERE rb.id = r.batch_id), true)`
 
 // liveAgainstBudget is countsAgainstBudgetSQL for a refunds row aliased o,
-// plus the live-state filter.
+// plus the live-state filter (budget_predicate_test.go keeps the two equal).
 const liveAgainstBudget = `o.state NOT IN ('failed', 'rejected')
-	AND NOT (o.state = 'manual_review' AND o.provider_attempts = 0 AND o.provider_refund_id IS NULL AND o.provider IS NOT NULL)`
+	AND NOT (o.state = 'manual_review' AND o.provider_attempts = 0 AND o.provider_refund_id IS NULL AND o.provider IS NOT NULL)
+	AND NOT (o.state = 'manual_review' AND COALESCE(o.failure_code, '') IN ('` + failureReversedAfterSuccess + `', '` + failureFailedAfterAcceptance + `'))`
 
 // retryBlockedColumn mirrors planBatch for the one-ticket operation a retry
 // of r starts (a scanned ticket without a live exception included) (same ticket, same amount, r itself left out: a retry closes

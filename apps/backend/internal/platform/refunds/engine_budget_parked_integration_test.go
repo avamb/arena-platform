@@ -116,3 +116,37 @@ func TestEngine_ResolveRefusesAPreEngineRow(t *testing.T) {
 		t.Errorf("pre-engine row state = %s; want manual_review (untouched)", got.State)
 	}
 }
+
+// The review-hold clear shows the money returned on the payment without a
+// ticket by the same budget rule as the engine: a pre-engine parked row
+// counts, a never-sent parked row and a reversed or failed-after-acceptance
+// row do not.
+func TestUnattributedForTicket_UsesTheBudgetRule(t *testing.T) {
+	f := newFixture(t, testPool(t), "pay03fake")
+	ctx := context.Background()
+	insert := func(amount int64, state, extra, extraValues string) {
+		t.Helper()
+		f.exec(t, `INSERT INTO refunds (payment_intent_id, org_id, amount, currency, reason, state, settlement`+extra+`)
+			SELECT id, org_id, $2, currency, 'unattributed', $3, 'provider'`+extraValues+`
+			FROM payment_intents WHERE id = $1`, f.payment, amount, state)
+	}
+	insert(1000, "manual_review", ", provider_attempts", ", 0")
+	insert(700, "manual_review", ", provider, provider_attempts", ", 'pay03fake', 0")
+	insert(300, "manual_review", ", provider, provider_attempts, provider_refund_id, failure_code",
+		", 'pay03fake', 1, 're_u1_'||gen_random_uuid(), 'reversed_after_success'")
+	insert(400, "manual_review", ", provider, provider_attempts, provider_refund_id, failure_code",
+		", 'pay03fake', 1, 're_u2_'||gen_random_uuid(), 'failed_after_acceptance'")
+	insert(200, "succeeded", ", provider, provider_refund_id", ", 'pay03fake', 're_u3_'||gen_random_uuid()")
+	tx, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	got, _, err := refunds.UnattributedForTicket(ctx, tx, f.tickets[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 1200 {
+		t.Fatalf("unattributed = %d; want 1200 (pre-engine 1000 + succeeded 200)", got)
+	}
+}
