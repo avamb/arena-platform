@@ -82,7 +82,7 @@ import (
 func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Request) {
 	if h.checkoutQueries == nil || h.reservationQueries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -101,7 +101,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-				"checkout.not_found", "checkout session not found", r,
+				"checkout.not_found", "We cannot find this checkout. Open the ticket page again.", r,
 			))
 			return
 		}
@@ -110,7 +110,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.lookup_failed", "failed to retrieve checkout session", r,
+			"checkout.lookup_failed", "We could not load this checkout. Try again in a minute.", r,
 		))
 		return
 	}
@@ -122,12 +122,12 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 	switch cs.State {
 	case "completed":
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			"checkout.already_completed", "this checkout has been paid and cannot be recovered", r,
+			"checkout.already_completed", "This checkout is already paid. Check your e-mail for the tickets.", r,
 		))
 		return
 	case "abandoned":
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			"checkout.abandoned", "this checkout was abandoned and cannot be recovered", r,
+			"checkout.abandoned", "This checkout has ended. Choose the tickets again.", r,
 		))
 		return
 	}
@@ -137,7 +137,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"checkout.reservation_failed", "original reservation not found", r,
+				"checkout.reservation_failed", "We cannot restore your hold. Choose the tickets again.", r,
 			))
 			return
 		}
@@ -146,7 +146,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.reservation_failed", "failed to retrieve original reservation", r,
+			"checkout.reservation_failed", "We could not load your hold. Try again in a minute.", r,
 		))
 		return
 	}
@@ -180,7 +180,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 	// ── 6. Load the original cart: seats + GA lines ───────────────────────────
 	if h.inventoryQueries == nil || h.pool == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "database is not available", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -192,7 +192,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.reservation_failed", "failed to retrieve original reservation seats", r,
+			"checkout.reservation_failed", "We could not load your hold. Try again in a minute.", r,
 		))
 		return
 	}
@@ -204,7 +204,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.reservation_failed", "failed to retrieve original reservation GA lines", r,
+			"checkout.reservation_failed", "We could not load your hold. Try again in a minute.", r,
 		))
 		return
 	}
@@ -222,7 +222,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-			"dependency.database_unavailable", "failed to begin transaction", r,
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r,
 		))
 		return
 	}
@@ -253,7 +253,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		if normErr != nil || len(normalizedSeats) == 0 {
 			// Seat keys came from the DB, so this should never fire in practice.
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"checkout.reservation_failed", "original seat keys are invalid", r,
+				"checkout.reservation_failed", "We cannot restore your hold. Choose the tickets again.", r,
 			))
 			return
 		}
@@ -265,7 +265,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			h.logger.Error("public_checkout_recover: increment seat_status_version failed",
 				slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.status_version_failed", "failed to bump seat_status_version", r,
+				"reservation.status_version_failed", "We could not hold the tickets. Try again in a minute.", r,
 			))
 			return
 		}
@@ -276,7 +276,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			h.logger.Error("public_checkout_recover: lock seats failed",
 				slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.lock_seats_failed", "failed to lock target seats", r,
+				"reservation.lock_seats_failed", "We could not check the seats. Try again in a minute.", r,
 			))
 			return
 		}
@@ -286,7 +286,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		if len(conflicts) > 0 {
 			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 				"reservation.seats_conflict",
-				"one or more original seats are no longer available",
+				"Some of your seats are no longer free. Choose other seats.",
 				r,
 				map[string]any{"conflicts": conflicts},
 			))
@@ -305,14 +305,14 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		if _, err := invQ.ReserveCapacity(ctx, origRes.SessionID, nil, seatQty); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
-					"reservation.over_capacity", "insufficient capacity to recover reservation", r,
+					"reservation.over_capacity", "There are not enough free places to restore your hold. Choose the tickets again.", r,
 				))
 				return
 			}
 			h.logger.Error("public_checkout_recover: reserve seat capacity failed",
 				slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.capacity_failed", "failed to reserve capacity", r,
+				"reservation.capacity_failed", "We could not hold the tickets. Try again in a minute.", r,
 			))
 			return
 		}
@@ -334,7 +334,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			h.logger.Error("public_checkout_recover: increment seat_status_version failed",
 				slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.status_version_failed", "failed to bump seat_status_version", r,
+				"reservation.status_version_failed", "We could not hold the tickets. Try again in a minute.", r,
 			))
 			return
 		}
@@ -351,7 +351,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		if _, err := invQ.ReserveCapacity(ctx, origRes.SessionID, nil, gaQty); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
-					"reservation.over_capacity", "insufficient capacity to recover GA reservation", r,
+					"reservation.over_capacity", "There are not enough free places to restore your hold. Choose the tickets again.", r,
 				))
 				return
 			}
@@ -360,7 +360,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 				slog.String("error", err.Error()),
 			)
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.capacity_failed", "failed to reserve capacity", r,
+				"reservation.capacity_failed", "We could not hold the tickets. Try again in a minute.", r,
 			))
 			return
 		}
@@ -371,7 +371,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		gaQty = origRes.Quantity
 		if gaQty <= 0 {
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"checkout.reservation_failed", "original reservation has no quantity", r,
+				"checkout.reservation_failed", "We cannot restore your hold. Choose the tickets again.", r,
 			))
 			return
 		}
@@ -383,7 +383,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 				}
 				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 					"reservation.over_capacity",
-					"insufficient capacity to recover GA reservation",
+					"There are not enough free places to restore your hold. Choose the tickets again.",
 					r,
 					details,
 				))
@@ -394,7 +394,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 				slog.String("error", err.Error()),
 			)
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.capacity_failed", "failed to reserve capacity", r,
+				"reservation.capacity_failed", "We could not hold the tickets. Try again in a minute.", r,
 			))
 			return
 		}
@@ -421,7 +421,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		h.logger.Error("public_checkout_recover: insert reservation failed",
 			slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"reservation.insert_failed", "failed to create new reservation", r,
+			"reservation.insert_failed", "We could not hold the tickets. Try again in a minute.", r,
 		))
 		return
 	}
@@ -432,7 +432,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			if errors.Is(err, pgx.ErrNoRows) {
 				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 					"reservation.seats_conflict",
-					"seat "+s.SeatKey+" is no longer available",
+					"Seat "+s.SeatKey+" is no longer free. Choose another seat.",
 					r,
 					map[string]any{"conflicts": []map[string]string{{"seat_key": s.SeatKey, "status": "unavailable"}}},
 				))
@@ -441,7 +441,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			h.logger.Error("public_checkout_recover: hold seat failed",
 				slog.String("seat_key", s.SeatKey), slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.hold_failed", "failed to hold seat", r,
+				"reservation.hold_failed", "We could not hold the seat. Try again in a minute.", r,
 			))
 			return
 		}
@@ -450,7 +450,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
 				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 					"reservation.seats_conflict",
-					"seat "+s.SeatKey+" is already linked to another reservation",
+					"Seat "+s.SeatKey+" is held for another buyer. Choose another seat.",
 					r,
 					map[string]any{"conflicts": []map[string]string{{"seat_key": s.SeatKey, "status": "unavailable"}}},
 				))
@@ -459,7 +459,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			h.logger.Error("public_checkout_recover: reservation_seats insert failed",
 				slog.String("seat_key", s.SeatKey), slog.String("error", err.Error()))
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.seats_link_failed", "failed to link seat to reservation", r,
+				"reservation.seats_link_failed", "We could not hold the seat. Try again in a minute.", r,
 			))
 			return
 		}
@@ -481,7 +481,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 				if errors.As(uErr, &capErr) {
 					httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
 						"reservation.over_capacity",
-						"insufficient capacity to recover GA reservation",
+						"There are not enough free places to restore your hold. Choose the tickets again.",
 						r,
 						map[string]any{
 							"tier_id":   tierID.String(),
@@ -494,7 +494,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 				h.logger.Error("public_checkout_recover: GA unit allocation failed",
 					slog.String("tier_id", tierID.String()), slog.String("error", uErr.Error()))
 				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-					"reservation.capacity_failed", "failed to reserve capacity", r,
+					"reservation.capacity_failed", "We could not hold the tickets. Try again in a minute.", r,
 				))
 				return
 			}
@@ -611,7 +611,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 				slog.String("error", err.Error()),
 			)
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"reservation.insert_failed", "failed to record GA line", r,
+				"reservation.insert_failed", "We could not hold the tickets. Try again in a minute.", r,
 			))
 			return
 		}
@@ -619,7 +619,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 
 	if err := tx.Commit(ctx); err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"reservation.commit_failed", "failed to commit transaction", r,
+			"reservation.commit_failed", "We could not hold the tickets. Try again in a minute.", r,
 		))
 		return
 	}
@@ -634,7 +634,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.update_failed", "failed to update checkout session", r,
+			"checkout.update_failed", "We could not update the checkout. Try again in a minute.", r,
 		))
 		return
 	}
@@ -651,7 +651,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			slog.String("error", err.Error()),
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"checkout.confirm_failed", "failed to confirm checkout session", r,
+			"checkout.confirm_failed", "We could not confirm the checkout. Try again in a minute.", r,
 		))
 		return
 	}

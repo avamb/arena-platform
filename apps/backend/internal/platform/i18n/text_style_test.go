@@ -1,10 +1,13 @@
-// text_style_test.go is the advisory text-style check described in
+// text_style_test.go is the text-style check described in
 // docs/text_style_standard_ru.md (principles borrowed from ASD-STE100).
 //
-// It NEVER fails on a style finding: findings go to the test log, and the
-// count is compared with testdata/text_style_baseline.txt so a reviewer sees
-// whether a change made the catalog better or worse. It fails only when a
-// catalog cannot be parsed or when the checker's own unit tests break.
+// One rule is strict (owner decision 2026-10-13): a forbidden glossary
+// synonym (section 4 of the standard) FAILS the test. Every other finding
+// (long sentence, semicolon, dash, passive, hidden command) is advisory: it
+// goes to the test log, and the count is compared with
+// testdata/text_style_baseline.txt so a reviewer sees whether a change made
+// the catalog better or worse. A fixed phrase that contains a forbidden word
+// but is a term of its own goes into styleAllowed, with a reason.
 //
 // Run:   go test ./internal/platform/i18n -run TestTextStyle -v
 // Baseline refresh: ARENA_STYLE_WRITE_BASELINE=1 go test ./internal/platform/i18n -run TestTextStyle_Catalogs
@@ -29,9 +32,11 @@ const (
 	styleBaselineFile = "testdata/text_style_baseline.txt"
 )
 
-// styleScopePrefixes lists the message-ID prefixes under check. Widen it as
-// the rollout plan moves on (e-mail templates and API errors come later).
-var styleScopePrefixes = []string{"bot."}
+// styleScopePrefixes lists the message-ID prefixes under check: the bot,
+// the API error texts (error.*), the Bil24 gateway descriptions a selling
+// site may show to buyers (bil24.*), the price-breakdown labels and the
+// welcome text. E-mail templates and openapi.yaml come later.
+var styleScopePrefixes = []string{"bot.", "error.", "bil24.", "pricing.", "server."}
 
 // styleLocales are the catalogs under check.
 var styleLocales = []string{"en", "ru"}
@@ -43,7 +48,7 @@ var (
 	reDash        = regexp.MustCompile(`\s[—–]\s`)
 
 	// Glossary: a synonym the standard forbids. Keep in step with section 4
-	// of docs/text_style_standard_ru.md.
+	// of docs/text_style_standard_ru.md. A match fails the test.
 	styleForbidden = map[string][]*regexp.Regexp{
 		"en": {
 			regexp.MustCompile(`(?i)(?:^|[^\p{L}])clients?(?:[^\p{L}]|$)`),
@@ -59,8 +64,36 @@ var (
 			regexp.MustCompile(`(?i)(?:^|[^\p{L}])возмещени\p{L}*`),
 			regexp.MustCompile(`(?i)(?:^|[^\p{L}])рефанд\p{L}*`),
 			regexp.MustCompile(`(?i)(?:^|[^\p{L}])постер\p{L}*`),
+			regexp.MustCompile(`(?i)(?:^|[^\p{L}])баннер\p{L}*`),
+			// hold = «бронь» (decision 2026-10-13)
+			regexp.MustCompile(`(?i)(?:^|[^\p{L}])удерж(?:ан|иваем)\p{L}*`), // удержание, удержано, удерживаемые
+
+			regexp.MustCompile(`(?i)(?:^|[^\p{L}])блокировк\p{L}*`),
+			// venue = «площадка»; «схема зала» is allowed below
+			regexp.MustCompile(`(?i)(?:^|[^\p{L}])зал(?:а|у|е|ом|ы|ов|ам|ами|ах)?(?:[^\p{L}]|$)`),
+			regexp.MustCompile(`(?i)(?:^|[^\p{L}])мест\p{L}*\s+проведения`),
+			regexp.MustCompile(`(?i)(?:^|[^\p{L}])кресл\p{L}*`),
+			// sales end = «конец продаж», doors open = «вход с»
+			regexp.MustCompile(`(?i)(?:^|[^\p{L}])закрыти\p{L}*\s+продаж\p{L}*`),
+			regexp.MustCompile(`(?i)(?:^|[^\p{L}])дедлайн\p{L}*`),
+			regexp.MustCompile(`(?i)(?:^|[^\p{L}])открыти\p{L}*\s+двер\p{L}*`),
+			regexp.MustCompile(`(?i)(?:^|[^\p{L}])тариф\p{L}*`),
+			regexp.MustCompile(`(?i)(?:^|[^\p{L}])тестов\p{L}*\s+билет\p{L}*`),
 		},
 	}
+
+	// styleAllowed are fixed phrases that contain a forbidden word but are a
+	// term of their own. They are removed before the glossary scan. Keep the
+	// list short and give a reason for each entry (section 4 of the standard).
+	styleAllowed = map[string][]*regexp.Regexp{
+		"ru": {
+			// «схема зала» is the seating plan, not the venue.
+			regexp.MustCompile(`(?i)схем\p{L}*\s+зала`),
+		},
+	}
+
+	// styleStrictRules are the rules whose findings fail the test.
+	styleStrictRules = map[string]bool{"glossary": true}
 
 	// Passive voice with no agent, English heuristic (noisy by design).
 	reEnPassive = regexp.MustCompile(`(?i)\b(is|are|was|were|be|been|being)\s+\w+ed\b`)
@@ -116,8 +149,12 @@ func checkText(locale, key, text string) []styleFinding {
 	if hasThoughtDash(locale, plain) {
 		add("dash", "a dash joins two thoughts: write two sentences")
 	}
+	glossaryText := plain
+	for _, re := range styleAllowed[locale] {
+		glossaryText = re.ReplaceAllString(glossaryText, " ")
+	}
 	for _, re := range styleForbidden[locale] {
-		if m := re.FindString(plain); m != "" {
+		if m := re.FindString(glossaryText); m != "" {
 			add("glossary", fmt.Sprintf("term %q is not in the glossary", strings.Trim(m, " \n.,;:!?«»\"()")))
 		}
 	}
@@ -188,8 +225,19 @@ func loadCatalogTexts(t *testing.T, locale string) map[string]string {
 	return out
 }
 
-// TestTextStyle_Catalogs scans the catalogs and reports findings. It never
-// fails on a style finding.
+// strictFindings returns the findings that must fail the test.
+func strictFindings(fs []styleFinding) []styleFinding {
+	var out []styleFinding
+	for _, f := range fs {
+		if styleStrictRules[f.Rule] {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// TestTextStyle_Catalogs scans the catalogs and reports findings. It fails
+// on a forbidden glossary synonym and only logs every other finding.
 func TestTextStyle_Catalogs(t *testing.T) {
 	counts := map[string]int{} // "locale/rule" -> n
 	for _, locale := range styleLocales {
@@ -202,9 +250,13 @@ func TestTextStyle_Catalogs(t *testing.T) {
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			for _, f := range checkText(locale, k, texts[k]) {
+			findings := checkText(locale, k, texts[k])
+			for _, f := range findings {
 				counts[f.Locale+"/"+f.Rule]++
 				t.Log(f.String())
+			}
+			for _, f := range strictFindings(findings) {
+				t.Errorf("%s: use the glossary term (docs/text_style_standard_ru.md, section 4)", f)
 			}
 		}
 		counts[locale+"/messages"] = len(keys)
@@ -282,6 +334,29 @@ func TestTextStyle_CheckerRules(t *testing.T) {
 		{"ru", "Создайте событие.", "glossary"},
 		{"ru", "Новый ивент.", "glossary"},
 		{"ru", "Необходимо ввести число.", "command"},
+		// hold = «бронь» (decision 2026-10-13)
+		{"ru", "Продано 3, в брони 2.", ""},
+		{"ru", "Удержание мест истекло.", "glossary"},
+		{"ru", "Продано 3, удержано 2.", "glossary"},
+		{"ru", "Удержанных мест нет.", "glossary"},
+		{"ru", "Места удерживаемые заказом.", "glossary"},
+		{"ru", "Блокировка мест снята.", "glossary"},
+		// venue = «площадка», but «схема зала» is a term of its own
+		{"ru", "У сеанса есть схема зала.", ""},
+		{"ru", "Откройте схему зала.", ""},
+		{"ru", "Все делят места зала.", "glossary"},
+		{"ru", "Укажите место проведения.", "glossary"},
+		{"ru", "Кресло осталось в продаже.", "glossary"},
+		{"ru", "Залог не нужен.", ""},
+		// sales end, doors open, category, poster, sample ticket
+		{"ru", "Конец продаж: 21:00. Вход с 19:30.", ""},
+		{"ru", "Закрытие продаж в 21:00.", "glossary"},
+		{"ru", "Дедлайн завтра.", "glossary"},
+		{"ru", "Открытие дверей в 19:30.", "glossary"},
+		{"ru", "Выберите тариф.", "glossary"},
+		{"ru", "Пришлите баннер.", "glossary"},
+		{"ru", "Отправьте тестовый билет.", "glossary"},
+		{"ru", "Отправьте образец билета.", ""},
 	}
 	for _, c := range cases {
 		if got := rules(checkText(c.locale, "k", c.text)); got != c.want {
@@ -294,5 +369,27 @@ func TestTextStyle_CheckerRules(t *testing.T) {
 	}
 	if n := len(splitSentences("One. Two!\nThree")); n != 3 {
 		t.Errorf("splitSentences = %d, want 3", n)
+	}
+}
+
+// TestTextStyle_StrictRules guards which findings fail the catalog test: a
+// forbidden glossary synonym does, every other rule stays advisory.
+func TestTextStyle_StrictRules(t *testing.T) {
+	fs := checkText("ru", "k", "Удержание мест истекло; сессия закрыта — ждите.")
+	strict := strictFindings(fs)
+	if len(strict) != 2 {
+		t.Fatalf("strict findings = %v, want two glossary findings", strict)
+	}
+	for _, f := range strict {
+		if f.Rule != "glossary" {
+			t.Errorf("strict finding with rule %q, want only glossary", f.Rule)
+		}
+	}
+	advisory := checkText("en", "k", "Send the poster; then — wait. The file was deleted.")
+	if len(advisory) == 0 {
+		t.Fatal("expected advisory findings")
+	}
+	if s := strictFindings(advisory); len(s) != 0 {
+		t.Errorf("advisory rules must not fail the test, got %v", s)
 	}
 }

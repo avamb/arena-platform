@@ -247,7 +247,7 @@ func (h *Handler) reservePromoAttempt(w http.ResponseWriter, r *http.Request, fe
 	}
 	w.Header().Set("Retry-After", strconv.Itoa(retry))
 	httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
-		"promo.rate_limited", "too many code attempts; wait a minute and try again", r,
+		"promo.rate_limited", "Too many code attempts. Wait one minute and try again.", r,
 	))
 	return nil, true
 }
@@ -267,7 +267,7 @@ func (h *Handler) refusePromo(w http.ResponseWriter, r *http.Request, attempt *p
 func writePublicPromoError(w http.ResponseWriter, r *http.Request, internal string) {
 	if internal == "checkout.promo_lookup_failed" {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			internal, "failed to check the promo code", r,
+			internal, "We could not check the promo code. Try again in a minute.", r,
 		))
 		return
 	}

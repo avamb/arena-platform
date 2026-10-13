@@ -1,5 +1,5 @@
 {
   "resultCode": 101,
-  "description": "Место Parter-3-12 уже занято",
+  "description": "Место Parter-3-12 уже занято. Выберите другое место.",
   "command": "RESERVATION"
 }

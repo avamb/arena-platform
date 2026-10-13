@@ -143,7 +143,7 @@ func (h *Handler) publicationEventOrg(w http.ResponseWriter, r *http.Request, ev
 	}
 	if err != nil {
 		h.logger.Error("publications: event organization check failed", "event_id", eventID, "err", err)
-		msg := i18n.Localize(ctx, "error.internal", "internal server error", nil)
+		msg := i18n.Localize(ctx, "error.internal", "Something went wrong on our side. Try again in a minute. If it happens again, write to support.", nil)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("publication.internal", msg, r))
 		return uuid.Nil, false
 	}
@@ -220,7 +220,7 @@ func (h *Handler) HandlePublishEvent(w http.ResponseWriter, r *http.Request) {
 	if tokenOrg, err := h.publicationQueries.GetFeedTokenOrgID(ctx, feedTokenID); err != nil || tokenOrg != orgID {
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			h.logger.Error("handlePublishEvent: feed token organization lookup failed", "feed_token_id", feedTokenID, "err", err)
-			msg := i18n.Localize(ctx, "error.internal", "internal server error", nil)
+			msg := i18n.Localize(ctx, "error.internal", "Something went wrong on our side. Try again in a minute. If it happens again, write to support.", nil)
 			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("publication.internal", msg, r))
 			return
 		}
@@ -240,7 +240,7 @@ func (h *Handler) HandlePublishEvent(w http.ResponseWriter, r *http.Request) {
 		}
 		h.logger.Error("handlePublishEvent: PublishEvent failed",
 			"event_id", eventID, "feed_token_id", feedTokenID, "err", err)
-		msg := i18n.Localize(ctx, "error.internal", "internal server error", nil)
+		msg := i18n.Localize(ctx, "error.internal", "Something went wrong on our side. Try again in a minute. If it happens again, write to support.", nil)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("publication.internal", msg, r))
 		return
 	}
@@ -278,7 +278,7 @@ func (h *Handler) HandleUnpublishEvent(w http.ResponseWriter, r *http.Request) {
 	if err := h.publicationQueries.UnpublishEvent(ctx, eventID, feedTokenID); err != nil {
 		h.logger.Error("handleUnpublishEvent: UnpublishEvent failed",
 			"event_id", eventID, "feed_token_id", feedTokenID, "err", err)
-		msg := i18n.Localize(ctx, "error.internal", "internal server error", nil)
+		msg := i18n.Localize(ctx, "error.internal", "Something went wrong on our side. Try again in a minute. If it happens again, write to support.", nil)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("publication.internal", msg, r))
 		return
 	}
@@ -309,7 +309,7 @@ func (h *Handler) HandleListPublications(w http.ResponseWriter, r *http.Request)
 	if err != nil && err != pgx.ErrNoRows {
 		h.logger.Error("handleListPublications: ListPublicationsByEvent failed",
 			"event_id", eventID, "err", err)
-		msg := i18n.Localize(ctx, "error.internal", "internal server error", nil)
+		msg := i18n.Localize(ctx, "error.internal", "Something went wrong on our side. Try again in a minute. If it happens again, write to support.", nil)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("publication.internal", msg, r))
 		return
 	}

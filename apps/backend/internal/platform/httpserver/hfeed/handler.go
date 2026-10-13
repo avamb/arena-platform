@@ -224,7 +224,7 @@ func (h *Handler) enforceRateLimit(
 	}
 	w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
 	httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelope(
-		errorCode, "too many requests; please slow down", r,
+		errorCode, "Too many requests. Wait one minute and try again.", r,
 	))
 	return false
 }
