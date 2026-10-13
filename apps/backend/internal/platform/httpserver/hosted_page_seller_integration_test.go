@@ -174,16 +174,27 @@ func TestHostedPageSeller_BlockIsPerChannelAndNeverLeaksContact(t *testing.T) {
 		}
 	}
 
-	// 3. public_contact set on the channel is the one published contact.
+	// 3. public_contact set on the channel: the e-mail is never published
+	// (buyers write through the contact form, which it enables), the phone
+	// is the one published contact.
 	a.setHostedPage(t, pool, `{"hosted_page":{"enabled":true,"show_seller":true,"public_contact":{"email":"box@alpha.example"}}}`)
 	_, body, raw = getJSON(t, srv, pagePath)
 	seller, _ = body["seller"].(map[string]any)
-	contact, _ := seller["public_contact"].(map[string]any)
-	if contact["email"] != "box@alpha.example" {
-		t.Fatalf("public_contact wrong: %s", raw)
+	if _, ok := seller["public_contact"]; ok || strings.Contains(raw, "box@alpha.example") {
+		t.Fatalf("the public e-mail must not be published: %s", raw)
 	}
-	if _, ok := contact["phone"]; ok {
-		t.Fatalf("unset phone must be omitted: %s", raw)
+	if form, _ := body["contact_form"].(map[string]any); form == nil || form["available"] != true {
+		t.Fatalf("a public e-mail must enable the contact form: %s", raw)
+	}
+	a.setHostedPage(t, pool, `{"hosted_page":{"enabled":true,"show_seller":true,"public_contact":{"email":"box@alpha.example","phone":"+34 600 000 000"}}}`)
+	_, body, raw = getJSON(t, srv, pagePath)
+	seller, _ = body["seller"].(map[string]any)
+	contact, _ := seller["public_contact"].(map[string]any)
+	if contact["phone"] != "+34 600 000 000" {
+		t.Fatalf("public phone wrong: %s", raw)
+	}
+	if _, ok := contact["email"]; ok {
+		t.Fatalf("the e-mail must be omitted: %s", raw)
 	}
 	if strings.Contains(raw, sellerPersonalEmail) {
 		t.Fatalf("personal e-mail leaked: %s", raw)
