@@ -181,14 +181,17 @@ func (b *Bot) goBackground(name string, fn, cleanup func()) {
 	}()
 }
 
-// detachedCtx is the context of work that outlives its handler: no deadline,
-// no cancel and NONE of the handler's values. context.WithoutCancel would keep
-// them, among them the account's turn marker (serial.go), and serial.do would
-// then run that work inline, outside the account's lane, racing the person's
-// next update; and the save-before-reply hook (reply_hook.go) of a dialog the
-// work does not own. Background work writes dialog state through
-// Bot.inPersonsTurn on a context made from this one.
-func detachedCtx() context.Context { return context.Background() }
+// detached is the context of work that outlives its handler: no deadline and
+// no cancel, and WITHOUT the handler's per-account values. context.WithoutCancel
+// alone keeps them, among them the account's turn marker (serial.go), and
+// serial.do would then run that work inline, outside the account's lane,
+// racing the person's next update; and the save-before-reply hook
+// (reply_hook.go) of a dialog the work does not own. Background work writes
+// dialog state through Bot.inPersonsTurn on a context made from this one.
+func detached(ctx context.Context) context.Context {
+	ctx = context.WithValue(context.WithoutCancel(ctx), turnKey{}, nil)
+	return context.WithValue(ctx, beforeReplyKey{}, nil)
+}
 
 // runCleanup runs a panicked work's clean-up, itself guarded.
 func (b *Bot) runCleanup(name string, cleanup func()) {
