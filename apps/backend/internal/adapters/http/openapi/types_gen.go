@@ -8884,6 +8884,9 @@ type OrderRefundQueueItem struct {
 	// ProviderStatus The provider's own status of the refund, when it has answered.
 	ProviderStatus *string `json:"provider_status"`
 
+	// RetryCancelsTicket True when a retry of this refund would cancel its ticket once the provider accepts it - the operation's choice, which a retry inherits (the refund's own `cancel_ticket` for a refund made outside an operation). It can differ from `cancel_ticket`, which a refund parked before any provider call gives up.
+	RetryCancelsTicket *bool `json:"retry_cancels_ticket,omitempty"`
+
 	// Retryable True when the retry route would accept this refund - it provably moved no money and has not been retried yet. The route still decides.
 	Retryable *bool `json:"retryable,omitempty"`
 

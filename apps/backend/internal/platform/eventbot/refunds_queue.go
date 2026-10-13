@@ -259,7 +259,14 @@ func (b *Bot) queueRetryAskText(loc string, it openapi.OrderRefundQueueItem) str
 		ticket = "№" + strconv.FormatInt(*it.TicketNumber, 10)
 	}
 	ticketLine := b.texts.T(loc, "bot.rq.retry_keeps_ticket", nil)
-	if it.CancelTicket {
+	// The retry takes the operation's choice (retry_cancels_ticket), which
+	// can differ from the refund row's own flag; an older server that does
+	// not send it falls back to the row.
+	cancels := it.CancelTicket
+	if it.RetryCancelsTicket != nil {
+		cancels = *it.RetryCancelsTicket
+	}
+	if cancels {
 		ticketLine = b.texts.T(loc, "bot.rq.retry_cancels_ticket", nil)
 	}
 	letterLine := b.texts.T(loc, "bot.rq.retry_letter", nil)

@@ -10185,6 +10185,8 @@ export interface components {
             retryable?: boolean;
             /** @description True when the refund asked for the buyer letter, the choice a retry of it inherits (true for a refund made outside an operation). */
             notify_buyer?: boolean;
+            /** @description True when a retry of this refund would cancel its ticket once the provider accepts it - the operation's choice, which a retry inherits (the refund's own `cancel_ticket` for a refund made outside an operation). It can differ from `cancel_ticket`, which a refund parked before any provider call gives up. */
+            retry_cancels_ticket?: boolean;
         };
         /** @description One page of the organization's refunds, newest first. */
         OrderRefundQueue: {

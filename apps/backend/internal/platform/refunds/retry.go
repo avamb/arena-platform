@@ -76,14 +76,10 @@ func (e *Engine) Retry(ctx context.Context, in RetryInput) (BatchResult, error) 
 			return err
 		}
 		cur = r
-		notify, cancelTickets = true, r.CancelTicket
-		if r.BatchID != nil {
-			if err := tx.QueryRow(ctx, `SELECT notify_buyer, cancel_tickets FROM refund_batches WHERE id = $1`,
-				*r.BatchID).Scan(&notify, &cancelTickets); err != nil && !errors.Is(err, pgx.ErrNoRows) {
-				return err
-			}
-		}
-		return nil
+		// The SAME expressions the queue shows (notifyBuyerColumn,
+		// retryCancelsColumn), so the retry question says what happens.
+		return tx.QueryRow(ctx, `SELECT `+notifyBuyerColumn+`, `+retryCancelsColumn+` FROM refunds r WHERE r.id = $1`,
+			r.ID).Scan(&notify, &cancelTickets)
 	})
 	if err != nil {
 		return BatchResult{}, err

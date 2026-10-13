@@ -63,6 +63,12 @@ type ListItem struct {
 	// NotifyBuyer is the letter choice a retry inherits: the operation's
 	// notify_buyer, true for a refund made outside an operation.
 	NotifyBuyer bool
+	// RetryCancelsTicket is the ticket choice a retry inherits: the
+	// operation's cancel_tickets, the row's own cancel_ticket for a refund
+	// made outside an operation. It can differ from the row's flag: a refund
+	// parked before any call gives its cancel_ticket up, its operation does
+	// not.
+	RetryCancelsTicket bool
 }
 
 // replacedColumn tells whether a retry operation of the refund exists.
@@ -71,6 +77,10 @@ const replacedColumn = `EXISTS (SELECT 1 FROM refund_batches rb WHERE rb.org_id 
 // notifyBuyerColumn is the letter choice a retry of r inherits (Retry reads
 // the same thing).
 const notifyBuyerColumn = `COALESCE((SELECT rb.notify_buyer FROM refund_batches rb WHERE rb.id = r.batch_id), true)`
+
+// retryCancelsColumn is the ticket choice a retry of r inherits (Retry reads
+// the same thing).
+const retryCancelsColumn = `COALESCE((SELECT rb.cancel_tickets FROM refund_batches rb WHERE rb.id = r.batch_id), r.cancel_ticket)`
 
 // liveAgainstBudget is countsAgainstBudgetSQL for a refunds row aliased o,
 // plus the live-state filter (budget_predicate_test.go keeps the two equal).
@@ -145,7 +155,7 @@ func (e *Engine) List(ctx context.Context, orgID uuid.UUID, f ListFilter) (ListP
 		if err := tx.QueryRow(ctx, `SELECT count(*)`+from+where, orgID, f.State, f.EventID).Scan(&page.Total); err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, `SELECT o.system_id, ev.name, t.system_ticket_id, `+creatorColumns+`, `+replacedColumn+`, `+retryBlockedColumn+`, `+notifyBuyerColumn+`, `+prefixedColumns("r")+from+creatorJoins+where+`
+		rows, err := tx.Query(ctx, `SELECT o.system_id, ev.name, t.system_ticket_id, `+creatorColumns+`, `+replacedColumn+`, `+retryBlockedColumn+`, `+notifyBuyerColumn+`, `+retryCancelsColumn+`, `+prefixedColumns("r")+from+creatorJoins+where+`
 			ORDER BY r.created_at DESC, r.id DESC LIMIT $4 OFFSET $5`,
 			orgID, f.State, f.EventID, f.Limit, f.Offset)
 		if err != nil {
@@ -154,7 +164,7 @@ func (e *Engine) List(ctx context.Context, orgID uuid.UUID, f ListFilter) (ListP
 		defer rows.Close()
 		for rows.Next() {
 			var it ListItem
-			r, err := scanRefundWith(rows, &it.OrderSystemID, &it.EventName, &it.TicketNumber, &it.CreatorKind, &it.CreatorLabel, &it.CreatorLabelIsEmail, &it.Replaced, &it.RetryBlocked, &it.NotifyBuyer)
+			r, err := scanRefundWith(rows, &it.OrderSystemID, &it.EventName, &it.TicketNumber, &it.CreatorKind, &it.CreatorLabel, &it.CreatorLabelIsEmail, &it.Replaced, &it.RetryBlocked, &it.NotifyBuyer, &it.RetryCancelsTicket)
 			if err != nil {
 				return err
 			}
@@ -206,13 +216,13 @@ const historyLimit = 100
 func (e *Engine) Get(ctx context.Context, orgID, refundID uuid.UUID) (Detail, error) {
 	var d Detail
 	err := e.inTx(ctx, func(tx pgx.Tx) error {
-		row := tx.QueryRow(ctx, `SELECT o.system_id, ev.name, t.system_ticket_id, `+creatorColumns+`, `+replacedColumn+`, `+retryBlockedColumn+`, `+notifyBuyerColumn+`, `+prefixedColumns("r")+`
+		row := tx.QueryRow(ctx, `SELECT o.system_id, ev.name, t.system_ticket_id, `+creatorColumns+`, `+replacedColumn+`, `+retryBlockedColumn+`, `+notifyBuyerColumn+`, `+retryCancelsColumn+`, `+prefixedColumns("r")+`
 			FROM refunds r
 			LEFT JOIN orders o ON o.id = r.order_id AND o.org_id = r.org_id
 			LEFT JOIN events ev ON ev.id = o.event_id
 			LEFT JOIN tickets t ON t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)`+creatorJoins+`
 			WHERE r.id = $1 AND r.org_id = $2`, refundID, orgID)
-		r, err := scanRefundWith(row, &d.OrderSystemID, &d.EventName, &d.TicketNumber, &d.CreatorKind, &d.CreatorLabel, &d.CreatorLabelIsEmail, &d.Replaced, &d.RetryBlocked, &d.NotifyBuyer)
+		r, err := scanRefundWith(row, &d.OrderSystemID, &d.EventName, &d.TicketNumber, &d.CreatorKind, &d.CreatorLabel, &d.CreatorLabelIsEmail, &d.Replaced, &d.RetryBlocked, &d.NotifyBuyer, &d.RetryCancelsTicket)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return refusal(http.StatusNotFound, CodeRefundNotFound, "refund not found", nil)
 		}

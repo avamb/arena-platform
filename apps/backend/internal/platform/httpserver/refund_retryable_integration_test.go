@@ -7,6 +7,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
+	"github.com/google/uuid"
 )
 
 // The queue's retryable flag is the retry route's own verdict: a refused
@@ -139,5 +142,43 @@ func TestRefundQueue_RetryableKnowsTheBudgetRule(t *testing.T) {
 		VALUES ($1, $2, 2500, 'EUR', 'moved by 0138', 'manual_review', 'provider', 0)`, f.pay, org)
 	if got := retryable(); got != false {
 		t.Errorf("beside a pre-engine parked refund: retryable %v; want false (it keeps counting)", got)
+	}
+}
+
+// The queue says whether a retry cancels the ticket from the same source the
+// retry uses: for a refund parked before any provider call the row gave its
+// cancel_ticket up while its operation still asks to cancel, and the retry
+// (a real engine) does cancel the ticket.
+func TestRefundQueue_RetryTicketChoiceMatchesTheRetry(t *testing.T) {
+	e := newScanEnv(t)
+	ctx := context.Background()
+	res, err := e.srv.refundEngine().CreateBatch(ctx, refunds.BatchInput{OrgID: e.org, OrderID: e.f.order, Reason: "parked",
+		CancelTickets: true, NotifyBuyer: true, IdempotencyKey: "rq-parked-" + uuid.NewString(),
+		Items: []refunds.Item{{TicketID: e.f.tickets[0]}}})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	id := res.Refunds[0].ID.String()
+	e.exec(t, `UPDATE refunds SET state = 'manual_review', provider_attempts = 0, provider_refund_id = NULL, cancel_ticket = false,
+		failure_code = 'budget_taken_never_sent' WHERE id::text = $1`, id)
+	st, out := e.pf.do(t, http.MethodGet, "/v1/organizations/"+e.org.String()+"/refunds/"+id, e.key, "")
+	if st != http.StatusOK {
+		t.Fatalf("get: %d %v", st, out)
+	}
+	item := out["refund"].(map[string]any)
+	if item["cancel_ticket"] != false || item["retry_cancels_ticket"] != true || item["retryable"] != true {
+		t.Fatalf("queue item cancel_ticket=%v retry_cancels_ticket=%v retryable=%v; want false, true, true",
+			item["cancel_ticket"], item["retry_cancels_ticket"], item["retryable"])
+	}
+	st, out = refundOrgPost(t, e.pf, "/v1/organizations/"+e.org.String()+"/refunds/"+id+"/retry", e.key, "", `{}`)
+	if st != http.StatusAccepted {
+		t.Fatalf("retry: %d %v", st, out)
+	}
+	retried := out["refunds"].([]any)[0].(map[string]any)
+	if retried["cancel_ticket"] != item["retry_cancels_ticket"] {
+		t.Fatalf("the retry's cancel_ticket = %v; the queue said %v", retried["cancel_ticket"], item["retry_cancels_ticket"])
+	}
+	if st, _ := e.f.ticket(t, 0); st != "cancelled" {
+		t.Fatalf("ticket is %q after the retry; the queue said the retry cancels it", st)
 	}
 }
