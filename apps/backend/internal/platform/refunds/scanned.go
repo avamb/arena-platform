@@ -27,6 +27,12 @@ const failureTicketScanned = "ticket_scanned"
 // CodeTicketScanned is the 409 of a refund for a ticket that was scanned.
 const CodeTicketScanned = "refund.ticket_scanned"
 
+// CodeScanExceptionWholePayment: a refund of the whole payment that relies on
+// a scanned ticket's exception must return everything that is left of the
+// payment. A smaller amount cannot be tied to the scanned tickets, so it
+// would spend their one-time exceptions on money that may belong to others.
+const CodeScanExceptionWholePayment = "refund.scan_exception_whole_payment"
+
 // JobTypeScannedAlertEmail is the worker job that mails the organization's
 // owners about a blocked refund (handler: delivery.NewScannedAlertHandler).
 const JobTypeScannedAlertEmail = "refund.scanned_alert_email"
@@ -86,9 +92,14 @@ const scanExemptLiveSQL = `EXISTS (SELECT 1 FROM refund_scan_exceptions sx
 
 // scanExemptForRefundSQL also lets through the refund r that spent the
 // exception, at its approval and its claim (a scan since the grant still
-// stops it before any money is sent).
+// stops it before any money is sent). A refund of the whole payment (no
+// ticket of its own) passes only on the exceptions it spent when it was
+// written: a live exception granted later is not its to take, because the
+// amount it returns cannot be tied to that ticket.
 const scanExemptForRefundSQL = `EXISTS (SELECT 1 FROM refund_scan_exceptions sx
-	WHERE sx.ticket_id = t.id AND ((sx.used_at IS NULL AND sx.expires_at > now()) OR sx.used_by_refund = r.id)
+	WHERE sx.ticket_id = t.id
+	  AND ((sx.used_at IS NULL AND sx.expires_at > now() AND COALESCE(r.ticket_id, r.cancelled_ticket_id) IS NOT NULL)
+	       OR sx.used_by_refund = r.id)
 	  AND ` + noScanSinceGrantSQL + `)`
 
 // ticketBlockedSQL is a scanned ticket t without a live exception: no refund
@@ -286,15 +297,13 @@ func (e *Engine) blockScannedAtClaim(ctx context.Context, tx pgx.Tx, id uuid.UUI
 		WHERE r.id = $1 AND r.state = 'provider_pending' AND r.provider_refund_id IS NULL AND r.provider_attempts = 0
 		  AND `+ticketBlockedForRefundSQL+scannedOrder+` LIMIT 1`, id).Scan(&ticket)
 	if err == pgx.ErrNoRows {
-		// Nothing blocks it. A scanned ticket of it that passes on a live
-		// exception spends that exception on this refund now.
+		// Nothing blocks it. Its own ticket, scanned and passing on a live
+		// exception, spends that exception on this refund now. A refund of
+		// the whole payment passes only on the exceptions it already owns.
 		_, serr := tx.Exec(ctx, `UPDATE refund_scan_exceptions sx SET used_at = now(), used_by_refund = $1
 			FROM refunds r
-			JOIN payment_intents pi ON pi.id = r.payment_intent_id
-			JOIN tickets t ON (t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)
-			                   OR (COALESCE(r.ticket_id, r.cancelled_ticket_id) IS NULL
-			                       AND t.checkout_session_id = pi.checkout_session_id))
-			WHERE r.id = $1 AND sx.ticket_id = t.id AND sx.used_at IS NULL AND sx.expires_at > now()
+			WHERE r.id = $1 AND sx.ticket_id = COALESCE(r.ticket_id, r.cancelled_ticket_id)
+			  AND sx.used_at IS NULL AND sx.expires_at > now()
 			  AND r.state = 'provider_pending' AND r.provider_attempts = 0`, id)
 		return nil, uuid.Nil, serr
 	}
@@ -387,21 +396,51 @@ func GuardTicketMoneyTx(ctx context.Context, tx pgx.Tx, ticketID uuid.UUID, refu
 
 // GuardPaymentMoneyTx is the same for a refund of the whole payment (the flat
 // create route): blocked when any ticket sold with the payment is scanned
-// without a live exception (that ticket is returned); otherwise every live
-// exception of the payment's tickets is spent on refundID.
-func GuardPaymentMoneyTx(ctx context.Context, tx pgx.Tx, paymentIntentID, refundID uuid.UUID) (uuid.UUID, bool, error) {
-	var ticket uuid.UUID
-	err := tx.QueryRow(ctx, `SELECT t.id FROM payment_intents pi
-		JOIN tickets t ON t.checkout_session_id = pi.checkout_session_id
-		WHERE pi.id = $1 AND `+ticketBlockedSQL+scannedOrder+` LIMIT 1`, paymentIntentID).Scan(&ticket)
-	if err == nil {
-		return ticket, true, nil
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
+// without a live exception (that ticket is returned). When some scanned
+// ticket passes on a live exception, the refund must return all that is left
+// of the payment (amount == remaining, else a 409 *Error
+// CodeScanExceptionWholePayment), and then every such exception is spent on
+// refundID. An exception a concurrent writer spent first blocks its ticket.
+func GuardPaymentMoneyTx(ctx context.Context, tx pgx.Tx, paymentIntentID, refundID uuid.UUID, amount, remaining int64) (uuid.UUID, bool, error) {
+	blockedTicket := func() (uuid.UUID, bool, error) {
+		var ticket uuid.UUID
+		err := tx.QueryRow(ctx, `SELECT t.id FROM payment_intents pi
+			JOIN tickets t ON t.checkout_session_id = pi.checkout_session_id
+			WHERE pi.id = $1 AND `+ticketBlockedSQL+scannedOrder+` LIMIT 1`, paymentIntentID).Scan(&ticket)
+		if err == nil {
+			return ticket, true, nil
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, false, nil
+		}
 		return uuid.Nil, false, err
 	}
-	_, err = tx.Exec(ctx, `UPDATE refund_scan_exceptions sx SET used_at = now(), used_by_refund = $1
+	if ticket, blocked, err := blockedTicket(); err != nil || blocked {
+		return ticket, blocked, err
+	}
+	var exempt int64
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM payment_intents pi
+		JOIN tickets t ON t.checkout_session_id = pi.checkout_session_id
+		WHERE pi.id = $1 AND `+ticketScannedSQL+` AND `+scanExemptLiveSQL, paymentIntentID).Scan(&exempt); err != nil {
+		return uuid.Nil, false, err
+	}
+	if exempt == 0 {
+		return uuid.Nil, false, nil
+	}
+	if amount != remaining {
+		return uuid.Nil, false, refusal(http.StatusConflict, CodeScanExceptionWholePayment,
+			"a scanned ticket of this payment is refunded on a one-time exception: refund all that is left of the payment, or refund the tickets one by one",
+			map[string]any{"requested": amount, "remaining": remaining})
+	}
+	tag, err := tx.Exec(ctx, `UPDATE refund_scan_exceptions sx SET used_at = now(), used_by_refund = $1
 		FROM payment_intents pi JOIN tickets t ON t.checkout_session_id = pi.checkout_session_id
-		WHERE pi.id = $2 AND sx.ticket_id = t.id AND sx.used_at IS NULL AND sx.expires_at > now()`, refundID, paymentIntentID)
-	return uuid.Nil, false, err
+		WHERE pi.id = $2 AND sx.ticket_id = t.id AND sx.used_at IS NULL AND sx.expires_at > now()
+		  AND `+ticketScannedSQL+` AND `+noScanSinceGrantSQL, refundID, paymentIntentID)
+	if err != nil {
+		return uuid.Nil, false, err
+	}
+	if tag.RowsAffected() != exempt {
+		return blockedTicket()
+	}
+	return uuid.Nil, false, nil
 }

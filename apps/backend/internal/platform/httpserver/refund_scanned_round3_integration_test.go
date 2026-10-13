@@ -330,6 +330,13 @@ func TestRefundScanned_ExceptionHonouredByCancelAndFlatCreate(t *testing.T) {
 	}
 	grant(0)
 	grant(1)
+	// A refund that relies on the exceptions must return all that is left
+	// of the payment (round 5, M2): a part of it is refused, nothing spent.
+	if st, out := e.pf.do(t, http.MethodPost, "/v1/refunds", e.key, flat); st != http.StatusConflict ||
+		prom0113Code(out) != refunds.CodeScanExceptionWholePayment {
+		t.Fatalf("partial flat create on exceptions: %d %v; want 409 %s", st, out, refunds.CodeScanExceptionWholePayment)
+	}
+	flat = fmt.Sprintf(`{"payment_intent_id":%q,"amount":5000,"currency":"EUR"}`, e.f.pay)
 	st, out := e.pf.do(t, http.MethodPost, "/v1/refunds", e.key, flat)
 	if st != http.StatusCreated && st != http.StatusOK {
 		t.Fatalf("flat create with live exceptions: %d %v; want it written", st, out)
