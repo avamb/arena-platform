@@ -3114,3 +3114,255 @@ other = "Arena took no payment for order #{{.Num}} (a free order or an invitatio
 
 ["bot.ref.unknown_provider"]
 other = "Arena does not know the payment provider of order #{{.Num}}, so it cannot refund it. Refund it in the provider's dashboard or write to support. Nothing was sent."
+
+["bot.og.btn"]
+other = "🏢 Organization data"
+
+["bot.og.owner_only"]
+other = "Only the owner of the organization can change its data. Ask the owner, or go back to the menu."
+
+["bot.og.card"]
+other = "🏢 <b>Organization data</b> · {{.Org}}"
+
+["bot.og.card_where"]
+other = "Buyers see these details on the sales page when you show the seller data, and in ticket letters and PDF tickets."
+
+["bot.og.line_legal_name"]
+other = "Legal name: {{.Value}}"
+
+["bot.og.line_legal_form"]
+other = "Legal form: {{.Value}}"
+
+["bot.og.line_reg"]
+other = "Registration number: {{.Value}}"
+
+["bot.og.line_tax"]
+other = "Tax number: {{.Value}}"
+
+["bot.og.line_address"]
+other = "Legal address: {{.Value}}"
+
+["bot.og.pages_title"]
+other = "<b>Sales pages</b>"
+
+["bot.og.pages_none"]
+other = "Your organization has no sales page yet. It appears after you publish your first event."
+
+["bot.og.state_shown"]
+other = "✅ seller data shown"
+
+["bot.og.state_hidden"]
+other = "⬜ seller data hidden"
+
+["bot.og.none"]
+other = "not set"
+
+["bot.og.now"]
+other = "Now: {{.Value}}"
+
+["bot.og.missing_title"]
+other = "To show the seller data on the page, fill in:"
+
+["bot.og.m_legal_name"]
+other = "legal name"
+
+["bot.og.m_tax_id"]
+other = "tax number"
+
+["bot.og.m_address_line1"]
+other = "street and number of the legal address"
+
+["bot.og.m_address_city"]
+other = "city of the legal address"
+
+["bot.og.m_address_postal_code"]
+other = "postal code of the legal address"
+
+["bot.og.m_public_email"]
+other = "public e-mail of this sales page"
+
+["bot.og.btn_legal_name"]
+other = "✏ Legal name"
+
+["bot.og.btn_legal_form"]
+other = "✏ Legal form"
+
+["bot.og.btn_reg"]
+other = "✏ Registration no."
+
+["bot.og.btn_tax"]
+other = "✏ Tax number"
+
+["bot.og.btn_address"]
+other = "✏ Street"
+
+["bot.og.btn_city"]
+other = "✏ City"
+
+["bot.og.btn_postcode"]
+other = "✏ Postal code"
+
+["bot.og.btn_country"]
+other = "✏ Country"
+
+["bot.og.btn_page"]
+other = "🌐 Sales page: {{.Name}}"
+
+["bot.og.q_legal_name"]
+other = "✏ <b>Legal name</b> as in the registration documents, for example «Teatro Ejemplo S.L.» or your full name."
+
+["bot.og.q_legal_form"]
+other = "✏ <b>Legal form</b>, for example S.L., s.r.o., GmbH or «self-employed». Up to 80 characters."
+
+["bot.og.q_reg"]
+other = "✏ <b>Registration number</b> in the company register, if you have one. Up to 60 characters."
+
+["bot.og.q_address"]
+other = "✏ <b>Street and number</b> of the legal address. Send the city and the postal code with their own buttons."
+
+["bot.og.q_city"]
+other = "✏ <b>City</b> of the legal address."
+
+["bot.og.q_postcode"]
+other = "✏ <b>Postal code</b> of the legal address."
+
+["bot.og.q_country"]
+other = "✏ <b>Country</b> of the legal address: two letters, for example ES, CZ or IL. Or press the button below."
+
+["bot.og.q_scheme"]
+other = "🧾 <b>Tax number.</b> Choose its type."
+
+["bot.og.scheme_eu_vat"]
+other = "EU VAT number"
+
+["bot.og.scheme_gb_vat"]
+other = "UK VAT number"
+
+["bot.og.scheme_il_vat"]
+other = "Israel: business or ID number"
+
+["bot.og.scheme_us_ein"]
+other = "US EIN"
+
+["bot.og.scheme_other"]
+other = "Another number (NIF, IČO and others)"
+
+["bot.og.q_tax_eu_vat"]
+other = "✏ Send the <b>EU VAT number</b> with its country code, for example ESB12345678 or CZ12345678."
+
+["bot.og.q_tax_gb_vat"]
+other = "✏ Send the <b>UK VAT number</b>, for example GB123456789."
+
+["bot.og.q_tax_il_vat"]
+other = "✏ Send the <b>Israeli number</b>: 9 digits, for example 512345678."
+
+["bot.og.q_tax_us_ein"]
+other = "✏ Send the <b>EIN</b>, for example 12-3456789."
+
+["bot.og.q_tax_other"]
+other = "✏ Send the <b>tax number</b> as it is written in your documents, for example a Spanish NIF or a Czech IČO."
+
+["bot.og.other_scheme_btn"]
+other = "🔁 Another type of number"
+
+["bot.og.page_card"]
+other = "🌐 <b>Sales page: {{.Name}}</b>"
+
+["bot.og.page_where"]
+other = "Buyers see this e-mail and phone on this sales page when the seller data is shown. Use an address for tickets, not your personal mailbox."
+
+["bot.og.line_email"]
+other = "✉ Public e-mail: {{.Value}}"
+
+["bot.og.line_phone"]
+other = "📞 Public phone: {{.Value}}"
+
+["bot.og.line_state"]
+other = "Seller data on the page: {{.Value}}"
+
+["bot.og.btn_email"]
+other = "✏ E-mail"
+
+["bot.og.btn_phone"]
+other = "✏ Phone"
+
+["bot.og.btn_show"]
+other = "✅ Show seller data on the page"
+
+["bot.og.btn_hide"]
+other = "⬜ Hide seller data from the page"
+
+["bot.og.q_email"]
+other = "✏ <b>Public e-mail</b> of this sales page, for example tickets@your-site.com."
+
+["bot.og.q_phone"]
+other = "✏ <b>Public phone</b> with the country code, for example +34 600 000 000. You can leave it empty."
+
+["bot.og.personal_email"]
+other = "💡 This looks like a personal mailbox. We suggest a separate address for tickets, for example tickets@your-site.com. You can keep this one if you prefer."
+
+["bot.og.clear_btn"]
+other = "🗑 Clear"
+
+["bot.og.cancel_btn"]
+other = "« Cancel"
+
+["bot.og.saved"]
+other = "✅ Saved."
+
+["bot.og.cleared"]
+other = "✅ Cleared."
+
+["bot.og.shown_done"]
+other = "✅ Done. Buyers now see the seller data on this sales page."
+
+["bot.og.hidden_done"]
+other = "✅ Done. The seller data is no longer shown on this sales page."
+
+["bot.og.channel_gone"]
+other = "This sales page is no longer in the list. Here is the current data."
+
+["bot.og.err_legal_name"]
+other = "Type the legal name, up to 200 characters."
+
+["bot.og.err_legal_form"]
+other = "Type the legal form, up to 80 characters."
+
+["bot.og.err_reg"]
+other = "Type the registration number, up to 60 characters."
+
+["bot.og.err_address"]
+other = "Type the street and number, up to 200 characters."
+
+["bot.og.err_city"]
+other = "Type the city, up to 100 characters."
+
+["bot.og.err_postcode"]
+other = "Type the postal code, up to 20 characters."
+
+["bot.og.err_country"]
+other = "Type two Latin letters of the country, for example ES."
+
+["bot.og.err_tax_eu_vat"]
+other = "This does not look like an EU VAT number. Start with the country code, for example ESB12345678. If you have a NIF or IČO without a code, press «Another type of number»."
+
+["bot.og.err_tax_gb_vat"]
+other = "This does not look like a UK VAT number. Example: GB123456789."
+
+["bot.og.err_tax_il_vat"]
+other = "The Israeli number has 9 digits. Example: 512345678."
+
+["bot.og.err_tax_us_ein"]
+other = "The EIN looks like 12-3456789."
+
+["bot.og.err_tax_other"]
+other = "Type the number in one line, from 2 to 64 characters."
+
+["bot.og.err_tax_api"]
+other = "Arena did not accept the tax number. Check the number and its type. If you are changing another field, fix the tax number first."
+
+["bot.og.err_email"]
+other = "This does not look like an e-mail address. Check it, for example tickets@your-site.com."
+
+["bot.og.err_phone"]
+other = "This does not look like a phone number. Use digits with the country code, for example +34 600 000 000."

@@ -14,6 +14,7 @@ func fullSellerRow() gen.HostedPageSellerRow {
 	return gen.HostedPageSellerRow{
 		OrgName:            "Teatro Ejemplo",
 		LegalName:          sp("Teatro Ejemplo S.L."),
+		LegalForm:          sp(" S.L. "),
 		TaxID:              sp("ESB12345678"),
 		TaxIDScheme:        sp("eu_vat"),
 		RegistrationNumber: sp("B12345678"),
@@ -44,7 +45,7 @@ func TestBuildSeller_FlagOnPublishesLegalIdentity(t *testing.T) {
 		t.Fatal("buildSeller returned nil with show_seller on")
 	}
 	if got.LegalName != "Teatro Ejemplo S.L." || got.TaxID != "ESB12345678" ||
-		got.TaxScheme != "eu_vat" || got.RegistrationNumber != "B12345678" {
+		got.TaxScheme != "eu_vat" || got.RegistrationNumber != "B12345678" || got.LegalForm != "S.L." {
 		t.Fatalf("identity wrong: %+v", got)
 	}
 	if got.Country != "ES" {
@@ -82,7 +83,7 @@ func TestBuildSeller_MissingFieldsAreOmitted(t *testing.T) {
 		t.Fatalf("address/contact must be omitted: %+v", got)
 	}
 	b, _ := json.Marshal(got)
-	if s := string(b); strings.Contains(s, "tax_id") || strings.Contains(s, "registration_number") ||
+	if s := string(b); strings.Contains(s, "tax_id") || strings.Contains(s, "registration_number") || strings.Contains(s, "legal_form") ||
 		strings.Contains(s, "address") || strings.Contains(s, "public_contact") {
 		t.Fatalf("empty values leaked into the JSON: %s", s)
 	}
