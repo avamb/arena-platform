@@ -36,6 +36,10 @@ func (s *receiptSender) Send(ctx context.Context, m email.Message) error {
 	return err
 }
 
+// DefaultFrom mirrors email.SMTPSender: the platform sender of a message
+// without its own From.
+func (s *receiptSender) DefaultFrom() string { return "tickets@arena.test" }
+
 func (s *receiptSender) SendReceipt(_ context.Context, m email.Message) (email.Receipt, error) {
 	s.got = append(s.got, m)
 	if s.fail {
@@ -103,6 +107,14 @@ func TestLetterStatus_TicketLetterIsRecordedAndLinked(t *testing.T) {
 	}
 	if bodyHash == nil || *bodyHash != emailstatus.BodyDigest(sender.got[0].HTMLBody, sender.got[0].TextBody) {
 		t.Fatalf("body_sha256 = %v", bodyHash)
+	}
+	var fromAddr *string
+	if err := pool.QueryRow(ctx, `SELECT from_address FROM email_letters WHERE id = $1`, letterID).Scan(&fromAddr); err != nil {
+		t.Fatal(err)
+	}
+	if want := sender.got[0].From; want == "" && (fromAddr == nil || *fromAddr != "tickets@arena.test") ||
+		want != "" && (fromAddr == nil || *fromAddr != want) {
+		t.Fatalf("from_address = %v (message From %q)", fromAddr, want)
 	}
 	if tplVersion == nil || !strings.HasPrefix(*tplVersion, "ticket.en@") {
 		t.Fatalf("template_version = %v", tplVersion)
@@ -285,5 +297,116 @@ func TestLetterStatus_StaleSweepKeepsALetterThatWentOut(t *testing.T) {
 	}
 	if n != 0 {
 		t.Fatal("a letter that never went out must be deleted by the sweep")
+	}
+}
+
+// seedSessionChange writes a session change of the seed's session with a
+// notice for the seed's order and returns the change id.
+func seedSessionChange(ctx context.Context, t *testing.T, pool *pgxpool.Pool, seed orderLetterSeed, org uuid.UUID) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	if err := pool.QueryRow(ctx, `INSERT INTO session_changes (session_id, event_id, org_id, kinds, old_state, new_state)
+		VALUES ($1, $2, $3, ARRAY['time'], '{}', '{}') RETURNING id`, seed.SessionID, seed.EventID, org).Scan(&id); err != nil {
+		t.Fatalf("session change: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO session_change_notices (change_id, order_id, route) VALUES ($1, $2, 'arena')`,
+		id, seed.OrderID); err != nil {
+		t.Fatalf("notice: %v", err)
+	}
+	return id
+}
+
+// TestLetterStatus_StaleChangeLetterIsNotConfirmedByAnotherNotice (review
+// 2026-10-14 M1): a change letter left 'sending' must not become "sent"
+// because ANOTHER change notice of the same order went out. Only the notice
+// linked to the letter confirms it.
+func TestLetterStatus_StaleChangeLetterIsNotConfirmedByAnotherNotice(t *testing.T) {
+	pool := presentationPool(t)
+	ctx := context.Background()
+	seed, cleanup := seedOrderOfThree(ctx, t, pool)
+	defer cleanup()
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM session_changes WHERE session_id = $1`, seed.SessionID)
+		_, _ = pool.Exec(ctx, `DELETE FROM email_letters WHERE order_id = $1`, seed.OrderID)
+	}()
+	org := seedOrgID(ctx, t, pool, seed.OrderID)
+	first := seedSessionChange(ctx, t, pool, seed, org)
+	second := seedSessionChange(ctx, t, pool, seed, org)
+
+	// The letter of the first change never went out (the worker died).
+	lost, err := emailstatus.Begin(ctx, pool, emailstatus.NewLetter{OrgID: org, OrderID: &seed.OrderID,
+		Kind: emailstatus.KindChange, Recipient: seed.RecipientEmail, ChangeID: first})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The letter of the second change did, and its notice says so.
+	sent, err := emailstatus.Begin(ctx, pool, emailstatus.NewLetter{OrgID: org, OrderID: &seed.OrderID,
+		Kind: emailstatus.KindChange, Recipient: seed.RecipientEmail, ChangeID: second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE session_change_notices SET state = 'sent', updated_at = now()
+		WHERE change_id = $1`, second); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE email_letters SET sent_at = now() - interval '2 days' WHERE id = ANY($1)`,
+		[]uuid.UUID{lost, sent}); err != nil {
+		t.Fatal(err)
+	}
+	if err := emailstatus.SweepStale(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM email_letters WHERE id = $1`, lost).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatal("a change letter that never went out was confirmed by another change's notice")
+	}
+	var status string
+	var receiptMissing bool
+	if err := pool.QueryRow(ctx, `SELECT status, receipt_missing FROM email_letters WHERE id = $1`, sent).
+		Scan(&status, &receiptMissing); err != nil {
+		t.Fatalf("the letter its own notice confirms was deleted: %v", err)
+	}
+	if status != emailstatus.StatusSent || !receiptMissing {
+		t.Fatalf("confirmed letter = %q receipt_missing %v", status, receiptMissing)
+	}
+}
+
+// TestLetterStatus_StaleLetterOfAProcessingJobIsKept (review 2026-10-14 L2):
+// a worker that died after the relay's 250 and before it marked the job
+// leaves the job 'processing'. The letter may have gone out, so the sweep
+// keeps it.
+func TestLetterStatus_StaleLetterOfAProcessingJobIsKept(t *testing.T) {
+	pool := presentationPool(t)
+	ctx := context.Background()
+	seed, cleanup := seedOrderOfThree(ctx, t, pool)
+	defer cleanup()
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM email_letters WHERE order_id = $1`, seed.OrderID)
+	}()
+	org := seedOrgID(ctx, t, pool, seed.OrderID)
+	letter, err := emailstatus.Begin(ctx, pool, emailstatus.NewLetter{OrgID: org, OrderID: &seed.OrderID,
+		Kind: emailstatus.KindTicket, Recipient: seed.RecipientEmail, DeliveryJobIDs: seed.JobIDs[:1]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE delivery_jobs SET status = 'processing' WHERE id = $1`, seed.JobIDs[0]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE email_letters SET sent_at = now() - interval '2 days' WHERE id = $1`, letter); err != nil {
+		t.Fatal(err)
+	}
+	if err := emailstatus.SweepStale(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	if err := pool.QueryRow(ctx, `SELECT status FROM email_letters WHERE id = $1`, letter).Scan(&status); err != nil {
+		t.Fatalf("a letter whose job is still processing was deleted: %v", err)
+	}
+	if status != emailstatus.StatusSending {
+		t.Fatalf("status = %q, want it kept as sending", status)
 	}
 }

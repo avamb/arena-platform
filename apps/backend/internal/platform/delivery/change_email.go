@@ -165,7 +165,8 @@ func (h *changeEmail) handle(ctx context.Context, payload []byte) error {
 		h.record(ctx, changeID, orderID, sessionchange.StateFailed, err.Error())
 		return err
 	}
-	letter := emailstatus.NewLetter{OrgID: rec.OrgID, OrderID: &orderID, Kind: emailstatus.KindChange, Recipient: recipient.Email}
+	letter := emailstatus.NewLetter{OrgID: rec.OrgID, OrderID: &orderID, Kind: emailstatus.KindChange, Recipient: recipient.Email,
+		ChangeID: changeID}
 	tplKind := templates.TemplateKindChange
 	if !moves {
 		letter.Kind = emailstatus.KindCancel

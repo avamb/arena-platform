@@ -201,7 +201,7 @@ func (h *refundEmail) handle(ctx context.Context, payload []byte) error {
 		return err
 	}
 	letter := emailstatus.NewLetter{OrgID: orgID, OrderID: &orderID, Kind: emailstatus.KindRefund, Recipient: recipient.Email,
-		TemplateVersion: templateVersion(h.renderer, templates.TemplateKindRefund, recipient.LocaleHint)}
+		RefundIDs: ids, TemplateVersion: templateVersion(h.renderer, templates.TemplateKindRefund, recipient.LocaleHint)}
 	var refundTickets []uuid.UUID
 	for _, c := range claimed {
 		if c.TicketID != nil {
