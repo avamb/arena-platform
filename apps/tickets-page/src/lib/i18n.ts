@@ -66,6 +66,8 @@ export interface PageStrings {
   contactErrCaptcha: string;
   contactErrRate: string;
   contactErrGeneric: string;
+  /** A letter's #contact link reached a page that shows no form. */
+  contactUnavailable: string;
 }
 
 const STRINGS: Record<PageLocale, PageStrings> = {
@@ -99,7 +101,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactEmail: "Your e-mail",
     contactMessage: "Message",
     contactConsent: "I agree that Arena Sold Out passes my name, e-mail and message to the organizer so that they can answer me.",
-    contactConsentNote: "A copy may also reach the organizer's Telegram chat. Arena deletes its copy after 90 days. The copy in the chat stays with the organizer.",
+    contactConsentNote: "A copy may also reach the organizer's Telegram chat. Arena Sold Out deletes its copy after 90 days. The copy in the chat stays with the organizer.",
     contactPrivacy: "Privacy policy",
     contactSend: "Send",
     contactCancel: "Cancel",
@@ -111,8 +113,9 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactErrMessage: "Write a message of 10 to 2000 characters.",
     contactErrConsent: "Tick the box to agree that we pass your message to the organizer.",
     contactErrCaptcha: "Complete the anti-robot check, then send the message again.",
-    contactErrRate: "Too many messages were sent from here. Try again in an hour.",
-    contactErrGeneric: "We could not send your message. Try again in a minute.",
+    contactErrRate: "You have sent many messages in a row. Try again in an hour.",
+    contactErrGeneric: "We could not send your message. Try again in a minute. If it still does not work, try later: your text stays in the form.",
+    contactUnavailable: "You cannot write to the organizer through this page right now. Try again later.",
   },
   ru: {
     loading: 'Загрузка события…',
@@ -144,7 +147,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactEmail: "Ваш e-mail",
     contactMessage: "Сообщение",
     contactConsent: "Разрешаю Arena Sold Out передать моё имя, e-mail и сообщение организатору, чтобы он мог мне ответить.",
-    contactConsentNote: "Копия может прийти и в чат организатора в Telegram. Arena удаляет свою копию через 90 дней. Копия в чате остаётся у организатора.",
+    contactConsentNote: "Копия может прийти и в чат организатора в Telegram. Arena Sold Out удаляет свою копию через 90 дней. Копия в чате остаётся у организатора.",
     contactPrivacy: "Политика конфиденциальности",
     contactSend: "Отправить",
     contactCancel: "Отмена",
@@ -156,8 +159,9 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactErrMessage: "Напишите сообщение от 10 до 2000 символов.",
     contactErrConsent: "Отметьте согласие, чтобы мы передали сообщение организатору.",
     contactErrCaptcha: "Пройдите проверку «не робот» и отправьте сообщение ещё раз.",
-    contactErrRate: "Отсюда отправлено слишком много сообщений. Попробуйте через час.",
-    contactErrGeneric: "Не удалось отправить сообщение. Попробуйте через минуту.",
+    contactErrRate: "Вы отправили много сообщений подряд. Попробуйте ещё раз через час.",
+    contactErrGeneric: "Не удалось отправить сообщение. Попробуйте ещё раз через минуту. Если снова не получится, попробуйте позже: ваш текст останется в форме.",
+    contactUnavailable: "Сейчас написать организатору через эту страницу нельзя. Попробуйте позже.",
   },
   cs: {
     loading: 'Načítání akce…',
@@ -189,7 +193,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactEmail: "Váš e-mail",
     contactMessage: "Zpráva",
     contactConsent: "Souhlasím, že Arena Sold Out předá mé jméno, e-mail a zprávu pořadateli, aby mi mohl odpovědět.",
-    contactConsentNote: "Kopie může přijít i do Telegram chatu pořadatele. Arena svou kopii smaže po 90 dnech. Kopie v chatu zůstává pořadateli.",
+    contactConsentNote: "Kopie může přijít i do Telegram chatu pořadatele. Arena Sold Out svou kopii smaže po 90 dnech. Kopie v chatu zůstává pořadateli.",
     contactPrivacy: "Zásady ochrany osobních údajů",
     contactSend: "Odeslat",
     contactCancel: "Zrušit",
@@ -201,8 +205,9 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactErrMessage: "Napište zprávu o délce 10 až 2000 znaků.",
     contactErrConsent: "Zaškrtněte souhlas, abychom zprávu předali pořadateli.",
     contactErrCaptcha: "Dokončete ověření, že nejste robot, a zprávu odešlete znovu.",
-    contactErrRate: "Odsud bylo odesláno příliš mnoho zpráv. Zkuste to za hodinu.",
-    contactErrGeneric: "Zprávu se nepodařilo odeslat. Zkuste to za minutu.",
+    contactErrRate: "Odeslali jste mnoho zpráv za sebou. Zkuste to znovu za hodinu.",
+    contactErrGeneric: "Zprávu se nepodařilo odeslat. Zkuste to znovu za minutu. Pokud to znovu nepůjde, zkuste to později: váš text ve formuláři zůstane.",
+    contactUnavailable: "Pořadateli teď přes tuto stránku napsat nelze. Zkuste to později.",
   },
   he: {
     loading: 'טוען את האירוע…',
@@ -234,7 +239,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactEmail: "המייל שלכם",
     contactMessage: "הודעה",
     contactConsent: "אני מסכים/ה ש-Arena Sold Out תעביר את שמי, המייל וההודעה שלי למארגן כדי שיוכל לענות לי.",
-    contactConsentNote: "ייתכן שעותק יגיע גם לצ'אט הטלגרם של המארגן. Arena מוחקת את העותק שלה אחרי 90 יום. העותק בצ'אט נשאר אצל המארגן.",
+    contactConsentNote: "ייתכן שעותק יגיע גם לצ'אט הטלגרם של המארגן. Arena Sold Out מוחקת את העותק שלה אחרי 90 יום. העותק בצ'אט נשאר אצל המארגן.",
     contactPrivacy: "מדיניות פרטיות",
     contactSend: "שליחה",
     contactCancel: "ביטול",
@@ -246,8 +251,9 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactErrMessage: "כתבו הודעה באורך 10 עד 2000 תווים.",
     contactErrConsent: "סמנו את תיבת ההסכמה כדי שנעביר את ההודעה למארגן.",
     contactErrCaptcha: "השלימו את בדיקת האנטי-רובוט ושלחו שוב.",
-    contactErrRate: "נשלחו מכאן יותר מדי הודעות. נסו שוב בעוד שעה.",
-    contactErrGeneric: "לא הצלחנו לשלוח את ההודעה. נסו שוב בעוד דקה.",
+    contactErrRate: "שלחתם הרבה הודעות ברצף. נסו שוב בעוד שעה.",
+    contactErrGeneric: "לא הצלחנו לשלוח את ההודעה. נסו שוב בעוד דקה. אם זה לא יעבוד שוב, נסו מאוחר יותר: הטקסט שלכם יישאר בטופס.",
+    contactUnavailable: "כרגע אי אפשר לכתוב למארגן דרך הדף הזה. נסו שוב מאוחר יותר.",
   },
   es: {
     loading: 'Cargando evento…',
@@ -279,7 +285,7 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactEmail: "Tu correo",
     contactMessage: "Mensaje",
     contactConsent: "Acepto que Arena Sold Out pase mi nombre, correo y mensaje al organizador para que pueda responderme.",
-    contactConsentNote: "También puede llegar una copia al chat de Telegram del organizador. Arena borra su copia a los 90 días. La copia del chat queda en manos del organizador.",
+    contactConsentNote: "También puede llegar una copia al chat de Telegram del organizador. Arena Sold Out borra su copia a los 90 días. La copia del chat queda en manos del organizador.",
     contactPrivacy: "Política de privacidad",
     contactSend: "Enviar",
     contactCancel: "Cancelar",
@@ -291,8 +297,9 @@ const STRINGS: Record<PageLocale, PageStrings> = {
     contactErrMessage: "Escribe un mensaje de 10 a 2000 caracteres.",
     contactErrConsent: "Marca la casilla para aceptar que pasemos tu mensaje al organizador.",
     contactErrCaptcha: "Completa la verificación anti-robot y vuelve a enviar el mensaje.",
-    contactErrRate: "Se han enviado demasiados mensajes desde aquí. Inténtalo dentro de una hora.",
-    contactErrGeneric: "No pudimos enviar tu mensaje. Inténtalo dentro de un minuto.",
+    contactErrRate: "Has enviado muchos mensajes seguidos. Inténtalo de nuevo dentro de una hora.",
+    contactErrGeneric: "No pudimos enviar tu mensaje. Inténtalo de nuevo dentro de un minuto. Si vuelve a fallar, inténtalo más tarde: tu texto se queda en el formulario.",
+    contactUnavailable: "Ahora no puedes escribir al organizador desde esta página. Inténtalo más tarde.",
   },
 };
 

@@ -3,7 +3,7 @@ import { resolveLocale } from './lib/locale.ts';
 import { applyDocumentChrome, consumeCheckoutTokenFromURL, eventIDWithOpenCheckout, renderError, renderEvent, renderLoading, renderNotFound, renderPromoterPage } from './lib/render.ts';
 import { ApiError, fetchHostedPage, fetchPromoterPage } from './lib/api.ts';
 import { renderSellerFooter } from './lib/seller.ts';
-import { openContactFromHash, renderContactFooter } from './lib/contact.ts';
+import { contactFallbackURL, openContactFromHash, renderContactFooter } from './lib/contact.ts';
 
 /** Resolved at build time by Vite from the VITE_API_BASE_URL build arg
  * (see Dockerfile / .env). Empty string falls back to same-origin relative
@@ -106,6 +106,13 @@ async function main(): Promise<void> {
       openContactFromHash(contactCtx);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
+        // A letter's "Write to the organizer" link of an event that is gone:
+        // the organization's own page has the same form.
+        const fallback = contactFallbackURL(route.orgSlug, window.location);
+        if (fallback) {
+          window.location.replace(fallback);
+          return;
+        }
         renderNotFound(mainEl, locale);
         return;
       }
