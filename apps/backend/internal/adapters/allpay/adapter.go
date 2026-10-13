@@ -130,6 +130,13 @@ type Config struct {
 	// TestMode forces test_mode=1 on every payment page: real cards are not
 	// charged whatever the integration's own setting says.
 	TestMode bool
+	// LiveMode forces test_mode=0: the page charges real cards even when the
+	// integration was left in test mode in the AllPay dashboard (checked on
+	// the test integration 2026-10-13: test_mode=0 is accepted and the page
+	// shows no test banner). Otherwise a live config on a forgotten test
+	// integration would issue real tickets for test cards. Neither set: the
+	// field is not sent and the dashboard decides.
+	LiveMode bool
 	// BaseURL overrides DefaultBaseURL. Tests only.
 	BaseURL string
 }
@@ -370,8 +377,11 @@ func (a *Adapter) CreateCheckoutSession(ctx context.Context, req payments.Create
 		}
 		params["inst"] = json.Number(strconv.Itoa(inst))
 	}
-	if a.cfg.TestMode {
+	switch {
+	case a.cfg.TestMode:
 		params["test_mode"] = json.Number("1")
+	case a.cfg.LiveMode:
+		params["test_mode"] = json.Number("0")
 	}
 
 	out, err := a.post(ctx, methodGetPayment, params)
@@ -463,6 +473,10 @@ func (a *Adapter) PaymentStatus(ctx context.Context, orderID string) (*PaymentSt
 	status, err := strconv.Atoi(str("status"))
 	if err != nil {
 		return nil, fmt.Errorf("allpay: PaymentStatus: unreadable status %q", str("status"))
+	}
+	if got := str("order_id"); got != orderID {
+		// An answer about another order is not an answer about this one.
+		return nil, fmt.Errorf("allpay: PaymentStatus: asked for order %s, the answer names %q", orderID, got)
 	}
 	st := &PaymentStatus{
 		OrderID:     str("order_id"),

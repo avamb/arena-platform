@@ -35261,7 +35261,9 @@ export interface operations {
             /**
              * @description Duplicate webhook delivery — the
              *     `(provider_payment_id, event_type)` pair was already recorded.
-             *     No body.
+             *     No body. Flitt and AllPay retry until they see 200, so their
+             *     duplicate deliveries are answered 200 with `processed: false`
+             *     and `reason: "duplicate event delivery"` instead.
              */
             204: {
                 headers: {

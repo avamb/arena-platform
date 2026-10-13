@@ -31,11 +31,21 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 )
 
 const methodRefund = "refund"
+
+// SettleWait is how long a REPEATED call of one refund waits after its
+// first call before it may send the refund again. AllPay has no
+// idempotency key: an earlier call that timed out on arena's side may still
+// be processed by AllPay, and until then paymentstatus does not show it. A
+// repeat inside the wait reads the order and, when nothing explains the
+// money yet, sends nothing and reports an unknown outcome, so the engine
+// asks again later.
+const SettleWait = 10 * time.Minute
 
 // AllPay error codes of the refund method (API reference, "Errors").
 const (
@@ -55,6 +65,7 @@ const (
 	RefundCodeKnowsLess        = "allpay_refunded_less_than_known"
 	RefundCodeUnexplained      = "allpay_refund_unexplained"
 	RefundCodeOverRemaining    = "allpay_amount_over_remaining"
+	RefundCodePartialUnclear   = "allpay_partial_refund_unclear"
 	RefundCodeOrderNotFound    = "allpay_order_not_found"
 	RefundCodeAPIRefused       = "allpay_refused"
 	RefundCodeProcessorRefused = "allpay_processor_refused"
@@ -112,11 +123,22 @@ func (a *Adapter) Refund(ctx context.Context, req payments.RefundRequest) (payme
 			fmt.Sprintf("the refund is in %s, AllPay holds the order in %s", strings.ToUpper(req.Currency), st.Currency))
 	}
 	charged := st.ChargedMinor()
+	if (st.Status == StatusPaid || st.Status == StatusPartiallyRefunded || st.Status == StatusRefunded) &&
+		(charged <= 0 || st.Currency == "") {
+		// An answer without the order's amount or currency cannot be
+		// compared: nothing is sent, the engine asks again later.
+		return payments.RefundResult{}, fmt.Errorf("allpay: Refund: the order %s is reported without an amount or currency", orderID)
+	}
 	var refunded int64
 	switch st.Status {
 	case StatusPaid:
 		refunded = 0
 	case StatusPartiallyRefunded:
+		// Status 4 must name a part: neither nothing nor everything.
+		if st.RefundedMinor <= 0 || st.RefundedMinor >= charged {
+			return payments.RefundResult{}, review(RefundCodePartialUnclear,
+				fmt.Sprintf("AllPay reports the order refunded in part, refunded %s of %s", MinorToMajor(st.RefundedMinor), MinorToMajor(charged)))
+		}
 		refunded = st.RefundedMinor
 	case StatusRefunded:
 		refunded = charged
@@ -137,6 +159,10 @@ func (a *Adapter) Refund(ctx context.Context, req payments.RefundRequest) (payme
 		return payments.RefundResult{}, review(RefundCodeUnexplained,
 			fmt.Sprintf("AllPay reports %s refunded, arena can account for %s (%s more may have been refunded by calls without an answer)",
 				MinorToMajor(refunded), MinorToMajor(known), MinorToMajor(uncertain)))
+	}
+	if req.Attempt > 1 && !req.FirstAttemptAt.IsZero() && a.now().Sub(req.FirstAttemptAt) < SettleWait {
+		return payments.RefundResult{}, fmt.Errorf("allpay: Refund: an earlier call of this refund may still be processed by AllPay, nothing sent until %s after the first call",
+			SettleWait)
 	}
 	if left := charged - refunded; req.AmountMinor > left {
 		return payments.RefundResult{}, review(RefundCodeOverRemaining,

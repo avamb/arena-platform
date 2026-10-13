@@ -1247,6 +1247,17 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 			slog.String("event_type", req.EventType),
 		)
 		_ = tx.Rollback(ctx)
+		if route.ExpectedProvider != "" {
+			// A config-route-only provider (Flitt, AllPay) retries until it
+			// sees 200; a 204 is not documented as success there.
+			httputil.WriteJSON(w, http.StatusOK, map[string]any{
+				"acknowledged": true,
+				"event_type":   req.EventType,
+				"processed":    false,
+				"reason":       "duplicate event delivery",
+			})
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}

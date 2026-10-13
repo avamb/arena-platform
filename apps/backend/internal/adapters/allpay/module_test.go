@@ -118,8 +118,12 @@ func TestAllPayModule_ConfigModeDrivesTestMode(t *testing.T) {
 	if !allpayModule(t, "k", payments.Options{Mode: "test"}).(*Adapter).cfg.TestMode {
 		t.Error("a test config must force test_mode")
 	}
-	if allpayModule(t, "k", payments.Options{Mode: "live"}).(*Adapter).cfg.TestMode {
-		t.Error("a live config must leave test mode to the integration")
+	live := allpayModule(t, "k", payments.Options{Mode: "live"}).(*Adapter).cfg
+	if live.TestMode || !live.LiveMode {
+		t.Error("a live config must force test_mode=0, whatever the dashboard says")
+	}
+	if c := allpayModule(t, "k", payments.Options{}).(*Adapter).cfg; c.TestMode || c.LiveMode {
+		t.Error("an unknown mode must leave test_mode to the integration")
 	}
 }
 
@@ -181,6 +185,16 @@ func TestAllPayModule_PaidWebhookIsConfirmedWithAllPay(t *testing.T) {
 
 	if ev, err := parse("o-missing"); err != nil || ev.Kind != payments.EventPaymentManualReview {
 		t.Errorf("order AllPay does not hold: %+v, %v; want manual review", ev, err)
+	}
+
+	// Review M1: status 1 without an amount or a currency confirms nothing.
+	stub.answer[methodPaymentStatus] = `{"order_id":"o-paid","status":1}`
+	if _, err := parse("o-paid"); !errors.Is(err, payments.ErrProviderUnreachable) {
+		t.Errorf("paid without amount: %v; want ErrProviderUnreachable", err)
+	}
+	stub.answer[methodPaymentStatus] = `{"order_id":"o-paid","status":1,"amount":123.5}`
+	if _, err := parse("o-paid"); !errors.Is(err, payments.ErrProviderUnreachable) {
+		t.Errorf("paid without currency: %v; want ErrProviderUnreachable", err)
 	}
 
 	stub.answer[methodPaymentStatus] = `oops`

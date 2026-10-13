@@ -356,3 +356,16 @@ func TestCreateCheckoutSession_BuyerDetailsAndForeignID(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateCheckoutSession_LiveConfigSendsTestModeZero(t *testing.T) {
+	stub := newStubAllPay(t, "pp100", "KEY")
+	a := newTestAdapter(stub, Config{LiveMode: true})
+	if _, err := a.CreateCheckoutSession(t.Context(), payments.CreateHostedCheckoutRequest{
+		Amount: 5000, Currency: "ILS", ClientReferenceID: "o-live",
+	}); err != nil {
+		t.Fatalf("CreateCheckoutSession: %v", err)
+	}
+	if got, _ := scalarValue(stub.last(t).Body["test_mode"]); got != "0" {
+		t.Errorf("test_mode = %q; a live config must send 0", got)
+	}
+}

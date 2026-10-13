@@ -143,6 +143,7 @@ func newModule(secrets map[string]string, opts payments.Options) (payments.Modul
 		MaxInstallments:      inst,
 		InstallmentsMinMinor: instMin,
 		TestMode:             strings.EqualFold(strings.TrimSpace(opts.Mode), "test"),
+		LiveMode:             strings.EqualFold(strings.TrimSpace(opts.Mode), "live"),
 		BaseURL:              opts.AllPayAPIBaseURL,
 	}), nil
 }
@@ -185,8 +186,9 @@ func (a *Adapter) VerifyAndParse(ctx context.Context, in payments.WebhookInput) 
 //     payments.ErrProviderUnreachable; the route answers 503 and AllPay
 //     delivers the webhook again (up to 10 times in 24 hours).
 //   - Status 0 (AllPay asks to read a status 2 seconds after an attempt, so
-//     the read may run ahead of AllPay's own books) or a reservation that
-//     is not charged: the same, AllPay delivers it again.
+//     the read may run ahead of AllPay's own books), a reservation that is
+//     not charged, or status 1 without an amount or a currency: the same,
+//     AllPay delivers it again.
 //   - Status 3 or 4: the money was paid and some of it is already back (a
 //     dashboard refund before arena saw the payment). A human decides:
 //     EventPaymentManualReview, no tickets.
@@ -211,6 +213,11 @@ func (a *Adapter) confirmPaid(ctx context.Context, ev payments.NormalizedEvent) 
 	switch {
 	case st.Preauth == "authorized":
 		return payments.NormalizedEvent{}, fmt.Errorf("%w: allpay: order %s is reserved, not charged",
+			payments.ErrProviderUnreachable, ev.ProviderPaymentID)
+	case st.Status == StatusPaid && (st.ChargedMinor() <= 0 || st.Currency == ""):
+		// A paid answer that names no amount or currency cannot be compared
+		// with the payment: it confirms nothing.
+		return payments.NormalizedEvent{}, fmt.Errorf("%w: allpay: order %s is reported paid without an amount or currency",
 			payments.ErrProviderUnreachable, ev.ProviderPaymentID)
 	case st.Status == StatusPaid:
 		ev.AmountMinor, ev.Currency = st.ChargedMinor(), st.Currency

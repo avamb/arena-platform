@@ -473,9 +473,10 @@ func TestAllPay_StartAndWebhookPayTheOrder(t *testing.T) {
 	}
 }
 
-// TestAllPay_LiveConfigLeavesTestModeToTheIntegration: a config filed as live
-// sends no test_mode, so the AllPay integration's own setting decides.
-func TestAllPay_LiveConfigLeavesTestModeToTheIntegration(t *testing.T) {
+// TestAllPay_LiveConfigForcesLiveMode: a config filed as live sends
+// test_mode=0, so a page charges real cards even when the integration was
+// left in test mode in the AllPay dashboard (spec 37 §3).
+func TestAllPay_LiveConfigForcesLiveMode(t *testing.T) {
 	pool := integrationPool(t)
 	ctx := t.Context()
 	f := newAllPayFixture(t, ctx, pool, "apl")
@@ -489,8 +490,8 @@ func TestAllPay_LiveConfigLeavesTestModeToTheIntegration(t *testing.T) {
 	if code, body := f.startCheckout(t, srv, hostedTicketsBaseURL+"/live"); code != http.StatusCreated {
 		t.Fatalf("checkout/start = %d; body: %s", code, body)
 	}
-	if v, has := stub.last(t)["test_mode"]; has {
-		t.Errorf("test_mode = %v on a live config; want it left out", v)
+	if v := fmt.Sprint(stub.last(t)["test_mode"]); v != "0" {
+		t.Errorf("test_mode = %v on a live config; want 0", v)
 	}
 }
 
@@ -648,5 +649,44 @@ func TestAllPay_PaidAmountMismatchParksThePayment(t *testing.T) {
 	   WHERE job_type = 'checkout.issue_tickets' AND payload->>'checkout_session_id' = $1`, csID.String()).Scan(&issueJobs)
 	if issueJobs != 0 {
 		t.Errorf("checkout.issue_tickets jobs = %d; want none", issueJobs)
+	}
+}
+
+// TestAllPay_DuplicateDeliveryAnswers200: a delivery whose event is already
+// recorded while the payment is still open (two deliveries racing) answers
+// 200, not 204, because AllPay retries until it sees 200.
+func TestAllPay_DuplicateDeliveryAnswers200(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f := newAllPayFixture(t, ctx, pool, "apd")
+	defer f.cleanup()
+	stub := newStubAllPayServer(t, f)
+	srv := allpayServer(t, pool, stub)
+	q := gen.New(pool)
+
+	code, body := f.startCheckout(t, srv, hostedTicketsBaseURL+"/dup")
+	if code != http.StatusCreated {
+		t.Fatalf("checkout/start = %d; body: %s", code, body)
+	}
+	var start hostedStartResponse
+	_ = json.Unmarshal(body, &start)
+	csID := uuid.MustParse(start.CheckoutSession.ID)
+	cs, _ := q.GetCheckoutSessionByID(ctx, csID)
+	pi, err := q.GetPaymentIntentByProviderID(ctx, csID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The racing delivery's event row is already there, the intent is still created.
+	target := "succeeded"
+	if _, err := q.InsertPaymentIntentEvent(ctx, pi.ID, csID.String(), allpay.EventTypePaid, []byte(`{}`), &target); err != nil {
+		t.Fatal(err)
+	}
+	stub.markPaid(t, csID.String())
+	code, body = postAllPayWebhook(t, srv, f.configWebhookPath(), f.webhook(t, csID.String(), 1, *cs.Total, f.apiKey))
+	if code != http.StatusOK || !strings.Contains(string(body), "duplicate event delivery") {
+		t.Fatalf("duplicate delivery = %d %s; want 200 duplicate event delivery", code, body)
+	}
+	if after, _ := q.GetPaymentIntentByProviderID(ctx, csID.String()); after.State != "created" {
+		t.Fatalf("a duplicate delivery moved the intent to %q", after.State)
 	}
 }

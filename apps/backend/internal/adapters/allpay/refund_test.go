@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 )
@@ -316,5 +317,97 @@ func TestRefund_StatusUnreadableIsUnknown(t *testing.T) {
 	}
 	if n := stub.count(methodRefund); n != 0 {
 		t.Errorf("the stub received %d refund call(s); want none", n)
+	}
+}
+
+// Review M2: status 4 must name a part of the order. A missing (0) or full
+// refunded total is not "nothing refunded yet".
+func TestRefund_PartialStatusWithoutAPartIsReviewed(t *testing.T) {
+	for name, answer := range map[string]string{
+		"refunded missing": `{"order_id":"o-p","status":4,"amount":100,"currency":"ILS"}`,
+		"refunded all":     `{"order_id":"o-p","status":4,"amount":100,"refunded":100,"currency":"ILS"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			stub := newStubAllPay(t, "pp1", "key")
+			stub.answer[methodPaymentStatus] = answer
+			a := newTestAdapter(stub, Config{})
+			_, err := a.Refund(t.Context(), refundReq("o-p", 1000, 10000, "r-p"))
+			if d := declined(t, err); d.Code != RefundCodePartialUnclear || !d.NeedsReview {
+				t.Errorf("declined = %+v; want %s needing review", d, RefundCodePartialUnclear)
+			}
+			if n := stub.count(methodRefund); n != 0 {
+				t.Errorf("the stub received %d refund call(s); want none", n)
+			}
+		})
+	}
+}
+
+// Review M1 for refunds: an answer without amount or currency sends nothing
+// and is an unknown outcome, not a refusal.
+func TestRefund_StatusWithoutAmountOrCurrencySendsNothing(t *testing.T) {
+	for name, answer := range map[string]string{
+		"no amount":   `{"order_id":"o-n","status":1,"currency":"ILS"}`,
+		"no currency": `{"order_id":"o-n","status":1,"amount":100}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			stub := newStubAllPay(t, "pp1", "key")
+			stub.answer[methodPaymentStatus] = answer
+			a := newTestAdapter(stub, Config{})
+			_, err := a.Refund(t.Context(), refundReq("o-n", 1000, 10000, "r-n"))
+			if err == nil {
+				t.Fatal("an answer without amount or currency was trusted")
+			}
+			if _, _, ok := payments.RefundDeclined(err); ok {
+				t.Errorf("reported as a refusal: %v; want an unknown outcome", err)
+			}
+			if n := stub.count(methodRefund); n != 0 {
+				t.Errorf("the stub received %d refund call(s); want none", n)
+			}
+		})
+	}
+}
+
+// Review L2: a repeated call of a refund whose money AllPay does not show yet
+// waits SettleWait from the first call before it sends again.
+func TestRefund_RepeatWaitsForTheEarlierCallToSettle(t *testing.T) {
+	stub := newStubAllPay(t, "pp1", "key")
+	stub.addOrder("o-w", stubOrder{Status: StatusPaid, Amount: 10000})
+	a := newTestAdapter(stub, Config{})
+	req := refundReq("o-w", 4000, 10000, "r-w")
+	req.Attempt = 2
+	req.FirstAttemptAt = a.now().Add(-time.Minute)
+	_, err := a.Refund(t.Context(), req)
+	if err == nil {
+		t.Fatal("a repeat one minute after the first call was sent")
+	}
+	if _, _, ok := payments.RefundDeclined(err); ok {
+		t.Errorf("reported as a refusal: %v; want an unknown outcome", err)
+	}
+	if n := stub.count(methodRefund); n != 0 {
+		t.Fatalf("the stub received %d refund call(s) inside the wait", n)
+	}
+	req.FirstAttemptAt = a.now().Add(-SettleWait - time.Second)
+	if _, err := a.Refund(t.Context(), req); err != nil {
+		t.Fatalf("repeat after the wait: %v", err)
+	}
+	if got := stub.refunds("o-w"); len(got) != 1 {
+		t.Errorf("AllPay refunded %v; want one refund after the wait", got)
+	}
+	// A first call never waits.
+	stub.addOrder("o-w2", stubOrder{Status: StatusPaid, Amount: 10000})
+	first := refundReq("o-w2", 1000, 10000, "r-w2")
+	first.Attempt, first.FirstAttemptAt = 1, a.now()
+	if _, err := a.Refund(t.Context(), first); err != nil {
+		t.Errorf("first call: %v", err)
+	}
+}
+
+// Review L4: an answer about another order is not trusted.
+func TestPaymentStatus_AnswerForAnotherOrderIsAnError(t *testing.T) {
+	stub := newStubAllPay(t, "pp1", "key")
+	stub.answer[methodPaymentStatus] = `{"order_id":"someone-else","status":1,"amount":100,"currency":"ILS"}`
+	a := newTestAdapter(stub, Config{})
+	if _, err := a.PaymentStatus(t.Context(), "o-mine"); err == nil {
+		t.Fatal("a status for another order was accepted")
 	}
 }

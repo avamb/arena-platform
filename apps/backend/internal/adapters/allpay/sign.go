@@ -43,7 +43,7 @@ const signField = "sign"
 
 // Sign computes the AllPay signature of params under the API key.
 func Sign(apiKey string, params map[string]any) string {
-	chunks := make([]string, 0, len(params)+1)
+	chunks := make([]string, 0, len(params))
 	for _, k := range sortedKeys(params) {
 		if k == signField {
 			continue

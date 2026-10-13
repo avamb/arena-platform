@@ -180,7 +180,7 @@ func (e *Engine) claim(ctx context.Context, id uuid.UUID) (Refund, Payment, erro
 			return err
 		}
 		r = claimed
-		return nil
+		return tx.QueryRow(ctx, `SELECT first_attempted_at FROM refunds WHERE id = $1`, id).Scan(&pay.RefundFirstAttemptAt)
 	})
 	if err == nil && scannedTicket != uuid.Nil {
 		e.RecordScannedBlock(ctx, r.OrgID, scannedTicket, Actor{}, "claim")
@@ -380,6 +380,8 @@ func (e *Engine) call(ctx context.Context, r Refund, pay Payment) callOutcome {
 		IdempotencyKey:      r.ID.String(),
 		OtherRefundedMinor:  pay.OtherRefunded,
 		OtherUncertainMinor: pay.OtherUncertain,
+		Attempt:             int(r.ProviderAttempts),
+		FirstAttemptAt:      pay.RefundFirstAttemptAt,
 		Metadata:            payments.RefundMetadata{RefundID: r.ID.String(), OrderID: uuidString(r.OrderID)},
 	})
 	switch {

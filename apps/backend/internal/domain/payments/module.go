@@ -32,6 +32,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -370,6 +371,12 @@ type RefundRequest struct {
 	// repeated call can never return the money twice. Others ignore them.
 	OtherRefundedMinor  int64
 	OtherUncertainMinor int64
+	// Attempt is the number of this call of the refund (1 = the first) and
+	// FirstAttemptAt when the first call was made. A provider without an
+	// idempotency key uses them to let an earlier call settle before it
+	// sends the refund again. Zero values mean "unknown".
+	Attempt        int
+	FirstAttemptAt time.Time
 	// Metadata travels to the provider.
 	Metadata RefundMetadata
 }

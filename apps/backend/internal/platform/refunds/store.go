@@ -115,6 +115,9 @@ type Payment struct {
 	// compares them with its own refunded total before it sends anything.
 	OtherRefunded  int64
 	OtherUncertain int64
+	// RefundFirstAttemptAt is the claimed refund's first provider attempt
+	// (claim only), for payments.RefundRequest.FirstAttemptAt.
+	RefundFirstAttemptAt time.Time
 }
 
 const paymentColumns = `id, org_id, checkout_session_id, provider, provider_payment_id, provider_charge_ref, amount, currency, state`
