@@ -10572,6 +10572,13 @@ components:
           type: string
           format: uuid
           description: Internal UUIDv7 of the checkout_sessions row.
+        order_number:
+          type: [integer, "null"]
+          format: int64
+          description: |
+            The order number the buyer sees in the ticket e-mail and on the PDF
+            (`orders.system_id`). Present once the order exists for this
+            checkout (always for a paid one); omitted before that.
         expires_at:
           type: [string, "null"]
           format: date-time

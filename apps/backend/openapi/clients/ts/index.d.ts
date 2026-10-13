@@ -16501,6 +16501,13 @@ export interface components {
              */
             checkout_session_id: string;
             /**
+             * Format: int64
+             * @description The order number the buyer sees in the ticket e-mail and on the PDF
+             *     (`orders.system_id`). Present once the order exists for this
+             *     checkout (always for a paid one); omitted before that.
+             */
+            order_number?: number | null;
+            /**
              * Format: date-time
              * @description RFC3339 timestamp when the underlying reservation expires.
              */

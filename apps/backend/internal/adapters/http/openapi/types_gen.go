@@ -3862,6 +3862,11 @@ type CheckoutStatusResponse struct {
 	// Items Cart items held at the time of the request.
 	Items []CheckoutStatusItem `json:"items"`
 
+	// OrderNumber The order number the buyer sees in the ticket e-mail and on the PDF
+	// (`orders.system_id`). Present once the order exists for this
+	// checkout (always for a paid one); omitted before that.
+	OrderNumber *int64 `json:"order_number"`
+
 	// PaymentUrl The provider-hosted payment page for this order, present only
 	// while the order is still `pending` and its hold has not expired.
 	//

@@ -3044,7 +3044,7 @@ other = "This refund cannot be sent again: the provider may already have returne
 ["bot.rq.provider_word"]
 other = "the provider"
 ["bot.ref.final"]
-other = "<b>Final check</b>\nOrder #{{.Num}} · {{.N}} ticket(s): {{.Tickets}}\nTo return: <b>{{.Amount}}</b> through {{.Provider}}\n{{.Letter}}\n\nThese tickets stop being valid for entry, also when only part of their price is returned. The payment provider returns the money; this cannot be undone."
+other = "<b>Final check</b>\nOrder #{{.Num}} · {{.N}} ticket(s): {{.Tickets}}\nTo return: <b>{{.Amount}}</b> through {{.Provider}}\n{{.Letter}}\n\nThese tickets stop being valid for entry, even when you return only part of their price. The payment provider returns the money. You cannot undo this."
 
 ["bot.ref.yes_btn"]
 other = "✅ Yes, refund {{.Amount}}"
@@ -3077,19 +3077,19 @@ other = "One of the tickets can no longer be refunded (it changed, is no longer 
 other = "The answer is taking longer than expected. Nothing is lost: open the order in a minute to see the state of the refund. Do not start it again."
 
 ["bot.ref.err_scanned"]
-other = "{{if .Ticket}}Ticket {{.Ticket}}{{else}}This ticket{{end}} was already scanned at the entrance. Its money cannot be returned. Nothing was refunded.{{if .Next}} {{.Next}}{{end}}"
+other = "{{if .Ticket}}Ticket {{.Ticket}}{{else}}This ticket{{end}} was already scanned at the entrance. Arena cannot return its money and did not refund anything.{{if .Next}} {{.Next}}{{end}}"
 
 ["bot.ref.scanned_all"]
-other = "Order #{{.Num}}: every ticket was already scanned at the entrance. Their money cannot be returned."
+other = "Order #{{.Num}}: every ticket was already scanned at the entrance. Arena cannot return their money."
 
 ["bot.ref.scanned_note"]
-other = "Already scanned at the entrance: {{.Tickets}}. The money for these tickets cannot be returned, so they are not in the list."
+other = "Already scanned at the entrance: {{.Tickets}}. Arena cannot return the money for these tickets, so they are not in the list."
 
 ["bot.ref.letter_hint"]
 other = "Press the letter button to change this."
 
 ["bot.ref.scanned_next"]
-other = "If the ticket was scanned by mistake, write to Arena support. The operator can allow one refund."
+other = "If someone scanned the ticket by mistake, write to Arena support. The operator can allow one refund."
 
 ["bot.ref.scanned_next_operator"]
 other = "You are a platform operator: you can allow one refund of the ticket with the button below."
@@ -3104,7 +3104,7 @@ other = "Ticket {{.Ticket}} was already scanned at the entrance. You are allowin
 other = "The reason must be 1 to {{.Chars}} characters long. Please write it again."
 
 ["bot.ref.exc_done"]
-other = "✔ A refund of ticket {{.Ticket}} is allowed for {{.Hours}} hours. The permission covers one refund.\nPress “Continue the refund”."
+other = "✔ You allowed one refund of ticket {{.Ticket}} for {{.Hours}} hours.\nPress “Continue the refund”."
 
 ["bot.ref.exc_replayed"]
 other = "A refund of ticket {{.Ticket}} is already allowed, and the permission is still valid. Press “Continue the refund”."
@@ -3113,28 +3113,28 @@ other = "A refund of ticket {{.Ticket}} is already allowed, and the permission i
 other = "Continue the refund"
 
 ["bot.ref.exc_cancelled"]
-other = "Cancelled. No permission was given."
+other = "Canceled. Arena gave no permission."
 
 ["bot.ref.exc_not_scanned"]
-other = "Ticket {{.Ticket}} is not scanned, so no permission is needed. Press “Continue the refund”."
+other = "Nobody scanned ticket {{.Ticket}}, so you do not need a permission. Press “Continue the refund”."
 
 ["bot.ref.exc_exists"]
-other = "Ticket {{.Ticket}} already has a permission: another operator gave it, or it was already used. No new permission was given. Open the order to check its refunds."
+other = "Ticket {{.Ticket}} already has a permission: another operator gave it, or someone already used it. Arena gave no new permission. Open the order to check its refunds."
 
 ["bot.ref.exc_not_found"]
-other = "Ticket {{.Ticket}} was not found in this organization. Nothing was changed."
+other = "Arena did not find ticket {{.Ticket}} in this organization and changed nothing."
 
 ["bot.ref.exc_forbidden"]
-other = "Only a platform operator can allow such a refund. Nothing was changed."
+other = "Only a platform operator can allow such a refund. Arena changed nothing."
 
 ["bot.ref.exc_failed"]
-other = "The permission could not be given. Nothing was changed. In a few minutes, write the reason again."
+other = "Arena could not give the permission and changed nothing. In a few minutes, write the reason again."
 
 ["bot.ref.err_scanned_notified"]
-other = "{{if .Ticket}}Ticket {{.Ticket}}{{else}}This ticket{{end}} was already scanned at the entrance. Its money cannot be returned. Nothing was refunded. The organization's owners have been notified.{{if .Next}} {{.Next}}{{end}}"
+other = "{{if .Ticket}}Ticket {{.Ticket}}{{else}}This ticket{{end}} was already scanned at the entrance. Arena cannot return its money and did not refund anything. The organization's owners got a notice.{{if .Next}} {{.Next}}{{end}}"
 
 ["bot.ref.err_scanned_nobody"]
-other = "{{if .Ticket}}Ticket {{.Ticket}}{{else}}This ticket{{end}} was already scanned at the entrance. Its money cannot be returned. Nothing was refunded. Arena has no e-mail address of the organization's owners, so we told the platform operator.{{if .Next}} {{.Next}}{{end}}"
+other = "{{if .Ticket}}Ticket {{.Ticket}}{{else}}This ticket{{end}} was already scanned at the entrance. Arena cannot return its money and did not refund anything. Arena has no e-mail address of the organization's owners, so we told the platform operator.{{if .Next}} {{.Next}}{{end}}"
 
 ["bot.ref.still_sending"]
 other = "The refund of order #{{.Num}} is still being sent. Wait for the answer here; nothing can be changed until then."
