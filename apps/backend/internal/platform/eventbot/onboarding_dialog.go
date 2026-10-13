@@ -93,8 +93,9 @@ const onbDialogKind = "onboarding"
 // onbDialogs keeps the first four answers of an application (name, phone,
 // e-mail, language) and the half-ticked multiselect in bot_dialogs, so a bot
 // restart loses nothing. Everything after the first four answers lives on the
-// server. Entry points read the dialog with get and write it back once with
-// save when they are done, unless they cleared it.
+// server. Entry points read the dialog with get, write it back before each
+// reply (saveBeforeReply) and once more with save when they are done, unless
+// they cleared it.
 type onbDialogs struct {
 	store DialogStore
 }
@@ -132,6 +133,15 @@ func (d *onbDialogs) save(ctx context.Context, tg int64, cur *onbDialog) {
 	if err := d.store.Save(ctx, tg, nil, onbDialogKind, "open", cur, dialogTTL); err != nil {
 		slog.Default().Error("onboarding dialog: save failed", "error", err.Error())
 	}
+}
+
+// saveBeforeReply makes every Telegram request sent on the returned ctx write
+// cur back first (reply_hook.go): the handlers change cur and then reply, and
+// the step the reply asks about must already be stored when the applicant
+// sees it. The deferred save still runs at the end for a handler that changes
+// cur after its last reply, or does not reply at all.
+func (d *onbDialogs) saveBeforeReply(ctx context.Context, tg int64, cur *onbDialog) context.Context {
+	return withSaveBeforeReply(ctx, func() { d.save(ctx, tg, cur) })
 }
 
 func (d *onbDialogs) clear(ctx context.Context, tg int64, cur *onbDialog) {
@@ -229,6 +239,7 @@ func (b *Bot) sendMarkup(ctx context.Context, chatID int64, text string, markup 
 func (b *Bot) onbWelcome(ctx context.Context, chatID int64, from *models.User) {
 	d := b.onb.get(ctx, from.ID)
 	defer b.onb.save(ctx, from.ID, d)
+	ctx = b.onb.saveBeforeReply(ctx, from.ID, d)
 	b.onbWelcomeWith(ctx, chatID, from, d)
 }
 
@@ -258,6 +269,7 @@ func (b *Bot) onbWelcomeWith(ctx context.Context, chatID int64, from *models.Use
 func (b *Bot) onbApplyDirect(ctx context.Context, chatID int64, from *models.User) {
 	d := b.onb.get(ctx, from.ID)
 	defer b.onb.save(ctx, from.ID, d)
+	ctx = b.onb.saveBeforeReply(ctx, from.ID, d)
 	if app, err := b.arena.OnboardingCurrent(ctx, from.ID); err == nil {
 		b.onbRoute(ctx, chatID, from, d, &app)
 		return
@@ -276,6 +288,7 @@ func (b *Bot) onbApplyDirect(ctx context.Context, chatID int64, from *models.Use
 func (b *Bot) onbMessage(ctx context.Context, chatID int64, from *models.User, m *models.Message) {
 	d := b.onb.get(ctx, from.ID)
 	defer b.onb.save(ctx, from.ID, d)
+	ctx = b.onb.saveBeforeReply(ctx, from.ID, d)
 	text := strings.TrimSpace(m.Text)
 	loc := b.onbLocale(from, d, nil)
 
@@ -773,6 +786,7 @@ func (b *Bot) onbCallback(ctx context.Context, chatID int64, msgID int, from *mo
 	}
 	d := b.onb.get(ctx, from.ID)
 	defer b.onb.save(ctx, from.ID, d)
+	ctx = b.onb.saveBeforeReply(ctx, from.ID, d)
 	loc := b.onbLocale(from, d, nil)
 
 	switch parts[1] {

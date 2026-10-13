@@ -243,8 +243,14 @@ func New(opts Options) (*Bot, error) {
 	if opts.TelegramServerURL != "" {
 		tgOpts = append(tgOpts, tgbot.WithServerURL(opts.TelegramServerURL))
 	}
+	// Every request to Telegram first writes the dialog step its handler
+	// registered (reply_hook.go), so the step is stored before the person sees
+	// the question. Without opts.HTTPClient this is the library's own default:
+	// a one-minute poll on a client with the same timeout.
 	if opts.HTTPClient != nil {
-		tgOpts = append(tgOpts, tgbot.WithHTTPClient(15*time.Second, opts.HTTPClient))
+		tgOpts = append(tgOpts, tgbot.WithHTTPClient(15*time.Second, saveBeforeReplyClient{opts.HTTPClient}))
+	} else {
+		tgOpts = append(tgOpts, tgbot.WithHTTPClient(time.Minute, saveBeforeReplyClient{&http.Client{Timeout: time.Minute}}))
 	}
 	tg, err := tgbot.New(opts.Token, tgOpts...)
 	if err != nil {

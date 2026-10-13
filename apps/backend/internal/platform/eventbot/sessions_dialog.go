@@ -119,8 +119,8 @@ const sesDialogKind = "sessions"
 // sessionDialogs keeps the Sessions dialog in bot_dialogs (DialogStore), so a
 // bot restart or a deploy no longer drops a move or a cancellation half-way.
 // The handlers mutate the *sessionDialog they were given, so every entry
-// point writes it back once when it is done (save), unless it dropped the
-// dialog first.
+// point writes it back before each reply (saveBeforeReply) and once more when
+// it is done (save), unless it dropped the dialog first.
 type sessionDialogs struct {
 	store DialogStore
 }
@@ -145,6 +145,15 @@ func (s *sessionDialogs) save(ctx context.Context, id int64, d *sessionDialog) {
 	if err := s.store.Save(ctx, id, &org, sesDialogKind, d.Step, d, dialogTTL); err != nil {
 		slog.Default().Error("sessions dialog: save failed", "error", err.Error())
 	}
+}
+
+// saveBeforeReply makes every Telegram request sent on the returned ctx write
+// d back first (reply_hook.go): the handlers below change d and then reply,
+// and the step the reply asks about must already be stored when the person
+// sees it. The deferred save still runs at the end for a handler that changes
+// d after its last reply, or does not reply at all.
+func (s *sessionDialogs) saveBeforeReply(ctx context.Context, id int64, d *sessionDialog) context.Context {
+	return withSaveBeforeReply(ctx, func() { s.save(ctx, id, d) })
 }
 
 // get returns the live dialog. expired is true exactly once after it lapsed,
@@ -714,6 +723,7 @@ func (b *Bot) sessionsCallback(ctx context.Context, chatID int64, msgID int, fro
 	}
 	dlg.MsgID = msgID
 	defer b.sessions.save(ctx, from.ID, dlg)
+	ctx = b.sessions.saveBeforeReply(ctx, from.ID, dlg)
 
 	// The calendar's own callbacks.
 	if dlg.Step == sesStepDate && (data == calNoop || strings.HasPrefix(data, calCallback) ||
@@ -1017,6 +1027,7 @@ func (b *Bot) sessionsText(ctx context.Context, chatID int64, from *models.User,
 		return false
 	}
 	defer b.sessions.save(ctx, from.ID, dlg)
+	ctx = b.sessions.saveBeforeReply(ctx, from.ID, dlg)
 	id, jwt, err := b.resolveIdentity(ctx, from.ID)
 	if err != nil || id.Current == nil || id.Current.OrgID != dlg.OrgID {
 		b.sessions.drop(ctx, from.ID, dlg)
