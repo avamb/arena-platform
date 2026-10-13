@@ -282,6 +282,20 @@ entries short and factual.
   scanner must SELECT the new columns — including ones in other files
   (`superadmin.sql.go`, `refunds.sql.go`). Unit tests cannot catch a column-
   count mismatch; grep for the scanner's callers.
+- **Waiting on the worker in a test: never read a job row right after the
+  handler signals, and never poll for a transient status.** A handler runs
+  BEFORE the worker writes `MarkDone`/`MarkRetry`, so "handler fired, now
+  read the row" races the write (`TestWorkerBoot109_WorkerClaimsAndCompletesJob`
+  failed in CI with `got "claimed"` after 20.02 s: it read the row under
+  `q.mu` and called `Stop()` while holding the lock, so `MarkDone` blocked and
+  `Stop` waited out the 20 s shutdown timeout). Wait for the status
+  (`waitForStatus`) with a generous deadline and hold no queue lock across
+  `Stop()`. A retried job is `pending` only for the retry backoff (50 ms), so
+  a test that needs to observe or restart on that state calls
+  `q.freezeAfter(n)` (`worker_jobs_persistence_test.go`) and `q.thaw()` before
+  the next worker starts. To reproduce such a race, temporarily add a
+  `time.Sleep` to `inMemoryQueue.MarkDone`; `go test -race` needs cgo, which
+  this Windows host lacks, so run it in `golang:1.24` via docker.
 - **Windows file locking**: On this Windows host, tests that call
   `LocalStorage.Get` (which opens an `*os.File`) must explicitly `Close()` the
   body before calling `Delete()` — Windows refuses to delete open files. Linux

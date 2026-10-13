@@ -73,6 +73,31 @@ type inMemoryQueue struct {
 	rows       []*inMemoryJobRow
 	deadLetter []deadLetterRow
 	nextID     int
+
+	// freezeAt > 0 stops ClaimNext from handing out a row that has already
+	// been attempted freezeAt times. See freezeAfter.
+	freezeAt int
+}
+
+// freezeAfter makes the queue stop handing out any job that already has n
+// attempts. A retried job then stays status='pending' for as long as the
+// test wants, instead of for the worker's retry backoff (50ms by default).
+//
+// Tests that simulate a restart need that stable window: polling for a
+// transient 'pending' row every 5ms loses to a starved scheduler (the worker
+// moves on to the next attempt first) and the test then fails or asserts on
+// the wrong attempt. Call thaw before the "restarted" worker starts.
+func (q *inMemoryQueue) freezeAfter(n int) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.freezeAt = n
+}
+
+// thaw lifts a freezeAfter.
+func (q *inMemoryQueue) thaw() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.freezeAt = 0
 }
 
 func newInMemoryQueue() *inMemoryQueue {
@@ -148,6 +173,9 @@ func (q *inMemoryQueue) ClaimNext(_ context.Context, instanceID string) (*Job, e
 
 	now := time.Now()
 	for _, r := range q.rows {
+		if q.freezeAt > 0 && r.attempts >= q.freezeAt {
+			continue
+		}
 		if r.status == "pending" && !r.scheduledAt.After(now) {
 			r.status = "claimed"
 			r.attempts++

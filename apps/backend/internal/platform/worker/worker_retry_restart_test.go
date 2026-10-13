@@ -87,6 +87,9 @@ func TestWorkerRetryPersist_StatusPendingAfterTwoFailures(t *testing.T) {
 		t.Fatalf("worker.New: %v", err)
 	}
 
+	// Hold the job at attempts=2 so 'pending' is a stable state to observe.
+	q.freezeAfter(2)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() { _ = w.Run(ctx) }()
@@ -238,6 +241,9 @@ func TestWorkerRetryPersist_NewWorkerIncrementsAttempts(t *testing.T) {
 		t.Fatalf("worker1.New: %v", err)
 	}
 
+	// Hold the job at attempts=2 until "worker 2" starts (see freezeAfter).
+	q.freezeAfter(2)
+
 	ctx1, cancel1 := context.WithCancel(context.Background())
 	go func() { _ = w1.Run(ctx1) }()
 
@@ -259,6 +265,7 @@ func TestWorkerRetryPersist_NewWorkerIncrementsAttempts(t *testing.T) {
 		t.Fatal("job not found after worker1 stopped")
 	}
 	attemptsBeforeRestart := rowBeforeRestart.attempts
+	q.thaw()
 
 	// --- WORKER 2 (restart simulation) ---
 	w2, err := New(Options{
@@ -496,6 +503,9 @@ func TestWorkerRetryPersist_FullLifecycleWithRestart(t *testing.T) {
 		t.Fatalf("step 2: worker1.New: %v", err)
 	}
 
+	// Hold the job at attempts=2 until "worker 2" starts (see freezeAfter).
+	q.freezeAfter(2)
+
 	ctx1, cancel1 := context.WithCancel(context.Background())
 	go func() { _ = w1.Run(ctx1) }()
 
@@ -527,6 +537,7 @@ func TestWorkerRetryPersist_FullLifecycleWithRestart(t *testing.T) {
 	}
 
 	// STEP 5: Start Worker2 (the restarted process).
+	q.thaw()
 	w2, err := New(Options{
 		Queue:           q,
 		Registry:        reg,
@@ -624,6 +635,8 @@ func TestWorkerRetryPersist_MultipleRestartsCumulativeAttempts(t *testing.T) {
 
 	// Restart loop: run one attempt per worker instance for the first 3 attempts.
 	for i := 1; i <= 3; i++ {
+		// Hold the job after attempt i so 'pending' is stable until the restart.
+		q.freezeAfter(i)
 		stop, err := startWorker("", "worker-multi-restart")
 		if err != nil {
 			t.Fatalf("restart %d: worker.New: %v", i, err)
@@ -637,6 +650,7 @@ func TestWorkerRetryPersist_MultipleRestartsCumulativeAttempts(t *testing.T) {
 	}
 
 	// At this point attempts=3, status='pending'. Let one more worker run to exhaustion.
+	q.thaw()
 	stop, err := startWorker("", "worker-final")
 	if err != nil {
 		t.Fatalf("final worker.New: %v", err)
@@ -689,6 +703,10 @@ func TestWorkerRetryPersist_SecondWorkerUsesCorrectInstanceID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("worker1.New: %v", err)
 	}
+	// Hold the job at attempts=1 until worker 2 starts (see freezeAfter);
+	// otherwise worker 1 retries and succeeds before we see 'pending'.
+	q.freezeAfter(1)
+
 	ctx1, cancel1 := context.WithCancel(context.Background())
 	go func() { _ = w1.Run(ctx1) }()
 
@@ -700,6 +718,7 @@ func TestWorkerRetryPersist_SecondWorkerUsesCorrectInstanceID(t *testing.T) {
 	_ = w1.Stop()
 
 	// Worker2: run second attempt (will succeed).
+	q.thaw()
 	w2, err := New(Options{
 		Queue:           q,
 		Registry:        reg,
