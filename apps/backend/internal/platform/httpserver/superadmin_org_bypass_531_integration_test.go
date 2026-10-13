@@ -133,8 +133,10 @@ SELECT $1, id, NULL FROM roles WHERE name = 'platform_superadmin' AND org_id IS 
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("plain user: expected 403, got %d, body: %s", resp.StatusCode, body)
 	}
-	if !strings.Contains(body, "org.access_denied") {
-		t.Fatalf("plain user: expected org.access_denied in body, got: %s", body)
+	// A non-member holds no role in that organization (PERM-ORG), so the
+	// permission gate refuses before the membership guard does.
+	if !strings.Contains(body, "permissions.denied") {
+		t.Fatalf("plain user: expected permissions.denied in body, got: %s", body)
 	}
 
 	// 4. Exactly one superadmin.organization_access audit row — written only

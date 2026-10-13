@@ -1581,7 +1581,7 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
           htmlFor="legal-name"
           error={serverErrors.legal_name ?? null}
           localError={localErrors.legal_name ?? null}
-          hint="Registered juridical name as recorded by the tax authority. Required for KYB pending/verified."
+          hint="Registered juridical name as recorded by the tax authority. Required for KYB pending/verified. Buyers see it in the footer of the e-ticket PDF and in the Seller block of the ticket sale page, when that block is on."
         >
           <input
             id="legal-name"
@@ -1655,6 +1655,9 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
         </FieldRow>
 
         <h4 style={subSectionTitleStyle}>Registered address</h4>
+        <p style={{ margin: 0, fontSize: 12, opacity: 0.75 }} data-testid="legal-address-visibility-note">
+          Buyers see this address in the footer of the e-ticket PDF and in the Seller block of the ticket sale page, when that block is on.
+        </p>
         <FieldRow
           label="Address line 1"
           htmlFor="addr-line1"
@@ -1748,7 +1751,7 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
             htmlFor="contact-email"
             error={serverErrors.contact_email ?? null}
             localError={localErrors.contact_email ?? null}
-            hint="Public contact email."
+            hint="Public contact email. Buyers see it in ticket letters, session change and cancellation letters, and in the e-ticket PDF. Do not use a personal address."
           >
             <input
               id="contact-email"
@@ -1765,7 +1768,7 @@ function LegalEntitySection({ org }: { org: AdminOrganization }) {
             htmlFor="contact-phone"
             error={serverErrors.contact_phone ?? null}
             localError={null}
-            hint="E.164 recommended."
+            hint="E.164 recommended. Buyers can see it in letters when the organizer chooses to show it."
           >
             <input
               id="contact-phone"

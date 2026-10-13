@@ -81,7 +81,7 @@ func TestEventCard_Figures_En(t *testing.T) {
 		"Refunds: 2 for 13 EUR, net 87 EUR", // two succeeded refunds, the requested one is not counted
 		"Entered: 4 of 10",
 		"Invitations: 2",
-		"SPRING&lt; — used 2 times, discount 5 EUR",
+		"SPRING&lt;: used 2 times, discount 5 EUR",
 		"Categories:",
 		"• Standing &lt;b&gt; — 25 EUR — 12/50 — 90 EUR",
 		"• VIP (closed) — 90 EUR — 0/10 — 0 EUR",
@@ -150,7 +150,7 @@ func TestSummaryText_MoneyDownToTheNet(t *testing.T) {
 	text := b.summaryText("en", summaryView{Title: sum.Event.Name, Scope: "All dates (2)", Figures: figuresFromEvent(sum)})
 	for _, want := range []string{
 		"Summary: Swan &lt;Lake&gt;",
-		"Tickets: valid 8, cancelled or returned 2, entered 4, transferred 1",
+		"Tickets: valid 8, canceled or returned 2, entered 4, transferred 1",
 		"Orders: paid 4, awaiting payment 1",
 		"Places: sold 12, available 30, held 2, withheld 6, total 50",
 		"Paid 100 EUR in 4 orders (discounts 5 EUR, service charge 2 EUR)",
