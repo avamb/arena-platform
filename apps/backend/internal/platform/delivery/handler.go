@@ -222,6 +222,11 @@ type Payload struct {
 	OrgLegalAddressCity    string `json:"org_legal_address_city,omitempty"`
 	OrgLegalAddressCountry string `json:"org_legal_address_country,omitempty"`
 	OrgContactEmail        string `json:"org_contact_email,omitempty"`
+	// OrgRegistrationNumber, OrgTaxID and OrgTaxIDScheme identify the seller
+	// in the letter footer and on the PDF (HP-4b); empty prints nothing.
+	OrgRegistrationNumber string `json:"org_registration_number,omitempty"`
+	OrgTaxID              string `json:"org_tax_id,omitempty"`
+	OrgTaxIDScheme        string `json:"org_tax_id_scheme,omitempty"`
 	// SenderEmail is used only while SenderVerificationStatus is "verified".
 	// It is populated from the organization record by the enqueueing path.
 	SenderEmail              string `json:"sender_email,omitempty"`
@@ -827,6 +832,9 @@ func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, brandin
 		LegalAddressCity:       branding.LegalAddressCity,
 		LegalAddressCountry:    branding.LegalAddressCountry,
 		ContactEmail:           branding.ContactEmail,
+		RegistrationNumber:     branding.RegistrationNumber,
+		TaxID:                  branding.TaxID,
+		TaxIDScheme:            branding.TaxIDScheme,
 	}
 	bytesOut, err := pdf.Render(ctx, t)
 	if err == nil {
@@ -881,6 +889,9 @@ func resolveBranding(ctx context.Context, m MediaResolver, p Payload, logger *sl
 		LegalAddressCity:       p.OrgLegalAddressCity,
 		LegalAddressCountry:    p.OrgLegalAddressCountry,
 		ContactEmail:           strings.TrimSpace(p.OrgContactEmail),
+		RegistrationNumber:     strings.TrimSpace(p.OrgRegistrationNumber),
+		TaxID:                  strings.TrimSpace(p.OrgTaxID),
+		TaxIDScheme:            strings.TrimSpace(p.OrgTaxIDScheme),
 	}
 	b.LogoAlt = b.OrgName
 

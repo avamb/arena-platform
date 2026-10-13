@@ -271,11 +271,15 @@ func (q *Queries) GetTicketPDFFormatByTicketID(ctx context.Context, ticketID uui
 const getOrgBrandingByTicketID = `-- name: GetOrgBrandingByTicketID :one
 SELECT o.name, o.website_url, o.legal_name, o.legal_address_line1, o.legal_address_line2,
        o.legal_address_postal_code, o.legal_address_city, o.legal_address_country,
-       o.contact_email, o.logo_media_id, o.sender_email, o.sender_verification_status
+       COALESCE(NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), ''), o.contact_email) AS contact_email,
+       o.logo_media_id, o.sender_email, o.sender_verification_status,
+       o.registration_number, o.tax_id, o.tax_id_scheme
 FROM   tickets t
 JOIN   sessions s ON s.id = t.session_id
 JOIN   events   e ON e.id = s.event_id
 JOIN   organizations o ON o.id = e.org_id
+LEFT JOIN checkout_sessions cs ON cs.id = t.checkout_session_id
+LEFT JOIN sales_channels sc ON sc.id = cs.channel_id AND sc.org_id = o.id
 WHERE  t.id = $1`
 
 // OrgBrandingRow holds branding fields for populating a delivery payload.
@@ -292,11 +296,16 @@ type OrgBrandingRow struct {
 	LogoMediaID              *uuid.UUID `json:"logo_media_id"`
 	SenderEmail              *string    `json:"sender_email"`
 	SenderVerificationStatus string     `json:"sender_verification_status"`
+	RegistrationNumber       *string    `json:"registration_number"`
+	TaxID                    *string    `json:"tax_id"`
+	TaxIDScheme              *string    `json:"tax_id_scheme"`
 }
 
 // GetOrgBrandingByTicketID returns the org branding fields for the
 // organization that owns the given ticket. Used by delivery enqueueing
-// to populate the delivery.Payload org fields (AB-45).
+// to populate the delivery.Payload org fields (AB-45). ContactEmail is the
+// public e-mail of the ticket's sales page when it has one, else the
+// organization's contact_email (HP-4b).
 func (q *Queries) GetOrgBrandingByTicketID(ctx context.Context, ticketID uuid.UUID) (OrgBrandingRow, error) {
 	row := q.db.QueryRow(ctx, getOrgBrandingByTicketID, ticketID)
 	var b OrgBrandingRow
@@ -313,6 +322,9 @@ func (q *Queries) GetOrgBrandingByTicketID(ctx context.Context, ticketID uuid.UU
 		&b.LogoMediaID,
 		&b.SenderEmail,
 		&b.SenderVerificationStatus,
+		&b.RegistrationNumber,
+		&b.TaxID,
+		&b.TaxIDScheme,
 	)
 	return b, err
 }

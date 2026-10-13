@@ -34,6 +34,8 @@ import (
 	"sort"
 	"strings"
 	texttemplate "text/template"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
 )
 
 //go:embed *.tmpl
@@ -286,8 +288,18 @@ type Branding struct {
 	// LegalAddressCountry is ISO-3166-1 alpha-2 (e.g. "DE", "IL").
 	LegalAddressCountry string
 	// ContactEmail is the contact address printed in the footer. Empty
-	// prints no contact line.
+	// prints no contact line. It is the public e-mail of the sales page the
+	// ticket was sold through when it has one, else the organization's
+	// contact_email (HP-4b).
 	ContactEmail string
+	// RegistrationNumber, TaxID and TaxIDScheme identify the seller (HP-4b).
+	RegistrationNumber string
+	TaxID              string
+	TaxIDScheme        string
+	// SellerIDs is the footer line built from the three fields above in the
+	// letter's language ("Registration no. 123 · VAT ID CZ123"). Render
+	// fills it; empty prints no line.
+	SellerIDs string
 }
 
 // Platform defaults used by the worker handler when the organisation
@@ -417,6 +429,9 @@ func (r *Renderer) Render(kind, locale string, data Data) (Rendered, error) {
 	}
 	resolved := r.ResolveLocale(kind, locale)
 	key := kind + "." + resolved
+	if data.Branding.SellerIDs == "" {
+		data.Branding.SellerIDs = sellerinfo.IDsLine(resolved, data.Branding.RegistrationNumber, data.Branding.TaxID, data.Branding.TaxIDScheme)
+	}
 
 	if _, ok := r.known[key]; !ok {
 		return Rendered{}, fmt.Errorf(

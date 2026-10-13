@@ -87,6 +87,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
 )
 
 // Format names a page layout. Both values render the SAME 105x297 mm page:
@@ -261,6 +263,12 @@ type Ticket struct {
 	LegalAddressCity       string
 	LegalAddressCountry    string
 	ContactEmail           string
+	// RegistrationNumber, TaxID and TaxIDScheme print one line after the
+	// country ("Registration no. 123 · VAT ID CZ123", in Locale); empty
+	// drops it (HP-4b).
+	RegistrationNumber string
+	TaxID              string
+	TaxIDScheme        string
 }
 
 // ErrInvalidTicket is returned by Render when the Ticket is missing data
@@ -339,7 +347,8 @@ func validate(t Ticket) error {
 // from the ticket's locale so every line agrees.
 //
 // Lines: LegalName, address-line1, address-line2, "<postal> <city>",
-// country, "<contactLabel>: <email>".
+// country, the seller's registration and tax numbers,
+// "<contactLabel>: <email>".
 func buildLegalLines(t Ticket, contactLabel string) []string {
 	out := []string{}
 	if name := strings.TrimSpace(t.LegalName); name != "" {
@@ -362,6 +371,9 @@ func buildLegalLines(t Ticket, contactLabel string) []string {
 		out = append(out, city)
 	}
 	if v := strings.TrimSpace(t.LegalAddressCountry); v != "" {
+		out = append(out, v)
+	}
+	if v := sellerinfo.IDsLine(t.Locale, t.RegistrationNumber, t.TaxID, t.TaxIDScheme); v != "" {
 		out = append(out, v)
 	}
 	if v := strings.TrimSpace(t.ContactEmail); v != "" {

@@ -92,11 +92,19 @@ RETURNING id, display_number, name, slug, country, default_locale, reservation_t
 -- name: GetOrgBrandingByTicketID :one
 -- Returns org branding fields for the organization that owns a ticket.
 -- Used by delivery enqueueing to populate the org fields in the worker payload.
+-- contact_email is the public e-mail of the sales page the ticket was sold
+-- through (settings.hosted_page.public_contact.email) when it has one, else
+-- the organization's contact_email (HP-4b). registration_number, tax_id and
+-- tax_id_scheme are printed in the letter footer and on the PDF.
 SELECT o.name, o.website_url, o.legal_name, o.legal_address_line1, o.legal_address_line2,
        o.legal_address_postal_code, o.legal_address_city, o.legal_address_country,
-       o.contact_email, o.logo_media_id, o.sender_email, o.sender_verification_status
+       COALESCE(NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), ''), o.contact_email) AS contact_email,
+       o.logo_media_id, o.sender_email, o.sender_verification_status,
+       o.registration_number, o.tax_id, o.tax_id_scheme
 FROM   tickets t
 JOIN   sessions s ON s.id = t.session_id
 JOIN   events   e ON e.id = s.event_id
 JOIN   organizations o ON o.id = e.org_id
+LEFT JOIN checkout_sessions cs ON cs.id = t.checkout_session_id
+LEFT JOIN sales_channels sc ON sc.id = cs.channel_id AND sc.org_id = o.id
 WHERE  t.id = $1;

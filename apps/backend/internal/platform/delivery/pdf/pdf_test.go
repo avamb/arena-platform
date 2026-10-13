@@ -204,6 +204,19 @@ func TestBuildLegalLines_AssemblesAddressBlock(t *testing.T) {
 			want: []string{"X Ltd", "SE1 9DT London"},
 		},
 		{name: "postal only", in: Ticket{LegalAddressPostalCode: "10115"}, want: []string{"10115"}},
+		{
+			name: "seller numbers after the country",
+			in: Ticket{
+				Locale:              "en",
+				LegalName:           "X Ltd",
+				LegalAddressCountry: "CZ",
+				RegistrationNumber:  "12345678",
+				TaxID:               "CZ12345678",
+				TaxIDScheme:         "eu_vat",
+				ContactEmail:        "tickets@x.example",
+			},
+			want: []string{"X Ltd", "CZ", "Registration no. 12345678 · VAT ID CZ12345678", "Contact: tickets@x.example"},
+		},
 		{name: "city only", in: Ticket{LegalAddressCity: "Berlin"}, want: []string{"Berlin"}},
 		{
 			name: "all fields",

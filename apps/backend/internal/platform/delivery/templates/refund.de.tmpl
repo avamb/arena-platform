@@ -30,6 +30,7 @@
     {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
     {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
     {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
     {{with .Branding.ContactEmail}}<br>Kontakt: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}
   </p>
   <p style="font-size:11px;color:#999">Arena Platform — automatische Nachricht</p>
@@ -66,6 +67,7 @@ Zugestellt an: {{.RecipientEmail}}
 {{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
 {{else}}{{with .Branding.LegalAddressCity}}{{.}}
 {{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
 {{end}}{{with .Branding.ContactEmail}}Kontakt: {{.}}
 {{end}}
 Arena Platform — automatische Nachricht

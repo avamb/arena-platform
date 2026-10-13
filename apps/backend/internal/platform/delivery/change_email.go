@@ -243,6 +243,9 @@ func (h *changeEmail) ticketPayload(ctx context.Context, ticketID uuid.UUID, loc
 		setIf(&p.OrgLegalAddressCity, b.LegalAddressCity)
 		setIf(&p.OrgLegalAddressCountry, b.LegalAddressCountry)
 		setIf(&p.OrgContactEmail, b.ContactEmail)
+		setIf(&p.OrgRegistrationNumber, b.RegistrationNumber)
+		setIf(&p.OrgTaxID, b.TaxID)
+		setIf(&p.OrgTaxIDScheme, b.TaxIDScheme)
 		if b.LogoMediaID != nil {
 			p.OrgLogoMediaID = b.LogoMediaID.String()
 		}
