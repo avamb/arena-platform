@@ -29,6 +29,7 @@ package eventbot
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -139,6 +140,40 @@ type refundDialog struct {
 // sent by THIS process, within the send window.
 func (b *Bot) sendingNow(step string, st refundDialog) bool {
 	return step == refStepSending && st.RunID == b.runID && time.Since(st.SendingAt) < refundSendWindow
+}
+
+// maxLostSendNotices bounds the notices one start sends.
+const maxLostSendNotices = 100
+
+// recoverLostRefundSends runs once when the bot starts. A refund dialog that
+// an earlier process left in the sending step lost its answer: the message
+// the person was looking at says "sending" and has no buttons, and nothing
+// would ever change it. Each such person gets a NEW message with a button
+// that opens the final check again (refundCallback's send_lost branch); the
+// same key replays the operation, so no money goes back twice.
+func (b *Bot) recoverLostRefundSends(ctx context.Context) {
+	if b.queries == nil {
+		return
+	}
+	rows, err := b.queries.ListLiveBotDialogsByStep(ctx, refundDialogKind, refStepSending, maxLostSendNotices)
+	if err != nil {
+		b.logger.Error("eventbot: reading refunds lost to a restart failed", slog.String("error", err.Error()))
+		return
+	}
+	for _, row := range rows {
+		var st refundDialog
+		if json.Unmarshal(row.State, &st) != nil || st.RunID == b.runID {
+			continue
+		}
+		loc := "en"
+		if id, _, err := b.resolveIdentity(ctx, row.TelegramUserID); err == nil && id != nil {
+			loc = id.Locale()
+		}
+		b.reply(ctx, row.TelegramUserID, nil, b.texts.T(loc, "bot.ref.restart_notice", map[string]any{"Num": st.Num}),
+			&models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+				{{Text: b.texts.T(loc, "bot.ref.check_btn", nil), CallbackData: "or:f:b"}},
+			}})
+	}
 }
 
 // ─── who sees the button ──────────────────────────────────────────────────────

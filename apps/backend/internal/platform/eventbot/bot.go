@@ -268,6 +268,7 @@ func (b *Bot) Run(ctx context.Context) error {
 	}
 	go b.dialogSweepLoop(ctx)
 	go b.draftSweepLoop(ctx)
+	go b.recoverLostRefundSends(ctx)
 	b.tg.Start(ctx)
 	done := make(chan struct{})
 	b.bg.close()

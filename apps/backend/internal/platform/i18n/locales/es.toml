@@ -2949,6 +2949,12 @@ other = "La devolución del pedido n.º {{.Num}} todavía se está enviando. Esp
 ["bot.ref.send_lost"]
 other = "El bot se reinició mientras se enviaba esta devolución y su respuesta se perdió. Confirma de nuevo: se repite la misma operación, el dinero nunca se devuelve dos veces."
 
+["bot.ref.restart_notice"]
+other = "El bot se reinició mientras se enviaba la devolución del pedido n.º {{.Num}} y su respuesta se perdió. Revísala y confirma de nuevo: se repite la misma operación, el dinero nunca se devuelve dos veces."
+
+["bot.ref.check_btn"]
+other = "Revisar la devolución"
+
 ["bot.ref.stale_btn"]
 other = "Ese botón es de una pantalla anterior y no hizo nada. Usa los botones de abajo."
 

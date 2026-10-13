@@ -539,6 +539,34 @@ func (q *Queries) GetBotDialog(ctx context.Context, telegramUserID int64, kind s
 	return scanBotDialogRow(q.db.QueryRow(ctx, getBotDialog, telegramUserID, kind))
 }
 
+const listLiveBotDialogsByStep = `-- name: ListLiveBotDialogsByStep :many
+SELECT ` + botDialogColumns + `
+FROM   bot_dialogs
+WHERE  kind = $1
+  AND  step = $2
+  AND  expires_at > now()
+ORDER  BY updated_at
+LIMIT  $3`
+
+// ListLiveBotDialogsByStep returns the unexpired dialogs of one kind that
+// stand at one step, oldest first, at most limit of them.
+func (q *Queries) ListLiveBotDialogsByStep(ctx context.Context, kind, step string, limit int32) ([]BotDialogRow, error) {
+	rows, err := q.db.Query(ctx, listLiveBotDialogsByStep, kind, step, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BotDialogRow
+	for rows.Next() {
+		r, err := scanBotDialogRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 const deleteBotDialog = `-- name: DeleteBotDialog :exec
 DELETE FROM bot_dialogs
 WHERE  telegram_user_id = $1

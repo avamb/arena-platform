@@ -3094,6 +3094,12 @@ other = "The refund of order #{{.Num}} is still being sent. Wait for the answer 
 ["bot.ref.send_lost"]
 other = "The bot was restarted while this refund was being sent, so its answer was lost. Confirm again: the same operation is repeated, the money is never returned twice."
 
+["bot.ref.restart_notice"]
+other = "The bot restarted while the refund for order №{{.Num}} was being sent, so its answer was lost. Check it and confirm again: the same operation is repeated, the money is never returned twice."
+
+["bot.ref.check_btn"]
+other = "Check the refund"
+
 ["bot.ref.stale_btn"]
 other = "That button belongs to an older screen and did nothing. Use the buttons below."
 

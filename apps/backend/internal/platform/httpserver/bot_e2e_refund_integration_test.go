@@ -237,3 +237,61 @@ func TestBotE2E_Refund_OwnerReturnsOneTicket(t *testing.T) {
 	}
 	_ = o
 }
+
+// Round 4 review D-F4: a refund whose send was cut off by a restart is not
+// left behind a "sending" message without buttons. The new process writes to
+// the person with a button that opens the final check again; confirming it
+// replays the same operation, so the money goes back once.
+func TestBotE2E_Refund_SendLostToARestartIsOfferedAgain(t *testing.T) {
+	pool := onboardingIntegrationPool(t)
+	f := newBotInviteFixture(t, pool)
+	stripe := newStubStripe(t)
+	stripe.refundHandler = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"id":"re_bot_e2e_lost","status":"succeeded"}`)
+	}
+	srv := buildBotIntegrationServerCfg(t, pool, func(c *config.Config) { c.StripeAPIBaseURL = stripe.baseURL() })
+	api := httptest.NewServer(srv.router)
+	defer api.Close()
+	seed := seedOrdersBotOrg(t, pool, f.orgID)
+	linkECBotUser(t, f, srv, ecOwnerTG, "owner")
+	seedRefundableOrder(t, pool, f.orgID, seed)
+	ctx := context.Background()
+
+	tg := newStubTelegram(t)
+	stop := startDialogTestBot(t, pool, api, tg)
+	d := ecDriver{t, tg, ecOwnerTG}
+	d.press("or:v:"+seed.anna.String(), "Заказ №")
+	d.press("or:f:s:"+seed.anna.String(), "Возврат · заказ №")
+	d.press("or:f:t:0", "Возврат · заказ №")
+	d.press("or:f:go", "Почему возвращаются деньги")
+	d.press("or:f:r:1", "ВЕРНУТЬ")
+	d.say("вернуть", "Последняя проверка")
+	var key string
+	if err := pool.QueryRow(ctx, `SELECT state->>'key' FROM bot_dialogs WHERE telegram_user_id = $1 AND kind = 'refund'`, ecOwnerTG).Scan(&key); err != nil {
+		t.Fatalf("dialog key: %v", err)
+	}
+	tag := strings.TrimPrefix(key, "tg-")[:12]
+	stop()
+	// The earlier process had pressed "Yes" and was cut off mid-send.
+	if _, err := pool.Exec(ctx, `UPDATE bot_dialogs SET step = 'sending',
+		state = state || jsonb_build_object('run_id', 'an-earlier-process', 'sending_at', now())
+		WHERE telegram_user_id = $1 AND kind = 'refund'`, ecOwnerTG); err != nil {
+		t.Fatal(err)
+	}
+	mark := tg.mark()
+	stop = startDialogTestBot(t, pool, api, tg)
+	defer func() { stop() }()
+	notice := tg.waitSince(t, mark, "Бот перезапустился, пока отправлялся возврат по заказу")
+	if !strings.Contains(notice, "дважды деньги не вернутся") {
+		t.Errorf("the restart notice does not say the money is safe:\n%s", notice)
+	}
+	final := d.press("or:f:b", "ответ потерялся")
+	if !strings.Contains(final, "Последняя проверка") {
+		t.Errorf("the recovery button does not open the final check:\n%s", final)
+	}
+	d.press("or:f:ok:"+tag, "Возврат запрошен")
+	if n, state := refundCount(t, srv, seed.anna); n != 1 || state != "succeeded" {
+		t.Fatalf("refunds = %d (%s); want exactly 1 succeeded", n, state)
+	}
+}
