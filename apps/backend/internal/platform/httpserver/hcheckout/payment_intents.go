@@ -127,12 +127,16 @@ var validWebhookTransitions = map[string]map[string]bool{
 		"succeeded":       true,
 		"authorized":      true,
 		"failed":          true,
+		// A paid event whose amount or currency disagrees with the intent
+		// (payment_amount_guard.go).
+		"manual_review": true,
 	},
 	"requires_action": {
-		"processing": true,
-		"succeeded":  true,
-		"authorized": true,
-		"failed":     true,
+		"processing":    true,
+		"succeeded":     true,
+		"authorized":    true,
+		"failed":        true,
+		"manual_review": true,
 	},
 	"processing": {
 		"authorized":    true,
@@ -1173,6 +1177,22 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 			"reason":       "payment intent is already in a terminal state",
 		})
 		return
+	}
+
+	// A module's paid event must name the amount arena asked for
+	// (payment_amount_guard.go). A disagreement parks the payment for a
+	// human instead of shipping tickets.
+	if route.Event != nil && route.ExpectedProvider != "" && targetState == "succeeded" {
+		if why := paidAmountMismatch(*route.Event, pi.Amount, pi.Currency); why != "" {
+			h.logger.Error("PAYMENT AMOUNT MISMATCH: payment intent parked in manual_review",
+				slog.String("payment_intent_id", pi.ID.String()),
+				slog.String("provider", pi.Provider),
+				slog.String("reason", why),
+			)
+			targetState = "manual_review"
+			code := failureCodeAmountMismatch
+			req.FailureCode, req.FailureMessage = &code, &why
+		}
 	}
 
 	if !validWebhookTransition(currentState, targetState) {

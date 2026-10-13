@@ -11,11 +11,18 @@
 //
 // Optional: ALLPAY_TEST_ORDER_ID=<an order id paid by hand> reads that order's
 // status back (it must be 1 after paying with test card 4557430402053431).
+//
+// Optional refund of a TEST order paid by hand (spec 37 §11 C):
+// ALLPAY_TEST_REFUND_ORDER_ID=<order id>, ALLPAY_TEST_REFUND_MINOR=<amount in
+// agorot>, ALLPAY_TEST_REFUND_KNOWN_MINOR=<what earlier refunds of this
+// order returned, default 0>. The module reads the order first, exactly as
+// the refund engine would use it.
 package allpay
 
 import (
 	"context"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -63,6 +70,8 @@ func TestAllPayLive_CreatePageAndReadStatus(t *testing.T) {
 		Currency:          "ILS",
 		ProductName:       "Arena test — AllPay integration",
 		CustomerEmail:     "arena-allpay-test@example.com",
+		CustomerName:      "Arena Test",
+		CustomerPhone:     "+34 600 111 222", // foreign: the Israeli ID field is hidden
 		ClientReferenceID: orderID,
 		SuccessURL:        "https://example.com/arena-allpay-test/return",
 		CancelURL:         "https://example.com/arena-allpay-test/return",
@@ -92,4 +101,33 @@ func TestAllPayLive_CreatePageAndReadStatus(t *testing.T) {
 		}
 		t.Logf("order %s: status %d, amount %d %s", paid, st.Status, st.AmountMinor, st.Currency)
 	}
+}
+
+func TestAllPayLive_Refund(t *testing.T) {
+	a := liveAdapter(t)
+	order := strings.TrimSpace(os.Getenv("ALLPAY_TEST_REFUND_ORDER_ID"))
+	amount, _ := strconv.ParseInt(strings.TrimSpace(os.Getenv("ALLPAY_TEST_REFUND_MINOR")), 10, 64)
+	known, _ := strconv.ParseInt(strings.TrimSpace(os.Getenv("ALLPAY_TEST_REFUND_KNOWN_MINOR")), 10, 64)
+	if order == "" || amount <= 0 {
+		t.Skip("ALLPAY_TEST_REFUND_ORDER_ID and ALLPAY_TEST_REFUND_MINOR are not set")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	res, err := a.Refund(ctx, payments.RefundRequest{
+		ProviderChargeRef:  order,
+		AmountMinor:        amount,
+		Currency:           "ILS",
+		IdempotencyKey:     uuid.NewString(),
+		OtherRefundedMinor: known,
+	})
+	if err != nil {
+		t.Fatalf("Refund: %v", err)
+	}
+	t.Logf("refund %s: %s", res.ProviderRefundID, res.Status)
+	time.Sleep(3 * time.Second)
+	st, err := a.PaymentStatus(ctx, order)
+	if err != nil {
+		t.Fatalf("paymentstatus after the refund: %v", err)
+	}
+	t.Logf("order %s: status %d, refunded %d of %d", order, st.Status, st.RefundedMinor, st.ChargedMinor())
 }

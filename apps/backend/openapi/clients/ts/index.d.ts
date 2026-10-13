@@ -3826,7 +3826,13 @@ export interface paths {
          *     organizer configures nothing in their dashboard. A Flitt `declined`
          *     callback and an AllPay webhook with `status` 0 report one failed
          *     attempt on a page that stays open for another card: they are
-         *     acknowledged and move nothing.
+         *     acknowledged and move nothing. A paid AllPay webhook is confirmed
+         *     by reading the order back from AllPay first; when AllPay cannot
+         *     confirm it yet, the route answers `503 webhook.provider_unconfirmed`
+         *     and AllPay delivers it again. For Flitt and AllPay a paid event
+         *     whose amount or currency differs from the payment parks the
+         *     payment in `manual_review` (failure code `paid_amount_mismatch`)
+         *     and issues no tickets.
          */
         post: operations["paymentIntentWebhookForConfig"];
         delete?: never;
@@ -11724,7 +11730,9 @@ export interface components {
              *     requests and callbacks; there is no separate webhook secret).
              *     `allpay` needs `merchant_id` (the integration's API login) and
              *     `secret_key` (its API key, which also signs webhooks); `vat`
-             *     (0, 1 or 3) and `max_installments` (2 to 12) are optional.
+             *     (0, 1 or 3), `max_installments` (2 to 12) and
+             *     `installments_min_amount` (the smallest order total in shekels
+             *     that offers installments) are optional.
              * @example stripe
              */
             provider: string;
@@ -11859,8 +11867,9 @@ export interface components {
             /**
              * @description Map of secret credential fields to values. Stripe expects
              *     api_key + webhook_secret; AllPay expects merchant_id (the API
-             *     login) + secret_key (the API key), optionally vat and
-             *     max_installments; etc. Values are never returned.
+             *     login) + secret_key (the API key), optionally vat,
+             *     max_installments and installments_min_amount; etc. Values are
+             *     never returned.
              * @example {
              *       "api_key": "sk_live_xxx",
              *       "webhook_secret": "whsec_xxx"
@@ -35317,7 +35326,10 @@ export interface operations {
             };
             /**
              * @description Database pool or payment intent queries unavailable
-             *     (`dependency.database_unavailable`).
+             *     (`dependency.database_unavailable`), or the signature verified
+             *     but the provider could not confirm the event yet
+             *     (`webhook.provider_unconfirmed`, AllPay); nothing was written
+             *     and the provider should deliver it again.
              */
             503: {
                 headers: {

@@ -360,6 +360,16 @@ type RefundRequest struct {
 	Reason string
 	// IdempotencyKey makes a retry safe. Arena uses the refund row id.
 	IdempotencyKey string
+	// OtherRefundedMinor is what arena knows the provider has already
+	// returned on this payment through OTHER refunds (accepted or succeeded),
+	// and OtherUncertainMinor what other refunds may have returned (an
+	// earlier call ended without an answer). Both in arena minor units, both
+	// read under the payment's lock while no other call of this payment is in
+	// flight. A provider without an idempotency key (AllPay) compares them
+	// with the provider's own refunded total before it sends anything, so a
+	// repeated call can never return the money twice. Others ignore them.
+	OtherRefundedMinor  int64
+	OtherUncertainMinor int64
 	// Metadata travels to the provider.
 	Metadata RefundMetadata
 }

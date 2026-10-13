@@ -1314,6 +1314,12 @@ func TestHostedCheckout_ConfigRoute_AllPayEventsDecidedByKind(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE payment_intents SET provider = 'allpay' WHERE id = $1`, intents[0].ID); err != nil {
 		t.Fatal(err)
 	}
+	// A paid webhook is confirmed with AllPay before it counts: the stub
+	// holds the order as paid, for the intent's own amount.
+	stub := newStubAllPayServer(t)
+	stub.account("m_test", allpayKey)
+	stub.paidOrder("m_test", payID, intents[0].Amount, intents[0].Currency)
+	srv.allpayAPIBaseURL = stub.baseURL()
 
 	post := func(fields map[string]any, key string) (int, map[string]any) {
 		fields["order_id"] = payID

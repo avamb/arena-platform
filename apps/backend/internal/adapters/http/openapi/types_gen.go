@@ -4611,8 +4611,9 @@ type CreatePaymentProviderConfigRequest struct {
 
 	// Secrets Map of secret credential fields to values. Stripe expects
 	// api_key + webhook_secret; AllPay expects merchant_id (the API
-	// login) + secret_key (the API key), optionally vat and
-	// max_installments; etc. Values are never returned.
+	// login) + secret_key (the API key), optionally vat,
+	// max_installments and installments_min_amount; etc. Values are
+	// never returned.
 	Secrets *map[string]string `json:"secrets,omitempty"`
 }
 
@@ -9783,7 +9784,9 @@ type PaymentProviderConfigItem struct {
 	// requests and callbacks; there is no separate webhook secret).
 	// `allpay` needs `merchant_id` (the integration's API login) and
 	// `secret_key` (its API key, which also signs webhooks); `vat`
-	// (0, 1 or 3) and `max_installments` (2 to 12) are optional.
+	// (0, 1 or 3), `max_installments` (2 to 12) and
+	// `installments_min_amount` (the smallest order total in shekels
+	// that offers installments) are optional.
 	Provider string `json:"provider"`
 
 	// ProviderAccountId Optional public account identifier (e.g. Stripe acct_..., AllPay

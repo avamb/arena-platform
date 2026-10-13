@@ -29,6 +29,12 @@ type CreateHostedCheckoutRequest struct {
 	ProductName string
 	// CustomerEmail pre-fills the buyer's email on the hosted page. Optional.
 	CustomerEmail string
+	// CustomerName and CustomerPhone pre-fill the buyer's name and phone when
+	// the checkout collected them. Optional; a provider that has no such
+	// fields ignores them (AllPay also decides from the phone whether to ask
+	// a foreign buyer for an Israeli ID number).
+	CustomerName  string
+	CustomerPhone string
 	// ClientReferenceID is arena's own identifier for this checkout (the
 	// checkout_sessions row id). Providers echo it back on their webhook.
 	ClientReferenceID string

@@ -12,6 +12,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
@@ -283,6 +284,19 @@ type Handler struct {
 	// (refund_engine.go, PAY-03). Nil: a refundable payment's approval
 	// answers 503 and writes nothing.
 	refundEngine *refunds.Engine
+
+	// moduleOptions are the provider API roots a webhook module is built
+	// with (WithModuleOptions). A module that confirms an event with its
+	// provider (AllPay reads a paid order back) calls that root.
+	moduleOptions payments.Options
+}
+
+// WithModuleOptions sets the deployment seams (provider API roots) every
+// payment module this handler builds receives. The per-config webhook route
+// adds the config's own mode. Returns the receiver for chaining.
+func (h *Handler) WithModuleOptions(opts payments.Options) *Handler {
+	h.moduleOptions = opts
+	return h
 }
 
 // WithMetrics wires the Prometheus collectors used by the payment-webhook

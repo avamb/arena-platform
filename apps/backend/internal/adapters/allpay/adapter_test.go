@@ -27,6 +27,12 @@ type stubAllPay struct {
 	requests []stubRequest
 	// answer, when set, replaces the default answer of a method.
 	answer map[string]string
+	// orders, when it holds the order a paymentstatus or refund names,
+	// answers from that ledger instead (refund_test.go).
+	orders map[string]*stubOrder
+	// loseRefundAnswers > 0 makes the next refund calls take effect and
+	// then answer HTTP 502, as if the answer were lost on the way back.
+	loseRefundAnswers int
 }
 
 type stubRequest struct {
@@ -36,7 +42,7 @@ type stubRequest struct {
 
 func newStubAllPay(t *testing.T, login, key string) *stubAllPay {
 	t.Helper()
-	s := &stubAllPay{login: login, key: key, answer: map[string]string{}}
+	s := &stubAllPay{login: login, key: key, answer: map[string]string{}, orders: map[string]*stubOrder{}}
 	s.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
 		body, err := decodeObject(raw)
@@ -60,6 +66,9 @@ func newStubAllPay(t *testing.T, login, key string) *stubAllPay {
 		}
 		if custom != "" {
 			_, _ = w.Write([]byte(custom))
+			return
+		}
+		if s.ledger(w, show, body) {
 			return
 		}
 		switch show {
@@ -297,5 +306,53 @@ func TestPost_SignsWhatItSends(t *testing.T) {
 	}
 	if !bytes.Contains(raw, []byte(`"price":99.9`)) {
 		t.Errorf("price on the wire = %s; want the JSON number 99.9", raw)
+	}
+}
+
+func TestCreateCheckoutSession_InstallmentsOnlyFromTheThreshold(t *testing.T) {
+	stub := newStubAllPay(t, "pp100", "KEY")
+	a := newTestAdapter(stub, Config{MaxInstallments: 6, InstallmentsMinMinor: 30000})
+	for amount, want := range map[int64]string{29999: "", 30000: "6", 120000: "6"} {
+		if _, err := a.CreateCheckoutSession(t.Context(), payments.CreateHostedCheckoutRequest{
+			Amount: amount, Currency: "ILS", ClientReferenceID: "o-inst",
+		}); err != nil {
+			t.Fatalf("CreateCheckoutSession: %v", err)
+		}
+		if got, _ := scalarValue(stub.last(t).Body["inst"]); got != want {
+			t.Errorf("total %d: inst = %q; want %q", amount, got, want)
+		}
+	}
+}
+
+func TestCreateCheckoutSession_BuyerDetailsAndForeignID(t *testing.T) {
+	cases := []struct {
+		phone       string
+		wantTehudat string
+	}{
+		{"+34 600 111 222", hiddenTehudat}, // Spain: no Israeli ID to type
+		{"0034600111222", hiddenTehudat},
+		{"+972 54-123-4567", ""}, // Israel: the page asks as usual
+		{"054-123-4567", ""},     // local form is Israeli
+		{"", ""},                 // unknown: ask
+	}
+	for _, tc := range cases {
+		stub := newStubAllPay(t, "pp100", "KEY")
+		a := newTestAdapter(stub, Config{})
+		if _, err := a.CreateCheckoutSession(t.Context(), payments.CreateHostedCheckoutRequest{
+			Amount: 5000, Currency: "ILS", ClientReferenceID: "o-buyer",
+			CustomerName: "Ana García", CustomerPhone: tc.phone,
+		}); err != nil {
+			t.Fatalf("CreateCheckoutSession: %v", err)
+		}
+		b := stub.last(t).Body
+		if got, _ := scalarValue(b["client_tehudat"]); got != tc.wantTehudat {
+			t.Errorf("phone %q: client_tehudat = %q; want %q", tc.phone, got, tc.wantTehudat)
+		}
+		if got, _ := scalarValue(b["client_phone"]); got != tc.phone {
+			t.Errorf("client_phone = %q; want %q", got, tc.phone)
+		}
+		if got, _ := scalarValue(b["client_name"]); got != "Ana García" {
+			t.Errorf("client_name = %q", got)
+		}
 	}
 }

@@ -124,6 +124,9 @@ type Config struct {
 	// MaxInstallments is the most installments the buyer may choose (2–12);
 	// 0 or 1 means one payment. AllPay allows installments in ILS only.
 	MaxInstallments int
+	// InstallmentsMinMinor is the smallest order total (ILS minor units)
+	// that offers installments; 0 offers them on every ILS order.
+	InstallmentsMinMinor int64
 	// TestMode forces test_mode=1 on every payment page: real cards are not
 	// charged whatever the integration's own setting says.
 	TestMode bool
@@ -233,6 +236,32 @@ func truncateRunes(s string, n int) string {
 // Hosted checkout
 // ─────────────────────────────────────────────────────────────────────────────
 
+// hiddenTehudat is the client_tehudat value that hides the Israeli ID field.
+const hiddenTehudat = "000000000"
+
+// ForeignPhone reports whether phone is written in international form
+// (+ or 00) with a country code other than Israel's 972. A local number
+// (0…) or an empty one is not foreign: the page then asks for the ID as
+// usual.
+func ForeignPhone(phone string) bool {
+	var digits strings.Builder
+	p := strings.TrimSpace(phone)
+	international := strings.HasPrefix(p, "+")
+	for _, r := range p {
+		if r >= '0' && r <= '9' {
+			digits.WriteRune(r)
+		}
+	}
+	d := digits.String()
+	if !international && strings.HasPrefix(d, "00") {
+		international, d = true, d[2:]
+	}
+	if !international || len(d) < 7 {
+		return false
+	}
+	return !strings.HasPrefix(d, "972")
+}
+
 // ErrUnsupportedCurrency is returned for a currency AllPay cannot charge in.
 var ErrUnsupportedCurrency = errors.New("allpay: AllPay charges only in ILS, USD or EUR")
 
@@ -313,6 +342,17 @@ func (a *Adapter) CreateCheckoutSession(ctx context.Context, req payments.Create
 	if req.CustomerEmail != "" {
 		params["client_email"] = req.CustomerEmail
 	}
+	if name := strings.TrimSpace(req.CustomerName); name != "" {
+		params["client_name"] = truncateRunes(name, maxItemNameRunes)
+	}
+	if phone := strings.TrimSpace(req.CustomerPhone); phone != "" {
+		params["client_phone"] = phone
+		if ForeignPhone(phone) {
+			// AllPay's documented value that hides the Israeli ID field: a
+			// foreign buyer has no Teudat Zehut to type.
+			params["client_tehudat"] = hiddenTehudat
+		}
+	}
 	if lang := pageLang(req.Locale); lang != "" {
 		params["lang"] = lang
 	}
@@ -323,7 +363,7 @@ func (a *Adapter) CreateCheckoutSession(ctx context.Context, req payments.Create
 		}
 		params["expire"] = json.Number(strconv.FormatInt(exp, 10))
 	}
-	if a.cfg.MaxInstallments > 1 && currency == "ILS" {
+	if a.cfg.MaxInstallments > 1 && currency == "ILS" && req.Amount >= a.cfg.InstallmentsMinMinor {
 		inst := a.cfg.MaxInstallments
 		if inst > 12 {
 			inst = 12
@@ -389,11 +429,16 @@ type PaymentStatus struct {
 	// Status: 0 unpaid (an attempt may have failed, the page may still be
 	// paid), 1 paid, 3 refunded in full, 4 refunded in part.
 	Status int
-	// AmountMinor is the order amount before discounts; RefundedMinor is
-	// what was refunded so far (AllPay sends it with status 4 only).
+	// AmountMinor is the order amount before discounts, DiscountMinor the
+	// order's discount (none on arena's pages), RefundedMinor what was
+	// refunded so far (AllPay sends it with status 4 only).
 	AmountMinor   int64
+	DiscountMinor int64
 	RefundedMinor int64
 	Currency      string
+	// Preauth is set only for a J5 pre-authorization ("authorized" means
+	// reserved, not charged). Arena's pages never ask for one.
+	Preauth string
 	// DeclineCode / Error describe the last failed attempt, if any.
 	DeclineCode string
 	Error       string
@@ -428,5 +473,10 @@ func (a *Adapter) PaymentStatus(ctx context.Context, orderID string) (*PaymentSt
 	}
 	st.AmountMinor, _ = MajorToMinor(str("amount"))
 	st.RefundedMinor, _ = MajorToMinor(str("refunded"))
+	st.DiscountMinor, _ = MajorToMinor(str("discount"))
+	st.Preauth = str("preauth")
 	return st, nil
 }
+
+// ChargedMinor is what the buyer was charged: the amount minus the discount.
+func (s *PaymentStatus) ChargedMinor() int64 { return s.AmountMinor - s.DiscountMinor }

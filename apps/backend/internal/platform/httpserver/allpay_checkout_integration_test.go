@@ -31,6 +31,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -43,19 +44,38 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 )
 
-// stubAllPayServer answers ?show=getpayment / checkkeys like allpay.to and
-// records the orders it was asked to create. A wrong sign is error 3, as on
-// the real service.
+// stubAllPayServer answers like allpay.to for the accounts it knows (API
+// login -> key): getpayment, checkkeys, and paymentstatus and refund from a
+// ledger of orders. A wrong sign is error 3, an unknown login error 5, an
+// order of another login (or none) error 6, as on the real service.
 type stubAllPayServer struct {
 	server *httptest.Server
-	key    string
 	mu     sync.Mutex
+	keys   map[string]string
 	orders []map[string]any
+	ledger map[string]*allpayLedgerOrder
+	// refundCalls counts refund requests; loseRefundAnswers > 0 makes the
+	// next refunds take effect and then answer HTTP 502 (a lost answer).
+	refundCalls       int
+	loseRefundAnswers int
 }
 
-func newStubAllPayServer(t *testing.T, apiKey string) *stubAllPayServer {
+// allpayLedgerOrder is one AllPay order, amounts in minor units.
+type allpayLedgerOrder struct {
+	login    string
+	amount   int64
+	currency string
+	status   int // 0 unpaid, 1 paid; 3/4 follow from refunded
+	refunded int64
+	refunds  []int64
+}
+
+func newStubAllPayServer(t *testing.T, accounts ...*allpayFixture) *stubAllPayServer {
 	t.Helper()
-	s := &stubAllPayServer{key: apiKey}
+	s := &stubAllPayServer{keys: map[string]string{}, ledger: map[string]*allpayLedgerOrder{}}
+	for _, f := range accounts {
+		s.keys[f.login] = f.apiKey
+	}
 	s.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
 		dec := json.NewDecoder(bytes.NewReader(raw))
@@ -65,25 +85,128 @@ func newStubAllPayServer(t *testing.T, apiKey string) *stubAllPayServer {
 			t.Errorf("stub allpay: body is not a JSON object: %v", err)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		if sign, _ := body["sign"].(string); sign != allpay.Sign(s.key, body) {
+		login, _ := body["login"].(string)
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		key, known := s.keys[login]
+		if !known {
+			_, _ = w.Write([]byte(`{"error_code":5,"error_msg":"Login incorrect"}`))
+			return
+		}
+		if sign, _ := body["sign"].(string); sign != allpay.Sign(key, body) {
 			_, _ = w.Write([]byte(`{"error_code":3,"error_msg":"Signature is incorrect"}`))
 			return
 		}
+		oid, _ := body["order_id"].(string)
 		switch r.URL.Query().Get("show") {
 		case "getpayment":
-			s.mu.Lock()
 			s.orders = append(s.orders, body)
-			s.mu.Unlock()
-			oid, _ := body["order_id"].(string)
+			var total int64
+			for _, it := range body["items"].([]any) {
+				item := it.(map[string]any)
+				price, _ := allpay.MajorToMinor(fmt.Sprint(item["price"]))
+				qty, _ := strconv.ParseInt(fmt.Sprint(item["qty"]), 10, 64)
+				total += price * qty
+			}
+			cur, _ := body["currency"].(string)
+			s.ledger[oid] = &allpayLedgerOrder{login: login, amount: total, currency: cur}
 			_, _ = fmt.Fprintf(w, `{"payment_url":"https://allpay.test/~login/pay/?payment_id=%s&code=xyz"}`, oid)
 		case "checkkeys":
 			_, _ = w.Write([]byte(`{"last_paid_order_id":"-1","last_paid_order_date":"-1"}`))
+		case "paymentstatus":
+			o := s.ledger[oid]
+			if o == nil || o.login != login {
+				_, _ = w.Write([]byte(`{"error_code":6,"error_msg":"Order not found"}`))
+				return
+			}
+			ans := map[string]any{"order_id": oid, "status": o.currentStatus(), "amount": json.Number(allpay.MinorToMajor(o.amount)), "currency": o.currency}
+			if o.currentStatus() == allpay.StatusPartiallyRefunded {
+				ans["refunded"] = json.Number(allpay.MinorToMajor(o.refunded))
+			}
+			out, _ := json.Marshal(ans)
+			_, _ = w.Write(out)
+		case "refund":
+			s.refundCalls++
+			o := s.ledger[oid]
+			if o == nil || o.login != login {
+				_, _ = w.Write([]byte(`{"error_code":6,"error_msg":"Order not found"}`))
+				return
+			}
+			if st := o.currentStatus(); st != allpay.StatusPaid && st != allpay.StatusPartiallyRefunded {
+				_, _ = w.Write([]byte(`{"error_code":16,"error_msg":"Wrong order status"}`))
+				return
+			}
+			amount, ok := allpay.MajorToMinor(fmt.Sprint(body["amount"]))
+			if !ok || amount <= 0 || amount > o.amount-o.refunded {
+				_, _ = w.Write([]byte(`{"error_code":2,"error_msg":"Incorrect amount"}`))
+				return
+			}
+			o.refunded += amount
+			o.refunds = append(o.refunds, amount)
+			if s.loseRefundAnswers > 0 {
+				s.loseRefundAnswers--
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			_, _ = fmt.Fprintf(w, `{"order_id":%q,"status":%d,"msg":"The amount will be refunded within 7 business days."}`, oid, o.currentStatus())
 		default:
 			_, _ = w.Write([]byte(`{"error_code":20,"error_msg":"Incorrect method"}`))
 		}
 	}))
 	t.Cleanup(s.server.Close)
 	return s
+}
+
+func (o *allpayLedgerOrder) currentStatus() int {
+	switch {
+	case o.status != allpay.StatusPaid || o.refunded == 0:
+		return o.status
+	case o.refunded >= o.amount:
+		return allpay.StatusRefunded
+	}
+	return allpay.StatusPartiallyRefunded
+}
+
+// account lets the stub answer one more API login.
+func (s *stubAllPayServer) account(login, key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.keys[login] = key
+}
+
+// markPaid records that the buyer paid an order the stub created.
+func (s *stubAllPayServer) markPaid(t *testing.T, orderID string) {
+	t.Helper()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	o := s.ledger[orderID]
+	if o == nil {
+		t.Fatalf("stub allpay: no order %s to mark paid", orderID)
+	}
+	o.status = allpay.StatusPaid
+}
+
+// paidOrder puts an order paid under login straight into the ledger.
+func (s *stubAllPayServer) paidOrder(login, orderID string, amount int64, currency string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ledger[orderID] = &allpayLedgerOrder{login: login, amount: amount, currency: currency, status: allpay.StatusPaid}
+}
+
+// setAmount changes what the stub says an order is for (an amount mismatch).
+func (s *stubAllPayServer) setAmount(orderID string, amount int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ledger[orderID].amount = amount
+}
+
+func (s *stubAllPayServer) refundsOf(orderID string) []int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if o := s.ledger[orderID]; o != nil {
+		return append([]int64(nil), o.refunds...)
+	}
+	return nil
 }
 
 func (s *stubAllPayServer) baseURL() string { return s.server.URL + "/app" }
@@ -196,7 +319,7 @@ func TestAllPay_StartAndWebhookPayTheOrder(t *testing.T) {
 	f := newAllPayFixture(t, ctx, pool, "ap")
 	defer f.cleanup()
 
-	stub := newStubAllPayServer(t, f.apiKey)
+	stub := newStubAllPayServer(t, f)
 	srv := allpayServer(t, pool, stub)
 	q := gen.New(pool)
 
@@ -300,7 +423,17 @@ func TestAllPay_StartAndWebhookPayTheOrder(t *testing.T) {
 		t.Fatalf("a refused webhook moved the intent to %q", after.State)
 	}
 
-	// ── 7. The signed paid webhook pays the order ─────────────────────────
+	// ── 7. A paid webhook AllPay's own books do not confirm yet moves
+	// nothing and asks for a redelivery ────────────────────────────────────
+	if code, body = postAllPayWebhook(t, srv, path, good); code != http.StatusServiceUnavailable {
+		t.Errorf("paid webhook while AllPay reports the order unpaid = %d; want 503; body: %s", code, body)
+	}
+	if after, _ := q.GetPaymentIntentByProviderID(ctx, csID.String()); after.State != "created" {
+		t.Fatalf("an unconfirmed paid webhook moved the intent to %q", after.State)
+	}
+
+	// ── 8. The buyer paid: the signed paid webhook pays the order ─────────
+	stub.markPaid(t, csID.String())
 	code, body = postAllPayWebhook(t, srv, path, good)
 	if code != http.StatusOK {
 		t.Fatalf("paid webhook = %d; body: %s", code, body)
@@ -327,7 +460,7 @@ func TestAllPay_StartAndWebhookPayTheOrder(t *testing.T) {
 		t.Errorf("public status = %q; want paid", st.Status)
 	}
 
-	// ── 8. AllPay retries webhooks: a replay is a harmless no-op ──────────
+	// ── 9. AllPay retries webhooks: a replay is a harmless no-op ──────────
 	if code, body = postAllPayWebhook(t, srv, path, good); code != http.StatusOK {
 		t.Errorf("replayed webhook = %d; want 200 so AllPay stops retrying; body: %s", code, body)
 	}
@@ -350,7 +483,7 @@ func TestAllPay_LiveConfigLeavesTestModeToTheIntegration(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE payment_provider_configs SET mode = 'live' WHERE id = $1`, f.configID); err != nil {
 		t.Fatal(err)
 	}
-	stub := newStubAllPayServer(t, f.apiKey)
+	stub := newStubAllPayServer(t, f)
 	srv := allpayServer(t, pool, stub)
 
 	if code, body := f.startCheckout(t, srv, hostedTicketsBaseURL+"/live"); code != http.StatusCreated {
@@ -374,7 +507,7 @@ func TestAllPay_TwoOrganizationsAreIsolated(t *testing.T) {
 	b := newAllPayFixture(t, ctx, pool, "apb")
 	defer b.cleanup()
 
-	stubA := newStubAllPayServer(t, a.apiKey)
+	stubA := newStubAllPayServer(t, a, b)
 	srv := allpayServer(t, pool, stubA)
 	q := gen.New(pool)
 
@@ -411,6 +544,7 @@ func TestAllPay_TwoOrganizationsAreIsolated(t *testing.T) {
 		t.Errorf("foreign order webhook = %d; want 200 so AllPay does not retry; body: %s", code, body)
 	}
 
+	stubA.markPaid(t, csID.String())
 	if code, body = postAllPayWebhook(t, srv, a.configWebhookPath(), underA); code != http.StatusOK {
 		t.Fatalf("org A's own webhook = %d; body: %s", code, body)
 	}
@@ -435,7 +569,7 @@ func TestAllPay_UnsupportedCurrencyTakesNoPage(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	stub := newStubAllPayServer(t, f.apiKey)
+	stub := newStubAllPayServer(t, f)
 	srv := allpayServer(t, pool, stub)
 
 	code, body := f.startCheckout(t, srv, hostedTicketsBaseURL+"/czk")
@@ -472,4 +606,47 @@ func TestAllPay_MissingKeyTakesNoInventory(t *testing.T) {
 		t.Errorf("body = %s; want checkout.payment_not_configured", body)
 	}
 	f.assertNoInventoryTaken(t, ctx, before)
+}
+
+// TestAllPay_PaidAmountMismatchParksThePayment: AllPay's own books say the
+// order was paid for another amount than arena asked for. The payment is
+// parked in manual_review (the ops watchdog alerts on it): no completed
+// checkout, no paid order, no tickets.
+func TestAllPay_PaidAmountMismatchParksThePayment(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f := newAllPayFixture(t, ctx, pool, "apx")
+	defer f.cleanup()
+	stub := newStubAllPayServer(t, f)
+	srv := allpayServer(t, pool, stub)
+	q := gen.New(pool)
+
+	code, body := f.startCheckout(t, srv, hostedTicketsBaseURL+"/mismatch")
+	if code != http.StatusCreated {
+		t.Fatalf("checkout/start = %d; body: %s", code, body)
+	}
+	var start hostedStartResponse
+	_ = json.Unmarshal(body, &start)
+	csID := uuid.MustParse(start.CheckoutSession.ID)
+	cs, _ := q.GetCheckoutSessionByID(ctx, csID)
+
+	stub.markPaid(t, csID.String())
+	stub.setAmount(csID.String(), *cs.Total-100) // one shekel less
+	code, body = postAllPayWebhook(t, srv, f.configWebhookPath(), f.webhook(t, csID.String(), 1, *cs.Total, f.apiKey))
+	if code != http.StatusOK {
+		t.Fatalf("paid webhook = %d; body: %s", code, body)
+	}
+	pi, _ := q.GetPaymentIntentByProviderID(ctx, csID.String())
+	if pi.State != "manual_review" || pi.FailureCode == nil || *pi.FailureCode != "paid_amount_mismatch" {
+		t.Fatalf("intent = %s %v; want manual_review paid_amount_mismatch", pi.State, pi.FailureCode)
+	}
+	if csAfter, _ := q.GetCheckoutSessionByID(ctx, csID); csAfter.State == "completed" {
+		t.Error("the checkout was completed for a payment of another amount")
+	}
+	var issueJobs int
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM worker_jobs
+	   WHERE job_type = 'checkout.issue_tickets' AND payload->>'checkout_session_id' = $1`, csID.String()).Scan(&issueJobs)
+	if issueJobs != 0 {
+		t.Errorf("checkout.issue_tickets jobs = %d; want none", issueJobs)
+	}
 }

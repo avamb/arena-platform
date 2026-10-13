@@ -6,6 +6,7 @@ package allpay
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
@@ -24,10 +25,30 @@ func allpayModule(t *testing.T, key string, opts payments.Options) payments.Modu
 }
 
 func TestAllPayModule_Contract(t *testing.T) {
-	// Refund through AllPay is PAY-14b: the descriptor declares no Refund
-	// capability, so the contract skips the refund sub-tests (and says why).
+	// The module talks to a stub that keeps a ledger of orders: the paid
+	// order of the webhook, one order for the full-refund sub-tests and one
+	// for the partial refund (AllPay tells refunds apart only by an order's
+	// refunded total).
+	stub := newStubAllPay(t, "pp100", "secret")
+	stub.addOrder(testOrderID, stubOrder{Status: StatusPaid, Amount: 12350})
+	stub.addOrder("contract-full", stubOrder{Status: StatusPaid, Amount: 12350})
+	stub.addOrder("contract-partial", stubOrder{Status: StatusPaid, Amount: 12350})
 	contracttest.Run(t, contracttest.Case{
-		Module:              allpayModule(t, "secret", payments.Options{}),
+		Module: allpayModule(t, "secret", payments.Options{AllPayAPIBaseURL: stub.server.URL}),
+		Refund: &contracttest.RefundCase{
+			ChargeRef:          "contract-full",
+			PartialChargeRef:   "contract-partial",
+			PaymentAmountMinor: 12350,
+			Currency:           "ILS",
+			StubRequests:       func() int { return stub.count(methodRefund) },
+			StubCreated:        func() int { return len(stub.refunds("contract-full")) + len(stub.refunds("contract-partial")) },
+			StubAmountFor: func(string) int64 {
+				if r := stub.refunds("contract-partial"); len(r) > 0 {
+					return r[len(r)-1]
+				}
+				return -1
+			},
+		},
 		GoodWebhook:         payments.WebhookInput{Body: signedWebhook(t, "secret", paidWebhookFields(testOrderID))},
 		BadSignatureWebhook: payments.WebhookInput{Body: signedWebhook(t, "not-the-key", paidWebhookFields(testOrderID))},
 		WantEvent: payments.NormalizedEvent{
@@ -116,5 +137,54 @@ func TestAllPayModule_OptionalSecrets(t *testing.T) {
 	d := ProviderDescriptor()
 	if got := d.RequiredSecretKeys(); len(got) != 2 {
 		t.Errorf("required secrets = %v; the VAT code and installments must stay optional", got)
+	}
+}
+
+func TestAllPayModule_InstallmentsThresholdSecret(t *testing.T) {
+	m, err := Entry().Build(map[string]string{SecretMerchantID: "pp100", SecretKey: "k",
+		SecretMaxInstallments: "6", SecretInstallmentsMinAmount: "300.50"}, payments.Options{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if got := m.(*Adapter).cfg.InstallmentsMinMinor; got != 30050 {
+		t.Errorf("InstallmentsMinMinor = %d; want 30050", got)
+	}
+	if _, err := Entry().Build(map[string]string{SecretMerchantID: "pp100", SecretKey: "k",
+		SecretInstallmentsMinAmount: "a lot"}, payments.Options{}); err == nil {
+		t.Error("an unreadable threshold was accepted")
+	}
+}
+
+func TestAllPayModule_PaidWebhookIsConfirmedWithAllPay(t *testing.T) {
+	stub := newStubAllPay(t, "pp100", "secret")
+	m := allpayModule(t, "secret", payments.Options{AllPayAPIBaseURL: stub.server.URL})
+	parse := func(order string) (payments.NormalizedEvent, error) {
+		return m.(payments.WebhookParser).VerifyAndParse(t.Context(),
+			payments.WebhookInput{Body: signedWebhook(t, "secret", paidWebhookFields(order))})
+	}
+
+	stub.addOrder("o-paid", stubOrder{Status: StatusPaid, Amount: 12350, Discount: 350})
+	ev, err := parse("o-paid")
+	if err != nil || ev.Kind != payments.EventPaymentSucceeded || ev.AmountMinor != 12000 || ev.Currency != "ILS" {
+		t.Errorf("paid order: %+v, %v; want succeeded for the 120.00 AllPay charged", ev, err)
+	}
+
+	stub.addOrder("o-unpaid", stubOrder{Status: 0, Amount: 12350})
+	if _, err := parse("o-unpaid"); !errors.Is(err, payments.ErrProviderUnreachable) {
+		t.Errorf("unpaid order: %v; want ErrProviderUnreachable so AllPay delivers it again", err)
+	}
+
+	stub.addOrder("o-refunded", stubOrder{Status: StatusPaid, Amount: 12350, Refunded: 2000})
+	if ev, err := parse("o-refunded"); err != nil || ev.Kind != payments.EventPaymentManualReview {
+		t.Errorf("refunded order: %+v, %v; want manual review", ev, err)
+	}
+
+	if ev, err := parse("o-missing"); err != nil || ev.Kind != payments.EventPaymentManualReview {
+		t.Errorf("order AllPay does not hold: %+v, %v; want manual review", ev, err)
+	}
+
+	stub.answer[methodPaymentStatus] = `oops`
+	if _, err := parse("o-paid"); !errors.Is(err, payments.ErrProviderUnreachable) {
+		t.Errorf("unreadable status: %v; want ErrProviderUnreachable", err)
 	}
 }

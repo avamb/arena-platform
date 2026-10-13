@@ -190,8 +190,13 @@ type HostedCheckoutRequest struct {
 	Currency          string
 	ProductName       string
 	BuyerEmail        string
-	ReturnURL         string
-	ExpiresAtUnix     int64
+	// BuyerName and BuyerPhone are what the buyer typed, if anything. A
+	// provider may pre-fill its page with them (AllPay also hides its
+	// Israeli ID field for a foreign phone).
+	BuyerName     string
+	BuyerPhone    string
+	ReturnURL     string
+	ExpiresAtUnix int64
 	// BuyerLocale is the language the buyer is shopping in, as stored on
 	// checkout_sessions.buyer_locale. Forwarded so the provider's hosted
 	// page speaks it too; empty leaves the provider to guess.
@@ -444,6 +449,8 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 		Currency:          req.Currency,
 		ProductName:       req.ProductName,
 		CustomerEmail:     req.BuyerEmail,
+		CustomerName:      strings.TrimSpace(req.BuyerName),
+		CustomerPhone:     strings.TrimSpace(req.BuyerPhone),
 		ClientReferenceID: req.CheckoutSessionID.String(),
 		Metadata:          metadata,
 		// The buyer returns to the SAME page either way. Stripe's own
@@ -664,6 +671,8 @@ func (h *Handler) startHostedPayment(
 		Currency:          in.Breakdown.Currency,
 		ProductName:       h.hostedLineItemName(ctx, in.CheckCtx),
 		BuyerEmail:        in.Buyer.Email,
+		BuyerName:         derefOr(in.Buyer.Name),
+		BuyerPhone:        derefOr(in.Buyer.Phone),
 		ReturnURL:         in.ReturnBase,
 		ExpiresAtUnix:     in.ExpiresAt.Add(-h.paymentGrace).Unix(),
 		BuyerLocale:       in.Buyer.Locale,
