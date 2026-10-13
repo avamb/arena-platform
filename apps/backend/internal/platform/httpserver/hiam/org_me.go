@@ -23,6 +23,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgperm"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 )
 
@@ -156,7 +157,7 @@ func HandleOrgMe(q OrgMeQuerier, isMember MemberCheck, resolver permissions.OrgE
 				return
 			}
 			for _, m := range memberships {
-				if m.OrgID == orgID && m.Status == "active" && !platformRoles[m.Role] {
+				if m.OrgID == orgID && m.Status == "active" && !orgperm.IsPlatformRole(m.Role) {
 					resp.MembershipRoles = append(resp.MembershipRoles, m.Role)
 				}
 			}

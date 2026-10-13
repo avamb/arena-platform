@@ -15,6 +15,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgperm"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 )
 
@@ -79,8 +80,7 @@ func newOrgMeFixture() orgMeFixture {
 }
 
 // memberOf is the test stand-in for MembershipCheck. It decides with the
-// guard's own hasOrgMembershipRow; it only drops the inactive rows the real
-// query (ListMembershipsByUser, status = 'active') never returns.
+// shared rule of every guard, orgperm.HasMembershipRow.
 func memberOf(q OrgMeQuerier) MemberCheck {
 	if q == nil {
 		return nil
@@ -90,35 +90,7 @@ func memberOf(q OrgMeQuerier) MemberCheck {
 		if err != nil {
 			return false, err
 		}
-		active := make([]gen.MembershipRow, 0, len(rows))
-		for _, m := range rows {
-			if m.Status == "active" {
-				active = append(active, m)
-			}
-		}
-		return hasOrgMembershipRow(active, org), nil
-	}
-}
-
-func TestHasOrgMembershipRow_PlatformRoleIsNotAMembership(t *testing.T) {
-	org, other := uuid.New(), uuid.New()
-	cases := []struct {
-		name string
-		rows []gen.MembershipRow
-		want bool
-	}{
-		{"agent", []gen.MembershipRow{{OrgID: org, Role: "agent"}}, true},
-		{"owner", []gen.MembershipRow{{OrgID: org, Role: "org_admin"}}, true},
-		{"platform superadmin row only", []gen.MembershipRow{{OrgID: org, Role: "platform_superadmin"}}, false},
-		{"platform operator row only", []gen.MembershipRow{{OrgID: org, Role: "platform_operator"}}, false},
-		{"platform row plus a real role", []gen.MembershipRow{{OrgID: org, Role: "platform_operator"}, {OrgID: org, Role: "organizer"}}, true},
-		{"another organization", []gen.MembershipRow{{OrgID: other, Role: "org_admin"}}, false},
-		{"no rows", nil, false},
-	}
-	for _, c := range cases {
-		if got := hasOrgMembershipRow(c.rows, org); got != c.want {
-			t.Errorf("%s: %v; want %v", c.name, got, c.want)
-		}
+		return orgperm.HasMembershipRow(rows, org), nil
 	}
 }
 

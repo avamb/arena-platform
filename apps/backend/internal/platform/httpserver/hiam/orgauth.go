@@ -11,6 +11,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgperm"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 )
 
@@ -35,29 +36,12 @@ func actorIsMemberOfOrg(ctx context.Context, q *gen.Queries, orgID uuid.UUID) (b
 	if err != nil {
 		return false, err
 	}
-	if !hasOrgMembershipRow(memberships, orgID) {
+	if !orgperm.HasMembershipRow(memberships, orgID) {
 		return false, nil
 	}
 	// A membership is not enough: the gate's permission must be held in
 	// THIS organization, not through a role of another one.
 	return permissions.AllowedInOrg(ctx, orgID)
-}
-
-// platformRoles never count from a membership row: the checker resolves them
-// only from the global, org-less user_roles (GetActiveRolesForUserInOrg
-// leaves them out of the membership side).
-var platformRoles = map[string]bool{"platform_superadmin": true, "platform_operator": true}
-
-// hasOrgMembershipRow reports whether the active membership rows hold one in
-// orgID that counts. A row carrying only a platform role grants nothing in
-// the checker, so it is not a membership here either.
-func hasOrgMembershipRow(rows []gen.MembershipRow, orgID uuid.UUID) bool {
-	for _, m := range rows {
-		if m.OrgID == orgID && !platformRoles[m.Role] {
-			return true
-		}
-	}
-	return false
 }
 
 // requireOrgMembership verifies the authenticated actor is an active member of
