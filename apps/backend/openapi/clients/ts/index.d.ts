@@ -602,6 +602,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the caller's role and permissions inside one organization
+         * @description Returns the caller's role and effective permissions INSIDE the path
+         *     organization (web event center, task A1 of
+         *     08_architecture/37_web_event_center_ru.md). Since the per-organization
+         *     permission check (PERM-ORG) a route grants only what the caller holds
+         *     in the organization it acts in, plus global roles. GET /v1/me still
+         *     answers the union across every organization, so a client must read
+         *     this endpoint before it shows or hides an action of one organization.
+         *
+         *     The permissions are computed by the same checker the route gates use,
+         *     so "allowed" here means the gate lets the request through. A route
+         *     can still refuse for its own reasons (a row of another organization,
+         *     a state that does not allow the action).
+         *
+         *     Who may call it: a user with an active membership in the
+         *     organization, an organization API key of that organization (no role,
+         *     its permissions are its scopes), and a platform superadmin (no
+         *     X-Admin-Reason is needed, the call reads the caller's own access).
+         *     Anyone else gets 403 `org.access_denied`.
+         */
+        get: operations["getV1OrganizationsOrgIdMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/password-reset/request": {
         parameters: {
             query?: never;
@@ -5986,6 +6023,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/webhooks/brevo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive Brevo transactional delivery events
+         * @description Brevo's transactional webhook: what happened to the buyer letters
+         *     arena sent (ticket letter, invitation, session change or
+         *     cancellation, refund). Mounted only when BREVO_WEBHOOK_TOKEN is set.
+         *     This route takes the token from "Authorization: Bearer <token>"
+         *     (a webhook created through Brevo's API with an auth object), so
+         *     the token never appears in a URL. BREVO_WEBHOOK_TOKEN_PREVIOUS is
+         *     accepted too during a rotation; tokens are compared in
+         *     constant time. The body is one Brevo event object or an array of
+         *     them, capped at 1 MiB (never by the number of events). Events of
+         *     messages arena did not send (the Brevo account may be shared with
+         *     other sites) and event types arena does not model (unsubscribed,
+         *     spam, list addition) are acknowledged with 200 and ignored. Setup:
+         *     docs/ops/brevo_delivery_status_webhook_ru.md.
+         */
+        post: operations["brevoDeliveryStatusWebhookBearer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/webhooks/brevo/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive Brevo transactional delivery events
+         * @description Brevo's transactional webhook: what happened to the buyer letters
+         *     arena sent (ticket letter, invitation, session change or
+         *     cancellation, refund). Mounted only when BREVO_WEBHOOK_TOKEN is set.
+         *     The token in the path is the credential, for a webhook created in
+         *     Brevo's web form, which takes only a URL; prefer POST
+         *     /v1/webhooks/brevo with a bearer header. BREVO_WEBHOOK_TOKEN_PREVIOUS
+         *     is accepted too during a rotation; tokens are compared in
+         *     constant time. The body is one Brevo event object or an array of
+         *     them, capped at 1 MiB (never by the number of events). Events of
+         *     messages arena did not send (the Brevo account may be shared with
+         *     other sites) and event types arena does not model (unsubscribed,
+         *     spam, list addition) are acknowledged with 200 and ignored. Setup:
+         *     docs/ops/brevo_delivery_status_webhook_ru.md.
+         */
+        post: operations["brevoDeliveryStatusWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/billing/usage": {
         parameters: {
             query?: never;
@@ -7935,6 +8036,71 @@ export interface components {
              *     ]
              */
             available_scopes: string[];
+        };
+        /**
+         * @description The caller's access inside one organization, returned by
+         *     GET /v1/organizations/{org_id}/me. Every list is sorted and never null.
+         */
+        OrgMeResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the organization.
+             */
+            org_id: string;
+            /** @description Display name of the organization. */
+            org_name: string;
+            /**
+             * Format: int64
+             * @description Short organization number shown to people. The UUID stays the API key.
+             */
+            org_display_number: number;
+            /**
+             * @description `user` for a person signed in with a JWT, `api_key` for an
+             *     organization API key.
+             * @example user
+             */
+            caller_type: string;
+            /**
+             * @description The main membership role of the caller in this organization, for
+             *     display: `org_admin` (owner), then `organizer` (manager), then
+             *     `agent`, then the first other role in alphabetical order. Empty
+             *     for an API key and for a platform superadmin who holds no
+             *     membership here. Decide actions by `permissions`, never by this
+             *     field.
+             * @example organizer
+             */
+            role: string;
+            /**
+             * @description Every active membership role the caller holds in this organization.
+             * @example [
+             *       "organizer"
+             *     ]
+             */
+            membership_roles: string[];
+            /**
+             * @description The roles the permission checker counts for this organization:
+             *     the membership roles here, the caller's global roles (for example
+             *     `platform_superadmin`) and any roles of the token. Empty for an
+             *     API key.
+             * @example [
+             *       "organizer"
+             *     ]
+             */
+            roles: string[];
+            /**
+             * @description Every permission the caller holds inside this organization. For
+             *     an API key these are its scopes.
+             * @example [
+             *       "event.read",
+             *       "order.read"
+             *     ]
+             */
+            permissions: string[];
+            /**
+             * @description True when the caller is a platform superadmin. Other
+             *     organization routes then require the X-Admin-Reason header.
+             */
+            platform_superadmin: boolean;
         };
         MeUser: {
             /** @description Actor ID from the JWT (typically a UUID) */
@@ -10539,6 +10705,14 @@ export interface components {
          *     second call.
          */
         OrderListItem: components["schemas"]["OrderSummary"] & {
+            /**
+             * @description True when the buyer did not get a letter: a ticket whose
+             *     letter failed (bounced, blocked, refused by the relay), or a
+             *     change, cancellation or refund letter that failed and was not
+             *     followed by a newer one of the same kind. Details on the
+             *     order card (letters).
+             */
+            letter_failed: boolean;
             /** @description Name of the event the order's session belongs to. */
             event_name: string;
             /**
@@ -10782,6 +10956,94 @@ export interface components {
             kind: string;
         };
         /**
+         * @description One buyer letter of an order and its delivery status, from Brevo's
+         *     transactional webhook. Ticket letters come first, grouped the way
+         *     they went out (one entry per sent letter, one for the tickets still
+         *     queued, one for those the mail relay refused, one for tickets sent
+         *     before letters were recorded), then the change, cancellation and
+         *     refund letters, oldest first. Times are UTC; a step that has not
+         *     happened is null. About "opened": Brevo learns of an open when the
+         *     letter's images are fetched. Apple Mail Privacy Protection fetches
+         *     them on delivery through Apple's proxy whether anybody reads the
+         *     letter or not; Brevo reports that as a proxy open, which arena
+         *     records as proxy_opened_at (proof of delivery, NOT of reading). An
+         *     opened_at can still be a mail client that loads images by itself.
+         */
+        OrderLetter: {
+            /**
+             * Format: uuid
+             * @description Letter id; null for a letter the relay has not accepted (queued, send_failed) or one sent before letters were recorded.
+             */
+            id: string | null;
+            /** @description ticket, change, cancel or refund. Invitation letters have no order and are not listed on an order. */
+            kind: string;
+            /**
+             * @description queued (the delivery job waits), sent (the mail relay accepted
+             *     the letter), delayed (the recipient's server asked Brevo to try
+             *     again later; Brevo keeps retrying), delivered (the recipient's
+             *     server accepted it, or a mail proxy fetched it, or a link was
+             *     clicked), opened, failed (bounced, blocked, invalid address,
+             *     provider error, or the relay refused it). A failure is final
+             *     unless a later delivery is reported.
+             */
+            status: string;
+            /** @description Address the letter was sent to. */
+            recipient: string;
+            /** @description Tickets the letter carries (empty for change, cancellation and refund letters). */
+            ticket_ids: string[];
+            /**
+             * Format: date-time
+             * @description When the delivery job was queued (queued and send_failed entries only).
+             */
+            queued_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the mail relay accepted the letter.
+             */
+            sent_at: string | null;
+            /**
+             * Format: date-time
+             * @description When Brevo reported the letter delivered.
+             */
+            delivered_at: string | null;
+            /**
+             * Format: date-time
+             * @description When a mail proxy (Apple Mail Privacy Protection, image proxies) first fetched the letter. Proof of delivery, not of reading.
+             */
+            proxy_opened_at: string | null;
+            /**
+             * Format: date-time
+             * @description When Brevo first reported an open.
+             */
+            opened_at: string | null;
+            /**
+             * Format: date-time
+             * @description First click on a link of the letter (for example the ticket download). Proves delivery; not counted as reading, mail security scanners follow links too.
+             */
+            clicked_at: string | null;
+            /**
+             * Format: date-time
+             * @description When Brevo first reported the letter deferred (the recipient's server asked it to retry later). Stays set after a later delivery.
+             */
+            deferred_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the failure that decided the status was reported.
+             */
+            failed_at: string | null;
+            /** @description hard_bounce, soft_bounce, invalid_email, blocked, error, or send_failed (the relay refused the letter). */
+            failure_event: string | null;
+            /** @description The provider's reason, with e-mail addresses, IP addresses and host names removed. */
+            failure_reason: string | null;
+            /**
+             * @description True when the letter has been sent or delayed for more than six
+             *     hours with no delivery while the webhook kept reporting on other
+             *     letters: the buyer most likely has no letter. letter_failed is
+             *     also true then.
+             */
+            stuck: boolean;
+        };
+        /**
          * @description Order detail returned by GET
          *     /v1/organizations/{org_id}/orders/{id} (feature #489, W1-A6d, spec
          *     §14.2; EC-05, spec 35 §5.6): the order fields plus its line items,
@@ -10826,6 +11088,10 @@ export interface components {
             unpaid_reason: string;
             /** @description The sales channel of the order and how the buyer reached the checkout. */
             channel: components["schemas"]["OrderChannelSummary"];
+            /** @description The buyer letters of the order with their delivery status (see OrderLetter). */
+            letters: components["schemas"]["OrderLetter"][];
+            /** @description True when one of the letters failed (status failed). */
+            letter_failed: boolean;
         };
         /** @description Places of a session, or of one category, by status. */
         SessionPlaceCounts: {
@@ -22823,6 +23089,86 @@ export interface operations {
                 };
             };
             /** @description Database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization the caller asks about. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's access inside the organization. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgMeResponse"];
+                };
+            };
+            /** @description org_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The caller is not a member of this organization, or the API key
+             *     belongs to another organization (`org.access_denied`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization does not exist or was deleted (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The membership or permission lookup failed (`org.membership_check_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The permission checker is not wired (`dependency.org_access_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -42113,6 +42459,169 @@ export interface operations {
             };
             /** @description Database unavailable. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    brevoDeliveryStatusWebhookBearer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                } | {
+                    [key: string]: unknown;
+                }[];
+            };
+        };
+        responses: {
+            /** @description Events acknowledged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Always true. */
+                        acknowledged: boolean;
+                        /** @description Events in the body. */
+                        received: number;
+                        /** @description Events that belonged to a letter arena sent and were recorded. */
+                        applied: number;
+                    };
+                };
+            };
+            /** @description Malformed body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or unknown bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Body larger than 1 MiB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An event could not be stored; Brevo delivers it again. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    brevoDeliveryStatusWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The webhook token (BREVO_WEBHOOK_TOKEN). Never logged. */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                } | {
+                    [key: string]: unknown;
+                }[];
+            };
+        };
+        responses: {
+            /** @description Events acknowledged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Always true. */
+                        acknowledged: boolean;
+                        /** @description Events in the body. */
+                        received: number;
+                        /** @description Events that belonged to a letter arena sent and were recorded. */
+                        applied: number;
+                    };
+                };
+            };
+            /** @description Malformed body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown webhook token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Body larger than 1 MiB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An event could not be stored; Brevo delivers it again. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

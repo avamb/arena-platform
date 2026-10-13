@@ -35,6 +35,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
@@ -164,7 +165,19 @@ func (h *changeEmail) handle(ctx context.Context, payload []byte) error {
 		h.record(ctx, changeID, orderID, sessionchange.StateFailed, err.Error())
 		return err
 	}
-	if sendErr := h.opts.Sender.Send(ctx, msg); sendErr != nil {
+	letter := emailstatus.NewLetter{OrgID: rec.OrgID, OrderID: &orderID, Kind: emailstatus.KindChange, Recipient: recipient.Email}
+	tplKind := templates.TemplateKindChange
+	if !moves {
+		letter.Kind = emailstatus.KindCancel
+		tplKind = templates.TemplateKindCancel
+	}
+	letter.TemplateVersion = templateVersion(h.renderer, tplKind, recipient.LocaleHint)
+	ids := make([]uuid.UUID, 0, len(rendered))
+	for _, t := range rendered {
+		ids = append(ids, t.TicketID)
+	}
+	letter.TicketNumbers = letterTicketNumbers(ctx, h.opts.DB, ids)
+	if sendErr := sendRecorded(ctx, h.opts.Sender, h.opts.DB, h.logger, letter, msg, nil); sendErr != nil {
 		h.record(ctx, changeID, orderID, sessionchange.StateFailed, sendErr.Error())
 		h.logger.Warn("delivery: change e-mail send failed; worker will retry",
 			slog.String("change_id", changeID.String()),

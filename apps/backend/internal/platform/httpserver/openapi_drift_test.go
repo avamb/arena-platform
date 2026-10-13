@@ -271,6 +271,8 @@ func buildDriftTestServer(t *testing.T) *Server {
 		BodyLimitBytes: 1 << 20,
 		// The public onboarding routes exist only while the flag is on.
 		OnboardingEnabled: true,
+		// The Brevo delivery-status webhook exists only with a token.
+		BrevoWebhookToken: "drift-test-brevo-webhook-token-0123456789",
 	}
 
 	// noopHandler is a minimal http.Handler that satisfies the MetricsHandler

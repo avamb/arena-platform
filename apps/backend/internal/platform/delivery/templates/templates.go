@@ -28,7 +28,9 @@ package templates
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"fmt"
 	htmltemplate "html/template"
 	"sort"
@@ -416,6 +418,24 @@ func New() (*Renderer, error) {
 	}
 
 	return &Renderer{html: htmlByKey, text: textByKey, known: known}, nil
+}
+
+// Version names the exact template file a (kind, locale) letter is rendered
+// from: "<kind>.<resolved locale>@<first 12 hex of the file's SHA-256>". It
+// is stored with every sent letter (email_letters.template_version) so the
+// wording a buyer received can be proven after the templates change. Empty
+// when the template does not exist.
+func (r *Renderer) Version(kind, locale string) string {
+	key := kind + "." + r.ResolveLocale(kind, locale)
+	if _, ok := r.known[key]; !ok {
+		return ""
+	}
+	body, err := templateFS.ReadFile(key + ".tmpl")
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(body)
+	return key + "@" + hex.EncodeToString(sum[:])[:12]
 }
 
 // ResolveLocale returns locale when a template for it exists, or

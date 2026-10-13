@@ -13,8 +13,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 )
 
 type orgScopeKey struct{}
@@ -138,4 +141,74 @@ func (c *DBChecker) membershipRoles(ctx context.Context, userID uuid.UUID) ([]st
 		return nil, fmt.Errorf("permissions: no membership querier")
 	}
 	return c.memberships.GetActiveRolesForUser(ctx, userID)
+}
+
+// Effective is what the checker decides from for one caller inside one
+// organization: the roles it counts there and every permission they give.
+// Both lists are sorted and never nil.
+type Effective struct {
+	Roles       []string
+	Permissions []string
+}
+
+// OrgEffectiveResolver lists a caller's effective roles and permissions
+// inside one organization, by the same rules the per-organization gate
+// applies. GET /v1/organizations/{org_id}/me answers from it, so a client
+// sees exactly the permissions the routes will grant (web event center, A1).
+type OrgEffectiveResolver interface {
+	EffectiveInOrg(ctx context.Context, actor auth.Actor, orgID uuid.UUID) (Effective, error)
+}
+
+// EffectiveInOrg mirrors Check with the organization scoped: the JWT roles
+// plus the roles the caller holds IN orgID (and the global, org-less
+// user_roles). An organization API key carries no roles: its permissions are
+// its scopes. Unlike Check, a failed role lookup is an error here, never a
+// silent fall-back to fewer roles, so a client cannot mistake an outage for
+// a lost permission.
+func (c *DBChecker) EffectiveInOrg(ctx context.Context, actor auth.Actor, orgID uuid.UUID) (Effective, error) {
+	if actor.IsService() {
+		perms := append([]string(nil), actor.Permissions...)
+		return Effective{Roles: []string{}, Permissions: sortedUnique(perms)}, nil
+	}
+	roles := append([]string(nil), actor.Roles...)
+	if c.memberships != nil && actor.ID != "" {
+		uid, err := uuid.Parse(actor.ID)
+		if err == nil {
+			memberRoles, err := c.membershipRoles(WithOrgScope(ctx, orgID), uid)
+			if err != nil {
+				return Effective{}, err
+			}
+			roles = append(roles, memberRoles...)
+		}
+	}
+	roles = sortedUnique(roles)
+	if len(roles) == 0 {
+		return Effective{Roles: roles, Permissions: []string{}}, nil
+	}
+	set, err := c.resolvePermissions(ctx, roles)
+	if err != nil {
+		return Effective{}, fmt.Errorf("permissions: db resolver: %w", err)
+	}
+	perms := make([]string, 0, len(set))
+	for p := range set {
+		perms = append(perms, p)
+	}
+	return Effective{Roles: roles, Permissions: sortedUnique(perms)}, nil
+}
+
+func sortedUnique(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
 }
