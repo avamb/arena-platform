@@ -3895,6 +3895,10 @@ export interface paths {
          *     owners are told at most once a day (`error.details.owners_notice`
          *     says whether a notice was queued, one went out today, or there is no
          *     address to send it to). A failure of that check answers 503.
+         *     When a scanned ticket of the payment holds a one-time exception, the
+         *     refund must be for everything that is left of the payment (409
+         *     `refund.scan_exception_whole_payment` otherwise); a smaller amount
+         *     is refunded ticket by ticket through the organization's routes.
          *
          *     Requires JWT + the `refund.create` permission.
          */
@@ -6559,7 +6563,11 @@ export interface paths {
          *     it, and the exception ends at `expires_at` (at most 24 hours) in any
          *     case. A ticket has at most one exception at a time: one that expired
          *     unused may be granted again, a spent one is final, and a scan of the
-         *     ticket after the grant voids it (that scan is a real entry). The grant is audited with
+         *     ticket after the grant voids it (that scan is a real entry). A refund
+         *     that spent it and returned no money gives it back when it was
+         *     rejected, or failed before the provider accepted it on a route with no
+         *     retry (the flat refund, the ticket-cancel refund); a failed refund of
+         *     one ticket keeps it for its retry. The grant is audited with
          *     the X-Admin-Reason, the organization's owners get an e-mail and the
          *     sales bot tells the organization's group and the operator; those two
          *     notices carry the `note` (cut to 500 characters), never the
